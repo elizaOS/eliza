@@ -1,0 +1,12 @@
+.github/workflows/release-electrobun.yml:1072:          bun run test:desktop:packaged:windows
+package.json:91:    "test:desktop:packaged:windows": "bun run --cwd packages/app test:desktop:packaged:windows",
+packages/app-core/scripts/release-check.ts:204:  "bun run test:desktop:packaged:windows",
+packages/app-core/test/regression-matrix.json:106:      "command": "bun run test:desktop:packaged:windows"
+packages/app/package.json:32:    "test:desktop:packaged:windows": "node scripts/run-desktop-packaged-windows.mjs",
+packages/app/scripts/run-desktop-packaged-windows.mjs:3: * Windows packaged-desktop smoke lane (`test:desktop:packaged:windows`).
+packages/app/scripts/run-desktop-packaged-windows.mjs:55:  const line = `[test:desktop:packaged:windows] ${message}\n`;
+packages/app/test/desktop-packaged-windows-lane.test.ts:2: * Guards the `test:desktop:packaged:windows` packaged-Windows smoke lane wiring
+packages/app/test/desktop-packaged-windows-lane.test.ts:5: * Regression: three call sites invoked `bun run test:desktop:packaged:windows`
+packages/app/test/desktop-packaged-windows-lane.test.ts:27:const CANONICAL_LANE = "test:desktop:packaged:windows";
+packages/app/test/desktop-packaged-windows-lane.test.ts:70:describe("test:desktop:packaged:windows lane wiring (#13682)", () => {
+packages/app/test/desktop-packaged-windows-lane.test.ts:83:    // all execute `bun run test:desktop:packaged:windows` from the repository

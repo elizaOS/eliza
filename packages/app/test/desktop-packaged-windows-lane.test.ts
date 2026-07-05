@@ -104,13 +104,11 @@ describe("test:desktop:packaged:windows lane wiring (#13682)", () => {
     const runner = readText(
       "packages/app/scripts/run-desktop-packaged-windows.mjs",
     );
-    expect(runner).toContain("smoke-test-windows.ps1");
-    expect(runner).toContain("pwsh");
-    expect(
-      readText(
-        "packages/app-core/platforms/electrobun/scripts/smoke-test-windows.ps1",
-      ),
-    ).toContain("ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE");
+    expect(runner).toContain("electrobun-windows-startup.e2e.spec.ts");
+    expect(runner).toContain("resolveWindowsLauncher");
+    expect(runner).toContain("ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE");
+    expect(runner).toContain("ELIZA_TEST_WINDOWS_LAUNCHER_PATH");
+    expect(runner).not.toContain("smoke-test-windows.ps1");
     expect(readText(".github/workflows/release-electrobun.yml")).toContain(
       "ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE",
     );

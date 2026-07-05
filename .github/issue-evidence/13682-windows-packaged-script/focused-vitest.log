@@ -1,0 +1,15 @@
+bun test v1.4.0-canary.1 (55f6c899f)
+
+packages/app/test/desktop-packaged-windows-lane.test.ts:
+(pass) test:desktop:packaged:windows lane wiring (#13682) > defines the canonical lane in packages/app/package.json [0.99ms]
+(pass) test:desktop:packaged:windows lane wiring (#13682) > is invokable from the repo root where all three call sites run it [0.28ms]
+(pass) test:desktop:packaged:windows lane wiring (#13682) > ships the preflight runner script the lane points at [0.05ms]
+(pass) test:desktop:packaged:windows lane wiring (#13682) > preserves the release workflow launcher-path handoff contract [0.65ms]
+(pass) test:desktop:packaged:windows lane wiring (#13682) > all three call sites reference the exact canonical lane name [0.56ms]
+(pass) test:desktop:packaged:windows lane wiring (#13682) > distinct named lane from the macOS packaged lane (no rename collapse) [0.08ms]
+(pass) test:desktop:packaged:windows lane wiring (#13682) > fails NON-ZERO with a truthful precondition message on a non-Windows host [65.36ms]
+
+ 7 pass
+ 0 fail
+ 22 expect() calls
+Ran 7 tests across 1 file. [429.00ms]

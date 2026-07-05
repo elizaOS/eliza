@@ -1,0 +1,6 @@
+$ bun run --cwd packages/app test:desktop:packaged:windows
+$ node scripts/run-desktop-packaged-windows.mjs
+[test:desktop:packaged:windows] packaged Windows smoke test requires a windows host (host is darwin); run this lane on a Windows runner with a packaged build present.
+[test:desktop:packaged:windows] packaged Windows smoke test requires a windows host (host is darwin); run this lane on a Windows runner with a packaged build present.
+error: script "test:desktop:packaged:windows" exited with code 1
+error: script "test:desktop:packaged:windows" exited with code 1
