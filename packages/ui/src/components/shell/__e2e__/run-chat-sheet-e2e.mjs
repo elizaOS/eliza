@@ -253,6 +253,35 @@ async function release(p, pointer, up = 0) {
   }
 }
 
+async function maximizeByPull(p, pointer = "mouse") {
+  await gesture(p, 760, { pointer, slow: true, steps: 24 });
+  await p.waitForTimeout(SETTLE);
+}
+
+async function restoreFromMaximized(p, pointer = "mouse") {
+  const zone = p.getByTestId("chat-maximize-restore-zone");
+  await zone.waitFor();
+  if (pointer === "mouse") {
+    const b = await zone.boundingBox();
+    const cx = b.x + b.width / 2;
+    const cy = b.y + Math.min(24, b.height / 2);
+    await p.mouse.move(cx, cy);
+    await p.mouse.down();
+    await p.mouse.move(cx, cy + 140, { steps: 8 });
+    await p.mouse.up();
+  } else {
+    const drag = await touchDragHold(
+      p,
+      testIdSelector("chat-maximize-restore-zone"),
+      0,
+      140,
+      { steps: 8, stepDelayMs: 12 },
+    );
+    await drag.release();
+  }
+  await p.waitForTimeout(SETTLE);
+}
+
 /** Full detent-stepping + flick + sub-threshold + rubber-band suite for one input type. */
 async function runDragSuite(p, pointer, tag) {
   const vh = await viewportH(p);
@@ -291,11 +320,12 @@ async function runDragSuite(p, pointer, tag) {
     grabberBarOpacity === "1",
     `[${pointer}] grabber bar paints (inner-span opacity "${grabberBarOpacity}" === "1", not opacity-0) (#9142)`,
   );
-  // The sheet header (maximize/clear/launcher) shows at HALF and up now,
-  // not only at FULL.
+  // The sheet header shows at HALF and up now, not only at FULL. Maximize and
+  // clear are gesture/state contracts, not header buttons.
   assert(
-    (await p.getByTestId("chat-full-maximize").count()) === 1 &&
-      (await p.getByTestId("chat-full-launcher").count()) === 1,
+    (await p.getByTestId("chat-full-launcher").count()) === 1 &&
+      (await p.getByTestId("chat-full-maximize").count()) === 0 &&
+      (await p.getByTestId("chat-full-clear").count()) === 0,
     `[${pointer}] HALF detent shows the sheet header`,
   );
 
@@ -312,43 +342,32 @@ async function runDragSuite(p, pointer, tag) {
   );
   await snap(p, `${tag}-full`);
 
-  // Header (post home↔launcher consolidation, #9450): Maximize + Clear on the
-  // left, a single Launcher button on the right (the old Home/Views/Settings
-  // trio collapsed into one launcher target). The stray copy-conversation button
-  // was removed in #10713 (#10749), so the FULL header is exactly these three.
+  // Header (post #13531/#9450): no maximize/minimize/new-chat buttons, only the
+  // launcher remains. The old Home/Views/Settings trio collapsed into that one
+  // launcher target.
   assert(
-    (await p.getByTestId("chat-full-maximize").count()) === 1 &&
-      (await p.getByTestId("chat-full-clear").count()) === 1 &&
-      (await p.getByTestId("chat-full-launcher").count()) === 1,
-    `[${pointer}] header shows maximize + clear + launcher`,
+    (await p.getByTestId("chat-full-launcher").count()) === 1 &&
+      (await p.getByTestId("chat-full-maximize").count()) === 0 &&
+      (await p.getByTestId("chat-full-clear").count()) === 0,
+    `[${pointer}] header shows launcher without removed maximize/clear controls`,
   );
-  // Maximize → full-bleed (edge-to-edge): data-maximized flips + panel reaches x=0.
-  await p.getByTestId("chat-full-maximize").click();
-  await p.waitForTimeout(SETTLE);
+  // Maximize → full-bleed (edge-to-edge): a deliberate over-pull flips
+  // data-maximized and the panel reaches x=0.
+  await maximizeByPull(p, pointer);
   assert(
     (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 1,
-    `[${pointer}] maximize → data-maximized=true (full screen)`,
+    `[${pointer}] over-pull maximize → data-maximized=true (full screen)`,
   );
   const maxBox = await p.getByTestId("chat-sheet").boundingBox();
   assert(
     !!maxBox && maxBox.x <= 1,
     `[${pointer}] maximized panel is edge-to-edge (x=${Math.round(maxBox?.x ?? -1)})`,
   );
-  // Restore → inset again.
-  await p.getByTestId("chat-full-maximize").click();
-  await p.waitForTimeout(SETTLE);
+  // Restore → inset again via the top restore zone.
+  await restoreFromMaximized(p, pointer);
   assert(
     (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 0,
-    `[${pointer}] restore → no longer maximized`,
-  );
-  // Clear routes to the controller and keeps the sheet open (it resets the
-  // thread in place). Home/Settings instead collapse the sheet (navigate-and-
-  // close) — tested in their own block so they don't tear down this flow.
-  await p.getByTestId("chat-full-clear").click();
-  await p.waitForTimeout(120);
-  assert(
-    sink.logs.some((l) => l.includes("clearConversation")),
-    `[${pointer}] clear button calls clearConversation`,
+    `[${pointer}] restore-zone pull → no longer maximized`,
   );
 
   // drag BEYOND full (held) → rubber-band, not 1:1
@@ -1540,8 +1559,7 @@ try {
     await p.waitForTimeout(SETTLE);
     await gesture(p, 140, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
-    await p.getByTestId("chat-full-maximize").click();
-    await p.waitForTimeout(SETTLE);
+    await maximizeByPull(p);
     assert(
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
@@ -1567,8 +1585,8 @@ try {
     await p.close();
   }
 
-  // MAXIMIZE-FROM-HALF: tapping maximize at the HALF detent rises to FULL and
-  // goes edge-to-edge (was a no-op — full-bleed required the FULL flag). And the
+  // MAXIMIZE-FROM-HALF: over-pulling from the HALF detent rises to FULL and
+  // goes edge-to-edge (full-bleed requires the FULL flag). And the
   // full-screen panel fills top-to-bottom with no gap at the bottom.
   {
     const p = await ctrl();
@@ -1579,13 +1597,12 @@ try {
     await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "half", "MAX-HALF: at half before maximize");
-    await p.getByTestId("chat-full-maximize").click();
-    await p.waitForTimeout(SETTLE);
+    await maximizeByPull(p);
     assert(
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
         .count()) === 1,
-      "MAX-HALF: maximize from HALF goes full-screen",
+      "MAX-HALF: over-pull from HALF goes full-screen",
     );
     const box = await p.getByTestId("chat-sheet").boundingBox();
     const vh = await p.evaluate(() => window.innerHeight);
@@ -1623,8 +1640,7 @@ try {
     await p.waitForTimeout(120);
     await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 }); // → half
     await p.waitForTimeout(SETTLE);
-    await p.getByTestId("chat-full-maximize").click(); // → full-bleed
-    await p.waitForTimeout(SETTLE);
+    await maximizeByPull(p); // → full-bleed
     assert(
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
@@ -1638,7 +1654,7 @@ try {
         box?.y ?? -1,
       )}) — no status-bar seam`,
     );
-    const btn = await p.getByTestId("chat-full-maximize").boundingBox();
+    const btn = await p.getByTestId("chat-full-launcher").boundingBox();
     // Header padding = safe-area-top (30) + 0.5rem (8); buttons must sit ~there,
     // NOT a whole gesture inset (~36px) lower (the old "bad space" margin).
     assert(
@@ -1682,11 +1698,10 @@ try {
     );
     await snap(p, "state-OPEN_HALF_OR_OVER");
 
-    await p.getByTestId("chat-full-maximize").click();
-    await p.waitForTimeout(SETTLE);
+    await maximizeByPull(p);
     assert(
       (await chatState(p)) === "MAXIMIZED",
-      `STATES: maximize → MAXIMIZED (got ${await chatState(p)})`,
+      `STATES: over-pull maximize → MAXIMIZED (got ${await chatState(p)})`,
     );
     await snap(p, "state-MAXIMIZED");
 
@@ -2038,8 +2053,7 @@ try {
     // Invariant: data-chat-state==="MAXIMIZED" IFF data-maximized==="true".
     await gesture(p, vh, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
-    await p.getByTestId("chat-full-maximize").click();
-    await p.waitForTimeout(SETTLE);
+    await maximizeByPull(p);
     {
       const cs = await chatState(p);
       const max = await p
