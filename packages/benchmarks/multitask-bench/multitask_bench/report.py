@@ -30,14 +30,14 @@ def build_report(
     scenario_ids: list[str],
 ) -> dict[str, object]:
     """Build the report dict from a set of completed lanes."""
-    lanes_metrics = [compute_lane_metrics(lane) for lane in lanes]
-    interference = compute_interference(lanes_metrics)
     isolation = HARNESS_ISOLATION.get(harness)
     if isolation is None:
         raise ValueError(
             f"unknown harness {harness!r}; expected one of "
             f"{sorted(HARNESS_ISOLATION)}"
         )
+    lanes_metrics = [compute_lane_metrics(lane) for lane in lanes]
+    interference = compute_interference(lanes_metrics)
     return {
         "benchmark": "multitask_bench",
         "harness": harness,

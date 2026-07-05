@@ -1668,6 +1668,69 @@ def _score_from_lifeops_bench_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_multitask_bench_json(data: JSONValue) -> ScoreExtraction:
+    """Extract MultitaskBench score from its ``multitask_<timestamp>.json``.
+
+    The scalar registry score is the ``mean_task_score`` of the N=10 lane —
+    how well the shared agent scores each task when handling 10 at once. The
+    interference deltas (mean task score @N minus @1) are the real headline and
+    ride along in ``metrics``. Higher is better; unit is ratio.
+
+    Validates that the report is a real MultitaskBench run: the benchmark tag,
+    a non-empty ``lanes`` array containing the N=10 lane, and the
+    ``interference`` block must all be present, and the run must not be a
+    hermetic oracle (perfect/wrong) — an oracle report is not a publishable
+    harness score.
+    """
+    root = expect_dict(data, ctx="multitask_bench:root")
+    benchmark = get_optional(root, "benchmark")
+    if str(benchmark) != "multitask_bench":
+        raise ValueError(
+            f"multitask_bench:benchmark must be 'multitask_bench', got {benchmark!r}"
+        )
+    harness = str(get_optional(root, "harness") or "").strip().lower()
+    if harness in {"perfect", "wrong"}:
+        raise ValueError(
+            f"multitask_bench: {harness!r} oracle result is not publishable as a real harness score"
+        )
+    lanes = get_optional(root, "lanes")
+    if not isinstance(lanes, list) or not lanes:
+        raise ValueError("multitask_bench:lanes must contain at least one lane")
+    interference = get_optional(root, "interference")
+    if not isinstance(interference, dict):
+        raise ValueError("multitask_bench:interference block is required")
+
+    lane_by_n: dict[int, dict[str, JSONValue]] = {}
+    for lane in lanes:
+        lane_dict = expect_dict(lane, ctx="multitask_bench:lane")
+        n_val = get_required(lane_dict, "n", ctx="multitask_bench:lane")
+        lane_by_n[int(expect_float(n_val, ctx="multitask_bench:lane.n"))] = lane_dict
+    n10 = lane_by_n.get(10)
+    if n10 is None:
+        raise ValueError("multitask_bench: the N=10 lane is required for the scalar score")
+    mean_task_score = expect_float(
+        get_required(n10, "mean_task_score", ctx="multitask_bench:n10"),
+        ctx="multitask_bench:n10.mean_task_score",
+    )
+    return ScoreExtraction(
+        score=mean_task_score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "mean_task_score_n10": mean_task_score,
+            "harness": harness,
+            "isolation": get_optional(root, "isolation") or "",
+            "model": get_optional(root, "model") or "",
+            "interference": interference,
+            "completion_rate_n10": get_optional(n10, "completion_rate") or 0,
+            "starvation_rate_n10": get_optional(n10, "starvation_rate") or 0,
+            "fairness_turns_jain_n10": get_optional(n10, "fairness_turns_jain") or 0,
+            "cost_usd_n10": get_optional(n10, "cost_usd") or {},
+            "lane_count": len(lanes),
+        },
+    )
+
+
 def _score_from_voiceagentbench_json(data: JSONValue) -> ScoreExtraction:
     """Extract VoiceAgentBench score from its aggregate report JSON.
 

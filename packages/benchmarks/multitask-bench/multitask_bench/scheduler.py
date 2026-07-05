@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Callable
 
 from eliza_lifeops_bench.runner import AgentFactory, LifeOpsBenchRunner, WorldFactory
 from eliza_lifeops_bench.types import Scenario
