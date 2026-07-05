@@ -30,6 +30,26 @@ describe("rankMessageSearch", () => {
 		expect(hits[0].trigramSimilarity).toBeGreaterThanOrEqual(0.45);
 	});
 
+	it("requires every multi-term query token to match before using typo recall", () => {
+		const items = [
+			{
+				id: "a",
+				createdAt: 1,
+				content: { text: "how do I edit the configuration file" },
+			},
+			{
+				id: "b",
+				createdAt: 2,
+				content: { text: "deployment notes without the requested setup token" },
+			},
+		];
+
+		expect(
+			rankMessageSearch(items, "configuraton file").map((hit) => hit.item.id),
+		).toEqual(["a"]);
+		expect(rankMessageSearch(items, "configuraton deployment")).toEqual([]);
+	});
+
 	it("does not admit unrelated text through the trigram branch", () => {
 		const hits = rankMessageSearch(
 			[

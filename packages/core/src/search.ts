@@ -1905,17 +1905,21 @@ function messageSearchTokens(text: string): string[] {
 
 function termTrigramSimilarity(queryTerms: string[], document: string): number {
 	const documentTokens = messageSearchTokens(document);
-	let best = 0;
+	if (queryTerms.length === 0 || documentTokens.length === 0) return 0;
+	let total = 0;
 	for (const queryTerm of queryTerms) {
+		let bestForTerm = document.includes(queryTerm) ? 1 : 0;
 		const queryGrams = toTrigramSet(queryTerm);
 		for (const documentToken of documentTokens) {
-			best = Math.max(
-				best,
+			bestForTerm = Math.max(
+				bestForTerm,
 				trigramSetSimilarity(queryGrams, toTrigramSet(documentToken)),
 			);
 		}
+		if (bestForTerm < MESSAGE_SEARCH_TRIGRAM_THRESHOLD) return 0;
+		total += bestForTerm;
 	}
-	return best;
+	return total / queryTerms.length;
 }
 
 /** A message-shaped record the in-memory search ranker can score and order. */

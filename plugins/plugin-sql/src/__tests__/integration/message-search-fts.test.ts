@@ -166,6 +166,14 @@ describe("searchMessages FTS + trigram (real DB)", () => {
     expect((await searchTexts("configuraton")).some((t) => t.includes("configuration"))).toBe(true);
   });
 
+  it("4c. typo fallback still requires every multi-term query token", async () => {
+    if (!trigramAvailable) return;
+    expect(
+      (await searchTexts("configuraton file")).some((t) => t.includes("configuration file"))
+    ).toBe(true);
+    expect(await searchTexts("configuraton deployment")).toEqual([]);
+  });
+
   it("5. stemming — 'configure' matches 'configuring'", async () => {
     expect((await searchTexts("configure")).some((t) => t.includes("configuring"))).toBe(true);
   });
