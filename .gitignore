@@ -1532,3 +1532,5 @@ packages/ui/src/components/shell/__e2e__/output-fused-wake-integration/
 
 # widget scroll + tap-target certification evidence (#14380)
 packages/ui/src/testing/__e2e__/output-widget-cert/
+# Home locale e2e output (screenshots — regenerate via test:home-locale-e2e)
+packages/ui/src/components/shell/__e2e__/output-home-locale/

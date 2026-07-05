@@ -79,7 +79,8 @@
     "build:dist:unlocked": "bun run clean && node ../scripts/ensure-tsc-nested-output-dir.mjs packages/ui && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/ui && node ../scripts/copy-package-assets.mjs packages/ui src/styles src/cloud-ui/index.css && node ../scripts/prepare-package-dist.mjs packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui && node ../scripts/verify-package-runtime-exports.mjs packages/ui",
     "test:orchestrator-accounts-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-orchestrator-accounts-e2e.mjs",
     "test:ftu-home-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-ftu-home-e2e.mjs",
-    "test:task-pipeline-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-task-pipeline-e2e.mjs"
+    "test:task-pipeline-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-task-pipeline-e2e.mjs",
+    "test:home-locale-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-home-locale-e2e.mjs"
   },
   "exports": {
     ".": {
