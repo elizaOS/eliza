@@ -145,7 +145,7 @@ export function CredentialsList({
                     <span
                       data-testid={`health-dot-${credential.id}`}
                       data-health={credential.health}
-                      className={`inline-block w-2 h-2 rounded-full ${credential.enabled ? healthDotClass(credential.health) : "bg-white/30"}`}
+                      className={`inline-block w-2 h-2 rounded-full ${credential.enabled ? healthDotClass(credential.health) : "bg-muted"}`}
                     />
                     <span className="capitalize">
                       {healthLabel(credential)}

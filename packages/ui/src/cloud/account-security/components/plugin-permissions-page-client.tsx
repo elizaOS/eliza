@@ -123,7 +123,7 @@ export function PluginPermissionsPageClient() {
               No plugin has any permission granted on your account.
             </p>
           ) : (
-            <ul className="divide-y divide-white/10">
+            <ul className="divide-y divide-line">
               {state.grants.map((g) => (
                 <li
                   key={g.grant_id}

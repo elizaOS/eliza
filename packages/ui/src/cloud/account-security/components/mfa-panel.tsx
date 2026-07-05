@@ -30,6 +30,11 @@ function stateFromMfaPayload(payload: MfaStatusResponse): MfaState {
   if (typeof payload.enrolled !== "boolean") {
     throw new Error("MFA status response is missing enrolled.");
   }
+  if (payload.method !== null && payload.method !== undefined) {
+    if (typeof payload.method !== "string" || payload.method.length === 0) {
+      throw new Error("Malformed MFA status response.");
+    }
+  }
   return {
     kind: "ready",
     enrolled: payload.enrolled,

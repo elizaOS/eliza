@@ -23,8 +23,10 @@ const SCANNED_PATHS = [
 const FORBIDDEN_THEME_LOCKED_CLASSES = [
   "text-white",
   "text-white/",
+  "divide-white",
   "bg-white/10",
   "bg-white/5",
+  "bg-white/30",
   "bg-white/[",
   "border-white/10",
   "border-white/15",

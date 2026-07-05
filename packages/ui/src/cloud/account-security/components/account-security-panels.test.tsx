@@ -159,6 +159,19 @@ describe("account-security panels", () => {
     expect(screen.queryByText(/No other active sessions found/i)).toBeNull();
   });
 
+  it("renders malformed session rows as errors instead of ready rows", async () => {
+    apiMock.mockResolvedValueOnce({
+      sessions: [{ id: "", last_seen: "not-a-date" }],
+    });
+
+    render(<ActiveSessionsPanel />);
+
+    expect(
+      await screen.findByText("Malformed session inventory response."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Unknown device/i)).toBeNull();
+  });
+
   it("renders MFA errors separately from unavailable and disabled", async () => {
     apiMock.mockRejectedValueOnce(new Error("mfa route failed"));
 
@@ -178,6 +191,17 @@ describe("account-security panels", () => {
       await screen.findByText("MFA status response is missing enrolled."),
     ).toBeTruthy();
     expect(screen.queryByText(/MFA is not enabled/i)).toBeNull();
+  });
+
+  it("renders malformed MFA method fields as errors", async () => {
+    apiMock.mockResolvedValueOnce({ enrolled: true, method: "" });
+
+    render(<MfaPanel />);
+
+    expect(
+      await screen.findByText("Malformed MFA status response."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Enabled/i)).toBeNull();
   });
 
   it("renders audit events unavailable without calling the missing read route", () => {

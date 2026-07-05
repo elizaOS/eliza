@@ -37,13 +37,36 @@ type SessionsState =
 function formatSessionLastSeen(lastSeen: string | null | undefined): string {
   if (!lastSeen) return "-";
   const date = new Date(lastSeen);
-  if (Number.isNaN(date.getTime())) return "-";
   return date.toISOString();
+}
+
+function isOptionalString(value: unknown): value is string | null | undefined {
+  return value === null || value === undefined || typeof value === "string";
+}
+
+function isValidSessionRow(value: unknown): value is SessionRow {
+  if (!value || typeof value !== "object") return false;
+  const session = value as Record<string, unknown>;
+  if (typeof session.id !== "string" || session.id.length === 0) return false;
+  if (!isOptionalString(session.device)) return false;
+  if (!isOptionalString(session.ip)) return false;
+  if (!isOptionalString(session.user_agent)) return false;
+  if (!isOptionalString(session.last_seen)) return false;
+  if (session.current !== undefined && typeof session.current !== "boolean") {
+    return false;
+  }
+  if (typeof session.last_seen === "string") {
+    return !Number.isNaN(new Date(session.last_seen).getTime());
+  }
+  return true;
 }
 
 function sessionsFromPayload(payload: SessionsResponse): UiSessionRow[] {
   if (!Array.isArray(payload.sessions)) {
     throw new Error("Session inventory response is missing sessions.");
+  }
+  if (payload.sessions.some((session) => !isValidSessionRow(session))) {
+    throw new Error("Malformed session inventory response.");
   }
   return payload.sessions.map((session) => ({
     ...session,
