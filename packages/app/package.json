@@ -35,6 +35,7 @@
     "test:remote-capabilities:ui": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts test/ui-smoke/remote-capability-view.spec.ts",
     "test:e2e:cloud-wallet": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts test/ui-smoke/cloud-wallet-import.spec.ts",
     "test:e2e:android": "node scripts/android-e2e.mjs",
+    "test:android:assistant-ime": "node scripts/android-assistant-ime-lane.mjs",
     "test:e2e:ios": "node scripts/ios-e2e.mjs",
     "test:e2e:ios:cloud": "node scripts/ios-e2e.mjs --cloud",
     "test:e2e:android:local": "node scripts/android-e2e.mjs --skip-route-coverage",

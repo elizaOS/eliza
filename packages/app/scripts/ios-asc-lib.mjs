@@ -209,7 +209,10 @@ export function buildCreateBundleIdRequest(bundleId) {
 
 /** ASC bundleId names may not contain dots; map "a.b.c" → "a b c". */
 export function bundleIdToName(bundleId) {
-  return bundleId.replaceAll(/[^A-Za-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  return bundleId
+    .replaceAll(/[^A-Za-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** GET the devices list filtered by UDID. */
@@ -275,7 +278,9 @@ export function buildCreateProfileRequest({
   deviceIds,
 }) {
   if (!bundleIdResourceId) {
-    throw new Error("buildCreateProfileRequest: bundleIdResourceId is required");
+    throw new Error(
+      "buildCreateProfileRequest: bundleIdResourceId is required",
+    );
   }
   if (!Array.isArray(certificateIds) || certificateIds.length === 0) {
     throw new Error(
@@ -283,7 +288,9 @@ export function buildCreateProfileRequest({
     );
   }
   if (!Array.isArray(deviceIds) || deviceIds.length === 0) {
-    throw new Error("buildCreateProfileRequest: at least one deviceId is required");
+    throw new Error(
+      "buildCreateProfileRequest: at least one deviceId is required",
+    );
   }
   return {
     method: "POST",
@@ -343,6 +350,25 @@ export function firstResource(responseJson) {
     throw new Error("firstResource: response `data` is not an array");
   }
   return data.length > 0 ? data[0] : null;
+}
+
+/**
+ * Extract required JSON:API resource ids from a list response. Empty is valid;
+ * malformed is not, because callers use the returned list to decide whether a
+ * real account has no usable resources.
+ */
+export function resourceIdsFromListResponse(responseJson, label) {
+  if (!responseJson || typeof responseJson !== "object") {
+    throw new Error(`${label}: response is not an object`);
+  }
+  const data = responseJson.data;
+  if (data === undefined) {
+    throw new Error(`${label}: response has no \`data\` field`);
+  }
+  if (!Array.isArray(data)) {
+    throw new Error(`${label}: response \`data\` is not an array`);
+  }
+  return data.map((resource) => resource?.id).filter(Boolean);
 }
 
 /**
@@ -475,7 +501,8 @@ export function parseMintArgs(argv, env = {}) {
 }
 
 function splitFlag(token) {
-  if (typeof token !== "string" || !token.startsWith("--")) return [token, null];
+  if (typeof token !== "string" || !token.startsWith("--"))
+    return [token, null];
   const eq = token.indexOf("=");
   if (eq === -1) return [token, null];
   return [token.slice(0, eq), token.slice(eq + 1)];

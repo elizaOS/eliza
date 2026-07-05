@@ -9,11 +9,11 @@
 import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  APP_BUNDLE_ID,
+  APPEX_SUFFIXES,
   ASC_API_BASE,
   ASC_JWT_AUDIENCE,
   ASC_JWT_MAX_LIFETIME_SECONDS,
-  APP_BUNDLE_ID,
-  APPEX_SUFFIXES,
   appexSuffixesFromPlugIns,
   base64url,
   buildAscJwtClaims,
@@ -34,6 +34,7 @@ import {
   parseMintArgs,
   profileNameForBundleId,
   resolveAscCredentials,
+  resourceIdsFromListResponse,
   signAscJwt,
 } from "./ios-asc-lib.mjs";
 
@@ -93,12 +94,20 @@ describe("buildAscJwtClaims", () => {
 
   it("floors a fractional lifetime and never drops below 1 second", () => {
     expect(
-      buildAscJwtClaims({ keyId: "k", issuerId: "i", issuedAt: 0, lifetimeSeconds: 0 })
-        .payload.exp,
+      buildAscJwtClaims({
+        keyId: "k",
+        issuerId: "i",
+        issuedAt: 0,
+        lifetimeSeconds: 0,
+      }).payload.exp,
     ).toBe(1);
     expect(
-      buildAscJwtClaims({ keyId: "k", issuerId: "i", issuedAt: 0, lifetimeSeconds: 5.9 })
-        .payload.exp,
+      buildAscJwtClaims({
+        keyId: "k",
+        issuerId: "i",
+        issuedAt: 0,
+        lifetimeSeconds: 5.9,
+      }).payload.exp,
     ).toBe(5);
   });
 
@@ -114,14 +123,21 @@ describe("buildAscJwtClaims", () => {
 describe("signAscJwt", () => {
   it("produces a verifiable ES256 JWT with a 64-byte P1363 signature", () => {
     const { publicKey, privateKey } = makeEcKeypair();
-    const claims = buildAscJwtClaims({ keyId: "KID", issuerId: "ISS", issuedAt: 42 });
+    const claims = buildAscJwtClaims({
+      keyId: "KID",
+      issuerId: "ISS",
+      issuedAt: 42,
+    });
     const jwt = signAscJwt(claims, privateKey);
 
     const [h, p, s] = jwt.split(".");
     expect(b64urlDecodeJson(h)).toEqual(claims.header);
     expect(b64urlDecodeJson(p)).toEqual(claims.payload);
 
-    const sig = Buffer.from(s.replaceAll("-", "+").replaceAll("_", "/"), "base64");
+    const sig = Buffer.from(
+      s.replaceAll("-", "+").replaceAll("_", "/"),
+      "base64",
+    );
     // ES256 over JOSE is raw r‖s for P-256 → exactly 64 bytes (not ASN.1/DER).
     expect(sig.length).toBe(64);
 
@@ -141,7 +157,10 @@ describe("signAscJwt", () => {
       privateKey,
     );
     const [h, p, s] = jwt.split(".");
-    const sig = Buffer.from(s.replaceAll("-", "+").replaceAll("_", "/"), "base64");
+    const sig = Buffer.from(
+      s.replaceAll("-", "+").replaceAll("_", "/"),
+      "base64",
+    );
     const ok = crypto.verify(
       "sha256",
       Buffer.from(`${h}.${p}tampered`),
@@ -155,7 +174,11 @@ describe("signAscJwt", () => {
 describe("enumerateBundleIds", () => {
   it("emits the app first then one entry per appex suffix, in order", () => {
     const entries = enumerateBundleIds();
-    expect(entries[0]).toEqual({ bundleId: APP_BUNDLE_ID, kind: "app", name: "App" });
+    expect(entries[0]).toEqual({
+      bundleId: APP_BUNDLE_ID,
+      kind: "app",
+      name: "App",
+    });
     expect(entries).toHaveLength(1 + APPEX_SUFFIXES.length);
     for (let i = 0; i < APPEX_SUFFIXES.length; i += 1) {
       expect(entries[i + 1]).toEqual({
@@ -237,9 +260,9 @@ describe("ASC request builders", () => {
 
   it("finds and registers a device by UDID", () => {
     const find = buildFindDeviceRequest("00008140-0006491E2E90801C");
-    expect(new URLSearchParams(find.path.split("?")[1]).get("filter[udid]")).toBe(
-      "00008140-0006491E2E90801C",
-    );
+    expect(
+      new URLSearchParams(find.path.split("?")[1]).get("filter[udid]"),
+    ).toBe("00008140-0006491E2E90801C");
 
     const reg = buildRegisterDeviceRequest("00008140-0006491E2E90801C", {
       name: "lab-iphone",
@@ -269,10 +292,12 @@ describe("ASC request builders", () => {
     expect(profileNameForBundleId("ai.elizaos.app")).toBe(
       "eliza-device-lane ai.elizaos.app",
     );
-    const find = buildFindProfileRequest(profileNameForBundleId("ai.elizaos.app"));
-    expect(new URLSearchParams(find.path.split("?")[1]).get("filter[name]")).toBe(
-      "eliza-device-lane ai.elizaos.app",
+    const find = buildFindProfileRequest(
+      profileNameForBundleId("ai.elizaos.app"),
     );
+    expect(
+      new URLSearchParams(find.path.split("?")[1]).get("filter[name]"),
+    ).toBe("eliza-device-lane ai.elizaos.app");
   });
 
   it("builds an IOS_APP_DEVELOPMENT profile linking bundle, certs, and devices", () => {
@@ -328,14 +353,18 @@ describe("ASC request builders", () => {
     });
     const certs = buildListCertificatesRequest();
     expect(
-      new URLSearchParams(certs.path.split("?")[1]).get("filter[certificateType]"),
+      new URLSearchParams(certs.path.split("?")[1]).get(
+        "filter[certificateType]",
+      ),
     ).toBe("DEVELOPMENT");
   });
 });
 
 describe("ASC response parsing", () => {
   it("returns the first resource or null for an empty list", () => {
-    expect(firstResource({ data: [{ id: "a" }, { id: "b" }] })).toEqual({ id: "a" });
+    expect(firstResource({ data: [{ id: "a" }, { id: "b" }] })).toEqual({
+      id: "a",
+    });
     expect(firstResource({ data: [] })).toBeNull();
   });
 
@@ -345,11 +374,34 @@ describe("ASC response parsing", () => {
     expect(() => firstResource({ data: { id: "x" } })).toThrow(/not an array/);
   });
 
+  it("extracts list resource ids without treating malformed responses as empty", () => {
+    expect(
+      resourceIdsFromListResponse(
+        { data: [{ id: "CERT1" }, { id: "" }, {}, { id: "CERT2" }] },
+        "certificates",
+      ),
+    ).toEqual(["CERT1", "CERT2"]);
+    expect(resourceIdsFromListResponse({ data: [] }, "certificates")).toEqual(
+      [],
+    );
+    expect(() => resourceIdsFromListResponse(null, "certificates")).toThrow(
+      /not an object/,
+    );
+    expect(() => resourceIdsFromListResponse({}, "certificates")).toThrow(
+      /no `data`/,
+    );
+    expect(() =>
+      resourceIdsFromListResponse({ data: { id: "CERT1" } }, "certificates"),
+    ).toThrow(/not an array/);
+  });
+
   it("decodes profileContent to raw bytes and throws when absent", () => {
     const raw = Buffer.from("mobileprovision-bytes");
     const resource = { attributes: { profileContent: raw.toString("base64") } };
     expect(decodeProfileContent(resource).equals(raw)).toBe(true);
-    expect(() => decodeProfileContent({ attributes: {} })).toThrow(/profileContent/);
+    expect(() => decodeProfileContent({ attributes: {} })).toThrow(
+      /profileContent/,
+    );
     expect(() => decodeProfileContent(null)).toThrow(/profileContent/);
   });
 
@@ -358,7 +410,12 @@ describe("ASC response parsing", () => {
       formatAscErrors(
         {
           errors: [
-            { status: "409", code: "ENTITY_ERROR", title: "Conflict", detail: "exists" },
+            {
+              status: "409",
+              code: "ENTITY_ERROR",
+              title: "Conflict",
+              detail: "exists",
+            },
           ],
         },
         409,
@@ -411,11 +468,15 @@ describe("resolveAscCredentials", () => {
 
 describe("parseMintArgs", () => {
   it("parses space- and equals-form flags", () => {
-    expect(parseMintArgs(["--device", "ABCD", "--device-name", "lab"])).toMatchObject({
+    expect(
+      parseMintArgs(["--device", "ABCD", "--device-name", "lab"]),
+    ).toMatchObject({
       device: "ABCD",
       deviceName: "lab",
     });
-    expect(parseMintArgs(["--device=ABCD", "--product=/x/App.app"])).toMatchObject({
+    expect(
+      parseMintArgs(["--device=ABCD", "--product=/x/App.app"]),
+    ).toMatchObject({
       device: "ABCD",
       product: "/x/App.app",
     });
@@ -434,10 +495,13 @@ describe("parseMintArgs", () => {
         ELIZA_IOS_DEVICE_ID: "FROM_ID",
       }).device,
     ).toBe("FROM_UDID");
-    expect(parseMintArgs([], { ELIZA_IOS_DEVICE_ID: "FROM_ID" }).device).toBe("FROM_ID");
+    expect(parseMintArgs([], { ELIZA_IOS_DEVICE_ID: "FROM_ID" }).device).toBe(
+      "FROM_ID",
+    );
     // An explicit flag always wins over the env fallback.
     expect(
-      parseMintArgs(["--device", "FLAG"], { ELIZA_IOS_DEVICE_UDID: "ENV" }).device,
+      parseMintArgs(["--device", "FLAG"], { ELIZA_IOS_DEVICE_UDID: "ENV" })
+        .device,
     ).toBe("FLAG");
   });
 
@@ -448,7 +512,9 @@ describe("parseMintArgs", () => {
 
 describe("isPlausibleUdid", () => {
   it("accepts both the 40-hex and 8-16 hex device forms", () => {
-    expect(isPlausibleUdid("0123456789abcdef0123456789abcdef01234567")).toBe(true);
+    expect(isPlausibleUdid("0123456789abcdef0123456789abcdef01234567")).toBe(
+      true,
+    );
     expect(isPlausibleUdid("00008140-0006491E2E90801C")).toBe(true);
   });
 

@@ -58,6 +58,7 @@ import {
   parseMintArgs,
   profileNameForBundleId,
   resolveAscCredentials,
+  resourceIdsFromListResponse,
   signAscJwt,
 } from "./ios-asc-lib.mjs";
 
@@ -110,9 +111,10 @@ async function ascRequest({ method, path: apiPath, body }, jwt) {
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (cause) {
-    throw new Error(`ASC ${method} ${apiPath} network failure: ${cause.message}`, {
-      cause,
-    });
+    throw new Error(
+      `ASC ${method} ${apiPath} network failure: ${errorMessage(cause)}`,
+      { cause },
+    );
   }
 
   const text = await response.text();
@@ -135,9 +137,15 @@ function safeJson(text) {
   }
 }
 
+function errorMessage(cause) {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
 /** Ensure the device UDID is registered; return its ASC resource id. */
 async function ensureDevice(jwt, udid, deviceName) {
-  const found = firstResource(await ascRequest(buildFindDeviceRequest(udid), jwt));
+  const found = firstResource(
+    await ascRequest(buildFindDeviceRequest(udid), jwt),
+  );
   if (found) {
     log(`device ${udid} already registered (id ${found.id})`);
     return found.id;
@@ -148,7 +156,8 @@ async function ensureDevice(jwt, udid, deviceName) {
     jwt,
   );
   const resource = created?.data;
-  if (!resource?.id) fail(`device registration returned no resource id for ${udid}`);
+  if (!resource?.id)
+    fail(`device registration returned no resource id for ${udid}`);
   return resource.id;
 }
 
@@ -161,15 +170,15 @@ async function ensureBundleId(jwt, bundleId) {
   log(`creating bundle id ${bundleId}`);
   const created = await ascRequest(buildCreateBundleIdRequest(bundleId), jwt);
   const resource = created?.data;
-  if (!resource?.id) fail(`bundle id creation returned no resource id for ${bundleId}`);
+  if (!resource?.id)
+    fail(`bundle id creation returned no resource id for ${bundleId}`);
   return resource.id;
 }
 
 /** All DEVELOPMENT certificate resource ids for the account. */
 async function listDevelopmentCertificateIds(jwt) {
   const response = await ascRequest(buildListCertificatesRequest(), jwt);
-  const data = Array.isArray(response?.data) ? response.data : [];
-  return data.map((c) => c.id).filter(Boolean);
+  return resourceIdsFromListResponse(response, "listDevelopmentCertificateIds");
 }
 
 /**
@@ -191,7 +200,9 @@ async function mintProfile({
     await ascRequest(buildFindProfileRequest(profileName), jwt),
   );
   if (existing) {
-    log(`refreshing profile "${profileName}" (deleting stale id ${existing.id})`);
+    log(
+      `refreshing profile "${profileName}" (deleting stale id ${existing.id})`,
+    );
     await ascRequest(buildDeleteProfileRequest(existing.id), jwt);
   }
   const created = await ascRequest(
@@ -269,7 +280,7 @@ async function main() {
         signAscJwt(claims, pem);
         log("ASC credentials present; .p8 parsed and a test JWT was signed");
       } catch (cause) {
-        problems.push(`.p8 key unusable: ${cause.message}`);
+        problems.push(`.p8 key unusable: ${errorMessage(cause)}`);
       }
     }
     if (problems.length > 0) {
@@ -286,7 +297,9 @@ async function main() {
     );
   }
   if (!isPlausibleUdid(args.device)) {
-    fail(`--device "${args.device}" is not a plausible UDID (40 hex or 8-16 hex form)`);
+    fail(
+      `--device "${args.device}" is not a plausible UDID (40 hex or 8-16 hex form)`,
+    );
   }
   if (creds.missing.length > 0) {
     fail(
