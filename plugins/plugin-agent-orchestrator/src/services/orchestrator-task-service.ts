@@ -30,6 +30,12 @@ import {
   shouldRequireGoalContract,
 } from "./acceptance-criteria.js";
 import { AcpService } from "./acp-service.js";
+import {
+  type AdmissionRecord,
+  orderQueue,
+  type QueueEntry,
+  type SerializableSpawnOpts,
+} from "./admission-queue.js";
 import { assignAgentName } from "./agent-name-assignment.js";
 import {
   accountMetaFromSessionMetadata,
@@ -98,6 +104,7 @@ import {
   type OrchestratorRoomRoster,
   type OrchestratorRoomRosterOverview,
   type OrchestratorTaskDocument,
+  type OrchestratorTaskPriority,
   type OrchestratorTaskRecord,
   type OrchestratorTaskSession,
   type OrchestratorTaskStatus,
@@ -116,7 +123,13 @@ import {
   configureSpendLedger,
   createTaskStoreSpendLedger,
 } from "./spend-allowance.js";
-import type { ApprovalPreset } from "./types.js";
+import {
+  AdmissionQueueFullError,
+  type ApprovalPreset,
+  SessionCapError,
+  type SpawnResult,
+  TERMINAL_SESSION_STATUSES,
+} from "./types.js";
 import {
   ensureTaskWorkdir,
   resolveAllowedWorkdir,
@@ -190,6 +203,18 @@ const INDEPENDENT_ACP_VERIFIER_NAME = "independent-acp-verifier";
  *  before its await is abandoned (treated as inconclusive). Overridable via
  *  `ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY_TIMEOUT_MS`. */
 const DEFAULT_INDEPENDENT_VERIFY_TIMEOUT_MS = 600_000;
+
+/** Cadence of the admission-queue reconcile tick. Backstops the terminal-event
+ * drain for slots freed silently (a swept-stale session emits no event). */
+const ADMISSION_RECONCILE_INTERVAL_MS = 30_000;
+
+/** Session events after which a worker slot may have freed, so the admission
+ * queue should drain. Mirrors AcpService's terminal-status set. */
+const ADMISSION_DRAIN_EVENTS: ReadonlySet<string> = new Set([
+  "task_complete",
+  "stopped",
+  "error",
+]);
 
 function independentVerifyTimeoutMs(runtime: {
   getSetting?: (key: string) => unknown;
@@ -333,6 +358,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/** Parse a positive-integer setting value, falling back to `fallback` when the
+ * value is absent, non-numeric, or ≤ 0. Used for the admission-queue tunables. */
+function parsePositiveIntSetting(
+  value: string | undefined,
+  fallback: number,
+): number {
+  const parsed = value === undefined ? Number.NaN : Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
 function str(value: unknown): string | undefined {
@@ -625,6 +660,16 @@ export class OrchestratorTaskService extends Service {
   private readonly autoVerifyInFlight = new Set<string>();
   private unsubscribe: (() => void) | undefined;
   private started = false;
+  // Admission queue (#13772): taskIds parked because the worker cap was full.
+  // The durable truth is each task's `metadata.admission` record; this array is
+  // the in-memory dispatch order, rebuilt from the store on start(). Ordering is
+  // recomputed at drain time (priority band + aging), so insertion order here is
+  // not authoritative — membership is.
+  private readonly admissionQueue: string[] = [];
+  // Serializes drainAdmissionQueue so a terminal-event drain and the reconcile
+  // tick can't both dispatch the same parked task. A promise-chain mutex.
+  private admissionDrainLock = Promise.resolve();
+  private admissionReconcileTimer: NodeJS.Timeout | undefined;
 
   constructor(
     runtime: IAgentRuntime,
@@ -662,6 +707,26 @@ export class OrchestratorTaskService extends Service {
     // Persist self-spend durably so a configured ELIZA_AGENT_SPEND_CAP_USD
     // survives a restart instead of resetting to zero (#8924).
     configureSpendLedger(createTaskStoreSpendLedger(this.store));
+    // Resume any tasks parked before a restart, then arm the reconcile tick that
+    // drains the queue even when no terminal session event fires (a sweptStale
+    // session frees a slot silently). Best-effort: a store hiccup here must not
+    // block session-event binding below.
+    if (this.admissionQueueEnabled()) {
+      await this.rebuildAdmissionQueueFromStore().catch((err) => {
+        // error-policy:J7 admission-queue rebuild is a start-time convenience; a
+        // failure is reported (parked tasks won't auto-resume until a live
+        // enqueue re-seeds them) but must not abort service start.
+        this.runtime.reportError(
+          "OrchestratorTask.rebuildAdmissionQueue",
+          err,
+          {},
+        );
+      });
+      this.admissionReconcileTimer = setInterval(() => {
+        void this.drainAdmissionQueue();
+      }, ADMISSION_RECONCILE_INTERVAL_MS);
+      this.admissionReconcileTimer.unref?.();
+    }
     const acp = this.acp();
     if (acp) {
       this.subscribeToAcp(acp);
@@ -712,6 +777,10 @@ export class OrchestratorTaskService extends Service {
   async stop(): Promise<void> {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
+    if (this.admissionReconcileTimer) {
+      clearInterval(this.admissionReconcileTimer);
+      this.admissionReconcileTimer = undefined;
+    }
     this.started = false;
   }
 
@@ -956,6 +1025,13 @@ export class OrchestratorTaskService extends Service {
       }
       default:
         break;
+    }
+    // A terminal session event frees (or may free) a worker slot. Kick the
+    // admission drain so a parked task dispatches the instant a slot opens,
+    // rather than waiting on the 30s reconcile tick. Fire-and-forget: the drain
+    // is serialized internally and never rejects into this write path.
+    if (ADMISSION_DRAIN_EVENTS.has(event) && this.admissionQueueEnabled()) {
+      void this.drainAdmissionQueue();
     }
   }
 
@@ -1681,6 +1757,9 @@ export class OrchestratorTaskService extends Service {
   async pauseTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
+    // A paused task must not dispatch — drop it from the in-memory order but
+    // KEEP its admission record so resume can replay the original spawn.
+    await this.dequeueAdmission(taskId, false);
     await this.stopActiveSessions(doc);
     await this.store.updateTask(taskId, { paused: true });
     return this.getTask(taskId);
@@ -1689,12 +1768,27 @@ export class OrchestratorTaskService extends Service {
   async resumeTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const updated = await this.store.updateTask(taskId, { paused: false });
     if (!updated) return null;
+    // If the task was parked when paused, re-seed the in-memory order from its
+    // retained admission record so it competes for a slot again. A resumed task
+    // that already ran (had a session) carries no admission record and is a
+    // no-op here.
+    const doc = await this.store.getTask(taskId);
+    const admission = doc && OrchestratorTaskService.admissionOf(doc.task);
+    if (
+      admission &&
+      this.admissionQueueEnabled() &&
+      !this.admissionQueue.includes(taskId)
+    ) {
+      this.admissionQueue.push(taskId);
+      void this.drainAdmissionQueue();
+    }
     return this.getTask(taskId);
   }
 
   async archiveTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
+    await this.dequeueAdmission(taskId);
     await this.stopActiveSessions(doc);
     await this.store.updateTask(taskId, {
       archived: true,
@@ -1723,6 +1817,7 @@ export class OrchestratorTaskService extends Service {
   async deleteTask(taskId: string): Promise<boolean> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return false;
+    await this.dequeueAdmission(taskId);
     await this.stopActiveSessions(doc);
     for (const session of doc.sessions) {
       this.sessionTaskIndex.delete(session.sessionId);
@@ -2775,43 +2870,72 @@ export class OrchestratorTaskService extends Service {
       }
     }
 
-    const result = await acp.spawnSession({
-      // Coding-agent selection: explicit request → routing policy → the
-      // deployment's configured default (ELIZA_ACP_DEFAULT_AGENT /
-      // ELIZA_DEFAULT_AGENT_TYPE — e.g. "elizaos" for the eliza-code coding
-      // sub-agent) → opencode as the safe fallback. Honoring the configured
-      // default here keeps this spawn path consistent with acp-service's
-      // `defaultAgent`; previously this hardcoded "opencode" because elizaos had
-      // no ACP command, but elizaos is now a supported ACP agent via
-      // ELIZA_ELIZAOS_ACP_COMMAND, so a host that selects it (local or cloud
-      // image) gets eliza-code, while unconfigured hosts still get opencode.
-      agentType:
-        opts.framework ??
-        policy.preferredFramework ??
-        configuredDefaultAgentType(this.runtime) ??
-        "opencode",
-      workdir,
-      initialTask: goalPrompt,
-      model: opts.model ?? policy.model,
-      approvalPreset: opts.approvalPreset,
-      metadata: {
-        taskId,
-        roomId: doc.task.taskRoomId ?? doc.task.roomId,
-        label: agentName,
-        source: "orchestrator",
-        // Persist the bare goal (the same key the direct-API spawn stamps) so
-        // completion-time consumers that read the task text off session
-        // metadata — the built-apps registry's app-build gate, interruption
-        // relevance — see what this session is building.
-        goal: doc.task.goal,
-        // Orchestrator sessions outlive their first prompt so follow-ups and
-        // validation re-dispatch can reuse them.
-        keepAliveAfterComplete: true,
-        // Carried so a child this sub-agent spawns can compute its own depth
-        // (parent depth + 1) and the nesting guard above can enforce the cap.
-        nestingDepth,
-      },
-    });
+    const framework =
+      opts.framework ??
+      policy.preferredFramework ??
+      configuredDefaultAgentType(this.runtime) ??
+      "opencode";
+    let result: SpawnResult;
+    try {
+      result = await acp.spawnSession({
+        // Coding-agent selection: explicit request → routing policy → the
+        // deployment's configured default (ELIZA_ACP_DEFAULT_AGENT /
+        // ELIZA_DEFAULT_AGENT_TYPE — e.g. "elizaos" for the eliza-code coding
+        // sub-agent) → opencode as the safe fallback. Honoring the configured
+        // default here keeps this spawn path consistent with acp-service's
+        // `defaultAgent`; previously this hardcoded "opencode" because elizaos had
+        // no ACP command, but elizaos is now a supported ACP agent via
+        // ELIZA_ELIZAOS_ACP_COMMAND, so a host that selects it (local or cloud
+        // image) gets eliza-code, while unconfigured hosts still get opencode.
+        agentType: framework,
+        workdir,
+        initialTask: goalPrompt,
+        model: opts.model ?? policy.model,
+        approvalPreset: opts.approvalPreset,
+        metadata: {
+          taskId,
+          roomId: doc.task.taskRoomId ?? doc.task.roomId,
+          label: agentName,
+          source: "orchestrator",
+          // Persist the bare goal (the same key the direct-API spawn stamps) so
+          // completion-time consumers that read the task text off session
+          // metadata — the built-apps registry's app-build gate, interruption
+          // relevance — see what this session is building.
+          goal: doc.task.goal,
+          // Orchestrator sessions outlive their first prompt so follow-ups and
+          // validation re-dispatch can reuse them.
+          keepAliveAfterComplete: true,
+          // Carried so a child this sub-agent spawns can compute its own depth
+          // (parent depth + 1) and the nesting guard above can enforce the cap.
+          nestingDepth,
+        },
+      });
+    } catch (err) {
+      // The worker cap is full. A TOP-LEVEL spawn parks in the admission queue
+      // (task stays `open`, admission metadata persisted) and the caller gets a
+      // truthful detail with the queued position instead of a hard failure. A
+      // NESTED spawn (a running sub-agent spawning a child) must NOT park — its
+      // parent is blocked awaiting the child, so queuing would deadlock; it
+      // re-throws so the parent sees the cap and can back off.
+      if (
+        err instanceof SessionCapError &&
+        err.slotClass === "worker" &&
+        nestingDepth === 0 &&
+        this.admissionQueueEnabled()
+      ) {
+        return this.enqueueAdmission(taskId, doc.task.priority, {
+          framework: opts.framework,
+          model: opts.model ?? policy.model,
+          workdir: opts.workdir,
+          repo: opts.repo,
+          label: opts.label,
+          task: opts.task,
+          approvalPreset: opts.approvalPreset,
+          providerSource: opts.providerSource ?? policy.providerSource,
+        });
+      }
+      throw err;
+    }
 
     const account = accountMetaFromSessionMetadata(
       result.metadata as Record<string, unknown> | undefined,
@@ -3339,6 +3463,319 @@ export class OrchestratorTaskService extends Service {
           failures.length === 1 ? "" : "s"
         }`,
       );
+    }
+  }
+
+  // ---- admission queue (#13772) -----------------------------------------
+
+  /** The queue is on by default; `ELIZA_ACP_ADMISSION_QUEUE=0` disables it and
+   * restores hard-fail-at-cap for spawnAgentForTask (the SessionCapError is
+   * re-thrown). */
+  private admissionQueueEnabled(): boolean {
+    const raw = this.readSetting("ELIZA_ACP_ADMISSION_QUEUE");
+    return raw !== "0";
+  }
+
+  /** Max parked tasks. A cap-park beyond this depth is back-pressure the caller
+   * must see, not more queue (AdmissionQueueFullError → 429). */
+  private admissionQueueDepthCap(): number {
+    return parsePositiveIntSetting(
+      this.readSetting("ELIZA_ACP_ADMISSION_QUEUE_DEPTH"),
+      32,
+    );
+  }
+
+  /** Aging promotion interval: a queued entry gains one priority band per this
+   * many ms waited, so a low-priority task can't starve (guard #1). */
+  private admissionAgingMs(): number {
+    return parsePositiveIntSetting(
+      this.readSetting("ELIZA_ACP_QUEUE_AGING_MS"),
+      600_000,
+    );
+  }
+
+  private readSetting(key: string): string | undefined {
+    const raw = this.runtime.getSetting?.(key);
+    if (typeof raw === "string" && raw.length > 0) return raw;
+    const env = process.env[key];
+    return typeof env === "string" && env.length > 0 ? env : undefined;
+  }
+
+  /** Read the admission record off a task's metadata, or null if not queued. */
+  private static admissionOf(
+    task: OrchestratorTaskRecord,
+  ): AdmissionRecord | null {
+    const admission = task.metadata?.admission;
+    if (
+      isRecord(admission) &&
+      admission.state === "queued" &&
+      typeof admission.enqueuedAt === "string" &&
+      isRecord(admission.spawnOpts)
+    ) {
+      return admission as unknown as AdmissionRecord;
+    }
+    return null;
+  }
+
+  /** Persist (or clear) the admission record on a task's metadata. updateTask
+   * shallow-merges `task`, so we replace the whole metadata object to add/remove
+   * the single `admission` key without disturbing the rest. */
+  private async writeAdmission(
+    taskId: string,
+    admission: AdmissionRecord | null,
+  ): Promise<void> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return;
+    const nextMeta = { ...doc.task.metadata };
+    if (admission) nextMeta.admission = admission;
+    else delete nextMeta.admission;
+    await this.store.updateTask(taskId, { metadata: nextMeta });
+  }
+
+  /**
+   * Park a task that met the worker cap. Persists the admission record, seeds
+   * the in-memory order, kicks a drain (a slot may have freed between the cap
+   * check and here), and returns the task detail carrying the queued position.
+   * Throws AdmissionQueueFullError when the queue is at its depth cap.
+   */
+  private async enqueueAdmission(
+    taskId: string,
+    priority: OrchestratorTaskPriority,
+    spawnOpts: SerializableSpawnOpts,
+  ): Promise<TaskThreadDetailDto | null> {
+    if (
+      !this.admissionQueue.includes(taskId) &&
+      this.admissionQueue.length >= this.admissionQueueDepthCap()
+    ) {
+      throw new AdmissionQueueFullError(this.admissionQueueDepthCap());
+    }
+    const admission: AdmissionRecord = {
+      state: "queued",
+      enqueuedAt: nowIso(),
+      priorityAtEnqueue: priority,
+      spawnOpts,
+    };
+    await this.writeAdmission(taskId, admission);
+    if (!this.admissionQueue.includes(taskId)) this.admissionQueue.push(taskId);
+    this.log("info", "task parked in admission queue", {
+      taskId,
+      priority,
+      depth: this.admissionQueue.length,
+    });
+    // A slot may have freed between the cap rejection and this write; try now.
+    void this.drainAdmissionQueue();
+    return this.getTask(taskId);
+  }
+
+  /**
+   * Remove a task from the in-memory dispatch order. Lifecycle transitions call
+   * this so a parked spawn stops competing for a slot.
+   *
+   * `clearMetadata` controls the durable record: archive/delete/cancel clear it
+   * (the parked spawn is moot); pause keeps it so resume can replay the ORIGINAL
+   * spawnOpts instead of re-admitting with an empty request.
+   */
+  private async dequeueAdmission(
+    taskId: string,
+    clearMetadata = true,
+  ): Promise<void> {
+    const idx = this.admissionQueue.indexOf(taskId);
+    if (idx >= 0) this.admissionQueue.splice(idx, 1);
+    if (!clearMetadata) return;
+    const doc = await this.store.getTask(taskId);
+    if (doc && OrchestratorTaskService.admissionOf(doc.task)) {
+      await this.writeAdmission(taskId, null);
+    }
+  }
+
+  /** Rebuild the in-memory dispatch order from the store on start() so a restart
+   * mid-queue resumes deterministically. Scans `open` tasks for a queued
+   * admission record and seeds `admissionQueue` in current priority order. */
+  private async rebuildAdmissionQueueFromStore(): Promise<void> {
+    const open = await this.store.listTasks({ status: "open" });
+    const entries: QueueEntry[] = [];
+    for (const task of open) {
+      const admission = OrchestratorTaskService.admissionOf(task);
+      if (!admission) continue;
+      entries.push({
+        taskId: task.id,
+        enqueuedAt: admission.enqueuedAt,
+        priorityAtEnqueue: admission.priorityAtEnqueue,
+      });
+    }
+    const ordered = orderQueue(entries, Date.now(), this.admissionAgingMs());
+    this.admissionQueue.length = 0;
+    for (const entry of ordered) this.admissionQueue.push(entry.taskId);
+    if (this.admissionQueue.length > 0) {
+      this.log("info", "rebuilt admission queue from store", {
+        depth: this.admissionQueue.length,
+      });
+    }
+  }
+
+  /** Snapshot for the provider + capacity route: current queue depth and the
+   * ordered taskIds. Counts/ids only — NO timestamps — so the provider segment
+   * stays cache-stable turn over turn. */
+  async getAdmissionSnapshot(): Promise<{
+    queueDepth: number;
+    queuedTaskIds: string[];
+  }> {
+    const entries: QueueEntry[] = [];
+    for (const taskId of this.admissionQueue) {
+      const doc = await this.store.getTask(taskId);
+      const admission = doc && OrchestratorTaskService.admissionOf(doc.task);
+      if (!admission) continue;
+      entries.push({
+        taskId,
+        enqueuedAt: admission.enqueuedAt,
+        priorityAtEnqueue: admission.priorityAtEnqueue,
+      });
+    }
+    const ordered = orderQueue(entries, Date.now(), this.admissionAgingMs());
+    return {
+      queueDepth: ordered.length,
+      queuedTaskIds: ordered.map((e) => e.taskId),
+    };
+  }
+
+  /**
+   * Dispatch parked tasks into freed worker slots, most-eligible first.
+   * Serialized via a promise-chain lock so a terminal-event drain and the
+   * reconcile tick never double-dispatch. For each free slot it re-reads the
+   * head task's live state (dropping terminal/paused entries — starvation guard
+   * #2 is covered by idle-reclaim below), clears the admission record, and
+   * replays the saved spawn. A fresh SessionCapError re-parks the head and stops
+   * the pass (another spawn raced us). When no slot is free but the queue is
+   * non-empty, one idle keepAlive session whose task is already terminal is
+   * reclaimed to unblock the queue.
+   */
+  private async drainAdmissionQueue(): Promise<void> {
+    const run = this.admissionDrainLock.then(() => this.drainOnce());
+    this.admissionDrainLock = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private async drainOnce(): Promise<void> {
+    const acp = this.acp();
+    if (!acp) return;
+    // Bound the pass by the current queue length so a task re-parked at the head
+    // (SessionCapError race) can't spin this loop.
+    let budget = this.admissionQueue.length;
+    while (budget-- > 0 && this.admissionQueue.length > 0) {
+      const capacity = await acp.getCapacity();
+      if (capacity.freeWorkerSlots <= 0) {
+        // No worker slot free. Reclaim one idle keepAlive session whose task has
+        // already reached a terminal state (its slot is dead weight) so the
+        // queue isn't starved by workers that finished but stayed alive.
+        const reclaimed = await this.reclaimIdleSession(acp);
+        if (!reclaimed) break;
+        continue;
+      }
+      const ordered = orderQueue(
+        await this.currentQueueEntries(),
+        Date.now(),
+        this.admissionAgingMs(),
+      );
+      const head = ordered[0];
+      if (!head) break;
+      // Drop the head from the in-memory order up front; a re-park below will
+      // re-add it. This keeps the loop from re-selecting the same head when the
+      // task turned out to be terminal/paused.
+      const idx = this.admissionQueue.indexOf(head.taskId);
+      if (idx >= 0) this.admissionQueue.splice(idx, 1);
+      const doc = await this.store.getTask(head.taskId);
+      const admission = doc && OrchestratorTaskService.admissionOf(doc.task);
+      if (!doc || !admission) continue;
+      if (TERMINAL_TASK_STATUSES.has(doc.task.status) || doc.task.paused) {
+        await this.writeAdmission(head.taskId, null);
+        continue;
+      }
+      await this.writeAdmission(head.taskId, null);
+      try {
+        await this.spawnAgentForTask(head.taskId, {
+          ...admission.spawnOpts,
+          approvalPreset: admission.spawnOpts
+            .approvalPreset as ApprovalPreset | undefined,
+        });
+      } catch (err) {
+        if (err instanceof SessionCapError) {
+          // A concurrent spawn took the slot. Re-park at the head and stop —
+          // the next terminal event or reconcile tick drains again.
+          await this.writeAdmission(head.taskId, admission);
+          if (!this.admissionQueue.includes(head.taskId)) {
+            this.admissionQueue.unshift(head.taskId);
+          }
+          break;
+        }
+        // error-policy:J7 the dispatch of a parked task failed for a non-cap
+        // reason (bad workdir, transport error). Report it so the agent/owner
+        // sees the parked task did not launch; do not silently drop or re-park
+        // forever (that would spin the reconcile tick).
+        this.runtime.reportError(
+          "OrchestratorTask.drainAdmissionQueue",
+          err,
+          { taskId: head.taskId },
+        );
+      }
+    }
+  }
+
+  /** The queue's entries with their live admission records, for ordering. */
+  private async currentQueueEntries(): Promise<QueueEntry[]> {
+    const entries: QueueEntry[] = [];
+    for (const taskId of this.admissionQueue) {
+      const doc = await this.store.getTask(taskId);
+      const admission = doc && OrchestratorTaskService.admissionOf(doc.task);
+      if (!admission) continue;
+      entries.push({
+        taskId,
+        enqueuedAt: admission.enqueuedAt,
+        priorityAtEnqueue: admission.priorityAtEnqueue,
+      });
+    }
+    return entries;
+  }
+
+  /**
+   * Free one worker slot for the queue by stopping the oldest live keepAlive
+   * session whose owning task has already reached a terminal state. Such a
+   * session is finished work holding a slot; reclaiming it is safe and unblocks
+   * queued tasks (starvation guard #2). Returns true when a session was stopped.
+   */
+  private async reclaimIdleSession(acp: AcpService): Promise<boolean> {
+    const sessions = await acp.listSessions();
+    const candidates: Array<{ id: string; createdAt: number }> = [];
+    for (const session of sessions) {
+      if (TERMINAL_SESSION_STATUSES.has(session.status)) continue;
+      const taskId = this.sessionTaskIndex.get(session.id);
+      if (!taskId) continue;
+      const doc = await this.store.getTask(taskId);
+      if (!doc || !TERMINAL_TASK_STATUSES.has(doc.task.status)) continue;
+      candidates.push({ id: session.id, createdAt: session.createdAt.getTime() });
+    }
+    if (candidates.length === 0) return false;
+    candidates.sort((a, b) => a.createdAt - b.createdAt);
+    const victim = candidates[0];
+    if (!victim) return false;
+    try {
+      await acp.stopSession(victim.id);
+      this.log("info", "reclaimed idle keepAlive session for queued task", {
+        sessionId: victim.id,
+      });
+      return true;
+    } catch (err) {
+      // error-policy:J7 idle-reclaim is a best-effort starvation guard; a failed
+      // stop is reported (so a wedged session is visible) but must not abort the
+      // drain — the reconcile tick retries.
+      this.runtime.reportError(
+        "OrchestratorTask.reclaimIdleSession",
+        err,
+        { sessionId: victim.id },
+      );
+      return false;
     }
   }
 
