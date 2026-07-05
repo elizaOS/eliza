@@ -65,6 +65,10 @@ const LEVELS = [
     file: "plugins/plugin-goals/src/components/goals/GoalsView.tsx",
   },
   {
+    name: "plugin view lifeops-live-test",
+    file: "plugins/plugin-scheduling/src/components/lifeops-live-test/LifeOpsLiveTestView.tsx",
+  },
+  {
     name: "plugin view health",
     file: "plugins/plugin-health/src/components/health/HealthView.tsx",
   },

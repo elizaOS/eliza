@@ -10,7 +10,10 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
 const VISUAL_MATRIX_SPEC = path.join(HERE, "ui-smoke", "plugin-view-cases.ts");
 const HMR_SPEC = path.join(HERE, "hmr", "hmr-dependency-levels.spec.ts");
-const CI_WORKFLOW = path.join(REPO_ROOT, ".github/workflows/ci.yaml");
+const DEV_SMOKE_WORKFLOW = path.join(
+  REPO_ROOT,
+  ".github/workflows/dev-smoke.yml",
+);
 const ROOT_PACKAGE_JSON = path.join(REPO_ROOT, "package.json");
 const APP_PACKAGE_JSON = path.join(REPO_ROOT, "packages/app/package.json");
 
@@ -94,7 +97,7 @@ describe("plugin view HMR coverage", () => {
     const appPackage = JSON.parse(readFileSync(APP_PACKAGE_JSON, "utf8")) as {
       scripts?: Record<string, string>;
     };
-    const workflow = readFileSync(CI_WORKFLOW, "utf8");
+    const workflow = readFileSync(DEV_SMOKE_WORKFLOW, "utf8");
 
     expect(rootPackage.scripts?.["test:hmr"]).toContain(
       "packages/app test:hmr",
@@ -102,6 +105,7 @@ describe("plugin view HMR coverage", () => {
     expect(appPackage.scripts?.["test:hmr"]).toContain(
       "playwright.hmr.config.ts",
     );
+    expect(workflow).toContain("Vite HMR dependency-level smoke");
     expect(workflow).toContain("bun run test:hmr");
   });
 });

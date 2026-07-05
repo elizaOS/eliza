@@ -150,3 +150,60 @@ jobs:
             packages/app/playwright-report/
             packages/app/test-results/
           if-no-files-found: ignore
+
+  hmr:
+    name: Vite HMR dependency-level smoke
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.dev_smoke == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PGLITE_WASM_MODE: node
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Free disk space for browser smoke
+        run: |
+          set -euxo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af || true
+          df -h /
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Generate shared i18n assets
+        run: bun run --cwd packages/shared build:i18n
+
+      - name: Build @elizaos/core browser bundle
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+
+      - name: Run Vite HMR dependency-level smoke
+        run: bun run test:hmr
+
+      - name: Upload HMR artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: hmr-results
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/hmr/
+          if-no-files-found: ignore
