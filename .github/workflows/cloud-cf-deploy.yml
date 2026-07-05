@@ -25,6 +25,11 @@ name: Cloud CF Deploy
 # providers directly and uses OpenRouter as the backup):
 #   OPENROUTER_API_KEY, CEREBRAS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,
 #   GROQ_API_KEY, AI_GATEWAY_API_KEY, FAL_KEY, ELEVENLABS_API_KEY, VAST_API_KEY, VAST_BASE_URL.
+# Media/voice secrets, likewise published when configured (#13406):
+#   FAL_API_KEY (the video provider registry reads FAL_KEY ?? FAL_API_KEY),
+#   ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64 + ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64
+#   (Ed25519 keypair for the signed voice-model catalog; the catalog route 503s
+#   while the signing key is unset).
 #
 # Source: cloud/.github/workflows/cf-deploy.yml in the original elizaOS/cloud repo.
 
@@ -438,7 +443,16 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           FAL_KEY: ${{ secrets.FAL_KEY }}
+          # fal key under its alternate name: the video provider registry reads
+          # FAL_KEY ?? FAL_API_KEY, and prod carries it as FAL_API_KEY (#13406).
+          FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          # Ed25519 keypair for the signed voice-model catalog —
+          # /v1/voice-models/catalog 503s while the signing key is unset
+          # (#13406). publish_secret no-ops with a notice while these are
+          # unset, so they publish on every redeploy once ops adds them.
+          ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64 }}
+          ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 }}
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
           VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
           # Platform key the Worker forwards as X-Steward-Platform-Key so per-org
@@ -486,7 +500,10 @@ jobs:
             GROQ_API_KEY \
             AI_GATEWAY_API_KEY \
             FAL_KEY \
+            FAL_API_KEY \
             ELEVENLABS_API_KEY \
+            ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64 \
+            ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 \
             VAST_API_KEY \
             VAST_BASE_URL \
             STEWARD_PLATFORM_KEYS
