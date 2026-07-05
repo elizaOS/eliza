@@ -23,6 +23,7 @@ import { __resetStripeForTests, getStripe, isStripeConfigured } from "./stripe";
 const LIVE_KEY = ["sk", "live", "FakeKeyForGuardTests000000"].join("_");
 const TEST_KEY = ["sk", "test", "FakeKeyForGuardTests000000"].join("_");
 const RESTRICTED_LIVE_KEY = ["rk", "live", "FakeKeyForGuardTests000000"].join("_");
+const RESTRICTED_TEST_KEY = ["rk", "test", "FakeKeyForGuardTests000000"].join("_");
 
 afterEach(() => {
   __resetStripeForTests();
@@ -106,6 +107,12 @@ describe("shouldWarnTestStripeKeyInProduction", () => {
     ).toBe(true);
     expect(
       shouldWarnTestStripeKeyInProduction({
+        STRIPE_SECRET_KEY: RESTRICTED_TEST_KEY,
+        ENVIRONMENT: "production",
+      }),
+    ).toBe(true);
+    expect(
+      shouldWarnTestStripeKeyInProduction({
         STRIPE_SECRET_KEY: TEST_KEY,
         ENVIRONMENT: "staging",
       }),
@@ -147,6 +154,28 @@ describe("stripe client init guard (via Worker bindings)", () => {
       expect(isStripeConfigured()).toBe(true);
       expect(() => getStripe()).not.toThrow();
     });
+  });
+
+  it("production + rk_test_ initializes but emits the same test-key warning", () => {
+    const warnings: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args);
+    };
+
+    try {
+      runWithCloudBindings(
+        { STRIPE_SECRET_KEY: RESTRICTED_TEST_KEY, ENVIRONMENT: "production" },
+        () => {
+          expect(isStripeConfigured()).toBe(true);
+          expect(() => getStripe()).not.toThrow();
+        },
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(warnings.some((args) => args.join(" ").includes("sk_test_/rk_test_"))).toBe(true);
   });
 
   it("does not reuse a cached production live client under a later staging live binding", () => {

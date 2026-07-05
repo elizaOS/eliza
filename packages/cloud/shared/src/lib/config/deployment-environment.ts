@@ -57,7 +57,7 @@ export function isLiveStripeSecretKey(key: string | undefined): boolean {
  * add-funds on staging.elizacloud.ai created `cs_live` checkout sessions and
  * hands-on QA could pay real money into the staging database. Live keys are
  * only ever valid in the production deployment; staging/preview/dev must use
- * test-mode keys (`sk_test_`).
+ * test-mode keys (`sk_test_` or `rk_test_`).
  */
 export function shouldBlockLiveStripeKeyOutsideProduction(env: EnvLike = process.env): boolean {
   return isLiveStripeSecretKey(env.STRIPE_SECRET_KEY) && !isProductionDeployment(env);
@@ -71,5 +71,5 @@ export function shouldBlockLiveStripeKeyOutsideProduction(env: EnvLike = process
  */
 export function shouldWarnTestStripeKeyInProduction(env: EnvLike = process.env): boolean {
   const key = env.STRIPE_SECRET_KEY?.trim() ?? "";
-  return key.startsWith("sk_test_") && isProductionDeployment(env);
+  return (key.startsWith("sk_test_") || key.startsWith("rk_test_")) && isProductionDeployment(env);
 }

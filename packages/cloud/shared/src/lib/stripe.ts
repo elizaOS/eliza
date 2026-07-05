@@ -85,7 +85,7 @@ function initStripe(): Stripe | null {
   // client unless this deployment is production.
   if (shouldBlockLiveStripeKeyOutsideProduction(env)) {
     stripeInitError = new Error(
-      "SECURITY: STRIPE_SECRET_KEY is a LIVE-mode key (sk_live_/rk_live_) but this deployment is not production (ENVIRONMENT/NODE_ENV). Refusing to initialize Stripe: live keys outside prod let checkouts charge real money into a non-prod database (#13752). Bind a test-mode key (sk_test_) to this environment.",
+      "SECURITY: STRIPE_SECRET_KEY is a LIVE-mode key (sk_live_/rk_live_) but this deployment is not production (ENVIRONMENT/NODE_ENV). Refusing to initialize Stripe: live keys outside prod let checkouts charge real money into a non-prod database (#13752). Bind a test-mode key (sk_test_ or rk_test_) to this environment.",
     );
     stripeInstance = null;
     stripeCacheKey = cacheKey;
@@ -97,7 +97,7 @@ function initStripe(): Stripe | null {
   // fake money. Loud warning, not fatal, so a prod deploy is not bricked.
   if (shouldWarnTestStripeKeyInProduction(env)) {
     logger.warn(
-      "[Stripe] STRIPE_SECRET_KEY is a TEST-mode key (sk_test_) in a production deployment. Checkouts will not move real money. Verify the environment's Stripe secrets (#13752).",
+      "[Stripe] STRIPE_SECRET_KEY is a TEST-mode key (sk_test_/rk_test_) in a production deployment. Checkouts will not move real money. Verify the environment's Stripe secrets (#13752).",
     );
   }
 
