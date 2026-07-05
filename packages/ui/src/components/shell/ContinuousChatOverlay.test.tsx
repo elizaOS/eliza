@@ -96,6 +96,9 @@ afterEach(() => {
   cleanup();
   resetShellSurfaceForTests();
   setViewChatBinding(null);
+  vi.mocked(client.searchConversationMessages).mockReset();
+  vi.mocked(Element.prototype.scrollIntoView).mockClear();
+  document.getElementById("chat-message-m-hit")?.remove();
   // Search-jump tests seed the AppContext store with spies; clear it so the
   // inert test-fallback proxy backs every other test again.
   __setAppValueForTests(null);
@@ -2477,7 +2480,12 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     // inert test-fallback proxy (noop for everything else the overlay reads via
     // other selectors) so only the jump collaborators are observable.
     const selectSpy = vi.fn<(id: string) => Promise<void>>(async () => {});
-    const aroundSpy = vi.fn(async () => false);
+    const aroundSpy = vi.fn(async () => {
+      const anchor = document.createElement("div");
+      anchor.id = "chat-message-m-hit";
+      document.body.appendChild(anchor);
+      return true;
+    });
     const noop = () => {};
     __setAppValueForTests(
       new Proxy({} as never, {
@@ -2531,9 +2539,19 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(result.textContent).toContain("budget");
 
     // Selecting the hit jumps to its conversation (the real jump plumbing) and
-    // closes the panel.
+    // then loads the centered around-window because this fixture starts with no
+    // DOM anchor for the hit.
     fireEvent.click(result);
     expect(selectSpy).toHaveBeenCalledWith("conv-42");
+    await waitFor(() =>
+      expect(aroundSpy).toHaveBeenCalledWith("conv-42", "m-hit"),
+    );
+    await waitFor(() =>
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+        block: "center",
+        behavior: "smooth",
+      }),
+    );
     await waitFor(() =>
       expect(screen.queryByTestId("chat-message-search")).toBeNull(),
     );
