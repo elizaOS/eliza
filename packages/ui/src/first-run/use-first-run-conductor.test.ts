@@ -1303,6 +1303,53 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     expect(reply.text).toContain("sign in to Eliza Cloud");
     unmount();
   });
+
+  it("a stale cloud session (connected in memory, no usable token) does not complete onboarding or loop provisioning (#14387)", async () => {
+    // elizaCloudConnected reads true, but the durable steward token is gone, so
+    // getCloudAuthToken() is empty and the bind reports needs-cloud-login. Pre-fix
+    // this re-armed the auto-resume marker WHILE already "connected", and the
+    // effect re-fired on every seeded-turn render → an unbounded
+    // provision→fail→re-arm loop that spammed the transcript. The fix skips the
+    // re-arm while connected and fires the auto-resume effect at most once per
+    // connection epoch, so the stale session lands on a bounded recovery surface
+    // and never silently completes onboarding.
+    localStorage.removeItem("steward_session_token");
+    mocks.client.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          agent_id: "agent-stale",
+          agent_name: "Stale",
+          status: "running",
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { transcript, unmount } = renderConductor();
+
+    // A recovery surface (sign-in retry OR error card) appears — onboarding is
+    // NOT silently completed on a stale/invalid token.
+    await waitFor(() => {
+      expect(
+        transcript.current.some(
+          (m) =>
+            m.id === "first-run:cloud-oauth" ||
+            m.id.startsWith("first-run:error:"),
+        ),
+      ).toBe(true);
+    });
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+
+    // No runaway: give any residual auto-resume loop a window, then prove the
+    // provision listing was attempted a bounded number of times and does not keep
+    // growing (pre-fix it grew every re-fired render).
+    const listed = mocks.client.getCloudCompatAgents.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(mocks.client.getCloudCompatAgents.mock.calls.length).toBe(listed);
+    expect(listed).toBeLessThanOrEqual(3);
+    unmount();
+  });
 });
 
 // ── persistFirstRun exactly-once under concurrency (via the real finish) ────
