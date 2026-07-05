@@ -39,6 +39,8 @@ type WorkerWarmPoolManager =
   typeof import("@elizaos/cloud-shared/lib/services/containers/warm-pool-manager").WarmPoolManager;
 type WorkerContainersEnv =
   typeof import("@elizaos/cloud-shared/lib/config/containers-env").containersEnv;
+type WorkerAssertSSHKeyAvailable =
+  typeof import("@elizaos/cloud-shared/lib/config/containers-env").assertSSHKeyAvailable;
 type WorkerWarmPoolCreator =
   typeof import("@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-creator").getHetznerPoolContainerCreator;
 type WorkerResolveImageDigest =
@@ -72,6 +74,7 @@ interface WorkerDeps {
   WarmPoolManager: WorkerWarmPoolManager;
   getHetznerPoolContainerCreator: WorkerWarmPoolCreator;
   containersEnv: WorkerContainersEnv;
+  assertSSHKeyAvailable: WorkerAssertSSHKeyAvailable;
   resolveImageDigest: WorkerResolveImageDigest;
   agentSandboxesRepository: WorkerAgentSandboxesRepository;
   jobsRepository: WorkerJobsRepository;
@@ -231,6 +234,7 @@ async function loadDeps(): Promise<WorkerDeps> {
         getHetznerPoolContainerCreator:
           warmPoolCreatorModule.getHetznerPoolContainerCreator,
         containersEnv: containersEnvModule.containersEnv,
+        assertSSHKeyAvailable: containersEnvModule.assertSSHKeyAvailable,
         resolveImageDigest: registryProbeModule.resolveImageDigest,
         agentSandboxesRepository: agentSandboxesModule.agentSandboxesRepository,
         jobsRepository: jobsRepoModule.jobsRepository,
@@ -1256,7 +1260,7 @@ async function main(): Promise<void> {
   loadLocalEnv(import.meta.url);
 
   const config = readWorkerConfig();
-  const { logger } = await loadDeps();
+  const { logger, assertSSHKeyAvailable } = await loadDeps();
 
   logger.info("[provisioning-worker] starting", {
     pollIntervalMs: config.pollIntervalMs,
@@ -1273,6 +1277,21 @@ async function main(): Promise<void> {
   });
 
   await assertProvisioningWorkerPreflight();
+
+  // Fail-fast on a missing SSH key BEFORE the first heartbeat: key resolution is
+  // otherwise lazy (first node SSH, ~30s in), so a misconfigured key would let
+  // the worker publish a healthy heartbeat while silently failing every node
+  // SSH forever. Crash loudly instead; systemd `Restart=always` relaunches it
+  // and the misconfig is visible.
+  try {
+    assertSSHKeyAvailable();
+  } catch (error) {
+    logger.error(
+      `[provisioning-worker] CRITICAL: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    throw error;
+  }
+
   preflightOk = true;
   logger.info("[provisioning-worker] startup preflight passed");
 

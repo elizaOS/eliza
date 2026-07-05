@@ -9,7 +9,18 @@
  * Add new env reads here, not at call sites.
  */
 
+import * as fs from "node:fs";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+
+/**
+ * Where the effective SSH private key for Docker-node connections resolves
+ * from. Discriminated so a fail-fast startup check can branch without
+ * re-reading env or duplicating the precedence rules.
+ */
+export type SshKeySource =
+  | { kind: "inline" }
+  | { kind: "file"; path: string }
+  | { kind: "none" };
 
 function normalizeEnvValue(value: string): string {
   return value
@@ -47,6 +58,51 @@ export const containersEnv = {
   sshKeyPath(): string | undefined {
     const env = getCloudAwareEnv();
     return pick(env.CONTAINERS_SSH_KEY_PATH, env.AGENT_SSH_KEY_PATH);
+  },
+
+  /**
+   * Trust-On-First-Use host-key pinning for Docker nodes.
+   *
+   * When a node's `host_key_fingerprint` is NULL (never pinned), the SSH client
+   * accepts the key presented on the FIRST successful connect and hands it back
+   * via `onHostKeyDiscovered` so the caller can persist it to `docker_nodes`.
+   * Subsequent connects are verified against the now-pinned fingerprint, and a
+   * MISMATCH is ALWAYS refused regardless of this flag (a mismatch is a possible
+   * MITM, never a first-use).
+   *
+   * DEFAULT: ON. Every staging node currently ships with a NULL pin, so a
+   * fail-closed "refuse every unpinned key" policy hard-bricks the whole fleet
+   * (the outage this fixes). TOFU-on lets the fleet self-pin on first contact
+   * while still catching key CHANGES afterwards. Security can flip it off with
+   * `CONTAINERS_SSH_TOFU_PIN=false` once every node carries a pin, which
+   * restores strict fail-closed behavior for unpinned hosts.
+   *
+   * Read via `CONTAINERS_SSH_TOFU_PIN` (with the `ELIZA_` fallback that matches
+   * the other container flags); only the literal string `"false"`/`"0"`
+   * disables it.
+   */
+  sshTofuPinEnabled(): boolean {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_SSH_TOFU_PIN, env.ELIZA_CONTAINERS_SSH_TOFU_PIN);
+    if (raw === undefined) return true;
+    return raw !== "false" && raw !== "0";
+  },
+
+  /**
+   * Resolve the EFFECTIVE SSH key source without loading key material — used by
+   * fail-fast startup checks. Returns a discriminated result describing where a
+   * usable key would come from, or that none is configured.
+   *
+   * - `{ kind: "inline" }`   — `CONTAINERS_SSH_KEY` (base64) is set inline.
+   * - `{ kind: "file", path }` — a key path is configured (existence is checked
+   *   by the caller so this stays a pure env read).
+   * - `{ kind: "none" }`     — neither an inline key nor a path is configured.
+   */
+  resolveSshKeySource(): SshKeySource {
+    if (this.sshKey()) return { kind: "inline" };
+    const path = this.sshKeyPath();
+    if (path) return { kind: "file", path };
+    return { kind: "none" };
   },
 
   /** SSH user for connecting to Docker nodes. Defaults to "root". */
@@ -655,3 +711,46 @@ export const containersEnv = {
       : defaultMs;
   },
 };
+
+/**
+ * Fail-fast: assert that a USABLE SSH private key will be available before the
+ * provisioning worker starts SSHing into nodes.
+ *
+ * Key resolution is lazy (first SSH op, ~30s into the poll loop), so without
+ * this check a worker with a missing key file starts, publishes a HEALTHY
+ * heartbeat, then silently fails EVERY node SSH forever while still looking
+ * alive. This turns that into a loud crash at boot (the daemon's systemd
+ * `Restart=always` then relaunches it, and the failure is visible instead of
+ * masked).
+ *
+ * Precedence mirrors `DockerSSHClient.resolvePrivateKey`:
+ *   1. inline `CONTAINERS_SSH_KEY` (base64) — accepted without touching disk;
+ *   2. else `CONTAINERS_SSH_KEY_PATH` must point at an existing, readable file;
+ *   3. else nothing is configured → throw.
+ *
+ * Throws (never exits) so the caller owns the process lifecycle.
+ */
+export function assertSSHKeyAvailable(): void {
+  const source = containersEnv.resolveSshKeySource();
+  switch (source.kind) {
+    case "inline":
+      return;
+    case "file":
+      try {
+        fs.accessSync(source.path, fs.constants.R_OK);
+      } catch {
+        const safePath = source.path.split("/").pop() ?? "unknown";
+        throw new Error(
+          `SSH key unavailable at .../${safePath}: CONTAINERS_SSH_KEY_PATH is set but the file is missing or unreadable, ` +
+            `and no inline CONTAINERS_SSH_KEY is set. Every node SSH will fail. ` +
+            `Set CONTAINERS_SSH_KEY (base64) or fix the key path.`,
+        );
+      }
+      return;
+    case "none":
+      throw new Error(
+        "SSH key unavailable: neither CONTAINERS_SSH_KEY (base64 inline) nor CONTAINERS_SSH_KEY_PATH is set. " +
+          "Every node SSH will fail. Configure one before starting the provisioning worker.",
+      );
+  }
+}

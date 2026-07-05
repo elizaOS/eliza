@@ -214,11 +214,20 @@ async function main(): Promise<void> {
   } = await loadDeps();
   const summary: string[] = [];
 
+  // TOFU capture: the target host has never been pinned (this is its first
+  // onboard), so DockerSSHClient accepts the presented key on first connect and
+  // hands it back here. We stash it and persist it into docker_nodes during the
+  // upsert below so every later control-plane SSH verifies against a real pin.
+  let capturedFingerprint: string | undefined;
   const ssh = new DockerSSHClient({
     hostname: args.host,
     port: args.sshPort,
     username: args.sshUser,
     privateKeyPath: args.keyPath,
+    onHostKeyDiscovered: async (hostname, fingerprint) => {
+      capturedFingerprint = fingerprint;
+      console.log(`[onboard] TOFU captured host key for ${hostname}: SHA256:${fingerprint}`);
+    },
   });
 
   try {
@@ -293,6 +302,8 @@ async function main(): Promise<void> {
         ssh_user: args.sshUser,
         capacity: args.capacity,
         status: "unknown",
+        // Persist the TOFU-captured pin; keep any existing one if capture was skipped.
+        host_key_fingerprint: capturedFingerprint ?? existing.host_key_fingerprint,
         metadata: {
           ...((existing.metadata as Record<string, unknown>) ?? {}),
           provider: "operator-onboarded",
@@ -310,6 +321,8 @@ async function main(): Promise<void> {
         enabled: true,
         status: "unknown",
         allocated_count: 0,
+        // Persist the TOFU-captured pin so later control-plane SSH is verified.
+        host_key_fingerprint: capturedFingerprint ?? null,
         metadata: {
           provider: "operator-onboarded",
           onboardedAt: new Date().toISOString(),

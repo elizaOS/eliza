@@ -42,6 +42,36 @@ const PREPULL_SELF_HEAL_COOLDOWN_MS = 30 * 60 * 1000;
 const PREPULL_PID_DIR = "/tmp";
 
 // ---------------------------------------------------------------------------
+// Health-check failure tracking (auto-disable a dead node)
+// ---------------------------------------------------------------------------
+
+/**
+ * Consecutive failed health checks (across cycles) before a node is auto-disabled.
+ *
+ * Derived IN-MEMORY rather than via a new schema column: the provisioning
+ * worker is a single long-lived process that owns the health loop, a restart is
+ * a legitimate clean slate (the node gets re-probed and either re-fails toward
+ * the threshold again or recovers), and this avoids a schema migration on the
+ * hot health-check write path. Cleared on the first successful check.
+ *
+ * Overridable via `CONTAINERS_NODE_HEALTH_FAILURE_THRESHOLD` for ops tuning;
+ * default 3 (≈ three full retry-exhausted cycles) balances not flapping on a
+ * transient SSH hiccup against not stranding a genuinely dead node in rotation.
+ */
+const NODE_HEALTH_FAILURE_THRESHOLD = (() => {
+  const raw = process.env.CONTAINERS_NODE_HEALTH_FAILURE_THRESHOLD;
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : 3;
+})();
+
+/** Per-node consecutive failed health checks. In-memory (see threshold docs). */
+const nodeHealthFailureState = new Map<string, number>();
+
+export function __resetNodeHealthFailureStateForTests(): void {
+  nodeHealthFailureState.clear();
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -227,6 +257,33 @@ export class DockerNodeManager {
     return dockerNodesRepository.findByNodeId(nodeId);
   }
 
+  // ---- SSH client construction ------------------------------------------
+
+  /**
+   * Build a pooled SSH client for a node, wiring the Trust-On-First-Use
+   * persist callback: when the node's `host_key_fingerprint` is NULL, the
+   * client accepts the presented key on first connect and this callback pins it
+   * to `docker_nodes` (idempotent, NULL-guarded in the repo) so every later
+   * connect verifies against a real fingerprint. Passing `host_key_fingerprint`
+   * from the row keeps strict verification once a pin exists.
+   */
+  private sshClientForNode(node: DockerNode): DockerSSHClient {
+    return DockerSSHClient.getClient(
+      node.hostname,
+      node.ssh_port ?? undefined,
+      node.host_key_fingerprint ?? undefined,
+      node.ssh_user ?? undefined,
+      node.host_key_fingerprint
+        ? undefined
+        : async (hostname, fingerprint) => {
+            await dockerNodesRepository.setHostKeyFingerprint(node.node_id, fingerprint);
+            logger.warn(
+              `[docker-node-manager] TOFU-pinned host key for node ${node.node_id} (${hostname}): SHA256:${fingerprint}`,
+            );
+          },
+    );
+  }
+
   // ---- Health Checks ----------------------------------------------------
 
   /**
@@ -259,12 +316,7 @@ export class DockerNodeManager {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const ssh = DockerSSHClient.getClient(
-          node.hostname,
-          node.ssh_port ?? undefined,
-          node.host_key_fingerprint ?? undefined,
-          node.ssh_user ?? undefined,
-        );
+        const ssh = this.sshClientForNode(node);
         await ssh.connect();
         const dockerId = await ssh.exec("docker info --format '{{.ID}}'", 10_000);
 
@@ -298,6 +350,9 @@ export class DockerNodeManager {
               `[docker-node-manager] Canonical node ${node.node_id} (${node.hostname}) is reachable but disk is critically full; leaving healthy so the disk-clean cycle can reclaim space (canonical nodes are not autoscaler-replaced). Operators: free space or set enabled=false.`,
             );
           }
+          // A reachable node clears any accumulated consecutive-failure count so
+          // one recovered cycle undoes prior transient failures.
+          nodeHealthFailureState.delete(node.node_id);
           await dockerNodesRepository.updateStatus(node.node_id, "healthy");
           return "healthy";
         } else {
@@ -320,23 +375,50 @@ export class DockerNodeManager {
     );
     const status: DockerNodeStatus = lastError.includes("empty ID") ? "degraded" : "offline";
 
-    // Canonical (operator-managed) nodes are never marked offline from
-    // health-check failures. The autoscaler-provisioned hetzner-cloud nodes
-    // are ephemeral and OK to flap; manually-provisioned cores host long-lived
-    // production sandboxes, where a transient ssh hiccup should not pull the
-    // node out of rotation. Operators retain explicit `enabled=false` to
-    // disable nodes; status flapping is reserved for autoscaler-managed nodes.
-    if (!isAutoscaledNode(node)) {
-      logger.warn(
-        `[docker-node-manager] Suppressed ${status} status for canonical node ${node.node_id} (${node.hostname}); leaving prior status (${node.status}) intact. Set enabled=false to remove from rotation.`,
-      );
-      // Return the prior in-DB status so callers (e.g. /api/v1/cron/agent-hot-pool)
-      // see the unchanged state, not a phantom "offline" that was never persisted.
-      return node.status;
+    // A `degraded` verdict means the daemon ANSWERED but returned no ID — the
+    // node is reachable, just unhealthy. Persist it and let the disk-clean /
+    // autoscaler paths handle it; it is not a "dead node" for auto-disable
+    // purposes, so it never accrues toward the disable threshold. Because the
+    // node WAS reachable this cycle, clear the consecutive-offline counter so a
+    // reachable-but-degraded cycle breaks the "N consecutive UNREACHABLE checks"
+    // streak (otherwise offline, offline, degraded, offline would wrongly disable).
+    if (status === "degraded") {
+      nodeHealthFailureState.delete(node.node_id);
+      await dockerNodesRepository.updateStatus(node.node_id, "degraded");
+      return "degraded";
     }
 
-    await dockerNodesRepository.updateStatus(node.node_id, status);
-    return status;
+    // `offline` = unreachable. Previously we SUPPRESSED offline for canonical
+    // (operator-managed) nodes to avoid flapping on a transient SSH hiccup —
+    // but that let a genuinely-dead node keep reporting `healthy` forever, so
+    // the scheduler kept routing agents onto a black hole. Replace that mask
+    // with consecutive-failure tracking: persist `offline` every cycle, and
+    // once a node has failed the reachability probe N cycles in a row (default
+    // 3), auto-disable it (enabled=false) so it leaves rotation, with a loud
+    // ERROR so operators are paged. A dead node must NEVER report healthy.
+    const consecutive = (nodeHealthFailureState.get(node.node_id) ?? 0) + 1;
+    nodeHealthFailureState.set(node.node_id, consecutive);
+
+    if (consecutive >= NODE_HEALTH_FAILURE_THRESHOLD) {
+      logger.error(
+        `[docker-node-manager] Node ${node.node_id} (${node.hostname}) unreachable for ${consecutive} consecutive health checks (threshold ${NODE_HEALTH_FAILURE_THRESHOLD}); auto-disabling (enabled=false, status=offline) and routing it out of the pool. Last error: ${lastError}. Operator action required to re-enable.`,
+        {
+          nodeId: node.node_id,
+          hostname: node.hostname,
+          consecutiveFailures: consecutive,
+          threshold: NODE_HEALTH_FAILURE_THRESHOLD,
+        },
+      );
+      await dockerNodesRepository.markOfflineAndDisable(node.node_id);
+      nodeHealthFailureState.delete(node.node_id);
+      return "offline";
+    }
+
+    logger.warn(
+      `[docker-node-manager] Node ${node.node_id} (${node.hostname}) unreachable (${consecutive}/${NODE_HEALTH_FAILURE_THRESHOLD} consecutive failures); marking offline. Will auto-disable if it keeps failing.`,
+    );
+    await dockerNodesRepository.updateStatus(node.node_id, "offline");
+    return "offline";
   }
 
   /**
@@ -367,12 +449,7 @@ export class DockerNodeManager {
    */
   async ensureNodeReady(node: DockerNode, options: NodeSelectionOptions = {}): Promise<boolean> {
     try {
-      const ssh = DockerSSHClient.getClient(
-        node.hostname,
-        node.ssh_port ?? undefined,
-        node.host_key_fingerprint ?? undefined,
-        node.ssh_user ?? undefined,
-      );
+      const ssh = this.sshClientForNode(node);
       await ssh.connect();
       const dockerInfo = await ssh.exec("docker info --format '{{.ID}}|{{.Architecture}}'", 10_000);
       const { dockerId, architecture } = parseDockerInfoProbe(dockerInfo);
@@ -551,12 +628,7 @@ export class DockerNodeManager {
           };
         }
 
-        const ssh = DockerSSHClient.getClient(
-          node.hostname,
-          node.ssh_port ?? undefined,
-          node.host_key_fingerprint ?? undefined,
-          node.ssh_user ?? undefined,
-        );
+        const ssh = this.sshClientForNode(node);
         const prePull = buildTrackedPrePullCommand(image, platform);
         try {
           await ssh.connect();
@@ -678,12 +750,7 @@ export class DockerNodeManager {
     node: DockerNode,
   ): Promise<{ name: string; id: string; state: string; status: string }[] | null> {
     try {
-      const ssh = DockerSSHClient.getClient(
-        node.hostname,
-        node.ssh_port ?? undefined,
-        node.host_key_fingerprint ?? undefined,
-        node.ssh_user ?? undefined,
-      );
+      const ssh = this.sshClientForNode(node);
       await ssh.connect();
 
       const output = await ssh.exec(

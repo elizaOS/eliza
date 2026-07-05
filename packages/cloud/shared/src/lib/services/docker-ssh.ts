@@ -26,9 +26,21 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { type ClientChannel, Client as SSHClient } from "ssh2";
+import type { ClientChannel, Client as SSHClientType } from "ssh2";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
+
+/**
+ * Lazily load the `ssh2` `Client` constructor. The import is deferred to
+ * connect-time (rather than module-eval) so importing this file for its PURE
+ * logic — host-key verification, key resolution, fingerprint normalization —
+ * does not require the native `ssh2` dependency to be loadable. Only an actual
+ * SSH connection pulls it in.
+ */
+async function loadSSHClientCtor(): Promise<new () => SSHClientType> {
+  const mod = await import("ssh2");
+  return mod.Client;
+}
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -67,6 +79,16 @@ export interface DockerSSHConfig {
   privateKey?: Buffer;
   /** Expected host key fingerprint (SHA256 base64). If set, connections to hosts with mismatched keys are rejected. */
   hostKeyFingerprint?: string;
+  /**
+   * Trust-On-First-Use hook. Fired exactly once, after the first successful
+   * connect on a client whose `hostKeyFingerprint` was NULL on entry, with the
+   * SHA256 base64 fingerprint (no `SHA256:` prefix) of the accepted host key.
+   * The caller persists it to `docker_nodes` so later connects verify against a
+   * pin. Not fired when a pin already existed, and not fired on a mismatch
+   * (which is always refused). Failures inside the callback are logged and do
+   * not fail the connection — the key was already accepted.
+   */
+  onHostKeyDiscovered?: (hostname: string, fingerprint: string) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -79,8 +101,19 @@ export class DockerSSHClient {
   private readonly username: string;
   private readonly privateKeyPath: string;
   private readonly hostKeyFingerprint: string | undefined;
+  private readonly onHostKeyDiscovered:
+    | ((hostname: string, fingerprint: string) => Promise<void>)
+    | undefined;
 
-  private client: SSHClient | null = null;
+  /**
+   * Fingerprint (SHA256 base64, no prefix) captured by `hostVerifier` during
+   * the most recent handshake. Populated on every connect (pinned or TOFU) so
+   * the manager can persist a TOFU-discovered key after `docker info` confirms
+   * the node is real.
+   */
+  private verifiedFingerprint: string | undefined;
+
+  private client: SSHClientType | null = null;
   private connected = false;
 
   // ---- Static connection pool ------------------------------------------
@@ -110,6 +143,7 @@ export class DockerSSHClient {
     port?: number,
     hostKeyFingerprint?: string,
     username?: string,
+    onHostKeyDiscovered?: (hostname: string, fingerprint: string) => Promise<void>,
   ): DockerSSHClient {
     const effectivePort = port ?? DEFAULT_SSH_PORT;
     const effectiveUser = username ?? DEFAULT_SSH_USERNAME;
@@ -165,6 +199,7 @@ export class DockerSSHClient {
         port: effectivePort,
         username: effectiveUser,
         hostKeyFingerprint,
+        onHostKeyDiscovered,
       });
       client.lastActivityMs = Date.now();
       DockerSSHClient.pool.set(poolKey, client);
@@ -198,6 +233,7 @@ export class DockerSSHClient {
     this.username = config.username ?? DEFAULT_SSH_USERNAME;
     this.privateKeyPath = config.privateKeyPath ?? DEFAULT_SSH_KEY_PATH;
     this.hostKeyFingerprint = config.hostKeyFingerprint;
+    this.onHostKeyDiscovered = config.onHostKeyDiscovered;
 
     this.privateKey = config.privateKey ?? DockerSSHClient.resolvePrivateKey(this.privateKeyPath);
   }
@@ -263,8 +299,10 @@ export class DockerSSHClient {
       return;
     }
 
+    const SSHClientCtor = await loadSSHClientCtor();
+
     return new Promise<void>((resolve, reject) => {
-      const conn = new SSHClient();
+      const conn = new SSHClientCtor();
 
       const timeout = setTimeout(() => {
         conn.end();
@@ -280,6 +318,21 @@ export class DockerSSHClient {
         this.client = conn;
         this.connected = true;
         logger.info(`[docker-ssh] Connected to ${this.hostname}:${this.port}`);
+
+        // TOFU capture: if the pin was NULL on entry, hostVerifier accepted the
+        // presented key and stored it in `verifiedFingerprint`. Hand it to the
+        // caller so it can persist it to docker_nodes as the node's pin. Fire
+        // it after `ready` (not inside the sync verifier) so the async persist
+        // never blocks the handshake, and swallow callback errors — the key was
+        // already accepted, so a failed persist must not fail the connection.
+        if (!this.hostKeyFingerprint && this.onHostKeyDiscovered && this.verifiedFingerprint) {
+          const fingerprint = this.verifiedFingerprint;
+          void this.onHostKeyDiscovered(this.hostname, fingerprint).catch((err) => {
+            logger.warn(
+              `[docker-ssh] TOFU host-key persist callback failed for ${this.hostname}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+        }
         resolve();
       });
 
@@ -301,27 +354,69 @@ export class DockerSSHClient {
         username: this.username,
         privateKey: this.privateKey,
         readyTimeout: CONNECTION_TIMEOUT_MS,
-        hostVerifier: (key: Buffer) => {
-          const fingerprint = crypto.createHash("sha256").update(key).digest("base64");
-          if (!this.hostKeyFingerprint) {
-            logger.error(
-              `[docker-ssh] Refusing unpinned host key for ${this.hostname}: SHA256:${fingerprint}. Register host_key_fingerprint before SSH.`,
-            );
-            return false;
-          }
-          if (
-            normalizeSshFingerprint(fingerprint) !==
-            normalizeSshFingerprint(this.hostKeyFingerprint)
-          ) {
-            logger.error(
-              `[docker-ssh] HOST KEY MISMATCH for ${this.hostname}! Expected SHA256:${this.hostKeyFingerprint}, got SHA256:${fingerprint}`,
-            );
-            return false;
-          }
-          return true;
-        },
+        hostVerifier: (key: Buffer) => this.verifyHostKey(key),
       });
     });
+  }
+
+  /**
+   * Decide whether to accept the host key `ssh2` presents during the handshake.
+   *
+   * Three cases:
+   *  1. A pin EXISTS and matches → accept.
+   *  2. A pin EXISTS and does NOT match → REFUSE. A mismatch is a possible MITM
+   *     (or an unexpected host re-key); it is never treated as first-use, and
+   *     TOFU never weakens this — the flag only governs the NULL-pin case.
+   *  3. No pin (NULL):
+   *       - TOFU enabled  → accept, stash the fingerprint for the post-`ready`
+   *         callback to persist (this is the outage fix — every staging node
+   *         ships NULL, so fail-closed here bricks the whole fleet).
+   *       - TOFU disabled → REFUSE (strict fail-closed for unpinned hosts).
+   *
+   * `verifiedFingerprint` is always set to the presented key on accept so the
+   * caller can persist a freshly-discovered pin.
+   */
+  private verifyHostKey(key: Buffer): boolean {
+    const fingerprint = crypto.createHash("sha256").update(key).digest("base64");
+
+    if (this.hostKeyFingerprint) {
+      if (
+        normalizeSshFingerprint(fingerprint) !== normalizeSshFingerprint(this.hostKeyFingerprint)
+      ) {
+        logger.error(
+          `[docker-ssh] HOST KEY MISMATCH for ${this.hostname}! Expected SHA256:${this.hostKeyFingerprint}, got SHA256:${fingerprint}. Refusing (possible MITM).`,
+        );
+        return false;
+      }
+      this.verifiedFingerprint = normalizeSshFingerprint(fingerprint);
+      return true;
+    }
+
+    // No pin. Trust-On-First-Use (see containersEnv.sshTofuPinEnabled docs).
+    if (!containersEnv.sshTofuPinEnabled()) {
+      logger.error(
+        `[docker-ssh] Refusing unpinned host key for ${this.hostname}: SHA256:${fingerprint}. ` +
+          `TOFU pinning is disabled (CONTAINERS_SSH_TOFU_PIN=false); register host_key_fingerprint before SSH.`,
+      );
+      return false;
+    }
+
+    this.verifiedFingerprint = normalizeSshFingerprint(fingerprint);
+    logger.warn(
+      `[docker-ssh] TOFU: accepting unpinned host key for ${this.hostname} on first use and pinning SHA256:${this.verifiedFingerprint}. ` +
+        `Later connects verify against this pin; a change will be refused.`,
+    );
+    return true;
+  }
+
+  /**
+   * The host-key fingerprint (SHA256 base64, no prefix) established for the most
+   * recent successful handshake — the pinned value when one exists, otherwise
+   * the TOFU-captured one. `undefined` before the first connect. Used by the
+   * node manager to persist a TOFU pin after `docker info` confirms the node.
+   */
+  getVerifiedHostKeyFingerprint(): string | undefined {
+    return this.verifiedFingerprint ?? this.hostKeyFingerprint;
   }
 
   /**

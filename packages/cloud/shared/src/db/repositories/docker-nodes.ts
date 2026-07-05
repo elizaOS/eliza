@@ -100,6 +100,24 @@ export class DockerNodesRepository {
       .where(eq(dockerNodes.node_id, nodeId));
   }
 
+  /**
+   * Mark a node offline AND disable it in one write — used when consecutive
+   * health checks confirm it is dead, to route it out of scheduling (`enabled`
+   * gates `findEnabled`) while recording why (`status=offline`). An operator
+   * re-enables it after remediation.
+   */
+  async markOfflineAndDisable(nodeId: string): Promise<void> {
+    await dbWrite
+      .update(dockerNodes)
+      .set({
+        status: "offline",
+        enabled: false,
+        last_health_check: new Date(),
+        updated_at: new Date(),
+      })
+      .where(eq(dockerNodes.node_id, nodeId));
+  }
+
   async incrementAllocated(nodeId: string): Promise<void> {
     await dbWrite
       .update(dockerNodes)
@@ -127,6 +145,25 @@ export class DockerNodesRepository {
         `[docker-nodes] decrementAllocated clamped to 0 for node ${nodeId} — allocation count may be out of sync`,
       );
     }
+  }
+
+  /**
+   * Persist a host-key fingerprint captured via Trust-On-First-Use.
+   *
+   * Only writes when the row is still unpinned (`host_key_fingerprint IS NULL`),
+   * so it never clobbers an existing pin — a later differing key must surface as
+   * a MISMATCH in the SSH verifier, not be silently re-pinned here. Idempotent:
+   * concurrent health checks racing to pin the same node all no-op after the
+   * first write.
+   */
+  async setHostKeyFingerprint(nodeId: string, fingerprint: string): Promise<void> {
+    await dbWrite
+      .update(dockerNodes)
+      .set({
+        host_key_fingerprint: fingerprint,
+        updated_at: new Date(),
+      })
+      .where(and(eq(dockerNodes.node_id, nodeId), sql`${dockerNodes.host_key_fingerprint} IS NULL`));
   }
 
   /**
