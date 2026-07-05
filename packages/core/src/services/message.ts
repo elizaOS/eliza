@@ -8452,6 +8452,18 @@ export class DefaultMessageService implements IMessageService {
 				? message.content.source
 				: "messageService";
 
+		// Mint the root-turn traceId once here (#13775) — inherited from a spawning
+		// parent's env when this runtime is itself a sub-agent, else a fresh id.
+		// Stamped on message.metadata BEFORE MESSAGE_RECEIVED is emitted so the DB
+		// trajectory handler (features/trajectories) records the SAME traceId as
+		// the file recorder, and placed on the turn's trajectory context below so
+		// sub-agent spawns read it too. Both stores then join on one traceId.
+		const traceId = resolveTraceCorrelationFromEnv().traceId ?? asUUID(v4());
+		if (!message.metadata) {
+			message.metadata = { type: "message" };
+		}
+		(message.metadata as { traceId?: string }).traceId = traceId;
+
 		let trajectoryStepId =
 			typeof message.metadata === "object" &&
 			message.metadata !== null &&
@@ -8517,13 +8529,9 @@ export class DefaultMessageService implements IMessageService {
 		}
 
 		const senderRole = await resolveStage1SenderRole(runtime, message);
-		// Mint the root-turn traceId once here (#13775) — inherited from a
-		// spawning parent's env when this runtime is itself a sub-agent, else a
-		// fresh id. Placing it on the turn-scoped trajectory context makes it
-		// readable by the file recorder (message.ts:startTrajectory), DB
-		// persistence, and any sub-agent spawn for the whole turn.
-		const traceId = resolveTraceCorrelationFromEnv().traceId ?? asUUID(v4());
 		const trajectoryContextBase = {
+			// Minted above (before MESSAGE_RECEIVED) so file, DB, and spawn paths
+			// share it for the whole turn (#13775).
 			traceId,
 			runId: runtime.getCurrentRunId?.(),
 			roomId: message.roomId,
