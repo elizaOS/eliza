@@ -188,9 +188,9 @@ own capabilities, and streams the reply back into your session. Examples:
 Cloud is BROKER-FIRST: you do NOT hold the owner's Cloud key — register and
 deploy apps through the parent with \`apps.create\` / \`containers.create\` (they map
 1:1 onto Cloud's \`POST /api/v1/apps\` and \`POST /api/v1/containers\`) instead of
-curling the Cloud API yourself. Discovery is free, but mutating/paid/destructive
-Cloud commands stay gated: they require an explicit human "yes" on a follow-up
-turn, and paid self-spend is capped by the parent's spend allowance
+curling the Cloud API yourself. Discovery is free, but
+mutating/paid/destructive Cloud commands stay gated: they require an explicit
+human "yes" on a follow-up turn, and paid self-spend is capped by the spend allowance
 (\`containers.create\` is fixed-cost and may auto-authorize within that cap). You
 cannot bypass either gate by declaring a price — the parent verifies
 server-side. If a container needs the owner's Cloud key at RUNTIME (its own

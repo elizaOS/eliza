@@ -39,7 +39,10 @@ describe("app-deploy-guidance", () => {
         });
         expect(out).toContain("App Deployment (Eliza Cloud)");
         expect(out).toContain("packages/examples/cloud/edad");
-        expect(out).toContain("POST /api/v1/apps");
+        // Broker-first (#14118): register via the parent broker command, not a
+        // raw POST /api/v1/apps with an owner key the child no longer has.
+        expect(out).toContain('"command":"apps.create"');
+        expect(out).not.toContain("POST /api/v1/apps");
         expect(out).toContain("x-affiliate-code");
       }
     });
@@ -270,6 +273,59 @@ describe("app-deploy-guidance", () => {
         expect(out).toContain("GHCR_TOKEN");
         expect(out).toContain("registry push credential is missing");
       }
+    });
+  });
+
+  // #14118: Cloud register + deploy render as parent-agent BROKER commands, not
+  // raw Cloud-API curls with an owner key the child no longer receives. The
+  // broker commands map 1:1 onto the edad README's calls (apps.create → POST
+  // /api/v1/apps, containers.create → POST /api/v1/containers) and keep the
+  // spend cap + human-confirmation gates. The one value the broker can't inject —
+  // the container's own ELIZA_CLOUD_API_KEY runtime bearer — is fetched via the
+  // owner-approved credential bridge, never a raw env leak.
+  describe("broker-first Cloud access (#14118)", () => {
+    const cloud = { target: "eliza-cloud" as const };
+
+    it("monetized build routes register + deploy through the broker, not raw curls", () => {
+      const out = buildAppDeployGuidance(
+        cloud,
+        "build a monetized app that charges $2 per use",
+      );
+      expect(out).toContain('"command":"apps.create"');
+      expect(out).toContain('"command":"containers.create"');
+      // The parity anchor: broker containers.create == the edad README's
+      // ungated POST /api/v1/containers. The guidance names the gated
+      // /apps/<id>/deploy only to warn AGAINST it.
+      expect(out).toContain("ungated container path");
+      expect(out).toContain("do NOT use the gated `/apps/<id>/deploy`");
+      // No raw Cloud-API POSTs are prescribed — the child does not curl the API.
+      expect(out).not.toContain("POST /api/v1/apps");
+      // The child is told it does not hold the raw owner key.
+      expect(out).toContain("you have no raw Cloud key");
+    });
+
+    it("keeps the container-runtime key on the owner-approved credential bridge (the one step broker can't inject)", () => {
+      const out = buildAppDeployGuidance(
+        cloud,
+        "build a monetized app that charges $2 per use",
+      );
+      // The container's own upstream bearer is a caller-supplied value; it is the
+      // non-reserved ELIZA_CLOUD_API_KEY (ELIZAOS_CLOUD_API_KEY is platform-
+      // reserved and rejected on the deploy path — #9853), fetched via the bridge.
+      expect(out).toContain("environmentVars.ELIZA_CLOUD_API_KEY");
+      expect(out).toContain("platform-reserved");
+      expect(out).toContain("credentials/request");
+      expect(out).toContain("ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS");
+    });
+
+    it("non-monetized build also routes hosting through the broker", () => {
+      const out = buildAppDeployGuidance(cloud, "build a website about cats");
+      // The non-monetized branch names the broker commands (backtick form) and
+      // the JSON apps.create call, but never a raw Cloud-API POST.
+      expect(out).toContain('"command":"apps.create"');
+      expect(out).toContain("cloud-command containers.create");
+      expect(out).toContain("through the PARENT AGENT");
+      expect(out).not.toContain("POST /api/v1/apps");
     });
   });
 });
