@@ -20,10 +20,10 @@
  *  sandboxed-iframe — untrusted or third-party WEB views that must not share the
  *    host realm. They render in an `<iframe sandbox>` with a postMessage
  *    capability broker; MDN warns that `allow-scripts` + `allow-same-origin` on
- *    same-origin content is not a real sandbox, so an untrusted view is served
- *    from a distinct origin or without `allow-same-origin`. No shipped built-in
- *    view uses this today (every first-party view is in-process); it is the
- *    designated level for future untrusted web plugin views.
+ *    same-origin content is not a real sandbox, so the frame is served without
+ *    `allow-same-origin` (opaque origin) and reaches the shell only through the
+ *    broker (`navigate`/`storage`). `DynamicViewLoader` frames any view declaring
+ *    this level; the `sandbox-probe` developer view is the shipped consumer.
  *
  *  native-webview — heavy or untrusted views that embed a NATIVE child
  *    web-content surface with its own renderer process and an explicit
@@ -92,12 +92,14 @@ export const SURFACE_ISOLATION_CATALOGUE: Readonly<
   "sandboxed-iframe": {
     level: "sandboxed-iframe",
     rationale:
-      "Untrusted / third-party WEB views. Rendered in an `<iframe sandbox>` with " +
-      "a postMessage capability broker, served cross-origin (never " +
-      "`allow-scripts` + `allow-same-origin` on same-origin content). No shipped " +
-      "built-in view uses this yet — it is the designated level for future " +
-      "untrusted web plugin views.",
-    examples: [],
+      "Untrusted / third-party WEB views. Rendered in an `<iframe sandbox>` " +
+      "(`allow-scripts`, never `allow-same-origin` — so the document is opaque " +
+      "origin and cannot reach host DOM/storage/cookies) with a postMessage " +
+      "capability broker gating `navigate`/`storage`. `DynamicViewLoader` frames " +
+      "any view whose manifest declares this level instead of importing it into " +
+      "the host realm; the `sandbox-probe` developer view is the shipped " +
+      "first-party consumer (see `SandboxedViewFrame.tsx`).",
+    examples: ["sandbox-probe"],
   },
   "native-webview": {
     level: "native-webview",

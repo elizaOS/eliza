@@ -106,6 +106,7 @@ import {
   ViewLoadingSkeleton,
   ViewRestrictedState,
 } from "./ViewStatusStates";
+import { SandboxedViewFrame } from "./SandboxedViewFrame";
 import { brokerViewInteract } from "./view-capability-broker";
 import { registerViewInteractHandler } from "./view-interact-registry";
 
@@ -1208,6 +1209,11 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     () => resolveSurfaceManifest({ surface }),
     [surface],
   );
+  // A `sandboxed-iframe` view is never imported into the host realm — that is
+  // the whole point of the level. It renders in an `<iframe sandbox>` (#14180)
+  // and talks to the shell only through the postMessage broker, so the in-realm
+  // bundle-load / interact-registry path below is skipped for it.
+  const isSandboxed = resolvedManifest.isolation === "sandboxed-iframe";
   const [bundle, setBundle] = useState<ViewBundleModule | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
   // Incrementing this key invalidates the module cache entry and forces a
@@ -1229,7 +1235,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   // re-run this effect to invalidate the module cache.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is a manual cache-bust trigger
   useEffect(() => {
-    if (!dynamicLoadingAllowed) return;
+    if (!dynamicLoadingAllowed || isSandboxed) return;
 
     let cancelled = false;
     const lease = acquireBundleModule(bundleUrl, componentExport);
@@ -1256,7 +1262,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
       cancelled = true;
       lease.release();
     };
-  }, [bundleUrl, componentExport, dynamicLoadingAllowed, reloadKey]);
+  }, [bundleUrl, componentExport, dynamicLoadingAllowed, isSandboxed, reloadKey]);
 
   // Register this view's interact handler whenever the bundle is loaded.
   // The handler is unregistered on unmount or when the bundle changes.
@@ -1353,6 +1359,22 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     setLoadError(null);
     setReloadKey((k) => k + 1);
   }, [bundleUrl, componentExport]);
+
+  // A sandboxed-iframe view embeds cross-realm; its `bundleUrl` is the framed
+  // document entry, not a host-external JS bundle. Delegating here means untrusted
+  // web content never executes in the shell's realm (#14180).
+  if (isSandboxed) {
+    return (
+      <div ref={containerRef} className="contents">
+        <SandboxedViewFrame
+          viewId={viewId}
+          surface={surface}
+          src={bundleUrl}
+          title={viewId}
+        />
+      </div>
+    );
+  }
 
   // iOS App Store and Google Play builds cannot load remote JS at runtime.
   if (!dynamicLoadingAllowed) {

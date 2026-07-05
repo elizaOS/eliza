@@ -207,6 +207,7 @@ import {
 } from "./components/pages/WalletSectionNav";
 import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
+import { registerSandboxProbeView } from "./components/views/sandbox-probe-view";
 import {
   useAvailableViews,
   useRoutableViews,
@@ -1941,6 +1942,11 @@ export function App() {
   }));
   const isPopout = useIsPopout();
   const shellMode = useShellMode();
+  // Register the developer-only sandboxed-iframe consumer once at boot (#14180),
+  // so the level has a shipped, navigable first-party view. Idempotent.
+  useEffect(() => {
+    registerSandboxProbeView();
+  }, []);
   // Auth gate — only active after the coordinator reaches "ready".
   // During first-run setup / pairing / startup phases the StartupScreen handles
   // its own gate (bootstrap step), so we skip the check.

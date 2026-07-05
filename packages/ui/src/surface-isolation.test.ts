@@ -36,4 +36,12 @@ describe("surface-isolation catalogue", () => {
     expect(examples).toContain("chat");
     expect(examples).toContain("settings");
   });
+
+  it("the sandboxed-iframe level names its shipped consumer (#14180)", () => {
+    // The level was `examples: []` until a real framed consumer shipped; the
+    // sandbox-probe developer view now exercises the postMessage broker path.
+    const examples = isolationEntry("sandboxed-iframe").examples;
+    expect(examples.length).toBeGreaterThan(0);
+    expect(examples).toContain("sandbox-probe");
+  });
 });
