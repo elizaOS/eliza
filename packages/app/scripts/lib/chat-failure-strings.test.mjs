@@ -1,17 +1,13 @@
-// #13687: the mobile chat-reply FAILURE vocabulary must be single-sourced. The
-// mobile-local-chat-smoke.mjs regexes and the on-device iOS XCUITest reply
-// verifier (via the generated Swift artifact) must classify the SAME error
-// renders as failures — historically the two copies drifted and the Swift
-// heuristic accepted an error render (e.g. the error-boundary "Something went
-// wrong" heading) as a "genuine model reply".
-//
-// This parity test proves:
-//   1. the derived regexes reproduce the historical hand-authored classifier
-//      behaviour, and stay in lockstep with the fragment lists;
-//   2. the committed Swift artifact byte-matches the generator output (so a hand
-//      edit / stale regen is caught in CI, not on device);
-//   3. representative error renders are classified as failures and a real reply
-//      is not — the core anti-false-green property of the whole loop.
+/**
+ * Parity guard for the mobile chat-reply failure vocabulary and the iOS
+ * XCUITest verifier that consumes it.
+ *
+ * The tests pin the historical smoke classifier behaviour, prove the checked-in
+ * Swift and runtime TypeScript artifacts are generated from the shared list, and
+ * guard the #13687 anti-false-green contract: the device verifier accepts only a
+ * marker echo while classifying failure-string, not-ready, and unrecognized
+ * replies distinctly.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -115,11 +111,30 @@ describe("chat-failure-strings single source of truth (#13687)", () => {
 
   it("the XCUITest verifier only accepts marker-echo replies and classifies every verdict", () => {
     const bootCapture = fs.readFileSync(bootCaptureUITestsPath, "utf8");
-    expect(bootCapture).toContain("IOS_CHAT_OK");
+    expect(bootCapture).not.toContain("Say hello in exactly three words.");
+    expect(bootCapture).toContain('let replyMarker = "IOS_CHAT_OK"');
+    expect(bootCapture).toContain(
+      '"Start your reply with exactly \\(replyMarker), then say hello in one short sentence."',
+    );
     expect(bootCapture).toContain("marker-hit");
     expect(bootCapture).toContain("failure-string:");
+    expect(bootCapture).toContain("not-ready");
+    expect(bootCapture).toContain("reply-not-ready");
     expect(bootCapture).toContain("unrecognized-text");
     expect(bootCapture).toContain("reply-unrecognized-text");
+
+    const markerBranch = bootCapture.match(
+      /if let c = candidate,\s*c\.localizedCaseInsensitiveContains\(replyMarker\)\s*\{(?<body>[\s\S]*?)\n            \}/,
+    );
+    expect(markerBranch?.groups?.body).toContain("reply = c");
+
+    const unrecognizedBranch = bootCapture.match(
+      /if let c = candidate, !looksNotReady\(c\) \{(?<body>[\s\S]*?)\n            \}/,
+    );
+    expect(unrecognizedBranch?.groups?.body).toContain(
+      "unrecognizedObservation = c",
+    );
+    expect(unrecognizedBranch?.groups?.body).not.toContain("reply = c");
   });
 
   it("the Swift artifact enumerates the same fragments as the JS lists", () => {
