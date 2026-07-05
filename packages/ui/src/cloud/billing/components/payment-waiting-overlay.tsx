@@ -93,16 +93,16 @@ export function PaymentWaitingOverlay({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-surface"
     >
-      <div className="w-full max-w-md border border-white/10 bg-[#0b0d11] p-6 text-white">
+      <div className="w-full max-w-md border border-border bg-card p-6 text-txt-strong">
         <div className="flex flex-col items-center text-center">
           {isConfirmed ? (
             <CheckCircle2 className="h-12 w-12 text-emerald-300" />
           ) : isFailed ? (
             <XCircle className="h-12 w-12 text-red-300" />
           ) : (
-            <Loader2 className="h-12 w-12 animate-spin text-white/80" />
+            <Loader2 className="h-12 w-12 animate-spin text-txt" />
           )}
 
           <h2 className="mt-5 text-xl font-semibold">
@@ -119,7 +119,7 @@ export function PaymentWaitingOverlay({
                   })}
           </h2>
 
-          <p className="mt-2 text-sm text-white/65">
+          <p className="mt-2 text-sm text-muted">
             {isConfirmed
               ? data?.bonusCredits
                 ? t("cloud.paymentWaiting.addedCreditWithBonus", {
@@ -151,12 +151,12 @@ export function PaymentWaitingOverlay({
 
           {data?.txHash && (
             <div className="mt-4 w-full">
-              <div className="text-xs text-white/45">
+              <div className="text-xs text-muted">
                 {t("cloud.paymentWaiting.transaction", {
                   defaultValue: "Transaction",
                 })}
               </div>
-              <div className="mt-1 break-all rounded-xs border border-white/10 bg-white/[0.04] px-3 py-2 font-mono text-xs text-white/85">
+              <div className="mt-1 break-all rounded-xs border border-border bg-surface px-3 py-2 font-mono text-xs text-txt">
                 {data.txHash}
               </div>
               {data.explorerUrl && (
@@ -164,7 +164,7 @@ export function PaymentWaitingOverlay({
                   href={data.explorerUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 text-xs text-white/70 hover:text-white"
+                  className="mt-2 inline-flex items-center gap-1.5 text-xs text-txt hover:text-txt-strong"
                 >
                   {t("cloud.paymentWaiting.viewOnExplorer", {
                     defaultValue: "View on explorer",
@@ -202,7 +202,7 @@ export function PaymentWaitingOverlay({
               <Button
                 onClick={onDismiss}
                 variant="surface"
-                className="rounded-xs text-white/80"
+                className="rounded-xs text-txt"
               >
                 {t("cloud.paymentWaiting.hideKeepWatching", {
                   defaultValue: "Hide — keep watching in background",
@@ -212,7 +212,7 @@ export function PaymentWaitingOverlay({
           </div>
 
           {isWaiting && data?.expiresAt && (
-            <p className="mt-4 text-xs text-white/40">
+            <p className="mt-4 text-xs text-muted">
               {t("cloud.paymentWaiting.expires", {
                 time: new Date(data.expiresAt).toLocaleTimeString(),
                 defaultValue: "expires {{time}}",

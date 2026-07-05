@@ -71,7 +71,7 @@ export function PayAsYouGoCard() {
 
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1 flex-1 min-w-0">
-            <Label className="text-white font-mono text-sm flex items-center gap-2">
+            <Label className="text-txt-strong font-mono text-sm flex items-center gap-2">
               <Coins className="h-4 w-4 text-[var(--accent)]" />
               Use my app earnings to pay container hosting
             </Label>

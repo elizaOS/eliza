@@ -140,10 +140,10 @@ export function MembersTab({ user }: MembersTabProps) {
         {/* Header with Invite Button */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h3 className="text-base md:text-lg font-mono font-semibold text-white">
+            <h3 className="text-base md:text-lg font-mono font-semibold text-txt-strong">
               {t("cloud.membersTab.title", { defaultValue: "Team Members" })}
             </h3>
-            <p className="text-xs md:text-sm font-mono text-white/60">
+            <p className="text-xs md:text-sm font-mono text-muted">
               {t("cloud.membersTab.subtitle", {
                 defaultValue: "Manage who has access to your organization",
               })}
@@ -182,8 +182,8 @@ export function MembersTab({ user }: MembersTabProps) {
 
         {/* Pending Invites */}
         {canManageMembers && (
-          <div className="pt-4 md:pt-6 border-t border-white/10">
-            <h3 className="text-base md:text-lg font-mono font-semibold mb-3 md:mb-4 text-white">
+          <div className="pt-4 md:pt-6 border-t border-border">
+            <h3 className="text-base md:text-lg font-mono font-semibold mb-3 md:mb-4 text-txt-strong">
               {t("cloud.membersTab.pendingInvitations", {
                 defaultValue: "Pending Invitations",
               })}

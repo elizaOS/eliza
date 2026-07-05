@@ -41,7 +41,7 @@ export function AuditEventList({
   const t = useCloudT();
   if (events.length === 0) {
     return (
-      <p className="text-sm text-white/60">
+      <p className="text-sm text-muted">
         {emptyMessage ??
           t("cloud.auditEvents.empty", {
             defaultValue: "No audit events recorded yet.",
@@ -56,7 +56,7 @@ export function AuditEventList({
     >
       {events.map((event) => {
         const Icon = RESULT_ICON[event.result] ?? ShieldAlert;
-        const tone = RESULT_TONE[event.result] ?? "text-white/60";
+        const tone = RESULT_TONE[event.result] ?? "text-muted";
         return (
           <li
             key={event.event_id}
@@ -65,11 +65,11 @@ export function AuditEventList({
             <Icon className={`mt-0.5 h-4 w-4 ${tone}`} aria-hidden />
             <div className="flex-1 space-y-0.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-mono font-medium text-white">
+                <span className="font-mono font-medium text-txt-strong">
                   {event.action}
                 </span>
                 <time
-                  className="text-white/40"
+                  className="text-muted"
                   dateTime={event.ts}
                   title={event.ts}
                 >
@@ -77,7 +77,7 @@ export function AuditEventList({
                 </time>
               </div>
               {event.resource ? (
-                <p className="text-white/50">
+                <p className="text-muted">
                   {t("cloud.auditEvents.on", { defaultValue: "on" })}{" "}
                   <span className="font-mono">
                     {event.resource.type}:{event.resource.id}
@@ -85,7 +85,7 @@ export function AuditEventList({
                 </p>
               ) : null}
               {event.ip ? (
-                <p className="font-mono text-[11px] text-white/40">
+                <p className="font-mono text-[11px] text-muted">
                   {t("cloud.auditEvents.ip", {
                     ip: event.ip,
                     defaultValue: "ip {{ip}}",
