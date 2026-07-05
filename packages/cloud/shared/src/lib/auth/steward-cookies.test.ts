@@ -5,7 +5,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { LEGACY_STEWARD_COOKIES, stewardCookieNames } from "./steward-cookies";
+import {
+  canMutateLegacyStewardCookies,
+  LEGACY_STEWARD_COOKIES,
+  stewardCookieNames,
+} from "./steward-cookies";
 
 describe("stewardCookieNames", () => {
   it("production and unset use the historical unsuffixed names", () => {
@@ -23,5 +27,14 @@ describe("stewardCookieNames", () => {
     expect(staging.token).not.toBe(LEGACY_STEWARD_COOKIES.token);
     expect(staging.refreshToken).not.toBe(LEGACY_STEWARD_COOKIES.refreshToken);
     expect(staging.authed).not.toBe(LEGACY_STEWARD_COOKIES.authed);
+  });
+});
+
+describe("canMutateLegacyStewardCookies", () => {
+  it("limits legacy mutations to production and unset local environments", () => {
+    expect(canMutateLegacyStewardCookies("production")).toBe(true);
+    expect(canMutateLegacyStewardCookies(undefined)).toBe(true);
+    expect(canMutateLegacyStewardCookies("staging")).toBe(false);
+    expect(canMutateLegacyStewardCookies("preview")).toBe(false);
   });
 });

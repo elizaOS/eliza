@@ -17,6 +17,7 @@ import {
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
 import {
+  canMutateLegacyStewardCookies,
   LEGACY_STEWARD_COOKIES,
   stewardCookieNames,
 } from "@/lib/auth/steward-cookies";
@@ -333,18 +334,19 @@ app.delete("/", (c) => {
   }
   const domain = cookieDomainForHost(c.req.header("host"));
   const opts = domain ? { path: "/", domain } : { path: "/" };
-  // Sign-out must clear BOTH naming eras, exactly like /logout: this DELETE is
-  // the clear path clearStaleStewardSession uses, and a pre-rename session
-  // whose legacy pair survives here gets resurrected by the legacy read
-  // fallback + 30-day legacy refresh cookie (ghost session). The legacy read
-  // fallback itself shuts off after 2026-08-04. (#13728)
+  // Non-production must not clear the unsuffixed legacy names: on the shared
+  // parent domain those names are production's live cookies. Production/unset
+  // still owns and clears them; non-production clears only its suffixed names
+  // and lets the bounded legacy read fallback expire naturally (#13728).
   const names = stewardCookieNames(c.env.ENVIRONMENT);
   deleteCookie(c, names.token, opts);
   deleteCookie(c, names.refreshToken, opts);
-  deleteCookie(c, LEGACY_STEWARD_COOKIES.token, opts);
-  deleteCookie(c, LEGACY_STEWARD_COOKIES.refreshToken, opts);
   deleteCookie(c, names.authed, opts);
-  deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, opts);
+  if (canMutateLegacyStewardCookies(c.env.ENVIRONMENT)) {
+    deleteCookie(c, LEGACY_STEWARD_COOKIES.token, opts);
+    deleteCookie(c, LEGACY_STEWARD_COOKIES.refreshToken, opts);
+    deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, opts);
+  }
   logStewardAuth("deleted", null);
   return c.json({ ok: true });
 });
