@@ -446,6 +446,7 @@ import {
   handleModelsRoutes,
   handlePermissionRoutes,
   handlePermissionsExtraRoutes,
+  handleProjectRoutes,
   handleProviderSwitchRoutes,
   handleRegistryRoutes,
   handleRelationshipsRoutes,
@@ -2718,6 +2719,24 @@ async function handleRequest(
   // ═══════════════════════════════════════════════════════════════════════
   if (
     await handleBugReportRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      readJsonBody,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Project registry routes (#13776 item 5): list + switch the active project
+  // that backs the UI project switcher.
+  // ═══════════════════════════════════════════════════════════════════════
+  if (
+    await handleProjectRoutes({
       req,
       res,
       method,

@@ -887,6 +887,23 @@ export interface CodingAgentTaskProviderPolicy {
   model?: string;
 }
 
+/** A registered project the switcher lists + activates (#13776 item 5). Mirrors
+ * the agent-side `ProjectSummaryDTO`. */
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  localPath: string;
+  repoUrl?: string;
+  defaultBranch?: string;
+  lastOpenedAt: string;
+}
+
+/** `GET /api/projects` payload: the registry list plus the active pointer. */
+export interface ProjectListResponse {
+  projects: ProjectSummary[];
+  activeProjectId: string | null;
+}
+
 export interface CodingAgentTaskThread {
   id: string;
   title: string;
