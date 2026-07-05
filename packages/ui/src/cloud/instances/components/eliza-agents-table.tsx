@@ -887,9 +887,6 @@ export function ElizaAgentsTable({
   const deleteTargetBusy = (deleteIds ?? []).some((id) => poller.isActive(id));
 
   if (localSandboxes.length === 0) {
-    // Agent creation lives in the Eliza app now, not the console — so no
-    // create-agent action here (this table only lists/manages existing agents).
-    // TODO: once app.elizacloud.ai ships, make this a link that deep-links there.
     return (
       <DataListEmptyState
         title={t("cloud.elizaAgentsTable.noAgentsYet", {
@@ -945,7 +942,6 @@ export function ElizaAgentsTable({
             }),
           }}
         />
-        {/* Search + filter + create */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
@@ -1002,8 +998,6 @@ export function ElizaAgentsTable({
               </SelectItem>
             </SelectContent>
           </Select>
-          {/* Agent creation moved to the Eliza app — no create button in the
-              console toolbar. TODO: deep-link to app.elizacloud.ai when it ships. */}
         </div>
 
         {(searchQuery || statusFilter !== "all") && (
