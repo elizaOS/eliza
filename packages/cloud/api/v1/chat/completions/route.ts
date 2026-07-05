@@ -266,6 +266,14 @@ interface ChatRequest {
   frequency_penalty?: number;
   presence_penalty?: number;
   stream?: boolean;
+  /**
+   * OpenAI `stream_options`: when `include_usage` is true the stream carries
+   * `usage: null` on every chunk and one extra terminal chunk (empty `choices`)
+   * with the real token usage, before `data: [DONE]` — this is how streaming
+   * clients meter token spend (plugin-elizacloud requests it on every
+   * streamed call).
+   */
+  stream_options?: { include_usage?: boolean };
   stop?: string | string[];
   tools?: Array<{
     type: "function";
@@ -661,6 +669,32 @@ function formatOpenAIUsage(
     }
   }
   return out;
+}
+
+/**
+ * Normalize an SDK usage record into the token triple the OpenAI response
+ * shape requires — identical to what billUsage normalizes (inputTokens ??
+ * promptTokens, etc.), so client-visible usage always matches billed usage.
+ */
+function normalizeUsageTokens(usage: unknown): {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+} {
+  const record = (usage ?? {}) as {
+    inputTokens?: number;
+    promptTokens?: number;
+    outputTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+  const inputTokens = record.inputTokens ?? record.promptTokens ?? 0;
+  const outputTokens = record.outputTokens ?? record.completionTokens ?? 0;
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: record.totalTokens ?? inputTokens + outputTokens,
+  };
 }
 
 function firstNumber(...values: unknown[]): number | undefined {
@@ -1897,12 +1931,21 @@ async function handleStreamingRequest(
   // Convert to OpenAI-compatible SSE stream
   const encoder = new TextEncoder();
 
+  // OpenAI stream_options.include_usage contract: every chunk carries
+  // `usage: null` and one extra terminal chunk (empty `choices`) carries the
+  // real usage, before `data: [DONE]`. Without honoring it, streamed calls
+  // are unmeterable client-side — plugin-elizacloud requests this frame on
+  // every streamed call and emits MODEL_USED metering only when it arrives.
+  const includeUsage = request.stream_options?.include_usage === true;
+  const usageFieldOnChunks = includeUsage ? { usage: null } : {};
+
   const openAIStream = new ReadableStream({
     async start(controller) {
       const responseId = `chatcmpl-${Date.now()}`;
       const toolCallIndexes = new Map<string, number>();
       let nextToolCallIndex = 0;
       let finishReason = "stop";
+      let finishUsage: unknown;
 
       try {
         for await (const part of result.fullStream) {
@@ -1912,6 +1955,7 @@ async function handleStreamingRequest(
               object: "chat.completion.chunk",
               created: Math.floor(Date.now() / 1000),
               model,
+              ...usageFieldOnChunks,
               choices: [
                 {
                   index: 0,
@@ -1937,6 +1981,7 @@ async function handleStreamingRequest(
                   object: "chat.completion.chunk",
                   created: Math.floor(Date.now() / 1000),
                   model,
+                  ...usageFieldOnChunks,
                   choices: [
                     {
                       index: 0,
@@ -1968,6 +2013,7 @@ async function handleStreamingRequest(
                   object: "chat.completion.chunk",
                   created: Math.floor(Date.now() / 1000),
                   model,
+                  ...usageFieldOnChunks,
                   choices: [
                     {
                       index: 0,
@@ -1999,6 +2045,7 @@ async function handleStreamingRequest(
                   object: "chat.completion.chunk",
                   created: Math.floor(Date.now() / 1000),
                   model,
+                  ...usageFieldOnChunks,
                   choices: [
                     {
                       index: 0,
@@ -2030,6 +2077,7 @@ async function handleStreamingRequest(
               part.finishReason === "tool-calls"
                 ? "tool_calls"
                 : part.finishReason;
+            finishUsage = part.totalUsage;
           }
 
           if (part.type === "error") {
@@ -2043,6 +2091,7 @@ async function handleStreamingRequest(
           object: "chat.completion.chunk",
           created: Math.floor(Date.now() / 1000),
           model,
+          ...usageFieldOnChunks,
           choices: [
             {
               index: 0,
@@ -2054,6 +2103,27 @@ async function handleStreamingRequest(
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`),
         );
+        // Terminal usage-only chunk (empty choices) per stream_options
+        // .include_usage. Only ever built from the SDK's reported usage — if
+        // the finish part never arrived there is nothing honest to report, so
+        // the frame is omitted rather than fabricated as zeros.
+        if (includeUsage && finishUsage !== undefined) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                id: responseId,
+                object: "chat.completion.chunk",
+                created: Math.floor(Date.now() / 1000),
+                model,
+                choices: [],
+                usage: formatOpenAIUsage(
+                  normalizeUsageTokens(finishUsage),
+                  finishUsage,
+                ),
+              })}\n\n`,
+            ),
+          );
+        }
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       } catch (error) {
@@ -2190,27 +2260,9 @@ async function handleNonStreamingRequest(
     } as Parameters<typeof generateText>[0]);
 
     // Token counts for the OpenAI-compat response come straight from the
-    // model's reported usage — identical to what billUsage normalizes
-    // (inputTokens ?? promptTokens, etc.) — so the entire billing/settlement
-    // chain below can run off the response path without changing the bytes the
-    // client receives.
-    const usageRec = (result.usage ?? {}) as {
-      inputTokens?: number;
-      promptTokens?: number;
-      outputTokens?: number;
-      completionTokens?: number;
-      totalTokens?: number;
-    };
-    const responseInputTokens =
-      usageRec.inputTokens ?? usageRec.promptTokens ?? 0;
-    const responseOutputTokens =
-      usageRec.outputTokens ?? usageRec.completionTokens ?? 0;
-    const responseTokens = {
-      inputTokens: responseInputTokens,
-      outputTokens: responseOutputTokens,
-      totalTokens:
-        usageRec.totalTokens ?? responseInputTokens + responseOutputTokens,
-    };
+    // model's reported usage, so the entire billing/settlement chain below can
+    // run off the response path without changing the bytes the client receives.
+    const responseTokens = normalizeUsageTokens(result.usage);
     const responseLatencyMs = Date.now() - startTime;
 
     // Bill using actual usage from SDK response. Deferred via waitUntil so the
