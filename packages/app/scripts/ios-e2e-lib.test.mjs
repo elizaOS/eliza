@@ -34,6 +34,7 @@ describe("parseIosE2eArgs", () => {
       device: undefined,
       appPath: undefined,
       output: undefined,
+      physical: false,
       skipBuild: false,
       skipAuth: false,
       skipLocalChat: false,
@@ -49,12 +50,14 @@ describe("parseIosE2eArgs", () => {
       "--skip-local-chat",
       "--cloud",
       "--no-wait",
+      "--physical",
     ]);
     expect(f.skipBuild).toBe(true);
     expect(f.skipAuth).toBe(true);
     expect(f.skipLocalChat).toBe(true);
     expect(f.cloud).toBe(true);
     expect(f.noWait).toBe(true);
+    expect(f.physical).toBe(true);
   });
 
   it("captures --device, --app-path, and --output values", () => {

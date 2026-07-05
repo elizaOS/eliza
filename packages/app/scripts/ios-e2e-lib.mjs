@@ -40,6 +40,7 @@ export function parseIosE2eArgs(argv) {
     device: val("--device"),
     appPath: val("--app-path"),
     output: val("--output"),
+    physical: has("--physical"),
     skipBuild: has("--skip-build"),
     skipAuth: has("--skip-auth"),
     skipLocalChat: has("--skip-local-chat"),

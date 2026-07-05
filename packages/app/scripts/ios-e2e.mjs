@@ -296,6 +296,22 @@ function runStep(bundle, step, { udid, appId }) {
 }
 
 async function main() {
+  if (flags.physical) {
+    const forwarded = process.argv
+      .slice(2)
+      .filter((arg) => arg !== "--physical");
+    const result = spawnSync(
+      "node",
+      [path.join(appDir, "scripts", "ios-device-e2e.mjs"), ...forwarded],
+      {
+        cwd: appDir,
+        stdio: "inherit",
+        env: process.env,
+      },
+    );
+    process.exit(result.status ?? 1);
+  }
+
   const bundle = createDeviceE2eBundle({
     appDir,
     lane: "ios-sim",
