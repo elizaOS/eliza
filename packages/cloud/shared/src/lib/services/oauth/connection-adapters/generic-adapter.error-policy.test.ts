@@ -22,6 +22,7 @@ function makeReadBuilder() {
   builder.from = chain;
   builder.where = chain;
   builder.limit = chain;
+  // biome-ignore lint/suspicious/noThenProperty: Drizzle query builders are awaited as thenables in this test harness.
   builder.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
     dbReadBehavior().then(resolve, reject);
   return builder;

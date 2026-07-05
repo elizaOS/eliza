@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 let findMessagesImpl: () => Promise<unknown[]> = async () => [];
 let getEntityIdsImpl: () => Promise<string[]> = async () => [];
-let setRoomContextCalls = 0;
+let _setRoomContextCalls = 0;
 
 // Mock the repository submodules (not the barrel) so the barrel's `export *`
 // re-export resolves to these — the idiom used by characters.test.ts.
@@ -45,7 +45,7 @@ mock.module("../../cache/agent-state-cache", () => ({
   agentStateCache: {
     getRoomContext: async () => null,
     setRoomContext: async () => {
-      setRoomContextCalls++;
+      _setRoomContextCalls++;
     },
   },
 }));
@@ -56,7 +56,7 @@ describe("AgentsService.getRoomContext — fail-closed on DB read failure", () =
   beforeEach(() => {
     findMessagesImpl = async () => [];
     getEntityIdsImpl = async () => [];
-    setRoomContextCalls = 0;
+    _setRoomContextCalls = 0;
   });
 
   afterEach(() => {
