@@ -28,6 +28,7 @@
  *     [--device <udid>] [--skip-build] [--output <dir>] [--app-path <App.app>]
  *     [--boot-timeout <sec>] [--interval <sec>] [--agent-ready-timeout <sec>]
  *     [--derived-data <dir>] [--only-testing <Target/Class/test>]
+ *     [--bundle-id <id>]
  *
  * Exit code: non-zero when the harness fails (including "boot never reached
  * home or the error card") — attachments are still exported first.
@@ -38,9 +39,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
 import {
+  buildIosXcuitestShardPlan,
   buildPlistXml,
   classifyCodesignPreflight,
   classifyIsolatedReruns,
+  DEFAULT_APP_BUNDLE_ID,
   evaluateRunnerStaleness,
   extractXctestrunAppPaths,
   findDeviceRecord,
@@ -71,6 +74,11 @@ function runInherit(command, args, options = {}) {
       `${command} ${args.slice(0, 4).join(" ")} … exited with ${result.status}`,
     );
   }
+}
+
+function tryRun(command, args, options = {}) {
+  const result = spawnSync(command, args, { stdio: "ignore", ...options });
+  return result.status === 0;
 }
 
 /**
@@ -215,7 +223,7 @@ async function main() {
   });
   if (args.help) {
     console.log(
-      "Usage: node scripts/ios-device-capture.mjs --platform sim|device [--device <udid>] [--skip-build] [--allow-stale-runner] [--no-retry-isolation] [--output <dir>] [--app-path <App.app>] [--boot-timeout <sec>] [--interval <sec>] [--agent-ready-timeout <sec>] [--derived-data <dir>] [--only-testing <id>]",
+      "Usage: node scripts/ios-device-capture.mjs --platform sim|device [--device <udid>] [--skip-build] [--allow-stale-runner] [--no-retry-isolation] [--output <dir>] [--app-path <App.app>] [--boot-timeout <sec>] [--interval <sec>] [--agent-ready-timeout <sec>] [--derived-data <dir>] [--only-testing <id>] [--bundle-id <id>]",
     );
     return;
   }
@@ -228,6 +236,7 @@ async function main() {
         ? "sim"
         : null;
   if (!platform) fail("--platform sim|device is required.");
+  const bundleId = args["bundle-id"] || DEFAULT_APP_BUNDLE_ID;
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const outputDir = path.resolve(
@@ -469,6 +478,10 @@ async function main() {
   // 4. Destination for the run.
   let destination;
   let simUdid = null;
+  let deviceControlId = null;
+  const installableBundles = extractXctestrunAppPaths(parsed, testRoot).filter(
+    (bundle) => bundle.endsWith(".app") && fs.existsSync(bundle),
+  );
   if (platform === "sim") {
     const udid = args.device || bootedSimulatorUdid();
     simUdid = udid;
@@ -483,10 +496,7 @@ async function main() {
     // test-without-building on fresh products can fail with "SBMainWorkspace:
     // Unknown application display identifier ai.elizaos.app.xctrunner" —
     // FrontBoard races xcodebuild's own install transaction.
-    const bundles = extractXctestrunAppPaths(parsed, testRoot).filter(
-      (bundle) => bundle.endsWith(".app") && fs.existsSync(bundle),
-    );
-    for (const bundle of bundles) {
+    for (const bundle of installableBundles) {
       log(`simctl install ${path.basename(bundle)}`);
       runInherit("xcrun", ["simctl", "install", udid, bundle]);
     }
@@ -495,21 +505,67 @@ async function main() {
     if (!deviceId)
       fail("device platform needs --device or ELIZA_IOS_DEVICE_ID.");
     const record = resolvePhysicalDeviceUdid(deviceId);
+    deviceControlId = record.identifier;
     destination = `platform=iOS,id=${record.udid}`;
   }
   log(`destination: ${destination}`);
 
-  // runHarness clears each result bundle before writing (so the main run and
-  // every isolated re-run start from a clean .xcresult).
-  const resultBundle = path.join(outputDir, "BootCapture.xcresult");
+  const resetAppContainer = (label) => {
+    if (platform === "sim") {
+      log(`reset ${label}: terminate/uninstall ${bundleId} on simulator`);
+      tryRun("xcrun", ["simctl", "terminate", simUdid, bundleId]);
+      tryRun("xcrun", ["simctl", "uninstall", simUdid, bundleId]);
+      for (const bundle of installableBundles) {
+        log(`reset ${label}: simctl install ${path.basename(bundle)}`);
+        runInherit("xcrun", ["simctl", "install", simUdid, bundle]);
+      }
+      return {
+        platform,
+        bundleId,
+        action: "simctl terminate/uninstall + install xctestrun bundles",
+      };
+    }
+
+    log(`reset ${label}: uninstall ${bundleId} on device`);
+    tryRun("xcrun", [
+      "devicectl",
+      "device",
+      "uninstall",
+      "app",
+      "--device",
+      deviceControlId,
+      bundleId,
+    ]);
+    if (args["app-path"]) {
+      const signedApp = path.resolve(args["app-path"]);
+      log(`reset ${label}: devicectl install ${path.basename(signedApp)}`);
+      runInherit("xcrun", [
+        "devicectl",
+        "device",
+        "install",
+        "app",
+        "--device",
+        deviceControlId,
+        signedApp,
+      ]);
+    }
+    return {
+      platform,
+      bundleId,
+      action: args["app-path"]
+        ? "devicectl uninstall + install signed app"
+        : "devicectl uninstall; xcodebuild installs the target app",
+    };
+  };
 
   // 5. Run the harness. TEST_RUNNER_-prefixed env vars are forwarded by
   //    xcodebuild into the test-runner process (how the Swift side reads
   //    ELIZA_BOOT_TIMEOUT_SECONDS / ELIZA_BOOT_SCREENSHOT_INTERVAL_SECONDS).
-  //    Default = the whole AppUITests target, so the lane exercises both the
-  //    boot-capture suite AND the WKWebView gesture-semantics suite (#11353);
-  //    narrow with --only-testing AppUITests/<Class>[/<test>].
-  const onlyTesting = args["only-testing"] || "AppUITests";
+  //    Default = a deterministic shard list with a fresh app container before
+  //    every shard (#13686); narrow with --only-testing AppUITests/<Class>[/<test>].
+  const shardPlan = buildIosXcuitestShardPlan({
+    onlyTesting: args["only-testing"] || "AppUITests",
+  });
   const harnessEnv = {
     ...process.env,
     TEST_RUNNER_ELIZA_BOOT_TIMEOUT_SECONDS:
@@ -561,11 +617,60 @@ async function main() {
     );
   };
 
+  const exportArtifacts = (bundlePath, targetDir) => {
+    const attachmentsDir = path.join(targetDir, "attachments");
+    fs.rmSync(attachmentsDir, { recursive: true, force: true });
+    fs.mkdirSync(attachmentsDir, { recursive: true });
+    let summaryJson = null;
+    if (fs.existsSync(bundlePath)) {
+      runInherit("xcrun", [
+        "xcresulttool",
+        "export",
+        "attachments",
+        "--path",
+        bundlePath,
+        "--output-path",
+        attachmentsDir,
+      ]);
+      const summary = spawnSync(
+        "xcrun",
+        [
+          "xcresulttool",
+          "get",
+          "test-results",
+          "summary",
+          "--path",
+          bundlePath,
+          "--format",
+          "json",
+        ],
+        { encoding: "utf8" },
+      );
+      if (summary.status === 0) {
+        fs.writeFileSync(
+          path.join(targetDir, "test-summary.json"),
+          summary.stdout,
+        );
+        try {
+          summaryJson = JSON.parse(summary.stdout);
+        } catch {
+          summaryJson = null;
+        }
+      }
+    } else {
+      log(`warning: no .xcresult bundle produced at ${bundlePath}`);
+    }
+    const exported = fs.existsSync(attachmentsDir)
+      ? fs.readdirSync(attachmentsDir)
+      : [];
+    return { attachmentsDir, attachmentCount: exported.length, summaryJson };
+  };
+
   // Read the failed-test identifiers out of a produced .xcresult so the
   // retry-in-isolation pass can re-run each one alone. Returns [] on any
   // missing bundle / non-zero summary / unparseable output (fail-closed: no
   // isolable failures found means the suite verdict stands).
-  const readFailedTestIdentifiers = (bundlePath) => {
+  const readFailedTestIdentifiers = (bundlePath, fallbackTarget) => {
     if (!fs.existsSync(bundlePath)) return [];
     const summary = spawnSync(
       "xcrun",
@@ -583,134 +688,132 @@ async function main() {
     );
     if (summary.status !== 0) return [];
     return parseFailedTestIdentifiers(summary.stdout, {
-      fallbackTarget: onlyTesting.split("/")[0] || "AppUITests",
+      fallbackTarget,
     });
   };
 
-  // Record the whole run on the simulator (walkthrough evidence for the
-  // gesture-loop lane; no-op on a physical device). Started just before the
-  // harness so it captures every gesture, stopped in `finally` so a failing run
-  // still yields its video.
-  const simVideo = startSimVideo({ udid: simUdid, outputDir });
-  let testResult;
-  try {
-    testResult = runHarness(onlyTesting, resultBundle);
-  } finally {
-    const videoPath = await simVideo.stop();
-    if (videoPath) log(`simulator video: ${videoPath}`);
-  }
-
-  // 6. Export attachments regardless of the verdict — a failed boot's
-  //    screenshots are exactly the evidence we want. Clear any prior export
-  //    first: xcresulttool refuses to write manifest.json into a dir that
-  //    already has one (stale attachments would also mix runs).
-  const attachmentsDir = path.join(outputDir, "attachments");
-  fs.rmSync(attachmentsDir, { recursive: true, force: true });
-  fs.mkdirSync(attachmentsDir, { recursive: true });
-  if (fs.existsSync(resultBundle)) {
-    runInherit("xcrun", [
-      "xcresulttool",
-      "export",
-      "attachments",
-      "--path",
-      resultBundle,
-      "--output-path",
-      attachmentsDir,
-    ]);
-    const summary = spawnSync(
-      "xcrun",
-      [
-        "xcresulttool",
-        "get",
-        "test-results",
-        "summary",
-        "--path",
-        resultBundle,
-      ],
-      { encoding: "utf8" },
-    );
-    if (summary.status === 0) {
-      fs.writeFileSync(
-        path.join(outputDir, "test-summary.json"),
-        summary.stdout,
-      );
-    }
-  } else {
-    log("warning: no .xcresult bundle produced — nothing to export.");
-  }
-
-  const exported = fs.existsSync(attachmentsDir)
-    ? fs.readdirSync(attachmentsDir)
-    : [];
-  log(`attachments: ${exported.length} file(s) in ${attachmentsDir}`);
-  log(`result bundle: ${resultBundle}`);
-
-  if (testResult.status === 0) {
-    log("boot capture PASSED (home or startup-failure card reached).");
-    return;
-  }
-
-  // 7. Retry-in-isolation (#13566): device XCUITest terminate/relaunch cycles
-  //    flake through devicectl, and a single flaky termination can poison
-  //    subsequent tests in the same monolithic invocation. Re-run EACH failed
-  //    test alone; a test that passes isolated is a `flake` (exit 0 stands),
-  //    one that fails both is a real `fail` (exit nonzero). Skipped with
-  //    --no-retry-isolation, which keeps the legacy hard-fail-on-any behavior.
-  const suiteFailures = readFailedTestIdentifiers(resultBundle);
-  if (args["no-retry-isolation"] || suiteFailures.length === 0) {
-    const why = args["no-retry-isolation"]
-      ? "--no-retry-isolation set"
-      : "no isolable failed-test identifiers parsed from the .xcresult";
-    writeFlakeSummary(outputDir, { skipped: true, reason: why });
-    fail(
-      `harness run failed (xcodebuild exit ${testResult.status}); ${why}. ` +
-        "Exit 65 means a test assertion failed — e.g. the boot never reached home " +
-        `or the startup-failure card. Review the screenshots in ${attachmentsDir}.`,
-    );
-  }
-
+  const shardsRoot = path.join(outputDir, "shards");
+  fs.mkdirSync(shardsRoot, { recursive: true });
   log(
-    `retry-in-isolation: re-running ${suiteFailures.length} failed test(s) alone — ` +
-      suiteFailures.map((f) => f.identifier).join(", "),
+    `xcuitest shards: ${shardPlan.length} (${shardPlan
+      .map((shard) => shard.identifier)
+      .join(", ")})`,
   );
-  const isolatedResults = [];
-  const isolationDir = path.join(outputDir, "isolation");
-  fs.mkdirSync(isolationDir, { recursive: true });
-  for (const failure of suiteFailures) {
-    const safeName = failure.identifier.replace(/[^A-Za-z0-9._-]/g, "_");
-    const isoBundle = path.join(isolationDir, `${safeName}.xcresult`);
-    log(`  isolated re-run: ${failure.identifier}`);
-    const isoResult = runHarness(failure.identifier, isoBundle);
-    isolatedResults.push({
-      identifier: failure.identifier,
-      isolatedPassed: isoResult.status === 0,
+
+  const shardSummaries = [];
+  for (const shard of shardPlan) {
+    const shardDir = path.join(shardsRoot, shard.resultName);
+    fs.mkdirSync(shardDir, { recursive: true });
+    const resultBundle = path.join(shardDir, `${shard.resultName}.xcresult`);
+    log(`shard ${shard.index}/${shardPlan.length}: ${shard.identifier}`);
+    const reset = resetAppContainer(shard.resultName);
+
+    const simVideo = startSimVideo({
+      udid: simUdid,
+      outputDir: shardDir,
+      filename: `${shard.resultName}.mp4`,
     });
+    let testResult;
+    try {
+      testResult = runHarness(shard.identifier, resultBundle);
+    } finally {
+      const videoPath = await simVideo.stop();
+      if (videoPath) log(`simulator video: ${videoPath}`);
+    }
+
+    const artifacts = exportArtifacts(resultBundle, shardDir);
+    const shardSummary = {
+      ...shard,
+      bundleId,
+      reset,
+      resultBundle,
+      attachmentsDir: artifacts.attachmentsDir,
+      attachmentCount: artifacts.attachmentCount,
+      exitStatus: testResult.status,
+      passed: testResult.status === 0,
+      flakeClassification: null,
+    };
+    log(
+      `shard ${shard.resultName}: exit=${testResult.status} attachments=${artifacts.attachmentCount}`,
+    );
+
+    if (testResult.status !== 0) {
+      const suiteFailures = readFailedTestIdentifiers(
+        resultBundle,
+        "AppUITests",
+      );
+      if (args["no-retry-isolation"] || suiteFailures.length === 0) {
+        const why = args["no-retry-isolation"]
+          ? "--no-retry-isolation set"
+          : "no isolable failed-test identifiers parsed from the .xcresult";
+        const skipped = { skipped: true, reason: why };
+        writeFlakeSummary(shardDir, skipped);
+        shardSummary.flakeClassification = skipped;
+      } else {
+        log(
+          `retry-in-isolation (${shard.resultName}): ${suiteFailures.length} failed test(s) — ` +
+            suiteFailures.map((f) => f.identifier).join(", "),
+        );
+        const isolatedResults = [];
+        const isolationDir = path.join(shardDir, "isolation");
+        fs.mkdirSync(isolationDir, { recursive: true });
+        for (const failure of suiteFailures) {
+          const safeName = failure.identifier.replace(/[^A-Za-z0-9._-]/g, "_");
+          const isoBundle = path.join(isolationDir, `${safeName}.xcresult`);
+          log(`  isolated re-run: ${failure.identifier}`);
+          resetAppContainer(`isolation-${safeName}`);
+          const isoResult = runHarness(failure.identifier, isoBundle);
+          exportArtifacts(isoBundle, path.join(isolationDir, safeName));
+          isolatedResults.push({
+            identifier: failure.identifier,
+            isolatedPassed: isoResult.status === 0,
+          });
+        }
+
+        const classification = classifyIsolatedReruns(
+          suiteFailures,
+          isolatedResults,
+        );
+        const classificationPayload = {
+          skipped: false,
+          verdicts: classification.verdicts,
+          flakes: classification.flakes,
+          realFailures: classification.realFailures,
+        };
+        writeFlakeSummary(shardDir, classificationPayload);
+        shardSummary.flakeClassification = classificationPayload;
+        shardSummary.passed = !classification.exitNonZero;
+        for (const v of classification.verdicts) {
+          log(`  ${v.verdict.toUpperCase()}: ${v.identifier}`);
+        }
+      }
+    }
+    shardSummaries.push(shardSummary);
   }
 
-  const classification = classifyIsolatedReruns(suiteFailures, isolatedResults);
-  writeFlakeSummary(outputDir, {
-    skipped: false,
-    verdicts: classification.verdicts,
-    flakes: classification.flakes,
-    realFailures: classification.realFailures,
-  });
-  for (const v of classification.verdicts) {
-    log(`  ${v.verdict.toUpperCase()}: ${v.identifier}`);
-  }
+  const aggregate = {
+    generatedAt: new Date().toISOString(),
+    platform,
+    bundleId,
+    destination,
+    sharded: args["only-testing"] ? "explicit-only-testing" : "default",
+    shards: shardSummaries,
+  };
+  fs.writeFileSync(
+    path.join(outputDir, "test-summary.json"),
+    `${JSON.stringify(aggregate, null, 2)}\n`,
+  );
 
-  if (classification.exitNonZero) {
+  const failedShards = shardSummaries.filter((shard) => !shard.passed);
+  if (failedShards.length > 0) {
     fail(
-      `harness run failed: ${classification.realFailures.length} test(s) failed ` +
-        `both in-suite AND isolated (${classification.realFailures.join(", ")}). ` +
-        (classification.flakes.length > 0
-          ? `${classification.flakes.length} flake(s) recorded. `
-          : "") +
-        `Review the screenshots in ${attachmentsDir}.`,
+      `iOS capture failed: ${failedShards.length}/${shardSummaries.length} shard(s) failed ` +
+        `(${failedShards.map((shard) => shard.identifier).join(", ")}). ` +
+        `Review shard artifacts under ${shardsRoot}.`,
     );
   }
   log(
-    `boot capture PASSED after isolation: all ${classification.flakes.length} ` +
-      "suite failure(s) were flakes (passed on isolated re-run).",
+    `iOS capture PASSED: ${shardSummaries.length} shard(s) completed with fresh containers.`,
   );
 }
 

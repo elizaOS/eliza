@@ -744,6 +744,45 @@ export function resolveXctestrunTestRoot(value, testRoot) {
 
 export const DEFAULT_APP_BUNDLE_ID = "ai.elizaos.app";
 
+export const DEFAULT_IOS_XCUITEST_SHARDS = [
+  "AppUITests/BootCaptureUITests/testBootReachesHomeOrErrorCard",
+  "AppUITests/BootCaptureUITests/testComposerAcceptsTypedText",
+  "AppUITests/BootCaptureUITests/testComposerSendsPromptAndWaitsForReply",
+  "AppUITests/BootCaptureUITests/testCloudOnboardingChatAndVoice",
+  "AppUITests/BootCaptureUITests/testLocalOnboardingChatAndVoice",
+  "AppUITests/GestureSemanticsUITests",
+  "AppUITests/LauncherGestureLoopUITests",
+  "AppUITests/ViewWalkthroughUITests",
+  "AppUITests/WidgetGalleryCaptureUITests",
+  "AppUITests/DeviceLifecycleUITests",
+];
+
+export function safeShardName(identifier) {
+  return String(identifier || "unknown")
+    .replace(/^AppUITests\//, "")
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 120);
+}
+
+export function buildIosXcuitestShardPlan({
+  onlyTesting = null,
+  defaultShards = DEFAULT_IOS_XCUITEST_SHARDS,
+} = {}) {
+  const requested =
+    typeof onlyTesting === "string" && onlyTesting.trim()
+      ? onlyTesting.trim()
+      : "AppUITests";
+  const identifiers = requested === "AppUITests" ? defaultShards : [requested];
+  return identifiers.map((identifier, index) => ({
+    index: index + 1,
+    identifier,
+    resultName: `${String(index + 1).padStart(2, "0")}-${safeShardName(
+      identifier,
+    )}`,
+  }));
+}
+
 /**
  * Boot-trace files inside the app data container, pulled by
  * `ios-device-logs.mjs --pull-boot-trace`.

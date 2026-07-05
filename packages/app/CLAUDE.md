@@ -141,20 +141,22 @@ bun run --cwd packages/app ios:device:deploy -- --device <id>   # flags: --skip-
 bun run --cwd packages/app ios:device:logs -- --device <id> --duration 120
 bun run --cwd packages/app ios:device:logs -- --device <id> --no-console --pull-boot-trace
 
-# Watchable boot capture via the committed AppUITests XCUITest harness
-# (BootCaptureUITests): screenshots every 15 s via XCUIScreen, asserts the boot
-# reaches home or the "Startup failed:"/"Retry startup" card, exports all
-# attachments (filmstrip PNGs + AX hierarchy) from the .xcresult.
+# Watchable capture via the committed AppUITests XCUITest harness. A full run
+# shards AppUITests into fresh-container per-test/per-class invocations, with
+# uninstall/reinstall between shards so first-run and chat state cannot cascade.
+# Pass --only-testing AppUITests/<Class>[/test] for a single narrow shard.
 bun run --cwd packages/app capture:ios-sim:boot                  # simulator (booted sim auto-detected)
 bun run --cwd packages/app ios:device:capture -- --device <id> --app-path <signed App.app>  # physical device
 ```
 
 Produced artifacts: deploy stages into `ios/build/device-deploy-stage/`; logs
 land in `ios/build/device-logs/`; captures land in
-`ios/build/boot-capture/<timestamp>/` (`attachments/` + `BootCapture.xcresult`
-+ `test-summary.json`) unless `--output` is given. The harness source lives in
-the canonical template (`packages/app-core/platforms/ios/App/AppUITests/` +
-the `AppUITests` target/scheme in the template Xcode project) and is
+`ios/build/boot-capture/<timestamp>/` (`shards/<id>/attachments/`,
+`shards/<id>/*.xcresult`, per-shard raw `test-summary.json`, and a top-level
+aggregate `test-summary.json` naming each shard/container reset) unless
+`--output` is given. The harness source lives in the canonical template
+(`packages/app-core/platforms/ios/App/AppUITests/` + the `AppUITests`
+target/scheme in the template Xcode project) and is
 materialized into the gitignored `packages/app/ios` by cap sync. Pure decision
 logic (profile matching/selection, entitlement derivation, plist/xctestrun
 handling) is in `scripts/ios-device-lib.mjs`, unit-tested by

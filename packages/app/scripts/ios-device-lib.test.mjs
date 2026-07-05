@@ -8,12 +8,14 @@ import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   buildCodesignPlan,
+  buildIosXcuitestShardPlan,
   buildOnlyTestingIdentifier,
   buildPlistXml,
   CONSOLE_SIGTRAP_SIGNATURE,
   classifyCodesignPreflight,
   classifyConsoleExit,
   classifyIsolatedReruns,
+  DEFAULT_IOS_XCUITEST_SHARDS,
   deriveSigningEntitlements,
   evaluateRunnerStaleness,
   extractXctestrunAppPaths,
@@ -29,6 +31,7 @@ import {
   resolveDeviceId,
   resolveXctestrunTestRoot,
   rewriteXctestrunUITargetApp,
+  safeShardName,
   selectProvisioningProfile,
   selectSigningIdentity,
   sweepXctestrunDependentProductPaths,
@@ -1041,6 +1044,53 @@ describe("classifyIsolatedReruns (#13566)", () => {
       "AppUITests/GestureSemanticsUITests/testDetent",
     ]);
     expect(result.exitNonZero).toBe(true);
+  });
+});
+
+describe("buildIosXcuitestShardPlan (#13686)", () => {
+  it("expands the default AppUITests run into deterministic fresh-container shards", () => {
+    const plan = buildIosXcuitestShardPlan();
+    expect(plan.map((shard) => shard.identifier)).toEqual(
+      DEFAULT_IOS_XCUITEST_SHARDS,
+    );
+    expect(plan[0]).toEqual({
+      index: 1,
+      identifier:
+        "AppUITests/BootCaptureUITests/testBootReachesHomeOrErrorCard",
+      resultName: "01-BootCaptureUITests_testBootReachesHomeOrErrorCard",
+    });
+    expect(
+      plan.some((shard) =>
+        shard.identifier.endsWith("testCloudOnboardingChatAndVoice"),
+      ),
+    ).toBe(true);
+    expect(
+      plan.some((shard) =>
+        shard.identifier.endsWith("testLocalOnboardingChatAndVoice"),
+      ),
+    ).toBe(true);
+  });
+
+  it("preserves an explicit --only-testing override as a single shard", () => {
+    expect(
+      buildIosXcuitestShardPlan({
+        onlyTesting:
+          "AppUITests/GestureSemanticsUITests/testChatSheetDetentFlickCycle",
+      }),
+    ).toEqual([
+      {
+        index: 1,
+        identifier:
+          "AppUITests/GestureSemanticsUITests/testChatSheetDetentFlickCycle",
+        resultName: "01-GestureSemanticsUITests_testChatSheetDetentFlickCycle",
+      },
+    ]);
+  });
+
+  it("sanitizes shard names for filesystem-safe result paths", () => {
+    expect(safeShardName("AppUITests/Foo Bar/testThing()")).toBe(
+      "Foo_Bar_testThing",
+    );
   });
 });
 

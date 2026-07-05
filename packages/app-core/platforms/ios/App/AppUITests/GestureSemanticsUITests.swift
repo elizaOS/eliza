@@ -73,7 +73,7 @@ final class GestureSemanticsUITests: XCTestCase {
     func testChatSheetDetentFlickCycle() throws {
         let app = XCUIApplication()
         try launchToRenderer(app)
-        try ensureUserMessage(in: app, text: "detent gesture probe")
+        try ensurePersistentUserMessage(in: app, text: "detent gesture probe")
         try settleSheetToCollapsed(in: app)
         attachScreenshot(named: "detent-00-collapsed")
 
@@ -95,39 +95,26 @@ final class GestureSemanticsUITests: XCTestCase {
         try flickGrabber(in: app, dy: 260)
         assertDetent(becomes: "half", in: app, step: "detent-30-after-flick-down")
 
-        // While the sheet is open, capture the AX ground truth for the
-        // thread-gated flick leg below: does the thread actually hold any
-        // message bubbles right now? (The app may have evicted the optimistic
-        // user turn when the agent never became ready — see the warm-up
-        // eviction note on ensurePersistentUserMessage.)
-        let threadHasBubbles = messageBubbles(in: app).count > 0
-        attachScreenshot(named: "detent-35-open-thread-state")
+        XCTAssertGreaterThan(
+            messageBubbles(in: app).count,
+            0,
+            "detent flick coverage requires a seeded, persistent thread; the "
+                + "container shard must not inherit or infer this from residue"
+        )
+        attachScreenshot(named: "detent-35-seeded-thread-state")
 
         // Flick DOWN #2: half → collapsed.
         try flickGrabber(in: app, dy: 260)
         assertDetent(
             becomes: "collapsed", in: app, step: "detent-40-after-flick-down")
 
-        // Flick UP from collapsed — BOTH outcomes are spec'd semantics, chosen
-        // by the observed thread state (never a silent skip):
-        //   thread present → the flick reveals the thread at the HALF detent;
-        //   thread empty   → the flick must be REFUSED (the sheet has nothing
-        //                    to reveal; ContinuousChatOverlay's onPullUp
-        //                    deliberately settles back), so the detent must
-        //                    still read "collapsed" after the poll.
+        // Flick UP from collapsed with a deliberately seeded thread: this must
+        // reveal the thread at HALF. This assertion must not flip to an
+        // empty-thread refusal based on residue from earlier XCTest classes or
+        // previous runs (#13686).
         try flickGrabber(in: app, dy: -260)
-        if threadHasBubbles {
-            assertDetent(
-                becomes: "half", in: app, step: "detent-50-flick-reveals-thread")
-        } else {
-            Thread.sleep(forTimeInterval: 2.0)
-            attachScreenshot(named: "detent-50-flick-refused-empty-thread")
-            XCTAssertEqual(
-                markerValue(Self.detentPrefix, in: app), "collapsed",
-                "a flick-up on a collapsed sheet with an EMPTY thread must be "
-                    + "refused (nothing to reveal) and leave the detent collapsed"
-            )
-        }
+        assertDetent(
+            becomes: "half", in: app, step: "detent-50-flick-reveals-thread")
     }
 
     func testLauncherPagerFiftyPercentSwipeThreshold() throws {
