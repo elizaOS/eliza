@@ -23,6 +23,7 @@ import {
   mkdir,
   readdir,
   readFile,
+  rm,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -241,6 +242,17 @@ const INDEPENDENT_ACP_VERIFIER_NAME = "independent-acp-verifier";
 /** Cap on child trajectories ingested per task_complete (#13775) so a runaway
  *  sub-agent can't flood the task doc; the store's MAX_ARTIFACTS also clamps. */
 const MAX_CHILD_TRAJECTORY_ARTIFACTS = 20;
+
+/** Default retention window for per-task child-trajectory dirs under the state
+ *  dir (#14109). A per-task `<stateDir>/orchestrator/child-trajectories/<taskId>`
+ *  dir is attach-by-reference (ingest never deletes its files), so without an
+ *  aged reclaim it grows unbounded — the same disk-leak class as the 3.6TB
+ *  worktree-farm incident (#13773), just relocated into the state dir. Reclaimed
+ *  only once the owning task is terminal (or absent) AND the dir has been idle
+ *  past this window, so an in-flight or not-yet-ingested trajectory is never
+ *  deleted. 24h mirrors ACP_SCRATCH_GC_MAX_AGE_MS. Overridable via
+ *  `ELIZA_ORCHESTRATOR_CHILD_TRAJECTORY_GC_MAX_AGE_MS`. */
+const CHILD_TRAJECTORY_GC_MAX_AGE_MS = 24 * 60 * 60_000;
 
 /** Default upper bound on how long the independent verifier session may run
  *  before its await is abandoned (treated as inconclusive). Overridable via
@@ -770,6 +782,20 @@ export class OrchestratorTaskService extends Service {
     // Persist self-spend durably so a configured ELIZA_AGENT_SPEND_CAP_USD
     // survives a restart instead of resetting to zero (#8924).
     configureSpendLedger(createTaskStoreSpendLedger(this.store));
+    // Reclaim aged per-task child-trajectory dirs under the state dir (#14109).
+    // Ingest attaches by reference and never deletes, and no workspace-GC path
+    // reaches the state dir, so without this the dir grows without bound. Runs
+    // once at start, after the store is wired; best-effort so a sweep hiccup
+    // never blocks service start (below).
+    void this.gcChildTrajectoryDirs().catch((err) => {
+      // error-policy:J7 startup GC is a disk-hygiene convenience; a failure is
+      // reported (the leak stays observable) but must not abort service start.
+      this.runtime.reportError?.(
+        "OrchestratorTask.gcChildTrajectoryDirs",
+        err,
+        {},
+      );
+    });
     // Resume any tasks parked before a restart, then arm the reconcile tick that
     // drains the queue even when no terminal session event fires (a sweptStale
     // session frees a slot silently). Best-effort: a store hiccup here must not
@@ -1171,17 +1197,167 @@ export class OrchestratorTaskService extends Service {
   }
 
   /**
+   * Root under the state dir holding every task's child-trajectory dir (#13775),
+   * i.e. `<stateDir>/orchestrator/child-trajectories`. Swept by
+   * {@link gcChildTrajectoryDirs} on start (#14109).
+   */
+  private childTrajectoriesRoot(): string {
+    return join(resolveStateDir(), "orchestrator", "child-trajectories");
+  }
+
+  /**
    * Per-task directory a spawned sub-agent's file recorder writes its own
-   * trajectories into (#13775), scanned on task_complete. Under the shared state
-   * dir so #13773's workspace-GC registry can reclaim it with the task.
+   * trajectories into (#13775), scanned on task_complete.
+   *
+   * NOTE (#14109): this lives under the state dir, NOT a workspace scratch root,
+   * so `AcpService.gcOrphanedScratchDirs` (which only scans configured workspace
+   * roots) never reclaims it, and ingest is attach-by-reference (the JSON files
+   * are never deleted after being attached). Reclamation is therefore explicit,
+   * via {@link gcChildTrajectoryDirs}, an age-gated startup sweep of
+   * {@link childTrajectoriesRoot}.
    */
   private childTrajectoryDir(taskId: string): string {
-    return join(
-      resolveStateDir(),
-      "orchestrator",
-      "child-trajectories",
-      taskId,
+    return join(this.childTrajectoriesRoot(), taskId);
+  }
+
+  /**
+   * Bounded retention for the child-trajectory state dir (#14109). A per-task
+   * `<stateDir>/orchestrator/child-trajectories/<taskId>` dir is written by a
+   * sub-agent's recorder and attached by reference on task_complete — the files
+   * are never deleted after ingest, and no workspace-GC path reaches the state
+   * dir. Left unchecked it grows without bound (the disk-leak class #13773
+   * exists to prevent, relocated into the state dir).
+   *
+   * Runs once at startup (mirroring `AcpService.cleanOrphanedScratchWorkdirs`).
+   * For each per-task dir it reclaims ONLY when BOTH hold:
+   *  - the owning task is terminal in this store, OR has no task doc at all
+   *    (an orphan left by a crashed/purged task) — a live task keeps its dir; and
+   *  - the dir has been idle (newest entry's mtime) past the retention window.
+   *
+   * The age gate is the load-bearing safety: a not-yet-ingested or in-flight
+   * trajectory is recent by construction, so it is never deleted even if its
+   * task doc looks terminal (e.g. a respawned session still writing). Deletes
+   * are best-effort; a locked/vanished dir is skipped and retried next boot.
+   */
+  private async gcChildTrajectoryDirs(): Promise<void> {
+    const root = this.childTrajectoriesRoot();
+    let entries: string[];
+    try {
+      entries = await readdir(root);
+    } catch (err) {
+      // error-policy:J3 an absent root is the expected empty shape (no task has
+      // ever recorded a child trajectory) — explicit zero-work result, never a
+      // masked read failure.
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+      this.runtime.reportError?.(
+        "OrchestratorTaskService.gcChildTrajectoryDirs",
+        err,
+        { phase: "readdir", root },
+      );
+      return;
+    }
+
+    const maxAgeMs = parsePositiveIntSetting(
+      this.readSetting("ELIZA_ORCHESTRATOR_CHILD_TRAJECTORY_GC_MAX_AGE_MS"),
+      CHILD_TRAJECTORY_GC_MAX_AGE_MS,
     );
+    const now = Date.now();
+    let reclaimed = 0;
+    let kept = 0;
+
+    await Promise.allSettled(
+      entries.map(async (taskId) => {
+        const path = join(root, taskId);
+        try {
+          const st = await stat(path);
+          if (!st.isDirectory()) {
+            kept++;
+            return;
+          }
+        } catch {
+          // error-policy:J6 vanished mid-scan — nothing left to reclaim.
+          return;
+        }
+
+        // A live (non-terminal) task is still producing trajectories under this
+        // dir — never reclaim it. An absent task doc is an orphan (its task was
+        // purged/never persisted): reclaimable, but still age-gated below so a
+        // dir a brand-new task is actively writing isn't yanked out from under
+        // it before its doc lands.
+        let taskIsReclaimable: boolean;
+        try {
+          const doc = await this.store.getTask(taskId);
+          taskIsReclaimable =
+            !doc || TERMINAL_TASK_STATUSES.has(doc.task.status);
+        } catch (err) {
+          // error-policy:J7 DATA-LOSS GUARD. A store read failure must not be
+          // read as "no task" — that would treat a live task's dir as an orphan
+          // and delete work. Keep the dir; the next boot retries with real data.
+          this.runtime.reportError?.(
+            "OrchestratorTaskService.gcChildTrajectoryDirs",
+            err,
+            { phase: "store.getTask", taskId },
+          );
+          kept++;
+          return;
+        }
+        if (!taskIsReclaimable) {
+          kept++;
+          return;
+        }
+
+        // Age gate: newest mtime across the dir tree (the recorder nests files
+        // under an <agentId>/ subdir). A trajectory written since the retention
+        // window — i.e. possibly not yet ingested, or from a respawned session
+        // still running — keeps the whole dir. Fall back to the dir's own mtime
+        // for an empty dir.
+        let newestMtimeMs = 0;
+        try {
+          const rel = await readdir(path, { recursive: true });
+          const stats = await Promise.all(
+            rel.map((p) =>
+              stat(join(path, p)).then(
+                (s) => s.mtimeMs,
+                () => 0,
+              ),
+            ),
+          );
+          newestMtimeMs = stats.reduce((max, m) => Math.max(max, m), 0);
+          if (newestMtimeMs === 0) {
+            newestMtimeMs = (await stat(path)).mtimeMs;
+          }
+        } catch {
+          // error-policy:J6 vanished mid-scan — nothing left to reclaim.
+          return;
+        }
+        if (now - newestMtimeMs <= maxAgeMs) {
+          kept++;
+          return;
+        }
+
+        try {
+          await rm(path, { recursive: true, force: true });
+          reclaimed++;
+        } catch (err) {
+          // error-policy:J6 best-effort GC; a locked/vanished dir is skipped so
+          // the sweep continues and retries next boot.
+          this.log("warn", "child-trajectory GC: failed to remove dir", {
+            taskId,
+            path,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }),
+    );
+
+    if (reclaimed > 0 || kept > 0) {
+      this.log("info", "reclaimed aged child-trajectory dirs", {
+        reclaimed,
+        kept,
+        root,
+        olderThanMs: maxAgeMs,
+      });
+    }
   }
 
   /**
