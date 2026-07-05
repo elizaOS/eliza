@@ -29,7 +29,7 @@ import {
   accountMetaFromSessionMetadata,
   type CodingAccountFailureKind,
   classifyAccountFailure,
-  getCodingAccountBridge,
+  hasHealthyPooledAccount,
   reportCodingAccountFailure,
 } from "./coding-account-selection.js";
 import {
@@ -908,7 +908,7 @@ export class SubAgentRouter extends Service {
         // flapping stays bounded, and only fires while a healthy pooled
         // account remains — with the whole pool exhausted the honest failure
         // below reaches the user.
-        if (this.hasHealthyPooledAccount(session.agentType)) {
+        if (hasHealthyPooledAccount(session.agentType)) {
           const { state, decision } = routerLoopTransition(this.loopState, {
             type: "state_lost",
             lineageKey: respawnLineageKey(session, origin),
@@ -1718,26 +1718,6 @@ export class SubAgentRouter extends Service {
           error: err instanceof Error ? err.message : String(err),
         },
       );
-      return false;
-    }
-  }
-
-  /**
-   * Whether the account pool still has ≥1 healthy pooled account for this
-   * agent type — the gate for the in-router account failover. False when the
-   * bridge is absent (single-account host) or the pool is fully exhausted, in
-   * which case the honest failure must reach the user instead of a doomed
-   * respawn burning a lineage-budget slot.
-   */
-  private hasHealthyPooledAccount(agentType: string): boolean {
-    const bridge = getCodingAccountBridge();
-    if (!bridge) return false;
-    try {
-      const rows = bridge.describe()[agentType.toLowerCase()] ?? [];
-      return rows.some((row) => row.healthy > 0);
-    } catch {
-      // error-policy:J3 account-bridge probe failure → fail-safe "no healthy
-      // account"; declines failover so the task's honest failure reaches the user.
       return false;
     }
   }

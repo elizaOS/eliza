@@ -48,7 +48,9 @@ import {
   accountMetaFromSessionMetadata,
   assessCodingAccountReadiness,
   type CodingAccountReadiness,
+  classifyAccountFailure,
   getCodingAccountBridge,
+  hasHealthyPooledAccount,
   resolveCodingAccountStrategy,
 } from "./coding-account-selection.js";
 import {
@@ -1619,26 +1621,37 @@ export class OrchestratorTaskService extends Service {
   }
 
   /**
-   * The `failed` producer. An unrecoverable session error is the trigger that
-   * moves a task to terminal `failed` — but only once the crash-retry budget is
-   * spent. Until this existed, an `error` event marked the SESSION errored and
-   * (for auth/429) failed the account over, but never touched the task status,
-   * so a crashed sub-agent left the task stuck `active`/`validating` forever,
-   * waiting on the 3-minute stall watchdog or a human.
+   * The `failed` producer. An unrecoverable session error moves a task to
+   * terminal `failed`. Until this existed, an `error` event marked the SESSION
+   * errored and (for auth/429) failed the account over, but never touched the
+   * task status, so a crashed sub-agent left the task stuck `active`/`validating`
+   * forever, waiting on the 3-minute stall watchdog or a human.
+   *
+   * Status termination MUST agree with whether `sub-agent-router.ts` will
+   * respawn the crash, because the retry budget below only advances when a
+   * FURTHER error re-enters — and a further error only exists if a respawn
+   * produced a new session. The router respawns exactly two crash classes:
+   *   - `session_state_lost` (respawnStateLost, always under the lineage cap), and
+   *   - a pooled-account failure (rate-limit / needs-reauth) while a healthy
+   *     sibling account remains (in-router account failover).
+   * A PLAIN crash — a non-zero exit, a `TypeError`, a build-tool segfault — is
+   * respawned by NEITHER path, so no successor session is ever spawned, no
+   * further error re-enters, and a `retrying` (non-terminal) verdict wedges the
+   * task forever (the P0 #13771 this producer exists to prevent). Such a crash
+   * is therefore terminal on its FIRST occurrence.
+   *
+   * - Un-respawnable crash → `unrecoverable`: terminal `failed` immediately.
+   * - Respawnable crash under budget → `retrying` (task returns to `active`) so
+   *   the router's respawn can re-engage a fresh worker; if that successor also
+   *   crashes it re-enters here and the budget still drives `failed`.
+   * - Respawnable crash, budget spent → `unrecoverable`: terminal `failed`.
    *
    * Budget = {@link MAX_SESSION_RETRY_ATTEMPTS} errored sessions across THIS
-   * task's lineage (each general-crash respawn is a fresh session row, so the
-   * count of terminally-errored sessions IS the retry count — no separate
-   * counter to drift). The canonical typed `retryCount` on the erroring session
-   * is stamped with that lineage count so the durable record carries the budget
-   * position, reconciling the field the router's respawn lineage also tracks.
-   *
-   * - Under budget → `retrying`: the task returns to `active` so the router's
-   *   bounded general-crash respawn (reusing the `session_state_lost` machinery +
-   *   account failover) re-engages a fresh worker. If no respawn happens (pool
-   *   exhausted, no initialTask), the next error re-enters here and the budget
-   *   still drives the task to `failed` — never a silent hang.
-   * - Budget spent → `unrecoverable`: terminal `failed`, with one honest event.
+   * task's lineage (each respawn is a fresh session row, so the count of
+   * terminally-errored sessions IS the retry count — no separate counter to
+   * drift). The erroring session's typed `retryCount` is stamped with that
+   * lineage count so the durable record carries the budget position, reconciling
+   * the field the router's respawn lineage also tracks.
    *
    * `login_required` is handled separately (→ `waiting_on_user`) because there a
    * human genuinely can unblock; a plain crash cannot, so it must not park.
@@ -1665,13 +1678,21 @@ export class OrchestratorTaskService extends Service {
     // canonical typed counter.
     await this.store.updateSession(sessionId, { retryCount: erroredSessions });
 
+    const respawnable = this.routerWillRespawn(
+      doc.sessions.find((s) => s.sessionId === sessionId),
+      failure,
+    );
     const budgetSpent = erroredSessions >= MAX_SESSION_RETRY_ATTEMPTS;
+    // Terminal unless the router will respawn this crash class AND the lineage
+    // budget still has room. An un-respawnable crash fails on its first
+    // occurrence — nothing will re-drive it, so a non-terminal verdict wedges.
+    const terminal = !respawnable || budgetSpent;
     await this.store.addEvent({
       id: randomUUID(),
       taskId,
       sessionId,
-      eventType: budgetSpent ? "task_failed" : "session_error_retrying",
-      summary: budgetSpent
+      eventType: terminal ? "task_failed" : "session_error_retrying",
+      summary: terminal
         ? `Sub-agent failed unrecoverably after ${erroredSessions} attempt(s); task marked failed.`
         : `Sub-agent errored (attempt ${erroredSessions}/${MAX_SESSION_RETRY_ATTEMPTS}); retrying.`,
       data: {
@@ -1679,15 +1700,36 @@ export class OrchestratorTaskService extends Service {
         message: failure.message,
         attempt: erroredSessions,
         budget: MAX_SESSION_RETRY_ATTEMPTS,
+        respawnable,
       },
       timestamp: Date.now(),
       createdAt: nowIso(),
     });
     await this.advanceTaskStatus(
       taskId,
-      budgetSpent ? "unrecoverable" : "retrying",
+      terminal ? "unrecoverable" : "retrying",
     );
     this.emitChange(taskId);
+  }
+
+  /**
+   * Whether `sub-agent-router.ts` will deterministically respawn this crash —
+   * the same gate the router itself uses, mirrored here so status termination
+   * and respawn agree. Only these two classes get a successor session:
+   *   - `session_state_lost` (unconditional respawn under the lineage cap), and
+   *   - a pooled-account failure whose message classifies as rate-limit /
+   *     needs-reauth, while the session carried a pooled account and a healthy
+   *     sibling remains for failover.
+   * Everything else is un-respawnable and must fail immediately.
+   */
+  private routerWillRespawn(
+    session: OrchestratorTaskSession | undefined,
+    failure: { failureKind?: string; message: string },
+  ): boolean {
+    if (failure.failureKind === "session_state_lost") return true;
+    if (classifyAccountFailure(failure.message) === null) return false;
+    if (!session?.accountProviderId || !session.accountId) return false;
+    return hasHealthyPooledAccount(session.framework);
   }
 
   private async markSessionAccountUnhealthy(

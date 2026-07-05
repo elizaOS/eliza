@@ -1433,7 +1433,11 @@ describe("OrchestratorTaskService — store degradation resilience (#11641)", ()
 // the work pause hard-stopped, and the session->task index must survive a
 // parent restart by rebuilding from the durable store.
 describe("OrchestratorTaskService — crash produces terminal failed (#13771)", () => {
-  it("keeps the task non-terminal while the crash-retry budget remains", async () => {
+  it("keeps a RESPAWNABLE crash (session_state_lost) non-terminal while the budget remains", async () => {
+    // Only a crash the router actually re-drives may stay non-terminal — here a
+    // `session_state_lost`, which respawnStateLost re-spawns under a cap. A plain
+    // crash (no respawn producer) must NOT park like this; see the terminal case
+    // below and session-crash-terminates.test.ts.
     const acp = new FakeAcp();
     const { service, store } = makeServiceWithStore(acp);
     await service.start();
@@ -1443,9 +1447,13 @@ describe("OrchestratorTaskService — crash produces terminal failed (#13771)", 
       "spawn detail",
     );
     const sessionId = must(detail0.sessions[0], "session").sessionId;
-    await drive(acp, sessionId, "error", { message: "boom" });
+    await drive(acp, sessionId, "error", {
+      failureKind: "session_state_lost",
+      message: "ACP session state lost",
+    });
     const detail = must(await service.getTask(task.id), "detail");
-    // First crash: retrying, not terminal — the router's respawn gets a chance.
+    // First respawnable crash: retrying, not terminal — the router's respawn
+    // gets a chance.
     expect(detail.status).not.toBe("failed");
     expect(TERMINAL_TASK_STATUSES.has(detail.status)).toBe(false);
     expect(must(detail.sessions[0], "session").status).toBe("errored");
@@ -1458,14 +1466,38 @@ describe("OrchestratorTaskService — crash produces terminal failed (#13771)", 
     ).toBe(true);
   });
 
-  it("advances the task to terminal failed once the retry budget is spent", async () => {
+  it("fails a plain crash immediately — it has no respawn producer, so parking it would wedge the task", async () => {
+    // #13771 regression guard (#13830): a generic session error is respawned by
+    // NEITHER the account-failover nor the session_state_lost path in
+    // sub-agent-router.ts, so no successor session is ever spawned and no further
+    // error re-enters the budget. Routing the first such crash to
+    // `retrying -> active` wedges the task forever; it must go terminal `failed`.
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    const detail0 = must(
+      await service.spawnAgentForTask(task.id),
+      "spawn detail",
+    );
+    const sessionId = must(detail0.sessions[0], "session").sessionId;
+    await drive(acp, sessionId, "error", { message: "boom" });
+
+    const final = must(await service.getTask(task.id), "final");
+    expect(final.status).toBe("failed");
+    expect(TERMINAL_TASK_STATUSES.has(final.status)).toBe(true);
+    expect(final.events?.some((e) => e.eventType === "task_failed")).toBe(true);
+  });
+
+  it("advances the task to terminal failed once the respawnable-crash retry budget is spent", async () => {
     const acp = new FakeAcp();
     const service = makeService(acp);
     await service.start();
     const task = await service.createTask(createInput());
 
-    // Simulate the respawn lineage the router would drive: each crashed session
-    // is replaced by a fresh spawn, until the budget (3) is exhausted.
+    // Simulate the respawn lineage the router would drive for a respawnable
+    // crash: each crashed session is replaced by a fresh spawn, until the budget
+    // (3) is exhausted. `session_state_lost` is the respawnable class.
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const detail = must(
         await service.spawnAgentForTask(task.id),
@@ -1475,7 +1507,10 @@ describe("OrchestratorTaskService — crash produces terminal failed (#13771)", 
         detail.sessions.at(-1),
         "spawned session",
       ).sessionId;
-      await drive(acp, sessionId, "error", { message: `crash ${attempt}` });
+      await drive(acp, sessionId, "error", {
+        failureKind: "session_state_lost",
+        message: `state lost ${attempt}`,
+      });
     }
 
     const final = must(await service.getTask(task.id), "final");
@@ -1517,7 +1552,9 @@ describe("OrchestratorTaskService — crash produces terminal failed (#13771)", 
     const { service, store } = makeServiceWithStore(acp);
     await service.start();
     const task = await service.createTask(createInput());
-    // Two clean stops + one error must NOT trip the budget (only errors count).
+    // Two clean stops must NOT enter the crash lineage — only `error` events do.
+    // A respawnable crash after them is therefore attempt 1/3 (retryCount === 1),
+    // not 3/3: had the stops counted, the budget would already be spent.
     for (let i = 0; i < 2; i += 1) {
       const d = must(await service.spawnAgentForTask(task.id), "spawn");
       const sid = must(d.sessions.at(-1), "s").sessionId;
@@ -1525,10 +1562,14 @@ describe("OrchestratorTaskService — crash produces terminal failed (#13771)", 
     }
     const d = must(await service.spawnAgentForTask(task.id), "spawn");
     const sid = must(d.sessions.at(-1), "s").sessionId;
-    await drive(acp, sid, "error", { message: "boom" });
+    await drive(acp, sid, "error", {
+      failureKind: "session_state_lost",
+      message: "state lost",
+    });
     const detail = must(await service.getTask(task.id), "detail");
+    // Respawnable + budget remains → non-terminal (the stops didn't burn it).
     expect(detail.status).not.toBe("failed");
-    // Only one errored session in the lineage.
+    // Only one errored session in the lineage — the clean stops are not counted.
     const found = must(await store.findSession(sid), "found");
     expect(found.session.retryCount).toBe(1);
   });

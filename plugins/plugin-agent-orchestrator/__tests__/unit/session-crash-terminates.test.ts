@@ -16,10 +16,42 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
 import { MAX_SESSION_RETRY_ATTEMPTS } from "../../src/services/orchestrator-task-types.js";
+
+const BRIDGE_SYMBOL = CODING_AGENT_SELECTOR_BRIDGE_SYMBOL;
+
+/** Register a global coding-account bridge reporting `healthy` accounts for the
+ * `claude` agent type, so `hasHealthyPooledAccount("claude")` reflects the pool
+ * the way the router's failover gate would see it. */
+function installBridge(healthy: number): void {
+  (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+    describe: () => ({
+      claude: [
+        { providerId: "anthropic-subscription", total: 2, enabled: 2, healthy },
+      ],
+    }),
+    select: async () => null,
+    markRateLimited: async () => undefined,
+    markNeedsReauth: async () => undefined,
+    recordUsage: async () => undefined,
+  };
+}
+
+afterEach(() => {
+  delete (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL];
+});
 
 // Keep criteria-free tasks criteria-free so a `task_complete` never fires the
 // auto-verifier here (mirrors attach-session.test.ts).
@@ -168,18 +200,62 @@ describe("OrchestratorTaskService — un-respawnable session crash terminates th
     expect(detail?.status).toBe("active");
   });
 
-  it("keeps an account rate-limit crash NON-terminal (the router fails the account over to a healthy sibling)", async () => {
+  it("keeps a pooled-account rate-limit crash NON-terminal while a healthy sibling remains (router fails the account over)", async () => {
     // A pooled-account rate-limit is respawned by the router's in-router
     // account failover while a healthy sibling remains, so — like state-lost —
-    // the task must stay non-terminal for that respawn.
+    // the task must stay non-terminal for that respawn. Requires a real pooled
+    // account on the session AND a healthy sibling in the bridge, matching the
+    // router's exact failover gate.
+    installBridge(1);
     const { service, acp, taskId } = await makeService();
-
-    await crash(service, acp, taskId, "sess-ratelimit", {
-      message: "429 rate limit exceeded",
+    await service.attachSession(taskId, {
+      sessionId: "sess-ratelimit",
+      agentType: "claude",
+      workdir: "/tmp/workdir",
+      status: "ready",
+      label: "worker",
+      metadata: {
+        account: {
+          providerId: "anthropic-subscription",
+          accountId: "acct-limited",
+          label: "Work",
+        },
+      },
     });
+    acp.emit("sess-ratelimit", "error", { message: "429 rate limit exceeded" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const detail = await service.getTask(taskId);
     expect(detail?.status).not.toBe("failed");
     expect(detail?.status).toBe("active");
+  });
+
+  it("TERMINATES a pooled-account rate-limit crash when the pool is exhausted (no sibling to fail over to)", async () => {
+    // The pool has 0 healthy accounts, so the router posts the honest failure
+    // and does NOT respawn — the crash is un-respawnable and the task must
+    // terminate rather than wait for a failover that cannot happen.
+    installBridge(0);
+    const { service, acp, taskId } = await makeService();
+    await service.attachSession(taskId, {
+      sessionId: "sess-ratelimit-exhausted",
+      agentType: "claude",
+      workdir: "/tmp/workdir",
+      status: "ready",
+      label: "worker",
+      metadata: {
+        account: {
+          providerId: "anthropic-subscription",
+          accountId: "acct-limited",
+          label: "Work",
+        },
+      },
+    });
+    acp.emit("sess-ratelimit-exhausted", "error", {
+      message: "429 rate limit exceeded",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const detail = await service.getTask(taskId);
+    expect(detail?.status).toBe("failed");
   });
 });
