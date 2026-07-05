@@ -233,21 +233,23 @@ describe("SurfaceRealmScope.resetHostRealm — root/body class + :root var vecto
     );
   });
 
-  it("preserves a theme class toggled ON while the view was active (shell writers stay allowed)", () => {
+  it("removes a same-realm theme class added after activation", () => {
     document.documentElement.className = "light";
     const scope = makeScope();
-    // Shell toggles theme mid-view (light -> dark).
-    document.documentElement.classList.remove("light");
+    // Same-realm code toggles the shell-owned theme family after activation.
     document.documentElement.classList.add("dark");
-    // View injects its own class.
     document.documentElement.classList.add("rogue-root-class");
 
-    scope.resetHostRealm();
+    const result = scope.resetHostRealm();
 
-    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(document.documentElement.classList.contains("light")).toBe(true);
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
     expect(
       document.documentElement.classList.contains("rogue-root-class"),
     ).toBe(false);
+    expect(result.rootClasses).toEqual(
+      expect.arrayContaining(["dark", "rogue-root-class"]),
+    );
   });
 
   // A view leaks into the next surface by DELETING a shell baseline token just
@@ -293,19 +295,31 @@ describe("SurfaceRealmScope.resetHostRealm — root/body class + :root var vecto
     expect(result.restoredRootVars).toContain("--accent");
   });
 
-  it("does not re-add the previous theme class after a legitimate shell theme swap", () => {
+  it("restores a shell-owned :root var when the view rewrites it to another value", () => {
+    const scope = makeScope();
+    document.documentElement.style.setProperty("--accent", "red");
+
+    const result = scope.resetHostRealm();
+
+    expect(document.documentElement.style.getPropertyValue("--accent")).toBe(
+      "#f60",
+    );
+    expect(result.restoredRootVars).toContain("--accent");
+  });
+
+  it("restores the baseline theme class and removes a same-realm theme swap", () => {
     document.documentElement.className = "light";
     const scope = makeScope();
-    // Shell legitimately swaps theme mid-view: `light` out, `dark` in.
+    // Same-realm code removes the baseline theme and adds another shell-owned
+    // theme class. Teardown must restore the activation baseline exactly.
     document.documentElement.classList.remove("light");
     document.documentElement.classList.add("dark");
 
     const result = scope.resetHostRealm();
 
-    // The theme family is still represented — the swap is not a view deletion,
-    // so `light` must NOT be restored (that would leave both classes set).
-    expect(document.documentElement.classList.contains("dark")).toBe(true);
-    expect(document.documentElement.classList.contains("light")).toBe(false);
-    expect(result.restoredRootClasses).not.toContain("light");
+    expect(document.documentElement.classList.contains("light")).toBe(true);
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(result.rootClasses).toContain("dark");
+    expect(result.restoredRootClasses).toContain("light");
   });
 });

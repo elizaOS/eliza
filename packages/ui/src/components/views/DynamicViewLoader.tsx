@@ -78,7 +78,11 @@ import {
 } from "../../state/bounded-view-lru";
 import { installHeapPressureMonitor } from "../../state/heap-pressure-monitor";
 import { useApp } from "../../state/useApp.ts";
-import { getActiveSurfaceRealmScope } from "../../surface-realm-broker";
+import {
+  getActiveSurfaceRealmScope,
+  SurfaceRealmDeniedError,
+  type SurfaceRealmScope,
+} from "../../surface-realm-broker";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
 import {
   formatDetailTimestamp,
@@ -390,6 +394,21 @@ async function importUiComponentsCompat(): Promise<Record<string, unknown>> {
   return import("../index.ts");
 }
 
+function resolveSurfaceRealmScopeForHostExternal(
+  boundScope: SurfaceRealmScope | null,
+  vector: "storage" | "navigate",
+  detail: string,
+): SurfaceRealmScope | null {
+  const activeScope = getActiveSurfaceRealmScope();
+  if (!boundScope) return activeScope;
+  if (activeScope === boundScope) return boundScope;
+  throw new SurfaceRealmDeniedError(
+    boundScope.viewId,
+    vector,
+    `stale host external call after surface deactivation: ${detail}`,
+  );
+}
+
 async function importUiRootCompat(): Promise<Record<string, unknown>> {
   // The root barrel re-exports the RAW navigation/storage helpers (via
   // `export * from "./app-navigate-view"` and `export * from "./bridge/index"`),
@@ -411,10 +430,15 @@ async function importUiAppNavigateViewCompat(): Promise<
   Record<string, unknown>
 > {
   const appNavigateView = await import("../../app-navigate-view.ts");
-  const scope = getActiveSurfaceRealmScope();
+  const boundScope = getActiveSurfaceRealmScope();
   return {
     ...appNavigateView,
     navigateBrowserPath(path: string): void {
+      const scope = resolveSurfaceRealmScopeForHostExternal(
+        boundScope,
+        "navigate",
+        `blocked navigation to "${path}"`,
+      );
       if (scope) {
         scope.navigate(path);
         return;
@@ -426,14 +450,24 @@ async function importUiAppNavigateViewCompat(): Promise<
 
 async function importUiBridgeCompat(): Promise<Record<string, unknown>> {
   const bridge = await import("../../bridge/index.ts");
-  const scope = getActiveSurfaceRealmScope();
+  const boundScope = getActiveSurfaceRealmScope();
   return {
     ...bridge,
     async getStorageValue(key: string): Promise<string | null> {
+      const scope = resolveSurfaceRealmScopeForHostExternal(
+        boundScope,
+        "storage",
+        `blocked read for key "${key}"`,
+      );
       if (scope) return scope.storage.getItem(key);
       return bridge.getStorageValue(key);
     },
     async setStorageValue(key: string, value: string): Promise<void> {
+      const scope = resolveSurfaceRealmScopeForHostExternal(
+        boundScope,
+        "storage",
+        `blocked write for key "${key}"`,
+      );
       if (scope) {
         scope.storage.setItem(key, value);
         return;
@@ -441,6 +475,11 @@ async function importUiBridgeCompat(): Promise<Record<string, unknown>> {
       await bridge.setStorageValue(key, value);
     },
     async removeStorageValue(key: string): Promise<void> {
+      const scope = resolveSurfaceRealmScopeForHostExternal(
+        boundScope,
+        "storage",
+        `blocked removal for key "${key}"`,
+      );
       if (scope) {
         scope.storage.removeItem(key);
         return;

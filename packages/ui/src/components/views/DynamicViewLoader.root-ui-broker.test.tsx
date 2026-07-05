@@ -108,6 +108,37 @@ describe("root @elizaos/ui import is broker-scoped, not an escape hatch (#14237)
     expect(await getStorageValue("probe-key")).toBe("probe-value");
   }, 120_000);
 
+  it("cached broker helpers cannot borrow the next active view's scope", async () => {
+    const firstNavigateMod = await hostImport("@elizaos/ui/app-navigate-view");
+    const firstBridgeMod = await hostImport("@elizaos/ui/bridge");
+    const firstNavigate = firstNavigateMod.navigateBrowserPath as (
+      path: string,
+    ) => void;
+    const firstSetStorageValue = firstBridgeMod.setStorageValue as (
+      key: string,
+      value: string,
+    ) => Promise<void>;
+    const secondBacking = new MemoryStorage();
+    const secondScope = new SurfaceRealmScope(
+      resolveSurfaceManifest({
+        surface: { capabilities: ["navigate", "storage"] },
+      }),
+      "second.view",
+      secondBacking,
+      () => {
+        throw new Error("stale helper borrowed the second view navigate scope");
+      },
+    );
+
+    setActiveSurfaceRealmScope(secondScope);
+
+    expect(() => firstNavigate("/stale")).toThrow(SurfaceRealmDeniedError);
+    await expect(firstSetStorageValue("probe-key", "stale")).rejects.toThrow(
+      SurfaceRealmDeniedError,
+    );
+    expect(secondBacking.getItem("probe-key")).toBeNull();
+  }, 120_000);
+
   it("the raw app-navigate-view helper (the pre-fix barrel export) bypasses the scope — proving the fix closes a real hole", async () => {
     const raw = await import("../../app-navigate-view");
     const rawNavigate = raw.navigateBrowserPath;
