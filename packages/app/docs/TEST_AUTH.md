@@ -30,6 +30,26 @@ Chromium renderer tests that need a Steward session use
 | Real Eliza Cloud worker e2e | Headless SIWE via `siweTestLogin`, or `POST /api/test/auth/session` when `PLAYWRIGHT_TEST_AUTH` is enabled | Production-auth representative for API/session behavior | Real API key/session cookie |
 | Real Eliza Cloud device lanes | Cloud provisioning secret passed to the lane | Production-auth representative for device cloud probe | `ELIZA_CLOUD_AUTH_TOKEN` |
 
+## Remote Deep Link Cannot Carry A Credential
+
+The first-run remote-connect deep link (`<scheme>://first-run/runtime/remote?...`,
+parsed by `packages/ui/src/first-run/deep-link-handler.ts`) accepts ONLY an
+address via `api|apiBase|url|host`. It has no credential channel: a `token` /
+`accessToken` query param is dropped, and a link carrying only a would-be
+credential parses to `null`. There is therefore no unattended path from a deep
+link alone to an authenticated remote connect against a pairing-enabled
+(production-shaped) agent. Unattended onboarding must go through either:
+
+- the **pairing handshake** (`GET /api/auth/pair-code` server-side →
+  `POST /api/auth/pair` → minted revocable machine session), or
+- the **remote-connect access-token form** (#11761 — URL + access token typed
+  by the operator).
+
+Harness authors: do not attempt to smuggle a session or token through the deep
+link — the constraint is enforced by the parser and asserted end-to-end in
+`packages/app-core/test/live-agent/auth-pairing-remote-connect.real.e2e.test.ts`
+(§4), the driven e2e for the #13692 production auth path.
+
 ## Missing Secrets
 
 Auth-dependent CI steps must not disappear silently when a secret is absent.

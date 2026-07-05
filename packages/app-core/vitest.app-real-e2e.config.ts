@@ -39,6 +39,11 @@ export default defineConfig({
       // than the PR unit lane (which excludes live-agent e2e wholesale). It
       // has no provider-key gate — it runs on every nightly invocation.
       "test/live-agent/views-interact-ws-roundtrip.real.e2e.test.ts",
+      // #13692 production auth path: boots the real runtime + HTTP server and
+      // drives the pair-code → machine-session handshake, cookie persistence,
+      // and the token-gated remote connect. Keyless (deterministic LLM proxy),
+      // so it runs on every nightly invocation with no provider gate.
+      "test/live-agent/auth-pairing-remote-connect.real.e2e.test.ts",
     ],
     exclude: ["dist/**", "**/node_modules/**"],
     testTimeout: 600_000,

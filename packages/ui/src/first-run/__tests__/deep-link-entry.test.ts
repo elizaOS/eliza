@@ -410,4 +410,38 @@ describe("parseFirstRunRemoteConnectDeepLink", () => {
       ),
     ).toBeNull();
   });
+
+  // #13692 §4: the remote deep link has NO credential channel. It accepts only
+  // api|apiBase|url|host, so a `token`/`accessToken` param is dropped and never
+  // becomes an unattended credential against a pairing-enabled remote agent.
+  // Documented in packages/app/docs/TEST_AUTH.md and asserted end-to-end in
+  // packages/app-core/test/live-agent/auth-pairing-remote-connect.real.e2e.test.ts.
+  it.each([
+    "token",
+    "accessToken",
+  ])("drops a smuggled %s credential param, surfacing only the address (#13692)", (credentialKey) => {
+    const result = parseFirstRunRemoteConnectDeepLink(
+      `eliza://first-run/runtime/remote?api=https://agent.example.com&${credentialKey}=smuggled-secret`,
+      URL_SCHEME,
+    );
+    expect(result).toEqual({ apiBase: "https://agent.example.com" });
+    expect(
+      (result as Record<string, unknown> | null)?.[credentialKey],
+    ).toBeUndefined();
+  });
+
+  it("returns null for a link carrying ONLY a credential and no address (#13692 §4)", () => {
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "eliza://first-run/runtime/remote?token=smuggled-secret",
+        URL_SCHEME,
+      ),
+    ).toBeNull();
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "eliza://first-run/runtime/remote?accessToken=smuggled-secret",
+        URL_SCHEME,
+      ),
+    ).toBeNull();
+  });
 });
