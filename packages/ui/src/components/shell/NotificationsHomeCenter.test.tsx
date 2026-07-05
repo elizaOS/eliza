@@ -200,4 +200,40 @@ describe("NotificationsHomeCenter", () => {
     render(<NotificationsHomeCenter />);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(100);
   });
+
+  it("renders a normal row with no priority rail (lock-screen restraint)", () => {
+    __ingestNotificationForTests(
+      makeNotification({ priority: "normal", title: "Quiet one" }),
+    );
+    render(<NotificationsHomeCenter />);
+    // A normal notification is just its line + time — no leading accent rail,
+    // no per-row icon chip (the box-in-a-box slop is gone).
+    expect(screen.queryByTestId("notification-row-accent")).toBeNull();
+    expect(screen.queryByTestId("notification-row-icon")).toBeNull();
+  });
+
+  it("shows a priority rail only for urgent/high rows", () => {
+    __ingestNotificationForTests(
+      makeNotification({ priority: "urgent", title: "Urgent" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ priority: "high", title: "High" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ priority: "low", title: "Low" }),
+    );
+    render(<NotificationsHomeCenter />);
+    // Two elevated rows carry the rail; the low row does not.
+    expect(screen.getAllByTestId("notification-row-accent")).toHaveLength(2);
+  });
+
+  it("is a quiet glass surface, not a heavy filled card", () => {
+    __ingestNotificationForTests(makeNotification());
+    render(<NotificationsHomeCenter />);
+    const card = screen.getByTestId("home-notification-center");
+    // Hairline border + translucent surface (lock-screen glass), not the old
+    // opaque `bg-card` box with a solid `border-border`.
+    expect(card.className).toContain("backdrop-blur");
+    expect(card.className).not.toContain("border-border");
+  });
 });

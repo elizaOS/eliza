@@ -407,9 +407,7 @@ describe("ContinuousChatOverlay", () => {
     // (wallpaper on shared-background routes), the repaint band WAS the
     // residual visible gap on the standalone home view. It must stay gone.
     render(<ContinuousChatOverlay controller={makeController()} />);
-    expect(
-      screen.queryByTestId("continuous-chat-bottom-floor"),
-    ).toBeNull();
+    expect(screen.queryByTestId("continuous-chat-bottom-floor")).toBeNull();
   });
 
   it("blurs the focused composer when the active view leaves chat (drops the iOS accessory bar)", () => {
@@ -856,6 +854,77 @@ describe("ContinuousChatOverlay", () => {
     expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(1);
   });
 
+  it("hides the topic chips bar + dividers on a single-topic thread", () => {
+    // The lock-screen leak: a fresh thread whose only Stage-1 topic is
+    // `greeting` was rendering a grey `greeting` chip top-left and a
+    // "— GREETING —" divider above the only message. One topic group must
+    // open clean — no chips rail, no divider.
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [
+            {
+              id: "a",
+              role: "assistant",
+              content: "hey, how can I help?",
+              createdAt: 1,
+              topics: ["greeting"],
+            },
+            {
+              id: "b",
+              role: "user",
+              content: "just saying hi",
+              createdAt: 2,
+              topics: ["greeting"],
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(screen.queryByTestId("topic-chips-bar")).toBeNull();
+    expect(screen.queryByTestId("topic-group-header")).toBeNull();
+    expect(screen.queryByTestId("topic-group-pill")).toBeNull();
+    // The message still renders — gating only removes the topic chrome.
+    const log = document.getElementById("continuous-thread");
+    expect(log?.textContent).toContain("how can I help");
+  });
+
+  it("shows the chips bar + dividers once the thread spans two topics", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [
+            {
+              id: "a",
+              role: "user",
+              content: "deploy failing",
+              createdAt: 1,
+              topics: ["deployment"],
+            },
+            {
+              id: "b",
+              role: "user",
+              content: "and my card was charged twice",
+              createdAt: 2,
+              topics: ["billing"],
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(screen.getByTestId("topic-chips-bar")).toBeTruthy();
+    // Two distinct topics → two group dividers, labels humanized.
+    expect(screen.getAllByTestId("topic-group-header").length).toBe(2);
+    expect(screen.getByTestId("topic-chips-bar").textContent).toContain(
+      "Deployment",
+    );
+    expect(screen.getByTestId("topic-chips-bar").textContent).toContain(
+      "Billing",
+    );
+  });
+
   it("aligns the assistant bubble left and the user bubble right", () => {
     render(
       <ContinuousChatOverlay
@@ -885,9 +954,7 @@ describe("ContinuousChatOverlay", () => {
     );
     fireEvent.focus(screen.getByLabelText("message"));
     // The status indicator sits inside a left-aligned, full-width assistant row.
-    const row = screen
-      .getByTestId("turn-status-indicator")
-      .closest(".w-full");
+    const row = screen.getByTestId("turn-status-indicator").closest(".w-full");
     expect(row?.className).toContain("w-full");
     expect(row?.className).toContain("justify-start");
   });

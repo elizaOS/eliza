@@ -29,6 +29,28 @@ export interface TopicSegment<T extends TopicTaggedMessage> {
 /** Maximum chips rendered in the topic bar before the rest are summarized. */
 export const MAX_TOPIC_CHIPS = 12;
 
+/**
+ * Humanize a Stage-1 topic id for display. The tagger emits machine-y labels —
+ * snake_case / kebab-case / dotted slugs (`user_greeting`, `deploy-status`,
+ * `billing.refund`) — that read as noise in the transcript. Turn a slug into
+ * Title Case words; leave already-human labels (those with a space or other
+ * non-slug characters) untouched. Returns null only for an empty/whitespace
+ * label so callers can fall back to the raw value.
+ */
+export function humanizeTopicLabel(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  // Slug detection: only letters/digits and the separators . _ -, no spaces.
+  const isSlug = /^[a-z0-9]+([._-][a-z0-9]+)*$/i.test(trimmed);
+  if (!isSlug) return trimmed;
+  const words = trimmed
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  if (words.length === 0) return null;
+  return words.join(" ");
+}
+
 function dominantTopic(message: TopicTaggedMessage): string | null {
   const topics = message.topics;
   if (!Array.isArray(topics)) return null;
@@ -72,6 +94,25 @@ export function groupMessagesByTopic<T extends TopicTaggedMessage>(
     }
   }
   return segments;
+}
+
+/**
+ * Whether the transcript spans genuinely MULTIPLE topics — the only case where
+ * the chips bar and topic dividers earn their pixels. A fresh thread with one
+ * (or zero) tagged topic must open clean: no chips rail, no divider above the
+ * only group. "Multiple" = at least two DISTINCT titled topics present, so a
+ * long single-subject thread (or an untitled leading run that later adopts one
+ * topic) stays flat. Pass the already-computed segments to avoid re-walking.
+ */
+export function hasMultipleTopicGroups(
+  segments: readonly TopicSegment<TopicTaggedMessage>[],
+): boolean {
+  const distinct = new Set<string>();
+  for (const segment of segments) {
+    if (segment.topic) distinct.add(segment.topic);
+    if (distinct.size >= 2) return true;
+  }
+  return false;
 }
 
 /**

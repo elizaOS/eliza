@@ -396,6 +396,49 @@ body.platform-android * {
   -ms-overflow-style: none;
 }
 
+/* Installed PWA (iOS/Android "Add to Home Screen", desktop install) runs as a
+   web build — Capacitor reports NOT native — so it misses the `body.native`
+   scrollbar reset above and inherits the global 10px chrome scrollbar from
+   styles.css. On a standalone install that chrome bar reads as a stray grey
+   track down the sheet edge (and a horizontal strip above the composer) — the
+   "weird side scroll thingy." A standalone display-mode is a full-screen app,
+   not a browser tab: kill the scrollbar chrome and let momentum scrolling
+   carry. Scoped to display-mode so an in-browser tab keeps its scrollbar. */
+@media (display-mode: standalone), (display-mode: fullscreen),
+  (display-mode: minimal-ui) {
+  /* biome-ignore lint/style/noDescendingSpecificity: universal scrollbar reset is intentional (matches styles.css). */
+  *::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+  /* biome-ignore lint/style/noDescendingSpecificity: universal scrollbar reset is intentional (matches styles.css). */
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+}
+
+/* Coarse pointers (touch) never benefit from a draggable scrollbar — there is
+   no cursor to grab it, and the thumb only steals a strip of the reading
+   surface. A touch phone in the browser (not yet installed) still showed the
+   universal 10px scrollbar over the chat sheet; hide the chrome on any coarse
+   pointer so touch scrolling stays edge-to-edge and invisible, matching the
+   native shell. Fine-pointer (mouse) desktop keeps the styled scrollbar. */
+@media (pointer: coarse) {
+  /* biome-ignore lint/style/noDescendingSpecificity: universal scrollbar reset is intentional (matches styles.css). */
+  *::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+  /* biome-ignore lint/style/noDescendingSpecificity: universal scrollbar reset is intentional (matches styles.css). */
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+}
+
 /* ─── Brand theme variants ───────────────────────────────────────────
    Each marketing surface picks one of these by setting the class on
    <html> or <body>. Shared palette, different center of gravity:

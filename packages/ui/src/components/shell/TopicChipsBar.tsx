@@ -4,6 +4,7 @@
 import type * as React from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { humanizeTopicLabel } from "./topic-grouping";
 
 /**
  * Horizontal topic chips above the transcript (#8928). Shows the channel's
@@ -34,6 +35,9 @@ export function TopicChipsBar({
     >
       {topics.map((topic) => {
         const active = activeTopic != null && activeTopic === topic;
+        // Show a human label; keep the raw slug as the key/identity so the
+        // scroll-to-topic lookup (data-topic on the group) still matches.
+        const label = humanizeTopicLabel(topic) ?? topic;
         return (
           <Button
             key={topic}
@@ -49,7 +53,7 @@ export function TopicChipsBar({
                 : "border-white/15 bg-white/10 text-white/70 hover:bg-white/20 hover:text-white",
             )}
           >
-            {topic}
+            {label}
           </Button>
         );
       })}

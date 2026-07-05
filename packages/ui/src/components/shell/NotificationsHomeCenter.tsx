@@ -17,11 +17,10 @@
  * marks it read) never reshuffles the list under the user's finger.
  */
 import type { AgentNotification } from "@elizaos/core";
-import { Bell, CheckCheck, Trash2, X } from "lucide-react";
+import { CheckCheck, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
 import { useNow } from "../../hooks/useNow";
 import { cn } from "../../lib/utils";
-import { categoryIcon } from "../../state/notifications/category-icon";
 import {
   isSafeDeepLink,
   navigateDeepLink,
@@ -153,14 +152,31 @@ function NotificationRow({
   const unread = !notification.readAt;
   const urgent = notification.priority === "urgent";
   const high = notification.priority === "high";
+  // Lock-screen restraint: NO per-row icon chip (a box inside a box inside the
+  // card). Priority is carried by a hairline accent rail on the leading edge —
+  // present only for urgent/high — and an unread state by a single dot, so a
+  // quiet normal notification is just its line + time, like an iOS lock note.
+  const accent = urgent ? "bg-danger" : high ? "bg-accent" : null;
   return (
     <li className="eliza-notif-row" data-notif-row>
       <div
         className={cn(
-          "eliza-notif-row-inner group relative flex items-start rounded-xl transition-colors duration-150 hover:bg-bg-hover",
-          unread && "bg-bg-hover/60",
+          "eliza-notif-row-inner group relative flex items-stretch overflow-hidden rounded-xl transition-colors duration-150 hover:bg-bg-hover",
+          unread && "bg-bg-hover/50",
         )}
       >
+        {/* Priority rail: a 2px edge tint, urgent/high only. The row without
+            it reads as ordinary — restraint over decoration. */}
+        {accent ? (
+          <span
+            aria-hidden
+            data-testid="notification-row-accent"
+            className={cn(
+              "absolute inset-y-1.5 left-0 w-0.5 rounded-full",
+              accent,
+            )}
+          />
+        ) : null}
         <button
           type="button"
           data-testid="notification-row"
@@ -169,57 +185,41 @@ function NotificationRow({
             notification.body ? `. ${notification.body}` : ""
           }${unread ? ". Unread." : ""}`}
           onClick={() => onOpen(notification)}
-          className="flex min-h-touch min-w-0 flex-1 items-start gap-2.5 rounded-xl px-2 py-2 pr-9 text-left active:scale-[0.99] motion-reduce:active:scale-100 pointer-coarse:pr-11"
+          className="flex min-h-touch min-w-0 flex-1 flex-col gap-0.5 rounded-xl px-3 py-2 pr-9 text-left active:scale-[0.99] motion-reduce:active:scale-100 pointer-coarse:pr-11"
         >
-          <span
-            className={cn(
-              "mt-px inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg [&>svg]:h-3.5 [&>svg]:w-3.5",
-              urgent
-                ? "bg-danger/15 text-danger"
-                : high
-                  ? "bg-accent-subtle text-accent"
-                  : "bg-bg-muted text-muted",
-            )}
-            data-testid="notification-row-icon"
-            aria-hidden
-          >
-            {categoryIcon(notification.category)}
-          </span>
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="flex items-center gap-1.5">
-              {unread ? (
-                <span
-                  aria-hidden
-                  data-testid="notification-unread-dot"
-                  className={cn(
-                    "h-1.5 w-1.5 shrink-0 rounded-full",
-                    urgent ? "bg-danger" : "bg-accent",
-                  )}
-                />
-              ) : null}
+          <span className="flex items-baseline gap-1.5">
+            {unread ? (
               <span
+                aria-hidden
+                data-testid="notification-unread-dot"
                 className={cn(
-                  "truncate text-sm",
-                  unread
-                    ? "font-semibold text-txt"
-                    : "font-medium text-muted-strong",
+                  "mb-px h-1.5 w-1.5 shrink-0 self-center rounded-full",
+                  urgent ? "bg-danger" : "bg-accent",
                 )}
-              >
-                {notification.title}
-              </span>
-              <time
-                className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-muted"
-                data-testid="notification-row-time"
-              >
-                {formatRelativeTime(notification.createdAt)}
-              </time>
-            </span>
-            {notification.body ? (
-              <span className="line-clamp-2 text-xs text-muted-strong">
-                {notification.body}
-              </span>
+              />
             ) : null}
+            <span
+              className={cn(
+                "truncate text-sm",
+                unread
+                  ? "font-semibold text-txt"
+                  : "font-medium text-muted-strong",
+              )}
+            >
+              {notification.title}
+            </span>
+            <time
+              className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-muted"
+              data-testid="notification-row-time"
+            >
+              {formatRelativeTime(notification.createdAt)}
+            </time>
           </span>
+          {notification.body ? (
+            <span className="line-clamp-2 text-xs leading-snug text-muted">
+              {notification.body}
+            </span>
+          ) : null}
         </button>
         {/* Visible at rest (dimmed) — on touch there is no hover, and an
             invisible dismiss silently ate near-edge taps in the old center. */}
@@ -229,7 +229,7 @@ function NotificationRow({
           aria-label="Dismiss notification"
           data-testid="notification-row-dismiss"
           onClick={() => onDismiss(notification.id)}
-          className="absolute right-1 top-1.5 h-auto w-auto shrink-0 rounded-full p-1.5 text-muted opacity-50 transition-opacity pointer-coarse:min-h-touch pointer-coarse:min-w-touch hover:bg-bg-hover hover:text-txt group-hover:opacity-100"
+          className="absolute right-1 top-1.5 h-auto w-auto shrink-0 rounded-full p-1.5 text-muted opacity-40 transition-opacity pointer-coarse:min-h-touch pointer-coarse:min-w-touch hover:bg-bg-hover hover:text-txt group-hover:opacity-100"
         >
           <X className="h-3.5 w-3.5" />
         </Button>
@@ -293,21 +293,24 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
       data-testid="home-notification-center"
       // The card owns its gap from the editorial header above (mt-4) so a
       // hidden widget (null render) leaves no dead spacer in the column.
-      className="mt-4 flex flex-col overflow-hidden rounded-2xl border border-border bg-card"
+      //
+      // Lock-screen glass, not a chrome box: a single hairline border + a
+      // faintly translucent surface over the wallpaper (backdrop-blur where
+      // supported), no heavy filled card. This reads as an iOS lock-screen
+      // notification stack sitting on the home field rather than an app card.
+      className="mt-4 flex flex-col overflow-hidden rounded-2xl border border-txt/10 bg-card/70 backdrop-blur-xl supports-[backdrop-filter]:bg-card/55"
     >
       <style>{NOTIF_SCROLL_CSS}</style>
-      {/* Pinned header: eyebrow label + unread badge, mark-all-read + clear. */}
-      <div className="flex shrink-0 items-center gap-2 px-3.5 pb-1 pt-2.5">
-        <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-accent-subtle text-accent">
-          <Bell className="h-3.5 w-3.5" aria-hidden />
-        </span>
-        <span className="text-xs-tight font-medium uppercase tracking-[0.08em] text-muted">
+      {/* Pinned header: a quiet eyebrow + unread count, actions to the right.
+          No boxed bell chip — the label alone names the surface. */}
+      <div className="flex shrink-0 items-center gap-1.5 px-3.5 pb-1 pt-2.5">
+        <span className="text-2xs font-medium uppercase tracking-[0.1em] text-muted">
           Notifications
         </span>
         {unreadCount > 0 ? (
           <span
             data-testid="notifications-unread-badge"
-            className="rounded-full bg-accent-subtle px-1.5 py-0.5 text-2xs font-semibold tabular-nums leading-none text-accent"
+            className="text-2xs font-semibold tabular-nums leading-none text-accent"
           >
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>

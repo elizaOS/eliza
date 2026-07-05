@@ -6,6 +6,7 @@ import type * as React from "react";
 import { useClickSuppression } from "../../gestures";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { humanizeTopicLabel } from "./topic-grouping";
 import { usePullGesture } from "./use-pull-gesture";
 
 /**
@@ -78,6 +79,9 @@ function TitledTopicGroup({
     onPullUp: () => toggleFromGesture(true),
     onPullDown: () => toggleFromGesture(false),
   });
+  // Human label for display; `data-topic` + aria keep the raw slug so the
+  // chip scroll-into-view lookup and collapse keying stay stable.
+  const label = humanizeTopicLabel(topic) ?? topic;
 
   return (
     <div
@@ -104,7 +108,7 @@ function TitledTopicGroup({
             className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/60"
             aria-hidden
           />
-          <span className="truncate text-[13px] font-medium">{topic}</span>
+          <span className="truncate text-[13px] font-medium">{label}</span>
           <span className="ml-auto shrink-0 text-[11px] text-white/45">
             {count} {count === 1 ? "message" : "messages"}
           </span>
@@ -125,7 +129,7 @@ function TitledTopicGroup({
         >
           <span className="h-px flex-1 bg-white/10" aria-hidden />
           <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide">
-            {topic}
+            {label}
           </span>
           <span className="h-px flex-1 bg-white/10" aria-hidden />
         </Button>

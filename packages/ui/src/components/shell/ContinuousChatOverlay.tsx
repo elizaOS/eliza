@@ -104,7 +104,12 @@ import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import { type ShellMessage, selectVisibleShellMessages } from "./shell-state";
 import { TopicChipsBar } from "./TopicChipsBar";
 import { TopicGroup } from "./TopicGroup";
-import { deriveChannelTopics, groupMessagesByTopic } from "./topic-grouping";
+import {
+  deriveChannelTopics,
+  groupMessagesByTopic,
+  hasMultipleTopicGroups,
+  humanizeTopicLabel,
+} from "./topic-grouping";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import { usePromptSuggestions } from "./usePromptSuggestions";
 import type { ConversationNav, ShellController } from "./useShellController";
@@ -1454,17 +1459,24 @@ export function ContinuousChatOverlay({
   ]);
 
   // Topic grouping + chips bar (#8928). Derived from the per-message Stage-1
-  // topic tags; when no message is tagged the transcript renders flat (the
-  // chips bar and groups simply don't appear), preserving the prior behavior.
-  const channelTopics = React.useMemo(
-    () => deriveChannelTopics(visibleMessages),
-    [visibleMessages],
-  );
+  // topic tags. The chips rail and dividers ONLY earn their pixels once a
+  // transcript genuinely spans MULTIPLE topics — a fresh/single-subject thread
+  // renders flat so the lock-screen chat opens clean (no machine-topic pill
+  // top-left, no "— GREETING —" divider above the only group). See
+  // `hasMultipleTopicGroups`. Chip labels are humanized from the tagger's
+  // machine slugs (`user_greeting` → "User Greeting").
   const topicSegments = React.useMemo(
     () => groupMessagesByTopic(visibleMessages),
     [visibleMessages],
   );
-  const hasTopics = channelTopics.length > 0;
+  const hasTopics = React.useMemo(
+    () => hasMultipleTopicGroups(topicSegments),
+    [topicSegments],
+  );
+  const channelTopics = React.useMemo(
+    () => deriveChannelTopics(visibleMessages),
+    [visibleMessages],
+  );
   const [collapsedTopics, setCollapsedTopics] = React.useState<
     ReadonlySet<string>
   >(() => new Set<string>());
@@ -4087,7 +4099,13 @@ export function ContinuousChatOverlay({
                   // overflow region on iOS can fail to take the touch-scroll at
                   // all (the transcript reads as "stuck" — #chat-scroll-web).
                   // Harmless/ignored on every non-WebKit engine.
-                  className="relative flex min-h-0 w-full flex-1 touch-pan-y flex-col overflow-y-auto overscroll-contain px-5 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
+                  // `overflow-x-hidden`: `overflow-y-auto` alone computes the
+                  // cross axis to `auto` too, so a child a hair too wide (a
+                  // long code line, the full-bleed chips rail) surfaces a
+                  // horizontal scrollbar strip across the sheet on iOS — the
+                  // "weird side scroll thingy." This transcript only ever scrolls
+                  // vertically; pin the horizontal axis closed.
+                  className="relative flex min-h-0 w-full flex-1 touch-pan-y flex-col overflow-y-auto overflow-x-hidden overscroll-contain px-5 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
                   style={{ opacity: threadContentOpacity }}
                 >
                   {/* Empty-thread loading: a fresh/cleared chat awaiting its

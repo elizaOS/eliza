@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import {
   deriveChannelTopics,
   groupMessagesByTopic,
+  hasMultipleTopicGroups,
+  humanizeTopicLabel,
   MAX_TOPIC_CHIPS,
   type TopicTaggedMessage,
 } from "./topic-grouping";
@@ -83,5 +85,70 @@ describe("deriveChannelTopics", () => {
       m(`${i}`, [`topic-${i}`]),
     );
     expect(deriveChannelTopics(many)).toHaveLength(MAX_TOPIC_CHIPS);
+  });
+});
+
+describe("hasMultipleTopicGroups", () => {
+  it("is false for an all-untitled transcript (no topics)", () => {
+    const segments = groupMessagesByTopic([m("1"), m("2")]);
+    expect(hasMultipleTopicGroups(segments)).toBe(false);
+  });
+
+  it("is false for a single-topic thread (the divider would be noise)", () => {
+    // A fresh thread whose only topic is `greeting` — the exact leak Shadow
+    // saw: one titled group must NOT trigger the chips bar or a divider.
+    const segments = groupMessagesByTopic([
+      m("1", ["greeting"]),
+      m("2", ["greeting"]),
+    ]);
+    expect(hasMultipleTopicGroups(segments)).toBe(false);
+  });
+
+  it("is false when a leading untitled run adopts one topic", () => {
+    const segments = groupMessagesByTopic([m("1"), m("2", ["billing"])]);
+    expect(segments).toHaveLength(1);
+    expect(hasMultipleTopicGroups(segments)).toBe(false);
+  });
+
+  it("is true once two DISTINCT topics are present", () => {
+    const segments = groupMessagesByTopic([
+      m("1", ["billing"]),
+      m("2", ["deployment"]),
+    ]);
+    expect(hasMultipleTopicGroups(segments)).toBe(true);
+  });
+
+  it("counts distinct topics, not segment runs (A → B → A is multi)", () => {
+    const segments = groupMessagesByTopic([
+      m("1", ["billing"]),
+      m("2", ["deployment"]),
+      m("3", ["billing"]),
+    ]);
+    expect(segments).toHaveLength(3);
+    expect(hasMultipleTopicGroups(segments)).toBe(true);
+  });
+});
+
+describe("humanizeTopicLabel", () => {
+  it("title-cases snake_case slugs", () => {
+    expect(humanizeTopicLabel("user_greeting")).toBe("User Greeting");
+  });
+
+  it("title-cases kebab and dotted slugs", () => {
+    expect(humanizeTopicLabel("deploy-status")).toBe("Deploy Status");
+    expect(humanizeTopicLabel("billing.refund")).toBe("Billing Refund");
+  });
+
+  it("title-cases a bare single-word slug", () => {
+    expect(humanizeTopicLabel("greeting")).toBe("Greeting");
+  });
+
+  it("leaves an already-human multi-word label untouched", () => {
+    expect(humanizeTopicLabel("Q3 planning notes")).toBe("Q3 planning notes");
+  });
+
+  it("returns null for an empty/whitespace label", () => {
+    expect(humanizeTopicLabel("")).toBeNull();
+    expect(humanizeTopicLabel("   ")).toBeNull();
   });
 });
