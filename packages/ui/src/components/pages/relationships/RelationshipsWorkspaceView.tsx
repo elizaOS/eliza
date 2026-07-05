@@ -292,8 +292,7 @@ export function RelationshipsWorkspaceView({
                   defaultValue: "No people match that filter.",
                 })
               : t("relationships.noneYet", {
-                  defaultValue:
-                    "No relationships yet. Ask Eliza to map who you know.",
+                  defaultValue: "No relationships yet.",
                 })
           }
         />

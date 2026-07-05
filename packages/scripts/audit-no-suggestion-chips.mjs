@@ -27,6 +27,8 @@
  */
 
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -43,6 +45,12 @@ const BANNED_STRINGS = [
   "Teach Eliza in chat",
   "Define your voice",
   "Dispatch a coding agent to fix a failing test",
+  // Empty-state copy that instructs the user to ask/tell the agent is a
+  // suggestion in disguise (epic #13560 quiet-view contract). A designed-empty
+  // view names what is empty; it never tells the user to "Ask Eliza to …".
+  "Ask Eliza to map who you know",
+  "Describe a task in the chat below",
+  "then describe a task in the chat below",
 ];
 
 const PATHSPECS = [
@@ -104,7 +112,34 @@ function report(violations) {
   return 1;
 }
 
-/** Prove the gate actually detects a violation by grepping a live known-clean tree. */
+/**
+ * Fixed-string git-grep against a single on-disk file via `--no-index`, so the
+ * self-test can prove detection against a planted fixture without mutating the
+ * repo index/tree. Returns match lines.
+ */
+function grepFile(needle, dir, file) {
+  try {
+    // Run inside `dir` (outside the repo) so `git grep --no-index` does not
+    // reject the path as being outside the worktree.
+    const out = execFileSync(
+      "git",
+      ["grep", "--no-index", "-n", "-F", needle, "--", file],
+      { cwd: dir, encoding: "utf8" },
+    );
+    return out.split("\n").filter(Boolean);
+  } catch (err) {
+    if (err.status === 1 && !err.stdout) return [];
+    throw err;
+  }
+}
+
+/**
+ * Prove the gate actually detects a violation. Two assertions:
+ *   1. LIVE TREE CLEAN — the deleted chip surface stays deleted (real CI gate).
+ *   2. POSITIVE DETECTION — plant a fixture containing a banned symbol AND a
+ *      banned copy string, grep it, and assert BOTH are flagged. A matcher that
+ *      silently matched nothing (the prior bug) fails here.
+ */
 function selfTest() {
   // The gate must be GREEN on the current tree (the chip surface is deleted).
   const live = runGate();
@@ -115,23 +150,51 @@ function selfTest() {
     report(live);
     return 1;
   }
-  // And it must FLAG a banned needle when one is present. We assert the matcher
-  // itself works by grepping for a symbol we know exists in this very file's
-  // BANNED list literal — proving grep+exit-code plumbing detects a hit.
-  const proof = grep(BANNED_STRINGS[0]);
-  // `proof` greps tracked source (this script excluded), so a genuinely clean
-  // tree yields zero hits — exactly what we want. The plumbing is exercised by
-  // the live run above returning [] via the status===1 branch. Assert the
-  // no-match path returns an array (not a throw) for a nonsense needle:
-  const nonsense = grep("__no_such_chip_needle_zzz__");
-  if (!Array.isArray(proof) || !Array.isArray(nonsense)) {
-    console.error(
-      "[audit-no-suggestion-chips] self-test FAILED: grep plumbing did not return arrays.",
+
+  // Plant a real fixture with one banned symbol + one banned copy string and
+  // assert the matcher flags each. This exercises the positive-detection path
+  // that the live (clean) tree cannot.
+  const bannedSymbol = BANNED_SYMBOLS[0];
+  const bannedString = BANNED_STRINGS[0];
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chip-audit-selftest-"));
+  const fixtureName = "planted-violation.tsx";
+  const fixture = path.join(dir, fixtureName);
+  try {
+    fs.writeFileSync(
+      fixture,
+      [
+        "// planted self-test fixture — MUST be flagged by the gate",
+        `import { ${bannedSymbol} } from "./nowhere";`,
+        `const copy = "${bannedString}";`,
+        `export { ${bannedSymbol}, copy };`,
+        "",
+      ].join("\n"),
     );
-    return 1;
+
+    const symbolHits = grepFile(bannedSymbol, dir, fixtureName);
+    const stringHits = grepFile(bannedString, dir, fixtureName);
+    if (symbolHits.length === 0 || stringHits.length === 0) {
+      console.error(
+        "[audit-no-suggestion-chips] self-test FAILED: planted violation was NOT detected " +
+          `(symbol hits=${symbolHits.length}, string hits=${stringHits.length}). The gate is not actually matching.`,
+      );
+      return 1;
+    }
+
+    // And a nonsense needle in the same fixture must NOT match (no false positives).
+    const nonsense = grepFile("__no_such_chip_needle_zzz__", dir, fixtureName);
+    if (nonsense.length !== 0) {
+      console.error(
+        "[audit-no-suggestion-chips] self-test FAILED: matcher produced a false positive.",
+      );
+      return 1;
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
+
   console.log(
-    "[audit-no-suggestion-chips] self-test PASSED — gate is clean on the current tree and the matcher plumbing works.",
+    "[audit-no-suggestion-chips] self-test PASSED — gate is clean on the current tree AND flags a planted symbol+copy violation.",
   );
   return 0;
 }

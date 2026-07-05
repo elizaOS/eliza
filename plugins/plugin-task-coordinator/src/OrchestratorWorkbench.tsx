@@ -3118,12 +3118,10 @@ export function OrchestratorWorkbench() {
                   title={
                     backendAbsent
                       ? t("orchestrator.empty.setupTitle", {
-                          defaultValue:
-                            "Connect a cloud or desktop agent, then describe a task in the chat below.",
+                          defaultValue: "No agent connected.",
                         })
                       : t("orchestrator.empty.title", {
-                          defaultValue:
-                            "Describe a task in the chat below and it will appear here.",
+                          defaultValue: "No orchestrator tasks yet.",
                         })
                   }
                 />

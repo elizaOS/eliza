@@ -937,7 +937,7 @@ test.describe("orchestrator GUI workbench", () => {
     const rail = page.getByTestId("orchestrator-rail");
     await expect(rail).toBeVisible();
     await expect(rail.getByTestId("task-empty-state")).toContainText(
-      "Describe a task in the chat below",
+      "No orchestrator tasks yet",
     );
     // No recommendation chips / create buttons in the designed-empty state.
     await expect(
