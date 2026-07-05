@@ -135,7 +135,24 @@ export function useLoadOlderOnScroll<T extends HTMLElement = HTMLDivElement>({
   // `hasMore` is an intentional dependency (not just read via ref): once it
   // flips false there is nothing older to observe, so we tear the observer down;
   // the false→true edge on a conversation switch re-subscribes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: hasMore is an intentional re-subscribe trigger; the callback reads live gates via refs.
+  //
+  // `topItemKey` is ALSO an intentional dependency (#13953): callers render the
+  // sentinel only in the transcript's non-empty branch, so on the INITIAL open
+  // of a conversation the first effect run sees `sentinelRef.current === null`
+  // and bails without observing. Messages then land asynchronously and mount
+  // the sentinel — but mutating a ref never re-runs an effect, and none of the
+  // other deps are guaranteed to change on the empty→populated transition, so
+  // without this dep the observer would never attach and scroll-up load-older
+  // would be silently dead. `topItemKey` changes exactly when the first item
+  // changes (empty→populated, conversation switch, prepend), so it doubles as
+  // the "sentinel (re)mounted" signal: the effect re-runs, sees the mounted
+  // sentinel, and subscribes. It also tears down + re-binds across a
+  // conversation switch that transiently clears the thread to [] — the old
+  // (now detached) sentinel is dropped instead of being observed forever. A
+  // re-subscribe after an ordinary prepend is cheap (disconnect + observe) and
+  // an immediately-intersecting sentinel just continues paging, which the
+  // in-flight guard already serializes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hasMore + topItemKey are intentional re-subscribe triggers; the callback reads live gates via refs.
   useEffect(() => {
     if (!enabled) return;
     const root = scrollRef.current;
@@ -161,10 +178,10 @@ export function useLoadOlderOnScroll<T extends HTMLElement = HTMLDivElement>({
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-    // Re-subscribe when the scroller (re)mounts or hasMore flips — a disabled→
-    // enabled overlay mounts its scroller in the same commit, and once hasMore
-    // goes false there's no reason to keep observing.
-  }, [enabled, hasMore, scrollRef, sentinelRef, triggerLoadOlder]);
+    // Re-subscribe when the scroller (re)mounts, hasMore flips, or the first
+    // item changes (topItemKey) — the latter is what attaches the observer once
+    // the sentinel mounts on the empty→populated transition (#13953).
+  }, [enabled, hasMore, topItemKey, scrollRef, sentinelRef, triggerLoadOlder]);
 
   // Preserve viewport on prepend: after the older page grew the scroller
   // upward, add the height delta back to scrollTop so the previously-top
