@@ -115,8 +115,8 @@ function ConsoleLogo(): ReactNode {
 
 /** Credits balance pill + the account dropdown (Account / Billing / Sign out) —
  * the console's only sign-out affordance, so it must always be reachable.
- * Sign-out clears the local token before the best-effort server session DELETE,
- * the same hardened teardown the auth cookie work relies on. */
+ * Sign-out uses the same hardened Steward teardown path as auth refresh and
+ * 401 recovery, keeping token mirrors, cookies, and sync listeners aligned. */
 function ConsoleUserMenu({
   email,
 }: {
