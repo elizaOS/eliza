@@ -194,13 +194,7 @@ export function CharacterHubView({
       applyStyleEdit(styleKey, nextItems.join("\n"));
       scheduleAutoSave(buildStylePatch(styleKey, nextItems));
     },
-    [
-      applyStyleEdit,
-      buildStylePatch,
-      d.style,
-      scheduleAutoSave,
-      styleEntryDrafts,
-    ],
+    [applyStyleEdit, buildStylePatch, d.style, scheduleAutoSave, styleEntryDrafts],
   );
 
   const handleAutoReorderStyleEntries = useCallback(
