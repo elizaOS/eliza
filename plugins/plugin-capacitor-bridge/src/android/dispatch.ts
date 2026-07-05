@@ -19,7 +19,12 @@
  */
 
 import { Buffer } from "node:buffer";
-import type { IAgentRuntime, RouteHandlerResult } from "@elizaos/core";
+import type {
+	AgentNotification,
+	IAgentRuntime,
+	RouteHandlerResult,
+} from "@elizaos/core";
+import { ServiceType } from "@elizaos/core";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 
 /** In-process route dispatcher (from `@elizaos/agent/api`). */
@@ -163,6 +168,120 @@ export interface AndroidCoreRouteDeps {
 export type AndroidElizaConfigLike = Record<string, unknown> & {
 	meta?: Record<string, unknown>;
 };
+
+/**
+ * Structural view of the runtime NotificationService the bridge serves the
+ * `/api/notifications` surface against. The service lives on the runtime, so
+ * the bridge does not need to import the agent's HTTP route module — it drives
+ * the same service the HTTP `handleNotificationRoute` does (list/read/remove/
+ * clear), which is what the dashboard notification center hydrates from.
+ */
+interface AndroidNotificationServiceLike {
+	list: (query?: {
+		unreadOnly?: boolean;
+		category?: string;
+		limit?: number;
+	}) => AgentNotification[];
+	getUnreadCount: () => number;
+	markRead: (id: string) => Promise<boolean>;
+	markAllRead: () => Promise<number>;
+	remove: (id: string) => Promise<boolean>;
+	clear: () => Promise<void>;
+}
+
+function isAndroidNotifier(
+	value: unknown,
+): value is AndroidNotificationServiceLike {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		typeof (value as AndroidNotificationServiceLike).list === "function" &&
+		typeof (value as AndroidNotificationServiceLike).markRead === "function"
+	);
+}
+
+/**
+ * Serve the `/api/notifications` inbox surface over the Android UDS. These are
+ * server-level routes (not plugin `runtime.routes`), so `dispatchRoute` never
+ * matches them and the loopback 404s — which left the dashboard notification
+ * center empty on every on-device local boot (the store's hydrate `GET
+ * /api/notifications` failed). Drives the runtime NotificationService directly,
+ * mirroring how first-run/health are inline-served above. Returns null for
+ * anything outside the inbox verbs (incl. the push-tokens sub-namespace, which
+ * the push service owns) so it falls through to the plugin dispatcher.
+ */
+async function directAndroidNotificationRoute(
+	runtime: IAgentRuntime,
+	method: string,
+	pathname: string,
+	query: Record<string, string | string[]>,
+): Promise<AndroidBufferedResponse | null> {
+	const queryValue = (key: string): string | undefined => {
+		const raw = query[key];
+		return Array.isArray(raw) ? raw[0] : raw;
+	};
+	if (!pathname.startsWith("/api/notifications")) return null;
+	// Push-token registration is owned by the push delivery service, not the
+	// inbox — leave it to the normal dispatcher.
+	if (pathname.startsWith("/api/notifications/push-tokens")) return null;
+
+	const service = runtime.getService(ServiceType.NOTIFICATION);
+	if (!isAndroidNotifier(service)) {
+		// The service isn't up yet (very early boot). Serve an empty inbox on
+		// GET so the widget shows its empty state instead of erroring; fail the
+		// mutations loudly.
+		if (method === "GET" && pathname === "/api/notifications") {
+			return jsonResponse(200, { notifications: [], unreadCount: 0 });
+		}
+		return jsonResponse(503, { error: "notification service not ready" });
+	}
+
+	if (method === "GET" && pathname === "/api/notifications") {
+		const limitRaw = queryValue("limit");
+		const parsedLimit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
+		const limit =
+			typeof parsedLimit === "number" &&
+			Number.isFinite(parsedLimit) &&
+			parsedLimit >= 0
+				? Math.min(parsedLimit, 500)
+				: undefined;
+		const notifications = service.list({
+			unreadOnly: queryValue("unreadOnly") === "true",
+			category: queryValue("category"),
+			limit,
+		});
+		return jsonResponse(200, {
+			notifications,
+			unreadCount: service.getUnreadCount(),
+		});
+	}
+
+	if (method === "POST" && pathname === "/api/notifications/read-all") {
+		const changed = await service.markAllRead();
+		return jsonResponse(200, { changed });
+	}
+
+	const readMatch = pathname.match(/^\/api\/notifications\/([^/]+)\/read$/);
+	if (method === "POST" && readMatch) {
+		const ok = await service.markRead(decodeURIComponent(readMatch[1]));
+		return jsonResponse(200, { ok });
+	}
+
+	if (method === "DELETE" && pathname === "/api/notifications") {
+		await service.clear();
+		return jsonResponse(200, { ok: true });
+	}
+
+	const idMatch = pathname.match(/^\/api\/notifications\/([^/]+)$/);
+	if (method === "DELETE" && idMatch) {
+		const ok = await service.remove(decodeURIComponent(idMatch[1]));
+		return jsonResponse(200, { ok });
+	}
+
+	// A known notifications sub-path with an unsupported verb — 404 here rather
+	// than letting the plugin dispatcher's `:id` matchers mis-handle it.
+	return jsonResponse(404, { error: "notification route not found" });
+}
 
 function directAndroidCoreRoute(
 	runtime: IAgentRuntime,
@@ -367,6 +486,14 @@ export async function dispatchBufferedRequest(
 
 	const direct = directAndroidCoreRoute(runtime, method, pathname, coreRoutes);
 	if (direct) return direct;
+
+	const notif = await directAndroidNotificationRoute(
+		runtime,
+		method,
+		pathname,
+		query,
+	);
+	if (notif) return notif;
 
 	const result = await dispatchRoute({
 		runtime,

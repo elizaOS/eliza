@@ -239,6 +239,93 @@ describe("dispatchBufferedRequest", () => {
 		});
 		expect(Buffer.from(res.bodyBase64, "base64").equals(raw)).toBe(true);
 	});
+
+	it("serves the /api/notifications inbox from the runtime service over the UDS (#13550)", async () => {
+		// The dashboard notification center hydrates from GET /api/notifications;
+		// these routes are server-level (not runtime.routes), so without this the
+		// loopback 404s and the widget stays empty on-device. The bridge must
+		// serve them from the NotificationService BEFORE the plugin dispatcher.
+		const seeded = [
+			{ id: "n1", title: "Take the tour", readAt: null },
+			{ id: "n2", title: "Get help", readAt: 123 },
+		];
+		let cleared = false;
+		const readCalls: string[] = [];
+		const notifierRuntime = {
+			getService: (type: string) =>
+				type === "notification"
+					? {
+							list: () => seeded,
+							getUnreadCount: () => 1,
+							markRead: (id: string) => {
+								readCalls.push(id);
+								return Promise.resolve(true);
+							},
+							markAllRead: () => Promise.resolve(1),
+							remove: () => Promise.resolve(true),
+							clear: () => {
+								cleared = true;
+								return Promise.resolve();
+							},
+						}
+					: null,
+		} as unknown as IAgentRuntime;
+		const { route, calls } = fixedRoute(null);
+
+		const list = await dispatchBufferedRequest(notifierRuntime, route, {
+			method: "GET",
+			path: "/api/notifications?limit=100",
+		});
+		expect(list.status).toBe(200);
+		expect(JSON.parse(list.body)).toEqual({
+			notifications: seeded,
+			unreadCount: 1,
+		});
+		// Served inline — the plugin dispatcher was never consulted.
+		expect(calls).toHaveLength(0);
+
+		const read = await dispatchBufferedRequest(notifierRuntime, route, {
+			method: "POST",
+			path: "/api/notifications/n1/read",
+		});
+		expect(read.status).toBe(200);
+		expect(JSON.parse(read.body)).toEqual({ ok: true });
+		expect(readCalls).toEqual(["n1"]);
+
+		const clearRes = await dispatchBufferedRequest(notifierRuntime, route, {
+			method: "DELETE",
+			path: "/api/notifications",
+		});
+		expect(clearRes.status).toBe(200);
+		expect(cleared).toBe(true);
+
+		// Push-token registration is NOT ours — it must fall through.
+		const push = await dispatchBufferedRequest(notifierRuntime, route, {
+			method: "GET",
+			path: "/api/notifications/push-tokens",
+		});
+		expect(calls).toHaveLength(1);
+		expect((calls[0] as { path?: string }).path).toBe(
+			"/api/notifications/push-tokens",
+		);
+		void push;
+	});
+
+	it("serves an empty inbox when the notification service is not up yet", async () => {
+		const noSvcRuntime = {
+			getService: () => null,
+		} as unknown as IAgentRuntime;
+		const { route } = fixedRoute(null);
+		const res = await dispatchBufferedRequest(noSvcRuntime, route, {
+			method: "GET",
+			path: "/api/notifications",
+		});
+		expect(res.status).toBe(200);
+		expect(JSON.parse(res.body)).toEqual({
+			notifications: [],
+			unreadCount: 0,
+		});
+	});
 });
 
 describe("dispatchStreamingRequest", () => {
