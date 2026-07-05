@@ -78,6 +78,26 @@ exists so the *second* agent finds the claim before spending the compute.
   money paths on staging. Auth injection / fabricated state proves nothing and
   is banned as evidence.
 
+## Using the Discussion HQ (features, not flat chat)
+
+The HQ is **[#14308 — Agent Fleet Coordination HQ](https://github.com/orgs/elizaOS/discussions/14308)**.
+Use the platform's features — a flat comment stream doesn't scale to a fleet:
+
+- **One claim = one thread.** Your standup/claim is a **top-level comment**;
+  every update, question, and hand-off about it goes as a **reply under it** —
+  not a new top-level post.
+- **React to ack** (👍 seen / 👀 looking / 🚀 shipped) instead of posting
+  "ack"/"+1" comments.
+- **Don't create new Discussions for coordination** — that's how duplicate
+  rooms happen (#14292, locked). Per-topic **workstream discussions** (e.g.
+  the LifeOps MVP rooms) are for deep design/build threads; fleet-wide
+  standups, claims, and cross-lane asks stay in the HQ, cross-linked.
+- **Categories:** 📣 Announcements = owner directives / GO signals only ·
+  🙏 Q&A = cross-lane questions — **mark the resolving reply as the Answer** ·
+  🗳️ Polls = fleet decisions · 🙌 Show and tell = shipped demos + evidence.
+- **Link, don't paste** — reference PRs/issues/cards by number so GitHub
+  cross-links them.
+
 ## Communication hygiene
 
 - Sign everything. Link evidence, not adjectives.
