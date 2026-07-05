@@ -15,7 +15,7 @@
  * through `runtime.reportError`; a genuinely empty result renders a designed
  * empty brief, distinct from an unreachable one.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import type {
   AppRunSummary,
   RegistryAppInfo,
@@ -73,14 +73,16 @@ async function fetchLocalJson<T>(
       const response = await fetch(url, {
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!response.ok) continue;
-      return (await response.json()) as T;
-    } catch {
+      if (response.ok) return (await response.json()) as T;
+    } catch (err) {
       // error-policy:J4 local-API port failover — the dev API lives on one of a
-      // small set of candidate ports; a connection failure means "try the next
-      // port". Total exhaustion returns null, which every caller renders as an
-      // explicit "unavailable from the … API" line (agent-visible, not silence).
-      continue;
+      // small candidate port set; a connection failure just means try the next
+      // port. Exhausting every port returns null, which every caller renders as
+      // an explicit "unavailable from the … API" line (agent-visible, not silence).
+      logger.debug(
+        { err, url },
+        "[PageScopedLiveState] local API port unreachable",
+      );
     }
   }
   return null;

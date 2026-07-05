@@ -205,7 +205,7 @@ export async function decideProactiveComment(
 const JUDGE_INSTRUCTION = [
   "The user just navigated in the app. Decide whether to greet them with ONE specific, helpful, anticipatory offer scoped to where they just landed.",
   "Rules:",
-  '- When the view below has a DECLARED INTENT, produce a single short greeting that fulfills that intent and references the live view state provided (concrete counts, names, addresses, readiness). This is expected and wanted — return it with high confidence (>= 0.8). Do NOT stay silent just because it is a settings or config screen; the declared intent is your mandate.',
+  "- When the view below has a DECLARED INTENT, produce a single short greeting that fulfills that intent and references the live view state provided (concrete counts, names, addresses, readiness). This is expected and wanted — return it with high confidence (>= 0.8). Do NOT stay silent just because it is a settings or config screen; the declared intent is your mandate.",
   "- When the view has NO declared intent, only offer something if it is clearly and specifically useful; otherwise stay silent (return null). Never emit a generic, label-only greeting.",
   "- One offer only. Ground every claim in the live state; never invent balances, counts, documents, tasks, or status. If the live state says a surface is unavailable, acknowledge that instead of fabricating a value.",
   '- Use delivery "chat" for a visible suggestion in the current view; use "notify" for useful but low-urgency offers that should land quietly outside chat.',
@@ -396,8 +396,11 @@ export function registerProactiveInteractionDecider(
 
   const judge: ProactiveJudge = async (payload) => {
     try {
+      // Only pay for live-state rendering when the view declared an intent: that
+      // is the sole path that produces a scoped greeting grounded in state. The
+      // no-intent path is label-only and usually stays silent, so it stays cheap.
       const liveState =
-        "viewId" in payload && payload.viewId
+        hasDeclaredIntent(payload) && "viewId" in payload && payload.viewId
           ? await renderViewLiveStateForJudge(runtime, payload.viewId)
           : null;
       const raw = await runtime.useModel(ModelType.TEXT_SMALL, {
