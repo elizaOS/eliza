@@ -47,9 +47,7 @@ const PGLITE_TIMEOUT = 60_000;
 
 let pgliteReady = true;
 let dbWrite: typeof import("../../../db/client").dbWrite;
-let closeDb:
-  | typeof import("../../../db/client").closeDatabaseConnectionsForTests
-  | undefined;
+let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let invitesService: typeof import("../invites").invitesService;
 let syncUserFromSteward: typeof import("../../steward-sync").syncUserFromSteward;
 let generateInviteToken: typeof import("../../utils/invite-tokens").generateInviteToken;
@@ -169,41 +167,23 @@ async function readActiveKeys(
 
 beforeAll(async () => {
   try {
-    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import(
-      "../../../db/client"
-    ));
+    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ({ invitesService } = await import("../invites"));
     ({ syncUserFromSteward } = await import("../../steward-sync"));
-    ({ generateInviteToken, hashInviteToken } = await import(
-      "../../utils/invite-tokens"
-    ));
+    ({ generateInviteToken, hashInviteToken } = await import("../../utils/invite-tokens"));
 
     const { organizations } = await import("../../../db/schemas/organizations");
     const { users } = await import("../../../db/schemas/users");
-    const { userIdentities } = await import(
-      "../../../db/schemas/user-identities"
-    );
-    const { organizationInvites } = await import(
-      "../../../db/schemas/organization-invites"
-    );
+    const { userIdentities } = await import("../../../db/schemas/user-identities");
+    const { organizationInvites } = await import("../../../db/schemas/organization-invites");
     const { apiKeys } = await import("../../../db/schemas/api-keys");
-    const { creditTransactions } = await import(
-      "../../../db/schemas/credit-transactions"
-    );
-    const { userCharacters } = await import(
-      "../../../db/schemas/user-characters"
-    );
+    const { creditTransactions } = await import("../../../db/schemas/credit-transactions");
+    const { userCharacters } = await import("../../../db/schemas/user-characters");
     const { conversations } = await import("../../../db/schemas/conversations");
-    const {
-      apps,
-      appDeploymentStatusEnum,
-      appReviewStatusEnum,
-      userDatabaseStatusEnum,
-    } = await import("../../../db/schemas/apps");
+    const { apps, appDeploymentStatusEnum, appReviewStatusEnum, userDatabaseStatusEnum } =
+      await import("../../../db/schemas/apps");
     const { containers } = await import("../../../db/schemas/containers");
-    const { agentSandboxes } = await import(
-      "../../../db/schemas/agent-sandboxes"
-    );
+    const { agentSandboxes } = await import("../../../db/schemas/agent-sandboxes");
     const {
       domainModerationStatusEnum,
       domainNameserverModeEnum,
@@ -272,10 +252,7 @@ describe("invite accept provisions the personal default API key", () => {
       // The vacated solo org is deleted and its cascade destroyed the old
       // default key — the accept must have minted a fresh personal key in the
       // inviting org or the user is left unable to use inference at all.
-      const keys = await readActiveKeys(
-        seeded.inviteeUserId,
-        seeded.inviterOrgId,
-      );
+      const keys = await readActiveKeys(seeded.inviteeUserId, seeded.inviterOrgId);
       expect(keys.length).toBe(1);
       expect(keys[0].name).toBe("Default API Key");
       expect(keys[0].key_prefix.length).toBeGreaterThan(0);
@@ -310,10 +287,7 @@ describe("invite accept provisions the personal default API key", () => {
 
       // The old key still exists but belongs to the org they left; the new org
       // must hold its own personal default key for this user.
-      const keys = await readActiveKeys(
-        seeded.inviteeUserId,
-        seeded.inviterOrgId,
-      );
+      const keys = await readActiveKeys(seeded.inviteeUserId, seeded.inviterOrgId);
       expect(keys.length).toBe(1);
       expect(keys[0].name).toBe("Default API Key");
     },

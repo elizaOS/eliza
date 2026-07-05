@@ -285,8 +285,8 @@ export class ApiKeysService {
     }
 
     try {
-      const existingKeys = await this.listByOrganization(organizationId);
-      if (existingKeys.some((key) => key.user_id === userId)) {
+      const existingKeys = await this.listByUser(userId);
+      if (existingKeys.some((key) => key.organization_id === organizationId && key.is_active)) {
         return;
       }
 
