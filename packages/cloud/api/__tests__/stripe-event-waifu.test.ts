@@ -9,6 +9,8 @@ const addCredits = mock(async () => ({ newBalance: 8.25 }));
 const getByStripeInvoiceId = mock(async () => null);
 const createInvoice = mock(async () => undefined);
 const calculateRevenueSplits = mock(async () => ({ splits: [] }));
+const enqueueAgentRestartOnce = mock(async () => ({ jobId: "job-restart" }));
+const triggerImmediate = mock(async () => undefined);
 
 function dbChain(rows: unknown[]) {
   return {
@@ -97,6 +99,12 @@ mock.module("@/lib/services/invoices", () => ({
 mock.module("@/lib/services/org-rate-limits", () => ({
   invalidateOrgTierCache: mock(async () => undefined),
 }));
+mock.module("@/lib/services/provisioning-jobs", () => ({
+  provisioningJobService: {
+    enqueueAgentRestartOnce,
+    triggerImmediate,
+  },
+}));
 mock.module("@/lib/services/redeemable-earnings", () => ({
   redeemableEarningsService: {
     addEarnings: mock(async () => undefined),
@@ -125,6 +133,9 @@ describe("stripe checkout queue waifu top-up callback", () => {
     createInvoice.mockClear();
     calculateRevenueSplits.mockClear();
     webhookFetch.mockClear();
+    enqueueAgentRestartOnce.mockClear();
+    triggerImmediate.mockClear();
+    getTransactionByStripePaymentIntent.mockImplementation(async () => null);
   });
 
   test("emits token and wallet context for agent credit top-ups", async () => {
@@ -202,5 +213,112 @@ describe("stripe checkout queue waifu top-up callback", () => {
         "X-Waifu-Webhook-Signature"
       ],
     ).toStartWith("sha256=");
+    expect(enqueueAgentRestartOnce).toHaveBeenCalledWith({
+      agentId,
+      organizationId: "agent-org",
+      userId: "agent-user",
+    });
+    expect(triggerImmediate).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not enqueue an agent restart for org-only credit top-ups", async () => {
+    const result = await processStripeEvent({
+      attempts: 1,
+      body: {
+        kind: "stripe.event",
+        eventId: "evt_org_topup",
+        eventType: "checkout.session.completed",
+        paymentIntentId: "pi_org_topup",
+        receivedAt: Date.now(),
+        event: {
+          id: "evt_org_topup",
+          type: "checkout.session.completed",
+          data: {
+            object: {
+              id: "cs_org_paid",
+              payment_status: "paid",
+              amount_total: 500,
+              currency: "usd",
+              customer: "cus_org",
+              payment_intent: "pi_org_topup",
+              metadata: {
+                organization_id: "agent-org",
+                user_id: "agent-user",
+                credits: "5.00",
+                type: "custom_amount",
+              },
+            },
+          },
+        },
+      },
+    } as unknown as Parameters<typeof processStripeEvent>[0]);
+
+    expect(result).toBe("ack");
+    expect(addCredits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "agent-org",
+        amount: 5,
+        stripePaymentIntentId: "pi_org_topup",
+      }),
+    );
+    expect(webhookFetch).not.toHaveBeenCalled();
+    expect(enqueueAgentRestartOnce).not.toHaveBeenCalled();
+    expect(triggerImmediate).not.toHaveBeenCalled();
+  });
+
+  test("retries the restart enqueue for duplicate agent top-up deliveries", async () => {
+    getTransactionByStripePaymentIntent.mockImplementationOnce(async () => ({
+      id: "existing-credit",
+    }));
+
+    const result = await processStripeEvent({
+      attempts: 2,
+      body: {
+        kind: "stripe.event",
+        eventId: "evt_agent_topup_retry",
+        eventType: "checkout.session.completed",
+        paymentIntentId,
+        receivedAt: Date.now(),
+        event: {
+          id: "evt_agent_topup_retry",
+          type: "checkout.session.completed",
+          data: {
+            object: {
+              id: "cs_agent_paid",
+              payment_status: "paid",
+              amount_total: 500,
+              currency: "usd",
+              customer: "cus_agent",
+              payment_intent: paymentIntentId,
+              metadata: {
+                organization_id: "agent-org",
+                user_id: "agent-user",
+                credits: "5.00",
+                type: "custom_amount",
+                agent_id: agentId,
+              },
+            },
+          },
+        },
+      },
+    } as unknown as Parameters<typeof processStripeEvent>[0]);
+
+    expect(result).toBe("ack");
+    expect(addCredits).not.toHaveBeenCalled();
+    expect(webhookFetch).toHaveBeenCalledTimes(1);
+    const [, init] = (webhookFetch.mock.calls[0] ?? []) as unknown as [
+      string,
+      RequestInit,
+    ];
+    const body = JSON.parse(String((init as RequestInit).body));
+    expect(body.eventId).toBe(
+      `stripe:evt_agent_topup_retry:credits.topped_up:${agentId}:already_applied`,
+    );
+    expect(enqueueAgentRestartOnce).toHaveBeenCalledWith({
+      agentId,
+      organizationId: "agent-org",
+      userId: "agent-user",
+    });
+    expect(triggerImmediate).toHaveBeenCalledTimes(1);
   });
 });

@@ -45,6 +45,7 @@ import { creditsService } from "@/lib/services/credits";
 import { discordService } from "@/lib/services/discord";
 import { invoicesService } from "@/lib/services/invoices";
 import { invalidateOrgTierCache } from "@/lib/services/org-rate-limits";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
 import { referralsService } from "@/lib/services/referrals";
 import { requireStripe } from "@/lib/stripe";
@@ -281,6 +282,16 @@ async function handleCheckoutSessionCompleted(
     });
   }
 
+  if (!isAppPurchase && agentId) {
+    await enqueueAgentRestartAfterTopUp({
+      agentId,
+      organizationId,
+      userId,
+      paymentIntentId,
+      sessionId: session.id,
+    });
+  }
+
   if (isAppPurchase && appId && userId && chargeRequestId) {
     await appChargeSettlementService.markPaid({
       appId,
@@ -438,6 +449,49 @@ async function handleCheckoutSessionCompleted(
       );
     }
   }
+}
+
+async function enqueueAgentRestartAfterTopUp(params: {
+  agentId: string;
+  organizationId: string;
+  userId?: string;
+  paymentIntentId: string;
+  sessionId: string;
+}): Promise<void> {
+  if (!params.userId) {
+    logger.warn(
+      "[Stripe Queue] Agent top-up has no user_id; skipping restart enqueue",
+      {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        paymentIntentId: params.paymentIntentId,
+        sessionId: params.sessionId,
+      },
+    );
+    return;
+  }
+
+  await provisioningJobService.enqueueAgentRestartOnce({
+    agentId: params.agentId,
+    organizationId: params.organizationId,
+    userId: params.userId,
+  });
+  void provisioningJobService.triggerImmediate().catch((err) =>
+    logger.warn(
+      "[Stripe Queue] provisioning triggerImmediate nudge failed after agent top-up",
+      {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        paymentIntentId: params.paymentIntentId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    ),
+  );
+  logger.info("[Stripe Queue] Agent restart enqueued after credit top-up", {
+    agentId: params.agentId,
+    organizationId: params.organizationId,
+    paymentIntentId: params.paymentIntentId,
+  });
 }
 
 async function notifyWaifuCreditsToppedUp(params: {
