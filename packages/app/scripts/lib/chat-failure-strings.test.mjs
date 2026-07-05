@@ -88,6 +88,15 @@ describe("chat-failure-strings single source of truth (#13687)", () => {
     expect(bootCapture).toContain("ChatFailureStrings.ios");
   });
 
+  it("the XCUITest verifier only accepts marker-echo replies and classifies every verdict", () => {
+    const bootCapture = fs.readFileSync(bootCaptureUITestsPath, "utf8");
+    expect(bootCapture).toContain("IOS_CHAT_OK");
+    expect(bootCapture).toContain("marker-hit");
+    expect(bootCapture).toContain("failure-string:");
+    expect(bootCapture).toContain("unrecognized-text");
+    expect(bootCapture).toContain("reply-unrecognized-text");
+  });
+
   it("the Swift artifact enumerates the same fragments as the JS lists", () => {
     const swift = renderSwiftFailureStrings();
     for (const fragment of IOS_FAILURE_FRAGMENTS) {

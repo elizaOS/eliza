@@ -475,7 +475,9 @@ final class BootCaptureUITests: XCTestCase {
             attachAccessibilitySnapshot(of: app)
             throw XCTSkip("no hittable composer after onboarding")
         }
-        let prompt = "Say hello in exactly three words."
+        let replyMarker = "IOS_CHAT_OK"
+        let prompt =
+            "Start your reply with exactly \(replyMarker), then say hello in one short sentence."
         let promptPrefix = String(prompt.prefix(20))
         func looksNotReady(_ s: String) -> Bool {
             let l = s.lowercased()
@@ -504,7 +506,9 @@ final class BootCaptureUITests: XCTestCase {
             }
             return nil
         }
+        var replyClassification: String?
         var failureObservation: String?
+        var unrecognizedObservation: String?
 
         // On-device warm-up can leave the first sends returning the "message
         // didn't reach the agent — still starting up. Retry" fallback. Re-send
@@ -558,11 +562,23 @@ final class BootCaptureUITests: XCTestCase {
                 // An error render was surfaced. Record it (quoted) and stop —
                 // this must FAIL the verifier, never silently retry into a
                 // "no reply after N attempts" that hides WHAT went wrong (#13687).
+                replyClassification = "failure-string:\(failure)"
                 failureObservation = "\(c) [matched failure-string: \(failure)]"
                 break
             }
+            if let c = candidate,
+                c.localizedCaseInsensitiveContains(replyMarker)
+            {
+                replyClassification = "marker-hit"
+                reply = c  // genuine marker-echo model reply
+                break
+            }
             if let c = candidate, !looksNotReady(c) {
-                reply = c  // genuine model reply
+                // A real reply that does not echo the marker is not accepted.
+                // Record it as a classified verifier failure instead of
+                // treating arbitrary new text as success (#13687).
+                replyClassification = "unrecognized-text"
+                unrecognizedObservation = c
                 break
             }
             // Not-ready fallback (or timeout) — let the CPU model warm; retry.
@@ -570,7 +586,8 @@ final class BootCaptureUITests: XCTestCase {
         }
         attachScreenshot(named: "\(tag)-075-reply-\(reply != nil ? "arrived" : "timeout")")
         if let reply {
-            let att = XCTAttachment(string: reply)
+            let att = XCTAttachment(
+                string: "\(reply) [classification: \(replyClassification ?? "unknown")]")
             att.name = "\(tag)-reply-text"
             att.lifetime = .keepAlways
             add(att)
@@ -578,6 +595,15 @@ final class BootCaptureUITests: XCTestCase {
         if let failureObservation {
             let att = XCTAttachment(string: failureObservation)
             att.name = "\(tag)-reply-failure-string"
+            att.lifetime = .keepAlways
+            add(att)
+        }
+        if let unrecognizedObservation {
+            let att = XCTAttachment(
+                string:
+                    "\(unrecognizedObservation) [classification: \(replyClassification ?? "unrecognized-text")]"
+            )
+            att.name = "\(tag)-reply-unrecognized-text"
             att.lifetime = .keepAlways
             add(att)
         }
@@ -591,6 +617,10 @@ final class BootCaptureUITests: XCTestCase {
             failureObservation,
             "[\(tag)] the agent surfaced an error render instead of a genuine "
                 + "model reply: \(failureObservation ?? "").")
+        XCTAssertNil(
+            unrecognizedObservation,
+            "[\(tag)] the agent replied without the required \(replyMarker) "
+                + "marker: \(unrecognizedObservation ?? "").")
         XCTAssertNotNil(
             reply,
             "[\(tag)] no genuine model reply after \(sendAttempts) attempts — "
