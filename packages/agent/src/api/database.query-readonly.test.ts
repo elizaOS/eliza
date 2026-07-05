@@ -6,8 +6,8 @@
 
 import type http from "node:http";
 import { PassThrough } from "node:stream";
+import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentRuntime } from "../runtime/eliza.ts";
 import { handleDatabaseRoute } from "./database.ts";
 
 function jsonPost(body: unknown): http.IncomingMessage {
@@ -19,26 +19,29 @@ function jsonPost(body: unknown): http.IncomingMessage {
   return req;
 }
 
-function responseRecorder(): http.ServerResponse & {
+type RecordedResponse = http.ServerResponse & {
   body: string;
   headers: Record<string, string | number | readonly string[]>;
-} {
+};
+
+function responseRecorder(): RecordedResponse {
   return {
     statusCode: 200,
     body: "",
     headers: {},
-    setHeader(name: string, value: string | number | readonly string[]) {
+    setHeader(
+      this: RecordedResponse,
+      name: string,
+      value: string | number | readonly string[],
+    ) {
       this.headers[name.toLowerCase()] = value;
       return this;
     },
-    end(chunk?: unknown) {
+    end(this: RecordedResponse, chunk?: unknown) {
       if (chunk !== undefined) this.body += String(chunk);
       return this;
     },
-  } as unknown as http.ServerResponse & {
-    body: string;
-    headers: Record<string, string | number | readonly string[]>;
-  };
+  } as unknown as RecordedResponse;
 }
 
 describe("POST /api/database/query read-only guard", () => {
