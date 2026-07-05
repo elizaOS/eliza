@@ -1,10 +1,21 @@
+/**
+ * Resumable upload state tests for import-conversations.
+ *
+ * These cover the pure metadata contract that future HTTP/object-store routes
+ * will persist between chunk requests: range/hash validation, idempotent
+ * retries, hydration validation, and merge semantics for independently accepted
+ * chunks. Bytes remain outside this state object.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   createResumableUploadSession,
   findMissingResumableUploadRanges,
   getResumableUploadProgress,
+  mergeResumableUploadSessions,
   recordResumableChunk,
   sha256Hex,
+  validateResumableUploadSession,
 } from "./resumable.ts";
 
 describe("resumable import upload state", () => {
@@ -96,7 +107,7 @@ describe("resumable import upload state", () => {
     });
 
     expect(retry.status).toBe("duplicate");
-    expect(retry.session).toBe(first.session);
+    expect(retry.session).toEqual(first.session);
     expect(retry.chunk.receivedAt).toBe(10);
   });
 
@@ -214,5 +225,128 @@ describe("resumable import upload state", () => {
       receivedChunks: 1,
       complete: false,
     });
+  });
+
+  it("validates hydrated persisted state before computing progress", () => {
+    const session = createResumableUploadSession({
+      sessionId: "s1",
+      uploadBytes: 8,
+      chunkSize: 4,
+      now: () => 0,
+    });
+    const next = recordResumableChunk(session, {
+      index: 0,
+      offset: 0,
+      bytes: "aaaa",
+    }).session;
+
+    expect(validateResumableUploadSession(next)).toEqual(next);
+    expect(() =>
+      validateResumableUploadSession({
+        ...next,
+        chunkCount: 99,
+      }),
+    ).toThrow(/chunkCount/);
+    expect(() =>
+      getResumableUploadProgress({
+        ...next,
+        status: "complete",
+      }),
+    ).toThrow(/status/);
+    expect(() =>
+      findMissingResumableUploadRanges({
+        ...next,
+        chunks: {
+          ...next.chunks,
+          0: {
+            ...next.chunks[0],
+            byteLength: 3,
+          },
+        },
+      }),
+    ).toThrow(/byteLength/);
+    expect(() =>
+      validateResumableUploadSession({
+        ...next,
+        chunks: {
+          "00": next.chunks[0],
+        },
+      }),
+    ).toThrow(/canonical/);
+    expect(() =>
+      validateResumableUploadSession({
+        ...next,
+        updatedAt: 0,
+      }),
+    ).toThrow(/updatedAt/);
+  });
+
+  it("merges non-overlapping accepted chunks from concurrent stale reads", () => {
+    const base = createResumableUploadSession({
+      sessionId: "s1",
+      uploadBytes: 8,
+      chunkSize: 4,
+      now: () => 0,
+    });
+    const firstWriter = recordResumableChunk(base, {
+      index: 0,
+      offset: 0,
+      bytes: "aaaa",
+      now: () => 10,
+    }).session;
+    const secondWriter = recordResumableChunk(base, {
+      index: 1,
+      offset: 4,
+      bytes: "bbbb",
+      now: () => 20,
+    }).session;
+
+    const merged = mergeResumableUploadSessions(
+      base,
+      firstWriter,
+      secondWriter,
+    );
+
+    expect(merged.status).toBe("complete");
+    expect(merged.updatedAt).toBe(20);
+    expect(Object.keys(merged.chunks).sort()).toEqual(["0", "1"]);
+    expect(getResumableUploadProgress(merged)).toEqual({
+      receivedBytes: 8,
+      uploadBytes: 8,
+      receivedChunks: 2,
+      chunkCount: 2,
+      complete: true,
+    });
+  });
+
+  it("rejects conflicting merged chunks and mismatched session identities", () => {
+    const base = createResumableUploadSession({
+      sessionId: "s1",
+      uploadBytes: 4,
+      chunkSize: 4,
+      now: () => 0,
+    });
+    const first = recordResumableChunk(base, {
+      index: 0,
+      offset: 0,
+      bytes: "aaaa",
+      now: () => 10,
+    }).session;
+    const conflict = recordResumableChunk(base, {
+      index: 0,
+      offset: 0,
+      bytes: "bbbb",
+      now: () => 20,
+    }).session;
+
+    expect(() => mergeResumableUploadSessions(base, first, conflict)).toThrow(
+      /conflicts/,
+    );
+    expect(() =>
+      mergeResumableUploadSessions(base, {
+        ...first,
+        sessionId: "other",
+      }),
+    ).toThrow(/sessionId/);
   });
 });
