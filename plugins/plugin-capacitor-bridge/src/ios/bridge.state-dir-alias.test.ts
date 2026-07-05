@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveMobileStateDir } from "./bridge.ts";
 
 const TOUCHED_KEYS = [
+	"ACME_STATE_DIR",
 	"MILADY_STATE_DIR",
 	"ELIZA_STATE_DIR",
 	"ELIZA_HOME",
@@ -52,6 +53,16 @@ describe("iOS bridge ELIZA_STATE_DIR alias resolution", () => {
 		expect(readAliasedEnv("ELIZA_STATE_DIR")).toBe("/data/milady/state");
 		expect(getBootConfig().envAliases).toContainEqual([
 			"MILADY_STATE_DIR",
+			"ELIZA_STATE_DIR",
+		]);
+	});
+
+	it("seeds aliases for a branded prefix present in the bridge environment", () => {
+		process.env.ACME_STATE_DIR = "/data/acme/state";
+		expect(resolveMobileStateDir()).toBe("/data/acme/state");
+		expect(readAliasedEnv("ELIZA_STATE_DIR")).toBe("/data/acme/state");
+		expect(getBootConfig().envAliases).toContainEqual([
+			"ACME_STATE_DIR",
 			"ELIZA_STATE_DIR",
 		]);
 	});

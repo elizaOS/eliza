@@ -175,6 +175,12 @@ type AgentModule = {
 };
 
 const IOS_BRIDGE_DEFAULT_ENV_PREFIX = "MILADY";
+const IOS_BRIDGE_BRAND_ENV_SUFFIXES = [
+	"STATE_DIR",
+	"NAMESPACE",
+	"PLATFORM",
+	"API_PORT",
+] as const;
 
 async function loadAgentModule(): Promise<AgentModule> {
 	const [{ bootElizaRuntime }, { dispatchRoute }] = await Promise.all([
@@ -1967,8 +1973,21 @@ function installIosBridgeEnvAliases(): void {
 	if (config.envAliases?.length) return;
 	setBootConfig({
 		...config,
-		envAliases: buildBrandEnvAliases(IOS_BRIDGE_DEFAULT_ENV_PREFIX),
+		envAliases: resolveIosBridgeEnvAliases(),
 	});
+}
+
+function resolveIosBridgeEnvAliases(): ReturnType<typeof buildBrandEnvAliases> {
+	const prefixes = new Set<string>([IOS_BRIDGE_DEFAULT_ENV_PREFIX]);
+	for (const key of Object.keys(process.env)) {
+		for (const suffix of IOS_BRIDGE_BRAND_ENV_SUFFIXES) {
+			const marker = `_${suffix}`;
+			if (!key.endsWith(marker)) continue;
+			const prefix = key.slice(0, -marker.length);
+			if (prefix && prefix !== "ELIZA") prefixes.add(prefix);
+		}
+	}
+	return [...prefixes].flatMap((prefix) => buildBrandEnvAliases(prefix));
 }
 
 function localInferenceRootPath(): string {
