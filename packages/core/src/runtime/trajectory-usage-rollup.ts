@@ -75,7 +75,8 @@ function addMetrics(
 	into.cacheReadTokens += n(metrics.totalCacheReadTokens);
 	into.cacheCreationTokens += n(metrics.totalCacheCreationTokens);
 	into.costUsd += n(metrics.totalCostUsd);
-	into.totalTokens += n(metrics.totalPromptTokens) + n(metrics.totalCompletionTokens);
+	into.totalTokens +=
+		n(metrics.totalPromptTokens) + n(metrics.totalCompletionTokens);
 	into.trajectoryCount += 1;
 }
 

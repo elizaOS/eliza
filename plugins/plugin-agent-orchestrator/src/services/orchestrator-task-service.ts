@@ -192,6 +192,20 @@ type RuntimeLike = IAgentRuntime & {
   getSetting?: (key: string) => string | undefined | null;
 };
 
+export interface TraceUsageArtifactError {
+  path: string;
+  reason: "read_failed" | "invalid_trajectory";
+  message: string;
+}
+
+export interface TaskTraceUsageRollup extends TrajectoryUsageRollup {
+  readState: "complete" | "partial";
+  artifactCount: number;
+  readableArtifactCount: number;
+  unreadableArtifactCount: number;
+  artifactErrors: TraceUsageArtifactError[];
+}
+
 /**
  * The deployment's configured default coding agent type, if any
  * (`ELIZA_ACP_DEFAULT_AGENT` or its alias `ELIZA_DEFAULT_AGENT_TYPE` — e.g.
@@ -3142,12 +3156,13 @@ export class OrchestratorTaskService extends Service {
    * sub-agent whose ACP frame is coarse/absent, this is the only surface that
    * attributes the real inner spend to the logical run.
    *
-   * Attach-by-reference means the files live where the child wrote them; a
-   * missing/unreadable/parse-failed file is skipped (best-effort observability,
-   * never throws the roll-up), so a partial read still returns real numbers for
-   * the files that parsed.
+   * Attach-by-reference means the files live where the child wrote them. A
+   * missing/unreadable/parse-failed file keeps the endpoint partial: readable
+   * files still contribute to totals, and failed files are returned as
+   * `artifactErrors` so operators never mistake partial spend for a complete
+   * clean roll-up.
    */
-  async getTraceUsage(taskId: string): Promise<TrajectoryUsageRollup | null> {
+  async getTraceUsage(taskId: string): Promise<TaskTraceUsageRollup | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
     // Dedupe by path: `ingestChildTrajectories` rescans the task-wide child
@@ -3166,27 +3181,54 @@ export class OrchestratorTaskService extends Service {
       ),
     ];
     const trajectories: RecordedTrajectory[] = [];
+    const artifactErrors: TraceUsageArtifactError[] = [];
     for (const path of paths) {
       try {
         const raw = await readFile(path, "utf8");
-        const parsed = JSON.parse(raw) as RecordedTrajectory;
+        const parsed = JSON.parse(raw) as unknown;
         // A well-formed trajectory carries a metrics block; anything else is a
-        // mislabeled artifact and is skipped rather than trusted.
-        if (parsed && typeof parsed === "object" && parsed.metrics) {
-          trajectories.push(parsed);
+        // mislabeled artifact and is surfaced as partial rather than trusted.
+        if (
+          parsed &&
+          typeof parsed === "object" &&
+          "metrics" in parsed &&
+          parsed.metrics &&
+          typeof parsed.metrics === "object"
+        ) {
+          trajectories.push(parsed as RecordedTrajectory);
+        } else {
+          artifactErrors.push({
+            path,
+            reason: "invalid_trajectory",
+            message: "Trajectory artifact does not contain metrics.",
+          });
         }
       } catch (err) {
-        // error-policy:J7 a missing/corrupt trajectory artifact must not fail
-        // the roll-up; skip it and log at debug so the surface still returns the
-        // spend of the files that parsed.
-        this.log("debug", "skip unreadable trajectory artifact in trace usage", {
+        // error-policy:J4 trace usage is a user-facing accounting surface; keep
+        // readable totals available, but return artifactErrors/readState so a
+        // corrupt or missing file cannot look like complete zero spend.
+        const message = err instanceof Error ? err.message : String(err);
+        artifactErrors.push({
+          path,
+          reason: "read_failed",
+          message,
+        });
+        this.log("warn", "partial trace usage due to unreadable artifact", {
           taskId,
           path,
-          error: err instanceof Error ? err.message : String(err),
+          error: message,
         });
       }
     }
-    return rollUpTrajectoryUsage(trajectories);
+    const rollup = rollUpTrajectoryUsage(trajectories);
+    return {
+      ...rollup,
+      readState: artifactErrors.length > 0 ? "partial" : "complete",
+      artifactCount: paths.length,
+      readableArtifactCount: trajectories.length,
+      unreadableArtifactCount: artifactErrors.length,
+      artifactErrors,
+    };
   }
 
   // ---- sub-agent control -------------------------------------------------

@@ -2,9 +2,10 @@
  * Per-task trace usage roll-up (#13775 item 5). Drives the service's real
  * getTraceUsage against on-disk child-trajectory files ingested as artifacts,
  * asserting it sums the file-recorder metrics grouped by traceId — separate
- * from the ACP-frame getUsage surface — and degrades on an unreadable/corrupt
- * file instead of throwing. Uses the injectable InMemoryTaskStore (real store)
- * and the real ingest path; no mock stands in for the code under test.
+ * from the ACP-frame getUsage surface — and marks the roll-up partial when an
+ * unreadable/corrupt file prevents a complete accounting. Uses the injectable
+ * InMemoryTaskStore (real store) and the real ingest path; no mock stands in
+ * for the code under test.
  */
 
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -147,12 +148,23 @@ describeCore("getTraceUsage", () => {
       "child-agent",
     );
     await mkdir(dir, { recursive: true });
-    writeFileSync(join(dir, "tj-100.json"), trajectoryJson("trace-parent", 100, 0.01));
-    writeFileSync(join(dir, "tj-50.json"), trajectoryJson("trace-parent", 50, 0.005));
+    writeFileSync(
+      join(dir, "tj-100.json"),
+      trajectoryJson("trace-parent", 100, 0.01),
+    );
+    writeFileSync(
+      join(dir, "tj-50.json"),
+      trajectoryJson("trace-parent", 50, 0.005),
+    );
 
     await ingest(svc, taskId, sessionId);
     const rollup = await svc.getTraceUsage(taskId);
     expect(rollup).not.toBeNull();
+    expect(rollup?.readState).toBe("complete");
+    expect(rollup?.artifactErrors).toEqual([]);
+    expect(rollup?.artifactCount).toBe(2);
+    expect(rollup?.readableArtifactCount).toBe(2);
+    expect(rollup?.unreadableArtifactCount).toBe(0);
     expect(rollup?.byTrace).toHaveLength(1);
     expect(rollup?.byTrace[0].traceId).toBe("trace-parent");
     expect(rollup?.promptTokens).toBe(150);
@@ -163,7 +175,7 @@ describeCore("getTraceUsage", () => {
     expect(rollup?.costUsd).toBeCloseTo(0.015, 6);
   });
 
-  it("skips a corrupt trajectory artifact instead of throwing, still summing the readable ones", async () => {
+  it("returns a partial roll-up when a corrupt artifact prevents complete usage accounting", async () => {
     const store = new InMemoryTaskStore();
     const { taskId, sessionId } = await seedTaskWithSession(store, {
       traceId: "trace-parent",
@@ -178,7 +190,10 @@ describeCore("getTraceUsage", () => {
       "child-agent",
     );
     await mkdir(dir, { recursive: true });
-    writeFileSync(join(dir, "tj-good.json"), trajectoryJson("trace-parent", 40, 0.004));
+    writeFileSync(
+      join(dir, "tj-good.json"),
+      trajectoryJson("trace-parent", 40, 0.004),
+    );
     writeFileSync(join(dir, "tj-bad.json"), "{ this is not valid json");
 
     await ingest(svc, taskId, sessionId);
@@ -186,6 +201,55 @@ describeCore("getTraceUsage", () => {
     expect(rollup?.promptTokens).toBe(40);
     expect(rollup?.trajectoryCount).toBe(1);
     expect(rollup?.costUsd).toBeCloseTo(0.004, 6);
+    expect(rollup?.readState).toBe("partial");
+    expect(rollup?.artifactCount).toBe(2);
+    expect(rollup?.readableArtifactCount).toBe(1);
+    expect(rollup?.unreadableArtifactCount).toBe(1);
+    expect(rollup?.artifactErrors).toEqual([
+      expect.objectContaining({
+        path: join(dir, "tj-bad.json"),
+        reason: "read_failed",
+      }),
+    ]);
+  });
+
+  it("returns a partial roll-up when a trajectory artifact has no metrics block", async () => {
+    const store = new InMemoryTaskStore();
+    const { taskId, sessionId } = await seedTaskWithSession(store, {
+      traceId: "trace-parent",
+    });
+    const svc = new OrchestratorTaskService(makeRuntime(), { store });
+
+    const dir = join(
+      stateDir,
+      "orchestrator",
+      "child-trajectories",
+      taskId,
+      "child-agent",
+    );
+    await mkdir(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "tj-good.json"),
+      trajectoryJson("trace-parent", 25, 0.0025),
+    );
+    writeFileSync(
+      join(dir, "tj-invalid.json"),
+      JSON.stringify({ trajectoryId: "tj-invalid", traceId: "trace-parent" }),
+    );
+
+    await ingest(svc, taskId, sessionId);
+    const rollup = await svc.getTraceUsage(taskId);
+    expect(rollup?.promptTokens).toBe(25);
+    expect(rollup?.readState).toBe("partial");
+    expect(rollup?.artifactCount).toBe(2);
+    expect(rollup?.readableArtifactCount).toBe(1);
+    expect(rollup?.unreadableArtifactCount).toBe(1);
+    expect(rollup?.artifactErrors).toEqual([
+      expect.objectContaining({
+        path: join(dir, "tj-invalid.json"),
+        reason: "invalid_trajectory",
+      }),
+    ]);
   });
 
   it("returns an empty roll-up (not null) for a task with no trajectory artifacts", async () => {
@@ -194,6 +258,9 @@ describeCore("getTraceUsage", () => {
     const svc = new OrchestratorTaskService(makeRuntime(), { store });
     const rollup = await svc.getTraceUsage(taskId);
     expect(rollup).not.toBeNull();
+    expect(rollup?.readState).toBe("complete");
+    expect(rollup?.artifactCount).toBe(0);
+    expect(rollup?.artifactErrors).toEqual([]);
     expect(rollup?.byTrace).toEqual([]);
     expect(rollup?.totalTokens).toBe(0);
     expect(rollup?.trajectoryCount).toBe(0);
@@ -214,7 +281,10 @@ describeCore("getTraceUsage", () => {
       "child-agent",
     );
     await mkdir(dir, { recursive: true });
-    writeFileSync(join(dir, "tj-dup.json"), trajectoryJson("trace-parent", 80, 0.008));
+    writeFileSync(
+      join(dir, "tj-dup.json"),
+      trajectoryJson("trace-parent", 80, 0.008),
+    );
 
     // ingestChildTrajectories rescans the whole task dir each call, so a second
     // completion appends a SECOND artifact row for the same file path.
@@ -228,6 +298,9 @@ describeCore("getTraceUsage", () => {
 
     const rollup = await svc.getTraceUsage(taskId);
     // ...but the file's spend is counted exactly once.
+    expect(rollup?.readState).toBe("complete");
+    expect(rollup?.artifactCount).toBe(1);
+    expect(rollup?.readableArtifactCount).toBe(1);
     expect(rollup?.promptTokens).toBe(80);
     expect(rollup?.trajectoryCount).toBe(1);
     expect(rollup?.costUsd).toBeCloseTo(0.008, 6);
