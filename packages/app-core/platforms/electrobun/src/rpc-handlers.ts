@@ -17,7 +17,6 @@ import {
   readAgentStatusViaHttp,
 } from "./agent-status-rpc";
 import { resolveDesktopRuntimeMode } from "./api-base";
-import { showBackgroundNoticeOnce } from "./background-notice";
 import {
   composeBootProgressSnapshot,
   readAgentHealthSnapshotViaHttp,
@@ -125,6 +124,7 @@ import { getSwabbleManager } from "./native/swabble";
 import { getTalkModeManager } from "./native/talkmode";
 import {
   buildDynamicViewRpcHandlers,
+  buildNotificationRpcHandlers,
   buildWindowRpcHandlers,
 } from "./rpc-handler-slices";
 import { resolveRpcAgentPort } from "./rpc-port-resolver";
@@ -803,21 +803,13 @@ export function buildBunRpcHandlers({
       params: Parameters<typeof desktop.setOpacity>[0],
     ) => desktop.setOpacity(params),
 
-    // ---- Desktop: Notifications ----
-    desktopShowNotification: async (
-      params: Parameters<typeof desktop.showNotification>[0],
-    ) => desktop.showNotification(params),
-    desktopCloseNotification: async (
-      params: Parameters<typeof desktop.closeNotification>[0],
-    ) => desktop.closeNotification(params),
-    desktopShowBackgroundNotice: async () => ({
-      shown: showBackgroundNoticeOnce({
-        fileSystem: fs,
-        userDataDir: Utils.paths.userData,
-        showNotification: (options) => {
-          Utils.showNotification(options);
-        },
-      }),
+    ...buildNotificationRpcHandlers({
+      desktop,
+      fileSystem: fs,
+      userDataDir: Utils.paths.userData,
+      showNotification: (options) => {
+        Utils.showNotification(options);
+      },
     }),
 
     // ---- Desktop: Power ----

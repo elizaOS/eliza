@@ -612,6 +612,60 @@ describe("DesktopManager main window controls", () => {
   });
 });
 
+describe("DesktopManager notifications", () => {
+  beforeEach(() => {
+    resetDesktopManagerForTesting();
+    electrobunMock.reset();
+  });
+
+  afterEach(() => {
+    resetDesktopManagerForTesting();
+  });
+
+  it("maps notification options to Utils.showNotification and returns monotonic ids", async () => {
+    const manager = new DesktopManager();
+
+    await expect(
+      manager.showNotification({
+        title: "Build finished",
+        body: "Desktop build completed.",
+        urgency: "critical",
+        silent: false,
+      }),
+    ).resolves.toEqual({ id: "notification_1" });
+    await expect(
+      manager.showNotification({
+        title: "Quiet sync",
+        body: "Background sync completed.",
+        urgency: "low",
+        silent: true,
+      }),
+    ).resolves.toEqual({ id: "notification_2" });
+
+    expect(electrobunMock.Utils.showNotification).toHaveBeenNthCalledWith(1, {
+      title: "Build finished",
+      body: "Desktop build completed.",
+      subtitle: undefined,
+      silent: false,
+    });
+    expect(electrobunMock.Utils.showNotification).toHaveBeenNthCalledWith(2, {
+      title: "Quiet sync",
+      body: "Background sync completed.",
+      subtitle: undefined,
+      silent: true,
+    });
+  });
+
+  it("documents closeNotification as an Electrobun no-op", async () => {
+    const manager = new DesktopManager();
+
+    await expect(
+      manager.closeNotification({ id: "notification_1" }),
+    ).resolves.toBeUndefined();
+    expect(electrobunMock.Utils.showNotification).not.toHaveBeenCalled();
+  });
+});
+
 describe("DesktopManager dockless (tray-first) Dock tracking (#12184)", () => {
   const originalPlatform = process.platform;
 
