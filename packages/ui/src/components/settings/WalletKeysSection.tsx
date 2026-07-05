@@ -22,6 +22,8 @@ import { SettingsInput } from "../ui/settings-controls";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { isVaultEntryMeta, type VaultEntryMeta } from "./vault-tabs/types";
 
+type Translate = (key: string, values?: Record<string, unknown>) => string;
+
 interface RevealPayload {
   ok: boolean;
   value: string;
@@ -32,6 +34,44 @@ interface RevealPayload {
 function maskValue(value: string): string {
   if (value.length <= 12) return "*".repeat(value.length);
   return `${value.slice(0, 6)}…${value.slice(-4)}`;
+}
+
+/**
+ * Turn a raw HTTP failure into plain-language recovery copy (#13453): the audit
+ * flagged bare `HTTP 502` / `HTTP 500` leaking into the wallet keys panel as
+ * "raw infrastructure leakage in a preferences view". Map the status to an
+ * action-oriented sentence a non-engineer can act on; keep the raw status in
+ * parentheses so a developer can still diagnose. `verb` names the action that
+ * failed ("load", "reveal", "save", "delete") so one helper serves every site.
+ */
+function describeHttpError(status: number, verb: string, t: Translate): string {
+  if (status === 401 || status === 403) {
+    return t("walletkeys.err.unauthorized", {
+      status,
+      defaultValue:
+        "You do not have permission to manage wallet keys here. (HTTP {{status}})",
+    });
+  }
+  if (status === 429) {
+    return t("walletkeys.err.rateLimited", {
+      status,
+      defaultValue:
+        "Too many requests. Wait a moment and try again. (HTTP {{status}})",
+    });
+  }
+  if (status >= 500) {
+    return t("walletkeys.err.serverDown", {
+      verb,
+      status,
+      defaultValue:
+        "Couldn't {{verb}} wallet keys. The vault service is unavailable. Try again shortly. (HTTP {{status}})",
+    });
+  }
+  return t("walletkeys.err.generic", {
+    verb,
+    status,
+    defaultValue: "Couldn't {{verb}} wallet keys. Try again. (HTTP {{status}})",
+  });
 }
 
 function tryExtractAgentAddress(rawValue: string): string | null {
@@ -147,7 +187,7 @@ function WalletKeysSectionBody() {
         setEntries([]);
         return;
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(describeHttpError(res.status, "load", t));
       const json = (await res.json()) as { entries?: unknown };
       if (!Array.isArray(json.entries)) {
         throw new Error("Invalid wallet inventory response");
@@ -179,7 +219,8 @@ function WalletKeysSectionBody() {
           undefined,
           { allowNonOk: true },
         );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok)
+          throw new Error(describeHttpError(res.status, "reveal", t));
         const json = (await res.json()) as RevealPayload;
         setRevealMap((prev) => ({ ...prev, [key]: json.value }));
         // Auto-hide after 10s (matches the Vault tab's reveal lifecycle).
@@ -230,11 +271,12 @@ function WalletKeysSectionBody() {
         { allowNonOk: true },
       );
       if (!res.ok) {
-        setError(`HTTP ${res.status}`);
+        setError(describeHttpError(res.status, "delete", t));
         return;
       }
       await load();
     },
+    // Includes `t` because `describeHttpError` closes over it via the error copy.
     [load, t],
   );
 
@@ -260,7 +302,7 @@ function WalletKeysSectionBody() {
       );
       setSubmitting(false);
       if (!res.ok) {
-        setError(`HTTP ${res.status}`);
+        setError(describeHttpError(res.status, "save", t));
         return;
       }
       setAddKey("");
@@ -268,7 +310,8 @@ function WalletKeysSectionBody() {
       setShowAdd(false);
       await load();
     },
-    [addKey, addValue, load],
+    // Includes `t` because `describeHttpError` closes over it via the error copy.
+    [addKey, addValue, load, t],
   );
 
   return (
