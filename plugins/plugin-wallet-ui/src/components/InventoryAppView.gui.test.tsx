@@ -44,6 +44,12 @@ const appHooks = vi.hoisted(() => ({
 vi.mock("@elizaos/ui", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   client: walletClient,
+  // Mirrors the real guard's contract (an ApiError carries a numeric
+  // `status`); tests reject fetches with Object.assign(new Error(body),
+  // { status }) to model the client's error shape at the network boundary.
+  isApiError: (value: unknown): boolean =>
+    value instanceof Error &&
+    typeof (value as { status?: unknown }).status === "number",
   Button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
     React.createElement("button", { type: "button", ...props }),
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
@@ -756,5 +762,39 @@ describe("InventoryView GUI — calm empty-wallet hero", () => {
     // The synthesized unavailable overview surfaces the thrown message.
     expect(await screen.findByText("network down")).toBeTruthy();
     expect(screen.getByTitle("Top movers unavailable")).toBeTruthy();
+  });
+
+  it("degrades a trading-profile 404 to the designed empty P&L state — no raw 'Not found' leak (#14426)", async () => {
+    // A backend without the trading-stats route rejects with the client's
+    // ApiError (status 404, message = the raw body "Not found"). That is the
+    // designed no-trading-data state, not an error: the P&L panel keeps its
+    // own empty copy and NO red error text renders — before the fix the raw
+    // body leaked into the view as a bare red "Not found".
+    walletClient.getWalletTradingProfile.mockRejectedValue(
+      Object.assign(new Error("Not found"), { status: 404 }),
+    );
+    appHooks.useApp.mockReturnValue(makeAppState());
+    render(React.createElement(InventoryAppView));
+    await screen.findByTestId("wallets-sidebar");
+
+    expect(await screen.findByText("Trade to see your P&L here")).toBeTruthy();
+    expect(screen.queryByText("Not found")).toBeNull();
+    expect(screen.queryByText(/Couldn't load trading stats/)).toBeNull();
+  });
+
+  it("surfaces a non-404 trading-profile failure as human copy, never the raw response body (#14426)", async () => {
+    walletClient.getWalletTradingProfile.mockRejectedValue(
+      Object.assign(new Error("upstream exploded (traceid=abc123)"), {
+        status: 500,
+      }),
+    );
+    appHooks.useApp.mockReturnValue(makeAppState());
+    render(React.createElement(InventoryAppView));
+    await screen.findByTestId("wallets-sidebar");
+
+    expect(
+      await screen.findByText("Couldn't load trading stats — try again shortly."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/upstream exploded/)).toBeNull();
   });
 });

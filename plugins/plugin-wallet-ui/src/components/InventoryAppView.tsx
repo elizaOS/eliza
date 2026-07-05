@@ -21,7 +21,7 @@ import type {
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { client } from "@elizaos/ui/api";
+import { client, isApiError } from "@elizaos/ui/api";
 import { Button } from "@elizaos/ui/components";
 import { type ActivityEvent, useActivityEvents } from "@elizaos/ui/hooks";
 import type { InventoryChainFilters } from "@elizaos/ui/state";
@@ -1990,13 +1990,19 @@ export function InventoryAppView() {
         setTradingProfile(profile);
       }
     } catch (cause) {
-      const message =
-        cause instanceof Error && cause.message.trim().length > 0
-          ? cause.message.trim()
-          : "Failed to load trading profile.";
       if (tradingProfileRequestRef.current === requestId) {
         setTradingProfile(null);
-        setTradingProfileError(message);
+        // error-policy:J4 — a 404 means this wallet backend doesn't serve
+        // trading stats (feature-gated/older agent): that is the designed
+        // "no trading data" render (PnlChart's own empty copy), not an error
+        // to paint red. Any other failure surfaces human copy — never the raw
+        // response body, which leaked a bare red "Not found" into the view
+        // (#14426).
+        setTradingProfileError(
+          isApiError(cause) && cause.status === 404
+            ? null
+            : "Couldn't load trading stats — try again shortly.",
+        );
       }
     } finally {
       if (tradingProfileRequestRef.current === requestId) {
