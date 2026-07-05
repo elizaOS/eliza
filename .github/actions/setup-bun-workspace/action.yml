@@ -119,7 +119,10 @@ runs:
     - name: Install setuptools for distutils (Python 3.12+)
       if: ${{ inputs.setup-python == 'true' }}
       shell: bash
+      env:
+        RUNNER_ENVIRONMENT: ${{ runner.environment }}
       run: |
+        set +e
         python_bin="${{ steps.system-python.outputs.python-bin }}"
         if [ -z "$python_bin" ]; then
           python_bin="python3"
@@ -128,7 +131,23 @@ runs:
           echo "::warning::No usable python3 found; skipping setuptools install (node-gyp fallback unavailable)"
           exit 0
         fi
-        "$python_bin" -m pip install setuptools
+        if "$python_bin" -c 'import setuptools' >/dev/null 2>&1; then
+          echo "setuptools already present: $("$python_bin" -c 'import setuptools; print(setuptools.__version__)')"
+          exit 0
+        fi
+
+        "$python_bin" -m pip install setuptools \
+          || "$python_bin" -m pip install --user setuptools \
+          || "$python_bin" -m pip install --break-system-packages setuptools
+        install_status=$?
+        if [ "$install_status" -eq 0 ]; then
+          exit 0
+        fi
+        if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+          echo "::warning::Could not install setuptools with system python; node-gyp fallback may be unavailable"
+          exit 0
+        fi
+        exit "$install_status"
 
     - name: Install protoc
       # protoc is required even when install-native-deps=false because Rust
