@@ -183,22 +183,6 @@ export function mergeAgentList(
  * that should remove the local row, not resurrect it by clearing the tombstone
  * too early.
  */
-export function mergeAgentListAndRetireTombstones(
-  prev: ElizaAgentRow[],
-  apiAgents: SandboxListAgent[],
-  tombstoned: Set<string>,
-): ElizaAgentRow[] {
-  const tombstonesForThisMerge = new Set(tombstoned);
-  const merged = mergeAgentList(prev, apiAgents, tombstonesForThisMerge);
-
-  const apiIds = new Set(apiAgents.map((a) => a.id));
-  for (const id of tombstoned) {
-    if (!apiIds.has(id)) tombstoned.delete(id);
-  }
-
-  return merged;
-}
-
 function isDockerBacked(sb: ElizaAgentRow): boolean {
   return !!sb.node_id || sb.execution_tier === "custom" || !!sb.docker_image;
 }
@@ -339,9 +323,17 @@ export function ElizaAgentsTable({
   }, [initialSandboxes, withoutDeleted]);
 
   const mergeApiData = useCallback((apiAgents: SandboxListAgent[]) => {
-    setLocalSandboxes((prev) =>
-      mergeAgentListAndRetireTombstones(prev, apiAgents, deletedIdsRef.current),
-    );
+    // Retire tombstones the API stopped returning BEFORE the state update and
+    // hand the updater an immutable snapshot: React StrictMode double-invokes
+    // updaters, so an in-updater mutation of the shared tombstone set diverges
+    // between invocations and can resurrect a tombstoned row the API still
+    // returns.
+    const apiIds = new Set(apiAgents.map((a) => a.id));
+    for (const id of deletedIdsRef.current) {
+      if (!apiIds.has(id)) deletedIdsRef.current.delete(id);
+    }
+    const tombstoned: ReadonlySet<string> = new Set(deletedIdsRef.current);
+    setLocalSandboxes((prev) => mergeAgentList(prev, apiAgents, tombstoned));
   }, []);
 
   const refreshData = useCallback(async () => {

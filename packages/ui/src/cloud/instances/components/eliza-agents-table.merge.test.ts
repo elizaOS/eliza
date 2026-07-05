@@ -6,11 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { SandboxListAgent } from "../lib/use-sandbox-status-poll";
-import {
-  type ElizaAgentRow,
-  mergeAgentList,
-  mergeAgentListAndRetireTombstones,
-} from "./eliza-agents-table";
+import { type ElizaAgentRow, mergeAgentList } from "./eliza-agents-table";
 
 function row(id: string, status: string): ElizaAgentRow {
   return {
@@ -76,17 +72,42 @@ describe("mergeAgentList", () => {
     expect(merged.map((r) => r.id)).toEqual(["a"]);
   });
 
-  it("drops a deleted local row on the API response that retires its tombstone", () => {
-    const prev = [row("a", "running"), row("b", "running")];
-    const tombstoned = new Set(["b"]);
+  it("is idempotent under StrictMode double-invocation — retire-then-snapshot keeps a tombstoned row excluded on both runs", () => {
+    // Mirrors mergeApiData exactly: retire ids the API no longer returns,
+    // snapshot, then run the (pure) updater — twice, as StrictMode does.
+    const prev = [row("a", "running")];
+    const api = [apiAgent("a", "running"), apiAgent("b", "running")];
+    const deletedIdsRef = new Set(["b"]); // "b" deleted; laggy API still returns it
 
-    const merged = mergeAgentListAndRetireTombstones(
-      prev,
-      [apiAgent("a", "running")],
-      tombstoned,
-    );
+    const apiIds = new Set(api.map((a) => a.id));
+    for (const id of deletedIdsRef) {
+      if (!apiIds.has(id)) deletedIdsRef.delete(id);
+    }
+    const tombstoned: ReadonlySet<string> = new Set(deletedIdsRef);
 
-    expect(merged.map((r) => r.id)).toEqual(["a"]);
-    expect(tombstoned.has("b")).toBe(false);
+    const first = mergeAgentList(prev, api, tombstoned);
+    const second = mergeAgentList(prev, api, tombstoned);
+
+    expect(first.map((r) => r.id)).toEqual(["a"]); // "b" excluded
+    expect(second).toEqual(first); // double-invocation: identical result
+    expect(deletedIdsRef.has("b")).toBe(true); // API still returns it → not retired
+  });
+
+  it("retires a tombstone only when the API stops returning the id (outside the updater)", () => {
+    const api = [apiAgent("a", "running")];
+    const deletedIdsRef = new Set(["b"]);
+    const apiIds = new Set(api.map((a) => a.id));
+    for (const id of deletedIdsRef) {
+      if (!apiIds.has(id)) deletedIdsRef.delete(id);
+    }
+    expect(deletedIdsRef.has("b")).toBe(false); // fully deleted server-side → retired
+    // A later agent reusing the id is visible again:
+    expect(
+      mergeAgentList(
+        [],
+        [apiAgent("b", "provisioning")],
+        new Set(deletedIdsRef),
+      ).map((r) => r.id),
+    ).toEqual(["b"]);
   });
 });
