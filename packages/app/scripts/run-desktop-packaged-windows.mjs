@@ -8,14 +8,13 @@
  *   - packages/app-core/scripts/release-check.ts
  *   - packages/app-core/test/regression-matrix.json (desktop-packaged-windows)
  *
- * It runs the win32-only packaged startup spec
- * (test/electrobun-packaged/electrobun-windows-startup.e2e.spec.ts) through the
- * shared `run-ui-playwright.mjs` harness on Windows, and — critically — fails
- * with a NON-ZERO exit and a truthful precondition message on any non-Windows
- * host, instead of the previous `error: Script not found` (invisible break) or
- * a silent green "skipped" run. A release smoke lane that cannot actually run
- * must report that as a failure so the packaged-Windows loop is never reported
- * green with nothing executed.
+ * It runs the existing packaged Windows PowerShell smoke on Windows, preserving
+ * the workflow's `ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE` handoff contract, and
+ * — critically — fails with a NON-ZERO exit and a truthful precondition message
+ * on any non-Windows host, instead of the previous `error: Script not found`
+ * (invisible break) or a silent green "skipped" run. A release smoke lane that
+ * cannot actually run must report that as a failure so the packaged-Windows
+ * loop is never reported green with nothing executed.
  *
  * The `ELIZA_TEST_WINDOWS_*` env contract set by the workflow step (install
  * dir, launcher dir, launcher-path file, artifacts/build dirs) is inherited by
@@ -23,15 +22,22 @@
  */
 
 import { spawn } from "node:child_process";
+import { accessSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(scriptDir, "..");
-
-const WINDOWS_SPEC =
-  "test/electrobun-packaged/electrobun-windows-startup.e2e.spec.ts";
-const PACKAGED_CONFIG = "playwright.electrobun.packaged.config.ts";
+const repoRoot = path.resolve(appDir, "..", "..");
+const smokeScript = path.join(
+  repoRoot,
+  "packages",
+  "app-core",
+  "platforms",
+  "electrobun",
+  "scripts",
+  "smoke-test-windows.ps1",
+);
 
 function fail(message) {
   // Emit on both streams so the precondition reason is captured regardless of
@@ -52,12 +58,17 @@ if (process.platform !== "win32") {
   );
 }
 
-const runnerScript = path.join(scriptDir, "run-ui-playwright.mjs");
+try {
+  accessSync(smokeScript);
+} catch {
+  fail(`missing Windows smoke script: ${smokeScript}`);
+}
+
 const child = spawn(
-  process.execPath,
-  [runnerScript, "--config", PACKAGED_CONFIG, WINDOWS_SPEC],
+  "pwsh",
+  ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", smokeScript],
   {
-    cwd: appDir,
+    cwd: repoRoot,
     env: process.env,
     stdio: "inherit",
   },

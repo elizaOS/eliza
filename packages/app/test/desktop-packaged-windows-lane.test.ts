@@ -72,7 +72,7 @@ describe("test:desktop:packaged:windows lane wiring (#13682)", () => {
     const scripts = readScripts("packages/app/package.json");
     expect(scripts[CANONICAL_LANE]).toBeTruthy();
     // Delegates to the dedicated preflight runner (not a raw playwright call
-    // that would green-skip on non-win32).
+    // that would green-skip on non-win32 or bypass the Windows smoke contract).
     expect(scripts[CANONICAL_LANE]).toContain(
       "run-desktop-packaged-windows.mjs",
     );
@@ -98,6 +98,22 @@ describe("test:desktop:packaged:windows lane wiring (#13682)", () => {
       "run-desktop-packaged-windows.mjs",
     );
     expect(fs.existsSync(runner)).toBe(true);
+  });
+
+  it("preserves the release workflow launcher-path handoff contract", () => {
+    const runner = readText(
+      "packages/app/scripts/run-desktop-packaged-windows.mjs",
+    );
+    expect(runner).toContain("smoke-test-windows.ps1");
+    expect(runner).toContain("pwsh");
+    expect(
+      readText(
+        "packages/app-core/platforms/electrobun/scripts/smoke-test-windows.ps1",
+      ),
+    ).toContain("ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE");
+    expect(readText(".github/workflows/release-electrobun.yml")).toContain(
+      "ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE",
+    );
   });
 
   it("all three call sites reference the exact canonical lane name", () => {
