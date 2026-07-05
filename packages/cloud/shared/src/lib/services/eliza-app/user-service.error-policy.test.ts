@@ -6,6 +6,22 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 const findByDiscordIdWithOrganization = mock();
 const findByPhoneNumberWithOrganization = mock();
 const update = mock();
+const addCredits = mock();
+
+class InsufficientCreditsError extends Error {
+  constructor(
+    public readonly required: number,
+    public readonly available: number,
+    public readonly reason?: string,
+  ) {
+    super(
+      `Insufficient credits. Required: $${required.toFixed(4)}, Available: $${available.toFixed(4)}`,
+    );
+    this.name = "InsufficientCreditsError";
+  }
+}
+
+class CreditsService {}
 
 mock.module("../../../db/repositories/users", () => ({
   usersRepository: {
@@ -41,7 +57,15 @@ mock.module("../../utils/phone-normalization", () => ({
 }));
 
 mock.module("../api-keys", () => ({ apiKeysService: { create: mock() } }));
-mock.module("../credits", () => ({ creditsService: { addCredits: mock() } }));
+mock.module("../credits", () => ({
+  creditsService: { addCredits },
+  CreditsService,
+  InsufficientCreditsError,
+  COST_BUFFER: 1.5,
+  MIN_RESERVATION: 0.000001,
+  EPSILON: 0.0000001,
+  DEFAULT_OUTPUT_TOKENS: 500,
+}));
 mock.module("../signup-code", () => ({ redeemSignupCode: mock() }));
 
 const { elizaAppUserService } = await import("./user-service");
@@ -57,6 +81,7 @@ describe("ElizaAppUserService.findOrCreateByDiscordId error policy", () => {
     findByDiscordIdWithOrganization.mockReset();
     findByPhoneNumberWithOrganization.mockReset();
     update.mockReset();
+    addCredits.mockReset();
     // Phone is unowned by default so the phone-link branch is reachable.
     findByPhoneNumberWithOrganization.mockResolvedValue(undefined);
   });

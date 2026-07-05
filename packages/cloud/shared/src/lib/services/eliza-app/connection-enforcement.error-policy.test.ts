@@ -24,7 +24,22 @@ mock.module("../oauth", () => ({
 }));
 
 mock.module("../../providers/language-model", () => ({
+  canonicalizeCerebrasModelId: mock((model: string) => model),
+  getAiProviderConfigurationError: mock(() => "mock provider unavailable"),
+  getAiProviderConfigurationStatus: mock(() => ({ configured: true, providers: [] })),
+  getAiProviderConfigurationSummary: mock(() => "mock provider configured"),
   getLanguageModel: mock(() => "mock-model"),
+  getTextEmbeddingModel: mock(() => "mock-embedding-model"),
+  hasAnthropicProviderConfigured: mock(() => true),
+  hasAnyAiProviderConfigured: mock(() => true),
+  hasGatewayProviderConfigured: mock(() => false),
+  hasGroqLanguageModelProviderConfigured: mock(() => false),
+  hasLanguageModelProviderConfigured: mock(() => true),
+  hasOpenAIProviderConfigured: mock(() => true),
+  hasTextEmbeddingProviderConfigured: mock(() => true),
+  resolveAiProviderSource: mock(() => "openai"),
+  resolveEmbeddingProviderSource: mock(() => "openai"),
+  resolvePooledDirectProviderForModel: mock(() => null),
 }));
 
 mock.module("../../utils/logger", () => ({

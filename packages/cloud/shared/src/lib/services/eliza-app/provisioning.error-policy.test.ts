@@ -15,6 +15,21 @@ const hasElizaAppInitialFreeCredits = mock();
 const addCredits = mock();
 const checkAgentCreditGate = mock();
 
+class InsufficientCreditsError extends Error {
+  constructor(
+    public readonly required: number,
+    public readonly available: number,
+    public readonly reason?: string,
+  ) {
+    super(
+      `Insufficient credits. Required: $${required.toFixed(4)}, Available: $${available.toFixed(4)}`,
+    );
+    this.name = "InsufficientCreditsError";
+  }
+}
+
+class CreditsService {}
+
 const deleteSandboxSpy = spyOn(agentSandboxesRepository, "delete").mockImplementation(
   (...args) => deleteSandbox(...args) as never,
 );
@@ -39,6 +54,12 @@ mock.module("../../../db/repositories/credit-transactions", () => ({
 
 mock.module("../credits", () => ({
   creditsService: { addCredits },
+  CreditsService,
+  InsufficientCreditsError,
+  COST_BUFFER: 1.5,
+  MIN_RESERVATION: 0.000001,
+  EPSILON: 0.0000001,
+  DEFAULT_OUTPUT_TOKENS: 500,
 }));
 
 const createAgentSpy = spyOn(elizaSandboxService, "createAgent").mockImplementation(
