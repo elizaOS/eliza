@@ -211,6 +211,10 @@ describe("check-pr-evidence row primitives", () => {
       ),
       false,
     );
+    assert.equal(
+      hasArtifactReference("[proof](.github/issue-evidence/13676-a.png)"),
+      false,
+    );
     const { ok, findings } = evaluatePrEvidence(
       buildBody({
         "backend-logs":

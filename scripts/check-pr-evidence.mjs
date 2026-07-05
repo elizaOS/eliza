@@ -27,6 +27,7 @@ export const SURFACE_ARTIFACT_ROW_IDS = [
 ];
 
 const MARKER_RE = /<!--\s*evidence-row:([a-z0-9-]+)\s*-->/gi;
+const RETIRED_ISSUE_EVIDENCE_RE = /\.github\/issue-evidence\/\S+/i;
 
 export function parseLabels(value) {
   if (Array.isArray(value)) {
@@ -55,7 +56,14 @@ export function hasNaWithReason(text) {
 }
 
 export function hasArtifactReference(text) {
-  if (/\[[^\]]+\]\(\s*\S+\s*\)/.test(text)) return true;
+  const markdownLinks = [
+    ...String(text ?? "").matchAll(/\[[^\]]+\]\(\s*(\S+)\s*\)/g),
+  ];
+  if (
+    markdownLinks.some((match) => !RETIRED_ISSUE_EVIDENCE_RE.test(match[1]))
+  ) {
+    return true;
+  }
   if (/https?:\/\/\S+/i.test(text)) return true;
   if (
     /user-images\.githubusercontent\.com|github\.com\/[^)\s]+\/assets\//i.test(
@@ -355,8 +363,8 @@ function main() {
     const bad = findings.filter((finding) => finding.status !== "ok");
     console.error(
       `\nEvidence gate FAILED: ${bad.length} row(s) blank or missing. ` +
-        "Attach an artifact link/path or write `N/A - <reason>` on each row. " +
-        "For ui/frontend/native PRs, before/after screenshots and walkthrough video require concrete artifact links/paths. " +
+        "Attach the artifact inline (GitHub attachment URL) or write `N/A - <reason>` on each row. " +
+        "For ui/frontend/native PRs, before/after screenshots and walkthrough video require concrete inline artifact links. " +
         "Retired `.github/issue-evidence/...` repo paths do not count as evidence.",
     );
     process.exit(1);
