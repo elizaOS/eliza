@@ -711,7 +711,7 @@ describe("stage 4b: GET /api/views/:id/frame.html serves sandbox frame documents
       number,
     ];
     expect(status).toBe(404);
-    expect(message).toContain("no sandbox frame document configured");
+    expect(message).toContain("has no frame path configured");
   });
 });
 

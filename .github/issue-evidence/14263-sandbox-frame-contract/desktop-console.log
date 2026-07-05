@@ -1,0 +1,12 @@
+[debug] [vite] connecting...
+[debug] [vite] connected.
+[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[info] [shell] window shell mode: main (search="")
+[info] %c Info font-size: 12px; color: #0099ff; [startup-coordinator] phase=restoring-session
+[info] %c Info font-size: 12px; color: #0099ff; [startup-coordinator] phase=restoring-session
+[info] %c Info font-size: 12px; color: #0099ff; [startup-coordinator] phase=error
+[info] %c Info font-size: 12px; color: #0099ff; [startup-coordinator] phase=hydrating
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "sandbox-probe" mounted → active (show)
+[info] %c Info font-size: 12px; color: #0099ff; [startup-coordinator] phase=ready
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "apps:chat" mounted → active (show)
+[info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "sandbox-probe" active → evicted (inactive)

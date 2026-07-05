@@ -1,0 +1,19 @@
+{
+  "name": "desktop",
+  "sandbox": "allow-scripts",
+  "rect": {
+    "x": 12,
+    "y": 28,
+    "width": 1416,
+    "height": 804
+  },
+  "storageLog": "storage serviced: {\"ok\":true}",
+  "namespacedKey": "eliza:sbxview:sandbox-probe:probe",
+  "namespaced": "hello",
+  "raw": null,
+  "afterNavigate": {
+    "tab": "apps",
+    "pathname": "/apps/chat",
+    "text": "Messages\nSettings\nWallet\nTasks\nAutomations\nBrowser\nCharacter\nRelationships\nKnowledge\nSkills\nExperience\nMemories\nTrajectories\nDatabases\nRuntime\nLogs\nSkills\nPlugins\nFine-Tuning\nBirdclaw\nCalendar\nFinances\nFocus\nGoals\nHealth\nHyperliquid\nInbox\nOrchestrator\nPolymarket\nDEV\nSandbox Probe\nScreenshare\nSocial Alpha\nSteward\nTutorial\nVector Browser\nchat-detent:collapsed\nchat-maximized:false"
+  }
+}
