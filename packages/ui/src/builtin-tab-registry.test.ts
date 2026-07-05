@@ -99,28 +99,32 @@ describe("resolveBuiltinBackgroundPolicy: legacy parity", () => {
 });
 
 describe("browser: native-webview isolation manifest (#13596)", () => {
-  const browser = BUILTIN_TAB_METADATA.find((entry) => entry.id === "browser");
+  const decl = BUILTIN_TAB_METADATA.find(
+    (entry) => entry.id === "browser",
+  )?.surface;
+  // The browser declares a full SurfaceManifest, not the path-predicate variant
+  // (`{ shared }`) the wallpaper tabs use — narrow to the manifest shape so the
+  // resolver typechecks and a regression to a predicate is caught here.
+  const surface = decl && "isolation" in decl ? decl : undefined;
 
-  it("declares a surface manifest (not id-only)", () => {
-    expect(browser?.surface).toBeDefined();
+  it("declares a full surface manifest (not id-only, not a path predicate)", () => {
+    expect(surface).toBeDefined();
   });
 
   it("resolves to native-webview isolation (the catalogue's canonical consumer)", () => {
     // The browser hosts arbitrary third-party web content in a native child
     // web-content surface with its own renderer process; it must never share
     // the host realm. See surface-isolation.ts's catalogue entry.
-    expect(browser?.surface && "isolation" in browser.surface).toBe(true);
-    const resolved = resolveSurfaceManifest({ surface: browser?.surface });
-    expect(resolved.isolation).toBe("native-webview");
+    expect(resolveSurfaceManifest({ surface }).isolation).toBe(
+      "native-webview",
+    );
   });
 
   it("stays opaque — the browser never paints the shared wallpaper", () => {
     expect(resolveBuiltinBackgroundPolicy("browser", "/browser")).toBe(
       "opaque",
     );
-    expect(
-      resolveSurfaceManifest({ surface: browser?.surface }).background,
-    ).toBe("opaque");
+    expect(resolveSurfaceManifest({ surface }).background).toBe("opaque");
   });
 });
 
