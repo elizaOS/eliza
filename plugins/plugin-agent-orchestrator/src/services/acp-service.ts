@@ -14,7 +14,11 @@
  * SIGTERM/SIGINT handler fans out to every live instance so multi-tenant hosts,
  * test runners, and hot-reload cycles don't leak per-instance listeners.
  */
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import {
+  type ChildProcessWithoutNullStreams,
+  spawn,
+  spawnSync,
+} from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
@@ -209,28 +213,19 @@ async function runGitForAcp(
   workdir: string,
   args: string[],
 ): Promise<string | undefined> {
-  return new Promise((resolveRun) => {
-    const proc = spawn("git", ["-C", workdir, ...args], {
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    let stdout = "";
-    const timer = setTimeout(() => {
-      proc.kill("SIGTERM");
-      resolveRun(undefined);
-    }, 5_000);
-    proc.stdout.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString("utf8");
-    });
-    proc.on("error", () => {
-      clearTimeout(timer);
-      resolveRun(undefined);
-    });
-    proc.on("close", (code) => {
-      clearTimeout(timer);
-      resolveRun(code === 0 ? stdout.trim() : undefined);
-    });
+  const result = spawnSync("git", ["-C", workdir, ...args], {
+    env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+    timeout: 5_000,
+    maxBuffer: 1024 * 1024,
+    windowsHide: true,
   });
+  if (result.status !== 0) return undefined;
+  const stdout = result.stdout;
+  const text =
+    stdout instanceof Uint8Array
+      ? Buffer.from(stdout).toString("utf8")
+      : String(stdout ?? "");
+  return text.trim();
 }
 
 /**

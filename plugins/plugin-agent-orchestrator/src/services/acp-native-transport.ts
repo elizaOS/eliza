@@ -484,12 +484,14 @@ export class NativeAcpClient {
       stringValue(params?.cwd) ?? this.opts.cwd,
     );
     const spawnCommand = terminalSpawnCommand(command, args);
+    const env = {
+      ...this.opts.env,
+      ...envArrayToRecord(params?.env),
+    };
+    protectTerminalGitEnv(env, this.opts.env);
     const proc = spawn(spawnCommand.command, spawnCommand.args, {
       cwd,
-      env: {
-        ...this.opts.env,
-        ...envArrayToRecord(params?.env),
-      },
+      env,
       stdio: ["pipe", "pipe", "pipe"],
       detached: process.platform !== "win32",
     });
@@ -758,6 +760,18 @@ function envArrayToRecord(value: unknown): Record<string, string> {
     env[name] = stringValue(record?.value) ?? "";
   }
   return env;
+}
+
+function protectTerminalGitEnv(
+  env: Record<string, string | undefined>,
+  trusted: NodeJS.ProcessEnv | undefined,
+): void {
+  for (const key of ["GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE"]) {
+    delete env[key];
+  }
+  if (typeof trusted?.GIT_INDEX_FILE === "string") {
+    env.GIT_INDEX_FILE = trusted.GIT_INDEX_FILE;
+  }
 }
 
 function ensureInsideCwd(cwd: string, requested: string | undefined): string {

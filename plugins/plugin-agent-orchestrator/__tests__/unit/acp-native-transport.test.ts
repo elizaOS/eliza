@@ -661,6 +661,51 @@ describe("NativeAcpClient terminal actions", () => {
       },
     });
   });
+
+  it("protects the session git index from terminal env overrides", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "native-acp-"));
+    const agentProc = queueProc();
+    queueProc();
+    const client = new NativeAcpClient({
+      command: "agent-acp",
+      cwd,
+      approvalPreset: "autonomous",
+      env: {
+        PATH: process.env.PATH,
+        GIT_INDEX_FILE: "/tmp/eliza-acp/git-indexes/session-safe/index",
+      },
+    });
+    const started = client.start();
+    await waitForWrites(agentProc, 1);
+    emitJson(agentProc, { jsonrpc: "2.0", id: 1, result: {} });
+    await started;
+
+    emitJson(agentProc, {
+      jsonrpc: "2.0",
+      id: "terminal-protected-env",
+      method: "terminal/create",
+      params: {
+        command: "node",
+        args: ["-v"],
+        cwd,
+        env: [
+          { name: "GIT_INDEX_FILE", value: "/tmp/attacker-index" },
+          { name: "GIT_DIR", value: "/tmp/attacker-git-dir" },
+          { name: "GIT_WORK_TREE", value: "/tmp/attacker-work-tree" },
+        ],
+      },
+    });
+    await waitForSpawnCalls(2);
+
+    const env = spawnMock.mock.calls[1]?.[2]?.env as
+      | Record<string, string>
+      | undefined;
+    expect(env?.GIT_INDEX_FILE).toBe(
+      "/tmp/eliza-acp/git-indexes/session-safe/index",
+    );
+    expect(env).not.toHaveProperty("GIT_DIR");
+    expect(env).not.toHaveProperty("GIT_WORK_TREE");
+  });
 });
 
 describe("splitCommandLine", () => {
