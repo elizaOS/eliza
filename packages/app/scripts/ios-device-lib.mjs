@@ -920,6 +920,25 @@ export function findUncoveredIosXcuitestEntries({ entries, shards }) {
   return uncovered;
 }
 
+export function shouldRunIosXcuitestCoverageGuard({
+  onlyTesting = null,
+  strictGate = false,
+} = {}) {
+  return !onlyTesting && !strictGate;
+}
+
+export function buildSimctlListappsArgs(simUdid) {
+  return ["simctl", "listapps", simUdid];
+}
+
+export function hasBundleKeyInSimctlListappsOutput(output, bundleId) {
+  if (typeof output !== "string" || typeof bundleId !== "string") {
+    return false;
+  }
+  const escapedBundleId = bundleId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`"${escapedBundleId}"\\s*=`).test(output);
+}
+
 export function isBenignIosAppAbsence(output) {
   // simctl reports an absent app differently per verb: uninstall/get-container
   // say "not installed"/"could not find", while `terminate` against an app that

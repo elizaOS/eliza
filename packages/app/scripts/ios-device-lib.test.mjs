@@ -20,6 +20,7 @@ import {
   buildIosXcuitestShardPlan,
   buildOnlyTestingIdentifier,
   buildPlistXml,
+  buildSimctlListappsArgs,
   CONSOLE_SIGTRAP_SIGNATURE,
   classifyCodesignPreflight,
   classifyConsoleExit,
@@ -33,6 +34,7 @@ import {
   findDeviceRecord,
   findUncoveredIosXcuitestEntries,
   formatDeviceUnlockWaitMessage,
+  hasBundleKeyInSimctlListappsOutput,
   isBenignIosAppAbsence,
   normalizeDeviceLockState,
   normalizeProvisioningProfile,
@@ -49,6 +51,7 @@ import {
   safeShardName,
   selectProvisioningProfile,
   selectSigningIdentity,
+  shouldRunIosXcuitestCoverageGuard,
   sweepXctestrunDependentProductPaths,
 } from "./ios-device-lib.mjs";
 
@@ -60,6 +63,12 @@ const CERT_SHA1 = crypto
   .update(CERT_DER)
   .digest("hex")
   .toUpperCase();
+
+function appScriptPath(scriptName) {
+  const packageRelative = path.join(process.cwd(), "scripts", scriptName);
+  if (fs.existsSync(packageRelative)) return packageRelative;
+  return path.join(process.cwd(), "packages/app/scripts", scriptName);
+}
 
 function profilePlist({
   name = "iOS Team Provisioning Profile: ai.elizaos.app",
@@ -759,7 +768,7 @@ describe("classifyXcresultSummaryForGate", () => {
 describe("ios-device-capture strict summary gate", () => {
   it("keeps test-summary classification behind --strict-gate", () => {
     const source = fs.readFileSync(
-      path.join(process.cwd(), "packages/app/scripts/ios-device-capture.mjs"),
+      appScriptPath("ios-device-capture.mjs"),
       "utf8",
     );
     const summaryWriteIndex = source.indexOf("test-summary.json");
@@ -773,6 +782,85 @@ describe("ios-device-capture strict summary gate", () => {
     );
     expect(strictGateIndex).toBeGreaterThan(summaryWriteIndex);
     expect(classifierIndex).toBeGreaterThan(strictGateIndex);
+  });
+});
+
+describe("iOS simulator listapps proof (#13571)", () => {
+  it("uses the Xcode 26 positional listapps form without the removed -j flag", () => {
+    expect(buildSimctlListappsArgs("SIM-UDID")).toEqual([
+      "simctl",
+      "listapps",
+      "SIM-UDID",
+    ]);
+    expect(buildSimctlListappsArgs("SIM-UDID")).not.toContain("-j");
+  });
+
+  it("matches bundle keys in simctl listapps plist output", () => {
+    const plist = `
+      {
+        "com.apple.Preferences" = {
+          ApplicationType = System;
+        };
+        "ai.elizaos.app" = {
+          ApplicationType = User;
+          CFBundleDisplayName = Eliza;
+        };
+      }
+    `;
+
+    expect(hasBundleKeyInSimctlListappsOutput(plist, "ai.elizaos.app")).toBe(
+      true,
+    );
+    expect(
+      hasBundleKeyInSimctlListappsOutput(plist, "ai.elizaos.missing"),
+    ).toBe(false);
+  });
+
+  it("escapes regex characters in bundle identifiers", () => {
+    const plist = `
+      {
+        "ai.elizaos.app.beta+qa" = {
+          ApplicationType = User;
+        };
+      }
+    `;
+
+    expect(
+      hasBundleKeyInSimctlListappsOutput(plist, "ai.elizaos.app.beta+qa"),
+    ).toBe(true);
+    expect(hasBundleKeyInSimctlListappsOutput(plist, "aiXelizaosXapp")).toBe(
+      false,
+    );
+  });
+});
+
+describe("iOS strict-gate coverage guard (#13571)", () => {
+  it("runs the coverage guard only for the default full AppUITests lane", () => {
+    expect(
+      shouldRunIosXcuitestCoverageGuard({
+        onlyTesting: null,
+        strictGate: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("skips the full-matrix coverage guard when strict-gate narrows to boot health", () => {
+    expect(
+      shouldRunIosXcuitestCoverageGuard({
+        onlyTesting: null,
+        strictGate: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("skips the default coverage guard for explicit only-testing shards", () => {
+    expect(
+      shouldRunIosXcuitestCoverageGuard({
+        onlyTesting:
+          "AppUITests/BootCaptureUITests/testBootReachesHomeOrErrorCard",
+        strictGate: false,
+      }),
+    ).toBe(false);
   });
 });
 

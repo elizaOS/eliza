@@ -45,6 +45,7 @@ import {
   assertDeviceUnlocked,
   buildIosXcuitestShardPlan,
   buildPlistXml,
+  buildSimctlListappsArgs,
   classifyCodesignPreflight,
   classifyIsolatedReruns,
   classifyXcresultSummaryForGate,
@@ -54,6 +55,7 @@ import {
   extractXctestrunAppPaths,
   findDeviceRecord,
   findUncoveredIosXcuitestEntries,
+  hasBundleKeyInSimctlListappsOutput,
   isBenignIosAppAbsence,
   normalizeDeviceLockState,
   parseCliArgs,
@@ -63,6 +65,7 @@ import {
   resolveDeviceId,
   resolveXctestrunTestRoot,
   rewriteXctestrunUITargetApp,
+  shouldRunIosXcuitestCoverageGuard,
   sweepXctestrunDependentProductPaths,
 } from "./ios-device-lib.mjs";
 
@@ -771,13 +774,10 @@ async function main() {
     // the plist text instead of parsing it.
     const listappsRaw = runCaptureCommand(
       "xcrun",
-      ["simctl", "listapps", simUdid],
+      buildSimctlListappsArgs(simUdid),
       { label: `reset ${label}: listapps proof` },
     );
-    const bundleKey = new RegExp(
-      `"${bundleId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*=`,
-    );
-    if (!bundleKey.test(listappsRaw)) {
+    if (!hasBundleKeyInSimctlListappsOutput(listappsRaw, bundleId)) {
       fail(`reset ${label}: ${bundleId} missing from simctl listapps proof`);
     }
     return {
@@ -873,7 +873,12 @@ async function main() {
   // narrows the plan to the boot/chat health class (BootCaptureUITests) — a
   // boot gate is not a coverage gate — so it must not be rejected for "missing"
   // the gesture/widget/device-extension matrix it was never asked to run.
-  if (!args["only-testing"] && !strictGate) {
+  if (
+    shouldRunIosXcuitestCoverageGuard({
+      onlyTesting: args["only-testing"],
+      strictGate,
+    })
+  ) {
     const uncovered = findUncoveredIosXcuitestEntries({
       entries: extractSwiftXcuitestEntries(collectAppUITestsSources()),
       shards: shardPlan.map((shard) => shard.identifier),
