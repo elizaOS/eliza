@@ -1,3 +1,8 @@
+/**
+ * Pure artifact-policy tests for conversation imports. The harness stays
+ * in-memory so storage-key, retention, and content-addressing decisions remain
+ * deterministic before any cloud object store integration exists.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildImportArtifactDescriptor,
