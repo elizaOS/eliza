@@ -55,6 +55,7 @@ export {
   type AutomationNodeContributorContext,
   registerAutomationNodeContributor,
 } from "./api/automation-node-contributors";
+export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings.generated";
 export {
   buildLocalizedTrayMenu,
   DESKTOP_TRAY_MENU_ITEMS,
@@ -64,7 +65,6 @@ export {
 } from "./runtime/desktop";
 export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
 export { getHostExecutionCapabilities } from "./services/task-host-capabilities";
-export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings.generated";
 
 export type CompatRuntimeState = {
   current: unknown;
