@@ -28,6 +28,7 @@ const FIRST_RUN_SELECTOR = '[data-testid="continuous-chat-overlay"]';
 const SETTINGS_ROUTE = "/settings";
 const SETTINGS_MEDIA_ROUTE = "/settings/voice";
 const PLUGINS_ROUTE = "/apps/plugins";
+const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
 
 test.describe.configure({ mode: "serial" });
 
@@ -70,7 +71,29 @@ function getCurrentRouteExpression(): string {
   ].join("\n");
 }
 
+function getSettingsSectionForRoute(route: string): string | null {
+  const match = /^\/settings\/([^/?#]+)$/.exec(route);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 function getRouteNavigationScript(route: string): string {
+  const settingsSection = getSettingsSectionForRoute(route);
+  if (settingsSection) {
+    return [
+      `const targetRoute = ${JSON.stringify(route)};`,
+      `const settingsSection = ${JSON.stringify(settingsSection)};`,
+      `window.dispatchEvent(new CustomEvent(${JSON.stringify(NAVIGATE_SETTINGS_EVENT)}, {`,
+      `  detail: { section: settingsSection },`,
+      `}));`,
+      `const targetHash = "#" + settingsSection;`,
+      `if (window.location.hash !== targetHash) {`,
+      `  window.history.replaceState(null, "", targetHash);`,
+      `  window.dispatchEvent(new HashChangeEvent("hashchange"));`,
+      `}`,
+      `const currentRoute = targetRoute;`,
+    ].join("\n");
+  }
+
   return [
     `const targetRoute = ${JSON.stringify(route)};`,
     `const readCurrentRoute = () => ${getCurrentRouteExpression()};`,
@@ -172,6 +195,9 @@ async function openRouteAndWait(
       found: boolean;
       text: string;
       firstRunFound: boolean;
+      hash: string;
+      activeSettingsSection: string | null;
+      voiceSectionActive: boolean;
       rootHtmlLength: number;
       bodyText: string;
     }>
@@ -191,6 +217,18 @@ async function openRouteAndWait(
         firstRunFound: Boolean(
           document.querySelector(${JSON.stringify(FIRST_RUN_SELECTOR)}),
         ),
+        hash: window.location.hash,
+        activeSettingsSection:
+          document
+            .querySelector('[data-agent-id^="section-"][aria-current="page"]')
+            ?.getAttribute("data-agent-id")
+            ?.replace(/^section-/, "") ?? null,
+        voiceSectionActive: Boolean(
+          window.location.hash === "#voice" &&
+            document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)}),
+        ) || Boolean(
+          document.querySelector('[data-agent-id="section-voice"][aria-current="page"]'),
+        ),
         rootHtmlLength: document.getElementById("root")?.innerHTML.length ?? 0,
         bodyText: (document.body?.innerText || "")
           .replace(/\\s+/g, " ")
@@ -208,7 +246,8 @@ async function openRouteAndWait(
       current.ok &&
       current.route === route &&
       current.selector === selector &&
-      current.found,
+      current.found &&
+      (route !== SETTINGS_MEDIA_ROUTE || current.voiceSectionActive),
     {
       timeout: 20_000,
       message: `Timed out waiting for ${selector} at ${route}.`,
@@ -225,6 +264,11 @@ async function waitForMediaSettingsRoute(
     EvalResult<{
       shellReady: boolean;
       route: string;
+      hash: string;
+      activeSettingsSection: string | null;
+      voiceSectionActive: boolean;
+      rootHtmlLength: number;
+      bodyText: string;
     }>
   >(
     harness,
@@ -235,6 +279,23 @@ async function waitForMediaSettingsRoute(
           ok: true,
           shellReady: Boolean(document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)})),
           route: currentRoute,
+          hash: window.location.hash,
+          activeSettingsSection:
+            document
+              .querySelector('[data-agent-id^="section-"][aria-current="page"]')
+              ?.getAttribute("data-agent-id")
+              ?.replace(/^section-/, "") ?? null,
+          voiceSectionActive: Boolean(
+            window.location.hash === "#voice" &&
+              document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)}),
+          ) || Boolean(
+            document.querySelector('[data-agent-id="section-voice"][aria-current="page"]'),
+          ),
+          rootHtmlLength: document.getElementById("root")?.innerHTML.length ?? 0,
+          bodyText: (document.body?.innerText || "")
+            .replace(/\\s+/g, " ")
+            .trim()
+            .slice(0, 240),
         };
       } catch (error) {
         return {
@@ -246,7 +307,8 @@ async function waitForMediaSettingsRoute(
     (current) =>
       current.ok &&
       current.shellReady &&
-      current.route === SETTINGS_MEDIA_ROUTE,
+      current.route === SETTINGS_MEDIA_ROUTE &&
+      current.voiceSectionActive,
     {
       timeout: 20_000,
       message: `Timed out waiting for media settings route at ${SETTINGS_MEDIA_ROUTE}.`,
