@@ -60,6 +60,7 @@ import {
   summarizeBenchmarkTurnUsage,
   toPlugin,
 } from "./server-utils.js";
+import { UsageCapture } from "./usage-capture.js";
 
 // `dotenv.config({ path: cwd/.env })` only finds the file when the bench server
 // is started from the repo root. When `ElizaServerManager` spawns us with
@@ -2059,12 +2060,14 @@ export async function startBenchmarkServer() {
   // ── LLM usage capture ────────────────────────────────────────────────────
   // Plugins (currently @elizaos/plugin-openai, @elizaos/plugin-anthropic) emit
   // a MODEL_USED event for each LLM call with token usage and provider-side
-  // cache hit info. We collect those into a per-turn buffer that handle-message
-  // installs at the start of a turn and snapshots into the trajectory at end.
-  // Buffer is `null` when no turn is in flight; events outside a turn are
-  // ignored. This is safe because the bench server processes one turn at a
-  // time per session and sessions don't run concurrent handleMessage calls.
-  let activeUsageBuffer: BenchmarkLlmCallUsage[] | null = null;
+  // cache hit info. We attribute those to the turn that triggered them via an
+  // AsyncLocalStorage-bound buffer: each turn body runs inside
+  // `usageCapture.run(buffer, …)`, and the MODEL_USED listener pushes into
+  // `usageCapture.current()`. Because attribution follows the async call chain
+  // rather than a shared global, N overlapping turns (the multitask benchmark,
+  // #13777) each collect exactly their own calls. Events outside any turn —
+  // `current()` is `null` — are ignored.
+  const usageCapture = new UsageCapture();
   try {
     const registerEvent = runtime.registerEvent.bind(runtime) as (
       type: string,
@@ -2072,10 +2075,11 @@ export async function startBenchmarkServer() {
     ) => void;
     if (typeof registerEvent === "function") {
       registerEvent("MODEL_USED", (payload: unknown) => {
-        if (!activeUsageBuffer) return;
+        const buffer = usageCapture.current();
+        if (!buffer) return;
         const normalizedUsage = normalizeBenchmarkModelUsage(payload);
         if (normalizedUsage) {
-          activeUsageBuffer.push(normalizedUsage);
+          buffer.push(normalizedUsage);
         }
       });
       elizaLogger.info(
@@ -2236,33 +2240,35 @@ export async function startBenchmarkServer() {
 
       if (Array.isArray(toolManifest) && toolManifest.length > 0) {
         const directUsageBuffer: BenchmarkLlmCallUsage[] = [];
-        activeUsageBuffer = directUsageBuffer;
-        try {
-          const directResult = await callOpenAiCompatibleActionCalling({
-            messages: buildLifeOpsActionCallingMessages({
-              userText,
-              lifeopsContext,
-            }),
-            tools: toolManifest,
-            toolChoice: "required",
-            maxTokens: 1024,
-            temperature: 0,
-          });
-          if (directResult) {
-            if (directResult.usage) {
-              directUsageBuffer.push(directResult.usage);
+        const directTurn = await usageCapture.run(
+          directUsageBuffer,
+          async () => {
+            const directResult = await callOpenAiCompatibleActionCalling({
+              messages: buildLifeOpsActionCallingMessages({
+                userText,
+                lifeopsContext,
+              }),
+              tools: toolManifest,
+              toolChoice: "required",
+              maxTokens: 1024,
+              temperature: 0,
+            });
+            if (directResult) {
+              if (directResult.usage) {
+                directUsageBuffer.push(directResult.usage);
+              }
+              const toolCalls = lifeOpsToolCallsFromNativeToolCalls(
+                directResult.toolCalls,
+              );
+              if (toolCalls.length > 0) {
+                const usage = summarizeBenchmarkTurnUsage(directUsageBuffer);
+                return { text: directResult.text, toolCalls, usage };
+              }
             }
-            const toolCalls = lifeOpsToolCallsFromNativeToolCalls(
-              directResult.toolCalls,
-            );
-            if (toolCalls.length > 0) {
-              const usage = summarizeBenchmarkTurnUsage(directUsageBuffer);
-              return { text: directResult.text, toolCalls, usage };
-            }
-          }
-        } finally {
-          activeUsageBuffer = null;
-        }
+            return null;
+          },
+        );
+        if (directTurn) return directTurn;
       }
 
       // The ELIZA_BENCHMARK provider already renders the full LifeOps clock,
@@ -2303,22 +2309,19 @@ export async function startBenchmarkServer() {
       if (!runtime.messageService) {
         throw new Error("Runtime message service is not available");
       }
+      const messageService = runtime.messageService;
 
       clearCapturedAction();
       setBenchmarkContext(benchmarkContext);
       const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
-      activeUsageBuffer = turnUsageBuffer;
 
       let result: MessageProcessingResult;
       try {
-        result = await runtime.messageService.handleMessage(
-          runtime,
-          incomingMessage,
-          callback,
+        result = await usageCapture.run(turnUsageBuffer, () =>
+          messageService.handleMessage(runtime, incomingMessage, callback),
         );
       } finally {
         setBenchmarkContext(null);
-        activeUsageBuffer = null;
       }
 
       const responseText =
@@ -2737,9 +2740,8 @@ export async function startBenchmarkServer() {
                   ? benchmarkContext.tool_choice
                   : "auto";
             const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
-            activeUsageBuffer = turnUsageBuffer;
             let nativeResult: unknown;
-            try {
+            await usageCapture.run(turnUsageBuffer, async () => {
               const directResult = await callOpenAiCompatibleActionCalling({
                 messages,
                 tools,
@@ -2770,9 +2772,7 @@ export async function startBenchmarkServer() {
                   modelRequest,
                 );
               }
-            } finally {
-              activeUsageBuffer = null;
-            }
+            });
             const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
             const nativeRecord =
               nativeResult && typeof nativeResult === "object"
@@ -2869,12 +2869,15 @@ export async function startBenchmarkServer() {
                 ? benchmarkContext.tool_choice
                 : "required";
             const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
-            activeUsageBuffer = turnUsageBuffer;
+            // Hoist the narrowed tools array: the enclosing guard proved it
+            // non-undefined, but that narrowing does not survive into the
+            // usage-capture async closure below.
+            const capturedTools = benchmarkContext.tools;
             let nativeResult: unknown;
-            try {
+            await usageCapture.run(turnUsageBuffer, async () => {
               const directResult = await callOpenAiCompatibleActionCalling({
                 messages: openAiMessages,
-                tools: benchmarkContext.tools,
+                tools: capturedTools,
                 toolChoice,
                 maxTokens,
                 temperature,
@@ -2890,15 +2893,13 @@ export async function startBenchmarkServer() {
               } else {
                 nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
                   messages: toChatMessages(nativeMessages),
-                  tools: toToolDefinitions(benchmarkContext.tools),
+                  tools: toToolDefinitions(capturedTools),
                   toolChoice: toToolChoice(toolChoice),
                   maxTokens,
                   temperature,
                 });
               }
-            } finally {
-              activeUsageBuffer = null;
-            }
+            });
             const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
             const nativeRecord =
               nativeResult && typeof nativeResult === "object"
@@ -2985,12 +2986,15 @@ export async function startBenchmarkServer() {
                 ? benchmarkContext.temperature
                 : 0;
             const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
-            activeUsageBuffer = turnUsageBuffer;
+            // Hoist the narrowed tools array: the enclosing guard proved it
+            // non-undefined, but that narrowing does not survive into the
+            // usage-capture async closure below.
+            const capturedTools = benchmarkContext.tools;
             let nativeResult: unknown;
-            try {
+            await usageCapture.run(turnUsageBuffer, async () => {
               const directResult = await callOpenAiCompatibleActionCalling({
                 messages: nativeMessages,
-                tools: benchmarkContext.tools,
+                tools: capturedTools,
                 toolChoice: "required",
                 maxTokens,
                 temperature,
@@ -3006,15 +3010,13 @@ export async function startBenchmarkServer() {
               } else {
                 nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
                   messages: toChatMessages(nativeMessages),
-                  tools: toToolDefinitions(benchmarkContext.tools),
+                  tools: toToolDefinitions(capturedTools),
                   toolChoice: "required",
                   maxTokens,
                   temperature,
                 });
               }
-            } finally {
-              activeUsageBuffer = null;
-            }
+            });
             const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
             const nativeRecord =
               nativeResult && typeof nativeResult === "object"
@@ -3104,12 +3106,15 @@ export async function startBenchmarkServer() {
                 ? benchmarkContext.temperature
                 : 0;
             const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
-            activeUsageBuffer = turnUsageBuffer;
+            // Hoist the narrowed tools array: the enclosing guard proved it
+            // non-undefined, but that narrowing does not survive into the
+            // usage-capture async closure below.
+            const capturedTools = benchmarkContext.tools;
             let nativeResult: unknown;
-            try {
+            await usageCapture.run(turnUsageBuffer, async () => {
               const directResult = await callOpenAiCompatibleActionCalling({
                 messages,
-                tools: benchmarkContext.tools,
+                tools: capturedTools,
                 toolChoice,
                 maxTokens,
                 temperature,
@@ -3130,15 +3135,13 @@ export async function startBenchmarkServer() {
               } else {
                 nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
                   messages: toChatMessages(messages),
-                  tools: toToolDefinitions(benchmarkContext.tools),
+                  tools: toToolDefinitions(capturedTools),
                   toolChoice: toToolChoice(toolChoice),
                   maxTokens,
                   temperature,
                 });
               }
-            } finally {
-              activeUsageBuffer = null;
-            }
+            });
             const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
             const nativeRecord =
               nativeResult && typeof nativeResult === "object"
@@ -3221,12 +3224,15 @@ export async function startBenchmarkServer() {
               { role: "user", content: text },
             ];
             const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
-            activeUsageBuffer = turnUsageBuffer;
+            // Hoist the narrowed tools array: the enclosing guard proved it
+            // non-undefined, but that narrowing does not survive into the
+            // usage-capture async closure below.
+            const capturedTools = benchmarkContext.tools;
             let nativeResult: unknown;
-            try {
+            await usageCapture.run(turnUsageBuffer, async () => {
               const directResult = await callOpenAiCompatibleActionCalling({
                 messages,
-                tools: benchmarkContext.tools,
+                tools: capturedTools,
                 toolChoice: "required",
                 maxTokens: 256,
                 temperature:
@@ -3250,7 +3256,7 @@ export async function startBenchmarkServer() {
               } else {
                 nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
                   messages: toChatMessages(messages),
-                  tools: toToolDefinitions(benchmarkContext.tools),
+                  tools: toToolDefinitions(capturedTools),
                   toolChoice: "required",
                   maxTokens: 256,
                   temperature:
@@ -3259,9 +3265,7 @@ export async function startBenchmarkServer() {
                       : 0,
                 });
               }
-            } finally {
-              activeUsageBuffer = null;
-            }
+            });
             const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
             const nativeRecord =
               nativeResult && typeof nativeResult === "object"
@@ -3353,12 +3357,15 @@ export async function startBenchmarkServer() {
                 ? benchmarkContext.tool_choice
                 : "auto";
             const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
-            activeUsageBuffer = turnUsageBuffer;
+            // Hoist the narrowed tools array: the enclosing guard proved it
+            // non-undefined, but that narrowing does not survive into the
+            // usage-capture async closure below.
+            const capturedTools = benchmarkContext.tools;
             let nativeResult: unknown;
-            try {
+            await usageCapture.run(turnUsageBuffer, async () => {
               const directResult = await callOpenAiCompatibleActionCalling({
                 messages,
-                tools: benchmarkContext.tools,
+                tools: capturedTools,
                 toolChoice,
                 maxTokens,
                 temperature,
@@ -3374,15 +3381,13 @@ export async function startBenchmarkServer() {
               } else {
                 nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
                   messages: toChatMessages(messages),
-                  tools: toToolDefinitions(benchmarkContext.tools),
+                  tools: toToolDefinitions(capturedTools),
                   toolChoice: toToolChoice(toolChoice),
                   maxTokens,
                   temperature,
                 });
               }
-            } finally {
-              activeUsageBuffer = null;
-            }
+            });
             const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
             const nativeRecord =
               nativeResult && typeof nativeResult === "object"
@@ -3454,9 +3459,8 @@ export async function startBenchmarkServer() {
                 ? benchmarkContext.temperature
                 : 0;
             const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
-            activeUsageBuffer = turnUsageBuffer;
             let nativeResult: unknown;
-            try {
+            await usageCapture.run(turnUsageBuffer, async () => {
               const directResult = await callOpenAiCompatibleText({
                 prompt: composedPrompt,
                 maxTokens,
@@ -3474,9 +3478,7 @@ export async function startBenchmarkServer() {
                   temperature,
                 });
               }
-            } finally {
-              activeUsageBuffer = null;
-            }
+            });
             const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
             const nativeRecord =
               nativeResult && typeof nativeResult === "object"
@@ -3566,8 +3568,7 @@ export async function startBenchmarkServer() {
           clearCapturedAction();
           setBenchmarkContext(benchmarkContext);
           const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
-          activeUsageBuffer = turnUsageBuffer;
-          const result = await (async () => {
+          const result = await usageCapture.run(turnUsageBuffer, async () => {
             try {
               return await messageService.handleMessage(
                 runtime,
@@ -3576,9 +3577,8 @@ export async function startBenchmarkServer() {
               );
             } finally {
               setBenchmarkContext(null);
-              activeUsageBuffer = null;
             }
-          })();
+          });
           const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
 
           const capturedAction = getCapturedAction();
