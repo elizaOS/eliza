@@ -88,16 +88,49 @@ runs:
     - name: Restore Turbo cache (GitHub-native)
       uses: ./.github/actions/turbo-cache-github
 
-    - name: Setup Python
+    # actions/setup-python@v6 downloads a prebuilt CPython compiled for x86-64-v3;
+    # some [self-hosted, hetzner-robot] runners expose a lower CPU baseline and
+    # reject that binary ("CPU ISA level is lower than required", exit 127),
+    # killing the whole step as a runner-dependent red X that is not the PR
+    # author's fault (#14188). setup-python is only a node-gyp fallback, so when
+    # the runner already ships a usable python3 we use it and skip the download —
+    # mirroring the "use the system binary, else fall back" pattern the protoc
+    # step below uses. GitHub-hosted images without python3 still get the action.
+    - name: Detect a usable system Python
+      id: detect-python
       if: ${{ inputs.setup-python == 'true' }}
+      shell: bash
+      run: |
+        if command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
+          echo "system python3: $(python3 --version 2>&1)"
+          echo "has=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "no usable system python3 — falling back to actions/setup-python"
+          echo "has=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Setup Python (fallback when the runner has no usable python3)
+      if: ${{ inputs.setup-python == 'true' && steps.detect-python.outputs.has != 'true' }}
       uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python-version }}
 
     - name: Install setuptools for distutils (Python 3.12+)
+      # node-gyp on Python 3.12+ needs setuptools for the removed distutils. Skip
+      # when it is already importable (common on build-tooled runners), else try
+      # escalating strategies: a bare install works on setup-python's isolated
+      # interpreter, while a PEP 668 system python3 needs --user or
+      # --break-system-packages. The chain fails loudly only if all strategies do.
       if: ${{ inputs.setup-python == 'true' }}
       shell: bash
-      run: pip install setuptools
+      run: |
+        if python3 -c 'import setuptools' >/dev/null 2>&1; then
+          echo "setuptools already present: $(python3 -c 'import setuptools; print(setuptools.__version__)')"
+          exit 0
+        fi
+        python3 -m pip install setuptools \
+          || python3 -m pip install --user setuptools \
+          || python3 -m pip install --break-system-packages setuptools
 
     - name: Install protoc
       # protoc is required even when install-native-deps=false because Rust
