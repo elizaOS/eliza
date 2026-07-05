@@ -51,6 +51,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 90
+    permissions:
+      contents: read
+      issues: write
     env:
       ELIZA_MOBILE_REPO_ROOT: ${{ github.workspace }}
       ELIZA_WEBVIEW_DEBUG: "1"
@@ -177,6 +180,60 @@ jobs:
             packages/app/test-results/**
             packages/app/playwright-report/**
           if-no-files-found: ignore
+
+      - name: Open / update scheduled failure issue
+        if: ${{ failure() && github.event_name == 'schedule' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            const title = "Scheduled Android device e2e is failing (#13580)";
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const runDate = new Date().toISOString();
+            const body = [
+              "The weekly host-backed Android device e2e cadence failed.",
+              "",
+              `Run: ${runUrl}`,
+              `Workflow: \`${context.workflow}\``,
+              `Backend: \`${process.env.ELIZA_ANDROID_BACKEND || "host"}\``,
+              `Observed: ${runDate}`,
+              "",
+              "This issue is auto-maintained by `.github/workflows/android-device-e2e.yml` so scheduled failures are visible outside Actions history.",
+              "",
+              "Known #13580 residuals still tracked separately:",
+              "- LOCAL arm64 on-device route needs a self-hosted arm64 runner.",
+              "- Signal-only PR legs should be promoted only after emulator-green evidence exists.",
+            ].join("\n");
+
+            const openIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            const existing = openIssues.find((issue) => !issue.pull_request && issue.title === title);
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `Scheduled Android device e2e failed again: ${runUrl}`,
+              });
+              core.info(`Updated scheduled failure issue #${existing.number}`);
+            } else {
+              const { data: created } = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+              core.info(`Opened scheduled failure issue #${created.number}`);
+            }
 
   # Minimal, label-gated PR device smoke (issue #9943). Reachable on a PR only
   # when the `ci:device` label is applied, so it never burns an emulator runner
