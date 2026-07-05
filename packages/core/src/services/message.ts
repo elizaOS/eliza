@@ -242,6 +242,7 @@ import {
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
 import { getUserMessageText } from "../utils/message-text";
+import { readEnv } from "../utils/read-env";
 import {
 	extractFirstSentence,
 	hasFirstSentence,
@@ -5963,8 +5964,8 @@ export async function runV5MessageRuntimeStage1(args: {
 				// src/cli.ts); passing them here makes this call site the source of
 				// truth so file-recorder trajectories carry the join keys without the
 				// recorder inferring them from env buried in its persistence layer.
-				runId: process.env.ELIZA_LIFEOPS_RUN_ID || undefined,
-				scenarioId: process.env.ELIZA_LIFEOPS_SCENARIO_ID || undefined,
+				runId: readEnv("ELIZA_LIFEOPS_RUN_ID"),
+				scenarioId: readEnv("ELIZA_LIFEOPS_SCENARIO_ID"),
 				rootMessage: {
 					id: String(args.message.id ?? args.responseId),
 					text: getUserMessageText(args.message) ?? "",

@@ -67,11 +67,12 @@ import {
   InMemorySessionStore,
   type SessionStoreBackend,
 } from "./session-store.js";
+import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
 import {
   appendSubagentStdout,
+  isSubagentStdoutLoggingEnabled,
   subagentStdoutLogPath,
 } from "./subagent-stdout-log.js";
-import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
 import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   type AcpEventCallback,
@@ -2065,7 +2066,9 @@ export class AcpService extends Service {
         this.activeProcesses.set(opts.sessionId, record);
 
       proc.stdout.on("data", (chunk: Buffer) => {
-        record.stdoutBuffer += chunk.toString("utf8");
+        const rawChunk = chunk.toString("utf8");
+        if (opts.sessionId) this.persistRawStdout(opts.sessionId, rawChunk);
+        record.stdoutBuffer += rawChunk;
         let newlineIndex = record.stdoutBuffer.indexOf("\n");
         while (newlineIndex >= 0) {
           const line = record.stdoutBuffer.slice(0, newlineIndex).trim();
@@ -3062,8 +3065,8 @@ export class AcpService extends Service {
     return (this.outputBuffers.get(sessionId) ?? []).join("");
   }
 
-  // Path of the persisted raw-stdout log for a session, or undefined if nothing
-  // was teed to disk (recording off, or no output). Merged into the
+  // Path of the persisted raw-stdout log for a session, or undefined if no raw
+  // stdout write was queued (recording off, or no output). Merged into the
   // `task_complete` event data so the task document references the ground-truth
   // stdout file — the join key downstream tooling follows to the full stream.
   private stdoutLogRef(
@@ -3074,28 +3077,24 @@ export class AcpService extends Service {
       : {};
   }
 
+  private persistRawStdout(sessionId: string, text: string): void {
+    if (!isSubagentStdoutLoggingEnabled()) return;
+    this.persistedStdoutSessions.add(sessionId);
+    void appendSubagentStdout(sessionId, text).catch((err: unknown) => {
+      // error-policy:J7 stdout persistence is diagnostics and must not kill the
+      // transport loop; surface it observably instead of swallowing.
+      this.runtime.reportError("AcpService.persistRawStdout", err, {
+        sessionId,
+        phase: "persist-stdout",
+      });
+    });
+  }
+
   private appendOutput(sessionId: string, text: string): void {
     const buffer = this.outputBuffers.get(sessionId) ?? [];
     buffer.push(text);
     if (buffer.length > 2_000) buffer.splice(0, buffer.length - 2_000);
     this.outputBuffers.set(sessionId, buffer);
-    // Tee the raw chunk to the append-only per-session file so the ground-truth
-    // stdout survives session close (the in-memory tail above is capped at 2k
-    // lines and deleted on close). Fire-and-forget: this sync emitter is called
-    // from deep transport paths, and a disk hiccup must not stall the ACP stream
-    // or truncate the live UI tail. The helper no-ops when recording is off.
-    void appendSubagentStdout(sessionId, text)
-      .then((path) => {
-        if (path) this.persistedStdoutSessions.add(sessionId);
-      })
-      .catch((err: unknown) => {
-        // error-policy:J7 stdout persistence is diagnostics and must not kill the
-        // transport loop; surface it observably instead of swallowing.
-        this.runtime.reportError("AcpService.appendOutput", err, {
-          sessionId,
-          phase: "persist-stdout",
-        });
-      });
   }
 
   // Tool-call arg keys that carry a target file path / signal a write.

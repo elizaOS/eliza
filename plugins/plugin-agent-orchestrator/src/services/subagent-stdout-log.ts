@@ -14,7 +14,10 @@
  */
 import { appendFile, mkdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { isTrajectoryRecordingEnabled, resolveTrajectoryDir } from "@elizaos/core";
+import {
+  isTrajectoryRecordingEnabled,
+  resolveTrajectoryDir,
+} from "@elizaos/core";
 
 // Rotate the per-session stdout log when it crosses this byte threshold. Chosen
 // to match the orchestrator audit log's cap (audit.ts:17): a sub-agent can emit
@@ -34,6 +37,10 @@ function stdoutLogDir(): string {
  */
 export function subagentStdoutLogPath(sessionId: string): string {
   return join(stdoutLogDir(), `${sanitizeSessionId(sessionId)}.ndjson`);
+}
+
+export function isSubagentStdoutLoggingEnabled(): boolean {
+  return isTrajectoryRecordingEnabled();
 }
 
 /**
@@ -64,22 +71,18 @@ function sanitizeSessionId(sessionId: string): string {
 }
 
 async function rotateIfTooLarge(path: string): Promise<void> {
-  let size: number;
-  try {
-    const st = await stat(path);
-    size = st.size;
-  } catch {
-    // error-policy:J3 stat failed → file absent → no rotation needed; first append creates it
-    return;
-  }
-  if (size < STDOUT_LOG_MAX_BYTES) return;
-  try {
-    // Single-generation rotation: overwrite `.1` so we never keep more than two
-    // files. Deeper history belongs in an external log shipper, not here.
-    await rename(path, `${path}.1`);
-  } catch {
-    // error-policy:J6 rotation is best-effort; if the rename fails we keep
-    // appending to the current file — growth past the cap beats losing the
-    // ground-truth stdout for this session.
-  }
+  const st = await stat(path).catch((err: NodeJS.ErrnoException) => {
+    // error-policy:J3 a missing file is the explicit "nothing to rotate" signal
+    // (ENOENT → first append will create it). Any other stat failure is a real
+    // fault and must surface, so only ENOENT is swallowed here.
+    if (err?.code === "ENOENT") return undefined;
+    throw err;
+  });
+  if (!st || st.size < STDOUT_LOG_MAX_BYTES) return;
+  // Single-generation rotation: overwrite `.1` so we never keep more than two
+  // files. Deeper history belongs in an external log shipper, not here. A rename
+  // failure (e.g. disk full) is NOT swallowed — it propagates to appendSubagentStdout
+  // and the tee's reportError so the fault is observable rather than silently
+  // dropping the ground-truth stdout.
+  await rename(path, `${path}.1`);
 }
