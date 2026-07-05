@@ -39,6 +39,11 @@ describe("parseAdAccountSpendCapCredits", () => {
     expect(() => parseAdAccountSpendCapCredits("0x10")).toThrow(/not a valid NUMERIC/);
   });
 
+  test("throws on negative caps instead of understating the money gate", () => {
+    expect(() => parseAdAccountSpendCapCredits("-1.00")).toThrow(/not a valid NUMERIC|negative/);
+    expect(() => parseAdAccountSpendCapCredits(-1)).toThrow(/negative/);
+  });
+
   test("throws on null / undefined / empty / whitespace (missing cap)", () => {
     expect(() => parseAdAccountSpendCapCredits(null)).toThrow(/empty or missing/);
     expect(() => parseAdAccountSpendCapCredits(undefined)).toThrow(/empty or missing/);
@@ -67,12 +72,22 @@ describe("parseAdCampaignsAllocatedTotal", () => {
     expect(() => parseAdCampaignsAllocatedTotal("NaN")).toThrow(/credits_allocated total/);
     expect(() => parseAdCampaignsAllocatedTotal(Number.NaN)).toThrow(/not a finite number/);
   });
+
+  test("throws on a negative SUM so corrupt allocation totals cannot understate spend", () => {
+    expect(() => parseAdCampaignsAllocatedTotal("-100.00")).toThrow(/not a valid NUMERIC|negative/);
+    expect(() => parseAdCampaignsAllocatedTotal(-100)).toThrow(/negative/);
+  });
 });
 
 describe("parseAdCampaignSpendCapCredits", () => {
   test("parses a campaign-level cap with a campaign-specific error boundary", () => {
     expect(parseAdCampaignSpendCapCredits("75.00")).toBe(75);
     expect(() => parseAdCampaignSpendCapCredits("NaN")).toThrow(/campaign spend_cap_credits/);
+  });
+
+  test("throws on a negative campaign-level cap", () => {
+    expect(() => parseAdCampaignSpendCapCredits("-25.00")).toThrow(/not a valid NUMERIC|negative/);
+    expect(() => parseAdCampaignSpendCapCredits(-25)).toThrow(/negative/);
   });
 });
 

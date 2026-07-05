@@ -23,9 +23,10 @@
  * is denied (and the transaction rolls back) instead of silently permitting
  * unbounded spend against a cap the system could not read.
  *
- * The regex only accepts a plain signed decimal (the exact shape Postgres NUMERIC
- * emits) so JS-only coercions (`"1e3"`, `"0x10"`, `"NaN"`, `"Infinity"`) that
- * `Number(...)` would otherwise accept or turn into `NaN` are rejected too.
+ * The regex only accepts a plain unsigned decimal (the non-negative shape these
+ * money caps/totals are allowed to take) so JS-only coercions (`"1e3"`, `"0x10"`,
+ * `"NaN"`, `"Infinity"`) that `Number(...)` would otherwise accept or turn into
+ * `NaN` are rejected too.
  *
  * `parseSpendCapAllocatedTotal` additionally treats a genuinely-absent SUM
  * (`null`/`undefined`/empty — no campaigns yet) as the legitimate domain value 0,
@@ -34,12 +35,15 @@
  */
 
 function parseAdCampaignsNumeric(value: string | number, fieldName: string): number {
-  if (typeof value === "string" && !/^[+-]?(?:\d+|\d*\.\d+)$/.test(value.trim())) {
+  if (typeof value === "string" && !/^(?:\d+|\d*\.\d+)$/.test(value.trim())) {
     throw new Error(`Unable to read ad-campaigns ${fieldName}: value is not a valid NUMERIC`);
   }
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     throw new Error(`Unable to read ad-campaigns ${fieldName}: value is not a finite number`);
+  }
+  if (parsed < 0) {
+    throw new Error(`Unable to read ad-campaigns ${fieldName}: value is negative`);
   }
   return parsed;
 }
