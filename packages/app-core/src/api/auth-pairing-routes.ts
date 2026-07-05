@@ -393,9 +393,14 @@ export async function handleAuthPairingCompatRoutes(
       }
     }
 
-    // No DB yet — extremely unlikely once the runtime is up enough to serve
-    // requests, but preserve the legacy static-token return as a fallback.
-    sendJsonResponse(res, 200, { token });
+    // No DB yet — `getCompatDrizzleDb` null means "service unavailable, never
+    // authentication" (its contract). Returning the forever-valid static token
+    // here would hand a remote device paired during the boot window a
+    // permanent, non-revocable full-authority bearer — exactly what the
+    // DB-present branch mints a revocable, TTL-bound session to avoid. Fail
+    // closed; the pairing code's TTL gives the client headroom to retry once
+    // the runtime DB is up and a real session can be minted (#13985).
+    sendJsonErrorResponse(res, 503, "Pairing not ready, retry");
     return true;
   }
 
