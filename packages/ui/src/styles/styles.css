@@ -93,20 +93,29 @@ html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
   border-radius: var(--radius-xs);
 }
 
-body.native {
+/* `body.pwa-standalone` mirrors the native mobile lockdown for an INSTALLED
+   PWA on the web platform (iOS home-screen app): `touch-action: pan-y` hands
+   every horizontal drag to the app's rail/grabber gestures (only vertical pan
+   stays native), and the `#root` 100dvh lock keeps a stray drag from scrolling
+   the whole app off-screen — without this the home-screen swipes are eaten by
+   iOS WebKit's own page pan. See platform/init.ts isStandalonePwa(). */
+body.native,
+body.pwa-standalone {
   position: fixed;
   inset: 0;
   touch-action: pan-y;
 }
 
-body.native #root {
+body.native #root,
+body.pwa-standalone #root {
   min-height: 100dvh;
   max-height: 100dvh;
   padding: 0;
   box-sizing: border-box;
 }
 
-body.native textarea {
+body.native textarea,
+body.pwa-standalone textarea {
   resize: none;
 }
 

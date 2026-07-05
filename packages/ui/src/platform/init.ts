@@ -30,6 +30,45 @@ export const isNative = detected.isNative;
 export const isIOS = platform === "ios";
 export const isAndroid = platform === "android";
 
+/**
+ * True when the app is running as an INSTALLED PWA in standalone (or fullscreen)
+ * display-mode — i.e. added to the home screen and launched chrome-less — while
+ * the Capacitor platform is still `web` (this is NOT the native App Store /
+ * Play Store build; that reports `ios`/`android` and takes the `native` path).
+ *
+ * This is the iOS-home-screen-PWA case specifically: `Capacitor.getPlatform()`
+ * returns `web`, so the app never gets the `native`/`platform-ios` body class
+ * and — critically — never gets the mobile touch-viewport lockdown in
+ * `styles/base.css`. Without that lockdown the body stays at the default
+ * `touch-action: auto`, so iOS WebKit routes the first frames of every drag
+ * into its own body-pan / edge-nav pipeline and fires `pointercancel` — the
+ * home-screen swipe-up (open chat) and horizontal rail flick both silently
+ * never commit. Tagging the body with `pwa-standalone` lets base.css apply the
+ * same lockdown to the installed PWA and hand drags to the app's gestures.
+ *
+ * Detection order: the standard `display-mode` media query (Chrome/Android +
+ * modern iOS), then the legacy iOS-only `navigator.standalone` boolean.
+ * Best-effort — any absence of `matchMedia`/`navigator` returns false.
+ */
+export function isStandalonePwa(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (typeof window.matchMedia === "function") {
+      if (
+        window.matchMedia("(display-mode: standalone)").matches ||
+        window.matchMedia("(display-mode: fullscreen)").matches
+      ) {
+        return true;
+      }
+    }
+  } catch {
+    /* matchMedia unavailable — fall through to the legacy iOS signal */
+  }
+  // Legacy iOS Safari home-screen flag (pre-display-mode support).
+  const nav = typeof navigator !== "undefined" ? navigator : undefined;
+  return (nav as { standalone?: boolean } | undefined)?.standalone === true;
+}
+
 export function isDesktopPlatform(): boolean {
   return platform === "electrobun";
 }
@@ -212,6 +251,18 @@ export function setupPlatformStyles(): void {
 
   if (isNative) {
     document.body.classList.add("native");
+  }
+
+  // Installed PWA on the WEB platform (iOS home-screen app, chrome-less Android
+  // PWA): apply the mobile touch-viewport lockdown that the Capacitor `native`
+  // path gets, so the body claims `touch-action` and hands drags to the app's
+  // home-screen gestures instead of iOS WebKit's page-pan/edge-nav (which
+  // otherwise fires pointercancel and silently drops the swipe-up-open + rail
+  // flick). Scoped to `platform === "web"`: the native App Store / Play Store
+  // build already locks down via `native`, and desktop (electrobun) must keep
+  // its window scroll/trackpad behavior.
+  if (platform === "web" && isStandalonePwa()) {
+    document.body.classList.add("pwa-standalone");
   }
 
   root.style.setProperty("--safe-area-top", "env(safe-area-inset-top, 0px)");

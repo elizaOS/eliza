@@ -333,9 +333,17 @@ body.desktop {
    here — `#root` is locked to `100dvh` so body-level padding wouldn't
    shrink the React tree's flex container, and inner shells would still
    render under the status bar. */
+/* `body.pwa-standalone` (added from platform/init.ts) covers the INSTALLED
+   iOS/Android PWA running on the `web` Capacitor platform: it is NOT the
+   native App Store / Play Store build (which takes the `native`/`platform-ios`
+   path above), so without this it would keep the default `touch-action: auto`
+   and iOS WebKit would eat the home-screen swipe-up + rail flick as a page pan
+   (pointercancel). It gets the SAME viewport lockdown so drags reach the app's
+   gestures. */
 body.native,
 body.platform-ios,
-body.platform-android {
+body.platform-android,
+body.pwa-standalone {
   touch-action: pan-x pan-y;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
@@ -363,7 +371,10 @@ body.platform-ios textarea,
 body.platform-ios [contenteditable="true"],
 body.platform-android input,
 body.platform-android textarea,
-body.platform-android [contenteditable="true"] {
+body.platform-android [contenteditable="true"],
+body.pwa-standalone input,
+body.pwa-standalone textarea,
+body.pwa-standalone [contenteditable="true"] {
   -webkit-user-select: text;
   user-select: text;
   -webkit-touch-callout: default;
@@ -373,7 +384,8 @@ body.platform-android [contenteditable="true"] {
    shells where the app body disables global selection to protect gestures. */
 body.native [data-chat-selectable="true"],
 body.platform-ios [data-chat-selectable="true"],
-body.platform-android [data-chat-selectable="true"] {
+body.platform-android [data-chat-selectable="true"],
+body.pwa-standalone [data-chat-selectable="true"] {
   -webkit-user-select: text;
   user-select: text;
   -webkit-touch-callout: default;
@@ -383,7 +395,8 @@ body.platform-android [data-chat-selectable="true"] {
    scrollbar; they get a momentum scroller. */
 body.native *::-webkit-scrollbar,
 body.platform-ios *::-webkit-scrollbar,
-body.platform-android *::-webkit-scrollbar {
+body.platform-android *::-webkit-scrollbar,
+body.pwa-standalone *::-webkit-scrollbar {
   width: 0;
   height: 0;
   display: none;
@@ -391,7 +404,8 @@ body.platform-android *::-webkit-scrollbar {
 
 body.native *,
 body.platform-ios *,
-body.platform-android * {
+body.platform-android *,
+body.pwa-standalone * {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
