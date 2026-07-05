@@ -140,6 +140,42 @@ describe("steward-refresh bearer rotation", () => {
 });
 
 describe("steward-refresh browser cookie cleanup", () => {
+  test("staging legacy-only refresh cookie is not read or forwarded", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = mock(async () => {
+      throw new Error("legacy refresh cookie must not reach Steward");
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const response = await app.fetch(
+        new Request("https://api-staging.elizacloud.ai/", {
+          method: "POST",
+          headers: {
+            host: "api-staging.elizacloud.ai",
+            origin: "https://staging.elizacloud.ai",
+            cookie: "steward-refresh-token=prod-refresh; steward-authed=1",
+          },
+        }),
+        {
+          ...ENV,
+          ENVIRONMENT: "staging",
+          STEWARD_API_URL: "https://steward.example.test",
+        },
+      );
+
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toEqual({
+        error: "Refresh token required",
+        code: "missing_token",
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(deletedCookieNames(response)).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("staging invalid refresh clears only staging cookies", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = mock(async () => {
