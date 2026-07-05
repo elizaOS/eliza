@@ -17,6 +17,29 @@ const DEV_SMOKE_WORKFLOW = path.join(
 const ROOT_PACKAGE_JSON = path.join(REPO_ROOT, "package.json");
 const APP_PACKAGE_JSON = path.join(REPO_ROOT, "packages/app/package.json");
 
+const EXPECTED_NON_WORKSPACE_HMR_PROBES = new Set([
+  "birdclaw plugins/plugin-birdclaw/src/components/birdclaw/BirdclawView.tsx",
+  "cockpit plugins/plugin-task-coordinator/src/CockpitRoute.tsx",
+  "documents plugins/plugin-documents/src/components/documents/DocumentsView.tsx",
+  "feed plugins/plugin-feed/src/components/FeedView.tsx",
+  "focus plugins/plugin-blocker/src/components/focus/FocusView.tsx",
+  "goals plugins/plugin-goals/src/components/goals/GoalsView.tsx",
+  "hyperliquid plugins/plugin-hyperliquid/src/HyperliquidView.tsx",
+  "messages plugins/plugin-messages/src/components/MessagesView.tsx",
+  "model-tester plugins/app-model-tester/src/ModelTesterAppView.tsx",
+  "orchestrator plugins/plugin-task-coordinator/src/OrchestratorWorkbench.tsx",
+  "phone plugins/plugin-phone/src/components/PhoneView.tsx",
+  "polymarket plugins/plugin-polymarket/src/PolymarketView.tsx",
+  "screenshare plugins/plugin-screenshare/src/components/ScreenshareView.tsx",
+  "shopify plugins/plugin-shopify/src/ShopifyView.tsx",
+  "social-alpha plugins/plugin-social-alpha/src/frontend/SocialAlphaView.tsx",
+  "task-coordinator plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.tsx",
+  "training plugins/plugin-training/src/ui/FineTuningView.tsx",
+  "trajectory-logger plugins/plugin-trajectory-logger/src/components/TrajectoryLoggerView.tsx",
+  "vector-browser plugins/plugin-vector-browser/src/VectorBrowserView.tsx",
+  "wallet plugins/plugin-wallet-ui/src/InventoryView.tsx",
+]);
+
 type GuiViewCase = {
   id: string;
   path: string;
@@ -86,7 +109,9 @@ function readHmrRootGraphPluginViewNames(): Set<string> {
   ).toBeTruthy();
   const rootGraphSource = match?.[1] ?? "";
   return new Set(
-    Array.from(rootGraphSource.matchAll(/"([^"]+)"/g)).map((entry) => entry[1]),
+    Array.from(rootGraphSource.matchAll(/"(plugin view [^"]+)"/g)).map(
+      (entry) => entry[1],
+    ),
   );
 }
 
@@ -118,6 +143,18 @@ describe("plugin view HMR coverage", () => {
       .filter((level) => !guiById.has(level.id))
       .map((level) => `${level.id} ${level.file}`);
     const missingFiles = hmrLevels
+      .filter((level) => !existsSync(path.join(REPO_ROOT, level.file)))
+      .map((level) => `${level.id} ${level.file}`);
+    const unexpectedMissingFiles = missingFiles.filter(
+      (entry) => !EXPECTED_NON_WORKSPACE_HMR_PROBES.has(entry),
+    );
+    const resolvedNonWorkspaceDebt = Array.from(
+      EXPECTED_NON_WORKSPACE_HMR_PROBES,
+    ).filter((entry) => !missingFiles.includes(entry));
+    const unknownRootGraphEntries = Array.from(rootGraphPluginViews).filter(
+      (name) => !hmrLevels.some((level) => level.name === name),
+    );
+    const missingRootGraphFiles = hmrLevels
       .filter((level) => rootGraphPluginViews.has(level.name))
       .filter((level) => !existsSync(path.join(REPO_ROOT, level.file)))
       .map((level) => `${level.id} ${level.file}`);
@@ -127,7 +164,22 @@ describe("plugin view HMR coverage", () => {
       stale,
       "Remove HMR probes for removed or renamed GUI views.",
     ).toEqual([]);
-    expect(missingFiles, "HMR source probe file paths must exist.").toEqual([]);
+    expect(
+      unexpectedMissingFiles,
+      "HMR source probe file paths must exist unless explicitly documented as a non-workspace plugin.",
+    ).toEqual([]);
+    expect(
+      resolvedNonWorkspaceDebt,
+      "Remove restored plugin probes from EXPECTED_NON_WORKSPACE_HMR_PROBES.",
+    ).toEqual([]);
+    expect(
+      unknownRootGraphEntries,
+      "PLUGIN_VIEWS_IN_ROOT_GRAPH entries must match HMR probe names.",
+    ).toEqual([]);
+    expect(
+      missingRootGraphFiles,
+      "Root-graph HMR probes must never target missing files.",
+    ).toEqual([]);
   });
 
   it("keeps the HMR browser gate wired into CI", () => {
