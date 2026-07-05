@@ -90,6 +90,19 @@ function readHmrRootGraphPluginViewNames(): Set<string> {
   );
 }
 
+function readWorkflowJobBlock(workflow: string, jobName: string): string {
+  const match = workflow.match(
+    new RegExp(
+      `\\n  ${jobName}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z0-9_-]+:\\n|\\n*$)`,
+    ),
+  );
+  expect(
+    match?.[1],
+    `${jobName} job was not found in dev-smoke.yml`,
+  ).toBeTruthy();
+  return match?.[1] ?? "";
+}
+
 describe("plugin view HMR coverage", () => {
   it("keeps the HMR source-probe matrix in lockstep with every GUI view", () => {
     const guiCases = readGuiVisualCases();
@@ -125,6 +138,7 @@ describe("plugin view HMR coverage", () => {
       scripts?: Record<string, string>;
     };
     const workflow = readFileSync(DEV_SMOKE_WORKFLOW, "utf8");
+    const hmrJob = readWorkflowJobBlock(workflow, "hmr");
 
     expect(rootPackage.scripts?.["test:hmr"]).toContain(
       "packages/app test:hmr",
@@ -132,7 +146,14 @@ describe("plugin view HMR coverage", () => {
     expect(appPackage.scripts?.["test:hmr"]).toContain(
       "playwright.hmr.config.ts",
     );
-    expect(workflow).toContain("Vite HMR dependency-level smoke");
-    expect(workflow).toContain("bun run test:hmr");
+    expect(hmrJob).toContain("name: Vite HMR dependency-level smoke");
+    expect(hmrJob).toContain("needs: changes");
+    expect(hmrJob).toContain(
+      "if: github.event_name != 'pull_request' || needs.changes.outputs.dev_smoke == 'true'",
+    );
+    expect(hmrJob).toContain("run: bun run test:hmr");
+    expect(hmrJob).toContain("name: hmr-results");
+    expect(hmrJob).toContain("packages/app/playwright-report/");
+    expect(hmrJob).toContain("packages/app/test-results/hmr/");
   });
 });
