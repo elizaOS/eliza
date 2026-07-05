@@ -233,7 +233,8 @@ export default defineConfig({
       // Cloud-surface aesthetic audit (#10725/#11342) — run with `audit:cloud`
       // (`--project=audit-cloud`). Walks every registered cloud route at
       // desktop + mobile internally. Requires a renderer built with
-      // VITE_PLAYWRIGHT_TEST_AUTH=true (the spec self-skips otherwise).
+      // VITE_PLAYWRIGHT_TEST_AUTH=true; the runner invalidates dist for this
+      // project so a cached non-auth build cannot skip the local auth shell.
       name: "audit-cloud",
       testMatch: AUDIT_CLOUD_SPEC,
       use: {

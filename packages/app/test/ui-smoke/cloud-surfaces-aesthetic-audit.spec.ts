@@ -965,14 +965,6 @@ const findings: CloudPageFinding[] = [];
 const findingsBySlug = new Map<string, CloudPageFinding[]>();
 
 test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
-  // Locally, a renderer without the baked test-auth shell is a skip (dev
-  // convenience). Under strict/CI it is NOT — see the guard test below, which
-  // reddens so the audit can never go green having walked nothing (#13624).
-  test.skip(
-    !TEST_AUTH_ENABLED && !REQUIRE_CLOUD_EVIDENCE,
-    "set VITE_PLAYWRIGHT_TEST_AUTH=true (bake it into the renderer build) so StewardProvider renders the local test-auth shell",
-  );
-
   // Hard gate (#13624): under strict/CI the running renderer bundle MUST contain
   // the test-auth shell. A stale turbo-cached `build:web` (built without
   // VITE_PLAYWRIGHT_TEST_AUTH) leaves the runtime env set but the shell absent —
@@ -1004,6 +996,13 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
   const outputDir =
     process.env.ELIZA_AUDIT_CLOUD_DIR ??
     path.join(process.cwd(), "aesthetic-audit-output-cloud");
+
+  test.beforeAll(() => {
+    expect(
+      TEST_AUTH_ENABLED,
+      "audit:cloud requires VITE_PLAYWRIGHT_TEST_AUTH=true baked into the renderer build so StewardProvider renders the local test-auth shell",
+    ).toBe(true);
+  });
 
   // Coverage guard: every registered cloud route must appear in the audit
   // table, so a newly-registered surface fails the audit until it is walked.
