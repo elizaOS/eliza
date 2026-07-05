@@ -11,13 +11,13 @@
  * endpoints.
  *
  * Gates on the Steward session (the shell wraps non-public routes in
- * `StewardAuthProvider`; this also checks `useRequireAuth` so a signed-out user
+ * `StewardAuthProvider`; this also checks `useSessionAuth` so a signed-out user
  * sees a prompt instead of empty lists). The same {@link ApprovalsSurface} is
  * exported so a settings-section or sidebar host can embed it without the route
  * wrapper.
  */
 
-import { useRequireAuth } from "@elizaos/ui/cloud/lib/use-session-auth";
+import { useSessionAuth } from "@elizaos/ui/cloud/lib/use-session-auth";
 import { DashboardLoadingState } from "@elizaos/ui/cloud-ui/components/dashboard/route-placeholders";
 import {
   Tabs,
@@ -36,7 +36,7 @@ import { SensitiveTab } from "./components/sensitive-tab";
  * standalone route.
  */
 export function ApprovalsSurface() {
-  const { ready, authenticated } = useRequireAuth();
+  const { ready, authenticated } = useSessionAuth();
 
   if (!ready) {
     return <DashboardLoadingState label="Loading approvals" />;
