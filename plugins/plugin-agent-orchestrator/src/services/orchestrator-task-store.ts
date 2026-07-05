@@ -105,6 +105,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function isDuplicateColumnError(error: unknown): boolean {
+  if (!isRecord(error)) return false;
+  if (error.code === "42701") return true;
+  const message =
+    typeof error.message === "string" ? error.message.toLowerCase() : "";
+  return (
+    message.includes("duplicate column") ||
+    /column .+ already exists/.test(message)
+  );
+}
+
 /** Boundary guard for documents loaded from disk/JSON. A document must carry a
  * task with an id plus the inline child arrays that existed before the
  * plan-revision rollout. `planRevisions` is filled below for older documents. */
@@ -864,10 +875,11 @@ export class RuntimeDbTaskStore {
       for (const sql of TASK_MIGRATION_SQL) {
         try {
           await this.executor.run(sql);
-        } catch {
+        } catch (err) {
           // error-policy:J6 idempotent DDL — ADD COLUMN throws on a table that
           // already has the column (every boot after the first); the desired
           // post-state is identical, so a duplicate-column failure is success.
+          if (!isDuplicateColumnError(err)) throw err;
         }
       }
       for (const sql of TASK_INDEX_SQL) await this.executor.run(sql);

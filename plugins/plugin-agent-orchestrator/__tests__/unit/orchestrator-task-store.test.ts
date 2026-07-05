@@ -1064,7 +1064,9 @@ describe("task.projectId binding (#13776)", () => {
     const a = await store.createTask(
       createInput({ title: "sql-a", projectId: "proj-a" }),
     );
-    await store.createTask(createInput({ title: "sql-b", projectId: "proj-b" }));
+    await store.createTask(
+      createInput({ title: "sql-b", projectId: "proj-b" }),
+    );
 
     // The indexed column is populated (not just buried in the JSON document).
     expect(adapter.rows.get(a.task.id)?.project_id).toBe("proj-a");
@@ -1084,9 +1086,29 @@ describe("task.projectId binding (#13776)", () => {
     await expect(
       second.createTask(createInput({ title: "second", projectId: "p2" })),
     ).resolves.toBeDefined();
-    expect((await second.listTasks({ projectId: "p2" })).map((t) => t.title)).toEqual(
-      ["second"],
-    );
+    expect(
+      (await second.listTasks({ projectId: "p2" })).map((t) => t.title),
+    ).toEqual(["second"]);
+  });
+
+  it("surfaces non-idempotent project_id ADD COLUMN migration failures", async () => {
+    class BrokenMigrationAdapter extends FakeSqlAdapter {
+      override async execute(
+        sql: string,
+        params: unknown[] = [],
+      ): Promise<void> {
+        if (sql.trim().toUpperCase().startsWith("ALTER ")) {
+          throw new Error("disk is read-only");
+        }
+        return super.execute(sql, params);
+      }
+    }
+
+    const store = new RuntimeDbTaskStore(new BrokenMigrationAdapter());
+
+    await expect(
+      store.createTask(createInput({ title: "blocked", projectId: "p1" })),
+    ).rejects.toThrow("disk is read-only");
   });
 
   it("surfaces projectId on the detail DTO", async () => {
