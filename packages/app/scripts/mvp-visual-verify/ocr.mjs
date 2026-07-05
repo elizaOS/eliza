@@ -33,7 +33,8 @@ export function resolveTesseract() {
   const which = spawnSync(process.platform === "win32" ? "where" : "which", [
     "tesseract",
   ]);
-  const out = which.status === 0 ? which.stdout.toString().trim().split(/\r?\n/)[0] : "";
+  const out =
+    which.status === 0 ? which.stdout.toString().trim().split(/\r?\n/)[0] : "";
   probe = { path: out || null };
   return probe.path;
 }
@@ -59,7 +60,10 @@ export async function ocrImage(pngPath, opts = {}) {
   const lang = opts.lang ?? "eng";
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const text = await runTesseract(bin, pngPath, lang, timeoutMs);
-  const normalized = text.replace(/\r/g, "").replace(/[ \t]+/g, " ").trim();
+  const normalized = text
+    .replace(/\r/g, "")
+    .replace(/[ \t]+/g, " ")
+    .trim();
   const words = normalized ? normalized.split(/\s+/).filter(Boolean).length : 0;
   return {
     available: true,
@@ -85,7 +89,9 @@ function runTesseract(bin, pngPath, lang, timeoutMs) {
     let stderr = "";
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(new Error(`tesseract timed out after ${timeoutMs}ms on ${pngPath}`));
+      reject(
+        new Error(`tesseract timed out after ${timeoutMs}ms on ${pngPath}`),
+      );
     }, timeoutMs);
     child.stdout.on("data", (d) => {
       stdout += d.toString();

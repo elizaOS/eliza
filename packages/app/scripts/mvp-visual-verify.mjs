@@ -20,16 +20,16 @@
  * Env: ELIZA_AUDIT_APP_DIR overrides the input dir (matches the audit spec).
  */
 
-import { readdir, readFile, writeFile, mkdir, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { dominantColorsFromPng } from "./mvp-visual-verify/dominant-color.mjs";
-import { ocrImage, resolveTesseract } from "./mvp-visual-verify/ocr.mjs";
 import { diffAgainstBaseline } from "./mvp-visual-verify/diff.mjs";
+import { dominantColorsFromPng } from "./mvp-visual-verify/dominant-color.mjs";
 import {
   evaluateExpectations,
   resolveSpec,
 } from "./mvp-visual-verify/expectation-eval.mjs";
+import { ocrImage, resolveTesseract } from "./mvp-visual-verify/ocr.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(here, "..");
@@ -52,7 +52,12 @@ function parseArgs(argv) {
 }
 
 /** Directories under the audit output that are outputs/notes, not viewport shots. */
-const NON_VIEWPORT_DIRS = new Set(["mvp-verify", "manual-review", "baseline", "diffs"]);
+const NON_VIEWPORT_DIRS = new Set([
+  "mvp-verify",
+  "manual-review",
+  "baseline",
+  "diffs",
+]);
 
 async function isDir(p) {
   return stat(p).then(
@@ -89,12 +94,16 @@ async function loadReportIndex(inputDir) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    log("post-processes audit:app screenshots into mvp-verify/ (OCR + palette + diff + expectations)");
+    log(
+      "post-processes audit:app screenshots into mvp-verify/ (OCR + palette + diff + expectations)",
+    );
     return 0;
   }
 
   const inputDir = path.resolve(
-    args.input ?? process.env.ELIZA_AUDIT_APP_DIR ?? path.join(appDir, "aesthetic-audit-output"),
+    args.input ??
+      process.env.ELIZA_AUDIT_APP_DIR ??
+      path.join(appDir, "aesthetic-audit-output"),
   );
   if (!(await isDir(inputDir))) {
     throw new Error(
@@ -107,23 +116,35 @@ async function main() {
   const diffRoot = path.join(outDir, "diffs");
   await mkdir(outDir, { recursive: true });
 
-  const specsRaw = await readFile(path.join(here, "mvp-visual-verify", "expectations.json"), "utf8");
+  const specsRaw = await readFile(
+    path.join(here, "mvp-visual-verify", "expectations.json"),
+    "utf8",
+  );
   const specs = JSON.parse(specsRaw);
 
-  const { index: reportIndex, present: reportPresent, count: reportCount } =
-    await loadReportIndex(inputDir);
+  const {
+    index: reportIndex,
+    present: reportPresent,
+    count: reportCount,
+  } = await loadReportIndex(inputDir);
   const tesseract = resolveTesseract();
 
   log(`input: ${inputDir}`);
-  log(`audit report.json: ${reportPresent ? `${reportCount} findings` : "ABSENT (overflow/DOM checks will skip)"}`);
-  log(`OCR engine: ${tesseract ? tesseract : "N/A (tesseract binary not found — OCR column honest N/A)"}`);
-  if (args.updateBaseline) log("--update-baseline: recording current shots as the diff baseline");
+  log(
+    `audit report.json: ${reportPresent ? `${reportCount} findings` : "ABSENT (overflow/DOM checks will skip)"}`,
+  );
+  log(
+    `OCR engine: ${tesseract ? tesseract : "N/A (tesseract binary not found — OCR column honest N/A)"}`,
+  );
+  if (args.updateBaseline)
+    log("--update-baseline: recording current shots as the diff baseline");
 
   const viewportDirs = await discoverViewportDirs(inputDir, args.viewports);
-  log(`viewports: ${viewportDirs.map((v) => `${v.name}(${v.pngs.length})`).join(", ") || "none found"}`);
+  log(
+    `viewports: ${viewportDirs.map((v) => `${v.name}(${v.pngs.length})`).join(", ") || "none found"}`,
+  );
 
   const results = [];
-  let processed = 0;
   for (const vp of viewportDirs) {
     for (const png of vp.pngs) {
       const slug = png.replace(/\.png$/, "");
@@ -158,11 +179,19 @@ async function main() {
         viewport: vp.name,
         screenshot: path.relative(outDir, currentPath),
         ocr: ocr.available
-          ? { available: true, words: ocr.words, chars: ocr.chars, text: ocr.text.slice(0, 4000) }
+          ? {
+              available: true,
+              words: ocr.words,
+              chars: ocr.chars,
+              text: ocr.text.slice(0, 4000),
+            }
           : { available: false, reason: ocr.reason },
         palette: {
           buckets: Object.fromEntries(
-            Object.entries(palette.buckets).map(([k, v]) => [k, Number(v.toFixed(4))]),
+            Object.entries(palette.buckets).map(([k, v]) => [
+              k,
+              Number(v.toFixed(4)),
+            ]),
           ),
           swatches: palette.swatches.map((s) => ({
             hex: s.hex,
@@ -172,13 +201,18 @@ async function main() {
         },
         diff:
           diff.status === "new"
-            ? { status: "new", note: "baseline recorded; nothing to compare yet" }
+            ? {
+                status: "new",
+                note: "baseline recorded; nothing to compare yet",
+              }
             : {
                 status: "compared",
                 changedPercent: diff.summary.changedPercent,
                 meanAbsDelta: diff.summary.meanAbsDelta,
                 resized: diff.summary.resized,
-                diffPng: diff.diffPath ? path.relative(outDir, diff.diffPath) : null,
+                diffPng: diff.diffPath
+                  ? path.relative(outDir, diff.diffPath)
+                  : null,
               },
         expectation: {
           pass: expectation.pass,
@@ -187,12 +221,13 @@ async function main() {
         },
         horizontalOverflowPx: finding?.horizontalOverflowPx ?? null,
       });
-      processed += 1;
     }
   }
 
   results.sort((a, b) =>
-    a.slug === b.slug ? a.viewport.localeCompare(b.viewport) : a.slug.localeCompare(b.slug),
+    a.slug === b.slug
+      ? a.viewport.localeCompare(b.viewport)
+      : a.slug.localeCompare(b.slug),
   );
 
   const summary = {
@@ -203,7 +238,8 @@ async function main() {
     auditReportPresent: reportPresent,
     expectationFailures: results.filter((r) => !r.expectation.pass).length,
     newBaselines: results.filter((r) => r.diff.status === "new").length,
-    overflowStates: results.filter((r) => (r.horizontalOverflowPx ?? 0) > 2).length,
+    overflowStates: results.filter((r) => (r.horizontalOverflowPx ?? 0) > 2)
+      .length,
   };
 
   await writeFile(
@@ -211,7 +247,11 @@ async function main() {
     JSON.stringify({ summary, states: results }, null, 2),
     "utf8",
   );
-  await writeFile(path.join(outDir, "contact-sheet.html"), renderContactSheet(summary, results), "utf8");
+  await writeFile(
+    path.join(outDir, "contact-sheet.html"),
+    renderContactSheet(summary, results),
+    "utf8",
+  );
 
   log(
     `wrote ${results.length} states → ${path.join(outDir, "report.json")} + contact-sheet.html`,
@@ -221,7 +261,9 @@ async function main() {
   );
   if (summary.expectationFailures > 0) {
     for (const r of results.filter((r) => !r.expectation.pass)) {
-      log(`  FAIL ${r.slug} @ ${r.viewport}: ${r.expectation.reasons.join(" | ")}`);
+      log(
+        `  FAIL ${r.slug} @ ${r.viewport}: ${r.expectation.reasons.join(" | ")}`,
+      );
     }
   }
 
@@ -233,7 +275,10 @@ async function main() {
 }
 
 function esc(s) {
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function renderContactSheet(summary, results) {
@@ -249,7 +294,10 @@ function renderContactSheet(summary, results) {
         ? '<span class="pass">PASS</span>'
         : `<span class="fail">FAIL</span>`;
       const checks = r.expectation.checks
-        .map((c) => `<div class="chk ${c.status}">${esc(c.name)}: ${esc(c.detail)}</div>`)
+        .map(
+          (c) =>
+            `<div class="chk ${c.status}">${esc(c.name)}: ${esc(c.detail)}</div>`,
+        )
         .join("");
       const ocrCell = r.ocr.available
         ? `<div class="ocr">${esc(r.ocr.text || "(no glyphs)")}</div><div class="meta">${r.ocr.words} words</div>`
@@ -262,7 +310,11 @@ function renderContactSheet(summary, results) {
         <td class="slug">${esc(r.slug)}<br><span class="meta">${esc(r.viewport)}</span></td>
         <td><img class="thumb" src="${esc(r.screenshot)}" loading="lazy"></td>
         <td>${ocrCell}</td>
-        <td class="pal">${swatches}<div class="meta">${Object.entries(r.palette.buckets).map(([k, v]) => `${k} ${(v * 100).toFixed(0)}%`).join(" · ")}</div></td>
+        <td class="pal">${swatches}<div class="meta">${Object.entries(
+          r.palette.buckets,
+        )
+          .map(([k, v]) => `${k} ${(v * 100).toFixed(0)}%`)
+          .join(" · ")}</div></td>
         <td class="diff">${diffCell}</td>
         <td>${verdict}<div class="checks">${checks}</div></td>
       </tr>`;

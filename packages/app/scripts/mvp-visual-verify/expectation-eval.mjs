@@ -77,12 +77,21 @@ export function evaluateExpectations(state, spec) {
       // is not a NaN render bug, so alphanumeric tokens are boundary-matched.
       const forbidden = absent.filter((s) => containsForbidden(haystack, s));
       if (missing.length === 0 && forbidden.length === 0) {
-        checks.push({ name: "ocr-text", status: "pass", detail: "expected text matched" });
+        checks.push({
+          name: "ocr-text",
+          status: "pass",
+          detail: "expected text matched",
+        });
       } else {
         const parts = [];
         if (missing.length) parts.push(`missing: ${missing.join(", ")}`);
-        if (forbidden.length) parts.push(`forbidden present: ${forbidden.join(", ")}`);
-        checks.push({ name: "ocr-text", status: "fail", detail: parts.join("; ") });
+        if (forbidden.length)
+          parts.push(`forbidden present: ${forbidden.join(", ")}`);
+        checks.push({
+          name: "ocr-text",
+          status: "fail",
+          detail: parts.join("; "),
+        });
       }
     }
   }
@@ -107,7 +116,9 @@ export function evaluateExpectations(state, spec) {
       checks.push({
         name: "no-blue",
         status: "pass",
-        detail: domBlue ? "no DOM blue, palette clean" : "palette blue within limit",
+        detail: domBlue
+          ? "no DOM blue, palette clean"
+          : "palette blue within limit",
       });
     }
   }
@@ -115,7 +126,9 @@ export function evaluateExpectations(state, spec) {
   if (spec.accentOrange) {
     const orange = state.palette?.buckets?.orange ?? 0;
     const min = spec.orangeCoverageMin ?? DEFAULT_ORANGE_COVERAGE_MIN;
-    const swatchOrange = (state.palette?.swatches ?? []).some((s) => s.bucket === "orange");
+    const swatchOrange = (state.palette?.swatches ?? []).some(
+      (s) => s.bucket === "orange",
+    );
     if (orange >= min || swatchOrange) {
       checks.push({
         name: "accent-orange",
@@ -138,7 +151,8 @@ export function evaluateExpectations(state, spec) {
       checks.push({
         name: "no-horizontal-overflow",
         status: "skip",
-        detail: "report has no horizontalOverflowPx field (re-run audit to populate)",
+        detail:
+          "report has no horizontalOverflowPx field (re-run audit to populate)",
       });
     } else if (px > tol) {
       checks.push({
@@ -155,7 +169,9 @@ export function evaluateExpectations(state, spec) {
     }
   }
 
-  const reasons = checks.filter((c) => c.status === "fail").map((c) => `${c.name}: ${c.detail}`);
+  const reasons = checks
+    .filter((c) => c.status === "fail")
+    .map((c) => `${c.name}: ${c.detail}`);
   return { pass: reasons.length === 0, checks, reasons };
 }
 
@@ -202,7 +218,9 @@ function containsForbidden(haystack, token) {
   const needle = normalize(token);
   if (!needle) return false;
   if (/^[a-z0-9]+$/.test(needle)) {
-    return new RegExp(`(^|[^a-z0-9])${needle}([^a-z0-9]|$)`, "i").test(haystack);
+    return new RegExp(`(^|[^a-z0-9])${needle}([^a-z0-9]|$)`, "i").test(
+      haystack,
+    );
   }
   return haystack.includes(needle);
 }

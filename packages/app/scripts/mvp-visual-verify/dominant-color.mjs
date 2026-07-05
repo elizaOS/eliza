@@ -82,7 +82,12 @@ export function quantizePalette(data, opts = {}) {
 export async function dominantColorsFromPng(pngPath, opts = {}) {
   const maxEdge = opts.maxEdge ?? 256;
   const { data, info } = await sharp(pngPath)
-    .resize({ width: maxEdge, height: maxEdge, fit: "inside", withoutEnlargement: true })
+    .resize({
+      width: maxEdge,
+      height: maxEdge,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
