@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { evaluateRouteModeGate } from "./route-mode-guard";
+import { evaluateRouteModeGate } from "./route-mode-guard.ts";
 
 describe("evaluateRouteModeGate — fail-closed protected namespaces (#12633)", () => {
   test("a NEW un-enumerated child of /api/local-inference/ is gated by the catch-all", () => {

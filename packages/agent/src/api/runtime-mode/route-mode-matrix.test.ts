@@ -10,7 +10,7 @@
  * (arch-audit #12633).
  */
 import { describe, expect, test } from "vitest";
-import { findRegisteredRouteModeRule } from "./route-mode-guard";
+import { findRegisteredRouteModeRule } from "./route-mode-guard.ts";
 import {
   assertMatrixReconciled,
   findProtectedNamespace,
@@ -19,8 +19,8 @@ import {
   isRouteVisibleWith,
   PROTECTED_MODE_NAMESPACES,
   ROUTE_MODE_MATRIX,
-} from "./route-mode-matrix";
-import { resolveRuntimeMode, validateRemoteApiBase } from "./runtime-mode";
+} from "./route-mode-matrix.ts";
+import { resolveRuntimeMode, validateRemoteApiBase } from "./runtime-mode.ts";
 
 describe("resolveRuntimeMode", () => {
   test("defaults to local when no deploymentTarget", () => {

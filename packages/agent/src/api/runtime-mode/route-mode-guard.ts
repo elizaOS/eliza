@@ -11,9 +11,12 @@
 
 import type http from "node:http";
 import type { Route } from "@elizaos/core";
-import { sendJsonError } from "../../api/response";
-import { findProtectedNamespace, findRouteModeRule } from "./route-mode-matrix";
-import { getRuntimeModeSnapshot, type RuntimeMode } from "./runtime-mode";
+import { sendJsonError } from "@elizaos/core";
+import {
+  findProtectedNamespace,
+  findRouteModeRule,
+} from "./route-mode-matrix.ts";
+import { getRuntimeModeSnapshot, type RuntimeMode } from "./runtime-mode.ts";
 
 export interface ModeGateOutcome {
   /** True when the dispatcher should stop — guard wrote a 404. */
@@ -141,7 +144,7 @@ export function applyRouteModeGuard(
   if (hidden) {
     // Hidden — not forbidden. Don't include the mode or rule reason in the
     // body; cloud mode must not be able to probe local-inference state.
-    sendJsonError(res, 404, "Not found");
+    sendJsonError(res, "Not found", 404);
     return { handled: true, mode: snapshot.mode };
   }
 

@@ -110,6 +110,24 @@ export {
   clearPersistedFirstRunConfig,
 } from "./api/provider-switch-config.ts";
 export { RegistryService } from "./api/registry-service.ts";
+// Runtime-mode contract (mode resolution, route-visibility gate, remote-mode
+// forwarder). `api/server.ts` enforces it in its own dispatch; the app-core
+// compat pipeline calls the same pre-dispatch hook so every host shares one
+// gate.
+export { handleRuntimeModePreDispatch } from "./api/runtime-mode/pre-dispatch.ts";
+export {
+  forwardRemoteCloudMutation,
+  shouldForwardToRemoteTarget,
+} from "./api/runtime-mode/remote-forwarder.ts";
+export {
+  applyRouteModeGuard,
+  evaluateRouteModeGate,
+  findRegisteredRouteModeRule,
+  type ModeGateOutcome,
+  type RouteModeRuntimeLike,
+  type RuntimeRouteModeRule,
+} from "./api/runtime-mode/route-mode-guard.ts";
+export * from "./api/runtime-mode/runtime-mode.ts";
 export {
   AGENT_EVENT_ALLOWED_STREAMS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,

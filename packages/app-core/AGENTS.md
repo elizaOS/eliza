@@ -34,7 +34,6 @@ src/
     eliza.ts                Eliza agent loader — boots AgentRuntime, loads plugins, starts API server
     dev-server.ts           Dev orchestration entry + startup timing
     desktop/                Electrobun tray/window React runtimes (AppWindowRenderer, DesktopTrayRuntime, …)
-    mode/                   runtime-mode (local vs remote), route-mode-guard, remote-forwarder
     build-character-from-config.ts, channel-plugin-map.ts, autonomy-policy.ts, sandbox-policy.ts
   registry/index.ts         Back-compat shim: re-exports `@elizaos/registry/first-party`.
                             The curated app/plugin/connector registry (schema,

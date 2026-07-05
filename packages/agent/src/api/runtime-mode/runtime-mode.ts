@@ -1,5 +1,5 @@
 /**
- * Canonical runtime-mode resolver for the AGENTS.md §1/§5 contract.
+ * Canonical runtime-mode resolver (#13725).
  *
  * Eliza ships in three top-level runtime shapes — `local`, `cloud`, `remote`
  * — plus a `local-only` sub-state of `local` that hides every cloud-routed
@@ -16,12 +16,12 @@
  * vs. yolo execution policy for shell tools); do not conflate.
  */
 
-import { loadElizaConfig } from "@elizaos/agent";
 import {
   type DeploymentTargetConfig,
   normalizeDeploymentTargetConfig,
 } from "@elizaos/shared";
 import * as zod from "zod";
+import { loadElizaConfig } from "../../config/config.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
@@ -130,9 +130,9 @@ export function resolveRuntimeMode(
 }
 
 /**
- * Disk-backed resolver. Reads `eliza.json` from the canonical config path.
- * Use this from request handlers — `loadElizaConfig` is already memoised
- * for the lifetime of the agent runtime.
+ * Disk-backed resolver. Reads `eliza.json` from the canonical config path on
+ * every call so a mode change persisted by first-run/settings applies to the
+ * next request without a restart.
  */
 export function getRuntimeMode(): RuntimeMode {
   return resolveRuntimeMode(parseRuntimeModeConfig(loadElizaConfig())).mode;

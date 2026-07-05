@@ -10,6 +10,24 @@
  * exports.
  */
 
+// Runtime-mode resolution moved into @elizaos/agent (api/runtime-mode/) so the
+// bare agent server enforces the same route-visibility gate as this wrapper.
+// Re-exported by name to keep this barrel's public surface stable without
+// star-leaking the whole agent package.
+export {
+  getRuntimeMode,
+  getRuntimeModeSnapshot,
+  isLocalRemoteHost,
+  isLocalRuntime,
+  type RemoteApiBaseValidation,
+  type RemoteApiBaseValidationErr,
+  type RemoteApiBaseValidationOk,
+  RUNTIME_MODES,
+  type RuntimeMode,
+  type RuntimeModeSnapshot,
+  resolveRuntimeMode,
+  validateRemoteApiBase,
+} from "@elizaos/agent";
 export * from "./api/auth.ts";
 export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";
@@ -50,7 +68,6 @@ export * from "./runtime/channel-plugin-map";
 export * from "./runtime/desktop";
 export * from "./runtime/eliza";
 export * from "./runtime/mobile-safe-runtime";
-export * from "./runtime/mode/runtime-mode";
 export * from "./security/agent-vault-id";
 export * from "./security/hydrate-wallet-keys-from-platform-store";
 export * from "./security/platform-secure-store";

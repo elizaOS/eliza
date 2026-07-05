@@ -399,6 +399,7 @@ import {
   buildPluginDiagnosticEntry,
   resolveWalletDiagnosticStatus,
 } from "./plugin-diagnostic.ts";
+import { handleRuntimeModePreDispatch } from "./runtime-mode/pre-dispatch.ts";
 import { createRuntimeReadyGate } from "./runtime-ready-gate.ts";
 import { handleRuntimeSwitchRoutes } from "./runtime-switch-routes.ts";
 import {
@@ -1872,6 +1873,20 @@ async function handleRequest(
     // as unguessable capabilities, so media loads from <img>/<audio> without an
     // auth header — same rationale as static assets above.
     if (serveMediaFile(req, res, pathname)) return;
+  }
+
+  // ── Runtime-mode gate + remote-mode forwarder ───────────────────────────
+  // Enforced here, in the server every host shares, so the bare agent
+  // (`bun run start`) honors the same mode contract as the app-core wrapper:
+  // routes outside the active runtime mode return 404 before auth runs (hidden,
+  // not probeable), and in remote mode cloud mutations forward to the
+  // controlled target instead of executing on the controller. OPTIONS is
+  // exempt so CORS preflight keeps its unconditional 204 below.
+  if (
+    method !== "OPTIONS" &&
+    (await handleRuntimeModePreDispatch(req, res, state.runtime))
+  ) {
+    return;
   }
 
   if (

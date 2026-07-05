@@ -15,7 +15,7 @@
  *   - The matcher prefers an exact pathname match, falls back to
  *     longest-prefix match. Method may be "*" to apply to all verbs.
  *
- * AGENTS.md §1 contract:
+ * Runtime-mode contract (#13725):
  *   - cloud mode hides every local-model surface and every
  *     `/api/local-inference/*` endpoint.
  *   - local-only hides every cloud-routed surface (`/api/cloud/*`,
@@ -43,7 +43,7 @@
  * so the owner set and the rule set cannot drift apart.
  */
 
-import type { RuntimeMode } from "./runtime-mode";
+import type { RuntimeMode } from "./runtime-mode.ts";
 
 export type HttpMethod =
   | "GET"

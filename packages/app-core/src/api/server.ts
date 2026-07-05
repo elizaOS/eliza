@@ -28,6 +28,7 @@ import {
   fetchWithTimeoutGuard,
   handleCloudBillingRoute,
   handleCloudCompatRoute,
+  handleRuntimeModePreDispatch,
   isAllowedHost,
   isAuthorized,
   loadElizaConfig,
@@ -47,8 +48,6 @@ import {
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-run-options";
-import { forwardRemoteCloudMutation } from "../runtime/mode/remote-forwarder";
-import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
@@ -678,19 +677,15 @@ async function handleCompatRouteInner(
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
 
-  // ── Mode visibility gate ──────────────────────────────────────────────
-  // AGENTS.md §1: cloud mode hides /api/local-inference/*, local-only mode
-  // hides /api/cloud/*. Hidden = 404 (not 403) so callers cannot probe
-  // mode state.
-  const gate = applyRouteModeGuard(req, res, state.current);
-  if (gate.handled) return true;
-
-  // ── Remote-mode forward ───────────────────────────────────────────────
-  // AGENTS.md §1: in remote mode, mutations to cloud settings target the
-  // controlled local instance, not the controller's own config.
-  if (gate.mode === "remote") {
-    if (await forwardRemoteCloudMutation(req, res)) return true;
-  }
+  // ── Mode visibility gate + remote-mode forward ────────────────────────
+  // Shared hook from @elizaos/agent (also enforced in the bare agent
+  // server's own dispatch): cloud mode hides /api/local-inference/*,
+  // local-only hides /api/cloud/* (hidden = 404, not 403, so callers cannot
+  // probe mode state), and remote mode forwards cloud mutations to the
+  // controlled target instead of the controller's own config. It must also
+  // run here because the compat chain below handles those routes before the
+  // request ever reaches the upstream agent listener.
+  if (await handleRuntimeModePreDispatch(req, res, state.current)) return true;
 
   const authPolicyDecision = await enforceCompatRouteAuthPolicy(
     req,

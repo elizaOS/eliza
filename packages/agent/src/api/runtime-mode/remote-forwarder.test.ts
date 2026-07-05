@@ -11,7 +11,7 @@ import { describe, expect, test } from "vitest";
 import {
   buildForwardHeaders,
   shouldForwardToRemoteTarget,
-} from "./remote-forwarder";
+} from "./remote-forwarder.ts";
 
 describe("shouldForwardToRemoteTarget", () => {
   test("forwards POST /api/cloud/login", () => {

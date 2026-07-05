@@ -1,10 +1,11 @@
 /**
  * Remote-mode forwarder.
  *
- * AGENTS.md §1: in `remote` mode, mutating cloud settings must affect the
- * *target's* cloud settings (the local instance the controller is wired
- * to), not the controller's own config. The controller has no cloud
- * surface of its own — every cloud-routed write proxies to the target.
+ * Runtime-mode contract (#13725): in `remote` mode, mutating cloud settings
+ * must affect the *target's* cloud settings (the local instance the
+ * controller is wired to), not the controller's own config. The controller
+ * has no cloud surface of its own — every cloud-routed write proxies to the
+ * target.
  *
  * Reads stay local: the dashboard reads its own status (which is the
  * thin-client target shape), and queries that need target state already
@@ -15,9 +16,9 @@
  */
 
 import type http from "node:http";
-import { fetchWithTimeoutGuard } from "@elizaos/agent";
-import { sendJsonError } from "../../api/response";
-import { getRuntimeModeSnapshot } from "./runtime-mode";
+import { sendJsonError } from "@elizaos/core";
+import { fetchWithTimeoutGuard } from "../server-helpers-fetch.ts";
+import { getRuntimeModeSnapshot } from "./runtime-mode.ts";
 
 /** Pathnames whose mutations belong to the target in remote mode. */
 const REMOTE_FORWARDED_MUTATION_PREFIXES = [
@@ -113,8 +114,8 @@ export async function forwardRemoteCloudMutation(
   if (!snapshot.remoteApiBase) {
     sendJsonError(
       res,
-      snapshot.remoteApiBaseError ? 400 : 503,
       snapshot.remoteApiBaseError ?? "Remote target not configured",
+      snapshot.remoteApiBaseError ? 400 : 503,
     );
     return true;
   }

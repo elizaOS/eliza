@@ -147,8 +147,10 @@ interface BaseRoute {
 	 */
 	rawPath?: boolean;
 	/**
-	 * Runtime modes where this route is visible. Hosts that support runtime modes
-	 * hide routes outside this list with 404 before handler logic runs.
+	 * Runtime modes where this route is visible. The agent HTTP server hides
+	 * routes outside this list with 404 before handler logic runs
+	 * (packages/agent/src/api/runtime-mode/), so every host — the bare agent
+	 * and the app-core wrapper — enforces the same visibility contract.
 	 */
 	modes?: ReadonlyArray<RouteRuntimeMode>;
 	/** Free-form one-liner documenting why the route is scoped to those modes. */
