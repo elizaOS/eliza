@@ -29,9 +29,17 @@ on:
     paths:
       - "packages/ui/src/**"
 
+# CI fan-out fix: the PR-scoped concurrency from #14069 fell back to
+# github.run_id on push, so every develop push got a unique group and
+# nothing ever superseded. A 37-merge wave queued thousands of push runs
+# and starved the self-hosted fleet. Fall back to github.ref (all develop
+# pushes share a group) and cancel superseded runs on push too. PR behavior
+# is unchanged (pull_request.number still wins the key); merge_group and
+# schedule events are not in the cancel set, so the merge queue and nightly
+# runs always complete.
 concurrency:
-  group: ui-fixture-e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ui-fixture-e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 permissions:
   contents: read
