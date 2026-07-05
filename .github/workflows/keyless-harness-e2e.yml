@@ -12,9 +12,9 @@ name: Keyless Harness E2E
 # secret — every provider key below is explicitly blanked to prove the loops
 # stay green without one.
 #
-# This standalone lane remains an always-on PR smoke. The same harness commands
-# are also folded into `.github/workflows/test.yml` through `zero-key-e2e` so at
-# least one per-plugin proof participates in the required `test-status` gate.
+# The required PR gate in `.github/workflows/test.yml` owns the central mock-LLM
+# harness plus the first adoption proofs. This standalone lane owns the remaining
+# connector harness proofs so the same command is not run twice on PRs.
 
 on:
   # Reusable entry for the scheduled exhaustive develop lane (#12342).
@@ -79,25 +79,8 @@ jobs:
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
-      # Deterministic mock-LLM proxy + recorded payment/connector fixtures.
-      # test/mocks/__tests__/** drives both with zero credentials.
-      - name: Keyless harness e2e (mock-LLM + recorded fixtures)
-        working-directory: packages
-        run: bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/
-
-      # Issue #8801 / #10757 follow-up: the central harness proves the substrate,
-      # but the per-plugin adoption proofs are excluded from default vitest runs
-      # (each plugin's vitest.config.ts excludes *.harness.test.ts). Gate every
-      # checked-in per-plugin harness suite here so those proofs cannot drift,
-      # while still avoiding live provider credentials — each suite loads the real
-      # plugin under the deterministic mock-LLM runtime with keys blanked.
-      # NOTE (#10757): plugin-goals also ships a harness suite but is not gated
-      # here yet — it depends on the built @elizaos/registry first-party subpath
-      # and could not be confirmed keyless-green outside a full workspace build.
-      - name: Per-plugin keyless harness adoption proofs
+      - name: Remaining per-plugin keyless harness adoption proofs
         run: |
-          bun run --cwd plugins/plugin-anthropic test:harness
-          bun run --cwd plugins/plugin-discord test:harness
           bun run --cwd plugins/plugin-openai test:harness
           bun run --cwd plugins/plugin-groq test:harness
           bun run --cwd plugins/plugin-openrouter test:harness
