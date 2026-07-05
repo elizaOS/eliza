@@ -25,6 +25,7 @@ import type { ConversationMessage } from "../api";
 import { useShellControllerContext } from "../components/shell/ShellControllerContext.hooks";
 import {
   type CloudHandoffPhaseDetail,
+  dispatchChatOpen,
   dispatchCloudHandoffRetry,
 } from "../events";
 import { useCloudHandoffPhase } from "../hooks/useCloudHandoffPhase";
@@ -159,8 +160,9 @@ export function useBootRecoveryConductor(
     return () => window.clearTimeout(id);
   }, [booting]);
 
-  // Conductor active only post-onboarding and outside the no-provider state.
-  const active = firstRunComplete === true && !noProviderConfigured;
+  // Conductor active only post-onboarding (the first-run conductor owns the
+  // onboarding screen).
+  const active = firstRunComplete === true;
 
   const handoffFailed =
     handoff != null &&
@@ -171,13 +173,17 @@ export function useBootRecoveryConductor(
     backendConnection?.state === "failed" &&
     !backendConnection.showDisconnectedUI;
 
+  // The no-provider exclusion scopes to the STALL diagnosis only: an
+  // unconfigured provider legitimately never finishes booting and the
+  // transcript's no-provider gate owns that state — but a failed handoff or a
+  // dead connection is real trouble regardless of provider config.
   const trouble: Trouble = !active
     ? null
     : connectionFailed
       ? { kind: "connection" }
       : handoffFailed
         ? { kind: "handoff", agentId: handoff.agentId }
-        : stalled
+        : stalled && !noProviderConfigured
           ? hasUsableStoredStewardToken()
             ? { kind: "unresponsive" }
             : { kind: "signed-out" }
@@ -207,16 +213,28 @@ export function useBootRecoveryConductor(
   }, []);
 
   const troubleKind = trouble === null ? null : trouble.kind;
+  // The resting overlay shows no transcript, so a card seeded while the sheet
+  // is collapsed would be silent. On the FIRST seed of a trouble episode (null
+  // → non-null), open the chat so the agent's ask is actually seen; updates
+  // within the same episode never re-open (the user may have collapsed it).
+  const spokeRef = React.useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `cardVersion` is a re-render nonce — releaseOverride bumps it so the live card reseeds after an action settles on an unchanged trouble kind.
   React.useEffect(() => {
     if (troubleKind === null) {
       overrideRef.current = null;
+      spokeRef.current = false;
       removeTurn();
       return;
     }
     if (overrideRef.current) return;
     const current = troubleRef.current;
-    if (current) upsertTurn(cardToTurn(liveCard(current)));
+    if (current) {
+      upsertTurn(cardToTurn(liveCard(current)));
+      if (!spokeRef.current) {
+        spokeRef.current = true;
+        dispatchChatOpen();
+      }
+    }
   }, [troubleKind, cardVersion, upsertTurn, removeTurn]);
 
   const handleAction = React.useCallback(

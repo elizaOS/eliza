@@ -4228,13 +4228,21 @@ export function ContinuousChatOverlay({
                       className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"
                     />
                   ) : null}
-                  {/* `mt-auto` keeps the latest line at the bottom (nearest the input)
-                  until the thread overflows, then it scrolls. The ref measures
-                  this content so onboarding can size the sheet to it (grow from
-                  the bottom). */}
+                  {/* `mt-auto` keeps the latest line at the bottom (nearest the
+                  input) until the thread overflows, then it scrolls. During
+                  onboarding the transcript is TOP-aligned instead: the sheet is
+                  pinned full-screen, and bottom-anchoring would shift every
+                  existing choice button UP each time the conductor seeds a new
+                  turn — the second tap of a fast double-tap would land on a
+                  button that just slid under the finger (a mis-pick straight
+                  into the wrong flow). Top-aligned, turns append BELOW what's
+                  already on screen and nothing moves under a pointer. */}
                   <div
                     ref={threadContentRef}
-                    className="mt-auto flex flex-col pb-3 pt-1"
+                    className={cn(
+                      "flex flex-col pb-3 pt-1",
+                      !firstRunOpen && "mt-auto",
+                    )}
                   >
                     {/* Top sentinel for infinite upward scroll (#13532, #14279):
                         a zero-height marker just above the oldest turn. When it

@@ -377,34 +377,32 @@ test("cloud handoff: home tile tracks migrating→switched, failures speak in ch
       );
     }, detail);
 
-  // migrating: the dedicated container is booting; the home-grid provisioning
-  // tile shows the background work. The shell (which attaches the window
-  // listener) renders after the boot/first-run sequence; a CustomEvent fired
-  // before the listener is attached is simply dropped (not buffered). Re-emit
-  // until the tile lands so the test isn't racing the shell mount.
-  await expect(async () => {
-    await emitPhase({ agentId: "agent-keep", phase: "migrating" });
-    await expect(
-      page.getByTestId("chat-widget-agent-provisioning"),
-    ).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 45_000 });
+  // migrating: a background process with NO floating surface — the old toast
+  // ("you can keep chatting") must never appear; the home-grid provisioning
+  // tile is the durable surface (covered by its own widget rendering, which
+  // this fixture's bare view catalog does not mount).
+  await emitPhase({ agentId: "agent-keep", phase: "migrating" });
+  await expect(page.getByText(/keep chatting/i)).toHaveCount(0);
 
-  // switched: the live client swapped to the dedicated container — nothing
-  // left to provision, the tile self-hides.
-  await emitPhase({ agentId: "agent-keep", phase: "switched", imported: 3 });
-  await expect(page.getByTestId("chat-widget-agent-provisioning")).toHaveCount(
-    0,
+  // failed: a recoverable failure speaks in the transcript via the
+  // boot-recovery conductor with a specific remedy (instead of a silent
+  // permanent fallback to the shared adapter). The shell (which attaches the
+  // window listener) renders after the boot sequence; a CustomEvent fired
+  // before the listener is attached is simply dropped (not buffered) — re-emit
+  // until the in-chat card lands so the test isn't racing the shell mount.
+  const retrySetup = page.getByTestId(
+    "choice-__boot_recovery__:retry-handoff",
   );
-
-  // failed: a recoverable failure speaks in the transcript with a specific
-  // remedy (instead of a silent permanent fallback to the shared adapter).
-  await emitPhase({
-    agentId: "agent-keep",
-    phase: "failed",
-    error: "boot timeout",
-  });
+  await expect(async () => {
+    await emitPhase({
+      agentId: "agent-keep",
+      phase: "failed",
+      error: "boot timeout",
+    });
+    await expect(retrySetup).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 45_000 });
   await expect(page.getByText(/dedicated agent/i).first()).toBeVisible();
-  await page.getByTestId("choice-__boot_recovery__:retry-handoff").click();
+  await retrySetup.click();
   await expect
     .poll(() =>
       page.evaluate(
@@ -414,4 +412,10 @@ test("cloud handoff: home tile tracks migrating→switched, failures speak in ch
       ),
     )
     .toContain("agent-keep");
+
+  // switched: the dedicated agent attached — the recovery card clears; the
+  // transcript goes quiet instead of celebrating with a floating toast.
+  await emitPhase({ agentId: "agent-keep", phase: "switched", imported: 3 });
+  await expect(retrySetup).toHaveCount(0);
+  await expect(page.getByText(/now on your dedicated agent/i)).toHaveCount(0);
 });

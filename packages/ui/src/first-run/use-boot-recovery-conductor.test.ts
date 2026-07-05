@@ -197,14 +197,37 @@ describe("useBootRecoveryConductor", () => {
     unmount();
   });
 
-  it("surfaces a failed dedicated-agent handoff with a Retry setup control", () => {
-    const { card, unmount } = renderConductor({
+  it("surfaces a failed dedicated-agent handoff with a Retry setup control and opens the chat once", () => {
+    const opens: number[] = [];
+    const onOpen = () => opens.push(1);
+    window.addEventListener("eliza:chat:open", onOpen);
+    const { card, rerender, unmount } = renderConductor({
       booting: false,
       noProviderConfigured: false,
       handoff: { phase: "failed", agentId: "agent-1" },
     });
     expect(card()?.text).toContain("dedicated agent");
     expect(card()?.text).toContain("__boot_recovery__:retry-handoff=");
+    // The resting overlay shows no transcript — the first seed opens the chat
+    // so the ask is seen; a same-episode update must not re-open it.
+    expect(opens.length).toBe(1);
+    rerender({
+      booting: false,
+      noProviderConfigured: false,
+      handoff: { phase: "timed-out", agentId: "agent-1" },
+    });
+    expect(opens.length).toBe(1);
+    window.removeEventListener("eliza:chat:open", onOpen);
+    unmount();
+  });
+
+  it("still surfaces a failed handoff when no provider is configured (the exclusion scopes to the stall diagnosis)", () => {
+    const { card, unmount } = renderConductor({
+      booting: false,
+      noProviderConfigured: true,
+      handoff: { phase: "failed", agentId: "agent-2" },
+    });
+    expect(card()?.text).toContain("dedicated agent");
     unmount();
   });
 
