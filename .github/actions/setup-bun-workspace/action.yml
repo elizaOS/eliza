@@ -101,8 +101,27 @@ runs:
       if: ${{ inputs.setup-python == 'true' && runner.environment == 'self-hosted' }}
       shell: bash
       run: |
-        if command -v python3 >/dev/null 2>&1 && python3 -c "import sys" >/dev/null 2>&1; then
-          echo "python-bin=$(command -v python3)" >> "$GITHUB_OUTPUT"
+        if ! command -v python3 >/dev/null 2>&1 || ! python3 -c "import sys" >/dev/null 2>&1; then
+          exit 0
+        fi
+
+        python_bin="$(command -v python3)"
+        if "$python_bin" - <<'PY'
+        import importlib.util
+        import sys
+
+        if sys.version_info < (3, 12):
+            raise SystemExit(0)
+        if importlib.util.find_spec("setuptools") is not None:
+            raise SystemExit(0)
+        if importlib.util.find_spec("pip") is not None:
+            raise SystemExit(0)
+        raise SystemExit(1)
+        PY
+        then
+          echo "python-bin=${python_bin}" >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning::System python3 lacks pip/setuptools for the Python 3.12+ distutils shim; trying actions/setup-python fallback"
         fi
 
     - name: Setup Python
@@ -117,6 +136,11 @@ runs:
         python-version: ${{ inputs.python-version }}
 
     - name: Install setuptools for distutils (Python 3.12+)
+      # node-gyp on Python 3.12+ needs setuptools for the removed distutils. Skip
+      # when it is already importable (common on build-tooled runners), else try
+      # escalating strategies: a bare install works on setup-python's isolated
+      # interpreter, while a PEP 668 system python3 needs --user or
+      # --break-system-packages. The chain fails loudly only if all strategies do.
       if: ${{ inputs.setup-python == 'true' }}
       shell: bash
       run: |
@@ -128,7 +152,29 @@ runs:
           echo "::warning::No usable python3 found; skipping setuptools install (node-gyp fallback unavailable)"
           exit 0
         fi
-        "$python_bin" -m pip install setuptools
+
+        if "$python_bin" - <<'PY'
+        import sys
+        raise SystemExit(0 if sys.version_info < (3, 12) else 1)
+        PY
+        then
+          echo "Python <3.12; setuptools distutils shim is not required"
+          exit 0
+        fi
+
+        if "$python_bin" -c 'import setuptools' >/dev/null 2>&1; then
+          echo "setuptools already present: $("$python_bin" -c 'import setuptools; print(setuptools.__version__)')"
+          exit 0
+        fi
+
+        if ! "$python_bin" -m pip --version >/dev/null 2>&1; then
+          echo "::warning::No usable pip found; skipping setuptools install (node-gyp fallback unavailable)"
+          exit 0
+        fi
+
+        "$python_bin" -m pip install setuptools \
+          || "$python_bin" -m pip install --user setuptools \
+          || "$python_bin" -m pip install --break-system-packages setuptools
 
     - name: Install protoc
       # protoc is required even when install-native-deps=false because Rust
