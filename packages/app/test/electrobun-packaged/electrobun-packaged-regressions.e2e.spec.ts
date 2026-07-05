@@ -79,18 +79,29 @@ function getSettingsSectionForRoute(route: string): string | null {
 function getRouteNavigationScript(route: string): string {
   const settingsSection = getSettingsSectionForRoute(route);
   if (settingsSection) {
+    // Re-fire the navigation intents on EVERY eval, not only when the hash
+    // differs. After a packaged relaunch the interactive App (and its
+    // NAVIGATE_SETTINGS_EVENT / hashchange listeners installed by
+    // bindReadyPhase) can mount a few polls after the harness declares the
+    // shell ready. A one-shot dispatch that is gated behind
+    // `hash !== targetHash` is silently dropped when it lands before those
+    // listeners exist, and the already-correct hash then suppresses every
+    // retry — so the settings tab never syncs and `settings-shell` never
+    // mounts (the #13681 `/settings/voice` timeout). Dispatching each poll is
+    // idempotent (the state writes are no-ops once set) and self-heals a
+    // late-mounting listener.
     return [
       `const targetRoute = ${JSON.stringify(route)};`,
       `const settingsSection = ${JSON.stringify(settingsSection)};`,
       `const readCurrentRoute = () => ${getCurrentRouteExpression()};`,
-      `window.dispatchEvent(new CustomEvent(${JSON.stringify(NAVIGATE_SETTINGS_EVENT)}, {`,
-      `  detail: { section: settingsSection },`,
-      `}));`,
       `const targetHash = "#" + settingsSection;`,
       `if (window.location.hash !== targetHash) {`,
       `  window.history.replaceState(null, "", targetHash);`,
-      `  window.dispatchEvent(new HashChangeEvent("hashchange"));`,
       `}`,
+      `window.dispatchEvent(new CustomEvent(${JSON.stringify(NAVIGATE_SETTINGS_EVENT)}, {`,
+      `  detail: { section: settingsSection },`,
+      `}));`,
+      `window.dispatchEvent(new HashChangeEvent("hashchange"));`,
       `const currentRoute = readCurrentRoute();`,
     ].join("\n");
   }
@@ -103,8 +114,13 @@ function getRouteNavigationScript(route: string): string {
     `  if (window.location.hash !== targetHash) {`,
     `    window.location.hash = targetHash;`,
     `  }`,
+    `  // Re-fire hashchange every poll so a nav listener that mounts after the`,
+    `  // first dispatch (post-relaunch race) still picks up the target route.`,
+    `  window.dispatchEvent(new HashChangeEvent("hashchange"));`,
     `} else if (window.location.pathname !== targetRoute) {`,
     `  window.history.pushState(null, "", targetRoute);`,
+    `  window.dispatchEvent(new Event("popstate"));`,
+    `} else {`,
     `  window.dispatchEvent(new Event("popstate"));`,
     `}`,
     `const currentRoute = readCurrentRoute();`,
@@ -1042,12 +1058,25 @@ async function withPackagedHarness(
     );
 
     // Wait for the startup coordinator to finish transitioning past the
-    // StartupShell. Bootstrap requests prove the live API is reachable, but
-    // the startup coordinator may still be in polling-backend → starting-runtime
-    // → hydrating phases. Poll until the startup shell DOM element is gone
-    // and the root element has substantial content.
+    // StartupShell AND for the interactive desktop app shell to actually mount.
+    // Bootstrap requests prove the live API is reachable, but the startup
+    // coordinator may still be in polling-backend → starting-runtime →
+    // hydrating phases.
     //
-    // Previous approach used a regex on body text (/LOADING/i etc.) which
+    // #13681: the previous gate only required `rootHtml.length > 200 &&
+    // !startupShell` (and checked a phantom `first-run-shell` selector that no
+    // longer exists, so it never matched). That declared "ready" during the
+    // transitional window AFTER the startup splash is torn down but BEFORE the
+    // real App mounts its navigation listeners (bindReadyPhase installs the
+    // hashchange→setTabRaw sync; the App effect installs the
+    // NAVIGATE_SETTINGS_EVENT → setTab("settings") handler). Navigating to
+    // `/settings/voice` in that gap dropped the intent on the floor, the
+    // settings tab never synced, and `settings-shell` timed out at ~512-char
+    // empty root. Require the desktop tablist (rendered only by the interactive
+    // shell once the App is live) so navigation is issued against a mounted,
+    // listener-bearing App.
+    //
+    // Previous approach also used a regex on body text (/LOADING/i etc.) which
     // false-positived on app-shell "Loading messages…" text in ChatView,
     // causing the relaunch to stall even though the coordinator reached ready.
     await waitForEval<
@@ -1056,6 +1085,7 @@ async function withPackagedHarness(
         rootLength: number;
         bodySnippet: string;
         startupPhase: string | null;
+        interactiveShell: boolean;
       }>
     >(
       harness,
@@ -1063,15 +1093,28 @@ async function withPackagedHarness(
         try {
           const rootHtml = document.getElementById("root")?.innerHTML ?? "";
           const startupShell = document.querySelector('[data-testid="startup-shell-loading"]');
-          const firstRunOverlay = document.querySelector('[data-testid="first-run-shell"]');
           const startupPhase = startupShell?.getAttribute("data-startup-phase") ?? null;
           const bodyText = (document.body?.innerText || "").replace(/\\s+/g, " ").trim();
+          // Interactive-shell markers that only render once the real App is
+          // mounted (and thus its navigation listeners — hashchange→setTabRaw
+          // via bindReadyPhase and NAVIGATE_SETTINGS_EVENT→setTab — are live).
+          // ANY of these proves we are past the transitional post-splash gap
+          // that caused the #13681 dropped-navigation timeout. We accept the
+          // union so a momentarily-empty desktop tab list (which self-hides)
+          // cannot deadlock the gate.
+          const interactiveShell = Boolean(
+            document.querySelector('[role="tablist"][aria-label="Desktop view tabs"]') ||
+              document.querySelector('[data-testid="continuous-chat-overlay"]') ||
+              document.querySelector('[data-testid="settings-shell"]') ||
+              document.querySelector('[data-testid="chat-pill"]'),
+          );
           return {
             ok: true,
-            ready: rootHtml.length > 200 && !startupShell && !firstRunOverlay,
+            ready: rootHtml.length > 200 && !startupShell && interactiveShell,
             rootLength: rootHtml.length,
             bodySnippet: bodyText.slice(0, 120),
             startupPhase,
+            interactiveShell,
           };
         } catch (e) {
           return { ok: false, ready: false, rootLength: 0, bodySnippet: "", startupPhase: null };
