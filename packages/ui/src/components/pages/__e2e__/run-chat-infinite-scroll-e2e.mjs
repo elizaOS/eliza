@@ -24,7 +24,15 @@ import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { chromium } from "playwright";
+import { chromium, webkit } from "playwright";
+
+// `ENGINE=webkit` runs the SAME harness under WebKit — scroll-anchor
+// preservation on prepend is engine-specific (WebKit's scroll-anchoring
+// heuristics differ from Blink), so AC #2 (#14329) requires both engines. The
+// harness drives scrollTop programmatically (not a wheel), so it is
+// engine-agnostic and needs no per-engine gesture path.
+const ENGINE = process.env.ENGINE === "webkit" ? webkit : chromium;
+const ENGINE_NAME = process.env.ENGINE === "webkit" ? "webkit" : "chromium";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -160,7 +168,10 @@ const base = `http://127.0.0.1:${port}`;
 const SCROLLER = '[data-testid="infinite-scroll-scroller"]';
 const ROW = '[data-testid="infinite-scroll-row"]';
 
-const browser = await chromium.launch({ args: ["--no-sandbox"] });
+console.log(`engine: ${ENGINE_NAME}`);
+const browser = await ENGINE.launch(
+  ENGINE_NAME === "chromium" ? { args: ["--no-sandbox"] } : {},
+);
 const consoleErrors = [];
 
 async function newPage(query) {
@@ -320,7 +331,7 @@ assert(consoleErrors.length === 0, `no console errors (${consoleErrors.length})`
 if (consoleErrors.length) for (const e of consoleErrors) console.log("  ERR:", e);
 
 if (failures > 0) {
-  console.error(`\n${failures} assertion(s) FAILED`);
+  console.error(`\n${failures} assertion(s) FAILED [${ENGINE_NAME}]`);
   process.exit(1);
 }
-console.log("\nAll infinite-scroll assertions passed.");
+console.log(`\nAll infinite-scroll assertions passed [${ENGINE_NAME}].`);

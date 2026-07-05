@@ -405,14 +405,15 @@ describe("useLoadOlderOnScroll — scroll-anchor preservation", () => {
       />,
     );
 
-    // Fire the load; it resolves with no growth. Flush the finally rAF that
-    // clears the un-consumed anchor.
+    // Fire the load; it resolves with no growth. Flush the finally's DOUBLE rAF
+    // that clears the un-consumed anchor (two frames of runway so a real
+    // prepend's commit outlasts the expiry on WebKit — see the hook comment).
     await act(async () => {
       FakeIntersectionObserver.last?.fire(true);
     });
     await act(async () => {
       await new Promise((resolve) =>
-        requestAnimationFrame(() => resolve(null)),
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(null))),
       );
     });
 

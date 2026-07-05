@@ -72,7 +72,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: bunx playwright install --with-deps chromium webkit
 
       # The permission-priming fixture pulls @elizaos/shared, whose i18n module
       # loads generated keyword data that is gitignored. Generate it so the
@@ -98,12 +98,15 @@ jobs:
         run: bun run --cwd packages/ui test:background-e2e
 
       # Infinite upward scroll (#13532): the REAL useLoadOlderOnScroll +
-      # loadOlderConversationMessages driven in Chromium — scroll-to-top fires a
-      # ?before= fetch, older rows prepend, the viewport anchor stays put, plus
-      # the empty-history (no fetch) and fetch-failure (no fabricated prepend, no
-      # retry storm) legs.
-      - name: Chat infinite-scroll e2e
+      # loadOlderConversationMessages — scroll-to-top fires a ?before= fetch,
+      # older rows prepend, the viewport anchor stays put, plus the empty-history
+      # (no fetch) and fetch-failure (no fabricated prepend, no retry storm) legs.
+      # Both engines: scroll-anchor-on-prepend is engine-specific and was FLAKY
+      # on WebKit until #14329 (double-rAF anchor expiry) — this lane guards it.
+      - name: Chat infinite-scroll e2e (chromium)
         run: bun run --cwd packages/ui test:chat-infinite-scroll-e2e
+      - name: Chat infinite-scroll e2e (webkit)
+        run: ENGINE=webkit bun run --cwd packages/ui test:chat-infinite-scroll-e2e
 
       # Launcher view: tiles, tap-launch, long-press edit, page-nav, telemetry.
       - name: Launcher e2e

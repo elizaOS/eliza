@@ -122,11 +122,21 @@ export function useLoadOlderOnScroll<T extends HTMLElement = HTMLDivElement>({
         // leaves topItemKey unchanged, so the preservation layout effect never
         // runs and the pre-grow height would otherwise stay parked — then a
         // later UNRELATED top-key change (e.g. a conversation switch) would
-        // apply a bogus scrollTop delta. A real prepend commits + runs the
-        // preservation effect (nulling the ref) before this rAF fires, so this
-        // is a harmless no-op in that case and a correct cleanup otherwise.
+        // apply a bogus scrollTop delta.
+        //
+        // DOUBLE rAF (not single): a real prepend's React commit + preservation
+        // layout effect are scheduled off the SAME promise resolution as this
+        // finally, and their relative order is engine-dependent — on WebKit the
+        // commit routinely lands a frame LATER than a single rAF, so a
+        // single-frame expiry nulled the anchor before the effect consumed it
+        // and every ~3rd prepend jumped the viewport ~1 screen (verified via the
+        // webkit lane of run-chat-infinite-scroll-e2e). Two frames of runway
+        // reliably outlast the commit while still expiring long before any
+        // real user-driven unrelated top-key change.
         requestAnimationFrame(() => {
-          pendingAnchorHeightRef.current = null;
+          requestAnimationFrame(() => {
+            pendingAnchorHeightRef.current = null;
+          });
         });
       });
   }, [scrollRef]);
