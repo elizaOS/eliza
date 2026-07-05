@@ -1,14 +1,22 @@
 /**
  * Brand-surface smoke. Verifies the first-paint / launch surfaces (FOUC HTML,
- * native launch configs, capacitor + Android/iOS resources) all use the SAME
- * orange the React home background uses, so the user never sees a foreign
- * color — or a *different* orange — before the home background paints.
+ * native launch configs, capacitor + Android/iOS resources) use the right
+ * color for their lifetime, so the user never sees a foreign color — or a
+ * glowing orange band — behind or after the home background paints.
  *
- * Two distinct oranges, kept deliberately separate (issue #9565):
- *  - LAUNCH_ORANGE (#ef5a1f) — every boot/loading/launch surface. This equals
- *    DEFAULT_BACKGROUND_COLOR (packages/ui/src/state/ui-preferences.ts), the
- *    default home ShaderBackground, so the native splash → React StartupShell →
- *    home transition is a single seamless orange.
+ * Three colors, kept deliberately separate (issues #9565, orange-band fix):
+ *  - LAUNCH_DARK (#160d07) — every PERSISTENT host-chrome surface: the
+ *    index.html FOUC background (html/body/#root stays the page background
+ *    under the app forever — it bleeds through the iOS home-indicator
+ *    safe-area and overscroll zones), the PWA <meta theme-color> and manifest
+ *    colors (iOS standalone paints the home-indicator inset with it). This
+ *    equals DEFAULT_BACKGROUND_COLOR (packages/ui/src/state/ui-preferences.ts),
+ *    the ember-night base of the default home wallpaper, so any bleed-through
+ *    is invisible against the app.
+ *  - SPLASH_ORANGE (#ef5a1f) — native boot splash surfaces ONLY (capacitor
+ *    splash, Android splash resources, iOS LaunchScreen). These are true
+ *    boot-flash surfaces that are fully covered once the app paints, so they
+ *    keep the legacy launch orange; they must never be a persistent surface.
  *  - BRAND_ORANGE (#FF5800) — the brand accent (logos, brand surfaces). It may
  *    persist on brand resources but must NOT be a launch surface.
  *
@@ -26,8 +34,9 @@ const root = join(here, "..");
 const appCorePlatformsRoot = join(root, "..", "app-core", "platforms");
 
 const BRAND_ORANGE = "#FF5800";
-const LAUNCH_ORANGE = "#ef5a1f";
-const LAUNCH_ORANGE_RGB = [239, 90, 31];
+const LAUNCH_DARK = "#160d07";
+const SPLASH_ORANGE = "#ef5a1f";
+const SPLASH_ORANGE_RGB = [239, 90, 31];
 const ANDROID_SPLASH_TEMPLATE_FILES = [
   "android/app/src/main/res/drawable/splash.png",
   "android/app/src/main/res/drawable-land-hdpi/splash.png",
@@ -72,41 +81,47 @@ async function readPngRgb(path: string, x = 0, y = 0): Promise<number[]> {
 }
 
 describe("brand surfaces", () => {
-  it("launch orange equals the default home background color", () => {
-    // The single source of truth for the home ShaderBackground orange. Every
-    // launch surface below must equal this so boot → home is one seamless
-    // color. If the default home background changes, this test forces the
-    // launch surfaces to move with it.
+  it("launch dark equals the default home background color", () => {
+    // The single source of truth for the home background base. Every
+    // persistent host-chrome surface below must equal this so any strip the
+    // app's fixed background layers don't cover (iOS home-indicator inset,
+    // overscroll) is invisible. If the default home background changes, this
+    // test forces the host-chrome surfaces to move with it.
     const uiPrefs = readFileSync(
       join(root, "..", "ui", "src", "state", "ui-preferences.ts"),
       "utf8",
     );
     expect(uiPrefs).toMatch(
-      new RegExp(`DEFAULT_BACKGROUND_COLOR\\s*=\\s*"${LAUNCH_ORANGE}"`),
+      new RegExp(`DEFAULT_BACKGROUND_COLOR\\s*=\\s*"${LAUNCH_DARK}"`),
     );
   });
 
-  it("app.config web/theme colors are the launch orange (not the brand accent)", () => {
+  it("app.config web/theme colors are the persistent dark surface (not orange)", () => {
+    // theme-color paints the iOS-standalone home-indicator safe-area inset —
+    // a PERSISTENT surface, so it must be the dark app background, never the
+    // splash orange (which read as a glowing band under the composer) and
+    // never the brand accent.
     const src = read("app.config.ts");
-    expect(src).toMatch(new RegExp(`themeColor:\\s*"${LAUNCH_ORANGE}"`));
-    expect(src).toMatch(new RegExp(`backgroundColor:\\s*"${LAUNCH_ORANGE}"`));
+    expect(src).toMatch(new RegExp(`themeColor:\\s*"${LAUNCH_DARK}"`));
+    expect(src).toMatch(new RegExp(`backgroundColor:\\s*"${LAUNCH_DARK}"`));
+    expect(src).not.toMatch(new RegExp(`themeColor:\\s*"${SPLASH_ORANGE}"`));
     expect(src).not.toMatch(/themeColor:\s*"#FF5800"/);
   });
 
-  it("capacitor config and native backgrounds are the launch orange", () => {
+  it("capacitor config and native backgrounds are the splash orange", () => {
     const src = read("capacitor.config.ts");
     expect(src).toMatch(
       new RegExp(
-        `SplashScreen:\\s*\\{[^}]*backgroundColor:\\s*"${LAUNCH_ORANGE}"`,
+        `SplashScreen:\\s*\\{[^}]*backgroundColor:\\s*"${SPLASH_ORANGE}"`,
         "s",
       ),
     );
     expect(src).toMatch(
-      new RegExp(`ios:\\s*\\{[^}]*backgroundColor:\\s*"${LAUNCH_ORANGE}"`, "s"),
+      new RegExp(`ios:\\s*\\{[^}]*backgroundColor:\\s*"${SPLASH_ORANGE}"`, "s"),
     );
     expect(src).toMatch(
       new RegExp(
-        `android:\\s*\\{[^}]*backgroundColor:\\s*"${LAUNCH_ORANGE}"`,
+        `android:\\s*\\{[^}]*backgroundColor:\\s*"${SPLASH_ORANGE}"`,
         "s",
       ),
     );
@@ -119,7 +134,7 @@ describe("brand surfaces", () => {
     // Launch splash + launch status bar track the home background; brand
     // accent tokens stay separate and unchanged.
     expect(colors).toContain(
-      `<color name="splash_background">${LAUNCH_ORANGE}</color>`,
+      `<color name="splash_background">${SPLASH_ORANGE}</color>`,
     );
     expect(colors).toContain(
       `<color name="eliza_orange">${BRAND_ORANGE}</color>`,
@@ -137,7 +152,7 @@ describe("brand surfaces", () => {
 
     for (const rel of ANDROID_SPLASH_TEMPLATE_FILES) {
       expect(await readPngRgb(platformTemplatePath(rel)), rel).toEqual(
-        LAUNCH_ORANGE_RGB,
+        SPLASH_ORANGE_RGB,
       );
     }
   });
@@ -153,37 +168,50 @@ describe("brand surfaces", () => {
     expect(xml).not.toContain('image name="Splash"');
   });
 
-  it("index.html FOUC fallback uses the launch orange, not a foreign color", () => {
+  it("index.html FOUC fallback uses the persistent launch dark, not orange", () => {
     const html = read("index.html");
-    // The FOUC fallback tracks the home background orange (#ef5a1f, #9565) so
-    // boot never flashes a different orange before the home background paints.
-    // The previous `#08080a` near-black is a slop value and should not regress.
+    // html/body/#root is a PERSISTENT page background, not a boot-flash-only
+    // surface: it bleeds through wherever the app's fixed background layers
+    // don't reach (iOS home-indicator safe-area, overscroll). It must track
+    // the dark home background (#160d07 = DEFAULT_BACKGROUND_COLOR) so any
+    // bleed is invisible; the old launch orange read as a glowing band.
+    // The `#08080a` near-black slop value must also not regress.
     expect(html).not.toContain("#08080a");
-    expect(html).toMatch(new RegExp(`--launch-bg:\\s*${LAUNCH_ORANGE}`));
+    expect(html).toMatch(new RegExp(`--launch-bg:\\s*${LAUNCH_DARK}`));
     expect(html).toMatch(
       new RegExp(
-        `html,\\s*body,\\s*#root\\s*\\{[^}]*background-color:\\s*var\\(--launch-bg,\\s*${LAUNCH_ORANGE}\\)`,
+        `html,\\s*body,\\s*#root\\s*\\{[^}]*background-color:\\s*var\\(--launch-bg,\\s*${LAUNCH_DARK}\\)`,
         "s",
       ),
+    );
+    // The splash orange must never be a persistent html/body/#root surface.
+    expect(html).not.toMatch(
+      new RegExp(`var\\(--launch-bg,\\s*${SPLASH_ORANGE}\\)`),
     );
     expect(html).not.toMatch(/background-color:\s*var\(--bg/);
     // The pre-#9565 brand-accent fallback must not regress.
     expect(html).not.toMatch(/var\(--bg,\s*#FF5800\)/);
   });
 
-  it("renderer root CSS keeps the pre-app surface on the home-background orange", () => {
+  it("renderer root CSS keeps the pre-app surface on the launch dark", () => {
+    // Same persistence argument as index.html: html/body/#root in the
+    // renderer CSS is the page background under the app, so its --launch-bg
+    // fallback must be the dark app surface, never the splash orange.
     const styles = read("../ui/src/styles/styles.css");
     expect(styles).toMatch(
       new RegExp(
-        `body\\s*\\{[^}]*background:\\s*var\\(--launch-bg,\\s*${LAUNCH_ORANGE}\\)`,
+        `body\\s*\\{[^}]*background:\\s*var\\(--launch-bg,\\s*${LAUNCH_DARK}\\)`,
         "s",
       ),
     );
     expect(styles).toMatch(
       new RegExp(
-        `#root\\s*\\{[^}]*background:\\s*var\\(--launch-bg,\\s*${LAUNCH_ORANGE}\\)`,
+        `#root\\s*\\{[^}]*background:\\s*var\\(--launch-bg,\\s*${LAUNCH_DARK}\\)`,
         "s",
       ),
+    );
+    expect(styles).not.toMatch(
+      new RegExp(`var\\(--launch-bg,\\s*${SPLASH_ORANGE}\\)`),
     );
     expect(styles).not.toMatch(/#root\s*\{[^}]*background:\s*var\(--bg\)/s);
   });

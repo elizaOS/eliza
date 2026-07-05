@@ -44,7 +44,7 @@ body {
   max-width: 100%;
   height: 100%;
   margin: 0;
-  background: var(--launch-bg, #ef5a1f);
+  background: var(--launch-bg, #160d07);
   overflow: hidden;
   /* Split the axes instead of a blanket `overscroll-behavior: none`.
      `-y: none` keeps the vertical rubber-band / pull-to-refresh suppression
@@ -69,7 +69,7 @@ body {
   overflow: hidden;
   font-family: var(--font-body);
   color: var(--text);
-  background: var(--launch-bg, #ef5a1f);
+  background: var(--launch-bg, #160d07);
 }
 
 html.eliza-chat-overlay-shell,

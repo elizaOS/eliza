@@ -64,11 +64,14 @@ for the full env var table; `.env.example` documents the build-time `VITE_*` fla
 
 ## Launch Surface
 
-Boot, splash, and first-paint fallback surfaces use the home background orange
-`#ef5a1f`, not the brand accent `#FF5800`. Keep `index.html`,
-`capacitor.config.ts`, Android launch resources, iOS `LaunchScreen.storyboard`,
-and the renderer root CSS aligned so native splash -> StartupShell -> home does
-not flash a different color.
+Native boot splash surfaces (`capacitor.config.ts`, Android launch resources,
+iOS `LaunchScreen.storyboard`) use the splash orange `#ef5a1f`, not the brand
+accent `#FF5800`. Persistent host-chrome surfaces (`index.html` FOUC
+background, `<meta name="theme-color">` / manifest colors via `app.config.ts`,
+the renderer root CSS) use the dark home background `#160d07`
+(`DEFAULT_BACKGROUND_COLOR`): they stay visible under the app (iOS
+home-indicator safe-area, overscroll), so an orange there reads as a glowing
+band instead of a boot flash.
 
 ## License
 

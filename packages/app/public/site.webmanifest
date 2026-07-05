@@ -4,8 +4,8 @@
   "description": "Your agent, everywhere. Desktop, mobile, and cloud, all running the same Eliza.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ef5a1f",
-  "theme_color": "#ef5a1f",
+  "background_color": "#160d07",
+  "theme_color": "#160d07",
   "icons": [
     {
       "src": "/brand/favicons/favicon.svg",

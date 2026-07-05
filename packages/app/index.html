@@ -275,19 +275,23 @@
   </script>
   <style>
     /* FOUC guard — runs before external CSS so we use concrete values.
-       The launch surface is the home background orange (#ef5a1f —
-       DEFAULT_BACKGROUND_COLOR, the color the home ShaderBackground and the
-       StartupShell loader paint). Keep it separate from --bg: --bg resolves to
-       the light/dark theme background and can flash white/black before the
-       loader appears. */
+       The launch surface is the home background dark (#160d07 —
+       DEFAULT_BACKGROUND_COLOR, the ember-night base the home wallpaper and
+       the StartupShell loader paint). Keep it separate from --bg: --bg
+       resolves to the light/dark theme background and can flash white/black
+       before the loader appears. This surface PERSISTS as the page background
+       under the app: any strip the fixed background layers don't reach (the
+       iOS home-indicator safe-area under the composer, overscroll zones)
+       shows this color, so it must be the dark app surface. The old launch
+       orange (#ef5a1f) read as a glowing band at the bottom. */
     :root {
-      --launch-bg: #ef5a1f;
+      --launch-bg: #160d07;
     }
 
     html,
     body,
     #root {
-      background-color: var(--launch-bg, #ef5a1f);
+      background-color: var(--launch-bg, #160d07);
     }
 
     html, body {
@@ -313,7 +317,7 @@
 
     #root {
       min-height: 100dvh;
-      background-color: var(--launch-bg, #ef5a1f);
+      background-color: var(--launch-bg, #160d07);
     }
 
     .eliza-preboot-shell {
@@ -321,7 +325,7 @@
       display: grid;
       place-items: center;
       overflow: hidden;
-      background: var(--launch-bg, #ef5a1f);
+      background: var(--launch-bg, #160d07);
       color: #ffffff;
     }
 
