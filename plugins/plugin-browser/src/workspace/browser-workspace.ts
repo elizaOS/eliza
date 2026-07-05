@@ -552,6 +552,44 @@ export async function ensureBrowserWorkspaceDefaultTab(
   );
 }
 
+export interface EnsureBrowserWorkspaceDefaultTabRetryOptions {
+  attempts?: number;
+  retryDelayMs?: number;
+  sleepFn?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Seed the startup default tab with a bounded retry for desktop bridge startup.
+ *
+ * The desktop app wires `ELIZA_BROWSER_WORKSPACE_URL` before the embedded
+ * BrowserView HTTP bridge is always accepting requests. Retrying only in
+ * desktop mode keeps web-mode failures crisp while giving the bridge a short
+ * readiness window instead of permanently losing the startup tab after one
+ * connection-refused response.
+ */
+export async function ensureBrowserWorkspaceDefaultTabWithRetry(
+  env: NodeJS.ProcessEnv = process.env,
+  options: EnsureBrowserWorkspaceDefaultTabRetryOptions = {},
+): Promise<BrowserWorkspaceTab> {
+  const attempts = Math.max(
+    1,
+    options.attempts ?? (isBrowserWorkspaceBridgeConfigured(env) ? 8 : 1),
+  );
+  const retryDelayMs = options.retryDelayMs ?? 250;
+  const sleepFn = options.sleepFn ?? sleep;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await ensureBrowserWorkspaceDefaultTab(env);
+    } catch (err) {
+      lastError = err;
+      if (attempt >= attempts) break;
+      await sleepFn(retryDelayMs);
+    }
+  }
+  throw lastError;
+}
+
 export async function navigateBrowserWorkspaceTab(
   request: NavigateBrowserWorkspaceTabRequest,
   env: NodeJS.ProcessEnv = process.env,

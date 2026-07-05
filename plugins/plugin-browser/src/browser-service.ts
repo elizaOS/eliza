@@ -34,7 +34,7 @@ import {
 } from "./service.js";
 import { maybeCreateStagehandTarget } from "./targets/stagehand-target.js";
 import {
-  ensureBrowserWorkspaceDefaultTab,
+  ensureBrowserWorkspaceDefaultTabWithRetry,
   getBrowserWorkspaceSnapshot,
 } from "./workspace/browser-workspace.js";
 import type {
@@ -130,12 +130,12 @@ export class BrowserService extends Service {
       );
     }
     // Seed the Safari-style default search tab so the browser never opens
-    // empty-and-sad (#13596). Best-effort and non-blocking: a failure here
-    // (e.g. an unreachable desktop bridge) must not prevent the service from
-    // starting or block the agent's own browser actions.
+    // empty-and-sad (#13596). Best-effort with a bounded desktop bridge
+    // readiness window: failure must not prevent the service from starting.
     try {
-      await ensureBrowserWorkspaceDefaultTab();
+      await ensureBrowserWorkspaceDefaultTabWithRetry();
     } catch (err) {
+      // error-policy:J4 startup should expose the browser even when the optional default tab cannot be seeded.
       const message = err instanceof Error ? err.message : String(err);
       logger.warn(
         `[BrowserService] default search tab not seeded at start: ${message}`,

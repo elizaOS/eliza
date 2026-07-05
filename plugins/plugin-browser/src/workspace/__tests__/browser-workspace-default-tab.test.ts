@@ -8,12 +8,13 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserService } from "../../browser-service.js";
 import {
   __resetBrowserWorkspaceStateForTests,
   BROWSER_WORKSPACE_DEFAULT_SEARCH_URL,
   ensureBrowserWorkspaceDefaultTab,
+  ensureBrowserWorkspaceDefaultTabWithRetry,
   executeBrowserWorkspaceCommand,
   listBrowserWorkspaceTabs,
   resolveBrowserWorkspaceDefaultSearchUrl,
@@ -106,6 +107,50 @@ describe("browser workspace default search tab (web mode)", () => {
         ELIZA_BROWSER_DEFAULT_SEARCH_URL: "about:blank",
       }),
     ).toThrow();
+  });
+
+  it("retries desktop bridge seeding when the bridge is still warming up", async () => {
+    const originalFetch = globalThis.fetch;
+    const env: NodeJS.ProcessEnv = {
+      ELIZA_BROWSER_WORKSPACE_URL: "http://workspace-bridge.test",
+    };
+    const seededTab = {
+      id: "tab-default",
+      title: "DuckDuckGo",
+      url: BROWSER_WORKSPACE_DEFAULT_SEARCH_URL,
+      visible: true,
+      kind: "search",
+    };
+    const requests: string[] = [];
+    let requestCount = 0;
+    globalThis.fetch = vi.fn(async (input, init) => {
+      requestCount++;
+      const url = new URL(String(input));
+      requests.push(`${init?.method ?? "GET"} ${url.pathname}`);
+      if (requestCount === 1) {
+        throw new Error("desktop bridge warming up");
+      }
+      if (url.pathname === "/tabs" && !init?.method) {
+        return Response.json({ tabs: [] });
+      }
+      if (url.pathname === "/tabs" && init.method === "POST") {
+        return Response.json({ tab: seededTab });
+      }
+      return Response.json({ error: "unexpected request" }, { status: 500 });
+    }) as typeof fetch;
+
+    try {
+      const tab = await ensureBrowserWorkspaceDefaultTabWithRetry(env, {
+        attempts: 2,
+        retryDelayMs: 1,
+        sleepFn: async () => undefined,
+      });
+
+      expect(tab).toEqual(seededTab);
+      expect(requests).toEqual(["GET /tabs", "GET /tabs", "POST /tabs"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 
