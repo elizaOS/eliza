@@ -1,0 +1,24 @@
+# builtin-contacts (ipad-portrait)
+
+- **path:** `/contacts`
+- **verdict:** good
+- **console errors:** 0
+- **blue colors (banned):** none
+- **border-radius violations (off-token):** none
+- **orange↔black hover violations:** none
+- **hover probe failures:** "What's left today?" hover probe failed: locator.hover: Timeout 1000ms exceeded.; "What can you do?" hover probe failed: locator.hover: Timeout 1000ms exceeded.; "Summarize my day" hover probe failed: locator.hover: Timeout 1000ms exceeded.
+- **density probe failures:** none
+- **floating chat overlay present:** yes
+- **floating chat overlay clearance:** clear
+- **readable content chars:** 495
+- **border/divider density:** 0 (0 edges / 1M px)
+- **text density:** 2.6561 chars / 10K px
+- **whitespace ratio:** 0.7637
+- **minimalism budget:** n/a
+- **minimalism ratchet (#9950):** pass
+- **screenshot quality issues:** none
+
+## Notes
+
+_Fill in: visual issues, layout breaks, e2e gaps. Set verdict to one of:_
+_`good` · `needs-work` · `needs-eyeball` · `broken`._
