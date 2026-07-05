@@ -143,6 +143,7 @@ import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-h
 import type { ShortcutRegistry } from "../runtime/shortcut-registry";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
+import { resolveTraceCorrelationFromEnv } from "../runtime/trace-correlation";
 import {
 	createJsonFileTrajectoryRecorder,
 	finalizeTrajectoryRecording,
@@ -5966,6 +5967,10 @@ export async function runV5MessageRuntimeStage1(args: {
 				// recorder inferring them from env buried in its persistence layer.
 				runId: readEnv("ELIZA_LIFEOPS_RUN_ID"),
 				scenarioId: readEnv("ELIZA_LIFEOPS_SCENARIO_ID"),
+				// Root-turn correlation minted on the turn's trajectory context
+				// (#13775). Threading it here makes the file trajectory join the DB
+				// row and any spawned sub-agent trajectory on one traceId.
+				traceId: getTrajectoryContext()?.traceId,
 				rootMessage: {
 					id: String(args.message.id ?? args.responseId),
 					text: getUserMessageText(args.message) ?? "",
@@ -8512,7 +8517,14 @@ export class DefaultMessageService implements IMessageService {
 		}
 
 		const senderRole = await resolveStage1SenderRole(runtime, message);
+		// Mint the root-turn traceId once here (#13775) — inherited from a
+		// spawning parent's env when this runtime is itself a sub-agent, else a
+		// fresh id. Placing it on the turn-scoped trajectory context makes it
+		// readable by the file recorder (message.ts:startTrajectory), DB
+		// persistence, and any sub-agent spawn for the whole turn.
+		const traceId = resolveTraceCorrelationFromEnv().traceId ?? asUUID(v4());
 		const trajectoryContextBase = {
+			traceId,
 			runId: runtime.getCurrentRunId?.(),
 			roomId: message.roomId,
 			messageId: message.id,

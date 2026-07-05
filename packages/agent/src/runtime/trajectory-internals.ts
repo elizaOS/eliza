@@ -20,6 +20,7 @@ import {
   ModelType,
   observationExtractionTemplate,
   resolveStateDir,
+  resolveTrajectoryGate,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 
@@ -2219,33 +2220,17 @@ export async function writeCompressedJsonlRows(
 }
 
 /**
- * Resolves whether trajectory persistence is on by default:
- *
- *   1. `NODE_ENV === "test"` — off (keeps the test runner free of background
- *      DB writes).
- *   2. `ELIZA_DISABLE_TRAJECTORY_LOGGING=1` — off (explicit operator opt-out).
- *   3. `NODE_ENV === "production"` — off by default; operators must opt in with
- *      `ELIZA_TRAJECTORY_LOGGING=1` (SOC2 O-5).
- *   4. Otherwise (dev / unset `NODE_ENV`) — on, for the local debugging workflow.
- *
- * The other legacy knobs (`ENABLE_TRAJECTORIES`, `TRAJECTORY_LOGGING_ENABLED`,
- * `ELIZA_CLOUD_PROVISIONED`) are not honored: each was a different historical
- * attempt to gate persistence, and shipping multiple opt-in paths produced
- * silent gaps where debugging and training data went missing.
+ * Resolves whether DB trajectory persistence is on by default. Delegates to the
+ * single core gate resolver (trajectory-gate.ts) so this DB logger and the file
+ * recorder can no longer disagree (#13775): the same SOC2 O-5 precedence — hard
+ * opt-out → explicit `ELIZA_TRAJECTORY_LOGGING` → legacy
+ * `ELIZA_TRAJECTORY_RECORDING` alias → test off → prod opt-in → dev on — governs
+ * both. The env param is retained so callers can probe a synthetic env.
  */
 export function shouldEnableTrajectoryLoggingByDefault(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  if (env.NODE_ENV === "test") return false;
-  if (env.ELIZA_DISABLE_TRAJECTORY_LOGGING === "1") return false;
-  // SOC2 O-5: in production NODE_ENV the default is OFF; operators must
-  // explicitly opt in via ELIZA_TRAJECTORY_LOGGING=1. Dev/unset NODE_ENV
-  // preserves the previous always-on behavior for the local debugging
-  // workflow.
-  if (env.NODE_ENV === "production") {
-    return env.ELIZA_TRAJECTORY_LOGGING === "1";
-  }
-  return true;
+  return resolveTrajectoryGate(env).enabled;
 }
 
 /**

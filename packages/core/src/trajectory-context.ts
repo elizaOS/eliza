@@ -16,6 +16,12 @@ export interface TrajectoryContext {
 	/** Active trajectory identifier, when the logger separates trajectory and step ids. */
 	trajectoryId?: string;
 	trajectoryStepId?: string;
+	/**
+	 * Root-turn correlation id (#13775). Minted at the message.ts turn boundary
+	 * so DB persistence and sub-agent spawns downstream can read one shared
+	 * `traceId` and stitch the file, DB, and orchestrator trace stores together.
+	 */
+	traceId?: string;
 	/** Current runtime run identifier associated with the active trajectory step. */
 	runId?: string;
 	/** Room context for pipeline/model hooks emitted during trajectory logging. */

@@ -319,6 +319,10 @@ async function main(): Promise<number> {
     process.env.ELIZA_TRAJECTORY_DIR = trajectoryDir;
     process.env.ELIZA_LIFEOPS_RUN_ID = effectiveRunId;
     process.env.ELIZA_LIFEOPS_RUN_DIR = effectiveRunDir;
+    // The recorder default flipped to opt-in for prod/test (#13775); a scenario
+    // run capturing trajectories must opt in explicitly so the per-turn traces
+    // this run then aggregates/exports are actually written.
+    process.env.ELIZA_TRAJECTORY_LOGGING = "1";
     logger.info(
       `[eliza-scenarios] run-dir: ${effectiveRunDir} (trajectories → ${trajectoryDir}, runId=${effectiveRunId})`,
     );
