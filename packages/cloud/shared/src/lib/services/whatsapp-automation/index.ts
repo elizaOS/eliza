@@ -130,6 +130,9 @@ class WhatsAppAutomationService {
         phoneDisplay: data.display_phone_number,
       };
     } catch (error) {
+      // error-policy:J1 transport failure at the Meta Graph boundary translated to a distinct
+      // network-error validation result; never reports valid:true on a failed fetch, and the
+      // network message stays separable from the designed 401 "Invalid access token" verdict.
       const message = error instanceof Error ? error.message : "Unknown error";
       logger.warn("[WhatsAppAutomation] Token validation error", {
         error: message,
@@ -180,7 +183,7 @@ class WhatsAppAutomationService {
           audit,
         );
       } catch (err) {
-        // If secret already exists, find it and update it
+        // error-policy:J2 recover the idempotent already-exists collision (rotate); rethrow every other failure unchanged
         if (err instanceof Error && err.message.includes("already exists")) {
           logger.info("[WhatsAppAutomation] Secret exists, updating", { name });
           const existingSecrets = await secretsService.list(organizationId);
@@ -211,6 +214,7 @@ class WhatsAppAutomationService {
         await createOrUpdateSecret(name, value);
       }
     } catch (error) {
+      // error-policy:J6 best-effort rollback of partially-written secrets, then rethrow so the caller sees the failure
       logger.error("[WhatsAppAutomation] Failed to store credentials, rolling back", {
         organizationId,
         error: error instanceof Error ? error.message : String(error),
@@ -466,6 +470,8 @@ class WhatsAppAutomationService {
 
       return { success: true, messageId };
     } catch (error) {
+      // error-policy:J1 outbound send failure translated to the typed {success:false, error} Result
+      // the caller must check; carries the real API error and never fabricates a delivered message.
       const message = error instanceof Error ? error.message : "Unknown error";
       logger.error("[WhatsAppAutomation] Failed to send message", {
         organizationId,

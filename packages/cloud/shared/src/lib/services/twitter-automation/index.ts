@@ -209,6 +209,8 @@ async function upsertRoleSecret(args: {
     );
     return;
   } catch (error) {
+    // error-policy:J1 optimistic upsert — a unique-constraint/duplicate conflict is the expected
+    // "already stored, rotate instead" branch handled below; every other create failure rethrows.
     const message = error instanceof Error ? error.message : String(error);
     if (
       !message.includes("already exists") &&
@@ -443,6 +445,9 @@ class TwitterAutomationService {
       screenName = me.data.username;
       userId = me.data.id;
     } catch (error) {
+      // error-policy:J7 profile lookup is best-effort enrichment after a successful token
+      // exchange; the failure is surfaced to the caller via identityLookupError (never faked as a
+      // resolved identity) so the already-valid access token still flows through.
       identityLookupError = formatTwitterApiError(error, "Failed to fetch X profile");
       logger.warn("[TwitterAutomation] OAuth2 profile lookup failed after token exchange", {
         error: identityLookupError,
@@ -657,6 +662,8 @@ class TwitterAutomationService {
           connectionRole: role,
         });
       } catch (error) {
+        // error-policy:J6 idempotent disconnect teardown — a not-found/already-deleted secret is
+        // an acceptable no-op; any other delete failure rethrows so a genuine failure surfaces.
         const message = error instanceof Error ? error.message : String(error);
         if (!message.includes("Secret not found") && !message.includes("Failed to delete secret")) {
           throw error;
@@ -714,6 +721,9 @@ class TwitterAutomationService {
         avatarUrl: me.data.profile_image_url,
       };
     } catch (error) {
+      // error-policy:J4 token-validation failure degrades to a distinguishable connection status
+      // carrying an explicit error field — never a silent healthy/empty state. A missing-credentials
+      // case returns { connected:false } with no error above; this branch always sets error.
       const errorMessage = formatTwitterApiError(error, "Token validation failed");
       logger.warn("[TwitterAutomation] Token validation failed", {
         organizationId,
