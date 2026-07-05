@@ -64,6 +64,20 @@ export const TERMINAL_SESSION_STATUSES: ReadonlySet<string> = new Set([
   "cancelled",
 ]);
 
+/**
+ * Thrown by the orchestrator's admission queue when a cap-parked spawn would
+ * exceed `ELIZA_ACP_ADMISSION_QUEUE_DEPTH`. Distinct from `SessionCapError`: the
+ * cap is transient (a slot will free), but a full queue is back-pressure the
+ * caller must see (mapped to HTTP 429 at the route).
+ */
+export class AdmissionQueueFullError extends Error {
+  readonly code = "ADMISSION_QUEUE_FULL";
+  constructor(readonly depth: number) {
+    super(`orchestrator admission queue is full (${depth})`);
+    this.name = "AdmissionQueueFullError";
+  }
+}
+
 export type SessionEventCallback = (
   sessionId: string,
   event: SessionEventName,
