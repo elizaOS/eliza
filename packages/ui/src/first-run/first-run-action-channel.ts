@@ -17,6 +17,8 @@
 
 /** Reserved sentinel prefix for first-run choice values. Never a real message. */
 export const FIRST_RUN_ACTION_PREFIX = "__first_run__:";
+export const FIRST_RUN_CLOUD_LOGIN_ACTION = `${FIRST_RUN_ACTION_PREFIX}runtime:cloud`;
+export const FIRST_RUN_CLOUD_LOGIN_FALLBACK_PATH = "/login?returnTo=/chat";
 
 type FirstRunActionHandler = (value: string) => boolean;
 type FirstRunTextHandler = (text: string) => boolean;
@@ -49,6 +51,22 @@ export function tryHandleFirstRunAction(value: string): boolean {
   if (!handler) return false;
   if (!value.startsWith(FIRST_RUN_ACTION_PREFIX)) return false;
   return handler(value);
+}
+
+/**
+ * Hosted-web fallback for the cloud-only sign-in CTA. Normally the mounted
+ * conductor consumes `runtime:cloud` and starts the in-app OAuth handoff. If
+ * that handler is absent while first-run is still incomplete, the visible CTA
+ * must still navigate to the login route instead of silently dropping the tap.
+ */
+export function getFirstRunCloudLoginFallbackPath(
+  value: string,
+  firstRunComplete: boolean,
+): string | null {
+  if (firstRunComplete) return null;
+  return value === FIRST_RUN_CLOUD_LOGIN_ACTION
+    ? FIRST_RUN_CLOUD_LOGIN_FALLBACK_PATH
+    : null;
 }
 
 /**
