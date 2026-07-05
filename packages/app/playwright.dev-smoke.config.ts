@@ -14,6 +14,14 @@ const uiPort = Number(process.env.ELIZA_DEV_SMOKE_UI_PORT || "2138");
 const stateDir =
   process.env.ELIZA_DEV_SMOKE_STATE_DIR ||
   path.join(os.tmpdir(), `eliza-dev-smoke-${process.pid}`);
+const playwrightSlowMoMs = Number.parseInt(
+  process.env.ELIZA_PLAYWRIGHT_SLOW_MO || "0",
+  10,
+);
+const humanLaunchOptions: { slowMo?: number } =
+  Number.isFinite(playwrightSlowMoMs) && playwrightSlowMoMs > 0
+    ? { slowMo: playwrightSlowMoMs }
+    : {};
 
 process.env.ELIZA_API_PORT = String(apiPort);
 process.env.ELIZA_UI_PORT = String(uiPort);
@@ -40,7 +48,12 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(humanLaunchOptions.slowMo
+          ? { launchOptions: humanLaunchOptions }
+          : {}),
+      },
     },
   ],
   webServer: {

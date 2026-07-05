@@ -449,6 +449,14 @@ The non-negotiables in practice:
 - **Always sync before opening or updating a PR.** `git fetch origin &&
   git rebase origin/develop`, resolve **every** conflict, `bun install`, then
   `bun run verify`. A branch that can't fast-forward onto `develop` is not ready.
+- **Always open the local evidence reviewer before requesting review.**
+  `bun run evidence:review` scans `.github/issue-evidence/`,
+  `e2e-recordings/`, app audit output, walkthrough reports, scenario reports,
+  and device captures into `evidence/index.html` so the artifacts can be
+  reviewed together. The command detects OCR, image-analysis, and video metadata
+  tooling (`tesseract`, ImageMagick, `ffprobe`) and records unavailable tools in
+  the manifest. This aggregates evidence; it does not replace attaching the
+  underlying files or explicit N/A rows.
 - **Frontend-testable changes are not done without rendered proof.** Any change a
   user can exercise in the web, desktop, mobile, or cloud UI must attach a video
   walkthrough; before and after full-page screenshots for desktop and mobile;

@@ -33,6 +33,14 @@ const nodeExecutable =
   process.execPath;
 const chromiumExecutablePath =
   process.env.ELIZA_UI_SMOKE_CHROMIUM_EXECUTABLE?.trim();
+const playwrightSlowMoMs = Number.parseInt(
+  process.env.ELIZA_PLAYWRIGHT_SLOW_MO || "0",
+  10,
+);
+const humanLaunchOptions: { slowMo?: number } =
+  Number.isFinite(playwrightSlowMoMs) && playwrightSlowMoMs > 0
+    ? { slowMo: playwrightSlowMoMs }
+    : {};
 // Real audio fed to the browser mic for the voice button-press e2e: Chromium
 // plays this WAV file as the fake capture device so the REAL local-ASR recorder
 // (getUserMedia + WAV encode + POST) runs end-to-end with no human/microphone.
@@ -136,8 +144,15 @@ export default defineConfig({
       ],
       use: {
         ...devices["Desktop Chrome"],
-        ...(chromiumExecutablePath
-          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+        ...(chromiumExecutablePath || humanLaunchOptions.slowMo
+          ? {
+              launchOptions: {
+                ...humanLaunchOptions,
+                ...(chromiumExecutablePath
+                  ? { executablePath: chromiumExecutablePath }
+                  : {}),
+              },
+            }
           : {}),
       },
     },
@@ -149,8 +164,15 @@ export default defineConfig({
         viewport: viewport.viewport,
         isMobile: viewport.isMobile,
         hasTouch: viewport.hasTouch,
-        ...(chromiumExecutablePath
-          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+        ...(chromiumExecutablePath || humanLaunchOptions.slowMo
+          ? {
+              launchOptions: {
+                ...humanLaunchOptions,
+                ...(chromiumExecutablePath
+                  ? { executablePath: chromiumExecutablePath }
+                  : {}),
+              },
+            }
           : {}),
       },
     })),
@@ -161,6 +183,7 @@ export default defineConfig({
         ...devices["Desktop Chrome"],
         permissions: ["microphone"],
         launchOptions: {
+          ...humanLaunchOptions,
           args: [
             "--use-fake-ui-for-media-stream",
             "--use-fake-device-for-media-stream",
@@ -234,8 +257,15 @@ export default defineConfig({
       testMatch: AUDIT_APP_SPEC,
       use: {
         ...devices["Desktop Chrome"],
-        ...(chromiumExecutablePath
-          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+        ...(chromiumExecutablePath || humanLaunchOptions.slowMo
+          ? {
+              launchOptions: {
+                ...humanLaunchOptions,
+                ...(chromiumExecutablePath
+                  ? { executablePath: chromiumExecutablePath }
+                  : {}),
+              },
+            }
           : {}),
       },
     },
@@ -249,8 +279,15 @@ export default defineConfig({
       testMatch: AUDIT_CLOUD_SPEC,
       use: {
         ...devices["Desktop Chrome"],
-        ...(chromiumExecutablePath
-          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+        ...(chromiumExecutablePath || humanLaunchOptions.slowMo
+          ? {
+              launchOptions: {
+                ...humanLaunchOptions,
+                ...(chromiumExecutablePath
+                  ? { executablePath: chromiumExecutablePath }
+                  : {}),
+              },
+            }
           : {}),
       },
     },
@@ -263,8 +300,15 @@ export default defineConfig({
       testMatch: AUDIT_APP_DROPDOWN_SPEC,
       use: {
         ...devices["Desktop Chrome"],
-        ...(chromiumExecutablePath
-          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+        ...(chromiumExecutablePath || humanLaunchOptions.slowMo
+          ? {
+              launchOptions: {
+                ...humanLaunchOptions,
+                ...(chromiumExecutablePath
+                  ? { executablePath: chromiumExecutablePath }
+                  : {}),
+              },
+            }
           : {}),
       },
     },

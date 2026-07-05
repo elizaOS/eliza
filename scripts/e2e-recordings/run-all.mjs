@@ -333,6 +333,23 @@ async function main() {
     console.log("Skipping viewer generation (--skip-viewer).");
   }
 
+  if (!skipViewer) {
+    banner("Generating unified evidence reviewer");
+    const evidenceScript = path.join(
+      REPO_ROOT,
+      "scripts",
+      "evidence-reviewer.mjs",
+    );
+    if (fs.existsSync(evidenceScript)) {
+      const code = runScript(evidenceScript);
+      if (code !== 0) {
+        console.warn(`[warn] evidence-reviewer.mjs exited with code ${code}`);
+      }
+    } else {
+      console.warn("[warn] evidence-reviewer.mjs not found — skipping");
+    }
+  }
+
   // ─── Summary ───────────────────────────────────────────────
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   banner("Summary");
@@ -369,6 +386,11 @@ async function main() {
   if (fs.existsSync(indexPath)) {
     console.log(`\nViewer: ${indexPath}`);
     console.log(`        file://${indexPath}`);
+  }
+  const evidencePath = path.join(REPO_ROOT, "evidence", "index.html");
+  if (fs.existsSync(evidencePath)) {
+    console.log(`Evidence reviewer: ${evidencePath}`);
+    console.log(`                  file://${evidencePath}`);
   }
 
   console.log(`\nTotal time: ${elapsed}s`);

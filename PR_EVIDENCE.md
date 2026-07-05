@@ -118,6 +118,10 @@ packages/scenario-runner/bin/eliza-scenarios run <scenario.ts> --report <out.jso
 bun run test:e2e:record                  # scripts/e2e-recordings/run-all.mjs
 bun run test:e2e:record:sheets           # regenerate contact sheets + viewer
 bun run test:e2e:audit-ui                # coverage of which routes are recorded
+bun run test:watch-human                 # headed, paced UI run for human observation
+bun run evidence:review                  # one local dashboard for all evidence silos
+# evidence:review records whether OCR/image/video tooling is available
+# (tesseract, ImageMagick, ffprobe); it never replaces the raw artifacts.
 
 # App per-route screenshots (desktop + mobile, rest + hover), with a
 # manual-review verdict stub per page — REQUIRED for app UI changes:

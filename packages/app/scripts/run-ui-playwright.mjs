@@ -18,7 +18,36 @@ const cleanupHelperScript = path.join(
   "scripts",
   "rm-path-recursive.mjs",
 );
-const playwrightArgs = process.argv.slice(2);
+const env = { ...process.env };
+const rawPlaywrightArgs = process.argv.slice(2);
+const playwrightArgs = [];
+let humanSpeedMode = false;
+
+for (let index = 0; index < rawPlaywrightArgs.length; index += 1) {
+  const arg = rawPlaywrightArgs[index];
+  if (arg === "--human-speed") {
+    humanSpeedMode = true;
+    continue;
+  }
+  if (arg === "--slow-mo" || arg === "--slowMo") {
+    const value = rawPlaywrightArgs[index + 1];
+    if (!value || value.startsWith("--")) {
+      throw new Error(`${arg} requires a millisecond value.`);
+    }
+    env.ELIZA_PLAYWRIGHT_SLOW_MO = value;
+    index += 1;
+    continue;
+  }
+  if (arg.startsWith("--slow-mo=")) {
+    env.ELIZA_PLAYWRIGHT_SLOW_MO = arg.slice("--slow-mo=".length);
+    continue;
+  }
+  if (arg.startsWith("--slowMo=")) {
+    env.ELIZA_PLAYWRIGHT_SLOW_MO = arg.slice("--slowMo=".length);
+    continue;
+  }
+  playwrightArgs.push(arg);
+}
 const uiSmokeViewLockDir = path.join(
   repoRoot,
   ".turbo",
@@ -149,7 +178,6 @@ function resolveNodeCommand() {
   return process.platform === "win32" ? "node.exe" : "node";
 }
 
-const env = { ...process.env };
 delete env.NO_COLOR;
 delete env.FORCE_COLOR;
 delete env.CLICOLOR_FORCE;
@@ -164,6 +192,17 @@ env.PATH = existingPath
   : bunBinDir;
 if (process.platform === "win32") {
   env.Path = env.PATH;
+}
+
+if (humanSpeedMode) {
+  env.ELIZA_PLAYWRIGHT_SLOW_MO = env.ELIZA_PLAYWRIGHT_SLOW_MO || "250";
+  if (
+    !playwrightArgs.includes("--headed") &&
+    !playwrightArgs.includes("--ui") &&
+    !playwrightArgs.includes("--debug")
+  ) {
+    playwrightArgs.push("--headed");
+  }
 }
 
 function hasPlaywrightConfig(configName) {
