@@ -4,13 +4,14 @@
  * Gates on the Steward session (the registry CRUD routes require auth), then
  * renders {@link McpsView}. The same {@link McpsSurface} backs both the
  * standalone route and the Settings-section wrapper, so they stay identical.
- * `McpsView` sets the page header, so each entry point supplies a
- * `PageHeaderProvider`: the standalone route wraps one here; the settings
- * section gets it from `CloudSettingsSectionShell`.
+ * `McpsView` sets the page header via `useSetPageHeader`. The standalone route
+ * is in the `dashboard` group, so ConsoleShell already supplies the header
+ * provider — a local one here would SHADOW it, leaving the top-bar title empty
+ * (#13914). The settings section gets its provider from
+ * `CloudSettingsSectionShell`.
  */
 
 import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
-import { PageHeaderProvider } from "../../cloud-ui/components/layout";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { McpsView } from "./McpsView";
@@ -37,9 +38,5 @@ export function McpsSurface() {
 
 /** Default export consumed by the cloud-route registry. */
 export default function McpsRoute() {
-  return (
-    <PageHeaderProvider>
-      <McpsSurface />
-    </PageHeaderProvider>
-  );
+  return <McpsSurface />;
 }
