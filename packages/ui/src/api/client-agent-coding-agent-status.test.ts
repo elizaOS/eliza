@@ -22,6 +22,7 @@ function thread(overrides: Partial<CodingAgentTaskThread> = {}) {
     latestSessionLabel: "Worker",
     latestWorkdir: "/repo",
     latestRepo: null,
+    projectId: null,
     latestActivityAt: Date.now(),
     decisionCount: 0,
     usage: {

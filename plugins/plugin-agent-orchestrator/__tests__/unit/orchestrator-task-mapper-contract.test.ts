@@ -223,6 +223,7 @@ const clientThreadReference: CodingAgentTaskThread = {
   latestSessionLabel: "worker",
   latestWorkdir: "/repo",
   latestRepo: "owner/repo",
+  projectId: "project-1",
   latestActivityAt: 1,
   decisionCount: 1,
   usage: {
