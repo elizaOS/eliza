@@ -107,6 +107,13 @@ const PUBLIC = false;
  * bottom fails when this table drifts from the live registry.
  */
 const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
+  // home/
+  {
+    slug: "dashboard",
+    path: "/dashboard",
+    route: "dashboard",
+    auth: AUTH,
+  },
   // instances/
   {
     slug: "dashboard-agents",
@@ -144,6 +151,52 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     slug: "dashboard-invoice-detail",
     path: "/dashboard/invoices/invoice-smoke-1",
     route: "dashboard/invoices/:id",
+    auth: AUTH,
+  },
+  {
+    slug: "dashboard-billing",
+    path: "/dashboard/billing",
+    route: "dashboard/billing",
+    auth: AUTH,
+  },
+  // account-security/
+  {
+    slug: "dashboard-account",
+    path: "/dashboard/account",
+    route: "dashboard/account",
+    auth: AUTH,
+  },
+  {
+    slug: "dashboard-security",
+    path: "/dashboard/security",
+    route: "dashboard/security",
+    auth: AUTH,
+  },
+  {
+    slug: "dashboard-security-permissions",
+    path: "/dashboard/security/permissions",
+    route: "dashboard/security/permissions",
+    auth: AUTH,
+  },
+  // api-keys/
+  {
+    slug: "dashboard-api-keys",
+    path: "/dashboard/api-keys",
+    route: "dashboard/api-keys",
+    auth: AUTH,
+  },
+  // monetization/
+  {
+    slug: "dashboard-monetization",
+    path: "/dashboard/monetization",
+    route: "dashboard/monetization",
+    auth: AUTH,
+  },
+  // connectors/
+  {
+    slug: "dashboard-connectors",
+    path: "/dashboard/connectors",
+    route: "dashboard/connectors",
     auth: AUTH,
   },
   // organization/
