@@ -617,7 +617,11 @@ export class ElizaSandboxService {
     // filled from the org's pooled credentials. Merged only into this
     // in-memory bootstrap payload (→ settings.secrets via
     // buildRuntimeBootstrapAgent) — never persisted to environment_vars.
-    // Strict fallback: on any pool failure the env passes through unchanged.
+    // A provider with no eligible pooled credential leaves the env unchanged
+    // (the registry degrades a missing/unhealthy pool to null, its J4); a
+    // genuine internal pool fault propagates and fails provisioning closed —
+    // consistent with the decrypt/create throws above — rather than silently
+    // booting an agent missing a credential it was meant to receive.
     const pooledEnv = await applyPooledCredentialsToBootstrapEnv({
       organizationId: rec.organization_id,
       userId: rec.user_id,
