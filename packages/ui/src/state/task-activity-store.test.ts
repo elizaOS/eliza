@@ -13,7 +13,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { client } from "../api/client";
 import { __taskActivityInternals } from "./task-activity-store";
 
-const { applyEvent, getSnapshot, reset, subscribe } = __taskActivityInternals;
+const { applyEvent, getSnapshot, limits, reset, subscribe } =
+  __taskActivityInternals;
 
 function ev(
   p: Partial<SwarmEvent> & { type: string; sessionId: string },
@@ -112,6 +113,78 @@ describe("task-activity-store reducer", () => {
     expect(snap.subagents[0].plan).toHaveLength(2);
   });
 
+  it("ignores stale and duplicate seq updates for latest fields", () => {
+    applyEvent(
+      ev({
+        type: "message",
+        sessionId: "a",
+        taskId: "T",
+        seq: 3,
+        data: { text: "new text" },
+      }),
+    );
+    applyEvent(
+      ev({
+        type: "message",
+        sessionId: "a",
+        taskId: "T",
+        seq: 2,
+        data: { text: "stale text" },
+      }),
+    );
+    applyEvent(
+      ev({
+        type: "message",
+        sessionId: "a",
+        taskId: "T",
+        seq: 3,
+        data: { text: "duplicate text" },
+      }),
+    );
+    applyEvent(
+      ev({
+        type: "reasoning",
+        sessionId: "a",
+        taskId: "T",
+        seq: 5,
+        data: { text: "new reasoning" },
+      }),
+    );
+    applyEvent(
+      ev({
+        type: "reasoning",
+        sessionId: "a",
+        taskId: "T",
+        seq: 4,
+        data: { text: "stale reasoning" },
+      }),
+    );
+    applyEvent(
+      ev({
+        type: "task_complete",
+        sessionId: "a",
+        taskId: "T",
+        seq: 7,
+        data: {},
+      }),
+    );
+    applyEvent(
+      ev({
+        type: "tool_running",
+        sessionId: "a",
+        taskId: "T",
+        seq: 6,
+        data: { toolCall: { id: "late-tool", status: "running" } },
+      }),
+    );
+
+    const agent = getSnapshot("T").subagents[0];
+    expect(agent.currentText).toBe("new text");
+    expect(agent.currentReasoning).toBe("new reasoning");
+    expect(agent.status).toBe("success");
+    expect(agent.steps.map((step) => step.id)).toEqual(["late-tool"]);
+  });
+
   it("moves a sub-agent to a terminal status on lifecycle events", () => {
     applyEvent(
       ev({
@@ -169,6 +242,77 @@ describe("task-activity-store reducer", () => {
       (s) => s.sessionId === "child",
     );
     expect(child?.parentSessionId).toBe("parent");
+  });
+
+  it("groups an orphan child event under the known parent task", () => {
+    applyEvent(
+      ev({
+        type: "message",
+        sessionId: "parent",
+        taskId: "T",
+        seq: 1,
+        data: { text: "p" },
+      }),
+    );
+    applyEvent(
+      ev({
+        type: "message",
+        sessionId: "child",
+        parentSessionId: "parent",
+        seq: 2,
+        data: { text: "c" },
+      }),
+    );
+
+    expect(getSnapshot("child").subagents).toHaveLength(0);
+    const child = getSnapshot("T").subagents.find(
+      (agent) => agent.sessionId === "child",
+    );
+    expect(child?.currentText).toBe("c");
+    expect(child?.parentSessionId).toBe("parent");
+  });
+
+  it("bounds idle tasks and sub-agent rows", () => {
+    const unsubscribe = subscribe("pinned", () => {});
+    try {
+      for (let i = 0; i <= limits.maxTasks; i += 1) {
+        applyEvent(
+          ev({
+            type: "message",
+            sessionId: `agent-${i}`,
+            taskId: `task-${i}`,
+            seq: i + 1,
+            data: { text: `message-${i}` },
+          }),
+        );
+      }
+      expect(getSnapshot("task-0").subagents).toHaveLength(0);
+      expect(getSnapshot("pinned").taskId).toBe("pinned");
+
+      for (let i = 0; i <= limits.maxSubagentsPerTask; i += 1) {
+        applyEvent(
+          ev({
+            type: "message",
+            sessionId: `child-${i}`,
+            taskId: "crowded",
+            seq: i + 1,
+            data: { text: `message-${i}` },
+          }),
+        );
+      }
+      const crowded = getSnapshot("crowded");
+      expect(crowded.subagents).toHaveLength(limits.maxSubagentsPerTask);
+      expect(
+        crowded.subagents.some((agent) => agent.sessionId === "child-0"),
+      ).toBe(false);
+      expect(
+        crowded.subagents.some(
+          (agent) => agent.sessionId === `child-${limits.maxSubagentsPerTask}`,
+        ),
+      ).toBe(true);
+    } finally {
+      unsubscribe();
+    }
   });
 
   it("reconstructs the SwarmEvent from a real server pty-session-event frame", () => {

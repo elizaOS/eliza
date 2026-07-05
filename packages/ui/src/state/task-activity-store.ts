@@ -28,6 +28,10 @@ import { client } from "../api/client";
 
 /** Cap on retained tool steps per sub-agent — a long task must not grow unbounded. */
 const MAX_STEPS_PER_AGENT = 60;
+/** Cap on retained task snapshots while no mounted card is observing them. */
+const MAX_TASKS = 200;
+/** Cap on retained sub-agent rows per task. */
+const MAX_SUBAGENTS_PER_TASK = 80;
 
 export interface TaskActivityStep {
   /** Stable id: the tool call id, or `seq` when the adapter omits one. */
@@ -76,7 +80,17 @@ interface TaskEntry {
   snapshot: TaskActivity;
   /** Mutable working copy the reducer edits before it re-freezes a snapshot. */
   subagents: Map<string, SubagentActivity>;
+  fieldSeqs: Map<
+    string,
+    {
+      text?: number;
+      reasoning?: number;
+      plan?: number;
+      status?: number;
+    }
+  >;
   plan: SwarmActivityPlanEntry[];
+  planSeq?: number;
   lastSeq: number;
   listeners: Set<() => void>;
 }
@@ -115,6 +129,7 @@ function ensureEntry(taskId: string): TaskEntry {
     entry = {
       snapshot: { ...EMPTY_TASK, taskId },
       subagents: new Map(),
+      fieldSeqs: new Map(),
       plan: [],
       lastSeq: 0,
       listeners: new Set(),
@@ -122,6 +137,46 @@ function ensureEntry(taskId: string): TaskEntry {
     tasks.set(taskId, entry);
   }
   return entry;
+}
+
+function acceptsSeq(prev: number | undefined, next: number): boolean {
+  return prev === undefined || next > prev;
+}
+
+function findTaskIdBySession(sessionId: string): string | undefined {
+  for (const [taskId, entry] of tasks) {
+    if (entry.subagents.has(sessionId)) return taskId;
+  }
+  return undefined;
+}
+
+function evictIdleTasks(protectedTaskId?: string): void {
+  while (tasks.size > MAX_TASKS) {
+    let oldestTaskId: string | undefined;
+    let oldestUpdatedAt = Number.POSITIVE_INFINITY;
+    for (const [taskId, entry] of tasks) {
+      if (taskId === protectedTaskId) continue;
+      if (entry.listeners.size > 0) continue;
+      if (entry.snapshot.updatedAt < oldestUpdatedAt) {
+        oldestTaskId = taskId;
+        oldestUpdatedAt = entry.snapshot.updatedAt;
+      }
+    }
+    if (!oldestTaskId) return;
+    tasks.delete(oldestTaskId);
+  }
+}
+
+function trimSubagents(entry: TaskEntry): void {
+  const extra = entry.subagents.size - MAX_SUBAGENTS_PER_TASK;
+  if (extra <= 0) return;
+  const removable = [...entry.subagents.values()]
+    .sort((a, b) => a.firstSeq - b.firstSeq)
+    .slice(0, extra);
+  for (const agent of removable) {
+    entry.subagents.delete(agent.sessionId);
+    entry.fieldSeqs.delete(agent.sessionId);
+  }
 }
 
 function refreezeSnapshot(entry: TaskEntry, at: number): void {
@@ -141,7 +196,13 @@ function refreezeSnapshot(entry: TaskEntry, at: number): void {
 function applyEvent(raw: SwarmEvent): void {
   const activity = toSwarmActivity(raw);
   if (!activity) return;
-  const taskId = activity.taskId ?? raw.taskId ?? raw.sessionId;
+  const taskId =
+    activity.taskId ??
+    raw.taskId ??
+    (activity.parentSessionId
+      ? findTaskIdBySession(activity.parentSessionId)
+      : undefined) ??
+    raw.sessionId;
   if (!taskId) return;
   const entry = ensureEntry(taskId);
   entry.snapshot = { ...entry.snapshot, taskId };
@@ -155,23 +216,36 @@ function applyEvent(raw: SwarmEvent): void {
     updatedAt: activity.timestamp,
     firstSeq: activity.seq,
   };
+  const seqs = entry.fieldSeqs.get(sessionId) ?? {};
   if (activity.parentSessionId)
     agent.parentSessionId = activity.parentSessionId;
-  agent.updatedAt = activity.timestamp;
+  agent.updatedAt = Math.max(agent.updatedAt, activity.timestamp);
   entry.lastSeq = Math.max(entry.lastSeq, activity.seq);
 
   switch (activity.kind) {
     case "message":
-      agent.currentText = activity.text;
+      if (acceptsSeq(seqs.text, activity.seq)) {
+        agent.currentText = activity.text;
+        seqs.text = activity.seq;
+      }
       break;
     case "reasoning":
-      agent.currentReasoning = activity.text;
+      if (acceptsSeq(seqs.reasoning, activity.seq)) {
+        agent.currentReasoning = activity.text;
+        seqs.reasoning = activity.seq;
+      }
       break;
     case "plan":
-      agent.plan = activity.entries;
-      // The most-recently-updated plan is also the task-level checklist so a
-      // single-agent task surfaces its todos at the card root.
-      entry.plan = activity.entries;
+      if (acceptsSeq(seqs.plan, activity.seq)) {
+        agent.plan = activity.entries;
+        seqs.plan = activity.seq;
+      }
+      if (acceptsSeq(entry.planSeq, activity.seq)) {
+        // The most-recently-updated plan is also the task-level checklist so a
+        // single-agent task surfaces its todos at the card root.
+        entry.plan = activity.entries;
+        entry.planSeq = activity.seq;
+      }
       break;
     case "tool": {
       const stepId = activity.tool.id ?? `seq-${activity.seq}`;
@@ -184,20 +258,30 @@ function applyEvent(raw: SwarmEvent): void {
       const idx = agent.steps.findIndex((s) => s.id === stepId);
       if (idx >= 0) agent.steps[idx] = step;
       else agent.steps.push(step);
+      agent.steps.sort((a, b) => a.seq - b.seq);
       if (agent.steps.length > MAX_STEPS_PER_AGENT) {
         agent.steps.splice(0, agent.steps.length - MAX_STEPS_PER_AGENT);
       }
-      if (agent.status !== "waiting") agent.status = "running";
+      if (agent.status !== "waiting" && acceptsSeq(seqs.status, activity.seq)) {
+        agent.status = "running";
+        seqs.status = activity.seq;
+      }
       break;
     }
     case "lifecycle":
-      agent.status = statusFromLifecycle(activity.event, agent.status);
+      if (acceptsSeq(seqs.status, activity.seq)) {
+        agent.status = statusFromLifecycle(activity.event, agent.status);
+        seqs.status = activity.seq;
+      }
       if (activity.label) agent.label = activity.label;
       break;
   }
 
   entry.subagents.set(sessionId, agent);
+  entry.fieldSeqs.set(sessionId, seqs);
+  trimSubagents(entry);
   refreezeSnapshot(entry, activity.timestamp);
+  evictIdleTasks(taskId);
 }
 
 function bindWs(): void {
@@ -269,6 +353,10 @@ export const __taskActivityInternals = {
   subscribe: subscribeTask,
   getSnapshot: (taskId: string): TaskActivity =>
     tasks.get(taskId)?.snapshot ?? EMPTY_TASK,
+  limits: {
+    maxTasks: MAX_TASKS,
+    maxSubagentsPerTask: MAX_SUBAGENTS_PER_TASK,
+  },
   reset: (): void => {
     tasks.clear();
     if (wsUnsub) wsUnsub();

@@ -747,10 +747,16 @@ export class SwarmCoordinatorService
     const existing = this.tasks.get(sessionId);
     const status = this.legacyStatusForEvent(event);
     const label = readString(data, "label") ?? existing?.label;
+    const parentSessionId =
+      readString(data, "parentSessionId") ?? readString(data, "parentSession");
+    const parentTask = parentSessionId
+      ? this.tasks.get(parentSessionId)
+      : undefined;
     const threadId =
       readString(data, "threadId") ??
       readString(data, "taskId") ??
       existing?.threadId ??
+      parentTask?.threadId ??
       sessionId;
     const agentType = readString(data, "agentType") ?? existing?.agentType;
     const originalTask =
@@ -1109,15 +1115,19 @@ export class SwarmCoordinatorService
     // custom-validator dispatches get the same projection.
     this.activitySeq += 1;
     swarmEvent.seq = this.activitySeq;
-    if (swarmEvent.taskId === undefined) {
-      const threadId = this.tasks.get(swarmEvent.sessionId)?.threadId;
-      if (threadId) swarmEvent.taskId = threadId;
-    }
     if (swarmEvent.parentSessionId === undefined && isRecord(swarmEvent.data)) {
       const parent =
         readString(swarmEvent.data, "parentSessionId") ??
         readString(swarmEvent.data, "parentSession");
       if (parent) swarmEvent.parentSessionId = parent;
+    }
+    if (swarmEvent.taskId === undefined) {
+      const threadId =
+        this.tasks.get(swarmEvent.sessionId)?.threadId ??
+        (swarmEvent.parentSessionId
+          ? this.tasks.get(swarmEvent.parentSessionId)?.threadId
+          : undefined);
+      if (threadId) swarmEvent.taskId = threadId;
     }
 
     // Fan out to in-process subscribers (verification-room-bridge et al).
