@@ -1272,14 +1272,18 @@ jobs:
   # advisory on develop; #13617 F2). This job restores parity: it runs the same
   # lint / format / typecheck / secret-scan gates that guard `main`, on a
   # GitHub-hosted runner so it stays green-or-red regardless of the self-hosted
-  # fleet's health, and `ci-ok` needs it. It only runs where the queue actually
-  # gates (merge_group) and on develop push; on PRs quality.yml already covers
-  # this surface, so the job self-skips and `ci-ok`'s lenient PR path lets the
-  # skip pass.
+  # fleet's health, and `ci-ok` needs it. It runs anywhere `ci-ok` treats
+  # skipped jobs as failures (merge queue, develop push, manual dispatch, and
+  # nightly schedule); on PRs quality.yml already covers this surface, so the job
+  # self-skips and `ci-ok`'s lenient PR path lets the skip pass.
   merge-quality-gate:
     name: Merge Queue Quality Gate
     needs: changes
-    if: github.event_name == 'merge_group' || github.event_name == 'push'
+    if: >-
+      github.event_name == 'merge_group' ||
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
