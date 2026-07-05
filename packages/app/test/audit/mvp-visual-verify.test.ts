@@ -1,0 +1,264 @@
+/**
+ * Unit tests for the mvp-visual-verify pure functions: the ported color
+ * classifier (asserted for PARITY against the audit's own `bucket()` so the two
+ * cannot drift), the dominant-color quantizer over synthetic RGBA buffers, the
+ * pixel-diff summarizer/comparator, and the declarative expectation evaluator.
+ * All deterministic — no image decode, no tesseract, no browser.
+ */
+import { describe, expect, it } from "vitest";
+import { bucket as auditBucket } from "../ui-smoke/aesthetic-audit-rules";
+import {
+  bucket,
+  bucketRgb,
+  parseRgb,
+} from "../../scripts/mvp-visual-verify/color-bucket.mjs";
+import { quantizePalette } from "../../scripts/mvp-visual-verify/dominant-color.mjs";
+import {
+  comparePixels,
+  summarizeDiff,
+} from "../../scripts/mvp-visual-verify/diff.mjs";
+import {
+  evaluateExpectations,
+  resolveSpec,
+} from "../../scripts/mvp-visual-verify/expectation-eval.mjs";
+
+describe("color-bucket", () => {
+  it("parses rgb and rgba", () => {
+    expect(parseRgb("rgb(255, 88, 0)")).toEqual([255, 88, 0, 1]);
+    expect(parseRgb("rgba(10, 10, 40, 0.5)")).toEqual([10, 10, 40, 0.5]);
+    expect(parseRgb("#ff5800")).toBeNull();
+  });
+
+  it("classifies brand orange, blue, black, white, transparent", () => {
+    expect(bucket("rgb(255, 88, 0)")).toBe("orange"); // shipped accent, g=88
+    expect(bucket("rgb(10, 10, 40)")).toBe("blue"); // saturated navy
+    expect(bucket("rgb(0, 0, 0)")).toBe("black");
+    expect(bucket("rgb(255, 255, 255)")).toBe("white");
+    expect(bucket("rgba(200, 100, 0, 0)")).toBe("transparent");
+    // Dark scrim: high chroma/max ratio but tiny absolute chroma → black, not blue.
+    expect(bucket("rgba(10, 10, 12, 0.5)")).toBe("black");
+  });
+
+  it("is byte-for-byte parity with the audit rules bucket()", () => {
+    // Sweep the RGB cube coarsely + edge cases; the ported classifier must agree
+    // with the audit's canonical policy on every sample or the no-blue guarantee
+    // diverges between capture and post-process.
+    const samples: string[] = [];
+    for (let r = 0; r <= 255; r += 51)
+      for (let g = 0; g <= 255; g += 51)
+        for (let b = 0; b <= 255; b += 51) samples.push(`rgb(${r}, ${g}, ${b})`);
+    samples.push("rgba(255,88,0,1)", "rgba(10,10,40,1)", "rgba(10,10,12,0.5)", "rgba(0,0,0,0)");
+    for (const s of samples) expect(bucket(s), s).toBe(auditBucket(s));
+  });
+
+  it("bucketRgb matches bucket for a triple", () => {
+    expect(bucketRgb(255, 88, 0)).toBe("orange");
+    expect(bucketRgb(128, 128, 128)).toBe("neutral");
+    expect(bucketRgb(20, 20, 20)).toBe("black"); // luminance 0.078 < 0.08
+  });
+});
+
+describe("quantizePalette", () => {
+  /** Build a WxH RGBA buffer from a flat [r,g,b,a] fill or a per-pixel fn. */
+  function makeBuffer(w: number, h: number, fill: (i: number) => [number, number, number, number]) {
+    const buf = Buffer.alloc(w * h * 4);
+    for (let p = 0; p < w * h; p += 1) {
+      const [r, g, b, a] = fill(p);
+      buf[p * 4] = r;
+      buf[p * 4 + 1] = g;
+      buf[p * 4 + 2] = b;
+      buf[p * 4 + 3] = a;
+    }
+    return buf;
+  }
+
+  it("ranks dominant colors by coverage and labels buckets", () => {
+    // 75% orange, 25% blue.
+    const buf = makeBuffer(4, 4, (i) => (i < 12 ? [255, 88, 0, 255] : [10, 10, 200, 255]));
+    const { swatches, buckets, totalOpaque } = quantizePalette(buf, { step: 16, topK: 4 });
+    expect(totalOpaque).toBe(16);
+    expect(swatches[0].bucket).toBe("orange");
+    expect(swatches[0].ratio).toBeCloseTo(0.75, 5);
+    expect(swatches[1].bucket).toBe("blue");
+    expect(buckets.orange).toBeCloseTo(0.75, 5);
+    expect(buckets.blue).toBeCloseTo(0.25, 5);
+  });
+
+  it("skips fully transparent pixels", () => {
+    const buf = makeBuffer(2, 2, (i) => (i === 0 ? [255, 88, 0, 255] : [0, 0, 0, 0]));
+    const { totalOpaque, swatches } = quantizePalette(buf);
+    expect(totalOpaque).toBe(1);
+    expect(swatches[0].ratio).toBe(1);
+  });
+
+  it("throws on a non-RGBA buffer length", () => {
+    expect(() => quantizePalette(Buffer.alloc(5))).toThrow(/multiple of 4/);
+  });
+});
+
+describe("diff", () => {
+  it("summarizeDiff computes percent + per-channel mean delta", () => {
+    const s = summarizeDiff({ changedPixels: 25, totalPixels: 100, sumAbsDelta: 3000 });
+    expect(s.changedRatio).toBe(0.25);
+    expect(s.changedPercent).toBe(25);
+    expect(s.meanAbsDelta).toBe(10); // 3000 / (100*3)
+    expect(s.resized).toBe(false);
+  });
+
+  it("summarizeDiff rejects a zero-pixel image (no false 0% pass)", () => {
+    expect(() => summarizeDiff({ changedPixels: 0, totalPixels: 0, sumAbsDelta: 0 })).toThrow();
+  });
+
+  it("comparePixels counts pixels above the threshold and builds a highlight", () => {
+    const w = 2;
+    const h = 1;
+    const a = Buffer.from([0, 0, 0, 255, 0, 0, 0, 255]);
+    const b = Buffer.from([0, 0, 0, 255, 200, 0, 0, 255]); // pixel 1 differs by 200
+    const { changedPixels, totalPixels, sumAbsDelta, highlight } = comparePixels(a, b, w, h, {
+      threshold: 30,
+      buildHighlight: true,
+    });
+    expect(totalPixels).toBe(2);
+    expect(changedPixels).toBe(1);
+    expect(sumAbsDelta).toBe(200);
+    // Changed pixel is highlighted magenta.
+    expect([highlight![4], highlight![5], highlight![6]]).toEqual([255, 0, 255]);
+  });
+
+  it("comparePixels throws when a buffer is too small", () => {
+    expect(() => comparePixels(Buffer.alloc(4), Buffer.alloc(2), 2, 1)).toThrow(/too small/);
+  });
+});
+
+describe("expectation-eval", () => {
+  const palette = (buckets: Record<string, number>, swatches: { bucket: string }[] = []) => ({
+    buckets,
+    swatches,
+  });
+  const okOcr = (text: string) => ({ available: true as const, text });
+
+  it("no-blue fails on DOM blue, passes when clean", () => {
+    const fail = evaluateExpectations(
+      { ocr: okOcr(""), palette: palette({ neutral: 1 }), finding: { blueColors: ["rgb(0,0,255)"] } },
+      { noBlue: true },
+    );
+    expect(fail.pass).toBe(false);
+    expect(fail.reasons[0]).toMatch(/no-blue/);
+    const pass = evaluateExpectations(
+      { ocr: okOcr(""), palette: palette({ orange: 0.9 }), finding: { blueColors: [] } },
+      { noBlue: true },
+    );
+    expect(pass.pass).toBe(true);
+  });
+
+  it("no-blue fails when palette blue coverage exceeds the limit", () => {
+    const r = evaluateExpectations(
+      { ocr: okOcr(""), palette: palette({ blue: 0.2 }), finding: { blueColors: [] } },
+      { noBlue: true, blueCoverageLimit: 0.05 },
+    );
+    expect(r.pass).toBe(false);
+  });
+
+  it("accent-orange fails when orange is absent", () => {
+    const r = evaluateExpectations(
+      { ocr: okOcr(""), palette: palette({ neutral: 1 }), finding: null },
+      { accentOrange: true },
+    );
+    expect(r.pass).toBe(false);
+    const ok = evaluateExpectations(
+      { ocr: okOcr(""), palette: palette({ orange: 0.01 }), finding: null },
+      { accentOrange: true },
+    );
+    expect(ok.pass).toBe(true);
+  });
+
+  it("no-horizontal-overflow: skip when unknown, fail over tolerance, pass within", () => {
+    const skip = evaluateExpectations(
+      { ocr: okOcr(""), palette: palette({}), finding: {} },
+      { noHorizontalOverflow: true },
+    );
+    expect(skip.checks[0].status).toBe("skip");
+    expect(skip.pass).toBe(true); // a skip is not a fail
+
+    const fail = evaluateExpectations(
+      { ocr: okOcr(""), palette: palette({}), finding: { horizontalOverflowPx: 40 } },
+      { noHorizontalOverflow: true },
+    );
+    expect(fail.pass).toBe(false);
+    expect(fail.reasons[0]).toMatch(/horizontal overflow 40px/);
+
+    const pass = evaluateExpectations(
+      { ocr: okOcr(""), palette: palette({}), finding: { horizontalOverflowPx: 1 } },
+      { noHorizontalOverflow: true },
+    );
+    expect(pass.pass).toBe(true);
+  });
+
+  it("OCR absent junk is whole-word: 'nan' inside 'finances' does not fire", () => {
+    const spec = { ocr: { absent: ["NaN"] } };
+    const clean = evaluateExpectations(
+      { ocr: okOcr("Finances Focus Goals"), palette: palette({}), finding: null },
+      spec,
+    );
+    expect(clean.pass).toBe(true);
+    const dirty = evaluateExpectations(
+      { ocr: okOcr("value is NaN here"), palette: palette({}), finding: null },
+      spec,
+    );
+    expect(dirty.pass).toBe(false);
+    expect(dirty.reasons[0]).toMatch(/forbidden/);
+  });
+
+  it("OCR punctuation junk uses substring match", () => {
+    const r = evaluateExpectations(
+      { ocr: okOcr("caption [object Object] tail"), palette: palette({}), finding: null },
+      { ocr: { absent: ["[object Object]"] } },
+    );
+    expect(r.pass).toBe(false);
+  });
+
+  it("OCR present is per-viewport scoped", () => {
+    const spec = {
+      ocr: {
+        present: ["Automations"],
+        perViewport: { desktop: { present: ["Tasks"] } },
+      },
+    };
+    // Desktop requires both; mobile requires only the universal token.
+    const desktopFail = evaluateExpectations(
+      { viewport: "desktop", ocr: okOcr("Automations Workflows"), palette: palette({}), finding: null },
+      spec,
+    );
+    expect(desktopFail.pass).toBe(false);
+    expect(desktopFail.reasons[0]).toMatch(/Tasks/);
+    const mobilePass = evaluateExpectations(
+      { viewport: "mobile-portrait", ocr: okOcr("Automations Workflows"), palette: palette({}), finding: null },
+      spec,
+    );
+    expect(mobilePass.pass).toBe(true);
+  });
+
+  it("OCR check skips honestly when the engine is unavailable", () => {
+    const r = evaluateExpectations(
+      { ocr: { available: false, reason: "tesseract not found" }, palette: palette({}), finding: null },
+      { ocr: { present: ["Anything"] } },
+    );
+    expect(r.checks[0].status).toBe("skip");
+    expect(r.pass).toBe(true);
+  });
+
+  it("resolveSpec merges __default__ invariants with the per-slug entry", () => {
+    const specs = {
+      __default__: { noBlue: true, ocr: { absent: ["undefined"] } },
+      "builtin-settings": { accentOrange: true, ocr: { present: ["Models"] } },
+    };
+    const merged = resolveSpec(specs, "builtin-settings");
+    expect(merged.noBlue).toBe(true);
+    expect(merged.accentOrange).toBe(true);
+    expect(merged.ocr.absent).toContain("undefined");
+    expect(merged.ocr.present).toContain("Models");
+    // An unlisted slug still gets the universal invariants.
+    const dflt = resolveSpec(specs, "builtin-unknown");
+    expect(dflt.noBlue).toBe(true);
+  });
+});

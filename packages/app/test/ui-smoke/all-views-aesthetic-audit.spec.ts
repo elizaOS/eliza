@@ -46,6 +46,10 @@ import { VIEW_ROUTES } from "./view-routes";
 // `ELIZA_AUDIT_APP_STRICT_NEEDS_WORK=1` (#10710) once the current set is captured
 // into AESTHETIC_VERDICT_DEBT from a clean CI run.
 const AUDIT_STRICT = process.env.ELIZA_AUDIT_APP_STRICT === "1";
+// Sub-pixel slack for the document-level horizontal-overflow invariant: fractional
+// scrollWidth/innerWidth rounding can differ by ~1px on a healthy layout. A real
+// un-contained overflow (WS5) blows past this comfortably.
+const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
 const AUDIT_STRICT_NEEDS_WORK =
   process.env.ELIZA_AUDIT_APP_STRICT_NEEDS_WORK === "1";
 // Key: `${slug}-${viewport}`. Value: the worst verdict currently tolerated for
@@ -312,6 +316,11 @@ interface ViewFinding {
   viewType: "gui" | "tui";
   /** Readable text length in the view root; ~0 means the view never painted. */
   readableChars: number;
+  /** documentElement.scrollWidth − innerWidth in px (≥0). >tolerance means the
+   * page overflows horizontally at the document level — the WS5 transcript bug
+   * (overflow-y:auto without overflow-x:hidden). An in-container scroll does not
+   * expand documentElement.scrollWidth, so this isolates the un-contained bug. */
+  horizontalOverflowPx: number;
   borderDividerCount: number;
   borderDividerDensity: number;
   textDensity: number;
@@ -852,6 +861,7 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **floating chat overlay present:** ${finding.overlayPresent ? "yes" : "NO"}`,
     `- **floating chat overlay clearance:** ${finding.overlayClearanceIssues.length ? finding.overlayClearanceIssues.join("; ") : "clear"}`,
     `- **readable content chars:** ${finding.readableChars}`,
+    `- **horizontal overflow:** ${finding.horizontalOverflowPx}px${finding.horizontalOverflowPx > HORIZONTAL_OVERFLOW_TOLERANCE_PX ? " ⚠ OVERFLOW" : ""}`,
     `- **border/divider density:** ${roundMetric(finding.borderDividerDensity)} (${finding.borderDividerCount} edges / 1M px)`,
     `- **text density:** ${roundMetric(finding.textDensity)} chars / 10K px`,
     `- **whitespace ratio:** ${roundMetric(finding.whitespaceRatio)}`,
@@ -1035,6 +1045,19 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         }
         const { readableChars, overlayPresent } = paint;
 
+        // Document-level horizontal-overflow invariant (WS5). Measured, not
+        // swallowed: a genuine measurement failure throws and fails the view
+        // rather than fabricating 0 ("no overflow" = healthy) from a catch.
+        const horizontalOverflowPx = await page.evaluate(() => {
+          const de = document.documentElement;
+          const scrollWidth = Math.max(
+            de.scrollWidth,
+            document.body?.scrollWidth ?? 0,
+          );
+          const innerWidth = window.innerWidth || de.clientWidth;
+          return Math.max(0, Math.round(scrollWidth - innerWidth));
+        });
+
         // Screenshot with a blank-retry (mirrors captureScreenshotWithQualityRetry):
         // re-sample a few times so a momentarily-unpainted frame is not recorded
         // as a one-color "broken".
@@ -1110,6 +1133,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           overlayPresent,
           overlayClearanceIssues,
           readableChars,
+          horizontalOverflowPx,
           ...densityMetrics,
           densityProbeFailures,
           minimalismBudget,
@@ -1147,6 +1171,18 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           pageErrors,
           `${view.slug} ${vp.name} must not throw an uncaught page error`,
         ).toEqual([]);
+
+        // Horizontal-overflow invariant is always recorded (report.json +
+        // mvp-visual-verify consumes it) and hard-gated only under strict, so the
+        // reporter run never turns green-but-overflowing into a soft finding.
+        if (AUDIT_STRICT) {
+          expect(
+            horizontalOverflowPx,
+            `${view.slug} ${vp.name} overflows horizontally by ${horizontalOverflowPx}px ` +
+              `(documentElement.scrollWidth exceeds innerWidth — likely overflow-y ` +
+              `without overflow-x:hidden)`,
+          ).toBeLessThanOrEqual(HORIZONTAL_OVERFLOW_TOLERANCE_PX);
+        }
       });
     }
   }

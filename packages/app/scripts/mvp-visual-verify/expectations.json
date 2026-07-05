@@ -1,0 +1,41 @@
+{
+  "__comment": "Declarative per-slug visual expectations for mvp-visual-verify. Keys are audit slugs (builtin-<tab> / plugin-<id>-<viewType>); '__default__' carries the universal invariants applied to every state. OCR 'present' substrings are calibrated against real tesseract output; because text chrome differs between desktop and mobile layouts, viewport-specific labels live under ocr.perViewport.<viewport>. The absent[] junk tokens catch render bugs on every viewport (whole-word matched, so 'nan' inside 'finances' does not false-fire). Unlisted slugs inherit only the default.",
+  "__default__": {
+    "noBlue": true,
+    "noHorizontalOverflow": true,
+    "ocr": { "absent": ["undefined", "NaN", "[object Object]", "objectobject"] }
+  },
+  "builtin-settings": {
+    "accentOrange": true,
+    "ocr": {
+      "perViewport": {
+        "desktop": { "present": ["Models", "Voice"] },
+        "desktop-landscape": { "present": ["Models", "Voice"] }
+      }
+    }
+  },
+  "builtin-character": {
+    "accentOrange": true,
+    "ocr": {
+      "perViewport": {
+        "desktop": { "present": ["Personality", "Knowledge"] },
+        "desktop-landscape": { "present": ["Personality", "Knowledge"] },
+        "mobile-portrait": { "present": ["Character", "About Me"] }
+      }
+    }
+  },
+  "builtin-automations": {
+    "accentOrange": true,
+    "ocr": {
+      "present": ["Automations"],
+      "perViewport": {
+        "desktop": { "present": ["Tasks", "Workflows"] },
+        "desktop-landscape": { "present": ["Tasks", "Workflows"] },
+        "mobile-portrait": { "present": ["Workflows"] }
+      }
+    }
+  },
+  "builtin-chat": {
+    "accentOrange": true
+  }
+}
