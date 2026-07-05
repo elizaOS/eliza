@@ -4,6 +4,7 @@
  * voice-speaker types. The single source these sibling components import their
  * types from so their contracts stay in sync.
  */
+import type { NativeToolCallEvent } from "../../../api/client-types-cloud";
 import type {
   ChatFailureKind,
   ChatTurnStatus,
@@ -122,6 +123,9 @@ export interface ChatMessageData {
   /** Agent reasoning for this turn — read by body renderers (ThinkingBlock).
    * Transport-only on the row; the row renders no reasoning chrome itself. */
   reasoning?: string;
+  /** Inline tool-call rows accumulated from the SSE `tool` events (#13535) —
+   * read by body renderers (ToolCallEventLog). Transport-only on the row. */
+  toolEvents?: NativeToolCallEvent[];
   /** Pending secret / OAuth request — read by body renderers (SensitiveRequestBlock). */
   secretRequest?: ConversationSecretRequest;
 }

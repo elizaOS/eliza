@@ -1,9 +1,0 @@
-$ vitest run src/actions/downloadMusic.test.ts
-
- RUN  v4.1.5 /home/shaw/eliza/eliza-wt-10471-download-music/plugins/plugin-music
-
-
- Test Files  1 passed (1)
-      Tests  4 passed (4)
-   Start at  15:44:30
-   Duration  299ms (transform 89ms, setup 63ms, import 51ms, tests 11ms, environment 0ms)

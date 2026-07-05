@@ -240,6 +240,7 @@ export const metaAdsProvider: AdProvider = {
         accountName: response.name,
       };
     } catch (error) {
+      // error-policy:J1 provider boundary → structured AdProviderValidationResult; caller throws on !valid (index.ts registerAdAccount)
       logger.error("[MetaAds] Validation failed", { error });
       return {
         valid: false,
@@ -434,6 +435,7 @@ export const metaAdsProvider: AdProvider = {
         externalCampaignId: campaign.id,
       };
     } catch (error) {
+      // error-policy:J1 provider boundary → {success:false} drives caller credit refund (index.ts:1157)
       logger.error("[MetaAds] Create campaign failed", { error });
       return {
         success: false,
@@ -466,6 +468,7 @@ export const metaAdsProvider: AdProvider = {
 
       return { success: true, externalCampaignId };
     } catch (error) {
+      // error-policy:J1 provider boundary → structured AdProviderCampaignResult
       logger.error("[MetaAds] Update campaign failed", { error });
       return {
         success: false,
@@ -492,6 +495,7 @@ export const metaAdsProvider: AdProvider = {
 
       return { success: true, externalCampaignId };
     } catch (error) {
+      // error-policy:J1 provider boundary → structured AdProviderCampaignResult
       logger.error("[MetaAds] Pause campaign failed", { error });
       return {
         success: false,
@@ -518,6 +522,7 @@ export const metaAdsProvider: AdProvider = {
 
       return { success: true, externalCampaignId };
     } catch (error) {
+      // error-policy:J1 provider boundary → structured AdProviderCampaignResult
       logger.error("[MetaAds] Activate campaign failed", { error });
       return {
         success: false,
@@ -543,6 +548,7 @@ export const metaAdsProvider: AdProvider = {
 
       return { success: true };
     } catch (error) {
+      // error-policy:J1 provider boundary → {success:false} structured result
       logger.error("[MetaAds] Delete campaign failed", { error });
       return {
         success: false,
@@ -681,6 +687,7 @@ export const metaAdsProvider: AdProvider = {
         externalCreativeId: creative.id,
       };
     } catch (error) {
+      // error-policy:J1 provider boundary → structured AdProviderCreativeResult
       logger.error("[MetaAds] Create creative failed", { error });
       return {
         success: false,
@@ -761,6 +768,7 @@ export const metaAdsProvider: AdProvider = {
         },
       };
     } catch (error) {
+      // error-policy:J1 provider boundary → structured media upload result
       logger.error("[MetaAds] Media upload failed", {
         accountId,
         type: input.type,
@@ -829,6 +837,7 @@ export const metaAdsProvider: AdProvider = {
 
       return { success: true, metrics };
     } catch (error) {
+      // error-policy:J1 provider boundary → structured failure, distinct from the empty-insights success above
       logger.error("[MetaAds] Get metrics failed", { error });
       return {
         success: false,

@@ -114,6 +114,8 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   publicExact("tts.elevenlabs-passthrough", "POST", "/api/tts/elevenlabs"),
 
   sessionExact("runtime.mode", "GET", "/api/runtime/mode"),
+  sessionExact("cloud.login", "POST", "/api/cloud/login"),
+  sessionExact("cloud.disconnect", "POST", "/api/cloud/disconnect"),
   sessionPrefix("cloud.compat", "/api/cloud/compat/"),
   sessionPrefix("cloud.v1", "/api/cloud/v1/"),
   sessionPrefix("cloud.billing", "/api/cloud/billing/"),

@@ -41,6 +41,8 @@ const VALID_CONVERSATION_SCOPES = new Set([
   "page-wallet",
   "page-browser",
   "page-automations",
+  "page-knowledge",
+  "page-transcripts",
 ]);
 
 const VALID_CONVERSATION_AUTOMATION_TYPES = new Set([

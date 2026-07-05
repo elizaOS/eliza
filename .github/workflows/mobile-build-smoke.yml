@@ -7,6 +7,17 @@ on:
     branches: [main, develop]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
   workflow_dispatch:
+    inputs:
+      cloud_api_base:
+        description: "Eliza Cloud API base for the iOS cloud runtime-mode smoke (defaults to the staging sandbox var, then prod)"
+        required: false
+        default: ""
+  schedule:
+    # Nightly iOS local (full-Bun on-device engine) lane (#13578). This mode
+    # is too heavy for the PR path — a full-Bun engine build, a real ~1.3GB
+    # GGUF, and CPU inference in the simulator — so it runs on a schedule and
+    # gates that nightly run instead of every pull request.
+    - cron: "0 7 * * *"
 
 concurrency:
   group: mobile-smoke-${{ github.ref }}
@@ -22,7 +33,11 @@ permissions:
 jobs:
   changes:
     name: Classify changed paths
-    runs-on: [self-hosted, hetzner-robot]
+    # Path classifier is a git-diff + node script: no self-hosted resources.
+    # Keep it on GitHub-hosted so a drained hetzner fleet cannot leave it
+    # queued indefinitely and pile up runs (#13617/#8501).
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 10
     outputs:
       ios: ${{ steps.filter.outputs.ios }}
       android: ${{ steps.filter.outputs.android }}
@@ -159,29 +174,7 @@ jobs:
       - name: Run iOS onboarding -> home simulator smoke
         run: |
           set -euo pipefail
-          mkdir -p packages/app/test-results/ios-onboarding-to-home
-          ELIZA_API_PORT=31338 ELIZA_PAIRING_DISABLED=1 \
-            node packages/app-core/scripts/run-node-tsx.mjs packages/app-core/scripts/serve-real-local-agent.ts \
-            > packages/app/test-results/ios-onboarding-to-home/host-agent.log 2>&1 &
-          HOST_AGENT_PID=$!
-          cleanup() {
-            kill "$HOST_AGENT_PID" 2>/dev/null || true
-            wait "$HOST_AGENT_PID" 2>/dev/null || true
-          }
-          trap cleanup EXIT
-          for attempt in $(seq 1 90); do
-            if curl -fsS http://127.0.0.1:31338/api/health >/dev/null; then
-              break
-            fi
-            if ! kill -0 "$HOST_AGENT_PID" 2>/dev/null; then
-              echo "Host agent exited before /api/health became ready"
-              cat packages/app/test-results/ios-onboarding-to-home/host-agent.log
-              exit 1
-            fi
-            sleep 2
-          done
-          curl -fsS http://127.0.0.1:31338/api/health >/dev/null
-          node packages/app/scripts/ios-onboarding-smoke.mjs --api-base http://127.0.0.1:31338
+          node packages/app/scripts/ios-onboarding-smoke.mjs
 
       - name: Upload iOS onboarding evidence
         if: always()
@@ -193,35 +186,13 @@ jobs:
           retention-days: 7
 
       - name: Run iOS native attachment smoke (#10936)
-        # New evidence lane for the content-addressed media + native
-        # Filesystem/Share path. Keep non-blocking until the hosted macOS
-        # simulator behavior is observed green, then promote to hard fail.
-        continue-on-error: true
+        # Evidence lane for the content-addressed media + native
+        # Filesystem/Share path. Promoted to a hard-gating step (#13576):
+        # a regression in the media-store / Filesystem / Share path now
+        # turns Mobile Build Smoke red instead of self-skipping to green.
         run: |
           set -euo pipefail
-          mkdir -p packages/app/test-results/ios-attachment-smoke
-          ELIZA_API_PORT=31338 ELIZA_PAIRING_DISABLED=1 \
-            node packages/app-core/scripts/run-node-tsx.mjs packages/app-core/scripts/serve-real-local-agent.ts \
-            > packages/app/test-results/ios-attachment-smoke/host-agent.log 2>&1 &
-          HOST_AGENT_PID=$!
-          cleanup() {
-            kill "$HOST_AGENT_PID" 2>/dev/null || true
-            wait "$HOST_AGENT_PID" 2>/dev/null || true
-          }
-          trap cleanup EXIT
-          for attempt in $(seq 1 90); do
-            if curl -fsS http://127.0.0.1:31338/api/health >/dev/null; then
-              break
-            fi
-            if ! kill -0 "$HOST_AGENT_PID" 2>/dev/null; then
-              echo "Host agent exited before /api/health became ready"
-              cat packages/app/test-results/ios-attachment-smoke/host-agent.log
-              exit 1
-            fi
-            sleep 2
-          done
-          curl -fsS http://127.0.0.1:31338/api/health >/dev/null
-          node packages/app/scripts/ios-attachment-smoke.mjs --api-base http://127.0.0.1:31338
+          node packages/app/scripts/ios-attachment-smoke.mjs
 
       - name: Upload iOS native attachment evidence
         if: always()
@@ -237,35 +208,14 @@ jobs:
         # drives a real chat turn through the installed simulator app (the iOS
         # self-driving-WebView mechanism — WKWebView is not CDP/Playwright-drivable,
         # so this is the only viable iOS device-chat coverage). It previously ran
-        # in ZERO CI lanes (issue #9943 item 5). Non-blocking on introduction:
-        # promote to a hard fail once it is confirmed green on the macOS runner.
-        continue-on-error: true
+        # in ZERO CI lanes (issue #9943 item 5). Promoted to a hard-gating
+        # step (#13576): a regression in iOS chat send/receive through the
+        # app-core API now turns Mobile Build Smoke red instead of
+        # self-skipping to green.
         run: |
           set -euo pipefail
-          mkdir -p packages/app/test-results/ios-local-chat
-          ELIZA_API_PORT=31338 ELIZA_PAIRING_DISABLED=1 \
-            node packages/app-core/scripts/run-node-tsx.mjs packages/app-core/scripts/serve-real-local-agent.ts \
-            > packages/app/test-results/ios-local-chat/host-agent.log 2>&1 &
-          HOST_AGENT_PID=$!
-          cleanup() {
-            kill "$HOST_AGENT_PID" 2>/dev/null || true
-            wait "$HOST_AGENT_PID" 2>/dev/null || true
-          }
-          trap cleanup EXIT
-          for attempt in $(seq 1 90); do
-            if curl -fsS http://127.0.0.1:31338/api/health >/dev/null; then
-              break
-            fi
-            if ! kill -0 "$HOST_AGENT_PID" 2>/dev/null; then
-              echo "Host agent exited before /api/health became ready"
-              cat packages/app/test-results/ios-local-chat/host-agent.log
-              exit 1
-            fi
-            sleep 2
-          done
-          curl -fsS http://127.0.0.1:31338/api/health >/dev/null
           node packages/app/scripts/mobile-local-chat-smoke.mjs \
-            --platform ios --require-installed --api-base http://127.0.0.1:31338
+            --platform ios --require-installed --start-host-agent
 
       - name: Upload iOS local-chat evidence
         if: always()
@@ -322,11 +272,229 @@ jobs:
           done
           echo "Fastlane config present at packages/app/ios/."
 
+  build-ios-local:
+    name: iOS Local (full-Bun) Simulator Smoke
+    # Nightly / on-demand only — never on the PR path. The full-Bun on-device
+    # engine build + real GGUF + CPU inference is far too heavy to gate every
+    # pull request, so the local runtime mode gates the scheduled run instead.
+    # This closes the coverage gap called out in #13578: remote mode is
+    # CI-blocking, but local (full-Bun) mode had no unattended lane. Mirrors
+    # the remote build-ios job, swapping the direct/loopback host-agent smoke
+    # for the on-device full-Bun engine smoke (no host agent — the engine runs
+    # in-process and the smoke exchanges the request/result via Preferences).
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      # A real, small on-device GGUF — the same eliza-1 e2b text model the
+      # Android live smoke stages. mobile-local-chat-smoke.mjs copies whatever
+      # ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH points at into the sim container and
+      # registers it under the `eliza-1-2b` id, capping the context to 4096 so
+      # model load + first reply stay fast on a simulator.
+      IOS_FULL_BUN_SMOKE_MODEL_URL: "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/e2b/text/eliza-1-e2b-32k.gguf?download=true"
+      IOS_FULL_BUN_SMOKE_MODEL_FILE: "eliza-1-e2b-32k.gguf"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 24
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-native-deps: "false"
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          run-postinstall: "true"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Generate protobuf types
+        run: |
+          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/core/src/types/generated ]; then
+            cd packages/schemas
+            node node_modules/@bufbuild/buf/install.js 2>/dev/null || true
+            bunx @bufbuild/buf@1.67.0 generate
+          fi
+
+      - name: Build Vite config package deps
+        run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/vault
+
+      - name: Cache full-Bun smoke GGUF
+        id: model-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.cache/eliza-ios-full-bun-smoke
+          key: ios-full-bun-smoke-model-${{ env.IOS_FULL_BUN_SMOKE_MODEL_FILE }}
+
+      - name: Download full-Bun smoke GGUF (cache miss)
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.cache/eliza-ios-full-bun-smoke"
+          curl -fL --retry 3 --retry-all-errors \
+            -o "$HOME/.cache/eliza-ios-full-bun-smoke/$IOS_FULL_BUN_SMOKE_MODEL_FILE" \
+            "$IOS_FULL_BUN_SMOKE_MODEL_URL"
+          ls -la "$HOME/.cache/eliza-ios-full-bun-smoke/"
+
+      - name: Build iOS simulator app (full-Bun local runtime)
+        # Mirrors `build:ios:local:sim` (run-mobile-build.mjs ios-local with
+        # ELIZA_IOS_FULL_BUN_ENGINE=1). The remote lane builds the same target
+        # with the engine disabled (ELIZA_IOS_FULL_BUN_ENGINE=0); flipping it on
+        # is exactly the coverage this lane adds.
+        run: node --max-old-space-size=8192 packages/app-core/scripts/run-mobile-build.mjs ios-local
+        env:
+          LANG: en_US.UTF-8
+          ELIZA_BUILD_VARIANT: "direct"
+          ELIZA_RELEASE_AUTHORITY: "developer-toolchain"
+          VITE_ELIZA_IOS_ALLOW_SIMULATOR_LOOPBACK: "1"
+          ELIZA_IOS_FULL_BUN_ENGINE: "1"
+          ELIZA_IOS_BUILD_DESTINATION: "generic/platform=iOS Simulator"
+          ELIZA_IOS_BUILD_SDK: "iphonesimulator"
+          NODE_OPTIONS: "--max-old-space-size=8192"
+
+      - name: Verify .app exists
+        run: |
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "App.app" -path "*/Debug-iphonesimulator/*" | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: App.app not found in DerivedData"
+            exit 1
+          fi
+          echo "Built app at: $APP_PATH"
+
+      - name: Verify staged renderer is the freshly built one (no stale UI, #9309)
+        run: |
+          node packages/app-core/scripts/verify-ondevice-artifact.mjs --platform ios
+
+      - name: Boot simulator and install the full-Bun app
+        run: |
+          set -euo pipefail
+          # Pick an available iPhone simulator; boot it and wait for readiness.
+          UDID=$(xcrun simctl list devices available -j \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);let u="";for(const runtime of Object.keys(j.devices)){if(!/iOS/.test(runtime))continue;for(const dev of j.devices[runtime]){if(dev.isAvailable&&/iPhone/.test(dev.name)){u=dev.udid;break}}if(u)break}process.stdout.write(u)})')
+          if [ -z "$UDID" ]; then
+            echo "ERROR: no available iPhone simulator found"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "Booting simulator $UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "App.app" -path "*/Debug-iphonesimulator/*" | head -1)
+          echo "Installing $APP_PATH"
+          xcrun simctl install "$UDID" "$APP_PATH"
+
+      - name: Run iOS full-Bun local-chat simulator smoke (#13578)
+        # Gating check for the nightly lane: build the on-device full-Bun
+        # engine, stage the real GGUF, and assert the exact on-device reply
+        # (`ios smoke model works`). No `continue-on-error` — a regression in
+        # engine boot, the on-device model registry, or first-reply generation
+        # fails the scheduled run.
+        run: |
+          set -euo pipefail
+          mkdir -p packages/app/test-results/ios-full-bun-local-chat
+          # Point the smoke at the cached GGUF via an absolute path it can stat.
+          export ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH="$HOME/.cache/eliza-ios-full-bun-smoke/$IOS_FULL_BUN_SMOKE_MODEL_FILE"
+          if [ ! -f "$ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH" ]; then
+            echo "ERROR: staged smoke model missing at $ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH"
+            exit 1
+          fi
+          node packages/app/scripts/mobile-local-chat-smoke.mjs \
+            --platform ios --require-installed --ios-select-local --ios-full-bun-smoke \
+            2>&1 | tee packages/app/test-results/ios-full-bun-local-chat/smoke.log
+
+      - name: Upload iOS full-Bun local-chat evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ios-full-bun-local-chat
+          path: packages/app/test-results/ios-full-bun-local-chat/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  ios-cloud-mode:
+    name: iOS Cloud Runtime-Mode Smoke
+    # Nightly / on-demand only — never on the PR path. Provisioning a real Eliza
+    # Cloud agent (Hetzner-backed) is slow and costs org credit, so the cloud
+    # runtime mode gates the scheduled run alongside the full-Bun local lane.
+    # This closes the third row of the #13578 coverage matrix: remote mode is
+    # PR-blocking and local (full-Bun) mode gates nightly, but cloud mode had no
+    # unattended lane at all — the XCUITest cloud-onboarding path XCTSkips at the
+    # OAuth wall without a device Cloud session, and cloud-provisioning-e2e.mjs
+    # (the programmatic cloud runtime assertion) was only reachable behind the
+    # unwired `ios-e2e.mjs --cloud`. cloud-provisioning-e2e.mjs has no workspace
+    # imports (node built-ins + fetch only) and needs no build/simulator, so the
+    # cloud runtime-mode gate is a fast ubuntu job seeded with a real Cloud
+    # credential rather than a browser OAuth leg.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 30
+    env:
+      # Headless session seed (#13578 done-when #2): a real Cloud credential
+      # injected from the org secret, bypassing the interactive device-code /
+      # OAuth browser leg that XCTSkips on the simulator. ELIZACLOUD_API_KEY is
+      # the same secret launch-hardening-8756.yml uses for its fresh-agent probe.
+      ELIZA_CLOUD_AUTH_TOKEN: ${{ secrets.ELIZACLOUD_API_KEY }}
+      # ORIGIN ONLY — cloud-provisioning-e2e.mjs appends `/api/v1/...` itself, so
+      # this must NOT carry an `/api/v1` suffix (unlike the sandbox-live-smoke
+      # `_URL` var, which does). Overridable via workflow_dispatch to target a
+      # throwaway org; defaults to production Cloud otherwise.
+      ELIZA_CLOUD_API_BASE: ${{ github.event.inputs.cloud_api_base || 'https://api.elizacloud.ai' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 24
+
+      - name: Run iOS cloud runtime-mode provisioning smoke (#13578)
+        # Gating check for the cloud runtime mode. With the seed present this is a
+        # HARD gate (no continue-on-error): a regression in cloud agent creation,
+        # Hetzner provisioning, or the provisioned runtime never answering fails
+        # the scheduled run. cloud-provisioning-e2e.mjs provisions a real agent,
+        # waits for its runtime URL, and probes /api/status|health|me — the same
+        # programmatic cloud path the iOS `ios-e2e.mjs --cloud` route calls. When
+        # the secret is absent (forks without secret access) the lane records an
+        # explicit skip in the step summary rather than silently passing green.
+        run: |
+          set -euo pipefail
+          if [ -z "${ELIZA_CLOUD_AUTH_TOKEN:-}" ]; then
+            {
+              echo "### iOS cloud runtime-mode smoke"
+              echo ""
+              echo "skipped: missing ELIZACLOUD_API_KEY secret (no Cloud session seed available)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "iOS cloud runtime-mode smoke skipped: missing ELIZACLOUD_API_KEY secret"
+            exit 0
+          fi
+          mkdir -p packages/app/test-results/ios-cloud-mode
+          node packages/app/scripts/cloud-provisioning-e2e.mjs \
+            --fresh-agent \
+            --agent-name "Eliza iOS Cloud Runtime-Mode Smoke" \
+            --report packages/app/test-results/ios-cloud-mode/cloud-provisioning.json \
+            2>&1 | tee packages/app/test-results/ios-cloud-mode/smoke.log
+
+      - name: Upload iOS cloud runtime-mode evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ios-cloud-mode
+          path: packages/app/test-results/ios-cloud-mode/**
+          if-no-files-found: warn
+          retention-days: 7
+
   build-android:
     name: Android Debug Build
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.android == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5

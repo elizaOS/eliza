@@ -12,7 +12,9 @@ import { describe, expect, it } from "vitest";
 import {
   exportScenarioNativeJsonl,
   recordedTrajectoryToNativeRows,
+  rowPrivacyAttestation,
   SCENARIO_NATIVE_EXPORT_SCHEMA,
+  SCENARIO_NATIVE_SOURCE_KIND,
 } from "./native-export.ts";
 
 // Synthetic `RecordedTrajectory` shaped like what
@@ -499,6 +501,61 @@ describe("exportScenarioNativeJsonl", () => {
     } finally {
       rmSync(runDir, { recursive: true, force: true });
     }
+  });
+
+  it("labels scenario native exports as synthetic, not a reviewed real-user export (#13623)", () => {
+    const runDir = mkdtempSync(path.join(tmpdir(), "scenario-native-src-"));
+    try {
+      const trajDir = path.join(runDir, "trajectories", "agent-test");
+      mkdirSync(trajDir, { recursive: true });
+      writeFileSync(
+        path.join(trajDir, "tj-test-1.json"),
+        JSON.stringify(syntheticTrajectory()),
+        "utf-8",
+      );
+      const outPath = path.join(runDir, "native.jsonl");
+      expect(exportScenarioNativeJsonl(runDir, outPath)).toBe(1);
+
+      const attestation = JSON.parse(
+        readFileSync(
+          path.join(runDir, "native.privacy-attestation.json"),
+          "utf-8",
+        ),
+      );
+      // A clean run still passes the gate, but is truthfully labeled synthetic
+      // and NOT a real-user export.
+      expect(attestation.passed).toBe(true);
+      expect(attestation.sourceKind).toBe(SCENARIO_NATIVE_SOURCE_KIND);
+      expect(attestation.sourceKind).toBe("scenario_synthetic");
+      expect(attestation.source.kind).toBe("scenario_synthetic");
+      expect(attestation.source.realUserExport).toBe(false);
+      expect(attestation.privacy.realUserExport).toBe(false);
+      expect(attestation.gate.sourceKind).toBe("scenario_synthetic");
+
+      // The per-row marker reflects the real (clean) gate result.
+      const row = JSON.parse(readFileSync(outPath, "utf-8").trim());
+      expect(row.privacyAttestation.reviewed).toBe(true);
+      expect(row.privacyAttestation.passed).toBe(true);
+    } finally {
+      rmSync(runDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rowPrivacyAttestation reflects the real gate result, never a hardcoded pass (#13623)", () => {
+    const passing = rowPrivacyAttestation(
+      "native.privacy-attestation.json",
+      true,
+    );
+    expect(passing.reviewed).toBe(true);
+    expect(passing.passed).toBe(true);
+
+    // A failed gate (residual survived) must NOT stamp reviewed/passed:true.
+    const failing = rowPrivacyAttestation(
+      "native.privacy-attestation.json",
+      false,
+    );
+    expect(failing.reviewed).toBe(false);
+    expect(failing.passed).toBe(false);
   });
 
   it("threads scenario outcomes so failed trajectories carry scenarioStatus='failed'", () => {

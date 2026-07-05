@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import type { IAgentRuntime } from '@elizaos/core';
+import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import * as dbSchema from '../../src/db/schema';
 import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
@@ -41,6 +42,121 @@ async function persistentRuntime(
     },
   };
 }
+
+/**
+ * A seeding harness with the pieces the default-workflow seed needs: a
+ * persistent PGlite DB that survives service restarts, an in-memory task queue
+ * (so `armSchedules` has `createTask`/`getTasks`/`deleteTask`), and a
+ * persistent in-memory cache backing `getCache`/`setCache` so the once-per
+ * install seed marker survives a restart. `restart()` starts a fresh service
+ * against the SAME db + cache, simulating a process reboot.
+ */
+async function seedingHarness(settings: Record<string, unknown> = {}) {
+  const dir = await mkdtemp(join(tmpdir(), 'embedded-workflow-seed-'));
+  const client = new PGlite({ dataDir: join(dir, 'pglite') });
+  const db = drizzle(client, { schema: dbSchema });
+  const tasks: Array<Record<string, unknown>> = [];
+  const cache = new Map<string, unknown>();
+  const reports: Array<{ scope: string; error: unknown; context?: Record<string, unknown> }> = [];
+  const settingsMap: Record<string, unknown> = {
+    WORKFLOW_SEED_DEFAULTS: true,
+    ...settings,
+  };
+  // When true, the next getCache/setCache call throws to simulate a transient
+  // cache outage (used to prove the fail-closed no-zombie-re-seed guarantee).
+  const control = {
+    failNextCacheRead: false,
+    failCacheWrite: false,
+    cacheWriteReturnsFalse: false,
+    failPriorDeletionCheck: false,
+  };
+  const runtimeDb = new Proxy(db, {
+    get(target, prop, receiver) {
+      if (prop !== 'select') return Reflect.get(target, prop, receiver);
+      return (...args: unknown[]) => {
+        const builder = Reflect.apply(target.select, target, args);
+        return new Proxy(builder, {
+          get(selectTarget, selectProp, selectReceiver) {
+            if (selectProp !== 'from') {
+              return Reflect.get(selectTarget, selectProp, selectReceiver);
+            }
+            return (table: unknown) => {
+              if (control.failPriorDeletionCheck && table === dbSchema.workflowRevisions) {
+                throw new Error('workflow revision query unavailable');
+              }
+              return Reflect.apply(selectTarget.from, selectTarget, [table]);
+            };
+          },
+        });
+      };
+    },
+  });
+  let taskSeq = 0;
+  const buildRuntime = () =>
+    ({
+      agentId: 'agent-test',
+      character: { settings: {} },
+      db: runtimeDb,
+      getSetting: (key: string) => settingsMap[key] ?? null,
+      getService: () => null,
+      reportError: (scope: string, error: unknown, context?: Record<string, unknown>) => {
+        reports.push({ scope, error, context });
+      },
+      createTask: async (task: Record<string, unknown>) => {
+        taskSeq += 1;
+        tasks.push({ id: `task-${taskSeq}`, ...task });
+      },
+      getTasks: async () => tasks,
+      deleteTask: async (id: string) => {
+        const index = tasks.findIndex((task) => task.id === id);
+        if (index >= 0) tasks.splice(index, 1);
+      },
+      getCache: async <T>(key: string): Promise<T | undefined> => {
+        if (control.failNextCacheRead) {
+          throw new Error('cache unavailable');
+        }
+        return cache.has(key) ? (cache.get(key) as T) : undefined;
+      },
+      setCache: async <T>(key: string, value: T): Promise<boolean> => {
+        if (control.failCacheWrite) {
+          throw new Error('cache write unavailable');
+        }
+        // Simulate a cache backend that reports a non-persisted write via its
+        // boolean return rather than by throwing.
+        if (control.cacheWriteReturnsFalse) {
+          return false;
+        }
+        cache.set(key, value);
+        return true;
+      },
+    }) as unknown as IAgentRuntime;
+
+  return {
+    tasks,
+    cache,
+    control,
+    reports,
+    setSetting(key: string, value: unknown) {
+      settingsMap[key] = value;
+    },
+    async start() {
+      return EmbeddedWorkflowService.start(buildRuntime());
+    },
+    async listDefaultRows() {
+      return db
+        .select({ id: dbSchema.embeddedWorkflows.id })
+        .from(dbSchema.embeddedWorkflows)
+        .where(eq(dbSchema.embeddedWorkflows.id, DEFAULT_WORKFLOW_ID));
+    },
+    async close() {
+      await client.close();
+      await rm(dir, { recursive: true, force: true });
+    },
+  };
+}
+
+const DEFAULT_WORKFLOW_ID = 'system-device-health-check';
+const SEED_MARKER_KEY = 'eliza:workflow:seeded-defaults:v1';
 
 describe('EmbeddedWorkflowService', () => {
   test('rejects workflows with unregistered nodes before activation', async () => {
@@ -135,6 +251,295 @@ describe('EmbeddedWorkflowService', () => {
       await harness.close();
     }
   }, 90_000);
+
+  test('seeds exactly one default workflow on first run and records the marker', async () => {
+    const harness = await seedingHarness();
+    const service = await harness.start();
+    try {
+      const workflows = await service.listWorkflows();
+      const defaults = workflows.data.filter((w) => w.id === DEFAULT_WORKFLOW_ID);
+      // Exactly one default, and it is the only workflow present on a fresh install.
+      expect(defaults).toHaveLength(1);
+      expect(workflows.data).toHaveLength(1);
+      expect(defaults[0].active).toBe(true);
+      // Routed through the ONE scheduler: a single TRIGGER_DISPATCH core Task.
+      expect(harness.tasks).toHaveLength(1);
+      expect((harness.tasks[0].metadata as { workflowId?: string }).workflowId).toBe(
+        DEFAULT_WORKFLOW_ID
+      );
+      // Once-per-install marker was recorded.
+      expect(harness.cache.get(SEED_MARKER_KEY)).toMatchObject({
+        workflowId: DEFAULT_WORKFLOW_ID,
+        seededAt: expect.any(String),
+      });
+    } finally {
+      await service.stop();
+      await harness.close();
+    }
+  }, 90_000);
+
+  test('is idempotent across restarts — never re-seeds a second default', async () => {
+    const harness = await seedingHarness();
+    const first = await harness.start();
+    await first.stop();
+
+    // Reboot against the same db + cache. The marker + existing row must both
+    // suppress a second seed.
+    const second = await harness.start();
+    try {
+      const workflows = await second.listWorkflows();
+      expect(workflows.data.filter((w) => w.id === DEFAULT_WORKFLOW_ID)).toHaveLength(1);
+      expect(workflows.data).toHaveLength(1);
+    } finally {
+      await second.stop();
+      await harness.close();
+    }
+  }, 90_000);
+
+  test('respects a user deletion — no zombie re-seed after restart', async () => {
+    const harness = await seedingHarness();
+    const first = await harness.start();
+    // Simulate the user deleting the seeded default.
+    await first.deleteWorkflow(DEFAULT_WORKFLOW_ID);
+    let afterDelete = await first.listWorkflows();
+    expect(afterDelete.data.filter((w) => w.id === DEFAULT_WORKFLOW_ID)).toHaveLength(0);
+    await first.stop();
+
+    // Reboot: the persistent marker must stop the deleted default from coming back.
+    const second = await harness.start();
+    try {
+      afterDelete = await second.listWorkflows();
+      expect(afterDelete.data.filter((w) => w.id === DEFAULT_WORKFLOW_ID)).toHaveLength(0);
+    } finally {
+      await second.stop();
+      await harness.close();
+    }
+  }, 90_000);
+
+  test('fails closed on a cache-read outage — a deleted default is not resurrected', async () => {
+    const harness = await seedingHarness();
+    const first = await harness.start();
+    await first.deleteWorkflow(DEFAULT_WORKFLOW_ID);
+    await first.stop();
+
+    // The marker persists in the cache, but the cache read throws on this boot.
+    // We must NOT fall back to the row check and re-seed the deleted default.
+    harness.control.failNextCacheRead = true;
+    const second = await harness.start();
+    try {
+      const workflows = await second.listWorkflows();
+      expect(workflows.data.filter((w) => w.id === DEFAULT_WORKFLOW_ID)).toHaveLength(0);
+    } finally {
+      await second.stop();
+      await harness.close();
+    }
+  }, 90_000);
+
+  test('aborts seeding when the marker cannot be persisted — no orphan default', async () => {
+    const harness = await seedingHarness();
+    // The marker write fails on first boot: seeding must abort with NO row
+    // inserted, so there is never an active default that lacks its marker.
+    harness.control.failCacheWrite = true;
+    const first = await harness.start();
+    let workflows = await first.listWorkflows();
+    expect(workflows.data.filter((w) => w.id === DEFAULT_WORKFLOW_ID)).toHaveLength(0);
+    expect(harness.tasks).toHaveLength(0);
+    expect(harness.cache.get(SEED_MARKER_KEY)).toBeUndefined();
+    await first.stop();
+
+    // Cache recovers on the next boot: seeding retries cleanly and records the
+    // marker exactly once.
+    harness.control.failCacheWrite = false;
+    const second = await harness.start();
+    try {
+      workflows = await second.listWorkflows();
+      expect(workflows.data.filter((w) => w.id === DEFAULT_WORKFLOW_ID)).toHaveLength(1);
+      expect(harness.cache.get(SEED_MARKER_KEY)).toMatchObject({
+        workflowId: DEFAULT_WORKFLOW_ID,
+      });
+    } finally {
+      await second.stop();
+      await harness.close();
+    }
+  }, 90_000);
+
+  test('treats a false setCache result as a failed marker write — no orphan default', async () => {
+    const harness = await seedingHarness();
+    // The cache reports the marker write as not-persisted (returns false).
+    // Seeding must roll the row back, leaving neither row nor marker.
+    harness.control.cacheWriteReturnsFalse = true;
+    const first = await harness.start();
+    let workflows = await first.listWorkflows();
+    expect(workflows.data.filter((w) => w.id === DEFAULT_WORKFLOW_ID)).toHaveLength(0);
+    expect(harness.cache.get(SEED_MARKER_KEY)).toBeUndefined();
+    await first.stop();
+
+    // Cache recovers: seeding retries and completes exactly once.
+    harness.control.cacheWriteReturnsFalse = false;
+    const second = await harness.start();
+    try {
+      workflows = await second.listWorkflows();
+      expect(workflows.data.filter((w) => w.id === DEFAULT_WORKFLOW_ID)).toHaveLength(1);
+      expect(harness.cache.get(SEED_MARKER_KEY)).toMatchObject({
+        workflowId: DEFAULT_WORKFLOW_ID,
+      });
+    } finally {
+      await second.stop();
+      await harness.close();
+    }
+  }, 90_000);
+
+  test('backfills the seed marker for a pre-marker existing default row', async () => {
+    // Simulate an install upgraded from the old row-existence-only seeding:
+    // seed once while pretending the cache has no setCache (so no marker is
+    // written), then reboot with a healthy cache and confirm the marker is
+    // backfilled without duplicating or re-seeding the row.
+    const harness = await seedingHarness();
+    // First boot writes the row but the marker write reports not-persisted, so
+    // the row exists with NO marker — the pre-marker upgrade state. We use the
+    // false-return path and then keep the row by writing it directly is complex;
+    // instead seed normally, then clear the marker to emulate the upgrade.
+    const first = await harness.start();
+    expect(
+      (await first.listWorkflows()).data.filter((w) => w.id === DEFAULT_WORKFLOW_ID)
+    ).toHaveLength(1);
+    await first.stop();
+    // Emulate a pre-marker upgrade: the row exists but the marker is absent.
+    harness.cache.delete(SEED_MARKER_KEY);
+    expect(harness.cache.get(SEED_MARKER_KEY)).toBeUndefined();
+
+    const second = await harness.start();
+    try {
+      // Row is untouched (not duplicated, not re-seeded) and the marker is back.
+      expect(
+        (await second.listWorkflows()).data.filter((w) => w.id === DEFAULT_WORKFLOW_ID)
+      ).toHaveLength(1);
+      expect(harness.cache.get(SEED_MARKER_KEY)).toMatchObject({
+        workflowId: DEFAULT_WORKFLOW_ID,
+      });
+    } finally {
+      await second.stop();
+      await harness.close();
+    }
+  }, 90_000);
+
+  test('does not seed the default into an existing non-default workflow store', async () => {
+    const harness = await seedingHarness({ WORKFLOW_SEED_DEFAULTS: false });
+    const first = await harness.start();
+    await first.createWorkflow({
+      id: 'user-nightly-summary',
+      name: 'User nightly summary',
+      active: false,
+      nodes: [
+        {
+          id: 'manual',
+          name: 'Manual Trigger',
+          type: 'workflows-nodes-base.manualTrigger',
+          typeVersion: 1,
+          position: [0, 0],
+          parameters: {},
+        },
+      ],
+      connections: {},
+    });
+    await first.stop();
+    harness.setSetting('WORKFLOW_SEED_DEFAULTS', true);
+
+    const second = await harness.start();
+    try {
+      const workflows = await second.listWorkflows();
+      expect(workflows.data.map((workflow) => workflow.id)).toEqual(['user-nightly-summary']);
+      expect(workflows.data.filter((workflow) => workflow.id === DEFAULT_WORKFLOW_ID)).toHaveLength(
+        0
+      );
+      expect(harness.tasks).toHaveLength(0);
+      expect(harness.cache.get(SEED_MARKER_KEY)).toMatchObject({
+        workflowId: DEFAULT_WORKFLOW_ID,
+      });
+    } finally {
+      await second.stop();
+      await harness.close();
+    }
+  }, 90_000);
+
+  test('preserves a pre-marker deletion via the delete revision on upgrade', async () => {
+    // Simulate an install upgraded from a pre-marker build where the user had
+    // ALREADY deleted the default: seed, delete (leaving a `delete` revision),
+    // then clear the marker to emulate the pre-marker era. On reboot, neither a
+    // marker nor a row exists, but the delete revision must stop a re-seed.
+    const harness = await seedingHarness();
+    const first = await harness.start();
+    await first.deleteWorkflow(DEFAULT_WORKFLOW_ID);
+    await first.stop();
+    harness.cache.delete(SEED_MARKER_KEY);
+    expect(harness.cache.get(SEED_MARKER_KEY)).toBeUndefined();
+
+    const second = await harness.start();
+    try {
+      const workflows = await second.listWorkflows();
+      expect(workflows.data.filter((w) => w.id === DEFAULT_WORKFLOW_ID)).toHaveLength(0);
+      // The marker is backfilled so subsequent boots skip the revision query.
+      expect(harness.cache.get(SEED_MARKER_KEY)).toMatchObject({
+        workflowId: DEFAULT_WORKFLOW_ID,
+      });
+    } finally {
+      await second.stop();
+      await harness.close();
+    }
+  }, 90_000);
+
+  test('fails closed when the prior default deletion check fails', async () => {
+    const harness = await seedingHarness({ WORKFLOW_SEED_DEFAULTS: false });
+    const first = await harness.start();
+    await first.createWorkflow({
+      id: DEFAULT_WORKFLOW_ID,
+      name: 'Pre-marker default',
+      nodes: [
+        {
+          id: 'manual',
+          name: 'Manual Trigger',
+          type: 'workflows-nodes-base.manualTrigger',
+          typeVersion: 1,
+          position: [0, 0],
+          parameters: {},
+        },
+      ],
+      connections: {},
+    });
+    await first.deleteWorkflow(DEFAULT_WORKFLOW_ID);
+    await first.stop();
+    harness.setSetting('WORKFLOW_SEED_DEFAULTS', true);
+    harness.control.failPriorDeletionCheck = true;
+
+    try {
+      await expect(harness.start()).rejects.toMatchObject({
+        code: 'WORKFLOW_DEFAULT_SEED_DELETION_CHECK_FAILED',
+        context: { workflowId: DEFAULT_WORKFLOW_ID },
+      });
+      expect(await harness.listDefaultRows()).toHaveLength(0);
+      expect(harness.tasks).toHaveLength(0);
+      expect(harness.reports).toHaveLength(1);
+      expect(harness.reports[0]).toMatchObject({
+        scope: 'EmbeddedWorkflowService.seedDefaultWorkflows',
+        context: { workflowId: DEFAULT_WORKFLOW_ID },
+      });
+    } finally {
+      await harness.close();
+    }
+  }, 90_000);
+
+  test('WORKFLOW_SEED_DEFAULTS=false disables seeding entirely', async () => {
+    const harness = await seedingHarness({ WORKFLOW_SEED_DEFAULTS: false });
+    const service = await harness.start();
+    try {
+      const workflows = await service.listWorkflows();
+      expect(workflows.data).toHaveLength(0);
+      expect(harness.cache.get(SEED_MARKER_KEY)).toBeUndefined();
+    } finally {
+      await service.stop();
+      await harness.close();
+    }
+  }, 60_000);
 
   test('runs a schedule -> HTTP Request -> Set workflow in a child process', async () => {
     const pluginRoot = join(import.meta.dir, '../..');

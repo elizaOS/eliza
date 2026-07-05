@@ -20,6 +20,37 @@ export function argValue(args, flag, fallback = null) {
   return index >= 0 && args[index + 1] ? args[index + 1] : fallback;
 }
 
+export const DEFAULT_API_PORT = 31337;
+
+/**
+ * Resolve the backend API port a capture run should target. Precedence:
+ *   1. explicit `--api-port <n>` CLI arg,
+ *   2. `ELIZA_API_PORT` env (the orchestrator advertises the auto-shifted port
+ *      here so parallel worktree stacks don't collide on 31337),
+ *   3. the built-in default (31337).
+ * A bare hardcoded 31337 silently probes the wrong backend on a port-shifted
+ * stack; this resolver keeps the same default while honoring an override
+ * (#13624). Only a bare positive integer in range is accepted; anything else
+ * falls through to the next source.
+ *
+ * @param {string[]} [args] argv slice (e.g. process.argv.slice(2))
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {number}
+ */
+export function resolveApiPort(args = [], env = process.env) {
+  const candidates = [argValue(args, "--api-port"), env?.ELIZA_API_PORT];
+  for (const raw of candidates) {
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (!/^\d+$/.test(trimmed)) continue;
+    const parsed = Number.parseInt(trimmed, 10);
+    if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65535) {
+      return parsed;
+    }
+  }
+  return DEFAULT_API_PORT;
+}
+
 export function resolveCapturePaths({ repoRoot, platform, slug, args }) {
   const issue = argValue(args, "--issue", process.env.EVIDENCE_ISSUE);
   const prefix =
@@ -121,7 +152,7 @@ async function waitForHealth(url, timeoutMs) {
 
 export async function startDeviceE2EHostAgent({
   repoRoot,
-  port = 31337,
+  port = resolveApiPort(),
   timeoutMs = 180_000,
   logSink,
 }) {

@@ -42,7 +42,13 @@ permissions:
 jobs:
   changes:
     name: Classify changed paths
-    runs-on: [self-hosted, hetzner-robot]
+    # Route with the same fleet-aware conditional as the test lanes. GitHub-hosted
+    # runners are billing-frozen (#13481), so a hardcoded ubuntu-24.04 here queued
+    # forever and — since every lane needs this classifier — stalled the entire
+    # ci-ok chain while the self-hosted fleet sat idle. Self-hosted when online;
+    # hosted only when an operator flags the fleet down (and billing is restored).
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 10
     outputs:
       server: ${{ steps.filter.outputs.server }}
       client: ${{ steps.filter.outputs.client }}
@@ -69,6 +75,23 @@ jobs:
 
       - name: Validate GitHub-native turbo cache contract
         run: node packages/scripts/ci-turbo-cache-contract.mjs
+
+      - name: Validate CI Bun version pin contract
+        run: node packages/scripts/ci-bun-version-contract.mjs
+
+      - name: Install alias-read guard parser dependency
+        run: npm install --prefix "$RUNNER_TEMP/alias-read-guard-deps" --no-save --no-package-lock --ignore-scripts typescript@6.0.3
+
+      - name: Validate brand-env alias-read guard self-test
+        env:
+          NODE_PATH: ${{ runner.temp }}/alias-read-guard-deps/node_modules
+        run: node packages/scripts/alias-read-guard.mjs --self-test
+
+      - name: Validate merge-gate robustness contract self-test
+        run: node packages/scripts/ci-merge-gate-contract.mjs --self-test
+
+      - name: Validate merge-gate robustness contract
+        run: node packages/scripts/ci-merge-gate-contract.mjs
 
       - name: Determine affected test lanes
         id: filter
@@ -110,7 +133,7 @@ jobs:
     name: Server Tests
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     env:
       PGLITE_WASM_MODE: node
@@ -240,7 +263,7 @@ jobs:
     name: Client Tests
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.client == 'true'
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -343,7 +366,7 @@ jobs:
     name: XR harness e2e
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true'
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -401,7 +424,7 @@ jobs:
     name: Plugin Tests (${{ matrix.shard }}/4)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true'
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 95
     strategy:
       fail-fast: false
@@ -484,7 +507,9 @@ jobs:
       - changes
       - plugin-tests
     if: ${{ !cancelled() && always() }}
-    runs-on: [self-hosted, hetzner-robot]
+    # Fleet-aware (see `changes`): hardcoded hosted froze this ci-ok dependency.
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 10
     steps:
       - name: Check plugin shard results
         shell: bash
@@ -515,7 +540,7 @@ jobs:
     name: Integration Lane (personal-assistant)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.server == 'true'
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     env:
       PGLITE_WASM_MODE: node
@@ -553,7 +578,7 @@ jobs:
     name: Electrobun Desktop Contract
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -583,7 +608,7 @@ jobs:
     name: Zero-Key unit + UI coverage
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     env:
       TEST_LANE: "pr"
@@ -643,7 +668,7 @@ jobs:
     name: Zero-Key app browser
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     env:
       TEST_LANE: "pr"
@@ -718,7 +743,7 @@ jobs:
     name: Zero-Key diagnostics
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     env:
       TEST_LANE: "pr"
@@ -777,7 +802,7 @@ jobs:
     name: Zero-Key scenario runner
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     env:
       TEST_LANE: "pr"
@@ -846,7 +871,7 @@ jobs:
     name: Zero-Key harness E2E
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     env:
       TEST_LANE: "pr"
@@ -902,7 +927,7 @@ jobs:
       - zero-key-scenario-runner
       - zero-key-harness-e2e
     if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true')
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Check zero-key slices
         shell: bash
@@ -932,7 +957,7 @@ jobs:
     name: Cloud Live E2E (Eliza Cloud)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.cloud == 'true'
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     outputs:
       skip: ${{ steps.cloud.outputs.skip }}
@@ -945,8 +970,18 @@ jobs:
           ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
           ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED: ${{ vars.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED != '' && vars.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED || secrets.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED }}
         run: |
+          strict_context=false
+          case "${EVENT_NAME}" in
+            workflow_dispatch|schedule) strict_context=true ;;
+          esac
+
           if [ -z "${ELIZAOS_CLOUD_API_KEY}" ]; then
-            echo "::warning::No Eliza Cloud API key configured - skipping optional cloud live E2E for ${EVENT_NAME}."
+            message="No Eliza Cloud API key configured"
+            if [ "${strict_context}" = "true" ]; then
+              echo "::error::${message}; strict ${EVENT_NAME} live lanes must fail instead of greening by skip."
+              exit 1
+            fi
+            echo "::warning::${message} - skipping optional cloud live E2E for ${EVENT_NAME}."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "capability_skip=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -957,6 +992,10 @@ jobs:
           if [ "${ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED}" = "1" ]; then
             echo "capability_skip=false" >> "$GITHUB_OUTPUT"
           else
+            if [ "${EVENT_NAME}" = "workflow_dispatch" ] || [ "${EVENT_NAME}" = "schedule" ]; then
+              echo "::error::Remote capability cloud sandbox live smoke is required for ${EVENT_NAME}; set ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED=1 instead of producing a green skip."
+              exit 1
+            fi
             echo "::notice::Remote capability cloud sandbox live smoke skipped because ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED is not configured."
             echo "capability_skip=true" >> "$GITHUB_OUTPUT"
           fi
@@ -1061,7 +1100,7 @@ jobs:
 
   provider-live-e2e:
     name: Remote Capability Provider Live E2E
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     outputs:
       skip: ${{ steps.providers.outputs.skip }}
@@ -1075,8 +1114,18 @@ jobs:
           MOBILE_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL }}
           DESKTOP_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_URL }}
         run: |
+          strict_context=false
+          case "${EVENT_NAME}" in
+            workflow_dispatch|schedule) strict_context=true ;;
+          esac
+
           if [ -z "${E2B_URL}${HOME_URL}${MOBILE_URL}${DESKTOP_URL}" ]; then
-            echo "::warning::No remote capability provider endpoints configured - skipping optional provider live E2E."
+            message="No remote capability provider endpoints configured"
+            if [ "${strict_context}" = "true" ]; then
+              echo "::error::${message}; strict ${EVENT_NAME} live lanes must fail instead of greening by skip."
+              exit 1
+            fi
+            echo "::warning::${message} - skipping optional provider live E2E."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -1094,6 +1143,10 @@ jobs:
 
           if [ "${#missing_required[@]}" -gt 0 ]; then
             message="Missing required remote capability provider endpoint secrets: ${missing_required[*]}"
+            if [ "${strict_context}" = "true" ]; then
+              echo "::error::${message}; strict ${EVENT_NAME} live lanes must fail instead of greening by skip."
+              exit 1
+            fi
             echo "::warning::${message}. Skipping optional provider live E2E for ${EVENT_NAME}."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
@@ -1184,7 +1237,7 @@ jobs:
       - cloud-live-e2e
       - provider-live-e2e
     if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && (needs.cloud-live-e2e.outputs.capability_skip != 'true' || needs.provider-live-e2e.outputs.skip != 'true')
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1223,11 +1276,123 @@ jobs:
         if: needs.provider-live-e2e.result == 'success' && needs.provider-live-e2e.outputs.skip != 'true'
         run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 3..4 --max-age-minutes 120 --max-future-minutes 5 --allowed-providers e2b,home-machine,mobile-companion,desktop-companion --require-providers e2b,home-machine,mobile-companion --require-ci --require-file-identity reports/remote-capabilities/providers
 
+  # The merge queue's sole required context is `ci-ok`, and until now `ci-ok`
+  # needed only the test lanes — so a change that breaks repo-wide typecheck,
+  # fails biome lint, is unformatted, or commits a secret could still merge to
+  # develop as long as tests passed (all of these are required on `main` but were
+  # advisory on develop; #13617 F2). This job restores parity: it runs the same
+  # lint / format / typecheck / secret-scan gates that guard `main`, and `ci-ok`
+  # needs it. It runs anywhere `ci-ok` treats skipped jobs as failures (merge
+  # queue, develop push, manual dispatch, and nightly schedule); on PRs
+  # quality.yml already covers this surface, so the job self-skips and `ci-ok`'s
+  # lenient PR path lets the skip pass. Runner: fleet-aware like the test lanes —
+  # it was pinned to GitHub-hosted for independence from the self-hosted fleet,
+  # but with hosted runners billing-frozen (#13481) that pin froze this ci-ok
+  # dependency; route to self-hosted while the fleet is online.
+  merge-quality-gate:
+    name: Merge Queue Quality Gate
+    needs: changes
+    if: >-
+      github.event_name == 'merge_group' ||
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule'
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Repo-wide biome lint
+        run: bun run lint
+
+      - name: Repo-wide biome format check
+        run: bun run format:check
+
+      - name: Repo-wide typecheck
+        run: bun run typecheck
+
+      - name: Stale base guard
+        env:
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "${CURRENT_SHA}^" >/dev/null 2>&1; then
+            BASE_SHA="$(git rev-parse "${CURRENT_SHA}^1")"
+            node packages/scripts/stale-base-guard.self-test.mjs
+            node packages/scripts/stale-base-guard.mjs \
+              --base "$BASE_SHA" \
+              --head "$CURRENT_SHA" \
+              --merge-base "$BASE_SHA" \
+              --window 1200 \
+              --max-behind-commits 200 \
+              --max-behind-hours 72 \
+              --github \
+              --summary "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::notice::Current SHA has no parent; stale-base guard has no target branch parent to compare."
+          fi
+
+      - name: Install gitleaks (OSS binary — no license required)
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.30.1
+          curl -sSL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          mkdir -p "$HOME/.local/bin"
+          install -m 0755 /tmp/gitleaks "$HOME/.local/bin/gitleaks"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/gitleaks" version
+
+      - name: Secret scan (gitleaks)
+        env:
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Scan the queue/tip commit only. New content is what the merge
+          # introduces; a full-history re-scan re-flags long-known vendored
+          # artifacts (see gitleaks.yml for the same rationale). Merge queue
+          # SHAs are merge commits, and `git log -p -1 <merge>` emits no patch
+          # by default, so use `-m -p` whenever the tip has multiple parents.
+          parent_count="$(git rev-list --parents -n 1 "$CURRENT_SHA" | wc -w | tr -d ' ')"
+          if [ "$parent_count" -gt 2 ]; then
+            RANGE_ARGS=(--log-opts "-m -p -1 ${CURRENT_SHA}")
+          elif [ "$parent_count" -eq 2 ]; then
+            RANGE_ARGS=(--log-opts "-1 ${CURRENT_SHA}")
+          else
+            echo "gitleaks: tip ${CURRENT_SHA} is an orphan/root baseline commit (no parent);"
+            echo "its content was already scanned incrementally on develop. Skipping full-tree re-scan."
+            exit 0
+          fi
+          gitleaks detect \
+            --config .gitleaks.toml \
+            --source . \
+            --verbose \
+            --redact \
+            --report-format sarif \
+            --report-path gitleaks.sarif \
+            --no-banner \
+            "${RANGE_ARGS[@]}"
+
   ci-ok:
     name: ci-ok
     if: ${{ !cancelled() && always() }}
     needs:
       - changes
+      - merge-quality-gate
       - server-tests
       - client-tests
       - xr-harness-e2e
@@ -1238,7 +1403,11 @@ jobs:
       - cloud-live-e2e
       - provider-live-e2e
       - github-live-artifact-validate
-    runs-on: [self-hosted, hetzner-robot]
+    # Fleet-aware (see `changes`): the aggregate gate itself must run to report a
+    # conclusion — a hardcoded hosted pin froze `ci-ok` on the billing-frozen
+    # fleet (#13481), so the required check never posted and nothing could merge.
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 10
     steps:
       - name: Check test results
         shell: bash
@@ -1246,6 +1415,7 @@ jobs:
           set -u
           echo "=== Required test job results ==="
           echo "changes:          ${{ needs.changes.result }}"
+          echo "merge-quality-gate:${{ needs.merge-quality-gate.result }}"
           echo "server-tests:     ${{ needs.server-tests.result }}"
           echo "client-tests:     ${{ needs.client-tests.result }}"
           echo "xr-harness-e2e:   ${{ needs.xr-harness-e2e.result }}"
@@ -1261,6 +1431,7 @@ jobs:
           bad=0
           for pair in \
             "changes:${{ needs.changes.result }}" \
+            "merge-quality-gate:${{ needs.merge-quality-gate.result }}" \
             "server-tests:${{ needs.server-tests.result }}" \
             "client-tests:${{ needs.client-tests.result }}" \
             "xr-harness-e2e:${{ needs.xr-harness-e2e.result }}" \

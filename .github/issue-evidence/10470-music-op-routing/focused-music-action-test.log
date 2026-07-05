@@ -1,9 +1,0 @@
-$ vitest run src/actions/music.test.ts
-
- RUN  v4.1.5 /Users/shawwalters/.codex/worktrees/4809/eliza/plugins/plugin-music
-
-
- Test Files  1 passed (1)
-      Tests  20 passed (20)
-   Start at  19:48:25
-   Duration  395ms (transform 233ms, setup 30ms, import 254ms, tests 12ms, environment 0ms)

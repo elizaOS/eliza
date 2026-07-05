@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
+import { PageHeaderProvider } from "../../cloud-ui";
 
 vi.mock("../shell/CloudI18nProvider", () => ({
   useCloudT: () => (_key: string, options?: { defaultValue?: string }) =>
@@ -46,18 +48,36 @@ import { PermissionsPage } from "./PermissionsPage";
 import { SecurityPage } from "./SecurityPage";
 
 describe("account/security standalone pages", () => {
-  it("wraps the account surface in a page-header provider", () => {
-    render(<AccountPage />);
+  it("publishes the account header into the outer (shell) provider", () => {
+    // Router context: the page links to the de-navved Security page.
+    render(
+      <PageHeaderProvider>
+        <MemoryRouter>
+          <AccountPage />
+        </MemoryRouter>
+      </PageHeaderProvider>,
+    );
     expect(screen.getByText("account body")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: /Sessions & security/ }),
+    ).toBeTruthy();
   });
 
-  it("wraps the security surface in a page-header provider", () => {
-    render(<SecurityPage />);
+  it("publishes the security header into the outer (shell) provider", () => {
+    render(
+      <PageHeaderProvider>
+        <SecurityPage />
+      </PageHeaderProvider>,
+    );
     expect(screen.getByText("security body")).toBeTruthy();
   });
 
-  it("wraps the permissions surface in a page-header provider", () => {
-    render(<PermissionsPage />);
+  it("publishes the permissions header into the outer (shell) provider", () => {
+    render(
+      <PageHeaderProvider>
+        <PermissionsPage />
+      </PageHeaderProvider>,
+    );
     expect(screen.getByText("permissions body")).toBeTruthy();
   });
 });

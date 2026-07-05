@@ -1,8 +1,0 @@
-
- RUN  v4.1.5 /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/packages/ui
-
-
- Test Files  1 passed (1)
-      Tests  3 passed (3)
-   Start at  05:05:55
-   Duration  938ms (transform 59ms, setup 31ms, import 161ms, tests 65ms, environment 602ms)

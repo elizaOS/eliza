@@ -1,0 +1,16 @@
+[host-agent-proof] starting host agent at http://127.0.0.1:31338 (log: .github/issue-evidence/13574-host-agent-lanes/host-agent.log)
+Error: Host agent exited before http://127.0.0.1:31338/api/health became ready.
+file:///Users/shawwalters/milaidy/eliza-13686/packages/app-core/scripts/run-node-runtime.mjs:229
+  throw new Error(
+        ^
+
+Error: No usable Node.js 24+ executable found (/usr/bin/node: spawnSync /usr/bin/node ENOENT). Install Node.js 24+ or set ELIZA_NODE_PATH=/absolute/path/to/node.
+    at resolveNodeExecPathFromCandidates (file:///Users/shawwalters/milaidy/eliza-13686/packages/app-core/scripts/run-node-runtime.mjs:229:9)
+    at resolveNodeCmd (file:///Users/shawwalters/milaidy/eliza-13686/packages/app-core/scripts/run-node-tsx.mjs:15:10)
+    at file:///Users/shawwalters/milaidy/eliza-13686/packages/app-core/scripts/run-node-tsx.mjs:59:21
+
+Local environment:
+node -v: v23.3.0
+which node: /opt/homebrew/bin/node
+bun -v: 1.4.0
+which bun: /Users/shawwalters/.bun/bin/bun

@@ -119,15 +119,15 @@ export function InviteMemberDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="bg-neutral-950 border border-brand-surface p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
+      <DialogContent className="bg-popover border border-brand-surface p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
         {inviteLink ? (
           <>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-white font-mono">
+              <DialogTitle className="flex items-center gap-2 text-txt-strong font-mono">
                 <Link2 className="h-5 w-5 text-[var(--accent)]" />
                 Invitation Created
               </DialogTitle>
-              <DialogDescription className="text-white/60 font-mono text-xs md:text-sm">
+              <DialogDescription className="text-muted font-mono text-xs md:text-sm">
                 The email is on its way — or share this link directly. It
                 expires in 7 days and can be revoked from Pending Invitations.
                 {connectIntent && (
@@ -140,8 +140,8 @@ export function InviteMemberDialog({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 flex items-center gap-2">
-              <code className="flex-1 text-xs font-mono text-white break-all">
+            <div className="bg-surface border border-brand-surface p-3 flex items-center gap-2">
+              <code className="flex-1 text-xs font-mono text-txt-strong break-all">
                 {inviteLink}
               </code>
               <Button
@@ -149,12 +149,12 @@ export function InviteMemberDialog({
                 type="button"
                 onClick={handleCopyLink}
                 aria-label="Copy invite link"
-                className="p-2 hover:bg-white/5 transition-colors border border-white/10 flex-shrink-0"
+                className="p-2 hover:bg-surface transition-colors border border-border flex-shrink-0"
               >
-                <Copy className="h-4 w-4 text-white/60" />
+                <Copy className="h-4 w-4 text-muted" />
               </Button>
             </div>
-            <p className="text-xs font-mono text-white/40">
+            <p className="text-xs font-mono text-muted">
               The link contains no secrets — joining still requires signing in
               with the invited email.
             </p>
@@ -173,16 +173,16 @@ export function InviteMemberDialog({
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-white font-mono">
+              <DialogTitle className="flex items-center gap-2 text-txt-strong font-mono">
                 <Mail className="h-5 w-5 text-[var(--accent)]" />
                 Invite Team Member
               </DialogTitle>
-              <DialogDescription className="text-white/60 font-mono text-xs md:text-sm">
+              <DialogDescription className="text-muted font-mono text-xs md:text-sm">
                 Send an invitation to join{" "}
-                <span className="text-white">{organizationName}</span>.
+                <span className="text-txt-strong">{organizationName}</span>.
                 They&apos;ll receive an email with a link to accept. Accepting
                 will switch them to{" "}
-                <span className="text-white">{organizationName}</span> — a
+                <span className="text-txt-strong">{organizationName}</span> — a
                 person belongs to one organization at a time, so they&apos;ll
                 leave their current one.
               </DialogDescription>
@@ -199,7 +199,10 @@ export function InviteMemberDialog({
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-white font-mono text-sm">
+                <Label
+                  htmlFor="email"
+                  className="text-txt-strong font-mono text-sm"
+                >
                   Email Address
                 </Label>
                 <Input
@@ -211,9 +214,9 @@ export function InviteMemberDialog({
                   disabled={isSubmitting}
                   required
                   autoFocus
-                  className="bg-transparent border-[#303030] text-white"
+                  className="bg-transparent border-border text-txt-strong"
                 />
-                <p className="text-xs font-mono text-white/40">
+                <p className="text-xs font-mono text-muted">
                   They&apos;ll need to sign up with this email address
                 </p>
               </div>
@@ -221,7 +224,7 @@ export function InviteMemberDialog({
               <div className="space-y-2">
                 <Label
                   htmlFor="role"
-                  className="flex items-center gap-2 text-white font-mono text-sm"
+                  className="flex items-center gap-2 text-txt-strong font-mono text-sm"
                 >
                   <UserCog className="h-4 w-4 text-[var(--accent)]" />
                   Role
@@ -233,27 +236,27 @@ export function InviteMemberDialog({
                 >
                   <SelectTrigger
                     id="role"
-                    className="bg-transparent border-[#303030] text-white"
+                    className="bg-transparent border-border text-txt-strong"
                   >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a1a1a] border-[#303030]">
+                  <SelectContent className="bg-popover border-border">
                     <SelectItem value="member">
                       <div className="flex flex-col items-start">
-                        <span className="font-mono font-medium text-white">
+                        <span className="font-mono font-medium text-txt-strong">
                           Member
                         </span>
-                        <span className="text-xs font-mono text-white/40">
+                        <span className="text-xs font-mono text-muted">
                           Can use resources and view organization
                         </span>
                       </div>
                     </SelectItem>
                     <SelectItem value="admin">
                       <div className="flex flex-col items-start">
-                        <span className="font-mono font-medium text-white">
+                        <span className="font-mono font-medium text-txt-strong">
                           Admin
                         </span>
-                        <span className="text-xs font-mono text-white/40">
+                        <span className="text-xs font-mono text-muted">
                           Can invite and manage members
                         </span>
                       </div>
@@ -268,7 +271,7 @@ export function InviteMemberDialog({
                   type="button"
                   onClick={handleClose}
                   disabled={isSubmitting}
-                  className="px-4 py-2 text-white hover:bg-white/5 transition-colors disabled:opacity-50 order-2 sm:order-1"
+                  className="px-4 py-2 text-txt-strong hover:bg-surface transition-colors disabled:opacity-50 order-2 sm:order-1"
                 >
                   Cancel
                 </Button>

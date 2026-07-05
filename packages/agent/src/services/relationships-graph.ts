@@ -37,7 +37,7 @@ export {
   type RelationshipsServiceLike,
   type RelationshipsUserPersonalityPreference,
   searchMemoriesForCluster,
-} from "../../../core/src/services/relationships-graph-builder.ts";
+} from "@elizaos/core";
 
 type RelationshipsFeatureRuntime = IAgentRuntime & {
   enableRelationships?: () => Promise<void>;

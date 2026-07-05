@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Integration test: an assistant message containing `[TASK:<id>]<title>[/TASK]`
-// renders as a clickable, live-polling TaskWidget via the MessageContent
+// renders as a clickable, stream-driven TaskWidget via the MessageContent
 // segment pipeline (parser → dispatch → component). Complements
 // `message-task-parser.test.ts` (pure parser) and `widgets/task-widget.test.tsx`
 // (component in isolation) by locking in the wire-up between them.
@@ -27,6 +27,10 @@ const { clientMock, getTaskMock } = vi.hoisted(() => ({
     getPermission: vi.fn(),
     requestPermission: vi.fn(),
     openPermissionSettings: vi.fn(),
+    // The live pipeline store subscribes to the WS feed on mount; a no-op
+    // unsubscribe is enough here (stream behavior is covered by
+    // task-activity-store.test.ts).
+    onWsEvent: () => () => undefined,
   },
   getTaskMock: vi.fn(),
 }));
@@ -175,7 +179,7 @@ describe("MessageContent → TaskWidget integration", () => {
     );
   });
 
-  it("clicking the widget dispatches eliza:navigate:view to /orchestrator", async () => {
+  it("expands on header click and navigates via the workbench link", async () => {
     getTaskMock.mockResolvedValueOnce(detail());
     const events: CustomEvent[] = [];
     const handler = (event: Event) => events.push(event as CustomEvent);
@@ -187,7 +191,16 @@ describe("MessageContent → TaskWidget integration", () => {
         "Real title",
       );
     });
-    fireEvent.click(screen.getByTestId("task-widget"));
+
+    // The header expands the inline pipeline in place; it does not navigate.
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(
+      screen.getByTestId("task-widget").getAttribute("data-expanded"),
+    ).toBe("true");
+    expect(events).toHaveLength(0);
+
+    // Navigation is the explicit workbench affordance.
+    fireEvent.click(screen.getByText("Open in workbench →"));
     expect(events[0]?.detail).toEqual({
       viewPath: `/orchestrator?taskId=${THREAD_ID}`,
     });

@@ -47,7 +47,7 @@ permissions:
 jobs:
   voice-emotion-smoke:
     name: voice-emotion fixture smoke
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -76,7 +76,7 @@ jobs:
 
   voiceagentbench-smoke:
     name: voiceagentbench fixture smoke
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -117,7 +117,7 @@ jobs:
 
   voicebench-quality-unit-smoke:
     name: voicebench-quality unit smoke
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -131,7 +131,7 @@ jobs:
 
   voicebench-ts-unit:
     name: voicebench TypeScript unit (no audio)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -153,7 +153,7 @@ jobs:
 
   voice-bench-summary:
     name: voice bench smoke summary
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     needs:
       - voice-emotion-smoke
       - voiceagentbench-smoke

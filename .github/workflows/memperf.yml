@@ -30,7 +30,7 @@ concurrency:
 jobs:
   harness-gate:
     name: harness + budget regression gate (no models)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

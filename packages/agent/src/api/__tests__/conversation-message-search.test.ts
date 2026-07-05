@@ -1,15 +1,29 @@
 /**
- * Endpoint test for `GET /api/conversations/messages/search` — the keyword
- * message search added for #9955. Drives the real `handleConversationRoutes`
- * with a mocked runtime whose `getMemoriesByRoomIds` models the real SQL /
- * in-memory adapters: it room-scopes, applies the `textContains` predicate,
- * orders by `createdAt` desc, and only THEN windows with `offset`/`limit`.
- * Asserts validation, ranking, snippeting, role attribution, accessible-
- * conversation scoping, and (the #9955 regression) that the LIMIT is applied
- * after access-scoping so an accessible older hit is not dropped by newer
- * matches in rooms the requester cannot see.
+ * Endpoint test for `GET /api/conversations/messages/search` — the corpus-wide
+ * message search (#13534, follow-up #9955). Drives the real
+ * `handleConversationRoutes` and asserts the HTTP-boundary behaviour the route
+ * owns: access-scoping across rooms, DTO shape, role attribution, snippeting,
+ * deleted-message and deleted-conversation exclusion, corpus-wide (not recency-
+ * truncated) ordering, and empty/edge input.
+ *
+ * The unit under test is the route handler; `runtime.searchMessages` is a
+ * collaborator whose REAL implementation is proven against a live PGlite store
+ * in `plugins/plugin-sql/.../message-search-fts.test.ts` (18 edge cases) and
+ * `packages/benchmarks/searchbench` (10k corpus). Here it is backed by a
+ * faithful in-test model of that contract — fold the query, keep a row when
+ * every query term is present or the whole folded query is a substring, rank
+ * corpus-wide by match count then recency, then window — so the handler runs
+ * against realistic ranked input without pinning the agent test to the store's
+ * cross-package module resolution.
  */
-import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+
+import { randomUUID } from "node:crypto";
+import type {
+  AgentRuntime,
+  Memory,
+  MessageSearchHit,
+  UUID,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConversationRouteContext,
@@ -18,10 +32,172 @@ import {
 } from "../conversation-routes.ts";
 import type { ConversationMeta } from "../server-types.ts";
 
-const agentId = "00000000-0000-0000-0000-0000000000a0" as UUID;
-const roomA = "20000000-0000-0000-0000-00000000000a" as UUID;
-const roomB = "20000000-0000-0000-0000-00000000000b" as UUID;
-const userId = "10000000-0000-0000-0000-000000000001" as UUID;
+const agentId = randomUUID() as UUID;
+const userId = randomUUID() as UUID;
+const roomA = randomUUID() as UUID;
+const roomB = randomUUID() as UUID;
+const roomDeletedConv = randomUUID() as UUID;
+
+interface SeedRow {
+  id: UUID;
+  roomId: UUID;
+  text: string;
+  author: "user" | "assistant";
+  attachments?: Array<{ title?: string; url?: string }>;
+  createdAt: number;
+}
+
+/** Mirrors `foldForSearch` in @elizaos/core: NFKD, strip accents/apostrophes, lowercase. */
+function fold(text: string): string {
+  return text
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/['’`]/g, "")
+    .normalize("NFC")
+    .toLowerCase();
+}
+
+function docOf(row: SeedRow): string {
+  const parts = [row.text];
+  for (const a of row.attachments ?? []) {
+    if (a.title) parts.push(a.title);
+    if (a.url) parts.push(a.url);
+  }
+  return fold(parts.join(" "));
+}
+
+/** Faithful model of IDatabaseAdapter.searchMessages: corpus-wide ranked hits. */
+function modelSearch(
+  rows: SeedRow[],
+  params: { roomIds: UUID[]; query: string; limit?: number; offset?: number },
+): MessageSearchHit[] {
+  const roomSet = new Set(params.roomIds);
+  const q = fold(params.query).trim();
+  const terms = q.split(/\s+/).filter(Boolean);
+  const hits = rows
+    .filter((r) => roomSet.has(r.roomId))
+    .map((r) => {
+      const doc = docOf(r);
+      const allTerms = terms.every((t) => doc.includes(t));
+      const phrase = doc.includes(q);
+      if (!allTerms && !phrase) return null;
+      const ftsRank = terms.reduce(
+        (acc, t) => acc + (doc.split(t).length - 1) / Math.max(doc.length, 1),
+        0,
+      );
+      return { row: r, ftsRank };
+    })
+    .filter((h): h is { row: SeedRow; ftsRank: number } => h !== null)
+    .sort((a, b) =>
+      b.ftsRank !== a.ftsRank
+        ? b.ftsRank - a.ftsRank
+        : b.row.createdAt !== a.row.createdAt
+          ? b.row.createdAt - a.row.createdAt
+          : a.row.id.localeCompare(b.row.id),
+    );
+  const offset = params.offset ?? 0;
+  const limit = params.limit ?? 20;
+  return hits.slice(offset, offset + limit).map(({ row, ftsRank }) => ({
+    memory: {
+      id: row.id,
+      entityId: row.author === "assistant" ? agentId : userId,
+      agentId,
+      roomId: row.roomId,
+      content: {
+        text: row.text,
+        ...(row.attachments ? { attachments: row.attachments } : {}),
+      },
+      createdAt: row.createdAt,
+      metadata: { type: "messages" },
+    } as Memory,
+    ftsRank,
+    trigramSimilarity: 0,
+  }));
+}
+
+let seq = 0;
+const rows: SeedRow[] = [];
+function seed(
+  roomId: UUID,
+  text: string,
+  author: "user" | "assistant",
+  attachments?: Array<{ title?: string; url?: string }>,
+): UUID {
+  const id = randomUUID() as UUID;
+  rows.push({
+    id,
+    roomId,
+    text,
+    author,
+    attachments,
+    createdAt: 1_000 + seq++,
+  });
+  return id;
+}
+
+seed(roomA, "deploy your first agent to the cloud", "user");
+seed(roomA, "I opened a PR on GitHub this morning", "assistant");
+seed(roomA, "the café down the street has great coffee", "user");
+seed(roomA, "please don't merge that branch yet", "assistant");
+seed(roomA, "how do I edit the configuration file", "user");
+seed(roomA, "I am configuring the webhook right now", "assistant");
+seed(roomA, "run `SELECT * FROM t WHERE name LIKE '%bob_%'` now", "user");
+seed(
+  roomA,
+  "see https://example.com/docs/path/to/thing for details",
+  "assistant",
+);
+seed(roomA, "great work 🚀 shipping today", "user");
+seed(roomA, "北京 is the capital of China", "assistant");
+seed(roomA, "here is the file you asked for", "user", [
+  {
+    title: "quarterly-budget-2026.xlsx",
+    url: "https://cdn.example.com/qb.xlsx",
+  },
+]);
+seed(roomA, "duplicate marker zephyr", "user");
+seed(roomA, "duplicate marker zephyr", "user");
+const deletedMessageId = seed(
+  roomA,
+  "this redactable message says platypus once",
+  "assistant",
+);
+seed(roomA, "the oldest xyzzy needle is buried here", "user");
+for (let i = 0; i < 120; i++)
+  seed(roomA, `filler chatter number ${i} nothing special`, "user");
+seed(roomB, "roomB also mentions platypus separately", "user");
+seed(roomDeletedConv, "platypus inside a deleted conversation", "user");
+// The endpoint excludes deleted messages because the store no longer returns
+// them; model that by dropping the row from the corpus the collaborator sees.
+const liveRows = () => rows.filter((r) => r.id !== deletedMessageId);
+
+const runtime = {
+  agentId,
+  searchMessages: (params: {
+    roomIds: UUID[];
+    query: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<MessageSearchHit[]> =>
+    Promise.resolve(modelSearch(liveRows(), params)),
+} as unknown as AgentRuntime;
+
+interface Captured {
+  status: number;
+  body: {
+    results: Array<{
+      messageId: string;
+      conversationId: string;
+      roomId: string;
+      role: "user" | "assistant";
+      text: string;
+      snippet: string;
+      createdAt: number;
+      score: number;
+    }>;
+    count: number;
+  };
+}
 
 function conv(id: string, roomId: UUID): ConversationMeta {
   return {
@@ -33,47 +209,41 @@ function conv(id: string, roomId: UUID): ConversationMeta {
   };
 }
 
-function mem(
-  text: string,
-  roomId: UUID,
-  entityId: UUID,
-  createdAt: number,
-): Memory {
+function makeState(): ConversationRouteState {
   return {
-    id: `${createdAt}0000-0000-0000-0000-00000000000a` as UUID,
-    entityId,
-    agentId,
-    roomId,
-    content: { text },
-    createdAt,
-  };
-}
-
-interface Captured {
-  status: number;
-  body: unknown;
+    runtime,
+    conversations: new Map<string, ConversationMeta>([
+      ["c-a", conv("c-a", roomA)],
+      ["c-b", conv("c-b", roomB)],
+      ["c-del", conv("c-del", roomDeletedConv)],
+    ]),
+    deletedConversationIds: new Set<string>(["c-del"]),
+  } as unknown as ConversationRouteState;
 }
 
 function runSearch(
-  url: string,
-  state: ConversationRouteState,
+  qs: string,
+  state: ConversationRouteState = makeState(),
 ): Promise<Captured> {
   return new Promise((resolve) => {
     const captured: Partial<Captured> = {};
     const ctx = {
-      req: { url, headers: { host: "localhost" } },
+      req: {
+        url: `/api/conversations/messages/search?${qs}`,
+        headers: { host: "localhost" },
+      },
       res: {},
       method: "GET",
       pathname: "/api/conversations/messages/search",
       readJsonBody: vi.fn(),
       json: (_res: unknown, data: unknown, status = 200) => {
         captured.status = status;
-        captured.body = data;
+        captured.body = data as Captured["body"];
         resolve(captured as Captured);
       },
       error: (_res: unknown, message: string, status = 500) => {
         captured.status = status;
-        captured.body = { error: message };
+        captured.body = { results: [], count: 0, error: message } as never;
         resolve(captured as Captured);
       },
       state,
@@ -82,164 +252,116 @@ function runSearch(
   });
 }
 
-function makeState(
-  memories: Memory[],
-  conversations: ConversationMeta[],
-): ConversationRouteState {
-  // Model the real adapter (plugin-sql `getMemoriesByRoomIds`): room-scope
-  // first, apply the case-insensitive `textContains` predicate, order by
-  // createdAt desc, and ONLY THEN window with offset+limit. Modelling the
-  // limit/offset is what makes the #9955 regression test meaningful — a mock
-  // that ignored them could not catch a limit-before-filter bug.
-  const getMemoriesByRoomIds = vi.fn(
-    async (params: {
-      roomIds: UUID[];
-      textContains?: string;
-      limit?: number;
-      offset?: number;
-    }) => {
-      const rooms = new Set(params.roomIds);
-      const needle = params.textContains?.toLowerCase() ?? "";
-      const filtered = memories
-        .filter((m) => m.roomId !== undefined && rooms.has(m.roomId))
-        .filter((m) =>
-          String(m.content.text ?? "")
-            .toLowerCase()
-            .includes(needle),
-        )
-        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-      const offset = params.offset ?? 0;
-      const windowed = offset > 0 ? filtered.slice(offset) : filtered;
-      return params.limit !== undefined
-        ? windowed.slice(0, params.limit)
-        : windowed;
-    },
-  );
-  const runtime = { agentId, getMemoriesByRoomIds } as unknown as AgentRuntime;
-  return {
-    runtime,
-    conversations: new Map(conversations.map((c) => [c.id, c])),
-    deletedConversationIds: new Set<string>(),
-  } as unknown as ConversationRouteState;
-}
+const texts = (r: Captured) => r.body.results.map((x) => x.text);
 
-describe("GET /api/conversations/messages/search", () => {
-  it("rejects a query shorter than 2 characters", async () => {
-    const result = await runSearch(
-      "/api/conversations/messages/search?q=a",
-      makeState([], []),
+describe("GET /api/conversations/messages/search (route boundary)", () => {
+  it("multi-word non-adjacent — 'deploy agent' matches 'deploy your first agent'", async () => {
+    const r = await runSearch("q=deploy%20agent");
+    expect(r.status).toBe(200);
+    expect(texts(r).some((t) => t.includes("deploy your first agent"))).toBe(
+      true,
     );
-    expect(result.status).toBe(400);
-    expect(result.body).toMatchObject({
-      error: expect.stringMatching(/2 char/),
-    });
   });
 
-  it("returns ranked, snippeted results with role attribution", async () => {
-    const memories = [
-      mem("we shipped the WebXR runtime today", roomA, userId, 3),
-      mem("WebXR WebXR webxr everywhere", roomA, agentId, 2),
-      mem("nothing relevant here", roomA, userId, 1),
-      mem("webxr panels in room B", roomB, userId, 4),
-    ];
-    const result = await runSearch(
-      "/api/conversations/messages/search?q=webxr",
-      makeState(memories, [conv("c-a", roomA), conv("c-b", roomB)]),
-    );
-    expect(result.status).toBe(200);
-    const body = result.body as {
-      results: Array<{
-        text: string;
-        snippet: string;
-        role: string;
-        score: number;
-        conversationId: string;
-      }>;
-      count: number;
-    };
-    // The non-matching message is dropped; the 3 webxr messages remain.
-    expect(body.count).toBe(3);
+  it("case + accent + apostrophe fold; URL, emoji, CJK substrings", async () => {
     expect(
-      body.results.every((r) => r.snippet.toLowerCase().includes("webxr")),
+      texts(await runSearch("q=GITHUB")).some((t) => t.includes("GitHub")),
     ).toBe(true);
-    // Ranked by score descending (recency breaks ties).
-    for (let i = 1; i < body.results.length; i++) {
-      expect(body.results[i - 1].score).toBeGreaterThanOrEqual(
-        body.results[i].score,
-      );
-    }
-    // Agent-authored message attributed to "assistant"; user to "user".
-    const agentRow = body.results.find((r) => r.text.includes("everywhere"));
-    expect(agentRow?.role).toBe("assistant");
-    const userRow = body.results.find((r) => r.text.includes("today"));
-    expect(userRow?.role).toBe("user");
-    // Both rooms map to conversations.
-    expect(new Set(body.results.map((r) => r.conversationId))).toEqual(
-      new Set(["c-a", "c-b"]),
-    );
-  });
-
-  it("excludes messages whose room is not an accessible conversation", async () => {
-    const memories = [
-      mem("webxr in a known room", roomA, userId, 2),
-      mem("webxr in an orphan room", roomB, userId, 1),
-    ];
-    // Only roomA has a conversation in the map.
-    const result = await runSearch(
-      "/api/conversations/messages/search?q=webxr",
-      makeState(memories, [conv("c-a", roomA)]),
-    );
-    const body = result.body as {
-      results: Array<{ text: string }>;
-      count: number;
-    };
-    expect(body.count).toBe(1);
-    expect(body.results[0].text).toContain("known room");
-  });
-
-  it("returns an accessible OLDER hit even when newer matches fill the limit in inaccessible rooms (#9955 limit-before-filter regression)", async () => {
-    // roomA is accessible and holds ONE older matching message. roomB is NOT an
-    // accessible conversation but holds several NEWER matching messages. With a
-    // small limit, the old "getMemories(global limit) then JS-filter" order
-    // would take the newest-N (all in roomB), filter them out, and return
-    // nothing. Room-scoping the SQL query keeps the accessible older hit.
-    const memories = [
-      mem("webxr in the accessible room — older", roomA, userId, 5),
-      mem("webxr newer noise in orphan room", roomB, userId, 10),
-      mem("webxr newer noise in orphan room", roomB, userId, 11),
-      mem("webxr newer noise in orphan room", roomB, userId, 12),
-    ];
-    const result = await runSearch(
-      "/api/conversations/messages/search?q=webxr&limit=2",
-      makeState(memories, [conv("c-a", roomA)]),
-    );
-    const body = result.body as {
-      results: Array<{ text: string; conversationId: string }>;
-      count: number;
-    };
-    expect(result.status).toBe(200);
-    expect(body.count).toBe(1);
-    expect(body.results[0].text).toContain("accessible room");
-    expect(body.results[0].conversationId).toBe("c-a");
-  });
-
-  it("returns no results (without touching the store) when the requester has no accessible conversations", async () => {
-    const memories = [mem("webxr in an orphan room", roomB, userId, 1)];
-    const state = makeState(memories, []);
-    const result = await runSearch(
-      "/api/conversations/messages/search?q=webxr",
-      state,
-    );
-    const body = result.body as { results: unknown[]; count: number };
-    expect(result.status).toBe(200);
-    expect(body.count).toBe(0);
-    expect(body.results).toEqual([]);
     expect(
-      (
-        state.runtime as unknown as {
-          getMemoriesByRoomIds: { mock: { calls: unknown[] } };
-        }
-      ).getMemoriesByRoomIds.mock.calls,
-    ).toHaveLength(0);
+      texts(await runSearch("q=cafe")).some((t) => t.includes("café")),
+    ).toBe(true);
+    expect(
+      texts(await runSearch("q=dont")).some((t) => t.includes("don't")),
+    ).toBe(true);
+    expect(
+      texts(
+        await runSearch(`q=${encodeURIComponent("example.com/docs")}`),
+      ).some((t) => t.includes("https://example.com/docs")),
+    ).toBe(true);
+    expect(
+      texts(await runSearch(`q=${encodeURIComponent("🚀")}`)).some((t) =>
+        t.includes("🚀"),
+      ),
+    ).toBe(true);
+    expect(
+      texts(await runSearch(`q=${encodeURIComponent("北京")}`)).some((t) =>
+        t.includes("北京"),
+      ),
+    ).toBe(true);
+  });
+
+  it("code metacharacters literal — '%bob_%' finds the row, 'zzz%zzz' matches nothing", async () => {
+    expect(
+      texts(await runSearch(`q=${encodeURIComponent("%bob_%")}`)).some((t) =>
+        t.includes("SELECT * FROM t"),
+      ),
+    ).toBe(true);
+    expect(
+      (await runSearch(`q=${encodeURIComponent("zzz%zzz")}`)).body.count,
+    ).toBe(0);
+  });
+
+  it("attachment-only match via filename", async () => {
+    expect(
+      texts(
+        await runSearch(`q=${encodeURIComponent("quarterly-budget")}`),
+      ).some((t) => t.includes("here is the file you asked for")),
+    ).toBe(true);
+  });
+
+  it("near-duplicates all returned, deterministically ordered", async () => {
+    const dups = (await runSearch("q=zephyr")).body.results.filter(
+      (x) => x.text === "duplicate marker zephyr",
+    );
+    expect(dups.length).toBe(2);
+    expect(dups[0].createdAt).toBeGreaterThanOrEqual(dups[1].createdAt);
+  });
+
+  it("role attribution + snippet around the match", async () => {
+    const r = await runSearch("q=configuring");
+    const row = r.body.results.find((x) => x.text.includes("configuring"));
+    expect(row?.role).toBe("assistant");
+    expect(row?.snippet.toLowerCase()).toContain("configuring");
+    const r2 = await runSearch("q=configuration");
+    expect(
+      r2.body.results.find((x) => x.text.includes("configuration"))?.role,
+    ).toBe("user");
+  });
+
+  it("deleted message and deleted-conversation rows never appear; access-scoped", async () => {
+    const r = await runSearch("q=platypus");
+    expect(texts(r)).toEqual(["roomB also mentions platypus separately"]);
+    expect(r.body.results.every((x) => x.conversationId === "c-b")).toBe(true);
+  });
+
+  it("corpus-wide recall — the oldest 'xyzzy' hit survives 120 newer rows", async () => {
+    const r = await runSearch("q=xyzzy");
+    expect(r.body.count).toBe(1);
+    expect(r.body.results[0].text).toContain("oldest xyzzy needle");
+  });
+
+  it("empty / edge input", async () => {
+    expect((await runSearch("q=a")).status).toBe(400);
+    expect((await runSearch(`q=${encodeURIComponent("   ")}`)).status).toBe(
+      400,
+    );
+    const longer = await runSearch(
+      `q=${encodeURIComponent("this exact long sentence appears in absolutely no seeded message anywhere")}`,
+    );
+    expect(longer.status).toBe(200);
+    expect(longer.body.count).toBe(0);
+  });
+
+  it("no accessible conversations → empty result without querying the store", async () => {
+    const searchSpy = vi.spyOn(runtime, "searchMessages");
+    const emptyState = {
+      runtime,
+      conversations: new Map(),
+      deletedConversationIds: new Set<string>(),
+    } as unknown as ConversationRouteState;
+    const r = await runSearch("q=platypus", emptyState);
+    expect(r.body.count).toBe(0);
+    expect(searchSpy).not.toHaveBeenCalled();
+    searchSpy.mockRestore();
   });
 });

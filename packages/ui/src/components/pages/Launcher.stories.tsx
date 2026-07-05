@@ -7,6 +7,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { assert } from "../../storybook/home-widget-decorator";
 import { Launcher } from "./Launcher";
+import { allAppsZone, type LauncherZone } from "./launcher-curation";
 
 function entry(id: string, label: string, icon: string): ViewEntry {
   return {
@@ -56,21 +57,39 @@ export default meta;
 type Story = StoryObj<typeof Launcher>;
 
 export const Default: Story = {
-  args: { entries: VIEWS },
+  args: { zones: allAppsZone(VIEWS) },
 };
 
 /** A full catalog — a grid taller than the viewport scrolls vertically. */
 export const ManyViews: Story = {
   args: {
-    entries: Array.from({ length: 28 }, (_, i) =>
-      entry(`view-${i}`, `View ${i + 1}`, "LayoutGrid"),
+    zones: allAppsZone(
+      Array.from({ length: 28 }, (_, i) =>
+        entry(`view-${i}`, `View ${i + 1}`, "LayoutGrid"),
+      ),
     ),
+  },
+};
+
+/** Named zones — Recents + Favorites projected over the All Apps grid. */
+export const Zones: Story = {
+  args: {
+    zones: [
+      {
+        key: "recents",
+        label: "Recents",
+        entries: [VIEWS[0], VIEWS[4], VIEWS[9]],
+      },
+      { key: "favorites", label: "Favorites", entries: [VIEWS[4], VIEWS[2]] },
+      { key: "all", label: "All Apps", entries: VIEWS },
+    ] satisfies LauncherZone[],
+    favoriteIds: new Set(["wallet", "automations"]),
   },
 };
 
 /** Loading skeleton — the placeholder grid shown while the catalog resolves. */
 export const Loading: Story = {
-  args: { entries: [], loading: true },
+  args: { zones: allAppsZone([]), loading: true },
 };
 
 /**
@@ -79,7 +98,7 @@ export const Loading: Story = {
  */
 export const TileLaunch: Story = {
   args: {
-    entries: VIEWS,
+    zones: allAppsZone(VIEWS),
     onLaunch: (e) => {
       launchedId = e.id;
     },

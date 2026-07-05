@@ -1,2 +1,0 @@
-$ bunx @biomejs/biome lint --config-path ./biome.json . --no-errors-on-unmatched
-Checked 40 files in 365ms. No fixes applied.

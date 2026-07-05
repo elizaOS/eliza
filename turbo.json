@@ -12,6 +12,11 @@
     "plugins/tsconfig.build.shared.json",
     "packages/feed/packages/tsconfig.base.json"
   ],
+  "globalEnv": [
+    "BUN_PATH",
+    "SEARCHBENCH_CORPUS",
+    "SEARCHBENCH_LATENCY_REPEATS"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
@@ -501,40 +506,6 @@
     "@elizaos/plugin-local-inference#typecheck": {
       "dependsOn": ["^build"],
       "outputs": []
-    },
-    "@elizaos/plugin-local-inference#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/shared#build",
-        "@elizaos/plugin-capacitor-bridge#build",
-        "@elizaos/plugin-computeruse#build",
-        "@elizaos/plugin-aosp-local-inference#build"
-      ],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"],
-      "inputs": [
-        "src/**",
-        "index.ts",
-        "index.node.ts",
-        "index.browser.ts",
-        "build.ts",
-        "build.mjs",
-        "build.config.ts",
-        "scripts/**",
-        "tsup.config.ts",
-        "tsup.config.*.ts",
-        "tsdown.config.ts",
-        "vite.config.ts",
-        "vite.config.*.ts",
-        "tsconfig.json",
-        "tsconfig.*.json",
-        "package.json",
-        "assets/**",
-        "public/**",
-        "$TURBO_ROOT$/plugins/tsup.plugin-packages.shared.ts",
-        "$TURBO_ROOT$/packages/scripts/view-bundle-vite.config.ts",
-        "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
-      ]
     },
     "@elizaos/example-farcaster#build": {
       "dependsOn": [

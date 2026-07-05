@@ -11,6 +11,12 @@
 import * as _earlyFs from "node:fs";
 import { enableCompileCache } from "node:module";
 import { homedir as _earlyHomedir } from "node:os";
+// Resolve a branded `<PREFIX>_STATE_DIR` / `<PREFIX>_PLATFORM` through the
+// boot-config alias table — the reader path, with no process.env mirror
+// (issue #13423). `@elizaos/shared` is already a transitive static import via
+// `./cli/index.ts`, so this adds no new module to the boot graph; before the
+// alias table is seeded these fall back to the raw ELIZA_ value.
+import { isAndroidMobile, readAliasedEnv } from "@elizaos/shared";
 
 // Enable Node 22.8+'s persistent V8 compile cache before any heavy import so
 // the 2nd+ cold boot skips recompiling the ~70k LOC of transpiled plugin
@@ -36,7 +42,7 @@ import { homedir as _earlyHomedir } from "node:os";
     // identically to the rest of the codebase (see state-dir.ts).
     const home = process.env.HOME?.trim() || _earlyHomedir();
     const resolvedStateDir =
-      process.env.ELIZA_STATE_DIR?.trim() ||
+      readAliasedEnv("ELIZA_STATE_DIR") ||
       (xdgStateHome
         ? `${xdgStateHome}/eliza`
         : home
@@ -57,33 +63,33 @@ import { configureMobileDnsIfNeeded } from "./runtime/mobile-dns.ts";
 
 // Early diagnostic logger for Android: captures errors before the fs shim runs.
 // Uses raw node:fs so the shim can't interfere. Writes to $ELIZA_STATE_DIR/bin-debug.log.
-const _binDebugLog =
-  process.env.ELIZA_PLATFORM === "android"
-    ? (() => {
-        const xdgStateHome =
-          process.env.XDG_STATE_HOME ??
-          `${process.env.HOME ?? "/data/local/tmp"}/.local/state`;
-        const stateDir = process.env.ELIZA_STATE_DIR || `${xdgStateHome}/eliza`;
-        const logPath = `${stateDir}/bin-debug.log`;
+const _binDebugLog = isAndroidMobile()
+  ? (() => {
+      const xdgStateHome =
+        process.env.XDG_STATE_HOME ??
+        `${process.env.HOME ?? "/data/local/tmp"}/.local/state`;
+      const stateDir =
+        readAliasedEnv("ELIZA_STATE_DIR") || `${xdgStateHome}/eliza`;
+      const logPath = `${stateDir}/bin-debug.log`;
+      try {
+        _earlyFs.mkdirSync(stateDir, { recursive: true });
+      } catch {
+        /* ignore */
+      }
+      return (msg: string) => {
         try {
-          _earlyFs.mkdirSync(stateDir, { recursive: true });
+          _earlyFs.appendFileSync(
+            logPath,
+            `${new Date().toISOString()} ${msg}\n`,
+          );
         } catch {
           /* ignore */
         }
-        return (msg: string) => {
-          try {
-            _earlyFs.appendFileSync(
-              logPath,
-              `${new Date().toISOString()} ${msg}\n`,
-            );
-          } catch {
-            /* ignore */
-          }
-        };
-      })()
-    : () => {};
+      };
+    })()
+  : () => {};
 _binDebugLog(
-  `[bin.ts] started ELIZA_PLATFORM=${process.env.ELIZA_PLATFORM ?? "(unset)"} ELIZA_STATE_DIR=${process.env.ELIZA_STATE_DIR ?? "(unset)"}`,
+  `[bin.ts] started ELIZA_PLATFORM=${readAliasedEnv("ELIZA_PLATFORM") ?? "(unset)"} ELIZA_STATE_DIR=${readAliasedEnv("ELIZA_STATE_DIR") ?? "(unset)"}`,
 );
 
 // Mobile devices ship no /etc/resolv.conf, so the musl bun agent can't resolve
@@ -93,7 +99,7 @@ _binDebugLog(
 configureMobileDnsIfNeeded();
 
 async function bootstrapMobileEntrypoint(): Promise<void> {
-  if (process.env.ELIZA_PLATFORM === "android") {
+  if (isAndroidMobile()) {
     _binDebugLog("[bin.ts] entering android block");
     try {
       // Bundle anchor: evaluating this literal-specifier import forces

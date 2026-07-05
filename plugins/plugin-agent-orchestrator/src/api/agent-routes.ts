@@ -18,10 +18,12 @@ import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
 import { assignAgentName } from "../services/agent-name-assignment.js";
 import { buildGoalFollowUp, buildGoalPrompt } from "../services/goal-prompt.js";
+import { isParentAgentBrokerWired } from "../services/parent-agent-broker.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
 import {
   type AgentType,
   type ApprovalPreset,
+  SessionCapError,
   type SessionInfo,
   TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
@@ -642,6 +644,7 @@ export async function handleAgentRoutes(
             workdir,
             taskRoomId,
             worktreeRoomId,
+            brokerWired: isParentAgentBrokerWired(ctx.runtime),
           })
         : undefined;
 
@@ -676,7 +679,14 @@ export async function handleAgentRoutes(
         201,
       );
     } catch (error) {
-      // error-policy:J1 route boundary — spawn failure becomes a 500 response.
+      // error-policy:J1 route boundary — the direct-spawn path does not use the
+      // admission queue (it is a raw session spawn), so a full worker cap
+      // surfaces the typed SESSION_CAP_REACHED code at 429 for the caller to
+      // handle; any other spawn failure becomes a 500.
+      if (error instanceof SessionCapError) {
+        sendJson(res, { error: error.message, code: error.code }, 429);
+        return true;
+      }
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to spawn agent",

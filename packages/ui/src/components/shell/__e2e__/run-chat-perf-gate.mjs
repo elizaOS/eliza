@@ -1,10 +1,15 @@
 /**
- * Conversation-overlay PERF GATE (#9954): drives the REAL ContinuousChatOverlay
- * under thread-scroll + repeated conversation swipes, harvests REAL
- * PerformanceObserver + requestAnimationFrame entries, and feeds them into the
- * SAME shared detectors the dev HUD uses (frame-budget summarizeFrameSamples +
- * shouldReportFrameBudget, layout-stability summarizeStability). HARD-FAILS on a
- * dropped-frame ratio, p95 frame time, or non-intentional CLS over budget.
+ * Conversation-overlay PERF GATE (#9954, retargeted for #13531): drives the REAL
+ * ContinuousChatOverlay under thread-scroll + repeated pull-to-maximize /
+ * top-pull-restore, harvests REAL PerformanceObserver + requestAnimationFrame
+ * entries, and feeds them into the SAME shared detectors the dev HUD uses
+ * (frame-budget summarizeFrameSamples + shouldReportFrameBudget, layout-stability
+ * summarizeStability). HARD-FAILS on a dropped-frame ratio, p95 frame time, or
+ * non-intentional CLS over budget.
+ *
+ * The single-infinite-thread redesign (#13531) removed chat-to-chat swipe; the
+ * surviving high-cost gestures are the overflowing thread's scroll and the
+ * maximize↔restore panel re-layout, so those are what this gate drives.
  *
  * The detectors are pure + unit-tested; this is the live-surface driver that
  * feeds them real numbers so jank/CLS regressions fail a build. Mechanics come
@@ -34,7 +39,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-perf-gate");
 
 // Deliberately not razor-thin so an unavoidable CI-VM frame doesn't redden the
-// lane, but tight enough that real jank (sustained slowdown, a swipe reflow) trips.
+// lane, but tight enough that real jank (sustained slowdown, a maximize reflow)
+// trips.
 const FRAME_BUDGET_OPTIONS = {
   p95BudgetFactor: 2, // p95 may reach 2× the 60fps budget (33ms) before flagging
   droppedFrameRatio: 0.25, // >25% frames over budget = visible jank
@@ -114,10 +120,53 @@ async function drag(p, selector, dx, dy, { steps = 14, stepMs = 16 } = {}) {
   );
 }
 
+const isMaximized = (p) =>
+  p
+    .getByTestId("chat-sheet")
+    .evaluate((el) => el.getAttribute("data-maximized") === "true");
+
+// Over-pull the grabber UP past the 80%-viewport maximize threshold, then WAIT
+// for data-maximized=true so the follow-on restore can find the top strip.
+async function pullToMaximize(p) {
+  await drag(p, '[data-testid="chat-sheet-grabber"]', 0, -640, { steps: 18, stepMs: 16 });
+  try {
+    await p.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-testid="chat-sheet"]')
+          ?.getAttribute("data-maximized") === "true",
+      { timeout: 2500 },
+    );
+  } catch {
+    // Surfaced by the caller's assertion, not swallowed.
+  }
+  return isMaximized(p);
+}
+
+// Pull DOWN from the top-20% restore strip (present only while full-bleed) to
+// un-maximize, then WAIT for data-maximized to clear.
+async function pullToRestore(p) {
+  const zone = p.locator('[data-testid="chat-maximize-restore-zone"]');
+  if ((await zone.count()) === 0) return false;
+  await drag(p, '[data-testid="chat-maximize-restore-zone"]', 0, 320, { steps: 16, stepMs: 16 });
+  try {
+    await p.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-testid="chat-sheet"]')
+          ?.getAttribute("data-maximized") !== "true",
+      { timeout: 2500 },
+    );
+  } catch {
+    // Surfaced by the caller's assertion, not swallowed.
+  }
+  return !(await isMaximized(p));
+}
+
 await runBrowserFixtureE2E(
   {
     page: {
-      entry: join(here, "conversation-swipe-fixture.tsx"),
+      entry: join(here, "perf-gate-fixture.tsx"),
       outDir,
       htmlName: "chat-perf-gate.html",
       title: "chat perf gate",
@@ -145,7 +194,7 @@ await runBrowserFixtureE2E(
     const check = gate.assert;
     await page.waitForTimeout(600);
 
-    // Open the sheet to FULL so the thread (scroll + swipe surface) is mounted.
+    // Open the sheet to FULL so the thread (scroll surface) is mounted.
     await drag(page, '[data-testid="chat-sheet-grabber"]', 0, -120, { steps: 6 });
     await page.waitForTimeout(450);
     await drag(page, '[data-testid="chat-sheet-grabber"]', 0, -180, { steps: 6 });
@@ -159,17 +208,24 @@ await runBrowserFixtureE2E(
       window.__ELIZA_LAYOUT_SHIFTS__ = [];
     });
 
-    // Drive a sustained interaction: alternate scroll + swipe several times.
-    for (let i = 0; i < 6; i += 1) {
+    // Drive a sustained interaction: alternate thread-scroll + maximize/restore
+    // several times — the two surviving high-cost overlay gestures.
+    let maximizeCommits = 0;
+    let restoreCommits = 0;
+    for (let i = 0; i < 4; i += 1) {
       await drag(page, "#continuous-thread", 6, -160, { steps: 12, stepMs: 16 });
       await page.waitForTimeout(120);
       await drag(page, "#continuous-thread", 6, 160, { steps: 12, stepMs: 16 });
       await page.waitForTimeout(120);
-      await drag(page, "#continuous-thread", -180, 4, { steps: 14, stepMs: 16 });
-      await page.waitForTimeout(160);
-      await drag(page, "#continuous-thread", 180, 4, { steps: 14, stepMs: 16 });
-      await page.waitForTimeout(160);
+      // Over-pull up to maximize, then pull down from the top-20% strip to restore.
+      if (await pullToMaximize(page)) maximizeCommits += 1;
+      if (await pullToRestore(page)) restoreCommits += 1;
     }
+
+    // Prove the gate actually entered + left the state it measures (never
+    // vacuously green): the loop must have committed full-bleed and restored it.
+    check(maximizeCommits >= 1, `over-pull commits full-bleed (${maximizeCommits}/4 committed)`);
+    check(restoreCommits >= 1, `top-20% pull-down restores the inset overlay (${restoreCommits}/4 restored)`);
 
     // Harvest the REAL entries and feed the shared detectors.
     const { frames, shifts } = await page.evaluate(() => ({

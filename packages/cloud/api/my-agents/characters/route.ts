@@ -53,8 +53,14 @@ app.get("/", async (c) => {
           char.name.toLowerCase().includes(query) ||
           (typeof char.bio === "string" &&
             char.bio.toLowerCase().includes(query)) ||
+          // bio is caller-supplied jsonb (the POST below stores the body
+          // verbatim), so array entries are not guaranteed to be strings —
+          // one non-string entry must not 500 every search for the user.
+          // Non-string entries simply can't match a text query.
           (Array.isArray(char.bio) &&
-            char.bio.some((b) => b.toLowerCase().includes(query))),
+            char.bio.some(
+              (b) => typeof b === "string" && b.toLowerCase().includes(query),
+            )),
       );
     }
     if (category) {
@@ -128,9 +134,17 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const elizaCharacter = (await c.req.json()) as ElizaCharacter;
+    // documents/knowledge come verbatim from the unvalidated request body; a
+    // non-array value (e.g. `knowledge: {}`) is not iterable and would 500 the
+    // create (#13637 class). Non-arrays contribute no document sources — this
+    // also keeps the knowledge column an array for downstream readers.
     const documentSources = [
-      ...(elizaCharacter.documents ?? []),
-      ...(elizaCharacter.knowledge ?? []),
+      ...(Array.isArray(elizaCharacter.documents)
+        ? elizaCharacter.documents
+        : []),
+      ...(Array.isArray(elizaCharacter.knowledge)
+        ? elizaCharacter.knowledge
+        : []),
     ];
 
     // Normalize isPublic to ensure consistency between is_public column and character_data

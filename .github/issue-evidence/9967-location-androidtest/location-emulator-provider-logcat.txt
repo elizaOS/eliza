@@ -1,4 +1,0 @@
-06-30 13:55:52.545 24249 24267 I TestRunner: started: readProviderStatus_matchesRealLocationManagerProviders(ai.eliza.plugins.location.LocationFixReaderDeviceStateInstrumentedTest)
-06-30 13:55:52.551 24249 24267 I GrantPermissionCallable: Permission: android.permission.ACCESS_FINE_LOCATION is already granted!
-06-30 13:55:52.551 24249 24267 I GrantPermissionCallable: Permission: android.permission.ACCESS_COARSE_LOCATION is already granted!
-06-30 13:55:52.565 24249 24267 I TestRunner: finished: readProviderStatus_matchesRealLocationManagerProviders(ai.eliza.plugins.location.LocationFixReaderDeviceStateInstrumentedTest)

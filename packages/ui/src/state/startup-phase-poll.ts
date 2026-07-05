@@ -76,6 +76,17 @@ function isCapacitorNative(): boolean {
 const NATIVE_CONSECUTIVE_FAILURE_BUDGET_MS = 90_000;
 
 /**
+ * Per-request cap for a single startup probe (issue #13737). Well under the
+ * consecutive-failure budget so a hung request fails fast and the loop retries
+ * many times inside the overall `backendTimeoutMs`, guaranteeing the first
+ * probe after the on-device agent's IPC socket comes up connects promptly.
+ * Generous enough for one slow request on a low-end device (a 4 GB Android
+ * cold-boots the full agent in ~60s, but any *individual* request that is
+ * going to succeed resolves in well under 12s).
+ */
+const PROBE_REQUEST_TIMEOUT_MS = 12_000;
+
+/**
  * A startup probe outlived the whole remaining phase budget without settling
  * (issue #11030: the iOS transport awaited Capacitor's raw plugin proxy — a
  * thenable whose `then` never calls back — freezing the poll loop forever).
@@ -540,26 +551,35 @@ export async function runPollingBackend(
   };
 
   /**
-   * Bound every probe await by the remaining phase budget (issue #11030).
-   * The on-device iOS boot hang proved a probe can NEVER settle (the
-   * transport awaited Capacitor's raw plugin proxy — a thenable whose `then`
-   * never calls back). A hung await freezes this loop BEFORE the deadline
-   * check at the top, so neither the timeout card nor the failure budget can
-   * ever fire and the phone sits on "Booting up…" forever. Racing the probe
-   * against the remaining deadline guarantees the loop always regains
-   * control; the rejection flows through the ordinary failure paths (streak
-   * budget, then BACKEND_TIMEOUT at the deadline).
+   * Bound every probe await by a SHORT per-request timeout so a hung request
+   * fails fast and the loop retries, instead of one hang consuming the whole
+   * phase budget (issue #13737).
+   *
+   * The on-device iOS/Android boot proved two failure modes a probe must
+   * survive: (a) a request that can NEVER settle — Capacitor's raw plugin
+   * proxy is a thenable whose `then` never calls back; and (b) on Android
+   * local-agent IPC, a request issued while the agent is still booting BLOCKS
+   * on the not-yet-listening abstract socket (it does not fail-fast with
+   * connection-refused). Bounding each probe by the *entire remaining phase
+   * budget* (the old behavior) meant a single blocked request wedged the loop
+   * for the whole 180s and the phone sat on "Booting up…" — even though the
+   * agent became ready partway through. Bounding by a short cap instead spends
+   * the 180s budget on many fast retries, so the first probe AFTER the agent's
+   * socket comes up connects within one cap window. Never longer than the
+   * remaining deadline (so we don't overshoot the overall ceiling); the
+   * rejection flows through the ordinary streak-budget / deadline paths.
    */
-  const boundedByDeadline = <T>(promise: Promise<T>): Promise<T> => {
-    const remainingMs = Math.max(1_000, deadline - Date.now());
+  const boundedProbe = <T>(promise: Promise<T>): Promise<T> => {
+    const remainingMs = Math.max(0, deadline - Date.now());
+    const capMs = Math.max(1, Math.min(PROBE_REQUEST_TIMEOUT_MS, remainingMs));
     return new Promise<T>((resolve, reject) => {
       const hangTid = setTimeout(() => {
         reject(
           new ApiHangTimeoutError(
-            `Startup probe did not settle within ${Math.round(remainingMs / 1000)}s — the request transport is hung (see the on-device boot trace, stage "probe-stalled")`,
+            `Startup probe did not settle within ${Math.round(capMs / 1000)}s — the request transport is hung (see the on-device boot trace, stage "probe-stalled"); retrying`,
           ),
         );
-      }, remainingMs);
+      }, capMs);
       promise.then(
         (value) => {
           clearTimeout(hangTid);
@@ -586,7 +606,7 @@ export async function runPollingBackend(
     }
     try {
       const auth = await traceIfStalled(
-        boundedByDeadline(client.getAuthStatus()),
+        boundedProbe(client.getAuthStatus()),
         "auth-status",
       );
       latestAuth = auth;
@@ -667,7 +687,10 @@ export async function runPollingBackend(
         dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
         return;
       }
-      const firstRunStatusRes = await client.getFirstRunStatus();
+      const firstRunStatusRes = await traceIfStalled(
+        boundedProbe(client.getFirstRunStatus()),
+        "first-run-status",
+      );
       const { complete, cloudProvisioned } = firstRunStatusRes;
       if (cancelled.current) return;
       deps.setFirstRunCloudProvisionedContainer(Boolean(cloudProvisioned));
@@ -709,10 +732,10 @@ export async function runPollingBackend(
           }
           try {
             const [options, config] = await Promise.all([
-              client.getFirstRunOptions(),
+              boundedProbe(client.getFirstRunOptions()),
               // error-policy:J4 config only pre-fills resume fields; the
               // required options fetch fails loudly via the loop's deadline
-              client.getConfig().catch(() => null),
+              boundedProbe(client.getConfig()).catch(() => null),
             ]);
             // The effect may have been torn down (unmount / re-run) while the
             // fetch was in flight — bail before mutating state or dispatching,
@@ -1026,7 +1049,23 @@ export async function runPollingBackend(
       }
       lastErr = err;
       if (isCapacitorNative()) {
-        if (isIosNativeAgentBootInProgress()) {
+        // Android detached local agent has no in-process engine-phase signal
+        // (unlike the iOS in-process runtime), so a probe hang / connect
+        // failure against the local-agent IPC base means the abstract socket
+        // is not listening YET — i.e. the detached agent is still cold-booting
+        // (a 4 GB device takes ~60s; a first-run-triggered restart doubles
+        // that). Treat that as boot-progress and do NOT burn the consecutive-
+        // failure budget, mirroring the iOS boot-in-progress branch — the
+        // overall `deadline` still bounds the whole phase, and once the socket
+        // comes up the next fast-retry probe (issue #13737) connects. An
+        // actual HTTP error from a LIVE server (a real `status`) is a genuine
+        // failure and still burns the budget below.
+        const androidLocalAgentBooting =
+          isAndroid &&
+          isMobileLocalAgentIpcBase(client.getBaseUrl()) &&
+          (err instanceof ApiHangTimeoutError ||
+            (err as { status?: number } | undefined)?.status === undefined);
+        if (isIosNativeAgentBootInProgress() || androidLocalAgentBooting) {
           // PROGRESS-AWARE budget: the in-process native agent is provably
           // booting (engine start pending within its own timeout) or alive
           // (fresh structured-response heartbeat). Boot-time 503s/timeouts

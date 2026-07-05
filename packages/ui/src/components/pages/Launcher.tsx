@@ -2,13 +2,17 @@
  * Launcher — iOS-like app/view launcher.
  *
  * Renders the curated view tiles as names-only icons on a single scrolling page
- * (the home dashboard is the adjacent page on the rail). Tap launches. The
- * launcher is READ-ONLY: composition + visibility are owned by
- * `curateLauncherPages` (system + release always; developer + preview gated by
- * their Settings toggles), so there is no reorder, no edit mode, and no
- * persisted free-form layout. A grid taller than the viewport scrolls
- * vertically; the outer home↔launcher rail owns horizontal navigation in both
- * directions (there is no inner grid pager to arbitrate against).
+ * (the home dashboard is the adjacent page on the rail). Tap launches. Tiles are
+ * grouped into named zones — Recents, Favorites, All Apps — composed by
+ * `curateLauncherZones`; Recents/Favorites are projections over the same curated
+ * page and only render when non-empty, so the default first-run launcher is just
+ * "All Apps". The launcher is otherwise READ-ONLY: composition + visibility are
+ * owned by `curateLauncherPages` (system + release always; developer + preview
+ * gated by their Settings toggles), so there is no reorder, no edit mode, and no
+ * persisted free-form layout beyond the per-tile favorite pin. A grid taller than
+ * the viewport scrolls vertically; the outer home↔launcher rail owns horizontal
+ * navigation in both directions (there is no inner grid pager to arbitrate
+ * against).
  *
  * Renders no background of its own — the shared root `AppBackground` shows
  * through, matching the home screen. Tiles, labels, and the skeleton use a FIXED
@@ -16,23 +20,33 @@
  * over the ambient field) rather than light/dark theme tokens.
  */
 
+import { Star } from "lucide-react";
 import { memo, useCallback } from "react";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import { emitViewInteraction } from "../../view-telemetry";
 import { Button } from "../ui/button";
 import { ViewTileImage } from "../views/ViewTileImage";
+import type { LauncherZone } from "./launcher-curation";
 
 export interface LauncherProps {
-  entries: ViewEntry[];
+  zones: LauncherZone[];
   loading?: boolean;
   onLaunch: (entry: ViewEntry) => void;
+  /** Toggle a view's Favorites pin. Omit to hide the per-tile star affordance. */
+  onToggleFavorite?: (entry: ViewEntry) => void;
+  /** Canonical ids currently pinned — drives the filled-star state. */
+  favoriteIds?: ReadonlySet<string>;
   className?: string;
 }
 
 interface IconTileProps {
   entry: ViewEntry;
+  /** Zone-unique testid prefix so a tile shown in two zones stays addressable. */
+  testIdPrefix: string;
   onLaunch: (entry: ViewEntry) => void;
+  onToggleFavorite?: (entry: ViewEntry) => void;
+  isFavorite: boolean;
 }
 
 function viewKindBadge(entry: ViewEntry): {
@@ -56,12 +70,18 @@ function viewKindBadge(entry: ViewEntry): {
 
 // Memoized so a catalog change (install/uninstall/sort) re-renders only the
 // tiles whose props actually changed, not the whole page.
-const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
+const IconTile = memo(function IconTile({
+  entry,
+  testIdPrefix,
+  onLaunch,
+  onToggleFavorite,
+  isFavorite,
+}: IconTileProps) {
   const badge = viewKindBadge(entry);
   return (
     <div
-      className="flex flex-col items-center gap-1.5 select-none"
-      data-testid={`launcher-tile-${entry.id}`}
+      className="group relative flex flex-col items-center gap-1.5 select-none"
+      data-testid={`${testIdPrefix}-${entry.id}`}
     >
       <div className="relative">
         <Button
@@ -99,18 +119,96 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
             {badge.label}
           </span>
         ) : null}
+        {onToggleFavorite ? (
+          // The pin lives on the tile itself (the only place a launcher-scoped
+          // favorite has meaning). Neutral, hidden until hover/focus so the grid
+          // stays calm; the filled/gold state persists once pinned so a Favorites
+          // member reads as pinned even at rest.
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            data-testid={`launcher-favorite-${entry.id}`}
+            aria-pressed={isFavorite}
+            aria-label={
+              isFavorite
+                ? `Unpin ${entry.label} from Favorites`
+                : `Pin ${entry.label} to Favorites`
+            }
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleFavorite(entry);
+            }}
+            className={cn(
+              "absolute -right-2 -top-2 h-6 w-6 rounded-full bg-black/55 p-0 text-white transition-opacity hover:bg-black/70",
+              isFavorite
+                ? "text-warn opacity-100"
+                : "text-white/80 opacity-0 focus-visible:opacity-100 group-hover:opacity-100",
+            )}
+          >
+            <Star
+              className="h-3.5 w-3.5"
+              fill={isFavorite ? "currentColor" : "none"}
+              aria-hidden
+            />
+          </Button>
+        ) : null}
       </div>
-      <span className="max-w-[4.5rem] truncate text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
+      <span className="line-clamp-2 max-w-[4.5rem] text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
         {entry.label}
       </span>
     </div>
   );
 });
 
-export function Launcher({
+function LauncherGrid({
   entries,
+  testIdPrefix,
+  onLaunch,
+  onToggleFavorite,
+  favoriteIds,
+}: {
+  entries: ViewEntry[];
+  testIdPrefix: string;
+  onLaunch: (entry: ViewEntry) => void;
+  onToggleFavorite?: (entry: ViewEntry) => void;
+  favoriteIds?: ReadonlySet<string>;
+}) {
+  return (
+    <div className="grid w-full grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-8 sm:grid-cols-5">
+      {entries.map((entry) => (
+        <div key={entry.id} className="flex justify-center">
+          <IconTile
+            entry={entry}
+            testIdPrefix={testIdPrefix}
+            onLaunch={onLaunch}
+            onToggleFavorite={onToggleFavorite}
+            isFavorite={favoriteIds?.has(entry.id) ?? false}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ZoneHeader({ label }: { label: string }) {
+  // Minimal section header — a small uppercase label and a hairline rule, no
+  // card chrome (the launcher paints straight onto the wallpaper).
+  return (
+    <div className="flex items-center gap-3 px-1">
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/85 [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
+        {label}
+      </h2>
+      <div className="h-px flex-1 bg-white/20" />
+    </div>
+  );
+}
+
+export function Launcher({
+  zones,
   loading = false,
   onLaunch,
+  onToggleFavorite,
+  favoriteIds,
   className,
 }: LauncherProps) {
   const handleLaunch = useCallback(
@@ -125,7 +223,14 @@ export function Launcher({
     [onLaunch],
   );
 
-  const showSkeleton = loading && entries.length === 0;
+  const allZone = zones.find((zone) => zone.key === "all");
+  const showSkeleton = loading && (allZone?.entries.length ?? 0) === 0;
+  // Recents/Favorites only render when populated; the "All Apps" heading is
+  // dropped when it is the sole zone so the default launcher stays a plain grid.
+  const secondaryZones = zones.filter(
+    (zone) => zone.key !== "all" && zone.entries.length > 0,
+  );
+  const showZoneHeaders = secondaryZones.length > 0;
 
   return (
     <div
@@ -138,11 +243,12 @@ export function Launcher({
             only scrolls vertically when the grid overflows. */}
         <div
           data-testid="launcher-page-window"
-          className="relative flex min-h-0 flex-1 items-start justify-center overflow-y-auto touch-pan-y px-6 pt-2 pb-8"
+          className="relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto touch-pan-y px-6 pt-2 pb-8"
         >
-          <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5">
-            {showSkeleton
-              ? ["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
+          <div className="flex w-full max-w-2xl flex-col gap-6">
+            {showSkeleton ? (
+              <div className="grid w-full grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5">
+                {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
                   <div
                     key={id}
                     className="flex flex-col items-center gap-1.5 opacity-60"
@@ -150,12 +256,38 @@ export function Launcher({
                     <div className="h-16 w-16 rounded-2xl bg-white/15" />
                     <div className="h-2.5 w-12 rounded-full bg-white/25" />
                   </div>
-                ))
-              : entries.map((entry) => (
-                  <div key={entry.id} className="flex justify-center">
-                    <IconTile entry={entry} onLaunch={handleLaunch} />
-                  </div>
                 ))}
+              </div>
+            ) : (
+              zones.map((zone) => {
+                if (zone.entries.length === 0) return null;
+                const isAll = zone.key === "all";
+                return (
+                  <section
+                    key={zone.key}
+                    data-testid={`launcher-zone-${zone.key}`}
+                    className="flex flex-col gap-3"
+                  >
+                    {showZoneHeaders ? <ZoneHeader label={zone.label} /> : null}
+                    <LauncherGrid
+                      entries={zone.entries}
+                      // Only the exhaustive "All Apps" zone owns the canonical
+                      // `launcher-tile-<id>` testid; the projection zones use
+                      // zone-scoped prefixes so a tile shown twice stays uniquely
+                      // addressable and the "one tile per id" contract holds.
+                      testIdPrefix={
+                        isAll ? "launcher-tile" : `launcher-${zone.key}-tile`
+                      }
+                      onLaunch={handleLaunch}
+                      // The pin only makes sense on the exhaustive grid; the
+                      // projection zones render read-only.
+                      onToggleFavorite={isAll ? onToggleFavorite : undefined}
+                      favoriteIds={favoriteIds}
+                    />
+                  </section>
+                );
+              })
+            )}
           </div>
         </div>
       </div>

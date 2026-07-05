@@ -37,6 +37,7 @@
 import { writeFileSync } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
+import { readAliasedEnv } from "@elizaos/shared";
 import type {
 	AudioFrameEvent,
 	EchoReferenceProvider,
@@ -69,7 +70,7 @@ async function persistAecEvidence(
 	capture: { sampleCount?: number } | null | undefined,
 	status: unknown,
 ): Promise<void> {
-	const stateDir = process.env.ELIZA_STATE_DIR?.trim();
+	const stateDir = readAliasedEnv("ELIZA_STATE_DIR");
 	// Only mirror a capture that actually holds samples — an incidental GET with
 	// nothing captured must not clobber a real prior capture or write noise.
 	if (!stateDir || !capture || (capture.sampleCount ?? 0) <= 0) return;

@@ -26,6 +26,16 @@ import type {
 } from "./orchestrator-task-types.js";
 import { TERMINAL_TASK_SESSION_STATUSES } from "./orchestrator-task-types.js";
 
+/** Admission-queue state surfaced on a task when it is parked at the session
+ * cap (#13772). `position` is 1-based and filled by the service from the live
+ * dispatch order; the mapper derives only `state` + `enqueuedAt` from durable
+ * metadata (it has no view of the in-memory order), leaving `position` at 0. */
+export interface TaskAdmissionDto {
+  state: "queued";
+  position: number;
+  enqueuedAt: string;
+}
+
 export interface TaskThreadDto {
   id: string;
   title: string;
@@ -39,8 +49,18 @@ export interface TaskThreadDto {
   activeSessionCount: number;
   latestSessionId: string | null;
   latestSessionLabel: string | null;
+  /**
+   * The task's stable workdir/repo. Prefers the durable binding pinned at first
+   * spawn (`task.boundWorkdir`/`boundRepo`) over the most-recent session's
+   * workdir so the UI shows where follow-up spawns will actually land, not just
+   * where the last one happened to run. Falls back to the latest session for
+   * pre-binding tasks. See #13776 item 3.
+   */
   latestWorkdir: string | null;
   latestRepo: string | null;
+  /** Registered Project this task is bound to (null = unbound). Lets the task
+   * list group by project without fetching each task's detail. */
+  projectId: string | null;
   latestActivityAt: number | null;
   decisionCount: number;
   usage: TaskUsageSummary;
@@ -48,6 +68,8 @@ export interface TaskThreadDto {
   updatedAt: string;
   closedAt: string | null;
   archivedAt: string | null;
+  /** Present only while the task is parked in the admission queue. */
+  admission?: TaskAdmissionDto;
 }
 
 export interface TaskSessionDto {
@@ -186,6 +208,7 @@ export interface TaskThreadDetailDto extends TaskThreadDto {
   roomId: string | null;
   taskRoomId: string | null;
   worldId: string | null;
+  projectId: string | null;
   ownerUserId: string | null;
   parentTaskId: string | null;
   acceptanceCriteria: string[];
@@ -374,9 +397,13 @@ export function summarizeUsage(
 
 export function toTaskThread(doc: OrchestratorTaskDocument): TaskThreadDto {
   const latest = latestSession(doc);
+  const latestRepo = Object.hasOwn(doc.task, "boundRepo")
+    ? (doc.task.boundRepo ?? null)
+    : (latest?.repo ?? null);
   const activeSessionCount = doc.sessions.filter(
     (session) => !TERMINAL_TASK_SESSION_STATUSES.has(session.status),
   ).length;
+  const admission = deriveAdmission(doc);
   return {
     id: doc.task.id,
     title: doc.task.title,
@@ -390,8 +417,9 @@ export function toTaskThread(doc: OrchestratorTaskDocument): TaskThreadDto {
     activeSessionCount,
     latestSessionId: latest?.sessionId ?? null,
     latestSessionLabel: latest?.label ?? null,
-    latestWorkdir: latest?.workdir ?? null,
-    latestRepo: latest?.repo ?? null,
+    latestWorkdir: doc.task.boundWorkdir ?? latest?.workdir ?? null,
+    latestRepo,
+    projectId: doc.task.projectId ?? null,
     latestActivityAt: doc.task.lastActivityAt,
     decisionCount: doc.decisions.length,
     usage: summarizeUsage(doc),
@@ -399,7 +427,29 @@ export function toTaskThread(doc: OrchestratorTaskDocument): TaskThreadDto {
     updatedAt: doc.task.updatedAt,
     closedAt: doc.task.closedAt ?? null,
     archivedAt: doc.task.archivedAt ?? null,
+    ...(admission ? { admission } : {}),
   };
+}
+
+/** Derive the admission DTO from a task's durable metadata. `position` stays 0
+ * here — only the service, which holds the live dispatch order, can fill it. */
+function deriveAdmission(
+  doc: OrchestratorTaskDocument,
+): TaskAdmissionDto | null {
+  const admission = doc.task.metadata?.admission;
+  if (
+    typeof admission === "object" &&
+    admission !== null &&
+    (admission as Record<string, unknown>).state === "queued" &&
+    typeof (admission as Record<string, unknown>).enqueuedAt === "string"
+  ) {
+    return {
+      state: "queued",
+      position: 0,
+      enqueuedAt: (admission as Record<string, unknown>).enqueuedAt as string,
+    };
+  }
+  return null;
 }
 
 export function toTaskThreadDetail(
@@ -411,6 +461,7 @@ export function toTaskThreadDetail(
     roomId: doc.task.roomId ?? null,
     taskRoomId: doc.task.taskRoomId ?? null,
     worldId: doc.task.worldId ?? null,
+    projectId: doc.task.projectId ?? null,
     ownerUserId: doc.task.ownerUserId ?? null,
     parentTaskId: doc.task.parentTaskId ?? null,
     acceptanceCriteria: doc.task.acceptanceCriteria,

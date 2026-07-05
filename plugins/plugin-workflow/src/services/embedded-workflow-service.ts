@@ -16,6 +16,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { statfs } from 'node:fs/promises';
 import { arch, cpus, freemem, loadavg, platform, release, totalmem, uptime } from 'node:os';
 import {
+  ElizaError,
   type IAgentRuntime,
   logger,
   Service,
@@ -177,6 +178,17 @@ const EMBEDDED_HOST = 'embedded://local';
 const DEFAULT_SCHEDULE_INTERVAL_MS = 60_000;
 const DEVICE_HEALTH_CHECK_WORKFLOW_ID = 'system-device-health-check';
 const DEVICE_HEALTH_CHECK_RUN_KEY = `${DEVICE_HEALTH_CHECK_WORKFLOW_ID}:initial`;
+
+/**
+ * Persistent, once-per-install marker recording that the default workflow was
+ * already seeded on this device. Stored in the runtime cache so it survives
+ * restarts. Its presence — independent of whether the workflow row still
+ * exists — is what makes seeding respect a user deletion: once seeded, a
+ * default the user later deletes is NEVER resurrected on a subsequent boot.
+ * (Matching the LifeOps seed-registry's `eliza:scheduling:seeded-defaults:v1`
+ * pattern so both consumers of the one clock seed the same way.)
+ */
+const DEFAULT_WORKFLOW_SEED_MARKER_CACHE_KEY = 'eliza:workflow:seeded-defaults:v1';
 
 let loadedQuickJs: Promise<typeof import('quickjs-emscripten')> | null = null;
 
@@ -2288,17 +2300,96 @@ export class EmbeddedWorkflowService extends Service {
     }
   }
 
+  /**
+   * Seed exactly ONE default workflow on first run, routed through the single
+   * scheduler (its `scheduleTrigger` node arms a `TRIGGER_DISPATCH` core Task —
+   * the one clock's trigger consumer — not a second scheduling mechanism).
+   *
+   * Idempotent and deletion-respecting: a persistent per-install cache marker
+   * (`DEFAULT_WORKFLOW_SEED_MARKER_CACHE_KEY`) is set the first time the default
+   * is seeded and consulted on every boot. Once the marker is present the
+   * default is never re-seeded — so a user who deletes it does NOT get a zombie
+   * re-seed on the next restart. Seeding also stays a no-op when the default
+   * row already exists (covers a pre-marker install that seeded under the old
+   * row-existence check). A non-empty workflow store also suppresses seeding:
+   * existing installs with user-created workflows are not a first run, even if
+   * the default row/marker is missing.
+   */
   private async seedDefaultWorkflows(): Promise<void> {
+    // Deletion-respecting gate. Three outcomes:
+    //  - 'seeded'      → we've already seeded on this install; stop (even if the
+    //                    user has since deleted the default).
+    //  - 'unavailable' → the cache read FAILED, so we cannot prove this is a
+    //                    first run. Fail CLOSED: skip seeding rather than risk
+    //                    resurrecting a default the user deleted (the marker
+    //                    would have been present but unreadable). A genuine
+    //                    first-run install with a healthy cache falls through.
+    //  - 'not-seeded'  → no marker (cache healthy, or cache unsupported); seed.
+    const seedState = await this.getDefaultWorkflowSeedState();
+    if (seedState === 'seeded' || seedState === 'unavailable') return;
+
     const rows = await this.getDb()
       .select({ id: embeddedWorkflows.id })
       .from(embeddedWorkflows)
-      .where(eq(embeddedWorkflows.id, DEVICE_HEALTH_CHECK_WORKFLOW_ID))
       .limit(1);
-    if (rows.length > 0) return;
+    // Pre-marker install that already has workflows: backfill the marker so
+    // future boots take the fast path and the deletion-respecting guard is
+    // active. We do NOT roll back or alter these rows on a marker-write
+    // failure — they are legitimate existing workflows the user may rely on,
+    // not rows we just created. Instead, if the marker cannot be persisted we
+    // log and retry the backfill on every subsequent boot until it sticks; the
+    // marker-less window is unavoidable for rows that predate the marker, and
+    // seeding is still bounded because the non-empty store keeps existing.
+    if (rows.length > 0) {
+      const backfilled = await this.markDefaultWorkflowsSeeded();
+      if (!backfilled) {
+        logger.warn(
+          { src: 'plugin:workflow:embedded' },
+          'Could not backfill default-workflow seed marker for an existing workflow store; will retry next boot'
+        );
+      }
+      return;
+    }
+
+    // Upgrade-safety: on an install upgraded from a pre-marker build, a user who
+    // deleted the default BEFORE this marker existed has neither a marker NOR a
+    // row — which would otherwise look like a first run and re-seed. The delete
+    // left a `delete` revision in workflow_revisions, so treat that as the
+    // missing deletion signal: if one exists, DO NOT re-seed, and backfill the
+    // marker so future boots skip fast without re-querying revisions.
+    const priorDeletion = await this.getPriorDefaultWorkflowDeletionState();
+    if (priorDeletion === 'deleted') {
+      const backfilled = await this.markDefaultWorkflowsSeeded();
+      if (!backfilled) {
+        logger.warn(
+          { src: 'plugin:workflow:embedded' },
+          'Prior default-workflow deletion detected but seed marker backfill failed; will retry next boot'
+        );
+      }
+      logger.info(
+        { src: 'plugin:workflow:embedded' },
+        'Skipped default-workflow seed: a prior deletion revision exists (upgrade-preserved deletion)'
+      );
+      return;
+    }
 
     const workflow = buildDeviceHealthCheckWorkflow();
     this.assertRegisteredNodes(workflow);
     this.assertHostSupports(workflow);
+
+    // Insert the default row FIRST, then record the marker, and roll the row
+    // back if the marker cannot be persisted. This makes the (row, marker) pair
+    // effectively atomic across the two stores without a distributed
+    // transaction, resolving both failure modes:
+    //   - marker-then-row: a mid-way insert failure would leave a marker with
+    //     no row → the default is suppressed forever. Avoided.
+    //   - row-then-marker (no rollback): a marker-write failure would leave an
+    //     active default with no marker → a later delete + healthy-cache reboot
+    //     resurrects it as a zombie. Avoided by the rollback below.
+    // The end state is always one of: BOTH present (seeded), or NEITHER present
+    // (clean not-seeded → retried next boot). A cache-less runtime returns true
+    // from markDefaultWorkflowsSeeded (nothing to persist) and relies on the
+    // row-existence guard.
     const timestamp = nowIso();
     const versionId = randomUUID();
     const stored = normalizeWorkflowPayload(workflow, DEVICE_HEALTH_CHECK_WORKFLOW_ID, true);
@@ -2311,6 +2402,22 @@ export class EmbeddedWorkflowService extends Service {
       updatedAt: timestamp,
       versionId,
     });
+
+    const markerPersisted = await this.markDefaultWorkflowsSeeded();
+    if (!markerPersisted) {
+      // Roll back the just-inserted row so we never leave a marker-less active
+      // default behind. Also clear any schedules the insert-path may have armed.
+      await this.clearSchedules(DEVICE_HEALTH_CHECK_WORKFLOW_ID);
+      await this.getDb()
+        .delete(embeddedWorkflows)
+        .where(eq(embeddedWorkflows.id, DEVICE_HEALTH_CHECK_WORKFLOW_ID));
+      logger.warn(
+        { src: 'plugin:workflow:embedded' },
+        'Rolled back default-workflow seed: could not persist the seed marker (will retry next boot)'
+      );
+      return;
+    }
+
     await this.runWorkflow(
       stored,
       'manual',
@@ -2318,6 +2425,121 @@ export class EmbeddedWorkflowService extends Service {
       DEVICE_HEALTH_CHECK_RUN_KEY,
       false
     );
+  }
+
+  /**
+   * Resolve whether the default workflow has been seeded on this install.
+   *
+   * - `'seeded'`      — the persistent marker is present.
+   * - `'not-seeded'`  — no marker and the cache is healthy (or the runtime has
+   *   no cache support at all, so there is nothing to lose by seeding).
+   * - `'unavailable'` — the cache read FAILED. We cannot distinguish "never
+   *   seeded" from "seeded-but-marker-unreadable", so the caller must fail
+   *   closed and NOT seed — otherwise a transient cache outage after a user
+   *   deletion would resurrect the deleted default. This is the exact zombie
+   *   re-seed the marker exists to prevent.
+   */
+  private async getDefaultWorkflowSeedState(): Promise<'seeded' | 'not-seeded' | 'unavailable'> {
+    // No cache support (older runtimes): there is no marker to read and none to
+    // resurrect, so treat as a plain first run and let the row-existence check
+    // downstream guard against a duplicate.
+    if (typeof this.runtime.getCache !== 'function') return 'not-seeded';
+    try {
+      const marker = await this.runtime.getCache<{ seededAt?: string }>(
+        DEFAULT_WORKFLOW_SEED_MARKER_CACHE_KEY
+      );
+      return marker && typeof marker === 'object' && marker.seededAt ? 'seeded' : 'not-seeded';
+    } catch {
+      // error-policy:J4 fail closed: a deleted default must not come back just
+      // because the cache was momentarily unreadable.
+      logger.warn(
+        { src: 'plugin:workflow:embedded' },
+        'Default-workflow seed marker read failed; skipping seed this boot to preserve any prior deletion'
+      );
+      return 'unavailable';
+    }
+  }
+
+  /**
+   * Resolve whether workflow_revisions holds a `delete` revision for the
+   * default workflow id — the signal that a user deleted it (possibly on a
+   * pre-marker build). Used to preserve that deletion across an upgrade so
+   * "no marker + no row" is not misread as a first run. This check must fail
+   * closed and observably: treating an unreadable deletion history as "none"
+   * can resurrect a default workflow the user already deleted.
+   */
+  private async getPriorDefaultWorkflowDeletionState(): Promise<'deleted' | 'none'> {
+    try {
+      await this.ensureSchema();
+      const rows = await this.getDb()
+        .select({ id: workflowRevisions.id })
+        .from(workflowRevisions)
+        .where(
+          and(
+            eq(workflowRevisions.workflowId, DEVICE_HEALTH_CHECK_WORKFLOW_ID),
+            eq(workflowRevisions.operation, 'delete')
+          )
+        )
+        .limit(1);
+      return rows.length > 0 ? 'deleted' : 'none';
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow; default seeding must fail closed
+      // when the deletion-history guard cannot be evaluated.
+      const wrapped = new ElizaError('Failed to check prior default-workflow deletion revisions', {
+        code: 'WORKFLOW_DEFAULT_SEED_DELETION_CHECK_FAILED',
+        cause: error,
+        context: { workflowId: DEVICE_HEALTH_CHECK_WORKFLOW_ID },
+        severity: 'ephemeral',
+      });
+      if (typeof this.runtime.reportError === 'function') {
+        this.runtime.reportError('EmbeddedWorkflowService.seedDefaultWorkflows', wrapped, {
+          workflowId: DEVICE_HEALTH_CHECK_WORKFLOW_ID,
+        });
+      } else {
+        logger.error(
+          { src: 'plugin:workflow:embedded', error: wrapped },
+          'Default-workflow deletion-history check failed'
+        );
+      }
+      throw wrapped;
+    }
+  }
+
+  /** Persist the once-per-install seed marker.
+   *
+   * Returns `true` when the marker is durably recorded — or when the runtime
+   * has no cache at all, in which case there is no marker to lose and the
+   * caller relies on the row-existence guard instead. Returns `false` only when
+   * a cache IS present but the write failed; the caller then aborts seeding so
+   * we never create an active default that lacks its marker (which a later
+   * deletion + healthy-cache reboot would resurrect). */
+  private async markDefaultWorkflowsSeeded(): Promise<boolean> {
+    if (typeof this.runtime.setCache !== 'function') return true;
+    try {
+      // setCache is typed `Promise<boolean>`: a `false` result means the write
+      // did NOT persist, which we must treat exactly like a thrown failure so
+      // the caller rolls back the seeded row (no marker-less default lingers).
+      const persisted = await this.runtime.setCache(DEFAULT_WORKFLOW_SEED_MARKER_CACHE_KEY, {
+        seededAt: nowIso(),
+        workflowId: DEVICE_HEALTH_CHECK_WORKFLOW_ID,
+      });
+      if (persisted === false) {
+        logger.warn(
+          { src: 'plugin:workflow:embedded' },
+          'Default-workflow seed marker write reported not-persisted'
+        );
+        return false;
+      }
+      return true;
+    } catch {
+      // error-policy:J4 a failed marker write turns into an explicit
+      // not-persisted result; the caller rolls back any just-created row.
+      logger.warn(
+        { src: 'plugin:workflow:embedded' },
+        'Failed to persist default-workflow seed marker'
+      );
+      return false;
+    }
   }
 
   /** Remove legacy `workflow.run` / `workflow.webhook` Tasks left behind

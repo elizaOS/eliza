@@ -1,3 +1,0 @@
-2026-06-30T00:38:30-07:00
-$ bunx @biomejs/biome check packages/core/src/runtime/stage1-honesty-detector.ts packages/core/src/runtime/__tests__/message-handler.test.ts packages/core/src/runtime/__tests__/message-handler-bogus-candidates.test.ts
-Checked 3 files in 43ms. No fixes applied.

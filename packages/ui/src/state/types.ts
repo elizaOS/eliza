@@ -721,6 +721,10 @@ export interface AppActions {
   handleChatStop: () => void;
   handleChatRetry: (assistantMsgId: string) => void;
   handleChatEdit: (messageId: string, text: string) => Promise<boolean>;
+  /** Persistently delete a single message (#13533): server DELETE + optimistic
+   *  UI removal with rollback on failure. Resolves false when the delete failed
+   *  (message kept) or there is no active conversation. */
+  handleChatDelete: (messageId: string) => Promise<boolean>;
   handleChatClear: () => Promise<void>;
   handleStartDraftConversation: () => Promise<void>;
   handleNewConversation: (title?: string) => Promise<void>;

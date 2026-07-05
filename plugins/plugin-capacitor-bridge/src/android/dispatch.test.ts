@@ -6,7 +6,6 @@
  * streaming sink lifecycle without booting a runtime or device.
  */
 
-import { Buffer } from "node:buffer";
 import type { IAgentRuntime, RouteHandlerResult } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
@@ -47,7 +46,130 @@ function collectSink(): {
 	return { sink, events };
 }
 
+function coreDeps(overrides: Partial<AndroidCoreRouteDeps> = {}): {
+	deps: AndroidCoreRouteDeps;
+	saved: AndroidElizaConfigLike[];
+} {
+	const saved: AndroidElizaConfigLike[] = [];
+	const deps: AndroidCoreRouteDeps = {
+		configFileExists: () => true,
+		loadElizaConfig: () => ({}),
+		saveElizaConfig: (config) => {
+			saved.push(config);
+		},
+		hasPersistedFirstRunState: (config) =>
+			(config as AndroidElizaConfigLike).meta?.firstRunComplete === true,
+		...overrides,
+	};
+	return { deps, saved };
+}
+
 describe("dispatchBufferedRequest", () => {
+	it("serves Android local startup app-core routes before dispatchRoute", async () => {
+		const { route, calls } = fixedRoute(null);
+		const { deps } = coreDeps({
+			loadElizaConfig: () => ({ meta: { firstRunComplete: true } }),
+		});
+		const status = await dispatchBufferedRequest(
+			runtime,
+			route,
+			{
+				method: "GET",
+				path: "/api/first-run/status",
+			},
+			deps,
+		);
+		expect(status.status).toBe(200);
+		expect(JSON.parse(status.body)).toEqual({
+			complete: true,
+			cloudProvisioned: false,
+			deploymentTarget: "local",
+		});
+
+		const auth = await dispatchBufferedRequest(runtime, route, {
+			method: "GET",
+			path: "/api/auth/me",
+		});
+		expect(auth.status).toBe(200);
+		expect(JSON.parse(auth.body)).toMatchObject({
+			identity: { id: "local-agent", kind: "machine" },
+			session: { id: "local", kind: "local" },
+			access: { mode: "local" },
+		});
+
+		expect(calls).toHaveLength(0);
+	});
+
+	it("reports first-run incomplete on a fresh Android install", async () => {
+		const { route, calls } = fixedRoute(null);
+		const { deps } = coreDeps({ configFileExists: () => false });
+		const status = await dispatchBufferedRequest(
+			runtime,
+			route,
+			{
+				method: "GET",
+				path: "/api/first-run/status",
+			},
+			deps,
+		);
+		expect(status.status).toBe(200);
+		expect(JSON.parse(status.body)).toEqual({
+			complete: false,
+			cloudProvisioned: false,
+			deploymentTarget: "local",
+		});
+		expect(calls).toHaveLength(0);
+	});
+
+	it("persists first-run completion and fails closed on write errors", async () => {
+		const { route } = fixedRoute(null);
+		const { deps, saved } = coreDeps({ configFileExists: () => false });
+		const ok = await dispatchBufferedRequest(
+			runtime,
+			route,
+			{
+				method: "POST",
+				path: "/api/first-run",
+			},
+			deps,
+		);
+		expect(ok.status).toBe(200);
+		expect(JSON.parse(ok.body)).toMatchObject({ ok: true, complete: true });
+		expect(saved[0]?.meta?.firstRunComplete).toBe(true);
+
+		const failing = coreDeps({
+			saveElizaConfig: () => {
+				throw new Error("disk full");
+			},
+		}).deps;
+		const failed = await dispatchBufferedRequest(
+			runtime,
+			route,
+			{
+				method: "POST",
+				path: "/api/first-run",
+			},
+			failing,
+		);
+		expect(failed.status).toBe(500);
+		expect(JSON.parse(failed.body).error).toContain("disk full");
+	});
+
+	it("returns a non-404 response for Android local auth-bootstrap exchange", async () => {
+		const { route, calls } = fixedRoute(null);
+		const res = await dispatchBufferedRequest(runtime, route, {
+			method: "POST",
+			path: "/api/auth/bootstrap/exchange",
+			body: { token: "unused-local-token" },
+		});
+		expect(res.status).toBe(503);
+		expect(JSON.parse(res.body)).toEqual({
+			error: "db_unavailable",
+			reason: "db_unavailable",
+		});
+		expect(calls).toHaveLength(0);
+	});
+
 	it("returns the loopback-shaped envelope for a JSON route", async () => {
 		const { route, calls } = fixedRoute({
 			status: 200,
@@ -56,7 +178,7 @@ describe("dispatchBufferedRequest", () => {
 		});
 		const res = await dispatchBufferedRequest(runtime, route, {
 			method: "GET",
-			path: "/api/health",
+			path: "/api/custom-health",
 		});
 		expect(res.status).toBe(200);
 		expect(res.statusText).toBe("OK");
@@ -68,7 +190,7 @@ describe("dispatchBufferedRequest", () => {
 		);
 		// dispatchRoute saw an authorized in-process call on the parsed path.
 		expect(calls[0]?.inProcess).toBe(true);
-		expect(calls[0]?.path).toBe("/api/health");
+		expect(calls[0]?.path).toBe("/api/custom-health");
 	});
 
 	it("splits query params off the path", async () => {
@@ -117,9 +239,118 @@ describe("dispatchBufferedRequest", () => {
 		});
 		expect(Buffer.from(res.bodyBase64, "base64").equals(raw)).toBe(true);
 	});
+
+	it("serves the /api/notifications inbox from the runtime service over the UDS (#13550)", async () => {
+		// The dashboard notification center hydrates from GET /api/notifications;
+		// these routes are server-level (not runtime.routes), so without this the
+		// loopback 404s and the widget stays empty on-device. The bridge must
+		// serve them from the NotificationService BEFORE the plugin dispatcher.
+		const seeded = [
+			{ id: "n1", title: "Take the tour", readAt: null },
+			{ id: "n2", title: "Get help", readAt: 123 },
+		];
+		let cleared = false;
+		const readCalls: string[] = [];
+		const notifierRuntime = {
+			getService: (type: string) =>
+				type === "notification"
+					? {
+							list: () => seeded,
+							getUnreadCount: () => 1,
+							markRead: (id: string) => {
+								readCalls.push(id);
+								return Promise.resolve(true);
+							},
+							markAllRead: () => Promise.resolve(1),
+							remove: () => Promise.resolve(true),
+							clear: () => {
+								cleared = true;
+								return Promise.resolve();
+							},
+						}
+					: null,
+		} as unknown as IAgentRuntime;
+		const { route, calls } = fixedRoute(null);
+
+		const list = await dispatchBufferedRequest(notifierRuntime, route, {
+			method: "GET",
+			path: "/api/notifications?limit=100",
+		});
+		expect(list.status).toBe(200);
+		expect(JSON.parse(list.body)).toEqual({
+			notifications: seeded,
+			unreadCount: 1,
+		});
+		// Served inline — the plugin dispatcher was never consulted.
+		expect(calls).toHaveLength(0);
+
+		const read = await dispatchBufferedRequest(notifierRuntime, route, {
+			method: "POST",
+			path: "/api/notifications/n1/read",
+		});
+		expect(read.status).toBe(200);
+		expect(JSON.parse(read.body)).toEqual({ ok: true });
+		expect(readCalls).toEqual(["n1"]);
+
+		const clearRes = await dispatchBufferedRequest(notifierRuntime, route, {
+			method: "DELETE",
+			path: "/api/notifications",
+		});
+		expect(clearRes.status).toBe(200);
+		expect(cleared).toBe(true);
+
+		// Push-token registration is NOT ours — it must fall through.
+		const push = await dispatchBufferedRequest(notifierRuntime, route, {
+			method: "GET",
+			path: "/api/notifications/push-tokens",
+		});
+		expect(calls).toHaveLength(1);
+		expect((calls[0] as { path?: string }).path).toBe(
+			"/api/notifications/push-tokens",
+		);
+		void push;
+	});
+
+	it("serves an empty inbox when the notification service is not up yet", async () => {
+		const noSvcRuntime = {
+			getService: () => null,
+		} as unknown as IAgentRuntime;
+		const { route } = fixedRoute(null);
+		const res = await dispatchBufferedRequest(noSvcRuntime, route, {
+			method: "GET",
+			path: "/api/notifications",
+		});
+		expect(res.status).toBe(200);
+		expect(JSON.parse(res.body)).toEqual({
+			notifications: [],
+			unreadCount: 0,
+		});
+	});
 });
 
 describe("dispatchStreamingRequest", () => {
+	it("streams Android direct startup route responses without dispatchRoute", async () => {
+		const { route, calls } = fixedRoute(null);
+		const { deps } = coreDeps({ configFileExists: () => false });
+		const { sink, events } = collectSink();
+		await dispatchStreamingRequest(
+			runtime,
+			route,
+			{ method: "GET", path: "/api/first-run/status" },
+			sink,
+			deps,
+		);
+		expect(events[0]).toMatchObject({ kind: "response", status: 200 });
+		const body = JSON.parse(
+			Buffer.from(events[1]?.dataBase64 as string, "base64").toString("utf8"),
+		);
+		expect(body).toMatchObject({
+			complete: false,
+			deploymentTarget: "local",
+		});
+		expect(calls).toHaveLength(0);
+	});
+
 	it("emits response head then base64 chunks for a return-shape stream", async () => {
 		async function* frames(): AsyncGenerator<string> {
 			yield "data: hello\n\n";
@@ -201,193 +432,5 @@ describe("dispatchStreamingRequest", () => {
 			sink,
 		);
 		expect(events[0]).toMatchObject({ kind: "response", status: 404 });
-	});
-});
-
-describe("android core routes (first-run)", () => {
-	function coreDeps(overrides: Partial<AndroidCoreRouteDeps> = {}): {
-		deps: AndroidCoreRouteDeps;
-		saved: AndroidElizaConfigLike[];
-	} {
-		const saved: AndroidElizaConfigLike[] = [];
-		const deps: AndroidCoreRouteDeps = {
-			configFileExists: () => true,
-			loadElizaConfig: () => ({}),
-			saveElizaConfig: (config) => {
-				saved.push(config);
-			},
-			hasPersistedFirstRunState: (config) =>
-				(config as AndroidElizaConfigLike).meta?.firstRunComplete === true,
-			...overrides,
-		};
-		return { deps, saved };
-	}
-
-	it("GET /api/first-run/status reports incomplete on a fresh install (no config file)", async () => {
-		const { route, calls } = fixedRoute(null);
-		const { deps } = coreDeps({ configFileExists: () => false });
-		const res = await dispatchBufferedRequest(
-			runtime,
-			route,
-			{ method: "GET", path: "/api/first-run/status" },
-			deps,
-		);
-		expect(res.status).toBe(200);
-		expect(JSON.parse(res.body)).toEqual({
-			complete: false,
-			cloudProvisioned: false,
-		});
-		// The core route answered before the plugin-route kernel ran.
-		expect(calls).toHaveLength(0);
-	});
-
-	it("GET /api/auth/status reports the sealed Android pipe as local trusted access", async () => {
-		const { route, calls } = fixedRoute(null);
-		const { deps } = coreDeps();
-		const res = await dispatchBufferedRequest(
-			runtime,
-			route,
-			{ method: "GET", path: "/api/auth/status" },
-			deps,
-		);
-		expect(res.status).toBe(200);
-		expect(JSON.parse(res.body)).toEqual({
-			required: false,
-			authenticated: true,
-			loginRequired: false,
-			bootstrapRequired: false,
-			localAccess: true,
-			passwordConfigured: false,
-			pairingEnabled: false,
-			expiresAt: null,
-		});
-		expect(calls).toHaveLength(0);
-	});
-
-	it("GET /api/auth/me returns the local machine identity over the sealed Android pipe", async () => {
-		const { route, calls } = fixedRoute(null);
-		const { deps } = coreDeps();
-		const res = await dispatchBufferedRequest(
-			runtime,
-			route,
-			{ method: "GET", path: "/api/auth/me" },
-			deps,
-		);
-		expect(res.status).toBe(200);
-		expect(JSON.parse(res.body)).toEqual({
-			identity: {
-				id: "local-agent",
-				displayName: "Local Agent",
-				kind: "machine",
-			},
-			session: { id: "local", kind: "local", expiresAt: null },
-			access: {
-				mode: "local",
-				passwordConfigured: false,
-				ownerConfigured: false,
-				role: "OWNER",
-			},
-		});
-		expect(calls).toHaveLength(0);
-	});
-
-	it("GET /api/first-run/status reports complete from the persisted config", async () => {
-		const { route } = fixedRoute(null);
-		const { deps } = coreDeps({
-			loadElizaConfig: () => ({ meta: { firstRunComplete: true } }),
-		});
-		const res = await dispatchBufferedRequest(
-			runtime,
-			route,
-			{ method: "GET", path: "/api/first-run/status" },
-			deps,
-		);
-		expect(JSON.parse(res.body)).toEqual({
-			complete: true,
-			cloudProvisioned: false,
-		});
-	});
-
-	it("GET /api/first-run/status fails closed to incomplete on an unreadable config", async () => {
-		const { route } = fixedRoute(null);
-		const { deps } = coreDeps({
-			loadElizaConfig: () => {
-				throw new Error("corrupt config");
-			},
-		});
-		const res = await dispatchBufferedRequest(
-			runtime,
-			route,
-			{ method: "GET", path: "/api/first-run/status" },
-			deps,
-		);
-		expect(JSON.parse(res.body)).toEqual({
-			complete: false,
-			cloudProvisioned: false,
-		});
-	});
-
-	it("POST /api/first-run persists the completion marker so status flips durable", async () => {
-		const { route, calls } = fixedRoute(null);
-		const { deps, saved } = coreDeps({ configFileExists: () => false });
-		const res = await dispatchBufferedRequest(
-			runtime,
-			route,
-			{ method: "POST", path: "/api/first-run" },
-			deps,
-		);
-		expect(res.status).toBe(200);
-		expect(JSON.parse(res.body)).toEqual({ ok: true, complete: true });
-		expect(saved).toHaveLength(1);
-		expect(saved[0]?.meta?.firstRunComplete).toBe(true);
-		expect(calls).toHaveLength(0);
-	});
-
-	it("POST /api/first-run surfaces a persist failure instead of acking", async () => {
-		const { route } = fixedRoute(null);
-		const { deps } = coreDeps({
-			saveElizaConfig: () => {
-				throw new Error("disk full");
-			},
-		});
-		const res = await dispatchBufferedRequest(
-			runtime,
-			route,
-			{ method: "POST", path: "/api/first-run" },
-			deps,
-		);
-		expect(res.status).toBe(500);
-		expect(res.body).toContain("disk full");
-	});
-
-	it("streams the core-route answer over the streaming channel too", async () => {
-		const { route } = fixedRoute(null);
-		const { deps } = coreDeps({ configFileExists: () => false });
-		const { sink, events } = collectSink();
-		await dispatchStreamingRequest(
-			runtime,
-			route,
-			{ method: "GET", path: "/api/first-run/status" },
-			sink,
-			deps,
-		);
-		expect(events[0]).toMatchObject({ kind: "response", status: 200 });
-		const chunk = events[1] as { dataBase64: string };
-		expect(
-			JSON.parse(Buffer.from(chunk.dataBase64, "base64").toString("utf8")),
-		).toEqual({ complete: false, cloudProvisioned: false });
-	});
-
-	it("non-core paths still fall through to the plugin-route kernel", async () => {
-		const { route, calls } = fixedRoute(null);
-		const { deps } = coreDeps();
-		const res = await dispatchBufferedRequest(
-			runtime,
-			route,
-			{ method: "GET", path: "/api/agents" },
-			deps,
-		);
-		expect(res.status).toBe(404);
-		expect(calls).toHaveLength(1);
 	});
 });

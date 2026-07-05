@@ -25,6 +25,9 @@ let tmpDir: string;
 const originalReviewMode = process.env.ELIZA_TRAJECTORY_REVIEW_MODE;
 const originalMarkdownDir = process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR;
 const originalCerebrasKey = process.env.CEREBRAS_API_KEY;
+const originalTrajectoryLogging = process.env.ELIZA_TRAJECTORY_LOGGING;
+const originalDisableTrajectoryLogging =
+	process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING;
 
 beforeEach(async () => {
 	tmpDir = await fs.mkdtemp(
@@ -33,6 +36,12 @@ beforeEach(async () => {
 	delete process.env.ELIZA_TRAJECTORY_REVIEW_MODE;
 	delete process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR;
 	delete process.env.CEREBRAS_API_KEY;
+	delete process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING;
+	// The unified gate (#13775) defaults recording OFF under NODE_ENV=test,
+	// which vitest sets; this suite exercises real file writes, so it opts in
+	// explicitly. The gate's default-off policy stays covered by
+	// trajectory-gate.test.ts and the gate-default test below.
+	process.env.ELIZA_TRAJECTORY_LOGGING = "1";
 });
 
 afterEach(async () => {
@@ -51,6 +60,17 @@ afterEach(async () => {
 		delete process.env.CEREBRAS_API_KEY;
 	} else {
 		process.env.CEREBRAS_API_KEY = originalCerebrasKey;
+	}
+	if (originalTrajectoryLogging === undefined) {
+		delete process.env.ELIZA_TRAJECTORY_LOGGING;
+	} else {
+		process.env.ELIZA_TRAJECTORY_LOGGING = originalTrajectoryLogging;
+	}
+	if (originalDisableTrajectoryLogging === undefined) {
+		delete process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING;
+	} else {
+		process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING =
+			originalDisableTrajectoryLogging;
 	}
 });
 
@@ -689,6 +709,85 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(onlyA[0]?.trajectoryId).toBe(a);
 	});
 
+	it("persists runId/scenarioId passed at the call site (message.ts wiring)", async () => {
+		// message.ts reads ELIZA_LIFEOPS_RUN_ID/SCENARIO_ID and passes them into
+		// startTrajectory; the recorder must round-trip them onto the file so the
+		// lifeops aggregator can group a scenario run by its join keys.
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-run",
+			rootMessage: { id: "m", text: "hi" },
+			runId: "run-abc",
+			scenarioId: "scenario-xyz",
+		});
+		await recorder.endTrajectory(id, "finished");
+
+		const filePath = path.join(tmpDir, "agent-run", `${id}.json`);
+		const parsed = JSON.parse(
+			await fs.readFile(filePath, "utf8"),
+		) as RecordedTrajectory;
+		expect(parsed.runId).toBe("run-abc");
+		expect(parsed.scenarioId).toBe("scenario-xyz");
+	});
+
+	it("falls back to ELIZA_LIFEOPS_* env when runId/scenarioId omitted", async () => {
+		const priorRun = process.env.ELIZA_LIFEOPS_RUN_ID;
+		const priorScenario = process.env.ELIZA_LIFEOPS_SCENARIO_ID;
+		process.env.ELIZA_LIFEOPS_RUN_ID = "env-run";
+		process.env.ELIZA_LIFEOPS_SCENARIO_ID = "env-scenario";
+		try {
+			const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+			const id = recorder.startTrajectory({
+				agentId: "agent-envrun",
+				rootMessage: { id: "m", text: "hi" },
+			});
+			await recorder.endTrajectory(id, "finished");
+			const parsed = JSON.parse(
+				await fs.readFile(
+					path.join(tmpDir, "agent-envrun", `${id}.json`),
+					"utf8",
+				),
+			) as RecordedTrajectory;
+			expect(parsed.runId).toBe("env-run");
+			expect(parsed.scenarioId).toBe("env-scenario");
+		} finally {
+			if (priorRun === undefined) delete process.env.ELIZA_LIFEOPS_RUN_ID;
+			else process.env.ELIZA_LIFEOPS_RUN_ID = priorRun;
+			if (priorScenario === undefined)
+				delete process.env.ELIZA_LIFEOPS_SCENARIO_ID;
+			else process.env.ELIZA_LIFEOPS_SCENARIO_ID = priorScenario;
+		}
+	});
+
+	it("treats blank ELIZA_LIFEOPS_* env values as unset", async () => {
+		const priorRun = process.env.ELIZA_LIFEOPS_RUN_ID;
+		const priorScenario = process.env.ELIZA_LIFEOPS_SCENARIO_ID;
+		process.env.ELIZA_LIFEOPS_RUN_ID = "";
+		process.env.ELIZA_LIFEOPS_SCENARIO_ID = "   ";
+		try {
+			const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+			const id = recorder.startTrajectory({
+				agentId: "agent-blank-env",
+				rootMessage: { id: "m", text: "hi" },
+			});
+			await recorder.endTrajectory(id, "finished");
+			const parsed = JSON.parse(
+				await fs.readFile(
+					path.join(tmpDir, "agent-blank-env", `${id}.json`),
+					"utf8",
+				),
+			) as RecordedTrajectory;
+			expect(parsed.runId).toBeUndefined();
+			expect(parsed.scenarioId).toBeUndefined();
+		} finally {
+			if (priorRun === undefined) delete process.env.ELIZA_LIFEOPS_RUN_ID;
+			else process.env.ELIZA_LIFEOPS_RUN_ID = priorRun;
+			if (priorScenario === undefined)
+				delete process.env.ELIZA_LIFEOPS_SCENARIO_ID;
+			else process.env.ELIZA_LIFEOPS_SCENARIO_ID = priorScenario;
+		}
+	});
+
 	it("disabled recorder returns no-op for every method (does not write any files)", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({
 			rootDir: tmpDir,
@@ -710,6 +809,45 @@ describe("JsonFileTrajectoryRecorder", () => {
 		// No files should have been written.
 		const entries = await fs.readdir(tmpDir).catch(() => [] as string[]);
 		expect(entries).toEqual([]);
+	});
+
+	it("defaults to disabled under NODE_ENV=test when no trajectory knob is set (#13775 gate)", async () => {
+		delete process.env.ELIZA_TRAJECTORY_LOGGING;
+		const priorLegacyRecording = process.env.ELIZA_TRAJECTORY_RECORDING;
+		delete process.env.ELIZA_TRAJECTORY_RECORDING;
+		const priorDisableLogging = process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING;
+		delete process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING;
+		const priorNodeEnv = process.env.NODE_ENV;
+		process.env.NODE_ENV = "test";
+		try {
+			const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+			const id = recorder.startTrajectory({
+				agentId: "gate-default",
+				rootMessage: { id: "0", text: "n" },
+			});
+			await recorder.recordStage(id, {
+				stageId: "ignored",
+				kind: "planner",
+				startedAt: 1,
+				endedAt: 2,
+				latencyMs: 1,
+			});
+			await recorder.endTrajectory(id, "finished");
+
+			// The suite-level ELIZA_TRAJECTORY_LOGGING opt-in is load-bearing:
+			// a bare recorder under the test default stays dark and writes nothing.
+			const entries = await fs.readdir(tmpDir).catch(() => [] as string[]);
+			expect(entries).toEqual([]);
+		} finally {
+			if (priorNodeEnv === undefined) delete process.env.NODE_ENV;
+			else process.env.NODE_ENV = priorNodeEnv;
+			if (priorLegacyRecording === undefined)
+				delete process.env.ELIZA_TRAJECTORY_RECORDING;
+			else process.env.ELIZA_TRAJECTORY_RECORDING = priorLegacyRecording;
+			if (priorDisableLogging === undefined)
+				delete process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING;
+			else process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING = priorDisableLogging;
+		}
 	});
 
 	it("writes redacted markdown review artifacts when review mode is enabled", async () => {
@@ -1290,5 +1428,81 @@ describe("finalizeTrajectoryRecording (running-status leak guard)", () => {
 		});
 
 		expect((await readPersisted(id)).status).toBe("finished");
+	});
+});
+
+// The scenario CLI sets ELIZA_LIFEOPS_RUN_ID / ELIZA_LIFEOPS_SCENARIO_ID before
+// each run/scenario (cli.ts) and the message loop constructs this recorder
+// without passing runId/scenarioId, so correlation flows entirely through the
+// recorder's env fallback. These lock in that behavior and the empty-is-unset
+// contract that keeps a blank env var from writing a garbage correlation key.
+describe("run/scenario correlation via env", () => {
+	const rootMessage = { id: "msg-1", text: "hello", sender: "user-1" };
+	const originalRunId = process.env.ELIZA_LIFEOPS_RUN_ID;
+	const originalScenarioId = process.env.ELIZA_LIFEOPS_SCENARIO_ID;
+
+	afterEach(() => {
+		if (originalRunId === undefined) delete process.env.ELIZA_LIFEOPS_RUN_ID;
+		else process.env.ELIZA_LIFEOPS_RUN_ID = originalRunId;
+		if (originalScenarioId === undefined)
+			delete process.env.ELIZA_LIFEOPS_SCENARIO_ID;
+		else process.env.ELIZA_LIFEOPS_SCENARIO_ID = originalScenarioId;
+	});
+
+	async function readPersisted(id: string): Promise<RecordedTrajectory> {
+		const raw = await fs.readFile(
+			path.join(tmpDir, "agent-test", `${id}.json`),
+			"utf8",
+		);
+		return JSON.parse(raw) as RecordedTrajectory;
+	}
+
+	it("tags the trajectory with the run/scenario env even when the call site omits them", async () => {
+		process.env.ELIZA_LIFEOPS_RUN_ID = "run-xyz";
+		process.env.ELIZA_LIFEOPS_SCENARIO_ID = "scenario-abc";
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
+		await recorder.endTrajectory(id, "finished");
+
+		const persisted = await readPersisted(id);
+		expect(persisted.runId).toBe("run-xyz");
+		expect(persisted.scenarioId).toBe("scenario-abc");
+	});
+
+	it("leaves run/scenario unset when the env is unset", async () => {
+		delete process.env.ELIZA_LIFEOPS_RUN_ID;
+		delete process.env.ELIZA_LIFEOPS_SCENARIO_ID;
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
+		await recorder.endTrajectory(id, "finished");
+
+		const persisted = await readPersisted(id);
+		expect(persisted.runId).toBeUndefined();
+		expect(persisted.scenarioId).toBeUndefined();
+	});
+
+	it("treats a blank/whitespace env value as unset (no empty-string correlation key)", async () => {
+		process.env.ELIZA_LIFEOPS_RUN_ID = "";
+		process.env.ELIZA_LIFEOPS_SCENARIO_ID = "   ";
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
+		await recorder.endTrajectory(id, "finished");
+
+		const persisted = await readPersisted(id);
+		expect(persisted.runId).toBeUndefined();
+		expect(persisted.scenarioId).toBeUndefined();
+	});
+
+	it("prefers an explicit call-site value over the env fallback", async () => {
+		process.env.ELIZA_LIFEOPS_RUN_ID = "run-from-env";
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-test",
+			rootMessage,
+			runId: "run-explicit",
+		});
+		await recorder.endTrajectory(id, "finished");
+
+		expect((await readPersisted(id)).runId).toBe("run-explicit");
 	});
 });

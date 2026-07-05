@@ -20,7 +20,13 @@ const { getCodingAgentTaskThreadMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../api/client", () => ({
-  client: { getCodingAgentTaskThread: getCodingAgentTaskThreadMock },
+  client: {
+    getCodingAgentTaskThread: getCodingAgentTaskThreadMock,
+    // The live pipeline store subscribes to the WS feed; a no-op unsubscribe is
+    // enough for the header-only assertions here (stream behavior is covered by
+    // task-activity-store.test.ts).
+    onWsEvent: () => () => undefined,
+  },
 }));
 
 import { getInlineWidget } from "./inline-registry";
@@ -136,7 +142,7 @@ describe("TaskWidget", () => {
     );
   });
 
-  it("dispatches eliza:navigate:view to /orchestrator when clicked", async () => {
+  it("expands the pipeline on header click and navigates via the workbench link", async () => {
     getCodingAgentTaskThreadMock.mockResolvedValueOnce(detail());
     const events: CustomEvent[] = [];
     const handler = (event: Event) => events.push(event as CustomEvent);
@@ -149,7 +155,16 @@ describe("TaskWidget", () => {
       );
     });
 
-    fireEvent.click(screen.getByTestId("task-widget"));
+    // Header click expands the inline pipeline (does NOT navigate away).
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(
+      screen.getByTestId("task-widget").getAttribute("data-expanded"),
+    ).toBe("true");
+    expect(screen.getByTestId("task-widget-pipeline")).toBeTruthy();
+    expect(events).toHaveLength(0);
+
+    // The explicit workbench affordance is what navigates.
+    fireEvent.click(screen.getByText("Open in workbench →"));
     expect(events).toHaveLength(1);
     expect(events[0].detail).toEqual({
       viewPath: `/orchestrator?taskId=${THREAD_ID}`,

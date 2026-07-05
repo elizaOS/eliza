@@ -354,6 +354,26 @@ export class UserCharactersRepository {
   }
 
   /**
+   * Checks whether an organization has any character of the given source.
+   * Bounded existence probe for hot paths (e.g. the session-time
+   * default-character self-heal) — never use listByOrganization just to test
+   * emptiness, character rows are fat and the list is unbounded.
+   */
+  async existsForOrganization(
+    organizationId: string,
+    source: "cloud" | "miniapp" = "cloud",
+  ): Promise<boolean> {
+    const result = await dbRead
+      .select({ id: userCharacters.id })
+      .from(userCharacters)
+      .where(
+        and(eq(userCharacters.organization_id, organizationId), eq(userCharacters.source, source)),
+      )
+      .limit(1);
+    return result.length > 0;
+  }
+
+  /**
    * Lists public characters (cloud source only). Always bounded — pass a
    * limit/offset for pagination instead of relying on caller-side slicing.
    * `name` search is pushed into SQL when provided; `bio` is jsonb and is

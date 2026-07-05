@@ -7,8 +7,17 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { getInternalToolAppTargetTab } from "../apps/internal-tool-apps";
-import { canonicalLauncherId, curateLauncherPages } from "./launcher-curation";
+import {
+  getInternalToolAppDescriptors,
+  getInternalToolAppTargetTab,
+} from "../apps/internal-tool-apps";
+import {
+  canonicalLauncherId,
+  curateLauncherPages,
+  curateLauncherZones,
+  LAUNCHER_RECENTS_ZONE_LIMIT,
+  normalizeLauncherLabel,
+} from "./launcher-curation";
 
 const ENABLED = { developer: true, preview: true } as const;
 
@@ -562,5 +571,181 @@ describe("launcher-curation brittle-package-name grep guard (#12641)", () => {
     // Proves the coupling is inverted: curation imports the owner metadata
     // helper instead of re-listing package names.
     expect(source).toContain("getInternalToolAppTargetTab");
+  });
+});
+
+describe("normalizeLauncherLabel", () => {
+  it("collapses the whitespace/hyphenation variants of one label to a single form", () => {
+    // The audit's `Fin Tuning` / `Fine-Tuning` / `Fine - Tuning` sloppiness: all
+    // three must normalize to one canonical label so they can never render as
+    // visually different tiles.
+    expect(normalizeLauncherLabel("Fine-Tuning")).toBe("Fine-Tuning");
+    expect(normalizeLauncherLabel("Fine - Tuning")).toBe("Fine-Tuning");
+    expect(normalizeLauncherLabel("  Fine-Tuning  ")).toBe("Fine-Tuning");
+    expect(normalizeLauncherLabel("Fine-Tuning")).toBe(
+      normalizeLauncherLabel("Fine - Tuning"),
+    );
+  });
+
+  it("normalizes slash spacing and collapses internal runs of whitespace", () => {
+    expect(normalizeLauncherLabel("Games / Fun")).toBe("Games/Fun");
+    expect(normalizeLauncherLabel("A   B")).toBe("A B");
+  });
+
+  it("is applied to curated tile labels so a spaced registration renders normalized", () => {
+    const page = curateLauncherPages(
+      [
+        entry("chat", { label: "  Chat  " }),
+        entry("wallet", { label: "Wallet" }),
+      ],
+      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
+    );
+    const chat = page.find((e) => e.id === "chat");
+    expect(chat?.label).toBe("Chat");
+  });
+});
+
+describe("launcher label-duplication lint", () => {
+  // Fails when two DISTINCT visible launcher tiles resolve to the same
+  // normalized label — the audit's "Duplicate and inconsistent labels make the
+  // launcher look sloppy". Duplicate registrations for the SAME surface are
+  // collapsed by canonical-id dedup before they reach here; a collision that
+  // survives means two genuinely different surfaces share a label and one must
+  // be renamed.
+  function assertNoDuplicateVisibleLabels(page: ViewEntry[]): void {
+    const byLabel = new Map<string, string>();
+    for (const tile of page) {
+      const label = normalizeLauncherLabel(tile.label);
+      const existing = byLabel.get(label);
+      if (existing && existing !== tile.id) {
+        throw new Error(
+          `Duplicate launcher label "${label}" on tiles "${existing}" and "${tile.id}"`,
+        );
+      }
+      byLabel.set(label, tile.id);
+    }
+  }
+
+  it("has no duplicate visible labels across the full realistic curated set", () => {
+    // The registry's own labels: derive one entry per curated/internal-tool id
+    // and prove the curated page carries no two-different-surface label clash.
+    const declarations = getInternalToolAppDescriptors();
+    const views: ViewEntry[] = [
+      entry("chat", { label: "Chat", viewKind: "system" }),
+      entry("settings", { label: "Settings", viewKind: "system" }),
+      entry("wallet", { label: "Wallet", viewKind: "system" }),
+      entry("browser", { label: "Browser" }),
+      entry("automations", { label: "Automations", viewKind: "system" }),
+      entry("tasks", { label: "Tasks", builtin: true }),
+      entry("character", { label: "Character", viewKind: "system" }),
+      entry("relationships", { label: "Relationships", viewKind: "system" }),
+      entry("documents", { label: "Documents", viewKind: "system" }),
+      entry("memories", { label: "Memories", viewKind: "system" }),
+      // Every internal-tool declaration keyed by its own targetTab + declared
+      // label — the real fine-tuning/plugins/skills/… tiles.
+      ...declarations.map((d) =>
+        entry(getInternalToolAppTargetTab(d.name) ?? d.name, {
+          label: d.displayName,
+          viewKind: "developer",
+        }),
+      ),
+    ];
+    const page = curateLauncherPages(views, {
+      isAosp: false,
+      enabledKinds: ENABLED,
+      cloudActive: true,
+    });
+    expect(() => assertNoDuplicateVisibleLabels(page)).not.toThrow();
+  });
+
+  it("collapses the historical triple 'Fine-Tuning' registrations to a single labelled tile", () => {
+    // `advanced` + `fine-tuning` builtin tabs + the `training` plugin view all
+    // route to /apps/fine-tuning; with per-registration label drift they read as
+    // `Fin Tuning` / `Fine-Tuning` / `Fine-Tuning`. Curation folds them to one
+    // canonical tile, and the surviving label is normalized.
+    const page = curateLauncherPages(
+      [
+        entry("advanced", { label: "Fin Tuning" }),
+        entry("fine-tuning", { label: "Fine - Tuning", viewKind: "developer" }),
+        entry("training", { label: "Fine-Tuning" }),
+      ],
+      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
+    );
+    const fineTuning = page.filter((e) => e.id === "fine-tuning");
+    expect(fineTuning).toHaveLength(1);
+    expect(fineTuning[0].label).toBe("Fine-Tuning");
+    expect(() => assertNoDuplicateVisibleLabels(page)).not.toThrow();
+  });
+
+  it("detects a genuine two-surface label clash (guard is not vacuous)", () => {
+    // Two DIFFERENT ids with the same label must trip the lint — proves the
+    // assertion actually fires and is not a no-op that always passes.
+    const clash = [
+      entry("wallet", { label: "Money" }),
+      entry("browser", { label: "Money" }),
+    ];
+    expect(() => assertNoDuplicateVisibleLabels(clash)).toThrow(
+      /Duplicate launcher label/,
+    );
+  });
+});
+
+describe("curateLauncherZones", () => {
+  const PAGE = curateLauncherPages(
+    [
+      entry("chat"),
+      entry("settings"),
+      entry("wallet"),
+      entry("browser"),
+      entry("documents", { viewKind: "system" }),
+    ],
+    { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
+  );
+
+  it("projects Recents and Favorites over the curated page and keeps All Apps exhaustive", () => {
+    const zones = curateLauncherZones(PAGE, {
+      recentIds: ["browser", "wallet"],
+      favoriteIds: ["settings"],
+      recentsLimit: LAUNCHER_RECENTS_ZONE_LIMIT,
+    });
+    expect(zones.map((z) => z.key)).toEqual(["recents", "favorites", "all"]);
+    expect(zones[0].entries.map((e) => e.id)).toEqual(["browser", "wallet"]);
+    expect(zones[1].entries.map((e) => e.id)).toEqual(["settings"]);
+    // All Apps is the whole page (a tile is not removed for being recent/pinned).
+    expect(zones[2].entries).toBe(PAGE);
+    expect(zones[2].entries.map((e) => e.id)).toContain("browser");
+  });
+
+  it("returns empty Recents/Favorites zones for a first-run launcher", () => {
+    const zones = curateLauncherZones(PAGE, {
+      recentIds: [],
+      favoriteIds: [],
+      recentsLimit: LAUNCHER_RECENTS_ZONE_LIMIT,
+    });
+    expect(zones[0].entries).toEqual([]);
+    expect(zones[1].entries).toEqual([]);
+    expect(zones[2].entries).toBe(PAGE);
+  });
+
+  it("skips recent/favorite ids that are no longer visible tiles (no resurrection)", () => {
+    // A stale recent for a now-hidden/uninstalled surface must not add a tile
+    // the curated page dropped.
+    const zones = curateLauncherZones(PAGE, {
+      recentIds: ["uninstalled-app", "wallet"],
+      favoriteIds: ["also-gone"],
+      recentsLimit: LAUNCHER_RECENTS_ZONE_LIMIT,
+    });
+    expect(zones[0].entries.map((e) => e.id)).toEqual(["wallet"]);
+    expect(zones[1].entries).toEqual([]);
+  });
+
+  it("canonicalizes + de-dupes recent ids and caps the Recents zone", () => {
+    const zones = curateLauncherZones(PAGE, {
+      // `inventory` canonicalizes to `wallet`; the duplicate must collapse.
+      recentIds: ["inventory", "wallet", "browser"],
+      favoriteIds: [],
+      recentsLimit: 2,
+    });
+    expect(zones[0].entries.map((e) => e.id)).toEqual(["wallet", "browser"]);
   });
 });

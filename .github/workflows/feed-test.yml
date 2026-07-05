@@ -46,7 +46,7 @@ env:
 jobs:
   feed-unit:
     name: feed unit tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     # Required env for feed modules that validate configuration at import time.
     # CI-only placeholders — no secrets. DATABASE_URL points at the postgres

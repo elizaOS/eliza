@@ -19,7 +19,7 @@ type InitialCreditGrantMockResult = {
   initialCreditsGranted: boolean;
   initialFreeCreditsUsd: number;
   welcomeBonusWithheld?: boolean;
-  welcomeBonusWithheldReason?: "ip_daily_cap";
+  welcomeBonusWithheldReason?: "ip_daily_cap" | "count_unavailable";
   welcomeBonusWithheldMessage?: string;
 };
 const grantInitialCreditsToWalletAccount = mock(

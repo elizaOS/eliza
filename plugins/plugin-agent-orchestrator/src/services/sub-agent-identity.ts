@@ -19,11 +19,18 @@ import { logger } from "@elizaos/core";
 const IDENTITY_FILENAMES = ["AGENTS.md", "CLAUDE.md"] as const;
 
 /**
- * The operating manual. Deliberately self-contained — a sub-agent never has to
- * chase a possibly-stale skill file to know it is non-interactive. Bridge facts
- * are stated accurately: `memory` is global semantic search (not the originating
- * room's recent messages), `parent-context` does not expose the original task,
- * and the endpoints only work when `PARALLAX_SESSION_ID` is wired.
+ * The operating manual template. Deliberately self-contained — a sub-agent never
+ * has to chase a possibly-stale skill file to know it is non-interactive. Bridge
+ * facts are stated accurately: `memory` is global semantic search (not the
+ * originating room's recent messages), `parent-context` exposes the originating
+ * task goal + latest decisions, and the endpoints only work when
+ * `PARALLAX_SESSION_ID` is wired.
+ *
+ * Carries a `{{BROKER_SECTION}}` placeholder that {@link buildSubAgentIdentityMd}
+ * fills with the parent-agent broker section only when the broker is actually
+ * wired for the session (the `SubAgentRouter` is bound) — advertising a bridge a
+ * child cannot use would be a lie. Use {@link buildSubAgentIdentityMd}, not this
+ * raw template, to render a manual.
  */
 export const SUB_AGENT_IDENTITY_MD = `# Eliza coding sub-agent — operating manual
 
@@ -72,11 +79,17 @@ If the task depends on context not in the prompt, you can GET read-only parent
 state, but only when the bridge is wired (env var \`PARALLAX_SESSION_ID\` set):
 
 - \`curl "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${PARALLAX_SESSION_ID}/parent-context"\`
-  → parent character, originating room, model prefs, your workdir.
+  → parent character, originating room, model prefs, your workdir, and
+  \`originatingTask\` (the goal, acceptance criteria, and latest decisions of the
+  task you serve — read this after a resume to know what you are working on).
 - \`.../memory?q=<query>&limit=<N>\` → GLOBAL semantic search over the parent's
   memory (facts, messages, knowledge) — not the originating room's recency.
 - \`.../active-workspaces\` → sibling sub-agents.
-
+- \`.../skills\` → the parent's installed skills (slug + full description).
+  \`.../skills/<slug>\` → the full SKILL.md body for one slug. The SKILLS.md in
+  your workspace lists these; fetch a body here before asking the parent to run
+  a skill you are unsure about.
+{{BROKER_SECTION}}
 ## Requesting a missing credential
 
 If a task truly requires a credential that is not in your sealed environment
@@ -142,20 +155,84 @@ the other end, only chat. Make that message the answer itself:
 `;
 
 /**
+ * The broker section, injected into the manual only when the parent-agent broker
+ * is wired for this spawn. The child reaches it by printing a
+ * `USE_SKILL parent-agent <json>` line on stdout, which the router bridges to the
+ * broker; the guidance here mirrors `PARENT_AGENT_BROKER_MANIFEST_ENTRY` so the
+ * on-disk manual and the SKILLS.md manifest tell the same story. Discovery is
+ * free; spend/mutation gates are enforced parent-side and cannot be bypassed by a
+ * child-declared price.
+ */
+const SUB_AGENT_BROKER_SECTION_MD = `
+## Asking the parent Eliza agent to act (broker)
+
+The parent Eliza agent runs with its own loaded capabilities — actions,
+providers, connectors, and the full Eliza Cloud command surface (create/deploy/
+monetize apps, buy domains, read credits/earnings, x402 payment requests). You
+cannot run those yourself, but you can ask the parent to run them for you and
+relay the result, by printing ONE line on stdout of the form:
+
+\`USE_SKILL parent-agent <json>\`
+
+The parent greps your stdout for this directive, executes the request with its
+own capabilities, and streams the reply back into your session. Examples:
+
+- Delegate to the parent's own tools: \`USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}\`
+- List the parent's actions: \`USE_SKILL parent-agent {"mode":"list-actions","query":"github"}\`
+- List Cloud commands: \`USE_SKILL parent-agent {"mode":"list-cloud-commands"}\`
+- Run a read Cloud command: \`USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}\`
+- Spawn a helper sub-agent on this task: \`USE_SKILL parent-agent {"mode":"spawn-sub-agent","task":"<instruction>","label":"<optional name>"}\`
+
+Discovery is free, but mutating/paid/destructive Cloud commands stay gated: they
+require an explicit human "yes" on a follow-up turn, and paid self-spend is
+capped by the parent's spend allowance. You cannot bypass either gate by
+declaring a price — the parent verifies server-side. Use this only when the task
+genuinely needs a parent capability; a self-contained coding task never should.
+`;
+
+/** Options controlling which optional sections the rendered manual includes. */
+export interface SubAgentIdentityOptions {
+  /** Advertise the parent-agent broker section. Only pass `true` when the broker
+   * is actually wired for the session (the `SubAgentRouter` is bound); see
+   * `isParentAgentBrokerWired`. */
+  brokerWired?: boolean;
+}
+
+/**
+ * Render the operating manual, filling the `{{BROKER_SECTION}}` placeholder with
+ * the broker section when `brokerWired` is set and stripping it otherwise. This
+ * is the only supported way to produce a manual — the raw template still carries
+ * the placeholder.
+ */
+export function buildSubAgentIdentityMd(
+  opts: SubAgentIdentityOptions = {},
+): string {
+  return SUB_AGENT_IDENTITY_MD.replace(
+    "{{BROKER_SECTION}}",
+    opts.brokerWired ? SUB_AGENT_BROKER_SECTION_MD : "",
+  );
+}
+
+/**
  * Scaffold the operating manual into a freshly-created spawn workspace, but only
  * when the workspace is "bare" (has neither AGENTS.md nor CLAUDE.md). A real
  * project/repo workdir already carries its own instruction files and must NOT be
- * clobbered — the prompt-level non-interactive directive covers that case.
+ * clobbered — the prompt-level non-interactive directive covers that case. The
+ * broker section is included only when the broker is wired for the session.
  */
-export async function writeWorkspaceIdentity(workdir: string): Promise<void> {
+export async function writeWorkspaceIdentity(
+  workdir: string,
+  opts: SubAgentIdentityOptions = {},
+): Promise<void> {
   try {
     const alreadyHasIdentity = IDENTITY_FILENAMES.some((name) =>
       existsSync(join(workdir, name)),
     );
     if (alreadyHasIdentity) return;
+    const manual = buildSubAgentIdentityMd(opts);
     await Promise.all(
       IDENTITY_FILENAMES.map((name) =>
-        writeFile(join(workdir, name), SUB_AGENT_IDENTITY_MD, "utf8"),
+        writeFile(join(workdir, name), manual, "utf8"),
       ),
     );
     logger.debug(

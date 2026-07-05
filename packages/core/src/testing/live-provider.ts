@@ -16,15 +16,17 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { resolveAliasedEnvValue } from "../boot-env";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "../contracts/service-routing";
 
 const ELIZA_CLOUD_OPENAI_BASE_URL = "https://elizacloud.ai/api/v1";
 const CEREBRAS_OPENAI_BASE_URL = "https://api.cerebras.ai/v1";
 
 function loadConfiguredCloudApiKey(): string {
-	const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
+	const namespace =
+		resolveAliasedEnvValue("ELIZA_NAMESPACE")?.trim() || "eliza";
 	const configuredPath =
-		process.env.ELIZA_CONFIG_PATH?.trim() ||
+		resolveAliasedEnvValue("ELIZA_CONFIG_PATH")?.trim() ||
 		path.join(os.homedir(), `.${namespace}`, `${namespace}.json`);
 
 	try {

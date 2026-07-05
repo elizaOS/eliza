@@ -1,3 +1,0 @@
-$ bun run --cwd packages/app-core lint
-$ bunx @biomejs/biome check src
-Checked 298 files in 210ms. No fixes applied.

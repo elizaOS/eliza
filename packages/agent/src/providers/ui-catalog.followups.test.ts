@@ -69,6 +69,44 @@ describe("uiCatalogProvider — followups/form marker instructions", () => {
     }
   });
 
+  it("teaches [CHECKLIST] and [WORKFLOW] with examples the UI parsers accept", async () => {
+    // The inline task-pipeline widgets (#13536) only render when the agent emits
+    // these markers; assert the catalog's example blocks satisfy the exact
+    // `[MARKER]\n{json}\n[/MARKER]` grammar the UI parsers require and that the
+    // JSON parses into a valid spec, so the taught syntax can't drift from the
+    // renderer.
+    const result = await uiCatalogProvider.get(
+      makeRuntime(),
+      makeMessage(ChannelType.API),
+      {} as State,
+    );
+    const text = result.text ?? "";
+
+    const checklist = /\[CHECKLIST\]\n([\s\S]*?)\n\[\/CHECKLIST\]/.exec(text);
+    expect(checklist).not.toBeNull();
+    const checklistBody = JSON.parse(checklist?.[1] ?? "null") as {
+      items: Array<{ content: string; status: string }>;
+    };
+    expect(Array.isArray(checklistBody.items)).toBe(true);
+    expect(checklistBody.items.length).toBeGreaterThan(0);
+    for (const item of checklistBody.items) {
+      expect(typeof item.content).toBe("string");
+      expect(["pending", "in_progress", "completed"]).toContain(item.status);
+    }
+
+    const workflow = /\[WORKFLOW\]\n([\s\S]*?)\n\[\/WORKFLOW\]/.exec(text);
+    expect(workflow).not.toBeNull();
+    const workflowBody = JSON.parse(workflow?.[1] ?? "null") as {
+      steps: Array<{ label: string; status: string }>;
+    };
+    expect(Array.isArray(workflowBody.steps)).toBe(true);
+    expect(workflowBody.steps.length).toBeGreaterThan(0);
+    for (const step of workflowBody.steps) {
+      expect(typeof step.label).toBe("string");
+      expect(["pending", "running", "done", "failed"]).toContain(step.status);
+    }
+  });
+
   it("emits nothing on connector-style group channels (no marker leak)", async () => {
     const result = await uiCatalogProvider.get(
       makeRuntime(),

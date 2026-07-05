@@ -305,6 +305,15 @@ export type BootstrapExchangeResult =
 
 export type AccountStrategy = ServiceRouteAccountStrategy;
 
+export type {
+  LinkedAccountAccountSource,
+  LinkedAccountConfig,
+  LinkedAccountHealth,
+  LinkedAccountHealthDetail,
+  LinkedAccountProviderId,
+  LinkedAccountUsage,
+} from "@elizaos/shared";
+
 export interface AccountWithCredentialFlag extends LinkedAccountConfig {
   hasCredential: boolean;
 }

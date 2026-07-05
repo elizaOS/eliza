@@ -8,50 +8,22 @@
  * the ring is inspectable in dev. Keep it dependency-free and side-effect-light.
  */
 
-import type { FrameBudgetSummary } from "./hooks/frame-budget";
-
 export const VIEW_INTERACTION_TELEMETRY_EVENT =
   "eliza:view-interaction-telemetry";
 
-export type ViewInteractionSource =
-  | "launcher"
-  | "view-catalog"
-  | "conversation-swipe";
+export type ViewInteractionSource = "launcher" | "view-catalog";
 
 export type ViewInteractionAction =
   // A launcher/view-catalog tile launch.
   | "launch"
   // A tile hero image failed to load (fell back to the glyph).
-  | "hero-image-error"
-  // Frame-budget summary for a single conversation-swipe gesture (#9954). Until
-  // this action existed, swipe jank only surfaced through the dev-only PerfOverlay
-  // HUD; emitting it here makes dropped-frame/fps data observable in the same
-  // bounded ring every other interaction lands in, so a swipe-jank regression is
-  // visible to a harness/test without the HUD.
-  | "conversation-swipe-jank";
+  | "hero-image-error";
 
 export interface ViewInteractionEvent {
   source: ViewInteractionSource;
   action: ViewInteractionAction;
   /** View/app id the interaction targeted, when applicable. */
   viewId?: string;
-  /** Dropped-frame count for a `conversation-swipe-jank` event (#9954). */
-  count?: number;
-  /**
-   * Swipe direction for a `conversation-swipe-jank` event (#9954): `"prev"`
-   * navigates toward the newer conversation, `"next"` toward the older one (same
-   * meaning as {@link ./components/shell/conversation-nav}'s direction). Lets a
-   * ring reader attribute jank to a specific swipe direction without unpacking
-   * `frameBudget`. Present only on `conversation-swipe-jank`.
-   */
-  direction?: "prev" | "next";
-  /**
-   * Frame-budget summary for a `conversation-swipe-jank` event (#9954) — the
-   * same {@link FrameBudgetSummary} the frame-budget HUD reads, so the dropped-
-   * frame %, p95 frame time, and long-task counts are computed by one source of
-   * truth. Present only on `conversation-swipe-jank`.
-   */
-  frameBudget?: FrameBudgetSummary;
   at: number;
   route?: string;
 }
@@ -108,25 +80,4 @@ export function emitViewInteraction(
 export function readViewInteractions(): ViewInteractionEvent[] {
   const g = globalThis as TelemetryGlobal;
   return g.__ELIZA_VIEW_INTERACTION_TELEMETRY__ ?? [];
-}
-
-/**
- * Record the frame-budget summary captured over a single conversation-swipe
- * gesture (#9954). The `count` field carries the dropped-frame count so a reader
- * scanning the ring sees the headline number without unpacking `frameBudget`;
- * the full summary (p95 frame time, fps, long tasks) rides in `frameBudget`.
- * `direction` (when the swipe committed a navigation) attributes the window to a
- * `"prev"`/`"next"` swipe; it is omitted for a cancelled drag that settled back.
- */
-export function emitConversationSwipeJank(
-  summary: FrameBudgetSummary,
-  direction?: ViewInteractionEvent["direction"],
-): void {
-  emitViewInteraction({
-    source: "conversation-swipe",
-    action: "conversation-swipe-jank",
-    count: summary.droppedFrames,
-    frameBudget: summary,
-    ...(direction ? { direction } : {}),
-  });
 }

@@ -2363,6 +2363,17 @@ export {
   screenshotsToAttachments,
 } from "./services/screenshot-delivery.js";
 export {
+  type CreateProjectInput,
+  FileProjectRegistry,
+  InMemoryProjectRegistry,
+  type Project,
+  ProjectRegistry,
+  type ProjectRegistryBackend,
+  type ProjectRegistryOptions,
+  type ProjectRegistrySnapshot,
+  type UpdateProjectInput,
+} from "./services/project-registry.js";
+export {
   AcpSessionStore,
   FileSessionStore,
   InMemorySessionStore,

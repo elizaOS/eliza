@@ -1,2 +1,0 @@
-06-30 02:23:08.555 16673 16700 I TestRunner: started: busyProbePreservesExistingStrikeCounter(ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest)
-06-30 02:23:08.556 16673 16700 I TestRunner: finished: busyProbePreservesExistingStrikeCounter(ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest)

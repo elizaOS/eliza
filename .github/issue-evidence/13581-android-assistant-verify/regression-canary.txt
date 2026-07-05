@@ -1,0 +1,9 @@
+== HEALTHY manifest ==
+surfaces.allPresent: true missing: []
+lane verdict: {"pass":true,"failures":[]}
+
+== REGRESSED (VIS renamed to ...ServiceRENAMED) ==
+surfaces.allPresent: false missing: ["voiceInteractionService"]
+lane verdict: {"pass":false,"failures":["assistant/IME surfaces not registered"]}
+
+CANARY RESULT: OK -- deliberate regression turns the lane RED

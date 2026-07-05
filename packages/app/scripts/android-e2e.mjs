@@ -42,8 +42,9 @@ const log = (m) => console.log(`[android-e2e] ${m}`);
 // Smallest local tier; same id the smoke + catalog use.
 const SMOKE_MODEL = {
   id: "eliza-1-2b",
-  file: "eliza-1-2b-128k.gguf",
-  url: "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/text/eliza-1-2b-128k.gguf?download=true",
+  file: "eliza-1-e2b-32k.gguf",
+  sizeBytes: 1_270_808_512,
+  url: "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/e2b/text/eliza-1-e2b-32k.gguf?download=true",
   cacheDir: path.join(
     process.env.HOME ?? process.env.USERPROFILE ?? ".",
     ".cache/eliza/android-smoke-models",
@@ -174,8 +175,8 @@ function run(cmd, args, env = {}) {
 // model so the smoke reuses it offline instead of failing on the redirect.
 function ensureSmokeModelCached() {
   const dest = path.join(SMOKE_MODEL.cacheDir, SMOKE_MODEL.file);
-  if (fs.existsSync(dest) && fs.statSync(dest).size > 0) {
-    log(`smoke model cached: ${dest}`);
+  if (fs.existsSync(dest) && fs.statSync(dest).size === SMOKE_MODEL.sizeBytes) {
+    log(`smoke model cached: ${dest} (${SMOKE_MODEL.sizeBytes} bytes)`);
     return dest;
   }
   fs.mkdirSync(SMOKE_MODEL.cacheDir, { recursive: true });
@@ -183,6 +184,12 @@ function ensureSmokeModelCached() {
   execFileSync("curl", ["-fsSL", "-o", dest, SMOKE_MODEL.url], {
     stdio: "inherit",
   });
+  const actualSize = fs.statSync(dest).size;
+  if (actualSize !== SMOKE_MODEL.sizeBytes) {
+    throw new Error(
+      `downloaded smoke model ${SMOKE_MODEL.file} size mismatch: expected ${SMOKE_MODEL.sizeBytes} bytes, got ${actualSize} bytes`,
+    );
+  }
   return dest;
 }
 

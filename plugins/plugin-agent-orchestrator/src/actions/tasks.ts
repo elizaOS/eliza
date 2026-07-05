@@ -53,6 +53,7 @@ import { resolveCodingBackendLogged } from "../services/coding-backend-routing.j
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
+import { resolveBoundProjectWorkdir } from "../services/project-binding.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
 import {
   runDurableTask,
@@ -910,12 +911,17 @@ async function runCreate(
   ) as OrchestratorTaskService | null | undefined;
   try {
     if (taskService && typeof taskService.createTask === "function") {
+      // Bind the durable task to a registered Project via the resolved spawn
+      // workdir (all sessions of this create share it). The service
+      // realpath-matches it against the project registry; unmatched = unbound.
+      const boundWorkdir = sessions[0]?.workdir;
       const detail = await taskService.createTask({
         title: taskTitle,
         goal: taskGoal,
         kind: "coding",
         priority: taskPriority,
         originalRequest: messageText(message),
+        ...(boundWorkdir ? { workdir: boundWorkdir } : {}),
         ...((originRoomId ?? taskRoomId)
           ? { roomId: originRoomId ?? taskRoomId }
           : {}),
@@ -1048,6 +1054,22 @@ function maxSpawnsPerOrigin(runtime: IAgentRuntime): number {
   return Number.isFinite(n) && n > 0 ? n : 3;
 }
 
+/** The registered project's localPath for a durable task, or null when the task
+ * id is absent, the task is unbound, or its project id is stale. Used to lock a
+ * follow-up spawn to the same repo the task was bound to. */
+async function resolveBoundTaskWorkdir(
+  runtime: IAgentRuntime,
+  taskId: string | undefined,
+): Promise<string | null> {
+  if (!taskId) return null;
+  const taskService = runtime.getService?.(
+    OrchestratorTaskService.serviceType,
+  ) as OrchestratorTaskService | null | undefined;
+  if (!taskService || typeof taskService.getTask !== "function") return null;
+  const detail = await taskService.getTask(taskId);
+  return resolveBoundProjectWorkdir(detail?.projectId ?? undefined);
+}
+
 async function runSpawnAgent(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1101,6 +1123,17 @@ async function runSpawnAgent(
     // deliberate operator policy. A scaffold-aware caller that KNOWS its
     // workdir is correct (e.g. APP_CREATE) passes `lockWorkdir: true` to
     // skip route resolution entirely.
+    //
+    // A task bound to a registered Project always spawns in that project's
+    // localPath: resolve it up-front and pass it as an explicit, LOCKED workdir
+    // so route/convention resolution is skipped and every session of the task
+    // targets the same repo (the #13776 per-session drift fix). Unbound tasks
+    // fall through to the normal explicit/route/convention resolution.
+    const boundProjectWorkdir = await resolveBoundTaskWorkdir(
+      runtime,
+      pickString(params, content, "taskId") ??
+        pickString(params, content, "threadId"),
+    );
     const {
       workdir,
       route,
@@ -1109,8 +1142,12 @@ async function runSpawnAgent(
       runtime,
       task,
       routingRequest,
-      pickString(params, content, "workdir"),
-      { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
+      boundProjectWorkdir ?? pickString(params, content, "workdir"),
+      {
+        lockWorkdir:
+          boundProjectWorkdir != null ||
+          pickBoolean(params, content, "lockWorkdir") === true,
+      },
     );
     const memoryContent = pickString(params, content, "memoryContent");
     const approvalPreset = parseApproval(

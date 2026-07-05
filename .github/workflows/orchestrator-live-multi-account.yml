@@ -48,7 +48,7 @@ env:
 jobs:
   live-multi-account:
     name: live multi-account rotation
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     env:
       ELIZA_LIVE_CLAUDE_OAUTH_TOKEN_1: ${{ secrets.ELIZA_LIVE_CLAUDE_OAUTH_TOKEN_1 }}

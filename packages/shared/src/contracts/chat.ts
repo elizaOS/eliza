@@ -40,6 +40,36 @@ export interface ChatTurnStatus {
 }
 
 /**
+ * One tool/action-call lifecycle step, surfaced to the UI as an additive SSE
+ * `{ type: "tool", ... }` event so the chat thread can render inline tool rows
+ * (running → success/failure with arg/result previews) the way Claude Code /
+ * Codex do (#13535, follow-up #8813). The runtime's native planner/tool loop
+ * already produces these steps and streams them through the same channel as the
+ * reply; the chat route forks them onto this event instead of dropping them.
+ * Additive: a client that ignores `tool` events behaves exactly as before.
+ *
+ * - `call`   — the model invoked a tool; `args` carries the input.
+ * - `result` — the tool returned; `result` carries the output.
+ * - `error`  — the tool failed; `error` carries the message.
+ *
+ * `callId` correlates a `call` with its later `result`/`error` so the UI can
+ * flip one row from running to settled rather than appending a second row.
+ */
+export interface ChatToolCallEvent {
+  phase: "call" | "result" | "error";
+  /** Stable id correlating a `call` with its `result`/`error`. */
+  callId: string;
+  /** Tool/action name being invoked (e.g. "WEB_SEARCH"). */
+  toolName: string;
+  /** Arguments the model passed to the tool; present on `call`. */
+  args?: Record<string, unknown>;
+  /** Tool output; present on `result`. */
+  result?: unknown;
+  /** Failure message; present on `error`. */
+  error?: string;
+}
+
+/**
  * Discriminator the conversation route includes in its 200 response so the
  * renderer can distinguish "provider configured but throwing" from "no
  * provider configured at all" — the latter is a UX gate ("Connect a

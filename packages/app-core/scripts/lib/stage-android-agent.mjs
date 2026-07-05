@@ -84,6 +84,26 @@ const SECCOMP_SHIM_CACHE_DIR = path.join(
   "seccomp-shim",
 );
 
+const ZIG_VERSION = "0.13.0";
+const ZIG_TOOLCHAINS = {
+  "linux/x64": {
+    dirName: "zig-linux-x86_64-0.13.0",
+    sha256: "d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea",
+  },
+  "linux/arm64": {
+    dirName: "zig-linux-aarch64-0.13.0",
+    sha256: "041ac42323837eb5624068acd8b00cd5777dac4cf91179e8dad7a7e90dd0c556",
+  },
+  "darwin/x64": {
+    dirName: "zig-macos-x86_64-0.13.0",
+    sha256: "8b06ed1091b2269b700b3b07f8e3be3b833000841bae5aa6a09b1a8b4773effd",
+  },
+  "darwin/arm64": {
+    dirName: "zig-macos-aarch64-0.13.0",
+    sha256: "46fae219656545dfaf4dce12fb4e8685cec5b51d721beee9389ab4194d43394c",
+  },
+};
+
 const ABI_TARGETS = [
   {
     androidAbi: "x86_64",
@@ -286,7 +306,7 @@ append_diag() {
   child_pid=$2
   exit_code=$3
   ts="$(date +%s 2>/dev/null || echo 0)000"
-  printf "{\"ts\":%s,\"event\":\"%s\",\"status\":\"launcher-child\",\"detachedAgentMode\":true,\"restartAttempts\":-1,\"details\":{\"childPid\":\"%s\",\"exitCode\":\"%s\",\"startupTraceId\":\"%s\"}}\\n" "$ts" "$event" "$child_pid" "$exit_code" "$startup_trace_id" >> "$diagnostics_file" 2>/dev/null || true
+  printf '{"ts":%s,"event":"%s","status":"launcher-child","detachedAgentMode":true,"restartAttempts":-1,"details":{"childPid":"%s","exitCode":"%s","startupTraceId":"%s"}}\\n' "$ts" "$event" "$child_pid" "$exit_code" "$startup_trace_id" >> "$diagnostics_file" 2>/dev/null || true
 }
 exec </dev/null >"$log_file" 2>&1
 cd "$agent_root" || exit 1
@@ -403,6 +423,10 @@ function riscv64BunArtifactSource() {
   const url = riscv64BunUrl();
   if (url) return { kind: "url", url };
   return null;
+}
+
+function resolveZigToolchain() {
+  return ZIG_TOOLCHAINS[`${process.platform}/${process.arch}`] ?? null;
 }
 
 function sha256File(filePath) {
@@ -870,6 +894,105 @@ function writeIfChanged(target, content) {
  *
  * Exported for testing.
  */
+/**
+ * Best-effort auto-provision of the compiled SIGSYS shim: download the pinned
+ * zig 0.13.0 toolchain into the eliza cache (same auto-download pattern this
+ * script already uses for bun + the Alpine loader set) and run
+ * compile-shim.mjs for the ABI. Returns true when the shim cache exists
+ * afterwards. Failures return false — the caller decides whether that is
+ * fatal (stock-Android app builds) or tolerated (explicit opt-out).
+ */
+export function autoProvisionSeccompShim({
+  androidAbi,
+  cacheDir = SECCOMP_SHIM_CACHE_DIR,
+  log,
+}) {
+  // Operator/test escape: never download or compile (air-gapped builders,
+  // hermetic tests). The missing-shim hard error downstream still applies.
+  if (process.env.ELIZA_SECCOMP_SHIM_NO_AUTOPROVISION === "1") {
+    return false;
+  }
+  const abiCacheDir = path.join(cacheDir, androidAbi);
+  if (fs.existsSync(path.join(abiCacheDir, "libsigsys-handler.so"))) {
+    return true;
+  }
+  const zigToolchain = resolveZigToolchain();
+  if (!zigToolchain) {
+    log?.(
+      `Cannot auto-provision the SIGSYS shim on ${process.platform}/${process.arch}; ` +
+        `no pinned zig ${ZIG_VERSION} build for this host.`,
+    );
+    return false;
+  }
+  const zigCacheRoot = path.join(
+    os.homedir(),
+    ".cache",
+    "eliza-android-agent",
+    "zig",
+  );
+  const zigBin = path.join(zigCacheRoot, zigToolchain.dirName, "zig");
+  try {
+    if (!fs.existsSync(zigBin)) {
+      fs.mkdirSync(zigCacheRoot, { recursive: true });
+      const tarball = path.join(zigCacheRoot, `${zigToolchain.dirName}.tar.xz`);
+      const url = `https://ziglang.org/download/${ZIG_VERSION}/${zigToolchain.dirName}.tar.xz`;
+      log?.(
+        `Downloading pinned zig ${ZIG_VERSION} for the SIGSYS shim: ${url}`,
+      );
+      execFileSync("curl", ["-fsSL", "-o", tarball, url], {
+        stdio: ["ignore", "inherit", "inherit"],
+      });
+      const actualSha256 = sha256File(tarball);
+      if (actualSha256 !== zigToolchain.sha256) {
+        fs.rmSync(tarball, { force: true });
+        throw new Error(
+          `zig ${ZIG_VERSION} tarball SHA-256 mismatch: expected ` +
+            `${zigToolchain.sha256}, got ${actualSha256}`,
+        );
+      }
+      execFileSync("tar", ["xJf", tarball, "-C", zigCacheRoot], {
+        stdio: ["ignore", "inherit", "inherit"],
+      });
+      fs.rmSync(tarball, { force: true });
+    }
+    const compileShim = path.join(
+      APP_CORE_ROOT,
+      "scripts",
+      "aosp",
+      "compile-shim.mjs",
+    );
+    log?.(
+      `Compiling SIGSYS shim for ${androidAbi} with pinned zig ${ZIG_VERSION}.`,
+    );
+    execFileSync(
+      process.execPath,
+      [
+        compileShim,
+        "--abi",
+        androidAbi,
+        "--cache-dir",
+        cacheDir,
+        "--skip-if-present",
+      ],
+      {
+        stdio: ["ignore", "inherit", "inherit"],
+        env: {
+          ...process.env,
+          PATH: `${path.dirname(zigBin)}${path.delimiter}${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+  } catch (error) {
+    log?.(
+      `SIGSYS shim auto-provision failed for ${androidAbi}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return false;
+  }
+  return fs.existsSync(path.join(abiCacheDir, "libsigsys-handler.so"));
+}
+
 export function stageSeccompShimForAbi({
   androidAbi,
   ldName,
@@ -880,6 +1003,13 @@ export function stageSeccompShimForAbi({
   const abiCacheDir = path.join(cacheDir, androidAbi);
   const cachedWrap = path.join(abiCacheDir, ldName);
   const cachedShim = path.join(abiCacheDir, "libsigsys-handler.so");
+  if (!fs.existsSync(cachedWrap) || !fs.existsSync(cachedShim)) {
+    // Provision in place before refusing: pinned-zig download + compile-shim,
+    // the same self-sufficiency this script's bun/Alpine downloads already
+    // have, so fresh hosts and CI runners build device-valid APKs without a
+    // manual toolchain step.
+    autoProvisionSeccompShim({ androidAbi, cacheDir, log });
+  }
   if (!fs.existsSync(cachedWrap) || !fs.existsSync(cachedShim)) {
     throw new Error(
       `[stage-android-agent] Missing compiled SIGSYS shim for ${androidAbi}. ` +
@@ -1394,5 +1524,6 @@ export const __testables = {
   riscv64BunFilePath,
   riscv64BunArtifactSource,
   riscv64BunSha256,
+  resolveZigToolchain,
   provenancePath,
 };

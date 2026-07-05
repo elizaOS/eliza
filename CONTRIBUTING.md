@@ -2,6 +2,12 @@
 
 Thanks for helping with elizaOS. Open an issue before non-trivial work, branch
 from the latest `develop`, and ship changes through a PR against `develop`.
+All contributors must follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report
+security issues privately through the [Security Policy](SECURITY.md), not public
+GitHub issues.
+
+By participating you agree to our [Code of Conduct](CODE_OF_CONDUCT.md).
+Security issues go through [SECURITY.md](SECURITY.md), never a public issue.
 
 ## Evidence Is Required
 

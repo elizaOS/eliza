@@ -15,7 +15,6 @@ import type {
   WalletExportRejection as CompatWalletExportRejection,
   WalletExportRequestBody,
 } from "@elizaos/shared";
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/shared";
 
 type UpstreamRejectionFn = (
   req: http.IncomingMessage,
@@ -96,16 +95,8 @@ export function runWithCompatAuthContext<T>(
   req: Pick<http.IncomingMessage, "headers">,
   operation: () => T,
 ): T {
-  syncElizaEnvAliases();
-  syncAppEnvToEliza();
   mirrorCompatHeaders(req);
-
-  try {
-    return operation();
-  } finally {
-    syncAppEnvToEliza();
-    syncElizaEnvAliases();
-  }
+  return operation();
 }
 
 function getClientIp(req: http.IncomingMessage): string | null {

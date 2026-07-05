@@ -4,7 +4,15 @@
  */
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import path from "node:path";
+import {
+  existsSync,
+  promises as fs,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import os, { tmpdir } from "node:os";
+import path, { join } from "node:path";
 import { Writable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,9 +22,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // form so the same source compares correctly on both POSIX and Windows.
 const RESOLVED_ACP_WORKDIR = path.resolve("/tmp/acp-test");
 
-import type {
-  AcpJsonRpcMessage,
-  ApprovalPreset,
+import {
+  type AcpJsonRpcMessage,
+  type ApprovalPreset,
+  SessionCapError,
 } from "../../src/services/types.js";
 
 type NativeEventHandler = (
@@ -145,7 +154,10 @@ type MockProc = EventEmitter & {
 
 const spawnMock = spawn as unknown as ReturnType<typeof vi.fn>;
 
-function runtime(settings: Record<string, string | undefined> = {}) {
+function runtime(
+  settings: Record<string, string | undefined> = {},
+  services: Record<string, unknown> = {},
+) {
   const values = { ELIZA_ACP_TRANSPORT: "cli", ...settings };
   return {
     logger: {
@@ -155,6 +167,9 @@ function runtime(settings: Record<string, string | undefined> = {}) {
       error: vi.fn(),
     },
     getSetting: vi.fn((key: string) => values[key]),
+    // spawnSession consults getService for the broker-router (isParentAgentBroker
+    // Wired) and the skills service (SKILLS.md manifest); default to none.
+    getService: vi.fn((name: string) => services[name] ?? null),
     services: new Map<string, unknown[]>(),
   } as never;
 }
@@ -356,6 +371,91 @@ describe("AcpService", () => {
       | Record<string, string>
       | undefined;
     expect(env?.PARALLAX_SESSION_ID).toBe(result.sessionId);
+  });
+
+  it("writes SKILLS.md into every spawn workspace (shared spawn path)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "acp-skills-"));
+    try {
+      const skillsService = {
+        getEligibleSkills: async () => [
+          {
+            slug: "github",
+            name: "GitHub",
+            description: "gh CLI usage.",
+            content: "# GitHub\n",
+          },
+        ],
+        isSkillEnabled: () => true,
+      };
+      const reg = nextProc();
+      const service = new AcpService(
+        runtime({}, { AGENT_SKILLS_SERVICE: skillsService }),
+      );
+      await service.start();
+      const promise = service.spawnSession({
+        name: "skills-spawn",
+        agentType: "codex",
+        workdir: dir,
+      });
+      await waitForSpawn(reg);
+      reg.proc.stdout.emit(
+        "data",
+        Buffer.from(
+          '{"jsonrpc":"2.0","method":"session_started","params":{"sessionId":"skills-spawn"}}\n',
+        ),
+      );
+      closeOk(reg);
+      await promise;
+
+      const manifestPath = join(dir, "SKILLS.md");
+      expect(existsSync(manifestPath)).toBe(true);
+      const manifest = readFileSync(manifestPath, "utf8");
+      expect(manifest).toContain("GitHub");
+      expect(manifest).toContain("`github`");
+      // Broker router not registered here → no broker entry advertised.
+      expect(manifest).not.toContain("Parent Eliza Agent");
+      // And the on-disk manual has no broker section either.
+      expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).not.toContain(
+        "Asking the parent Eliza agent to act",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("advertises the broker in SKILLS.md + manual when the router is wired", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "acp-skills-broker-"));
+    try {
+      const router = { isActive: () => true };
+      const reg = nextProc();
+      const service = new AcpService(
+        runtime({}, { ACPX_SUB_AGENT_ROUTER: router }),
+      );
+      await service.start();
+      const promise = service.spawnSession({
+        name: "broker-spawn",
+        agentType: "codex",
+        workdir: dir,
+      });
+      await waitForSpawn(reg);
+      reg.proc.stdout.emit(
+        "data",
+        Buffer.from(
+          '{"jsonrpc":"2.0","method":"session_started","params":{"sessionId":"broker-spawn"}}\n',
+        ),
+      );
+      closeOk(reg);
+      await promise;
+
+      expect(readFileSync(join(dir, "SKILLS.md"), "utf8")).toContain(
+        "Parent Eliza Agent",
+      );
+      expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toContain(
+        "Asking the parent Eliza agent to act",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("honors explicit terminal capability opt-out", async () => {
@@ -986,6 +1086,65 @@ describe("AcpService", () => {
     expect(events.indexOf("message")).toBeLessThan(
       events.indexOf("task_complete"),
     );
+  });
+
+  it("flushes raw stdout before advertising stdoutLogPath on task_complete", async () => {
+    const priorTrajDir = process.env.ELIZA_TRAJECTORY_DIR;
+    const priorRecording = process.env.ELIZA_TRAJECTORY_RECORDING;
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "acp-stdout-"));
+    process.env.ELIZA_TRAJECTORY_DIR = tmpDir;
+    delete process.env.ELIZA_TRAJECTORY_RECORDING;
+    try {
+      const create = nextProc();
+      const service = new AcpService(runtime());
+      const taskCompletePayloads: Array<{
+        response?: string;
+        stdoutLogPath?: string;
+      }> = [];
+      service.onSessionEvent((_sid, event, payload) => {
+        if (event === "task_complete") {
+          taskCompletePayloads.push(
+            payload as { response?: string; stdoutLogPath?: string },
+          );
+        }
+      });
+      await service.start();
+      const spawned = service.spawnSession({
+        name: "stdout-path",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      });
+      await waitForSpawn(create);
+      closeOk(create);
+      const { sessionId } = await spawned;
+
+      const prompt = nextProc();
+      const sent = service.sendPrompt(sessionId, "persist stdout");
+      await waitForSpawn(prompt);
+      const terminalLine = `{"jsonrpc":"2.0","id":"req-1","result":{"stopReason":"end_turn","content":[{"type":"text","text":"stdout persisted"}]},"sessionId":"${sessionId}"}\n`;
+      prompt.proc.stdout.emit("data", Buffer.from(terminalLine));
+      closeOk(prompt);
+
+      await sent;
+      const payload = taskCompletePayloads[0];
+      expect(payload?.response).toBe("stdout persisted");
+      expect(payload?.stdoutLogPath).toBe(
+        path.join(tmpDir, "subagent-stdout", `${sessionId}.ndjson`),
+      );
+      const raw = await fs.readFile(payload?.stdoutLogPath ?? "", "utf8");
+      const records = raw
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { text: string });
+      expect(records.map((record) => record.text)).toContain(terminalLine);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+      if (priorTrajDir === undefined) delete process.env.ELIZA_TRAJECTORY_DIR;
+      else process.env.ELIZA_TRAJECTORY_DIR = priorTrajDir;
+      if (priorRecording === undefined)
+        delete process.env.ELIZA_TRAJECTORY_RECORDING;
+      else process.env.ELIZA_TRAJECTORY_RECORDING = priorRecording;
+    }
   });
 
   it("native sendPrompt preserves final text returned on the terminal prompt result", async () => {
@@ -1931,14 +2090,17 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
 
     const fulfilled = results.filter((r) => r.status === "fulfilled");
     const rejected = results.filter((r) => r.status === "rejected");
-    // The cap must hold exactly: 2 succeed, the rest reject with the limit error.
+    // The cap must hold exactly: 2 succeed, the rest reject with the typed
+    // SessionCapError so a caller (or the admission queue) branches on `code`
+    // instead of string-matching the message.
     expect(fulfilled).toHaveLength(2);
     expect(rejected.length).toBe(4);
     for (const r of rejected) {
-      expect((r as PromiseRejectedResult).reason).toBeInstanceOf(Error);
-      expect(((r as PromiseRejectedResult).reason as Error).message).toContain(
-        "max session limit reached",
-      );
+      const reason = (r as PromiseRejectedResult).reason as SessionCapError;
+      expect(reason).toBeInstanceOf(SessionCapError);
+      expect(reason.code).toBe("SESSION_CAP_REACHED");
+      expect(reason.slotClass).toBe("worker");
+      expect(reason.maxSessions).toBe(2);
     }
 
     // And the store agrees: only 2 active sessions exist.
@@ -1948,6 +2110,118 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
         !["stopped", "errored", "completed", "cancelled"].includes(s.status),
     );
     expect(active).toHaveLength(2);
+  });
+
+  it("getCapacity reports free/used slots for both admission pools", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: undefined,
+        ELIZA_ACP_MAX_SESSIONS: "2",
+        ELIZA_ACP_SYSTEM_SESSION_HEADROOM: "1",
+      }),
+    );
+    await service.start();
+
+    expect(await service.getCapacity()).toEqual({
+      maxSessions: 2,
+      systemHeadroom: 1,
+      activeWorkers: 0,
+      activeSystem: 0,
+      freeWorkerSlots: 2,
+      freeSystemSlots: 1,
+    });
+
+    await service.spawnSession({ name: "w1", workdir: "/tmp/acp-test" });
+    const cap = await service.getCapacity();
+    expect(cap.activeWorkers).toBe(1);
+    expect(cap.freeWorkerSlots).toBe(1);
+    expect(cap.activeSystem).toBe(0);
+    expect(cap.freeSystemSlots).toBe(1);
+  });
+
+  it("admits a system spawn on reserved headroom while the worker cap is full (no verifier deadlock)", async () => {
+    // Reproduces the #8898 verifier deadlock guard: at a full worker cap the
+    // read-only verifier still needs a fresh session while the worker it is
+    // verifying holds its slot. A separate `system` pool must let it in.
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: undefined,
+        ELIZA_ACP_MAX_SESSIONS: "1",
+        ELIZA_ACP_SYSTEM_SESSION_HEADROOM: "1",
+      }),
+    );
+    await service.start();
+
+    // Fill the single worker slot.
+    await service.spawnSession({ name: "worker", workdir: "/tmp/acp-test" });
+
+    // A second worker is rejected — the worker pool is full.
+    await expect(
+      service.spawnSession({ name: "worker-2", workdir: "/tmp/acp-test" }),
+    ).rejects.toMatchObject({
+      code: "SESSION_CAP_REACHED",
+      slotClass: "worker",
+    });
+
+    // But a system spawn is admitted despite the full worker pool: it draws on
+    // the reserved headroom, so validation never deadlocks behind its worker.
+    const verifier = await service.spawnSession({
+      name: "verifier",
+      slotClass: "system",
+      workdir: "/tmp/acp-test",
+    });
+    expect(verifier.sessionId).toBeTruthy();
+
+    // The system pool has its own cap: a second system spawn is rejected.
+    await expect(
+      service.spawnSession({
+        name: "verifier-2",
+        slotClass: "system",
+        workdir: "/tmp/acp-test",
+      }),
+    ).rejects.toMatchObject({
+      code: "SESSION_CAP_REACHED",
+      slotClass: "system",
+    });
+
+    const cap = await service.getCapacity();
+    expect(cap).toMatchObject({
+      activeWorkers: 1,
+      activeSystem: 1,
+      freeWorkerSlots: 0,
+      freeSystemSlots: 0,
+    });
+  });
+
+  it("frees a worker slot for a new spawn once a session reaches a terminal status", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: undefined,
+        ELIZA_ACP_MAX_SESSIONS: "1",
+      }),
+    );
+    await service.start();
+
+    const first = await service.spawnSession({
+      name: "w1",
+      workdir: "/tmp/acp-test",
+    });
+    // Cap is full: the next worker is rejected.
+    await expect(
+      service.spawnSession({ name: "w2", workdir: "/tmp/acp-test" }),
+    ).rejects.toBeInstanceOf(SessionCapError);
+
+    // Terminate the first session; its slot must free.
+    await service.stopSession(first.sessionId);
+    expect((await service.getCapacity()).freeWorkerSlots).toBe(1);
+
+    // Now a fresh worker is admitted deterministically.
+    const third = await service.spawnSession({
+      name: "w3",
+      workdir: "/tmp/acp-test",
+    });
+    expect(third.sessionId).toBeTruthy();
+    expect((await service.getCapacity()).activeWorkers).toBe(1);
   });
 
   it("rejects a concurrent prompt for the same native session (TOCTOU #11028)", async () => {

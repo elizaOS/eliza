@@ -1256,6 +1256,7 @@ if (uiOnly) {
       ELIZA_API_PORT: String(API_PORT),
       ELIZA_UI_PORT: String(UI_PORT),
       ELIZA_PORT: String(UI_PORT),
+      ELIZA_DEV_SOURCE_WATCH: skipSourceWatch ? "0" : "1",
       ELIZA_HEADLESS: "1",
       ELIZA_DEV_AUTH_BYPASS: "1",
       // Defer the post-ready boot tail (app-route plugins, training hooks,

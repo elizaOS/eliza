@@ -259,6 +259,10 @@ function buildEvmRpcHandler(chain: string): ServiceHandler {
 
       return { response };
     } catch (error) {
+      // error-policy:J1 outbound Alchemy RPC boundary — an infra timeout becomes the
+      // canonical "timeout" marker the proxy engine maps to 504 (engine.ts); every
+      // other error propagates unchanged so the engine surfaces it. No swallow, no
+      // fabricated success/default.
       if (error instanceof Error && error.name === "TimeoutError") {
         logger.error("[EVM RPC] Timeout", { chain, network });
         throw new Error("timeout");

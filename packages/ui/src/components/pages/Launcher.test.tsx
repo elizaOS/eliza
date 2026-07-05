@@ -11,6 +11,7 @@ import { client } from "../../api";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { readViewInteractions } from "../../view-telemetry";
 import { Launcher } from "./Launcher";
+import { allAppsZone, type LauncherZone } from "./launcher-curation";
 
 function entry(id: string, label: string): ViewEntry {
   return {
@@ -28,6 +29,10 @@ function entry(id: string, label: string): ViewEntry {
 
 function imageEntry(id: string, label: string, imageUrl: string): ViewEntry {
   return { ...entry(id, label), imageUrl };
+}
+
+function zones(entries: ViewEntry[]): LauncherZone[] {
+  return allAppsZone(entries);
 }
 
 function tileIds(): (string | undefined)[] {
@@ -56,7 +61,7 @@ afterEach(() => {
 
 describe("Launcher", () => {
   it("renders every entry as a page tile (no dock)", () => {
-    render(<Launcher entries={FEW} onLaunch={() => {}} />);
+    render(<Launcher zones={zones(FEW)} onLaunch={() => {}} />);
     // The featured-views dock was removed: every view lives on the single page.
     expect(screen.queryByTestId("launcher-dock")).toBeNull();
     expect(screen.getByTestId("launcher-tile-chat")).toBeTruthy();
@@ -68,7 +73,7 @@ describe("Launcher", () => {
   it("renders tiles in the exact order the caller supplies", () => {
     render(
       <Launcher
-        entries={[entry("beta", "Beta"), entry("alpha", "Alpha")]}
+        zones={zones([entry("beta", "Beta"), entry("alpha", "Alpha")])}
         onLaunch={() => {}}
       />,
     );
@@ -76,7 +81,7 @@ describe("Launcher", () => {
   });
 
   it("renders no page dots — the launcher is a single scrolling page", () => {
-    render(<Launcher entries={FEW} onLaunch={() => {}} />);
+    render(<Launcher zones={zones(FEW)} onLaunch={() => {}} />);
     expect(screen.queryByRole("button", { name: "Page 1" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Page 2" })).toBeNull();
     expect(document.querySelectorAll('[aria-label^="Page "]').length).toBe(0);
@@ -88,7 +93,7 @@ describe("Launcher", () => {
       { ...entry("alpha", "Alpha"), viewKind: "preview" } as ViewEntry,
       { ...entry("trace", "Trace"), viewKind: "developer" } as ViewEntry,
     ];
-    render(<Launcher entries={entries} onLaunch={() => {}} />);
+    render(<Launcher zones={zones(entries)} onLaunch={() => {}} />);
 
     expect(screen.queryByTestId("launcher-kind-settings")).toBeNull();
     expect(screen.getByTestId("launcher-kind-alpha").textContent).toBe(
@@ -99,7 +104,7 @@ describe("Launcher", () => {
 
   it("launches a view on tap and emits a single launch telemetry event", () => {
     const onLaunch = vi.fn();
-    render(<Launcher entries={FEW} onLaunch={onLaunch} />);
+    render(<Launcher zones={zones(FEW)} onLaunch={onLaunch} />);
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
     expect(onLaunch).toHaveBeenCalledTimes(1);
     expect(onLaunch.mock.calls[0][0].id).toBe("chat");
@@ -112,7 +117,7 @@ describe("Launcher", () => {
   });
 
   it("renders the loading skeleton while the catalog is empty", () => {
-    render(<Launcher entries={[]} loading onLaunch={() => {}} />);
+    render(<Launcher zones={zones([])} loading onLaunch={() => {}} />);
     // No real tiles while loading with an empty catalog.
     expect(
       screen
@@ -122,22 +127,24 @@ describe("Launcher", () => {
   });
 
   it("drops a tile when its entry is removed on re-render", () => {
-    const { rerender } = render(<Launcher entries={FEW} onLaunch={() => {}} />);
+    const { rerender } = render(
+      <Launcher zones={zones(FEW)} onLaunch={() => {}} />,
+    );
     expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
     rerender(
-      <Launcher entries={[entry("chat", "Chat")]} onLaunch={() => {}} />,
+      <Launcher zones={zones([entry("chat", "Chat")])} onLaunch={() => {}} />,
     );
     expect(screen.queryByTestId("launcher-tile-settings")).toBeNull();
   });
 
   it("renders a newly-available entry as a tile on re-render", () => {
     const { rerender } = render(
-      <Launcher entries={[entry("chat", "Chat")]} onLaunch={() => {}} />,
+      <Launcher zones={zones([entry("chat", "Chat")])} onLaunch={() => {}} />,
     );
     expect(screen.queryByTestId("launcher-tile-notes")).toBeNull();
     rerender(
       <Launcher
-        entries={[entry("chat", "Chat"), entry("notes", "Notes")]}
+        zones={zones([entry("chat", "Chat"), entry("notes", "Notes")])}
         onLaunch={() => {}}
       />,
     );
@@ -149,7 +156,7 @@ describe("Launcher image tiles", () => {
   it("renders a compact image icon over a glyph fallback when imageUrl is set", () => {
     const entries = [imageEntry("notes", "Notes", "/api/views/notes/hero")];
     const { container } = render(
-      <Launcher entries={entries} onLaunch={() => {}} />,
+      <Launcher zones={zones(entries)} onLaunch={() => {}} />,
     );
     const image = screen.getByTestId("launcher-image-notes");
     expect(image.getAttribute("src")).toBe("/api/views/notes/hero");
@@ -166,7 +173,7 @@ describe("Launcher image tiles", () => {
   it("renders the icon glyph when imageUrl is absent", () => {
     const entries = [entry("notes", "Notes")];
     const { container } = render(
-      <Launcher entries={entries} onLaunch={() => {}} />,
+      <Launcher zones={zones(entries)} onLaunch={() => {}} />,
     );
     expect(screen.queryByTestId("launcher-image-notes")).toBeNull();
     expect(container.querySelector("svg")).toBeTruthy();
@@ -179,7 +186,7 @@ describe("Launcher image tiles", () => {
 
     const entries = [imageEntry("notes", "Notes", "/api/views/notes/hero")];
     const { container } = render(
-      <Launcher entries={entries} onLaunch={() => {}} />,
+      <Launcher zones={zones(entries)} onLaunch={() => {}} />,
     );
 
     expect(screen.queryByTestId("launcher-image-notes")).toBeNull();
@@ -198,7 +205,7 @@ describe("Launcher image tiles", () => {
       ),
     ];
     const { container } = render(
-      <Launcher entries={entries} onLaunch={() => {}} />,
+      <Launcher zones={zones(entries)} onLaunch={() => {}} />,
     );
 
     expect(screen.queryByTestId("launcher-image-notes")).toBeNull();
@@ -206,5 +213,85 @@ describe("Launcher image tiles", () => {
       '[data-view-visual="notes"]',
     );
     expect(visual?.querySelector("svg")).toBeTruthy();
+  });
+});
+
+describe("Launcher zones", () => {
+  const chat = entry("chat", "Chat");
+  const wallet = entry("wallet", "Wallet");
+  const settings = entry("settings", "Settings");
+
+  it("renders no zone headers and no empty top strip when only All Apps is present", () => {
+    render(<Launcher zones={zones([chat, wallet])} onLaunch={() => {}} />);
+    // The single default zone renders as a plain grid — no dock, no section
+    // heading, no other zone container above the tiles.
+    expect(screen.queryByTestId("launcher-dock")).toBeNull();
+    expect(screen.queryByTestId("launcher-zone-recents")).toBeNull();
+    expect(screen.queryByTestId("launcher-zone-favorites")).toBeNull();
+    expect(screen.getByTestId("launcher-zone-all")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "All Apps" })).toBeNull();
+  });
+
+  it("renders Recents/Favorites headers and All Apps once the projection zones are populated", () => {
+    render(
+      <Launcher
+        zones={[
+          { key: "recents", label: "Recents", entries: [wallet] },
+          { key: "favorites", label: "Favorites", entries: [settings] },
+          { key: "all", label: "All Apps", entries: [chat, wallet, settings] },
+        ]}
+        onLaunch={() => {}}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Recents" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Favorites" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "All Apps" })).toBeTruthy();
+  });
+
+  it("keeps one canonical launcher-tile-<id> per id even when a tile is also in Recents/Favorites", () => {
+    render(
+      <Launcher
+        zones={[
+          { key: "recents", label: "Recents", entries: [wallet] },
+          { key: "favorites", label: "Favorites", entries: [wallet] },
+          { key: "all", label: "All Apps", entries: [chat, wallet] },
+        ]}
+        onLaunch={() => {}}
+      />,
+    );
+    // The exhaustive zone owns the canonical testid; projections use zone-scoped
+    // prefixes, so the "one tile per id" contract the collapse test relies on
+    // still holds even for a thrice-shown tile.
+    expect(screen.getAllByTestId("launcher-tile-wallet")).toHaveLength(1);
+    expect(screen.getByTestId("launcher-recents-tile-wallet")).toBeTruthy();
+    expect(screen.getByTestId("launcher-favorites-tile-wallet")).toBeTruthy();
+  });
+
+  it("toggles a favorite only from the All Apps zone", () => {
+    const onToggleFavorite = vi.fn();
+    render(
+      <Launcher
+        zones={[
+          { key: "favorites", label: "Favorites", entries: [wallet] },
+          { key: "all", label: "All Apps", entries: [chat, wallet] },
+        ]}
+        favoriteIds={new Set(["wallet"])}
+        onToggleFavorite={onToggleFavorite}
+        onLaunch={() => {}}
+      />,
+    );
+    // The pin lives in the exhaustive grid (one per id), not on the read-only
+    // Favorites projection.
+    expect(screen.getAllByTestId("launcher-favorite-wallet")).toHaveLength(1);
+    const pin = screen.getByTestId("launcher-favorite-wallet");
+    expect(pin.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(pin);
+    expect(onToggleFavorite).toHaveBeenCalledTimes(1);
+    expect(onToggleFavorite.mock.calls[0][0].id).toBe("wallet");
+  });
+
+  it("omits the favorite pin affordance when no toggle handler is supplied", () => {
+    render(<Launcher zones={zones([wallet])} onLaunch={() => {}} />);
+    expect(screen.queryByTestId("launcher-favorite-wallet")).toBeNull();
   });
 });

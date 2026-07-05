@@ -47,6 +47,8 @@
 		AUIT00010000000000000007 /* WidgetGalleryCaptureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000008 /* WidgetGalleryCaptureUITests.swift */; };
 		AUIT00010000000000000009 /* LauncherGestureLoopUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT0001000000000000000A /* LauncherGestureLoopUITests.swift */; };
 		AUIT0001000000000000000B /* DeviceLifecycleUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT0001000000000000000C /* DeviceLifecycleUITests.swift */; };
+		AUIT0001000000000000000D /* ChatFailureStrings.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT0001000000000000000E /* ChatFailureStrings.generated.swift */; };
+		AUIT0001000000000000000F /* DeviceExtensionSurfaceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000010 /* DeviceExtensionSurfaceUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -166,6 +168,8 @@
 		AUIT00010000000000000008 /* WidgetGalleryCaptureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetGalleryCaptureUITests.swift; sourceTree = "<group>"; };
 		AUIT0001000000000000000A /* LauncherGestureLoopUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherGestureLoopUITests.swift; sourceTree = "<group>"; };
 		AUIT0001000000000000000C /* DeviceLifecycleUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLifecycleUITests.swift; sourceTree = "<group>"; };
+		AUIT0001000000000000000E /* ChatFailureStrings.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatFailureStrings.generated.swift; sourceTree = "<group>"; };
+		AUIT00010000000000000010 /* DeviceExtensionSurfaceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceExtensionSurfaceUITests.swift; sourceTree = "<group>"; };
 		AUIT00010000000000000101 /* AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -359,6 +363,8 @@
 				AUIT00010000000000000008 /* WidgetGalleryCaptureUITests.swift */,
 				AUIT0001000000000000000A /* LauncherGestureLoopUITests.swift */,
 				AUIT0001000000000000000C /* DeviceLifecycleUITests.swift */,
+				AUIT0001000000000000000E /* ChatFailureStrings.generated.swift */,
+				AUIT00010000000000000010 /* DeviceExtensionSurfaceUITests.swift */,
 			);
 			path = AppUITests;
 			sourceTree = "<group>";
@@ -726,6 +732,8 @@
 				AUIT00010000000000000007 /* WidgetGalleryCaptureUITests.swift in Sources */,
 				AUIT00010000000000000009 /* LauncherGestureLoopUITests.swift in Sources */,
 				AUIT0001000000000000000B /* DeviceLifecycleUITests.swift in Sources */,
+				AUIT0001000000000000000D /* ChatFailureStrings.generated.swift in Sources */,
+				AUIT0001000000000000000F /* DeviceExtensionSurfaceUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

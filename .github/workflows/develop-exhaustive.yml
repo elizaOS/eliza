@@ -92,7 +92,7 @@ jobs:
     # Run even when a reusable lane failed so the proof enumerates every lane
     # and the result check below can name the offender; only a cancel skips it.
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     env:
       CI: "true"
       BUN_VERSION: "1.3.14"

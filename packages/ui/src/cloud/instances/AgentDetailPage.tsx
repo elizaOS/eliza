@@ -23,7 +23,7 @@ import {
 import { Link, Navigate, useParams } from "react-router-dom";
 import { ApiError } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
-import { useRequireAuth } from "../lib/use-session-auth";
+import { useSessionAuth } from "../lib/use-session-auth";
 import { ElizaAgentActions } from "./components/agent-actions";
 import { DockerLogsViewer } from "./components/docker-logs-viewer";
 import { ElizaAgentBackupsPanel } from "./components/eliza-agent-backups-panel";
@@ -77,7 +77,7 @@ function formatRelativeShort(
 
 export default function AgentDetailPage() {
   const t = useT();
-  const session = useRequireAuth();
+  const session = useSessionAuth();
   const { id } = useParams<{ id: string }>();
   const enabled = session.ready && session.authenticated;
   const query = useAgent(enabled ? id : undefined);
@@ -85,7 +85,7 @@ export default function AgentDetailPage() {
   const titleId = id ? id.slice(0, 8) : "";
   useDocumentTitle(
     t("cloud.agents.detail.metaTitle", {
-      defaultValue: "Agent {{id}} — Instances",
+      defaultValue: "Agent {{id}} — Agents",
       id: titleId,
     }),
   );
@@ -137,7 +137,7 @@ export default function AgentDetailPage() {
           </div>
           <span>
             {t("cloud.agents.detail.backToInstances", {
-              defaultValue: "Instances",
+              defaultValue: "Agents",
             })}
           </span>
         </Link>
@@ -273,7 +273,9 @@ export default function AgentDetailPage() {
                   plural: agent.errorCount !== 1 ? "s" : "",
                 })}
               </p>
-              <p className="text-sm text-destructive/70">{agent.errorMessage}</p>
+              <p className="text-sm text-destructive/70">
+                {agent.errorMessage}
+              </p>
             </div>
           </div>
         )}

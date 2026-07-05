@@ -1,0 +1,147 @@
+
+==============================================================================
+CASE: settings (intent, no live-state surface)
+------------------------------------------------------------------------------
+PROMPT:
+The user just navigated in the app. Decide whether to greet them with ONE specific, helpful, anticipatory offer scoped to where they just landed.
+Rules:
+- When the view below has a DECLARED INTENT, produce a single short greeting that fulfills that intent and references the live view state provided (concrete counts, names, addresses, readiness). This is expected and wanted — return it with high confidence (>= 0.8). Do NOT stay silent just because it is a settings or config screen; the declared intent is your mandate.
+- When the view has NO declared intent, only offer something if it is clearly and specifically useful; otherwise stay silent (return null). Never emit a generic, label-only greeting.
+- One offer only. Ground every claim in the live state; never invent balances, counts, documents, tasks, or status. If the live state says a surface is unavailable, acknowledge that instead of fabricating a value.
+- Use delivery "chat" for a visible suggestion in the current view; use "notify" for useful but low-urgency offers that should land quietly outside chat.
+Respond as JSON: {"comment": <a short scoped greeting, or null>, "delivery": "chat" | "notify", "confidence": 0..1, "urgency": "low" | "medium" | "high", "title": <optional notification title>}.
+The user just opened the "Settings" view.
+Purpose: Configuration, plugins, credentials, and preferences
+Declared intent: Offer to set up the model/provider, voice, or connectors — recommend the smallest concrete configuration step from current settings state.
+Live view state: none available for this view.
+------------------------------------------------------------------------------
+RAW MODEL OUTPUT:
+{
+  "comment": "Welcome to Settings—let’s start by choosing an AI model provider to connect.",
+  "delivery": "chat",
+  "confidence": 0.92,
+  "urgency": "medium"
+}
+------------------------------------------------------------------------------
+PARSED GREETING: {"text":"Welcome to Settings—let’s start by choosing an AI model provider to connect.","delivery":"chat"}
+
+==============================================================================
+CASE: documents/knowledge (intent + real live-state renderer)
+------------------------------------------------------------------------------
+PROMPT:
+The user just navigated in the app. Decide whether to greet them with ONE specific, helpful, anticipatory offer scoped to where they just landed.
+Rules:
+- When the view below has a DECLARED INTENT, produce a single short greeting that fulfills that intent and references the live view state provided (concrete counts, names, addresses, readiness). This is expected and wanted — return it with high confidence (>= 0.8). Do NOT stay silent just because it is a settings or config screen; the declared intent is your mandate.
+- When the view has NO declared intent, only offer something if it is clearly and specifically useful; otherwise stay silent (return null). Never emit a generic, label-only greeting.
+- One offer only. Ground every claim in the live state; never invent balances, counts, documents, tasks, or status. If the live state says a surface is unavailable, acknowledge that instead of fabricating a value.
+- Use delivery "chat" for a visible suggestion in the current view; use "notify" for useful but low-urgency offers that should land quietly outside chat.
+Respond as JSON: {"comment": <a short scoped greeting, or null>, "delivery": "chat" | "notify", "confidence": 0..1, "urgency": "low" | "medium" | "high", "title": <optional notification title>}.
+The user just opened the "Knowledge" view.
+Purpose: Agent knowledge documents, uploads, and retrieval sources
+Declared intent: Offer to triage the newest ingested attachments/documents — summarize, tag, or file them — grounded in the recent-attachment counts.
+Live view state:
+Live knowledge state (last 7 days): 2 ingested chat attachments, 1 transcript mirror.
+Attachments by format: pdf=1, image=1.
+------------------------------------------------------------------------------
+RAW MODEL OUTPUT:
+{
+  "comment": "I see you have 2 new attachments from the past week—a PDF and an image. Would you like me to summarize them, add tags, or file them for you?",
+  "delivery": "chat",
+  "confidence": 0.95,
+  "urgency": "medium",
+  "title": null
+}
+------------------------------------------------------------------------------
+PARSED GREETING: {"text":"I see you have 2 new attachments from the past week—a PDF and an image. Would you like me to summarize them, add tags, or file them for you?","delivery":"chat"}
+
+==============================================================================
+CASE: transcripts (intent + real live-state renderer)
+------------------------------------------------------------------------------
+PROMPT:
+The user just navigated in the app. Decide whether to greet them with ONE specific, helpful, anticipatory offer scoped to where they just landed.
+Rules:
+- When the view below has a DECLARED INTENT, produce a single short greeting that fulfills that intent and references the live view state provided (concrete counts, names, addresses, readiness). This is expected and wanted — return it with high confidence (>= 0.8). Do NOT stay silent just because it is a settings or config screen; the declared intent is your mandate.
+- When the view has NO declared intent, only offer something if it is clearly and specifically useful; otherwise stay silent (return null). Never emit a generic, label-only greeting.
+- One offer only. Ground every claim in the live state; never invent balances, counts, documents, tasks, or status. If the live state says a surface is unavailable, acknowledge that instead of fabricating a value.
+- Use delivery "chat" for a visible suggestion in the current view; use "notify" for useful but low-urgency offers that should land quietly outside chat.
+Respond as JSON: {"comment": <a short scoped greeting, or null>, "delivery": "chat" | "notify", "confidence": 0..1, "urgency": "low" | "medium" | "high", "title": <optional notification title>}.
+The user just opened the "Transcripts" view.
+Purpose: Recorded voice transcripts — play, scrub, and read
+Declared intent: Offer to summarize or extract action items from the most recent voice transcripts, grounded in the recent-transcript count.
+Live view state:
+Live transcript state (last 7 days): 2 recorded transcripts.
+Newest transcript: 0 minute(s) ago.
+------------------------------------------------------------------------------
+RAW MODEL OUTPUT:
+{
+  "comment": "I see you have 2 recent transcripts, with the newest just recorded—would you like a summary or key action items from them?",
+  "delivery": "chat",
+  "confidence": 0.95,
+  "urgency": "medium",
+  "title": null
+}
+------------------------------------------------------------------------------
+PARSED GREETING: {"text":"I see you have 2 recent transcripts, with the newest just recorded—would you like a summary or key action items from them?","delivery":"chat"}
+
+==============================================================================
+CASE: wallet (intent + representative live-state brief)
+------------------------------------------------------------------------------
+PROMPT:
+The user just navigated in the app. Decide whether to greet them with ONE specific, helpful, anticipatory offer scoped to where they just landed.
+Rules:
+- When the view below has a DECLARED INTENT, produce a single short greeting that fulfills that intent and references the live view state provided (concrete counts, names, addresses, readiness). This is expected and wanted — return it with high confidence (>= 0.8). Do NOT stay silent just because it is a settings or config screen; the declared intent is your mandate.
+- When the view has NO declared intent, only offer something if it is clearly and specifically useful; otherwise stay silent (return null). Never emit a generic, label-only greeting.
+- One offer only. Ground every claim in the live state; never invent balances, counts, documents, tasks, or status. If the live state says a surface is unavailable, acknowledge that instead of fabricating a value.
+- Use delivery "chat" for a visible suggestion in the current view; use "notify" for useful but low-urgency offers that should land quietly outside chat.
+Respond as JSON: {"comment": <a short scoped greeting, or null>, "delivery": "chat" | "notify", "confidence": 0..1, "urgency": "low" | "medium" | "high", "title": <optional notification title>}.
+The user just opened the "Wallet" view.
+Purpose: Token inventory, NFTs, LP positions, balance, and P&L
+Declared intent: Offer a portfolio summary and a fund/swap next step, grounded in balances and readiness.
+Live view state:
+Live wallet state:
+- Wallet source: env
+- EVM address: 0x1234...abcd
+- Readiness: EVM balances ready, execution ready
+- Token inventory: 2 assets.
+  - 0.42 ETH
+  - 150.0 USDC
+- 24h activity: 3 swaps, realized P&L 0.05 BNB, volume 1.2 BNB.
+------------------------------------------------------------------------------
+RAW MODEL OUTPUT:
+{
+  "comment": "Your wallet shows 0.42 ETH and 150 USDC, and you're ready to trade—would you like to swap some USDC for ETH now?",
+  "delivery": "chat",
+  "confidence": 0.94,
+  "urgency": "medium",
+  "title": null
+}
+------------------------------------------------------------------------------
+PARSED GREETING: {"text":"Your wallet shows 0.42 ETH and 150 USDC, and you're ready to trade—would you like to swap some USDC for ETH now?","delivery":"chat"}
+
+==============================================================================
+CASE: database (NO intent — must be allowed to stay silent)
+------------------------------------------------------------------------------
+PROMPT:
+The user just navigated in the app. Decide whether to greet them with ONE specific, helpful, anticipatory offer scoped to where they just landed.
+Rules:
+- When the view below has a DECLARED INTENT, produce a single short greeting that fulfills that intent and references the live view state provided (concrete counts, names, addresses, readiness). This is expected and wanted — return it with high confidence (>= 0.8). Do NOT stay silent just because it is a settings or config screen; the declared intent is your mandate.
+- When the view has NO declared intent, only offer something if it is clearly and specifically useful; otherwise stay silent (return null). Never emit a generic, label-only greeting.
+- One offer only. Ground every claim in the live state; never invent balances, counts, documents, tasks, or status. If the live state says a surface is unavailable, acknowledge that instead of fabricating a value.
+- Use delivery "chat" for a visible suggestion in the current view; use "notify" for useful but low-urgency offers that should land quietly outside chat.
+Respond as JSON: {"comment": <a short scoped greeting, or null>, "delivery": "chat" | "notify", "confidence": 0..1, "urgency": "low" | "medium" | "high", "title": <optional notification title>}.
+The user just opened the "Database" view.
+Declared intent: none — this view has no declared anticipatory intent, so stay silent unless something is clearly useful.
+Live view state: none available for this view.
+------------------------------------------------------------------------------
+RAW MODEL OUTPUT:
+{
+  "comment": null,
+  "delivery": "notify",
+  "confidence": 0.99,
+  "urgency": "low"
+}
+------------------------------------------------------------------------------
+PARSED GREETING: null (stayed silent)
+
+==============================================================================
+done

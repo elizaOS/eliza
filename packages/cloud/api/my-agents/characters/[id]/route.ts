@@ -40,9 +40,17 @@ app.put("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id") ?? "";
     const elizaCharacter = (await c.req.json()) as ElizaCharacter;
+    // documents/knowledge come verbatim from the unvalidated request body; a
+    // non-array value (e.g. `knowledge: {}`) is not iterable and would 500 the
+    // update (#13637 class). Non-arrays contribute no document sources — this
+    // also keeps the knowledge column an array for downstream readers.
     const documentSources = [
-      ...(elizaCharacter.documents ?? []),
-      ...(elizaCharacter.knowledge ?? []),
+      ...(Array.isArray(elizaCharacter.documents)
+        ? elizaCharacter.documents
+        : []),
+      ...(Array.isArray(elizaCharacter.knowledge)
+        ? elizaCharacter.knowledge
+        : []),
     ];
 
     const characterDataRecord: Record<string, unknown> = {};

@@ -23,7 +23,7 @@ concurrency:
 jobs:
   gate-and-release:
     name: Gate Develop and Dispatch Beta
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     if: >-
       ${{
         github.event_name == 'workflow_dispatch' ||

@@ -19,7 +19,7 @@ jobs:
   # On a 'release' event github.ref_name is the tag (e.g. v2.0.1); we strip
   # the prefix here so downstream jobs get a clean version like '2.0.1'.
   prepare:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     outputs:
       version: ${{ steps.parse.outputs.version }}
       tag: ${{ steps.parse.outputs.tag }}
@@ -54,7 +54,7 @@ jobs:
   verify-artifacts:
     name: Verify build artifacts exist and are non-empty
     needs: [trigger-linux-iso, trigger-debian-package, trigger-vm-image]
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     steps:
       - name: Download Linux ISO artifact
@@ -100,7 +100,7 @@ jobs:
   populate-and-validate-manifest:
     name: Populate manifest checksums and gate on publishable validation
     needs: [verify-artifacts]
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     permissions:
       # contents: write — required by softprops/action-gh-release to
@@ -271,7 +271,7 @@ jobs:
 
   summary:
     needs: [trigger-linux-iso, trigger-debian-package, trigger-vm-image, verify-artifacts, populate-and-validate-manifest, publish-apt]
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     if: always()
     timeout-minutes: 5
     steps:

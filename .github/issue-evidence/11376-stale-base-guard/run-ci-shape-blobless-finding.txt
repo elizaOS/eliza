@@ -1,7 +1,0 @@
-stale-base guard: base=d9d1a47ccd head=b390396976 merge-base=d9d1a47ccd behind=0 commits / 0h
-ERROR: stale-base guard — SILENT REVERT: this PR sets `packages/cloud/shared/src/lib/services/wallet-signup.ts` back to a blob the target branch already moved past, discarding 1 merged change(s) — newest: d9d1a47ccd "fix(cloud): wallet signup makes the creator OWNER of the org it creates (#11565)" (2026-07-02T16:26:30-04:00). This is the #11271 failure mode (stale checkout committed over merged work). Rebase/restore the file, or apply the `stale-base-ack` label if the revert is deliberate.
-
-real	0m1.057s
-user	0m0.130s
-sys	0m0.067s
-exit=1

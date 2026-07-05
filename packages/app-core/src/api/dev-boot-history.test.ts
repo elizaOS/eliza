@@ -62,4 +62,32 @@ describe("buildBootHistoryPayload — failed plugins", () => {
       await rm(stateDir, { recursive: true, force: true });
     }
   });
+
+  it("reports the real dev watch state from active watcher signals", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "eliza-boot-history-"));
+    try {
+      await expect(
+        buildBootHistoryPayload({
+          ELIZA_STATE_DIR: stateDir,
+          ELIZA_DEV_NO_WATCH: "0",
+        } as NodeJS.ProcessEnv),
+      ).resolves.toMatchObject({ watch: false });
+
+      await expect(
+        buildBootHistoryPayload({
+          ELIZA_STATE_DIR: stateDir,
+          ELIZA_DESKTOP_API_WATCH: "1",
+        } as NodeJS.ProcessEnv),
+      ).resolves.toMatchObject({ watch: true });
+
+      await expect(
+        buildBootHistoryPayload({
+          ELIZA_STATE_DIR: stateDir,
+          ELIZA_DEV_SOURCE_WATCH: "1",
+        } as NodeJS.ProcessEnv),
+      ).resolves.toMatchObject({ watch: true });
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
 });

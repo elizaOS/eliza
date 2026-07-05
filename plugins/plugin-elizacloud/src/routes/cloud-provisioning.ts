@@ -1,9 +1,11 @@
+import { readAliasedEnv } from "@elizaos/shared";
+
 function hasValue(value: string | undefined): boolean {
   return Boolean(value?.trim());
 }
 
 function hasCompatApiToken(): boolean {
-  return hasValue(process.env.ELIZA_API_TOKEN);
+  return hasValue(readAliasedEnv("ELIZA_API_TOKEN"));
 }
 
 function hasCloudApiKeyProvisioning(): boolean {
@@ -26,7 +28,7 @@ function hasCloudApiKeyProvisioning(): boolean {
  * cloud containers.
  */
 export function isCloudProvisionedContainer(): boolean {
-  const hasCloudFlag = process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  const hasCloudFlag = readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
 
   return (
     hasCloudFlag &&

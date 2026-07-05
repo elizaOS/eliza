@@ -1,3 +1,0 @@
-06-30 01:34:54.896 15145 15163 I TestRunner: started: dnsCodecParsesQueryAndBuildsBlockedUdpResponseOnDevice(ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest)
-06-30 01:34:54.901 15145 15145 D LifecycleMonitor: Lifecycle status change: androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@6e94391 in: DESTROYED
-06-30 01:34:54.904 15145 15163 I TestRunner: finished: dnsCodecParsesQueryAndBuildsBlockedUdpResponseOnDevice(ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest)

@@ -13,6 +13,7 @@
 import { existsSync } from "node:fs";
 import { join as pathJoin } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
+import { resolvePlatform } from "@elizaos/shared/runtime-env";
 import {
   ELIZA_1_PLACEHOLDER_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
@@ -341,7 +342,7 @@ function isMobileLocalInferenceRuntime(): boolean {
   if (typeof process === "undefined" || !process.env) return false;
   const platform = (
     process.env.ELIZA_MOBILE_PLATFORM ||
-    process.env.ELIZA_PLATFORM ||
+    resolvePlatform() ||
     ""
   )
     .trim()

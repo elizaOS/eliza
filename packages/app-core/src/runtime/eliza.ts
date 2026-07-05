@@ -69,11 +69,10 @@ import {
   formatError,
   formatErrorWithStack,
   isMobilePlatform,
+  readAliasedEnv,
   resolveApiExposePort,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
-  syncAppEnvToEliza,
-  syncElizaEnvAliases,
   syncResolvedApiPort,
 } from "@elizaos/shared";
 import { getApps, getPlugins, loadRegistry } from "../registry";
@@ -222,27 +221,16 @@ async function startAndRegisterAutonomyService(
   return service;
 }
 
-function syncBrandEnvAliases(): void {
-  syncElizaEnvAliases();
-  syncAppEnvToEliza();
-}
-
 export function collectPluginNames(
   ...args: Parameters<typeof upstreamCollectPluginNames>
 ): ReturnType<typeof upstreamCollectPluginNames> {
-  syncBrandEnvAliases();
-  const result = upstreamCollectPluginNames(...args);
-  syncBrandEnvAliases();
-  return result;
+  return upstreamCollectPluginNames(...args);
 }
 
 export function applyCloudConfigToEnv(
   ...args: Parameters<typeof upstreamApplyCloudConfigToEnv>
 ): ReturnType<typeof upstreamApplyCloudConfigToEnv> {
-  syncBrandEnvAliases();
-  const result = upstreamApplyCloudConfigToEnv(...args);
-  syncBrandEnvAliases();
-  return result;
+  return upstreamApplyCloudConfigToEnv(...args);
 }
 
 async function ensureAutonomyBootstrapContext(
@@ -1326,44 +1314,36 @@ export interface BootElizaRuntimeOptionsExt extends BootElizaRuntimeOptions {
 export async function bootElizaRuntime(
   opts: BootElizaRuntimeOptionsExt = {},
 ): Promise<Awaited<ReturnType<typeof upstreamBootElizaRuntime>>> {
-  syncAppEnvToEliza();
-
-  try {
-    // Eagerly download the embedding model before the full runtime boot.
-    // This way the TUI loading screen (or server logs) can show download
-    // progress instead of the app silently stalling on first embedding call.
-    // Fire-and-forget: warmupEmbeddingModelImpl declares "non-fatal: will
-    // retry on first use" semantics, and self-serializes via the module-level
-    // warmupInFlight singleton. Awaiting it here parked bootstrap on sticky
-    // HF 401 → multi-URL fallback chains with no overall deadline; the API
-    // port never bound and dev-ui.mjs's 300s watchdog tore the stack down
-    // (W-016). Voiding lets bootstrap proceed; the renderer's startup overlay
-    // still surfaces progress via updateStartupEmbeddingProgress.
-    if (isLocalEmbeddingWarmupDeferredByEnv()) {
-      logger.info(
-        "[eliza] Deferring local embedding warmup until runtime ready",
-      );
-    } else {
-      startLocalEmbeddingWarmup(opts.onEmbeddingProgress);
-    }
-
-    // Default the embedding-vector dimension plugin-sql provisions to 384 when
-    // unset: that is the compact SQL-safe column and the native width of the
-    // standalone gte-small embedding model. Setting it here lets plugin-sql
-    // provision the column without a boot-time model probe (see core
-    // provisioning). An explicit EMBEDDING_DIMENSION — a different local model,
-    // the desktop Eliza-1 sidecar's Matryoshka width, or cloud embeddings —
-    // still wins.
-    if (!process.env.EMBEDDING_DIMENSION) {
-      process.env.EMBEDDING_DIMENSION = "384";
-    }
-
-    const runtime = await upstreamBootElizaRuntime(opts);
-    // Voice warmup fires inside repairRuntimeAfterBoot (the shared ready-point).
-    return runtime ? await repairRuntimeAfterBoot(runtime) : runtime;
-  } finally {
-    syncElizaEnvAliases();
+  // Eagerly download the embedding model before the full runtime boot.
+  // This way the TUI loading screen (or server logs) can show download
+  // progress instead of the app silently stalling on first embedding call.
+  // Fire-and-forget: warmupEmbeddingModelImpl declares "non-fatal: will
+  // retry on first use" semantics, and self-serializes via the module-level
+  // warmupInFlight singleton. Awaiting it here parked bootstrap on sticky
+  // HF 401 → multi-URL fallback chains with no overall deadline; the API
+  // port never bound and dev-ui.mjs's 300s watchdog tore the stack down
+  // (W-016). Voiding lets bootstrap proceed; the renderer's startup overlay
+  // still surfaces progress via updateStartupEmbeddingProgress.
+  if (isLocalEmbeddingWarmupDeferredByEnv()) {
+    logger.info("[eliza] Deferring local embedding warmup until runtime ready");
+  } else {
+    startLocalEmbeddingWarmup(opts.onEmbeddingProgress);
   }
+
+  // Default the embedding-vector dimension plugin-sql provisions to 384 when
+  // unset: that is the compact SQL-safe column and the native width of the
+  // standalone gte-small embedding model. Setting it here lets plugin-sql
+  // provision the column without a boot-time model probe (see core
+  // provisioning). An explicit EMBEDDING_DIMENSION — a different local model,
+  // the desktop Eliza-1 sidecar's Matryoshka width, or cloud embeddings —
+  // still wins.
+  if (!process.env.EMBEDDING_DIMENSION) {
+    process.env.EMBEDDING_DIMENSION = "384";
+  }
+
+  const runtime = await upstreamBootElizaRuntime(opts);
+  // Voice warmup fires inside repairRuntimeAfterBoot (the shared ready-point).
+  return runtime ? await repairRuntimeAfterBoot(runtime) : runtime;
 }
 
 export interface StartElizaOptionsExt extends StartElizaOptions {
@@ -1635,9 +1615,8 @@ export function getPgliteRecoveryRetrySkipPlugins(): string[] {
 export async function startEliza(
   options?: StartElizaOptionsExt,
 ): Promise<Awaited<ReturnType<typeof upstreamStartEliza>>> {
-  syncAppEnvToEliza();
   // Eliza app: load PTY / coding-swarm orchestration unless explicitly opted out.
-  const orchRaw = process.env.ELIZA_AGENT_ORCHESTRATOR?.trim().toLowerCase();
+  const orchRaw = readAliasedEnv("ELIZA_AGENT_ORCHESTRATOR")?.toLowerCase();
   if (orchRaw !== "0" && orchRaw !== "false" && orchRaw !== "no") {
     process.env.ELIZA_AGENT_ORCHESTRATOR = "1";
   }
@@ -1657,237 +1636,233 @@ export async function startEliza(
   // without an explicit one; `startApiServer` later seeds that same
   // singleton with the live runtime via its `server.updateRuntime` wrapper,
   // so the early listener picks up the runtime as soon as it's available.
-  try {
-    patchHttpCreateServerForCompat();
-    const earlyCompatState = getSharedCompatRuntimeState();
+  patchHttpCreateServerForCompat();
+  const earlyCompatState = getSharedCompatRuntimeState();
 
-    // Eagerly download the embedding model with progress reporting.
-    // Fire-and-forget — see comment at the matching call in bootElizaRuntime
-    // (W-016): awaiting parks bootstrap; voiding lets the API port bind on
-    // time while the warmup runs alongside.
-    if (isLocalEmbeddingWarmupDeferredByEnv()) {
+  // Eagerly download the embedding model with progress reporting.
+  // Fire-and-forget — see comment at the matching call in bootElizaRuntime
+  // (W-016): awaiting parks bootstrap; voiding lets the API port bind on
+  // time while the warmup runs alongside.
+  if (isLocalEmbeddingWarmupDeferredByEnv()) {
+    logger.info("[eliza] Deferring local embedding warmup until runtime ready");
+  } else {
+    startLocalEmbeddingWarmup(options?.onEmbeddingProgress);
+  }
+
+  // Cap embedding dimension to 384 — see comment in bootElizaRuntime.
+  if (!process.env.EMBEDDING_DIMENSION) {
+    process.env.EMBEDDING_DIMENSION = "384";
+  }
+
+  if (options?.serverOnly) {
+    bootLap("startEliza:serverOnly entry");
+    let currentRuntime: AgentRuntime | undefined;
+
+    // Boot (or re-boot) the runtime headless + repair, and hand the live
+    // runtime to the early-installed compat wrapper so `/api/tts/*`,
+    // `/api/database`, `/api/runtime/mode`, and every other compat-dispatcher
+    // path can resolve. Without the latter, `state.current` stays null and
+    // `handleCompatRoute` short-circuits. Used for the initial async boot AND
+    // the `/api/agent/restart` handler.
+    const bootServerOnlyRuntime = async (): Promise<
+      AgentRuntime | undefined
+    > => {
+      const booted =
+        (await upstreamStartElizaWithPgliteCompat({
+          ...options,
+          headless: true,
+          serverOnly: false,
+        })) ?? undefined;
+      const repaired = booted ? await repairRuntimeAfterBoot(booted) : booted;
+      earlyCompatState.current = repaired ?? null;
+      return repaired;
+    };
+
+    // Desktop launcher sets ELIZA_API_PORT (default 31337) to match the
+    // renderer's hardcoded API base; honor it when present. CLI/server-only
+    // mode (no ELIZA_API_PORT) keeps the legacy `resolveServerOnlyPort`
+    // default (2138) so this change is transparent for non-desktop users.
+    // The presence check is alias-aware so a branded `MILADY_API_PORT` also
+    // selects the desktop port without relying on the process.env mirror.
+    const apiPort = readAliasedEnv("ELIZA_API_PORT")
+      ? resolveDesktopApiPort(process.env)
+      : resolveServerOnlyPort(process.env);
+    let actualApiPort: number;
+    let updateRuntime:
+      | Awaited<ReturnType<typeof startApiServer>>["updateRuntime"]
+      | undefined;
+    let updateStartup:
+      | Awaited<ReturnType<typeof startApiServer>>["updateStartup"]
+      | undefined;
+    // Local-agent IPC mode binds NO TCP listener (frontend reaches the
+    // runtime over native IPC), unless the operator opts back in with
+    // ELIZA_API_EXPOSE_PORT for dev tooling / LAN access / e2e harnesses.
+    // Every other caller (desktop launcher, `eliza start`, plain server-only)
+    // leaves `localAgentMode` unset, so `skipApiListen` is false and the bind
+    // path is byte-for-byte identical to today. (#12180)
+    const skipApiListen =
+      options?.localAgentMode === true &&
+      resolveApiExposePort(process.env) !== true;
+    if (skipApiListen) {
+      bootLap("startEliza:local-agent IPC mode — skipping API TCP bind");
       logger.info(
-        "[eliza] Deferring local embedding warmup until runtime ready",
+        "[eliza] Local-agent IPC mode: initializing route kernel without a TCP listener (set ELIZA_API_EXPOSE_PORT=1 to re-open the port)",
       );
-    } else {
-      startLocalEmbeddingWarmup(options?.onEmbeddingProgress);
     }
-
-    // Cap embedding dimension to 384 — see comment in bootElizaRuntime.
-    if (!process.env.EMBEDDING_DIMENSION) {
-      process.env.EMBEDDING_DIMENSION = "384";
-    }
-
-    if (options?.serverOnly) {
-      bootLap("startEliza:serverOnly entry");
-      let currentRuntime: AgentRuntime | undefined;
-
-      // Boot (or re-boot) the runtime headless + repair, and hand the live
-      // runtime to the early-installed compat wrapper so `/api/tts/*`,
-      // `/api/database`, `/api/runtime/mode`, and every other compat-dispatcher
-      // path can resolve. Without the latter, `state.current` stays null and
-      // `handleCompatRoute` short-circuits. Used for the initial async boot AND
-      // the `/api/agent/restart` handler.
-      const bootServerOnlyRuntime = async (): Promise<
-        AgentRuntime | undefined
-      > => {
-        const booted =
-          (await upstreamStartElizaWithPgliteCompat({
-            ...options,
-            headless: true,
-            serverOnly: false,
-          })) ?? undefined;
-        const repaired = booted ? await repairRuntimeAfterBoot(booted) : booted;
-        earlyCompatState.current = repaired ?? null;
-        return repaired;
-      };
-
-      // Desktop launcher sets ELIZA_API_PORT (default 31337) to match the
-      // renderer's hardcoded API base; honor it when present. CLI/server-only
-      // mode (no ELIZA_API_PORT) keeps the legacy `resolveServerOnlyPort`
-      // default (2138) so this change is transparent for non-desktop users.
-      const apiPort = process.env.ELIZA_API_PORT
-        ? resolveDesktopApiPort(process.env)
-        : resolveServerOnlyPort(process.env);
-      let actualApiPort: number;
-      let updateRuntime:
-        | Awaited<ReturnType<typeof startApiServer>>["updateRuntime"]
-        | undefined;
-      let updateStartup:
-        | Awaited<ReturnType<typeof startApiServer>>["updateStartup"]
-        | undefined;
-      // Local-agent IPC mode binds NO TCP listener (frontend reaches the
-      // runtime over native IPC), unless the operator opts back in with
-      // ELIZA_API_EXPOSE_PORT for dev tooling / LAN access / e2e harnesses.
-      // Every other caller (desktop launcher, `eliza start`, plain server-only)
-      // leaves `localAgentMode` unset, so `skipApiListen` is false and the bind
-      // path is byte-for-byte identical to today. (#12180)
-      const skipApiListen =
-        options?.localAgentMode === true &&
-        resolveApiExposePort(process.env) !== true;
-      if (skipApiListen) {
-        bootLap("startEliza:local-agent IPC mode — skipping API TCP bind");
-        logger.info(
-          "[eliza] Local-agent IPC mode: initializing route kernel without a TCP listener (set ELIZA_API_EXPOSE_PORT=1 to re-open the port)",
-        );
-      }
-      bootLap(
-        "startEliza:before startApiServer (config/registry/embedding setup done)",
-      );
-      try {
-        // Bind the API server FIRST with no runtime yet (state "starting"), so
-        // the desktop webview connects + hydrates in PARALLEL with the heavier
-        // agent boot instead of waiting the full boot. The runtime is wired in
-        // via updateRuntime once it finishes booting below. Mirrors the
-        // dev-server's bind-first orchestration. In local-agent IPC mode
-        // (skipApiListen) the same route kernel is initialized in-process but no
-        // socket is opened; the IPC bridge drives dispatchRoute directly.
-        const startedApiServer = await startApiServer({
-          port: apiPort,
-          skipListen: skipApiListen,
-          initialAgentState: "starting",
-          onRestart: async () => {
-            if (currentRuntime) {
-              await upstreamShutdownRuntime(
-                currentRuntime,
-                "server-only restart",
-              );
-            }
-            currentRuntime = await bootServerOnlyRuntime();
-            return currentRuntime ?? null;
-          },
-        });
-        actualApiPort = startedApiServer.port;
-        updateRuntime = startedApiServer.updateRuntime;
-        updateStartup = startedApiServer.updateStartup;
-      } catch (apiErr) {
-        const apiErrMsg =
-          apiErr instanceof Error
-            ? (apiErr.stack ?? apiErr.message)
-            : String(apiErr);
-        logger.error(`[eliza] API server failed to start: ${apiErrMsg}`);
-        console.error(apiErrMsg);
-        if (options?.serverOnly) {
-          process.exit(1);
-        }
-        throw apiErr;
-      }
-
-      if (!skipApiListen) {
-        // WHY: `startApiServer` may bind a different port than requested (busy
-        // socket, upstream policy). Shells, scripts, and follow-up code reading
-        // env must match the real listener or health checks and user-facing URLs
-        // disagree with `GET /api/health`. In local-agent IPC mode no port is
-        // bound, so syncing env to `actualApiPort` (a never-bound port) or
-        // emitting a "listening on http://…" URL would be a lie.
-        syncResolvedApiPort(process.env, actualApiPort, {
-          overwriteUiPort: true,
-        });
-        // Invalidate cached CORS port set so the new port is allowed.
-        // server-cors is statically imported at the top of this module — the
-        // previous dynamic import was INEFFECTIVE_DYNAMIC_IMPORT.
-        invalidateCorsAllowedPorts();
-
-        logger.info(
-          `[eliza] API server listening on http://localhost:${actualApiPort} (agent booting…)`,
-        );
-        console.log(`[eliza] Control UI: http://localhost:${actualApiPort}`);
-        bootLap("startEliza:API bound (webview can connect, ready:false)");
-      } else {
-        logger.info(
-          "[eliza] Local-agent IPC mode: route kernel ready (no TCP listener bound)",
-        );
-        bootLap("startEliza:route kernel ready (IPC mode, no TCP bind)");
-      }
-
-      // Now boot the runtime; the API is already reachable (state "starting"),
-      // so the UI is connecting + hydrating while this runs, then flips to
-      // "running" once the agent is ready.
-      currentRuntime = await bootServerOnlyRuntime();
-      if (!currentRuntime) {
-        updateStartup?.({ phase: "error", state: "error" });
-        return currentRuntime;
-      }
-      updateRuntime?.(currentRuntime);
-      updateStartup?.({ phase: "running", attempt: 0, state: "running" });
-      bootLap("startEliza:runtime booted + ready:true");
-
-      console.log("[eliza] Server running. Press Ctrl+C to stop.");
-
-      const { buildSandboxRegistryFromEnv } = await import(
-        "@elizaos/shared/sandbox-registry"
-      );
-      const sandboxRegistry = buildSandboxRegistryFromEnv();
-      if (sandboxRegistry) {
-        try {
-          await sandboxRegistry.register();
-        } catch (err) {
-          logger.error(
-            `[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here until the next heartbeat succeeds): ${formatError(err)}`,
-          );
-        }
-        sandboxRegistry.startHeartbeat(30_000);
-      }
-
-      const keepAlive = setInterval(() => {}, 1 << 30);
-      let isCleaningUp = false;
-      const cleanup = async () => {
-        if (isCleaningUp) {
-          return;
-        }
-        isCleaningUp = true;
-        clearInterval(keepAlive);
-        // Force exit if graceful shutdown hangs for more than 10 seconds.
-        const forceExitTimer = setTimeout(() => {
-          logger.warn("[eliza] Shutdown timed out after 10s — forcing exit");
-          process.exit(1);
-        }, 10_000);
-        forceExitTimer.unref();
-        if (sandboxRegistry) {
-          sandboxRegistry.stopHeartbeat();
-          try {
-            await sandboxRegistry.unregister();
-          } catch (err) {
-            logger.warn(
-              `[eliza] Sandbox unregister failed (keys will expire via TTL): ${formatError(err)}`,
+    bootLap(
+      "startEliza:before startApiServer (config/registry/embedding setup done)",
+    );
+    try {
+      // Bind the API server FIRST with no runtime yet (state "starting"), so
+      // the desktop webview connects + hydrates in PARALLEL with the heavier
+      // agent boot instead of waiting the full boot. The runtime is wired in
+      // via updateRuntime once it finishes booting below. Mirrors the
+      // dev-server's bind-first orchestration. In local-agent IPC mode
+      // (skipApiListen) the same route kernel is initialized in-process but no
+      // socket is opened; the IPC bridge drives dispatchRoute directly.
+      const startedApiServer = await startApiServer({
+        port: apiPort,
+        skipListen: skipApiListen,
+        initialAgentState: "starting",
+        onRestart: async () => {
+          if (currentRuntime) {
+            await upstreamShutdownRuntime(
+              currentRuntime,
+              "server-only restart",
             );
           }
-        }
-        if (currentRuntime) {
-          await upstreamShutdownRuntime(currentRuntime, "server-only shutdown");
-        }
-        // Stop the trigger event bridge so its event handlers do not
-        // fire against the runtime after shutdown begins.
-        if (_triggerEventBridge) {
-          try {
-            _triggerEventBridge.stop();
-          } catch {
-            /* ignore */
-          }
-          _triggerEventBridge = null;
-        }
-        process.exit(0);
-      };
-
-      if (!signalHandlersRegistered) {
-        signalHandlersRegistered = true;
-        process.on("SIGINT", () => void cleanup());
-        process.on("SIGTERM", () => void cleanup());
+          currentRuntime = await bootServerOnlyRuntime();
+          return currentRuntime ?? null;
+        },
+      });
+      actualApiPort = startedApiServer.port;
+      updateRuntime = startedApiServer.updateRuntime;
+      updateStartup = startedApiServer.updateStartup;
+    } catch (apiErr) {
+      const apiErrMsg =
+        apiErr instanceof Error
+          ? (apiErr.stack ?? apiErr.message)
+          : String(apiErr);
+      logger.error(`[eliza] API server failed to start: ${apiErrMsg}`);
+      console.error(apiErrMsg);
+      if (options?.serverOnly) {
+        process.exit(1);
       }
+      throw apiErr;
+    }
+
+    if (!skipApiListen) {
+      // WHY: `startApiServer` may bind a different port than requested (busy
+      // socket, upstream policy). Shells, scripts, and follow-up code reading
+      // env must match the real listener or health checks and user-facing URLs
+      // disagree with `GET /api/health`. In local-agent IPC mode no port is
+      // bound, so syncing env to `actualApiPort` (a never-bound port) or
+      // emitting a "listening on http://…" URL would be a lie.
+      syncResolvedApiPort(process.env, actualApiPort, {
+        overwriteUiPort: true,
+      });
+      // Invalidate cached CORS port set so the new port is allowed.
+      // server-cors is statically imported at the top of this module — the
+      // previous dynamic import was INEFFECTIVE_DYNAMIC_IMPORT.
+      invalidateCorsAllowedPorts();
+
+      logger.info(
+        `[eliza] API server listening on http://localhost:${actualApiPort} (agent booting…)`,
+      );
+      console.log(`[eliza] Control UI: http://localhost:${actualApiPort}`);
+      bootLap("startEliza:API bound (webview can connect, ready:false)");
+    } else {
+      logger.info(
+        "[eliza] Local-agent IPC mode: route kernel ready (no TCP listener bound)",
+      );
+      bootLap("startEliza:route kernel ready (IPC mode, no TCP bind)");
+    }
+
+    // Now boot the runtime; the API is already reachable (state "starting"),
+    // so the UI is connecting + hydrating while this runs, then flips to
+    // "running" once the agent is ready.
+    currentRuntime = await bootServerOnlyRuntime();
+    if (!currentRuntime) {
+      updateStartup?.({ phase: "error", state: "error" });
       return currentRuntime;
     }
+    updateRuntime?.(currentRuntime);
+    updateStartup?.({ phase: "running", attempt: 0, state: "running" });
+    bootLap("startEliza:runtime booted + ready:true");
 
-    const runtime = await upstreamStartElizaWithPgliteCompat(options);
-    const repaired = runtime ? await repairRuntimeAfterBoot(runtime) : runtime;
-    // Same wiring as the serverOnly branch above — hand the live runtime to
-    // the early-installed compat wrapper so its dispatcher engages.
-    if (repaired) {
-      earlyCompatState.current = repaired;
+    console.log("[eliza] Server running. Press Ctrl+C to stop.");
+
+    const { buildSandboxRegistryFromEnv } = await import(
+      "@elizaos/shared/sandbox-registry"
+    );
+    const sandboxRegistry = buildSandboxRegistryFromEnv();
+    if (sandboxRegistry) {
+      try {
+        await sandboxRegistry.register();
+      } catch (err) {
+        logger.error(
+          `[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here until the next heartbeat succeeds): ${formatError(err)}`,
+        );
+      }
+      sandboxRegistry.startHeartbeat(30_000);
     }
-    return repaired;
-  } finally {
-    syncElizaEnvAliases();
+
+    const keepAlive = setInterval(() => {}, 1 << 30);
+    let isCleaningUp = false;
+    const cleanup = async () => {
+      if (isCleaningUp) {
+        return;
+      }
+      isCleaningUp = true;
+      clearInterval(keepAlive);
+      // Force exit if graceful shutdown hangs for more than 10 seconds.
+      const forceExitTimer = setTimeout(() => {
+        logger.warn("[eliza] Shutdown timed out after 10s — forcing exit");
+        process.exit(1);
+      }, 10_000);
+      forceExitTimer.unref();
+      if (sandboxRegistry) {
+        sandboxRegistry.stopHeartbeat();
+        try {
+          await sandboxRegistry.unregister();
+        } catch (err) {
+          logger.warn(
+            `[eliza] Sandbox unregister failed (keys will expire via TTL): ${formatError(err)}`,
+          );
+        }
+      }
+      if (currentRuntime) {
+        await upstreamShutdownRuntime(currentRuntime, "server-only shutdown");
+      }
+      // Stop the trigger event bridge so its event handlers do not
+      // fire against the runtime after shutdown begins.
+      if (_triggerEventBridge) {
+        try {
+          _triggerEventBridge.stop();
+        } catch {
+          /* ignore */
+        }
+        _triggerEventBridge = null;
+      }
+      process.exit(0);
+    };
+
+    if (!signalHandlersRegistered) {
+      signalHandlersRegistered = true;
+      process.on("SIGINT", () => void cleanup());
+      process.on("SIGTERM", () => void cleanup());
+    }
+    return currentRuntime;
   }
+
+  const runtime = await upstreamStartElizaWithPgliteCompat(options);
+  const repaired = runtime ? await repairRuntimeAfterBoot(runtime) : runtime;
+  // Same wiring as the serverOnly branch above — hand the live runtime to
+  // the early-installed compat wrapper so its dispatcher engages.
+  if (repaired) {
+    earlyCompatState.current = repaired;
+  }
+  return repaired;
 }
 
 function isDirectRuntimeRun(): boolean {

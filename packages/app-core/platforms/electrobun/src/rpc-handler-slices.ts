@@ -1,4 +1,6 @@
 /** Implements Electrobun desktop rpc handler slices ts behavior for app-core shell integration. */
+
+import { showBackgroundNoticeOnce } from "./background-notice";
 import type { DynamicViewRegistry } from "./dynamic-views/registry";
 import type { DynamicViewSessionManager } from "./dynamic-views/session-manager";
 import type {
@@ -8,7 +10,10 @@ import type {
   DynamicViewRegisterParams,
   DynamicViewUnregisterParams,
 } from "./dynamic-views/types";
-import type { DesktopManagedWindowSnapshot } from "./rpc-schema";
+import type {
+  DesktopManagedWindowSnapshot,
+  NotificationOptions,
+} from "./rpc-schema";
 import { isDetachedSurface } from "./surface-windows";
 
 type DetachedWindowSurface =
@@ -34,6 +39,17 @@ interface WindowRpcDesktop {
     alwaysOnTop?: boolean;
   }): Promise<DesktopManagedWindowSnapshot | null>;
   setManagedWindowAlwaysOnTop(id: string, flag: boolean): boolean;
+}
+
+interface NotificationRpcDesktop {
+  showNotification(options: NotificationOptions): Promise<{ id: string }>;
+  closeNotification(options: { id: string }): Promise<void>;
+}
+
+interface NotificationRpcFileSystem {
+  existsSync(filePath: string): boolean;
+  mkdirSync(dirPath: string, options?: { recursive?: boolean }): void;
+  writeFileSync(filePath: string, data: string, encoding: BufferEncoding): void;
 }
 
 export function normalizeRendererRoutePath(path: string): string {
@@ -91,6 +107,32 @@ export function buildWindowRpcHandlers({
       flag: boolean;
     }) => ({
       success: desktop.setManagedWindowAlwaysOnTop(params.id, params.flag),
+    }),
+  };
+}
+
+export function buildNotificationRpcHandlers({
+  desktop,
+  fileSystem,
+  userDataDir,
+  showNotification,
+}: {
+  desktop: NotificationRpcDesktop;
+  fileSystem: NotificationRpcFileSystem;
+  userDataDir: string;
+  showNotification: (options: { title: string; body: string }) => void;
+}) {
+  return {
+    desktopShowNotification: async (params: NotificationOptions) =>
+      desktop.showNotification(params),
+    desktopCloseNotification: async (params: { id: string }) =>
+      desktop.closeNotification(params),
+    desktopShowBackgroundNotice: async () => ({
+      shown: showBackgroundNoticeOnce({
+        fileSystem,
+        userDataDir,
+        showNotification,
+      }),
     }),
   };
 }

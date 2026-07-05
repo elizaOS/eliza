@@ -1,3 +1,0 @@
-$ bun run --cwd plugins/plugin-agent-orchestrator lint:check
-$ bunx @biomejs/biome check . --no-errors-on-unmatched
-Checked 242 files in 522ms. No fixes applied.

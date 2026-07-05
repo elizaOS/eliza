@@ -1,4 +1,0 @@
-device serial: 27051JEGR10034
-model: Pixel 6a
-android release: 16 (API 36)
-build fingerprint: google/bluejay/bluejay:16/CP1A.260405.005/15001963:user/release-keys

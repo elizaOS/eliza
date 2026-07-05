@@ -1,9 +1,0 @@
-$ vitest run src/actions/playlistOp.test.ts
-
- RUN  v4.1.5 /home/shaw/eliza/eliza-pr10591/plugins/plugin-music
-
-
- Test Files  1 passed (1)
-      Tests  4 passed (4)
-   Start at  15:36:59
-   Duration  407ms (transform 142ms, setup 64ms, import 138ms, tests 9ms, environment 0ms)

@@ -57,6 +57,9 @@ export interface SupervisorTaskView {
   staleness?: string;
   /** The originating chat target; null tasks (no chat origin) are skipped. */
   origin: { roomId: string; source: string } | null;
+  /** True when the task is parked in the admission queue (waiting for a session
+   *  slot). Folded into the digest as a queued count, not a per-task line. */
+  queued?: boolean;
 }
 
 // Coarse staleness bands (minutes → label), highest first. Bucketed on purpose:
@@ -93,13 +96,17 @@ const PROGRESS_EXPECTED_STATUSES: ReadonlySet<OrchestratorTaskStatus> = new Set(
   ["active", "validating"],
 );
 
-/** Compose the digest body for one room's set of live tasks. Deterministic. */
+/** Compose the digest body for one room's set of live tasks. Deterministic.
+ * Queued (admission-parked) tasks are summarized as a count line, not per-task
+ * rows, so a backlog of waiting tasks doesn't flood the digest. */
 export function composeRoomDigest(views: SupervisorTaskView[]): string {
+  const active = views.filter((v) => !v.queued);
+  const queuedCount = views.filter((v) => v.queued).length;
   const header =
-    views.length === 1
+    active.length === 1
       ? "📡 Task update"
-      : `📡 Task update — ${views.length} active`;
-  const lines = views
+      : `📡 Task update — ${active.length} active`;
+  const lines = active
     .slice()
     .sort((a, b) => a.label.localeCompare(b.label))
     .map((v) => {
@@ -109,6 +116,9 @@ export function composeRoomDigest(views: SupervisorTaskView[]): string {
       const stale = v.staleness ? ` ${v.staleness}` : "";
       return `${statusEmoji(v.status)} ${v.label} — ${v.status}${sessions}${detail}${stale}`;
     });
+  if (queuedCount > 0) {
+    lines.push(`⏳ ${queuedCount} queued (waiting for a session slot)`);
+  }
   return [header, ...lines].join("\n");
 }
 
@@ -138,7 +148,9 @@ export async function runSupervisorTick(
     { source: string; views: SupervisorTaskView[] }
   >();
   for (const v of views) {
-    if (!v.origin || !LIVE_STATUSES.has(v.status)) continue;
+    // Queued tasks are `open` (not a LIVE_STATUS) but still belong in the digest
+    // as the queued-count line, so admit them past the status gate.
+    if (!v.origin || (!v.queued && !LIVE_STATUSES.has(v.status))) continue;
     const bucket = byRoom.get(v.origin.roomId) ?? {
       source: v.origin.source,
       views: [],
@@ -210,6 +222,7 @@ interface TaskServiceLike {
       activeSessionCount: number;
       latestSessionLabel: string | null;
       latestActivityAt: number | null;
+      admission?: { state: "queued" } | undefined;
     }>
   >;
   getTaskOriginTarget(
@@ -325,10 +338,14 @@ export class TaskSupervisorService extends Service {
     // calls this fire-and-forget) — noisy, and fatal under strict handling.
     try {
       const tasks = await taskSvc.listTasks({ includeArchived: false });
-      const live = tasks.filter((t) => LIVE_STATUSES.has(t.status));
+      // Live tasks drive per-task lines; admission-parked tasks (status `open`
+      // with an admission record) drive the queued-count line.
+      const surfaced = tasks.filter(
+        (t) => LIVE_STATUSES.has(t.status) || t.admission?.state === "queued",
+      );
       const now = Date.now();
       const views: SupervisorTaskView[] = await Promise.all(
-        live.map(async (t) => ({
+        surfaced.map(async (t) => ({
           id: t.id,
           label: t.title,
           status: t.status,
@@ -340,6 +357,7 @@ export class TaskSupervisorService extends Service {
             ? supervisorStalenessLabel(t.latestActivityAt, now)
             : undefined,
           origin: await taskSvc.getTaskOriginTarget(t.id),
+          queued: t.admission?.state === "queued",
         })),
       );
       const result = await runSupervisorTick(

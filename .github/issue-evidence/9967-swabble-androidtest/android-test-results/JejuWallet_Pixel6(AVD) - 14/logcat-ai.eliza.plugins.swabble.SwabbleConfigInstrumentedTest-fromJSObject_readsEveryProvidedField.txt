@@ -1,2 +1,0 @@
-06-30 02:05:02.249  2770  2817 I TestRunner: started: fromJSObject_readsEveryProvidedField(ai.eliza.plugins.swabble.SwabbleConfigInstrumentedTest)
-06-30 02:05:02.252  2770  2817 I TestRunner: finished: fromJSObject_readsEveryProvidedField(ai.eliza.plugins.swabble.SwabbleConfigInstrumentedTest)

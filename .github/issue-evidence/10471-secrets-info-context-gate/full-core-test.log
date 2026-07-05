@@ -1,7 +1,0 @@
-$ node ../scripts/run-vitest.mjs run
-
- RUN  v4.1.5 /Users/shawwalters/.codex/worktrees/36cd/eliza/packages/core
-
- ❯ src/plugin.test.ts (2 tests | 2 failed) 24ms
-     × honors the legacy plugin auto-install opt-out alias 12ms
-     × reaches Bun when no auto-install opt-out env is set 10ms

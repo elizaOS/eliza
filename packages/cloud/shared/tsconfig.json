@@ -28,7 +28,6 @@
       "@elizaos/cloud-routing/*": ["../routing/src/*"],
       "@elizaos/cloud-sdk": ["../sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
-      "@elizaos/app-core/account-pool": ["../../app-core/src/account-pool.ts"],
       "@elizaos/contracts": ["../../contracts/src/index.ts"],
       "@elizaos/contracts/*": ["../../contracts/src/*"],
       "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],

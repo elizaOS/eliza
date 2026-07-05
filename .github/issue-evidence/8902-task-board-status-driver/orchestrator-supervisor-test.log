@@ -1,9 +1,0 @@
-$ bunx vitest run --config vitest.config.ts src/__tests__/task-supervisor.test.ts
-
- RUN  v4.1.5 /home/shaw/eliza/eliza-wt-8902-task-board-status-driver/plugins/plugin-agent-orchestrator
-
-
- Test Files  1 passed (1)
-      Tests  3 passed (3)
-   Start at  02:45:45
-   Duration  7.85s (transform 6.07s, setup 45ms, import 7.61s, tests 10ms, environment 0ms)

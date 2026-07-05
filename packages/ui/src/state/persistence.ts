@@ -910,6 +910,66 @@ export function saveRecentApps(apps: string[]): void {
   }, undefined);
 }
 
+/* ── Launcher recents/favorites persistence ─────────────────────────── */
+// The launcher's Recents/Favorites zones are keyed by canonical LAUNCHER VIEW
+// ID (`wallet`, `settings`, …), a different namespace from the catalog-app-name
+// keyed `recent-apps`/`favorite-apps` above (which the chat + catalog surfaces
+// own). They are kept separate so a launcher tap never rewrites the catalog's
+// app-name lists and vice versa — merging the two would conflate unlike keys.
+const LAUNCHER_RECENTS_KEY = "eliza:launcher:recents";
+const LAUNCHER_FAVORITES_KEY = "eliza:launcher:favorites";
+/** Cap on the persisted launcher recents list; older ids are evicted. */
+export const LAUNCHER_RECENTS_MAX = 8;
+
+function loadLauncherIds(key: string, max: number): string[] {
+  return tryLocalStorage(() => {
+    const stored = localStorage.getItem(key);
+    if (!stored) return [];
+    const parsed = JSON.parse(stored) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is string => typeof item === "string")
+      .slice(0, max);
+  }, []);
+}
+
+export function loadLauncherRecents(): string[] {
+  return loadLauncherIds(LAUNCHER_RECENTS_KEY, LAUNCHER_RECENTS_MAX);
+}
+
+export function saveLauncherRecents(ids: string[]): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(
+      LAUNCHER_RECENTS_KEY,
+      JSON.stringify(ids.slice(0, LAUNCHER_RECENTS_MAX)),
+    );
+  }, undefined);
+}
+
+export function loadLauncherFavorites(): string[] {
+  return loadLauncherIds(LAUNCHER_FAVORITES_KEY, Number.MAX_SAFE_INTEGER);
+}
+
+export function saveLauncherFavorites(ids: string[]): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(LAUNCHER_FAVORITES_KEY, JSON.stringify(ids));
+  }, undefined);
+}
+
+/**
+ * Move `id` to the front of the launcher recents list and persist it. Pure
+ * most-recent-first ordering with de-dup and eviction; returns the new list so
+ * the caller can update React state without a second read.
+ */
+export function recordLauncherRecent(id: string): string[] {
+  const next = [id, ...loadLauncherRecents().filter((x) => x !== id)].slice(
+    0,
+    LAUNCHER_RECENTS_MAX,
+  );
+  saveLauncherRecents(next);
+  return next;
+}
+
 /* ── Wallet enabled persistence ─────────────────────────────────────── */
 const WALLET_ENABLED_KEY = "eliza:wallet:enabled";
 

@@ -99,10 +99,12 @@ bun run --cwd packages/app cap:sync:ios               # Capacitor sync iOS only
 bun run --cwd packages/app cap:sync:android           # Capacitor sync Android only
 
 # Simulator smoke tests
-bun run --cwd packages/app test:sim:local-chat        # iOS simulator local-chat smoke
-bun run --cwd packages/app test:sim:local-chat:android
-bun run --cwd packages/app test:sim:auth:ios
-bun run --cwd packages/app test:sim:auth:android
+bun run --cwd packages/app test:e2e:ios              # Boot sim, build, auth smoke, full-Bun local chat
+bun run --cwd packages/app test:e2e:ios:cloud        # iOS e2e plus cloud provisioning probe
+bun run --cwd packages/app test:sim:local-chat        # iOS simulator local-chat smoke; requires installed app
+bun run --cwd packages/app test:sim:local-chat:android # Android emulator local-chat smoke; requires installed app
+bun run --cwd packages/app test:sim:auth:ios         # auth/callback deep-link DELIVERY + in-app handler classification (not login)
+bun run --cwd packages/app test:sim:auth:android     # same; requires an Android emulator + installed app
 
 # Mobile release preflight
 bun run --cwd packages/app preflight:ios:sideload
@@ -139,20 +141,22 @@ bun run --cwd packages/app ios:device:deploy -- --device <id>   # flags: --skip-
 bun run --cwd packages/app ios:device:logs -- --device <id> --duration 120
 bun run --cwd packages/app ios:device:logs -- --device <id> --no-console --pull-boot-trace
 
-# Watchable boot capture via the committed AppUITests XCUITest harness
-# (BootCaptureUITests): screenshots every 15 s via XCUIScreen, asserts the boot
-# reaches home or the "Startup failed:"/"Retry startup" card, exports all
-# attachments (filmstrip PNGs + AX hierarchy) from the .xcresult.
+# Watchable capture via the committed AppUITests XCUITest harness. A full run
+# shards AppUITests into fresh-container per-test/per-class invocations, with
+# uninstall/reinstall between shards so first-run and chat state cannot cascade.
+# Pass --only-testing AppUITests/<Class>[/test] for a single narrow shard.
 bun run --cwd packages/app capture:ios-sim:boot                  # simulator (booted sim auto-detected)
 bun run --cwd packages/app ios:device:capture -- --device <id> --app-path <signed App.app>  # physical device
 ```
 
 Produced artifacts: deploy stages into `ios/build/device-deploy-stage/`; logs
 land in `ios/build/device-logs/`; captures land in
-`ios/build/boot-capture/<timestamp>/` (`attachments/` + `BootCapture.xcresult`
-+ `test-summary.json`) unless `--output` is given. The harness source lives in
-the canonical template (`packages/app-core/platforms/ios/App/AppUITests/` +
-the `AppUITests` target/scheme in the template Xcode project) and is
+`ios/build/boot-capture/<timestamp>/` (`shards/<id>/attachments/`,
+`shards/<id>/*.xcresult`, per-shard raw `test-summary.json`, and a top-level
+aggregate `test-summary.json` naming each shard/container reset) unless
+`--output` is given. The harness source lives in the canonical template
+(`packages/app-core/platforms/ios/App/AppUITests/` + the `AppUITests`
+target/scheme in the template Xcode project) and is
 materialized into the gitignored `packages/app/ios` by cap sync. Pure decision
 logic (profile matching/selection, entitlement derivation, plist/xctestrun
 handling) is in `scripts/ios-device-lib.mjs`, unit-tested by
@@ -162,6 +166,43 @@ path defaults to `Documents/eliza-boot-trace.jsonl` (+ best-effort rotated
 primary file via the Agent plugin's `appendBootTrace` bridge, so there is no
 separate renderer stream) — keep in sync with `ElizaStartupTrace.swift`;
 `ELIZA_IOS_BOOT_TRACE_PATH` overrides the pull path (script-side only).
+
+## iOS runtime-mode CI coverage (#13578)
+
+The iOS app ships three runtime modes; their unattended (CI) coverage is:
+
+| Mode | On-device engine | Automated lane | Gating |
+|---|---|---|---|
+| **remote** (pair to a host agent) | none — proxies to a paired host | `build-ios` job in `.github/workflows/mobile-build-smoke.yml` (onboarding smoke + `serve-real-local-agent` host + local-chat smoke) | PR-blocking |
+| **local** (full-Bun on-device engine) | full Bun runtime + on-device GGUF | `build-ios-local` job in `mobile-build-smoke.yml` — nightly `schedule` (too heavy for the PR path): builds `build:ios:local:sim` (`ELIZA_IOS_FULL_BUN_ENGINE=1`), caches + stages a real small GGUF, boots a sim, installs, runs `test:sim:local-chat:ios:full-bun` and asserts the exact on-device reply | nightly-gating |
+| **cloud** (managed agent) | none — talks to Eliza Cloud | `ios-cloud-mode` job in `mobile-build-smoke.yml` — nightly `schedule` / `workflow_dispatch` (provisioning a real Hetzner-backed agent costs org credit, so it never runs on the PR path). Seeds a real Cloud credential from `secrets.ELIZACLOUD_API_KEY` (the headless session seed — bypasses the interactive device-code / OAuth browser leg that XCTSkips on the simulator) and runs `cloud-provisioning-e2e.mjs --fresh-agent`: creates a Cloud agent, waits for its runtime URL, and probes `/api/status|health|me`. With the seed present it is a HARD gate (no `continue-on-error`); when the secret is absent it records an explicit skip in the step summary. | nightly-gating (when seeded) |
+
+Keep this table honest: an N/A row must name what is missing, not hide it.
+
+The XCUITest cloud-onboarding path (`testCloudOnboardingChatAndVoice`) still XCTSkips at the OAuth wall without a device Cloud session; the `ios-cloud-mode` lane covers the cloud *runtime* mode programmatically (the same path `ios-e2e.mjs --cloud` calls) rather than driving the simulator UI through OAuth. A device-UI cloud-onboarding lane needs the WebView-side session seed (`steward_session_token` / `POST /api/cloud/login/persist`) and is tracked in #13578 done-when #2.
+
+### What `test:sim:auth` proves (and does not) (#13693)
+
+`test:sim:auth[:ios|:android]` (`packages/app-core/scripts/mobile-auth-simulator-smoke.mjs`)
+is a **callback-delivery + in-app-handler smoke, not a login smoke.** It fires a
+synthetic `<scheme>://auth/callback?state=…&code=…` deep link that no token
+endpoint would accept, then reads back — through the Capacitor-Preferences
+handshake the onboarding smoke pioneered — what the renderer's `auth/callback`
+handler wrote (`recordIosAuthCallbackSmoke` in `src/main.tsx`, armed by the
+smoke's `eliza:auth-callback-smoke:request`/`:result` keys). The shared
+`assertAuthCallbackResult` contract then asserts the security end state: the
+OS-delivered callback is explicitly rejected (`accepted:false`), classified
+(`classification:"synthetic_callback_rejected"`), and **left the active session
+untouched** (`sessionChanged:false`) — a deep link must never authenticate or
+swap the app session. A handler that merely echoed the URL back, dropped it, or
+authenticated off it now fails the lane instead of passing on delivery alone.
+
+It does **not** exercise a genuine OAuth exchange or a logged-in end state; that
+`--real` mode is blocked on the headless staging-Cloud session seed tracked in
+#13578 / #13693 done-when #2. The pure end-state contract is verifiable without a
+device via `node --test packages/app-core/scripts/mobile-auth-simulator-smoke-endstate.test.mjs`
+(which additionally round-trips the assertion through a booted simulator's real
+`xcrun simctl defaults` store when one is available).
 
 ## Config / env vars
 
@@ -215,6 +256,10 @@ bun run --cwd packages/app test:e2e
 - **Plugin module caching.** `main.tsx` resolves each plugin module exactly once via the `initializeAppModules()` Promise.all; `React.lazy()` consumers share the same promise via `lazyNamedComponent()`.
 - **`@elizaos/app-core` must be evaluated before the boot config is assembled** — it owns the `AppBootConfig` singleton. `main.tsx` statically imports its desktop bindings, so the package loads with the entry chunk; never re-add a dynamic `import("@elizaos/app-core")` on the boot path — its escaping namespace anchors the whole `@elizaos/ui/browser` barrel into the entry chunk (#13187).
 - **Desktop API base injection.** Electrobun injects `window.__ELIZA_APP_API_BASE__` before React boots via its static server; Vite dev uses a `<script>` tag injected by `appDevWsBasePlugin()`.
+- **Test auth contract.** Use `docs/TEST_AUTH.md` for the canonical automated
+  auth path per surface. Renderer specs seed Steward sessions through
+  `test/ui-smoke/helpers/test-auth.ts`; do not hand-roll
+  `steward_session_token` values in individual specs.
 - **iOS store CSP.** When `ELIZA_BUILD_VARIANT=store` + `ELIZA_RELEASE_AUTHORITY=apple-app-store`, the build strips all `localhost`/`127.0.0.1` CSP sources and Capacitor allowNavigation entries. Do not hardcode local origins.
 - **Capacitor `ios/` and `android/` dirs are generated.** Run `bun run --cwd packages/app cap:sync` after any `capacitor.config.ts` change. Do not hand-edit the native project settings that Capacitor generates.
 - **Vite config aliases.** `vite.config.ts` builds workspace package aliases dynamically from `packages/` and `plugins/` directories. Native Capacitor plugins (`@elizaos/capacitor-*`) are aliased from `plugins/plugin-native-*/src/index.ts`. Plugins with `elizaos.app` in their `package.json` are included; others are excluded from the browser bundle.
@@ -262,6 +307,6 @@ behavior, **re-capture** evidence; stale proof is worse than none.
 **Capture & manually review for this package — UI surface:**
 - Before/after **full-page** screenshots — desktop **and** mobile, portrait **and** landscape, rest **and** hover (`bun run --cwd packages/app audit:app` where applicable) — not desktop-only-happy-path (see #9950).
 - A **video walkthrough** of the whole view/flow, plus browser console + network logs showing the real request/response and state change.
-- Empty, loading, error, and permission-denied states — and fill the per-view manual-review verdict (`good`/`needs-work`/`needs-eyeball`/`broken`); no page ships `needs-work`/`broken`.
+- Empty, loading, error, and permission-denied states — review the per-view manual-review notes (`good`/`needs-work`/`needs-eyeball`/`broken` guidance); no computed page verdict ships `needs-work`/`broken`.
 - The backend trajectory/logs behind anything the UI triggered.
 <!-- END: evidence-and-e2e-mandate -->

@@ -1,9 +1,0 @@
-$ vitest run src/providers/musicLibraryProvider.test.ts
-
- RUN  v4.1.5 /Users/shawwalters/.codex/worktrees/36cd/eliza/plugins/plugin-music
-
-
- Test Files  1 passed (1)
-      Tests  1 passed (1)
-   Start at  21:37:19
-   Duration  438ms (transform 221ms, setup 148ms, import 133ms, tests 7ms, environment 0ms)

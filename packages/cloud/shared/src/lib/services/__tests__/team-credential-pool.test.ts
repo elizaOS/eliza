@@ -1,11 +1,11 @@
 /**
- * Team credential pool — REAL AccountPool brain + REAL PGlite DB (#11332).
+ * Team credential pool — REAL cloud account-pool brain + REAL PGlite DB (#11332).
  *
- * These cases run the actual `AccountPool` class (lazy-loaded from
- * @elizaos/app-core/account-pool through `TeamPoolRegistry`) against real
- * `pooled_credentials` rows, real envelope-encrypted `secrets` rows, and a
- * real HTTP provider stub for the live contribution probe (the probe honors
- * ANTHROPIC_BASE_URL, so no fetch mocking — real request, real 200/401).
+ * These cases run the actual cloud-shared `TeamCredentialAccountPool` through
+ * `TeamPoolRegistry` against real `pooled_credentials` rows, real
+ * envelope-encrypted `secrets` rows, and a real HTTP provider stub for the live
+ * contribution probe (the probe honors ANTHROPIC_BASE_URL, so no fetch mocking
+ * — real request, real 200/401).
  *
  * Proven here, against the DB:
  *  - contribution probe-gates keys (bad key → rejected, no row, no secret)

@@ -51,10 +51,13 @@ export function resolveAdjacentConversationId(
  * the index-walk is unit-testable without rendering the AppContext-bound hook.
  *
  * Invariant: a new conversation PREPENDS at index 0 and becomes active, so right
- * after creating one the index-0 swipe toward a newer chat (`goPrev`) is a
- * boundary no-op (`hasPrev` is false). The conversation-swipe interleaving e2e
- * (`run-conversation-swipe-e2e.mjs`) drives + asserts exactly this against the
- * real overlay.
+ * after creating one the index-0 move toward a newer chat (`goPrev`) is a
+ * boundary no-op (`hasPrev` is false).
+ *
+ * The single-infinite-thread redesign (#13531) removed chat-to-chat swipe from
+ * the overlay, so `goPrev`/`goNext` are no longer bound to a gesture; the helper
+ * still resolves the active conversation's `activeId`/`index` for the overlay's
+ * `data-conversation-*` attributes that flows like the tutorial observe.
  */
 export function buildConversationNav(
   conversations: readonly Pick<Conversation, "id">[] | null | undefined,

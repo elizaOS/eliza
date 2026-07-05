@@ -9,6 +9,13 @@
 # _redirects, so adding rewrite rules for those prefixes here would be
 # misleading dead config.
 
+# Built-in avatar art lives on the R2 CDN (blob.elizacloud.ai), but legacy user
+# rows persisted RELATIVE avatar URLs (/cloud-avatars/profile-N.webp) from when
+# the old cloud-frontend served them same-origin — on this SPA host they fall
+# through to the catch-all and break as images (the Account-page avatar 404,
+# #13601). Bounce them to the CDN so every legacy reference keeps working.
+/cloud-avatars/*  https://blob.elizacloud.ai/cloud-avatars/:splat  302
+
 # Hashed-asset 404s must NOT fall through to the SPA index.html. When a stale
 # browser HTML references an asset hash that no longer exists, the catch-all
 # below would otherwise return index.html with status 200 for the missing .js,

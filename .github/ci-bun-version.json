@@ -1,0 +1,4 @@
+{
+  "$comment": "Single source of truth for the pinned Bun version on every frozen-lockfile CI install path. Floating `canary`/`latest` reserializes bun.lock to lockfileVersion 2 and breaks `bun install --frozen-lockfile` (#11184/#9454), and the repo's packageManager `bun@1.4.0-canary.1` is unresolvable in CI (GH+npm 404) — so the required test/build gates pin a concrete version here instead. Enforced by packages/scripts/ci-bun-version-contract.mjs: every concrete `bun-version`/`BUN_VERSION` pin in .github/workflows must equal `version`, and the gate workflows in that script's GATE_WORKFLOWS list must stay pinned to it and never float back to canary/latest. To bump: change `version` here and update the gate workflows in the SAME PR — the contract fails the branch if they drift apart.",
+  "version": "1.3.14"
+}

@@ -1,9 +1,0 @@
-$ vitest run
-
- RUN  v4.1.5 /Users/shawwalters/.codex/worktrees/36cd/eliza/plugins/plugin-music
-
-
- Test Files  14 passed (14)
-      Tests  84 passed (84)
-   Start at  21:38:06
-   Duration  3.09s (transform 14.85s, setup 626ms, import 17.66s, tests 188ms, environment 2ms)

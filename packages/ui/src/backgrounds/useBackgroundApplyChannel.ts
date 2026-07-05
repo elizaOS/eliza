@@ -19,11 +19,14 @@ import {
 } from "@elizaos/shared/events";
 import { useViewEvent } from "../hooks/useViewEvent";
 import {
+  catalogEntryToConfig,
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_BACKGROUND_CONFIG,
   makeGlslConfig,
+  resolveCatalogEntry,
 } from "../state/ui-preferences";
 import { useBackgroundConfig } from "../state/useBackgroundConfig";
+import { loadUserBackgroundCatalog } from "../state/user-background-catalog";
 import { getShaderPreset } from "./shader-presets";
 import {
   isPlausibleFragmentSource,
@@ -88,6 +91,38 @@ export function useBackgroundApplyChannel(): void {
     const uniformPatch = readUniformPatch(payload.uniforms);
     const presetId =
       typeof payload.presetId === "string" ? payload.presetId : undefined;
+
+    // ── Named catalog entry (#13538) ─────────────────────────────────────
+    // The agent (or the gallery) can name a curated catalog entry. We resolve
+    // it HERE, in the renderer, to a concrete config. Like `presetId`, the
+    // name is the ONLY thing that crosses the broker: an unknown name resolves
+    // to nothing and is ignored (never wedges the background — the #13523
+    // confinement invariant), and a glsl entry still goes through the vetted
+    // preset corpus, so no raw GLSL/URL can ride in on `catalogId`.
+    const catalogId =
+      typeof payload.catalogId === "string" ? payload.catalogId : undefined;
+    if (catalogId) {
+      // Curated catalog first, then the user's saved/generated entries (both
+      // resolve to an image/color/named-preset config only — never raw code).
+      let entry = resolveCatalogEntry(catalogId);
+      if (!entry) {
+        const needle = catalogId.trim().toLowerCase();
+        entry = loadUserBackgroundCatalog().find(
+          (e) =>
+            e.id.toLowerCase() === needle || e.label.toLowerCase() === needle,
+        );
+      }
+      if (entry) {
+        const config = catalogEntryToConfig(
+          entry,
+          (id) => getShaderPreset(id)?.source,
+        );
+        if (config) setBackgroundConfig(config);
+      }
+      // Unknown catalog name → ignore (confinement: never wedge the bg).
+      return;
+    }
+
     // Raw GLSL text in the payload is deliberately NOT accepted (#11088):
     // presets are the only source of shader code, so a crafted `source` field
     // (e.g. a bounded-for GPU bomb that would slip past the static gate) has

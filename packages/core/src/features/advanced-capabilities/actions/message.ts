@@ -17,7 +17,10 @@ import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import { resolveCanonicalOwnerIdForMessage } from "../../../roles.ts";
 import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
-import { resolveMutedTargetFlags } from "../../../services/message/mute-state.ts";
+import {
+	resolveMutedTargetFlags,
+	resolveMutedWorldFlags,
+} from "../../../services/message/mute-state.ts";
 import type {
 	Action,
 	ActionExample,
@@ -2770,6 +2773,12 @@ async function handleSearch(
 // op=list_channels / list_servers
 // ---------------------------------------------------------------------------
 
+// Cap on rendered channel entries so a large deployment can't flood the
+// action result. Counts are always computed over the connector's complete
+// room set, and a capped listing is annotated (truncated + channelCount)
+// instead of silently posing as complete.
+const MAX_LISTED_CHANNELS = 50;
+
 async function handleListChannels(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -2806,17 +2815,22 @@ async function handleListChannels(
 		const targets = await listRooms(context);
 		// Muted visibility: without the flag "which channels are you muted in"
 		// is unanswerable — the participant/world mute state is queryable
-		// nowhere else.
+		// nowhere else. Flags cover the FULL set so mutedCount stays correct
+		// even when the rendered listing below is capped.
 		const mutedFlags = await resolveMutedTargetFlags(runtime, targets);
 		const mutedCount = mutedFlags.filter(Boolean).length;
+		const rendered = targets.slice(0, MAX_LISTED_CHANNELS);
+		const truncated = rendered.length < targets.length;
 		return opSuccess(
 			"list_channels",
 			`Listed ${targets.length} channels from ${connector.label}${
 				mutedCount > 0 ? ` (${mutedCount} muted)` : ""
-			}.`,
+			}${truncated ? ` — showing the first ${rendered.length}` : ""}.`,
 			{
 				source: connector.source,
-				channels: targets.map((t, index) => ({
+				channelCount: targets.length,
+				...(truncated ? { truncated: true } : {}),
+				channels: rendered.map((t, index) => ({
 					label: t.label,
 					kind: t.kind,
 					target: t.target,
@@ -2863,12 +2877,23 @@ async function handleListServers(
 			);
 		}
 		const servers = await listServers(context);
+		// Server-level muted visibility: the world-wide mute (ROOM scope=server)
+		// lives on the persisted world's metadata, which a connector listing may
+		// not carry — resolve it here so "which servers are you muted in" is
+		// answerable, mirroring list_channels' per-channel flag.
+		const mutedFlags = await resolveMutedWorldFlags(runtime, servers);
+		const mutedCount = mutedFlags.filter(Boolean).length;
 		return opSuccess(
 			"list_servers",
-			`Listed ${servers.length} servers from ${connector.label}.`,
+			`Listed ${servers.length} servers from ${connector.label}${
+				mutedCount > 0 ? ` (${mutedCount} muted)` : ""
+			}.`,
 			{
 				source: connector.source,
-				servers,
+				servers: servers.map((world, index) => ({
+					...world,
+					muted: mutedFlags[index] === true,
+				})),
 			},
 		);
 	} catch (error) {
@@ -2904,8 +2929,11 @@ async function handleListConnections(
 		platform: string;
 		label: string;
 		accountId: string | undefined;
-		roomCount: number;
-		mutedRoomCount: number;
+		// null = the count could not be resolved (see `error`) — a broken
+		// connector must never read as a healthy zero-room connection.
+		roomCount: number | null;
+		mutedRoomCount: number | null;
+		error?: string;
 	}> = [];
 
 	for (const connector of connectors) {
@@ -2922,8 +2950,9 @@ async function handleListConnections(
 			undefined,
 			connector,
 		);
-		let roomCount = 0;
-		let mutedRoomCount = 0;
+		let roomCount: number | null = null;
+		let mutedRoomCount: number | null = null;
+		let listError: string | undefined;
 		try {
 			const targets = (await connector.listRooms?.(context)) ?? [];
 			roomCount = targets.length;
@@ -2931,10 +2960,11 @@ async function handleListConnections(
 				Boolean,
 			).length;
 		} catch (error) {
+			// error-policy:J4 one broken connector must not hide the healthy ones;
+			// its entry carries an explicit error instead of a fabricated count.
+			listError = error instanceof Error ? error.message : String(error);
 			logger.debug(
-				`[MESSAGE/list_connections] listRooms failed for ${connector.source}: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
+				`[MESSAGE/list_connections] listRooms failed for ${connector.source}: ${listError}`,
 			);
 		}
 		connections.push({
@@ -2943,10 +2973,13 @@ async function handleListConnections(
 			accountId: connector.accountId,
 			roomCount,
 			mutedRoomCount,
+			...(listError === undefined ? {} : { error: listError }),
 		});
 	}
 
-	const labels = connections.map((c) => c.label);
+	const labels = connections.map((c) =>
+		c.error === undefined ? c.label : `${c.label} (unavailable)`,
+	);
 	return opSuccess(
 		"list_connections",
 		`Connected via ${connections.length} connection(s): ${labels.join(", ")}.`,

@@ -23,6 +23,11 @@ export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
     "@elizaos/plugin-vision": () => import("@elizaos/plugin-vision"),
     "@elizaos/plugin-background-runner": () =>
       import("@elizaos/plugin-background-runner"),
+    "@elizaos/plugin-native-filesystem": () =>
+      import("@elizaos/plugin-native-filesystem"),
+    "@elizaos/plugin-scheduling": () => import("@elizaos/plugin-scheduling"),
+    "@elizaos/plugin-inbox": () => import("@elizaos/plugin-inbox/plugin"),
+    "@elizaos/plugin-app-control": () => import("@elizaos/plugin-app-control"),
     "@elizaos/plugin-anthropic": () => import("@elizaos/plugin-anthropic"),
     "@elizaos/plugin-openai": () => import("@elizaos/plugin-openai"),
   };

@@ -2696,6 +2696,102 @@ public class ElizaAgentService extends Service {
     }
 
     /**
+     * Human attribution for an agent child exit code. Codes >= 128 are
+     * 128+signal deaths; the three that actually occur on-device get named
+     * causes so the startup card can say what happened instead of the
+     * generic "transport hung" (#13475): 159 = SIGSYS is the seccomp filter
+     * killing an unshimmed runtime, 137 = SIGKILL is lmkd/OOM or an explicit
+     * pkill, 143 = SIGTERM is a service stop/restart landing mid-boot.
+     */
+    private static String describeAgentExit(String exitCode) {
+        int code;
+        try {
+            code = Integer.parseInt(exitCode.trim());
+        } catch (NumberFormatException error) {
+            return "exit " + exitCode;
+        }
+        if (code < 128) {
+            return "exit " + code;
+        }
+        int signal = code - 128;
+        switch (signal) {
+            case 31:
+                return "SIGSYS (seccomp-blocked syscall - runtime built without the SIGSYS shim? #13475)";
+            case 9:
+                return "SIGKILL (lmkd/OOM or pkill)";
+            case 15:
+                return "SIGTERM (service stop/restart during boot)";
+            case 11:
+                return "SIGSEGV (native crash)";
+            default:
+                return "signal " + signal + " (exit " + code + ")";
+        }
+    }
+
+    /**
+     * Scan the restart-diagnostics JSONL for the newest bridge-side fatal
+     * breadcrumb (`agent-fatal` / `agent-terminated-by-signal`, written by the
+     * capacitor bridge) in this launch's window, so an in-process JS fatal is
+     * attributed alongside the child's exit code.
+     */
+    private String readLatestAgentFatal(long launchStartedAtMs, String startupTraceId) {
+        File log = new File(agentRoot(), AGENT_RESTART_DIAGNOSTICS_NAME);
+        if (!log.isFile()) {
+            return null;
+        }
+        long maxBytes = Math.min(log.length(), AGENT_RESTART_DIAGNOSTICS_MAX_BYTES);
+        if (maxBytes <= 0L) {
+            return null;
+        }
+        byte[] bytes = new byte[(int) maxBytes];
+        int read = 0;
+        try (FileInputStream input = new FileInputStream(log)) {
+            while (read < bytes.length) {
+                int n = input.read(bytes, read, bytes.length - read);
+                if (n < 0) break;
+                read += n;
+            }
+        } catch (IOException error) {
+            // error-policy:J7 diagnostic JSONL read failures must not kill the watchdog loop.
+            Log.w(TAG, "Could not read agent fatal diagnostics", error);
+            return null;
+        }
+        String content = new String(bytes, 0, read, StandardCharsets.UTF_8);
+        String latest = null;
+        long cutoffMs = Math.max(0L, launchStartedAtMs - 2_000L);
+        for (String line : content.split("\\n")) {
+            if (line.trim().isEmpty()) {
+                continue;
+            }
+            try {
+                JSONObject json = new JSONObject(line);
+                String event = json.optString("event", "");
+                if (!"agent-fatal".equals(event) && !"agent-terminated-by-signal".equals(event)) {
+                    continue;
+                }
+                long timestampMs = json.optLong("ts", 0L);
+                if (timestampMs > 0L && timestampMs < cutoffMs) {
+                    continue;
+                }
+                JSONObject details = json.optJSONObject("details");
+                String eventTraceId = details != null ? details.optString("startupTraceId", "") : "";
+                if (startupTraceId != null
+                        && !startupTraceId.isEmpty()
+                        && !eventTraceId.isEmpty()
+                        && !startupTraceId.equals(eventTraceId)) {
+                    continue;
+                }
+                String kind = details != null ? details.optString("kind", event) : event;
+                String message = details != null ? details.optString("message", "") : "";
+                latest = message.isEmpty() ? kind : kind + ": " + message;
+            } catch (JSONException ignored) {
+                // error-policy:J3 partial or malformed diagnostic lines are invalid records; keep scanning.
+            }
+        }
+        return latest;
+    }
+
+    /**
      * Drain a process stream into the agent log file and tee to logcat.
      * One thread per stream; both exit cleanly when the stream closes
      * (process death) or the thread is interrupted.
@@ -2833,16 +2929,32 @@ public class ElizaAgentService extends Service {
                 }
                 AgentChildExit childExit = readLatestAgentChildExit(launchStartedAtMs, startupTraceId);
                 if (childExit != null) {
+                    String attribution = describeAgentExit(childExit.exitCode);
+                    String fatal = readLatestAgentFatal(launchStartedAtMs, startupTraceId);
                     Map<String, String> details = new LinkedHashMap<>();
                     details.put("launchStartedAtMs", String.valueOf(launchStartedAtMs));
                     details.put("startupTraceId", String.valueOf(startupTraceId));
                     details.put("childExitTimestampMs", String.valueOf(childExit.timestampMs));
                     details.put("childPid", childExit.childPid);
                     details.put("exitCode", childExit.exitCode);
+                    details.put("attribution", attribution);
+                    if (fatal != null) {
+                        details.put("agentFatal", fatal);
+                    }
                     appendDiagnosticEvent("detached-agent-child-exited-before-ready", details);
+                    // The death is user-visible: the status (and its
+                    // notification) says WHAT killed the agent instead of
+                    // leaving "starting" up until the generic timeout card.
+                    synchronized (processLock) {
+                        currentStatus = "agent exited: " + attribution;
+                    }
+                    updateNotification();
                     Log.w(TAG, "Detached agent child exited before readiness"
                         + " (pid=" + childExit.childPid
-                        + " code=" + childExit.exitCode + "). Scheduling restart.");
+                        + " code=" + childExit.exitCode
+                        + " cause=" + attribution
+                        + (fatal != null ? " fatal=" + fatal : "")
+                        + "). Scheduling restart.");
                     scheduleRestart();
                     return;
                 }

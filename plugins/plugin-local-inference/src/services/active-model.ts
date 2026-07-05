@@ -17,6 +17,7 @@ import {
 	resolve as pathResolve,
 } from "node:path";
 import { type AgentRuntime, logger } from "@elizaos/core";
+import { resolvePlatform } from "@elizaos/shared";
 import {
 	ELIZA_1_PLACEHOLDER_IDS,
 	FIRST_RUN_DEFAULT_MODEL_ID,
@@ -693,7 +694,7 @@ function isMobileLocalInferenceRuntime(): boolean {
 	if (typeof process === "undefined" || !process.env) return false;
 	const platform = (
 		process.env.ELIZA_MOBILE_PLATFORM ||
-		process.env.ELIZA_PLATFORM ||
+		resolvePlatform() ||
 		""
 	)
 		.trim()

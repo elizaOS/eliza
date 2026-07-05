@@ -297,6 +297,10 @@ Return ONLY the tweet text, nothing else.`;
           setTimeout(() => reject(new Error("Twitter API timeout")), TWITTER_API_TIMEOUT_MS),
         ),
       ]);
+      // error-policy:J1 boundary — outbound Twitter API failure translated to the
+      // typed connector Result (success:false + error). Callers branch on .success
+      // (cron/social-automation, app-promotion, post/route), so this surfaces the
+      // send failure distinctly and never fabricates a delivered/success result.
     } catch (error) {
       logger.error("[TwitterAppAutomation] Failed to post tweet", {
         appId,

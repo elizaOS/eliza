@@ -1,9 +1,0 @@
-$ vitest run src/providers/wikipediaProvider.test.ts src/services/wikipediaExtractionService.test.ts
-
- RUN  v4.1.5 /home/shaw/eliza/eliza-pr10589/plugins/plugin-music
-
-
- Test Files  2 passed (2)
-      Tests  2 passed (2)
-   Start at  15:28:11
-   Duration  316ms (transform 193ms, setup 131ms, import 120ms, tests 12ms, environment 0ms)

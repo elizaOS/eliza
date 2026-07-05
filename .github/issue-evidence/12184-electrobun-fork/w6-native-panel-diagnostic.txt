@@ -1,6 +1,0 @@
-[Create] styleMask=0x808e nonactivatingBit=0x80 wantsPanel=1
-[Panel] created ElectrobunPanel: isPanel=1 nonactivatingMask=1 level=3 collectionBehavior=0x0
-[Panel] show(activate): isKeyWindow=0 isVisible=1 appActive=0 level=3
-[Panel] show(activate): isKeyWindow=0 isVisible=1 appActive=0 level=3
-[Create] styleMask=0xf nonactivatingBit=0x80 wantsPanel=0
-[Window] show(activate): normal window activated app; appActive=0

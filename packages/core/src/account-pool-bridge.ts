@@ -134,6 +134,15 @@ export interface CodingAgentSelectorBridge {
 			sessionKey?: string;
 			strategy?: CodingAccountStrategy;
 			exclude?: string[];
+			/**
+			 * Restrict selection to these account ids. A continuing session pins
+			 * its follow-up token resolves to the spawn-time account with this —
+			 * pool session-affinity alone expires after a few selects, after which
+			 * a strategy re-pick would silently drift the subprocess onto a
+			 * sibling account while usage and health marks stay keyed to the
+			 * original. Returns null when none of the ids is selectable.
+			 */
+			accountIds?: string[];
 		},
 	): Promise<CodingAgentSelection | null>;
 	markRateLimited(

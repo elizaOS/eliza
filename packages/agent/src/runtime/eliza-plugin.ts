@@ -32,6 +32,8 @@ import { runtimeAction } from "../actions/runtime.ts";
 import { settingsAction } from "../actions/settings-actions.ts";
 import { terminalAction } from "../actions/terminal.ts";
 import { triggerAction } from "../actions/trigger.ts";
+import { registerAttachmentKnowledgeBackfillTask } from "../api/attachment-knowledge-backfill.ts";
+import { registerAttachmentKnowledgeIngestHook } from "../api/attachment-knowledge-ingest.ts";
 import {
   backgroundGenerateImageRoute,
   backgroundUploadImageRoute,
@@ -170,6 +172,14 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // sweep orphaned files daily. The serving route is declared below.
       registerMediaPipelineHook(runtime);
       registerMediaGcTask(runtime);
+      // Attachment → knowledge ingest (#13593): mirror chat attachments into the
+      // knowledge store, tagged by room/sender/role/media-format, with a
+      // source-trust-derived scope (owner/DM → owner-private; public room →
+      // user-private) so owner-only knowledge cannot spill into public rooms.
+      registerAttachmentKnowledgeIngestHook(runtime);
+      // One-time (#13593): backfill room/media-format tags onto pre-existing
+      // transcript-mirror knowledge records. Idempotent; must not block boot.
+      registerAttachmentKnowledgeBackfillTask(runtime);
       const registerSkillsAsCommands = () => {
         const skillsService = runtime.getService("AGENT_SKILLS_SERVICE");
         if (!isAgentSkillsService(skillsService)) return false;

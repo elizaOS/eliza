@@ -1,2 +1,0 @@
-campaign_id,campaign_name,platform,status,budget_type,budget_amount,budget_currency,spend,impressions,clicks,conversions,ctr,cpc,cpm,conversion_rate,cost_per_conversion,budget_utilization,conversion_value,date_start,date_end,generated_at
-campaign-1,"Launch, Report",meta,active,daily,200,USD,40,2000,100,10,5,0.4,20,10,4,20,0,2026-07-01T00:00:00.000Z,2026-07-02T00:00:00.000Z,2026-07-03T00:00:00.000Z

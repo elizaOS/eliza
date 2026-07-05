@@ -142,7 +142,7 @@ function getStatusBadge(status: DiscordGatewayConnection["status"], t: TFn) {
       );
     case "pending":
       return (
-        <Badge variant="secondary" className="bg-white/10 text-white/80">
+        <Badge variant="secondary" className="bg-surface text-txt">
           <Clock className="h-3 w-3 mr-1" />
           {t("cloud.discord.statusPending", { defaultValue: "Pending" })}
         </Badge>
@@ -574,7 +574,7 @@ export function DiscordGatewayConnection() {
                     <CollapsibleTrigger asChild>
                       <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/50 transition-colors">
                         <div className="h-12 w-12 rounded-full bg-accent flex items-center justify-center flex-shrink-0">
-                          <Bot className="h-6 w-6 text-white" />
+                          <Bot className="h-6 w-6 text-txt-strong" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">

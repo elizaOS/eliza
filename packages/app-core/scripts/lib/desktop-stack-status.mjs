@@ -8,9 +8,9 @@
  */
 
 import { createConnection } from "node:net";
+import { resolveDesktopApiPort } from "@elizaos/shared/runtime-env";
 
 const DEFAULT_UI_PORT = 2138;
-const DEFAULT_API_PORT = 2138;
 const CONNECT_TIMEOUT_MS = 800;
 const FETCH_TIMEOUT_MS = 2500;
 
@@ -20,14 +20,6 @@ function parsePositivePort(value) {
   return Number.isInteger(parsed) && parsed > 0 && parsed < 65536
     ? parsed
     : NaN;
-}
-
-function resolveDesktopApiPort(env) {
-  return (
-    parsePositivePort(env.ELIZA_API_PORT) ||
-    parsePositivePort(env.ELIZA_PORT) ||
-    DEFAULT_API_PORT
-  );
 }
 
 /**

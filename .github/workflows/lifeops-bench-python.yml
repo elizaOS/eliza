@@ -87,7 +87,7 @@ jobs:
   # ---------------------------------------------------------------------
   unit-tests:
     name: unit-tests
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -152,7 +152,7 @@ jobs:
   smoke-bench:
     name: smoke-bench
     needs: unit-tests
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -299,7 +299,7 @@ jobs:
     name: live-bench
     needs: unit-tests
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 90
     steps:
       - name: Check live-bench secrets

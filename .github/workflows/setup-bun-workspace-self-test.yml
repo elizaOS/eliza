@@ -1,0 +1,34 @@
+name: Setup Bun Workspace Self-Test
+
+on:
+  pull_request:
+    paths:
+      - ".github/actions/setup-bun-workspace/**"
+      - ".github/workflows/setup-bun-workspace-self-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protoc-github-fallback:
+    name: forced protoc GitHub fallback
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Exercise pinned protoc fallback path
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          setup-python: "false"
+          install-protoc: "true"
+          force-protoc-github-fallback: "true"
+          install-native-deps: "false"
+          install-command: "true"
+          run-postinstall: "false"
+          init-submodules: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"

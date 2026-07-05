@@ -24,9 +24,28 @@ import {
   verifyPlaywrightTestSessionToken,
 } from "./playwright-test-session";
 import { verifyStewardTokenCached } from "./steward-client";
+import { LEGACY_STEWARD_COOKIES, stewardCookieNames } from "./steward-cookies";
+
+const LEGACY_STEWARD_COOKIE_FALLBACK_EXPIRES_AT_MS = Date.UTC(2026, 7, 4);
 
 function readStewardCookie(c: AppContext): string | null {
-  return readCookie(c, "steward-token");
+  const names = stewardCookieNames(c.env?.ENVIRONMENT);
+  // Read this environment's own access-token cookie, then fall back to the
+  // legacy unsuffixed name. This fallback is READ-ONLY: it only verifies a JWT
+  // locally (jose), never rotating or invalidating the shared legacy refresh
+  // token, so a non-prod read of prod's legacy cookie cannot sign prod out
+  // (#13728). On production the two names are identical. Legacy cookies expire
+  // naturally; the fallback shuts off after 2026-08-04, one 30-day refresh
+  // cookie Max-Age after the 2026-07-05 scoped-cookie follow-up.
+  const ownCookie = readCookie(c, names.token);
+  if (ownCookie) return ownCookie;
+  if (
+    names.token === LEGACY_STEWARD_COOKIES.token ||
+    Date.now() >= LEGACY_STEWARD_COOKIE_FALLBACK_EXPIRES_AT_MS
+  ) {
+    return null;
+  }
+  return readCookie(c, LEGACY_STEWARD_COOKIES.token) ?? null;
 }
 
 function readCookie(c: AppContext, name: string): string | null {

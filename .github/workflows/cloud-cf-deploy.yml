@@ -25,6 +25,11 @@ name: Cloud CF Deploy
 # providers directly and uses OpenRouter as the backup):
 #   OPENROUTER_API_KEY, CEREBRAS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,
 #   GROQ_API_KEY, AI_GATEWAY_API_KEY, FAL_KEY, ELEVENLABS_API_KEY, VAST_API_KEY, VAST_BASE_URL.
+# Media/voice secrets, likewise published when configured (#13406):
+#   FAL_API_KEY (the video provider registry reads FAL_KEY ?? FAL_API_KEY),
+#   ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64 + ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64
+#   (Ed25519 keypair for the signed voice-model catalog; the catalog route 503s
+#   while the signing key is unset).
 #
 # Source: cloud/.github/workflows/cf-deploy.yml in the original elizaOS/cloud repo.
 
@@ -200,6 +205,7 @@ jobs:
     # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
     # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu.
     runs-on: ${{ fromJSON(vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    timeout-minutes: 75
     # Schema gate (#11208): the Worker talks to the database, so it only
     # deploys after migrate-db succeeded for this same commit. A failed or
     # cancelled migrate-db skips this job — fail-closed.
@@ -370,11 +376,8 @@ jobs:
         run: bun run --cwd packages/cloud/api typecheck
 
       - name: Run Worker e2e
-        # Non-blocking: the avatar-upload e2e flakes intermittently against the
-        # self-hosted wrangler-dev box and was the ORIGINAL gate that stalled the
-        # release. Build + typecheck stay the hard gates; don't block deploy on a
-        # flaky test. (Mirrors the main hotfix #10398 that unwedged prod.)
-        continue-on-error: true
+        # Hard deploy gate (#13618): Worker behavior regressions must fail the
+        # deploy instead of shipping behind a green soft-failed e2e step.
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun run --cwd packages/cloud/api test:e2e
         env:
@@ -440,7 +443,16 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           FAL_KEY: ${{ secrets.FAL_KEY }}
+          # fal key under its alternate name: the video provider registry reads
+          # FAL_KEY ?? FAL_API_KEY, and prod carries it as FAL_API_KEY (#13406).
+          FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          # Ed25519 keypair for the signed voice-model catalog —
+          # /v1/voice-models/catalog 503s while the signing key is unset
+          # (#13406). publish_secret no-ops with a notice while these are
+          # unset, so they publish on every redeploy once ops adds them.
+          ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64 }}
+          ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 }}
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
           VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
           # Platform key the Worker forwards as X-Steward-Platform-Key so per-org
@@ -488,7 +500,10 @@ jobs:
             GROQ_API_KEY \
             AI_GATEWAY_API_KEY \
             FAL_KEY \
+            FAL_API_KEY \
             ELEVENLABS_API_KEY \
+            ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64 \
+            ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 \
             VAST_API_KEY \
             VAST_BASE_URL \
             STEWARD_PLATFORM_KEYS
@@ -538,6 +553,7 @@ jobs:
     # previews always use GitHub-hosted runners because the shared deploy robot
     # can fail before any cleanup step while staging downloaded setup actions.
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    timeout-minutes: 75
     # Schema gate (#11208): real (non-PR) deploys only run after migrate-db
     # succeeded, so the frontend never goes live ahead of the schema its API
     # features expect. PR previews are the ONE allowed skip: migrate-db is
@@ -899,6 +915,7 @@ jobs:
     # previews always use GitHub-hosted runners because the shared deploy robot
     # can fail before any cleanup step while staging downloaded setup actions.
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    timeout-minutes: 75
     # Schema gate (#11208): same contract as deploy-console — non-PR deploys
     # require a successful migrate-db; PR previews (migrate-db skipped) still
     # run; failed/cancelled migrate-db skips this job (fail-closed).

@@ -48,7 +48,7 @@ jobs:
   train:
     if: ${{ vars.ENABLE_RL_TRAINING == 'true' }}
     name: Train RL Model
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 360  # 6 hours max
     
     steps:

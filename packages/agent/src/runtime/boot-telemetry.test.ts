@@ -14,6 +14,9 @@ import type { BootSummary } from "./boot-timer.ts";
 
 const ENV_KEYS = [
   "ELIZA_DISABLE_TELEMETRY",
+  "ELIZA_DESKTOP_API_WATCH",
+  "ELIZA_DEV_NO_WATCH",
+  "ELIZA_DEV_SOURCE_WATCH",
   "ELIZA_STARTUP_TRACE_ID",
   "ELIZA_STATE_DIR",
   "NODE_ENV",
@@ -79,5 +82,32 @@ describe("boot telemetry startup trace id", () => {
 
     expect(bootLatest.traceId).toBe("android-trace-123");
     expect(restartEvents.at(-1)?.traceId).toBe("android-trace-123");
+  });
+
+  it("records the real dev watch state into restart telemetry", async () => {
+    process.env.ELIZA_DEV_NO_WATCH = "0";
+    await recordBootEvent("[test-no-watch]");
+
+    process.env.ELIZA_DESKTOP_API_WATCH = "1";
+    await recordBootEvent("[test-watch]");
+
+    if (!stateDir) {
+      throw new Error("stateDir was not initialized");
+    }
+    const restartEvents = JSON.parse(
+      await readFile(
+        path.join(stateDir, "telemetry", "restart", "events.json"),
+        "utf8",
+      ),
+    ) as Array<{ label: string; watch: boolean }>;
+
+    expect(restartEvents.at(-2)).toMatchObject({
+      label: "[test-no-watch]",
+      watch: false,
+    });
+    expect(restartEvents.at(-1)).toMatchObject({
+      label: "[test-watch]",
+      watch: true,
+    });
   });
 });

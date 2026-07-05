@@ -156,6 +156,9 @@ export async function contributePooledCredential(
     });
   } catch (err) {
     // Don't strand an orphaned vault secret when the pool row fails to land.
+    // error-policy:J6 best-effort compensating teardown of the just-created
+    // vault secret; the cleanup failure is logged but must not mask the
+    // original row-insert failure, which is rethrown below (fail-closed).
     await secretsService
       .delete(secret.id, params.organizationId, params.audit)
       .catch((cleanupErr: unknown) => {
@@ -247,6 +250,8 @@ export async function removePooledCredential(params: {
   } catch (err) {
     // Pool row is gone — the credential can never be selected again. An
     // orphaned vault secret is logged for deletion, not surfaced as a failure.
+    // error-policy:J6 best-effort teardown after the load-bearing delete
+    // (pool row) already succeeded; the credential is unusable regardless.
     logger.warn("[TeamCredentialPool] secret cleanup failed after credential delete", {
       organizationId: params.organizationId,
       credentialId: params.credentialId,

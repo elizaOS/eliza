@@ -21,9 +21,16 @@ import { usersService } from "./users";
 
 export const INITIAL_FREE_CREDITS = ((): number => {
   const v = process.env.INITIAL_FREE_CREDITS;
-  if (v === undefined || v === "") return 5;
-  const n = Number.parseFloat(v);
-  return Number.isNaN(n) || n < 0 ? 5 : n;
+  if (v === undefined || v.trim() === "") return 5;
+  const trimmed = v.trim();
+  if (!/^\d+(?:\.\d+)?$/.test(trimmed)) {
+    throw new Error(`[WalletSignup] INITIAL_FREE_CREDITS must be a non-negative decimal`);
+  }
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) {
+    throw new Error(`[WalletSignup] INITIAL_FREE_CREDITS must be finite`);
+  }
+  return n;
 })();
 
 export interface FindOrCreateWalletOptions {
@@ -79,11 +86,19 @@ async function grantWalletSignupCredits(params: {
         : {}),
     };
   } catch (err) {
+    // error-policy:J4 explicit user-facing degrade — wallet signup may continue
+    // without optional welcome credits only when the caller has not required the
+    // grant; metadata distinguishes the withheld bonus from a normal zero grant.
     logger.error("[WalletSignup] Failed to grant initial credits:", err);
     if (params.requireInitialCredits) {
       throw err;
     }
-    return { initialCreditsGranted: false, initialFreeCreditsUsd: 0 };
+    return {
+      initialCreditsGranted: false,
+      initialFreeCreditsUsd: 0,
+      welcomeBonusWithheld: true,
+      welcomeBonusWithheldMessage: "Initial credit grant failed; signup continued without bonus.",
+    };
   }
 }
 
@@ -153,18 +168,16 @@ export async function findOrCreateUserByWalletAddress(
         credit_balance: "0.00",
       });
     } catch (e) {
-      // Note: Handle race condition where two concurrent requests try to create the same org
+      // error-policy:J3 unique-violation race recovery — retry only the expected
+      // concurrent org-create collision; all other creation failures propagate.
       const isUniqueViolation =
         e instanceof Error && (e.message.includes("unique") || e.message.includes("duplicate"));
       if (!isUniqueViolation) throw e;
 
-      // Important: For race conditions, retry finding the org that won the race
       org = (await organizationsRepository.findBySlug(slug)) ?? null;
       if (!org) {
-        // If we still can't find it, something else went wrong
         throw new Error("Organization creation failed and could not find existing org");
       }
-      // Note: Skip initial credits for raced org - first creator already granted them
     }
   }
   const initialCreditGrant =
@@ -198,7 +211,8 @@ export async function findOrCreateUserByWalletAddress(
       ...initialCreditGrant,
     };
   } catch (e) {
-    /* WHY handle unique violation: two concurrent signups for same wallet; second should see the first's user. */
+    // error-policy:J3 unique-violation race recovery — the losing concurrent
+    // signup returns the winner's row; missing re-fetch rethrows the original.
     const isUniqueViolation =
       e instanceof Error && (e.message.includes("unique") || e.message.includes("duplicate"));
     if (!isUniqueViolation) throw e;
@@ -247,6 +261,8 @@ export async function findOrCreateSolanaUserByWalletAddress(
         credit_balance: "0.00",
       });
     } catch (e) {
+      // error-policy:J3 unique-violation race recovery — retry only the expected
+      // concurrent org-create collision; all other creation failures propagate.
       const isUniqueViolation =
         e instanceof Error && (e.message.includes("unique") || e.message.includes("duplicate"));
       if (!isUniqueViolation) throw e;
@@ -285,6 +301,8 @@ export async function findOrCreateSolanaUserByWalletAddress(
       ...initialCreditGrant,
     };
   } catch (e) {
+    // error-policy:J3 unique-violation race recovery — the losing concurrent
+    // signup returns the winner's row; missing re-fetch rethrows the original.
     const isUniqueViolation =
       e instanceof Error && (e.message.includes("unique") || e.message.includes("duplicate"));
     if (!isUniqueViolation) throw e;

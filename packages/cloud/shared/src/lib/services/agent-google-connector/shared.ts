@@ -339,6 +339,13 @@ export async function getGoogleAccessToken(args: {
         connectionId: result.connectionId,
       }));
   } catch (error) {
+    // A designed connector failure (e.g. 404 for an unknown grant) is already a
+    // typed boundary error; preserve its distinct status rather than masking it
+    // as a 409, so callers can tell "no such grant" from "token needs reauth".
+    if (error instanceof AgentGoogleConnectorError) {
+      throw error;
+    }
+    // error-policy:J1 translate an oauth token-fetch failure (no valid/refreshable Google token) into a 409 needs-reauth boundary error
     const message = error instanceof Error ? error.message : String(error);
     fail(409, message);
   }
@@ -356,6 +363,7 @@ export async function googleFetch(args: {
   try {
     return await googleFetchWithToken(accessToken, args.url, args.options);
   } catch (error) {
+    // error-policy:J1 translate a Google API transport/timeout failure into a 502 boundary error
     fail(502, error instanceof Error ? error.message : String(error));
   }
 }

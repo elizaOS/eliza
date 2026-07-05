@@ -191,6 +191,7 @@ export class HetznerVolumeService {
     );
     // Best-effort unmount. If the path isn't mounted, umount returns
     // non-zero and we proceed anyway.
+    // error-policy:J6 teardown-only; the detach below still propagates on failure.
     await ssh.exec(`umount ${shellQuote(mountPath)} || true`, 30_000).catch((err) =>
       logger.warn(`[hcloud-volumes] unmount failed for ${mountPath} on ${node.node_id}`, {
         error: err instanceof Error ? err.message : String(err),
@@ -240,10 +241,16 @@ export class HetznerVolumeService {
     const waitScript = `for i in $(seq 1 30); do [ -b ${shellQuote(devicePath)} ] && exit 0; sleep 1; done; echo "device ${devicePath} did not appear" >&2; exit 1`;
     await ssh.exec(waitScript, 60_000);
 
-    // Skip mkfs if the device already has a filesystem.
-    const blkidOutput = await ssh
-      .exec(`blkid -o value -s TYPE ${shellQuote(devicePath)} 2>/dev/null || true`, 15_000)
-      .catch(() => "");
+    // Skip mkfs if the device already has a filesystem. The `|| true` makes
+    // blkid's "no filesystem" exit (code 2) resolve as empty stdout — that is
+    // the only legitimate empty result. An SSH/transport failure must NOT be
+    // swallowed into "": that would read as "no filesystem" and trigger a
+    // destructive mkfs.ext4 on a volume that may hold data. Let it propagate
+    // so attach fails closed instead of formatting the disk blind.
+    const blkidOutput = await ssh.exec(
+      `blkid -o value -s TYPE ${shellQuote(devicePath)} 2>/dev/null || true`,
+      15_000,
+    );
     if (!blkidOutput.trim()) {
       logger.info(`[hcloud-volumes] Formatting ${devicePath} as ext4 on ${node.node_id}`);
       await ssh.exec(`mkfs.ext4 -F -L cloud-data ${shellQuote(devicePath)}`, 5 * 60_000);

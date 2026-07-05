@@ -1,9 +1,0 @@
-$ vitest run --config ./vitest.config.ts providers/skills.test.ts
-
- RUN  v4.1.5 /Users/shawwalters/.codex/worktrees/36cd/eliza/plugins/plugin-agent-skills
-
-
- Test Files  1 passed (1)
-      Tests  3 passed (3)
-   Start at  23:06:29
-   Duration  998ms (transform 314ms, setup 258ms, import 183ms, tests 19ms, environment 0ms)

@@ -147,6 +147,37 @@ describe("SwarmCoordinatorService", () => {
     await coordinator.stop();
   });
 
+  it("stamps child session events with the parent task thread", async () => {
+    const acp = makeAcpStub();
+    const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const broadcasts: SwarmEvent[] = [];
+    coordinator.setWsBroadcast((event) => broadcasts.push(event));
+
+    acp.emit("parent-session", "message", {
+      threadId: "task-thread",
+      text: "parent started",
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    acp.emit("child-session", "message", {
+      parentSessionId: "parent-session",
+      text: "child started",
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(broadcasts[1]).toMatchObject({
+      type: "message",
+      sessionId: "child-session",
+      parentSessionId: "parent-session",
+      taskId: "task-thread",
+    });
+    expect(coordinator.tasks.get("child-session")?.threadId).toBe(
+      "task-thread",
+    );
+    await coordinator.stop();
+  });
+
   it("exposes every setter the server bridges call", async () => {
     const acp = makeAcpStub();
     const runtime = makeRuntime({ [AcpService.serviceType]: acp });

@@ -1,3 +1,0 @@
-[device-e2e-host-agent] real API up on :31338 in 45580ms
- Info       [background] re-hosted uploaded wallpaper as /api/media/4b5c5c92cec3b23e6a294fc0eea43234ef5126c5a64f4c6c531ac8430ab0b844.png
- Info       [background] re-hosted uploaded wallpaper as /api/media/4b5c5c92cec3b23e6a294fc0eea43234ef5126c5a64f4c6c531ac8430ab0b844.png

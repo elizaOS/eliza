@@ -475,7 +475,9 @@ final class BootCaptureUITests: XCTestCase {
             attachAccessibilitySnapshot(of: app)
             throw XCTSkip("no hittable composer after onboarding")
         }
-        let prompt = "Say hello in exactly three words."
+        let replyMarker = "IOS_CHAT_OK"
+        let prompt =
+            "Start your reply with exactly \(replyMarker), then say hello in one short sentence."
         let promptPrefix = String(prompt.prefix(20))
         func looksNotReady(_ s: String) -> Bool {
             let l = s.lowercased()
@@ -483,6 +485,31 @@ final class BootCaptureUITests: XCTestCase {
                 || l.contains("retry in a moment") || l.contains("still warming")
                 || l.contains("try again in")
         }
+        // Consult the SHARED failure-string vocabulary (issue #13687). A reply
+        // that matches one of these is an error render / broken pipeline
+        // (e.g. the ErrorBoundary "Something went wrong" heading), NOT a genuine
+        // model reply — historically the loop went green on it. The list is
+        // generated from packages/app/scripts/lib/chat-failure-strings.mjs into
+        // ChatFailureStrings.generated.swift and parity-tested, so this verifier
+        // and the mobile-local-chat-smoke share exactly one source of truth.
+        // Returns the matched fragment so the assertion can quote it.
+        func matchedChatFailureString(_ s: String) -> String? {
+            let range = NSRange(s.startIndex..<s.endIndex, in: s)
+            for fragment in ChatFailureStrings.ios {
+                guard
+                    let regex = try? NSRegularExpression(
+                        pattern: fragment, options: [.caseInsensitive])
+                else { continue }
+                if regex.firstMatch(in: s, options: [], range: range) != nil {
+                    return fragment
+                }
+            }
+            return nil
+        }
+        var replyClassification: String?
+        var failureObservation: String?
+        var notReadyObservation: String?
+        var unrecognizedObservation: String?
 
         // On-device warm-up can leave the first sends returning the "message
         // didn't reach the agent — still starting up. Retry" fallback. Re-send
@@ -532,23 +559,94 @@ final class BootCaptureUITests: XCTestCase {
                 Thread.sleep(forTimeInterval: 3.0)
             }
             attachScreenshot(named: "\(tag)-070-reply-attempt-\(attempt)")
-            if let c = candidate, !looksNotReady(c) {
-                reply = c  // genuine model reply
+            if let c = candidate, let failure = matchedChatFailureString(c) {
+                // An error render was surfaced. Record it (quoted) and stop —
+                // this must FAIL the verifier, never silently retry into a
+                // "no reply after N attempts" that hides WHAT went wrong (#13687).
+                replyClassification = "failure-string:\(failure)"
+                notReadyObservation = nil
+                failureObservation = "\(c) [matched failure-string: \(failure)]"
                 break
+            }
+            if let c = candidate,
+                c.localizedCaseInsensitiveContains(replyMarker)
+            {
+                replyClassification = "marker-hit"
+                notReadyObservation = nil
+                reply = c  // genuine marker-echo model reply
+                break
+            }
+            if let c = candidate, !looksNotReady(c) {
+                // A real reply that does not echo the marker is not accepted.
+                // Record it as a classified verifier failure instead of
+                // treating arbitrary new text as success (#13687).
+                replyClassification = "unrecognized-text"
+                notReadyObservation = nil
+                unrecognizedObservation = c
+                break
+            }
+            if let c = candidate {
+                replyClassification = "not-ready"
+                notReadyObservation = c
             }
             // Not-ready fallback (or timeout) — let the CPU model warm; retry.
             Thread.sleep(forTimeInterval: 45.0)
         }
         attachScreenshot(named: "\(tag)-075-reply-\(reply != nil ? "arrived" : "timeout")")
         if let reply {
-            let att = XCTAttachment(string: reply)
+            let att = XCTAttachment(
+                string: "\(reply) [classification: \(replyClassification ?? "unknown")]")
             att.name = "\(tag)-reply-text"
+            att.lifetime = .keepAlways
+            add(att)
+        }
+        if let failureObservation {
+            let att = XCTAttachment(string: failureObservation)
+            att.name = "\(tag)-reply-failure-string"
+            att.lifetime = .keepAlways
+            add(att)
+        }
+        if let notReadyObservation {
+            let att = XCTAttachment(
+                string: "\(notReadyObservation) [classification: not-ready]"
+            )
+            att.name = "\(tag)-reply-not-ready"
+            att.lifetime = .keepAlways
+            add(att)
+        }
+        if let unrecognizedObservation {
+            let att = XCTAttachment(
+                string:
+                    "\(unrecognizedObservation) [classification: \(replyClassification ?? "unrecognized-text")]"
+            )
+            att.name = "\(tag)-reply-unrecognized-text"
             att.lifetime = .keepAlways
             add(att)
         }
         XCTAssertNotEqual(
             app.state, .notRunning,
             "[\(tag)] the app died while waiting for the chat reply.")
+        // An error render (matched against the shared failure vocabulary) must
+        // fail LOUD with the observed text quoted — never count as a reply,
+        // never be swallowed as a bland "no reply" (#13687).
+        if let failureObservation {
+            XCTFail(
+                "[\(tag)] the agent surfaced an error render instead of a genuine "
+                    + "model reply: \(failureObservation).")
+            return
+        }
+        if let unrecognizedObservation {
+            XCTFail(
+                "[\(tag)] the agent replied without the required \(replyMarker) "
+                    + "marker: \(unrecognizedObservation).")
+            return
+        }
+        if let notReadyObservation {
+            XCTFail(
+                "[\(tag)] the agent stayed not-ready after \(sendAttempts) attempts: "
+                    + "\(notReadyObservation).")
+            return
+        }
         XCTAssertNotNil(
             reply,
             "[\(tag)] no genuine model reply after \(sendAttempts) attempts — "

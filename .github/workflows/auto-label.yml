@@ -14,7 +14,7 @@ permissions:
 jobs:
   label-pr:
     if: github.event_name == 'pull_request_target'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - uses: actions/labeler@f27b608878404679385c85cfa523b85ccb86e213
         with:
@@ -23,7 +23,7 @@ jobs:
 
   label-issue:
     if: github.event_name == 'issues'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         with:

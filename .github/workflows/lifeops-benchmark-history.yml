@@ -38,7 +38,7 @@ permissions:
 
 jobs:
   benchmark:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     # No secret → nothing to run against. Skip cleanly instead of failing red.
     if: ${{ github.repository == 'elizaOS/eliza' }}
     steps:

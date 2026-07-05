@@ -143,6 +143,7 @@ import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-h
 import type { ShortcutRegistry } from "../runtime/shortcut-registry";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
+import { resolveTraceCorrelationFromEnv } from "../runtime/trace-correlation";
 import {
 	createJsonFileTrajectoryRecorder,
 	finalizeTrajectoryRecording,
@@ -242,6 +243,7 @@ import {
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
 import { getUserMessageText } from "../utils/message-text";
+import { readEnv } from "../utils/read-env";
 import {
 	extractFirstSentence,
 	hasFirstSentence,
@@ -267,7 +269,9 @@ import {
 } from "./message/direct-action-heuristics";
 import {
 	buildFailureReplyPrompt,
+	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
+	isInsufficientCreditsError,
 	isRateLimitError,
 	stripReasoningBlocks,
 } from "./message/fallback-reply";
@@ -1498,6 +1502,7 @@ interface StrategyResult {
 type FailureReplyAttempt =
 	| { kind: "text"; value: string }
 	| { kind: "noProvider" }
+	| { kind: "creditsExhausted" }
 	| { kind: "rateLimited" }
 	| { kind: "authFailed" };
 
@@ -1516,7 +1521,10 @@ export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
 
 export {
 	buildFailureReplyPrompt,
+	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
+	isInsufficientCreditsError,
+	isInsufficientCreditsMessage,
 	isModelProviderFallbackError,
 	isRateLimitError,
 	stripReasoningBlocks,
@@ -5958,6 +5966,17 @@ export async function runV5MessageRuntimeStage1(args: {
 		? recorder.startTrajectory({
 				agentId: String(args.runtime.agentId ?? "unknown-agent"),
 				roomId: args.message.roomId ? String(args.message.roomId) : undefined,
+				// Run/scenario correlation the aggregator joins on. The scenario CLI
+				// sets these env vars before each scenario (packages/scenario-runner/
+				// src/cli.ts); passing them here makes this call site the source of
+				// truth so file-recorder trajectories carry the join keys without the
+				// recorder inferring them from env buried in its persistence layer.
+				runId: readEnv("ELIZA_LIFEOPS_RUN_ID"),
+				scenarioId: readEnv("ELIZA_LIFEOPS_SCENARIO_ID"),
+				// Root-turn correlation minted on the turn's trajectory context
+				// (#13775). Threading it here makes the file trajectory join the DB
+				// row and any spawned sub-agent trajectory on one traceId.
+				traceId: getTrajectoryContext()?.traceId,
 				rootMessage: {
 					id: String(args.message.id ?? args.responseId),
 					text: getUserMessageText(args.message) ?? "",
@@ -6213,6 +6232,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			stage1RetryReason = getStage1RetryReason(rawMessageHandler);
 		}
 		const messageHandlerEndedAt = Date.now();
+		// Capture the provider that served the Stage-1 (RESPONSE_HANDLER) call
+		// right after it completes, before any later model call could overwrite the
+		// runtime-wide last-resolved-provider, so the recorded stage names the real
+		// provider instead of the fabricated "default" literal (#13623).
+		const messageHandlerProvider = args.runtime.getLastResolvedModelProvider?.(
+			ModelType.RESPONSE_HANDLER,
+		);
 		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
 		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
 		let messageHandler: MessageHandlerResult | null = null;
@@ -6329,6 +6355,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				endedAt: messageHandlerEndedAt,
 				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
 				prefixHash: stage1PrefixHash,
+				provider: messageHandlerProvider,
 				logger: args.runtime.logger,
 			});
 		}
@@ -7055,6 +7082,12 @@ async function recordMessageHandlerStage(args: {
 	endedAt: number;
 	segmentHashes?: string[];
 	prefixHash?: string;
+	/**
+	 * The provider that actually served the Stage-1 call (resolved from the
+	 * runtime after the call completed). Threaded so the recorded stage names
+	 * the real provider instead of the fabricated `"default"` literal (#13623).
+	 */
+	provider?: string;
 	logger?: IAgentRuntime["logger"];
 }): Promise<void> {
 	try {
@@ -7073,7 +7106,7 @@ async function recordMessageHandlerStage(args: {
 			model: {
 				modelType: String(ModelType.RESPONSE_HANDLER),
 				modelName,
-				provider: "default",
+				provider: resolveRecordedStageProvider(args.raw, args.provider),
 				messages: args.messages,
 				tools: args.tools,
 				toolChoice: args.toolChoice,
@@ -7111,6 +7144,10 @@ async function recordFactsAndRelationshipsStage(args: {
 }): Promise<void> {
 	try {
 		const { startedAt, endedAt, result, error } = args.outcome;
+		// The provider is carried WITH the facts call result (captured
+		// synchronously at call time) so a parallel/subsequent TEXT_LARGE call
+		// can't have overwritten it before this stage is recorded (#13623).
+		const factsProvider = result?.provider;
 		const candidates = extractCandidatesForRecording(result);
 		const kept = result?.parsed
 			? {
@@ -7131,7 +7168,10 @@ async function recordFactsAndRelationshipsStage(args: {
 			model: result?.rawResponse
 				? {
 						modelType: String(ModelType.TEXT_LARGE),
-						provider: "default",
+						provider: resolveRecordedStageProvider(
+							result.rawResponse,
+							factsProvider,
+						),
 						messages: result.messages,
 						tools: result.tools,
 						toolChoice: "required",
@@ -7195,6 +7235,51 @@ function extractCandidatesForRecording(
 		}
 	}
 	return { facts, relationships };
+}
+
+/**
+ * Read the provider name a model result attributes itself to, if the provider
+ * adapter surfaced one in `providerMetadata` (e.g. `{ provider }` or
+ * `{ providerName }`). Returns undefined when the result is a bare string or
+ * carries no self-reported provider — never a fabricated value.
+ */
+function extractStageResultProvider(
+	raw: string | GenerateTextResult | unknown,
+): string | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const meta = (raw as { providerMetadata?: unknown }).providerMetadata;
+	if (!meta || typeof meta !== "object" || Array.isArray(meta))
+		return undefined;
+	const record = meta as Record<string, unknown>;
+	for (const key of ["provider", "providerName"]) {
+		const value = record[key];
+		if (typeof value === "string" && value.trim().length > 0) {
+			return value.trim();
+		}
+	}
+	return undefined;
+}
+
+/**
+ * Resolve the provider name to record on a trajectory model stage. Prefers a
+ * provider the result self-reports, then the runtime-resolved provider that
+ * actually served the call, and only falls back to the `"default"` sentinel
+ * when neither is known. Before #13623 these stages hardcoded `"default"`,
+ * making the trajectory useless as a live-vs-proxy provenance signal.
+ */
+function resolveRecordedStageProvider(
+	raw: string | GenerateTextResult | unknown,
+	runtimeResolvedProvider?: string,
+): string {
+	const selfReported = extractStageResultProvider(raw);
+	if (selfReported) return selfReported;
+	if (
+		typeof runtimeResolvedProvider === "string" &&
+		runtimeResolvedProvider.trim().length > 0
+	) {
+		return runtimeResolvedProvider.trim();
+	}
+	return "default";
 }
 
 function extractMessageHandlerModelName(
@@ -8373,6 +8458,18 @@ export class DefaultMessageService implements IMessageService {
 				? message.content.source
 				: "messageService";
 
+		// Mint the root-turn traceId once here (#13775) — inherited from a spawning
+		// parent's env when this runtime is itself a sub-agent, else a fresh id.
+		// Stamped on message.metadata BEFORE MESSAGE_RECEIVED is emitted so the DB
+		// trajectory handler (features/trajectories) records the SAME traceId as
+		// the file recorder, and placed on the turn's trajectory context below so
+		// sub-agent spawns read it too. Both stores then join on one traceId.
+		const traceId = resolveTraceCorrelationFromEnv().traceId ?? asUUID(v4());
+		if (!message.metadata) {
+			message.metadata = { type: "message" };
+		}
+		(message.metadata as { traceId?: string }).traceId = traceId;
+
 		let trajectoryStepId =
 			typeof message.metadata === "object" &&
 			message.metadata !== null &&
@@ -8439,6 +8536,9 @@ export class DefaultMessageService implements IMessageService {
 
 		const senderRole = await resolveStage1SenderRole(runtime, message);
 		const trajectoryContextBase = {
+			// Minted above (before MESSAGE_RECEIVED) so file, DB, and spawn paths
+			// share it for the whole turn (#13775).
+			traceId,
 			runId: runtime.getCurrentRunId?.(),
 			roomId: message.roomId,
 			messageId: message.id,
@@ -10498,6 +10598,7 @@ export class DefaultMessageService implements IMessageService {
 		prompt: string,
 		stage: string,
 	): Promise<FailureReplyAttempt> {
+		let sawCreditsExhausted = false;
 		let sawRateLimit = false;
 		let sawAuthError = false;
 		for (const modelType of [
@@ -10536,11 +10637,15 @@ export class DefaultMessageService implements IMessageService {
 				) {
 					return { kind: "noProvider" };
 				}
-				// Track the most recent slot's cause. Reporting "rate-limited"
-				// only when the LAST attempted slot was a 429 avoids misleading
-				// the user in a mixed-failure run (one slot throttled, others
-				// failed for unrelated reasons where retrying won't help). The
-				// all-429 cascade from the live incident still lands here.
+				// Credit exhaustion is sticky across slots because no later
+				// fallback model can make a drained account retryable. The
+				// rate/auth flags still track the most recent slot's cause:
+				// reporting "rate-limited" only when the LAST attempted slot was
+				// a 429 avoids misleading the user in a mixed-failure run.
+				// Credits are classified before rate limits below: a 429 *with*
+				// billing context is a drained balance ("top up"), not a
+				// transient throttle ("try again in a few seconds").
+				sawCreditsExhausted ||= isInsufficientCreditsError(error);
 				sawRateLimit = isRateLimitError(error);
 				sawAuthError = isAuthError(error);
 				runtime.logger.warn(
@@ -10555,9 +10660,15 @@ export class DefaultMessageService implements IMessageService {
 			}
 		}
 		// Every model slot failed without a usable reply. When the final cause
-		// was provider rate-limiting (429), tell the user that plainly instead
-		// of the opaque generic message — the honest signal is "try again
-		// shortly", not "something broke".
+		// was credit exhaustion (402/insufficient_credits), the condition is
+		// permanent until the user tops up — "try again" can never succeed, so
+		// surface the actionable top-up message.
+		if (sawCreditsExhausted) {
+			return { kind: "creditsExhausted" };
+		}
+		// When the final cause was provider rate-limiting (429), tell the user
+		// that plainly instead of the opaque generic message — the honest
+		// signal is "try again shortly", not "something broke".
 		if (sawRateLimit) {
 			return { kind: "rateLimited" };
 		}
@@ -10611,17 +10722,20 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 
-		let replyText =
-			attempt.kind === "rateLimited" || attempt.kind === "authFailed"
-				? ""
-				: attempt.value;
+		let replyText = attempt.kind === "text" ? attempt.value : "";
 		if (!replyText) {
 			// Last-ditch fallback when every model call above also failed.
 			// Voice-neutral so any character can ship this default; characters
 			// can override with their own phrasing via
 			// character.templates.transientFailureReply (or
-			// rateLimitedReply for the throttling-specific case).
-			if (attempt.kind === "rateLimited") {
+			// rateLimitedReply / insufficientCreditsReply for the specific
+			// cases).
+			if (attempt.kind === "creditsExhausted") {
+				const tmpl = runtime.character.templates?.insufficientCreditsReply;
+				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					INSUFFICIENT_CREDITS_REPLY;
+			} else if (attempt.kind === "rateLimited") {
 				const tmpl = runtime.character.templates?.rateLimitedReply;
 				replyText =
 					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
@@ -10641,10 +10755,17 @@ export class DefaultMessageService implements IMessageService {
 
 		replyText = truncateToCompleteSentence(replyText.trim(), 2000);
 
+		// Credit exhaustion is not transient — it persists until the user tops
+		// up — so the synthetic reply carries the structural kind downstream
+		// consumers already key on (chat DTO failureKind gate, recent-messages
+		// synthetic-failure filter) instead of masquerading as a blip.
 		const responseContent: Content = {
 			thought: `Handle a temporary reply failure during ${stage}.`,
 			actions: ["REPLY"],
-			failureKind: "transient_failure",
+			failureKind:
+				attempt.kind === "creditsExhausted"
+					? "insufficient_credits"
+					: "transient_failure",
 			elizaSyntheticFailure: true,
 			transient: true,
 			doNotPersist: true,

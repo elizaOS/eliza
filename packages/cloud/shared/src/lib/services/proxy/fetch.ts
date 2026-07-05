@@ -92,6 +92,10 @@ export async function retryFetch(opts: RetryFetchOptions, attempt: number = 1): 
 
     return response;
   } catch (error) {
+    // error-policy:J1 transport boundary — retries a transient TimeoutError, then
+    // rethrows the original error (and any non-timeout error immediately) so the
+    // caller's proxy handler translates it to a typed failure. Fails closed: never
+    // returns a fabricated default in place of a failed fetch.
     const sanitizedUrl = sanitizeUrl(url);
 
     if (error instanceof Error && error.name === "TimeoutError") {

@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   collect:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     env:
       ELIZA_SKIP_ARTIFACT_SYNC: "1"
       ELIZA_LIVE_TEST: "1"

@@ -32,7 +32,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { MemoryRouter, useInRouterContext } from "react-router-dom";
-import { PageHeaderProvider } from "../../cloud-ui";
+import { PageHeaderProvider } from "../../cloud-ui/components/layout";
 import { queryClient } from "../lib/query-client";
 import {
   CloudI18nProvider,

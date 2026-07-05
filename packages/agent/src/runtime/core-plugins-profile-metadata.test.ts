@@ -21,15 +21,21 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
+  BLOCKING_CORE_PLUGINS,
   CORE_PLUGIN_PROFILE_METADATA,
   DESKTOP_ONLY_PLUGINS,
   ELIZAOS_ANDROID_CORE_PLUGINS,
   ELIZAOS_ANDROID_TERMINAL_PLUGINS,
   MOBILE_CORE_PLUGINS,
+  MOBILE_MODEL_PROVIDER_PLUGINS,
   MOBILE_VIEW_PLUGINS,
   REQUIRED_BOOTSTRAP_PLUGINS,
   selectCorePluginsByProfile,
 } from "./core-plugins.ts";
+import {
+  OPTIONAL_STATIC_PLUGIN_OVERRIDES,
+  OPTIONAL_STATIC_PLUGIN_PACKAGES,
+} from "./optional-plugins.ts";
 
 /** Order-independent membership comparison (all consumers treat these as sets). */
 const asSet = (xs: readonly string[]) => new Set(xs);
@@ -165,6 +171,79 @@ describe("CORE_PLUGIN_PROFILE_METADATA drift guard", () => {
       expect(
         literalForm.test(flat),
         `${name} must not be a raw array literal`,
+      ).toBe(false);
+    }
+  });
+});
+
+/**
+ * Declaring a plugin mobile-eligible in the metadata table is only half the
+ * contract: on mobile the resolver can load ONLY plugins pre-registered in
+ * STATIC_ELIZA_PLUGINS (no node_modules ships in the APK), so every entry the
+ * mobile allow-list keeps must also have a static registration — a blocking
+ * loader or a generated literal importer — and must not be force-stubbed to
+ * the null plugin by the bundle script. The membership tests above never
+ * checked loadability, which let four host-declared mobile plugins
+ * (native-filesystem, scheduling, inbox, app-control) ship as silent no-ops
+ * on-device: kept by the collector, dropped by the resolver, failed:0.
+ */
+describe("mobile bundle-loadability drift guard", () => {
+  // Everything the stock-mobile allow-list in plugin-collector.ts keeps.
+  const mobileLoadSet = [
+    ...MOBILE_CORE_PLUGINS,
+    ...MOBILE_VIEW_PLUGINS,
+    ...MOBILE_MODEL_PROVIDER_PLUGINS,
+  ];
+  const staticallyRegistrable = new Set([
+    ...BLOCKING_CORE_PLUGINS,
+    ...OPTIONAL_STATIC_PLUGIN_PACKAGES,
+  ]);
+
+  it("every host-declared mobile plugin has a static registration", () => {
+    for (const pluginName of mobileLoadSet) {
+      expect(
+        staticallyRegistrable.has(pluginName),
+        `${pluginName} is in the mobile allow-list but has no static registration ` +
+          "(add it to OPTIONAL_STATIC_PLUGIN_PACKAGES and regenerate) — on mobile " +
+          "it would be silently unloadable",
+      ).toBe(true);
+    }
+  });
+
+  it("no host-declared mobile plugin is skipped on mobile by an override", () => {
+    for (const pluginName of mobileLoadSet) {
+      expect(
+        OPTIONAL_STATIC_PLUGIN_OVERRIDES[pluginName]?.skipOnMobile,
+        `${pluginName} is in the mobile allow-list but its registration is skipOnMobile`,
+      ).toBeFalsy();
+    }
+  });
+
+  it("no host-declared mobile plugin is force-stubbed in the mobile bundle", () => {
+    // The bundle script may stub optional plugins that can never work on a
+    // phone (shell, orchestrator, ...), but stubbing a declared mobile plugin
+    // makes the metadata table a lie — the plugin "loads" as a null Proxy.
+    // Parse the optionalPluginStubs keys from the script source.
+    const script = readFileSync(
+      fileURLToPath(
+        new URL("../../scripts/build-mobile-bundle.mjs", import.meta.url),
+      ),
+      "utf8",
+    );
+    const stubBlock = script.match(
+      /const optionalPluginStubs = \{([\s\S]*?)\n\};/,
+    )?.[1];
+    expect(stubBlock, "optionalPluginStubs block not found").toBeTruthy();
+    const stubbed = [
+      ...(stubBlock as string).matchAll(/"(@elizaos\/[^"]+)":/g),
+    ].map((m) => m[1]);
+    // Guard the parse itself: the block stubs many plugins today; an empty
+    // result means the regex went stale, not that stubs disappeared.
+    expect(stubbed.length).toBeGreaterThan(5);
+    for (const pluginName of mobileLoadSet) {
+      expect(
+        stubbed.includes(pluginName),
+        `${pluginName} is a declared mobile plugin but build-mobile-bundle.mjs stubs it to the null plugin`,
       ).toBe(false);
     }
   });

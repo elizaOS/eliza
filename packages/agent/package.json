@@ -38,9 +38,9 @@
     "build:ios-bun": "bun run scripts/build-mobile-bundle.mjs --target=ios",
     "build:ios-jsc": "bun run scripts/build-mobile-bundle.mjs --target=ios-jsc",
     "verify:mobile-workspace-resolution": "bun run scripts/build-mobile-bundle.mjs --verify-workspace-resolution",
-    "build:docker-dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/copy-package-assets.mjs packages/agent assets && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent",
+    "build:docker-dist": "node scripts/assert-package-boundary-imports.mjs && node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/copy-package-assets.mjs packages/agent assets && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
-    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/copy-package-assets.mjs packages/agent assets && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent",
+    "build:dist": "node scripts/assert-package-boundary-imports.mjs && node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/copy-package-assets.mjs packages/agent assets && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent",
     "test:sandbox-live": "bun run scripts/live-sandbox-smoke.ts",
     "lint": "bunx @biomejs/biome check --write ./src/actions ./src/api ./src/awareness ./src/bin.ts ./src/cli ./src/config ./src/contracts ./src/diagnostics ./src/hooks ./src/index.ts ./src/providers ./src/runtime ./src/security ./src/services ./src/shared ./src/triggers ./src/utils ./src/version-resolver.ts",
     "lint:check": "bunx @biomejs/biome check ./src/actions ./src/api ./src/awareness ./src/bin.ts ./src/cli ./src/config ./src/contracts ./src/diagnostics ./src/hooks ./src/index.ts ./src/providers ./src/runtime ./src/security ./src/services ./src/shared ./src/triggers ./src/utils ./src/version-resolver.ts",
@@ -299,7 +299,6 @@
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
-    "@elizaos/plugin-aosp-local-inference": "workspace:*",
     "@elizaos/plugin-app-control": "workspace:*",
     "@elizaos/plugin-background-runner": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
@@ -314,6 +313,7 @@
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
+    "@elizaos/plugin-native-filesystem": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",
@@ -367,6 +367,14 @@
     "ws": "^8.19.0",
     "zod": "^4.4.3",
     "@elizaos/auth": "workspace:*"
+  },
+  "peerDependencies": {
+    "@elizaos/plugin-inbox": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@elizaos/plugin-inbox": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/bun": "^1.3.12",

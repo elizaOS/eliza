@@ -34,20 +34,11 @@ export function isEnvDisabled(value: string | undefined): boolean {
   return raw === "0" || raw === "false" || raw === "off" || raw === "no";
 }
 
-/**
- * Sync app brand env vars → elizaOS equivalents.
- */
-export {
-  syncBrandEnvToEliza,
-  syncElizaEnvToBrand,
-} from "../config/boot-config.js";
-
+import { resolveAliasedEnvValue } from "../config/boot-config.js";
 import {
-  getBootConfig,
-  resolveAliasedEnvValue,
-  syncBrandEnvToEliza,
-  syncElizaEnvToBrand,
-} from "../config/boot-config.js";
+  buildBrandEnvSyncAliases,
+  normalizeBrandEnvPrefix,
+} from "../config/brand-env-aliases.js";
 
 const DEFAULT_BRANDED_PREFIX = "ELIZA";
 export const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
@@ -65,114 +56,64 @@ export interface SyncElizaEnvAliasOptions {
   appRoutePluginModules?: readonly string[];
 }
 
-function normalizeBrandedPrefix(prefix: string | undefined): string {
-  const normalized = String(prefix ?? DEFAULT_BRANDED_PREFIX)
-    .trim()
-    .replace(/[^A-Za-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .toUpperCase();
-
-  if (!normalized) {
-    throw new Error(
-      "Branded env prefix must resolve to a non-empty identifier",
-    );
-  }
-
-  return normalized;
-}
-
 function buildEnvPairs(
   brandedPrefix: string,
 ): Array<readonly [string, string]> {
-  const prefixed = (suffix: string) => `${brandedPrefix}_${suffix}`;
-  return [
-    [prefixed("NAMESPACE"), "ELIZA_NAMESPACE"],
-    [prefixed("STATE_DIR"), "ELIZA_STATE_DIR"],
-    [prefixed("CONFIG_PATH"), "ELIZA_CONFIG_PATH"],
-    [prefixed("OAUTH_DIR"), "ELIZA_OAUTH_DIR"],
-    [prefixed("AGENT_ORCHESTRATOR"), "ELIZA_AGENT_ORCHESTRATOR"],
-    [prefixed("CLOUD_PROVISIONED"), "ELIZA_CLOUD_PROVISIONED"],
-    [
-      prefixed("CHAT_GENERATION_TIMEOUT_MS"),
-      "ELIZA_CHAT_GENERATION_TIMEOUT_MS",
-    ],
-    [prefixed("SKIP_LOCAL_PLUGIN_ROLES"), "ELIZA_SKIP_LOCAL_PLUGIN_ROLES"],
-    [prefixed("SETTINGS_DEBUG"), "ELIZA_SETTINGS_DEBUG"],
-    [`VITE_${prefixed("SETTINGS_DEBUG")}`, "VITE_ELIZA_SETTINGS_DEBUG"],
-    [
-      prefixed("GOOGLE_OAUTH_DESKTOP_CLIENT_ID"),
-      "ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID",
-    ],
-    [prefixed("API_PORT"), "ELIZA_API_PORT"],
-    [prefixed("API_BIND"), "ELIZA_API_BIND"],
-    [prefixed("API_TOKEN"), "ELIZA_API_TOKEN"],
-    [prefixed("ALLOWED_ORIGINS"), "ELIZA_ALLOWED_ORIGINS"],
-    [prefixed("ALLOWED_HOSTS"), "ELIZA_ALLOWED_HOSTS"],
-    [prefixed("ALLOW_NULL_ORIGIN"), "ELIZA_ALLOW_NULL_ORIGIN"],
-    [prefixed("DISABLE_AUTO_API_TOKEN"), "ELIZA_DISABLE_AUTO_API_TOKEN"],
-    [prefixed("HOME_PORT"), "ELIZA_HOME_PORT"],
-    [prefixed("GATEWAY_PORT"), "ELIZA_GATEWAY_PORT"],
-    [prefixed("API_BASE"), "ELIZA_API_BASE"],
-    [prefixed("API_BASE_URL"), "ELIZA_API_BASE_URL"],
-    [prefixed("DESKTOP_API_BASE"), "ELIZA_DESKTOP_API_BASE"],
-    [prefixed("DESKTOP_TEST_API_BASE"), "ELIZA_DESKTOP_TEST_API_BASE"],
-    [
-      prefixed("DESKTOP_SKIP_EMBEDDED_AGENT"),
-      "ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT",
-    ],
-    [prefixed("RENDERER_URL"), "ELIZA_RENDERER_URL"],
-    [prefixed("APP_ROUTE_PLUGIN_MODULES"), "ELIZA_APP_ROUTE_PLUGIN_MODULES"],
-    [prefixed("PORT"), "ELIZA_UI_PORT"],
-  ];
+  return buildBrandEnvSyncAliases(brandedPrefix);
 }
 
 /**
  * Read an env value resolving brand<->eliza aliases from the immutable
- * BootConfig, WITHOUT mutating `process.env` (arch-audit #12251, slice 1).
+ * BootConfig, WITHOUT mutating `process.env` (arch-audit #12251).
  *
  * Thin wrapper over core's {@link resolveAliasedEnvValue} that pins the alias
  * table to `getBootConfig().envAliases` and normalizes the result via
- * {@link normalizeEnvValue} (trim + empty -> undefined), so migrated read sites
- * get the same trimmed-or-undefined contract they get today from a normalized
- * `process.env.<key>` read. The `syncBrandEnvToEliza` / `syncElizaEnvToBrand`
- * mutation remains as a fallback for not-yet-migrated raw reads.
+ * {@link normalizeEnvValue} (trim + empty -> undefined), so read sites get the
+ * same trimmed-or-undefined contract as a normalized `process.env.<key>` read.
+ * This is the sole brand<->eliza env-resolution path — the old sync mutation
+ * was removed in #13423.
  */
 export function readAliasedEnv(key: string): string | undefined {
   return normalizeEnvValue(resolveAliasedEnvValue(key));
 }
 
-export function syncAppEnvToEliza(): void {
-  const aliases = getBootConfig().envAliases;
-  if (aliases) syncBrandEnvToEliza(aliases);
-}
+/**
+ * Build/launch-time env normalization for a white-label app bundle, run from
+ * `apps/app/vite.config.ts` BEFORE any BootConfig alias table exists (config
+ * eval and the dev orchestrator seed ports off `process.env`, and the port
+ * resolvers in `runtime-env.ts` only alias-resolve once a BootConfig is set).
+ *
+ * It copies a brand `<PREFIX>_*` value into its `ELIZA_*` partner only when the
+ * partner is unset, then seeds two `ELIZA_*` defaults. Unlike the deleted
+ * runtime alias-sync mutation (#13423), this runs exactly once at build/launch
+ * on the host process — the agent runtime resolves brand aliases through the
+ * BootConfig reader ({@link readAliasedEnv}) and never mutates `process.env`.
+ */
+export function syncElizaEnvAliases(
+  options: SyncElizaEnvAliasOptions = {},
+): void {
+  const env = (
+    globalThis as {
+      process?: { env?: Record<string, string | undefined> };
+    }
+  ).process?.env;
+  if (!env) return;
 
-export function syncElizaEnvAliases(options?: SyncElizaEnvAliasOptions): void {
-  if (options) {
-    const env = (
-      globalThis as {
-        process?: { env?: Record<string, string | undefined> };
-      }
-    ).process?.env;
-    if (!env) return;
-
-    const brandedPrefix = normalizeBrandedPrefix(options.brandedPrefix);
-    for (const [from, to] of buildEnvPairs(brandedPrefix)) {
-      if (env[to] === undefined && env[from] !== undefined) {
-        env[to] = env[from];
-      }
+  const brandedPrefix = normalizeBrandEnvPrefix(
+    options.brandedPrefix ?? DEFAULT_BRANDED_PREFIX,
+  );
+  for (const [from, to] of buildEnvPairs(brandedPrefix)) {
+    if (env[to] === undefined && env[from] !== undefined) {
+      env[to] = env[from];
     }
-    if (!env.ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT) {
-      env.ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT =
-        options.cloudManagedAgentsApiSegment ?? "eliza";
-    }
-    if (!env.ELIZA_APP_ROUTE_PLUGIN_MODULES) {
-      env.ELIZA_APP_ROUTE_PLUGIN_MODULES = (
-        options.appRoutePluginModules ?? DEFAULT_APP_ROUTE_PLUGIN_MODULES
-      ).join(",");
-    }
-    return;
   }
-
-  const aliases = getBootConfig().envAliases;
-  if (aliases) syncElizaEnvToBrand(aliases);
+  if (!env.ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT) {
+    env.ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT =
+      options.cloudManagedAgentsApiSegment ?? "eliza";
+  }
+  if (!env.ELIZA_APP_ROUTE_PLUGIN_MODULES) {
+    env.ELIZA_APP_ROUTE_PLUGIN_MODULES = (
+      options.appRoutePluginModules ?? DEFAULT_APP_ROUTE_PLUGIN_MODULES
+    ).join(",");
+  }
 }

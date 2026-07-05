@@ -310,7 +310,11 @@ app.post("/", async (c) => {
     let initialCreditsGranted = false;
     let initialFreeCreditsUsd = 0;
     let welcomeBonusWithheld = false;
-    let welcomeBonusWithheldReason: "ip_daily_cap" | undefined;
+    // Track the grant service's own withheld-reason type so a new reason (e.g.
+    // "count_unavailable") doesn't silently drop here.
+    let welcomeBonusWithheldReason: Awaited<
+      ReturnType<typeof grantInitialCreditsToWalletAccount>
+    >["welcomeBonusWithheldReason"];
     let welcomeBonusWithheldMessage: string | undefined;
     let agent: Awaited<
       ReturnType<typeof elizaSandboxService.createAgent>

@@ -17,14 +17,15 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, stat, unlink } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import {
   SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE as CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
   type IAgentRuntime,
   Service,
 } from "@elizaos/core";
+import { isAndroidMobile } from "@elizaos/shared";
 import { NativeAcpClient } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
@@ -63,13 +64,24 @@ import {
   resolveVendoredOpencodeAcpCommand,
 } from "./opencode-config.js";
 import {
+  isParentAgentBrokerWired,
+  PARENT_AGENT_BROKER_MANIFEST_ENTRY,
+} from "./parent-agent-broker.js";
+import {
   AcpSessionStore,
   InMemorySessionStore,
   type SessionStoreBackend,
 } from "./session-store.js";
+import { buildSkillsManifest } from "./skill-manifest.js";
 import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
+import {
+  appendSubagentStdout,
+  isSubagentStdoutLoggingEnabled,
+  subagentStdoutLogPath,
+} from "./subagent-stdout-log.js";
 import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
+  type AcpCapacity,
   type AcpEventCallback,
   type AcpJsonRpcMessage,
   type AcpToolCall,
@@ -78,9 +90,11 @@ import {
   type AvailableAgentInfo,
   type PromptResult,
   type SendOptions,
+  SessionCapError,
   type SessionEventCallback,
   type SessionEventName,
   type SessionInfo,
+  type SessionSlotClass,
   type SessionStore,
   type SpawnOptions,
   type SpawnResult,
@@ -167,6 +181,37 @@ export function computeSessionWorkdir(
 ): string {
   return isolate ? resolve(base, `task-${sessionId}`) : resolve(base);
 }
+
+/**
+ * True iff `workdir` is a throwaway scratch dir AcpService itself created under
+ * its default temp root — a `task-<sessionId>` directory directly beneath
+ * DEFAULT_WORKDIR_ROOT (`$TMPDIR/eliza-acp`). This is the ownership guard for
+ * every destructive reclaim (teardown rm + startup GC): a self-checkout
+ * (`process.cwd()`), an explicit route/opt-in workdir, and a git-worktree
+ * workspace the service was handed all live elsewhere, so a reclaim keyed on
+ * this predicate can never delete a directory the service does not own. Pure +
+ * exported so the guarantee is unit-testable.
+ */
+export function isOwnedScratchDir(workdir: string): boolean {
+  const resolved = resolve(workdir);
+  return (
+    dirname(resolved) === resolve(DEFAULT_WORKDIR_ROOT) &&
+    basename(resolved).startsWith("task-")
+  );
+}
+const ACP_SCRATCH_DIR_PREFIX = "task-";
+// Every scratch dir this service creates is `task-<randomUUID()>` (spawnSession
+// is computeSessionWorkdir's only production caller), so destructive reclaim
+// matches the full UUID shape rather than the bare prefix: workspace roots
+// double as scratch roots above, and a human repo named `task-master` or
+// `task-runner` sitting under one must never look reclaimable (#13895).
+const ACP_SCRATCH_DIR_NAME_RE =
+  /^task-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function isAcpScratchDirName(name: string): boolean {
+  return ACP_SCRATCH_DIR_NAME_RE.test(name);
+}
+const ACP_METADATA_ISOLATED_WORKDIR = "isolatedWorkdir";
+const ACP_METADATA_WORKDIR_ROOT = "workdirRoot";
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const ACP_HEALTH_CHECK_INTERVAL_MS = 60_000;
@@ -183,6 +228,13 @@ const ACP_MIDFLIGHT_SESSION_STATUSES: ReadonlySet<string> = new Set([
   "tool_running",
 ]);
 const ACP_STALE_LOCK_MAX_AGE_MS = 10 * 60_000;
+// Startup GC only reclaims an UNTRACKED `task-*` scratch dir (no owning session
+// in this instance's store) once it is older than this — a conservative floor
+// so a co-tenant AcpService sharing the same $TMPDIR/eliza-acp root never has
+// its live-but-idle scratch nuked. Dirs whose session IS terminal in this store
+// are unambiguously ours and reclaimed regardless of age. Overridable via
+// ELIZA_ACP_SCRATCH_GC_MAX_AGE_MS. 24h mirrors ACP_REVERSE_ORPHAN_MAX_AGE_MS.
+const ACP_SCRATCH_GC_MAX_AGE_MS = 24 * 60 * 60_000;
 // Untracked acpx stream files older than this get unlinked. Real spawns
 // finalize their store entry in seconds; 24h is grace for in-flight spawns.
 const ACP_REVERSE_ORPHAN_MAX_AGE_MS = 24 * 60 * 60_000;
@@ -290,6 +342,12 @@ export class AcpService extends Service {
   private readonly transportMode: "native" | "cli";
   private readonly defaultAgent: AgentType;
   private readonly maxSessions: number;
+  // Reserved slots for short-lived `system` spawns (the #8898 read-only
+  // verifier) that must NOT compete for a worker slot: at full worker cap the
+  // verifier needs a fresh session while the worker it is verifying still holds
+  // its slot (orchestrator sessions keep the slot after task_complete), so
+  // counting them together deadlocks validation. Counted against a separate pool.
+  private readonly systemHeadroom: number;
   // Serializes the session-limit check-and-reserve so concurrent spawns can't
   // each pass the limit check before any has inserted (which would overshoot
   // ELIZA_ACP_MAX_SESSIONS). A promise-chain mutex: each reservation awaits the
@@ -304,6 +362,16 @@ export class AcpService extends Service {
   private readonly nativeCancelledPromptSessionIds = new Set<string>();
   private readonly nativeStoppingSessionIds = new Set<string>();
   private readonly outputBuffers = new Map<string, string[]>();
+  // Sessions whose raw stdout has been teed to disk at least once. Drives the
+  // `task_complete` stdoutLogPath reference: only sessions that actually wrote a
+  // file get the path attached, so the task document never points at a
+  // never-created log. Populated by persistRawStdout; gated by trajectory
+  // recording.
+  private readonly persistedStdoutSessions = new Set<string>();
+  // Raw stdout arrives on the subprocess stream, while task completion is parsed
+  // from that same stream. Queue writes per session so the terminal event can
+  // wait for the tee before persisting a task document that references it.
+  private readonly pendingStdoutWrites = new Map<string, Promise<void>>();
   // Per-session model-gateway lease (#11536 E2 residual). Minted at spawn when
   // gateway mode + a lease broker are configured; the leased token (not the
   // static ELIZA_MODEL_GATEWAY_TOKEN) is injected into the child env, and the
@@ -345,6 +413,8 @@ export class AcpService extends Service {
       "fixed";
     this.maxSessions =
       parsePositiveInt(this.setting("ELIZA_ACP_MAX_SESSIONS")) ?? 8;
+    this.systemHeadroom =
+      parsePositiveInt(this.setting("ELIZA_ACP_SYSTEM_SESSION_HEADROOM")) ?? 2;
     this.sessionTimeoutMs = parsePositiveInt(
       this.setting("ACPX_DEFAULT_TIMEOUT_MS") ??
         this.setting("ELIZA_ACP_PROMPT_TIMEOUT_MS"),
@@ -374,6 +444,7 @@ export class AcpService extends Service {
       defaultApprovalPreset: this.defaultApprovalPreset,
     });
     await this.reconcileOrphanedSessions();
+    await this.gcOrphanedScratchDirs();
     await this.cleanReverseOrphanedAcpxFiles();
     await this.cleanStaleLocks();
     this.healthCheckTimer = setInterval(() => {
@@ -564,6 +635,202 @@ export class AcpService extends Service {
     }
   }
 
+  private configuredScratchRoots(): string[] {
+    const roots = [
+      this.setting("ELIZA_ACP_WORKSPACE_ROOT"),
+      this.setting("ACPX_DEFAULT_CWD"),
+      this.setting("ELIZA_WORKSPACE_DIR"),
+      this.setting("ELIZA_CODING_WORKSPACE"),
+      this.setting("ELIZA_CODING_DIRECTORY"),
+      DEFAULT_WORKDIR_ROOT,
+    ];
+    return Array.from(
+      new Set(
+        roots
+          .filter((value): value is string => Boolean(value?.trim()))
+          .map((value) => {
+            const trimmed = value.trim();
+            return resolve(
+              trimmed === "~" || trimmed.startsWith("~/")
+                ? join(homedir(), trimmed.slice(2))
+                : trimmed,
+            );
+          }),
+      ),
+    );
+  }
+
+  private isPathUnderRoot(candidate: string, root: string): boolean {
+    const resolved = resolve(candidate);
+    const resolvedRoot = resolve(root);
+    return (
+      resolved === resolvedRoot || resolved.startsWith(`${resolvedRoot}${sep}`)
+    );
+  }
+
+  private sessionOwnsIsolatedWorkdir(session: SessionInfo): boolean {
+    const root = session.metadata?.[ACP_METADATA_WORKDIR_ROOT];
+    if (session.metadata?.[ACP_METADATA_ISOLATED_WORKDIR] !== true) {
+      return isOwnedScratchDir(session.workdir);
+    }
+    return (
+      typeof root === "string" &&
+      this.isPathUnderRoot(session.workdir, root) &&
+      basename(resolve(session.workdir)) ===
+        `${ACP_SCRATCH_DIR_PREFIX}${session.id}`
+    );
+  }
+
+  // Delete the per-session scratch dir spawnSession mkdir'd, but ONLY when it is
+  // one we own. New sessions carry explicit ownership metadata; older sessions
+  // fall back to the legacy default-root predicate for backward cleanup.
+  private async removeOwnedScratchWorkdir(session: SessionInfo): Promise<void> {
+    if (!this.sessionOwnsIsolatedWorkdir(session)) return;
+    const root = session.metadata?.[ACP_METADATA_WORKDIR_ROOT];
+    if (
+      typeof root === "string" &&
+      !this.isPathUnderRoot(session.workdir, root)
+    ) {
+      this.log("warn", "scratch cleanup refused: workdir outside root", {
+        sessionId: session.id,
+        workdir: session.workdir,
+        root,
+      });
+      return;
+    }
+    try {
+      await rm(session.workdir, { recursive: true, force: true });
+      this.log("debug", "reclaimed session scratch dir", {
+        sessionId: session.id,
+        workdir: session.workdir,
+      });
+    } catch (err) {
+      // error-policy:J6 best-effort scratch reclaim on teardown; surface the
+      // failure so the leak is observable, then let the startup GC retry it.
+      this.log("warn", "failed to reclaim session scratch dir", {
+        sessionId: session.id,
+        workdir: session.workdir,
+        error: errorMessage(err),
+      });
+    }
+  }
+
+  // Reclaim `task-*` scratch dirs left under configured scratch roots by sessions that
+  // never got a clean teardown — the SIGKILL-mid-run case that made this a
+  // 3.6TB-class leak (#13773). Runs once at startup, after reconcile has marked
+  // crashed orphans terminal, so a dir whose session is terminal in this store
+  // is reclaimed immediately; a live (non-terminal, possibly resumable) session
+  // keeps its workspace; an untracked dir is age-gated (co-tenant safety).
+  private async cleanOrphanedScratchWorkdirs(): Promise<void> {
+    let sessions: SessionInfo[];
+    try {
+      sessions = await this.store.list();
+    } catch (err) {
+      // error-policy:J7 store read failed; DATA-LOSS GUARD. A fabricated empty
+      // set would make every live session's scratch dir look orphaned and delete
+      // work out from under a running sub-agent. Surface and skip this pass; the
+      // next boot retries with real data.
+      this.runtime.reportError("AcpService.cleanOrphanedScratchWorkdirs", err, {
+        phase: "store.list",
+      });
+      this.log("warn", "scratch GC: store read failed, skipping sweep", {
+        err,
+      });
+      return;
+    }
+    const sessionByWorkdir = new Map(
+      sessions.map((session) => [resolve(session.workdir), session] as const),
+    );
+    const maxAgeMs =
+      parsePositiveInt(this.setting("ELIZA_ACP_SCRATCH_GC_MAX_AGE_MS")) ??
+      ACP_SCRATCH_GC_MAX_AGE_MS;
+    const now = Date.now();
+    let reclaimed = 0;
+    let kept = 0;
+    const configuredAcpRoot = this.setting("ELIZA_ACP_WORKSPACE_ROOT")?.trim();
+    for (const root of this.configuredScratchRoots()) {
+      // Only ACP-exclusive scratch roots are wholly owned by this service.
+      // Coding/workspace roots can contain user projects, so an untracked
+      // directory there is never orphaned ACP work by name alone.
+      const isAcpOwnedRoot =
+        resolve(root) === resolve(DEFAULT_WORKDIR_ROOT) ||
+        (configuredAcpRoot
+          ? resolve(root) === resolve(configuredAcpRoot)
+          : false);
+      let entries: string[];
+      try {
+        entries = await readdir(root);
+      } catch {
+        // error-policy:J3 an absent scratch root is the expected empty shape →
+        // explicit zero-work result, not a masked read failure.
+        continue;
+      }
+      const taskDirs = entries.filter((name) => isAcpScratchDirName(name));
+      await Promise.allSettled(
+        taskDirs.map(async (name) => {
+          const path = join(root, name);
+          const session = sessionByWorkdir.get(resolve(path));
+          // A live (non-terminal) session is still using its workspace — never
+          // reclaim it; resumeOrphanedBusySessions may pick the work back up.
+          if (session && !TERMINAL_SESSION_STATUSES.has(session.status)) {
+            kept++;
+            return;
+          }
+          // A terminal session that did NOT own an isolated scratch dir ran
+          // inside a directory handed to it (explicit route workdir, opt-out,
+          // self-checkout) — never reclaimable here, even when the dir name
+          // happens to match the scratch shape (#13895).
+          if (session && !this.sessionOwnsIsolatedWorkdir(session)) {
+            kept++;
+            return;
+          }
+          // No owning session in THIS store: the dir may belong to a co-tenant
+          // AcpService sharing the ACP-owned tmp root, so gate removal on age.
+          // Under user-configured roots, UUID shape is still not ownership.
+          if (!session) {
+            if (!isAcpOwnedRoot) {
+              kept++;
+              return;
+            }
+            try {
+              const st = await stat(path);
+              if (now - st.mtimeMs <= maxAgeMs) {
+                kept++;
+                return;
+              }
+            } catch {
+              // error-policy:J6 vanished mid-scan — nothing left to reclaim.
+              return;
+            }
+          }
+          try {
+            await rm(path, { recursive: true, force: true });
+            reclaimed++;
+          } catch (err) {
+            // error-policy:J6 best-effort GC; a locked/vanished dir is skipped so
+            // the sweep continues and retries next boot.
+            this.log("warn", "scratch GC: failed to remove dir", {
+              path,
+              error: errorMessage(err),
+            });
+          }
+        }),
+      );
+    }
+    if (reclaimed > 0 || kept > 0) {
+      this.log("info", "reclaimed orphaned scratch dirs", {
+        reclaimed,
+        kept,
+        roots: this.configuredScratchRoots(),
+        olderThanMs: maxAgeMs,
+      });
+    }
+  }
+
+  private async gcOrphanedScratchDirs(): Promise<void> {
+    await this.cleanOrphanedScratchWorkdirs();
+  }
+
   private async runHealthCheck(): Promise<void> {
     if (!this.started) return;
     let sessions: SessionInfo[];
@@ -657,6 +924,8 @@ export class AcpService extends Service {
       this.outputBuffers.delete(id);
       this.changedPathsBySession.delete(id);
       this.nativeClients.delete(id);
+      this.persistedStdoutSessions.delete(id);
+      this.pendingStdoutWrites.delete(id);
     }
     if (swept.length > 0) {
       this.log("debug", "health-check reclaimed terminal sessions", {
@@ -725,10 +994,20 @@ export class AcpService extends Service {
     const isolate = opts.workdir ? opts.isolateWorkdir === true : true;
     const workdir = computeSessionWorkdir(baseWorkdir, id, isolate);
     await mkdir(workdir, { recursive: true });
+    // The parent-agent broker is only reachable when the SubAgentRouter is bound
+    // to the ACP event stream; gate every broker advertisement (manual section,
+    // SKILLS.md broker entry) on that so a child is never told about a bridge it
+    // cannot use.
+    const brokerWired = isParentAgentBrokerWired(this.runtime);
     // Give the sub-agent its eliza-context + non-interactive operating manual on
     // disk (where every backend reads it) — only when the workspace is bare, so
     // a real repo's own AGENTS.md/CLAUDE.md is never clobbered.
-    await writeWorkspaceIdentity(workdir);
+    await writeWorkspaceIdentity(workdir, { brokerWired });
+    // Write SKILLS.md into every spawn workspace so a child can discover (and
+    // request, via the parent) the parent's installed skills — not just the
+    // economics loop. The broker skill is advertised only when wired; the
+    // recommended-slugs / ViewKind extras are opt-in via opts.skillsManifest.
+    await this.writeSkillsManifest(workdir, id, brokerWired, opts);
 
     // Record the workspace HEAD + already-dirty files at spawn so the change
     // set captured at task_complete is scoped to exactly what this sub-agent
@@ -779,18 +1058,26 @@ export class AcpService extends Service {
     }
 
     const now = new Date();
+    // Stamp the capacity class onto the session so getCapacity() (and the
+    // admission queue that reads it) can count worker vs system slots off the
+    // durable record. Always persisted — a worker session carries slotClass so
+    // the accounting never has to infer "worker" from an absent field.
+    const slotClass: SessionSlotClass = opts.slotClass ?? "worker";
     const mergedMetadata: Record<string, unknown> = {
       ...(opts.metadata ?? {}),
+      ...(isolate
+        ? {
+            [ACP_METADATA_ISOLATED_WORKDIR]: true,
+            [ACP_METADATA_WORKDIR_ROOT]: resolve(baseWorkdir),
+          }
+        : {}),
       ...(baselineSha ? { codingBaselineSha: baselineSha } : {}),
       ...(baselineSha && baselineDirty.length > 0
         ? { codingBaselineDirty: baselineDirty }
         : {}),
       ...(resolvedAccount ? { account: resolvedAccount.meta } : {}),
+      slotClass,
     };
-    const hasMergedMetadata =
-      Boolean(baselineSha) ||
-      Boolean(resolvedAccount) ||
-      Boolean(opts.metadata);
     const session: SessionInfo = {
       id,
       name,
@@ -800,12 +1087,13 @@ export class AcpService extends Service {
       approvalPreset,
       createdAt: now,
       lastActivityAt: now,
-      metadata: hasMergedMetadata ? mergedMetadata : opts.metadata,
+      metadata: mergedMetadata,
     };
-    // Atomic check-and-reserve: enforces the session limit and inserts under a
-    // single mutex so concurrent spawns can't overshoot maxSessions (the old
-    // separate enforceSessionLimit()/store.create() left a read-then-act race).
-    await this.reserveSessionSlot(session);
+    // Atomic check-and-reserve: enforces the session limit for this slot class
+    // and inserts under a single mutex so concurrent spawns can't overshoot the
+    // cap (the old separate enforceSessionLimit()/store.create() left a
+    // read-then-act race). Throws SessionCapError when the class is full.
+    await this.reserveSessionSlot(session, slotClass);
 
     // Mint the per-spawn model lease BEFORE the transport branch, so the leased
     // token (not the static gateway token) is what buildEnv injects into the
@@ -933,6 +1221,45 @@ export class AcpService extends Service {
     const updated = await this.store.get(id);
     const sessionSnapshot: SessionInfo = { ...session, status: "ready" };
     return toSpawnResult(updated ?? sessionSnapshot);
+  }
+
+  /**
+   * Write SKILLS.md into a spawn workspace so the sub-agent can discover the
+   * parent's installed skills and request them back via the parent. Runs on the
+   * SHARED spawn path (every `spawnSession`) so direct `/api/coding-agents` and
+   * `TASKS_SPAWN_AGENT` spawns get it, not just the economics loop. The broker
+   * skill is advertised only when the router is wired; `opts.skillsManifest`
+   * adds the recommended-slug highlight and Cloud ViewKind contract for
+   * app-building tasks. Best-effort — a failed write warns and the spawn
+   * proceeds without the manifest.
+   */
+  private async writeSkillsManifest(
+    workdir: string,
+    sessionId: string,
+    brokerWired: boolean,
+    opts: SpawnOptions,
+  ): Promise<void> {
+    try {
+      const manifest = await buildSkillsManifest(this.runtime, {
+        ...(opts.skillsManifest?.recommendedSlugs
+          ? { recommendedSlugs: opts.skillsManifest.recommendedSlugs }
+          : {}),
+        ...(brokerWired
+          ? { virtualSkills: [{ ...PARENT_AGENT_BROKER_MANIFEST_ENTRY }] }
+          : {}),
+        includeViewKindContract:
+          opts.skillsManifest?.includeViewKindContract ?? false,
+      });
+      await writeFile(join(workdir, "SKILLS.md"), manifest.markdown, "utf8");
+    } catch (err) {
+      // error-policy:J7 SKILLS.md scaffolding is best-effort; a failed write is
+      // warned and the spawn proceeds without it — a missing manifest only
+      // degrades skill discovery.
+      this.runtime.logger?.warn?.(
+        { src: "acp-service", sessionId, workdir },
+        `failed to write SKILLS.md: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   async sendPrompt(
@@ -1112,6 +1439,7 @@ export class AcpService extends Service {
           this.nativeStoppingSessionIds.delete(sessionId);
         }
       }
+      await this.removeOwnedScratchWorkdir(session);
       return;
     }
     await this.stopTrackedProcess(sessionId);
@@ -1137,9 +1465,11 @@ export class AcpService extends Service {
       sessionId,
       response: this.lastOutput(sessionId),
     });
+    await this.removeOwnedScratchWorkdir(session);
   }
 
   async deleteSession(sessionId: string): Promise<void> {
+    const session = await this.requireSession(sessionId);
     await this.closeSession(sessionId).catch((err: unknown) => {
       // error-policy:J6 best-effort close before delete; a teardown failure must
       // not block removing the session record + satellite maps below.
@@ -1148,9 +1478,12 @@ export class AcpService extends Service {
         error: errorMessage(err),
       });
     });
+    await this.removeOwnedScratchWorkdir(session);
     await this.store.delete(sessionId);
     this.outputBuffers.delete(sessionId);
     this.changedPathsBySession.delete(sessionId);
+    this.persistedStdoutSessions.delete(sessionId);
+    this.pendingStdoutWrites.delete(sessionId);
   }
 
   async listSessions(): Promise<SessionInfo[]> {
@@ -1896,7 +2229,9 @@ export class AcpService extends Service {
         this.activeProcesses.set(opts.sessionId, record);
 
       proc.stdout.on("data", (chunk: Buffer) => {
-        record.stdoutBuffer += chunk.toString("utf8");
+        const rawChunk = chunk.toString("utf8");
+        if (opts.sessionId) this.persistRawStdout(opts.sessionId, rawChunk);
+        record.stdoutBuffer += rawChunk;
         let newlineIndex = record.stdoutBuffer.indexOf("\n");
         while (newlineIndex >= 0) {
           const line = record.stdoutBuffer.slice(0, newlineIndex).trim();
@@ -1911,6 +2246,7 @@ export class AcpService extends Service {
                 startedAt,
                 opts.activeForSession === true,
                 capturedToolOutputs,
+                opts.activeForSession === true,
               );
               finalText = handled.finalText;
               stopReason = handled.stopReason ?? stopReason;
@@ -1937,7 +2273,7 @@ export class AcpService extends Service {
         }
       });
 
-      proc.on("close", (code, signal) => {
+      proc.on("close", async (code, signal) => {
         record.exited = true;
         if (record.stdoutBuffer.trim()) {
           const parsed = this.parseNdjson(
@@ -1952,6 +2288,7 @@ export class AcpService extends Service {
               startedAt,
               opts.activeForSession === true,
               capturedToolOutputs,
+              opts.activeForSession === true,
             );
             finalText = handled.finalText;
             stopReason = handled.stopReason ?? stopReason;
@@ -2011,6 +2348,7 @@ export class AcpService extends Service {
             }
           });
         }
+        if (opts.sessionId) await this.flushRawStdout(opts.sessionId);
         if (opts.sessionId && opts.activeForSession) {
           // claude-agent-sdk often exits cleanly (code 0) without sending
           // an explicit `{result: {stopReason: "end_turn"}}` ACP message
@@ -2033,6 +2371,11 @@ export class AcpService extends Service {
               exitCode: code,
               signal,
             });
+          } else if (stopReason === "error" && !finalText?.trim()) {
+            this.emitSessionEvent(opts.sessionId, "error", {
+              message: "acpx prompt ended with stopReason error",
+              stopReason,
+            });
           } else if (cleanCompletion) {
             // Emit exactly one terminal event per session-exit. Listeners
             // gating on `stopped` must also accept `task_complete` (the
@@ -2043,6 +2386,7 @@ export class AcpService extends Service {
               durationMs: Date.now() - startedAt,
               stopReason: stopReason ?? "exit",
               exitCode: code,
+              ...this.stdoutLogRef(opts.sessionId),
             });
           } else {
             this.emitSessionEvent(opts.sessionId, "stopped", {
@@ -2096,6 +2440,7 @@ export class AcpService extends Service {
     startedAt: number,
     emitPromptTerminalEvents: boolean,
     capturedToolOutputs: Set<string>,
+    deferPromptTerminalEvent = false,
   ): { finalText: string; stopReason?: string } {
     const protocolSessionId = extractSessionId(event);
     const sessionId = localSessionId ?? protocolSessionId;
@@ -2390,6 +2735,9 @@ export class AcpService extends Service {
         // to a failure if the claimed URLs are dead. Only a stopReason error with
         // NO captured output is a true, user-facing failure — otherwise the user
         // gets a false "hit a snag" for a build that actually succeeded.
+        if (deferPromptTerminalEvent) {
+          return { finalText, stopReason };
+        }
         if (stopReason === "error" && !finalText?.trim()) {
           this.emitSessionEvent(sessionId, "error", {
             message: "acpx prompt ended with stopReason error",
@@ -2400,6 +2748,7 @@ export class AcpService extends Service {
             response: finalText,
             durationMs: Date.now() - startedAt,
             stopReason,
+            ...this.stdoutLogRef(sessionId),
           });
         }
       }
@@ -2448,14 +2797,70 @@ export class AcpService extends Service {
     return session;
   }
 
-  private async enforceSessionLimit(): Promise<void> {
-    const sessions = await this.store.list();
-    const active = sessions.filter(
-      (s) =>
-        !["stopped", "errored", "completed", "cancelled"].includes(s.status),
+  /**
+   * A session occupies a slot until it reaches a terminal status. Kept as a
+   * narrow list (not `TERMINAL_SESSION_STATUSES`) because an `error`-status
+   * session may still be mid-teardown and holding its subprocess; only the
+   * fully-settled statuses free the slot.
+   */
+  private static isActiveSession(session: SessionInfo): boolean {
+    return !["stopped", "errored", "completed", "cancelled"].includes(
+      session.status,
     );
-    if (active.length >= this.maxSessions)
-      throw new Error(`acpx max session limit reached (${this.maxSessions})`);
+  }
+
+  private static slotClassOf(session: SessionInfo): SessionSlotClass {
+    return session.metadata?.slotClass === "system" ? "system" : "worker";
+  }
+
+  /**
+   * Snapshot the two admission pools from the durable store. Worker and system
+   * counts are independent: a full worker pool never blocks a system spawn (the
+   * verifier headroom) and vice-versa.
+   */
+  private async countActiveSlots(): Promise<{
+    activeWorkers: number;
+    activeSystem: number;
+  }> {
+    const sessions = await this.store.list();
+    let activeWorkers = 0;
+    let activeSystem = 0;
+    for (const session of sessions) {
+      if (!AcpService.isActiveSession(session)) continue;
+      if (AcpService.slotClassOf(session) === "system") activeSystem += 1;
+      else activeWorkers += 1;
+    }
+    return { activeWorkers, activeSystem };
+  }
+
+  /**
+   * Live capacity across both admission pools. The queue dispatcher and planner
+   * provider read this instead of re-deriving the count so back-pressure is
+   * reported from one authoritative source.
+   */
+  async getCapacity(): Promise<AcpCapacity> {
+    const { activeWorkers, activeSystem } = await this.countActiveSlots();
+    return {
+      maxSessions: this.maxSessions,
+      systemHeadroom: this.systemHeadroom,
+      activeWorkers,
+      activeSystem,
+      freeWorkerSlots: Math.max(0, this.maxSessions - activeWorkers),
+      freeSystemSlots: Math.max(0, this.systemHeadroom - activeSystem),
+    };
+  }
+
+  private async enforceSessionLimit(
+    slotClass: SessionSlotClass,
+  ): Promise<void> {
+    const { activeWorkers, activeSystem } = await this.countActiveSlots();
+    if (slotClass === "system") {
+      if (activeSystem >= this.systemHeadroom)
+        throw new SessionCapError("system", this.systemHeadroom, activeSystem);
+      return;
+    }
+    if (activeWorkers >= this.maxSessions)
+      throw new SessionCapError("worker", this.maxSessions, activeWorkers);
   }
 
   /**
@@ -2472,7 +2877,10 @@ export class AcpService extends Service {
    * never rejects (we swallow on the tail) so one failed reservation doesn't
    * wedge the lock for later spawns.
    */
-  private async reserveSessionSlot(session: SessionInfo): Promise<void> {
+  private async reserveSessionSlot(
+    session: SessionInfo,
+    slotClass: SessionSlotClass,
+  ): Promise<void> {
     const previous = this.spawnReservationLock;
     let release!: () => void;
     this.spawnReservationLock = new Promise<void>((resolve) => {
@@ -2483,7 +2891,7 @@ export class AcpService extends Service {
     // awaiter; here we only serialize on its settle before counting slots.
     await previous.catch(() => {});
     try {
-      await this.enforceSessionLimit();
+      await this.enforceSessionLimit(slotClass);
       await this.store.create(session);
     } finally {
       release();
@@ -2510,8 +2918,20 @@ export class AcpService extends Service {
   /**
    * Re-resolve the credential env for a session's previously selected account.
    * Used by the cli transport (which spawns a fresh subprocess per prompt);
-   * session affinity keeps the same account, and the token is refreshed on each
-   * resolve. Returns undefined when the session has no linked account.
+   * the native transport keeps the spawn-time client so it never re-resolves.
+   *
+   * The re-resolve is PINNED to the account stamped on the session at spawn.
+   * Pool session-affinity alone is not enough: it expires after a few selects,
+   * after which the default least-used strategy actively prefers the sibling
+   * (the affine account holds the freshest selection stamp) — the subprocess
+   * would silently auth as account B while recordUsage and health marks stay
+   * keyed to account A (wrong-account billing, wrong-account cool-offs). Only
+   * when the pinned account is no longer selectable (rate-limited /
+   * needs-reauth / disabled / token resolve failed) does this deliberately
+   * fail over to a fresh pick — and then re-stamps the session so every
+   * account-keyed consumer follows the credential actually injected. Returns
+   * undefined when the session has no linked account and no account is
+   * available.
    */
   private async accountCredentialsForSession(
     session: SessionInfo,
@@ -2520,18 +2940,60 @@ export class AcpService extends Service {
       session.metadata,
     );
     if (!meta) return undefined;
-    const resolved = await selectCodingAccount(session.agentType, {
+    const pinned = await selectCodingAccount(session.agentType, {
       sessionKey: session.id,
+      accountIds: [meta.accountId],
     });
-    if (!resolved) return undefined;
-    if (resolved.meta.accountId !== meta.accountId) {
-      this.log("warn", "coding account drifted on follow-up prompt", {
+    if (pinned) return pinned.selection.envPatch;
+    // Exclude the dud explicitly: it may still be pool-selectable (only its
+    // token resolve failed), and re-picking it here would just re-fail.
+    const failover = await selectCodingAccount(session.agentType, {
+      sessionKey: session.id,
+      exclude: [meta.accountId],
+    });
+    if (!failover) return undefined;
+    this.log("warn", "coding account failed over on follow-up prompt", {
+      sessionId: session.id,
+      previous: meta.accountId,
+      now: failover.meta.accountId,
+      providerId: failover.meta.providerId,
+    });
+    await this.restampSessionAccount(session, failover.meta);
+    return failover.selection.envPatch;
+  }
+
+  /**
+   * Re-key a session's account descriptor after a follow-up failover so usage
+   * and health attribution follow the credential actually injected: the
+   * SessionInfo metadata (which the next prompt's pin reads) and — via the
+   * `account_switched` session event — the orchestrator task store record
+   * whose accountProviderId/accountId feed recordUsage and the
+   * rate-limit/reauth marks.
+   */
+  private async restampSessionAccount(
+    session: SessionInfo,
+    meta: CodingAccountMeta,
+  ): Promise<void> {
+    const metadata = { ...(session.metadata ?? {}), account: meta };
+    session.metadata = metadata;
+    try {
+      await this.store.update(session.id, { metadata });
+    } catch (err) {
+      // error-policy:J7 the failover credential is already resolved and must
+      // reach the subprocess; a failed durable re-stamp only degrades the NEXT
+      // prompt's pin back to the stale account, so warn instead of failing the
+      // prompt.
+      this.log("warn", "failed to persist failover account on session", {
         sessionId: session.id,
-        previous: meta.accountId,
-        now: resolved.meta.accountId,
+        accountId: meta.accountId,
+        error: errorMessage(err),
       });
     }
-    return resolved.selection.envPatch;
+    this.emitSessionEvent(session.id, "account_switched", {
+      providerId: meta.providerId,
+      accountId: meta.accountId,
+      label: meta.label,
+    });
   }
 
   private buildEnv(
@@ -2778,6 +3240,47 @@ export class AcpService extends Service {
     return (this.outputBuffers.get(sessionId) ?? []).join("");
   }
 
+  // Path of the persisted raw-stdout log for a session, or undefined if no raw
+  // stdout write was queued (recording off, or no output). Merged into the
+  // `task_complete` event data so the task document references the ground-truth
+  // stdout file — the join key downstream tooling follows to the full stream.
+  private stdoutLogRef(
+    sessionId: string,
+  ): { stdoutLogPath: string } | Record<string, never> {
+    return this.persistedStdoutSessions.has(sessionId)
+      ? { stdoutLogPath: subagentStdoutLogPath(sessionId) }
+      : {};
+  }
+
+  private async flushRawStdout(sessionId: string): Promise<void> {
+    await this.pendingStdoutWrites.get(sessionId);
+  }
+
+  private persistRawStdout(sessionId: string, text: string): void {
+    if (!isSubagentStdoutLoggingEnabled()) return;
+    const previous =
+      this.pendingStdoutWrites.get(sessionId) ?? Promise.resolve();
+    const write = previous
+      .then(async () => {
+        const path = await appendSubagentStdout(sessionId, text);
+        if (path) this.persistedStdoutSessions.add(sessionId);
+      })
+      .catch((err: unknown) => {
+        // error-policy:J7 stdout persistence is diagnostics and must not kill the
+        // transport loop; surface it observably instead of swallowing.
+        this.runtime.reportError("AcpService.persistRawStdout", err, {
+          sessionId,
+          phase: "persist-stdout",
+        });
+      });
+    this.pendingStdoutWrites.set(sessionId, write);
+    void write.finally(() => {
+      if (this.pendingStdoutWrites.get(sessionId) === write) {
+        this.pendingStdoutWrites.delete(sessionId);
+      }
+    });
+  }
+
   private appendOutput(sessionId: string, text: string): void {
     const buffer = this.outputBuffers.get(sessionId) ?? [];
     buffer.push(text);
@@ -2892,7 +3395,7 @@ export class AcpService extends Service {
   }
 
   private assertTransportAvailable(sessionId: string): void {
-    if (process.env.ELIZA_PLATFORM !== "android") return;
+    if (!isAndroidMobile()) return;
     const message = this.missingCliMessage();
     if (!message) return;
     this.emitMissingCli(sessionId, message);

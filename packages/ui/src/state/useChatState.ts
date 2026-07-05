@@ -84,8 +84,10 @@ type ChatAction =
   | { type: "SET_ACTIVE_CONVERSATION_ID"; value: string | null }
   | { type: "SET_COMPANION_CUTOFF"; value: number }
   | { type: "SET_MESSAGES"; value: ConversationMessage[] }
+  | { type: "PREPEND_MESSAGES"; value: ConversationMessage[] }
   | { type: "APPEND_MESSAGE"; message: ConversationMessage }
   | { type: "UPDATE_MESSAGE"; id: string; update: Partial<ConversationMessage> }
+  | { type: "REMOVE_MESSAGE"; id: string }
   | { type: "SET_AUTONOMOUS_EVENTS"; value: StreamEventEnvelope[] }
   | { type: "SET_AUTONOMOUS_LATEST_EVENT_ID"; value: string | null }
   | { type: "SET_AUTONOMOUS_RUN_HEALTH"; value: AutonomyRunHealthMap }
@@ -136,6 +138,22 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, companionMessageCutoffTs: action.value };
     case "SET_MESSAGES":
       return { ...state, conversationMessages: action.value };
+    // Merge an older page in front for infinite upward scroll (#13532). Never
+    // trims: the newest tail must survive so bottom-follow / jumpToLatest still
+    // reach the true latest, and — critically — so the scroll-anchor restore in
+    // useLoadOlderOnScroll (scrollTop += scrollHeight delta) sees ONLY the
+    // upward growth. Dropping the bottom in the same commit would shrink that
+    // delta by the removed height and yank the viewport downward past the cap.
+    case "PREPEND_MESSAGES": {
+      if (action.value.length === 0) return state;
+      const existingIds = new Set(state.conversationMessages.map((m) => m.id));
+      const olderToAdd = action.value.filter((m) => !existingIds.has(m.id));
+      if (olderToAdd.length === 0) return state;
+      return {
+        ...state,
+        conversationMessages: [...olderToAdd, ...state.conversationMessages],
+      };
+    }
     case "APPEND_MESSAGE":
       return {
         ...state,
@@ -146,6 +164,15 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         conversationMessages: state.conversationMessages.map((m) =>
           m.id === action.id ? { ...m, ...action.update } : m,
+        ),
+      };
+    // Remove a single message by id (#13533). Backs the persistent per-message
+    // delete: optimistic removal here, re-hydrate on server failure.
+    case "REMOVE_MESSAGE":
+      return {
+        ...state,
+        conversationMessages: state.conversationMessages.filter(
+          (m) => m.id !== action.id,
         ),
       };
     case "SET_AUTONOMOUS_EVENTS":
@@ -205,6 +232,13 @@ export interface ChatStateHook {
   setConversationMessages: React.Dispatch<
     React.SetStateAction<ConversationMessage[]>
   >;
+  /**
+   * Merge an older page in front of the current thread for infinite upward
+   * scroll (#13532). Dedupes by id and keeps the synchronous
+   * `conversationMessagesRef` in step with the reducer. Never trims the newest
+   * tail (see the PREPEND_MESSAGES reducer note).
+   */
+  prependConversationMessages: (older: ConversationMessage[]) => void;
   setAutonomousEvents: (v: StreamEventEnvelope[]) => void;
   setAutonomousLatestEventId: (v: string | null) => void;
   setAutonomousRunHealthByRunId: (v: AutonomyRunHealthMap) => void;
@@ -336,6 +370,19 @@ export function useChatState(): ChatStateHook {
     [],
   ) as React.Dispatch<React.SetStateAction<ConversationMessage[]>>;
 
+  const prependConversationMessages = useCallback(
+    (older: ConversationMessage[]) => {
+      if (older.length === 0) return;
+      const current = conversationMessagesRef.current;
+      const existingIds = new Set(current.map((m) => m.id));
+      const olderToAdd = older.filter((m) => !existingIds.has(m.id));
+      if (olderToAdd.length === 0) return;
+      conversationMessagesRef.current = [...olderToAdd, ...current];
+      dispatch({ type: "PREPEND_MESSAGES", value: older });
+    },
+    [],
+  );
+
   const setAutonomousEvents = useCallback((v: StreamEventEnvelope[]) => {
     autonomousEventsRef.current = v;
     dispatch({ type: "SET_AUTONOMOUS_EVENTS", value: v });
@@ -415,6 +462,7 @@ export function useChatState(): ChatStateHook {
     setActiveConversationId,
     setCompanionMessageCutoffTs,
     setConversationMessages,
+    prependConversationMessages,
     setAutonomousEvents,
     setAutonomousLatestEventId,
     setAutonomousRunHealthByRunId,

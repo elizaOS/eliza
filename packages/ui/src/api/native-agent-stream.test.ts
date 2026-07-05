@@ -2,7 +2,7 @@
  * Unit coverage for the native streaming-response helper and its capability
  * probe. In-process, no real bridge.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createNativeStreamingResponse,
@@ -18,7 +18,10 @@ import {
 function makeFakeAgent(
   streamId = "s1",
   completion?: Promise<unknown>,
-  options: { addListenerDelayMs?: number } = {},
+  options: {
+    addListenerDelayMs?: number;
+    emitOnAdd?: { eventName: string; payload: unknown };
+  } = {},
 ) {
   const listeners = new Map<string, Array<(e: unknown) => void>>();
   const agent: NativeStreamingAgentPlugin = {
@@ -34,6 +37,9 @@ function makeFakeAgent(
       const arr = listeners.get(eventName) ?? [];
       arr.push(listener);
       listeners.set(eventName, arr);
+      if (options.emitOnAdd?.eventName === eventName) {
+        listener(options.emitOnAdd.payload);
+      }
       return {
         remove() {
           listeners.set(
@@ -193,6 +199,145 @@ describe("createNativeStreamingResponse", () => {
     rejectCompletion(new Error("native stream died"));
 
     await expect(reader.read()).rejects.toThrow("native stream died");
+  });
+
+  // The liveness net: a resolved/rejected completion, a completion that beats
+  // the head, and head/idle deadlines each must terminate the stream so a
+  // dropped native event can't hang the reply forever (issue #13983). Fake
+  // timers drive the deadlines; `advanceTimersByTimeAsync(0)` also drains the
+  // helper's internal awaits (requestStream + 3 addListener) so listeners are
+  // attached before events are emitted.
+  it("terminates the stream when a successful native completion resolves without a complete event", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveCompletion: () => void = () => {};
+      const completion = new Promise<void>((resolve) => {
+        resolveCompletion = resolve;
+      });
+      const { agent, emit, listenerCount } = makeFakeAgent("s1", completion);
+      const responsePromise = createNativeStreamingResponse(agent, {
+        path: "/x",
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      emit("agentStreamResponse", { streamId: "s1", status: 200 });
+      const response = await responsePromise;
+      const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+
+      // Native call resolves successfully but the terminal event never arrives:
+      // resolution alone must close the body (the pre-fix `.catch`-only wiring
+      // would leave this pending forever).
+      resolveCompletion();
+      await vi.advanceTimersByTimeAsync(0);
+
+      const r = await reader.read();
+      expect(r.done).toBe(true);
+      expect(listenerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("settles the head to a closed 200 when completion arrives before any response", async () => {
+    vi.useFakeTimers();
+    try {
+      const { agent, emit, listenerCount } = makeFakeAgent();
+      const responsePromise = createNativeStreamingResponse(agent, {
+        path: "/x",
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      emit("agentStreamComplete", { streamId: "s1" });
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+      const r = await reader.read();
+      expect(r.done).toBe(true);
+      expect(listenerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects the head on the head timeout so the caller falls back", async () => {
+    vi.useFakeTimers();
+    try {
+      const { agent, listenerCount } = makeFakeAgent();
+      const responsePromise = createNativeStreamingResponse(agent, {
+        path: "/x",
+        timeoutMs: 30000,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      // Attach the rejection handler before firing the timer so the rejection is
+      // never momentarily unhandled.
+      const rejected = expect(responsePromise).rejects.toThrow(
+        "native stream head timeout",
+      );
+      // No response event ever arrives.
+      await vi.advanceTimersByTimeAsync(30000);
+      await rejected;
+      expect(listenerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("errors the body on an idle timeout after the head (also clears listeners, #12626)", async () => {
+    vi.useFakeTimers();
+    try {
+      const { agent, emit, listenerCount } = makeFakeAgent();
+      const responsePromise = createNativeStreamingResponse(agent, {
+        path: "/x",
+        timeoutMs: 30000,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      emit("agentStreamResponse", { streamId: "s1", status: 200 });
+      const response = await responsePromise;
+      const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+
+      emit("agentStreamChunk", {
+        streamId: "s1",
+        dataBase64: b64("data: hi\n\n"),
+      });
+      await reader.read();
+
+      // Stream stalls: the next chunk never comes.
+      const readPromise = reader.read();
+      const rejected = expect(readPromise).rejects.toThrow(
+        "native stream idle timeout",
+      );
+      await vi.advanceTimersByTimeAsync(30000);
+      await rejected;
+      expect(listenerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects the head if a chunk arrives before the response and then the stream stalls", async () => {
+    vi.useFakeTimers();
+    try {
+      const { agent, listenerCount } = makeFakeAgent("s1", undefined, {
+        emitOnAdd: {
+          eventName: "agentStreamChunk",
+          payload: {
+            streamId: "s1",
+            dataBase64: b64("data: early\n\n"),
+          },
+        },
+      });
+      const responsePromise = createNativeStreamingResponse(agent, {
+        path: "/x",
+        timeoutMs: 30000,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      const rejected = expect(responsePromise).rejects.toThrow(
+        "native stream idle timeout",
+      );
+      await vi.advanceTimersByTimeAsync(30000);
+      await rejected;
+      expect(listenerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("detaches all listeners once the stream completes", async () => {

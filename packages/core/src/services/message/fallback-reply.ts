@@ -1,7 +1,8 @@
 /**
- * Classifies model-call failures — rate-limit/429, auth 401/403, and transient
- * provider errors worth failing over to another provider — and assembles the
- * user-facing fallback reply when a turn's grounding trajectory fails.
+ * Classifies model-call failures — rate-limit/429, credit exhaustion/402,
+ * auth 401/403, and transient provider errors worth failing over to another
+ * provider — and assembles the user-facing fallback reply when a turn's
+ * grounding trajectory fails.
  * Classification unwraps the AI SDK retry envelope and reads the structured HTTP
  * status first, falling back to a message-substring scan for status-less errors.
  * buildFailureReplyPrompt shapes the in-character apology (never answering on the
@@ -14,6 +15,7 @@ type ErrorWithStatus = {
 	statusCode?: unknown;
 	lastError?: unknown;
 	errors?: unknown;
+	error?: unknown;
 };
 
 function asErrorObject(error: unknown): ErrorWithStatus | null {
@@ -76,6 +78,76 @@ export function isRateLimitError(error: unknown): boolean {
 		haystack.includes("usage limit") ||
 		/\b429\b/.test(haystack) ||
 		/\b529\b/.test(haystack)
+	);
+}
+
+/**
+ * The user-facing reply for a credit-exhausted provider. One string for every
+ * delivery path: the direct chat API (`packages/agent` re-uses it) and the
+ * connector failure-reply path below, so a Discord/Telegram user and a
+ * dashboard user read the same actionable condition. Characters override via
+ * `character.templates.insufficientCreditsReply`.
+ */
+export const INSUFFICIENT_CREDITS_REPLY =
+	"Eliza Cloud credits are depleted. Top up the cloud balance and try again.";
+
+// Credits-specific phrases only — deliberately no plain rate-limit tokens
+// (e.g. `rate_limit_exceeded`), so a transient throttle can never classify as
+// "out of credits" and tell the user to spend money on a condition that
+// resolves by waiting.
+const INSUFFICIENT_CREDITS_RE =
+	/\b(?:insufficient(?:[_\s]+(?:credits?|quota|funds))|insufficient_quota|out of credits|max usage reached|quota(?:\s+exceeded)?|billing.*disabled|payment.*required|account.*suspended|spending.*limit|budget.*exceeded|no.*api.*credits|credit.*balance.*zero)\b/i;
+
+const BILLING_KEYWORDS_RE =
+	/\b(?:billing|quota|credits?|budget|spending|payment|subscription|plan limit)\b/i;
+
+/** Cap a value before running a regex scan so a pathological provider payload
+ *  cannot turn a substring match into a catastrophic-backtracking DoS. */
+function clampForScan(value: string): string {
+	return value.length > 10_000 ? value.slice(0, 10_000) : value;
+}
+
+export function isInsufficientCreditsMessage(message: string): boolean {
+	return INSUFFICIENT_CREDITS_RE.test(clampForScan(message));
+}
+
+/**
+ * Detect provider credit/quota exhaustion — HTTP 402, a structured
+ * `insufficient_credits`/`insufficient_quota` error body, or a 429 that
+ * carries billing context — so the user-facing failure reply can say "top up"
+ * instead of suggesting a retry that can never succeed against a drained
+ * balance. Mirrors {@link isRateLimitError}: the structural signal (status
+ * after unwrapping the AI SDK retry envelope, then the provider error body)
+ * runs first; the message-substring scan is only a status-less fallback.
+ *
+ * Callers MUST check this before {@link isRateLimitError}: a 429 *with*
+ * billing context is credit exhaustion ("top up"), whereas a bare 429 is
+ * "try again in a moment".
+ */
+export function isInsufficientCreditsError(error: unknown): boolean {
+	if (typeof error === "string") return isInsufficientCreditsMessage(error);
+	const unwrapped = unwrapRetryError(error);
+	if (hasHttpStatus(unwrapped, [402])) {
+		return true;
+	}
+	const candidate = asErrorObject(unwrapped);
+	if (!candidate) return false;
+	const errorBody =
+		typeof candidate.error === "object" && candidate.error !== null
+			? (candidate.error as { type?: unknown; code?: unknown })
+			: null;
+	if (errorBody?.type === "insufficient_quota") return true;
+	if (
+		typeof errorBody?.code === "string" &&
+		isInsufficientCreditsMessage(errorBody.code)
+	) {
+		return true;
+	}
+	const message = unwrapped instanceof Error ? unwrapped.message : "";
+	if (isInsufficientCreditsMessage(message)) return true;
+	return (
+		hasHttpStatus(unwrapped, [429]) &&
+		BILLING_KEYWORDS_RE.test(clampForScan(message))
 	);
 }
 

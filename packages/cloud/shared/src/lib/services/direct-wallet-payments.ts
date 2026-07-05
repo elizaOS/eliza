@@ -135,6 +135,64 @@ const BSC_TOKEN_OPTIONS: DirectWalletTokenOption[] = [
 const NATIVE_SLIPPAGE_BPS = 200;
 
 /**
+ * Absolute ceiling on the slippage tolerance we will ever apply on the
+ * native-coin verify path. The canonical write path only ever stores
+ * {@link NATIVE_SLIPPAGE_BPS} (200) for native payments or 0 for stables, so a
+ * value above the native tolerance can only come from DB corruption, a tampered
+ * metadata row, or a future non-canonical writer — all of which must FAIL
+ * CLOSED (refuse to credit) rather than silently widen the band. In particular,
+ * 10_000 bps would make the floor 0 and allow a zero-value native transfer to
+ * pass verification.
+ */
+const MAX_DIRECT_SLIPPAGE_BPS = NATIVE_SLIPPAGE_BPS;
+
+/**
+ * Thrown when a stored `slippage_bps` metadata value cannot be trusted to
+ * gate the native-coin accepted-payment band. Distinct type so the confirm
+ * path can attribute the refusal to a corrupt payment record rather than an
+ * on-chain/RPC failure.
+ */
+export class CorruptDirectWalletSlippageError extends Error {
+  constructor(rawValue: unknown) {
+    super(
+      `Direct wallet payment has an invalid slippage_bps metadata value (${String(
+        rawValue,
+      )}); refusing to verify the payment band. Please create a new payment.`,
+    );
+    this.name = "CorruptDirectWalletSlippageError";
+  }
+}
+
+/**
+ * Fail-closed boundary for the native-coin slippage band. The old
+ * `Number(metadata.slippage_bps ?? 0)` read fed straight into
+ * `BigInt(slippageBps)` and the ceiling/floor math in
+ * {@link verifyEvmNativePayment}. Two silent failure modes it left open:
+ *   1. a large positive value (corrupt/tampered/drifted row) WIDENS the
+ *      accepted band without bound -> a gross over/under-payment is credited,
+ *      the exact "silently lose the user money" case the ceiling guards; and
+ *   2. a fractional / NaN / Infinity value makes `BigInt(...)` throw deep in
+ *      verify, crashing a legit confirm instead of failing intelligibly.
+ * This parser accepts only a finite, non-negative integer within
+ * [0, {@link MAX_DIRECT_SLIPPAGE_BPS}]; everything else throws
+ * {@link CorruptDirectWalletSlippageError}. A missing/undefined value is the
+ * legitimate stable-token default of 0.
+ */
+export function parseDirectWalletSlippageBps(rawValue: unknown): number {
+  if (rawValue === undefined || rawValue === null) return 0;
+  const numeric = typeof rawValue === "number" ? rawValue : Number(rawValue);
+  if (
+    !Number.isFinite(numeric) ||
+    !Number.isInteger(numeric) ||
+    numeric < 0 ||
+    numeric > MAX_DIRECT_SLIPPAGE_BPS
+  ) {
+    throw new CorruptDirectWalletSlippageError(rawValue);
+  }
+  return numeric;
+}
+
+/**
  * Dev-only fallback signing key. Clearly non-secret — production must set
  * `CRYPTO_DIRECT_QUOTE_SIGNING_KEY` explicitly. The helper logs loudly if
  * the fallback is used.
@@ -576,7 +634,7 @@ function directMetadata(payment: CryptoPayment): {
     tokenDecimals: Number(metadata.token_decimals ?? 0),
     expectedTokenUnits: BigInt(String(metadata.expected_token_units ?? "0")),
     bonusCredits: Number(metadata.bonus_credits ?? 0),
-    slippageBps: Number(metadata.slippage_bps ?? 0),
+    slippageBps: parseDirectWalletSlippageBps(metadata.slippage_bps),
     payerProofMessage: String(metadata.payer_proof_message ?? ""),
     payerProofTypedData: payerProofTypedDataOf(metadata),
     payerProofScheme:

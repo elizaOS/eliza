@@ -1,7 +1,0 @@
-live-github-pr-10747: status=200 title="docs: add evidence mandate proof for issue 10707 by lalalune · Pull Request #10747 · elizaOS/eliza · GitHub" bytes=420229 url=https://github.com/elizaOS/eliza/pull/10747
-live-github-pr-template-branch: status=200 title="eliza/.github/pull_request_template.md at docs/10707-evidence-mandate · elizaOS/eliza · GitHub" bytes=450230 url=https://github.com/elizaOS/eliza/blob/docs/10707-evidence-mandate/.github/pull_request_template.md
-live-github-pr-template-branch: evidence_text_detected=true
-live-github-bug-template-branch: status=200 title="eliza/.github/ISSUE_TEMPLATE/bug_report.md at docs/10707-evidence-mandate · elizaOS/eliza · GitHub" bytes=190143 url=https://github.com/elizaOS/eliza/blob/docs/10707-evidence-mandate/.github/ISSUE_TEMPLATE/bug_report.md
-live-github-bug-template-branch: evidence_text_detected=true
-live-github-feature-template-branch: status=200 title="eliza/.github/ISSUE_TEMPLATE/feature_request.md at docs/10707-evidence-mandate · elizaOS/eliza · GitHub" bytes=206239 url=https://github.com/elizaOS/eliza/blob/docs/10707-evidence-mandate/.github/ISSUE_TEMPLATE/feature_request.md
-live-github-feature-template-branch: evidence_text_detected=true

@@ -169,9 +169,7 @@ export default function PublicChatPage() {
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold">{character.name}</h1>
           {character.creatorUsername ? (
-            <p className="text-sm text-muted">
-              @{character.creatorUsername}
-            </p>
+            <p className="text-sm text-muted">@{character.creatorUsername}</p>
           ) : null}
           {character.bio ? (
             <p className="text-sm leading-relaxed text-muted">

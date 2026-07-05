@@ -35,6 +35,10 @@ import {
 import { setApplicationMenuActionHandler } from "./application-menu-action-registry";
 import { showBackgroundNoticeOnce } from "./background-notice";
 import { getBrandConfig } from "./brand-config";
+import {
+  resolveNamespaceFromEnv,
+  resolveRendererUrlFromEnv,
+} from "./brand-env-reads";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
 import {
@@ -949,8 +953,7 @@ async function resolveRendererUrl(): Promise<string> {
   // Prefer ELIZA_RENDERER_URL / VITE_DEV_SERVER_URL when set (e.g. dev-platform.mjs watch mode).
   // Why: Vite HMR only works against the dev server; serving pre-built dist from this static
   // server would force a full rebuild for every UI change.
-  let rendererUrl =
-    process.env.ELIZA_RENDERER_URL ?? process.env.VITE_DEV_SERVER_URL ?? "";
+  let rendererUrl = resolveRendererUrlFromEnv();
 
   if (!rendererUrl) {
     rendererUrlPromise ??= startRendererServer();
@@ -2097,7 +2100,9 @@ async function setupUpdater(): Promise<void> {
       return false;
     };
 
-    const handleAppEntryMenuAction = (action: string | undefined): boolean => {
+    const handleAppEntryMenuAction = async (
+      action: string | undefined,
+    ): Promise<boolean> => {
       if (!action?.startsWith("apps:") && !action?.startsWith("tray-app-")) {
         return false;
       }
@@ -2107,7 +2112,7 @@ async function setupUpdater(): Promise<void> {
       const entry = findAppMenuEntryBySlug(slug);
       if (!entry) return true;
       if (entry.hasDetailsPage) {
-        void restoreWindow();
+        await restoreWindow();
         sendToActiveRenderer("desktopAppDetailsRequested", {
           slug: entry.slug,
         });
@@ -2176,7 +2181,7 @@ async function setupUpdater(): Promise<void> {
       if (handleSettingsMenuAction(action)) return;
       if (handleSurfaceMenuAction(action)) return;
       if (handleStewardMenuAction(action)) return;
-      if (handleAppEntryMenuAction(action)) return;
+      if (await handleAppEntryMenuAction(action)) return;
       handleRuntimeMenuAction(action);
     };
 
@@ -2237,7 +2242,7 @@ async function handleDeepLink(url: string): Promise<void> {
       // review screen instead of a direct window so deep links and clicks
       // produce identical UX.
       if (entry.hasDetailsPage) {
-        void restoreWindow();
+        await restoreWindow();
         sendToActiveRenderer("desktopAppDetailsRequested", {
           slug: entry.slug,
         });
@@ -2352,7 +2357,7 @@ async function loadTheAppEnvFilesForMain(): Promise<void> {
       "..",
       "..",
     );
-    const namespace = process.env.ELIZA_NAMESPACE?.trim() || BRAND.namespace;
+    const namespace = resolveNamespaceFromEnv(BRAND.namespace);
     const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
     const stateHome = xdgStateHome
       ? path.isAbsolute(xdgStateHome)

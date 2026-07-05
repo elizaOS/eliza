@@ -42,7 +42,7 @@ permissions:
 jobs:
   guard:
     name: stale-base guard
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     env:
       BASE_REF: ${{ github.event.pull_request.base.ref }}

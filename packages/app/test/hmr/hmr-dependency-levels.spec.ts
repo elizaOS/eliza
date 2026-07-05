@@ -65,6 +65,10 @@ const LEVELS = [
     file: "plugins/plugin-goals/src/components/goals/GoalsView.tsx",
   },
   {
+    name: "plugin view lifeops-live-test",
+    file: "plugins/plugin-scheduling/src/components/lifeops-live-test/LifeOpsLiveTestView.tsx",
+  },
+  {
     name: "plugin view health",
     file: "plugins/plugin-health/src/components/health/HealthView.tsx",
   },
@@ -191,12 +195,9 @@ async function waitForViteClient(page: Page): Promise<void> {
 // source into the root graph and editing them must emit an HMR event. Those stay
 // in the assertion via this allowlist; every other "plugin view *" is skipped.
 const PLUGIN_VIEWS_IN_ROOT_GRAPH = new Set<string>([
-  // appRegister:"ui" → src/ui.ts statically re-exports ModelTesterAppView, and
-  // the generated side-effect loader imports ui.ts eagerly at boot.
-  "plugin view model tester",
-  // main.tsx eagerly imports the @elizaos/plugin-phone barrel, which statically
-  // re-exports PhoneView.
-  "plugin view phone",
+  // No plugin GUI view source is currently guaranteed in the "/" route's Vite
+  // root graph. Keep this allowlist explicit so a future eager route can opt in
+  // together with a real source-file assertion in hmr-coverage.test.ts.
 ]);
 
 function isNotInRootGraph(name: string): boolean {

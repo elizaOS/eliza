@@ -29,6 +29,13 @@ import { logger } from "../utils/logger";
 import { type CreditReservation, creditsService, InsufficientCreditsError } from "./credits";
 import { emailService } from "./email";
 
+const DEFAULT_LOW_BUDGET_THRESHOLD = new Decimal(5);
+const DEFAULT_AUTO_REFILL_THRESHOLD = new Decimal(10);
+
+function isPositiveFiniteNumber(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
+}
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -80,6 +87,25 @@ export interface UpdateBudgetSettingsParams {
   autoRefillThreshold?: number | null;
   pauseOnDepleted?: boolean;
   lowBudgetThreshold?: number | null;
+}
+
+type BudgetNumericField =
+  | "allocated_budget"
+  | "spent_budget"
+  | "daily_limit"
+  | "daily_spent"
+  | "auto_refill_amount"
+  | "auto_refill_threshold"
+  | "low_budget_threshold";
+
+class InvalidAgentBudgetNumericValueError extends Error {
+  constructor(
+    readonly field: BudgetNumericField,
+    readonly value: unknown,
+  ) {
+    super(`Invalid numeric budget value for ${field}`);
+    this.name = "InvalidAgentBudgetNumericValueError";
+  }
 }
 
 // ============================================================================
@@ -146,6 +172,16 @@ class AgentBudgetService {
    * This is a pre-flight check - does not lock or modify anything
    */
   async checkBudget(agentId: string, estimatedCost: number): Promise<BudgetCheckResult> {
+    if (!isPositiveFiniteNumber(estimatedCost)) {
+      return {
+        canProceed: false,
+        availableBudget: 0,
+        dailyRemaining: null,
+        isPaused: false,
+        reason: "Estimated cost must be a positive finite number",
+      };
+    }
+
     const budget = await this.getOrCreateBudget(agentId);
 
     if (!budget) {
@@ -158,34 +194,29 @@ class AgentBudgetService {
       };
     }
 
+    const parsed = this.parseBudgetForRead(budget);
+    if (!parsed.valid) {
+      return this.invalidBudgetCheckResult(agentId, parsed.error);
+    }
+
+    const { allocated, spent, dailyLimit } = parsed;
+    const dailyState = await this.maybeResetDailySpent(budget, parsed.dailySpent);
+    const available = allocated.minus(spent);
+    const dailyRemaining = dailyLimit ? dailyLimit.minus(dailyState.dailySpent).toNumber() : null;
+
     // Check if paused
     if (budget.is_paused) {
       return {
         canProceed: false,
-        availableBudget: Number(budget.allocated_budget) - Number(budget.spent_budget),
-        dailyRemaining: budget.daily_limit
-          ? Number(budget.daily_limit) - Number(budget.daily_spent)
-          : null,
+        availableBudget: available.toNumber(),
+        dailyRemaining,
         isPaused: true,
         reason: budget.pause_reason || "Agent budget is paused",
       };
     }
 
-    // Reset daily spent if needed
-    await this.maybeResetDailySpent(budget);
-
-    // Calculate available budget
-    const allocated = new Decimal(budget.allocated_budget);
-    const spent = new Decimal(budget.spent_budget);
-    const available = allocated.minus(spent);
-
     // Check daily limit if set
-    let dailyRemaining: number | null = null;
-    if (budget.daily_limit) {
-      const dailyLimit = new Decimal(budget.daily_limit);
-      const dailySpent = new Decimal(budget.daily_spent);
-      dailyRemaining = dailyLimit.minus(dailySpent).toNumber();
-
+    if (dailyRemaining !== null) {
       if (dailyRemaining < estimatedCost) {
         return {
           canProceed: false,
@@ -222,7 +253,7 @@ class AgentBudgetService {
   async deductBudget(params: DeductBudgetParams): Promise<DeductBudgetResult> {
     const { agentId, amount, description, operationType, model, tokensUsed, metadata } = params;
 
-    if (amount <= 0) {
+    if (!isPositiveFiniteNumber(amount)) {
       return {
         success: false,
         newBalance: 0,
@@ -248,18 +279,25 @@ class AgentBudgetService {
         };
       }
 
+      const parsed = this.parseBudgetForRead(budget);
+      if (!parsed.valid) {
+        return this.invalidDeductResult(agentId, parsed.error);
+      }
+
+      const { allocated, spent, dailyLimit } = parsed;
+
       if (budget.is_paused) {
         return {
           success: false,
-          newBalance: Number(budget.allocated_budget) - Number(budget.spent_budget),
-          dailySpent: Number(budget.daily_spent),
+          newBalance: allocated.minus(spent).toNumber(),
+          dailySpent: parsed.dailySpent.toNumber(),
           error: budget.pause_reason || "Agent budget is paused",
         };
       }
 
       // Reset daily if needed
       const now = new Date();
-      let dailySpent = new Decimal(budget.daily_spent);
+      let dailySpent = parsed.dailySpent;
       let dailyResetAt = budget.daily_reset_at;
 
       if (dailyResetAt && now >= dailyResetAt) {
@@ -268,13 +306,10 @@ class AgentBudgetService {
       }
 
       // Calculate current state
-      const allocated = new Decimal(budget.allocated_budget);
-      const spent = new Decimal(budget.spent_budget);
       const available = allocated.minus(spent);
 
       // Check daily limit
-      if (budget.daily_limit) {
-        const dailyLimit = new Decimal(budget.daily_limit);
+      if (dailyLimit) {
         const dailyRemaining = dailyLimit.minus(dailySpent);
 
         if (dailyRemaining.lt(amount)) {
@@ -322,6 +357,26 @@ class AgentBudgetService {
       const newSpent = spent.plus(amount);
       const newDailySpent = dailySpent.plus(amount);
       const newBalance = allocated.minus(newSpent);
+      let lowThreshold: Decimal;
+      let autoRefillThreshold: Decimal | null;
+
+      try {
+        lowThreshold = this.parseOptionalBudgetDecimal(
+          "low_budget_threshold",
+          budget.low_budget_threshold,
+          DEFAULT_LOW_BUDGET_THRESHOLD,
+        );
+        autoRefillThreshold = this.parseOptionalBudgetDecimal(
+          "auto_refill_threshold",
+          budget.auto_refill_threshold,
+          null,
+        );
+      } catch (error) {
+        if (error instanceof InvalidAgentBudgetNumericValueError) {
+          return this.invalidDeductResult(agentId, error);
+        }
+        throw error;
+      }
 
       await tx
         .update(agentBudgets)
@@ -361,14 +416,10 @@ class AgentBudgetService {
       });
 
       // Check if we should trigger auto-refill (fire-and-forget, logged on failure)
-      const lowThreshold = budget.low_budget_threshold
-        ? new Decimal(budget.low_budget_threshold)
-        : new Decimal(5);
-
       if (
         budget.auto_refill_enabled &&
-        budget.auto_refill_threshold &&
-        newBalance.lte(budget.auto_refill_threshold)
+        autoRefillThreshold &&
+        newBalance.lte(autoRefillThreshold)
       ) {
         // Trigger auto-refill asynchronously - failure is non-critical
         this.triggerAutoRefill(agentId).catch((err) =>
@@ -408,7 +459,7 @@ class AgentBudgetService {
   }> {
     const { agentId, amount, fromOrgCredits = true, description } = params;
 
-    if (amount <= 0) {
+    if (!isPositiveFiniteNumber(amount)) {
       return {
         success: false,
         newBalance: 0,
@@ -432,7 +483,20 @@ class AgentBudgetService {
         });
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
-          const currentBalance = Number(budget.allocated_budget) - Number(budget.spent_budget);
+          const parsed = this.parseBudgetForRead(budget);
+          if (!parsed.valid) {
+            logger.error("[AgentBudgets] Invalid budget numeric value", {
+              agentId,
+              field: parsed.error.field,
+              value: parsed.error.value,
+            });
+            return {
+              success: false,
+              newBalance: 0,
+              error: "Invalid budget data",
+            };
+          }
+          const currentBalance = parsed.allocated.minus(parsed.spent).toNumber();
           return {
             success: false,
             newBalance: currentBalance,
@@ -453,9 +517,23 @@ class AgentBudgetService {
           .for("update");
 
         // Add to allocated budget
-        const currentAllocated = new Decimal(lockedBudget.allocated_budget);
+        const parsed = this.parseBudgetForRead(lockedBudget);
+        if (!parsed.valid) {
+          logger.error("[AgentBudgets] Invalid budget numeric value", {
+            agentId,
+            field: parsed.error.field,
+            value: parsed.error.value,
+          });
+          return {
+            success: false,
+            newBalance: 0,
+            error: "Invalid budget data",
+          };
+        }
+
+        const currentAllocated = parsed.allocated;
         const newAllocated = currentAllocated.plus(amount);
-        const newBalance = newAllocated.minus(lockedBudget.spent_budget);
+        const newBalance = newAllocated.minus(parsed.spent);
 
         // Update budget
         await tx
@@ -499,9 +577,10 @@ class AgentBudgetService {
         };
       });
 
-      // Reconcile the reservation after successful transaction
+      // Reconcile only after a successful allocation; a non-throwing transaction
+      // can still reject corrupt locked budget state and must refund the reserve.
       if (reservation) {
-        await reservation.reconcile(amount);
+        await reservation.reconcile(result.success ? amount : 0);
       }
 
       return result;
@@ -536,7 +615,7 @@ class AgentBudgetService {
    */
   async triggerAutoRefill(agentId: string): Promise<boolean> {
     const budget = await this.getBudget(agentId);
-    if (!budget || !budget.auto_refill_enabled || !budget.auto_refill_amount) {
+    if (!budget || !budget.auto_refill_enabled) {
       return false;
     }
 
@@ -551,11 +630,35 @@ class AgentBudgetService {
       }
     }
 
-    const refillAmount = Number(budget.auto_refill_amount);
+    let refillAmount: Decimal | null;
+    try {
+      refillAmount = this.parseOptionalBudgetDecimal(
+        "auto_refill_amount",
+        budget.auto_refill_amount,
+        null,
+      );
+    } catch (error) {
+      if (error instanceof InvalidAgentBudgetNumericValueError) {
+        logger.error("[AgentBudgets] Invalid auto-refill amount", {
+          agentId,
+          value: budget.auto_refill_amount,
+        });
+        return false;
+      }
+      throw error;
+    }
+
+    if (!refillAmount || refillAmount.lte(0)) {
+      logger.error("[AgentBudgets] Invalid auto-refill amount", {
+        agentId,
+        value: budget.auto_refill_amount,
+      });
+      return false;
+    }
 
     const result = await this.refillBudget({
       agentId,
-      amount: refillAmount,
+      amount: refillAmount.toNumber(),
       description: "Auto-refill",
     });
 
@@ -567,7 +670,7 @@ class AgentBudgetService {
 
       logger.info("[AgentBudgets] Auto-refill completed", {
         agentId,
-        amount: refillAmount,
+        amount: refillAmount.toNumber(),
         newBalance: result.newBalance,
       });
       return true;
@@ -630,29 +733,47 @@ class AgentBudgetService {
       updated_at: new Date(),
     };
 
-    if (settings.dailyLimit !== undefined) {
-      updateData.daily_limit = settings.dailyLimit ? String(settings.dailyLimit) : null;
-    }
-    if (settings.autoRefillEnabled !== undefined) {
-      updateData.auto_refill_enabled = settings.autoRefillEnabled;
-    }
-    if (settings.autoRefillAmount !== undefined) {
-      updateData.auto_refill_amount = settings.autoRefillAmount
-        ? String(settings.autoRefillAmount)
-        : null;
-    }
-    if (settings.autoRefillThreshold !== undefined) {
-      updateData.auto_refill_threshold = settings.autoRefillThreshold
-        ? String(settings.autoRefillThreshold)
-        : null;
-    }
-    if (settings.pauseOnDepleted !== undefined) {
-      updateData.pause_on_depleted = settings.pauseOnDepleted;
-    }
-    if (settings.lowBudgetThreshold !== undefined) {
-      updateData.low_budget_threshold = settings.lowBudgetThreshold
-        ? String(settings.lowBudgetThreshold)
-        : null;
+    try {
+      if (settings.dailyLimit !== undefined) {
+        updateData.daily_limit =
+          settings.dailyLimit === null
+            ? null
+            : this.formatSettingAmount("daily_limit", settings.dailyLimit);
+      }
+      if (settings.autoRefillEnabled !== undefined) {
+        updateData.auto_refill_enabled = settings.autoRefillEnabled;
+      }
+      if (settings.autoRefillAmount !== undefined) {
+        updateData.auto_refill_amount =
+          settings.autoRefillAmount === null
+            ? null
+            : this.formatSettingAmount("auto_refill_amount", settings.autoRefillAmount);
+      }
+      if (settings.autoRefillThreshold !== undefined) {
+        updateData.auto_refill_threshold =
+          settings.autoRefillThreshold === null
+            ? null
+            : this.formatSettingAmount("auto_refill_threshold", settings.autoRefillThreshold);
+      }
+      if (settings.pauseOnDepleted !== undefined) {
+        updateData.pause_on_depleted = settings.pauseOnDepleted;
+      }
+      if (settings.lowBudgetThreshold !== undefined) {
+        updateData.low_budget_threshold =
+          settings.lowBudgetThreshold === null
+            ? null
+            : this.formatSettingAmount("low_budget_threshold", settings.lowBudgetThreshold);
+      }
+    } catch (error) {
+      if (error instanceof InvalidAgentBudgetNumericValueError) {
+        logger.error("[AgentBudgets] Invalid budget settings numeric value", {
+          agentId,
+          field: error.field,
+          value: error.value,
+        });
+        return { success: false, error: "Invalid budget settings" };
+      }
+      throw error;
     }
 
     await dbWrite.update(agentBudgets).set(updateData).where(eq(agentBudgets.id, budget.id));
@@ -708,16 +829,59 @@ class AgentBudgetService {
     const failedAgents: string[] = [];
 
     for (const budget of budgetsToRefill) {
-      const available = new Decimal(budget.allocated_budget).minus(budget.spent_budget);
-      const threshold = budget.auto_refill_threshold
-        ? new Decimal(budget.auto_refill_threshold)
-        : new Decimal(10);
+      const parsed = this.parseBudgetForRead(budget);
+      if (!parsed.valid) {
+        logger.error("[AgentBudgets] Invalid budget numeric value", {
+          agentId: budget.agent_id,
+          field: parsed.error.field,
+          value: parsed.error.value,
+        });
+        failedAgents.push(budget.agent_id);
+        continue;
+      }
+
+      const available = parsed.allocated.minus(parsed.spent);
+      let threshold: Decimal;
+      let refillAmount: Decimal | null;
+
+      try {
+        threshold = this.parseOptionalBudgetDecimal(
+          "auto_refill_threshold",
+          budget.auto_refill_threshold,
+          DEFAULT_AUTO_REFILL_THRESHOLD,
+        );
+        refillAmount = this.parseOptionalBudgetDecimal(
+          "auto_refill_amount",
+          budget.auto_refill_amount,
+          null,
+        );
+      } catch (error) {
+        if (error instanceof InvalidAgentBudgetNumericValueError) {
+          logger.error("[AgentBudgets] Invalid budget numeric value", {
+            agentId: budget.agent_id,
+            field: error.field,
+            value: error.value,
+          });
+          failedAgents.push(budget.agent_id);
+          continue;
+        }
+        throw error;
+      }
 
       if (available.lte(threshold)) {
+        if (!refillAmount || refillAmount.lte(0)) {
+          logger.error("[AgentBudgets] Invalid auto-refill amount", {
+            agentId: budget.agent_id,
+            value: budget.auto_refill_amount,
+          });
+          failedAgents.push(budget.agent_id);
+          continue;
+        }
+
         // Let errors propagate but track them for batch reporting
         const result = await this.refillBudget({
           agentId: budget.agent_id,
-          amount: Number(budget.auto_refill_amount),
+          amount: refillAmount.toNumber(),
           description: "Auto-refill",
         });
 
@@ -752,18 +916,139 @@ class AgentBudgetService {
     return tomorrow;
   }
 
-  private async maybeResetDailySpent(budget: AgentBudget): Promise<void> {
+  private parseBudgetForRead(budget: AgentBudget):
+    | {
+        valid: true;
+        allocated: Decimal;
+        spent: Decimal;
+        dailyLimit: Decimal | null;
+        dailySpent: Decimal;
+      }
+    | { valid: false; error: InvalidAgentBudgetNumericValueError } {
+    try {
+      return {
+        valid: true,
+        allocated: this.parseRequiredBudgetDecimal("allocated_budget", budget.allocated_budget),
+        spent: this.parseRequiredBudgetDecimal("spent_budget", budget.spent_budget),
+        dailyLimit: this.parseOptionalBudgetDecimal("daily_limit", budget.daily_limit, null),
+        dailySpent: this.parseRequiredBudgetDecimal("daily_spent", budget.daily_spent),
+      };
+    } catch (error) {
+      if (error instanceof InvalidAgentBudgetNumericValueError) {
+        return { valid: false, error };
+      }
+      throw error;
+    }
+  }
+
+  private parseRequiredBudgetDecimal(field: BudgetNumericField, value: unknown): Decimal {
+    const parsed = this.parseBudgetDecimal(field, value);
+    if (!parsed) {
+      throw new InvalidAgentBudgetNumericValueError(field, value);
+    }
+    return parsed;
+  }
+
+  private parseOptionalBudgetDecimal<T extends Decimal | null>(
+    field: BudgetNumericField,
+    value: unknown,
+    defaultValue: T,
+  ): Decimal | T {
+    const parsed = this.parseBudgetDecimal(field, value, { allowNull: true });
+    return parsed ?? defaultValue;
+  }
+
+  private parseBudgetDecimal(
+    field: BudgetNumericField,
+    value: unknown,
+    options: { allowNull?: boolean } = {},
+  ): Decimal | null {
+    if (value === null || value === undefined) {
+      if (options.allowNull) {
+        return null;
+      }
+      throw new InvalidAgentBudgetNumericValueError(field, value);
+    }
+
+    if (typeof value === "string" && value.trim() === "") {
+      throw new InvalidAgentBudgetNumericValueError(field, value);
+    }
+
+    if (typeof value === "number" && !Number.isFinite(value)) {
+      throw new InvalidAgentBudgetNumericValueError(field, value);
+    }
+
+    try {
+      const decimal = new Decimal(value as Decimal.Value);
+      if (!decimal.isFinite() || decimal.isNegative()) {
+        throw new InvalidAgentBudgetNumericValueError(field, value);
+      }
+      return decimal;
+    } catch (error) {
+      if (error instanceof InvalidAgentBudgetNumericValueError) {
+        throw error;
+      }
+      throw new InvalidAgentBudgetNumericValueError(field, value);
+    }
+  }
+
+  private formatSettingAmount(field: BudgetNumericField, value: number): string {
+    return this.parseRequiredBudgetDecimal(field, value).toFixed(4);
+  }
+
+  private invalidBudgetCheckResult(
+    agentId: string,
+    error: InvalidAgentBudgetNumericValueError,
+  ): BudgetCheckResult {
+    logger.error("[AgentBudgets] Invalid budget numeric value", {
+      agentId,
+      field: error.field,
+      value: error.value,
+    });
+    return {
+      canProceed: false,
+      availableBudget: 0,
+      dailyRemaining: null,
+      isPaused: false,
+      reason: "Invalid budget data",
+    };
+  }
+
+  private invalidDeductResult(
+    agentId: string,
+    error: InvalidAgentBudgetNumericValueError,
+  ): DeductBudgetResult {
+    logger.error("[AgentBudgets] Invalid budget numeric value", {
+      agentId,
+      field: error.field,
+      value: error.value,
+    });
+    return {
+      success: false,
+      newBalance: 0,
+      dailySpent: 0,
+      error: "Invalid budget data",
+    };
+  }
+
+  private async maybeResetDailySpent(
+    budget: AgentBudget,
+    dailySpent: Decimal,
+  ): Promise<{ dailySpent: Decimal; dailyResetAt: Date | null }> {
     const now = new Date();
     if (budget.daily_reset_at && now >= budget.daily_reset_at) {
+      const dailyResetAt = this.getNextDailyReset();
       await dbWrite
         .update(agentBudgets)
         .set({
           daily_spent: "0.0000",
-          daily_reset_at: this.getNextDailyReset(),
+          daily_reset_at: dailyResetAt,
           updated_at: now,
         })
         .where(eq(agentBudgets.id, budget.id));
+      return { dailySpent: new Decimal(0), dailyResetAt };
     }
+    return { dailySpent, dailyResetAt: budget.daily_reset_at };
   }
 
   private async sendLowBudgetAlert(agentId: string, balance: number): Promise<boolean> {

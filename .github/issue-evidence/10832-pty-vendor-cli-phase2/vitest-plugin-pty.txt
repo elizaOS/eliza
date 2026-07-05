@@ -1,7 +1,0 @@
- RUN  v4.1.5 /home/shaw/eliza-worktrees/10832-pty-phase2/plugins/plugin-pty
-
-
- Test Files  5 passed (5)
-      Tests  88 passed (88)
-   Start at  13:47:29
-   Duration  34.69s (transform 89.42s, setup 0ms, import 134.11s, tests 746ms, environment 1ms)

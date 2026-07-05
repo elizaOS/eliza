@@ -41,7 +41,7 @@ permissions:
 jobs:
   determine-env:
     name: Determine Environment
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       branch: ${{ steps.env.outputs.branch }}
@@ -62,7 +62,7 @@ jobs:
 
   migrate-db:
     name: Run Database Migrations
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     needs: determine-env
     # Job-level concurrency groups are repo-wide: this serializes against the
     # migrate-db gate in cloud-cf-deploy.yml (#11208) so overlapping triggers
@@ -151,7 +151,7 @@ jobs:
   deploy:
     name: Deploy to agent VPS
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_legacy_vps }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     needs: [determine-env, migrate-db]
     environment: ${{ needs.determine-env.outputs.environment }}
     timeout-minutes: 45

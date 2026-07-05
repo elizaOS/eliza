@@ -262,6 +262,13 @@ export function curateLauncherPages(
   { isAosp, enabledKinds, cloudActive }: CurateLauncherOptions,
 ): ViewEntry[] {
   const byCanonical = new Map<string, ViewEntry>();
+  // Each winner's score is frozen at insert time. Re-scoring the STORED entry
+  // on later comparisons would hand an alias-winning tile the canonical-id
+  // bonus it never earned (its id is rewritten to the canonical id below),
+  // making the winner order-dependent: an alias arriving first could then never
+  // be displaced by the genuine canonical registration — which is how a stale
+  // alias label ("Fin Tuning") could beat the real Fine-Tuning tile.
+  const scoreByCanonical = new Map<string, number>();
   for (const entry of entries) {
     const canonicalId = canonicalLauncherId(entry.id);
     if (LAUNCHER_HIDDEN_IDS.has(canonicalId)) continue;
@@ -285,8 +292,10 @@ export function curateLauncherPages(
       continue;
     }
 
-    const existing = byCanonical.get(canonicalId);
-    if (!existing || preferenceScore(entry) > preferenceScore(existing)) {
+    const existingScore = scoreByCanonical.get(canonicalId);
+    const score = preferenceScore(entry);
+    if (existingScore === undefined || score > existingScore) {
+      scoreByCanonical.set(canonicalId, score);
       // Preserve the canonical id so navigation + telemetry stay stable even
       // when an aliased registration (e.g. `wallet.inventory`) wins the tile.
       // When the id is REWRITTEN (an alias won), re-point `path` at the canonical
@@ -307,5 +316,104 @@ export function curateLauncherPages(
   // One combined order: curated apps, then developer tools, then AOSP tiles,
   // then uncurated apps alphabetically (the comparator falls through to label).
   page.sort(comparator([APPS_INDEX, DEVELOPER_INDEX, AOSP_INDEX]));
-  return page;
+  // Normalize every visible label so two tiles can never diverge on
+  // whitespace/hyphenation alone (the audit's `Fin Tuning` / `Fine-Tuning`
+  // sloppiness). The launcher-label-duplication test asserts this holds.
+  return page.map((entry) =>
+    entry.label === normalizeLauncherLabel(entry.label)
+      ? entry
+      : { ...entry, label: normalizeLauncherLabel(entry.label) },
+  );
+}
+
+/**
+ * Canonicalize a tile's display label so registrations that mean the same
+ * surface cannot render as visually different tiles. Collapses runs of
+ * whitespace (incl. the case where a hyphen was dropped, `Fin Tuning`) and
+ * normalizes the surrounding spacing of hyphens/slashes to a single form. This
+ * is the display-side complement to {@link canonicalLauncherId}: id dedup folds
+ * duplicate *routes* onto one tile; label normalization keeps the one surviving
+ * tile's *text* consistent across builds. The launcher-label-duplication test
+ * treats the normalized label as the uniqueness key.
+ */
+export function normalizeLauncherLabel(label: string): string {
+  return label
+    .replace(/\s*([-/])\s*/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** How many tiles the Recents zone surfaces (one grid row on desktop). */
+export const LAUNCHER_RECENTS_ZONE_LIMIT = 8;
+
+/** A named launcher zone (Recents / Favorites / All Apps) with its tiles. */
+export interface LauncherZone {
+  key: "recents" | "favorites" | "all";
+  label: string;
+  entries: ViewEntry[];
+}
+
+export interface LauncherZoneOptions {
+  /** Canonical launcher ids launched most-recent-first (already de-duped). */
+  recentIds: readonly string[];
+  /** Canonical launcher ids the user pinned, in pin order. */
+  favoriteIds: readonly string[];
+  /** How many Recents tiles to surface. */
+  recentsLimit: number;
+}
+
+/**
+ * Wrap a flat, already-curated tile list as a single "All Apps" zone — the shape
+ * `Launcher` renders when there is no Recents/Favorites context (stories, e2e
+ * fixtures, the first-run launcher). Keeps callers that only have `ViewEntry[]`
+ * off the full {@link curateLauncherZones} projection.
+ */
+export function allAppsZone(entries: ViewEntry[]): LauncherZone[] {
+  return [{ key: "all", label: "All Apps", entries }];
+}
+
+/**
+ * Partition a curated launcher page into the named zones the launcher renders:
+ * Recents (most-recently-launched, capped), Favorites (user-pinned), and All
+ * Apps (the full curated page, in curation order). Recents and Favorites are
+ * projections OVER the curated page — an id that is not a currently-visible tile
+ * (uninstalled, gated off) is silently skipped, so a stale recent/favorite can
+ * never resurrect a hidden tile. All Apps always lists every visible tile so the
+ * launcher stays complete even when a tile is also pinned/recent. Empty Recents
+ * / Favorites zones are omitted by the caller (this returns them empty so the
+ * shape is stable for tests).
+ */
+export function curateLauncherZones(
+  page: ViewEntry[],
+  { recentIds, favoriteIds, recentsLimit }: LauncherZoneOptions,
+): LauncherZone[] {
+  const byId = new Map(page.map((entry) => [entry.id, entry]));
+  const pickInOrder = (ids: readonly string[], limit?: number): ViewEntry[] => {
+    const picked: ViewEntry[] = [];
+    const seen = new Set<string>();
+    for (const rawId of ids) {
+      const id = canonicalLauncherId(rawId);
+      if (seen.has(id)) continue;
+      const entry = byId.get(id);
+      if (!entry) continue;
+      seen.add(id);
+      picked.push(entry);
+      if (limit != null && picked.length >= limit) break;
+    }
+    return picked;
+  };
+
+  return [
+    {
+      key: "recents",
+      label: "Recents",
+      entries: pickInOrder(recentIds, recentsLimit),
+    },
+    {
+      key: "favorites",
+      label: "Favorites",
+      entries: pickInOrder(favoriteIds),
+    },
+    { key: "all", label: "All Apps", entries: page },
+  ];
 }

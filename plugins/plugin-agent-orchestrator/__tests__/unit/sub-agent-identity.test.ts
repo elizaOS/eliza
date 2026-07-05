@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  buildSubAgentIdentityMd,
   SUB_AGENT_IDENTITY_MD,
   writeWorkspaceIdentity,
 } from "../../src/services/sub-agent-identity.js";
@@ -30,12 +31,45 @@ describe("writeWorkspaceIdentity", () => {
     await writeWorkspaceIdentity(dir);
     expect(existsSync(join(dir, "AGENTS.md"))).toBe(true);
     expect(existsSync(join(dir, "CLAUDE.md"))).toBe(true);
-    expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toBe(
-      SUB_AGENT_IDENTITY_MD,
+    // Default (no broker) renders the manual with the placeholder stripped.
+    const expected = buildSubAgentIdentityMd({ brokerWired: false });
+    expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toBe(expected);
+    expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe(expected);
+  });
+
+  it("omits the broker section when the broker is not wired", async () => {
+    await writeWorkspaceIdentity(dir, { brokerWired: false });
+    const manual = readFileSync(join(dir, "AGENTS.md"), "utf8");
+    expect(manual).not.toMatch(/Asking the parent Eliza agent to act/);
+    expect(manual).not.toContain("{{BROKER_SECTION}}");
+  });
+
+  it("includes the broker section only when the broker is wired", async () => {
+    await writeWorkspaceIdentity(dir, { brokerWired: true });
+    const manual = readFileSync(join(dir, "AGENTS.md"), "utf8");
+    expect(manual).toMatch(/Asking the parent Eliza agent to act \(broker\)/);
+    expect(manual).toMatch(/USE_SKILL parent-agent/);
+    // Discovery is advertised, but the spend/mutation gate is stated too.
+    expect(manual).toMatch(
+      /mutating\/paid\/destructive Cloud commands stay gated/,
     );
-    expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe(
-      SUB_AGENT_IDENTITY_MD,
+    expect(manual).not.toContain("{{BROKER_SECTION}}");
+  });
+
+  it("buildSubAgentIdentityMd never leaves the placeholder in either mode", () => {
+    expect(buildSubAgentIdentityMd({ brokerWired: true })).not.toContain(
+      "{{BROKER_SECTION}}",
     );
+    expect(buildSubAgentIdentityMd({ brokerWired: false })).not.toContain(
+      "{{BROKER_SECTION}}",
+    );
+  });
+
+  it("advertises the skills bridge endpoints and originatingTask read-back", () => {
+    const manual = buildSubAgentIdentityMd();
+    expect(manual).toMatch(/\/skills\b/);
+    expect(manual).toMatch(/skills\/<slug>/);
+    expect(manual).toMatch(/originatingTask/);
   });
 
   it("states the non-interactive HARD RULE", () => {

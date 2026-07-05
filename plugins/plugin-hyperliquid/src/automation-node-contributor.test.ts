@@ -7,7 +7,7 @@ import {
 	type AutomationNodeContributorContext,
 	clearAutomationNodeContributorsForTests,
 	listAutomationNodeContributors,
-} from "@elizaos/app-core/api/automation-node-contributors";
+} from "@elizaos/shared/automation-node-contributors";
 import { afterEach, describe, expect, it } from "vitest";
 import { registerHyperliquidAutomationNodeContributor } from "./automation-node-contributor";
 

@@ -59,6 +59,10 @@ export async function getOptionalSecretValue(
   secretName: string,
   context: string,
 ): Promise<string | null> {
+  // error-policy:J4 cosmetic display metadata (username/userId/scope/phone); a failed
+  // read degrades this non-load-bearing field to null. Systemic failures (DB down,
+  // decrypt errors) still surface through the required-secret reads (getSecretValue,
+  // uncaught) that gate the same connection flow, so this cannot hide a broken pipeline.
   try {
     return await getSecretValue(organizationId, secretName);
   } catch (error) {
@@ -104,14 +108,11 @@ export async function deletePlatformSecrets(
     source: "revoke-connection",
   };
 
+  // Revoke must fail closed: a swallowed delete would report the connection revoked
+  // while live credentials remain in the DB. Propagate so the caller's revoke surfaces
+  // the failure; the returned count is then only reached when every secret was deleted.
   for (const secret of platformSecrets) {
-    await secretsService.delete(secret.id, organizationId, audit).catch((e) => {
-      logger.warn(`[SecretsAdapter] Failed to delete secret`, {
-        secretId: secret.id,
-        secretName: secret.name,
-        error: e instanceof Error ? e.message : String(e),
-      });
-    });
+    await secretsService.delete(secret.id, organizationId, audit);
   }
 
   return platformSecrets.length;

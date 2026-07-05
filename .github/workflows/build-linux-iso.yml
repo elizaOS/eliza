@@ -35,7 +35,7 @@ permissions:
 
 jobs:
   build-iso:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 240
     # arm64 builds run under qemu-user-static + binfmt_misc emulation on
     # the amd64 runner. They are 3-5× slower than native, so they are

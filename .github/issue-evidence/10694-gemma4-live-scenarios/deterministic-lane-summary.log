@@ -1,7 +1,0 @@
- Info       [eliza-scenarios] ▶ deterministic-app-control-actions
- Info       [eliza-scenarios] ✓ deterministic-app-control-actions passed (5038ms)
- Info       [eliza-scenarios] ▶ deterministic-background-actions
- Info       [eliza-scenarios] ✓ deterministic-background-actions passed (37ms)
-| deterministic-app-control-actions | passed | 5038ms |  |
-| deterministic-background-actions | passed | 37ms |  |
-Totals: 36 passed, 0 failed, 0 skipped of 36

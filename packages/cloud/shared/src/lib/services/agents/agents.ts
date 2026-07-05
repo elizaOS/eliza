@@ -364,8 +364,12 @@ class AgentsService {
       lastActivity: new Date(),
     };
 
-    // Fire-and-forget cache set
-    agentStateCache.setRoomContext(roomId, context).catch(() => {});
+    // error-policy:J7 best-effort cache write off the read path; the authoritative
+    // context already came from the DB reads above, so a failed cache set must not
+    // fail the request — it surfaces as a warn and a cache miss (refetch) next call.
+    agentStateCache.setRoomContext(roomId, context).catch((error) => {
+      logger.warn(`[Agents Service] Failed to cache room context for ${roomId}`, error);
+    });
 
     return context;
   }

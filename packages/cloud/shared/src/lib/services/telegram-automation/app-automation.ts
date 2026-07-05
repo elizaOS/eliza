@@ -453,6 +453,7 @@ Maximum 300 characters.`;
         }
       }
     } catch (error) {
+      // error-policy:J1 Telegram send transport boundary -> typed PostResult failure the callers surface as success:false
       lastError = error instanceof Error ? error.message : "Failed to send message";
       logger.error("[TelegramAppAutomation] Failed to post announcement", {
         appId,
@@ -553,6 +554,7 @@ Maximum 300 characters.`;
         chatId: message.chatId,
       };
     } catch (error) {
+      // error-policy:J1 Telegram send transport boundary -> typed PostResult failure the caller surfaces as success:false
       const errorMsg = error instanceof Error ? error.message : "Failed to send reply";
       logger.error("[TelegramAppAutomation] Failed to handle message", {
         appId,

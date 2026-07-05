@@ -6,6 +6,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { toTaskThreadDetail } from "../../src/services/orchestrator-task-mapper.js";
 import {
   FileTaskStore,
   InMemoryTaskStore,
@@ -100,10 +101,20 @@ function planRevisionFor(
  */
 class FakeSqlAdapter {
   readonly rows = new Map<string, Record<string, unknown>>();
+  private projectColumn = false;
 
   async execute(sql: string, params: unknown[] = []): Promise<void> {
     const head = sql.trim().slice(0, 6).toUpperCase();
     if (head === "CREATE") return;
+    // Emulate the idempotent `ALTER TABLE ... ADD COLUMN` migration: the first
+    // run succeeds, a re-run throws a duplicate-column error the store swallows.
+    if (head === "ALTER ") {
+      if (this.projectColumn) {
+        throw new Error("duplicate column name: project_id");
+      }
+      this.projectColumn = true;
+      return;
+    }
     if (head === "INSERT") {
       const [
         id,
@@ -111,6 +122,7 @@ class FakeSqlAdapter {
         archived,
         priority,
         title,
+        projectId,
         searchText,
         updatedAt,
         lastActivityAt,
@@ -122,6 +134,7 @@ class FakeSqlAdapter {
         archived,
         priority,
         title,
+        project_id: projectId,
         search_text: searchText,
         updated_at: updatedAt,
         last_activity_at: lastActivityAt,
@@ -152,6 +165,10 @@ class FakeSqlAdapter {
     if (sql.includes("status = ?")) {
       const status = params[paramIndex++];
       rows = rows.filter((row) => row.status === status);
+    }
+    if (sql.includes("project_id = ?")) {
+      const projectId = params[paramIndex++];
+      rows = rows.filter((row) => row.project_id === projectId);
     }
     if (sql.includes("search_text LIKE ?")) {
       const needle = String(params[paramIndex++]).replace(/%/g, "");
@@ -995,5 +1012,119 @@ describe("orchestrator-task-store audit follow-ups (#11028)", () => {
     const reader = new FileTaskStore(path);
     const after = await reader.getTask(t.task.id);
     expect(after?.task.status).toBe("done");
+  });
+});
+
+describe("task.projectId binding (#13776)", () => {
+  it("persists projectId set at creation through the in-memory backend", async () => {
+    const store = new InMemoryTaskStore();
+    const { task } = await store.createTask(
+      createInput({ projectId: "proj-a" }),
+    );
+    expect(task.projectId).toBe("proj-a");
+    const reloaded = await store.getTask(task.id);
+    expect(reloaded?.task.projectId).toBe("proj-a");
+  });
+
+  it("leaves projectId undefined when none is supplied", async () => {
+    const store = new InMemoryTaskStore();
+    const { task } = await store.createTask(createInput());
+    expect(task.projectId).toBeUndefined();
+  });
+
+  it("filters listTasks by projectId in the in-memory backend", async () => {
+    const store = new InMemoryTaskStore();
+    await store.createTask(createInput({ title: "a", projectId: "proj-a" }));
+    await store.createTask(createInput({ title: "b", projectId: "proj-b" }));
+    await store.createTask(createInput({ title: "c", projectId: "proj-a" }));
+
+    const onlyA = await store.listTasks({ projectId: "proj-a" });
+    expect(onlyA.map((t) => t.title).sort()).toEqual(["a", "c"]);
+    expect(onlyA.every((t) => t.projectId === "proj-a")).toBe(true);
+
+    const trimmedA = await store.listTasks({ projectId: "  proj-a  " });
+    expect(trimmedA.map((t) => t.title).sort()).toEqual(["a", "c"]);
+
+    const onlyB = await store.listTasks({ projectId: "proj-b" });
+    expect(onlyB.map((t) => t.title)).toEqual(["b"]);
+  });
+
+  it("round-trips projectId through the file backend", async () => {
+    const path = await tempFile();
+    const writer = new FileTaskStore(path);
+    const { task } = await writer.createTask(
+      createInput({ projectId: "proj-file" }),
+    );
+
+    const reader = new FileTaskStore(path);
+    const reloaded = await reader.getTask(task.id);
+    expect(reloaded?.task.projectId).toBe("proj-file");
+
+    const listed = await reader.listTasks({ projectId: "  proj-file  " });
+    expect(listed.map((t) => t.id)).toEqual([task.id]);
+  });
+
+  it("writes and filters on the indexed project_id column in the SQL backend", async () => {
+    const adapter = new FakeSqlAdapter();
+    const store = new RuntimeDbTaskStore(adapter);
+    const a = await store.createTask(
+      createInput({ title: "sql-a", projectId: "proj-a" }),
+    );
+    await store.createTask(
+      createInput({ title: "sql-b", projectId: "proj-b" }),
+    );
+
+    // The indexed column is populated (not just buried in the JSON document).
+    expect(adapter.rows.get(a.task.id)?.project_id).toBe("proj-a");
+
+    const listed = await store.listTasks({ projectId: "proj-a" });
+    expect(listed.map((t) => t.title)).toEqual(["sql-a"]);
+    expect(listed[0]?.projectId).toBe("proj-a");
+  });
+
+  it("survives the idempotent project_id ADD COLUMN migration on re-init", async () => {
+    // Two stores over the same adapter re-run ensureInitialized; the second
+    // ALTER throws duplicate-column and must be swallowed, not surface.
+    const adapter = new FakeSqlAdapter();
+    const first = new RuntimeDbTaskStore(adapter);
+    await first.createTask(createInput({ title: "first", projectId: "p1" }));
+    const second = new RuntimeDbTaskStore(adapter);
+    await expect(
+      second.createTask(createInput({ title: "second", projectId: "p2" })),
+    ).resolves.toBeDefined();
+    expect(
+      (await second.listTasks({ projectId: "p2" })).map((t) => t.title),
+    ).toEqual(["second"]);
+  });
+
+  it("surfaces non-idempotent project_id ADD COLUMN migration failures", async () => {
+    class BrokenMigrationAdapter extends FakeSqlAdapter {
+      override async execute(
+        sql: string,
+        params: unknown[] = [],
+      ): Promise<void> {
+        if (sql.trim().toUpperCase().startsWith("ALTER ")) {
+          throw new Error("disk is read-only");
+        }
+        return super.execute(sql, params);
+      }
+    }
+
+    const store = new RuntimeDbTaskStore(new BrokenMigrationAdapter());
+
+    await expect(
+      store.createTask(createInput({ title: "blocked", projectId: "p1" })),
+    ).rejects.toThrow("disk is read-only");
+  });
+
+  it("surfaces projectId on the detail DTO", async () => {
+    const store = new InMemoryTaskStore();
+    const { task } = await store.createTask(
+      createInput({ projectId: "proj-dto" }),
+    );
+    const doc = await store.getTask(task.id);
+    if (!doc) throw new Error("expected task document");
+    const detail = toTaskThreadDetail(doc);
+    expect(detail.projectId).toBe("proj-dto");
   });
 });

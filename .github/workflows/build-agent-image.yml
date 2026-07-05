@@ -45,7 +45,7 @@ permissions:
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     permissions:
       contents: read

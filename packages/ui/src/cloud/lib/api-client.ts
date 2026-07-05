@@ -445,3 +445,43 @@ export async function api<T = unknown>(
 
   return payload as T;
 }
+
+/** Result of {@link apiWithStatus}: the raw HTTP status plus the parsed body. */
+export interface ApiStatusResult<T> {
+  status: number;
+  data: T;
+}
+
+/**
+ * Status-aware variant of {@link api} for endpoints whose HTTP status IS the
+ * protocol — e.g. the agent provision/suspend job endpoints, where **202**
+ * means "accepted, job queued (poll the jobId)" and **409** means "an
+ * equivalent job is already in flight (attach to it)". Resolves with
+ * `{ status, data }` for every response the server produced instead of
+ * throwing on non-2xx, so callers branch on the status directly. Rides
+ * {@link apiFetch}, so auth (steward cookie + `Authorization: Bearer`),
+ * transport selection, and the 401 session nudge are identical to `api`.
+ *
+ * Only real HTTP responses resolve: transport/URL-policy failures (the
+ * status-0 `ApiError`s from `resolveApiUrl`) and network errors still throw.
+ * The body is read leniently (a non-JSON body resolves as its text) because
+ * status-branching callers inspect payload fields defensively.
+ */
+export async function apiWithStatus<T = unknown>(
+  path: string,
+  init: ApiRequestInit = {},
+): Promise<ApiStatusResult<T>> {
+  try {
+    const res = await apiFetch(path, init);
+    return { status: res.status, data: (await readPayload(res, false)) as T };
+  } catch (err) {
+    // error-policy:J1 boundary translation — apiFetch throws ApiError for every
+    // non-2xx HTTP response (carrying the parsed body); re-shape it into the
+    // typed { status, data } result this variant promises. Non-HTTP failures
+    // (status 0 URL-policy throws, network TypeErrors) rethrow untouched.
+    if (err instanceof ApiError && err.status > 0) {
+      return { status: err.status, data: err.body as T };
+    }
+    throw err;
+  }
+}

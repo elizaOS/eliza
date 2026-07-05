@@ -13,6 +13,7 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import { AuthStore } from "../services/auth-store";
 import {
   createMachineSession,
@@ -75,7 +76,7 @@ export function _resetAuthPairingStateForTests(): void {
 function pairingEnabled(): boolean {
   return (
     Boolean(getCompatApiToken()) &&
-    process.env.ELIZA_PAIRING_DISABLED !== "1" &&
+    readAliasedEnv("ELIZA_PAIRING_DISABLED") !== "1" &&
     !isCloudProvisioned()
   );
 }
@@ -330,10 +331,6 @@ export async function handleAuthPairingCompatRoutes(
       sendJsonErrorResponse(res, 403, "Cannot determine client address");
       return true;
     }
-    if (!rateLimitPairing(remoteAddress)) {
-      sendJsonErrorResponse(res, 429, "Too many attempts. Try again later.");
-      return true;
-    }
 
     const provided = normalizePairingCode(
       typeof body.code === "string" ? body.code : "",
@@ -350,52 +347,59 @@ export async function handleAuthPairingCompatRoutes(
     }
 
     if (!tokenMatches(normalizePairingCode(current), provided)) {
+      if (!rateLimitPairing(remoteAddress)) {
+        sendJsonErrorResponse(res, 429, "Too many attempts. Try again later.");
+        return true;
+      }
       sendJsonErrorResponse(res, 403, "Invalid pairing code");
       return true;
     }
 
+    // Mint a machine session so the paired client gets a session-id bearer
+    // token that authenticates against `ensureCompatApiAuthorizedAsync`.
+    // Sessions are TTL-bound and revocable; the raw static connection key is
+    // forever-valid and non-revocable, so it must NEVER be returned here
+    // (#13985): the compat routes mount before the runtime DB finishes booting,
+    // and a device that paired during that window would keep a permanent
+    // full-authority bearer. If the DB isn't ready yet, fail closed with a
+    // retryable 503 and leave the pairing code intact — its TTL gives the
+    // client headroom to retry once the runtime is up.
+    const db = getCompatDrizzleDb(state);
+    if (!db) {
+      sendJsonErrorResponse(res, 503, "Pairing not ready yet, retry shortly");
+      return true;
+    }
+
+    // Consume the code only now that a session can actually be minted, so the
+    // transient DB-not-ready 503 above does not burn a still-valid code.
     pairingCode = null;
     pairingExpiresAt = 0;
 
-    // Mint a machine session so the paired client gets a session-id bearer
-    // token that authenticates against `ensureCompatApiAuthorizedAsync`.
-    // Returning the raw connection key here would auth `/api/auth/status`
-    // (static-token branch) but get rejected on every other route once the
-    // runtime DB is up. Sessions are TTL-bound and revocable; the static
-    // connection key is forever-valid until the operator rotates it.
-    const db = getCompatDrizzleDb(state);
-    if (db) {
-      try {
-        const store = new AuthStore(
-          db as ConstructorParameters<typeof AuthStore>[0],
-        );
-        const identityId = await ensurePairedDeviceIdentityId(store);
-        const { session } = await createMachineSession(store, {
-          identityId,
-          scopes: [],
-          label: "paired-device",
-          ip: remoteAddress,
-        });
-        sendJsonResponse(res, 200, { token: session.id });
-        return true;
-      } catch (err) {
-        // Surface the failure rather than silently falling back to a path
-        // that mints a forever-valid static-token bearer. Operators should
-        // see the underlying error and fix it; clients retry pairing.
-        logger.error(
-          `[api] pair: failed to mint machine session: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-        sendJsonErrorResponse(res, 500, "Failed to mint session");
-        return true;
-      }
+    try {
+      const store = new AuthStore(
+        db as ConstructorParameters<typeof AuthStore>[0],
+      );
+      const identityId = await ensurePairedDeviceIdentityId(store);
+      const { session } = await createMachineSession(store, {
+        identityId,
+        scopes: [],
+        label: "paired-device",
+        ip: remoteAddress,
+      });
+      sendJsonResponse(res, 200, { token: session.id });
+      return true;
+    } catch (err) {
+      // Surface the failure rather than silently falling back to a path that
+      // mints a forever-valid static-token bearer. Operators should see the
+      // underlying error and fix it; clients retry pairing.
+      logger.error(
+        `[api] pair: failed to mint machine session: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      sendJsonErrorResponse(res, 500, "Failed to mint session");
+      return true;
     }
-
-    // No DB yet — extremely unlikely once the runtime is up enough to serve
-    // requests, but preserve the legacy static-token return as a fallback.
-    sendJsonResponse(res, 200, { token });
-    return true;
   }
 
   return false;

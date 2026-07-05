@@ -14,6 +14,7 @@
  * lost on restart.
  */
 import { DatabaseAdapter } from "../database";
+import { rankMessageSearch } from "../search";
 import type {
 	AccessContext,
 	Agent,
@@ -41,6 +42,7 @@ import type {
 	LogBody,
 	Memory,
 	MemoryMetadata,
+	MessageSearchHit,
 	Metadata,
 	OAuthFlowRecord,
 	PairingAllowlistEntry,
@@ -940,6 +942,33 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		const offset = typeof params.offset === "number" ? params.offset : 0;
 		const limit = params.limit ?? 20;
 		return all.slice(offset, offset + limit);
+	}
+
+	async searchMessages(params: {
+		roomIds: UUID[];
+		query: string;
+		tableName?: string;
+		limit?: number;
+		offset?: number;
+		accessContext?: AccessContext;
+	}): Promise<MessageSearchHit[]> {
+		if (params.roomIds.length === 0) return [];
+		const tableName = params.tableName ?? "messages";
+		const candidates: Memory[] = [];
+		for (const rid of params.roomIds) {
+			const list = this.memoriesByRoom.get(roomTableKey(tableName, rid)) ?? [];
+			candidates.push(...list);
+		}
+		const ranked = rankMessageSearch(candidates, params.query);
+		const offset = typeof params.offset === "number" ? params.offset : 0;
+		const limit = params.limit ?? 20;
+		return ranked
+			.slice(offset, offset + limit)
+			.map(({ item, ftsRank, trigramSimilarity }) => ({
+				memory: item,
+				ftsRank,
+				trigramSimilarity,
+			}));
 	}
 
 	async getCachedEmbeddings(): Promise<

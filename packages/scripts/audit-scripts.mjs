@@ -114,6 +114,7 @@ const ALLOWED_EXACT = new Set([
   "audit:scripts:inventory",
   "audit:type-duplication:self-test",
   "audit:tee-secret-leak:self-test",
+  "audit:alias-read-guard:self-test",
 ]);
 
 /**
@@ -162,6 +163,14 @@ const ROOT_CWD_WRAPPER_ALLOWLIST = new Map([
   ["dev:agent", "day-to-day root agent dev entrypoint"],
   ["dev:core", "day-to-day root core dev entrypoint"],
   ["test:hmr", "root release/regression gate for app HMR behavior"],
+  [
+    "test:desktop:packaged",
+    "root release/regression gate for packaged desktop app startup behavior",
+  ],
+  [
+    "test:desktop:packaged:windows",
+    "root release/regression gate for the packaged Windows desktop smoke lane",
+  ],
   [
     "test:apple-entitlements",
     "root release/regression gate for app entitlement checks",

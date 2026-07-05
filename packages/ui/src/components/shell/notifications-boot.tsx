@@ -14,6 +14,7 @@ import {
   initNotifications,
   registerNotificationToastSink,
 } from "../../state/notifications/notification-store";
+import { initPushRegistration } from "../../state/notifications/push-registration";
 import { goHome } from "../../state/shell-surface-store";
 
 export function NotificationsShellBoot(): null {
@@ -23,6 +24,9 @@ export function NotificationsShellBoot(): null {
   // Idempotent store boot — the store guards against re-init.
   useEffect(() => {
     initNotifications();
+    // Native-only, gated on granted permission, guarded against double-register.
+    // The token POST is what makes the server's APNs/FCM stack a live pipeline.
+    void initPushRegistration();
   }, []);
 
   // The single shared toast sink: interrupt-worthy notifications surface as

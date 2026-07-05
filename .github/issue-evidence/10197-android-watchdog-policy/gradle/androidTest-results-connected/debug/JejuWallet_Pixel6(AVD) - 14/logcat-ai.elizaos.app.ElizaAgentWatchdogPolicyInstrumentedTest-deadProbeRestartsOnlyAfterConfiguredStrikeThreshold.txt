@@ -1,2 +1,0 @@
-06-30 02:23:08.553 16673 16700 I TestRunner: started: deadProbeRestartsOnlyAfterConfiguredStrikeThreshold(ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest)
-06-30 02:23:08.554 16673 16700 I TestRunner: finished: deadProbeRestartsOnlyAfterConfiguredStrikeThreshold(ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest)

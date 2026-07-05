@@ -1,2 +1,0 @@
-Action: <UIOpenURLAction: 0x51a54fc90; elizaos://aec-loop?tag=echo-only&maxSeconds=20&audioUrl=/farend.wav&warmupMs=1500&tailMs=2000>
-url = elizaos://aec-loop?tag=echo-only&maxSeconds=20&audioUrl=/farend.wav&warmupMs=1500&tailMs=2000;

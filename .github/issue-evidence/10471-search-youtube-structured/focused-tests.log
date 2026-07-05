@@ -1,9 +1,0 @@
-$ vitest run src/actions/searchYouTube.test.ts
-
- RUN  v4.1.5 /home/shaw/eliza/eliza-wt-10471-search-youtube/plugins/plugin-music
-
-
- Test Files  1 passed (1)
-      Tests  4 passed (4)
-   Start at  15:35:14
-   Duration  271ms (transform 64ms, setup 52ms, import 34ms, tests 13ms, environment 0ms)

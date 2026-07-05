@@ -1,9 +1,0 @@
-$ NODE_OPTIONS="${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning" vitest run --config ./vitest.config.ts src/state/startup-phase-hydrate.voice-control.test.ts
-
- RUN  v4.1.5 /Users/shawwalters/.codex/worktrees/5612/eliza/packages/ui
-
-
- Test Files  1 passed (1)
-      Tests  4 passed (4)
-   Start at  02:10:15
-   Duration  8.60s (transform 6.03s, setup 38ms, import 7.40s, tests 3ms, environment 1.03s)

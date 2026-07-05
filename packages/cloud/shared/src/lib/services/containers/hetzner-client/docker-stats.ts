@@ -19,12 +19,12 @@ export function parseDockerStats(raw: string): ContainerMetricsSnapshot {
     );
   }
 
-  const cpuPercent = parseFloat(cpuPerc.replace("%", ""));
-  const [memUsedRaw, memLimitRaw] = memUsage.split("/").map((s) => s.trim());
+  const cpuPercent = parseCpuPercent(cpuPerc);
+  const [memUsedRaw, memLimitRaw] = parseSizePair(memUsage, "memory usage");
   const memoryBytes = parseSize(memUsedRaw);
   const memoryLimitBytes = parseSize(memLimitRaw);
-  const [netRxRaw, netTxRaw] = netIo.split("/").map((s) => s.trim());
-  const [blockReadRaw, blockWriteRaw] = blockIo.split("/").map((s) => s.trim());
+  const [netRxRaw, netTxRaw] = parseSizePair(netIo, "network I/O");
+  const [blockReadRaw, blockWriteRaw] = parseSizePair(blockIo, "block I/O");
 
   return {
     cpuPercent,
@@ -50,10 +50,53 @@ const SIZE_UNITS: Record<string, number> = {
   tib: 1_024 ** 4,
 };
 
+/**
+ * Strict CPU-percent parse. `parseFloat` accepts malformed partial tokens
+ * (`"12.3.4%"` -> `12.3`), which would let corrupt docker output masquerade as
+ * healthy metrics; a whole-token regex + `Number()` fails closed on any value
+ * that is not a single well-formed decimal (throws `invalid_input`).
+ */
+function parseCpuPercent(raw: string): number {
+  const match = raw.trim().match(/^(\d+(?:\.\d+)?)%$/);
+  if (!match) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Failed to parse docker stats CPU percent: ${JSON.stringify(raw)}`,
+    );
+  }
+  return Number(match[1]);
+}
+
 function parseSize(raw: string): number {
-  const match = raw.match(/^([\d.]+)\s*([a-zA-Z]+)?$/);
-  if (!match) return 0;
+  // The numeric group is a single well-formed decimal — `[\d.]+` would accept
+  // `"1.2.3"`/`"."` and `parseFloat` would silently truncate them; require
+  // `\d+(\.\d+)?` so any malformed size token fails closed below.
+  const match = raw.match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?$/);
+  if (!match) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Failed to parse docker stats size field: ${JSON.stringify(raw)}`,
+    );
+  }
   const [, n, unit] = match;
-  const multiplier = unit ? (SIZE_UNITS[unit.toLowerCase()] ?? 1) : 1;
-  return Math.round(parseFloat(n) * multiplier);
+  if (!unit) return Math.round(Number(n));
+  const multiplier = SIZE_UNITS[unit.toLowerCase()];
+  if (multiplier === undefined) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Unknown size unit in docker stats output: ${JSON.stringify(unit)}`,
+    );
+  }
+  return Math.round(Number(n) * multiplier);
+}
+
+function parseSizePair(raw: string, field: string): readonly [string, string] {
+  const parts = raw.split("/").map((s) => s.trim());
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Failed to parse docker stats ${field}: ${JSON.stringify(raw)}`,
+    );
+  }
+  return [parts[0], parts[1]];
 }

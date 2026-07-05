@@ -1,7 +1,0 @@
-{
-  "requiredSecretsPresent": true,
-  "imageReady": false,
-  "deployReady": false,
-  "cloudVerified": false,
-  "closeable": false
-}

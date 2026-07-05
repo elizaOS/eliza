@@ -13,133 +13,38 @@
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
-import {
-  BarChart3,
-  Bot,
-  Braces,
-  Building2,
-  CreditCard,
-  Grid3x3,
-  Home,
-  KeyRound,
-  Lock,
-  Plug,
-  Sparkles,
-  TrendingUp,
-  User,
-  Workflow,
-} from "lucide-react";
 import { type ReactNode, useCallback, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import {
   DashboardHeader,
   DashboardShellLayout,
   DashboardSidebar,
-  type DashboardSidebarItem,
   type DashboardSidebarLinkRenderProps,
   type DashboardSidebarSection,
   PageHeaderProvider,
   usePageHeader,
 } from "../../cloud-ui/components/layout";
-import { useRequireAuth } from "../lib/use-session-auth";
+import { useSessionAuth } from "../lib/use-session-auth";
+import {
+  CONSOLE_OVERVIEW_NAV_ITEM,
+  CONSOLE_SURFACES,
+} from "./console-surfaces";
 
-/** The console nav, in scan order: overview, run things, observe, money,
- * account plumbing. Every href is a registered standalone cloud route. */
+/**
+ * The console nav is one flat list so sidebar section labels never compete
+ * with Account and Organization route labels. Specialist routes stay registered
+ * for deep links but are not promoted into the default console chrome.
+ */
 const CONSOLE_NAV_SECTIONS: DashboardSidebarSection[] = [
   {
     items: [
-      { id: "overview", label: "Overview", href: "/dashboard", icon: Home },
-    ],
-  },
-  {
-    title: "Run",
-    items: [
-      {
-        id: "agents",
-        label: "Instances",
-        href: "/dashboard/agents",
-        icon: Bot,
-      },
-      {
-        id: "my-agents",
-        label: "My Agents",
-        href: "/dashboard/my-agents",
-        icon: Sparkles,
-      },
-      { id: "apps", label: "Apps", href: "/dashboard/apps", icon: Grid3x3 },
-      { id: "mcps", label: "MCPs", href: "/dashboard/mcps", icon: Workflow },
-    ],
-  },
-  {
-    title: "Observe",
-    items: [
-      {
-        id: "analytics",
-        label: "Analytics",
-        href: "/dashboard/analytics",
-        icon: BarChart3,
-      },
-      {
-        id: "api-explorer",
-        label: "API Explorer",
-        href: "/dashboard/api-explorer",
-        icon: Braces,
-      },
-    ],
-  },
-  {
-    title: "Money",
-    items: [
-      {
-        id: "billing",
-        label: "Billing",
-        href: "/dashboard/billing",
-        icon: CreditCard,
-      },
-      {
-        id: "api-keys",
-        label: "API Keys",
-        href: "/dashboard/api-keys",
-        icon: KeyRound,
-      },
-      {
-        id: "monetization",
-        label: "Monetization",
-        href: "/dashboard/monetization",
-        icon: TrendingUp,
-      },
-    ],
-  },
-  {
-    // Section title was "Account", which duplicated the "Account" item label
-    // right below it (double-title feel in the sidebar). "Workspace" covers
-    // the whole group — connectors, account, security, and organization.
-    title: "Workspace",
-    items: [
-      {
-        id: "connectors",
-        label: "Connectors",
-        href: "/dashboard/connectors",
-        icon: Plug,
-      },
-      {
-        id: "account",
-        label: "Account",
-        href: "/dashboard/account",
-        icon: User,
-      },
-      {
-        id: "security",
-        label: "Security",
-        href: "/dashboard/security",
-        icon: Lock,
-      },
-      {
-        id: "organization",
-        label: "Organization",
-        href: "/dashboard/organization",
-        icon: Building2,
-      },
+      CONSOLE_OVERVIEW_NAV_ITEM,
+      ...CONSOLE_SURFACES.map(({ id, label, href, icon }) => ({
+        id,
+        label,
+        href,
+        icon,
+      })),
     ],
   },
 ];
@@ -155,13 +60,6 @@ function renderRouterLink({
       {children}
     </Link>
   );
-}
-
-/** Prefix match so agent/app detail routes keep their parent item lit; the
- * Overview item stays exact so it doesn't light for every console page. */
-function isItemActive(item: DashboardSidebarItem, activePath: string): boolean {
-  if (item.href === "/dashboard") return activePath === "/dashboard";
-  return activePath === item.href || activePath.startsWith(`${item.href}/`);
 }
 
 function ConsoleLogo(): ReactNode {
@@ -207,9 +105,21 @@ export function ConsoleShell({
   children: ReactNode;
 }): React.JSX.Element {
   const location = useLocation();
-  const session = useRequireAuth();
+  const session = useSessionAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
+
+  // A dead session must SEND THE USER TO LOGIN, not render the console with
+  // every query gated off — that state reads as a fake-empty account ("No
+  // agents yet", balance "—") and is indistinguishable from real data loss
+  // (#13709: expired staging session showed exactly that). returnTo brings
+  // them straight back after re-auth.
+  if (session.ready && !session.authenticated) {
+    const returnTo = encodeURIComponent(
+      `${location.pathname}${location.search}`,
+    );
+    return <Navigate to={`/login?returnTo=${returnTo}`} replace />;
+  }
 
   return (
     <PageHeaderProvider>
@@ -222,7 +132,6 @@ export function ConsoleShell({
             isOpen={sidebarOpen}
             onToggle={toggleSidebar}
             renderLink={renderRouterLink}
-            isItemActive={isItemActive}
             logo={<ConsoleLogo />}
             // The kit's own `md:static` loses the cascade in this bundle: Vite
             // emits per-chunk CSS and a later chunk re-declares `.fixed`, which

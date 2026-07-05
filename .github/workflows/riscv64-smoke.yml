@@ -26,7 +26,7 @@ permissions:
 jobs:
   smoke:
     if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'riscv64') }}
-    runs-on: ubuntu-22.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 90
     env:
       ELIZA_RISCV64_SMOKE: "1"

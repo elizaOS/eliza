@@ -10,6 +10,7 @@ import {
   test,
 } from "@playwright/test";
 import { installDefaultAppRoutes, openAppPath } from "./helpers";
+import { seedStewardSession } from "./helpers/test-auth";
 
 type ViewportCase = {
   name: string;
@@ -426,17 +427,16 @@ for (const viewport of VIEWPORTS) {
       height: viewport.height,
     });
     await page.addInitScript(
-      ({ cloudAuthToken, voicePrefixDoneKey }) => {
+      ({ voicePrefixDoneKey }) => {
         localStorage.clear();
         sessionStorage.clear();
         localStorage.setItem(voicePrefixDoneKey, "1");
-        localStorage.setItem("steward_session_token", cloudAuthToken);
       },
       {
-        cloudAuthToken: CLOUD_AUTH_TOKEN,
         voicePrefixDoneKey: VOICE_PREFIX_DONE_STORAGE_KEY,
       },
     );
+    await seedStewardSession(page, { token: CLOUD_AUTH_TOKEN });
 
     await installDefaultAppRoutes(page);
     await installFreshFirstRunConfigRoute(page);
@@ -753,17 +753,16 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.addInitScript(
-    ({ cloudAuthToken, voicePrefixDoneKey }) => {
+    ({ voicePrefixDoneKey }) => {
       localStorage.clear();
       sessionStorage.clear();
       localStorage.setItem(voicePrefixDoneKey, "1");
-      localStorage.setItem("steward_session_token", cloudAuthToken);
     },
     {
-      cloudAuthToken: CLOUD_AUTH_TOKEN,
       voicePrefixDoneKey: VOICE_PREFIX_DONE_STORAGE_KEY,
     },
   );
+  await seedStewardSession(page, { token: CLOUD_AUTH_TOKEN });
 
   await installDefaultAppRoutes(page);
   await installCloudConnectionRoutes(page, "cloud-provisioning-chat-user");

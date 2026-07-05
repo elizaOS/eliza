@@ -1,1 +1,0 @@
-real libwakeword peak P(wake) for 'hey eliza' clip: 1.0000

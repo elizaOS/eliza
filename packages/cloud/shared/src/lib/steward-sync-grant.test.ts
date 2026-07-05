@@ -85,12 +85,13 @@ mock.module("./services/api-keys", () => ({
   apiKeysService: {
     listByOrganization: async () => [],
     create: async () => ({ id: "key-1" }),
+    ensureUserHasApiKey: async () => undefined,
   },
 }));
 
 mock.module("./services/characters/characters", () => ({
   charactersService: {
-    listByOrganization: async () => [],
+    existsForOrganization: async () => false,
     create: async () => ({ id: "char-1" }),
   },
 }));

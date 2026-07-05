@@ -59,7 +59,7 @@ env:
 jobs:
   resolve-inputs:
     name: "resolve-inputs"
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 2
     outputs:
       suite: ${{ steps.pick.outputs.suite }}
@@ -81,7 +81,7 @@ jobs:
   smoke-large:
     name: "tier=large"
     needs: resolve-inputs
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     steps:
       - name: Check secrets
@@ -173,7 +173,7 @@ jobs:
   smoke-frontier:
     name: "tier=frontier"
     needs: resolve-inputs
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     steps:
       - name: Check secrets
@@ -266,7 +266,7 @@ jobs:
     name: "multi-tier summary"
     needs: [resolve-inputs, smoke-large, smoke-frontier]
     if: always() && github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 5
     steps:
       - name: Download large-tier artifact

@@ -36,11 +36,16 @@ const SAMPLE_MESSAGES: ConversationMessage[] = [
   },
 ];
 
-/** Seed the (otherwise backendless) transcript so the reset button shows. */
+/** Seed the (otherwise backendless) transcript with a fixed message list. */
 function withMessages(messages: ConversationMessage[]): Decorator {
   return (Story) => (
     <ConversationMessagesCtx.Provider
-      value={{ conversationMessages: messages }}
+      value={{
+        conversationMessages: messages,
+        removeConversationMessage: () => {},
+        setConversationMessages: () => {},
+        prependConversationMessages: () => {},
+      }}
     >
       <Story />
     </ConversationMessagesCtx.Provider>
@@ -118,18 +123,19 @@ export const GameModal: Story = {
 };
 
 /**
- * #8930 — with a populated conversation, the RotateCcw reset button appears in
- * the composer header row (visible only when there are messages to clear).
- * Clicking it resets to a fresh greeted thread without returning to the old one.
+ * A populated transcript. The user-facing reset control (#8930) was removed with
+ * the chat-redesign (#13532/#13539) — the infinite-scroll transcript makes
+ * "clear the thread" an anti-pattern — so the composer header row shows only the
+ * continuous-chat toggle, never a reset button.
  */
-export const WithResetButton: Story = {
+export const WithMessages: Story = {
   decorators: [withMessages(SAMPLE_MESSAGES)],
 };
 
 /**
- * #8930 — immediately after a reset the transcript is empty, so the reset
- * button is hidden again (nothing to clear) and the empty state shows.
+ * An empty conversation renders the empty state (no transcript, no reset
+ * control).
  */
-export const AfterReset: Story = {
+export const EmptyThread: Story = {
   decorators: [withMessages([])],
 };

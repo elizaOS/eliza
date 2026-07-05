@@ -4,7 +4,7 @@
 
 <!-- LINK TO ISSUE OR TICKET -->
 
-Definition of Done: full standard in [`PR_EVIDENCE.md`](PR_EVIDENCE.md).
+Definition of Done: full standard in [`PR_EVIDENCE.md`](../PR_EVIDENCE.md).
 
 - [ ] This PR targets `develop` and is rebased onto the latest `origin/develop`
       with zero conflicts (`git fetch origin && git rebase origin/develop`).
@@ -80,18 +80,25 @@ Attach each applicable artifact, or write `N/A - <reason>` on the row. Do not
 leave evidence rows blank. Drop files in
 `.github/issue-evidence/<issue#>-<slug>.<ext>` and reference them here.
 
+<!-- evidence-row:before-screenshots -->
 - [ ] Before full-page screenshots are attached for every affected UI surface
       (desktop and mobile), or marked `N/A - <reason>`.
+<!-- evidence-row:after-screenshots -->
 - [ ] After full-page screenshots are attached for every affected UI surface
       (desktop and mobile), or marked `N/A - <reason>`.
+<!-- evidence-row:walkthrough-video -->
 - [ ] A video walkthrough of the complete user flow is attached, or marked
       `N/A - <reason>`.
+<!-- evidence-row:backend-logs -->
 - [ ] Backend logs show the real code path firing end to end, or are marked
       `N/A - <reason>`.
+<!-- evidence-row:frontend-logs -->
 - [ ] Frontend console and network logs show the request/response and state
       change, or are marked `N/A - <reason>`.
+<!-- evidence-row:llm-trajectory -->
 - [ ] Real-LLM trajectory is attached for agent/action/provider/prompt/model
       changes, or marked `N/A - <reason>`.
+<!-- evidence-row:domain-artifacts -->
 - [ ] Domain artifacts are attached where applicable (DB rows, memories,
       scheduled tasks, wallet/on-chain output, generated files, audio, etc.), or
       marked `N/A - <reason>`.

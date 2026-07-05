@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import {
   OPTIONAL_STATIC_PLUGIN_PACKAGES,
   OPTIONAL_STATIC_PLUGIN_REGISTRATIONS,
+  optionalPluginImportSpecifier,
   renderOptionalPluginImportsModule,
   UNBUNDLED_OPTIONAL_PLUGINS,
 } from "./optional-plugins.ts";
@@ -61,10 +62,13 @@ describe("optional-plugin literal-import codegen", () => {
     expect(keys).toEqual([...OPTIONAL_STATIC_PLUGIN_PACKAGES]);
   });
 
-  it("every generated entry is a literal-specifier import (key === specifier)", () => {
-    // The whole point: the bundler must see a string literal, never a variable.
+  it("every generated entry imports the package's declared runtime specifier", () => {
+    // The whole point: the bundler must see a string literal, never a
+    // variable. The specifier is the bare package name unless an
+    // importSubpath override points at a dedicated runtime entry (e.g.
+    // plugin-inbox's ./plugin — the root barrel exports React views).
     for (const { key, specifier } of generatedImporterEntries()) {
-      expect(specifier, key).toBe(key);
+      expect(specifier, key).toBe(optionalPluginImportSpecifier(key));
     }
   });
 
@@ -73,7 +77,9 @@ describe("optional-plugin literal-import codegen", () => {
       OPTIONAL_STATIC_PLUGIN_PACKAGES,
     );
     for (const pkg of OPTIONAL_STATIC_PLUGIN_PACKAGES) {
-      expect(rendered, pkg).toContain(`"${pkg}": () => import("${pkg}")`);
+      expect(rendered, pkg).toContain(
+        `"${pkg}": () => import("${optionalPluginImportSpecifier(pkg)}")`,
+      );
     }
   });
 

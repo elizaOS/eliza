@@ -14,6 +14,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
+import { saveLauncherRecents } from "../../state/persistence";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { LauncherSurface } from "./LauncherSurface";
 
@@ -81,7 +82,10 @@ beforeEach(() => {
     view("browser", "Browser", "/browser"),
     view("settings", "Settings", "/settings", { visibleInManager: false }),
     view("shopify", "Shopify", "/shopify"),
-    view("hyperliquid", "Hyperliquid", "/hyperliquid"),
+    // Mirrors the real plugin-hyperliquid registration (`group: "wallet"`,
+    // plugins/plugin-hyperliquid/src/register.ts) — the launcher collapses
+    // wallet-group sub-pages, so no standalone Hyperliquid tile.
+    view("hyperliquid", "Hyperliquid", "/hyperliquid", { group: "wallet" }),
     view("phone", "Phone", "/phone", { visibleInManager: false }),
     view("trajectories", "Trajectories", "/apps/trajectories", {
       viewKind: "developer",
@@ -115,6 +119,17 @@ describe("LauncherSurface", () => {
   it("collapses duplicate wallet registrations to a single tile", () => {
     render(<LauncherSurface />);
     expect(screen.getAllByTestId("launcher-tile-wallet")).toHaveLength(1);
+  });
+
+  it("hydrates persisted launcher recents on first mount", () => {
+    saveLauncherRecents(["browser", "wallet"]);
+
+    render(<LauncherSurface />);
+
+    expect(screen.getByRole("heading", { name: "Recents" })).toBeTruthy();
+    expect(screen.getByTestId("launcher-zone-recents")).toBeTruthy();
+    expect(screen.getByTestId("launcher-recents-tile-browser")).toBeTruthy();
+    expect(screen.getByTestId("launcher-recents-tile-wallet")).toBeTruthy();
   });
 
   it("hides native-OS tiles off the AOSP fork and shows them on it", () => {

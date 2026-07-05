@@ -3,8 +3,10 @@
  * on the header collapses it to a pill; flick DOWN on the pill expands it again.
  * Drives real CDP touch and records a continuous .webm.
  *
- * Conversation-swipe coverage lives in run-conversation-swipe-e2e.mjs (it drives
- * the REAL ContinuousChatOverlay). Mechanics come from the shared e2e-runner.
+ * The overlay's own perf-critical gestures (thread-scroll + maximize/restore, the
+ * survivors of the single-infinite-thread redesign #13531) are driven against the
+ * REAL ContinuousChatOverlay in run-perf-gate-e2e.mjs / run-chat-perf-gate.mjs.
+ * Mechanics come from the shared e2e-runner.
  *
  * Run: bun run --cwd packages/ui test:chatux-gesture-e2e
  */

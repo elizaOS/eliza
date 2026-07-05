@@ -423,20 +423,18 @@ class UserMcpsService {
     let affiliateCodeId: string | null = null;
 
     if (params.userId) {
-      try {
-        const { affiliatesService } = await import("./affiliates");
-        const referrer = await affiliatesService.getReferrer(params.userId!);
-        if (referrer) {
-          affiliateOwnerId = referrer.user_id;
-          affiliateCodeId = referrer.id;
-          const affiliatePercent = Number(referrer.markup_percent);
-          const platformPercent = 20.0;
+      // The affiliate lookup participates in the money path. If it is unavailable,
+      // fail before charging so the transaction cannot silently drop owed fees.
+      const { affiliatesService } = await import("./affiliates");
+      const referrer = await affiliatesService.getReferrer(params.userId);
+      if (referrer) {
+        affiliateOwnerId = referrer.user_id;
+        affiliateCodeId = referrer.id;
+        const affiliatePercent = Number(referrer.markup_percent);
+        const platformPercent = 20.0;
 
-          affiliateFeeCredits = creditsCharged * (affiliatePercent / 100);
-          platformFeeCredits = creditsCharged * (platformPercent / 100);
-        }
-      } catch (e) {
-        logger.error(`[UserMcps] Error fetching referrer for ${params.userId}`, e);
+        affiliateFeeCredits = creditsCharged * (affiliatePercent / 100);
+        platformFeeCredits = creditsCharged * (platformPercent / 100);
       }
     }
 

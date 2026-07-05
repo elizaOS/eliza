@@ -7,11 +7,12 @@
  *   - append a token (delta)        → mode: "append"
  *   - replace text from a snapshot  → mode: "replace"
  *   - apply final reconciled text   → mode: "complete"
+ *   - merge an inline tool-call step → mode: "tool"
  *   - stamp a server failureKind    → mode: "fail"
  *   - mark the turn as interrupted  → mode: "interrupt"
  *   - drop an empty assistant turn  → mode: "drop"
  *
- * This primitive is the single map pass for all six, so `useChatSend.ts` and
+ * This primitive is the single map pass for all of them, so `useChatSend.ts` and
  * `useChatCallbacks.ts` share one equality check instead of each hand-rolling
  * `setMessages(prev => prev.map(...))`. The map pass:
  *
@@ -28,8 +29,10 @@ import type { Dispatch, SetStateAction } from "react";
 import type {
   AccountConnectRequest,
   ChatFailureKind,
+  ChatToolCallEvent,
   ConversationMessage,
 } from "../api";
+import { mergeChatToolEvent } from "../components/tool-events/chat-tool-events";
 import { mergeStreamingText } from "./parsers";
 
 export type StreamingTextSetter = Dispatch<
@@ -69,6 +72,13 @@ export type StreamingTextModification =
       accountConnect?: AccountConnectRequest;
       /** Optional agent reasoning/thought to stamp on the completed turn. */
       reasoning?: string;
+    }
+  | {
+      messageId: string;
+      mode: "tool";
+      /** One inline tool-call lifecycle step (call → result/error). Merged onto
+       *  the turn's `toolEvents` by `callId`; text is left untouched. */
+      event: ChatToolCallEvent;
     }
   | {
       messageId: string;
@@ -127,6 +137,11 @@ function computeNextMessage(
         next.reasoning = mod.reasoning;
       }
       return next;
+    }
+    case "tool": {
+      const nextEvents = mergeChatToolEvent(message.toolEvents ?? [], mod.event);
+      if (nextEvents === message.toolEvents) return null;
+      return { ...message, toolEvents: nextEvents };
     }
     case "fail": {
       if (message.failureKind === mod.failureKind) return null;

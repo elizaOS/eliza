@@ -34,13 +34,13 @@ export function AccountDetails({ user }: AccountDetailsProps) {
         <div>
           <div className="flex items-center gap-2 mb-2">
             <Info className="h-5 w-5 text-[var(--brand-orange)]" />
-            <h3 className="text-lg font-bold text-white">
+            <h3 className="text-lg font-bold text-txt-strong">
               {t("cloud.accountDetails.title", {
                 defaultValue: "Account Details",
               })}
             </h3>
           </div>
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-muted">
             {t("cloud.accountDetails.subtitle", {
               defaultValue: "View your account status and important dates",
             })}
@@ -50,17 +50,17 @@ export function AccountDetails({ user }: AccountDetailsProps) {
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <p className="text-xs text-white/50 uppercase tracking-wide">
+              <p className="text-xs text-muted uppercase tracking-wide">
                 {t("cloud.accountDetails.accountId", {
                   defaultValue: "Account ID",
                 })}
               </p>
-              <p className="font-mono text-xs text-white/70">{user.id}</p>
+              <p className="font-mono text-xs text-txt">{user.id}</p>
             </div>
 
             {user.email && (
               <div className="space-y-1">
-                <p className="text-xs text-white/50 uppercase tracking-wide">
+                <p className="text-xs text-muted uppercase tracking-wide">
                   {t("cloud.accountDetails.emailVerification", {
                     defaultValue: "Email Verification",
                   })}
@@ -91,7 +91,7 @@ export function AccountDetails({ user }: AccountDetailsProps) {
 
             {user.wallet_address && (
               <div className="space-y-1">
-                <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
+                <p className="text-xs text-muted uppercase tracking-wide flex items-center gap-2">
                   <Wallet className="h-4 w-4" />
                   {t("cloud.accountDetails.walletStatus", {
                     defaultValue: "Wallet Status",
@@ -122,7 +122,7 @@ export function AccountDetails({ user }: AccountDetailsProps) {
             )}
 
             <div className="space-y-1">
-              <p className="text-xs text-white/50 uppercase tracking-wide">
+              <p className="text-xs text-muted uppercase tracking-wide">
                 {t("cloud.accountDetails.accountStatus", {
                   defaultValue: "Account Status",
                 })}
@@ -139,53 +139,53 @@ export function AccountDetails({ user }: AccountDetailsProps) {
             </div>
 
             <div className="space-y-1">
-              <p className="text-xs text-white/50 uppercase tracking-wide">
+              <p className="text-xs text-muted uppercase tracking-wide">
                 {t("cloud.accountDetails.role", { defaultValue: "Role" })}
               </p>
-              <span className="rounded-sm bg-white/10 px-2 py-1 text-xs text-white capitalize">
+              <span className="rounded-sm bg-surface px-2 py-1 text-xs text-txt-strong capitalize">
                 {user.role}
               </span>
             </div>
 
             <div className="space-y-1">
-              <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
+              <p className="text-xs text-muted uppercase tracking-wide flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-[var(--brand-orange)]" />
                 {t("cloud.accountDetails.accountCreated", {
                   defaultValue: "Account Created",
                 })}
               </p>
-              <p className="text-sm text-white">
+              <p className="text-sm text-txt-strong">
                 {formatDate(user.created_at)}
               </p>
             </div>
 
             <div className="space-y-1">
-              <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
+              <p className="text-xs text-muted uppercase tracking-wide flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-[var(--brand-orange)]" />
                 {t("cloud.accountDetails.lastUpdated", {
                   defaultValue: "Last Updated",
                 })}
               </p>
-              <p className="text-sm text-white">
+              <p className="text-sm text-txt-strong">
                 {formatDate(user.updated_at)}
               </p>
             </div>
           </div>
 
           {user.wallet_address && (
-            <div className="pt-4 border-t border-white/10 space-y-3">
+            <div className="pt-4 border-t border-border space-y-3">
               <div className="space-y-1">
-                <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
+                <p className="text-xs text-muted uppercase tracking-wide flex items-center gap-2">
                   <Wallet className="h-4 w-4 text-[var(--brand-orange)]" />
                   {t("cloud.accountDetails.walletAddress", {
                     defaultValue: "Wallet Address",
                   })}
                 </p>
-                <p className="font-mono text-xs break-all text-white">
+                <p className="font-mono text-xs break-all text-txt-strong">
                   {user.wallet_address}
                 </p>
                 {user.wallet_chain_type && (
-                  <span className="rounded-sm bg-white/10 px-2 py-0.5 text-xs text-white capitalize">
+                  <span className="rounded-sm bg-surface px-2 py-0.5 text-xs text-txt-strong capitalize">
                     {user.wallet_chain_type}
                   </span>
                 )}

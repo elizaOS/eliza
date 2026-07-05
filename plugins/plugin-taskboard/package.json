@@ -1,0 +1,15 @@
+{
+  "name": "@elizaos/plugin-taskboard",
+  "version": "0.0.0-plan.0",
+  "type": "module",
+  "private": true,
+  "description": "PLAN ONLY (elizaOS/eliza#13469): multi-agent workboards binding an Eliza room, a GitHub Projects v2 board, and a tracking issue. No runtime code yet — see README.md (design) and SCAFFOLD.md (build contract).",
+  "elizaos": {
+    "plan": {
+      "issue": "https://github.com/elizaOS/eliza/issues/13469",
+      "status": "plan-only",
+      "design": "README.md",
+      "scaffold": "SCAFFOLD.md"
+    }
+  }
+}

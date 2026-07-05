@@ -15,6 +15,7 @@ import {
 import { agentsRepository } from "../../../db/repositories/agents/agents";
 import { elizaRoomCharactersTable, userCharacters, users } from "../../../db/schemas";
 import { memoryTable, participantTable, roomTable } from "../../../db/schemas/eliza";
+import { ValidationError } from "../../api/cloud-worker-errors";
 import { cache } from "../../cache/client";
 import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../../cache/keys";
@@ -139,6 +140,15 @@ export class CharactersService {
     return await userCharactersRepository.listByOrganization(organizationId, source);
   }
 
+  /**
+   * Bounded existence probe: does the organization have any cloud character?
+   * For hot paths that only need emptiness (default-character provisioning),
+   * where listByOrganization would fetch every fat character row.
+   */
+  async existsForOrganization(organizationId: string): Promise<boolean> {
+    return await userCharactersRepository.existsForOrganization(organizationId, "cloud");
+  }
+
   async listPublic(options?: {
     search?: string;
     category?: string;
@@ -203,16 +213,35 @@ export class CharactersService {
   }
 
   async create(data: NewUserCharacter): Promise<UserCharacter> {
+    // `name` arrives from the same pre-validation request body as `username`
+    // (the route casts raw JSON to ElizaCharacter). A non-string name 500s via
+    // slugify(name).toLowerCase() in generateUniqueUsername below; and when a
+    // username IS supplied so slugify is skipped, a non-string name persists
+    // and then 500s the public discovery/list reads (char.name.toLowerCase(),
+    // localeCompare) for every viewer (#13637 / #13713 class). Reject up front.
+    if (typeof data.name !== "string" || data.name.trim().length === 0) {
+      throw ValidationError("Invalid name: must be a non-empty string");
+    }
+
     // Generate username if not provided
     let username = data.username;
-    if (!username) {
+    if (username === undefined || username === null || username === "") {
+      // Blank is provided-but-unset (empty-is-unset contract), same as omitting the field.
       username = await this.generateUniqueUsername(data.name);
       logger.info(`[Characters] Generated username: @${username} for "${data.name}"`);
+    } else if (typeof username !== "string") {
+      // Character creation receives request bodies before route-level shape
+      // validation, so username can be any JSON value. Rejecting here keeps
+      // create/update behavior aligned and prevents validateUsername from
+      // turning malformed input into a TypeError 500 (#13637 class).
+      throw ValidationError("Invalid username: must be a string");
     } else {
       // Validate provided username
       const validation = validateUsername(username);
       if (!validation.valid) {
-        throw new Error(`Invalid username: ${validation.error}`);
+        // A genuinely-invalid provided username is caller error, not a server
+        // fault (#13637 class) — matches the non-string branch above.
+        throw ValidationError(`Invalid username: ${validation.error}`);
       }
 
       // Use normalized (lowercased) username from validation
@@ -221,7 +250,7 @@ export class CharactersService {
       // Check uniqueness
       const exists = await userCharactersRepository.usernameExists(username);
       if (exists) {
-        throw new Error("Username is already taken");
+        throw ValidationError("Username is already taken");
       }
     }
 
@@ -280,6 +309,12 @@ export class CharactersService {
       if (updates.username === null) {
         // Allow clearing username - no validation needed
         logger.info(`[Characters] Username cleared: @${character.username} → null`);
+      } else if (typeof updates.username !== "string") {
+        // The PUT route passes the request body through unvalidated, so
+        // username can be any JSON shape; a non-string can't be normalized or
+        // validated and must reject as a 400, not a TypeError 500 (#13637
+        // class).
+        throw ValidationError("Invalid username: must be a string");
       } else {
         const normalizedUsername = updates.username.toLowerCase();
         if (normalizedUsername !== character.username) {

@@ -41,7 +41,7 @@ permissions:
 
 jobs:
   build-edad:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -212,7 +212,7 @@ jobs:
           echo "::warning::Could not set package visibility to public — set it once manually in the GHCR package settings"
 
   build-clone-ur-crush:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     permissions:
       contents: read

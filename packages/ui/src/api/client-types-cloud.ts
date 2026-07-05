@@ -911,6 +911,10 @@ export interface CodingAgentTaskThread {
   latestSessionLabel: string | null;
   latestWorkdir: string | null;
   latestRepo: string | null;
+  /** Registered project this task is bound to (null = unbound). Present on the
+   * summary so the task list can group by project without fetching each task's
+   * detail (#13776). */
+  projectId: string | null;
   latestActivityAt: number | null;
   decisionCount: number;
   usage: CodingAgentTaskUsageSummary;

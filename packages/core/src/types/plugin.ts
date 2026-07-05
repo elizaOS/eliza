@@ -147,8 +147,10 @@ interface BaseRoute {
 	 */
 	rawPath?: boolean;
 	/**
-	 * Runtime modes where this route is visible. Hosts that support runtime modes
-	 * hide routes outside this list with 404 before handler logic runs.
+	 * Runtime modes where this route is visible. The agent HTTP server hides
+	 * routes outside this list with 404 before handler logic runs
+	 * (packages/agent/src/api/runtime-mode/), so every host — the bare agent
+	 * and the app-core wrapper — enforces the same visibility contract.
 	 */
 	modes?: ReadonlyArray<RouteRuntimeMode>;
 	/** Free-form one-liner documenting why the route is scoped to those modes. */
@@ -475,6 +477,20 @@ export interface PluginAppBridge {
 export type AppShellBackgroundPolicy = "opaque" | "shared";
 
 /**
+ * How the app shell frames a view's top bar (#13586).
+ *
+ * - `normal` (default): the shell requires the shared `ViewHeader` (icon-only
+ *   back + centered title). The uniform-top-bar audit fails any `normal` view
+ *   that does not render it.
+ * - `fullscreen`: the view owns its full window and supplies its own chrome
+ *   (e.g. an immersive browser/workbench toolbar); no shared header enforced.
+ * - `modal`: the view is presented as a modal/sheet with its own dismiss
+ *   affordance; the shared header is not enforced.
+ * - `immersive`: a chrome-free surface (e.g. launcher/background); no header.
+ */
+export type ViewHeaderPolicy = "normal" | "fullscreen" | "modal" | "immersive";
+
+/**
  * A nav-tab declaration so an app/plugin can register its own page in the
  * shell's main navigation without app-core hard-coding it. Resolved by the
  * shell at startup from the loaded plugin's `app.navTabs` field.
@@ -513,6 +529,12 @@ export interface PluginAppNavTab {
 	group?: string;
 	/** Screen background policy for this tab. Defaults to `"opaque"`. */
 	backgroundPolicy?: AppShellBackgroundPolicy;
+	/**
+	 * Top-bar framing policy (#13586). Defaults to `"normal"`, which the shell
+	 * enforces with the shared `ViewHeader`. Set `fullscreen`/`modal`/`immersive`
+	 * for surfaces that own their own chrome.
+	 */
+	headerPolicy?: ViewHeaderPolicy;
 	/**
 	 * Optional package export specifier the shell will dynamically import
 	 * when the tab is activated, e.g. "@elizaos/plugin-wallet-ui#InventoryView".
@@ -751,6 +773,70 @@ export interface ViewCapability {
 }
 
 /**
+ * One agent-surface interaction step a {@link ViewScopedAction} expands into.
+ * The `kind` maps to the exact interact capability the view already dispatches
+ * (`agent-fill`/`agent-click`/`agent-focus`) so a named domain action never
+ * builds a parallel DOM-automation path — it resolves to the same
+ * `useAgentElement` id sequence the element-level protocol drives.
+ *
+ * `target` is a `useAgentElement` id declared in the view. `value` is required
+ * for `agent-fill` and may reference an action parameter with `{{paramName}}`
+ * (whole-token substitution; the token must be the entire string). A `fill`
+ * step whose `value` is a bare literal fills that literal verbatim.
+ */
+export interface ViewScopedActionStep {
+	/** The interact capability this step dispatches. */
+	kind: "agent-fill" | "agent-click" | "agent-focus";
+	/** `useAgentElement` id in the declaring view this step acts on. */
+	target: string;
+	/**
+	 * Value to fill. Required when `kind === "agent-fill"`, ignored otherwise.
+	 * `"{{amount}}"` pulls the `amount` action parameter; any other string is
+	 * filled literally.
+	 */
+	value?: string;
+}
+
+/**
+ * A named, view-scoped agent action a view exposes while it is the active view.
+ *
+ * The host builds a real runtime {@link Action} from each declaration whose
+ * `validate()` returns false unless the declaring view is the foreground active
+ * view — so the agent cannot invoke a wallet action while sitting in Settings.
+ * The action's handler expands `steps` into the view's existing agent-surface
+ * interact sequence (`agent-fill`/`agent-click`/`agent-focus` against
+ * `useAgentElement` ids). A step whose `target` id is not mounted fails loudly
+ * with a typed error — never a silent no-op.
+ *
+ * This is the mechanism only; per-view children register concrete actions
+ * (settings `set-provider`, wallet `swap-tokens`, …) on top of it.
+ */
+export interface ViewScopedAction {
+	/**
+	 * Runtime action name, unique across the whole action registry. Convention:
+	 * `VIEW_<VIEWID>_<VERB>` in UPPER_SNAKE_CASE (e.g. `VIEW_SETTINGS_SET_PROVIDER`)
+	 * so it never collides with a global action or another view's scoped action.
+	 */
+	name: string;
+	/** One-line description surfaced to the planner. */
+	description: string;
+	/** Optional planner similes / aliases for this action. */
+	similes?: string[];
+	/**
+	 * Ordered agent-surface steps this action expands into. Each references a
+	 * `useAgentElement` id in the declaring view; the host dispatches them in
+	 * order through the interact protocol and stops on the first failure.
+	 */
+	steps: ViewScopedActionStep[];
+	/**
+	 * Action parameter names referenced by `{{param}}` tokens in step values.
+	 * Declared so the planner surfaces them and the host can validate presence
+	 * before dispatching. Empty when the action's steps are fully literal.
+	 */
+	parameters?: string[];
+}
+
+/**
  * A UI view contributed by a plugin.
  *
  * Views are compiled to JavaScript bundles, served by the agent router at
@@ -804,17 +890,44 @@ export interface ViewDeclaration {
 	/**
 	 * Runtime action names especially relevant while this view is foreground.
 	 * Hosts use these as view-scoped affinity hints so plugins keep their own
-	 * view -> action relationship with the view declaration.
+	 * view -> action relationship with the view declaration. Weighting only —
+	 * these are existing global actions kept at full param detail while the view
+	 * is active. For actions that only make sense in this view (gated so the
+	 * agent cannot invoke them elsewhere) declare {@link scopedActions} instead.
 	 */
 	relatedActions?: string[];
+	/**
+	 * Named agent actions this view exposes ONLY while it is the active view.
+	 * The host registers a real runtime action per entry whose `validate()`
+	 * gates on this view being foreground, and whose handler drives the view's
+	 * `useAgentElement` controls through the existing interact protocol. See
+	 * {@link ViewScopedAction}.
+	 */
+	scopedActions?: ViewScopedAction[];
 	/**
 	 * Optional free-form planner hints for this view.
 	 */
 	contextHints?: string[];
+	/**
+	 * One line stating what the agent should proactively offer the moment the
+	 * user enters this view — the anticipatory intent that drives the per-view
+	 * greeting (e.g. wallet: "offer a portfolio summary and a fund/swap next
+	 * step"). When set, a USER-initiated switch to this view is expected to
+	 * produce a single scoped greeting fulfilling this intent against live view
+	 * state; when omitted, the proactive judge falls back to label-only behavior
+	 * and may stay silent. Leave undefined on developer-only surfaces.
+	 */
+	anticipatoryIntent?: string;
 	/** Relative path from the plugin's package root to its hero image. */
 	heroImagePath?: string;
 	/** Screen background policy for this view. Defaults to `"opaque"`. */
 	backgroundPolicy?: AppShellBackgroundPolicy;
+	/**
+	 * Top-bar framing policy (#13586). Defaults to `"normal"`, which the shell
+	 * enforces with the shared `ViewHeader`. Set `fullscreen`/`modal`/`immersive`
+	 * for surfaces that own their own chrome (browser workbench, launcher, etc.).
+	 */
+	headerPolicy?: ViewHeaderPolicy;
 	/**
 	 * Platforms this view supports. Omit to support all platforms.
 	 * Dynamic plugin install is disabled on restricted store builds (ios, android).

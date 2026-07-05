@@ -48,6 +48,12 @@ function readFiniteNumber(value: unknown): number | undefined {
     : undefined;
 }
 
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 function agentEventSource(data: Record<string, unknown>): ActivityEventSource {
   return {
     type: "agent_event",
@@ -59,6 +65,25 @@ function agentEventSource(data: Record<string, unknown>): ActivityEventSource {
     agentId: readString(data.agentId),
     roomId: readString(data.roomId),
     sessionKey: readString(data.sessionKey),
+  };
+}
+
+function workbenchFallbackActivity(
+  source: ActivityEventSource,
+): { eventType: string; plaintext: string; sessionId?: string } | null {
+  if (source.stream !== "workbench") {
+    return null;
+  }
+  const payload = readRecord(source.data);
+  if (payload?.type !== "workbench.todo.changed") {
+    return null;
+  }
+  const operation = readString(payload.operation) ?? "updated";
+  const todo = readRecord(payload.todo);
+  const name = readString(todo?.name);
+  return {
+    eventType: "workbench.todo.changed",
+    plaintext: name ? `Todo ${operation}: ${name}` : `Todo ${operation}`,
   };
 }
 
@@ -155,11 +180,13 @@ export function useActivityEvents() {
     const unbindAgent = client.onWsEvent(
       "agent_event",
       (data: Record<string, unknown>) => {
-        const activity = activityEventToPlaintext(data, { maxLength: 120 });
+        const source = agentEventSource(data);
+        const activity =
+          activityEventToPlaintext(data, { maxLength: 120 }) ??
+          workbenchFallbackActivity(source);
         if (!activity) {
           return;
         }
-        const source = agentEventSource(data);
         pushEvent({
           timestamp: source.ts ?? Date.now(),
           eventType: activity.eventType,

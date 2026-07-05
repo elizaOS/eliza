@@ -1,2 +1,0 @@
-06-30 02:05:02.256  2770  2817 I TestRunner: started: toJSObject_roundTripsBackThroughFromJSObject(ai.eliza.plugins.swabble.SwabbleConfigInstrumentedTest)
-06-30 02:05:02.257  2770  2817 I TestRunner: finished: toJSObject_roundTripsBackThroughFromJSObject(ai.eliza.plugins.swabble.SwabbleConfigInstrumentedTest)

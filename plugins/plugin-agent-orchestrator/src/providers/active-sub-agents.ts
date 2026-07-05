@@ -15,9 +15,23 @@ import type {
 import { getAcpService } from "../actions/common.js";
 import { TASK_WATCHDOG_SERVICE_TYPE } from "../services/task-watchdog-service.js";
 import {
+  type AcpCapacity,
   type SessionInfo,
   TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
+
+/** Structural shape the provider needs from the orchestrator task service to
+ * surface the admission queue. Read by serviceType to avoid a hard import of
+ * OrchestratorTaskService (which would pull the whole service graph into the
+ * provider bundle). */
+interface AdmissionSnapshotService {
+  getAdmissionSnapshot?(): Promise<{
+    queueDepth: number;
+    queuedTaskIds: string[];
+  }>;
+}
+
+const ORCHESTRATOR_TASK_SERVICE_TYPE = "ORCHESTRATOR_TASK_SERVICE";
 
 type ApproachingCapKind = "round-trip" | "spend";
 
@@ -136,10 +150,17 @@ export const activeSubAgentsProvider: Provider = {
     // historical noise with current state and lets the planner LLM
     // generalize past failures as predictors for new spawns. If the user
     // asks about history, the planner must call TASKS_HISTORY explicitly.
+    // Cap pressure (worker capacity + admission queue depth) is planner-relevant
+    // even when zero ORIGIN-routed sessions are listed: non-routed workers can
+    // pin every slot while tasks wait. Read it up front so the empty-routed path
+    // can still surface it.
+    const capacity = await readCapacity(service);
+    const admission = await readAdmissionSnapshot(runtime);
+
     const routed = (Array.isArray(all) ? all : [])
       .filter(hasOrigin)
       .filter((s) => !TERMINAL_SESSION_STATUSES.has(s.status));
-    if (routed.length === 0) return emptyResult();
+    if (routed.length === 0) return emptyResult(capacity, admission);
 
     routed.sort((a, b) => a.id.localeCompare(b.id));
 
@@ -176,6 +197,8 @@ export const activeSubAgentsProvider: Provider = {
       "Each line is a live sub-agent. Reply to one with SEND_TO_AGENT { sessionId, text }; terminate with STOP_AGENT { sessionId }. Replying to the user uses the standard REPLY action; you may do both in one turn.",
       "The sub-agent's task_complete event is the ground truth for outcomes. For history about past sub-agents, call TASKS_HISTORY explicitly.",
     ];
+    const capacityLine = formatCapacityLine(capacity, admission);
+    if (capacityLine) lines.push(capacityLine);
     for (const session of routed) {
       lines.push(
         formatLine(
@@ -205,16 +228,97 @@ export const activeSubAgentsProvider: Provider = {
           originUserId: (s.metadata as Record<string, unknown> | undefined)
             ?.userId,
         })),
+        capacity: capacityData(capacity, admission),
       },
     };
   },
 };
 
-function emptyResult() {
+/** The cache-stable capacity payload: counts + queued taskIds only, NEVER
+ * timestamps, so this provider segment's prefix cache survives turn over turn.
+ * Null when capacity is unavailable (the ACP service lacks getCapacity). */
+function capacityData(
+  capacity: AcpCapacity | null,
+  admission: AdmissionSnapshot | null,
+): Record<string, unknown> | null {
+  if (!capacity) return null;
   return {
-    text: "",
-    values: { activeSubAgents: "" },
-    data: { sessions: [] },
+    maxSessions: capacity.maxSessions,
+    systemHeadroom: capacity.systemHeadroom,
+    activeWorkers: capacity.activeWorkers,
+    activeSystem: capacity.activeSystem,
+    freeWorkerSlots: capacity.freeWorkerSlots,
+    freeSystemSlots: capacity.freeSystemSlots,
+    queueDepth: admission?.queueDepth ?? 0,
+    queuedTaskIds: admission?.queuedTaskIds ?? [],
+  };
+}
+
+interface AdmissionSnapshot {
+  queueDepth: number;
+  queuedTaskIds: string[];
+}
+
+async function readCapacity(service: {
+  getCapacity?: () => Promise<AcpCapacity>;
+}): Promise<AcpCapacity | null> {
+  if (typeof service.getCapacity !== "function") return null;
+  try {
+    return await service.getCapacity();
+  } catch {
+    // error-policy:J4 capacity is a supplementary planner header; an unavailable
+    // getter degrades to no capacity line, never a fabricated count.
+    return null;
+  }
+}
+
+async function readAdmissionSnapshot(
+  runtime: IAgentRuntime,
+): Promise<AdmissionSnapshot | null> {
+  const orchestrator = runtime.getService<Service & AdmissionSnapshotService>(
+    ORCHESTRATOR_TASK_SERVICE_TYPE,
+  );
+  if (
+    !orchestrator ||
+    typeof orchestrator.getAdmissionSnapshot !== "function"
+  ) {
+    return null;
+  }
+  try {
+    return await orchestrator.getAdmissionSnapshot();
+  } catch {
+    // error-policy:J4 the admission snapshot is a supplementary planner header;
+    // an unavailable getter degrades to no queue depth, never a fabricated one.
+    return null;
+  }
+}
+
+/** One-line worker-capacity + queue-depth summary for the planner, or empty
+ * when capacity is unavailable. Counts + a next-queued label only — no
+ * timestamps — to hold the provider's cache-stability contract. */
+function formatCapacityLine(
+  capacity: AcpCapacity | null,
+  admission: AdmissionSnapshot | null,
+): string {
+  if (!capacity) return "";
+  const depth = admission?.queueDepth ?? 0;
+  const base = `capacity: ${capacity.activeWorkers}/${capacity.maxSessions} worker sessions; queued: ${depth}`;
+  const nextTaskId = admission?.queuedTaskIds[0];
+  return nextTaskId ? `${base}; next queued: task ${nextTaskId}` : base;
+}
+
+function emptyResult(
+  capacity: AcpCapacity | null = null,
+  admission: AdmissionSnapshot | null = null,
+) {
+  const capacityLine = formatCapacityLine(capacity, admission);
+  const text = capacityLine
+    ? `## Active sub-agent sessions\n${capacityLine}`
+    : "";
+  return {
+    text,
+    values: { activeSubAgents: text },
+    data: { sessions: [], capacity: capacityData(capacity, admission) },
   };
 }
 

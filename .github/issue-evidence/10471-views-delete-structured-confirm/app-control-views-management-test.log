@@ -1,9 +1,0 @@
-$ vitest run src/actions/views-management.test.ts
-
- RUN  v4.1.5 /Users/shawwalters/.codex/worktrees/36cd/eliza/plugins/plugin-app-control
-
-
- Test Files  1 passed (1)
-      Tests  40 passed (40)
-   Start at  21:28:09
-   Duration  5.72s (transform 4.22s, setup 0ms, import 5.50s, tests 154ms, environment 0ms)

@@ -1,2 +1,0 @@
-    versionName=1.0.0
-    lastUpdateTime=2026-07-02 19:56:39

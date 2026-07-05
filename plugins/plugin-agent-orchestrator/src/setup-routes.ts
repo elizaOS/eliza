@@ -80,6 +80,7 @@ function codingAgentRouteHandler(): LegacyRouteHandler {
 const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   // Orchestrator durable-task surface
   { type: "GET", path: "/api/orchestrator/status" },
+  { type: "GET", path: "/api/orchestrator/capacity" },
   { type: "GET", path: "/api/orchestrator/accounts" },
   { type: "GET", path: "/api/orchestrator/accounts/readiness" },
   { type: "GET", path: "/api/orchestrator/rooms" },

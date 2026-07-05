@@ -1,8 +1,0 @@
-{
-  "item": "agent-orchestrator.list-agents__gepa",
-  "status": "passed",
-  "rows": null,
-  "judgeScore": null,
-  "gepaRecovered": true,
-  "sourceItem": "agent-orchestrator.list-agents"
-}

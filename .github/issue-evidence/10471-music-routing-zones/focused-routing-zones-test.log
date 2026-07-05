@@ -1,9 +1,0 @@
-$ vitest run src/actions/manageRoutingZones.test.ts
-
- RUN  v4.1.5 /home/shaw/eliza/eliza-pr10584/plugins/plugin-music
-
-
- Test Files  1 passed (1)
-      Tests  6 passed (6)
-   Start at  15:22:41
-   Duration  383ms (transform 152ms, setup 69ms, import 119ms, tests 9ms, environment 0ms)

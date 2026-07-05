@@ -43,6 +43,40 @@ const BRIDGE_TIMEOUT_MS = 5_000;
 const DEFAULT_MEMORY_LIMIT = 10;
 const MAX_MEMORY_LIMIT = 50;
 const MEMORY_TABLES = ["facts", "messages", "documents"] as const;
+/** How many of the most recent orchestrator decisions the bridge exposes. A
+ * resumed/nested session needs the latest choices to avoid re-litigating them,
+ * not the full audit log. */
+const MAX_ORIGINATING_DECISIONS = 20;
+
+/** The narrow slice of the AgentSkillsService the bridge reads. Structural to
+ * avoid a hard dependency on `@elizaos/plugin-agent-skills` (optional at
+ * runtime); `content` is the full SKILL.md body incl. frontmatter. */
+interface SkillsServiceShape {
+  getEligibleSkills: () => Promise<
+    Array<{ slug: string; name: string; description: string; content: string }>
+  >;
+  isSkillEnabled: (slug: string) => boolean;
+}
+
+/** The narrow slice of the orchestrator task store the bridge reads to answer
+ * "what am I working on?". Structural — avoids a value import on the service so
+ * the route stays loosely coupled and the DTO shape can evolve independently. */
+interface OrchestratorTaskServiceShape {
+  getTask: (taskId: string) => Promise<{
+    goal: string;
+    acceptanceCriteria?: string[];
+    decisions?: Array<{
+      id: string;
+      sessionId: string;
+      event: string;
+      decision: string;
+      reasoning: string;
+      response: string | null;
+      timestamp: number;
+      createdAt: string;
+    }>;
+  } | null>;
+}
 
 class BridgeRouteError extends Error {
   constructor(
@@ -257,6 +291,48 @@ function normalizeMemoryHit(
   };
 }
 
+/**
+ * Load the originating orchestrator task a session serves — its goal, acceptance
+ * criteria, and the latest decisions — so a resumed or child-spawned session can
+ * read back what it is working on. Returns null when the session was not spawned
+ * from an orchestrator task (no `taskId` in metadata), the task store is absent,
+ * or the task no longer exists.
+ */
+async function loadOriginatingTask(
+  ctx: RouteContext,
+  metadata: Record<string, unknown>,
+): Promise<JsonValue> {
+  const taskId = readString(metadata.taskId);
+  if (!taskId) return null;
+  const service = ctx.runtime.getService("ORCHESTRATOR_TASK_SERVICE") as
+    | OrchestratorTaskServiceShape
+    | null
+    | undefined;
+  if (!service?.getTask) return null;
+  const task = await service.getTask(taskId);
+  if (!task) return null;
+  const decisions = (task.decisions ?? [])
+    .slice(-MAX_ORIGINATING_DECISIONS)
+    .map((decision) => ({
+      id: decision.id,
+      sessionId: decision.sessionId,
+      event: decision.event,
+      decision: decision.decision,
+      reasoning: decision.reasoning,
+      response: decision.response,
+      timestamp: decision.timestamp,
+      createdAt: decision.createdAt,
+    }));
+  return {
+    taskId,
+    goal: task.goal,
+    acceptanceCriteria: Array.isArray(task.acceptanceCriteria)
+      ? task.acceptanceCriteria
+      : [],
+    decisions,
+  };
+}
+
 async function buildParentContext(
   ctx: RouteContext,
   sessionId: string,
@@ -282,6 +358,7 @@ async function buildParentContext(
     currentRoom: await loadRoom(ctx.runtime, roomId),
     workdir: session?.workdir ?? null,
     model: normalizeModel(session, metadata),
+    originatingTask: await loadOriginatingTask(ctx, metadata),
   };
 }
 
@@ -319,6 +396,62 @@ async function searchParentMemory(
   return { query, limit, hits };
 }
 
+/** Resolve the AgentSkillsService, or null when the skills plugin is not loaded.
+ * The manifest written into the workspace lists slugs a child can request; these
+ * endpoints let the child fetch the full SKILL.md a slug maps to. */
+function getSkillsService(ctx: RouteContext): SkillsServiceShape | null {
+  const service = ctx.runtime.getService("AGENT_SKILLS_SERVICE") as
+    | SkillsServiceShape
+    | null
+    | undefined;
+  return typeof service?.getEligibleSkills === "function" ? service : null;
+}
+
+/**
+ * List the enabled-and-eligible skills with their FULL (untruncated) description
+ * — the SKILLS.md manifest only carries a 200-char preview, so a child reads
+ * this to decide which skill body to fetch. Gated to enabled+eligible so the
+ * list matches exactly what the child can actually request via the parent.
+ */
+async function listSkills(ctx: RouteContext): Promise<JsonValue> {
+  const service = getSkillsService(ctx);
+  if (!service) return { skills: [] };
+  const eligible = await service.getEligibleSkills();
+  const skills = eligible
+    .filter((skill) => service.isSkillEnabled(skill.slug))
+    .map((skill) => ({
+      slug: skill.slug,
+      name: skill.name,
+      description: skill.description,
+    }));
+  return { skills };
+}
+
+/**
+ * Return the full SKILL.md body (including frontmatter) for one slug, or null
+ * when it is not an enabled+eligible skill — the caller turns null into a 404.
+ * Same enabled+eligible gate as {@link listSkills} so a child can only read a
+ * body it could request.
+ */
+async function readSkillBody(
+  ctx: RouteContext,
+  slug: string,
+): Promise<JsonValue | null> {
+  const service = getSkillsService(ctx);
+  if (!service) return null;
+  const eligible = await service.getEligibleSkills();
+  const match = eligible.find(
+    (skill) => skill.slug === slug && service.isSkillEnabled(skill.slug),
+  );
+  if (!match) return null;
+  return {
+    slug: match.slug,
+    name: match.name,
+    description: match.description,
+    body: match.content,
+  };
+}
+
 async function listActiveWorkspaceContext(
   ctx: RouteContext,
 ): Promise<JsonValue> {
@@ -347,9 +480,13 @@ export async function handleParentContextRoutes(
   ctx: RouteContext,
 ): Promise<boolean> {
   const match = pathname.match(
-    /^\/api\/coding-agents\/([^/]+)\/(parent-context|memory|active-workspaces)$/,
+    /^\/api\/coding-agents\/([^/]+)\/(parent-context|memory|active-workspaces|skills)(?:\/([^/]+))?$/,
   );
   if (!match) return false;
+  // `skills` takes an optional trailing slug (`.../skills/<slug>`); every other
+  // endpoint is a leaf and must not carry one.
+  const skillSlugSegment = match[3];
+  if (skillSlugSegment !== undefined && match[2] !== "skills") return false;
 
   if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
     sendBridgeError(
@@ -420,6 +557,29 @@ export async function handleParentContextRoutes(
           ),
         ),
       );
+      return true;
+    }
+    if (endpoint === "skills") {
+      if (skillSlugSegment === undefined) {
+        sendJson(res, await withBridgeTimeout(listSkills(ctx)));
+        return true;
+      }
+      const slug = parseSessionId(skillSlugSegment);
+      if (!slug) {
+        sendBridgeError(res, "invalid_skill_slug", "Invalid skill slug.", 400);
+        return true;
+      }
+      const body = await withBridgeTimeout(readSkillBody(ctx, slug));
+      if (body === null) {
+        sendBridgeError(
+          res,
+          "skill_not_found",
+          `No enabled skill matches slug "${slug}".`,
+          404,
+        );
+        return true;
+      }
+      sendJson(res, body);
       return true;
     }
     sendJson(res, await withBridgeTimeout(listActiveWorkspaceContext(ctx)));

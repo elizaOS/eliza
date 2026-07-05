@@ -1,9 +1,0 @@
-
- RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/wf_f7a1641e-e50-10/packages/ui
-
-
- Test Files  1 passed (1)
-      Tests  5 passed (5)
-   Start at  21:58:58
-   Duration  18.61s (transform 1.32s, setup 485ms, import 2.58s, tests 1.31s, environment 11.04s)
-

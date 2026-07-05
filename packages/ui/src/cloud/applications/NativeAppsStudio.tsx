@@ -16,7 +16,7 @@
  *  - the cloud providers the pages expect — the shared cloud `QueryClient` and
  *    the cloud i18n context (same pair `CloudRouterShell` wraps its routes in);
  *  - a **native Steward auth context** fed from the stored Steward JWT
- *    (`localStorage[STEWARD_TOKEN_KEY]`), so `useRequireAuth()` resolves
+ *    (`localStorage[STEWARD_TOKEN_KEY]`), so `useSessionAuth()` resolves
  *    immediately to the signed-in user instead of waiting on the heavy
  *    `@stwd/*` runtime (which native never mounts — sign-in is the existing
  *    `launchStewardLogin` launcher, reached before this view).
@@ -152,7 +152,7 @@ function buildStewardAuthValue(token: string | null): LocalStewardAuthValue {
 
 /**
  * Provide the cloud Steward auth context from the stored JWT, kept in sync with
- * token changes (refresh, sign-out, 401 self-heal) so `useRequireAuth()` tracks
+ * token changes (refresh, sign-out, 401 self-heal) so `useSessionAuth()` tracks
  * the live session without the `@stwd/*` runtime.
  */
 function NativeStewardAuthProvider({

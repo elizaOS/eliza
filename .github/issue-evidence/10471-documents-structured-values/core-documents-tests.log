@@ -1,9 +1,0 @@
-$ node ../scripts/run-vitest.mjs run src/features/documents
-
- RUN  v4.1.5 /Users/shawwalters/.codex/worktrees/36cd/eliza/packages/core
-
-
- Test Files  6 passed (6)
-      Tests  58 passed (58)
-   Start at  19:29:12
-   Duration  18.30s (transform 5.26s, setup 0ms, import 13.71s, tests 294ms, environment 1ms)

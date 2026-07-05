@@ -3,8 +3,9 @@ name: UI Story Gate
 # Render EVERY Storybook story in headless Chromium and assert it is healthy.
 # Hard-fails on a story that throws, renders blank, or raises an uncaught
 # pageerror — no baseline needed. Console errors + serious/critical axe a11y
-# violations are additionally enforced once their baselines are populated
-# (packages/ui/test/story-gate/baseline/*.json). See
+# violations are enforced against allowlist baselines
+# (packages/ui/test/story-gate/baseline/*.json); empty baselines mean zero
+# tolerance. See
 # packages/ui/test/story-gate/README.md.
 
 on:
@@ -14,13 +15,16 @@ on:
     branches: [main, develop]
     paths:
       - "packages/ui/**"
-      - "plugins/plugin-companion/src/**"
+      - "packages/shared/**"
+      - "plugins/**/src/**"
       - ".github/workflows/ui-story-gate.yml"
   push:
     branches: [main, develop]
     paths:
       - "packages/ui/**"
-      - "plugins/plugin-companion/src/**"
+      - "packages/shared/**"
+      - "plugins/**/src/**"
+      - ".github/workflows/ui-story-gate.yml"
 
 concurrency:
   group: ui-story-gate-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -35,7 +39,7 @@ env:
 
 jobs:
   story-gate:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5

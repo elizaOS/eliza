@@ -2,6 +2,7 @@
 
 export * from "./manifest.ts";
 export * from "./pipeline.ts";
+export * from "./preflight.ts";
 export * from "./redact.ts";
 export * from "./registry.ts";
 export * from "./render.ts";

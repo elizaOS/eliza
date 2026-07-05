@@ -596,6 +596,11 @@ class SecretsService {
       try {
         encrypted = await this.encryptValue(value);
       } catch (error) {
+        // error-policy:J1 batch boundary — a per-item encrypt/size-validation
+        // failure becomes a structured errors[] entry (the endpoint's designed
+        // partial-success shape) and is NOT counted as created. Systemic
+        // repository failures below stay uncaught and propagate, so a broken
+        // pipeline still fails closed rather than reporting an all-errors batch.
         errors.push({
           name,
           error: error instanceof Error ? error.message : "Encryption failed",

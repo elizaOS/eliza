@@ -32,6 +32,7 @@ try:
         _score_from_meeting_transcription_proof_json,
         _score_from_mind2web_json,
         _score_from_mint_json,
+        _score_from_multitask_bench_json,
         _score_from_mmau_json,
         _score_from_mmlu_json,
         _score_from_mt_bench_json,
@@ -86,6 +87,7 @@ except ImportError:
         _score_from_meeting_transcription_proof_json,
         _score_from_mind2web_json,
         _score_from_mint_json,
+        _score_from_multitask_bench_json,
         _score_from_mmau_json,
         _score_from_mmlu_json,
         _score_from_mt_bench_json,
@@ -2116,6 +2118,68 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _lifeops_bench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="lifeops_*.json")
 
+    # multitask_bench
+    def _multitask_bench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        """Build the MultitaskBench CLI invocation.
+
+        ``extra["harness"]`` (or ``model.model``) selects the harness: STATIC
+        live harnesses ``eliza`` / ``hermes`` / ``openclaw`` need a Cerebras
+        key; ``perfect`` / ``wrong`` are hermetic oracles. ``extra["lanes"]``
+        (default "1,5,10") sets the concurrency levels; the N=1 baseline is
+        required for the interference deltas.
+        """
+        harness_raw = extra.get("harness") or extra.get("agent")
+        if isinstance(harness_raw, str) and harness_raw.strip():
+            harness = harness_raw.strip()
+        elif model.model in {"eliza", "hermes", "openclaw", "perfect", "wrong"}:
+            harness = str(model.model)
+        elif (model.provider or "").strip().lower() in {
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+            "eliza",
+        }:
+            harness = "eliza"
+        else:
+            harness = "perfect"
+
+        lanes_raw = extra.get("lanes")
+        lanes = lanes_raw.strip() if isinstance(lanes_raw, str) and lanes_raw.strip() else "1,5,10"
+
+        args = [
+            python,
+            "-m",
+            "multitask_bench",
+            "--harness",
+            harness,
+            "--lanes",
+            lanes,
+            "--output-dir",
+            str(output_dir),
+        ]
+        model_name = extra.get("model_name") or model.model
+        if isinstance(model_name, str) and model_name.strip() and model_name.strip() not in {
+            "eliza",
+            "hermes",
+            "openclaw",
+            "perfect",
+            "wrong",
+        }:
+            args.extend(["--model", model_name.strip()])
+        per_task_timeout_s = extra.get("per_task_timeout_s")
+        if isinstance(per_task_timeout_s, (int, float)) and not isinstance(
+            per_task_timeout_s, bool
+        ):
+            args.extend(["--per-task-timeout-s", str(float(per_task_timeout_s))])
+        return args
+
+    def _multitask_bench_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="multitask_*.json")
+
     # voiceagentbench
     def _voiceagentbench_cmd(
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
@@ -2912,6 +2976,34 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_lifeops_bench_cmd,
             locate_result=_lifeops_bench_result,
             extract_score=_score_from_lifeops_bench_json,
+        ),
+        BenchmarkDefinition(
+            id="multitask_bench",
+            display_name="MultitaskBench",
+            description="One agent handling N interleaved LifeOps tasks (N=1/5/10); per-task score interference under load for eliza/hermes/openclaw",
+            cwd_rel="packages/benchmarks/multitask-bench",
+            requirements=BenchmarkRequirements(
+                env_vars=("CEREBRAS_API_KEY",),
+                paths=(
+                    "packages/benchmarks/multitask-bench/multitask_bench",
+                    "packages/benchmarks/lifeops-bench/eliza_lifeops_bench",
+                    "packages/benchmarks/lifeops-bench/data/snapshots",
+                ),
+                notes=(
+                    "extra.harness (or model.model) selects the harness: 'perfect'/'wrong' for hermetic oracle runs (no env vars needed); "
+                    "'eliza'/'hermes'/'openclaw' for live adapters. "
+                    "STATIC-only sample (10 scenarios) — no ANTHROPIC key or LIVE judge needed. "
+                    "CEREBRAS_API_KEY is required for the live harnesses (agent model gemma-4-31b). "
+                    "The eliza live lane also needs the per-session usage-buffer fix in packages/lifeops-bench/src/server.ts (issue #13777 PR 1); "
+                    "set MULTITASK_ELIZA_USAGE_FIX=1 once it is in tree. "
+                    "extra.lanes (default '1,5,10') sets concurrency; N=1 is the interference baseline and is required. "
+                    "isolation is 'shared_runtime' for eliza, 'process_per_turn' for hermes/openclaw. "
+                    "Score: mean_task_score of the N=10 lane. Higher is better."
+                ),
+            ),
+            build_command=_multitask_bench_cmd,
+            locate_result=_multitask_bench_result,
+            extract_score=_score_from_multitask_bench_json,
         ),
         BenchmarkDefinition(
             id="voiceagentbench",

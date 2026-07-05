@@ -176,8 +176,9 @@ given class of bug; reach for the heavier ones when behaviour or pixels matter.
    `needs-runtime` (covered live by `audit:app`), not failed. Build the catalog
    first (`build-storybook --output-dir storybook-static`), then run the gate;
    the dedicated `.github/workflows/ui-story-gate.yml` does both on `packages/ui`
-   changes. Reusable helpers: `determinism-shim.mjs`, `log-capture.mjs`
-   (durable frontend console/network artifact), `backend-log-capture.mjs`.
+   changes. Reusable helpers: `determinism-shim.mjs` and `log-capture.mjs`
+   (durable frontend console/network artifact, wired per story into
+   `output/frontend-logs.json`).
 
 4. **Isolated browser e2e (`test:*-e2e`, `src/**/__e2e__/`).** esbuild-bundle a
    fixture → headless Chromium for gesture/animation/flow coverage no jsdom can

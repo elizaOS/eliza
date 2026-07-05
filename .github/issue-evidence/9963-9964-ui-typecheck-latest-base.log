@@ -1,3 +1,0 @@
-$ bun run generate:css-strings && tsgo --noEmit -p tsconfig.json
-$ node ../scripts/generate-css-strings.mjs
-[generate-css-strings] processed 0 target(s), updated 0

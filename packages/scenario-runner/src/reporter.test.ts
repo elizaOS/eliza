@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildAggregate,
   printStdoutSummary,
+  sumTrajectoryCostUsd,
   writeReportBundle,
   writeScenarioRunViewer,
 } from "./reporter.ts";
@@ -69,7 +70,6 @@ function aggregateReport(): AggregateReport {
       passed: 1,
       failed: 0,
       skipped: 0,
-      flakyPassed: 0,
       costUsd: 0,
       finalChecksSkipped: 0,
     },
@@ -77,7 +77,6 @@ function aggregateReport(): AggregateReport {
     passedCount: 1,
     failedCount: 0,
     skippedCount: 0,
-    flakyPassedCount: 0,
     totalCostUsd: 0,
   };
 }
@@ -229,11 +228,19 @@ describe("scenario report aggregation", () => {
         passed: 1,
         failed: 1,
         skipped: 1,
-        flakyPassed: 0,
         costUsd: 0,
         finalChecksSkipped: 0,
       },
     });
+    // A run with no trajectories (no runDir) reports honest $0 spend and no
+    // longer carries the fabricated flaky-pass count.
+    expect(report.totalCostUsd).toBe(0);
+    expect(
+      (report as unknown as Record<string, unknown>).flakyPassedCount,
+    ).toBeUndefined();
+    expect(
+      (report.totals as unknown as Record<string, unknown>).flakyPassed,
+    ).toBeUndefined();
   });
 
   it("counts skipped finalChecks loudly in totals and the stdout summary", () => {
@@ -326,5 +333,91 @@ describe("scenario report aggregation", () => {
     expect(output).toContain("| todos.create-basic | failed | 1000ms |");
     expect(output).toContain("bad \\| value second line");
     expect(output).not.toContain("bad | value\nsecond line");
+  });
+});
+
+function writeTrajectory(
+  runDir: string,
+  relPath: string,
+  payload: unknown,
+): void {
+  const full = path.join(runDir, "trajectories", relPath);
+  mkdirSync(path.dirname(full), { recursive: true });
+  writeFileSync(full, JSON.stringify(payload), "utf-8");
+}
+
+describe("trajectory cost aggregation", () => {
+  it("returns 0 when there is no run dir or no trajectories", () => {
+    expect(sumTrajectoryCostUsd(undefined)).toBe(0);
+    const emptyDir = makeTempDir("scenario-cost-empty-");
+    expect(sumTrajectoryCostUsd(emptyDir)).toBe(0);
+  });
+
+  it("sums real per-trajectory metrics.totalCostUsd across the run", () => {
+    const runDir = makeTempDir("scenario-cost-");
+    writeTrajectory(runDir, "agent-1/traj-1.json", {
+      trajectoryId: "traj-1",
+      metrics: { totalCostUsd: 0.0125 },
+      stages: [{ model: { costUsd: 999 } }], // ignored: rolled metric wins
+    });
+    writeTrajectory(runDir, "agent-2/traj-2.json", {
+      trajectoryId: "traj-2",
+      metrics: { totalCostUsd: 0.005 },
+      stages: [],
+    });
+
+    expect(sumTrajectoryCostUsd(runDir)).toBeCloseTo(0.0175, 10);
+  });
+
+  it("falls back to stage-level model.costUsd when no rolled metric exists", () => {
+    const runDir = makeTempDir("scenario-cost-fallback-");
+    writeTrajectory(runDir, "traj-3.json", {
+      trajectoryId: "traj-3",
+      stages: [
+        { model: { costUsd: 0.002 } },
+        { model: { costUsd: 0.003 } },
+        { kind: "tool" }, // no model stage contributes 0
+      ],
+    });
+
+    expect(sumTrajectoryCostUsd(runDir)).toBeCloseTo(0.005, 10);
+  });
+
+  it("ignores corrupt/NaN/negative costs instead of poisoning the total", () => {
+    const runDir = makeTempDir("scenario-cost-corrupt-");
+    writeTrajectory(runDir, "good.json", {
+      metrics: { totalCostUsd: 0.01 },
+    });
+    // Unparseable JSON file — must not throw or NaN the total.
+    const corruptPath = path.join(runDir, "trajectories", "corrupt.json");
+    writeFileSync(corruptPath, "{ not json", "utf-8");
+    // Non-numeric / negative rolled metric falls back and stays finite.
+    writeTrajectory(runDir, "weird.json", {
+      metrics: { totalCostUsd: "NaN" },
+      stages: [{ model: { costUsd: -5 } }, { model: { costUsd: 0.004 } }],
+    });
+
+    const total = sumTrajectoryCostUsd(runDir);
+    expect(Number.isFinite(total)).toBe(true);
+    expect(total).toBeCloseTo(0.014, 10);
+  });
+
+  it("threads the summed cost into buildAggregate.totalCostUsd (> 0 on a costed run)", () => {
+    const runDir = makeTempDir("scenario-cost-aggregate-");
+    writeTrajectory(runDir, "traj.json", {
+      metrics: { totalCostUsd: 0.0421 },
+    });
+
+    const report = buildAggregate(
+      [{ ...aggregateReport().scenarios[0] }],
+      "anthropic-claude",
+      "2026-05-23T00:00:00.000Z",
+      "2026-05-23T00:01:00.000Z",
+      "run-cost",
+      runDir,
+    );
+
+    expect(report.totalCostUsd).toBeCloseTo(0.0421, 10);
+    expect(report.totals.costUsd).toBeCloseTo(0.0421, 10);
   });
 });

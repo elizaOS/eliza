@@ -87,6 +87,8 @@ class TelegramAutomationService {
         },
       };
     } catch (error) {
+      // error-policy:J3 getMe failure IS the validation verdict for this untrusted token;
+      // surface it as an explicit typed { valid: false, error } — never a fake-valid default.
       const message = error instanceof Error ? error.message : "Unknown error";
       logger.warn("[TelegramAutomation] Token validation failed", {
         error: message,
@@ -122,6 +124,8 @@ class TelegramAutomationService {
           audit,
         );
       } catch (err) {
+        // error-policy:J2 recover the known "already exists" conflict by rotating in place;
+        // every other store error rethrows (fail-closed upsert — a broken write never looks stored).
         if (err instanceof Error && err.message.includes("already exists")) {
           logger.info("[TelegramAutomation] Secret exists, updating", { name });
           const existingSecrets = await secretsService.list(organizationId);
@@ -166,7 +170,8 @@ class TelegramAutomationService {
     try {
       await this.removeWebhook(organizationId);
     } catch {
-      // Webhook might not be set
+      // error-policy:J6 best-effort teardown; an unset/unreachable webhook must not block
+      // credential removal during disconnect. The delete loop below still fails closed.
     }
 
     const secretNames = [
@@ -188,6 +193,8 @@ class TelegramAutomationService {
             organizationId,
           });
         } catch (error) {
+          // error-policy:J6 idempotent teardown — an already-removed secret is tolerated,
+          // any other delete failure rethrows so a stuck secret surfaces instead of silently persisting.
           const message = error instanceof Error ? error.message : String(error);
           if (message.includes("Secret not found") || message.includes("Failed to delete secret")) {
             logger.debug("[TelegramAutomation] Secret already removed during disconnect", {
@@ -265,12 +272,15 @@ class TelegramAutomationService {
       this.statusCache.set(organizationId, { status, cachedAt: Date.now() });
       return status;
     } catch (error) {
+      // error-policy:J4 explicit user-facing degrade: credentials ARE stored (configured:true),
+      // but Telegram is currently unreachable/token-suspect. The populated `error` field keeps this
+      // internal-failure state DISTINCT from the designed not-configured empty above; a shorter TTL
+      // avoids pinning the error. Never fabricated as a clean success.
       logger.warn("[TelegramAutomation] Token validation failed during status check", {
         organizationId,
         error: error instanceof Error ? error.message : "Unknown error",
       });
 
-      // Return stored data even if validation fails (don't cache error state)
       const status: TelegramConnectionStatus = {
         connected: true,
         configured: true,
@@ -330,6 +340,8 @@ class TelegramAutomationService {
 
       return { success: true };
     } catch (error) {
+      // error-policy:J1 boundary translation of the outbound Telegram setWebhook call into a
+      // typed { success: false, error } Result; callers gate on `.success`, so the failure surfaces.
       const message = error instanceof Error ? error.message : "Unknown error";
       logger.error("[TelegramAutomation] Failed to set webhook", {
         organizationId,
@@ -365,6 +377,8 @@ class TelegramAutomationService {
 
       logger.info("[TelegramAutomation] Webhook removed", { organizationId });
     } catch (error) {
+      // error-policy:J6 best-effort teardown on the disconnect path; a failed webhook removal
+      // must not block credential deletion. Logged so a persistent failure is still observable.
       logger.warn("[TelegramAutomation] Failed to remove webhook", {
         organizationId,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -412,6 +426,9 @@ class TelegramAutomationService {
 
       return { success: true, messageId: result.message_id };
     } catch (error) {
+      // error-policy:J1 boundary translation of the outbound Telegram send into a typed
+      // { success: false, error } Result — a failed send reads as failure, never as delivered
+      // (success:true only ever carries a real messageId). Callers gate on `.success`.
       const message = error instanceof Error ? error.message : "Unknown error";
       logger.error("[TelegramAutomation] Failed to send message", {
         organizationId,

@@ -1,1 +1,0 @@
-synthetic control: overall ERLE = 12.77 dB; converged-half = 24.34 dB; frames = 822

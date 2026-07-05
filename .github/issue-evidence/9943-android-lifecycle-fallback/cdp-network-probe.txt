@@ -1,8 +1,0 @@
-# #9943 on-device finding (2/2) — Android @capacitor/network is ABSENT; window online/offline is reliable
-# API-34 emulator, ai.elizaos.app real WebView via CDP; toggles wifi+data off/on.
-
-init: {"onLine":true,"hasNetworkPlugin":false,"capacitorGetStatus":"no-plugin","capacitorAddListenerError":null}
-disabling connectivity (wifi + data off)...
-re-enabling connectivity...
-window online/offline events: ["offline","online"]
-Capacitor networkStatusChange (connected) events: []

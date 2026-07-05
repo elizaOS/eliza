@@ -17,6 +17,7 @@ import {
   ModelType,
   sanitizeSpeechText,
 } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared";
 
 export type TtsProvider =
   | "local-inference"
@@ -581,7 +582,7 @@ function resolveKey(
   const legacyCloudTts =
     process.env.ELIZAOS_CLOUD_USE_TTS === undefined &&
     process.env.ELIZAOS_CLOUD_ENABLED === "true" &&
-    process.env.ELIZA_CLOUD_TTS_DISABLED !== "true";
+    readAliasedEnv("ELIZA_CLOUD_TTS_DISABLED") !== "true";
   if (explicitCloudTts || legacyCloudTts) {
     const cloudKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
     if (cloudKey && !isRedactedSecret(cloudKey)) {

@@ -1,6 +1,0 @@
-{
-  "viewport": "desktop",
-  "missing": [
-    "wallet-rpc: locator.scrollIntoViewIfNeeded: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#wallet-rpc')\u001b[22m\n"
-  ]
-}

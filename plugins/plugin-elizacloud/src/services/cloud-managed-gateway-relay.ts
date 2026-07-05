@@ -12,6 +12,7 @@ import {
   Service,
   type UUID,
 } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared";
 import type {
   GatewayRelayRequest,
   GatewayRelayRequestEnvelope,
@@ -20,6 +21,7 @@ import type {
   RegisterGatewayRelaySessionResponse,
 } from "../types/cloud";
 import type { CloudAuthService } from "./cloud-auth";
+import { readAliasedEnv } from "@elizaos/shared";
 
 const POLL_TIMEOUT_MS = 25_000;
 const REQUEST_TIMEOUT_MS = POLL_TIMEOUT_MS + 5_000;
@@ -63,7 +65,7 @@ function isCloudProvisionedRuntime(): boolean {
   if (typeof process === "undefined") {
     return false;
   }
-  return process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  return readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
 }
 
 function isNodeHost(): boolean {

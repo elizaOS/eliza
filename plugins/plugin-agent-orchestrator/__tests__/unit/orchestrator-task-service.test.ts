@@ -17,9 +17,10 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
-import type {
-  CreateTaskInput,
-  OrchestratorTaskSession,
+import {
+  type CreateTaskInput,
+  type OrchestratorTaskSession,
+  TERMINAL_TASK_STATUSES,
 } from "../../src/services/orchestrator-task-types.js";
 
 // This suite pins the status state machine and the ACP→task event bridge — NOT
@@ -1424,5 +1425,213 @@ describe("OrchestratorTaskService — store degradation resilience (#11641)", ()
       .slice(before)
       .filter((c) => String(c[0]).includes("failed to record session event"));
     expect(recordWarns).toHaveLength(1);
+  });
+});
+
+// The #13771 lifecycle holes: a crashed sub-agent must drive the task to a
+// terminal `failed` state (bounded by the retry budget), resume must re-engage
+// the work pause hard-stopped, and the session->task index must survive a
+// parent restart by rebuilding from the durable store.
+describe("OrchestratorTaskService — crash produces terminal failed (#13771)", () => {
+  it("keeps a RESPAWNABLE crash (session_state_lost) non-terminal while the budget remains", async () => {
+    // Only a crash the router actually re-drives may stay non-terminal — here a
+    // `session_state_lost`, which respawnStateLost re-spawns under a cap. A plain
+    // crash (no respawn producer) must NOT park like this; see the terminal case
+    // below and session-crash-terminates.test.ts.
+    const acp = new FakeAcp();
+    const { service, store } = makeServiceWithStore(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    const detail0 = must(
+      await service.spawnAgentForTask(task.id),
+      "spawn detail",
+    );
+    const sessionId = must(detail0.sessions[0], "session").sessionId;
+    await drive(acp, sessionId, "error", {
+      failureKind: "session_state_lost",
+      message: "ACP session state lost",
+    });
+    const detail = must(await service.getTask(task.id), "detail");
+    // First respawnable crash: retrying, not terminal — the router's respawn
+    // gets a chance.
+    expect(detail.status).not.toBe("failed");
+    expect(TERMINAL_TASK_STATUSES.has(detail.status)).toBe(false);
+    expect(must(detail.sessions[0], "session").status).toBe("errored");
+    // The canonical typed counter is stamped on the durable session record.
+    const found = must(await store.findSession(sessionId), "found");
+    expect(found.session.retryCount).toBe(1);
+    // The producer records an honest retrying event.
+    expect(
+      detail.events?.some((e) => e.eventType === "session_error_retrying"),
+    ).toBe(true);
+  });
+
+  it("fails a plain crash immediately — it has no respawn producer, so parking it would wedge the task", async () => {
+    // #13771 regression guard (#13830): a generic session error is respawned by
+    // NEITHER the account-failover nor the session_state_lost path in
+    // sub-agent-router.ts, so no successor session is ever spawned and no further
+    // error re-enters the budget. Routing the first such crash to
+    // `retrying -> active` wedges the task forever; it must go terminal `failed`.
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    const detail0 = must(
+      await service.spawnAgentForTask(task.id),
+      "spawn detail",
+    );
+    const sessionId = must(detail0.sessions[0], "session").sessionId;
+    await drive(acp, sessionId, "error", { message: "boom" });
+
+    const final = must(await service.getTask(task.id), "final");
+    expect(final.status).toBe("failed");
+    expect(TERMINAL_TASK_STATUSES.has(final.status)).toBe(true);
+    expect(final.events?.some((e) => e.eventType === "task_failed")).toBe(true);
+  });
+
+  it("advances the task to terminal failed once the respawnable-crash retry budget is spent", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+
+    // Simulate the respawn lineage the router would drive for a respawnable
+    // crash: each crashed session is replaced by a fresh spawn, until the budget
+    // (3) is exhausted. `session_state_lost` is the respawnable class.
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const detail = must(
+        await service.spawnAgentForTask(task.id),
+        "spawn detail",
+      );
+      const sessionId = must(
+        detail.sessions.at(-1),
+        "spawned session",
+      ).sessionId;
+      await drive(acp, sessionId, "error", {
+        failureKind: "session_state_lost",
+        message: `state lost ${attempt}`,
+      });
+    }
+
+    const final = must(await service.getTask(task.id), "final");
+    expect(final.status).toBe("failed");
+    expect(TERMINAL_TASK_STATUSES.has(final.status)).toBe(true);
+    expect(final.events?.some((e) => e.eventType === "task_failed")).toBe(true);
+  });
+
+  it("never mutates a task once it has reached terminal failed", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const detail = must(
+        await service.spawnAgentForTask(task.id),
+        "spawn detail",
+      );
+      const sessionId = must(detail.sessions.at(-1), "session").sessionId;
+      await drive(acp, sessionId, "error", { message: "crash" });
+    }
+    expect(must(await service.getTask(task.id), "d").status).toBe("failed");
+
+    // A late liveness/tool event from a straggler session must not resurrect it.
+    const straggler = must(
+      await service.spawnAgentForTask(task.id),
+      "straggler",
+    );
+    const stragglerId = must(straggler.sessions.at(-1), "s").sessionId;
+    await drive(acp, stragglerId, "tool_running", {
+      toolCall: { title: "ls" },
+    });
+    await drive(acp, stragglerId, "ready");
+    expect(must(await service.getTask(task.id), "d2").status).toBe("failed");
+  });
+
+  it("does not count a clean stop against the crash budget", async () => {
+    const acp = new FakeAcp();
+    const { service, store } = makeServiceWithStore(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    // Two clean stops must NOT enter the crash lineage — only `error` events do.
+    // A respawnable crash after them is therefore attempt 1/3 (retryCount === 1),
+    // not 3/3: had the stops counted, the budget would already be spent.
+    for (let i = 0; i < 2; i += 1) {
+      const d = must(await service.spawnAgentForTask(task.id), "spawn");
+      const sid = must(d.sessions.at(-1), "s").sessionId;
+      await drive(acp, sid, "stopped");
+    }
+    const d = must(await service.spawnAgentForTask(task.id), "spawn");
+    const sid = must(d.sessions.at(-1), "s").sessionId;
+    await drive(acp, sid, "error", {
+      failureKind: "session_state_lost",
+      message: "state lost",
+    });
+    const detail = must(await service.getTask(task.id), "detail");
+    // Respawnable + budget remains → non-terminal (the stops didn't burn it).
+    expect(detail.status).not.toBe("failed");
+    // Only one errored session in the lineage — the clean stops are not counted.
+    const found = must(await store.findSession(sid), "found");
+    expect(found.session.retryCount).toBe(1);
+  });
+});
+
+describe("OrchestratorTaskService — resume re-engagement symmetry (#13771)", () => {
+  it("resume re-spawns a fresh sub-agent for the work pause hard-stopped", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    const spawnsBeforePause = acp.spawnArgs.length;
+
+    const paused = must(await service.pauseTask(taskId), "paused");
+    expect(paused.paused).toBe(true);
+    expect(acp.stopped).toContain(sessionId);
+
+    const resumed = must(await service.resumeTask(taskId), "resumed");
+    expect(resumed.paused).toBe(false);
+    // A new sub-agent was spawned to continue the interrupted work.
+    expect(acp.spawnArgs.length).toBe(spawnsBeforePause + 1);
+    expect(
+      resumed.events?.some((e) => e.eventType === "resume_reengaged"),
+    ).toBe(true);
+  });
+
+  it("resume of a task paused before any work runs just unpauses (no spawn)", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+    await service.pauseTask(task.id); // no sessions yet
+    const spawnsBefore = acp.spawnArgs.length;
+
+    const resumed = must(await service.resumeTask(task.id), "resumed");
+    expect(resumed.paused).toBe(false);
+    expect(acp.spawnArgs.length).toBe(spawnsBefore);
+    expect(
+      resumed.events?.some((e) => e.eventType === "resume_reengaged"),
+    ).toBe(false);
+  });
+});
+
+describe("OrchestratorTaskService — restart reconstruction (#13771)", () => {
+  it("resolves a session's task from the durable store after an in-memory index loss", async () => {
+    const acp = new FakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    // A first service instance spawns the session and populates the store.
+    const first = new OrchestratorTaskService(runtime(acp), { store });
+    await first.start();
+    const task = await first.createTask(createInput());
+    const detail = must(await first.spawnAgentForTask(task.id), "spawn detail");
+    const sessionId = must(detail.sessions[0], "session").sessionId;
+
+    // Simulate a parent restart: a brand-new service with an EMPTY in-memory
+    // sessionTaskIndex, sharing only the durable store. The session event must
+    // still route to the task (index self-heals from store.findSession), which
+    // proves in-flight session->task resolution survives restart without a
+    // separate rebuild step.
+    const restarted = new OrchestratorTaskService(runtime(acp), { store });
+    await restarted.start();
+    await drive(acp, sessionId, "blocked", { message: "need input" });
+
+    const after = must(await restarted.getTask(task.id), "after restart");
+    expect(after.status).toBe("blocked");
+    expect(after.events?.some((e) => e.eventType === "blocked")).toBe(true);
   });
 });

@@ -57,6 +57,16 @@ const DISCOVERY_SKIP_DIRS = new Set([
 
 export const GUARDED_REAL_LIVE_SUITES = [
   {
+    file: "packages/agent/src/services/push/push-delivery.real.test.ts",
+    anyOf: [["ELIZA_APNS_KEY_ID"], ["ELIZA_FCM_SERVICE_ACCOUNT"]],
+    guardVia: [
+      "packages/agent/src/services/push/apns-provider.ts",
+      "packages/agent/src/services/push/fcm-provider.ts",
+    ],
+    blocked:
+      "packages/agent/vitest.config.ts excludes *.real.test.ts in every lane; run explicitly via `bunx vitest run --config packages/agent/vitest.config.ts src/services/push/push-delivery.real.test.ts` with ELIZA_APNS_* / ELIZA_FCM_SERVICE_ACCOUNT set. Real-device delivery is pending-hardware (needs an enrolled device).",
+  },
+  {
     file: "packages/app-core/src/services/coding-account-bridge.live.test.ts",
     optIn: "ORCHESTRATOR_LIVE_MULTI_ACCOUNT",
     notes: "runs in .github/workflows/orchestrator-live-multi-account.yml",

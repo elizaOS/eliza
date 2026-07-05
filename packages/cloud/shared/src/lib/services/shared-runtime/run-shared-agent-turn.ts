@@ -26,7 +26,6 @@ import {
   getLanguageModel,
   hasLanguageModelProviderConfigured,
 } from "../../providers/language-model";
-import { logger } from "../../utils/logger";
 
 export interface SharedTurnMessage {
   role: "user" | "assistant";
@@ -57,7 +56,11 @@ export interface RunSharedAgentTurnResult {
   /** history + the new user message + the assistant reply (persist this). */
   history: SharedTurnMessage[];
   model: string;
-  /** True when no shared model was configured or generation failed. */
+  /**
+   * True only for the designed no-model-configured "unavailable" state (the sole
+   * degrade path). An inference/provider failure THROWS instead — so a broken
+   * turn never reads as this benign flag, and the caller refunds the credit hold.
+   */
   degraded: boolean;
   usage?: SharedAgentTurnUsage;
 }
@@ -120,7 +123,12 @@ function appendTurn(
   ];
 }
 
-/** Run one shared (container-free) turn for a simple agent. Never throws. */
+/**
+ * Run one shared (container-free) turn for a simple agent. Returns a degraded
+ * result only when NO shared model is configured (a designed-unavailable state);
+ * an inference/provider failure is thrown so the caller can refund the credit
+ * hold and surface the failure rather than mistaking it for a delivered reply.
+ */
 export async function runSharedAgentTurn(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnResult> {
@@ -155,18 +163,15 @@ export async function runSharedAgentTurn(
       usage,
     };
   } catch (error) {
-    logger.error("[shared-runtime] turn failed; degrading", {
-      agent: input.character.name,
-      model: modelId,
-      errorName: error instanceof Error ? error.name : "unknown",
-      error: error instanceof Error ? error.message : String(error),
-    });
-    const reply = `${input.character.name} hit a temporary error. Please try again.`;
-    return {
-      reply,
-      history: appendTurn(input.history, message, reply),
-      model: modelId,
-      degraded: true,
-    };
+    // error-policy:J2 context-adding rethrow. An inference/provider failure is an
+    // INTERNAL failure, not a designed-empty result: swallowing it into a
+    // `degraded: true` reply made a broken turn indistinguishable from the
+    // no-model-configured unavailable state above and let it read as a delivered
+    // (if apologetic) chat message. Rethrow with `cause` so it surfaces and the
+    // caller (bridgeSharedMessageSend) refunds the credit hold instead of billing.
+    throw new Error(
+      `[shared-runtime] agent turn failed (agent=${input.character.name}, model=${modelId})`,
+      { cause: error },
+    );
   }
 }

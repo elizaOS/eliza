@@ -147,22 +147,25 @@ export class ExperienceRelationshipManager {
 		allExperiences: Experience[],
 	): Experience[] {
 		const contradictions: Experience[] = [];
+		const explicitContradictionIds = new Set(
+			this.findRelationships(experience.id, "contradicts").map((r) => r.toId),
+		);
 
 		for (const other of allExperiences) {
 			if (other.id === experience.id) continue;
 
-			// Same action, different outcome
-			if (
+			// Same action, different outcome (in the same domain), or an explicit
+			// `contradicts` link. Either qualifies `other` exactly once -- pushing
+			// from two independent branches double-counted experiences matching both.
+			const sameActionDifferentOutcome =
 				other.action === experience.action &&
 				other.outcome !== experience.outcome &&
-				other.domain === experience.domain
-			) {
-				contradictions.push(other);
-			}
+				other.domain === experience.domain;
 
-			// Explicit contradiction relationship
-			const rels = this.findRelationships(experience.id, "contradicts");
-			if (rels.some((r) => r.toId === other.id)) {
+			if (
+				sameActionDifferentOutcome ||
+				explicitContradictionIds.has(other.id)
+			) {
 				contradictions.push(other);
 			}
 		}

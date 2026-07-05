@@ -12,6 +12,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType, resolveStateDir } from "@elizaos/core";
+import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
 
 export type Diagnostic = {
 	file: string;
@@ -197,18 +198,12 @@ export async function ensureVerificationDir(runId: string): Promise<string> {
 }
 
 function resolveLoopbackApiBase(): string {
-	const port =
-		process.env.ELIZA_API_PORT?.trim() ||
-		process.env.ELIZA_PORT?.trim() ||
-		"31337";
-	return `http://127.0.0.1:${port}`;
+	return `http://127.0.0.1:${resolveDesktopApiPort()}`;
 }
 
 function resolveDevApiToken(): string | undefined {
 	return (
-		process.env.ELIZA_API_TOKEN?.trim() ||
-		process.env.ELIZA_API_AUTH_TOKEN?.trim() ||
-		undefined
+		resolveApiToken() ?? (process.env.ELIZA_API_AUTH_TOKEN?.trim() || undefined)
 	);
 }
 

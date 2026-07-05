@@ -23,6 +23,20 @@ import type {
 import type { JsonValue, Metadata, UUID } from "./primitives";
 import type { Task } from "./task";
 
+/**
+ * One ranked hit from {@link IDatabaseAdapter.searchMessages}. `ftsRank` is the
+ * Postgres `ts_rank_cd` relevance from the full-text match (0 when the row
+ * matched only via the trigram/substring branch); `trigramSimilarity` is the
+ * `pg_trgm` similarity of the folded document to the folded query in `[0,1]`
+ * (0 when the trigram extension is unavailable). Both are real measured signals
+ * — never a fabricated default — so callers can rank and threshold honestly.
+ */
+export interface MessageSearchHit {
+	memory: Memory;
+	ftsRank: number;
+	trigramSimilarity: number;
+}
+
 /** Run status enumeration (database). */
 export const DbRunStatus = {
 	UNSPECIFIED: "UNSPECIFIED",
@@ -947,6 +961,25 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	}): Promise<Memory[]>;
 
 	getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;
+
+	/**
+	 * Full-text + trigram message search across a set of rooms, ranked
+	 * corpus-wide (not truncated by recency before ranking). SQL adapters run a
+	 * GIN-indexed Postgres FTS query (`websearch_to_tsquery` + `ts_rank_cd`) with
+	 * a `pg_trgm` fallback for partial/typo/code/URL tokens; in-memory adapters
+	 * apply the same folded-token semantics in JS. Rows come back ranked:
+	 * `ftsRank` desc, then `trigramSimilarity` desc, then recency, so multi-word
+	 * non-adjacent queries and hits older than any recency window are both found
+	 * and correctly ordered (#13534).
+	 */
+	searchMessages(params: {
+		roomIds: UUID[];
+		query: string;
+		tableName?: string;
+		limit?: number;
+		offset?: number;
+		accessContext?: AccessContext;
+	}): Promise<MessageSearchHit[]>;
 
 	getMemoriesByRoomIds(params: {
 		tableName: string;

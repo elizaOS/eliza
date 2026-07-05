@@ -1180,6 +1180,14 @@ export function useChatSend(deps: UseChatSendDeps) {
           // Live server phase → the rich status indicator. Additive; the reply
           // streams through onToken above regardless.
           (status) => setServerTurnStatus(status),
+          // Inline tool-call steps → the turn's tool rows (call → result/error),
+          // merged by callId so one row flips running → settled (#13535).
+          (event) =>
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "tool",
+              event,
+            }),
         );
 
         // Commit any token parked by the throttle before the terminal
@@ -1450,6 +1458,12 @@ export function useChatSend(deps: UseChatSendDeps) {
               imagesToSend,
               turn.metadata,
               (serverStatus) => setServerTurnStatus(serverStatus),
+              (event) =>
+                applyStreamingTextModification(setConversationMessages, {
+                  messageId: replayAssistantId,
+                  mode: "tool",
+                  event,
+                }),
             );
 
             // Commit any throttle-parked token before the terminal modification.
@@ -1900,6 +1914,15 @@ export function useChatSend(deps: UseChatSendDeps) {
             controller.signal,
             undefined,
             buildChatViewMetadata(tab),
+            // No overlay status on the action/DM path (its finally doesn't clear
+            // it); still stream inline tool rows onto the turn (#13535).
+            undefined,
+            (event) =>
+              applyStreamingTextModification(setConversationMessages, {
+                messageId: assistantMsgId,
+                mode: "tool",
+                event,
+              }),
           );
 
           // Commit any token parked by the throttle before the terminal
@@ -2208,6 +2231,76 @@ export function useChatSend(deps: UseChatSendDeps) {
     ],
   );
 
+  // Persistently delete a single message (#13533). Optimistically removes the
+  // bubble, fires the server DELETE, and re-hydrates from the store on failure
+  // so a network/authz error never leaves a locally-hidden-but-still-persisted
+  // message. Distinct from the local-only `removeConversationMessage`
+  // suggestion dismissal (#8792), which is intentionally server-free.
+  const handleChatDelete = useCallback(
+    async (messageId: string): Promise<boolean> => {
+      const convId = activeConversationIdRef.current;
+      if (!convId) return false;
+
+      const currentMessages = conversationMessagesRef.current;
+      const target = currentMessages.find((m) => m.id === messageId);
+      // An optimistic (temp-) or local command turn has no persisted memory row
+      // to delete; drop it locally so the UI stays consistent.
+      if (
+        !target ||
+        target.id.startsWith("temp-") ||
+        target.source === "local_command"
+      ) {
+        const nextMessages = currentMessages.filter((m) => m.id !== messageId);
+        conversationMessagesRef.current = nextMessages;
+        setConversationMessages(nextMessages);
+        return true;
+      }
+
+      // Optimistic removal, remembering the prior list for rollback.
+      const preserved = currentMessages;
+      const nextMessages = currentMessages.filter((m) => m.id !== messageId);
+      conversationMessagesRef.current = nextMessages;
+      setConversationMessages(nextMessages);
+
+      try {
+        await client.deleteConversationMessage(convId, messageId);
+        return true;
+      } catch (err) {
+        // Roll back so the message stays visible — never a silent local-only
+        // removal on failure. Only touch state if we're still viewing the
+        // conversation we deleted from: a switch mid-delete swapped the ref +
+        // setter to another conversation, and restoring this one's snapshot
+        // there would leak state across conversations (same guard every send
+        // path uses). Reconcile against the CURRENT list — re-add the pre-delete
+        // messages while keeping anything that streamed in during the request —
+        // rather than overwriting with the stale snapshot, so a reply that
+        // arrived mid-delete is not clobbered.
+        if (activeConversationIdRef.current === convId) {
+          const live = conversationMessagesRef.current;
+          const preservedIds = new Set(preserved.map((m) => m.id));
+          const restored = [
+            ...preserved,
+            ...live.filter((m) => !preservedIds.has(m.id)),
+          ];
+          conversationMessagesRef.current = restored;
+          setConversationMessages(restored);
+        }
+        setActionNotice(
+          `Failed to delete message: ${err instanceof Error ? err.message : "network error"}`,
+          "error",
+          4200,
+        );
+        return false;
+      }
+    },
+    [
+      activeConversationIdRef,
+      conversationMessagesRef,
+      setConversationMessages,
+      setActionNotice,
+    ],
+  );
+
   const handleChatClear = useCallback(async () => {
     const convId = activeConversationId;
     if (!convId) {
@@ -2269,6 +2362,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     handleChatStop,
     handleChatRetry,
     handleChatEdit,
+    handleChatDelete,
     handleChatClear,
   };
 }

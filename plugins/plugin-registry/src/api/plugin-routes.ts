@@ -302,6 +302,35 @@ const pluginsListInFlight = new WeakMap<
   PluginRouteContext["state"],
   Promise<PluginEntry[]>
 >();
+const PLUGIN_METADATA_TIMEOUT_MS = 2_500;
+
+async function withPluginMetadataTimeout<T>(
+  promise: Promise<T>,
+  label: string,
+): Promise<T | null> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(
+            new Error(
+              `${label} timed out after ${PLUGIN_METADATA_TIMEOUT_MS}ms`,
+            ),
+          );
+        }, PLUGIN_METADATA_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (err) {
+    logger.warn(
+      `[plugin-routes] Failed to load ${label}; returning plugin list with best-effort metadata: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 function readCompatEnabledFromConfig(
   config: ElizaConfig,
@@ -415,26 +444,39 @@ export async function handlePluginRoutes(
     let registryMetadataByName = new Map<string, RegistryPluginInfo>();
     try {
       const pluginManager = requirePluginManager(state.runtime);
-      const installed = await pluginManager.listInstalledPlugins();
-      installedMetadataByName = new Map(
-        installed.map((plugin) => [
-          plugin.name,
-          {
-            version: plugin.version,
-            releaseStream: plugin.releaseStream,
-            requestedVersion: plugin.requestedVersion,
-            latestVersion: plugin.latestVersion,
-            betaVersion: plugin.betaVersion,
-          },
-        ]),
-      );
+      const [installed, registry] = await Promise.all([
+        withPluginMetadataTimeout(
+          pluginManager.listInstalledPlugins(),
+          "installed plugin metadata",
+        ),
+        withPluginMetadataTimeout(
+          pluginManager.refreshRegistry(),
+          "registry plugin metadata",
+        ),
+      ]);
 
-      const registry = await pluginManager.refreshRegistry();
-      registryMetadataByName = new Map<string, RegistryPluginInfo>();
-      for (const [key, info] of registry) {
-        for (const candidate of [key, info.name, info.npm.package]) {
-          const normalized = normalizeRegistryLookupKey(candidate);
-          if (normalized) registryMetadataByName.set(normalized, info);
+      if (installed) {
+        installedMetadataByName = new Map(
+          installed.map((plugin) => [
+            plugin.name,
+            {
+              version: plugin.version,
+              releaseStream: plugin.releaseStream,
+              requestedVersion: plugin.requestedVersion,
+              latestVersion: plugin.latestVersion,
+              betaVersion: plugin.betaVersion,
+            },
+          ]),
+        );
+      }
+
+      if (registry) {
+        registryMetadataByName = new Map<string, RegistryPluginInfo>();
+        for (const [key, info] of registry) {
+          for (const candidate of [key, info.name, info.npm.package]) {
+            const normalized = normalizeRegistryLookupKey(candidate);
+            if (normalized) registryMetadataByName.set(normalized, info);
+          }
         }
       }
     } catch {

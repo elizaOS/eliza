@@ -30,10 +30,8 @@
  */
 
 import {
-  FIRST_RUN_QUERY_NAME,
-  FIRST_RUN_QUERY_VALUE,
-  FIRST_RUN_TARGET_QUERY_NAME,
   type FirstRunReloadTarget,
+  reloadIntoFirstRunRuntime,
 } from "./reload-into-first-run-runtime";
 
 const FIRST_RUN_HOST = "first-run";
@@ -113,10 +111,20 @@ export function parseFirstRunRemoteConnectDeepLink(
 
 /**
  * Parses `eliza://first-run/runtime/<id>` (or any scheme matching `urlScheme`)
- * and writes the matching first-run runtime query
- * params to the current location. Returns `true` when the URL matched the
- * first-run contract (so the caller can stop processing); returns `false`
- * for anything else.
+ * and, on a match, forces the app into first-run setup for the requested
+ * runtime target. Returns `true` when the URL matched the first-run contract
+ * (so the caller can stop processing) and the reload was dispatched; returns
+ * `false` for anything else so the caller's own deep-link switch
+ * (`onUnmatched`) still fires.
+ *
+ * The matched link delegates to {@link reloadIntoFirstRunRuntime}, the same
+ * helper the in-app "Switch runtime" action uses. That path does REAL work:
+ * it clears the persisted active-server record and navigates via
+ * `window.location.href`, so the startup coordinator actually re-evaluates and
+ * lands the user on first-run setup. The previous implementation wrote the
+ * query params via `history.replaceState`, which fires no reload and no event
+ * and is read by no live code path — so the bare `local`/`cloud`/`remote`
+ * variants were silently swallowed (#13984).
  *
  * @param url        The raw URL string handed in by Capacitor's
  *                   `appUrlOpen` event.
@@ -146,19 +154,13 @@ export function routeFirstRunDeepLink(url: string, urlScheme: string): boolean {
   if (pathSegments[0] !== RUNTIME_SEGMENT) return false;
 
   const stepId = pathSegments[1] ?? "";
-  const next = new URL(window.location.href);
-  next.searchParams.set(FIRST_RUN_QUERY_NAME, FIRST_RUN_QUERY_VALUE);
+  // A known target pins the runtime; an unknown/missing segment still forces
+  // first-run setup but without a pinned target (undefined) so the user picks.
+  const target: FirstRunReloadTarget | undefined = isFirstRunPathTarget(stepId)
+    ? STEP_TO_FIRST_RUN_TARGET[stepId]
+    : undefined;
 
-  if (isFirstRunPathTarget(stepId)) {
-    next.searchParams.set(
-      FIRST_RUN_TARGET_QUERY_NAME,
-      STEP_TO_FIRST_RUN_TARGET[stepId],
-    );
-  } else {
-    next.searchParams.delete(FIRST_RUN_TARGET_QUERY_NAME);
-  }
-
-  window.history.replaceState(window.history.state, "", next.toString());
+  reloadIntoFirstRunRuntime(target);
   return true;
 }
 

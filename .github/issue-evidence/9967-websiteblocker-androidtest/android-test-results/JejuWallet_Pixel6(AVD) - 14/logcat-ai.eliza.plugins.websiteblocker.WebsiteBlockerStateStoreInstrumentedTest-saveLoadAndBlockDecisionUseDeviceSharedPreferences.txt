@@ -1,2 +1,0 @@
-06-30 01:34:54.916 15145 15163 I TestRunner: started: saveLoadAndBlockDecisionUseDeviceSharedPreferences(ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest)
-06-30 01:34:54.931 15145 15163 I TestRunner: finished: saveLoadAndBlockDecisionUseDeviceSharedPreferences(ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest)

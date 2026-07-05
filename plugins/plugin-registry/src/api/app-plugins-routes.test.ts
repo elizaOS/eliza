@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   loadRegistry: vi.fn(),
   readCompatJsonBody: vi.fn(),
   saveElizaConfig: vi.fn(),
+  sendJson: vi.fn(),
   sendJsonError: vi.fn(),
 }));
 
@@ -38,7 +39,7 @@ vi.mock("@elizaos/app-core/api/compat-route-shared", () => ({
 }));
 
 vi.mock("@elizaos/app-core/api/response", () => ({
-  sendJson: vi.fn(),
+  sendJson: mocks.sendJson,
   sendJsonError: mocks.sendJsonError,
 }));
 
@@ -116,7 +117,7 @@ function makePlugin(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("persistCompatPluginMutation", () => {
+describe("app plugin compatibility routes", () => {
   let currentConfig: Record<string, unknown>;
   let savedConfig: Record<string, unknown> | undefined;
 
@@ -132,11 +133,13 @@ describe("persistCompatPluginMutation", () => {
     savedConfig = undefined;
     mocks.loadElizaConfig.mockImplementation(() => currentConfig);
     mocks.loadRegistry.mockReturnValue({ all: [], byId: new Map() });
+    mocks.loadRegistry.mockClear();
     mocks.saveElizaConfig.mockImplementation((config) => {
       savedConfig = clone(config);
     });
     mocks.ensureRouteAuthorized.mockResolvedValue(true);
     mocks.readCompatJsonBody.mockResolvedValue({});
+    mocks.sendJson.mockClear();
     mocks.sendJsonError.mockClear();
   });
 
@@ -255,6 +258,47 @@ describe("persistCompatPluginMutation", () => {
 
     expect(response.plugins.find((plugin) => plugin.id === "discord")).toEqual(
       expect.objectContaining({ isActive: false }),
+    );
+  });
+
+  it("builds the plugin list once for GET /api/plugins", async () => {
+    const discordEntry = {
+      id: "discord",
+      name: "Discord",
+      npmName: "@elizaos/plugin-discord",
+      description: "",
+      tags: [],
+      kind: "connector",
+      subtype: "chat",
+      config: {},
+      render: {},
+      resources: {},
+      version: "1.0.0",
+    };
+    mocks.loadRegistry.mockReturnValue({
+      all: [discordEntry],
+      byId: new Map([["discord", discordEntry]]),
+    });
+
+    const handled = await handlePluginsCompatRoutes(
+      {
+        method: "GET",
+        url: "/api/plugins",
+      } as never,
+      {} as never,
+      { current: null } as never,
+    );
+
+    expect(handled).toBe(true);
+    expect(mocks.loadRegistry).toHaveBeenCalledTimes(1);
+    expect(mocks.sendJson).toHaveBeenCalledWith(
+      expect.anything(),
+      200,
+      expect.objectContaining({
+        plugins: expect.arrayContaining([
+          expect.objectContaining({ id: "discord" }),
+        ]),
+      }),
     );
   });
 

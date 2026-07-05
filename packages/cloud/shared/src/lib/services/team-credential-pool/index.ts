@@ -1,4 +1,5 @@
 // Coordinates cloud service index behavior behind route handlers.
+export { TeamCredentialAccountPool } from "./account-pool";
 export { applyPooledCredentialsToBootstrapEnv } from "./bootstrap-env";
 export { DrizzleAccountPoolDeps } from "./pool-deps";
 export { type PooledApiProbeResult, probePooledApiKey } from "./probe";

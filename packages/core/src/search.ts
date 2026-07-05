@@ -1827,3 +1827,162 @@ export function mergeHybridResults(params: {
 
 	return [...merged].sort((a, b) => b.score - a.score);
 }
+
+/**
+ * Normalize text for keyword matching: NFC-normalize, lowercase, strip
+ * combining accents (café → cafe), and drop in-word apostrophes/backticks
+ * (don't → dont). The SQL message-search path folds identically in Postgres via
+ * an immutable `eliza_search_fold` function; this JS twin keeps the in-memory
+ * adapters' `searchMessages` behaviorally aligned with the DB so both surfaces
+ * agree on what a query matches. CJK and other scripts pass through unchanged.
+ */
+export function foldForSearch(text: string): string {
+	return text
+		.normalize("NFKD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.replace(/['\u2019`]/g, "")
+		.normalize("NFC")
+		.toLowerCase();
+}
+
+/**
+ * The searchable text of a message: its body plus any attachment titles/URLs.
+ * Mirrors the SQL `eliza_message_search_document` so a message matched only by
+ * an attachment filename is found on both the in-memory and DB paths (#13534).
+ */
+export function messageSearchDocument(content: {
+	text?: unknown;
+	attachments?: unknown;
+}): string {
+	const parts: string[] = [];
+	if (typeof content.text === "string") parts.push(content.text);
+	if (Array.isArray(content.attachments)) {
+		for (const attachment of content.attachments) {
+			if (attachment && typeof attachment === "object") {
+				const a = attachment as { title?: unknown; url?: unknown };
+				if (typeof a.title === "string") parts.push(a.title);
+				if (typeof a.url === "string") parts.push(a.url);
+			}
+		}
+	}
+	return parts.join(" ");
+}
+
+function occurrences(haystack: string, needle: string): number {
+	if (needle.length === 0) return 0;
+	let count = 0;
+	let index = haystack.indexOf(needle);
+	while (index !== -1) {
+		count++;
+		index = haystack.indexOf(needle, index + needle.length);
+	}
+	return count;
+}
+
+/** 3-gram set of a folded string, the JS analog of `pg_trgm`'s trigram model. */
+function toTrigramSet(text: string): Set<string> {
+	const padded = `  ${text} `;
+	const grams = new Set<string>();
+	for (let i = 0; i + 3 <= padded.length; i++) {
+		grams.add(padded.slice(i, i + 3));
+	}
+	return grams;
+}
+
+/** Jaccard similarity of two trigram sets, `[0,1]`, matching `pg_trgm` intent. */
+function trigramSetSimilarity(a: Set<string>, b: Set<string>): number {
+	if (a.size === 0 || b.size === 0) return 0;
+	let shared = 0;
+	for (const gram of a) if (b.has(gram)) shared++;
+	return shared / (a.size + b.size - shared);
+}
+
+const MESSAGE_SEARCH_TRIGRAM_THRESHOLD = 0.45;
+
+function messageSearchTokens(text: string): string[] {
+	return text.split(/[^\p{L}\p{N}_:/.-]+/u).filter((t) => t.length > 0);
+}
+
+function termTrigramSimilarity(queryTerms: string[], document: string): number {
+	const documentTokens = messageSearchTokens(document);
+	if (queryTerms.length === 0 || documentTokens.length === 0) return 0;
+	let total = 0;
+	for (const queryTerm of queryTerms) {
+		let bestForTerm = document.includes(queryTerm) ? 1 : 0;
+		const queryGrams = toTrigramSet(queryTerm);
+		for (const documentToken of documentTokens) {
+			bestForTerm = Math.max(
+				bestForTerm,
+				trigramSetSimilarity(queryGrams, toTrigramSet(documentToken)),
+			);
+		}
+		if (bestForTerm < MESSAGE_SEARCH_TRIGRAM_THRESHOLD) return 0;
+		total += bestForTerm;
+	}
+	return total / queryTerms.length;
+}
+
+/** A message-shaped record the in-memory search ranker can score and order. */
+export interface SearchableMessage {
+	content: { text?: unknown; attachments?: unknown };
+	createdAt?: number;
+	id?: string;
+}
+
+/**
+ * In-memory twin of the SQL message search (`IDatabaseAdapter.searchMessages`):
+ * folds the query and each message's document identically to Postgres, keeps a
+ * row when every query term appears (FTS analog) or the whole folded query is a
+ * substring (trigram/phrase analog), and ranks corpus-wide by `ftsRank` then
+ * trigram similarity then recency then id. Returned fully sorted; the caller
+ * applies its own offset/limit window. Used by the in-memory database adapters
+ * so their results agree with the DB path (#13534).
+ */
+export function rankMessageSearch<T extends SearchableMessage>(
+	items: T[],
+	query: string,
+): Array<{ item: T; ftsRank: number; trigramSimilarity: number }> {
+	const foldedQuery = foldForSearch(query).trim();
+	if (foldedQuery.length === 0) return [];
+	const queryTerms = foldedQuery.split(/\s+/).filter((t) => t.length > 0);
+	const queryTrigrams = toTrigramSet(foldedQuery);
+
+	const hits: Array<{
+		item: T;
+		ftsRank: number;
+		trigramSimilarity: number;
+	}> = [];
+	for (const item of items) {
+		const doc = foldForSearch(messageSearchDocument(item.content));
+		const allTermsPresent = queryTerms.every((t) => doc.includes(t));
+		const phraseSubstring = doc.includes(foldedQuery);
+		const docLen = Math.max(doc.length, 1);
+		const ftsRank = allTermsPresent
+			? queryTerms.reduce((acc, t) => acc + occurrences(doc, t) / docLen, 0)
+			: 0;
+		const trigramSimilarity = Math.max(
+			trigramSetSimilarity(queryTrigrams, toTrigramSet(doc)),
+			termTrigramSimilarity(queryTerms, doc),
+		);
+		if (
+			!allTermsPresent &&
+			!phraseSubstring &&
+			trigramSimilarity < MESSAGE_SEARCH_TRIGRAM_THRESHOLD
+		) {
+			continue;
+		}
+		hits.push({ item, ftsRank, trigramSimilarity });
+	}
+
+	hits.sort((a, b) => {
+		if (b.ftsRank !== a.ftsRank) return b.ftsRank - a.ftsRank;
+		if (b.trigramSimilarity !== a.trigramSimilarity) {
+			return b.trigramSimilarity - a.trigramSimilarity;
+		}
+		const ta = typeof a.item.createdAt === "number" ? a.item.createdAt : 0;
+		const tb = typeof b.item.createdAt === "number" ? b.item.createdAt : 0;
+		if (tb !== ta) return tb - ta;
+		return String(a.item.id).localeCompare(String(b.item.id));
+	});
+	return hits;
+}

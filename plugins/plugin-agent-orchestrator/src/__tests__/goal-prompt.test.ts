@@ -81,6 +81,40 @@ describe("buildGoalPrompt capability fence", () => {
     expect(prompt).toContain("read/search files");
     expect(prompt).not.toContain("domains.buy");
   });
+
+  it("omits the broker capability on the default fence when not wired", () => {
+    const prompt = buildGoalPrompt(baseInput);
+    expect(prompt).not.toContain("parent-agent bridge");
+  });
+
+  it("advertises the broker on the default fence only when wired", () => {
+    const prompt = buildGoalPrompt({ ...baseInput, brokerWired: true });
+    expect(prompt).toContain("Use only coding-relevant capabilities");
+    expect(prompt).toContain("parent-agent bridge");
+    expect(prompt).toContain("paid/mutating commands stay gated");
+  });
+
+  it("does not double-advertise the broker on the economics fence", () => {
+    // Economics already lists the full Cloud command surface; brokerWired must
+    // not append the default-fence broker line on top of it.
+    const prompt = buildGoalPrompt({
+      ...baseInput,
+      capabilityProfile: "economics",
+      brokerWired: true,
+    });
+    expect(prompt).toContain("parent-agent Cloud command bridge");
+    expect(prompt).not.toContain("paid/mutating commands stay gated");
+  });
+
+  it("never widens an explicit allow-list even when wired", () => {
+    const prompt = buildGoalPrompt({
+      ...baseInput,
+      allowedCapabilities: ["read/search files"],
+      brokerWired: true,
+    });
+    expect(prompt).toContain("read/search files");
+    expect(prompt).not.toContain("parent-agent bridge");
+  });
 });
 
 describe("buildGoalPrompt attempt reflections (#8899)", () => {

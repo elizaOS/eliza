@@ -1,3 +1,0 @@
-06-30 02:05:02.189  2770  2817 I TestRunner: started: deviceTypeName_labelsKnownMicrophoneTypes(ai.eliza.plugins.swabble.SwabbleAndroidPlatformProbeInstrumentedTest)
-06-30 02:05:02.195  2770  2817 I GrantPermissionCallable: Permission: android.permission.RECORD_AUDIO is already granted!
-06-30 02:05:02.195  2770  2817 I TestRunner: finished: deviceTypeName_labelsKnownMicrophoneTypes(ai.eliza.plugins.swabble.SwabbleAndroidPlatformProbeInstrumentedTest)

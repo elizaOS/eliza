@@ -7,6 +7,7 @@
  */
 import { accessSync, constants } from "node:fs";
 import path from "node:path";
+import { readAliasedEnv } from "@elizaos/shared";
 
 export const CODING_TOOL_NAMES = [
   "sh",
@@ -51,13 +52,13 @@ const ANDROID_PATH_ENTRIES = ["/system/bin", "/system/xbin", "/vendor/bin"];
 
 export function isAndroidRuntime(): boolean {
   return (
-    process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "android" ||
+    readAliasedEnv("ELIZA_PLATFORM")?.toLowerCase() === "android" ||
     Boolean(process.env.ANDROID_ROOT || process.env.ANDROID_DATA)
   );
 }
 
 function isIosRuntime(): boolean {
-  return process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios";
+  return readAliasedEnv("ELIZA_PLATFORM")?.toLowerCase() === "ios";
 }
 
 function isTruthyEnv(value: string | undefined): boolean {

@@ -573,13 +573,19 @@ class ElizaAppUserService {
             phoneAdded: !!normalizedPhone && !existingUser.phone_number,
           });
         } catch (error) {
-          if (isUniqueConstraintError(error)) {
-            // Phone unique constraint hit - another user has this phone
-            if (normalizedPhone) {
+          // A phone link is a tenant-identity write, not a cosmetic refresh. When this
+          // update is adding a phone, a unique constraint means another account owns it
+          // (surface the conflict) and any other failure must propagate — swallowing it
+          // would return success while the refetch below reads back as "no phone".
+          const linkingPhone = !!normalizedPhone && !existingUser.phone_number;
+          if (linkingPhone) {
+            if (isUniqueConstraintError(error)) {
               throw new Error("PHONE_ALREADY_LINKED");
             }
+            throw error;
           }
-          // Profile update is non-critical - log warning and continue with stale data
+          // error-policy:J4 cosmetic Discord profile refresh (username/global name/avatar)
+          // is best-effort; a stale display field degrades gracefully rather than block login.
           logger.warn(
             "[ElizaAppUserService] Failed to update Discord profile, continuing with stale data",
             {
@@ -1039,7 +1045,8 @@ class ElizaAppUserService {
             updated_at: new Date(),
           });
         } catch (error) {
-          // Non-critical - log warning and continue with stale data
+          // error-policy:J4 cosmetic WhatsApp display-name refresh is best-effort; a
+          // stale name degrades gracefully rather than block message handling.
           logger.warn("[ElizaAppUserService] Failed to update WhatsApp name", {
             userId: existingWhatsAppUser.id,
             error: error instanceof Error ? error.message : String(error),

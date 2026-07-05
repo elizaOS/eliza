@@ -1,5 +1,0 @@
-Pixel 6a
-16
-36
-bluejay
-google/bluejay/bluejay:16/CP1A.260405.005/15001963:user/release-keys

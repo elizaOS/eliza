@@ -1,4 +1,0 @@
-[eliza-test] PLAN lane=pr only=test tasks=1 packages=1
-[eliza-test] PLAN parallel-safe=1 serial=0 concurrency=1
-[eliza-test] PLAN cloud-step=yes
-[eliza-test] PLAN parallel @elizaos/core (packages/core)#test

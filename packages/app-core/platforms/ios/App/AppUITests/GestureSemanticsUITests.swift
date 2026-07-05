@@ -13,6 +13,12 @@ import XCTest
 ///     detent after every gesture, then exercises the thread-gated flick-up
 ///     from collapsed against the AX-observed thread state (reveal at half
 ///     with a thread, refusal on an empty one — both real semantics).
+///   - `testChatMaximizeAndRestore` — the surviving vertical full-bleed gesture
+///     after the single-infinite-thread redesign (#13531): from the open sheet,
+///     an over-pull UP past the 80%-viewport threshold commits edge-to-edge
+///     full-bleed (`chat-maximized:true`), and a downward pull from the top-20%
+///     restore strip returns the inset overlay (`chat-maximized:false`). Both
+///     are asserted against the AX `chat-maximized:` probe.
 ///   - `testLauncherPagerFiftyPercentSwipeThreshold` — a slow sub-threshold
 ///     drag on the home↔launcher rail must snap back; a slow drag past the 50%
 ///     point must commit the page (velocity deliberately killed with a
@@ -41,17 +47,20 @@ import XCTest
 ///     buttons (Photo Library / Choose File / Cancel), then dismissed.
 ///
 /// Assertion channel: the web app mirrors its gesture state into sr-only
-/// static texts — `chat-detent:<pill|collapsed|half|full>`
-/// (ContinuousChatOverlay) and `home-launcher-page:<home|launcher>`
-/// (HomeLauncherSurface) — because `data-*` attributes never surface in the
-/// native accessibility tree. A missing probe on an otherwise-interactive
-/// renderer is a HARD failure (broken channel), never a silent skip.
+/// static texts — `chat-detent:<pill|collapsed|half|full>` +
+/// `chat-maximized:<true|false>` (ContinuousChatOverlay) and
+/// `home-launcher-page:<home|launcher>` (HomeLauncherSurface) — because `data-*`
+/// attributes never surface in the native accessibility tree. `chat-detent`
+/// folds full-bleed into "full", so the maximize/restore leg reads the separate
+/// `chat-maximized` probe. A missing probe on an otherwise-interactive renderer
+/// is a HARD failure (broken channel), never a silent skip.
 ///
 /// Runs in the same AppUITests target / lane as the boot suite:
 ///   node scripts/ios-device-capture.mjs --platform sim   (packages/app)
 final class GestureSemanticsUITests: XCTestCase {
 
     private static let detentPrefix = "chat-detent:"
+    private static let maximizedPrefix = "chat-maximized:"
     private static let pagePrefix = "home-launcher-page:"
 
     override func setUpWithError() throws {
@@ -73,7 +82,7 @@ final class GestureSemanticsUITests: XCTestCase {
     func testChatSheetDetentFlickCycle() throws {
         let app = XCUIApplication()
         try launchToRenderer(app)
-        try ensureUserMessage(in: app, text: "detent gesture probe")
+        try ensurePersistentUserMessage(in: app, text: "detent gesture probe")
         try settleSheetToCollapsed(in: app)
         attachScreenshot(named: "detent-00-collapsed")
 
@@ -95,39 +104,101 @@ final class GestureSemanticsUITests: XCTestCase {
         try flickGrabber(in: app, dy: 260)
         assertDetent(becomes: "half", in: app, step: "detent-30-after-flick-down")
 
-        // While the sheet is open, capture the AX ground truth for the
-        // thread-gated flick leg below: does the thread actually hold any
-        // message bubbles right now? (The app may have evicted the optimistic
-        // user turn when the agent never became ready — see the warm-up
-        // eviction note on ensurePersistentUserMessage.)
-        let threadHasBubbles = messageBubbles(in: app).count > 0
-        attachScreenshot(named: "detent-35-open-thread-state")
+        XCTAssertGreaterThan(
+            messageBubbles(in: app).count,
+            0,
+            "detent flick coverage requires a seeded, persistent thread; the "
+                + "container shard must not inherit or infer this from residue"
+        )
+        attachScreenshot(named: "detent-35-seeded-thread-state")
 
         // Flick DOWN #2: half → collapsed.
         try flickGrabber(in: app, dy: 260)
         assertDetent(
             becomes: "collapsed", in: app, step: "detent-40-after-flick-down")
 
-        // Flick UP from collapsed — BOTH outcomes are spec'd semantics, chosen
-        // by the observed thread state (never a silent skip):
-        //   thread present → the flick reveals the thread at the HALF detent;
-        //   thread empty   → the flick must be REFUSED (the sheet has nothing
-        //                    to reveal; ContinuousChatOverlay's onPullUp
-        //                    deliberately settles back), so the detent must
-        //                    still read "collapsed" after the poll.
+        // Flick UP from collapsed with a deliberately seeded thread: this must
+        // reveal the thread at HALF. This assertion must not flip to an
+        // empty-thread refusal based on residue from earlier XCTest classes or
+        // previous runs (#13686).
         try flickGrabber(in: app, dy: -260)
-        if threadHasBubbles {
-            assertDetent(
-                becomes: "half", in: app, step: "detent-50-flick-reveals-thread")
-        } else {
-            Thread.sleep(forTimeInterval: 2.0)
-            attachScreenshot(named: "detent-50-flick-refused-empty-thread")
-            XCTAssertEqual(
-                markerValue(Self.detentPrefix, in: app), "collapsed",
-                "a flick-up on a collapsed sheet with an EMPTY thread must be "
-                    + "refused (nothing to reveal) and leave the detent collapsed"
+        assertDetent(
+            becomes: "half", in: app, step: "detent-50-flick-reveals-thread")
+    }
+
+    func testChatMaximizeAndRestore() throws {
+        let app = XCUIApplication()
+        try launchToRenderer(app)
+        try ensureUserMessage(in: app, text: "maximize gesture probe")
+
+        // Open the sheet to a real open detent first (the maximize over-pull acts
+        // on an already-open sheet). A slow free-settle drag opens even on an
+        // empty thread, unlike the thread-gated flick.
+        try settleSheetToCollapsed(in: app)
+        try slowDragGrabber(in: app, dy: -260)
+        assertDetent(becomes: "half", in: app, step: "maximize-00-open-half")
+
+        // The overlay must start NOT maximized (inset overlay). A missing probe
+        // on an interactive renderer is a broken channel — hard-fail, not a skip.
+        guard let startMaximized = markerValue(Self.maximizedPrefix, in: app) else {
+            attachScreenshot(named: "maximize-05-no-maximized-probe")
+            attachAccessibilitySnapshot(of: app, named: "ax-hierarchy-no-maximized-probe")
+            XCTFail(
+                "the renderer is interactive but never exposed the "
+                    + "'chat-maximized:' AX probe — the maximize-state channel is broken"
             )
+            return
         }
+        XCTAssertEqual(
+            startMaximized, "false",
+            "the chat opens as the INSET overlay, not full-bleed "
+                + "(chat-maximized reads '\(startMaximized)')"
+        )
+
+        // OVER-PULL UP past the 80%-viewport maximize threshold: a large upward
+        // grabber drag whose peak raw travel clears max(0.8·viewportH, FULL)+56pt
+        // commits edge-to-edge full-bleed. Drive a deliberately long drag so the
+        // peak-pull tracker crosses the threshold on the real engine.
+        try slowDragGrabber(in: app, dy: -560)
+        let maximized = waitForMarker(
+            Self.maximizedPrefix, toEqual: "true", timeout: 5, in: app)
+        attachScreenshot(named: "maximize-10-full-bleed")
+        XCTAssertEqual(
+            maximized, "true",
+            "an over-pull past the 80%-viewport threshold must commit full-bleed "
+                + "(chat-maximized reads '\(maximized ?? "nil")')"
+        )
+
+        // TOP-20% PULL-DOWN-TO-RESTORE: while full-bleed there is no grabber; a
+        // downward pull from the top-20% restore strip (aria-label "drag down to
+        // exit full screen") returns the inset overlay.
+        guard let restoreZone = maximizeRestoreZone(in: app), restoreZone.isHittable
+        else {
+            attachAccessibilitySnapshot(of: app, named: "ax-hierarchy-no-restore-zone")
+            throw XCTSkip("no hittable maximize-restore strip in the AX tree")
+        }
+        let start = restoreZone.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        let end = start.withOffset(CGVector(dx: 0, dy: 320))
+        start.press(
+            forDuration: 0.05, thenDragTo: end,
+            withVelocity: XCUIGestureVelocity(rawValue: 2000),
+            thenHoldForDuration: 0)
+        let restored = waitForMarker(
+            Self.maximizedPrefix, toEqual: "false", timeout: 5, in: app)
+        attachScreenshot(named: "maximize-20-restored")
+        XCTAssertEqual(
+            restored, "false",
+            "a top-20% pull-down must restore the inset overlay "
+                + "(chat-maximized reads '\(restored ?? "nil")')"
+        )
+        // Restoring keeps the sheet OPEN at the full detent — it must not have
+        // collapsed the whole chat.
+        XCTAssertEqual(
+            markerValue(Self.detentPrefix, in: app), "full",
+            "restoring from full-bleed must land back at the FULL detent, not "
+                + "collapse the sheet"
+        )
     }
 
     func testLauncherPagerFiftyPercentSwipeThreshold() throws {
@@ -556,6 +627,17 @@ final class GestureSemanticsUITests: XCTestCase {
         let predicate = NSPredicate(format: "label BEGINSWITH[c] 'drag'")
         let element = app.buttons.matching(predicate).firstMatch
         return element.waitForExistence(timeout: 5) ? element : nil
+    }
+
+    /// The maximize-restore strip shown only while full-bleed (aria-label "drag
+    /// down to exit full screen"). Absent when the chat is not maximized.
+    private func maximizeRestoreZone(in app: XCUIApplication) -> XCUIElement? {
+        let predicate = NSPredicate(
+            format: "label BEGINSWITH[c] 'drag down to exit full screen'")
+        let element = app.buttons.matching(predicate).firstMatch
+        if element.waitForExistence(timeout: 5) { return element }
+        let any = app.descendants(matching: .any).matching(predicate).firstMatch
+        return any.waitForExistence(timeout: 1) ? any : nil
     }
 
     /// Fast flick on the grabber: short press, fast drag, immediate release —

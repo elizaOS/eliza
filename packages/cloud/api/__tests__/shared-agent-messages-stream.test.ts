@@ -21,6 +21,7 @@
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
+import { InsufficientCreditsError } from "@/lib/api/errors";
 // Keep the real modules so afterAll can restore them — bun's `mock.module` is
 // process-global, so a blanket `mock.restore()` here would strand sibling test
 // files that import the full eliza-sandbox / resolve-shared-agent surface.
@@ -186,6 +187,32 @@ describe("shared agent messages/stream", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
     await expect(res.text()).resolves.toContain("event: error");
+  });
+
+  // Insufficient credits is rejected before any SSE bytes exist (bridgeStream's
+  // shared branch throws the typed 402), so the route answers with the same
+  // canonical 402 JSON as the non-stream send — not an error frame buried in a
+  // 200 stream the app would read as a transient turn failure.
+  test("insufficient credits → non-retryable 402 JSON, not an SSE frame", async () => {
+    bridgeStream.mockRejectedValue(
+      new InsufficientCreditsError(
+        "Insufficient credits. Required: $0.0500, Available: $0.0000",
+      ),
+    );
+
+    const res = await postStream({ text: "hi" }, "https://localhost");
+
+    expect(res.status).toBe(402);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(res.headers.get("access-control-allow-origin")).toBe(
+      "https://localhost",
+    );
+    await expect(res.json()).resolves.toEqual({
+      success: false,
+      error: "Insufficient credits. Required: $0.0500, Available: $0.0000",
+      code: "insufficient_credits",
+      retryable: false,
+    });
   });
 
   test("auth/tier failure surfaces the resolver error status", async () => {

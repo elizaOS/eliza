@@ -6,6 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   classifyActionMessage,
   FIRST_RUN_ACTION_PREFIX,
+  FIRST_RUN_CLOUD_LOGIN_ACTION,
+  FIRST_RUN_CLOUD_LOGIN_FALLBACK_PATH,
+  getFirstRunCloudLoginFallbackPath,
   setFirstRunActionHandler,
   setFirstRunTextHandler,
   tryHandleFirstRunAction,
@@ -90,6 +93,29 @@ describe("classifyActionMessage (the send funnel's routing contract)", () => {
   it("routes free text to the conductor while onboarding is active and sends it afterwards", () => {
     expect(classifyActionMessage("hello", false)).toBe("conductor");
     expect(classifyActionMessage("hello", true)).toBe("send");
+  });
+});
+
+describe("cloud sign-in fallback", () => {
+  it("routes an unhandled cloud sign-in CTA to hosted web login before first-run completes", () => {
+    expect(
+      getFirstRunCloudLoginFallbackPath(FIRST_RUN_CLOUD_LOGIN_ACTION, false),
+    ).toBe(FIRST_RUN_CLOUD_LOGIN_FALLBACK_PATH);
+  });
+
+  it("does not route stale first-run widgets after onboarding completes", () => {
+    expect(
+      getFirstRunCloudLoginFallbackPath(FIRST_RUN_CLOUD_LOGIN_ACTION, true),
+    ).toBeNull();
+  });
+
+  it("does not route other first-run actions to login", () => {
+    expect(
+      getFirstRunCloudLoginFallbackPath(
+        `${FIRST_RUN_ACTION_PREFIX}runtime:local`,
+        false,
+      ),
+    ).toBeNull();
   });
 });
 

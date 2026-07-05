@@ -360,12 +360,21 @@ export const linkedinAdsProvider: AdProvider = {
   async validateCredentials(
     credentials: AdAccountCredentials,
   ): Promise<AdProviderValidationResult> {
-    const accounts = await this.listAdAccounts(credentials).catch((error) => {
+    let accounts: Array<{ id: string; name: string }>;
+    try {
+      accounts = await this.listAdAccounts(credentials);
+    } catch (error) {
+      // error-policy:J1 boundary — surface the account-discovery transport/auth
+      // failure verbatim so a failed fetch stays distinct from a valid account
+      // that simply has zero ad accounts (the empty-list branch below).
       logger.error("[LinkedInAds] Validation failed", {
         error: error instanceof Error ? error.message : String(error),
       });
-      return [];
-    });
+      return {
+        valid: false,
+        error: error instanceof Error ? error.message : "LinkedIn credential validation failed",
+      };
+    }
     if (accounts.length === 0) {
       return { valid: false, error: "No LinkedIn ad accounts found or invalid credentials" };
     }

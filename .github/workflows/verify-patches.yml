@@ -28,7 +28,7 @@ permissions:
 jobs:
   verify:
     name: verify patches/CHECKSUMS.sha256
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Checkout
         # actions/checkout@v4

@@ -67,6 +67,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/chat",
     order: 1,
     tags: ["messaging", "conversation", "agent"],
+    anticipatoryIntent:
+      "Offer to pick up the most recent thread or surface anything the user left unfinished, and ask what they want to work on next.",
     visibleInManager: true,
     desktopTabEnabled: true,
     platforms: ["web", "desktop", "ios", "android"],
@@ -81,6 +83,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/character",
     order: 50,
     tags: ["identity", "personality", "character"],
+    anticipatoryIntent:
+      "Offer to refine the agent's identity, personality, or style from the current character state, and point out the highest-leverage next edit.",
     visibleInManager: true,
     desktopTabEnabled: true,
   },
@@ -95,6 +99,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     order: 51,
     tags: ["documents", "knowledge", "files", "uploads", "retrieval"],
     relatedActions: ["OWNER_DOCUMENTS"],
+    anticipatoryIntent:
+      "Offer to triage the newest ingested attachments/documents — summarize, tag, or file them — grounded in the recent-attachment counts.",
     visibleInManager: true,
     desktopTabEnabled: true,
   },
@@ -108,6 +114,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/automations",
     order: 55,
     tags: ["automation", "tasks", "scheduling"],
+    anticipatoryIntent:
+      "Offer to create a new scheduled workflow or check on existing automations — flag any recently failed runs — grounded in the live task list.",
     visibleInManager: true,
   },
   {
@@ -129,6 +137,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       "extensions",
     ],
     relatedActions: ["RUNTIME"],
+    anticipatoryIntent:
+      "Offer to install, configure, or troubleshoot a plugin — surface the smallest setup gap — grounded in installed-plugin and health state.",
     visibleInManager: true,
   },
   {
@@ -155,6 +165,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/transcripts",
     order: 71,
     tags: ["transcript", "voice", "recording", "audio"],
+    anticipatoryIntent:
+      "Offer to summarize or extract action items from the most recent voice transcripts, grounded in the recent-transcript count.",
     visibleInManager: true,
   },
   {
@@ -168,6 +180,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/memories",
     order: 72,
     tags: ["memory", "knowledge"],
+    anticipatoryIntent:
+      "Offer to search, review, or prune the agent's stored memories, and point to what's worth revisiting.",
     visibleInManager: true,
   },
   {
@@ -207,6 +221,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     order: 90,
     tags: ["configuration", "preferences", "plugins"],
     relatedActions: ["RUNTIME"],
+    anticipatoryIntent:
+      "Offer to set up the model/provider, voice, or connectors — recommend the smallest concrete configuration step from current settings state.",
     visibleInManager: true,
     desktopTabEnabled: true,
   },
@@ -221,6 +237,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/background",
     order: 92,
     tags: ["background", "wallpaper", "color", "theme", "appearance", "image"],
+    anticipatoryIntent:
+      "Offer to set the app background — pick a shader color, generate an image, or use an upload.",
     visibleInManager: true,
     desktopTabEnabled: true,
     platforms: ["web", "desktop", "ios", "android"],

@@ -14,6 +14,10 @@ export interface DevSettingsRow {
   detail?: string;
 }
 
+export type BrandEnvAliasPair = readonly [brandKey: string, elizaKey: string];
+
+export function buildBrandEnvAliases(prefix: string): BrandEnvAliasPair[];
+export function normalizeBrandEnvPrefix(prefix: string | undefined): string;
 export function colorizeDevSettingsStartupBanner(text: string): string;
 export function formatDevSettingsTable(
   title: string,

@@ -36,11 +36,18 @@ const MESSAGES: ShellMessage[] = [
   },
 ];
 
+// The single infinite thread (#13531): there is no chat switcher and no
+// chat-to-chat swipe, so nav never has a neighbour to move to. `activeId`/`index`
+// still carry the one active conversation so the overlay's data-conversation-*
+// attributes render; they are required fields, so the mock supplies them (no
+// partial-nav `as` escape).
 const NO_NAV: ConversationNav = {
   hasPrev: false,
   hasNext: false,
   goPrev: () => {},
   goNext: () => {},
+  activeId: "story-conversation",
+  index: 0,
 };
 
 // A COMPLETE ShellController so the overlay renders (and runs its mount effects)

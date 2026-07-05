@@ -4,13 +4,14 @@
  * They live here (not hardcoded in app-core) so a wallet action rename or plugin
  * name change updates the node in one place with the code it gates.
  */
+
+import type { AutomationNodeDescriptor } from "@elizaos/shared";
 import {
   type AutomationNodeContributorContext,
   buildRuntimeCapabilityNodes,
   type RuntimeCapabilityNodeSpec,
   registerAutomationNodeContributor,
-} from "@elizaos/app-core/api/automation-node-contributors";
-import type { AutomationNodeDescriptor } from "@elizaos/shared";
+} from "@elizaos/shared/automation-node-contributors";
 
 const WALLET_AUTOMATION_NODE_SPECS: RuntimeCapabilityNodeSpec[] = [
   {

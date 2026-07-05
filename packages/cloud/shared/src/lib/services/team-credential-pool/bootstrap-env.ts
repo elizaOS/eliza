@@ -9,7 +9,13 @@
  * `settings.secrets` — pooled keys are NEVER persisted into the stored
  * `environment_vars` (they exist only in the create-request payload).
  *
- * Strict fallback: any failure returns the env unchanged (today's behavior).
+ * Pool unavailability is not a failure here: the registry (registry.ts) is the
+ * designed boundary that degrades a missing/unhealthy pool to `null` per
+ * provider (its `J4`), so a provider with no eligible credential simply leaves
+ * the env untouched. This module does NOT wrap that in a blanket catch — a
+ * genuine internal fault (e.g. a decrypt/DB error the registry could not
+ * absorb) must propagate so provisioning surfaces it rather than silently
+ * booting an agent that is missing a credential it was meant to receive.
  * An explicit per-agent key always wins over the pool.
  */
 
@@ -29,41 +35,33 @@ export interface ApplyPooledCredentialsParams {
 export async function applyPooledCredentialsToBootstrapEnv(
   params: ApplyPooledCredentialsParams,
 ): Promise<Record<string, string>> {
-  try {
-    const registry = getTeamPoolRegistry();
-    const merged = { ...params.env };
-    let applied = 0;
-    for (const providerId of POOLED_DIRECT_PROVIDERS) {
-      const envKey = POOLED_PROVIDER_ENV_KEYS[providerId];
-      if (merged[envKey]?.trim()) continue; // per-agent key wins
-      const selected = await registry.selectCredential({
-        organizationId: params.organizationId,
-        providerId,
-        sessionKey: params.sessionKey,
-      });
-      if (!selected) continue;
-      merged[envKey] = selected.apiKey;
-      applied += 1;
-      if (params.userId) {
-        await registry.recordUse({
-          organizationId: params.organizationId,
-          credentialId: selected.credentialId,
-          userId: params.userId,
-        });
-      }
-    }
-    if (applied > 0) {
-      logger.info("[TeamCredentialPool] merged pooled credentials into bootstrap env", {
-        organizationId: params.organizationId,
-        applied,
-      });
-    }
-    return merged;
-  } catch (err) {
-    logger.warn("[TeamCredentialPool] pooled-credential merge failed — using agent env as-is", {
+  const registry = getTeamPoolRegistry();
+  const merged = { ...params.env };
+  let applied = 0;
+  for (const providerId of POOLED_DIRECT_PROVIDERS) {
+    const envKey = POOLED_PROVIDER_ENV_KEYS[providerId];
+    if (merged[envKey]?.trim()) continue; // per-agent key wins
+    const selected = await registry.selectCredential({
       organizationId: params.organizationId,
-      error: err instanceof Error ? err.message : String(err),
+      providerId,
+      sessionKey: params.sessionKey,
     });
-    return params.env;
+    if (!selected) continue; // no eligible pooled credential — designed empty, not a failure
+    merged[envKey] = selected.apiKey;
+    applied += 1;
+    if (params.userId) {
+      await registry.recordUse({
+        organizationId: params.organizationId,
+        credentialId: selected.credentialId,
+        userId: params.userId,
+      });
+    }
   }
+  if (applied > 0) {
+    logger.info("[TeamCredentialPool] merged pooled credentials into bootstrap env", {
+      organizationId: params.organizationId,
+      applied,
+    });
+  }
+  return merged;
 }

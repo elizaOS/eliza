@@ -19,7 +19,7 @@ permissions:
 jobs:
   env-audit:
     name: env:audit:check
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
 
     steps:

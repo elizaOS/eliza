@@ -265,4 +265,65 @@ describe("ElizaSandboxService shared runtime billing", () => {
       historyUpsertSpy.mockRestore();
     }
   });
+
+  // The credit-gate contract for a drained org / welcome-bonus-withheld signup:
+  // the JSON-RPC bridge keeps the -32002 wire error (the /bridge route serves
+  // raw JSON-RPC), while bridgeStream — whose callers are HTTP boundaries —
+  // throws the typed 402 ApiError so routes translate it to a non-retryable
+  // insufficient_credits response instead of a disguised transient failure.
+  test("credit-reserve rejection: bridge returns -32002, bridgeStream throws the typed 402", async () => {
+    const { ElizaSandboxService, BRIDGE_INSUFFICIENT_CREDITS_CODE } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const { InsufficientCreditsError: InsufficientCreditsApiError } = await import("../api/errors");
+    const sandbox = sharedSandbox();
+    const findRunningSandboxSpy = spyOn(
+      agentSandboxesRepository,
+      "findRunningSandbox",
+    ).mockResolvedValue(sandbox);
+    const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+    reserveCredits.mockImplementation(async () => {
+      throw new MockInsufficientCreditsError(0.05, 0);
+    });
+
+    try {
+      const rpc = {
+        jsonrpc: "2.0" as const,
+        id: "shared-turn",
+        method: "message.send",
+        params: { text: "hello" },
+      };
+      const service = new ElizaSandboxService();
+
+      const response = await runWithCloudBindings({ CEREBRAS_API_KEY: "test-key" }, () =>
+        service.bridge(sandbox.id, sandbox.organization_id, rpc),
+      );
+      expect(response).toEqual({
+        jsonrpc: "2.0",
+        id: "shared-turn",
+        error: {
+          code: BRIDGE_INSUFFICIENT_CREDITS_CODE,
+          message: "Insufficient credits. Required: $0.0500, Available: $0.0000",
+        },
+      });
+      expect(runSharedAgentTurn).not.toHaveBeenCalled();
+
+      const streamRejection = runWithCloudBindings({ CEREBRAS_API_KEY: "test-key" }, () =>
+        service.bridgeStream(sandbox.id, sandbox.organization_id, rpc),
+      );
+      await expect(streamRejection).rejects.toBeInstanceOf(InsufficientCreditsApiError);
+      await expect(streamRejection).rejects.toMatchObject({
+        code: "insufficient_credits",
+        status: 402,
+      });
+    } finally {
+      reserveCredits.mockImplementation(async () => ({
+        reservedAmount: 0.002,
+        reservationTransactionId: "reservation-1",
+        reconcile: reconcileReservation,
+      }));
+      findRunningSandboxSpy.mockRestore();
+      historyGetSpy.mockRestore();
+    }
+  });
 });

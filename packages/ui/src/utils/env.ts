@@ -33,27 +33,3 @@ export function isEnvDisabled(value: string | undefined): boolean {
   if (!raw) return false;
   return raw === "0" || raw === "false" || raw === "off" || raw === "no";
 }
-
-/**
- * Sync app brand env vars → elizaOS equivalents.
- */
-export {
-  syncBrandEnvToEliza,
-  syncElizaEnvToBrand,
-} from "../config/boot-config.js";
-
-import {
-  getBootConfig,
-  syncBrandEnvToEliza,
-  syncElizaEnvToBrand,
-} from "../config/boot-config.js";
-
-export function syncAppEnvToEliza(): void {
-  const aliases = getBootConfig().envAliases;
-  if (aliases) syncBrandEnvToEliza(aliases);
-}
-
-export function syncElizaEnvAliases(): void {
-  const aliases = getBootConfig().envAliases;
-  if (aliases) syncElizaEnvToBrand(aliases);
-}

@@ -53,7 +53,7 @@ env:
 jobs:
   keyless-harness:
     name: Deterministic mock-LLM connector loops (no secret)
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     steps:
       - name: Checkout

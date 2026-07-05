@@ -1,4 +1,0 @@
-$ bun run src/cli/train.ts --backend native --optimizer gepa --task action_planner --dataset "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/s3-gepa/sweep/proof/action_planner.proof12.jsonl"
-[train] adapter: cerebras (TRAIN_MODEL_PROVIDER=cerebras, default gemma-4-31b)
-[training-model] cerebras error 429: {"message":"Tokens per minute limit exceeded - too many tokens processed.","type":"too_many_tokens_error","param":"quota","code":"token_quota_exceeded"}
-error: script "train" exited with code 1

@@ -63,6 +63,7 @@ function renderConductor(initial: HomeModelStatus) {
   const value: ConversationMessagesValue = {
     conversationMessages: [],
     removeConversationMessage: () => {},
+    prependConversationMessages: () => {},
     setConversationMessages: (updater) => {
       transcript.current =
         typeof updater === "function" ? updater(transcript.current) : updater;

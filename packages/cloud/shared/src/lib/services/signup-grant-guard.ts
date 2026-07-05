@@ -46,7 +46,7 @@ export function resolveSignupGrantIpLimits(env: SignupGrantIpLimitEnv = process.
 
 export const FREE_GRANT_IP_LIMITS = resolveSignupGrantIpLimits();
 
-export type SignupGrantWithheldReason = "ip_daily_cap";
+export type SignupGrantWithheldReason = "ip_daily_cap" | "count_unavailable";
 
 export interface SignupGrantDecision {
   granted: boolean;
@@ -60,6 +60,56 @@ function readPositiveIntEnv(raw: string | undefined, fallback: number): number {
   if (raw === undefined || raw.trim() === "") return fallback;
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/**
+ * Signals that the per-IP grant COUNT could not be resolved to a finite,
+ * non-negative integer. The anti-sybil cap is a security gate, so an
+ * unreadable count must FAIL CLOSED (withhold the free bonus), never fall
+ * open into an unbounded faucet.
+ */
+export class SignupGrantCountUnavailableError extends Error {
+  readonly rawCount: unknown;
+  constructor(rawCount: unknown) {
+    super(
+      `[SignupGrantGuard] per-IP free-grant count is not a finite integer: ${String(rawCount)}`,
+    );
+    this.name = "SignupGrantCountUnavailableError";
+    this.rawCount = rawCount;
+  }
+}
+
+/**
+ * Fail-closed parse of the per-IP grant COUNT. Postgres `COUNT(*)` returns a
+ * bigint as a decimal string, so the happy path is a plain non-negative
+ * integer string. Anything else (missing row, non-numeric, NaN/Infinity,
+ * fractional, negative) means the anti-sybil count is unverifiable — throw so
+ * the caller withholds the grant instead of granting past an unread cap.
+ *
+ * Rationale: the old `Number(count ?? 0)` returned `NaN` on a malformed read,
+ * and `NaN >= cap` is `false`, which silently GRANTED the bonus — a fail-open
+ * on a sybil gate. This mirrors the fail-closed numeric-read boundaries used by
+ * the redemption/billing money gates in the same service layer.
+ */
+export function parseGrantCount(rawCount: unknown): number {
+  if (typeof rawCount === "number") {
+    if (Number.isInteger(rawCount) && rawCount >= 0) return rawCount;
+    throw new SignupGrantCountUnavailableError(rawCount);
+  }
+  if (typeof rawCount === "bigint") {
+    if (rawCount < 0n) throw new SignupGrantCountUnavailableError(rawCount);
+    return Number(rawCount);
+  }
+  if (typeof rawCount === "string") {
+    const trimmed = rawCount.trim();
+    // Plain non-negative integer only: rejects "", "NaN", "1.5", "1e3", "0x10", "-1".
+    if (/^\d+$/.test(trimmed)) {
+      const parsed = Number(trimmed);
+      if (Number.isSafeInteger(parsed)) return parsed;
+    }
+    throw new SignupGrantCountUnavailableError(rawCount);
+  }
+  throw new SignupGrantCountUnavailableError(rawCount);
 }
 
 function maskIp(ip: string): string {
@@ -121,7 +171,33 @@ export async function runWithSignupGrantIpCapDetailed(
         AND created_at >= ${dayAgo}
     `);
 
-    const granted = Number((result.rows[0] as { count: string } | undefined)?.count ?? 0);
+    const rawCount = (result.rows[0] as { count?: unknown } | undefined)?.count;
+    let granted: number;
+    try {
+      granted = parseGrantCount(rawCount);
+    } catch (error) {
+      // Fail closed: an unreadable anti-sybil count must NOT grant the bonus.
+      // (The old `Number(count ?? 0)` -> NaN, and `NaN >= cap` === false, which
+      // silently granted — an unbounded free-credit faucet on a corrupt read.)
+      logger.warn(
+        "[SignupGrantGuard] Per-IP free-grant count unreadable; withholding welcome bonus (fail-closed)",
+        {
+          ip: maskIp(ip),
+          rawCount,
+          cap,
+          windowHours,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+      return {
+        granted: false,
+        withheldReason: "count_unavailable",
+        withheldMessage: "Welcome credit unavailable right now. Add funds to start an agent.",
+        cap,
+        windowHours,
+      };
+    }
+
     if (granted >= cap) {
       logger.warn(
         "[SignupGrantGuard] Per-IP daily free-grant cap reached; withholding welcome bonus",

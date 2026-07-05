@@ -1,6 +1,6 @@
 /**
  * /dashboard/apps/:id — single Application detail (8 tabs). The app shell owns
- * the document head; auth gating uses `useRequireAuth()`.
+ * the document head; auth gating uses `useSessionAuth()`.
  */
 
 import { useEffect, useState } from "react";
@@ -16,7 +16,7 @@ import {
   DashboardLoadingState,
 } from "../../cloud-ui/components/dashboard/route-placeholders";
 import { DashboardPageContainer } from "../../cloud-ui/components/layout";
-import { useRequireAuth } from "../lib/use-session-auth";
+import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AppDetailsTabs } from "./components/app-details-tabs";
 import { AppPageWrapper } from "./components/single-app-page-wrapper";
@@ -28,7 +28,7 @@ import { isValidUUID } from "./lib/utils";
 export default function ApplicationDetailPage() {
   const t = useCloudT();
   const { id } = useParams<{ id: string }>();
-  const session = useRequireAuth();
+  const session = useSessionAuth();
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();

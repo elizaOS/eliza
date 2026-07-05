@@ -69,8 +69,16 @@ export class AnalyticsService {
       usageRecordsRepository.getUsageTimeSeries(organizationId, options),
     );
 
-    const result =
-      data || (await usageRecordsRepository.getUsageTimeSeries(organizationId, options));
+    const rows = data || (await usageRecordsRepository.getUsageTimeSeries(organizationId, options));
+
+    // A cache hit hands back JSON-parsed rows whose `timestamp` is an ISO
+    // string — Date does not survive the Redis/KV round-trip. Restore the
+    // declared TimeSeriesDataPoint contract here so consumers (the
+    // analytics/breakdown + analytics/projections routes call
+    // `.toISOString()`/`.getTime()` on it) never 500 on a warm cache.
+    const result = rows.map((point) =>
+      point.timestamp instanceof Date ? point : { ...point, timestamp: new Date(point.timestamp) },
+    );
 
     if (options.maxRows && result.length > options.maxRows) {
       return result.slice(0, options.maxRows);
@@ -95,7 +103,15 @@ export class AnalyticsService {
       usageRecordsRepository.getUsageByUser(organizationId, options),
     );
 
-    const result = data || (await usageRecordsRepository.getUsageByUser(organizationId, options));
+    const rows = data || (await usageRecordsRepository.getUsageByUser(organizationId, options));
+
+    // Same cache round-trip erosion as getUsageTimeSeries: `lastActive` is a
+    // Date from the repository but an ISO string after a cache hit.
+    const result = rows.map((row) =>
+      row.lastActive === null || row.lastActive instanceof Date
+        ? row
+        : { ...row, lastActive: new Date(row.lastActive) },
+    );
 
     if (options?.maxRows && result.length > options.maxRows) {
       return result.slice(0, options.maxRows);

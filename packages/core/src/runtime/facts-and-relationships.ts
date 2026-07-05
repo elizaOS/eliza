@@ -124,6 +124,15 @@ export interface FactsAndRelationshipsRunResult {
 	messages: ChatMessage[];
 	tools: ToolDefinition[];
 	rawResponse?: unknown;
+	/**
+	 * The provider that actually served THIS facts/relationships TEXT_LARGE call,
+	 * captured synchronously right after the call resolved (before any other
+	 * TEXT_LARGE call can overwrite the runtime-wide last-resolved-provider).
+	 * Carried with the result so the trajectory stage recorder attributes the
+	 * facts stage to the real provider instead of a stale shared value or the
+	 * fabricated `"default"` literal (#13623).
+	 */
+	provider?: string;
 	written: { facts: number; relationships: number };
 }
 
@@ -210,6 +219,10 @@ export async function runFactsAndRelationshipsStage(
 		tools,
 		toolChoice: "required",
 	});
+	// Capture the provider that served THIS call immediately — reading it later
+	// (after the stage completes, in message.ts) could race a parallel/subsequent
+	// TEXT_LARGE call that overwrites the runtime-wide last-resolved value (#13623).
+	const provider = runtime.getLastResolvedModelProvider?.(ModelType.TEXT_LARGE);
 	const parsed = parseFactsAndRelationshipsOutput(raw);
 
 	const written = await persistFactsAndRelationships({
@@ -219,7 +232,7 @@ export async function runFactsAndRelationshipsStage(
 		parsed,
 	});
 
-	return { parsed, messages, tools, rawResponse: raw, written };
+	return { parsed, messages, tools, rawResponse: raw, provider, written };
 }
 
 interface BuildMessagesArgs {

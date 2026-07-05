@@ -8,6 +8,7 @@ import type {
   WalletExportRejection,
   WalletExportRequestBody,
 } from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/shared";
 
 export type { WalletExportRejection };
 
@@ -34,7 +35,7 @@ export function resolveWalletExportRejection(
     };
   }
 
-  const expected = process.env.ELIZA_WALLET_EXPORT_TOKEN?.trim();
+  const expected = readAliasedEnv("ELIZA_WALLET_EXPORT_TOKEN");
   if (!expected) {
     return {
       status: 403,

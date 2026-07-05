@@ -12,6 +12,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
 } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared";
 
 type RoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
 type TaskAgentAbility = "create" | "interact";
@@ -202,7 +203,7 @@ async function resolveSenderRole(
   runtime: IAgentRuntime,
   message: Memory,
 ): Promise<RoleCheckResult | null> {
-  if (process.env.ELIZA_SKIP_LOCAL_PLUGIN_ROLES !== "1") {
+  if (readAliasedEnv("ELIZA_SKIP_LOCAL_PLUGIN_ROLES") !== "1") {
     for (const candidate of LOCAL_ROLES_MODULE_CANDIDATES) {
       if (!fs.existsSync(candidate)) {
         continue;

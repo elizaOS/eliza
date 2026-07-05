@@ -71,7 +71,7 @@ env:
 jobs:
   smoke:
     name: ubuntu-22.04 fused-cpu
-    runs-on: ubuntu-22.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 120
     steps:
       - name: Checkout (with llama.cpp submodule)

@@ -105,6 +105,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function isDuplicateColumnError(error: unknown): boolean {
+  if (!isRecord(error)) return false;
+  if (error.code === "42701") return true;
+  const message =
+    typeof error.message === "string" ? error.message.toLowerCase() : "";
+  return (
+    message.includes("duplicate column") ||
+    /column .+ already exists/.test(message)
+  );
+}
+
 /** Boundary guard for documents loaded from disk/JSON. A document must carry a
  * task with an id plus the inline child arrays that existed before the
  * plan-revision rollout. `planRevisions` is filled below for older documents. */
@@ -282,6 +293,7 @@ function newTaskDocument(input: CreateTaskInput): OrchestratorTaskDocument {
     currentPlan: input.currentPlan,
     ownerUserId: input.ownerUserId,
     worldId: input.worldId,
+    projectId: input.projectId,
     roomId: input.roomId,
     taskRoomId: input.taskRoomId,
     parentTaskId: input.parentTaskId,
@@ -328,6 +340,8 @@ function matchesFilter(
   if (!filter.includeArchived && task.archived) return false;
   if (filter.status && filter.status !== "all" && task.status !== filter.status)
     return false;
+  const projectId = filter.projectId?.trim();
+  if (projectId && task.projectId !== projectId) return false;
   if (filter.search) {
     const needle = filter.search.trim().toLowerCase();
     if (needle && !searchText.includes(needle)) return false;
@@ -807,6 +821,7 @@ const TASK_TABLE_SQL = `CREATE TABLE IF NOT EXISTS orchestrator_tasks (
   archived INTEGER NOT NULL DEFAULT 0,
   priority TEXT,
   title TEXT,
+  project_id TEXT,
   search_text TEXT,
   updated_at TEXT NOT NULL,
   last_activity_at BIGINT NOT NULL,
@@ -816,6 +831,16 @@ const TASK_TABLE_SQL = `CREATE TABLE IF NOT EXISTS orchestrator_tasks (
 const TASK_INDEX_SQL = [
   "CREATE INDEX IF NOT EXISTS idx_orch_tasks_status ON orchestrator_tasks(status)",
   "CREATE INDEX IF NOT EXISTS idx_orch_tasks_activity ON orchestrator_tasks(last_activity_at)",
+  "CREATE INDEX IF NOT EXISTS idx_orch_tasks_project ON orchestrator_tasks(project_id)",
+];
+
+// Idempotent column backfill for tables created before `project_id` existed
+// (#13776). `CREATE TABLE IF NOT EXISTS` never alters an existing table, so an
+// upgraded runtime must ADD the column. No portable "IF NOT EXISTS" exists for
+// ADD COLUMN across sqlite + postgres/pglite, so ensureInitialized runs this
+// and treats an already-exists failure as a satisfied migration.
+const TASK_MIGRATION_SQL = [
+  "ALTER TABLE orchestrator_tasks ADD COLUMN project_id TEXT",
 ];
 
 /** SQL backend. Stores the whole document as a JSON column with indexed
@@ -848,6 +873,16 @@ export class RuntimeDbTaskStore {
     this.initPromise ??= (async () => {
       this.executor = await resolveSqlExecutor(this.adapter);
       await this.executor.run(TASK_TABLE_SQL);
+      for (const sql of TASK_MIGRATION_SQL) {
+        try {
+          await this.executor.run(sql);
+        } catch (err) {
+          // error-policy:J6 idempotent DDL — ADD COLUMN throws on a table that
+          // already has the column (every boot after the first); the desired
+          // post-state is identical, so a duplicate-column failure is success.
+          if (!isDuplicateColumnError(err)) throw err;
+        }
+      }
       for (const sql of TASK_INDEX_SQL) await this.executor.run(sql);
     })();
     await this.initPromise;
@@ -882,13 +917,14 @@ export class RuntimeDbTaskStore {
     // sqlite-only INSERT OR REPLACE form.
     await this.exec().run(
       `INSERT INTO orchestrator_tasks
-       (id, status, archived, priority, title, search_text, updated_at, last_activity_at, document)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (id, status, archived, priority, title, project_id, search_text, updated_at, last_activity_at, document)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET
          status = excluded.status,
          archived = excluded.archived,
          priority = excluded.priority,
          title = excluded.title,
+         project_id = excluded.project_id,
          search_text = excluded.search_text,
          updated_at = excluded.updated_at,
          last_activity_at = excluded.last_activity_at,
@@ -899,6 +935,7 @@ export class RuntimeDbTaskStore {
         doc.task.archived ? 1 : 0,
         doc.task.priority,
         doc.task.title,
+        doc.task.projectId ?? null,
         searchText,
         doc.task.updatedAt,
         doc.task.lastActivityAt,
@@ -939,6 +976,11 @@ export class RuntimeDbTaskStore {
     if (filter.status && filter.status !== "all") {
       clauses.push("status = ?");
       params.push(filter.status);
+    }
+    const projectId = filter.projectId?.trim();
+    if (projectId) {
+      clauses.push("project_id = ?");
+      params.push(projectId);
     }
     if (filter.search?.trim()) {
       clauses.push("search_text LIKE ?");

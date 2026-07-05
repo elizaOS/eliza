@@ -1,6 +1,9 @@
 /**
  * ElizaClient extension for the notification inbox: list, unread count, and
- * mark-read verbs backing the notification store.
+ * mark-read verbs backing the notification store, plus the device push-token
+ * register/unregister calls that hand an APNs/FCM token to the server so it can
+ * reach a backgrounded/killed device (`/api/notifications/push-tokens`). These
+ * are the only client trigger for the push-token routes — see push-registration.ts.
  */
 import type {
   AgentNotification,
@@ -20,6 +23,9 @@ export interface ListNotificationsOptions {
   limit?: number;
 }
 
+/** Remote-push transport a device token belongs to (matches the server enum). */
+export type PushTokenPlatform = "ios" | "android";
+
 declare module "./client-base" {
   interface ElizaClient {
     listNotifications(
@@ -36,6 +42,11 @@ declare module "./client-base" {
       count: number;
       notifications: AgentNotification[];
     }>;
+    registerPushToken(
+      platform: PushTokenPlatform,
+      token: string,
+    ): Promise<{ ok: boolean }>;
+    unregisterPushToken(token: string): Promise<{ ok: boolean }>;
   }
 }
 
@@ -97,6 +108,30 @@ ElizaClient.prototype.clearNotifications = async function (
   return this.fetch<{ ok: boolean }>("/api/notifications", {
     method: "DELETE",
   });
+};
+
+// Register (upsert) this device's remote-push token so the server can deliver
+// to it via APNs (ios) / FCM (android) while the app is backgrounded/killed.
+ElizaClient.prototype.registerPushToken = async function (
+  this: ElizaClient,
+  platform: PushTokenPlatform,
+  token: string,
+): Promise<{ ok: boolean }> {
+  return this.fetch<{ ok: boolean }>("/api/notifications/push-tokens", {
+    method: "POST",
+    body: JSON.stringify({ platform, token }),
+  });
+};
+
+// Drop this device's push token (e.g. on logout / permission revocation).
+ElizaClient.prototype.unregisterPushToken = async function (
+  this: ElizaClient,
+  token: string,
+): Promise<{ ok: boolean }> {
+  return this.fetch<{ ok: boolean }>(
+    `/api/notifications/push-tokens/${encodeURIComponent(token)}`,
+    { method: "DELETE" },
+  );
 };
 
 // Dev-only seed (the server 404s it in production builds): paints a demo

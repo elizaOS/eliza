@@ -173,6 +173,13 @@ function hasPlaywrightConfig(configName) {
   );
 }
 
+function hasPlaywrightProject(projectName) {
+  return playwrightArgs.some((value, index) => {
+    if (value === `--project=${projectName}`) return true;
+    return value === "--project" && playwrightArgs[index + 1] === projectName;
+  });
+}
+
 function appendNodeOption(value, option) {
   const options =
     typeof value === "string" && value.trim().length > 0
@@ -383,6 +390,19 @@ if (
     releaseLocks();
     process.exit(status);
   }
+}
+
+if (
+  hasPlaywrightConfig("playwright.ui-smoke.config.ts") &&
+  hasPlaywrightProject("audit-cloud") &&
+  env.VITE_PLAYWRIGHT_TEST_AUTH === "true" &&
+  env.ELIZA_UI_SMOKE_SKIP_BUILD !== "1"
+) {
+  const appDistDir = path.join(appDir, "dist");
+  console.log(
+    "[ui-smoke] Removing app dist before audit-cloud so VITE_PLAYWRIGHT_TEST_AUTH is baked into a fresh renderer build.",
+  );
+  removePathRecursive(appDistDir, "app dist for audit-cloud auth build");
 }
 
 // The ui-smoke web server builds the renderer (`packages/app build:web`) whenever

@@ -10,6 +10,15 @@ import type { KvNamespaceLike } from "../lib/cache/adapters/kv-cache-adapter";
 import type { RuntimeR2Bucket } from "../lib/storage/r2-runtime-binding";
 
 export interface Bindings {
+  // ---- Deployment environment ----
+  /**
+   * Wrangler environment name (`"production"` | `"staging"`); unset in local
+   * dev/tests. Drives environment-scoped behavior that must not collide across
+   * envs sharing the elizacloud.ai cookie zone — e.g. Steward auth cookie
+   * names (`lib/auth/steward-cookies.ts`) and cache key prefixes.
+   */
+  ENVIRONMENT?: string;
+
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
   DATABASE_URL_UNPOOLED?: string;

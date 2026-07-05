@@ -1,9 +1,0 @@
-03-11 04:31:30.000 18184 18205 I TestRunner: started: audioDevices_returnsRealAndroidInputsOrDefaultFallback(ai.eliza.plugins.swabble.SwabbleAndroidPlatformProbeInstrumentedTest)
-03-11 04:31:30.001 18184 18205 I GrantPermissionCallable: Permission: android.permission.RECORD_AUDIO is already granted!
-03-11 04:31:30.002 18184 18205 D AudioSystem: onNewService: media.audio_policy service obtained 0xb400007394c59040
-03-11 04:31:30.003 18184 18205 D AudioSystem: getService: IAudioPolicyService retrieved: 0xb400007394c59040  cached: 0xb400007394c59040
-03-11 04:31:30.003  1048  1893 D NativePermissionController: checkPermission: missing 13 for 10355
-03-11 04:31:30.003  1048  1893 D NativePermissionController: checkPermission: missing 13 for 10355
-03-11 04:31:30.007  1048  1893 D NativePermissionController: checkPermission: missing 13 for 10355
-03-11 04:31:30.007  1048  1893 D NativePermissionController: checkPermission: missing 13 for 10355
-03-11 04:31:30.018 18184 18205 I TestRunner: finished: audioDevices_returnsRealAndroidInputsOrDefaultFallback(ai.eliza.plugins.swabble.SwabbleAndroidPlatformProbeInstrumentedTest)

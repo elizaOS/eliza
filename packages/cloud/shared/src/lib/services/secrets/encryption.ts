@@ -226,6 +226,9 @@ export class SecretsEncryptionService {
     try {
       dek = await this.kms.decrypt(encryptedDek);
     } catch (error) {
+      // error-policy:J2 context-adding rethrow — tag the failing phase and
+      // preserve the underlying KMS error as `cause`; never swallow, a failed
+      // DEK unwrap must surface so the caller cannot read a secret as usable.
       throw new DecryptionError(
         "Failed to decrypt data encryption key — SECRETS_MASTER_KEY may have changed since this secret was stored",
         "dek_decryption",
@@ -243,6 +246,9 @@ export class SecretsEncryptionService {
       ]).toString("utf8");
       return result;
     } catch (error) {
+      // error-policy:J2 context-adding rethrow — GCM auth-tag/AAD verification
+      // failure is preserved as `cause`; a corrupt or relocated ciphertext must
+      // throw, never decode to a partial/empty string the caller trusts.
       throw new DecryptionError(
         "Failed to decrypt secret value — stored encryption data may be corrupted or AAD mismatch (row/column relocation)",
         "value_decryption",

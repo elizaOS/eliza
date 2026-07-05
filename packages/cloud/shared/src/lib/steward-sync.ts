@@ -367,6 +367,15 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
           logger.error("[StewardSync] Discord log failed:", { error });
         });
 
+      // Same personal default-key mint as the direct-signup branch below —
+      // without it an invited user cannot use inference until manually keyed.
+      // Awaited for the same Workers-cancellation reason (see the note above
+      // the branch-5 provisioning).
+      await apiKeysService.provisionDefaultApiKey(
+        userWithOrg.id,
+        userWithOrg.organization?.id || "",
+      );
+
       return userWithOrg;
     }
   }
@@ -702,10 +711,10 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   // cancelled once the response returns unless registered via
   // executionCtx.waitUntil, which this shared-lib function cannot reach — and a
   // cancelled create leaves the new user permanently without a default
-  // character/API key (this one-time new-user path is the only caller; later
-  // logins return at the existing-user branch). Both helpers are idempotent and
-  // swallow their own errors, so awaiting cannot fail the signup.
-  await ensureUserHasApiKey(userWithOrg.id, userWithOrg.organization?.id || "");
+  // character/API key (later logins return at the existing-user branch). Both
+  // default-key provisioning is required for signup to be usable; the default
+  // character helper keeps its own retry-on-next-session behavior.
+  await apiKeysService.provisionDefaultApiKey(userWithOrg.id, userWithOrg.organization?.id || "");
   await ensureDefaultCharacter(userWithOrg.id, userWithOrg.organization?.id || "");
 
   return {
@@ -717,46 +726,28 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
 }
 
 /**
- * Ensures a user has a default API key for programmatic access.
+ * Ensures an account has a default Eliza character, seeding one from the
+ * default template when the organization has none.
+ *
+ * Idempotent and never rejects. Called from two places: the one-time
+ * new-user signup branch above, and every session-cache miss
+ * (auth.ts getCurrentUserFromRequest). The second call site is the recovery
+ * path: a create that fails at signup is swallowed here (signup must not
+ * fail over provisioning), so without the session-time re-run the account
+ * would stay character-less forever — the default character is
+ * deterministically reconstructable, so re-seeding is always safe.
  */
-async function ensureUserHasApiKey(userId: string, organizationId: string): Promise<void> {
-  if (!userId?.trim() || !organizationId?.trim()) {
-    logger.warn("[StewardSync] Invalid userId or organizationId, skipping API key creation");
-    return;
-  }
-
-  try {
-    const existingKeys = await apiKeysService.listByOrganization(organizationId);
-    if (existingKeys.some((key) => key.user_id === userId)) {
-      return;
-    }
-
-    await apiKeysService.create({
-      user_id: userId,
-      organization_id: organizationId,
-      name: "Default API Key",
-      is_active: true,
-    });
-  } catch (error) {
-    logger.error("[StewardSync] Error creating API key", {
-      userId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
-
-/**
- * Ensures a new account starts with a default Eliza character.
- */
-async function ensureDefaultCharacter(userId: string, organizationId: string): Promise<void> {
+export async function ensureDefaultCharacter(
+  userId: string,
+  organizationId: string,
+): Promise<void> {
   if (!userId?.trim() || !organizationId?.trim()) {
     logger.warn("[StewardSync] Invalid userId or organizationId, skipping default character");
     return;
   }
 
   try {
-    const existing = await charactersService.listByOrganization(organizationId);
-    if (existing.length > 0) {
+    if (await charactersService.existsForOrganization(organizationId)) {
       return;
     }
 
@@ -769,8 +760,13 @@ async function ensureDefaultCharacter(userId: string, organizationId: string): P
 
     logger.info(`[StewardSync] Created default Eliza character for user ${userId}`);
   } catch (error) {
+    // error-policy:J1 provisioning boundary: a default-character failure
+    // must not fail signup or session resolution; it is logged here and
+    // deterministically retried by the next session-cache-miss re-run
+    // (auth.ts getCurrentUserFromRequest), which is where recovery lands.
     logger.error("[StewardSync] Error creating default character", {
       userId,
+      organizationId,
       error: error instanceof Error ? error.message : String(error),
     });
   }

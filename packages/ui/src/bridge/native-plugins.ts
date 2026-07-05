@@ -212,9 +212,52 @@ export interface PushNotificationPermissionStatus {
   receive: PushNotificationPermissionState;
 }
 
+/** The APNs (iOS) / FCM (android) device token carried by the `registration` event. */
+export interface PushRegistrationToken {
+  value: string;
+}
+
+/** The `registrationError` event payload. */
+export interface PushRegistrationError {
+  error: string;
+}
+
+/**
+ * A tapped push, delivered to the `pushNotificationActionPerformed` listener.
+ * `notification.data` carries the server's custom payload (deepLink, category,
+ * notificationId) so the app can route the tap and dedupe against the inbox.
+ */
+export interface PushActionPerformed {
+  actionId: string;
+  notification: { data?: Record<string, unknown> };
+}
+
+/**
+ * Structural view of `@capacitor/push-notifications`. `register()` triggers the
+ * OS to mint a remote token and fire `registration`; the listeners are the only
+ * way to capture that token and route taps. Optional because the plugin is
+ * absent on web/desktop bundles (the accessor returns `{}` there).
+ */
 export interface PushNotificationsPluginLike extends NativePlugin {
   checkPermissions?: () => Promise<PushNotificationPermissionStatus>;
   requestPermissions?: () => Promise<PushNotificationPermissionStatus>;
+  register?: () => Promise<void>;
+  unregister?: () => Promise<void>;
+  addListener?: {
+    (
+      eventName: "registration",
+      listenerFunc: (token: PushRegistrationToken) => void,
+    ): Promise<PluginListenerHandle>;
+    (
+      eventName: "registrationError",
+      listenerFunc: (error: PushRegistrationError) => void,
+    ): Promise<PluginListenerHandle>;
+    (
+      eventName: "pushNotificationActionPerformed",
+      listenerFunc: (action: PushActionPerformed) => void,
+    ): Promise<PluginListenerHandle>;
+  };
+  removeAllListeners?: () => Promise<void>;
 }
 
 export interface AgentPluginLike extends NativePlugin {

@@ -707,6 +707,41 @@ function summarizePtyEvent(
 		case "tool_running":
 			plaintext = `Running ${summarizeToolRunning(data)}`;
 			break;
+		case "message": {
+			// Streamed assistant text: surface the words, not the event name. The
+			// inline pipeline renders the full stream; this one-liner is the rail's
+			// compact echo, so an empty chunk is not worth a row.
+			const text = firstString(data, ["text", "content"]);
+			if (!text) return null;
+			plaintext = text;
+			break;
+		}
+		case "reasoning": {
+			const text = firstString(data, ["text", "content"]);
+			if (!text) return null;
+			plaintext = `Thinking: ${text}`;
+			break;
+		}
+		case "plan": {
+			// opencode/todowrite plan snapshot: show progress (done/total) rather
+			// than the raw entry list, which the inline checklist renders in full.
+			const entries = Array.isArray(data?.entries) ? data.entries : [];
+			if (entries.length === 0) return null;
+			const done = entries.filter(
+				(entry) => isRecord(entry) && readString(entry.status) === "completed",
+			).length;
+			plaintext = `Plan updated (${done}/${entries.length} done)`;
+			break;
+		}
+		case "ready":
+			plaintext = "Agent ready";
+			break;
+		case "login_required":
+			plaintext = "Login required";
+			break;
+		case "reconnected":
+			plaintext = "Agent reconnected";
+			break;
 		case "blocked":
 			plaintext = "Waiting for input";
 			break;

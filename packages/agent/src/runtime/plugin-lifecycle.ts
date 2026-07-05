@@ -33,6 +33,10 @@ import {
   unregisterPluginViews,
 } from "../api/views-registry.ts";
 import { applyPluginRoleGating } from "./plugin-role-gating.ts";
+import {
+  registerViewScopedActions,
+  unregisterViewScopedActions,
+} from "./view-scoped-actions.ts";
 import type { ToolCallCache } from "./tool-call-cache/index.ts";
 import {
   createToolCallCacheFromConfig,
@@ -712,8 +716,10 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
       applyPluginRoleGating([plugin]);
       await migratePluginSchemasIfReady(runtime, plugin);
       await registerPluginViews(plugin);
+      registerViewScopedActions(runtime, plugin.name, plugin.views ?? []);
     } catch (error) {
       unregisterPluginViews(plugin.name);
+      unregisterViewScopedActions(runtime, plugin.name);
       if (baseUnloadPlugin) {
         await baseUnloadPlugin(plugin.name);
       }
@@ -725,6 +731,7 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
     runtime.unloadPlugin = async (pluginName: string) => {
       const ownership = await baseUnloadPlugin(pluginName);
       unregisterPluginViews(pluginName);
+      unregisterViewScopedActions(runtime, pluginName);
       return ownership as RuntimePluginOwnership | null;
     };
   }
@@ -738,6 +745,9 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
       // fresh, un-wrapped provider.get functions).
       applyPluginRoleGating([plugin]);
       await registerPluginViews(plugin);
+      // registerViewScopedActions reconciles: it unregisters this plugin's
+      // previous scoped actions before registering the reloaded set.
+      registerViewScopedActions(runtime, plugin.name, plugin.views ?? []);
     };
   }
 }

@@ -1,3 +1,0 @@
-06-30 01:34:54.906 15145 15163 I TestRunner: started: elapsedBlockExpiresAndClearsDeviceState(ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest)
-06-30 01:34:54.907   549  2563 W InputManager-JNI: Input channel object 'ff4a5a6 ai.eliza.plugins.websiteblocker.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity (client)' was disposed without first being removed with the input manager!
-06-30 01:34:54.914 15145 15163 I TestRunner: finished: elapsedBlockExpiresAndClearsDeviceState(ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest)

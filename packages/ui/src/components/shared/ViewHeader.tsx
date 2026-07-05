@@ -35,10 +35,14 @@ export function navigateBackToLauncher(): void {
 
 /**
  * The shared view back button: an icon, nothing else. Deliberately chromeless —
- * no border, no shadow, and NO rest-state fill so it reads as a bare icon on
- * every surface (#13451: normal-view header back affordance is icon-only, with
- * no border/background at rest). A subtle neutral `bg-hover` chip only appears
- * on hover/focus for affordance, never in the resting state.
+ * no border, no shadow, no filled circle, and NO rest-state fill so it reads as
+ * a bare icon on every surface (#13451/#13586: the normal-view header back
+ * affordance is icon-only, with no border/background/circle at rest). Fixing
+ * the primitive fixes every consumer at once. A subtle neutral `bg-hover` chip
+ * (square-cornered `rounded-md`, NOT the old `rounded-full` disc) only appears
+ * on hover for affordance, never in the resting state. Focus styling is NOT
+ * sprinkled here: it is centralized in CSS (`--focus`) per the no-focus-ring
+ * gate, so this primitive carries no `focus`/`ring` utilities.
  */
 export function ViewBackButton({
   onBack,
@@ -66,7 +70,7 @@ export function ViewBackButton({
       onClick={handleBack}
       aria-label={label}
       className={cn(
-        "inline-flex h-9 w-9 items-center justify-center rounded-full bg-transparent text-txt transition-colors hover:bg-bg-hover focus-visible:bg-bg-hover",
+        "inline-flex h-9 w-9 items-center justify-center rounded-md bg-transparent text-txt transition-colors hover:bg-bg-hover",
         className,
       )}
       {...agentProps}
@@ -133,7 +137,11 @@ export function ViewHeader({
       <h1 className="pointer-events-none absolute inset-x-0 mx-auto max-w-[calc(100%-6rem)] truncate px-12 text-center text-lg font-semibold tracking-tight text-txt-strong">
         {title}
       </h1>
-      {right ? <div className="relative z-10">{right}</div> : <span aria-hidden />}
+      {right ? (
+        <div className="relative z-10">{right}</div>
+      ) : (
+        <span aria-hidden />
+      )}
     </header>
   );
 }

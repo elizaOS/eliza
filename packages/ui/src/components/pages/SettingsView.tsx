@@ -1,197 +1,47 @@
 /**
- * The Settings view (`/settings`): a sectioned settings surface that adapts
- * between a two-pane rail+detail layout on wide/landscape viewports and a
- * single-column hub on narrow ones. Section content is lazy-loaded and gated by
- * `isViewVisible`; `initialSection` deep-links a specific pane. Also reusable in
- * modal form (`inModal`).
+ * The Settings view (`/settings`): a sectioned settings surface with ONE
+ * uniform top bar in every layout (#13590). A shared `ViewHeader` (icon-only
+ * back, centered title) sits above a folded top-bar section nav
+ * (`SettingsSectionNav`) that replaces the old desktop `w-60` LEFT RAIL and the
+ * divergent mobile hub; one nav + one detail region for all form factors.
+ *
+ * - Hub (no section open): header title = "Settings", back → launcher; the
+ *   section nav lets the user pick a section.
+ * - Section open: header title = section label, back → hub; the nav keeps the
+ *   active section marked.
+ *
+ * Section content is lazy-loaded and gated by `isViewVisible`; `initialSection`
+ * deep-links a specific section. Also reusable in modal form (`inModal`).
  */
 import { isViewVisible } from "@elizaos/core";
-import type * as React from "react";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
-import { listExtraSettingsGroups } from "../../cloud/settings/cloud-settings-group";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
-import { cn } from "../../lib/utils";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { useAppSelectorShallow } from "../../state";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
+import { SettingsSectionNav } from "../settings/SettingsSectionNav";
 import {
-  SettingsGroup,
-  SettingsRow,
-  SettingsStack,
-} from "../settings/settings-layout";
-import {
+  type GroupedSettingsSections,
   getAllSettingsSections,
+  groupSettingsSections,
   readSettingsHashSection,
   replaceSettingsHash,
-  SECTION_TONE_ICON_CLASS,
-  SETTINGS_GROUP_LABEL,
-  SETTINGS_GROUP_ORDER,
   type SettingsSectionDef,
   settingsSectionLabel,
   settingsSectionTitle,
 } from "../settings/settings-sections";
-import { ViewHeader } from "../shared/ViewHeader";
+import { navigateBackToLauncher, ViewHeader } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 type Translate = (key: string, vars?: Record<string, unknown>) => string;
 
-type GroupedSections = {
-  group: string;
-  label: string;
-  items: SettingsSectionDef[];
-}[];
-
-function isCloudThemedSettingsSection(section: SettingsSectionDef): boolean {
-  // The id-prefix intentionally also covers cloud-owned panes registered under
-  // non-cloud groups (cloud-security / cloud-plugin-grants under "security",
-  // cloud-connectors under "agent"): their bodies hardcode light-on-dark
-  // styling (text-white, white/10 borders, bg-black/40) and need the dark
-  // theme-cloud island to stay readable.
-  return (
-    section.id.startsWith("cloud-") ||
-    section.group === "cloud" ||
-    section.group === "developer"
-  );
-}
-
-/**
- * Group sections for display. Built-in groups keep their pinned order + labels;
- * any extra group a section declares (e.g. the `cloud` group) is interleaved by
- * its registered order with a registered label. A section whose group is neither
- * built-in nor registered falls into an "Other" bucket so it is never dropped.
- */
-function groupSections(sections: SettingsSectionDef[]): GroupedSections {
-  const extra = listExtraSettingsGroups();
-  // Built-in groups order by their position in the pinned list (0,1,2). Extra
-  // groups slot between them by their declared order (e.g. cloud at 1.5 between
-  // System=1 and Security=2).
-  const orderOf = new Map<string, number>();
-  const labels = new Map<string, string>();
-  SETTINGS_GROUP_ORDER.forEach((group, index) => {
-    orderOf.set(group, index);
-    labels.set(group, SETTINGS_GROUP_LABEL[group]);
-  });
-  for (const group of extra) {
-    orderOf.set(group.id, group.order);
-    labels.set(group.id, group.label);
-  }
-
-  const buckets = new Map<string, SettingsSectionDef[]>();
-  for (const section of sections) {
-    const bucket = buckets.get(section.group);
-    if (bucket) bucket.push(section);
-    else buckets.set(section.group, [section]);
-  }
-
-  const FALLBACK_ORDER = Number.MAX_SAFE_INTEGER;
-  return [...buckets.entries()]
-    .map(([group, items]) => ({
-      group,
-      label: labels.get(group) ?? "Other",
-      items,
-      order: orderOf.get(group) ?? FALLBACK_ORDER,
-    }))
-    .filter((entry) => entry.items.length > 0)
-    .sort((a, b) => a.order - b.order)
-    .map(({ group, label, items }) => ({ group, label, items }));
-}
-
-/** Status chip shown on a nav row when cheap to derive. */
-function sectionChip(
-  section: SettingsSectionDef,
-  walletEnabled: boolean | undefined,
-): string | null {
-  if (section.id === "wallet-rpc") return walletEnabled ? "On" : null;
-  return null;
-}
-
-function Chip({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center text-[11px] font-medium text-accent">
-      {children}
-    </span>
-  );
-}
-
-/**
- * One navigation entry. Renders as a tappable list row on mobile and a compact
- * rail item on desktop, sharing a single agent-surface registration so the
- * agent can open any section by id from chat.
- */
-function SettingsNavItem({
-  section,
-  label,
-  chip,
-  active,
-  variant,
-  onSelect,
-}: {
-  section: SettingsSectionDef;
-  label: string;
-  chip: string | null;
-  active: boolean;
-  variant: "list" | "rail";
-  onSelect: (id: string) => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `section-${section.id}`,
-    role: "card",
-    label,
-    group: "settings-sections",
-    description: `Open the ${label} settings section`,
-    onActivate: () => onSelect(section.id),
-  });
-  const Icon = section.icon;
-
-  if (variant === "list") {
-    return (
-      <SettingsRow
-        icon={Icon}
-        iconClassName={SECTION_TONE_ICON_CLASS[section.tone]}
-        label={label}
-        onClick={() => onSelect(section.id)}
-        buttonRef={ref}
-        buttonProps={agentProps}
-        trailing={chip ? <Chip>{chip}</Chip> : undefined}
-        chevron={!chip}
-      />
-    );
-  }
-
-  return (
-    <Button
-      ref={ref}
-      variant="ghost"
-      size="sm"
-      onClick={() => onSelect(section.id)}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "h-auto w-full justify-start gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
-        active ? "font-medium text-accent" : "text-txt hover:bg-surface",
-      )}
-      {...agentProps}
-    >
-      <Icon
-        className={cn(
-          "h-4 w-4 shrink-0",
-          active ? "text-accent" : SECTION_TONE_ICON_CLASS[section.tone],
-        )}
-        aria-hidden
-      />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {chip ? <Chip>{chip}</Chip> : null}
-    </Button>
-  );
-}
-
 /**
  * Loading placeholder for a lazily-loaded section body (#11351). Deliberately
  * minimal — a single muted, `aria-busy` line so the split is visually quiet and
- * never shifts the section header or nav rail while the chunk resolves.
+ * never shifts the header while the chunk resolves.
  */
 function SettingsSectionLoading() {
   return (
@@ -202,78 +52,48 @@ function SettingsSectionLoading() {
   );
 }
 
-/** The active section's body: optional back, header (icon + title), content. */
+/**
+ * The active section's body. The uniform `ViewHeader` lives at the view root
+ * (not per-section), so this only renders the lazy section component behind a
+ * transparent Suspense + error boundary. One opaque token surface for the whole
+ * view — no per-section `theme-cloud bg-black` islands (#13452).
+ */
 function SettingsSectionContent({
   section,
   t,
-  onBack,
 }: {
   section: SettingsSectionDef;
   t: Translate;
-  onBack?: () => void;
 }) {
   const Component = section.Component;
-  const Icon = section.icon;
   const title = settingsSectionTitle(section, t);
-  const cloudThemed = isCloudThemedSettingsSection(section);
   return (
-    <div
-      id={section.id}
-      className={cn(
-        cloudThemed &&
-          "theme-cloud min-h-[calc(100dvh-8rem)] bg-black px-3 py-4 text-white sm:px-5 sm:py-5",
-      )}
-    >
-      {onBack ? (
-        /* Section → hub back uses the shared normal-view header (#13451):
-           icon-only, left-aligned back arrow with a centered section title,
-           replacing the old section-local text "Settings" button + separate
-           icon heading. The shell already owns horizontal padding, so the
-           header is flush with the section body. */
-        <ViewHeader
-          title={title}
-          onBack={onBack}
-          backLabel="Back to Settings"
-          className="mb-5 px-0"
-        />
-      ) : (
-        /* Desktop detail pane: the rail owns navigation, so there is no header
-           back control — keep the icon + title heading for the selected pane. */
-        <div className="mb-5 flex items-center gap-2.5">
-          <Icon className="h-5 w-5 shrink-0 text-muted/80" aria-hidden />
-          <h1 className="text-lg font-semibold tracking-tight text-txt-strong">
-            {title}
-          </h1>
-        </div>
-      )}
-      {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
-      <div className={section.bodyClassName}>
-        <ErrorBoundary
-          key={section.id}
-          fallback={(error, reset) => (
-            <SettingsSectionFallback
-              title={title}
-              error={error}
-              onRetry={reset}
-              t={t}
-            />
-          )}
-        >
-          {/* Section bodies are `React.lazy` (#11351); the boundary keeps the
-              split transparent with a minimal, unobtrusive loading state. */}
-          <Suspense fallback={<SettingsSectionLoading />}>
-            <Component />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
+    <div id={section.id} className={section.bodyClassName}>
+      <ErrorBoundary
+        key={section.id}
+        fallback={(error, reset) => (
+          <SettingsSectionFallback
+            title={title}
+            error={error}
+            onRetry={reset}
+            t={t}
+          />
+        )}
+      >
+        {/* Section bodies are `React.lazy` (#11351); the boundary keeps the
+            split transparent with a minimal, unobtrusive loading state. */}
+        <Suspense fallback={<SettingsSectionLoading />}>
+          <Component />
+        </Suspense>
+      </ErrorBoundary>
     </div>
   );
 }
 
 /**
  * Inline per-section error fallback. A section that throws on mount/render must
- * degrade to this card — never blank the whole shell — so the settings nav rail
- * and every other section stay interactive. Uses the settings `warn` token
+ * degrade to this card — never blank the whole shell — so the settings nav and
+ * every other section stay interactive. Uses the settings `warn` token
  * vocabulary for visual consistency with the rest of the surface.
  */
 function SettingsSectionFallback({
@@ -314,98 +134,47 @@ function SettingsSectionFallback({
   );
 }
 
-function MobileHub({
-  grouped,
-  t,
-  walletEnabled,
+/**
+ * A per-section agent-surface registration so the agent can open any section by
+ * id from chat (`section-<id>`), independent of which section is currently
+ * shown. Renders nothing — it only wires the surface element.
+ */
+function SettingsSectionSurfaceAnchor({
+  section,
+  label,
+  active,
   onSelect,
 }: {
-  grouped: GroupedSections;
-  t: Translate;
-  walletEnabled: boolean | undefined;
+  section: SettingsSectionDef;
+  label: string;
+  /** Whether this is the currently-shown section. */
+  active: boolean;
   onSelect: (id: string) => void;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `section-${section.id}`,
+    role: "button",
+    label,
+    group: "settings-sections",
+    description: `Open the ${label} settings section`,
+    onActivate: () => onSelect(section.id),
+  });
   return (
-    <div className="w-full pb-32">
-      {/* Top-level view header: centered "Settings" title with a launcher back
-          arrow on mobile (iOS-style nav bar). Only the single-column hub renders
-          it — the desktop split already owns its own "Settings" H1 in the rail,
-          and the per-section view keeps its own shared ViewHeader (section→hub). */}
-      <ViewHeader
-        title={t("nav.settings", { defaultValue: "Settings" })}
-        className="mb-2"
-      />
-      <SettingsStack>
-        {grouped.map(({ group, label, items }) => (
-          <SettingsGroup key={group} title={label}>
-            {items.map((section) => (
-              <SettingsNavItem
-                key={section.id}
-                section={section}
-                label={settingsSectionLabel(section, t)}
-                chip={sectionChip(section, walletEnabled)}
-                active={false}
-                variant="list"
-                onSelect={onSelect}
-              />
-            ))}
-          </SettingsGroup>
-        ))}
-      </SettingsStack>
-    </div>
-  );
-}
-
-function DesktopLayout({
-  grouped,
-  t,
-  walletEnabled,
-  activeId,
-  activeSection,
-  onSelect,
-}: {
-  grouped: GroupedSections;
-  t: Translate;
-  walletEnabled: boolean | undefined;
-  activeId: string | null;
-  activeSection: SettingsSectionDef | null;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <div className="flex w-full gap-7 pb-32">
-      <nav className="w-60 shrink-0" aria-label="Settings sections">
-        <div className="sticky top-2 space-y-5">
-          <h1 className="min-h-8 px-2.5 pl-12 text-lg font-semibold tracking-tight text-txt-strong">
-            {t("nav.settings", { defaultValue: "Settings" })}
-          </h1>
-          {grouped.map(({ group, label, items }) => (
-            <div key={group}>
-              <h2 className="mb-1 px-2.5 text-xs font-medium text-muted">
-                {label}
-              </h2>
-              <div className="space-y-0.5">
-                {items.map((section) => (
-                  <SettingsNavItem
-                    key={section.id}
-                    section={section}
-                    label={settingsSectionLabel(section, t)}
-                    chip={sectionChip(section, walletEnabled)}
-                    active={section.id === activeId}
-                    variant="rail"
-                    onSelect={onSelect}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </nav>
-      <div className="min-w-0 flex-1">
-        {activeSection ? (
-          <SettingsSectionContent section={activeSection} t={t} />
-        ) : null}
-      </div>
-    </div>
+    <button
+      ref={ref}
+      type="button"
+      aria-hidden
+      tabIndex={-1}
+      className="hidden"
+      onClick={() => onSelect(section.id)}
+      {...agentProps}
+      /* #13889/#13590: the agent-addressable anchor carries `data-agent-id`; the
+         "which section is current" signal must live on the SAME element so the
+         `[data-agent-id^="section-"][aria-current="page"]` contract (agent
+         surface + packaged regression lane) resolves. #13590's SectionNav
+         refactor split these apart. Set after the spread so it always wins. */
+      aria-current={active ? "page" : undefined}
+    />
   );
 }
 
@@ -422,17 +191,6 @@ export function SettingsView({
     loadPlugins: s.loadPlugins,
     walletEnabled: s.walletEnabled,
   }));
-  // The two-pane (rail + detail) layout needs real horizontal room. A plain
-  // `min-width: 1024px` check sends a landscape phone (≈900px wide, but with
-  // ample horizontal space) to the single-column hub, and can push a narrow
-  // portrait tablet into the cramped two-pane. Combine width with orientation:
-  // two-pane when the viewport is genuinely wide (≥1024, any orientation, e.g. a
-  // portrait desktop monitor) OR when it is landscape and at least tablet-wide.
-  const isWide = useMediaQuery("(min-width: 1024px)");
-  const isWideLandscape = useMediaQuery(
-    "(min-width: 768px) and (orientation: landscape)",
-  );
-  const isTwoPane = isWide || isWideLandscape;
   const enabledKinds = useEnabledViewKinds();
   const [activeSection, setActiveSection] = useState<string | null>(
     () => initialSection ?? readSettingsHashSection(),
@@ -450,8 +208,8 @@ export function SettingsView({
     () => new Set(visibleSections.map((section) => section.id)),
     [visibleSections],
   );
-  const grouped = useMemo(
-    () => groupSections(visibleSections),
+  const grouped: GroupedSettingsSections = useMemo(
+    () => groupSettingsSections(visibleSections),
     [visibleSections],
   );
 
@@ -496,41 +254,83 @@ export function SettingsView({
         null)
       : null;
 
-  // Desktop keeps a section selected in the detail pane; mobile shows the
-  // grouped list until a row is tapped.
-  const desktopSection = activeSectionDef ?? visibleSections[0] ?? null;
+  // Uniform top bar: a hub shows "Settings" with a launcher back; an open
+  // section shows its label with a back to the hub. One header, both states.
+  const headerTitle = activeSectionDef
+    ? settingsSectionTitle(activeSectionDef, t)
+    : t("nav.settings", { defaultValue: "Settings" });
+  const onBack = activeSectionDef ? backToHub : navigateBackToLauncher;
+  const backLabel = activeSectionDef ? "Back to Settings" : "Back to launcher";
 
   return (
     <ShellViewAgentSurface viewId="settings">
       <ContentLayout inModal={inModal} contentClassName="max-sm:pt-1">
-        <div data-testid="settings-shell">
-          {isTwoPane ? (
-            <DesktopLayout
-              grouped={grouped}
-              t={t}
-              walletEnabled={walletEnabled}
-              activeId={desktopSection?.id ?? null}
-              activeSection={desktopSection}
-              onSelect={openSection}
-            />
-          ) : activeSectionDef ? (
-            <div className="w-full pb-32 max-sm:pt-8">
-              <SettingsSectionContent
-                section={activeSectionDef}
-                t={t}
-                onBack={backToHub}
+        <div data-testid="settings-shell" className="flex w-full flex-col">
+          <ViewHeader
+            title={headerTitle}
+            onBack={onBack}
+            backLabel={backLabel}
+            className="px-0"
+          />
+          {/* The folded top-bar section nav (was the desktop `w-60` rail).
+              One strip, grouped by Agent/System/Security/Cloud, for every form
+              factor — it self-scrolls on narrow viewports. */}
+          <SettingsSectionNav
+            grouped={grouped}
+            activeId={activeSectionDef?.id ?? null}
+            onSelect={openSection}
+            label={(labelKey, fallback) =>
+              t(labelKey, { defaultValue: fallback })
+            }
+            className="mb-4 border-b border-border/45 px-0"
+          />
+          {/* Agent-surface anchors: the agent addresses every section by
+              `section-<id>` regardless of which one is shown. */}
+          <div className="hidden">
+            {visibleSections.map((section) => (
+              <SettingsSectionSurfaceAnchor
+                key={section.id}
+                section={section}
+                label={settingsSectionLabel(section, t)}
+                active={section.id === activeSection}
+                onSelect={openSection}
               />
-            </div>
-          ) : (
-            <MobileHub
-              grouped={grouped}
-              t={t}
-              walletEnabled={walletEnabled}
-              onSelect={openSection}
-            />
-          )}
+            ))}
+          </div>
+          <div className="min-w-0 flex-1 pb-32">
+            {activeSectionDef ? (
+              <SettingsSectionContent section={activeSectionDef} t={t} />
+            ) : (
+              <SettingsHubEmptyState t={t} />
+            )}
+          </div>
         </div>
       </ContentLayout>
     </ShellViewAgentSurface>
+  );
+}
+
+/**
+ * The hub's resting state (no section chosen). The doctrine drops the old
+ * grouped list — the top-bar section nav IS the picker now — so the body
+ * teaches the interface rather than restating the nav: a quiet prompt to choose
+ * a section above. Deterministic empty state per the design system.
+ */
+function SettingsHubEmptyState({ t }: { t: Translate }) {
+  return (
+    <div
+      data-testid="settings-hub-empty"
+      className="flex min-h-[12rem] flex-col items-start justify-center gap-1"
+    >
+      <p className="text-sm font-medium text-txt-strong">
+        {t("settings.hubEmptyTitle", { defaultValue: "Choose a setting" })}
+      </p>
+      <p className="max-w-prose text-sm text-muted">
+        {t("settings.hubEmptyBody", {
+          defaultValue:
+            "Pick a section from the bar above to configure your agent, system, or security.",
+        })}
+      </p>
+    </div>
   );
 }

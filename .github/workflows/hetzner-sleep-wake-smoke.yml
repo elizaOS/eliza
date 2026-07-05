@@ -23,7 +23,7 @@ permissions:
 jobs:
   sleep-wake:
     name: provision -> sleep(backup+destroy) -> wake(reprovision+restore)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     environment: ci-hetzner-e2e
     timeout-minutes: 30
     env:

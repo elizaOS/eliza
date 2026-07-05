@@ -10,6 +10,7 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
+import { resolveDesktopApiPort } from "@elizaos/shared";
 import {
 	XR_SERVICE_TYPE,
 	type XRSessionService,
@@ -24,12 +25,11 @@ function firstConnectionId(svc: XRSessionService): string | null {
 }
 
 function agentBaseUrl(): string {
-	// The API port is orchestrator-assigned, so view URLs read it from env.
-	const port =
-		process.env.ELIZA_API_PORT?.trim() ||
-		process.env.ELIZA_PORT?.trim() ||
-		"31337";
-	return process.env.XR_AGENT_URL ?? `http://localhost:${port}`;
+	// The API port is orchestrator-assigned, so view URLs read it from env
+	// (alias-aware: a branded <PREFIX>_API_PORT / _PORT resolves too).
+	return (
+		process.env.XR_AGENT_URL ?? `http://localhost:${resolveDesktopApiPort()}`
+	);
 }
 
 /** Read a structured action param (planner-emitted `options.parameters`, with a

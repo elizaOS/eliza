@@ -1,2 +1,0 @@
-$ javac -cp android.jar UdsCheck.java  (new ElizaAgentService UDS client)
-OK: compiled clean (exit 0)

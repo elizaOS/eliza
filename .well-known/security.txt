@@ -1,0 +1,5 @@
+Contact: mailto:security@elizaos.ai
+Policy: https://github.com/elizaOS/eliza/security/policy
+Preferred-Languages: en
+Canonical: https://elizaos.ai/.well-known/security.txt
+Expires: 2027-07-04T00:00:00Z

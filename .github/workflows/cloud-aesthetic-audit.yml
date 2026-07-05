@@ -1,0 +1,92 @@
+name: Cloud Aesthetic Audit
+
+# Walk EVERY registered Eliza Cloud route (dashboard, payment, auth, admin, …) at
+# desktop + mobile against the deterministic keyless stub stack with the
+# test-auth shell baked into the renderer, capture rest + hover screenshots, run
+# the blank/one-color analyzer + brand-color (no-blue / orange-hover) checks, and
+# write per-view verdicts + a contact sheet + report.json.
+#
+# This is the cloud-surface twin of `app-aesthetic-audit.yml`. Until it existed
+# `audit:cloud` ran in NO CI lane and was a pure reporter — a `broken`/`needs-work`
+# cloud page failed nothing, and a turbo-cached renderer built WITHOUT the
+# test-auth shell made the whole suite skip green with ZERO pages walked (#13624,
+# the same class #9304 fixed for audit:app).
+#
+# Under `ELIZA_AUDIT_CLOUD_STRICT=1` (+ CI auto-on) the audit is a GATE: an
+# undebted `broken` view fails; a missing auth shell or an empty walk is a HARD
+# FAILURE, not a skip. A CLEAN renderer rebuild with VITE_PLAYWRIGHT_TEST_AUTH
+# baked in guarantees the shell is present regardless of the turbo cache.
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/app/**"
+      - "packages/ui/**"
+      - "packages/shared/**"
+      - "packages/cloud/**"
+      - ".github/workflows/cloud-aesthetic-audit.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: cloud-aesthetic-audit-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+
+jobs:
+  cloud-aesthetic-audit:
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 45
+    env:
+      # Keyless: the ui-smoke stub is forced when CI=true (shouldForceStubStack).
+      ELIZA_UI_SMOKE_FORCE_STUB: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      # Force a clean renderer build with the test-auth shell baked in. A stale
+      # dist (built without VITE_PLAYWRIGHT_TEST_AUTH) is the exact #13624 hole —
+      # remove it so the audit cannot walk a shell-less bundle.
+      - name: Clean renderer dist
+        run: rm -rf packages/app/dist
+
+      - name: Run cloud aesthetic audit (strict)
+        # audit:cloud sets VITE_PLAYWRIGHT_TEST_AUTH=true, so the build:web it
+        # triggers bakes the shell. ELIZA_AUDIT_CLOUD_STRICT=1 turns the reporter
+        # into a gate: undebted `broken` fails, missing shell / empty walk fails.
+        env:
+          ELIZA_AUDIT_CLOUD_STRICT: "1"
+        run: bun run --cwd packages/app audit:cloud
+
+      - name: Upload cloud aesthetic-audit artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cloud-aesthetic-audit-output
+          path: packages/app/aesthetic-audit-output-cloud
+          retention-days: 14
+          if-no-files-found: ignore

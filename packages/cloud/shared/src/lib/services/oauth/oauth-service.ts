@@ -251,10 +251,13 @@ class OAuthService {
           .where(eq(platformCredentials.organization_id, organizationId));
         connections.push(...credentials.map(connectionFromPlatformCredential));
       } catch (error) {
-        logger.warn("[OAuthService] Platform credential query failed", {
-          organizationId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        // error-policy:J2 fail closed — swallowing this read returns a partial/empty
+        // list that reads as "not connected", so a connected user is told to reconnect
+        // and callers re-prompt OAuth. Rethrow with tenant context instead.
+        throw new Error(
+          `[OAuthService] Failed to load platform credentials for organization ${organizationId}`,
+          { cause: error },
+        );
       }
     }
 
@@ -265,13 +268,15 @@ class OAuthService {
         );
 
     for (const adapter of adapters) {
+      // error-policy:J2 fail closed — dropping a failed adapter yields a partial list
+      // that reads as "not connected"; rethrow with platform context so the failure surfaces.
       try {
         connections.push(...(await adapter!.listConnections(organizationId)));
       } catch (error) {
-        logger.warn("[OAuthService] Adapter query failed", {
-          platform: adapter?.platform,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        throw new Error(
+          `[OAuthService] Failed to list connections for platform ${adapter?.platform}`,
+          { cause: error },
+        );
       }
     }
 

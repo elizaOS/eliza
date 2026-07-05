@@ -24,6 +24,7 @@ import {
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { apiWithStatus } from "../../lib/api-client";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import { useJobPoller } from "../lib/use-job-poller";
@@ -103,7 +104,7 @@ export function ElizaAgentActions({
     setLoading(action);
     try {
       let url = `/api/v1/eliza/agents/${agentId}`;
-      let body: string | undefined;
+      let json: unknown;
 
       if (action === "resume") {
         url = `/api/v1/eliza/agents/${agentId}/resume`;
@@ -119,22 +120,22 @@ export function ElizaAgentActions({
         method = "DELETE";
       } else if (action === "shutdown" || action === "suspend") {
         method = "PATCH";
-        body = JSON.stringify({ action: "suspend" });
+        json = { action: "suspend" };
       }
 
-      const res = await fetch(url, {
-        method,
-        headers: body ? { "Content-Type": "application/json" } : undefined,
-        body,
-      });
+      const { status: httpStatus, data } = await apiWithStatus<{
+        data?: { jobId?: string };
+        error?: string;
+      }>(url, { method, json });
+      const jobId = data?.data?.jobId;
 
-      const data = await res.json().catch(() => ({}));
-      const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
-
-      // 409 + jobId — operation already in flight, attach to the existing job.
-      if (res.status === 409 && jobId) {
-        jobActionById.current.set(jobId, action);
-        poller.track(agentId, jobId);
+      // 409 — operation already in flight; attach to the existing job when the
+      // backend returned one. Informational, not an error.
+      if (httpStatus === 409) {
+        if (jobId) {
+          jobActionById.current.set(jobId, action);
+          poller.track(agentId, jobId);
+        }
         toast.info(
           t("cloud.containers.agentActions.actionAlreadyInProgress", {
             defaultValue: "{action} already in progress",
@@ -144,14 +145,12 @@ export function ElizaAgentActions({
         return;
       }
 
-      if (!res.ok) {
-        throw new Error(
-          (data as { error?: string }).error ?? `HTTP ${res.status}`,
-        );
+      if (httpStatus < 200 || httpStatus >= 300) {
+        throw new Error(data?.error ?? `HTTP ${httpStatus}`);
       }
 
       // 202 + jobId — the backend enqueued a job; track it.
-      if (res.status === 202 && jobId) {
+      if (httpStatus === 202 && jobId) {
         jobActionById.current.set(jobId, action);
         poller.track(agentId, jobId);
         const queuedMessages: Record<string, string> = {

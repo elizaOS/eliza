@@ -64,7 +64,7 @@ permissions:
 jobs:
   determine-env:
     name: Determine environment
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       branch: ${{ steps.env.outputs.branch }}
@@ -85,7 +85,7 @@ jobs:
 
   deploy:
     name: Deploy apps worker to apps-control host (${{ needs.determine-env.outputs.environment }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     needs: determine-env
     environment: ${{ needs.determine-env.outputs.environment }}
     timeout-minutes: 15

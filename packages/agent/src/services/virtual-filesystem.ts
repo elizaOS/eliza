@@ -6,6 +6,11 @@
  * sandbox: project-id sanitization, per-path traversal rejection, symlink denial
  * on every access, a per-file byte cap, and a total-project quota. Backs the VFS
  * builtin shell and git services and the workbench routes.
+ *
+ * The `projectId` here is a workbench-sandbox namespace, deliberately SEPARATE
+ * from the Project entity in the core project registry (`project-registry.ts`,
+ * #13776): that one binds a task to a real local repo path, this one names an
+ * isolated scratch tree. They are not reconciled and must not be conflated.
  */
 import crypto from "node:crypto";
 import fsp from "node:fs/promises";

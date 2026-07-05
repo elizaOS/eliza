@@ -1,8 +1,0 @@
-[kokoro-profile] predictor forward               24188.1 ms
-[kokoro-profile] decoder front                   16288.3 ms
-[kokoro-profile]   gen: source+stft                 66.1 ms
-[kokoro-profile] generator (iSTFTNet)           261219.8 ms
-[kokoro-profile] decoder forward                277509.0 ms
-[kokoro-profile] synthesize total               301697.1 ms
-kokoro-tts: wrote /Users/shawwalters/eliza-workspace/eliza/eliza/.github/issue-evidence/kokoro-metal-perf/before.wav (samples=112800, rate=24000, peak=0.4212)
-      302.06 real       234.40 user         1.02 sys

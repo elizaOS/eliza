@@ -38,7 +38,6 @@
     "test:fused-wake-integration-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-fused-wake-integration-e2e.mjs",
     "test:chat-sheet-frame-glitch-e2e": "node src/components/shell/__e2e__/run-chat-sheet-frame-glitch-e2e.mjs",
     "test:chatux-gesture-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chatux-gesture-e2e.mjs",
-    "test:conversation-swipe-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-conversation-swipe-e2e.mjs",
     "test:chat-perf-gate": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-perf-gate.mjs",
     "test:perf-gate-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-perf-gate-e2e.mjs",
     "test:home-screen-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-home-screen-e2e.mjs",
@@ -48,6 +47,7 @@
     "test:permission-priming-e2e": "bun run --cwd ../.. packages/ui/src/components/permissions/__e2e__/run-permission-priming-e2e.mjs",
     "test:immersive-e2e": "bun run --cwd ../.. packages/ui/src/spatial/__e2e__/run-immersive-e2e.mjs",
     "test:chat-ambient-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-ambient-e2e.mjs",
+    "test:activity-feedback-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/__e2e__/run-activity-feedback-e2e.mjs",
     "test:view-parity": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts registered-view-parity",
     "test:view-screens": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./stories/view-screens-tui.config.ts && bunx playwright test --config ./stories/registered-views/registered-views.config.ts && bun stories/registered-views/build-index.mjs",
     "test:xr-sim": "bunx playwright test --config ./stories/xr/xr-sim.config.ts",
@@ -76,7 +76,8 @@
     "audit:stories:play:update-baseline": "node test/story-gate/play-coverage-gate.mjs --update-baseline",
     "build:dist:unlocked": "bun run clean && node ../scripts/ensure-tsc-nested-output-dir.mjs packages/ui && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/ui && node ../scripts/copy-package-assets.mjs packages/ui src/styles src/cloud-ui/index.css && node ../scripts/prepare-package-dist.mjs packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui && node ../scripts/verify-package-runtime-exports.mjs packages/ui",
     "test:orchestrator-accounts-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-orchestrator-accounts-e2e.mjs",
-    "test:ftu-home-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-ftu-home-e2e.mjs"
+    "test:ftu-home-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-ftu-home-e2e.mjs",
+    "test:task-pipeline-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-task-pipeline-e2e.mjs"
   },
   "exports": {
     ".": {

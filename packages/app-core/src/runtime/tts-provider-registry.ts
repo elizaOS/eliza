@@ -8,11 +8,11 @@
  * load); this module also exposes the config/env disable check for the resolved
  * provider.
  */
-import process from "node:process";
 import type { AgentRuntime } from "@elizaos/core";
 import firstPartyRegistry from "@elizaos/registry/first-party/generated.json" with {
   type: "json",
 };
+import { readAliasedEnv } from "@elizaos/shared";
 import {
   type EdgeTtsHandler,
   wrapEdgeTtsHandlerWithFirstLineCache,
@@ -124,11 +124,11 @@ export function isTextToSpeechProviderDisabled(
     return true;
   }
 
-  const raw = process.env ? process.env.ELIZA_DISABLE_EDGE_TTS : undefined;
-  if (!raw || typeof raw !== "string") {
+  const raw = readAliasedEnv("ELIZA_DISABLE_EDGE_TTS");
+  if (!raw) {
     return false;
   }
 
-  const normalized = raw.trim().toLowerCase();
+  const normalized = raw.toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }

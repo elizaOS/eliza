@@ -1,9 +1,0 @@
-eliza-scenarios list --count-scenarios (measured live this run)
-dir                                                 existing(base)  total(expanded)  multiplier
-packages/test/scenarios                             707             7777             ~10x
-plugins/plugin-personal-assistant/test/scenarios    197             2167             ~10x
-plugins/plugin-app-control/test/scenarios           15              165              ~10x
-plugins/plugin-health/test/scenarios                8               88               ~10x
-plugins/plugin-cloud-apps/test/scenarios            1               11               ~10x
-plugins/plugin-agent-orchestrator/test/scenarios    8               88               ~10x (multiplierAdded=10)
-packages/scenario-runner/test/scenarios             42(files)       ~420(est)        ~10x (est; not expand-counted)

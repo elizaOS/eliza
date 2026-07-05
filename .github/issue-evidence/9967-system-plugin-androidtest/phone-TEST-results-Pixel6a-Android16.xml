@@ -1,9 +1,0 @@
-<?xml version='1.0' encoding='UTF-8' ?>
-<testsuite name="ai.eliza.plugins.phone.PhoneStatusReaderInstrumentedTest" tests="1" failures="0" errors="0" skipped="0" time="0.624" timestamp="2026-06-30T07:13:42" hostname="localhost">
-  <properties>
-    <property name="device" value="Pixel 6a - 16" />
-    <property name="flavor" value="" />
-    <property name="project" value=":elizaos-capacitor-phone" />
-  </properties>
-  <testcase name="readStatus_returnsRealDialerState" classname="ai.eliza.plugins.phone.PhoneStatusReaderInstrumentedTest" time="0.028" />
-</testsuite>

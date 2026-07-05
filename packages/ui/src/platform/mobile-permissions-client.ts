@@ -49,6 +49,7 @@ import {
   type TalkModePermissionStatus,
   type TalkModePluginLike,
 } from "../bridge/native-plugins";
+import { initPushRegistration } from "../state/notifications/push-registration";
 import { platform } from "./init";
 
 type MobilePermissionId = Extract<
@@ -513,6 +514,7 @@ export function createMobileSignalsPermissionsRegistry(
   appleCalendarPlugin: AppleCalendarPluginLike = getAppleCalendarPlugin(),
   pushNotificationsPlugin: PushNotificationsPluginLike = getPushNotificationsPlugin(),
   nativePlugins: NativePermissionPlugins = {},
+  initPushRegistrationAfterGrant: () => Promise<void> = initPushRegistration,
 ): IPermissionsRegistry {
   const states = new Map<PermissionId, PermissionState>();
   const subscribers = new Set<(state: PermissionState[]) => void>();
@@ -883,6 +885,9 @@ export function createMobileSignalsPermissionsRegistry(
       }
 
       const next = requestedState ?? (await checkMobilePermission(id));
+      if (id === "notifications" && next.status === "granted") {
+        await initPushRegistrationAfterGrant();
+      }
       return commit({
         ...next,
         lastRequested,

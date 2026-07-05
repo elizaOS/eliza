@@ -1,7 +1,0 @@
-$ bun run src/cli/train.ts --backend native --optimizer gepa --task view_context --dataset "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/s3-gepa/smoke-dataset-view_context.jsonl" --baseline "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/vc-baseline.txt"
-[train] adapter: cerebras (TRAIN_MODEL_PROVIDER=cerebras, default gemma-4-31b)
-[train] optimizer=gepa dataset=smoke-dataset-view_context.jsonl size=12 baseline=0.000 optimized=1.000
-[train] split train=11 holdout=1 (fraction=0.2)
-[train] native gepa task=view_context dataset=12 baseline=0.000 optimized=1.000
- Info       [SERVICE:OPTIMIZED_PROMPT] Persisted optimized prompt artifact (task=view_context, optimizer=gepa, score=1, baselineScore=0, path=/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/s3-gepa/sweep/proof/state-vc/optimized-prompts/view_context/v1.json, version=1)
-[train] artifact: /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/s3-gepa/sweep/proof/state-vc/optimized-prompts/view_context/v1.json

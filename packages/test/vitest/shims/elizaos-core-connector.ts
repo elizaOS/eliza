@@ -12,6 +12,11 @@ export {
   readRequestBodyBuffer,
   writeJsonError,
 } from "../../../core/src/api/http-helpers.ts";
+// Real (unstubbed) alias-aware env reader. Plugins migrated off raw
+// `process.env.<ALIAS_KEY>` reads (#13422) call this so a white-label
+// `<PREFIX>_*` var resolves; keep the genuine resolver so the branded-prefix
+// resolution is exercised, not stubbed.
+export { resolveAliasedEnvValue } from "../../../core/src/boot-env.ts";
 export {
   CONNECTOR_ACCOUNT_SERVICE_TYPE,
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,

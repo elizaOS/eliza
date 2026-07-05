@@ -35,16 +35,34 @@ export interface ConversationMessagesValue {
    * into the SAME transcript the floating chat renders. Stable identity.
    */
   setConversationMessages: Dispatch<SetStateAction<ConversationMessage[]>>;
+  /**
+   * Prepend an older page in front of the transcript for infinite upward
+   * scroll (#13532). Dedupes by id and caps the retained count; stable identity.
+   */
+  prependConversationMessages?: (older: ConversationMessage[]) => void;
 }
+
+export interface UseConversationMessagesValue
+  extends ConversationMessagesValue {
+  prependConversationMessages: (older: ConversationMessage[]) => void;
+}
+
+const noopPrependConversationMessages = () => {};
 
 export const ConversationMessagesCtx = createContext<ConversationMessagesValue>(
   {
     conversationMessages: [],
     removeConversationMessage: () => {},
     setConversationMessages: () => {},
+    prependConversationMessages: noopPrependConversationMessages,
   },
 );
 
-export function useConversationMessages(): ConversationMessagesValue {
-  return useContext(ConversationMessagesCtx);
+export function useConversationMessages(): UseConversationMessagesValue {
+  const value = useContext(ConversationMessagesCtx);
+  return {
+    ...value,
+    prependConversationMessages:
+      value.prependConversationMessages ?? noopPrependConversationMessages,
+  };
 }

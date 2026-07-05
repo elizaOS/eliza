@@ -7,10 +7,10 @@
  * map, and NEVER touches the globalThis bridges (those are single-tenant
  * self-host plumbing).
  *
- * The AccountPool class is loaded lazily from @elizaos/app-core/account-pool
- * and every public method is strict-fallback: any failure (module load, DB,
- * decrypt) returns null / no-ops so callers keep today's platform-env
- * behavior. Pooled keys are an additive layer, never a new failure mode.
+ * The pool implementation is local to cloud-shared and every public method is
+ * strict-fallback: any failure (DB, decrypt, provider probe) returns null /
+ * no-ops so callers keep today's platform-env behavior. Pooled keys are an
+ * additive layer, never a new failure mode.
  *
  * Keep-alive: a low-frequency sweep over ACTIVE orgs (orgs currently in the
  * registry) that (a) re-probes flagged credentials whose cool-off has passed
@@ -23,10 +23,11 @@
  * rate-limits at selection time and every acquire refreshes from the DB.
  */
 
-import type { AccountPool, Strategy } from "@elizaos/app-core/account-pool";
 import { pooledCredentialsRepository } from "../../../db/repositories/pooled-credentials";
 import { logger } from "../../utils/logger";
 import { secretsService } from "../secrets/secrets";
+import { TeamCredentialAccountPool } from "./account-pool";
+import type { AccountPool, Strategy } from "./account-pool-contract";
 import { DrizzleAccountPoolDeps } from "./pool-deps";
 import { probePooledApiKey } from "./probe";
 import {
@@ -92,10 +93,9 @@ export class TeamPoolRegistry {
     try {
       let entry = this.pools.get(organizationId);
       if (!entry) {
-        const { AccountPool: AccountPoolClass } = await import("@elizaos/app-core/account-pool");
         const deps = new DrizzleAccountPoolDeps(organizationId);
         entry = {
-          pool: new AccountPoolClass(deps),
+          pool: new TeamCredentialAccountPool(deps),
           deps,
           lastAccessAt: Date.now(),
         };
@@ -116,6 +116,8 @@ export class TeamPoolRegistry {
         organizationId,
         error: err instanceof Error ? err.message : String(err),
       });
+      // error-policy:J4 pooled credentials are an additive unavailable state;
+      // callers continue with platform-level environment credentials.
       return null;
     }
   }
@@ -156,6 +158,8 @@ export class TeamPoolRegistry {
         providerId: params.providerId,
         error: err instanceof Error ? err.message : String(err),
       });
+      // error-policy:J4 failed pooled selection degrades to the designed
+      // "no pooled credential" path, not a fabricated credential.
       return null;
     }
   }
@@ -190,6 +194,8 @@ export class TeamPoolRegistry {
         credentialId: params.credentialId,
         error: err instanceof Error ? err.message : String(err),
       });
+      // error-policy:J7 usage attribution diagnostics must not block the
+      // provider response path; the warning carries the failed write context.
     }
   }
 
@@ -227,6 +233,8 @@ export class TeamPoolRegistry {
         status: params.status,
         error: err instanceof Error ? err.message : String(err),
       });
+      // error-policy:J7 writeback is diagnostic health feedback; the provider
+      // failure remains observable to the caller that triggered it.
     }
   }
 
@@ -251,6 +259,8 @@ export class TeamPoolRegistry {
     } catch {
       // Global timers are unavailable in some runtimes (Cloudflare Workers) —
       // selection-time re-admission + per-acquire refresh cover healing there.
+      // error-policy:J6 timer setup is best-effort teardown/maintenance
+      // plumbing and is explicitly unsupported in edge runtimes.
       this.keepAlive = null;
     }
   }
@@ -310,6 +320,8 @@ export class TeamPoolRegistry {
           organizationId,
           error: err instanceof Error ? err.message : String(err),
         });
+        // error-policy:J7 keep-alive probes are diagnostics/health maintenance;
+        // per-request selection still refreshes snapshots before use.
       }
     }
   }

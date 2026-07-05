@@ -84,9 +84,9 @@ export function CredentialsList({
 
   if (credentials.length === 0) {
     return (
-      <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-8 text-center">
-        <KeyRound className="h-12 w-12 mx-auto text-white/40 mb-4" />
-        <p className="text-sm font-mono text-white/60">
+      <div className="bg-surface border border-brand-surface p-8 text-center">
+        <KeyRound className="h-12 w-12 mx-auto text-muted mb-4" />
+        <p className="text-sm font-mono text-muted">
           {t("cloud.credentialsList.empty", {
             defaultValue:
               "No pooled credentials yet. Contribute a provider API key to get started.",
@@ -121,14 +121,14 @@ export function CredentialsList({
         return (
           <div
             key={credential.id}
-            className={`bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 ${credential.enabled ? "" : "opacity-60"}`}
+            className={`bg-surface border border-brand-surface p-3 md:p-4 ${credential.enabled ? "" : "opacity-60"}`}
           >
             <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
               <div className="flex-1 min-w-0 w-full space-y-2">
                 {/* Label + provider badge */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <KeyRound className="h-4 w-4 text-white/40 flex-shrink-0" />
-                  <span className="font-mono font-semibold text-sm md:text-base text-white truncate">
+                  <KeyRound className="h-4 w-4 text-muted flex-shrink-0" />
+                  <span className="font-mono font-semibold text-sm md:text-base text-txt-strong truncate">
                     {credential.label}
                   </span>
                   <span className="px-2 py-0.5 border border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)] text-xs font-mono uppercase">
@@ -137,7 +137,7 @@ export function CredentialsList({
                 </div>
 
                 {/* Masked key + health */}
-                <div className="flex items-center gap-3 flex-wrap text-xs md:text-sm font-mono text-white/60">
+                <div className="flex items-center gap-3 flex-wrap text-xs md:text-sm font-mono text-muted">
                   <span title={`key ending in ${credential.last4}`}>
                     ••••{credential.last4}
                   </span>
@@ -145,7 +145,7 @@ export function CredentialsList({
                     <span
                       data-testid={`health-dot-${credential.id}`}
                       data-health={credential.health}
-                      className={`inline-block w-2 h-2 rounded-full ${credential.enabled ? healthDotClass(credential.health) : "bg-white/30"}`}
+                      className={`inline-block w-2 h-2 rounded-full ${credential.enabled ? healthDotClass(credential.health) : "bg-muted"}`}
                     />
                     <span className="capitalize">
                       {healthLabel(credential)}
@@ -159,7 +159,7 @@ export function CredentialsList({
                 )}
 
                 {/* Usage + contributor */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs font-mono text-white/40">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs font-mono text-muted">
                   <span>
                     {t("cloud.credentialsList.callsToday", {
                       count: credential.callsToday,
@@ -221,19 +221,19 @@ export function CredentialsList({
                           label: credential.label,
                           defaultValue: "Remove {{label}}",
                         })}
-                        className="p-2 hover:bg-white/5 transition-colors border border-white/10"
+                        className="p-2 hover:bg-surface transition-colors border border-border"
                       >
                         <Trash2 className="h-4 w-4 text-[#EB4335]" />
                       </Button>
                     </AlertDialogTrigger>
-                    <AlertDialogContent className="bg-neutral-950 border border-brand-surface">
+                    <AlertDialogContent className="bg-popover border border-brand-surface">
                       <AlertDialogHeader>
-                        <AlertDialogTitle className="text-white font-mono">
+                        <AlertDialogTitle className="text-txt-strong font-mono">
                           {t("cloud.credentialsList.removeTitle", {
                             defaultValue: "Remove Credential",
                           })}
                         </AlertDialogTitle>
-                        <AlertDialogDescription className="text-white/60 font-mono text-sm">
+                        <AlertDialogDescription className="text-muted font-mono text-sm">
                           {t("cloud.credentialsList.removeConfirm", {
                             label: credential.label,
                             defaultValue:
@@ -242,7 +242,7 @@ export function CredentialsList({
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel className="bg-transparent border-[#303030] text-white hover:bg-white/5">
+                        <AlertDialogCancel className="bg-transparent border-border text-txt-strong hover:bg-surface">
                           {t("cloud.credentialsList.cancel", {
                             defaultValue: "Cancel",
                           })}

@@ -176,6 +176,8 @@ async function createFacebookPost(
       postUrl: `https://facebook.com/${postData.id}`,
     };
   } catch (error) {
+    // error-policy:J1 boundary translation — a failed Graph API post becomes a typed
+    // {success:false} PostResult the caller inspects, not a swallowed error.
     logger.error("[Facebook] Post failed", { error });
     return {
       platform: "facebook",
@@ -327,6 +329,8 @@ async function createInstagramPost(
       postUrl: `https://instagram.com/p/${post.id}`,
     };
   } catch (error) {
+    // error-policy:J1 boundary translation — a failed Graph API post becomes a typed
+    // {success:false} PostResult the caller inspects, not a swallowed error.
     logger.error("[Instagram] Post failed", { error });
     return {
       platform: "instagram",
@@ -358,6 +362,8 @@ export const metaProvider: SocialMediaProvider = {
         displayName: response.name,
       };
     } catch (error) {
+      // error-policy:J1 boundary translation — a failed credential check becomes a typed
+      // {valid:false} result the caller inspects, not a swallowed error.
       return {
         valid: false,
         error: extractErrorMessage(error),
@@ -392,6 +398,8 @@ export const metaProvider: SocialMediaProvider = {
 
       return { success: true };
     } catch (error) {
+      // error-policy:J1 boundary translation — a failed Graph API delete becomes a typed
+      // {success:false} result the caller inspects, not a swallowed error.
       return {
         success: false,
         error: extractErrorMessage(error),
@@ -403,104 +411,102 @@ export const metaProvider: SocialMediaProvider = {
     credentials: SocialCredentials,
     postId: string,
   ): Promise<PostAnalytics | null> {
+    // `null` is the designed "provider not configured" signal the service layer reads as
+    // empty; an internal Graph API / transport failure throws out of graphApiRequest and
+    // must stay distinguishable from it, so it is deliberately never caught here.
     if (!credentials.accessToken) {
       return null;
     }
 
-    try {
-      // Try Facebook insights
+    // Instagram vs Facebook is fixed by which credential is configured — the same routing
+    // createPost uses. An accountId addresses an Instagram media node (like_count/
+    // comments_count); otherwise the id is a Facebook post exposing summary insight fields.
+    // A metric absent from a successful response is a real zero (no likes/shares), not a
+    // failed read — the read failing throws instead.
+    if (credentials.accountId) {
       const response = await graphApiRequest<{
         id: string;
-        shares?: { count: number };
-        likes?: { summary: { total_count: number } };
-        comments?: { summary: { total_count: number } };
-      }>(
-        `/${postId}?fields=id,shares,likes.summary(true),comments.summary(true)`,
+        like_count?: number;
+        comments_count?: number;
+      }>(`/${postId}?fields=id,like_count,comments_count`, credentials.accessToken);
+
+      return {
+        platform: "instagram",
+        postId,
+        metrics: {
+          likes: response.like_count || 0,
+          comments: response.comments_count || 0,
+        },
+        fetchedAt: new Date(),
+      };
+    }
+
+    const response = await graphApiRequest<{
+      id: string;
+      shares?: { count: number };
+      likes?: { summary: { total_count: number } };
+      comments?: { summary: { total_count: number } };
+    }>(
+      `/${postId}?fields=id,shares,likes.summary(true),comments.summary(true)`,
+      credentials.accessToken,
+    );
+
+    return {
+      platform: "facebook",
+      postId,
+      metrics: {
+        likes: response.likes?.summary?.total_count || 0,
+        comments: response.comments?.summary?.total_count || 0,
+        shares: response.shares?.count || 0,
+      },
+      fetchedAt: new Date(),
+    };
+  },
+
+  async getAccountAnalytics(credentials: SocialCredentials): Promise<AccountAnalytics | null> {
+    // `null` is the designed "no analytics target configured" signal; a real Graph API /
+    // transport failure throws out of graphApiRequest and is never masked as this empty
+    // state (the prior IG→FB fall-through hid exactly such failures).
+    if (!credentials.accessToken) {
+      return null;
+    }
+
+    // An Instagram account id addresses the Instagram node; otherwise a Facebook page id
+    // addresses the page. The configured credential fixes the platform, so a failure of
+    // that read propagates rather than silently probing the other surface.
+    if (credentials.accountId) {
+      const response = await graphApiRequest<InstagramAccount>(
+        `/${credentials.accountId}?fields=id,username,name,profile_picture_url,followers_count,follows_count,media_count`,
         credentials.accessToken,
       );
 
       return {
-        platform: "facebook",
-        postId,
+        platform: "instagram",
+        accountId: response.id,
         metrics: {
-          likes: response.likes?.summary?.total_count || 0,
-          comments: response.comments?.summary?.total_count || 0,
-          shares: response.shares?.count || 0,
+          followers: response.followers_count,
+          following: response.follows_count,
+          totalPosts: response.media_count,
         },
         fetchedAt: new Date(),
       };
-    } catch {
-      // Try Instagram insights
-      try {
-        const response = await graphApiRequest<{
-          id: string;
-          like_count?: number;
-          comments_count?: number;
-        }>(`/${postId}?fields=id,like_count,comments_count`, credentials.accessToken);
-
-        return {
-          platform: "instagram",
-          postId,
-          metrics: {
-            likes: response.like_count || 0,
-            comments: response.comments_count || 0,
-          },
-          fetchedAt: new Date(),
-        };
-      } catch {
-        return null;
-      }
-    }
-  },
-
-  async getAccountAnalytics(credentials: SocialCredentials): Promise<AccountAnalytics | null> {
-    if (!credentials.accessToken) {
-      return null;
     }
 
-    // Try Instagram account
-    if (credentials.accountId) {
-      try {
-        const response = await graphApiRequest<InstagramAccount>(
-          `/${credentials.accountId}?fields=id,username,name,profile_picture_url,followers_count,follows_count,media_count`,
-          credentials.accessToken,
-        );
-
-        return {
-          platform: "instagram",
-          accountId: response.id,
-          metrics: {
-            followers: response.followers_count,
-            following: response.follows_count,
-            totalPosts: response.media_count,
-          },
-          fetchedAt: new Date(),
-        };
-      } catch {
-        // Fall through to Facebook
-      }
-    }
-
-    // Try Facebook page
     if (credentials.pageId) {
-      try {
-        const response = await graphApiRequest<{
-          id: string;
-          name: string;
-          fan_count?: number;
-        }>(`/${credentials.pageId}?fields=id,name,fan_count`, credentials.accessToken);
+      const response = await graphApiRequest<{
+        id: string;
+        name: string;
+        fan_count?: number;
+      }>(`/${credentials.pageId}?fields=id,name,fan_count`, credentials.accessToken);
 
-        return {
-          platform: "facebook",
-          accountId: response.id,
-          metrics: {
-            followers: response.fan_count,
-          },
-          fetchedAt: new Date(),
-        };
-      } catch {
-        return null;
-      }
+      return {
+        platform: "facebook",
+        accountId: response.id,
+        metrics: {
+          followers: response.fan_count,
+        },
+        fetchedAt: new Date(),
+      };
     }
 
     return null;
@@ -547,6 +553,8 @@ export const metaProvider: SocialMediaProvider = {
         postId: response.id,
       };
     } catch (error) {
+      // error-policy:J1 boundary translation — a failed Graph API comment becomes a typed
+      // {success:false} PostResult the caller inspects, not a swallowed error.
       return {
         platform: "facebook",
         success: false,
@@ -569,6 +577,8 @@ export const metaProvider: SocialMediaProvider = {
 
       return { success: true };
     } catch (error) {
+      // error-policy:J1 boundary translation — a failed Graph API like becomes a typed
+      // {success:false} result the caller inspects, not a swallowed error.
       return {
         success: false,
         error: extractErrorMessage(error),

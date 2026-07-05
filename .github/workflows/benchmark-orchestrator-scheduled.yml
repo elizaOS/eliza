@@ -58,7 +58,7 @@ env:
 jobs:
   orchestrator-run:
     name: orchestrator-run
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 120
     env:
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}

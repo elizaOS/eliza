@@ -139,6 +139,14 @@ export interface BackgroundApplyPayload extends Record<string, unknown> {
   presetId?: string;
   /** Uniform patch for glsl mode. */
   uniforms?: BackgroundShaderUniformPatch;
+  /**
+   * Named curated-catalog entry id/label the agent selected ("misty-forest").
+   * The renderer resolves it against the shared background catalog to a config
+   * (color / vetted image URL / named GLSL preset). Like `presetId`, this NEVER
+   * carries GLSL source or an arbitrary URL — an unknown name is ignored, so a
+   * crafted payload can't wedge or escape the background (#11088 / #13523).
+   */
+  catalogId?: string;
 }
 
 // ── Avatar / VRM ─────────────────────────────────────────────────────────

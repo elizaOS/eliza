@@ -1,5 +1,0 @@
-03-11 04:31:29.998 18184 18205 I TestRunner: started: deviceTypeName_labelsKnownMicrophoneTypes(ai.eliza.plugins.swabble.SwabbleAndroidPlatformProbeInstrumentedTest)
-03-11 04:31:29.998 21998 25086 D AccessibilitySourceService: a11y source sending 1 issue to sc
-03-11 04:31:29.998  1676  5242 D SafetySourceDataValidat: No cert check requested for package com.google.android.permissioncontroller
-03-11 04:31:29.999 18184 18205 I GrantPermissionCallable: Permission: android.permission.RECORD_AUDIO is already granted!
-03-11 04:31:29.999 18184 18205 I TestRunner: finished: deviceTypeName_labelsKnownMicrophoneTypes(ai.eliza.plugins.swabble.SwabbleAndroidPlatformProbeInstrumentedTest)

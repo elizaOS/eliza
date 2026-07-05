@@ -9,7 +9,7 @@
 // routing is achieved two ways, neither of which produces a different chat URL
 // the renderer hits:
 //   1. Server-side: the remote-mode forwarder
-//      (packages/app-core/src/runtime/mode/remote-forwarder.ts) proxies
+//      (packages/agent/src/api/runtime-mode/remote-forwarder.ts) proxies
 //      mutations to /api/cloud/v1/* INSIDE the controller process. The ui-smoke
 //      stub is a single fake server, so there is no second hop to observe.
 //   2. Active-server bridge: a provisioned cloud agent sets the client base URL

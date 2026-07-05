@@ -27,7 +27,7 @@ import {
   logger,
   stringToUuid,
 } from "@elizaos/core";
-import { resolveServerOnlyPort } from "@elizaos/shared";
+import { readAliasedEnv, resolveServerOnlyPort } from "@elizaos/shared";
 import { normalizeTerminalCommand } from "../utils/terminal-command.ts";
 
 const TERMINAL_ACTION_NAME = "TERMINAL_SHELL";
@@ -310,7 +310,7 @@ export const terminalAction: Action = {
     }
 
     try {
-      const terminalToken = process.env.ELIZA_TERMINAL_RUN_TOKEN?.trim();
+      const terminalToken = readAliasedEnv("ELIZA_TERMINAL_RUN_TOKEN");
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };

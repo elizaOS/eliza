@@ -28,6 +28,7 @@ import {
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
   type ResolvedElizaCloudTopology,
+  readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveElizaCloudTopology,
   resolveServiceRoutingInConfig,
@@ -67,7 +68,7 @@ function orchestratorCompatPluginRequested(config: ElizaConfig): boolean {
   if (typeof fromDefaults === "boolean") {
     return fromDefaults;
   }
-  const raw = process.env.ELIZA_AGENT_ORCHESTRATOR?.trim().toLowerCase();
+  const raw = readAliasedEnv("ELIZA_AGENT_ORCHESTRATOR")?.toLowerCase();
   if (raw === "0" || raw === "false" || raw === "no") {
     return false;
   }
@@ -355,7 +356,7 @@ export function collectPluginNames(
   const hasCanonicalRuntimeConfig = hasExplicitCanonicalRuntimeConfig(
     config as Record<string, unknown>,
   );
-  const isCloudContainer = process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  const isCloudContainer = readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
   const storeBuild = isStoreBuildVariant();
   const cloudExplicitlyDisabled = config.cloud?.enabled === false;
   // `ELIZA_LOCAL_LLAMA=1` is the AOSP / on-device signal that the in-process

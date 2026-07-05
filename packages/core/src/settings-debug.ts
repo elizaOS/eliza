@@ -3,6 +3,7 @@
  * Enable with ELIZA_SETTINGS_DEBUG=1 (and Vite: same env at build time, or VITE_ELIZA_SETTINGS_DEBUG=1).
  */
 
+import { resolveAliasedEnvValue } from "./boot-env.js";
 import { isTruthyEnvValue } from "./env-utils.js";
 
 /** Keys whose values are always redacted in debug dumps. */
@@ -35,8 +36,10 @@ export function isElizaSettingsDebugEnabled(options?: {
 		if (isTruthyEnvValue(e.VITE_ELIZA_SETTINGS_DEBUG)) return true;
 	}
 	if (typeof process !== "undefined" && process.env) {
-		if (isTruthyEnvValue(process.env.ELIZA_SETTINGS_DEBUG)) return true;
-		if (isTruthyEnvValue(process.env.VITE_ELIZA_SETTINGS_DEBUG)) return true;
+		if (isTruthyEnvValue(resolveAliasedEnvValue("ELIZA_SETTINGS_DEBUG")))
+			return true;
+		if (isTruthyEnvValue(resolveAliasedEnvValue("VITE_ELIZA_SETTINGS_DEBUG")))
+			return true;
 	}
 	return false;
 }

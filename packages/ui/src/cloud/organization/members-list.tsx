@@ -59,9 +59,9 @@ export function MembersList({
   const t = useCloudT();
   if (members.length === 0) {
     return (
-      <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-8 text-center">
-        <User className="h-12 w-12 mx-auto text-white/40 mb-4" />
-        <p className="text-sm font-mono text-white/60">
+      <div className="bg-surface border border-brand-surface p-8 text-center">
+        <User className="h-12 w-12 mx-auto text-muted mb-4" />
+        <p className="text-sm font-mono text-muted">
           {t("cloud.membersList.noMembers", {
             defaultValue: "No members found",
           })}
@@ -128,12 +128,12 @@ export function MembersList({
       {members.map((member) => (
         <div
           key={member.id}
-          className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4"
+          className="bg-surface border border-brand-surface p-3 md:p-4"
         >
           <div className="flex flex-col sm:flex-row items-start gap-4">
             {/* Avatar */}
             <div className="flex items-center justify-center bg-[rgba(var(--accent-rgb), 0.25)] size-10 md:size-12 flex-shrink-0">
-              <span className="text-white text-sm md:text-base font-mono font-medium">
+              <span className="text-txt-strong text-sm md:text-base font-mono font-medium">
                 {getInitials(member)}
               </span>
             </div>
@@ -143,11 +143,11 @@ export function MembersList({
               <div className="flex flex-col lg:flex-row items-start justify-between gap-3 lg:gap-4">
                 <div className="flex-1 min-w-0 w-full">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <h4 className="font-mono font-semibold text-sm md:text-base text-white truncate">
+                    <h4 className="font-mono font-semibold text-sm md:text-base text-txt-strong truncate">
                       {getDisplayName(member)}
                     </h4>
                     {member.id === currentUserId && (
-                      <span className="px-2 py-0.5 border border-white/20 text-xs font-mono text-white/60">
+                      <span className="px-2 py-0.5 border border-border-strong text-xs font-mono text-muted">
                         {t("cloud.membersList.you", { defaultValue: "You" })}
                       </span>
                     )}
@@ -155,13 +155,13 @@ export function MembersList({
 
                   <div className="space-y-1">
                     {member.email && (
-                      <p className="text-xs md:text-sm font-mono text-white/60 flex items-center gap-1.5">
+                      <p className="text-xs md:text-sm font-mono text-muted flex items-center gap-1.5">
                         <Mail className="h-3.5 w-3.5 flex-shrink-0" />
                         <span className="truncate">{member.email}</span>
                       </p>
                     )}
                     {member.wallet_address && (
-                      <p className="text-xs md:text-sm font-mono text-white/60 flex items-center gap-1.5 flex-wrap">
+                      <p className="text-xs md:text-sm font-mono text-muted flex items-center gap-1.5 flex-wrap">
                         <Wallet className="h-3.5 w-3.5 flex-shrink-0" />
                         <span className="font-mono text-xs break-all">
                           {member.wallet_address.substring(0, 10)}...
@@ -170,13 +170,13 @@ export function MembersList({
                           )}
                         </span>
                         {member.wallet_chain_type && (
-                          <span className="px-2 py-0.5 border border-white/20 text-xs font-mono text-white/60">
+                          <span className="px-2 py-0.5 border border-border-strong text-xs font-mono text-muted">
                             {member.wallet_chain_type}
                           </span>
                         )}
                       </p>
                     )}
-                    <p className="text-xs font-mono text-white/40">
+                    <p className="text-xs font-mono text-muted">
                       {t("cloud.membersList.memberSince", {
                         date: format(
                           new Date(member.created_at),
@@ -195,7 +195,7 @@ export function MembersList({
                       value={member.role}
                       onValueChange={(role) => onUpdateRole(member.id, role)}
                     >
-                      <SelectTrigger className="w-full sm:w-32 bg-transparent border-[#303030] text-white">
+                      <SelectTrigger className="w-full sm:w-32 bg-transparent border-border text-txt-strong">
                         <SelectValue>
                           <div className="flex items-center gap-1.5">
                             {getRoleIcon(member.role)}
@@ -205,7 +205,7 @@ export function MembersList({
                           </div>
                         </SelectValue>
                       </SelectTrigger>
-                      <SelectContent className="bg-[#1a1a1a] border-[#303030]">
+                      <SelectContent className="bg-popover border-border">
                         <SelectItem value="admin">
                           <div className="flex items-center gap-1.5">
                             <Shield className="h-4 w-4" />
@@ -230,7 +230,7 @@ export function MembersList({
                     </Select>
                   ) : (
                     <span
-                      className={`px-2 py-1 border text-xs font-mono uppercase flex items-center gap-1.5 ${member.role === "owner" ? "bg-[var(--accent)]/20 text-[var(--accent)] border-[var(--accent)]/40" : member.role === "admin" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-white/60 border-white/10"}`}
+                      className={`px-2 py-1 border text-xs font-mono uppercase flex items-center gap-1.5 ${member.role === "owner" ? "bg-[var(--accent)]/20 text-[var(--accent)] border-[var(--accent)]/40" : member.role === "admin" ? "bg-surface text-txt-strong border-border-strong" : "bg-surface text-muted border-border"}`}
                     >
                       {getRoleIcon(member.role)}
                       <span className="capitalize">{member.role}</span>
@@ -243,19 +243,19 @@ export function MembersList({
                         <Button
                           variant="ghost"
                           type="button"
-                          className="p-2 hover:bg-white/5 transition-colors border border-white/10"
+                          className="p-2 hover:bg-surface transition-colors border border-border"
                         >
                           <UserMinus className="h-4 w-4 text-[#EB4335]" />
                         </Button>
                       </AlertDialogTrigger>
-                      <AlertDialogContent className="bg-neutral-950 border border-brand-surface">
+                      <AlertDialogContent className="bg-popover border border-brand-surface">
                         <AlertDialogHeader>
-                          <AlertDialogTitle className="text-white font-mono">
+                          <AlertDialogTitle className="text-txt-strong font-mono">
                             {t("cloud.membersList.removeMember", {
                               defaultValue: "Remove Member",
                             })}
                           </AlertDialogTitle>
-                          <AlertDialogDescription className="text-white/60 font-mono text-sm">
+                          <AlertDialogDescription className="text-muted font-mono text-sm">
                             {t("cloud.membersList.removeConfirm", {
                               name: getDisplayName(member),
                               defaultValue:
@@ -264,7 +264,7 @@ export function MembersList({
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel className="bg-transparent border-[#303030] text-white hover:bg-white/5">
+                          <AlertDialogCancel className="bg-transparent border-border text-txt-strong hover:bg-surface">
                             {t("cloud.membersList.cancel", {
                               defaultValue: "Cancel",
                             })}

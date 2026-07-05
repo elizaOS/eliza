@@ -106,12 +106,12 @@ export function PluginPermissionsPageClient() {
         <div className="relative z-10 space-y-4">
           <div className="flex items-center gap-2">
             <Puzzle className="h-5 w-5 text-[var(--brand-orange)]" />
-            <h3 className="text-lg font-bold text-white">Active grants</h3>
+            <h3 className="text-lg font-bold text-txt-strong">Active grants</h3>
           </div>
           {state.kind === "loading" ? (
-            <p className="text-sm text-white/50">Loading…</p>
+            <p className="text-sm text-muted">Loading…</p>
           ) : state.kind === "missing" ? (
-            <p className="text-sm text-white/60">
+            <p className="text-sm text-muted">
               Plugin grant tracking isn't exposed yet on this server. Grants
               made from the desktop app will appear here once the backend is
               wired.
@@ -119,24 +119,24 @@ export function PluginPermissionsPageClient() {
           ) : state.kind === "error" ? (
             <p className="text-sm text-red-300">{state.message}</p>
           ) : state.grants.length === 0 ? (
-            <p className="text-sm text-white/60">
+            <p className="text-sm text-muted">
               No plugin has any permission granted on your account.
             </p>
           ) : (
-            <ul className="divide-y divide-white/10">
+            <ul className="divide-y divide-border">
               {state.grants.map((g) => (
                 <li
                   key={g.grant_id}
                   className="flex items-center justify-between gap-3 py-2 text-sm"
                 >
                   <div className="space-y-0.5">
-                    <p className="font-medium text-white">
+                    <p className="font-medium text-txt-strong">
                       {g.plugin_name ?? g.plugin_id}{" "}
-                      <span className="ml-1 rounded-sm border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-white/70">
+                      <span className="ml-1 rounded-sm border border-border bg-surface px-1.5 py-0.5 font-mono text-[10px] text-txt">
                         {g.permission}
                       </span>
                     </p>
-                    <p className="font-mono text-[11px] text-white/40">
+                    <p className="font-mono text-[11px] text-muted">
                       {g.scope ? `scope: ${g.scope} · ` : ""}granted{" "}
                       {new Date(g.granted_at).toLocaleString()}
                       {g.last_used

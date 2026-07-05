@@ -1,7 +1,0 @@
-stale-base guard: base=d9d1a47ccd head=51fcabd4f6 merge-base=d9d1a47ccd behind=0 commits / 0h
-stale-base guard: PASS — no silent reverts, base is fresh.
-
-real	0m1.614s
-user	0m0.139s
-sys	0m0.146s
-exit=0

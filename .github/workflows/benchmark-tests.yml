@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   benchmark:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 20
     strategy:
       fail-fast: false

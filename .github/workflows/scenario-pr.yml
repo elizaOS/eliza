@@ -41,7 +41,11 @@ permissions:
 jobs:
   changes:
     name: Classify changed paths
-    runs-on: [self-hosted, hetzner-robot]
+    # Path classifier is a git-diff + node script: no self-hosted resources.
+    # Keep it on GitHub-hosted so a drained hetzner fleet cannot leave it
+    # queued indefinitely and pile up runs (#13617/#8501).
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 10
     outputs:
       run_scenario_pr: ${{ steps.filter.outputs.run_scenario_pr }}
     steps:
@@ -75,7 +79,7 @@ jobs:
     name: Zero-Key unit + UI coverage
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -134,7 +138,7 @@ jobs:
     name: Zero-Key app browser core
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -204,7 +208,7 @@ jobs:
     name: Zero-Key app browser view lifecycle
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -264,7 +268,7 @@ jobs:
     name: Zero-Key app browser all-pages
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -309,7 +313,7 @@ jobs:
     name: Zero-Key app browser feature interactions
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -354,7 +358,7 @@ jobs:
     name: Zero-Key app browser cloud keyless
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -399,7 +403,7 @@ jobs:
     name: Zero-Key app browser ratcheted
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -452,7 +456,7 @@ jobs:
     name: Zero-Key app browser auto-discovered specs
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -512,7 +516,7 @@ jobs:
     name: Zero-Key app browser dashboard device matrix
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -560,7 +564,7 @@ jobs:
     name: Zero-Key app browser Pixel-7 real-touch lane
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -618,7 +622,7 @@ jobs:
     name: Zero-Key app browser WebKit lane
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -663,7 +667,7 @@ jobs:
     name: Zero-Key accounts UI e2e (real API + pool + disk)
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -706,7 +710,7 @@ jobs:
     name: Zero-Key full-walkthrough (mock lane)
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -760,7 +764,7 @@ jobs:
     name: Zero-Key app diagnostics
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -806,7 +810,7 @@ jobs:
     name: Zero-Key scenario runner E2E
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -887,9 +891,19 @@ jobs:
           E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun test packages/scripts/__tests__/e2e-coverage.test.ts
 
+      # Per-plugin keyless-e2e coverage gate (issue #8801). The surface matrix
+      # above proves app-facing routes/views; this ratchet proves each plugin
+      # with user-facing capabilities has a deterministic, credential-free
+      # scenario or an explicit baseline entry.
+      - name: Per-plugin keyless e2e coverage self-test
+        run: bun test packages/scripts/e2e-coverage/check-e2e-coverage.test.ts
+
+      - name: Per-plugin keyless e2e coverage gate
+        run: bun run audit:e2e-coverage
+
       - name: E2E coverage matrix report
         if: always()
-        run: bun packages/scripts/check-e2e-coverage.ts --report-dir reports/coverage
+        run: bun packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage
 
       - name: Build workspace packages for scenario resolution
         run: bun run build:core && bunx turbo run build --filter=@elizaos/plugin-github
@@ -930,7 +944,7 @@ jobs:
       - app-diagnostics
       - scenario-runner-e2e
     if: ${{ !cancelled() && always() && needs.changes.outputs.run_scenario_pr == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Check deterministic E2E slices
         shell: bash

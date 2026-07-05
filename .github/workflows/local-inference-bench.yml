@@ -68,7 +68,7 @@ env:
 jobs:
   stub-validation:
     name: Harness route smoke
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -132,7 +132,7 @@ jobs:
     name: Nightly real-agent profile
     needs: stub-validation
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_real_agent == true) }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -300,7 +300,7 @@ jobs:
     # cost.
     name: Cuttlefish AVD profile (manual)
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_cuttlefish == true }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 90
     steps:
       - name: Checkout
@@ -360,7 +360,7 @@ jobs:
     if: >-
       (github.event_name == 'schedule' && github.event.schedule == '30 4 * * 0') ||
       (github.event_name == 'workflow_dispatch' && inputs.run_publish_models == true)
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 90
     env:
       # W5-Pipeline drops finished checkpoints under this path. The

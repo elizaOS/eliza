@@ -6,9 +6,11 @@
 
 import type {
   ChatFailureKind,
+  ChatToolCallEvent,
   ChatTurnStatus,
   LinkedAccountProviderId,
 } from "@elizaos/shared";
+import type { NativeToolCallEvent } from "./client-types-cloud";
 import type {
   ConversationMetadata,
   ConversationScope,
@@ -18,7 +20,7 @@ import type {
 // here so existing `@elizaos/ui` `api` consumers keep their import path. Imported
 // (not export-from) because `failureKind` fields below reference the type in this
 // module's scope.
-export type { ChatFailureKind, ChatTurnStatus };
+export type { ChatFailureKind, ChatToolCallEvent, ChatTurnStatus };
 
 // Conversations
 export interface Conversation {
@@ -333,6 +335,15 @@ export interface ConversationMessage {
    * field; absent when the model emitted no reasoning.
    */
   reasoning?: string;
+  /**
+   * Inline tool/action-call rows for this turn, accumulated live from the chat
+   * SSE `tool` events (#13535): each `call` frame appends a running row and its
+   * later `result`/`error` flips the same row (matched by `callId`) to
+   * success/failure. Projected into `NativeToolCallEvent` so the thread reuses
+   * the trajectory inspector's `ToolCallEventLog`. Absent when the turn ran no
+   * tools.
+   */
+  toolEvents?: NativeToolCallEvent[];
   /**
    * When set, this assistant turn is the server's no-provider /
    * provider-issue / insufficient-credits fallback. The renderer can

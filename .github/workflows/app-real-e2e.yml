@@ -47,7 +47,7 @@ env:
 jobs:
   app-real-e2e:
     name: Browser-driven real app e2e (nightly)
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     continue-on-error: true
     steps:

@@ -15,6 +15,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { resolveAliasedEnvValue } from "@elizaos/core";
 
 type CompatRuntimeState = {
   current: {
@@ -71,7 +72,7 @@ function tokenMatches(expected: string, provided: string): boolean {
 }
 
 function getCompatApiToken(): string | null {
-  return process.env.ELIZA_API_TOKEN?.trim() || null;
+  return resolveAliasedEnvValue("ELIZA_API_TOKEN")?.trim() || null;
 }
 
 function getProvidedApiToken(

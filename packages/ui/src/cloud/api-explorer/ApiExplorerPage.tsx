@@ -49,7 +49,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { api } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
-import { useRequireAuth } from "../lib/use-session-auth";
+import { useSessionAuth } from "../lib/use-session-auth";
 import { ApiTester } from "./api-tester";
 import { AuthManager } from "./auth-manager";
 import { toast } from "./toast";
@@ -147,7 +147,7 @@ function resolveApiUrl() {
  * section and wrapped by {@link ApiExplorerRoute} for the standalone route.
  */
 export function ApiExplorerSurface() {
-  const session = useRequireAuth();
+  const session = useSessionAuth();
 
   useDocumentTitle("API Explorer");
 

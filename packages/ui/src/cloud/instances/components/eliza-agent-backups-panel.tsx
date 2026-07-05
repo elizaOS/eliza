@@ -337,7 +337,9 @@ export function ElizaAgentBackupsPanel({
                           )}
                           <Badge
                             variant="outline"
-                            className={SNAPSHOT_TYPE_STYLES[backup.snapshotType]}
+                            className={
+                              SNAPSHOT_TYPE_STYLES[backup.snapshotType]
+                            }
                           >
                             {SNAPSHOT_TYPE_LABELS[backup.snapshotType]}
                           </Badge>

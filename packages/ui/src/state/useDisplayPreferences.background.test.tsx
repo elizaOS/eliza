@@ -17,7 +17,11 @@ import {
   normalizeBackgroundHistory,
   saveHomeTimeWidgetHidden,
 } from "./persistence";
-import { DEFAULT_BACKGROUND_COLOR, makeGlslConfig } from "./ui-preferences";
+import {
+  DEFAULT_BACKGROUND_COLOR,
+  DEFAULT_BACKGROUND_CONFIG,
+  makeGlslConfig,
+} from "./ui-preferences";
 import { useDisplayPreferences } from "./useDisplayPreferences";
 
 beforeEach(() => {
@@ -29,12 +33,13 @@ afterEach(() => {
 });
 
 describe("useDisplayPreferences — background history + undo", () => {
-  it("starts on the default with nothing to undo", () => {
+  it("starts on the boot default (curated image) with nothing to undo", () => {
     const { result } = renderHook(() => useDisplayPreferences());
-    expect(result.current.state.backgroundConfig).toEqual({
-      mode: "shader",
-      color: DEFAULT_BACKGROUND_COLOR,
-    });
+    // #13538: the boot default is now the curated "Ember Night" image, not a
+    // flat shader color.
+    expect(result.current.state.backgroundConfig).toEqual(
+      DEFAULT_BACKGROUND_CONFIG,
+    );
     expect(result.current.state.canUndoBackground).toBe(false);
   });
 
@@ -113,11 +118,10 @@ describe("useDisplayPreferences — background history + undo", () => {
 
   it("setting the same config is a no-op (no history churn)", () => {
     const { result } = renderHook(() => useDisplayPreferences());
+    // Re-set the ACTUAL current default (the boot image) — an identical config
+    // must not churn history.
     act(() => {
-      result.current.setBackgroundConfig({
-        mode: "shader",
-        color: DEFAULT_BACKGROUND_COLOR,
-      });
+      result.current.setBackgroundConfig({ ...DEFAULT_BACKGROUND_CONFIG });
     });
     expect(result.current.state.canUndoBackground).toBe(false);
   });

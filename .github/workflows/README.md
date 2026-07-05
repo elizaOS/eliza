@@ -45,27 +45,47 @@ Publishes TypeScript/JavaScript packages to NPM.
 
 ### Linux Runner Policy
 
-Linux CI jobs run on GitHub-hosted Ubuntu (`ubuntu-24.04` / `ubuntu-latest`).
+The heavy develop **test lanes** in `test.yml` run on the self-hosted
+`self-hosted, hetzner-robot` pool (GitHub-hosted minutes are billing-frozen for
+this org, #13481). Everything the **merge gate** depends on to *reach a
+conclusion* stays GitHub-hosted so a drained fleet can never wedge develop:
 
-A prior change (#8501) moved trusted-event Linux jobs to a self-hosted
-`self-hosted, Linux, X64, hetzner-robot` pool, but that fleet went offline
-(20 of 22 runners down), leaving every migrated job queued indefinitely and
-gridlocking develop CI. The placement was reverted to GitHub-hosted so CI
-stays unblocked regardless of fleet health.
+- **Path classifiers** (`Classify changed paths`) across `test.yml`,
+  `scenario-pr.yml`, `dev-smoke.yml`, `docker-ci-smoke.yml`,
+  `mobile-build-smoke.yml`, `windows-dev-smoke.yml`, and
+  `windows-desktop-preload-smoke.yml` run on `ubuntu-24.04`. They are git-diff +
+  node scripts with no self-hosted needs; pinning them to the fleet (#8501) once
+  left every downstream job queued indefinitely and gridlocked develop.
+- **`ci-ok`** (the merge queue's sole required context), its
+  `plugin-tests-status` roll-up, and the hosted **`merge-quality-gate`** all run
+  on `ubuntu-24.04`.
 
-Re-introduce the self-hosted pool only once it is reliably online: restore the
-conditional `runs-on` (GitHub-hosted for fork PRs, self-hosted otherwise) at
-that point, and keep the runner-agnostic step hardening (no `sudo`-only
-install/cleanup) so jobs run on either runner type.
+Two SPOF guards, enforced by `packages/scripts/ci-merge-gate-contract.mjs` (run
+in the `changes` job, #13617):
 
-CodeQL is the current exception: trusted push, scheduled, and manual CodeQL
-runs use `self-hosted, Linux, X64, hetzner-robot` because full JavaScript
-analysis is disk-bound and has exhausted GitHub-hosted runners during the
-`PolynomialReDoS` dataflow query. Pull-request CodeQL remains GitHub-hosted so
-forked code never executes on self-hosted machines. Keep the full CodeQL query
-surface intact; move capacity around rather than weakening security coverage.
-The CodeQL config may ignore deliberately invalid negative-test fixtures, but
-not real source files; those fixtures should stay covered by their owning tests.
+1. **Fleet-drain toggle.** Every self-hosted lane in `test.yml` reads
+   `runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}`.
+   Unset/anything-but-`false` keeps the current self-hosted placement; there is
+   no way to probe fleet health from a `runs-on:` expression, so during an
+   outage an admin sets repo **variable** `HETZNER_FLEET_ONLINE=false` once and
+   the whole workflow falls back to hosted — one flip unblocks the entire queue
+   instead of per-PR admin-bypass. Keep the runner-agnostic step hardening (no
+   `sudo`-only install/cleanup) so lanes run on either runner type.
+2. **Hosted quality parity.** `merge-quality-gate` runs the same lint /
+   `format:check` / repo-wide `typecheck` / gitleaks secret scan that guard
+   `main`, and `ci-ok` needs it — so a lint, type, format, or committed-secret
+   regression is refused by the merge queue on develop, not just on `main`. It
+   runs on `merge_group` + develop `push` (PRs are already covered by
+   `quality.yml`).
+
+CodeQL is a separate exception: trusted push, scheduled, and manual CodeQL runs
+use `self-hosted, Linux, X64, hetzner-robot` because full JavaScript analysis is
+disk-bound and has exhausted GitHub-hosted runners during the `PolynomialReDoS`
+dataflow query. Pull-request CodeQL remains GitHub-hosted so forked code never
+executes on self-hosted machines. Keep the full CodeQL query surface intact;
+move capacity around rather than weakening security coverage. The CodeQL config
+may ignore deliberately invalid negative-test fixtures, but not real source
+files; those fixtures should stay covered by their owning tests.
 
 GPU / KVM / macOS jobs (labels `gpu-cuda-12.6`, `kvm`, `eliza-e2e-macos`) are a
 separate purpose-built fleet and are unaffected by this policy.

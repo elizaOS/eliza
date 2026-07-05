@@ -1,4 +1,0 @@
-100a5dbfd480b0cd6b0e01f0a9974ba836412721dfa0e36b7c1bb5a041abfbde  pyannote-segmentation-3.0-fresh-ifgo-epoch2.gguf
-7f4cd30f2df470c97a1d6aada5bd60f15166ec69d5d363cb8aadba1a77c891d0  pyannote-segmentation-3.0-fresh-ifgo.gguf
-d0d6c1e561799842785e3bb9eedbe0db154e3c6263e6c40aa49dfbddcffd316e  pyannote-segmentation-3.0-fresh-iofc.gguf
-30983eba41c0a99ab7eada564739ae8be74faeb21a31da759c870b5173cbd8a5  /Users/shawwalters/.eliza/local-inference/models/voice/diarizer/pyannote-segmentation-3.0.gguf

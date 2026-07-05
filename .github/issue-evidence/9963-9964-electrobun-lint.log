@@ -1,2 +1,0 @@
-$ bunx @biomejs/biome check $(find src -type f \( -name '*.ts' -o -name '*.tsx' \) ! -name '*.d.ts' -print)
-Checked 190 files in 618ms. No fixes applied.

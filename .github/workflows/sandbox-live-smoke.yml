@@ -84,7 +84,7 @@ permissions:
 jobs:
   smoke:
     name: Sandbox live smoke
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     env:
       TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'all' }}

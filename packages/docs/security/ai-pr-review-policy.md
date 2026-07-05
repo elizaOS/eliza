@@ -40,7 +40,7 @@ weaken CI to "fix" failures are rejected.
 ### 5. No silent secret rotation
 Agents do not rotate, generate, or commit secrets. If an agent encounters an
 exposed secret it must surface the finding to a human (preferably via the
-security mailbox `security@elizalabs.ai`). See `SECURITY.md`.
+security mailbox `security@elizaos.ai`). See `SECURITY.md`.
 
 ## Reviewer checklist
 

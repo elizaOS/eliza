@@ -94,6 +94,12 @@ async function refreshSourceEntries(
       success: true,
     };
   } catch (error) {
+    // error-policy:J1 boundary translation — the per-source refresh handler. A provider
+    // fetch/parse failure, an empty catalog (zero entries, thrown above), or a DB write
+    // error becomes a structured { success:false, error } result and a status:"failed"
+    // refresh-run row; callers surface it (admin route → 207, cron → success:false). The
+    // catalog-replace transaction never ran on this path, so the last-good active prices
+    // stay untouched — a failed refresh never wipes pricing (money-path fail-closed).
     const message = error instanceof Error ? error.message : String(error);
     logger.error("[AI Pricing] Refresh failed", { source, error: message });
 

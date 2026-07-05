@@ -1,4 +1,0 @@
-MODEL: gpt-oss-120b
-CONTENT: LIFEOPS_EVIDENCE
-REASONING: The user wants a specific reply with exactly: "LIFEOPS_EVIDE
-ID: chatcmpl-623f5dbe-4c21-4d7c-ba9f-47e0fb09fae0

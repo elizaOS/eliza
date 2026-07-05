@@ -28,6 +28,7 @@ export {
 export {
   buildAggregate,
   printStdoutSummary,
+  sumTrajectoryCostUsd,
   writeReport,
   writeScenarioRunViewer,
 } from "./reporter.ts";

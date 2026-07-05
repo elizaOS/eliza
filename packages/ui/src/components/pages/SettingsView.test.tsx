@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
 // Renders the real SettingsView against mocked state + stub sections to cover
-// hub navigation (tile → full-width section → back), the initialSection prop,
-// per-section error boundaries (isolate a throwing section, recover on retry),
-// and the responsive layout switch (single-column hub vs two-pane rail by
-// width/orientation). jsdom; sections and state barrel are stubbed.
+// the #13590 uniform layout: ONE shared ViewHeader + a folded top-bar section
+// nav (no desktop `w-60` rail, no divergent mobile hub, no responsive branch),
+// hub → section navigation (section tab → section body → back to hub), the
+// initialSection prop, and per-section error boundaries (isolate a throwing
+// section, recover on retry). jsdom; sections and state barrel are stubbed.
 
 import {
   cleanup,
@@ -90,6 +91,12 @@ vi.mock("../settings/settings-sections", () => {
             </div>
           ),
   }));
+  const groupLabels: Record<string, string> = {
+    agent: "Agent",
+    system: "System",
+    security: "Security",
+  };
+  const groupOrder = ["agent", "system", "security"];
   return {
     SECTION_TONE_ICON_CLASS: {
       ok: "",
@@ -98,14 +105,29 @@ vi.mock("../settings/settings-sections", () => {
       accent: "",
       neutral: "",
     },
-    SETTINGS_GROUP_LABEL: {
-      agent: "Agent",
-      system: "System",
-      security: "Security",
-    },
-    SETTINGS_GROUP_ORDER: ["agent", "system", "security"],
+    SETTINGS_GROUP_LABEL: groupLabels,
+    SETTINGS_GROUP_ORDER: groupOrder,
     SETTINGS_SECTIONS: sections,
     getAllSettingsSections: () => sections,
+    // Group the stub sections the way the real helper does (bucket by group,
+    // ordered by SETTINGS_GROUP_ORDER) so the folded section-nav renders.
+    groupSettingsSections: (input: typeof sections) => {
+      const buckets = new Map<string, typeof sections>();
+      for (const section of input) {
+        const bucket = buckets.get(section.group);
+        if (bucket) bucket.push(section);
+        else buckets.set(section.group, [section]);
+      }
+      return [...buckets.entries()]
+        .map(([group, items]) => ({
+          group,
+          label: groupLabels[group] ?? "Other",
+          items,
+          order: groupOrder.indexOf(group),
+        }))
+        .sort((a, b) => a.order - b.order)
+        .map(({ group, label, items }) => ({ group, label, items }));
+    },
     readSettingsHashSection: () => null,
     replaceSettingsHash: vi.fn(),
     settingsSectionLabel: (section: { defaultLabel: string }) =>
@@ -130,6 +152,20 @@ function makeContext(
   };
 }
 
+/** The folded section-nav strip rendered under the shared header. */
+function sectionNav(): HTMLElement {
+  return screen.getByTestId("settings-section-nav");
+}
+
+/** A section tab in the folded nav, by its visible label. */
+function sectionTab(label: string): HTMLButtonElement {
+  const tab = Array.from(sectionNav().querySelectorAll("button")).find(
+    (button) => button.textContent?.trim() === label,
+  );
+  if (!tab) throw new Error(`no section tab labelled "${label}"`);
+  return tab as HTMLButtonElement;
+}
+
 beforeEach(() => {
   appMock.value = makeContext();
   crashControl.shouldThrow = true;
@@ -138,34 +174,51 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("SettingsView", () => {
-  it("calls loadPlugins on mount and renders the hub tiles", async () => {
+  it("calls loadPlugins on mount and renders the uniform header + folded nav", async () => {
     render(<SettingsView />);
 
     await waitFor(() => {
       expect(appMock.value.loadPlugins).toHaveBeenCalled();
     });
-    // The hub shows a tile per registered section; no section body is mounted
-    // until a tile is selected.
-    expect(screen.getByText("Basics")).toBeTruthy();
-    expect(screen.getByText("Runtime")).toBeTruthy();
+    // The shared ViewHeader renders once, titled "Settings" on the hub.
+    const header = screen.getByTestId("view-header");
+    expect(header.textContent).toContain("Settings");
+    // The folded section nav lists a tab per registered section; no section
+    // body is mounted until a tab is selected.
+    expect(sectionTab("Basics")).toBeTruthy();
+    expect(sectionTab("Runtime")).toBeTruthy();
     expect(screen.queryByTestId("stub-identity")).toBeNull();
     expect(screen.queryByTestId("stub-runtime")).toBeNull();
+    // The hub rests on its deterministic empty state, not a section body.
+    expect(screen.getByTestId("settings-hub-empty")).toBeTruthy();
   });
 
-  it("clicking a hub tile opens that section full-width", () => {
+  it("renders exactly ONE header and NO desktop w-60 rail", () => {
+    const { container } = render(<SettingsView />);
+    // Uniform top bar: a single shared header, never two stacked.
+    expect(screen.getAllByTestId("view-header")).toHaveLength(1);
+    // The old persistent desktop rail (`nav.w-60`) is gone in every layout.
+    expect(container.querySelector("nav.w-60")).toBeNull();
+  });
+
+  it("groups the section tabs by Agent / System under the header", () => {
+    render(<SettingsView />);
+    const nav = sectionNav();
+    expect(nav.textContent).toContain("Agent");
+    expect(nav.textContent).toContain("System");
+  });
+
+  it("clicking a section tab opens that section under the same header", () => {
     render(<SettingsView />);
 
-    const runtimeTile = screen
-      .getByText("Runtime")
-      .closest("button") as HTMLButtonElement;
-    expect(runtimeTile).toBeTruthy();
+    fireEvent.click(sectionTab("Runtime"));
 
-    fireEvent.click(runtimeTile);
-
-    // The section body is now mounted, and a back affordance is present.
+    // The section body is now mounted and the shared header retitles to it.
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
     expect(screen.queryByTestId("stub-identity")).toBeNull();
-    expect(screen.getByText("Settings")).toBeTruthy();
+    expect(screen.getByTestId("view-header").textContent).toContain("Runtime");
+    // Still exactly one header — the section did not stack a second one.
+    expect(screen.getAllByTestId("view-header")).toHaveLength(1);
   });
 
   it("respects an initialSection prop by opening that section directly", () => {
@@ -173,17 +226,18 @@ describe("SettingsView", () => {
 
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
     expect(screen.queryByTestId("stub-identity")).toBeNull();
+    expect(screen.getByTestId("view-header").textContent).toContain("Runtime");
   });
 
-  it("back affordance returns to the hub", () => {
+  it("the header back affordance returns from a section to the hub", () => {
     render(<SettingsView initialSection="runtime" />);
 
-    const back = screen.getByText("Settings").closest("button");
-    expect(back).toBeTruthy();
-    fireEvent.click(back as HTMLButtonElement);
+    const back = screen.getByRole("button", { name: "Back to Settings" });
+    fireEvent.click(back);
 
-    // Both tiles are visible again and no section body is mounted.
-    expect(screen.getByText("Basics")).toBeTruthy();
+    // Back on the hub: header titled "Settings", empty state, no section body.
+    expect(screen.getByTestId("view-header").textContent).toContain("Settings");
+    expect(screen.getByTestId("settings-hub-empty")).toBeTruthy();
     expect(screen.queryByTestId("stub-runtime")).toBeNull();
   });
 
@@ -197,10 +251,10 @@ describe("SettingsView", () => {
       render(<SettingsView initialSection="crash" />);
 
       // The section body crashed, but the shell did NOT blank: the inline
-      // per-section fallback renders and the nav back-affordance stays usable.
+      // per-section fallback renders and the header/nav stay usable.
       expect(screen.getByTestId("settings-section-error")).toBeTruthy();
       expect(screen.queryByTestId("stub-crash")).toBeNull();
-      expect(screen.getByText("Settings")).toBeTruthy();
+      expect(screen.getByTestId("view-header").textContent).toContain("Crash");
     } finally {
       consoleError.mockRestore();
     }
@@ -226,34 +280,11 @@ describe("SettingsView", () => {
     }
   });
 
-  it("on desktop, shows a persistent rail with a section selected in the pane", () => {
-    // Force the desktop media query to match so the two-pane layout renders.
-    const original = window.matchMedia;
-    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-      matches: true,
-      media: query,
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })) as unknown as typeof window.matchMedia;
-    try {
-      render(<SettingsView />);
-      // The rail lists every section AND the detail pane shows the first one
-      // (no tap + no back button needed on desktop). "Basics" appears twice on
-      // desktop: the rail item and the detail-pane title.
-      expect(screen.getAllByText("Basics").length).toBeGreaterThan(0);
-      expect(screen.getByText("Runtime")).toBeTruthy();
-      expect(screen.getByTestId("stub-identity")).toBeTruthy();
-      expect(screen.queryByText("Settings")).not.toBeNull();
-    } finally {
-      window.matchMedia = original;
-    }
-  });
-
-  // ── #9945: orientation-aware two-pane selection ───────────────────────────
+  // ── #13590: form-factor independence ──────────────────────────────────────
+  //
+  // The uniform layout has NO responsive branch (the desktop rail + mobile-hub
+  // split is gone). The same header + folded nav render regardless of viewport,
+  // so a mocked matchMedia must NOT change what is shown.
 
   /** Mock matchMedia so each query resolves by the supplied predicate. */
   function mockMatchMedia(matches: (query: string) => boolean) {
@@ -273,29 +304,29 @@ describe("SettingsView", () => {
     };
   }
 
-  it("uses the two-pane layout for a landscape phone (narrow width, landscape)", () => {
-    // Landscape phone: NOT min-width:1024, but it IS min-width:768 + landscape.
-    // A plain width-only check would wrongly drop it into the hub.
-    const restore = mockMatchMedia(
-      (query) => query === "(min-width: 768px) and (orientation: landscape)",
-    );
+  it("renders the same folded nav + hub on a wide (desktop) viewport", () => {
+    const restore = mockMatchMedia(() => true);
     try {
       render(<SettingsView />);
-      // Two-pane auto-selects the first section's body (no tap needed).
-      expect(screen.getByTestId("stub-identity")).toBeTruthy();
+      // No auto-selected pane, no rail — just the hub + folded nav, as on mobile.
+      expect(sectionTab("Basics")).toBeTruthy();
+      expect(sectionTab("Runtime")).toBeTruthy();
+      expect(screen.getByTestId("settings-hub-empty")).toBeTruthy();
+      expect(screen.queryByTestId("stub-identity")).toBeNull();
+      expect(screen.getAllByTestId("view-header")).toHaveLength(1);
     } finally {
       restore();
     }
   });
 
-  it("uses the single-column hub for a portrait tablet (narrow width, portrait)", () => {
-    // Portrait tablet: neither min-width:1024 nor the landscape combo matches.
+  it("renders the same folded nav + hub on a narrow (mobile) viewport", () => {
     const restore = mockMatchMedia(() => false);
     try {
       render(<SettingsView />);
-      // Hub shows the nav rows but does not auto-render a section body.
+      expect(sectionTab("Basics")).toBeTruthy();
+      expect(screen.getByTestId("settings-hub-empty")).toBeTruthy();
       expect(screen.queryByTestId("stub-identity")).toBeNull();
-      expect(screen.getByText("Basics")).toBeTruthy();
+      expect(screen.getAllByTestId("view-header")).toHaveLength(1);
     } finally {
       restore();
     }

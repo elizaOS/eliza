@@ -6,6 +6,7 @@
  *   GET    /api/conversations             – list
  *   GET    /api/conversations/:id/messages – get messages
  *   POST   /api/conversations/:id/messages/truncate – truncate
+ *   DELETE /api/conversations/:id/messages/:messageId – delete one message
  *   POST   /api/conversations/:id/messages/stream   – stream message
  *   POST   /api/conversations/:id/messages           – send message
  *   POST   /api/conversations/:id/greeting            – get/store greeting
@@ -64,6 +65,7 @@ import {
   resolveNoResponseFallback,
   writeChatStatusSse,
   writeChatTokenSse,
+  writeChatToolSse,
   writeSse,
   writeSseJson,
 } from "./chat-routes.ts";
@@ -73,7 +75,6 @@ import {
   sanitizeConversationMetadata,
 } from "./conversation-metadata.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
-import { rankByKeyword } from "./memory-routes.ts";
 import {
   buildUserMessages,
   getErrorMessage,
@@ -1049,6 +1050,14 @@ async function getConversationWithRestore(
 const CONVERSATION_MESSAGE_WINDOW = 200;
 
 /**
+ * Default page size for the `?before=<cursor>` load-older path (infinite
+ * upward scroll, #13532). Smaller than the initial recent window: each
+ * scroll-up prepends one page, so a page that is quick to fetch and paint
+ * keeps the prefetch ahead of the reader without a large single reflow.
+ */
+const CONVERSATION_OLDER_PAGE_SIZE = 50;
+
+/**
  * How many messages on EACH side of an `?around=<id>` pivot to load. The
  * centered window is roughly 2× this plus the pivot itself.
  */
@@ -1114,6 +1123,67 @@ async function loadConversationMessagesAround(
     }
   }
   return Array.from(byId.values());
+}
+
+/**
+ * Parse the `?before=<createdAt>` cursor: a positive integer millisecond
+ * timestamp (the createdAt of the client's current oldest message). Returns
+ * null for absent / malformed / non-positive values so the handler falls back
+ * to the recent window instead of paging from a bogus cursor.
+ */
+function parseBeforeCursor(raw: string | null): number | null {
+  if (raw === null) return null;
+  const trimmed = raw.trim();
+  if (trimmed === "" || !/^\d+$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+/**
+ * Clamp the `?limit=N` older-page size to a sane range. Defaults to
+ * CONVERSATION_OLDER_PAGE_SIZE and caps at CONVERSATION_MESSAGE_WINDOW so a
+ * client can't request an unbounded page.
+ */
+function clampOlderPageLimit(raw: string | null): number {
+  if (raw === null) return CONVERSATION_OLDER_PAGE_SIZE;
+  const parsed = Number(raw.trim());
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return CONVERSATION_OLDER_PAGE_SIZE;
+  }
+  return Math.min(Math.floor(parsed), CONVERSATION_MESSAGE_WINDOW);
+}
+
+/**
+ * Load one page of messages STRICTLY OLDER than the `before` cursor for the
+ * infinite upward scroll (#13532). `before` is the createdAt of the oldest
+ * message the client already holds; this returns up to `limit` turns with a
+ * smaller createdAt, newest-first from the store, so the caller can prepend
+ * them above the current top.
+ *
+ * The bound is pushed into the store as getMemories `end` (an inclusive
+ * createdAt upper bound) with `before - 1`, so the cursor row itself is
+ * excluded and there is NO in-process scan. One extra row beyond `limit` is
+ * requested to compute `hasMore` without a second COUNT query; the caller
+ * trims it.
+ */
+async function loadConversationMessagesBefore(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  before: number,
+  limit: number,
+): Promise<{ memories: Memory[]; hasMore: boolean }> {
+  // `end` is inclusive, so subtract 1ms to make the cursor exclusive: the
+  // client already holds the message at `before`, we want strictly older.
+  const rows = await runtime.getMemories({
+    roomId,
+    tableName: "messages",
+    end: before - 1,
+    limit: limit + 1,
+    orderBy: "createdAt",
+    orderDirection: "desc",
+  });
+  const hasMore = rows.length > limit;
+  return { memories: hasMore ? rows.slice(0, limit) : rows, hasMore };
 }
 
 function extractConversationMetaString(
@@ -1321,6 +1391,42 @@ async function ensureConversationGreetingStored(
   };
 }
 
+/**
+ * Delete a SINGLE message from a conversation by id (#13533). Unlike
+ * `truncateConversationMessages` (which drops the target and everything after —
+ * the edit-and-resend primitive), this removes exactly one row and leaves the
+ * rest of the thread intact.
+ *
+ * The id is resolved by store lookup and its `roomId` verified against the
+ * conversation's room the same way `?around` guards a forged pivot
+ * (`loadConversationMessagesAround`): a message id from another room yields a 404
+ * ("not found"), never a cross-room delete. A `messageId` that resolves to no
+ * memory is a 404.
+ */
+async function deleteConversationMessage(
+  runtime: AgentRuntime,
+  conv: ConversationMeta,
+  messageId: string,
+): Promise<{ deletedCount: number }> {
+  const [memory] = await runtime.getMemoriesByIds(
+    [messageId as UUID],
+    "messages",
+  );
+  // Not found, or a forged id pointing at another room: treat both as 404 so a
+  // cross-room id can't confirm existence or delete foreign content.
+  if (!memory || memory.roomId !== conv.roomId) {
+    const notFoundError = new Error(
+      "Conversation message not found",
+    ) as Error & { status?: number };
+    notFoundError.status = 404;
+    throw notFoundError;
+  }
+  const deletedCount = await deleteConversationMemories(runtime, [
+    messageId as UUID,
+  ]);
+  return { deletedCount };
+}
+
 async function truncateConversationMessages(
   runtime: AgentRuntime,
   conv: ConversationMeta,
@@ -1468,17 +1574,21 @@ export async function handleConversationRoutes(
       return true;
     }
     try {
-      const memories = await runtime.getMemoriesByRoomIds({
-        tableName: "messages",
+      // Corpus-wide FTS + trigram ranking in the store (#13534): the DB ranks
+      // by `ts_rank_cd` over a `websearch_to_tsquery` match (multi-word,
+      // non-adjacent, quoted phrases) plus a `pg_trgm` partial-word fallback,
+      // applying access-scoping and LIMIT/OFFSET *after* ranking. A relevant hit
+      // older than any recency window is therefore found and ordered — unlike
+      // the retired `ILIKE '%whole query%'` gate that ranked only a recency-
+      // truncated slice of exact-substring rows.
+      const hits = await runtime.searchMessages({
         roomIds: accessibleRoomIds,
-        textContains: query,
-        includeEmbedding: false,
+        query,
+        tableName: "messages",
         limit,
         offset,
       });
-      // Collect valid candidates, then BM25-rank them together (corpus-aware IDF
-      // ranks real hits above messages that merely share a common word).
-      const candidates = memories.flatMap((memory) => {
+      const results = hits.flatMap(({ memory, ftsRank, trigramSimilarity }) => {
         const roomId = memory.roomId;
         const conversation = roomId
           ? conversationsByRoomId.get(roomId)
@@ -1491,6 +1601,10 @@ export async function handleConversationRoutes(
         // A messages memory always carries a numeric createdAt; if it somehow
         // does not, drop the row rather than inject epoch-0 into the DTO.
         if (typeof memory.createdAt !== "number") return [];
+        // Rows matched only by the trigram/partial branch have ftsRank 0; expose
+        // the trigram similarity as the score so the client still orders them
+        // meaningfully. Both are real measured signals from the store.
+        const score = ftsRank > 0 ? ftsRank : trigramSimilarity;
         return [
           {
             messageId: memory.id,
@@ -1503,25 +1617,19 @@ export async function handleConversationRoutes(
             text: rawText,
             snippet: buildMessageSearchSnippet(rawText, query),
             createdAt: memory.createdAt,
+            score,
           },
         ];
       });
-      const results = rankByKeyword(query, candidates, (c) => c.text)
-        .filter(({ score }) => score > 0)
-        .map(({ item, score }) => ({ ...item, score }))
-        .sort((a, b) =>
-          b.score !== a.score ? b.score - a.score : b.createdAt - a.createdAt,
-        )
-        .slice(0, limit);
       logger.info(
         {
           queryLength: query.length,
           limit,
           offset,
-          rawHits: memories.length,
+          rawHits: hits.length,
           results: results.length,
         },
-        "[ConversationSearch] keyword message search completed",
+        "[ConversationSearch] FTS message search completed",
       );
       json(res, { results, count: results.length });
       return true;
@@ -1638,17 +1746,41 @@ export async function handleConversationRoutes(
       // far-back) message so a keyword-search jump can scroll to a hit older
       // than the default recent window (#9955). Absent → unchanged recent window.
       const aroundParam = validateUuid(requestUrl.searchParams.get("around"));
-      const memories = aroundParam
-        ? await loadConversationMessagesAround(
-            runtime,
-            conv.roomId,
-            aroundParam,
-          )
-        : await runtime.getMemories({
-            roomId: conv.roomId,
-            tableName: "messages",
-            limit: CONVERSATION_MESSAGE_WINDOW,
-          });
+      // `?before=<createdAt>&limit=N` loads one page STRICTLY OLDER than the
+      // cursor for the infinite upward scroll (#13532): the client passes the
+      // createdAt of its current oldest message and prepends the returned page.
+      // Mutually exclusive with `around` — a centered jump defines its own
+      // window. Returns `hasMore` so the client stops paging at the true top.
+      const beforeParam = parseBeforeCursor(
+        requestUrl.searchParams.get("before"),
+      );
+      const olderLimit = clampOlderPageLimit(
+        requestUrl.searchParams.get("limit"),
+      );
+      let hasMore = false;
+      let memories: Memory[];
+      if (!aroundParam && beforeParam !== null) {
+        const page = await loadConversationMessagesBefore(
+          runtime,
+          conv.roomId,
+          beforeParam,
+          olderLimit,
+        );
+        memories = page.memories;
+        hasMore = page.hasMore;
+      } else {
+        memories = aroundParam
+          ? await loadConversationMessagesAround(
+              runtime,
+              conv.roomId,
+              aroundParam,
+            )
+          : await runtime.getMemories({
+              roomId: conv.roomId,
+              tableName: "messages",
+              limit: CONVERSATION_MESSAGE_WINDOW,
+            });
+      }
       // Sort by createdAt ascending
       memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
       const agentId = runtime.agentId;
@@ -1891,6 +2023,10 @@ export async function handleConversationRoutes(
             ...message
           }) => message,
         ),
+        // Only the load-older (`before`) path advertises pagination state; the
+        // recent + around windows are single fixed reads and omit it so their
+        // response shape is unchanged.
+        ...(beforeParam !== null && !aroundParam ? { hasMore } : {}),
       });
     } catch (err) {
       logger.warn(
@@ -2111,6 +2247,53 @@ export async function handleConversationRoutes(
     return true;
   }
 
+  // ── DELETE /api/conversations/:id/messages/:messageId ──────────────
+  // Delete ONE message from the conversation and its backing memory row
+  // (#13533). Distinct from truncate (edit-and-resend) and from the local-only
+  // `removeConversationMessage` suggestion dismissal (#8792): this persists.
+  if (
+    method === "DELETE" &&
+    /^\/api\/conversations\/[^/]+\/messages\/[^/]+$/.test(pathname)
+  ) {
+    const segments = pathname.split("/");
+    const convId = decodeURIComponent(segments[3]);
+    const messageId = decodeURIComponent(segments[5]);
+    const conv = await getConversationWithRestore(state, convId);
+    if (!conv) {
+      error(res, "Conversation not found", 404);
+      return true;
+    }
+    // Non-admin waifu callers may only mutate their own conversation; the
+    // access-scoped 404 keeps a foreign conv id from leaking existence.
+    if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
+      return true;
+    }
+    if (rejectWaifuNonAdminMutationIfNeeded(req, error, res)) return true;
+
+    const runtime = state.runtime;
+    if (!runtime) {
+      error(res, "Agent is not running", 503);
+      return true;
+    }
+
+    try {
+      const result = await deleteConversationMessage(runtime, conv, messageId);
+      conv.updatedAt = new Date().toISOString();
+      state.broadcastWs?.({
+        type: "conversation-updated",
+        conversation: conv,
+      });
+      json(res, { ok: true, deletedCount: result.deletedCount });
+    } catch (err) {
+      const status =
+        typeof (err as { status?: number }).status === "number"
+          ? (err as { status: number }).status
+          : 500;
+      error(res, getErrorMessage(err), status);
+    }
+    return true;
+  }
+
   // ── POST /api/conversations/:id/messages/stream ─────────────────────
   if (
     method === "POST" &&
@@ -2277,6 +2460,15 @@ export async function handleConversationRoutes(
               return;
             }
             writeChatStatusSse(res, status);
+          },
+          onToolEvent: (event) => {
+            if (
+              disconnectTracker.isAborted() ||
+              disconnectTracker.checkConnectionClosed()
+            ) {
+              return;
+            }
+            writeChatToolSse(res, event);
           },
           onChunk: (chunk) => {
             if (!chunk) return;

@@ -20,15 +20,23 @@ import type { ChangeEvent } from "react";
 import { useCallback, useId, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
+import { getShaderPreset } from "../../backgrounds/shader-presets";
 import { cn } from "../../lib/utils";
 import { useAppSelectorShallow } from "../../state/app-store";
 import {
+  BACKGROUND_CATALOG,
   BACKGROUND_PRESETS,
+  type BackgroundCatalogEntry,
   type BackgroundConfig,
   type BackgroundPreset,
+  catalogEntryToConfig,
   DEFAULT_BACKGROUND_COLOR,
 } from "../../state/ui-preferences";
 import { useBackgroundConfig } from "../../state/useBackgroundConfig";
+import {
+  addUserBackgroundEntry,
+  loadUserBackgroundCatalog,
+} from "../../state/user-background-catalog";
 import {
   BackgroundImageError,
   fileToBackgroundDataUrl,
@@ -76,6 +84,66 @@ function ColorSwatch({
   );
 }
 
+/**
+ * A gallery tile for one curated catalog entry (natural gradient or animated
+ * GLSL preset). The thumbnail is drawn from the entry's palette (a code-free CSS
+ * gradient), so no image loads to render the picker. Agent-addressable via
+ * `useAgentElement` so "use the misty-forest background" can activate it.
+ */
+function CatalogTile({
+  entry,
+  selected,
+  onSelect,
+}: {
+  entry: BackgroundCatalogEntry;
+  selected: boolean;
+  onSelect: (entry: BackgroundCatalogEntry) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `background-catalog-${entry.id}`,
+    role: "button",
+    label: `Set background to ${entry.label}`,
+    group: "background-controls",
+    description: `${entry.description} (${entry.mood})`,
+    onActivate: () => onSelect(entry),
+  });
+  const [c0, c1, c2] = [
+    entry.palette[0] ?? DEFAULT_BACKGROUND_COLOR,
+    entry.palette[1] ?? entry.palette[0] ?? DEFAULT_BACKGROUND_COLOR,
+    entry.palette[2] ??
+      entry.palette[entry.palette.length - 1] ??
+      DEFAULT_BACKGROUND_COLOR,
+  ];
+  return (
+    <Button
+      ref={ref}
+      variant="ghost"
+      onClick={() => onSelect(entry)}
+      title={`${entry.label} — ${entry.description}`}
+      aria-label={`Set background to ${entry.label}`}
+      aria-pressed={selected}
+      className={cn(
+        "relative h-16 w-24 shrink-0 overflow-hidden rounded-lg p-0 transition-transform hover:scale-105",
+        selected ? "ring-2 ring-accent" : "ring-1 ring-border/40",
+      )}
+      style={{
+        backgroundImage: `linear-gradient(to bottom, ${c0}, ${c1} 55%, ${c2})`,
+      }}
+      {...agentProps}
+    >
+      <span className="absolute inset-x-0 bottom-0 truncate bg-bg/55 px-1.5 py-0.5 text-left text-[10px] font-medium text-txt">
+        {entry.label}
+      </span>
+      {selected ? (
+        <Check
+          className="absolute right-1 top-1 h-3.5 w-3.5 text-white mix-blend-difference"
+          aria-hidden
+        />
+      ) : null}
+    </Button>
+  );
+}
+
 export interface BackgroundSettingsControlsProps {
   className?: string;
 }
@@ -105,6 +173,12 @@ export function BackgroundSettingsControls({
   const [generating, setGenerating] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
+  // The user's saved/generated catalog entries (persisted, newest first). The
+  // gallery shows them after the curated set so a generated background is
+  // re-selectable (#13538). Loaded lazily so SSR/first paint stays cheap.
+  const [userCatalog, setUserCatalog] = useState<BackgroundCatalogEntry[]>(() =>
+    loadUserBackgroundCatalog(),
+  );
 
   const config: BackgroundConfig =
     backgroundConfig && typeof backgroundConfig === "object"
@@ -120,6 +194,38 @@ export function BackgroundSettingsControls({
     },
     [setBackgroundConfig],
   );
+
+  const selectCatalog = useCallback(
+    (entry: BackgroundCatalogEntry) => {
+      setError(null);
+      const next = catalogEntryToConfig(
+        entry,
+        (id) => getShaderPreset(id)?.source,
+      );
+      if (next) setBackgroundConfig(next);
+    },
+    [setBackgroundConfig],
+  );
+
+  // Which catalog entry (if any) the live config matches — for the tile
+  // selected-ring. Image entries match on imageUrl; glsl entries on presetId.
+  const activeCatalogId = ((): string | null => {
+    if (config.mode === "image" && config.imageUrl) {
+      return (
+        [...BACKGROUND_CATALOG, ...userCatalog].find(
+          (e) => e.kind === "image" && e.source === config.imageUrl,
+        )?.id ?? null
+      );
+    }
+    if (config.mode === "glsl" && config.shader?.presetId) {
+      return (
+        BACKGROUND_CATALOG.find(
+          (e) => e.kind === "glsl" && e.source === config.shader?.presetId,
+        )?.id ?? null
+      );
+    }
+    return null;
+  })();
 
   const onUploadClick = useCallback(() => {
     setError(null);
@@ -146,6 +252,23 @@ export function BackgroundSettingsControls({
           // Keep the data-URL fallback.
         }
         setBackgroundConfig({ mode: "image", color: activeColor, imageUrl });
+        // Save the upload into the user catalog so it's re-selectable (#13538).
+        // The store persists ONLY re-hosted /api/media URLs (a data-URL offline
+        // fallback is applied live but not saved — quota guard), so this is a
+        // no-op when the re-host failed.
+        setUserCatalog(
+          addUserBackgroundEntry({
+            id: `user-${Date.now().toString(36)}`,
+            label: file.name.replace(/\.[^.]+$/, "") || "My upload",
+            description: "An image you uploaded.",
+            kind: "image",
+            source: imageUrl,
+            mood: "custom",
+            palette: [activeColor],
+            tags: ["custom", "upload"],
+            author: "you",
+          }),
+        );
         setError(null);
       } catch (err) {
         setError(
@@ -166,6 +289,22 @@ export function BackgroundSettingsControls({
     try {
       const { url } = await client.generateBackgroundImage(trimmed);
       setBackgroundConfig({ mode: "image", color: activeColor, imageUrl: url });
+      // Save the generated background into the user catalog with its prompt as
+      // metadata so it's re-selectable and describable later (#13538).
+      setUserCatalog(
+        addUserBackgroundEntry({
+          id: `user-${Date.now().toString(36)}`,
+          label: trimmed.slice(0, 40),
+          description: `Generated from “${trimmed}”.`,
+          kind: "image",
+          source: url,
+          mood: "custom",
+          palette: [activeColor],
+          tags: ["custom", "generated"],
+          prompt: trimmed,
+          author: "you",
+        }),
+      );
       setPromptOpen(false);
       setPrompt("");
     } catch (err) {
@@ -249,6 +388,21 @@ export function BackgroundSettingsControls({
           tabIndex={-1}
         />
       </div>
+
+      <fieldset
+        data-testid="background-catalog-gallery"
+        className="flex max-h-52 w-full flex-wrap items-center justify-center gap-2.5 overflow-y-auto border-0 p-0"
+      >
+        <legend className="sr-only">Curated backgrounds</legend>
+        {[...BACKGROUND_CATALOG, ...userCatalog].map((entry) => (
+          <CatalogTile
+            key={entry.id}
+            entry={entry}
+            selected={activeCatalogId === entry.id}
+            onSelect={selectCatalog}
+          />
+        ))}
+      </fieldset>
 
       <div className="flex items-center justify-center gap-3">
         <Button

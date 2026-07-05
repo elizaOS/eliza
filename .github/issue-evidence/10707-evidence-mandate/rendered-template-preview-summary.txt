@@ -1,6 +1,0 @@
-pr-template-before: 396458 bytes
-pr-template-after: 396782 bytes
-bug-template-before: 106307 bytes
-bug-template-after: 108457 bytes
-feature-template-before: 125768 bytes
-feature-template-after: 127104 bytes

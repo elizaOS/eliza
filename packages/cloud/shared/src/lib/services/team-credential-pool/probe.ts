@@ -72,6 +72,10 @@ export async function probePooledApiKey(
           });
     const latencyMs = Date.now() - start;
     if (!response.ok) {
+      // error-policy:J1 the non-2xx HTTP status is the load-bearing failure
+      // signal (drives fail-closed rejection at contribution and needs-reauth at
+      // keep-alive); reading the optional provider error body is best-effort and
+      // must not clobber that status by throwing out of this branch.
       const text = await response.text().catch(() => "");
       return {
         ok: false,
@@ -82,6 +86,12 @@ export async function probePooledApiKey(
     }
     return { ok: true, status: response.status, latencyMs };
   } catch (err) {
+    // error-policy:J1 boundary translation of a transport failure (fetch reject,
+    // DNS/TLS error, or the 10s AbortController timeout) into a structured probe
+    // failure. `ok:false` is a genuine failure — never a fabricated success:
+    // contribution (service.ts) rejects fail-closed on it, and keep-alive
+    // (registry.ts) treats status:0 as a transient and leaves credential health
+    // untouched rather than flagging a healthy key on a network blip.
     return {
       ok: false,
       status: 0,

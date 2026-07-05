@@ -36,7 +36,7 @@ jobs:
       github.actor != 'cursor[bot]' &&
       github.actor != 'dependabot[bot]'
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     permissions:
       contents: read

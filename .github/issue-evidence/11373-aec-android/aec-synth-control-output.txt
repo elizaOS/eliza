@@ -1,1 +1,0 @@
-synthetic control (delay=6467, gain=0.35, noise=0.02): overall ERLE = 0.18 dB; converged-half = 9.88 dB; frames = 825

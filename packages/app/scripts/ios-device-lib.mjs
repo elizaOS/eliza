@@ -505,6 +505,171 @@ export function rewriteXctestrunUITargetApp(xctestrun, newAppPath) {
 }
 
 /**
+ * Rewrite stale references to the unsigned build-product App.app in every
+ * DependentProductPaths array of a parsed .xctestrun, pointing them at the
+ * signed replacement app. Device runs graft a signed App.app over the
+ * unsigned one that build-for-testing left in DerivedData; rewriteXctestrun-
+ * UITargetApp only fixes UITargetAppPath, but xcodebuild also installs the
+ * bundles listed in each test target's DependentProductPaths — a lingering
+ * reference to the unsigned `…/App.app` there makes the device install fail
+ * with 0xe800801c ("No code signature") even after the UITargetAppPath rewrite.
+ *
+ * A path is considered stale when its basename equals the signed app's
+ * basename (e.g. `App.app`) but the path itself is not already the signed app.
+ * Runner apps, frameworks, and other dependent products are left untouched.
+ * Returns the number of entries rewritten.
+ *
+ * @param {Record<string, unknown>} xctestrun parsed plist root
+ * @param {string} newAppPath absolute path to the signed App.app (already
+ *   __TESTROOT__-resolved)
+ * @returns {number}
+ */
+export function sweepXctestrunDependentProductPaths(xctestrun, newAppPath) {
+  const targetBase = basenameOf(newAppPath);
+  let rewritten = 0;
+  const sweepTarget = (testTarget) => {
+    if (!testTarget || typeof testTarget !== "object") return;
+    const deps = testTarget.DependentProductPaths;
+    if (!Array.isArray(deps)) return;
+    for (let i = 0; i < deps.length; i += 1) {
+      const dep = deps[i];
+      if (typeof dep !== "string") continue;
+      if (dep === newAppPath) continue;
+      if (basenameOf(dep) === targetBase) {
+        deps[i] = newAppPath;
+        rewritten += 1;
+      }
+    }
+  };
+  // FormatVersion 2: TestConfigurations array at the ROOT of the plist.
+  if (Array.isArray(xctestrun.TestConfigurations)) {
+    for (const config of xctestrun.TestConfigurations) {
+      for (const testTarget of config?.TestTargets ?? []) {
+        sweepTarget(testTarget);
+      }
+    }
+  }
+  // FormatVersion 1: one dict per test target at the root.
+  for (const [key, value] of Object.entries(xctestrun)) {
+    if (key === "__xctestrun_metadata__" || key === "TestConfigurations")
+      continue;
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    sweepTarget(value);
+  }
+  return rewritten;
+}
+
+/**
+ * Cross-platform basename that treats both `/` and `\` as separators and
+ * ignores a single trailing separator (an .app path may be written with one).
+ * @param {string} p
+ * @returns {string}
+ */
+function basenameOf(p) {
+  const trimmed = p.replace(/[/\\]+$/, "");
+  const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return idx === -1 ? trimmed : trimmed.slice(idx + 1);
+}
+
+/**
+ * Decide whether — and where — to overwrite the DerivedData build product
+ * App.app with the signed staged app before `test-without-building`.
+ *
+ * On a device run, `build-for-testing` leaves an UNSIGNED `App.app` in
+ * `<derivedData>/Build/Products/<config>-iphoneos/App.app`. Even after the
+ * .xctestrun's UITargetAppPath is rewritten to the signed graft, xcodebuild
+ * still installs the DD product, and the device install fails 0xe800801c.
+ * The proven fix is to `ditto` the signed app over the DD product first.
+ *
+ * Pure: returns the overwrite plan (or a skip reason) so the impure script
+ * layer can log + execute the `ditto`. Only overwrites on device runs when a
+ * signed --app-path is provided and the DD product exists.
+ *
+ * @param {{
+ *   platform: 'sim' | 'device',
+ *   signedAppPath: string | null,
+ *   derivedDataProductApp: string | null,
+ *   productExists: boolean,
+ * }} params
+ * @returns {{ overwrite: boolean, from?: string, to?: string, reason?: string }}
+ */
+export function planSignedAppDdOverwrite({
+  platform,
+  signedAppPath,
+  derivedDataProductApp,
+  productExists,
+}) {
+  if (platform !== "device") {
+    return { overwrite: false, reason: "not a device run" };
+  }
+  if (!signedAppPath) {
+    return { overwrite: false, reason: "no --app-path signed app given" };
+  }
+  if (!derivedDataProductApp) {
+    return {
+      overwrite: false,
+      reason: "could not resolve the DerivedData build-product App.app",
+    };
+  }
+  if (derivedDataProductApp === signedAppPath) {
+    return {
+      overwrite: false,
+      reason: "signed app IS the DerivedData product — nothing to overwrite",
+    };
+  }
+  if (!productExists) {
+    return {
+      overwrite: false,
+      reason: `no build product at ${derivedDataProductApp} (run without --skip-build?)`,
+    };
+  }
+  return {
+    overwrite: true,
+    from: signedAppPath,
+    to: derivedDataProductApp,
+  };
+}
+
+/**
+ * Classify the result of a `codesign --verify` preflight over the runner app
+ * and the (post-overwrite) DerivedData App.app. Pure: the caller passes each
+ * check's boolean `signed` verdict; this returns whether to fail-fast and the
+ * exact remediation text naming 0xe800801c so a device operator gets an
+ * actionable error instead of the opaque devicectl install failure.
+ *
+ * @param {{
+ *   checks: Array<{ label: string, path: string, signed: boolean }>,
+ *   appPathProvided: boolean,
+ * }} params
+ * @returns {{ ok: boolean, unsigned: Array<{ label: string, path: string }>, message: string | null }}
+ */
+export function classifyCodesignPreflight({ checks, appPathProvided }) {
+  const unsigned = checks
+    .filter((check) => !check.signed)
+    .map(({ label, path: p }) => ({ label, path: p }));
+  if (unsigned.length === 0) {
+    return { ok: true, unsigned: [], message: null };
+  }
+  const listed = unsigned
+    .map(({ label, path: p }) => `  - ${label}: ${p}`)
+    .join("\n");
+  const remediation = appPathProvided
+    ? "The signed app was grafted but a bundle is still unsigned. Re-stage the " +
+      "signed app with `bun run ios:device:deploy` and pass it via --app-path."
+    : "The DerivedData build product is unsigned. Stage a signed app with " +
+      "`bun run ios:device:deploy` and re-run with " +
+      "`--app-path <ios/build/device-deploy-stage/App.app>`.";
+  return {
+    ok: false,
+    unsigned,
+    message:
+      "codesign preflight failed — installing this on a device would abort with " +
+      '0xe800801c ("No code signature"). Unsigned bundle(s):\n' +
+      `${listed}\n${remediation}`,
+  };
+}
+
+/**
  * Collect every app bundle a parsed .xctestrun references (TestHostPath +
  * UITargetAppPath, both FormatVersion 1 and 2 layouts), resolving the
  * __TESTROOT__ placeholder against the xctestrun's directory. Used to
@@ -578,6 +743,89 @@ export function resolveXctestrunTestRoot(value, testRoot) {
 // ── Device / defaults resolution ────────────────────────────────────────
 
 export const DEFAULT_APP_BUNDLE_ID = "ai.elizaos.app";
+
+export const DEFAULT_IOS_XCUITEST_SHARDS = [
+  "AppUITests/BootCaptureUITests/testBootReachesHomeOrErrorCard",
+  "AppUITests/BootCaptureUITests/testComposerAcceptsTypedText",
+  "AppUITests/BootCaptureUITests/testComposerSendsPromptAndWaitsForReply",
+  "AppUITests/BootCaptureUITests/testCloudOnboardingChatAndVoice",
+  "AppUITests/BootCaptureUITests/testLocalOnboardingChatAndVoice",
+  "AppUITests/GestureSemanticsUITests",
+  "AppUITests/LauncherGestureLoopUITests",
+  "AppUITests/ViewWalkthroughUITests",
+  "AppUITests/WidgetGalleryCaptureUITests",
+  "AppUITests/DeviceExtensionSurfaceUITests",
+  "AppUITests/DeviceLifecycleUITests",
+];
+
+export function safeShardName(identifier) {
+  return String(identifier || "unknown")
+    .replace(/^AppUITests\//, "")
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 120);
+}
+
+export function buildIosXcuitestShardPlan({
+  onlyTesting = null,
+  defaultShards = DEFAULT_IOS_XCUITEST_SHARDS,
+} = {}) {
+  const requested =
+    typeof onlyTesting === "string" && onlyTesting.trim()
+      ? onlyTesting.trim()
+      : "AppUITests";
+  const identifiers = requested === "AppUITests" ? defaultShards : [requested];
+  return identifiers.map((identifier, index) => ({
+    index: index + 1,
+    identifier,
+    resultName: `${String(index + 1).padStart(2, "0")}-${safeShardName(
+      identifier,
+    )}`,
+  }));
+}
+
+export function extractSwiftXcuitestEntries(sources) {
+  const entries = [];
+  for (const source of sources ?? []) {
+    const text = source?.text;
+    if (typeof text !== "string") continue;
+    const classMatch = text.match(
+      /\b(?:final\s+)?class\s+(\w+)\s*:\s*XCTestCase\b/,
+    );
+    if (!classMatch) continue;
+    const className = classMatch[1];
+    const methods = [...text.matchAll(/\bfunc\s+(test\w+)\s*\(/g)].map(
+      (match) => match[1],
+    );
+    entries.push({
+      className,
+      methods,
+      path: typeof source.path === "string" ? source.path : null,
+    });
+  }
+  return entries;
+}
+
+export function findUncoveredIosXcuitestEntries({ entries, shards }) {
+  const shardSet = new Set(shards ?? []);
+  const uncovered = [];
+  for (const entry of entries ?? []) {
+    if (!entry?.className) continue;
+    const classShard = `AppUITests/${entry.className}`;
+    if (shardSet.has(classShard)) continue;
+    for (const method of entry.methods ?? []) {
+      const methodShard = `${classShard}/${method}`;
+      if (!shardSet.has(methodShard)) uncovered.push(methodShard);
+    }
+  }
+  return uncovered;
+}
+
+export function isBenignIosAppAbsence(output) {
+  return /not installed|not found|no such app|unknown application|does not exist|could not find/i.test(
+    String(output ?? ""),
+  );
+}
 
 /**
  * Boot-trace files inside the app data container, pulled by
@@ -673,6 +921,241 @@ export function parseCliArgs(argv, { booleans = [] } = {}) {
     }
   }
   return args;
+}
+
+// ── XCUITest failed-test parsing + retry-in-isolation (#13566) ──────────
+
+/**
+ * Parse the failed-test identifiers out of a captured
+ * `xcrun xcresulttool get test-results summary --format json` payload.
+ *
+ * Xcode 16's summary emits a `testFailures` array whose rows carry a
+ * `testIdentifierString` ("Class/testMethod()" form) plus `testName` and
+ * `targetName`. Older/alternate captures nest the same data under
+ * `topInsights` or a bare `failures` array; we accept any of them and dedupe.
+ * The `-only-testing` argument xcodebuild wants is `Target/Class/method` —
+ * `testIdentifierString` omits the target and keeps the `()` suffix on the
+ * method, so we normalize: drop a trailing `()`, and prefix the target
+ * (from the row's `targetName`, else the caller-supplied `fallbackTarget`).
+ *
+ * Pure — the caller reads the file and passes the parsed object (or the raw
+ * JSON string). A non-object / unparseable input yields an empty list rather
+ * than throwing, so a malformed summary degrades to "no isolable failures"
+ * and the harness keeps its normal nonzero-exit verdict (fail-closed: we
+ * never fabricate a pass, we just can't offer retry-in-isolation).
+ *
+ * @param {unknown} summary parsed summary object OR raw JSON string
+ * @param {{ fallbackTarget?: string }} [options]
+ * @returns {Array<{ identifier: string, testName: string, targetName: string | null }>}
+ */
+export function parseFailedTestIdentifiers(
+  summary,
+  { fallbackTarget = "AppUITests" } = {},
+) {
+  let root = summary;
+  if (typeof summary === "string") {
+    try {
+      root = JSON.parse(summary);
+    } catch {
+      return [];
+    }
+  }
+  if (!root || typeof root !== "object") return [];
+
+  const rows = [];
+  const pushRows = (value) => {
+    if (Array.isArray(value)) {
+      for (const row of value) {
+        if (row && typeof row === "object") rows.push(row);
+      }
+    }
+  };
+  pushRows(root.testFailures);
+  pushRows(root.failures);
+  // topInsights on some captures nests { impact, category, testFailures: [...] }
+  if (Array.isArray(root.topInsights)) {
+    for (const insight of root.topInsights) {
+      if (insight && typeof insight === "object")
+        pushRows(insight.testFailures);
+    }
+  }
+
+  const seen = new Set();
+  const failures = [];
+  for (const row of rows) {
+    const targetName =
+      typeof row.targetName === "string" && row.targetName.trim()
+        ? row.targetName.trim()
+        : null;
+    const rawId =
+      typeof row.testIdentifierString === "string" &&
+      row.testIdentifierString.trim()
+        ? row.testIdentifierString.trim()
+        : typeof row.testIdentifier === "string" && row.testIdentifier.trim()
+          ? row.testIdentifier.trim()
+          : typeof row.testName === "string" && row.testName.trim()
+            ? row.testName.trim()
+            : null;
+    if (!rawId) continue;
+    const identifier = buildOnlyTestingIdentifier(rawId, {
+      targetName: targetName ?? fallbackTarget,
+    });
+    if (!identifier || seen.has(identifier)) continue;
+    seen.add(identifier);
+    failures.push({
+      identifier,
+      testName:
+        typeof row.testName === "string" && row.testName.trim()
+          ? row.testName.trim()
+          : rawId,
+      targetName,
+    });
+  }
+  return failures;
+}
+
+/**
+ * Normalize an xcresult test identifier into the `Target/Class/method` form
+ * that `xcodebuild -only-testing:` accepts. Handles:
+ *   - trailing `()` on the method ("Class/testFoo()" → "Class/testFoo")
+ *   - an already-target-prefixed id (kept as-is once the `()` is stripped)
+ *   - a bare "Class/testFoo" (prefixed with `targetName`)
+ *   - a bare "Class" (a whole-class failure — prefixed, no method)
+ *
+ * @param {string} rawId
+ * @param {{ targetName: string }} options
+ * @returns {string | null}
+ */
+export function buildOnlyTestingIdentifier(rawId, { targetName }) {
+  if (typeof rawId !== "string") return null;
+  const trimmed = rawId.trim().replace(/\(\)$/, "");
+  if (!trimmed) return null;
+  const segments = trimmed.split("/").filter((s) => s.length > 0);
+  if (segments.length === 0) return null;
+  // Already target-prefixed? A 3-segment id, or a 2-segment id whose head
+  // equals the target, is taken verbatim; otherwise prefix the target.
+  if (segments.length >= 3) return segments.join("/");
+  if (segments[0] === targetName) return segments.join("/");
+  return [targetName, ...segments].join("/");
+}
+
+/**
+ * Fold per-test isolated-rerun outcomes into a three-way verdict list and an
+ * overall exit decision, per #13566:
+ *   - a test that FAILED in the full suite but PASSED in isolation → `flake`
+ *   - a test that FAILED both → `fail`
+ * (Tests that passed in the suite never enter this pass.) The run should exit
+ * NONZERO iff at least one real `fail` remains; a run whose only failures were
+ * flakes exits 0 with those tests recorded as `flake` for trend data.
+ *
+ * Pure — the caller runs each isolated `xcodebuild test-without-building` and
+ * passes `{ identifier, isolatedPassed }`. An identifier missing from the
+ * results map is treated conservatively as still-failing (`fail`) so a
+ * skipped/crashed isolated rerun can never green-wash the suite.
+ *
+ * @param {Array<{ identifier: string, testName?: string }>} suiteFailures
+ * @param {Array<{ identifier: string, isolatedPassed: boolean }>} isolatedResults
+ * @returns {{
+ *   verdicts: Array<{ identifier: string, testName: string, verdict: 'flake' | 'fail' }>,
+ *   flakes: string[],
+ *   realFailures: string[],
+ *   exitNonZero: boolean,
+ * }}
+ */
+export function classifyIsolatedReruns(suiteFailures, isolatedResults) {
+  const isolatedById = new Map();
+  for (const result of isolatedResults ?? []) {
+    if (result && typeof result.identifier === "string") {
+      isolatedById.set(result.identifier, result.isolatedPassed === true);
+    }
+  }
+  const verdicts = [];
+  const flakes = [];
+  const realFailures = [];
+  for (const failure of suiteFailures ?? []) {
+    if (!failure || typeof failure.identifier !== "string") continue;
+    const passedIsolated = isolatedById.get(failure.identifier) === true;
+    const verdict = passedIsolated ? "flake" : "fail";
+    verdicts.push({
+      identifier: failure.identifier,
+      testName: failure.testName ?? failure.identifier,
+      verdict,
+    });
+    if (verdict === "flake") flakes.push(failure.identifier);
+    else realFailures.push(failure.identifier);
+  }
+  return {
+    verdicts,
+    flakes,
+    realFailures,
+    exitNonZero: realFailures.length > 0,
+  };
+}
+
+// ── --skip-build stale-runner guard (#13566) ────────────────────────────
+
+/**
+ * Decide whether a reused test runner (--skip-build) is stale relative to the
+ * XCUITest Swift sources it was compiled from. A runner built BEFORE any
+ * AppUITests source was last modified executes day-old tests and can
+ * false-green a change to the very suite under test (#13566).
+ *
+ * Pure — the caller stats the `.xctestrun` and the AppUITests/*.swift sources
+ * and passes their mtimes (ms). Returns a decision the script turns into a
+ * fail-fast (naming the newest stale source + the rebuild command) unless the
+ * operator passes an explicit override.
+ *
+ * Fail-closed: if the runner mtime is unknown (null) we report `stale` — a
+ * skip-build run we cannot date is not trusted to be fresh. An empty source
+ * list (no sources found) is NOT stale (nothing to be stale against), so a
+ * repo layout change can't wedge the guard shut.
+ *
+ * @param {{
+ *   runnerMtimeMs: number | null,
+ *   sources: Array<{ path: string, mtimeMs: number }>,
+ *   allowStale?: boolean,
+ * }} params
+ * @returns {{
+ *   stale: boolean,
+ *   overridden: boolean,
+ *   newestSource: { path: string, mtimeMs: number } | null,
+ *   deltaMs: number,
+ * }}
+ */
+export function evaluateRunnerStaleness({
+  runnerMtimeMs,
+  sources,
+  allowStale = false,
+}) {
+  const validSources = (sources ?? []).filter(
+    (s) => s && typeof s.mtimeMs === "number" && Number.isFinite(s.mtimeMs),
+  );
+  let newestSource = null;
+  for (const source of validSources) {
+    if (!newestSource || source.mtimeMs > newestSource.mtimeMs) {
+      newestSource = source;
+    }
+  }
+  // No datable runner → cannot prove freshness → treat as stale (fail-closed).
+  if (runnerMtimeMs === null || !Number.isFinite(runnerMtimeMs)) {
+    return {
+      stale: true,
+      overridden: allowStale === true,
+      newestSource,
+      deltaMs: 0,
+    };
+  }
+  // No sources to compare against → nothing can be stale.
+  if (!newestSource) {
+    return { stale: false, overridden: false, newestSource: null, deltaMs: 0 };
+  }
+  const stale = newestSource.mtimeMs > runnerMtimeMs;
+  return {
+    stale,
+    overridden: stale && allowStale === true,
+    newestSource,
+    deltaMs: stale ? newestSource.mtimeMs - runnerMtimeMs : 0,
+  };
 }
 
 // ── Console-capture exit classification (#11515) ────────────────────────

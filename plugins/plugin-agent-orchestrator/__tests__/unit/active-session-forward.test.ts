@@ -42,6 +42,13 @@ function makeRuntime(
     ),
     getSetting: vi.fn((k: string) => settings[k]),
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    // The ACL (`requireTaskAgentAccess` → `resolveConnectorSource`) reads the
+    // room's connector source; a source-less room is genuine client-chat, which
+    // the default GUEST policy above permits. Without `getRoom` the lookup throws
+    // and fails closed (SOURCE_RESOLUTION_FAILED → denied), so every delivery
+    // case would wrongly drop. `reportError` backs the fail-closed path.
+    getRoom: vi.fn(async () => ({ id: "room-1" })),
+    reportError: vi.fn(),
   } as never;
 }
 

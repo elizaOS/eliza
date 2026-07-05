@@ -1,7 +1,0 @@
-2026-06-30T00:38:30-07:00
-$ node -e <redacted key presence check>
-OPENAI_API_KEY=missing
-ANTHROPIC_API_KEY=missing
-GOOGLE_GENERATIVE_AI_API_KEY=missing
-GEMINI_API_KEY=missing
-ELIZAOS_API_KEY=missing

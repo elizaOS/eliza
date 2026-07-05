@@ -1,6 +1,7 @@
 // Exercises cloud API tests shared agent messages route.test behavior with deterministic Worker route fixtures.
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
+import { InsufficientCreditsError } from "@/lib/api/errors";
 import * as realResolveSharedAgent from "@/lib/services/shared-runtime/resolve-shared-agent";
 import * as realSharedRestAdapter from "@/lib/services/shared-runtime/shared-rest-adapter";
 import * as realLogger from "@/lib/utils/logger";
@@ -129,5 +130,29 @@ describe("shared agent messages route", () => {
     const res = await postMessage({ text: "  " });
     expect(res.status).toBe(400);
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  // The bug this pins: insufficient credits is a PERMANENT add-credits
+  // condition (welcome-bonus-withheld signups, drained orgs), and the blanket
+  // 503 above disguised it as a transient outage — "try again" forever. The
+  // route must return the canonical 402 so the app can route to top-up.
+  test("insufficient credits returns a non-retryable 402, not the retryable 503", async () => {
+    sharedRestMessageSend.mockRejectedValue(
+      new InsufficientCreditsError(
+        "Insufficient credits. Required: $0.0500, Available: $0.0000",
+      ),
+    );
+
+    const res = await postMessage({ text: "hello" }, APP_ORIGIN);
+
+    expect(res.status).toBe(402);
+    expect(res.headers.get("access-control-allow-origin")).toBe(APP_ORIGIN);
+    expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+    await expect(res.json()).resolves.toEqual({
+      success: false,
+      error: "Insufficient credits. Required: $0.0500, Available: $0.0000",
+      code: "insufficient_credits",
+      retryable: false,
+    });
   });
 });

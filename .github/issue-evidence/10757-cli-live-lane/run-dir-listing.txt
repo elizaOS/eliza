@@ -1,5 +1,0 @@
-run/matrix.json
-run/viewer/index.html
-run/viewer/data.js
-run/trajectories/546ac3ab-0468-01a2-9d5b-52dfa34bf9cc/tj-8796c93b75106f.json
-run/trajectories/546ac3ab-0468-01a2-9d5b-52dfa34bf9cc/tj-870aba110f735a.json

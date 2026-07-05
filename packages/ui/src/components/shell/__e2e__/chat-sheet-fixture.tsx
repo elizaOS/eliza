@@ -153,7 +153,17 @@ function Harness(): React.JSX.Element {
     startEmpty
       ? []
       : manyMessages
-        ? MANY_SEED
+        ? streaming
+          ? [
+              ...MANY_SEED,
+              {
+                id: "many-inflight",
+                role: "assistant",
+                content: "",
+                createdAt: MANY_SEED.length + 1,
+              },
+            ]
+          : MANY_SEED
         : fewMessages
           ? FEW_SEED
           : streaming
@@ -186,6 +196,58 @@ function Harness(): React.JSX.Element {
     (
       window as unknown as { __setFirstRun?: (v: boolean) => void }
     ).__setFirstRun = setFirstRunOpen;
+  }, []);
+
+  // Deterministic transcript mutation hooks for the browser e2e. These drive the
+  // rendered overlay through the same controller `messages` prop as a live
+  // response, while letting the runner create a single large streamed growth
+  // commit and a new assistant line on demand.
+  React.useEffect(() => {
+    const w = window as unknown as {
+      __appendAssistant?: (content: string) => void;
+      __growLastAssistant?: (extra: string) => void;
+    };
+    w.__appendAssistant = (content) => {
+      console.log(`[fixture] appendAssistant length=${content.length}`);
+      setMessages((current) => [
+        ...current,
+        {
+          id: uid(),
+          role: "assistant",
+          content,
+          createdAt: nextId,
+        },
+      ]);
+      setPhase("summoned");
+    };
+    w.__growLastAssistant = (extra) => {
+      console.log(`[fixture] growLastAssistant length=${extra.length}`);
+      setMessages((current) => {
+        const lastAssistantIndex = current.findLastIndex(
+          (message) => message.role === "assistant",
+        );
+        if (lastAssistantIndex === -1) {
+          return [
+            ...current,
+            {
+              id: uid(),
+              role: "assistant",
+              content: extra,
+              createdAt: nextId,
+            },
+          ];
+        }
+        return current.map((message, index) =>
+          index === lastAssistantIndex
+            ? { ...message, content: `${message.content}${extra}` }
+            : message,
+        );
+      });
+    };
+    return () => {
+      w.__appendAssistant = undefined;
+      w.__growLastAssistant = undefined;
+    };
   }, []);
 
   // Log lifecycle so the e2e harness can assert the interaction flow from the

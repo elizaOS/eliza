@@ -17,13 +17,9 @@ import type {
   WalletMarketMover,
   WalletMarketOverviewResponse,
   WalletMarketOverviewSource,
-  WalletMarketPriceSnapshot,
   WalletTradingProfileResponse,
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
-// Direct subpath: the app renderer resolves the bare `@elizaos/ui` root to the
-// browser barrel, which doesn't reliably re-export this newer component.
-import { ChatEmptyStateWithRecommendations } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import { Button } from "@elizaos/ui/components";
@@ -35,7 +31,6 @@ import {
   Activity,
   AlertTriangle,
   ArrowLeftRight,
-  BarChart3,
   CheckCircle2,
   Copy,
   EyeOff,
@@ -114,6 +109,70 @@ const usdFormatter = new Intl.NumberFormat("en-US", {
 const compactFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 4,
 });
+
+/**
+ * Calm neutral empty state (#13592): a bare muted glyph over one short line of
+ * plain-fact copy. No suggestion chips, no marketing pitch, no setup CTA — an
+ * empty panel states what is empty and stays quiet. Replaces the ten former
+ * `ChatEmptyStateWithRecommendations` prompt-chip surfaces.
+ */
+function CalmEmptyState({
+  icon: Icon,
+  label,
+  className,
+}: {
+  icon: LucideIcon;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center gap-2 px-4 py-8 text-center",
+        className,
+      )}
+    >
+      <Icon className="h-5 w-5 text-muted" aria-hidden />
+      <p className="text-sm text-muted">{label}</p>
+    </div>
+  );
+}
+
+/**
+ * error-policy:J4 — synthesize a fully-unavailable market overview from a fetch
+ * failure. Every source is marked `available:false` and carries the error, so
+ * the dashboard's market panels render `MarketDataUnavailable` (a named,
+ * distinguishable state) rather than a silent null that reads as "empty".
+ */
+function marketOverviewUnavailable(
+  error: string,
+): WalletMarketOverviewResponse {
+  const source = (
+    providerId: WalletMarketOverviewSource["providerId"],
+    providerName: string,
+    providerUrl: string,
+  ): WalletMarketOverviewSource => ({
+    providerId,
+    providerName,
+    providerUrl,
+    available: false,
+    stale: false,
+    error,
+  });
+  return {
+    generatedAt: new Date().toISOString(),
+    cacheTtlSeconds: 0,
+    stale: false,
+    sources: {
+      prices: source("coingecko", "CoinGecko", "https://www.coingecko.com"),
+      movers: source("coingecko", "CoinGecko", "https://www.coingecko.com"),
+      predictions: source("polymarket", "Polymarket", "https://polymarket.com"),
+    },
+    prices: [],
+    movers: [],
+    predictions: [],
+  };
+}
 
 function readHiddenTokenIds(): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -685,15 +744,19 @@ function PortfolioMoversPanel({
       );
     }
 
+    // error-policy:J4 — distinguish "feed unavailable" from "genuinely no
+    // movers": a failed overview marks its movers source unavailable, so
+    // surface that named state instead of the calm empty line.
+    const moversSource = marketOverview?.sources.movers;
+    if (moversSource && !moversSource.available) {
+      return <MarketDataUnavailable title="Top movers" source={moversSource} />;
+    }
+
     return (
-      <ChatEmptyStateWithRecommendations
+      <CalmEmptyState
         icon={TrendingUp}
+        label="No portfolio movers yet."
         className="min-h-[8rem]"
-        recommendations={[
-          "What tokens are trending right now?",
-          "Which of my holdings moved most this week?",
-          "Find new tokens to watch on Base",
-        ]}
       />
     );
   }
@@ -741,19 +804,6 @@ function MarketAvatar({
   );
 }
 
-function MarketSourceBadge({ source }: { source: WalletMarketOverviewSource }) {
-  return (
-    <a
-      href={source.providerUrl}
-      target="_blank"
-      rel="noreferrer"
-      className="text-[0.68rem] font-medium text-muted transition-colors hover:text-txt"
-    >
-      {source.providerName}
-    </a>
-  );
-}
-
 function MarketDataUnavailable({
   title,
   source,
@@ -771,72 +821,6 @@ function MarketDataUnavailable({
   );
 }
 
-function MajorPriceCard({ snapshot }: { snapshot: WalletMarketPriceSnapshot }) {
-  const isPositive = snapshot.change24hPct >= 0;
-
-  return (
-    <div className="min-w-0 p-2">
-      <div className="flex items-center gap-3">
-        <MarketAvatar imageUrl={snapshot.imageUrl} label={snapshot.symbol} />
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-txt">
-            {snapshot.symbol}
-          </div>
-          <div className="truncate text-xs-tight text-muted">
-            {snapshot.name}
-          </div>
-        </div>
-      </div>
-      <div className="mt-4 flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
-        <div className="min-w-0 font-mono text-lg font-semibold text-txt sm:text-xl">
-          {formatMarketUsd(snapshot.priceUsd)}
-        </div>
-        <div
-          className={cn(
-            "shrink-0 text-sm font-semibold",
-            isPositive ? "text-txt" : "text-danger",
-          )}
-        >
-          {formatPercentDelta(snapshot.change24hPct)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MarketPriceGrid({
-  prices,
-  source,
-}: {
-  prices: WalletMarketPriceSnapshot[];
-  source: WalletMarketOverviewSource;
-}) {
-  if (!source.available) {
-    return <MarketDataUnavailable title="Spot prices" source={source} />;
-  }
-
-  if (prices.length === 0) {
-    return (
-      <ChatEmptyStateWithRecommendations
-        icon={BarChart3}
-        className="min-h-[8rem]"
-        recommendations={[
-          "What's the price of ETH right now?",
-          "Show me BTC and SOL prices",
-        ]}
-      />
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-3">
-      {prices.map((snapshot) => (
-        <MajorPriceCard key={snapshot.id} snapshot={snapshot} />
-      ))}
-    </div>
-  );
-}
-
 function MarketMoverList({
   movers,
   source,
@@ -850,13 +834,10 @@ function MarketMoverList({
 
   if (movers.length === 0) {
     return (
-      <ChatEmptyStateWithRecommendations
+      <CalmEmptyState
         icon={TrendingUp}
+        label="No market movers right now."
         className="min-h-[8rem]"
-        recommendations={[
-          "What are today's top gainers?",
-          "Which tokens are moving on Solana?",
-        ]}
       />
     );
   }
@@ -951,76 +932,26 @@ function WalletMotif() {
   );
 }
 
-function WalletEmptyHero({
-  hasKeys,
-  onConfigureKeys,
-}: {
-  hasKeys: boolean;
-  onConfigureKeys: () => void;
-}) {
+// The empty wallet is calm (#13592): just the motif over a neutral line, no
+// "Keys" marketing CTA. The one functional setup control (Enable-wallet) lives
+// in the holdings section; wiring keys/RPC is reachable from RPC settings.
+function WalletEmptyHero() {
   return (
-    <div className="flex flex-col items-center gap-4 px-6 py-10 text-center">
+    <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
       <WalletMotif />
-      {hasKeys ? null : (
-        <Button
-          type="button"
-          variant="surfaceAccent"
-          size="sm"
-          onClick={onConfigureKeys}
-        >
-          Keys
-        </Button>
-      )}
+      <p className="text-sm text-muted">Your wallet is empty.</p>
     </div>
   );
 }
 
-function MarketPulseHero({
-  overview,
-  loading,
-  hasKeys,
-  onConfigureKeys,
-}: {
-  overview: WalletMarketOverviewResponse | null;
-  loading: boolean;
-  hasKeys: boolean;
-  onConfigureKeys: () => void;
-}) {
+// The empty-wallet surface is a single calm hero (#13592). It no longer pads
+// the empty state with a live spot-price / top-mover market dashboard — an
+// empty wallet is quiet, not a market terminal. Market data still renders in
+// the populated dashboard's Movers panel.
+function MarketPulseHero() {
   return (
-    <section className="space-y-6">
-      <WalletEmptyHero hasKeys={hasKeys} onConfigureKeys={onConfigureKeys} />
-
-      {overview ? (
-        <div className="space-y-6">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2 text-xs text-muted">
-              <span>Spot prices</span>
-              <MarketSourceBadge source={overview.sources.prices} />
-            </div>
-            <MarketPriceGrid
-              prices={overview.prices}
-              source={overview.sources.prices}
-            />
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2 text-xs text-muted">
-              <span>Top movers</span>
-              <MarketSourceBadge source={overview.sources.movers} />
-            </div>
-            <MarketMoverList
-              movers={overview.movers}
-              source={overview.sources.movers}
-            />
-          </div>
-        </div>
-      ) : loading ? (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-3">
-          {["btc", "eth", "sol"].map((loadingCardId) => (
-            <div key={loadingCardId} className="h-28 animate-pulse bg-bg/20" />
-          ))}
-        </div>
-      ) : null}
+    <section>
+      <WalletEmptyHero />
     </section>
   );
 }
@@ -1542,13 +1473,10 @@ const TokenRailRow = memo(
 function RailNftList({ nfts }: { nfts: NftItem[] }) {
   if (nfts.length === 0) {
     return (
-      <ChatEmptyStateWithRecommendations
+      <CalmEmptyState
         icon={ImageIcon}
+        label="No NFTs in this wallet."
         className="min-h-[13rem]"
-        recommendations={[
-          "Find NFTs worth collecting",
-          "Show trending mints this week",
-        ]}
       />
     );
   }
@@ -1593,14 +1521,10 @@ function RailPositionList({
 }) {
   if (positions.length === 0) {
     return (
-      <ChatEmptyStateWithRecommendations
+      <CalmEmptyState
         icon={Layers3}
+        label="No DeFi positions."
         className="min-h-[13rem]"
-        recommendations={[
-          "Show me my DeFi positions",
-          "Where can I stake my tokens?",
-          "Find the best yield for my USDC",
-        ]}
       />
     );
   }
@@ -1744,14 +1668,10 @@ function WalletHoldingsSection({
         <div className="space-y-1">
           {activeTab === "tokens" ? (
             visibleRows.length === 0 ? (
-              <ChatEmptyStateWithRecommendations
+              <CalmEmptyState
                 icon={Wallet}
+                label="No tokens in this wallet."
                 className="min-h-[13rem]"
-                recommendations={[
-                  "How do I fund my wallet?",
-                  "Buy ETH with my card",
-                  "Bridge USDC to Base",
-                ]}
               />
             ) : (
               visibleRows.map((row) => (
@@ -1840,14 +1760,10 @@ function ActivityLog({
 
   if (entries.length === 0) {
     return (
-      <ChatEmptyStateWithRecommendations
+      <CalmEmptyState
         icon={Activity}
+        label="No recent activity."
         className="min-h-[8rem]"
-        recommendations={[
-          "Show my recent transactions",
-          "Swap 0.1 ETH for USDC",
-          "What did my agent do today?",
-        ]}
       />
     );
   }
@@ -1913,14 +1829,10 @@ function NftPreview({ nfts }: { nfts: NftItem[] }) {
 
   if (visible.length === 0) {
     return (
-      <ChatEmptyStateWithRecommendations
+      <CalmEmptyState
         icon={ImageIcon}
+        label="No NFTs to preview."
         className="min-h-[8rem]"
-        recommendations={[
-          "What NFT collections are trending?",
-          "Show floor prices for a collection",
-          "Find NFTs on Base",
-        ]}
       />
     );
   }
@@ -1965,14 +1877,10 @@ function LpPositionsPanel({
 }) {
   if (positions.length === 0) {
     return (
-      <ChatEmptyStateWithRecommendations
+      <CalmEmptyState
         icon={Layers3}
+        label="No liquidity positions."
         className="min-h-[8rem]"
-        recommendations={[
-          "How do I provide liquidity?",
-          "Explain impermanent loss",
-          "Show me top liquidity pools",
-        ]}
       />
     );
   }
@@ -2065,7 +1973,6 @@ export function InventoryAppView() {
   );
   const [marketOverview, setMarketOverview] =
     useState<WalletMarketOverviewResponse | null>(null);
-  const [marketOverviewLoading, setMarketOverviewLoading] = useState(false);
   const initialLoadRef = useRef(false);
   const tradingProfileRequestRef = useRef(0);
   const marketOverviewRequestRef = useRef(0);
@@ -2102,23 +2009,24 @@ export function InventoryAppView() {
   const loadMarketOverview = useCallback(async () => {
     const requestId = marketOverviewRequestRef.current + 1;
     marketOverviewRequestRef.current = requestId;
-    setMarketOverviewLoading(true);
 
     try {
       const overview = await client.getWalletMarketOverview();
       if (marketOverviewRequestRef.current === requestId) {
         setMarketOverview(overview);
       }
-    } catch {
-      // Market overview is an optional capability — when the feed is
-      // unavailable the empty-wallet hero simply omits the market panels
-      // rather than surfacing an error.
+    } catch (cause) {
+      // error-policy:J4 — the market feed is an optional capability, but a
+      // failed fetch is a *distinguishable* unavailable state, not a silent
+      // null that reads as "empty". Publish an overview whose sources are all
+      // marked unavailable with the error so the dashboard's market panels
+      // render `MarketDataUnavailable` instead of a blank/absent panel.
+      const message =
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Market data is currently unavailable.";
       if (marketOverviewRequestRef.current === requestId) {
-        setMarketOverview(null);
-      }
-    } finally {
-      if (marketOverviewRequestRef.current === requestId) {
-        setMarketOverviewLoading(false);
+        setMarketOverview(marketOverviewUnavailable(message));
       }
     }
   }, []);
@@ -2260,16 +2168,7 @@ export function InventoryAppView() {
           onEnableWallet={handleEnableWallet}
         />
 
-        {showMarketPulseHero ? (
-          <MarketPulseHero
-            overview={marketOverview}
-            loading={marketOverviewLoading}
-            hasKeys={
-              addresses.evmAddress !== null || addresses.solanaAddress !== null
-            }
-            onConfigureKeys={handleOpenRpcSettings}
-          />
-        ) : null}
+        {showMarketPulseHero ? <MarketPulseHero /> : null}
 
         {!showMarketPulseHero ? (
           <div className="flex flex-col gap-8">

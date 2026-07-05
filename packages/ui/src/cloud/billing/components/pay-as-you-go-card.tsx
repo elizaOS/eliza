@@ -64,18 +64,18 @@ export function PayAsYouGoCard() {
       <div className="relative z-10 space-y-4">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-[var(--accent)]" />
-          <h3 className="text-base font-mono text-[#e1e1e1] uppercase">
+          <h3 className="text-base font-mono text-txt uppercase">
             Pay Hosting From Earnings
           </h3>
         </div>
 
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1 flex-1 min-w-0">
-            <Label className="text-white font-mono text-sm flex items-center gap-2">
+            <Label className="text-txt-strong font-mono text-sm flex items-center gap-2">
               <Coins className="h-4 w-4 text-[var(--accent)]" />
               Use my app earnings to pay container hosting
             </Label>
-            <p className="text-xs font-mono text-[#858585] leading-relaxed">
+            <p className="text-xs font-mono text-muted leading-relaxed">
               When on, daily container bills are paid from your redeemable
               earnings first, then from credits. When off, hosting bills come
               purely from credits and your earnings stay untouched (cashout

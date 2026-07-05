@@ -156,6 +156,28 @@ const STANDARD_CAPABILITY_IDS: ReadonlySet<string> = new Set<string>([
 /** Module-level map of pending interact requests awaiting a frontend result. */
 const pendingInteractRequests = new PendingRequestMap();
 
+/**
+ * Module-level WS broadcaster, wired once by server.ts at boot. Lets code that
+ * runs outside an HTTP request — notably the view-scoped action handler, which
+ * fires from the planner loop, not a `/interact` request — dispatch a
+ * `view:interact` frame to mounted shells through the SAME path the route uses.
+ * Null until wired (or in headless test/CI); dispatch degrades to a route-error
+ * result rather than silently succeeding when it is unset.
+ */
+let moduleBroadcastWs: ((payload: object) => void) | null = null;
+
+/** Wire the process WS broadcaster into the views module. Called once at boot. */
+export function setViewsBroadcastWs(
+  broadcast: ((payload: object) => void) | null,
+): void {
+  moduleBroadcastWs = broadcast;
+}
+
+/** The wired process WS broadcaster, or null when none is installed. */
+export function getViewsBroadcastWs(): ((payload: object) => void) | null {
+  return moduleBroadcastWs;
+}
+
 export interface CurrentViewState {
   viewId: string;
   viewPath: string | null;
@@ -839,6 +861,13 @@ export async function handleViewsRoutes(
             viewType: resolvedViewType,
             previousViewId,
             initiatedBy: source,
+            // Resolve the view's declared anticipatory intent + purpose so the
+            // proactive judge can produce a scoped greeting (#13587). Absent for
+            // intent-less/developer views → judge falls back to label-only.
+            ...(entry?.anticipatoryIntent
+              ? { anticipatoryIntent: entry.anticipatoryIntent }
+              : {}),
+            ...(entry?.description ? { viewPurpose: entry.description } : {}),
           })
           .catch((err) => {
             logger.debug(
@@ -1132,7 +1161,7 @@ export async function handleViewsRoutes(
  * Result of dispatching a capability to a view — the union of the two interact
  * paths (a `serverInteract` handler, or a frontend `view:interact` round-trip).
  */
-interface ViewInteractDispatchResult {
+export interface ViewInteractDispatchResult {
   requestId: string;
   success: boolean;
   result?: unknown;
@@ -1143,10 +1172,10 @@ interface ViewInteractDispatchResult {
  * Dispatch a capability to a view, reusing the established interact semantics:
  * a `serverInteract` handler when the view declares one, else a frontend
  * `view:interact` WebSocket round-trip resolved via the pending-request map.
- * Shared by POST /:id/activate (CLICK_ELEMENT) so activation never re-implements
- * the dispatch.
+ * Shared by POST /:id/activate (CLICK_ELEMENT) and the view-scoped action
+ * handler (view-scoped-actions.ts) so neither re-implements the dispatch.
  */
-async function dispatchViewInteract(
+export async function dispatchViewInteract(
   entry: ViewRegistryEntry,
   viewId: string,
   capability: string,

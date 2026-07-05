@@ -115,17 +115,17 @@ export function ContributeCredentialDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="bg-neutral-950 border border-brand-surface p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
+      <DialogContent className="bg-popover border border-brand-surface p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
         {result ? (
           <>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-white font-mono">
+              <DialogTitle className="flex items-center gap-2 text-txt-strong font-mono">
                 <ShieldCheck className="h-5 w-5 text-green-500" />
                 {t("cloud.contributeCredential.pooledTitle", {
                   defaultValue: "Key Added to the Pool",
                 })}
               </DialogTitle>
-              <DialogDescription className="text-white/60 font-mono text-xs md:text-sm">
+              <DialogDescription className="text-muted font-mono text-xs md:text-sm">
                 {t("cloud.contributeCredential.pooledDescription", {
                   provider: POOLED_PROVIDER_LABELS[provider],
                   defaultValue:
@@ -134,8 +134,8 @@ export function ContributeCredentialDialog({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3">
-              <code className="text-xs font-mono text-white">
+            <div className="bg-surface border border-brand-surface p-3">
+              <code className="text-xs font-mono text-txt-strong">
                 {t("cloud.contributeCredential.maskedAs", {
                   last4: result.last4,
                   defaultValue: "Listed in the pool as ••••{{last4}}",
@@ -159,13 +159,13 @@ export function ContributeCredentialDialog({
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-white font-mono">
+              <DialogTitle className="flex items-center gap-2 text-txt-strong font-mono">
                 <KeyRound className="h-5 w-5 text-[var(--accent)]" />
                 {t("cloud.contributeCredential.title", {
                   defaultValue: "Contribute an API Key",
                 })}
               </DialogTitle>
-              <DialogDescription className="text-white/60 font-mono text-xs md:text-sm">
+              <DialogDescription className="text-muted font-mono text-xs md:text-sm">
                 {t("cloud.contributeCredential.description", {
                   defaultValue:
                     "Add a provider API key to your organization's shared pool. The key is validated live against the provider, then encrypted — nobody can ever read it back.",
@@ -189,7 +189,7 @@ export function ContributeCredentialDialog({
               <div className="space-y-2">
                 <Label
                   htmlFor="credential-provider"
-                  className="text-white font-mono text-sm"
+                  className="text-txt-strong font-mono text-sm"
                 >
                   {t("cloud.contributeCredential.provider", {
                     defaultValue: "Provider",
@@ -204,14 +204,14 @@ export function ContributeCredentialDialog({
                 >
                   <SelectTrigger
                     id="credential-provider"
-                    className="bg-transparent border-[#303030] text-white"
+                    className="bg-transparent border-border text-txt-strong"
                   >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a1a1a] border-[#303030]">
+                  <SelectContent className="bg-popover border-border">
                     {POOLED_PROVIDERS.map((id) => (
                       <SelectItem key={id} value={id}>
-                        <span className="font-mono text-white">
+                        <span className="font-mono text-txt-strong">
                           {POOLED_PROVIDER_LABELS[id]}
                         </span>
                       </SelectItem>
@@ -223,7 +223,7 @@ export function ContributeCredentialDialog({
               <div className="space-y-2">
                 <Label
                   htmlFor="credential-api-key"
-                  className="text-white font-mono text-sm"
+                  className="text-txt-strong font-mono text-sm"
                 >
                   {t("cloud.contributeCredential.apiKey", {
                     defaultValue: "API Key",
@@ -239,9 +239,9 @@ export function ContributeCredentialDialog({
                   required
                   autoFocus
                   autoComplete="off"
-                  className="bg-transparent border-[#303030] text-white font-mono"
+                  className="bg-transparent border-border text-txt-strong font-mono"
                 />
-                <p className="text-xs font-mono text-white/40">
+                <p className="text-xs font-mono text-muted">
                   {t("cloud.contributeCredential.apiKeyHint", {
                     defaultValue:
                       "Validated with a live call before it enters the pool",
@@ -252,7 +252,7 @@ export function ContributeCredentialDialog({
               <div className="space-y-2">
                 <Label
                   htmlFor="credential-label"
-                  className="text-white font-mono text-sm"
+                  className="text-txt-strong font-mono text-sm"
                 >
                   {t("cloud.contributeCredential.label", {
                     defaultValue: "Label (optional)",
@@ -269,7 +269,7 @@ export function ContributeCredentialDialog({
                   onChange={(e) => setLabel(e.target.value)}
                   disabled={isSubmitting}
                   maxLength={120}
-                  className="bg-transparent border-[#303030] text-white"
+                  className="bg-transparent border-border text-txt-strong"
                 />
               </div>
 
@@ -279,7 +279,7 @@ export function ContributeCredentialDialog({
                   type="button"
                   onClick={handleClose}
                   disabled={isSubmitting}
-                  className="px-4 py-2 text-white hover:bg-white/5 transition-colors disabled:opacity-50 order-2 sm:order-1"
+                  className="px-4 py-2 text-txt-strong hover:bg-surface transition-colors disabled:opacity-50 order-2 sm:order-1"
                 >
                   {t("cloud.contributeCredential.cancel", {
                     defaultValue: "Cancel",

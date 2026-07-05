@@ -1,3 +1,0 @@
-06-30 02:05:02.196  2770  2817 I TestRunner: started: audioDevices_returnsRealAndroidInputsOrDefaultFallback(ai.eliza.plugins.swabble.SwabbleAndroidPlatformProbeInstrumentedTest)
-06-30 02:05:02.205  2770  2817 I GrantPermissionCallable: Permission: android.permission.RECORD_AUDIO is already granted!
-06-30 02:05:02.246  2770  2817 I TestRunner: finished: audioDevices_returnsRealAndroidInputsOrDefaultFallback(ai.eliza.plugins.swabble.SwabbleAndroidPlatformProbeInstrumentedTest)

@@ -1,11 +1,15 @@
 /**
- * Perf-gate e2e (#9954, Item 5): drives the REAL ContinuousChatOverlay over a
- * long overflowing thread + multi-conversation list and feeds REAL rAF /
+ * Perf-gate e2e (#9954 Item 5, retargeted for #13531): drives the REAL
+ * ContinuousChatOverlay over a long overflowing thread and feeds REAL rAF /
  * PerformanceObserver entries into the SAME shared, unit-tested detectors the dev
  * HUD uses — frame-budget.ts (per-gesture windows via FRAME_SAMPLER_INIT) and
  * layout-stability.ts (steady-state CLS via LAYOUT_SHIFT_OBSERVER_INIT). It opens
- * the sheet to FULL, then drives real thread-scroll then conversation-swipe over
- * `#continuous-thread` and HARD-FAILS on breached frame thresholds or CLS.
+ * the sheet to FULL, then drives the two surviving high-cost gestures of the
+ * single-infinite-thread redesign — thread-scroll and pull-to-maximize →
+ * top-pull-restore — over `#continuous-thread` and the sheet grabber / restore
+ * strip, and HARD-FAILS on breached frame thresholds or CLS. The maximize +
+ * restore transitions re-render + re-layout the whole panel, so they are exactly
+ * the layout-stability regressions this gate protects against.
  *
  * Thresholds are calibrated to the measured develop baseline (see FRAME_GATE) and
  * expressed as a factor over the 60fps budget so a 60Hz CI runner and a 120Hz dev
@@ -45,9 +49,10 @@ const FRAME_GATE = {
   p95BudgetFactor: 2,
   // ≥20% of frames over budget = unambiguous jank (baseline tops out ~1%).
   droppedFrameRatio: 0.2,
-  // Long tasks are reported per-window but not a hard-fail: a swipe-commit
-  // re-renders the whole thread, legitimately spiking 0–3 long tasks without
-  // breaching the frame budget. The named gate criteria are dropped-%, p95, CLS.
+  // Long tasks are reported per-window but not a hard-fail: a maximize/restore
+  // commit re-renders the whole thread, legitimately spiking 0–3 long tasks
+  // without breaching the frame budget. The named gate criteria are dropped-%,
+  // p95, CLS.
   reportOnLongTask: false,
 };
 const MIN_SAMPLES = 30; // a real gesture animates ≥30 frames; fewer = regression
@@ -111,6 +116,54 @@ async function drag(p, selector, dx, dy, { steps = 12, stepMs = 16 } = {}) {
   );
 }
 
+const isMaximized = (p) =>
+  p
+    .getByTestId("chat-sheet")
+    .evaluate((el) => el.getAttribute("data-maximized") === "true");
+
+// Over-pull the grabber UP past the 80%-viewport maximize threshold (a large
+// finger travel pushes the peak raw pull past max(0.8·viewportH, FULL)+56px into
+// the rubber-band zone that commits full-bleed), then WAIT for the sheet to
+// actually report data-maximized=true so the follow-on restore drive can find the
+// top strip. Returns whether it committed.
+async function pullToMaximize(p) {
+  await drag(p, '[data-testid="chat-sheet-grabber"]', 0, -640, { steps: 18, stepMs: 16 });
+  try {
+    await p.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-testid="chat-sheet"]')
+          ?.getAttribute("data-maximized") === "true",
+      { timeout: 2500 },
+    );
+  } catch {
+    // Let the caller assert; a missed commit surfaces as a failed gate check
+    // rather than a swallowed timeout.
+  }
+  return isMaximized(p);
+}
+
+// Pull DOWN from the top-20% restore strip (only present while full-bleed) to
+// un-maximize, then WAIT for data-maximized to clear. Returns whether it
+// restored; a no-op (strip absent) resolves false so the caller can assert.
+async function pullToRestore(p) {
+  const zone = p.locator('[data-testid="chat-maximize-restore-zone"]');
+  if ((await zone.count()) === 0) return false;
+  await drag(p, '[data-testid="chat-maximize-restore-zone"]', 0, 320, { steps: 16, stepMs: 16 });
+  try {
+    await p.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-testid="chat-sheet"]')
+          ?.getAttribute("data-maximized") !== "true",
+      { timeout: 2500 },
+    );
+  } catch {
+    // Surfaced by the caller's assertion, not swallowed.
+  }
+  return !(await isMaximized(p));
+}
+
 await runBrowserFixtureE2E(
   {
     page: {
@@ -172,24 +225,26 @@ await runBrowserFixtureE2E(
 
     await page.waitForTimeout(600);
 
-    // Open the sheet to FULL so `#continuous-thread` (the real scroll + swipe
-    // surface) is mounted + bound. Two pull-ups: collapsed → half → full.
+    // Open the sheet to FULL so `#continuous-thread` (the real scroll surface) is
+    // mounted + bound. Two pull-ups: collapsed → half → full.
     await drag(page, '[data-testid="chat-sheet-grabber"]', 0, -120, { steps: 6 });
     await page.waitForTimeout(450);
     await drag(page, '[data-testid="chat-sheet-grabber"]', 0, -180, { steps: 6 });
     await page.waitForTimeout(450);
     assert(
       (await page.locator("#continuous-thread").count()) === 1,
-      "thread (scroll + swipe surface) is mounted with the sheet open",
+      "thread (scroll surface) is mounted with the sheet open",
     );
     assert(
       await page.locator("#continuous-thread").evaluate((el) => el.scrollHeight > el.clientHeight + 8),
       "thread actually overflows (real scroll surface, not a stub)",
     );
+    assert(!(await isMaximized(page)), "sheet opens to the INSET full detent (not yet maximized)");
     await snap(page, "perf-gate-open");
 
     // Reset the layout-shift buffer AFTER the one-time sheet-open animation, so
-    // the CLS gate measures the steady-state scroll+swipe interaction.
+    // the CLS gate measures the steady-state scroll + maximize/restore
+    // interaction.
     await page.evaluate(() => {
       window.__ELIZA_LAYOUT_SHIFTS__ = [];
     });
@@ -206,17 +261,38 @@ await runBrowserFixtureE2E(
     });
     await snap(page, "after-scroll");
 
-    // 2. REAL conversation-swipe — horizontal pointer swipes over the SAME
-    // #continuous-thread (the overlay's production conversationSwipe wiring).
-    await gateWindow("conversation-swipe", async () => {
+    // 2. REAL pull-to-maximize → top-pull-restore (#13531) — an over-pull UP on
+    // the grabber past the 80%-viewport threshold commits the sheet to
+    // edge-to-edge full-bleed, and a downward pull from the top-20% strip restores
+    // it. Both re-render + re-layout the whole panel, so this window gates those
+    // transitions' frame budget. Repeat maximize↔restore so the window captures
+    // ≥MIN_SAMPLES of a real re-layout, not a single spike; assert EACH commit so
+    // a gate that never entered the state it measures cannot pass vacuously.
+    let maximizeCommits = 0;
+    let restoreCommits = 0;
+    await gateWindow("maximize-restore", async () => {
       for (let i = 0; i < 4; i += 1) {
-        await drag(page, "#continuous-thread", -180, 4, { steps: 14, stepMs: 16 });
-        await page.waitForTimeout(200);
-        await drag(page, "#continuous-thread", 180, 4, { steps: 14, stepMs: 16 });
-        await page.waitForTimeout(200);
+        if (await pullToMaximize(page)) maximizeCommits += 1;
+        if (await pullToRestore(page)) restoreCommits += 1;
       }
     });
-    await snap(page, "after-swipe");
+    await snap(page, "after-maximize-restore");
+    assert(
+      maximizeCommits >= 1,
+      `an over-pull past the 80% threshold committed full-bleed at least once (${maximizeCommits}/4)`,
+    );
+    assert(
+      restoreCommits >= 1,
+      `a top-20% pull-down restored the inset overlay at least once (${restoreCommits}/4)`,
+    );
+
+    // Leave the sheet in a known-restored state + capture both end states.
+    const finalMaximized = await pullToMaximize(page);
+    assert(finalMaximized, "final over-pull commits full-bleed (data-maximized=true)");
+    await snap(page, "maximized");
+    const finalRestored = await pullToRestore(page);
+    assert(finalRestored, "final top-20% pull-down restores the inset overlay (data-maximized cleared)");
+    await snap(page, "restored");
 
     // 3. Layout stability across the steady-state interaction.
     const shifts = await page.evaluate(() => window.__ELIZA_LAYOUT_SHIFTS__ ?? []);
@@ -226,7 +302,7 @@ await runBrowserFixtureE2E(
     );
     assert(
       !stability.flagged,
-      `layout stable during scroll+swipe (CLS ${stability.cls.toFixed(4)} ≤ ${MAX_CLS}, ${stability.shiftCount} shifts)`,
+      `layout stable during scroll + maximize/restore (CLS ${stability.cls.toFixed(4)} ≤ ${MAX_CLS}, ${stability.shiftCount} shifts)`,
     );
 
     assert(errors.length === 0, `no page errors (saw ${errors.length})`);

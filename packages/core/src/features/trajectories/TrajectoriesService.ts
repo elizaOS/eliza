@@ -67,6 +67,8 @@ export interface TrajectoryListOptions {
 	endDate?: string;
 	search?: string;
 	scenarioId?: string;
+	/** Correlation join key (#13775): all trajectories in one root turn's trace. */
+	traceId?: string;
 	batchId?: string;
 	isTrainingData?: boolean;
 }
@@ -127,6 +129,8 @@ export interface TrajectoryZipExportOptions {
 	startDate?: string;
 	endDate?: string;
 	scenarioId?: string;
+	/** Correlation join key (#13775): all trajectories in one root turn's trace. */
+	traceId?: string;
 	batchId?: string;
 }
 
@@ -854,6 +858,8 @@ type StartTrajectoryOptions = {
 	entityId?: string;
 	source?: string;
 	scenarioId?: string;
+	/** Correlation join key (#13775), read from the trajectory context. */
+	traceId?: string;
 	episodeId?: string;
 	batchId?: string;
 	groupIndex?: number;
@@ -1127,6 +1133,9 @@ export class TrajectoriesService extends Service {
 		let columns = await this.getTableColumnNames("trajectories");
 		const requiredColumns: Array<[name: string, definition: string]> = [
 			["scenario_id", "TEXT"],
+			// Correlation join key (#13775): stitches a DB trajectory to its file
+			// trajectory and orchestrator task. Nullable — pre-rollout rows have none.
+			["trace_id", "TEXT"],
 			["episode_id", "TEXT"],
 			["batch_id", "TEXT"],
 			["group_index", "INTEGER"],
@@ -1198,6 +1207,7 @@ export class TrajectoriesService extends Service {
         total_cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
         total_reward REAL NOT NULL DEFAULT 0,
         scenario_id TEXT,
+        trace_id TEXT,
         episode_id TEXT,
         batch_id TEXT,
         group_index INTEGER,
@@ -1233,6 +1243,9 @@ export class TrajectoriesService extends Service {
 			);
 			await this.executeRawSql(
 				`CREATE INDEX IF NOT EXISTS idx_trajectories_scenario_id ON trajectories(scenario_id)`,
+			);
+			await this.executeRawSql(
+				`CREATE INDEX IF NOT EXISTS idx_trajectories_trace_id ON trajectories(trace_id)`,
 			);
 			await this.executeRawSql(
 				`CREATE INDEX IF NOT EXISTS idx_trajectories_batch_id ON trajectories(batch_id)`,
@@ -1940,6 +1953,15 @@ export class TrajectoriesService extends Service {
 		};
 		if (options.roomId) metadata.roomId = options.roomId;
 		if (options.entityId) metadata.entityId = options.entityId;
+		// Full correlation envelope (#13775) alongside the indexed trace_id column,
+		// so downstream joins can read the whole header without a schema change.
+		if (options.traceId) {
+			metadata.correlation = {
+				traceId: options.traceId,
+				...(options.roomId ? { roomId: options.roomId } : {}),
+				...(options.scenarioId ? { runId: options.scenarioId } : {}),
+			};
+		}
 
 		const trajectory: Trajectory = {
 			trajectoryId:
@@ -1969,7 +1991,7 @@ export class TrajectoriesService extends Service {
 		try {
 			await this.executeRawSql(`
         INSERT INTO trajectories (
-          id, agent_id, source, status, start_time, scenario_id, episode_id,
+          id, agent_id, source, status, start_time, scenario_id, trace_id, episode_id,
           batch_id, group_index, metadata_json, steps_json, reward_components_json, metrics_json,
           created_at, updated_at
         ) VALUES (
@@ -1979,6 +2001,7 @@ export class TrajectoriesService extends Service {
           'active',
           ${now},
           ${sqlLiteral(options.scenarioId ?? null)},
+          ${sqlLiteral(options.traceId ?? null)},
           ${sqlLiteral(options.episodeId ?? null)},
           ${sqlLiteral(options.batchId ?? null)},
           ${options.groupIndex ?? "NULL"},
@@ -2241,6 +2264,9 @@ export class TrajectoriesService extends Service {
 		}
 		if (options.scenarioId) {
 			whereClauses.push(`scenario_id = ${sqlLiteral(options.scenarioId)}`);
+		}
+		if (options.traceId) {
+			whereClauses.push(`trace_id = ${sqlLiteral(options.traceId)}`);
 		}
 		if (options.batchId) {
 			whereClauses.push(`batch_id = ${sqlLiteral(options.batchId)}`);
@@ -2730,6 +2756,9 @@ export class TrajectoriesService extends Service {
 		}
 		if (options.scenarioId) {
 			whereClauses.push(`scenario_id = ${sqlLiteral(options.scenarioId)}`);
+		}
+		if (options.traceId) {
+			whereClauses.push(`trace_id = ${sqlLiteral(options.traceId)}`);
 		}
 		if (options.batchId) {
 			whereClauses.push(`batch_id = ${sqlLiteral(options.batchId)}`);

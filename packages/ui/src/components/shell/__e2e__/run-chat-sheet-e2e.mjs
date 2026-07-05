@@ -9,6 +9,9 @@
  *       slow drag (distance threshold) · flick (velocity threshold) ·
  *       sub-threshold nudge (snaps back) · drag-and-hold at an arbitrary mid
  *       height (live 1:1 tracking) · drag BEYOND full (rubber-band overscroll).
+ *   - AUTOSCROLL, per input type: tail follows at bottom, a single >80px
+ *       streamed growth remains pinned, reading-scrollback is not yanked, and
+ *       jump-to-latest re-pins the transcript.
  *   - EVERY control/state via deterministic fixture loads + interactions:
  *       empty · peek/half/full · typing→send · attach image→thumbnail→remove ·
  *       mic press→recording · voice speaking→mute toggle · responding typing
@@ -17,14 +20,15 @@
  *     page error or error-level log.
  *
  * Run: bun run --cwd packages/ui test:chat-sheet-e2e
+ *      bun run --cwd packages/ui test:chat-sheet-e2e -- --only-autoscroll
  * Exits non-zero on any failed assertion / console error.
  */
 
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PNG } from "pngjs";
 import { chromium } from "playwright";
+import { PNG } from "pngjs";
 import {
   renameRecordedVideo,
   stubElizaCore,
@@ -41,6 +45,9 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output");
 const videoDir = join(outDir, "video");
+const ONLY_AUTOSCROLL =
+  process.argv.includes("--only-autoscroll") ||
+  process.env.CHAT_SHEET_E2E_SCOPE === "autoscroll";
 await mkdir(outDir, { recursive: true });
 await mkdir(videoDir, { recursive: true });
 
@@ -102,6 +109,19 @@ const sheetHeight = (p) =>
         .querySelector('[data-testid="chat-thread"]')
         ?.getBoundingClientRect().height ?? 0,
   );
+const threadScrollState = (p) =>
+  p.evaluate(() => {
+    const el = document.querySelector('[data-testid="chat-thread-scroll"]');
+    if (!el) return null;
+    const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    return {
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+      maxScrollTop,
+      bottomDelta: maxScrollTop - el.scrollTop,
+    };
+  });
 async function waitForSheetHeightNear(p, expected, tolerance, timeout = 1500) {
   await p
     .waitForFunction(
@@ -113,6 +133,20 @@ async function waitForSheetHeightNear(p, expected, tolerance, timeout = 1500) {
         return Math.abs(h - expected) <= tolerance;
       },
       { expected, tolerance },
+      { timeout },
+    )
+    .catch(() => {});
+}
+async function waitForThreadBottom(p, timeout = 1800) {
+  await p
+    .waitForFunction(
+      () => {
+        const el = document.querySelector('[data-testid="chat-thread-scroll"]');
+        if (!el) return false;
+        const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+        return maxScrollTop - el.scrollTop <= 18;
+      },
+      undefined,
       { timeout },
     )
     .catch(() => {});
@@ -223,6 +257,35 @@ async function release(p, pointer, up = 0) {
   }
 }
 
+async function maximizeByPull(p, pointer = "mouse") {
+  await gesture(p, 760, { pointer, slow: true, steps: 24 });
+  await p.waitForTimeout(SETTLE);
+}
+
+async function restoreFromMaximized(p, pointer = "mouse") {
+  const zone = p.getByTestId("chat-maximize-restore-zone");
+  await zone.waitFor();
+  if (pointer === "mouse") {
+    const b = await zone.boundingBox();
+    const cx = b.x + b.width / 2;
+    const cy = b.y + Math.max(24, b.height - 24);
+    await p.mouse.move(cx, cy);
+    await p.mouse.down();
+    await p.mouse.move(cx, cy + 140, { steps: 8 });
+    await p.mouse.up();
+  } else {
+    const drag = await touchDragHold(
+      p,
+      testIdSelector("chat-maximize-restore-zone"),
+      0,
+      140,
+      { steps: 8, stepDelayMs: 12 },
+    );
+    await drag.release();
+  }
+  await p.waitForTimeout(SETTLE);
+}
+
 /** Full detent-stepping + flick + sub-threshold + rubber-band suite for one input type. */
 async function runDragSuite(p, pointer, tag) {
   const vh = await viewportH(p);
@@ -261,11 +324,12 @@ async function runDragSuite(p, pointer, tag) {
     grabberBarOpacity === "1",
     `[${pointer}] grabber bar paints (inner-span opacity "${grabberBarOpacity}" === "1", not opacity-0) (#9142)`,
   );
-  // The sheet header (maximize/clear/launcher) shows at HALF and up now,
-  // not only at FULL.
+  // The sheet header shows at HALF and up now, not only at FULL. Maximize and
+  // clear are gesture/state contracts, not header buttons.
   assert(
-    (await p.getByTestId("chat-full-maximize").count()) === 1 &&
-      (await p.getByTestId("chat-full-launcher").count()) === 1,
+    (await p.getByTestId("chat-full-launcher").count()) === 1 &&
+      (await p.getByTestId("chat-full-maximize").count()) === 0 &&
+      (await p.getByTestId("chat-full-clear").count()) === 0,
     `[${pointer}] HALF detent shows the sheet header`,
   );
 
@@ -282,43 +346,32 @@ async function runDragSuite(p, pointer, tag) {
   );
   await snap(p, `${tag}-full`);
 
-  // Header (post home↔launcher consolidation, #9450): Maximize + Clear on the
-  // left, a single Launcher button on the right (the old Home/Views/Settings
-  // trio collapsed into one launcher target). The stray copy-conversation button
-  // was removed in #10713 (#10749), so the FULL header is exactly these three.
+  // Header (post #13531/#9450): no maximize/minimize/new-chat buttons, only the
+  // launcher remains. The old Home/Views/Settings trio collapsed into that one
+  // launcher target.
   assert(
-    (await p.getByTestId("chat-full-maximize").count()) === 1 &&
-      (await p.getByTestId("chat-full-clear").count()) === 1 &&
-      (await p.getByTestId("chat-full-launcher").count()) === 1,
-    `[${pointer}] header shows maximize + clear + launcher`,
+    (await p.getByTestId("chat-full-launcher").count()) === 1 &&
+      (await p.getByTestId("chat-full-maximize").count()) === 0 &&
+      (await p.getByTestId("chat-full-clear").count()) === 0,
+    `[${pointer}] header shows launcher without removed maximize/clear controls`,
   );
-  // Maximize → full-bleed (edge-to-edge): data-maximized flips + panel reaches x=0.
-  await p.getByTestId("chat-full-maximize").click();
-  await p.waitForTimeout(SETTLE);
+  // Maximize → full-bleed (edge-to-edge): a deliberate over-pull flips
+  // data-maximized and the panel reaches x=0.
+  await maximizeByPull(p, pointer);
   assert(
     (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 1,
-    `[${pointer}] maximize → data-maximized=true (full screen)`,
+    `[${pointer}] over-pull maximize → data-maximized=true (full screen)`,
   );
   const maxBox = await p.getByTestId("chat-sheet").boundingBox();
   assert(
     !!maxBox && maxBox.x <= 1,
     `[${pointer}] maximized panel is edge-to-edge (x=${Math.round(maxBox?.x ?? -1)})`,
   );
-  // Restore → inset again.
-  await p.getByTestId("chat-full-maximize").click();
-  await p.waitForTimeout(SETTLE);
+  // Restore → inset again via the top restore zone.
+  await restoreFromMaximized(p, pointer);
   assert(
     (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 0,
-    `[${pointer}] restore → no longer maximized`,
-  );
-  // Clear routes to the controller and keeps the sheet open (it resets the
-  // thread in place). Home/Settings instead collapse the sheet (navigate-and-
-  // close) — tested in their own block so they don't tear down this flow.
-  await p.getByTestId("chat-full-clear").click();
-  await p.waitForTimeout(120);
-  assert(
-    sink.logs.some((l) => l.includes("clearConversation")),
-    `[${pointer}] clear button calls clearConversation`,
+    `[${pointer}] restore-zone pull → no longer maximized`,
   );
 
   // drag BEYOND full (held) → rubber-band, not 1:1
@@ -332,7 +385,19 @@ async function runDragSuite(p, pointer, tag) {
   await snap(p, `${tag}-beyond-full-rubberband`);
   await release(p, pointer, 260);
   await p.waitForTimeout(SETTLE);
-  assert(near(await sheetHeight(p), fullH, TOL + 24), `[${pointer}] settles back near FULL after overscroll`);
+  if (
+    (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 1
+  ) {
+    assert(
+      (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 1,
+      `[${pointer}] releasing a committed over-pull enters maximized mode`,
+    );
+    await restoreFromMaximized(p, pointer);
+  }
+  assert(
+    near(await sheetHeight(p), fullH, TOL + 24),
+    `[${pointer}] settles back near FULL after overscroll/restore`,
+  );
 
   // mid-drag HOLD between detents (live 1:1 tracking)
   await gesture(p, -150, { pointer, hold: true }); // pull down ~150 from full
@@ -414,39 +479,189 @@ async function runDragSuite(p, pointer, tag) {
   await snap(p, `${tag}-nudge-snapback`);
 }
 
+const BIG_STREAM_GROWTH = `\n\n${Array.from(
+  { length: 18 },
+  (_, i) =>
+    `streamed burst ${i + 1}: this deliberately wraps across the chat bubble so one committed growth is taller than the 80px at-bottom threshold.`,
+).join(" ")}`;
+
+async function mutateAssistant(p, hook, text) {
+  const ok = await p.evaluate(
+    ({ hook, text }) => {
+      const fn = window[hook];
+      if (typeof fn !== "function") return false;
+      fn(text);
+      return true;
+    },
+    { hook, text },
+  );
+  assert(ok, `fixture exposes ${hook}`);
+}
+
+async function openSheetToFull(p, pointer) {
+  await p.waitForSelector('[data-testid="chat-sheet"]');
+  await gesture(p, 160, { pointer, slow: false, steps: 2 });
+  await p.waitForTimeout(SETTLE);
+  if ((await detent(p)) !== "full") {
+    await gesture(p, 220, { pointer, slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+  }
+  assert((await detent(p)) === "full", `[${pointer}] AUTOSCROLL opens the sheet to FULL`);
+  await waitForThreadBottom(p);
+  const state = await threadScrollState(p);
+  assert(
+    !!state && state.scrollHeight > state.clientHeight + 120,
+    `[${pointer}] AUTOSCROLL fixture has real overflow (scrollHeight=${Math.round(state?.scrollHeight ?? 0)}, clientHeight=${Math.round(state?.clientHeight ?? 0)})`,
+  );
+  assert(
+    !!state && state.bottomDelta <= 18,
+    `[${pointer}] AUTOSCROLL starts pinned to bottom (delta=${Math.round(state?.bottomDelta ?? -1)})`,
+  );
+}
+
+async function scrollReaderUp(p, pointer) {
+  const selector = testIdSelector("chat-thread-scroll");
+  const before = await threadScrollState(p);
+  if (pointer === "mouse") {
+    await p.getByTestId("chat-thread-scroll").hover();
+    await p.mouse.wheel(0, -420);
+  } else {
+    await touchSwipe(p, selector, 0, 280, { steps: 16, stepDelayMs: 16 });
+  }
+  await p.waitForTimeout(360);
+  const after = await threadScrollState(p);
+  assert(
+    !!before && !!after && after.scrollTop < before.scrollTop - 80,
+    `[${pointer}] AUTOSCROLL real ${pointer === "mouse" ? "wheel" : "touch"} scroll moves reader into history (${Math.round(before?.scrollTop ?? 0)} → ${Math.round(after?.scrollTop ?? 0)})`,
+  );
+  return after;
+}
+
+async function runAutoScrollSuite(p, pointer, tag) {
+  await openSheetToFull(p, pointer);
+  const beforeLargeGrowth = await threadScrollState(p);
+  await mutateAssistant(p, "__growLastAssistant", BIG_STREAM_GROWTH);
+  await p.waitForTimeout(260);
+  const afterLargeGrowth = await threadScrollState(p);
+  const largeGrowthPx =
+    (afterLargeGrowth?.scrollHeight ?? 0) -
+    (beforeLargeGrowth?.scrollHeight ?? 0);
+  assert(
+    largeGrowthPx > 80,
+    `[${pointer}] AUTOSCROLL single streamed growth exceeds 80px (${Math.round(largeGrowthPx)}px)`,
+  );
+  assert(
+    !!afterLargeGrowth && afterLargeGrowth.bottomDelta <= 18,
+    `[${pointer}] AUTOSCROLL stays pinned after >80px growth (delta=${Math.round(afterLargeGrowth?.bottomDelta ?? -1)})`,
+  );
+
+  await mutateAssistant(
+    p,
+    "__appendAssistant",
+    "A fresh assistant line lands while the reader is already at the bottom.",
+  );
+  await waitForThreadBottom(p);
+  const afterAppend = await threadScrollState(p);
+  assert(
+    !!afterAppend && afterAppend.bottomDelta <= 18,
+    `[${pointer}] AUTOSCROLL stays pinned after a new assistant line (delta=${Math.round(afterAppend?.bottomDelta ?? -1)})`,
+  );
+
+  const readerPosition = await scrollReaderUp(p, pointer);
+  await mutateAssistant(
+    p,
+    "__growLastAssistant",
+    "\n\nNew streamed text arrived below while the reader was reviewing older transcript content. It must not pull the viewport away from the reading position.",
+  );
+  await p.waitForTimeout(300);
+  const afterScrollbackGrowth = await threadScrollState(p);
+  assert(
+    !!readerPosition &&
+      !!afterScrollbackGrowth &&
+      Math.abs(afterScrollbackGrowth.scrollTop - readerPosition.scrollTop) <= 32,
+    `[${pointer}] AUTOSCROLL preserves reading scrollback on growth (${Math.round(readerPosition?.scrollTop ?? 0)} → ${Math.round(afterScrollbackGrowth?.scrollTop ?? 0)})`,
+  );
+  assert(
+    await p.getByTestId("chat-jump-to-latest").isVisible(),
+    `[${pointer}] AUTOSCROLL shows jump-to-latest while reader is above bottom`,
+  );
+  await p.getByTestId("chat-jump-to-latest").click();
+  await waitForThreadBottom(p);
+  const afterJump = await threadScrollState(p);
+  assert(
+    !!afterJump && afterJump.bottomDelta <= 18,
+    `[${pointer}] AUTOSCROLL jump-to-latest re-pins to bottom (delta=${Math.round(afterJump?.bottomDelta ?? -1)})`,
+  );
+  await snap(p, `${tag}-autoscroll-jump-repinned`);
+}
+
 const browser = await chromium.launch();
 const sink = { logs: [], errors: [] };
 try {
-  // ===== DESKTOP + MOUSE =====
-  const desktop = await browser.newPage({ viewport: { width: 1180, height: 820 } });
-  attachConsole(desktop, sink);
-  await gotoFixture(desktop);
-  await desktop.waitForSelector('[data-testid="chat-sheet"]');
-  await desktop.waitForTimeout(700);
-  await runDragSuite(desktop, "mouse", "desktop");
+  if (!ONLY_AUTOSCROLL) {
+    // ===== DESKTOP + MOUSE =====
+    const desktop = await browser.newPage({ viewport: { width: 1180, height: 820 } });
+    attachConsole(desktop, sink);
+    await gotoFixture(desktop);
+    await desktop.waitForSelector('[data-testid="chat-sheet"]');
+    await desktop.waitForTimeout(700);
+    await runDragSuite(desktop, "mouse", "desktop");
 
-  // ===== MOBILE + TOUCH (recorded — the continuous detent drag-suite video) =====
-  const mobileCtx = await browser.newContext({
-    viewport: { width: 402, height: 874 },
-    hasTouch: true,
-    isMobile: true,
-    deviceScaleFactor: 2,
-    recordVideo: { dir: videoDir, size: { width: 402, height: 874 } },
-  });
-  const mobile = await mobileCtx.newPage();
-  attachConsole(mobile, sink);
-  await gotoFixture(mobile);
-  await mobile.waitForSelector('[data-testid="chat-sheet"]');
-  await mobile.waitForTimeout(700);
-  await runDragSuite(mobile, "touch", "mobile");
-  await mobile.close(); // flush the recorded touch drag-suite video
-  await mobileCtx.close();
-  await renameRecordedVideo({
-    videoDir,
-    outDir,
-    name: "chat-sheet-drag-suite.webm",
-  });
+    // ===== MOBILE + TOUCH (recorded — the continuous detent drag-suite video) =====
+    const mobileCtx = await browser.newContext({
+      viewport: { width: 402, height: 874 },
+      hasTouch: true,
+      isMobile: true,
+      deviceScaleFactor: 2,
+      recordVideo: { dir: videoDir, size: { width: 402, height: 874 } },
+    });
+    const mobile = await mobileCtx.newPage();
+    attachConsole(mobile, sink);
+    await gotoFixture(mobile);
+    await mobile.waitForSelector('[data-testid="chat-sheet"]');
+    await mobile.waitForTimeout(700);
+    await runDragSuite(mobile, "touch", "mobile");
+    await mobile.close(); // flush the recorded touch drag-suite video
+    await mobileCtx.close();
+    await renameRecordedVideo({
+      videoDir,
+      outDir,
+      name: "chat-sheet-drag-suite.webm",
+    });
+  }
 
+  // ===== AUTOSCROLL + JUMP-TO-LATEST (mouse + real touch, #13690) =====
+  {
+    const p = await browser.newPage({ viewport: { width: 1180, height: 820 } });
+    attachConsole(p, sink);
+    await gotoFixture(p, `${url}?many&streaming`);
+    await p.waitForTimeout(700);
+    await runAutoScrollSuite(p, "mouse", "desktop");
+    await p.close();
+  }
+  {
+    const autoCtx = await browser.newContext({
+      viewport: { width: 402, height: 874 },
+      hasTouch: true,
+      isMobile: true,
+      deviceScaleFactor: 2,
+      recordVideo: { dir: videoDir, size: { width: 402, height: 874 } },
+    });
+    const p = await autoCtx.newPage();
+    attachConsole(p, sink);
+    await gotoFixture(p, `${url}?many&streaming`);
+    await p.waitForTimeout(700);
+    await runAutoScrollSuite(p, "touch", "mobile");
+    await p.close();
+    await autoCtx.close();
+    await renameRecordedVideo({
+      videoDir,
+      outDir,
+      name: "chat-sheet-autoscroll-suite.webm",
+    });
+  }
+
+  if (!ONLY_AUTOSCROLL) {
   // ===== GRABBER horizontal flick → launcher intent, REAL touch (#9943) =====
   // The collapsed grabber's horizontal swipe pages home → launcher through the
   // shell-surface store (goLauncher). Android's on-device spec drives this with
@@ -1363,8 +1578,7 @@ try {
     await p.waitForTimeout(SETTLE);
     await gesture(p, 140, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
-    await p.getByTestId("chat-full-maximize").click();
-    await p.waitForTimeout(SETTLE);
+    await maximizeByPull(p);
     assert(
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
@@ -1390,8 +1604,8 @@ try {
     await p.close();
   }
 
-  // MAXIMIZE-FROM-HALF: tapping maximize at the HALF detent rises to FULL and
-  // goes edge-to-edge (was a no-op — full-bleed required the FULL flag). And the
+  // MAXIMIZE-FROM-HALF: over-pulling from the HALF detent rises to FULL and
+  // goes edge-to-edge (full-bleed requires the FULL flag). And the
   // full-screen panel fills top-to-bottom with no gap at the bottom.
   {
     const p = await ctrl();
@@ -1402,13 +1616,17 @@ try {
     await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "half", "MAX-HALF: at half before maximize");
-    await p.getByTestId("chat-full-maximize").click();
-    await p.waitForTimeout(SETTLE);
+    await maximizeByPull(p);
+    if (
+      (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 0
+    ) {
+      await maximizeByPull(p);
+    }
     assert(
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
         .count()) === 1,
-      "MAX-HALF: maximize from HALF goes full-screen",
+      "MAX-HALF: over-pull from HALF goes full-screen",
     );
     const box = await p.getByTestId("chat-sheet").boundingBox();
     const vh = await p.evaluate(() => window.innerHeight);
@@ -1446,8 +1664,7 @@ try {
     await p.waitForTimeout(120);
     await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 }); // → half
     await p.waitForTimeout(SETTLE);
-    await p.getByTestId("chat-full-maximize").click(); // → full-bleed
-    await p.waitForTimeout(SETTLE);
+    await maximizeByPull(p); // → full-bleed
     assert(
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
@@ -1461,7 +1678,7 @@ try {
         box?.y ?? -1,
       )}) — no status-bar seam`,
     );
-    const btn = await p.getByTestId("chat-full-maximize").boundingBox();
+    const btn = await p.getByTestId("chat-full-launcher").boundingBox();
     // Header padding = safe-area-top (30) + 0.5rem (8); buttons must sit ~there,
     // NOT a whole gesture inset (~36px) lower (the old "bad space" margin).
     assert(
@@ -1505,11 +1722,10 @@ try {
     );
     await snap(p, "state-OPEN_HALF_OR_OVER");
 
-    await p.getByTestId("chat-full-maximize").click();
-    await p.waitForTimeout(SETTLE);
+    await maximizeByPull(p);
     assert(
       (await chatState(p)) === "MAXIMIZED",
-      `STATES: maximize → MAXIMIZED (got ${await chatState(p)})`,
+      `STATES: over-pull maximize → MAXIMIZED (got ${await chatState(p)})`,
     );
     await snap(p, "state-MAXIMIZED");
 
@@ -1838,6 +2054,11 @@ try {
     // drag stays on-screen).
     await gesture(p, vh, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
+    if (
+      (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 1
+    ) {
+      await restoreFromMaximized(p, "mouse");
+    }
     assert(
       await headerShown(p),
       "HEADER-LIVE: header shown at full before the drag",
@@ -1861,8 +2082,11 @@ try {
     // Invariant: data-chat-state==="MAXIMIZED" IFF data-maximized==="true".
     await gesture(p, vh, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
-    await p.getByTestId("chat-full-maximize").click();
-    await p.waitForTimeout(SETTLE);
+    if (
+      (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 0
+    ) {
+      await maximizeByPull(p);
+    }
     {
       const cs = await chatState(p);
       const max = await p
@@ -2056,6 +2280,7 @@ try {
     await snap(p, "state-onboarding-reveal-home");
     await p.close();
   }
+  }
 } finally {
   await browser.close();
 }
@@ -2067,15 +2292,17 @@ const errorLevel = sink.logs.filter((l) => l.startsWith("[error]"));
 assert(sink.errors.length === 0, `no uncaught page errors (${sink.errors.length})`);
 if (sink.errors.length) for (const e of sink.errors) console.error(`  ⚠ ${e}`);
 assert(errorLevel.length === 0, `no error-level console messages (${errorLevel.length})`);
-assert(
-  sink.logs.some(
-    (l) =>
-      l.includes("[fixture] toggleHandsFree") ||
-      l.includes("[fixture] toggleRecording") ||
-      l.includes("startRecording"),
-  ),
-  "fixture logged a voice interaction (mic tap → hands-free / recording)",
-);
+if (!ONLY_AUTOSCROLL) {
+  assert(
+    sink.logs.some(
+      (l) =>
+        l.includes("[fixture] toggleHandsFree") ||
+        l.includes("[fixture] toggleRecording") ||
+        l.includes("startRecording"),
+    ),
+    "fixture logged a voice interaction (mic tap → hands-free / recording)",
+  );
+}
 
 console.log(`\nScreenshots (${shot}) written to ${outDir}`);
 if (failures > 0) {

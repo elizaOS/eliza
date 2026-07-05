@@ -146,6 +146,9 @@ export async function executeMarketDataProviderRequest({
     });
 
     if (!response.ok) {
+      // error-policy:J1 proxy boundary — translate an upstream market-data
+      // provider HTTP error into a structured 502 for the client. Not a
+      // fabricated success: 502 is a distinguishable error state.
       const errorBody = await response.text();
       logger.error("[Market Data] Provider error", {
         method,
@@ -165,6 +168,9 @@ export async function executeMarketDataProviderRequest({
 
     return response;
   } catch (error) {
+    // error-policy:J1 proxy boundary — log the upstream market-data transport
+    // failure with request context, then propagate so the caller/proxy engine
+    // surfaces it. Fails closed: never swallowed into a default/empty result.
     logger.error("[Market Data] Request failed", {
       method,
       chain: normalizedChain,

@@ -24,10 +24,7 @@
   ],
   "packages/ui/src/cloud-ui/runtime/render-telemetry.tsx": ["L47 Date.now()"],
   "packages/ui/src/cloud/account-security/components/active-sessions-panel.tsx": [
-    "L153 toLocaleString() [no locale]"
-  ],
-  "packages/ui/src/cloud/account-security/components/AuditEventList.tsx": [
-    "L72 toLocaleString() [no locale]"
+    "L129 toLocaleString() [no locale]"
   ],
   "packages/ui/src/cloud/account-security/components/plugin-permissions-page-client.tsx": [
     "L142 toLocaleString() [no locale]",

@@ -3,13 +3,14 @@
  * so the Hyperliquid action and order-event trigger show up as nodes in the
  * automation builder whenever the Hyperliquid plugin is loaded.
  */
+
+import type { AutomationNodeDescriptor } from "@elizaos/shared";
 import {
 	type AutomationNodeContributorContext,
 	buildRuntimeCapabilityNodes,
 	type RuntimeCapabilityNodeSpec,
 	registerAutomationNodeContributor,
-} from "@elizaos/app-core/api/automation-node-contributors";
-import type { AutomationNodeDescriptor } from "@elizaos/shared";
+} from "@elizaos/shared/automation-node-contributors";
 
 /**
  * Automation catalog nodes owned by the Hyperliquid plugin: the Hyperliquid

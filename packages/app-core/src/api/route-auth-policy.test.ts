@@ -85,6 +85,12 @@ describe("compat route auth policy table", () => {
       resolveCompatRouteAuthPolicy("POST", "/api/background/upload-image"),
     ).toMatchObject({ id: "background.upload-image", tier: "session" });
     expect(
+      resolveCompatRouteAuthPolicy("POST", "/api/cloud/login"),
+    ).toMatchObject({ id: "cloud.login", tier: "session" });
+    expect(
+      resolveCompatRouteAuthPolicy("POST", "/api/cloud/disconnect"),
+    ).toMatchObject({ id: "cloud.disconnect", tier: "session" });
+    expect(
       resolveCompatRouteAuthPolicy("POST", "/api/tts/elevenlabs"),
     ).toMatchObject({
       id: "tts.elevenlabs-passthrough",

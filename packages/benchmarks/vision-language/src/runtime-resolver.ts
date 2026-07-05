@@ -19,6 +19,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveAliasedEnvValue } from "@elizaos/core";
 import {
   actionListPrompt,
   parseActionList,
@@ -152,9 +153,16 @@ function resolveModelPath(tier: Eliza1TierId): string | null {
   return null;
 }
 
-function elizaModelsDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR ?? process.env.ELIZA_STATE_DIR;
-  const ns = process.env.ELIZA_NAMESPACE ?? "eliza";
+/**
+ * Local mirror of `elizaModelsDir()` from `@elizaos/shared/local-inference/paths`,
+ * kept so the bench resolves model paths without importing shared. State-dir and
+ * namespace resolve through core's non-mutating alias reader so a branded prefix
+ * (e.g. `MILADY_STATE_DIR`) is honoured from the alias table with nothing written
+ * back to `process.env` (#13423).
+ */
+export function elizaModelsDir(): string {
+  const explicit = resolveAliasedEnvValue("ELIZA_STATE_DIR");
+  const ns = resolveAliasedEnvValue("ELIZA_NAMESPACE") ?? "eliza";
   const stateDir = explicit ?? path.join(homedir(), `.${ns}`);
   return path.join(stateDir, "local-inference", "models");
 }

@@ -1,8 +1,0 @@
-# libwakeword native build + real-clip score (macOS Apple Silicon, 2026-06-30T04:52:25Z)
-host: Darwin 25.2.0 arm64
-cmake: cmake version 4.0.3
-lib:  packages/native/plugins/wakeword-cpp/build/libwakeword.dylib (   52176 bytes)
-GGUFs (sha256 verified against VOICE_MODEL_VERSIONS catalog):
-4502c92664b18d598753114f09925921ddd065d72871607c3a842fa70510a350    hey-eliza.classifier.gguf
-9cfcb0d9f1939c68cc9e63f5ac9e0f09b8e8568ee1085dbb50e7391e874a1dc5    hey-eliza.embedding.gguf
-98bd2d5e3cc09e416626cd1a6a758cb92bb8096766d25ecf57d4c99927db682d    hey-eliza.melspec.gguf

@@ -239,6 +239,35 @@ function slowDrag(el: Element, fromY: number, toY: number): void {
 }
 const flickUp = (el: Element) => flick(el, 420, 400);
 const flickDown = (el: Element) => flick(el, 200, 220);
+// A big upward over-pull of the grabber — far past the FULL detent — which the
+// pull-to-maximize path (#13531) commits to edge-to-edge full-bleed. Maximize is
+// a gesture now, not a button.
+function bigPullUp(el: Element): void {
+  const now = vi.spyOn(performance, "now");
+  now.mockReturnValue(0);
+  fireEvent.pointerDown(el, { clientY: 760, pointerId: 1 });
+  now.mockReturnValue(200);
+  fireEvent.pointerMove(el, { clientY: 400, pointerId: 1 });
+  now.mockReturnValue(400);
+  fireEvent.pointerMove(el, { clientY: 40, pointerId: 1 });
+  now.mockReturnValue(800); // slow ⇒ settle/free-rest path (not a flick)
+  fireEvent.pointerMove(el, { clientY: 0, pointerId: 1 });
+  fireEvent.pointerUp(el, { clientY: 0, pointerId: 1 });
+  now.mockRestore();
+}
+// A downward pull that STARTS in the maximized top-20% restore zone — exits
+// full-bleed back to the inset FULL-detent overlay (#13531).
+function pullDownRestoreZone(): void {
+  const zone = screen.getByTestId("chat-maximize-restore-zone");
+  const now = vi.spyOn(performance, "now");
+  now.mockReturnValue(0);
+  fireEvent.pointerDown(zone, { clientY: 20, pointerId: 1 });
+  now.mockReturnValue(200);
+  fireEvent.pointerMove(zone, { clientY: 200, pointerId: 1 });
+  now.mockReturnValue(800);
+  fireEvent.pointerUp(zone, { clientY: 320, pointerId: 1 });
+  now.mockRestore();
+}
 const focusReal = () => act(() => input().focus());
 const blurReal = () => act(() => input().blur());
 
@@ -257,8 +286,8 @@ function gotoFull(): void {
   expect(detentOf()).toBe("full");
 }
 function gotoMaximized(): void {
-  gotoFull();
-  fireEvent.click(screen.getByTestId("chat-full-maximize"));
+  // Maximize is a big upward over-pull now (#13531), not a header button.
+  bigPullUp(grabber() as Element);
   expect(detentOf()).toBe("full");
   expect(sheet().getAttribute("data-maximized")).toBe("true");
 }
@@ -310,7 +339,8 @@ describe("ContinuousChatOverlay — reachable states", () => {
       <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
     );
     tutorial("expand");
-    fireEvent.click(screen.getByTestId("chat-full-maximize"));
+    // Maximize is a big upward over-pull now (#13531), not a header button.
+    bigPullUp(grabber() as Element);
     expect(sheet().getAttribute("data-maximized")).toBe("true");
     assertInvariants("tutorial-maximized");
 
@@ -382,10 +412,23 @@ describe("ContinuousChatOverlay — state × action matrix", () => {
       run: () => fireEvent.pointerDown(document.body),
     },
     {
+      // Maximize is a big upward over-pull of the grabber now (#13531). When the
+      // grabber is absent (already maximized), it's a no-op — the matrix just
+      // proves the state stays valid.
       name: "maximize",
       run: () => {
-        const b = screen.queryByTestId("chat-full-maximize");
-        if (b) fireEvent.click(b);
+        const g = grabber();
+        if (g) bigPullUp(g);
+      },
+    },
+    {
+      // Restore-from-maximized: a downward pull in the top-20% zone (#13531).
+      // No-op when not maximized (the zone is unmounted).
+      name: "restore-zone-pull-down",
+      run: () => {
+        if (screen.queryByTestId("chat-maximize-restore-zone")) {
+          pullDownRestoreZone();
+        }
       },
     },
   ];
@@ -502,14 +545,15 @@ describe("ContinuousChatOverlay — multi-press storms", () => {
     expect(detentOf()).toBe("collapsed");
   });
 
-  it("double-clicking the maximize toggle returns to the inset full detent", () => {
+  it("pull-up-to-maximize then top-20% pull-down returns to the inset full detent (#13531)", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    gotoFull();
-    const max = () => screen.getByTestId("chat-full-maximize");
-    fireEvent.click(max());
+    // Big over-pull maximizes.
+    gotoMaximized();
     expect(sheet().getAttribute("data-maximized")).toBe("true");
     assertInvariants("maximized");
-    fireEvent.click(max());
+    // A downward pull in the top-20% restore zone drops full-bleed but keeps the
+    // sheet open at the FULL detent (not a full collapse).
+    pullDownRestoreZone();
     expect(sheet().getAttribute("data-maximized")).not.toBe("true");
     expect(detentOf()).toBe("full");
     assertInvariants("un-maximized");
@@ -627,9 +671,16 @@ describe("ContinuousChatOverlay — seeded random fuzz", () => {
     () => fireEvent.click(backdrop()),
     () => fireEvent.pointerDown(backdrop()),
     () => fireEvent.pointerDown(document.body),
+    // Maximize is a big upward over-pull now (#13531); restore is a top-20%
+    // pull-down. Both no-op when their surface is absent.
     () => {
-      const b = screen.queryByTestId("chat-full-maximize");
-      if (b) fireEvent.click(b);
+      const g = grabber();
+      if (g) bigPullUp(g);
+    },
+    () => {
+      if (screen.queryByTestId("chat-maximize-restore-zone")) {
+        pullDownRestoreZone();
+      }
     },
   ];
 
@@ -854,13 +905,15 @@ describe("ContinuousChatOverlay — long adversarial random walk", () => {
     () => fireEvent.keyDown(input(), { key: "Escape" }),
     () => fireEvent.click(backdrop()),
     () => fireEvent.pointerDown(document.body),
+    // Maximize/restore are pull gestures now (#13531); no clear/new-chat button.
     () => {
-      const b = screen.queryByTestId("chat-full-maximize");
-      if (b) fireEvent.click(b);
+      const g = grabber();
+      if (g) bigPullUp(g);
     },
     () => {
-      const b = screen.queryByTestId("chat-full-clear");
-      if (b) fireEvent.click(b);
+      if (screen.queryByTestId("chat-maximize-restore-zone")) {
+        pullDownRestoreZone();
+      }
     },
   ];
 

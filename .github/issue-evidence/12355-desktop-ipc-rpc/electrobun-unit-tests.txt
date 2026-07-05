@@ -1,9 +1,0 @@
-
- RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/wf_f7a1641e-e50-18/packages/app-core/platforms/electrobun
-
-
- Test Files  4 passed (4)
-      Tests  50 passed (50)
-   Start at  22:21:03
-   Duration  5.47s (transform 4.24s, setup 0ms, import 5.53s, tests 33ms, environment 0ms)
-

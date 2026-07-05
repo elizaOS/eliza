@@ -22,6 +22,7 @@ import {
   type SlashCommandInvokedPayload,
   type ViewSwitchedPayload,
 } from "@elizaos/core";
+import { renderViewLiveStateForJudge } from "../providers/page-scoped-live-state.ts";
 import {
   type ProactiveInteractionGate,
   resolveProactiveGateConfig,
@@ -202,15 +203,20 @@ export async function decideProactiveComment(
 }
 
 const JUDGE_INSTRUCTION = [
-  "The user just took an action in the app. Decide if there is ONE specific, helpful thing you can proactively offer right now.",
-  'Examples: switched to wallet → "Want me to pull your latest balances?"; opened task-coordinator → "Want me to summarize your open tasks?".',
-  'Use delivery "chat" only when the current view benefits from a visible suggestion. Use delivery "notify" for useful but low-urgency offers that should land quietly outside chat.',
-  "Stay silent (return null) for ambiguous or low-value interactions, settings/config screens, or anything where an offer would be noise.",
-  'Respond as JSON: {"comment": <a short offer, or null>, "delivery": "chat" | "notify", "confidence": 0..1, "urgency": "low" | "medium" | "high", "title": <optional notification title>}.',
+  "The user just navigated in the app. Decide whether to greet them with ONE specific, helpful, anticipatory offer scoped to where they just landed.",
+  "Rules:",
+  "- When the view below has a DECLARED INTENT, produce a single short greeting that fulfills that intent and references the live view state provided (concrete counts, names, addresses, readiness). This is expected and wanted — return it with high confidence (>= 0.8). Do NOT stay silent just because it is a settings or config screen; the declared intent is your mandate.",
+  "- When the view has NO declared intent, only offer something if it is clearly and specifically useful; otherwise stay silent (return null). Never emit a generic, label-only greeting.",
+  "- One offer only. Ground every claim in the live state; never invent balances, counts, documents, tasks, or status. If the live state says a surface is unavailable, acknowledge that instead of fabricating a value.",
+  '- Use delivery "chat" for a visible suggestion in the current view; use "notify" for useful but low-urgency offers that should land quietly outside chat.',
+  'Respond as JSON: {"comment": <a short scoped greeting, or null>, "delivery": "chat" | "notify", "confidence": 0..1, "urgency": "low" | "medium" | "high", "title": <optional notification title>}.',
 ].join("\n");
 
-/** Describe the interaction for the judge prompt. */
-function describeInteraction(payload: InteractionPayload): string {
+/** Describe the interaction for the judge prompt, with live view state when available. */
+function describeInteraction(
+  payload: InteractionPayload,
+  liveState?: string | null,
+): string {
   if ("command" in payload) {
     return `The user just ran the /${payload.command} command.`;
   }
@@ -218,12 +224,42 @@ function describeInteraction(payload: InteractionPayload): string {
     return `The user just used the "${payload.shortcutId}" shortcut.`;
   }
   const where = payload.viewLabel ?? payload.viewId;
-  return `The user just opened the ${where} view.`;
+  const lines = [`The user just opened the "${where}" view.`];
+  if (payload.viewPurpose) {
+    lines.push(`Purpose: ${payload.viewPurpose}`);
+  }
+  lines.push(
+    payload.anticipatoryIntent
+      ? `Declared intent: ${payload.anticipatoryIntent}`
+      : "Declared intent: none — this view has no declared anticipatory intent, so stay silent unless something is clearly useful.",
+  );
+  lines.push(
+    liveState && liveState.trim().length > 0
+      ? `Live view state:\n${liveState.trim()}`
+      : "Live view state: none available for this view.",
+  );
+  return lines.join("\n");
 }
 
-/** Build the small-model judge prompt for an interaction. */
-export function buildProactiveJudgePrompt(payload: InteractionPayload): string {
-  return `${JUDGE_INSTRUCTION}\n${describeInteraction(payload)}`;
+/**
+ * Build the small-model judge prompt for an interaction. `liveState` is the
+ * rendered live-state brief for the target view (counts, balances, readiness);
+ * it grounds an intent-bearing greeting so the model cannot fabricate values.
+ */
+export function buildProactiveJudgePrompt(
+  payload: InteractionPayload,
+  liveState?: string | null,
+): string {
+  return `${JUDGE_INSTRUCTION}\n${describeInteraction(payload, liveState)}`;
+}
+
+/** True when a view switch carries a declared anticipatory intent (#13587). */
+function hasDeclaredIntent(payload: InteractionPayload): boolean {
+  return (
+    "viewId" in payload &&
+    typeof payload.anticipatoryIntent === "string" &&
+    payload.anticipatoryIntent.trim().length > 0
+  );
 }
 
 function parseProactiveJudgeObject(
@@ -252,9 +288,23 @@ function parseOptionalNumber(raw: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export interface ParseJudgeOutputOptions {
+  /**
+   * When the target view declared an anticipatory intent, a scoped greeting is
+   * the expected outcome — the confidence floor that suppresses low-signal
+   * offers on generic views would wrongly veto it, so it is dropped here.
+   * Suppression for no-intent views is unchanged.
+   */
+  hasDeclaredIntent?: boolean;
+}
+
+/** Confidence floor below which a no-intent offer is treated as noise. */
+const NO_INTENT_CONFIDENCE_FLOOR = 0.65;
+
 /** Parse the judge model output into a typed offer or null. */
 export function parseProactiveJudgeDecisionOutput(
   raw: unknown,
+  options?: ParseJudgeOutputOptions,
 ): ProactiveOffer | null {
   const obj = parseProactiveJudgeObject(raw);
   if (!obj) return null;
@@ -265,7 +315,11 @@ export function parseProactiveJudgeDecisionOutput(
     return null;
   }
   const confidence = parseOptionalNumber(obj.confidence);
-  if (confidence !== null && confidence < 0.65) {
+  if (
+    !options?.hasDeclaredIntent &&
+    confidence !== null &&
+    confidence < NO_INTENT_CONFIDENCE_FLOOR
+  ) {
     return null;
   }
   const rawDelivery = obj.delivery ?? obj.channel ?? obj.route;
@@ -342,10 +396,19 @@ export function registerProactiveInteractionDecider(
 
   const judge: ProactiveJudge = async (payload) => {
     try {
+      // Only pay for live-state rendering when the view declared an intent: that
+      // is the sole path that produces a scoped greeting grounded in state. The
+      // no-intent path is label-only and usually stays silent, so it stays cheap.
+      const liveState =
+        hasDeclaredIntent(payload) && "viewId" in payload && payload.viewId
+          ? await renderViewLiveStateForJudge(runtime, payload.viewId)
+          : null;
       const raw = await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt: buildProactiveJudgePrompt(payload),
+        prompt: buildProactiveJudgePrompt(payload, liveState),
       });
-      return parseProactiveJudgeDecisionOutput(raw);
+      return parseProactiveJudgeDecisionOutput(raw, {
+        hasDeclaredIntent: hasDeclaredIntent(payload),
+      });
     } catch (err) {
       logger.debug({ err }, "[proactive-interaction] judge failed");
       return null;

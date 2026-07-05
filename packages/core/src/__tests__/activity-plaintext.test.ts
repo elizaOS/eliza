@@ -233,6 +233,64 @@ describe("activityEventToPlaintext", () => {
 			plaintext: "Warning LISTENER_ERROR: One listener failed",
 		});
 	});
+
+	it("surfaces streamed message/reasoning/plan/lifecycle events as text", () => {
+		expect(
+			activityEventToPlaintext({
+				eventType: "message",
+				sessionId: "s1",
+				data: { text: "Applying the patch now" },
+			}),
+		)?.toMatchObject({
+			eventType: "message",
+			plaintext: "Applying the patch now",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				eventType: "reasoning",
+				data: { text: "The failing import is stale" },
+			}),
+		)?.toMatchObject({
+			eventType: "reasoning",
+			plaintext: "Thinking: The failing import is stale",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				eventType: "plan",
+				data: {
+					entries: [
+						{ content: "read file", status: "completed" },
+						{ content: "edit", status: "in_progress" },
+						{ content: "test", status: "pending" },
+					],
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "plan",
+			plaintext: "Plan updated (1/3 done)",
+		});
+
+		expect(
+			activityEventToPlaintext({ eventType: "ready", data: {} }),
+		)?.toMatchObject({ plaintext: "Agent ready" });
+		expect(
+			activityEventToPlaintext({ eventType: "login_required", data: {} }),
+		)?.toMatchObject({ plaintext: "Login required" });
+		expect(
+			activityEventToPlaintext({ eventType: "reconnected", data: {} }),
+		)?.toMatchObject({ plaintext: "Agent reconnected" });
+	});
+
+	it("drops empty streamed chunks rather than echoing the event name", () => {
+		expect(
+			activityEventToPlaintext({ eventType: "message", data: { text: "" } }),
+		).toBeNull();
+		expect(
+			activityEventToPlaintext({ eventType: "plan", data: { entries: [] } }),
+		).toBeNull();
+	});
 });
 
 describe("trajectory plaintext serializers", () => {

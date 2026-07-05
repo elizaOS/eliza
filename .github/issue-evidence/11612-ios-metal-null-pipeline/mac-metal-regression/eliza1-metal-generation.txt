@@ -1,9 +1,0 @@
-user
-The capital of France is
-assistant
-<think>
-
-</think>
-
-The capital of France is **Paris**.
-> EOF by user

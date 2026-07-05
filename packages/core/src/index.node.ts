@@ -254,6 +254,8 @@ export * from "./runtime/schema-compat";
 export * from "./runtime/shortcut-registry";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
+export * from "./runtime/trace-correlation";
+export * from "./runtime/trajectory-gate";
 export * from "./runtime/trajectory-recorder";
 export * from "./runtime/turn-controller";
 export {
@@ -413,6 +415,7 @@ export { formatError } from "./utils/format-error";
 /** Single-lane local inference scheduling: interactive-over-background gate + device-class background budgets (#11914). */
 export * from "./utils/inference-priority-gate";
 // Export Node-specific utilities
+export * from "./utils/project-registry";
 export * from "./utils/prompt-compression";
 // Canonical env-var reader with legacy-alias back-compat
 export * from "./utils/read-env";

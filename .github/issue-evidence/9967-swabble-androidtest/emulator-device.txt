@@ -1,9 +1,0 @@
-sdk_gphone64_x86_64
-14
-    versionName=null
-    lastUpdateTime=2026-06-30 01:51:36
-      android.permission.RECORD_AUDIO
-      android.permission.REORDER_TASKS: granted=true
-      ai.eliza.plugins.swabble.test.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
-      firstInstallTime=2026-06-30 01:51:36
-        android.permission.RECORD_AUDIO: granted=true, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]

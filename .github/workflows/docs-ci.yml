@@ -43,7 +43,7 @@ jobs:
       github.event.pull_request.draft != true &&
       (github.event.inputs.check_type == 'all' || github.event.inputs.check_type == 'links' || github.event.inputs.check_type == '')
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -114,7 +114,7 @@ jobs:
       github.event.pull_request.draft != true &&
       (github.event.inputs.check_type == 'all' || github.event.inputs.check_type == 'quality' || github.event.inputs.check_type == '')
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -184,7 +184,7 @@ jobs:
   create-pr:
     needs: [check-links, check-quality]
     if: always() && (needs.check-links.result == 'success' || needs.check-quality.result == 'success')
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
 
     steps:
       - name: Checkout repository

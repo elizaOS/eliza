@@ -53,6 +53,7 @@ import {
   getAiProviderConfigurationError,
   getLanguageModel,
   hasLanguageModelProviderConfigured,
+  isProviderConfigurationError,
   type PooledLanguageModelCredential,
   resolveAiProviderSource,
   resolvePooledDirectProviderForModel,
@@ -266,6 +267,14 @@ interface ChatRequest {
   frequency_penalty?: number;
   presence_penalty?: number;
   stream?: boolean;
+  /**
+   * OpenAI `stream_options`: when `include_usage` is true the stream carries
+   * `usage: null` on every chunk and one extra terminal chunk (empty `choices`)
+   * with the real token usage, before `data: [DONE]` — this is how streaming
+   * clients meter token spend (plugin-elizacloud requests it on every
+   * streamed call).
+   */
+  stream_options?: { include_usage?: boolean };
   stop?: string | string[];
   tools?: Array<{
     type: "function";
@@ -663,6 +672,52 @@ function formatOpenAIUsage(
   return out;
 }
 
+/**
+ * Normalize an SDK usage record into the token triple the OpenAI response
+ * shape requires — identical to what billUsage normalizes (inputTokens ??
+ * promptTokens, etc.), so client-visible usage always matches billed usage.
+ */
+function normalizeUsageTokens(usage: unknown): {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+} {
+  const record = (usage ?? {}) as {
+    inputTokens?: number;
+    promptTokens?: number;
+    outputTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+  const inputTokens = firstNumber(record.inputTokens, record.promptTokens) ?? 0;
+  const outputTokens =
+    firstNumber(record.outputTokens, record.completionTokens) ?? 0;
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: firstNumber(record.totalTokens) ?? inputTokens + outputTokens,
+  };
+}
+
+function hasReportedUsageTokens(usage: unknown): boolean {
+  const record = (usage ?? {}) as {
+    inputTokens?: number;
+    promptTokens?: number;
+    outputTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+  return (
+    firstNumber(
+      record.inputTokens,
+      record.promptTokens,
+      record.outputTokens,
+      record.completionTokens,
+      record.totalTokens,
+    ) !== undefined
+  );
+}
+
 function firstNumber(...values: unknown[]): number | undefined {
   for (const value of values) {
     if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -889,6 +944,9 @@ export async function handleChatCompletionsPOST(
   let settleReservation:
     | ((actualCost: number) => Promise<CreditReconciliationResult | null>)
     | null = null;
+  // Hoisted so the catch below can echo the requested model in the sanitized
+  // provider-configuration error; set right after the body parses.
+  let model = "";
 
   try {
     // 1. Authenticate (+ moderation). #9899: API-key dedicated-agent requests
@@ -992,7 +1050,7 @@ export async function handleChatCompletionsPOST(
     // Collapse decorated Cerebras ids (e.g. "openai/gpt-oss-120b:nitro" emitted
     // by dedicated agents) to the bare Cerebras id so pricing, routing, and
     // billing all agree and route to cerebras-direct instead of OpenRouter.
-    const model = canonicalizeCerebrasModelId(request.model);
+    model = canonicalizeCerebrasModelId(request.model);
     const pooledCredential = await selectPooledInferenceCredential({
       model,
       organizationId: user.organization_id,
@@ -1475,6 +1533,25 @@ export async function handleChatCompletionsPOST(
           ? String((error.cause as Error).message ?? error.cause)
           : undefined,
     });
+    // Provider-configuration failures (missing/invalid provider keys) carry
+    // internal setup guidance ("... AI_GATEWAY_API_KEY ...") that must never
+    // reach a direct API caller; the raw detail is already in the log above.
+    // To the caller the deterministic truth is that this deployment cannot
+    // serve the requested model.
+    if (isProviderConfigurationError(error)) {
+      return addCorsHeaders(
+        Response.json(
+          {
+            error: {
+              message: modelNotAvailableMessage(model),
+              type: "invalid_request_error",
+              code: "model_not_available",
+            },
+          },
+          { status: 400 },
+        ),
+      );
+    }
     const isDbError =
       rawMessage.startsWith("Failed query:") ||
       rawMessage.includes("insert into") ||
@@ -1502,6 +1579,15 @@ export async function handleChatCompletionsPOST(
       ),
     );
   }
+}
+
+/**
+ * Client-facing message for a provider-configuration failure. The requested
+ * model id is the only detail safe to echo back — the underlying errors name
+ * internal env vars and setup steps, which stay in server logs only.
+ */
+function modelNotAvailableMessage(model: string): string {
+  return `model '${model}' is not available on this deployment`;
 }
 
 /**
@@ -1897,12 +1983,21 @@ async function handleStreamingRequest(
   // Convert to OpenAI-compatible SSE stream
   const encoder = new TextEncoder();
 
+  // OpenAI stream_options.include_usage contract: every chunk carries
+  // `usage: null` and one extra terminal chunk (empty `choices`) carries the
+  // real usage, before `data: [DONE]`. Without honoring it, streamed calls
+  // are unmeterable client-side — plugin-elizacloud requests this frame on
+  // every streamed call and emits MODEL_USED metering only when it arrives.
+  const includeUsage = request.stream_options?.include_usage === true;
+  const usageFieldOnChunks = includeUsage ? { usage: null } : {};
+
   const openAIStream = new ReadableStream({
     async start(controller) {
       const responseId = `chatcmpl-${Date.now()}`;
       const toolCallIndexes = new Map<string, number>();
       let nextToolCallIndex = 0;
       let finishReason = "stop";
+      let finishUsage: unknown;
 
       try {
         for await (const part of result.fullStream) {
@@ -1912,6 +2007,7 @@ async function handleStreamingRequest(
               object: "chat.completion.chunk",
               created: Math.floor(Date.now() / 1000),
               model,
+              ...usageFieldOnChunks,
               choices: [
                 {
                   index: 0,
@@ -1937,6 +2033,7 @@ async function handleStreamingRequest(
                   object: "chat.completion.chunk",
                   created: Math.floor(Date.now() / 1000),
                   model,
+                  ...usageFieldOnChunks,
                   choices: [
                     {
                       index: 0,
@@ -1968,6 +2065,7 @@ async function handleStreamingRequest(
                   object: "chat.completion.chunk",
                   created: Math.floor(Date.now() / 1000),
                   model,
+                  ...usageFieldOnChunks,
                   choices: [
                     {
                       index: 0,
@@ -1999,6 +2097,7 @@ async function handleStreamingRequest(
                   object: "chat.completion.chunk",
                   created: Math.floor(Date.now() / 1000),
                   model,
+                  ...usageFieldOnChunks,
                   choices: [
                     {
                       index: 0,
@@ -2030,6 +2129,7 @@ async function handleStreamingRequest(
               part.finishReason === "tool-calls"
                 ? "tool_calls"
                 : part.finishReason;
+            finishUsage = part.totalUsage;
           }
 
           if (part.type === "error") {
@@ -2043,6 +2143,7 @@ async function handleStreamingRequest(
           object: "chat.completion.chunk",
           created: Math.floor(Date.now() / 1000),
           model,
+          ...usageFieldOnChunks,
           choices: [
             {
               index: 0,
@@ -2054,6 +2155,27 @@ async function handleStreamingRequest(
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`),
         );
+        // Terminal usage-only chunk (empty choices) per stream_options
+        // .include_usage. Only ever built from the SDK's reported usage — if
+        // the finish part never arrived there is nothing honest to report, so
+        // the frame is omitted rather than fabricated as zeros.
+        if (includeUsage && hasReportedUsageTokens(finishUsage)) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                id: responseId,
+                object: "chat.completion.chunk",
+                created: Math.floor(Date.now() / 1000),
+                model,
+                choices: [],
+                usage: formatOpenAIUsage(
+                  normalizeUsageTokens(finishUsage),
+                  finishUsage,
+                ),
+              })}\n\n`,
+            ),
+          );
+        }
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       } catch (error) {
@@ -2074,12 +2196,33 @@ async function handleStreamingRequest(
           await refundStreamingReservationOnce();
           await recordPooledInferenceFailure(pooledCredential, error);
         }
-        const status =
-          getRecoverableProviderErrorStatus(error) ?? getErrorStatusCode(error);
+        // Same sanitization as the non-streaming path: a provider-
+        // configuration failure surfacing mid-stream (e.g. the gateway's
+        // request-time auth error) names internal env vars — log it, send the
+        // caller the clean model-not-available form. onError does not always
+        // fire before this catch, so the log here is the guaranteed record.
+        const isConfigError = isProviderConfigurationError(error);
+        if (isConfigError) {
+          logger.error(
+            "[Chat Completions] Provider configuration error during stream",
+            {
+              model,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
+        }
+        const status = isConfigError
+          ? 400
+          : (getRecoverableProviderErrorStatus(error) ??
+            getErrorStatusCode(error));
         try {
           const errorChunk = {
             error: {
-              message: error instanceof Error ? error.message : String(error),
+              message: isConfigError
+                ? modelNotAvailableMessage(model)
+                : error instanceof Error
+                  ? error.message
+                  : String(error),
               // Same status→type mapping as the non-streaming path — a
               // hardcoded "rate_limit_error" here mislabeled every mid-stream
               // provider failure (schema 400s, upstream 5xx) as rate limiting,
@@ -2190,27 +2333,9 @@ async function handleNonStreamingRequest(
     } as Parameters<typeof generateText>[0]);
 
     // Token counts for the OpenAI-compat response come straight from the
-    // model's reported usage — identical to what billUsage normalizes
-    // (inputTokens ?? promptTokens, etc.) — so the entire billing/settlement
-    // chain below can run off the response path without changing the bytes the
-    // client receives.
-    const usageRec = (result.usage ?? {}) as {
-      inputTokens?: number;
-      promptTokens?: number;
-      outputTokens?: number;
-      completionTokens?: number;
-      totalTokens?: number;
-    };
-    const responseInputTokens =
-      usageRec.inputTokens ?? usageRec.promptTokens ?? 0;
-    const responseOutputTokens =
-      usageRec.outputTokens ?? usageRec.completionTokens ?? 0;
-    const responseTokens = {
-      inputTokens: responseInputTokens,
-      outputTokens: responseOutputTokens,
-      totalTokens:
-        usageRec.totalTokens ?? responseInputTokens + responseOutputTokens,
-    };
+    // model's reported usage, so the entire billing/settlement chain below can
+    // run off the response path without changing the bytes the client receives.
+    const responseTokens = normalizeUsageTokens(result.usage);
     const responseLatencyMs = Date.now() - startTime;
 
     // Bill using actual usage from SDK response. Deferred via waitUntil so the

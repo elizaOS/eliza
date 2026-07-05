@@ -834,6 +834,12 @@ def _make_registry_adapter(
         adapter_python_paths.append(str((benchmarks_root / "gauntlet" / "src").resolve()))
     if benchmark_id == "mmau":
         adapter_python_paths.append(str((benchmarks_root / "mmau-audio").resolve()))
+    if benchmark_id == "multitask_bench":
+        # multitask_bench imports orchestrator_lifecycle.events (lifecycle-event
+        # extraction), a namespace package rooted at packages/benchmarks. It
+        # runs with cwd=multitask-bench, so that root is not otherwise on the
+        # path.
+        adapter_python_paths.append(str(benchmarks_root.resolve()))
 
     def env_builder(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
         existing = ctx.env.get("PYTHONPATH", "")
@@ -2416,6 +2422,11 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "concurrency": 1,
             "seeds": 1,
         },
+        "multitask_bench": {
+            # Cheapest interference-shaped smoke: the N=1 baseline plus one
+            # small wave, so the delta path is exercised without a 10-wide run.
+            "lanes": "1,5",
+        },
         "realm": {
             "categories": ["P11"],
             "max_tasks": 1,
@@ -2573,6 +2584,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "hyperliquid_bench": "HyperliquidBench",
         "openclaw_bench": "openclaw-benchmark",
         "lifeops_bench": "lifeops-bench",
+        "multitask_bench": "multitask-bench",
         "voicebench_quality": "voicebench-quality",
         "vision_language": "vision-language",
         "recall_bench": "recall-bench",

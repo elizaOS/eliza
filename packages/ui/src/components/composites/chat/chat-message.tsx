@@ -456,6 +456,11 @@ export const ChatMessage = memo(function ChatMessage({
   const canPlay = Boolean(
     !isUser && typeof onSpeak === "function" && trimmedText,
   );
+  // Persistent delete (#13533): available on any real turn when the surface
+  // wires onDelete. An optimistic (temp-) turn has no persisted row to delete;
+  // a proactive suggestion uses its own dismiss affordance (below), not delete.
+  const canDelete =
+    typeof onDelete === "function" && !message.id.startsWith("temp-");
   const normalizedSource = normalizeChatSourceKey(message.source) ?? undefined;
   // Proactive interaction comments (#8792) are agent-initiated *suggestions*, not
   // replies — render them with a distinct, one-tap-dismissible affordance.
@@ -688,7 +693,9 @@ export const ChatMessage = memo(function ChatMessage({
     }
 
     const canRowCopy = !!onCopy && trimmedText.length > 0;
-    const hasActions = canRowCopy || canPlay || canEdit;
+    // Suggestions carry their own dismiss affordance, not the delete control.
+    const canRowDelete = canDelete && !isSuggestion;
+    const hasActions = canRowCopy || canPlay || canEdit || canRowDelete;
     // An assistant turn carrying an inline choice/form/followups widget must
     // stay a plain container — see messageHasInteractiveWidget.
     const hasInteractiveWidget =
@@ -902,10 +909,13 @@ export const ChatMessage = memo(function ChatMessage({
             >
               <ChatMessageActions
                 appearance="glass-row"
+                canDelete={canRowDelete}
                 canEdit={canEdit}
                 canPlay={canPlay}
                 copied={copied}
+                labels={labels}
                 onCopy={canRowCopy ? handleCopy : undefined}
+                onDelete={() => onDelete?.(message.id)}
                 onEdit={handleStartEditing}
                 onPlay={() => onSpeak?.(message.id, message.text)}
                 playing={playing}
@@ -1155,7 +1165,7 @@ export const ChatMessage = memo(function ChatMessage({
               )}
             >
               <ChatMessageActions
-                canDelete={Boolean(onDelete)}
+                canDelete={canDelete}
                 canEdit={canEdit}
                 canPlay={canPlay}
                 copied={copied}

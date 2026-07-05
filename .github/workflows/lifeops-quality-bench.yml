@@ -46,7 +46,7 @@ env:
 jobs:
   lifeops-quality-gate:
     name: triage P/R + reminder timeliness budget gate (keyless)
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     env:
       PGLITE_WASM_MODE: node

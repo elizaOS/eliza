@@ -11,6 +11,7 @@
 import { Preferences } from "@capacitor/preferences";
 import { formatError } from "@elizaos/shared";
 import { primeIosFullBunRuntime } from "../api/ios-local-agent-transport";
+import { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./chat-failure-strings.generated";
 
 export const IOS_FULL_BUN_SMOKE_REQUEST_KEY =
   "eliza:ios-full-bun-smoke:request";
@@ -22,8 +23,6 @@ const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
   "Reply with exactly these four words: ios smoke model works.";
 const IOS_FULL_BUN_SMOKE_EXPECTED_REPLY = "ios smoke model works";
-const IOS_FULL_BUN_SMOKE_FAILURE_RE =
-  /something went wrong|backend is not running|local backend is not running|no local backend|no local model|no model registered|no provider|connect a provider|waiting for the model download|timed out|<think\b|<\/think>|\/?\bno_think\b/i;
 
 declare global {
   interface Window {

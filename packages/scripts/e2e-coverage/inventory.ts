@@ -13,7 +13,7 @@
  *    count). Items may instead be `exempt` with a written justification. This is
  *    the single source of truth for the ship-gate
  *    (`packages/scripts/__tests__/e2e-coverage.test.ts`) and the report CLI
- *    (`packages/scripts/check-e2e-coverage.ts`).
+ *    (`packages/scripts/e2e-coverage/write-coverage-matrix-report.ts`).
  *
  * 2. **Per-plugin keyless-e2e coverage (issue #8801).** For every checked-out
  *    plugin under `plugins/`, what agent surface it exposes (actions /

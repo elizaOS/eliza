@@ -1,0 +1,50 @@
+/**
+ * Environment-scoped Steward auth cookie names.
+ *
+ * Every elizacloud.ai environment shares the parent-zone cookie domain (see
+ * `cookie-domain.ts`) so sibling subdomains (staging. + api-staging., apex +
+ * api.) can ride one session — which also meant production and staging fought
+ * over a SINGLE `steward-refresh-token` slot. Refresh tokens rotate on every
+ * refresh, so whichever environment refreshed last overwrote the other's live
+ * refresh token; the loser's next refresh 401'd and force-signed the user out
+ * (#13728 — anyone with prod + staging tabs in one browser). Non-production
+ * environments therefore suffix their cookie names with the environment;
+ * production keeps the historical unsuffixed names so live sessions are
+ * untouched by the rename.
+ */
+
+export interface StewardCookieNames {
+  token: string;
+  refreshToken: string;
+  authed: string;
+}
+
+const BASE_TOKEN = "steward-token";
+const BASE_REFRESH = "steward-refresh-token";
+const BASE_AUTHED = "steward-authed";
+
+/**
+ * The historical unsuffixed names: production's live names, and on
+ * non-production the read-fallback + delete target during the rename window
+ * (so pre-rename staging sessions migrate on their first refresh instead of
+ * being dumped to login).
+ */
+export const LEGACY_STEWARD_COOKIES: StewardCookieNames = {
+  token: BASE_TOKEN,
+  refreshToken: BASE_REFRESH,
+  authed: BASE_AUTHED,
+};
+
+/** Resolve the cookie names for a Worker environment (`c.env.ENVIRONMENT`).
+ * Unset (local dev / tests) behaves as production: localhost cookies are
+ * host-scoped (no shared parent zone), so there is nothing to collide with. */
+export function stewardCookieNames(environment: string | undefined): StewardCookieNames {
+  if (!environment || environment === "production") {
+    return LEGACY_STEWARD_COOKIES;
+  }
+  return {
+    token: `${BASE_TOKEN}-${environment}`,
+    refreshToken: `${BASE_REFRESH}-${environment}`,
+    authed: `${BASE_AUTHED}-${environment}`,
+  };
+}

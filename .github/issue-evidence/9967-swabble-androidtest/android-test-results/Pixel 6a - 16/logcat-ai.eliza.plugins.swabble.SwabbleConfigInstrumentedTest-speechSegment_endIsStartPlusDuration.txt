@@ -1,2 +1,0 @@
-03-11 04:31:30.026 18184 18205 I TestRunner: started: speechSegment_endIsStartPlusDuration(ai.eliza.plugins.swabble.SwabbleConfigInstrumentedTest)
-03-11 04:31:30.026 18184 18205 I TestRunner: finished: speechSegment_endIsStartPlusDuration(ai.eliza.plugins.swabble.SwabbleConfigInstrumentedTest)

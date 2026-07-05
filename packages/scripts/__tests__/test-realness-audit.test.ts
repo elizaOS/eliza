@@ -120,6 +120,108 @@ describe("test-realness-audit", () => {
     expect(audit.collectFailures(result)).toEqual([]);
   });
 
+  test("mock-only and tautological assertions fail only when touched files increase", () => {
+    const root = makeRepo();
+    const relPath = "packages/sample/weak.test.ts";
+    const baseFindings = audit.analyzeTestSource(
+      root,
+      relPath,
+      [
+        "import { expect, test } from 'vitest';",
+        "test('real outcome', () => {",
+        "  expect(2 + 2).toBe(4);",
+        "});",
+      ].join("\n"),
+    );
+    const currentFindings = audit.analyzeTestSource(
+      root,
+      relPath,
+      [
+        "import { expect, test, vi } from 'vitest';",
+        "test('weak outcome', () => {",
+        "  const mockThing = vi.fn();",
+        "  expect(true).toBe(true);",
+        "  expect(mockThing).toHaveBeenCalled();",
+        "});",
+      ].join("\n"),
+    );
+
+    const regressions = audit.collectDiffScopedRegressions({
+      currentFindings,
+      baseFindings,
+      changedFiles: [relPath],
+    });
+
+    expect(regressions).toEqual([
+      {
+        file: relPath,
+        category: "mockCallOnlyAssertion",
+        current: 1,
+        base: 0,
+      },
+      {
+        file: relPath,
+        category: "tautologicalAssertion",
+        current: 1,
+        base: 0,
+      },
+    ]);
+    expect(audit.collectDiffScopedFailures(regressions)).toContain(
+      "mockCallOnlyAssertion increased in touched test file packages/sample/weak.test.ts: 1 current > 0 base",
+    );
+  });
+
+  test("real-outcome assertions do not trigger the diff-scoped ratchet", () => {
+    const root = makeRepo();
+    const relPath = "packages/sample/real.test.ts";
+    const baseFindings = audit.analyzeTestSource(
+      root,
+      relPath,
+      "import { test } from 'vitest';\ntest('placeholder', () => {});\n",
+    );
+    const currentFindings = audit.analyzeTestSource(
+      root,
+      relPath,
+      [
+        "import { expect, test } from 'vitest';",
+        "test('real outcome', () => {",
+        "  const result = 2 + 2;",
+        "  expect(result).toBe(4);",
+        "});",
+      ].join("\n"),
+    );
+
+    expect(
+      audit.collectDiffScopedRegressions({
+        currentFindings,
+        baseFindings,
+        changedFiles: [relPath],
+      }),
+    ).toEqual([]);
+  });
+
+  test("--check fails closed when the diff-scoped base cannot be resolved", () => {
+    const root = makeRepo();
+    write(
+      root,
+      "packages/sample/plain.test.ts",
+      "import { test } from 'vitest';\ntest('plain', () => {});\n",
+    );
+
+    const result = Bun.spawnSync([
+      "node",
+      SCRIPT_PATH,
+      "--repo-root",
+      root,
+      "--check",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    const stderr = new TextDecoder().decode(result.stderr);
+    expect(stderr).toContain("diff-scoped ratchet could not run");
+    expect(stderr).toContain("Ensure CI fetches origin/develop");
+  });
+
   test("comments do not register as focused tests", () => {
     const root = makeRepo();
     write(
@@ -163,7 +265,7 @@ describe("test-realness-audit", () => {
     expect(markdown).toContain("Tautological assertion");
     expect(markdown).toContain("Mock-call-only assertion");
     expect(markdown).toContain("| Focused .only test | enforced |");
-    expect(markdown).toContain("| Mock-call-only assertion | report-only |");
+    expect(markdown).toContain("| Mock-call-only assertion | diff-scoped |");
     expect(markdown).toContain("packages/sample/weak.test.ts:4");
     expect(markdown).toContain("Gate status: **pass**");
   });

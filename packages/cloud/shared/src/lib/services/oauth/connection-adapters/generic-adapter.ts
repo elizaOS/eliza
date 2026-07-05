@@ -44,6 +44,9 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
     }
     try {
       return await secretsService.getDecryptedValue(secretId, organizationId);
+      // error-policy:J2 context-adding rethrow — translate an undecryptable token
+      // into an actionable reconnect error (with cause) and mark the credential
+      // expired so the failure surfaces; all other errors propagate untouched.
     } catch (error) {
       if (error instanceof DecryptionError) {
         logger.error(`[GenericAdapter] Token decryption failed for ${platform}`, {
@@ -55,7 +58,6 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
           error: error.message,
         });
 
-        // Mark connection as needing re-authentication
         await dbWrite
           .update(platformCredentials)
           .set({ status: "expired", updated_at: new Date() })
@@ -63,6 +65,7 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
 
         throw new Error(
           `${platform} ${tokenType} cannot be decrypted (${error.phase === "dek_decryption" ? "encryption key mismatch" : "data corruption"}). Please disconnect and reconnect ${platform} in Settings > Connections.`,
+          { cause: error },
         );
       }
       throw error;
@@ -70,76 +73,63 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
   }
 
   async function findCredential(organizationId: string, connectionId: string) {
-    try {
-      const [cred] = await dbRead
-        .select()
-        .from(platformCredentials)
-        .where(
-          and(
-            eq(platformCredentials.id, connectionId),
-            eq(platformCredentials.organization_id, organizationId),
-            eq(platformCredentials.platform, platformEnum),
-          ),
-        )
-        .limit(1);
-      return cred;
-    } catch (error) {
-      // Handle case where platform enum value doesn't exist in database
-      logger.warn(`[GenericAdapter] Query failed for ${platform}`, {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return undefined;
-    }
+    const [cred] = await dbRead
+      .select()
+      .from(platformCredentials)
+      .where(
+        and(
+          eq(platformCredentials.id, connectionId),
+          eq(platformCredentials.organization_id, organizationId),
+          eq(platformCredentials.platform, platformEnum),
+        ),
+      )
+      .limit(1);
+    // A successful query with no matching row returns undefined — the caller's
+    // designed "connection not found". A DB/enum failure must propagate, not be
+    // swallowed into that same undefined (auth path fails closed).
+    return cred;
   }
 
   return {
     platform,
 
     async listConnections(organizationId: string): Promise<OAuthConnection[]> {
-      try {
-        const credentials = await dbRead
-          .select()
-          .from(platformCredentials)
-          .where(
-            and(
-              eq(platformCredentials.organization_id, organizationId),
-              eq(platformCredentials.platform, platformEnum),
-            ),
-          );
+      // No try/catch: a query that returns zero rows is a legitimate empty list;
+      // a DB/enum failure must propagate so callers (getValidTokenByPlatform,
+      // isPlatformConnected) never read a failed load as "no connections".
+      const credentials = await dbRead
+        .select()
+        .from(platformCredentials)
+        .where(
+          and(
+            eq(platformCredentials.organization_id, organizationId),
+            eq(platformCredentials.platform, platformEnum),
+          ),
+        );
 
-        return credentials.map((cred) => ({
-          id: cred.id,
-          userId: cred.user_id || undefined,
-          connectionRole:
-            cred.source_context && typeof cred.source_context === "object"
-              ? formatOAuthConnectionRole(
-                  (cred.source_context as Record<string, unknown>).connectionRole ??
-                    (cred.source_context as Record<string, unknown>).agentGoogleSide,
-                )
-              : "owner",
-          platform,
-          platformUserId: cred.platform_user_id,
-          email: cred.platform_email || undefined,
-          username: cred.platform_username || undefined,
-          displayName: cred.platform_display_name || undefined,
-          avatarUrl: cred.platform_avatar_url || undefined,
-          status: cred.status,
-          scopes: (cred.scopes as string[]) || [],
-          linkedAt: cred.linked_at || cred.created_at,
-          lastUsedAt: cred.last_used_at || undefined,
-          tokenExpired: cred.token_expires_at
-            ? new Date(cred.token_expires_at) < new Date()
-            : false,
-          source: "platform_credentials" as const,
-        }));
-      } catch (error) {
-        // Handle case where platform enum value doesn't exist in database
-        logger.warn(`[GenericAdapter] listConnections failed for ${platform}`, {
-          organizationId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return [];
-      }
+      return credentials.map((cred) => ({
+        id: cred.id,
+        userId: cred.user_id || undefined,
+        connectionRole:
+          cred.source_context && typeof cred.source_context === "object"
+            ? formatOAuthConnectionRole(
+                (cred.source_context as Record<string, unknown>).connectionRole ??
+                  (cred.source_context as Record<string, unknown>).agentGoogleSide,
+              )
+            : "owner",
+        platform,
+        platformUserId: cred.platform_user_id,
+        email: cred.platform_email || undefined,
+        username: cred.platform_username || undefined,
+        displayName: cred.platform_display_name || undefined,
+        avatarUrl: cred.platform_avatar_url || undefined,
+        status: cred.status,
+        scopes: (cred.scopes as string[]) || [],
+        linkedAt: cred.linked_at || cred.created_at,
+        lastUsedAt: cred.last_used_at || undefined,
+        tokenExpired: cred.token_expires_at ? new Date(cred.token_expires_at) < new Date() : false,
+        source: "platform_credentials" as const,
+      }));
     },
 
     async getToken(organizationId: string, connectionId: string): Promise<TokenResult> {
@@ -206,6 +196,10 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
                 refreshResult.newRefreshToken,
                 audit,
               );
+              // error-policy:J2 context-adding rethrow — a provider that rotated the
+              // refresh token has invalidated the old one, so a failed persist leaves
+              // a broken chain; disable the connection and surface it (with cause)
+              // rather than continue with an un-persistable refresh token.
             } catch (refreshTokenError) {
               logger.error(`[GenericAdapter] Failed to store new refresh token for ${platform}`, {
                 connectionId,
@@ -226,6 +220,7 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
               await incrementOAuthVersion(organizationId, platform);
               throw new Error(
                 `Failed to persist rotated ${platform} refresh token. Please reconnect ${platform}.`,
+                { cause: refreshTokenError },
               );
             }
           }
@@ -255,6 +250,9 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
             connectionId,
             organizationId,
           });
+          // error-policy:J2 context-adding rethrow — translate any refresh-flow
+          // failure into the typed tokenRefreshFailed domain error carrying the
+          // underlying reason; the failure is never swallowed.
         } catch (error) {
           logger.error(`[GenericAdapter] Token refresh failed for ${platform}`, {
             connectionId,
@@ -300,9 +298,11 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
         source: "revoke-connection",
       };
 
-      // Delete token secrets - log failures but don't block revocation
       const deleteSecret = async (id: string | null, tokenType: string) => {
         if (!id) return;
+        // error-policy:J6 best-effort teardown — revocation's authoritative effect
+        // is flipping status to "revoked" below; a failed secret delete is logged
+        // but must not block the revoke (the token is already being invalidated).
         try {
           await secretsService.delete(id, organizationId, audit);
         } catch (error) {
@@ -336,24 +336,23 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
     },
 
     async ownsConnection(connectionId: string): Promise<boolean> {
+      // A malformed id is a designed "not owned" (never hits the DB); a real DB
+      // failure must propagate rather than masquerade as "not owned", which would
+      // silently route adapter lookup to connectionNotFound.
       if (!UUID_REGEX.test(connectionId)) return false;
 
-      try {
-        const [cred] = await dbRead
-          .select({ id: platformCredentials.id })
-          .from(platformCredentials)
-          .where(
-            and(
-              eq(platformCredentials.id, connectionId),
-              eq(platformCredentials.platform, platformEnum),
-            ),
-          )
-          .limit(1);
+      const [cred] = await dbRead
+        .select({ id: platformCredentials.id })
+        .from(platformCredentials)
+        .where(
+          and(
+            eq(platformCredentials.id, connectionId),
+            eq(platformCredentials.platform, platformEnum),
+          ),
+        )
+        .limit(1);
 
-        return !!cred;
-      } catch {
-        return false;
-      }
+      return !!cred;
     },
   };
 }

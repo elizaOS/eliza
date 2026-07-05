@@ -8,23 +8,36 @@ import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   buildCodesignPlan,
+  buildIosXcuitestShardPlan,
+  buildOnlyTestingIdentifier,
   buildPlistXml,
   CONSOLE_SIGTRAP_SIGNATURE,
+  classifyCodesignPreflight,
   classifyConsoleExit,
+  classifyIsolatedReruns,
+  DEFAULT_IOS_XCUITEST_SHARDS,
   deriveSigningEntitlements,
+  evaluateRunnerStaleness,
+  extractSwiftXcuitestEntries,
   extractXctestrunAppPaths,
   findDeviceRecord,
+  findUncoveredIosXcuitestEntries,
+  isBenignIosAppAbsence,
   normalizeProvisioningProfile,
   PlistData,
   parseCliArgs,
   parseCodesigningIdentities,
+  parseFailedTestIdentifiers,
   parsePlist,
+  planSignedAppDdOverwrite,
   profileMatchesTarget,
   resolveDeviceId,
   resolveXctestrunTestRoot,
   rewriteXctestrunUITargetApp,
+  safeShardName,
   selectProvisioningProfile,
   selectSigningIdentity,
+  sweepXctestrunDependentProductPaths,
 } from "./ios-device-lib.mjs";
 
 const TEAM = "25877RY2EH";
@@ -421,6 +434,214 @@ describe("rewriteXctestrunUITargetApp", () => {
   });
 });
 
+describe("sweepXctestrunDependentProductPaths (#13564)", () => {
+  it("rewrites stale App.app refs in the FormatVersion 2 layout, leaving runner + others untouched", () => {
+    const xctestrun = {
+      __xctestrun_metadata__: { FormatVersion: 2 },
+      TestConfigurations: [
+        {
+          TestTargets: [
+            {
+              BlueprintName: "AppUITests",
+              DependentProductPaths: [
+                "/dd/Build/Products/Debug-iphoneos/AppUITests-Runner.app",
+                "/dd/Build/Products/Debug-iphoneos/App.app",
+                "/dd/Build/Products/Debug-iphoneos/Some.framework",
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const count = sweepXctestrunDependentProductPaths(
+      xctestrun,
+      "/signed/App.app",
+    );
+    expect(count).toBe(1);
+    const deps =
+      xctestrun.TestConfigurations[0].TestTargets[0].DependentProductPaths;
+    expect(deps).toEqual([
+      "/dd/Build/Products/Debug-iphoneos/AppUITests-Runner.app",
+      "/signed/App.app",
+      "/dd/Build/Products/Debug-iphoneos/Some.framework",
+    ]);
+  });
+
+  it("rewrites the flat FormatVersion 1 layout", () => {
+    const xctestrun = {
+      __xctestrun_metadata__: { FormatVersion: 1 },
+      AppUITests: {
+        TestHostPath: "/dd/Build/Products/Debug-iphoneos/AppUITests-Runner.app",
+        DependentProductPaths: [
+          "/dd/Build/Products/Debug-iphoneos/App.app",
+          "/dd/Build/Products/Debug-iphoneos/AppUITests-Runner.app",
+        ],
+      },
+    };
+    const count = sweepXctestrunDependentProductPaths(
+      xctestrun,
+      "/signed/App.app",
+    );
+    expect(count).toBe(1);
+    expect(xctestrun.AppUITests.DependentProductPaths).toEqual([
+      "/signed/App.app",
+      "/dd/Build/Products/Debug-iphoneos/AppUITests-Runner.app",
+    ]);
+  });
+
+  it("is idempotent: an entry already pointing at the signed app is not re-counted", () => {
+    const xctestrun = {
+      __xctestrun_metadata__: { FormatVersion: 1 },
+      AppUITests: {
+        DependentProductPaths: ["/signed/App.app"],
+      },
+    };
+    expect(
+      sweepXctestrunDependentProductPaths(xctestrun, "/signed/App.app"),
+    ).toBe(0);
+    expect(xctestrun.AppUITests.DependentProductPaths).toEqual([
+      "/signed/App.app",
+    ]);
+  });
+
+  it("returns 0 when there are no DependentProductPaths to sweep", () => {
+    expect(
+      sweepXctestrunDependentProductPaths(
+        { AppUITests: { TestHostPath: "/x/Runner.app" } },
+        "/signed/App.app",
+      ),
+    ).toBe(0);
+  });
+});
+
+describe("planSignedAppDdOverwrite (#13564)", () => {
+  const DD = "/dd/Build/Products/Debug-iphoneos/App.app";
+  const SIGNED = "/stage/App.app";
+
+  it("overwrites the DD product with the signed app on a device run", () => {
+    expect(
+      planSignedAppDdOverwrite({
+        platform: "device",
+        signedAppPath: SIGNED,
+        derivedDataProductApp: DD,
+        productExists: true,
+      }),
+    ).toEqual({ overwrite: true, from: SIGNED, to: DD });
+  });
+
+  it("never overwrites on a simulator run", () => {
+    const plan = planSignedAppDdOverwrite({
+      platform: "sim",
+      signedAppPath: SIGNED,
+      derivedDataProductApp: DD,
+      productExists: true,
+    });
+    expect(plan.overwrite).toBe(false);
+    expect(plan.reason).toMatch(/not a device run/);
+  });
+
+  it("skips when no signed --app-path is given", () => {
+    const plan = planSignedAppDdOverwrite({
+      platform: "device",
+      signedAppPath: null,
+      derivedDataProductApp: DD,
+      productExists: true,
+    });
+    expect(plan.overwrite).toBe(false);
+    expect(plan.reason).toMatch(/no --app-path/);
+  });
+
+  it("skips when the DD product path could not be resolved", () => {
+    const plan = planSignedAppDdOverwrite({
+      platform: "device",
+      signedAppPath: SIGNED,
+      derivedDataProductApp: null,
+      productExists: false,
+    });
+    expect(plan.overwrite).toBe(false);
+    expect(plan.reason).toMatch(/could not resolve/);
+  });
+
+  it("skips (no-op) when the signed app IS the DD product", () => {
+    const plan = planSignedAppDdOverwrite({
+      platform: "device",
+      signedAppPath: DD,
+      derivedDataProductApp: DD,
+      productExists: true,
+    });
+    expect(plan.overwrite).toBe(false);
+    expect(plan.reason).toMatch(/nothing to overwrite/);
+  });
+
+  it("skips with an actionable reason when the DD product is missing", () => {
+    const plan = planSignedAppDdOverwrite({
+      platform: "device",
+      signedAppPath: SIGNED,
+      derivedDataProductApp: DD,
+      productExists: false,
+    });
+    expect(plan.overwrite).toBe(false);
+    expect(plan.reason).toMatch(/no build product at .*skip-build/);
+  });
+});
+
+describe("classifyCodesignPreflight (#13564)", () => {
+  it("passes when every bundle is signed", () => {
+    const verdict = classifyCodesignPreflight({
+      checks: [
+        { label: "XCUITest runner", path: "/x/Runner.app", signed: true },
+        { label: "target app", path: "/x/App.app", signed: true },
+      ],
+      appPathProvided: true,
+    });
+    expect(verdict.ok).toBe(true);
+    expect(verdict.unsigned).toEqual([]);
+    expect(verdict.message).toBeNull();
+  });
+
+  it("fails fast naming 0xe800801c + the unsigned bundle(s)", () => {
+    const verdict = classifyCodesignPreflight({
+      checks: [
+        { label: "XCUITest runner", path: "/x/Runner.app", signed: true },
+        { label: "target app", path: "/x/App.app", signed: false },
+      ],
+      appPathProvided: true,
+    });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.unsigned).toEqual([
+      { label: "target app", path: "/x/App.app" },
+    ]);
+    expect(verdict.message).toMatch(/0xe800801c/);
+    expect(verdict.message).toContain("/x/App.app");
+  });
+
+  it("points a --app-path run at re-staging via ios:device:deploy", () => {
+    const verdict = classifyCodesignPreflight({
+      checks: [{ label: "target app", path: "/x/App.app", signed: false }],
+      appPathProvided: true,
+    });
+    expect(verdict.message).toMatch(/ios:device:deploy/);
+    expect(verdict.message).toMatch(/--app-path/);
+  });
+
+  it("points a no-app-path run at ios:device:deploy + --app-path remediation", () => {
+    const verdict = classifyCodesignPreflight({
+      checks: [
+        {
+          label: "target app (DerivedData product)",
+          path: "/dd/App.app",
+          signed: false,
+        },
+      ],
+      appPathProvided: false,
+    });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.message).toMatch(/0xe800801c/);
+    expect(verdict.message).toMatch(/ios:device:deploy/);
+    expect(verdict.message).toMatch(/--app-path/);
+  });
+});
+
 describe("extractXctestrunAppPaths", () => {
   it("collects TestHostPath + UITargetAppPath from the root-level FormatVersion 2 layout, resolving __TESTROOT__ and deduplicating", () => {
     const xctestrun = {
@@ -647,5 +868,339 @@ describe("classifyConsoleExit (#11515)", () => {
     const verdict = classifyConsoleExit({ code: 0, signal: null, logText: "" });
     expect(verdict.kind).toBe("ok");
     expect(verdict.fatal).toBe(false);
+  });
+});
+
+describe("buildOnlyTestingIdentifier (#13566)", () => {
+  it("strips a trailing () and prefixes the target for a Class/method id", () => {
+    expect(
+      buildOnlyTestingIdentifier("GestureSemanticsUITests/testDetentFlick()", {
+        targetName: "AppUITests",
+      }),
+    ).toBe("AppUITests/GestureSemanticsUITests/testDetentFlick");
+  });
+
+  it("keeps an already-target-prefixed 3-segment id verbatim", () => {
+    expect(
+      buildOnlyTestingIdentifier(
+        "AppUITests/GestureSemanticsUITests/testDetentFlick()",
+        { targetName: "AppUITests" },
+      ),
+    ).toBe("AppUITests/GestureSemanticsUITests/testDetentFlick");
+  });
+
+  it("does not double-prefix a 2-segment id whose head is the target", () => {
+    expect(
+      buildOnlyTestingIdentifier("AppUITests/BootCaptureUITests", {
+        targetName: "AppUITests",
+      }),
+    ).toBe("AppUITests/BootCaptureUITests");
+  });
+
+  it("prefixes a bare class (whole-class failure)", () => {
+    expect(
+      buildOnlyTestingIdentifier("BootCaptureUITests", {
+        targetName: "AppUITests",
+      }),
+    ).toBe("AppUITests/BootCaptureUITests");
+  });
+
+  it("returns null for an empty / non-string id", () => {
+    expect(buildOnlyTestingIdentifier("", { targetName: "AppUITests" })).toBe(
+      null,
+    );
+    expect(
+      buildOnlyTestingIdentifier("   ", { targetName: "AppUITests" }),
+    ).toBe(null);
+    expect(buildOnlyTestingIdentifier(null, { targetName: "AppUITests" })).toBe(
+      null,
+    );
+  });
+});
+
+describe("parseFailedTestIdentifiers (#13566)", () => {
+  it("parses Xcode-16 testFailures rows into -only-testing identifiers", () => {
+    const summary = {
+      failedTests: 2,
+      testFailures: [
+        {
+          testName: "testComposerScroll()",
+          testIdentifierString: "GestureSemanticsUITests/testComposerScroll()",
+          targetName: "AppUITests",
+          failureText: "XCTAssertTrue failed",
+        },
+        {
+          testName: "testDetentFlick()",
+          testIdentifierString: "GestureSemanticsUITests/testDetentFlick()",
+          targetName: "AppUITests",
+        },
+      ],
+    };
+    const failures = parseFailedTestIdentifiers(summary);
+    expect(failures.map((f) => f.identifier)).toEqual([
+      "AppUITests/GestureSemanticsUITests/testComposerScroll",
+      "AppUITests/GestureSemanticsUITests/testDetentFlick",
+    ]);
+    expect(failures[0].targetName).toBe("AppUITests");
+  });
+
+  it("accepts a raw JSON string and falls back to the given target", () => {
+    const raw = JSON.stringify({
+      testFailures: [
+        { testIdentifierString: "BootCaptureUITests/testColdBoot()" },
+      ],
+    });
+    const failures = parseFailedTestIdentifiers(raw, {
+      fallbackTarget: "AppUITests",
+    });
+    expect(failures).toHaveLength(1);
+    expect(failures[0].identifier).toBe(
+      "AppUITests/BootCaptureUITests/testColdBoot",
+    );
+  });
+
+  it("dedupes and reads topInsights-nested failures", () => {
+    const summary = {
+      topInsights: [
+        {
+          category: "flaky",
+          testFailures: [
+            { testIdentifierString: "GestureSemanticsUITests/testFlick()" },
+            { testIdentifierString: "GestureSemanticsUITests/testFlick()" },
+          ],
+        },
+      ],
+    };
+    const failures = parseFailedTestIdentifiers(summary);
+    expect(failures).toHaveLength(1);
+    expect(failures[0].identifier).toBe(
+      "AppUITests/GestureSemanticsUITests/testFlick",
+    );
+  });
+
+  it("returns [] for unparseable / non-object input (fail-closed)", () => {
+    expect(parseFailedTestIdentifiers("not json{")).toEqual([]);
+    expect(parseFailedTestIdentifiers(null)).toEqual([]);
+    expect(parseFailedTestIdentifiers(42)).toEqual([]);
+    expect(parseFailedTestIdentifiers({})).toEqual([]);
+  });
+});
+
+describe("classifyIsolatedReruns (#13566)", () => {
+  const suiteFailures = [
+    {
+      identifier: "AppUITests/GestureSemanticsUITests/testComposer",
+      testName: "composer",
+    },
+    {
+      identifier: "AppUITests/GestureSemanticsUITests/testDetent",
+      testName: "detent",
+    },
+  ];
+
+  it("marks a suite failure that passes isolated as a flake and exits 0", () => {
+    const result = classifyIsolatedReruns(suiteFailures, [
+      {
+        identifier: "AppUITests/GestureSemanticsUITests/testComposer",
+        isolatedPassed: true,
+      },
+      {
+        identifier: "AppUITests/GestureSemanticsUITests/testDetent",
+        isolatedPassed: true,
+      },
+    ]);
+    expect(result.flakes).toHaveLength(2);
+    expect(result.realFailures).toEqual([]);
+    expect(result.exitNonZero).toBe(false);
+    expect(result.verdicts.every((v) => v.verdict === "flake")).toBe(true);
+  });
+
+  it("keeps a test that fails both as a real fail and exits nonzero", () => {
+    const result = classifyIsolatedReruns(suiteFailures, [
+      {
+        identifier: "AppUITests/GestureSemanticsUITests/testComposer",
+        isolatedPassed: true,
+      },
+      {
+        identifier: "AppUITests/GestureSemanticsUITests/testDetent",
+        isolatedPassed: false,
+      },
+    ]);
+    expect(result.flakes).toEqual([
+      "AppUITests/GestureSemanticsUITests/testComposer",
+    ]);
+    expect(result.realFailures).toEqual([
+      "AppUITests/GestureSemanticsUITests/testDetent",
+    ]);
+    expect(result.exitNonZero).toBe(true);
+  });
+
+  it("treats a missing isolated result as still-failing (no green-wash)", () => {
+    const result = classifyIsolatedReruns(suiteFailures, [
+      {
+        identifier: "AppUITests/GestureSemanticsUITests/testComposer",
+        isolatedPassed: true,
+      },
+      // testDetent's isolated rerun crashed / never reported
+    ]);
+    expect(result.realFailures).toEqual([
+      "AppUITests/GestureSemanticsUITests/testDetent",
+    ]);
+    expect(result.exitNonZero).toBe(true);
+  });
+});
+
+describe("buildIosXcuitestShardPlan (#13686)", () => {
+  it("expands the default AppUITests run into deterministic fresh-container shards", () => {
+    const plan = buildIosXcuitestShardPlan();
+    expect(plan.map((shard) => shard.identifier)).toEqual(
+      DEFAULT_IOS_XCUITEST_SHARDS,
+    );
+    expect(plan[0]).toEqual({
+      index: 1,
+      identifier:
+        "AppUITests/BootCaptureUITests/testBootReachesHomeOrErrorCard",
+      resultName: "01-BootCaptureUITests_testBootReachesHomeOrErrorCard",
+    });
+    expect(
+      plan.some((shard) =>
+        shard.identifier.endsWith("testCloudOnboardingChatAndVoice"),
+      ),
+    ).toBe(true);
+    expect(
+      plan.some((shard) =>
+        shard.identifier.endsWith("testLocalOnboardingChatAndVoice"),
+      ),
+    ).toBe(true);
+  });
+
+  it("preserves an explicit --only-testing override as a single shard", () => {
+    expect(
+      buildIosXcuitestShardPlan({
+        onlyTesting:
+          "AppUITests/GestureSemanticsUITests/testChatSheetDetentFlickCycle",
+      }),
+    ).toEqual([
+      {
+        index: 1,
+        identifier:
+          "AppUITests/GestureSemanticsUITests/testChatSheetDetentFlickCycle",
+        resultName: "01-GestureSemanticsUITests_testChatSheetDetentFlickCycle",
+      },
+    ]);
+  });
+
+  it("sanitizes shard names for filesystem-safe result paths", () => {
+    expect(safeShardName("AppUITests/Foo Bar/testThing()")).toBe(
+      "Foo_Bar_testThing",
+    );
+  });
+
+  it("finds committed XCTest methods not covered by the default shard plan", () => {
+    const entries = extractSwiftXcuitestEntries([
+      {
+        path: "BootCaptureUITests.swift",
+        text: `
+          import XCTest
+          final class BootCaptureUITests: XCTestCase {
+            func testCloudOnboardingChatAndVoice() throws {}
+            func testNewCoverageMustBeListed() throws {}
+          }
+        `,
+      },
+      {
+        path: "GestureSemanticsUITests.swift",
+        text: `
+          final class GestureSemanticsUITests: XCTestCase {
+            func testAnyFutureMethodIsCoveredByClassShard() throws {}
+          }
+        `,
+      },
+    ]);
+    expect(entries).toEqual([
+      {
+        className: "BootCaptureUITests",
+        methods: [
+          "testCloudOnboardingChatAndVoice",
+          "testNewCoverageMustBeListed",
+        ],
+        path: "BootCaptureUITests.swift",
+      },
+      {
+        className: "GestureSemanticsUITests",
+        methods: ["testAnyFutureMethodIsCoveredByClassShard"],
+        path: "GestureSemanticsUITests.swift",
+      },
+    ]);
+    expect(
+      findUncoveredIosXcuitestEntries({
+        entries,
+        shards: DEFAULT_IOS_XCUITEST_SHARDS,
+      }),
+    ).toEqual(["AppUITests/BootCaptureUITests/testNewCoverageMustBeListed"]);
+  });
+
+  it("classifies only absent-app uninstall failures as benign", () => {
+    expect(isBenignIosAppAbsence("Application is not installed")).toBe(true);
+    expect(
+      isBenignIosAppAbsence("Unknown application display identifier"),
+    ).toBe(true);
+    expect(isBenignIosAppAbsence("simctl failed: service unavailable")).toBe(
+      false,
+    );
+  });
+});
+
+describe("evaluateRunnerStaleness (#13566)", () => {
+  const RUNNER = 1_000_000;
+
+  it("flags a runner older than any AppUITests source as stale", () => {
+    const decision = evaluateRunnerStaleness({
+      runnerMtimeMs: RUNNER,
+      sources: [
+        { path: "GestureSemanticsUITests.swift", mtimeMs: RUNNER + 5000 },
+        { path: "BootCaptureUITests.swift", mtimeMs: RUNNER - 5000 },
+      ],
+    });
+    expect(decision.stale).toBe(true);
+    expect(decision.overridden).toBe(false);
+    expect(decision.newestSource.path).toBe("GestureSemanticsUITests.swift");
+    expect(decision.deltaMs).toBe(5000);
+  });
+
+  it("is not stale when the runner is newer than every source", () => {
+    const decision = evaluateRunnerStaleness({
+      runnerMtimeMs: RUNNER,
+      sources: [{ path: "A.swift", mtimeMs: RUNNER - 1000 }],
+    });
+    expect(decision.stale).toBe(false);
+    expect(decision.deltaMs).toBe(0);
+  });
+
+  it("honors --allow-stale-runner as overridden (proceed, not blocked)", () => {
+    const decision = evaluateRunnerStaleness({
+      runnerMtimeMs: RUNNER,
+      sources: [{ path: "A.swift", mtimeMs: RUNNER + 1 }],
+      allowStale: true,
+    });
+    expect(decision.stale).toBe(true);
+    expect(decision.overridden).toBe(true);
+  });
+
+  it("fails closed when the runner mtime is unknown", () => {
+    const decision = evaluateRunnerStaleness({
+      runnerMtimeMs: null,
+      sources: [{ path: "A.swift", mtimeMs: RUNNER }],
+    });
+    expect(decision.stale).toBe(true);
+  });
+
+  it("is not stale when there are no sources to compare against", () => {
+    const decision = evaluateRunnerStaleness({
+      runnerMtimeMs: RUNNER,
+      sources: [],
+    });
+    expect(decision.stale).toBe(false);
+    expect(decision.newestSource).toBe(null);
   });
 });

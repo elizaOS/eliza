@@ -16,11 +16,6 @@ vi.mock("../shell/CloudI18nProvider", () => ({
     options?.defaultValue ?? key,
 }));
 vi.mock("../lib/use-session-auth", () => ({
-  useRequireAuth: () => ({
-    ready: true,
-    authenticated: true,
-    user: { id: "u1", email: "qa@e.test" },
-  }),
   useSessionAuth: () => ({
     ready: true,
     authenticated: true,

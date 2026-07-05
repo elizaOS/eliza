@@ -3,17 +3,18 @@
  * rejection, MCP terminal authorization, and API token binding.
  */
 import {
-  ensureApiTokenForBindHost as upstreamEnsureApiTokenForBindHost,
+  ensureApiTokenForBindHost,
   resolveMcpTerminalAuthorizationRejection as upstreamResolveMcpTerminalAuthorizationRejection,
   resolveTerminalRunClientId as upstreamResolveTerminalRunClientId,
   resolveTerminalRunRejection as upstreamResolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection as upstreamResolveWebSocketUpgradeRejection,
 } from "@elizaos/agent";
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/shared";
 import {
   normalizeCompatRejection,
   runWithCompatAuthContext,
 } from "./server-wallet-trade";
+
+export { ensureApiTokenForBindHost };
 
 export function resolveMcpTerminalAuthorizationRejection(
   ...args: Parameters<typeof upstreamResolveMcpTerminalAuthorizationRejection>
@@ -51,13 +52,4 @@ export function resolveTerminalRunClientId(
   return runWithCompatAuthContext(req, () =>
     upstreamResolveTerminalRunClientId(...args),
   );
-}
-
-export function ensureApiTokenForBindHost(
-  ...args: Parameters<typeof upstreamEnsureApiTokenForBindHost>
-): ReturnType<typeof upstreamEnsureApiTokenForBindHost> {
-  syncAppEnvToEliza();
-  const result = upstreamEnsureApiTokenForBindHost(...args);
-  syncElizaEnvAliases();
-  return result;
 }

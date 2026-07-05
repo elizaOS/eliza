@@ -190,6 +190,9 @@ class DiscordAutomationService {
         return null;
       }
     } catch (error) {
+      // error-policy:J1 boundary — token-exchange transport failure is translated
+      // to null, which the only caller (handleBotOAuthCallback) fail-closes into a
+      // "Failed to verify Discord account" result. Not an empty success.
       logger.error("[Discord] Token exchange request failed", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -249,6 +252,9 @@ class DiscordAutomationService {
         },
       };
     } catch (error) {
+      // error-policy:J1 boundary — identity/guilds fetch transport failure is
+      // translated to null; handleBotOAuthCallback fail-closes it into a failed
+      // verification result rather than reading as an authorized identity.
       logger.error("[Discord] Failed to fetch OAuth identity", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -337,7 +343,19 @@ class DiscordAutomationService {
       });
 
       // Fetch and cache channels
-      await this.refreshChannels(args.oauthState.organizationId, guild.id);
+      try {
+        await this.refreshChannels(args.oauthState.organizationId, guild.id);
+      } catch (error) {
+        // error-policy:J6 best-effort cache warm — the guild is already persisted,
+        // so a transient channel-fetch failure must not fail a completed bot-add.
+        // The failure is observable: the refresh route re-runs refreshChannels and
+        // surfaces the throw instead of reporting success with 0 channels.
+        logger.warn("[Discord] Channel cache warm failed after bot add", {
+          organizationId: args.oauthState.organizationId,
+          guildId: guild.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
 
       const requestedNickname = args.oauthState.botNickname?.trim();
       if (requestedNickname) {
@@ -358,6 +376,9 @@ class DiscordAutomationService {
         discordUser: identity.user,
       };
     } catch (error) {
+      // error-policy:J1 boundary — outermost handler for the OAuth-callback flow;
+      // any thrown failure (identity, guild fetch, DB upsert) becomes a structured
+      // { success: false } result for the route to return, never a fake success.
       logger.error("[Discord] Bot OAuth callback error:", {
         error: error instanceof Error ? error.message : "Unknown error",
       });
@@ -399,6 +420,8 @@ class DiscordAutomationService {
 
       return true;
     } catch (error) {
+      // error-policy:J6 best-effort — nickname is cosmetic and the only caller
+      // ignores the return; a failure is warned but must not abort the bot-add.
       logger.warn("[Discord] Failed to set bot nickname", {
         guildId,
         error: error instanceof Error ? error.message : String(error),
@@ -458,6 +481,9 @@ class DiscordAutomationService {
 
       return { connected: true, guilds: guildsWithCounts };
     } catch (error) {
+      // error-policy:J1 boundary — a DB read failure is translated to a status
+      // carrying an explicit `error`, distinct from the connected:false/no-error
+      // "no guilds" state above; callers can tell failure from empty.
       logger.error("[Discord] Status check error:", {
         organizationId,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -471,58 +497,53 @@ class DiscordAutomationService {
    */
   async refreshChannels(organizationId: string, guildId: string): Promise<DiscordChannelInfo[]> {
     if (!DISCORD_BOT_TOKEN) {
-      logger.error("[Discord] Bot token not configured");
-      return [];
+      throw new Error("[Discord] Cannot refresh channels: bot token not configured");
     }
 
-    try {
-      const response = await fetch(`${DISCORD_API_BASE}/guilds/${guildId}/channels`, {
-        headers: {
-          Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
-        },
-      });
+    const response = await fetch(`${DISCORD_API_BASE}/guilds/${guildId}/channels`, {
+      headers: {
+        Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
+      },
+    });
 
-      if (!response.ok) {
-        const error = await response.text();
-        logger.error("[Discord] Failed to fetch channels:", { guildId, error });
-        return [];
-      }
-
-      const channels: DiscordChannelInfo[] = await response.json();
-
-      // Filter to text channels only
-      const textChannels = channels.filter((c) => isTextChannel(c.type));
-
-      // Cache channels in database
-      for (const channel of textChannels) {
-        await discordChannelsRepository.upsert({
-          organization_id: organizationId,
-          guild_id: guildId,
-          channel_id: channel.id,
-          channel_name: channel.name,
-          channel_type: channel.type,
-          parent_id: channel.parent_id,
-          position: channel.position,
-          can_send_messages: true, // We'll assume we can send if we can see it
-          is_nsfw: channel.nsfw ?? false,
-        });
-      }
-
-      logger.info("[Discord] Channels refreshed", {
-        organizationId,
-        guildId,
-        channelCount: textChannels.length,
-      });
-
-      return textChannels;
-    } catch (error) {
-      logger.error("[Discord] Channel refresh error:", {
-        organizationId,
-        guildId,
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-      return [];
+    // A failed fetch must surface as a thrown error, not an empty channel list:
+    // the caller (refresh route) reports channels.length, so returning [] here
+    // would report a failed refresh as "success, 0 channels".
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(
+        `[Discord] Failed to fetch channels for guild ${guildId} (status ${response.status}): ${error.slice(0, 200)}`,
+      );
     }
+
+    const channels: DiscordChannelInfo[] = await response.json();
+
+    // A guild with no text channels yields [] here — a legitimately-empty
+    // result, distinct from the throws above which signal a failed fetch.
+    const textChannels = channels.filter((c) => isTextChannel(c.type));
+
+    // Cache channels in database
+    for (const channel of textChannels) {
+      await discordChannelsRepository.upsert({
+        organization_id: organizationId,
+        guild_id: guildId,
+        channel_id: channel.id,
+        channel_name: channel.name,
+        channel_type: channel.type,
+        parent_id: channel.parent_id,
+        position: channel.position,
+        can_send_messages: true, // We'll assume we can send if we can see it
+        is_nsfw: channel.nsfw ?? false,
+      });
+    }
+
+    logger.info("[Discord] Channels refreshed", {
+      organizationId,
+      guildId,
+      channelCount: textChannels.length,
+    });
+
+    return textChannels;
   }
 
   /**
@@ -586,6 +607,9 @@ class DiscordAutomationService {
 
       return { success: true, messageId: lastMessageId };
     } catch (error) {
+      // error-policy:J1 boundary — an outbound send failure (transport, timeout,
+      // non-2xx) is translated to a typed { success: false } connector result so a
+      // failed send never reads as delivered.
       logger.error("[Discord] Send message error:", {
         channelId,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -668,6 +692,8 @@ class DiscordAutomationService {
 
       return { success: true };
     } catch (error) {
+      // error-policy:J1 boundary — DB cleanup failure is translated to a typed
+      // { success: false } so a failed disconnect is not reported as done.
       logger.error("[Discord] Disconnect error:", {
         organizationId,
         guildId,
@@ -700,7 +726,14 @@ class DiscordAutomationService {
         },
       });
       return response.ok;
-    } catch {
+    } catch (error) {
+      // error-policy:J1 boundary — this is an access probe; a transport failure
+      // means access is unconfirmed, so the fail-closed answer is "no access".
+      // Warned so the transport failure is observable, not silently swallowed.
+      logger.warn("[Discord] Channel access probe failed", {
+        channelId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return false;
     }
   }

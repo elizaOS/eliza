@@ -109,7 +109,11 @@ export interface AggregateReport {
     passed: number;
     failed: number;
     skipped: number;
-    flakyPassed: number;
+    /**
+     * Real summed LLM spend across the run's recorded trajectories
+     * (`metrics.totalCostUsd` per trajectory). `0` only when no trajectories
+     * were recorded (no `--run-dir`), never fabricated on a costed run.
+     */
     costUsd: number;
     /**
      * finalChecks across all scenarios that reported status `skipped`
@@ -124,7 +128,6 @@ export interface AggregateReport {
   passedCount: number;
   failedCount: number;
   skippedCount: number;
-  flakyPassedCount: number;
   totalCostUsd: number;
 }
 

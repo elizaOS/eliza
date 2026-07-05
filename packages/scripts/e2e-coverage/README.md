@@ -32,7 +32,7 @@ uncovered fails CI, following the exact precedent of
   (covered/exempt per route plugin), `COMMAND_COVERAGE`, `ZERO_TEST_EXEMPT`,
   `VIEW_COVERAGE_GATES`, `LARP_TEST_ARTIFACTS`, `SHORTCUT_REGISTRY_HINTS`.
 - **`../__tests__/e2e-coverage.test.ts`** — the enforced `bun test` gate.
-- **`../check-e2e-coverage.ts`** — the report CLI →
+- **`write-coverage-matrix-report.ts`** — the report CLI →
   `reports/coverage/e2e-matrix.json` + an HTML contact sheet
   (`reports/coverage/viewer/`). Advisory by default; `--fail-on-missing` (or
   `E2E_COVERAGE_GATE_ENFORCE=1`) makes it exit non-zero on a blocking gap.
@@ -89,7 +89,7 @@ baseline holds steady on develop.
 ```bash
 bun test packages/scripts/__tests__/e2e-coverage.test.ts            # advisory
 E2E_COVERAGE_GATE_ENFORCE=1 bun test packages/scripts/__tests__/e2e-coverage.test.ts  # required
-bun packages/scripts/check-e2e-coverage.ts --report-dir reports/coverage
+bun packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage
 ```
 
 ---

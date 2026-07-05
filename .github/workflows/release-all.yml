@@ -126,7 +126,7 @@ jobs:
   # ─────────────────────────────────────────────
   validate:
     name: Validate & Prepare Release
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     outputs:
       version: ${{ steps.parse.outputs.version }}
       channel: ${{ steps.parse.outputs.channel }}
@@ -394,7 +394,7 @@ jobs:
     name: npm packages (auto-triggered)
     needs: validate
     if: needs.validate.outputs.build_npm == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Note — npm release auto-triggered
         run: |
@@ -512,7 +512,7 @@ jobs:
     name: Release Summary
     needs: [validate, desktop, android, apple, linux-os-iso, linux-os-deb, linux-os-vm, npm, snap, windows-store, android-update-manifest, aosp-update-manifest, apt-repo, flatpak]
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:

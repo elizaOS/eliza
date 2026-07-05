@@ -1,7 +1,7 @@
 /**
  * /dashboard/apps — the Applications list (cloud OAuth apps). Under the app
  * shell the document head is owned by the host, not per-cloud-route. Auth
- * gating uses `useRequireAuth()` (Steward session).
+ * gating uses `useSessionAuth()` (Steward session).
  */
 
 import { Activity, Grid3x3, TrendingUp, Users } from "lucide-react";
@@ -15,18 +15,16 @@ import { DashboardErrorState } from "../../cloud-ui/components/dashboard/route-p
 import {
   DashboardPageContainer,
   DashboardStatGrid,
-  DashboardToolbar,
 } from "../../cloud-ui/components/layout";
-import { useRequireAuth } from "../lib/use-session-auth";
+import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AppsTable } from "./components/apps-table";
-import { CreateAppButton } from "./components/create-app-button";
 import { useApps } from "./lib/apps";
 
 /** /dashboard/apps */
 export default function ApplicationsPage() {
   const t = useCloudT();
-  const session = useRequireAuth();
+  const session = useSessionAuth();
   const { data, isLoading, isError, error } = useApps();
 
   const apps = data ?? [];
@@ -37,9 +35,6 @@ export default function ApplicationsPage() {
   return (
     <AppsPageWrapper>
       <DashboardPageContainer className="space-y-4 md:space-y-6">
-        <DashboardToolbar className="justify-end">
-          <CreateAppButton />
-        </DashboardToolbar>
         <DashboardStatGrid data-onboarding="apps-stats">
           <DashboardStatCard
             label={t("cloud.apps.stat.totalApps", {
@@ -83,7 +78,14 @@ export default function ApplicationsPage() {
             }
           />
         ) : apps.length === 0 ? (
-          <AppsEmptyState action={<CreateAppButton />} />
+          // Apps are created BY the agent (chat: "build me an app…"), never
+          // from the console — the dashboard only manages what exists.
+          <AppsEmptyState
+            description={t("cloud.apps.emptyAgentHint", {
+              defaultValue:
+                "Ask your Eliza agent to build and deploy an app — it will show up here to manage, monetize, and share.",
+            })}
+          />
         ) : (
           <AppsTable apps={apps} />
         )}

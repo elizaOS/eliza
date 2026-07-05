@@ -75,7 +75,7 @@ env:
 jobs:
   voice-platform-matrix-index:
     name: Canonical voice matrix index
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -109,8 +109,7 @@ jobs:
     env:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-    # Non-blocking: a missing GPU/model environment must not red-X the branch.
-    continue-on-error: true
+    # Hard live lane: a missing GPU/model environment must be visible as a failure.
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -306,7 +305,8 @@ jobs:
               echo "bundle), then re-dispatch:"
               echo "  gh workflow run voice-live-e2e.yml --ref develop"
             } | tee "$VOICE_REAL_MATRIX_OUT/SKIPPED.md"
-            echo "::warning title=Voice acoustic matrix skipped (runner not provisioned)::Missing fused libelizainference.so and/or the eliza-1-2b ASR bundle on this self-hosted runner. This lane needs the GPU runner staged per #9454 (.github/issue-evidence/9454-gpu-runner-provisioning.md). Skipping to a neutral result instead of a mid-run hard fail."
+            echo "::error title=Voice acoustic matrix runner not provisioned::Missing fused libelizainference.so and/or the eliza-1-2b ASR bundle on this self-hosted runner. This lane needs the GPU runner staged per #9454 (.github/issue-evidence/9454-gpu-runner-provisioning.md)."
+            exit 1
           fi
 
       - name: Setup Node.js
@@ -672,7 +672,7 @@ jobs:
   voice-android-matrix:
     name: Android live-voice + native bridge matrix
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_android) || vars.ELIZA_VOICE_ANDROID_READY == '1' }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 120
     env:
       ELIZA_VOICE_ANDROID_READY: ${{ vars.ELIZA_VOICE_ANDROID_READY }}

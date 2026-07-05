@@ -46,7 +46,7 @@ permissions:
 
 jobs:
   generate-docs:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     # NOTE: This workflow requires packages/autodoc to exist
     # Currently disabled until autodoc package is added to the monorepo
 

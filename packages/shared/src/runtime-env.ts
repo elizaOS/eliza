@@ -332,6 +332,17 @@ export function resolveApiToken(
   return resolveApiSecurityConfig(env).token;
 }
 
+export function isDevApiWatchEnabled(
+  env: RuntimeEnvRecord = process.env,
+  execArgv: readonly string[] = process.execArgv,
+): boolean {
+  return (
+    execArgv.includes("--watch") ||
+    env.ELIZA_DESKTOP_API_WATCH === "1" ||
+    env.ELIZA_DEV_SOURCE_WATCH === "1"
+  );
+}
+
 export function resolveConfiguredApiToken(
   env: RuntimeEnvRecord = process.env,
 ): string | undefined {
@@ -447,7 +458,7 @@ export function isIosMobile(env: RuntimeEnvRecord = process.env): boolean {
 /**
  * The normalized `ELIZA_PLATFORM` value (trimmed + lowercased), resolved through
  * the brand<->eliza alias table so a rebranded `<PREFIX>_PLATFORM` is honoured
- * WITHOUT depending on the `syncBrandEnvToEliza` mirror mutation (arch-audit
+ * from the alias table with nothing written back to `process.env` (arch-audit
  * #12251). Returns `undefined` when neither the canonical key nor a branded
  * alias is set — callers that only care about the mobile embeddings should
  * prefer {@link isMobilePlatform} / {@link isAndroidMobile} / {@link isIosMobile}.

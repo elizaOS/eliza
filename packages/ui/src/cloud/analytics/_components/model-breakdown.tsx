@@ -93,10 +93,10 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
           })}
         </p>
       </CardHeader>
-      <CardContent className="border-t border-border/60 p-6">
-        <div className="space-y-4">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+      <CardContent className="min-w-0 border-t border-border/60 p-4 sm:p-6">
+        <div className="min-w-0 space-y-4">
+          <div className="max-w-full overflow-x-auto">
+            <table className="min-w-[640px] w-full text-sm">
               <thead>
                 <tr className="border-b border-border/50">
                   <th className="pb-3 text-left font-medium text-muted-foreground">

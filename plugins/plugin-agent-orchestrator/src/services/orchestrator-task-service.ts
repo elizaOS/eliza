@@ -18,10 +18,17 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import { basename, dirname, join } from "node:path";
+import {
+  getTrajectoryContext,
+  type IAgentRuntime,
+  resolveStateDir,
+  resolveTrajectoryGate,
+  Service,
+  TRACE_ENV,
+} from "@elizaos/core";
 import {
   detectTaskType,
   generateDefaultAcceptanceCriteria,
@@ -30,12 +37,20 @@ import {
   shouldRequireGoalContract,
 } from "./acceptance-criteria.js";
 import { AcpService } from "./acp-service.js";
+import {
+  type AdmissionRecord,
+  orderQueue,
+  type QueueEntry,
+  type SerializableSpawnOpts,
+} from "./admission-queue.js";
 import { assignAgentName } from "./agent-name-assignment.js";
 import {
   accountMetaFromSessionMetadata,
   assessCodingAccountReadiness,
   type CodingAccountReadiness,
+  classifyAccountFailure,
   getCodingAccountBridge,
+  hasHealthyPooledAccount,
   resolveCodingAccountStrategy,
 } from "./coding-account-selection.js";
 import {
@@ -91,16 +106,20 @@ import {
   type AttemptReflection,
   type CreateTaskInput,
   MAX_ATTEMPT_REFLECTIONS,
+  MAX_SESSION_RETRY_ATTEMPTS,
   type OrchestratorAccountAssignment,
   type OrchestratorAccountOverview,
   type OrchestratorRoomParticipant,
   type OrchestratorRoomRoster,
   type OrchestratorRoomRosterOverview,
   type OrchestratorTaskDocument,
+  type OrchestratorTaskPriority,
   type OrchestratorTaskRecord,
   type OrchestratorTaskSession,
   type OrchestratorTaskStatus,
   type OrchestratorTaskUsage,
+  resolveTaskTransition,
+  type TaskLifecycleTrigger,
   type TaskListFilter,
   type TaskMessageDirection,
   type TaskMessageSenderKind,
@@ -109,13 +128,23 @@ import {
   TERMINAL_TASK_STATUSES,
   type UsageState,
 } from "./orchestrator-task-types.js";
-import { PARENT_AGENT_BROKER_MANIFEST_ENTRY } from "./parent-agent-broker.js";
+import {
+  isParentAgentBrokerWired,
+  PARENT_AGENT_BROKER_MANIFEST_ENTRY,
+} from "./parent-agent-broker.js";
+import { resolveTaskProjectId } from "./project-binding.js";
 import { buildSkillsManifest } from "./skill-manifest.js";
 import {
   configureSpendLedger,
   createTaskStoreSpendLedger,
 } from "./spend-allowance.js";
-import type { ApprovalPreset } from "./types.js";
+import {
+  AdmissionQueueFullError,
+  type ApprovalPreset,
+  SessionCapError,
+  type SpawnResult,
+  TERMINAL_SESSION_STATUSES,
+} from "./types.js";
 import {
   ensureTaskWorkdir,
   resolveAllowedWorkdir,
@@ -185,10 +214,26 @@ function configuredDefaultAgentType(runtime: {
  *  `llm-goal-verifier`, so the validation event's origin is unambiguous. */
 const INDEPENDENT_ACP_VERIFIER_NAME = "independent-acp-verifier";
 
+/** Cap on child trajectories ingested per task_complete (#13775) so a runaway
+ *  sub-agent can't flood the task doc; the store's MAX_ARTIFACTS also clamps. */
+const MAX_CHILD_TRAJECTORY_ARTIFACTS = 20;
+
 /** Default upper bound on how long the independent verifier session may run
  *  before its await is abandoned (treated as inconclusive). Overridable via
  *  `ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY_TIMEOUT_MS`. */
 const DEFAULT_INDEPENDENT_VERIFY_TIMEOUT_MS = 600_000;
+
+/** Cadence of the admission-queue reconcile tick. Backstops the terminal-event
+ * drain for slots freed silently (a swept-stale session emits no event). */
+const ADMISSION_RECONCILE_INTERVAL_MS = 30_000;
+
+/** Session events after which a worker slot may have freed, so the admission
+ * queue should drain. Mirrors AcpService's terminal-status set. */
+const ADMISSION_DRAIN_EVENTS: ReadonlySet<string> = new Set([
+  "task_complete",
+  "stopped",
+  "error",
+]);
 
 function independentVerifyTimeoutMs(runtime: {
   getSetting?: (key: string) => unknown;
@@ -225,11 +270,12 @@ export interface SpawnAgentForTaskOptions {
   nestingDepth?: number;
 }
 
-/** Descriptor for an already-spawned ACP session that we want to bind to an
- *  existing task thread. Only what the attach path genuinely needs — identity,
- *  workdir + status from the spawn, and the caller's context that isn't
- *  discoverable from the SpawnResult (originalTask, model, providerSource,
- *  repo). See {@link OrchestratorTaskService.attachSession}. */
+/**
+ * Descriptor for an already-spawned ACP session that we want to bind to an
+ * existing task thread. Only what the attach path genuinely needs: identity,
+ * workdir and status from the spawn, plus caller context that is not
+ * discoverable from the SpawnResult.
+ */
 export interface AttachSessionInput {
   sessionId: string;
   agentType: string;
@@ -326,12 +372,32 @@ const EMPTY_USAGE: TaskUsageSummary = {
   byProvider: [],
 };
 
+/** Sub-agent session statuses that mean the session died from an unrecoverable
+ * fault (an `error` event), as opposed to a clean `stopped`/`completed` or an
+ * operator-driven `send_failed`/`stop_failed`. Only these count against the
+ * task's crash-retry budget in
+ * {@link OrchestratorTaskService.advanceTaskOnSessionError}. */
+const SESSION_ERROR_STATUSES: ReadonlySet<string> = new Set([
+  "error",
+  "errored",
+]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/** Parse a positive-integer setting value, falling back to `fallback` when the
+ * value is absent, non-numeric, or ≤ 0. Used for the admission-queue tunables. */
+function parsePositiveIntSetting(
+  value: string | undefined,
+  fallback: number,
+): number {
+  const parsed = value === undefined ? Number.NaN : Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
 function str(value: unknown): string | undefined {
@@ -584,6 +650,10 @@ function describeEvent(event: string, data: unknown): string {
       return "Sub-agent reconnected";
     case "usage_update":
       return "Token usage update";
+    case "account_switched":
+      return `Switched coding account to ${
+        str(record.label) ?? str(record.accountId) ?? "unknown"
+      }`;
     default:
       return event;
   }
@@ -609,6 +679,7 @@ export class OrchestratorTaskService extends Service {
   protected override readonly runtime: RuntimeLike;
   private readonly store: OrchestratorTaskStore;
   private readonly sessionTaskIndex = new Map<string, string>();
+  private readonly taskWorkdirBindQueues = new Map<string, Promise<void>>();
   // Session ids whose event-recording has already logged a failure. A
   // degraded store (e.g. #11641's pglite lookup) would otherwise re-warn on
   // EVERY session event (`ready`, `tool_running`, ...) forever — one line per
@@ -620,6 +691,16 @@ export class OrchestratorTaskService extends Service {
   private readonly autoVerifyInFlight = new Set<string>();
   private unsubscribe: (() => void) | undefined;
   private started = false;
+  // Admission queue (#13772): taskIds parked because the worker cap was full.
+  // The durable truth is each task's `metadata.admission` record; this array is
+  // the in-memory dispatch order, rebuilt from the store on start(). Ordering is
+  // recomputed at drain time (priority band + aging), so insertion order here is
+  // not authoritative — membership is.
+  private readonly admissionQueue: string[] = [];
+  // Serializes drainAdmissionQueue so a terminal-event drain and the reconcile
+  // tick can't both dispatch the same parked task. A promise-chain mutex.
+  private admissionDrainLock = Promise.resolve();
+  private admissionReconcileTimer: NodeJS.Timeout | undefined;
 
   constructor(
     runtime: IAgentRuntime,
@@ -657,6 +738,26 @@ export class OrchestratorTaskService extends Service {
     // Persist self-spend durably so a configured ELIZA_AGENT_SPEND_CAP_USD
     // survives a restart instead of resetting to zero (#8924).
     configureSpendLedger(createTaskStoreSpendLedger(this.store));
+    // Resume any tasks parked before a restart, then arm the reconcile tick that
+    // drains the queue even when no terminal session event fires (a sweptStale
+    // session frees a slot silently). Best-effort: a store hiccup here must not
+    // block session-event binding below.
+    if (this.admissionQueueEnabled()) {
+      await this.rebuildAdmissionQueueFromStore().catch((err) => {
+        // error-policy:J7 admission-queue rebuild is a start-time convenience; a
+        // failure is reported (parked tasks won't auto-resume until a live
+        // enqueue re-seeds them) but must not abort service start.
+        this.runtime.reportError(
+          "OrchestratorTask.rebuildAdmissionQueue",
+          err,
+          {},
+        );
+      });
+      this.admissionReconcileTimer = setInterval(() => {
+        void this.drainAdmissionQueue();
+      }, ADMISSION_RECONCILE_INTERVAL_MS);
+      this.admissionReconcileTimer.unref?.();
+    }
     const acp = this.acp();
     if (acp) {
       this.subscribeToAcp(acp);
@@ -707,6 +808,10 @@ export class OrchestratorTaskService extends Service {
   async stop(): Promise<void> {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
+    if (this.admissionReconcileTimer) {
+      clearInterval(this.admissionReconcileTimer);
+      this.admissionReconcileTimer = undefined;
+    }
     this.started = false;
   }
 
@@ -797,7 +902,7 @@ export class OrchestratorTaskService extends Service {
       case "ready":
       case "reconnected":
         await this.store.updateSession(sessionId, { status: "ready" });
-        await this.advanceTaskStatus(taskId, "active");
+        await this.advanceTaskStatus(taskId, "session_active");
         break;
       case "tool_running": {
         const toolCall = isRecord(record.toolCall) ? record.toolCall : {};
@@ -805,7 +910,7 @@ export class OrchestratorTaskService extends Service {
           status: "tool_running",
           activeTool: str(toolCall.title) ?? str(toolCall.kind),
         });
-        await this.advanceTaskStatus(taskId, "active");
+        await this.advanceTaskStatus(taskId, "session_active");
         break;
       }
       case "message": {
@@ -840,11 +945,11 @@ export class OrchestratorTaskService extends Service {
       }
       case "blocked":
         await this.store.updateSession(sessionId, { status: "blocked" });
-        await this.advanceTaskStatus(taskId, "blocked");
+        await this.advanceTaskStatus(taskId, "session_blocked");
         break;
       case "login_required":
         await this.store.updateSession(sessionId, { status: "blocked" });
-        await this.advanceTaskStatus(taskId, "waiting_on_user");
+        await this.advanceTaskStatus(taskId, "awaiting_user");
         await this.markSessionAccountUnhealthy(
           sessionId,
           "auth",
@@ -860,7 +965,20 @@ export class OrchestratorTaskService extends Service {
           stoppedAt: Date.now(),
         });
         await this.mirrorChangeSetToStore(sessionId);
-        await this.advanceTaskStatus(taskId, "validating");
+        // Attach the sub-agent's own recorded trajectories (its inner model
+        // prompts/responses) as task artifacts under the shared traceId (#13775).
+        // error-policy:J7 diagnostics-must-not-kill-the-loop — trace ingest is
+        // observability; a failure is reported but must not block task validation.
+        try {
+          await this.ingestChildTrajectories(taskId, sessionId);
+        } catch (err) {
+          this.runtime.reportError?.(
+            "OrchestratorTaskService.ingestChildTrajectories",
+            err,
+            { taskId, sessionId },
+          );
+        }
+        await this.advanceTaskStatus(taskId, "completion_reported");
         // Issue #8124: the orchestrator should always behave like `/goal` —
         // confirm the sub-agent met every acceptance criterion before marking
         // the task done. Feed the verifier REAL completion evidence (git
@@ -908,6 +1026,10 @@ export class OrchestratorTaskService extends Service {
             message,
           );
         }
+        await this.advanceTaskOnSessionError(taskId, sessionId, {
+          failureKind,
+          message,
+        });
         break;
       }
       case "stopped":
@@ -921,8 +1043,31 @@ export class OrchestratorTaskService extends Service {
         if (usage) await this.recordUsage(taskId, sessionId, usage);
         break;
       }
+      case "account_switched": {
+        // A follow-up prompt failed over to a different pooled account (the
+        // spawn-time account went unhealthy). Re-key the durable session
+        // record so recordUsage bills the account actually serving and the
+        // rate-limit/reauth marks land on it — not the spawn-time account.
+        const providerId = str(record.providerId);
+        const accountId = str(record.accountId);
+        if (providerId && accountId) {
+          await this.store.updateSession(sessionId, {
+            accountProviderId: providerId,
+            accountId,
+            accountLabel: str(record.label) ?? accountId,
+          });
+        }
+        break;
+      }
       default:
         break;
+    }
+    // A terminal session event frees (or may free) a worker slot. Kick the
+    // admission drain so a parked task dispatches the instant a slot opens,
+    // rather than waiting on the 30s reconcile tick. Fire-and-forget: the drain
+    // is serialized internally and never rejects into this write path.
+    if (ADMISSION_DRAIN_EVENTS.has(event) && this.admissionQueueEnabled()) {
+      void this.drainAdmissionQueue();
     }
   }
 
@@ -980,6 +1125,124 @@ export class OrchestratorTaskService extends Service {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /**
+   * Per-task directory a spawned sub-agent's file recorder writes its own
+   * trajectories into (#13775), scanned on task_complete. Under the shared state
+   * dir so #13773's workspace-GC registry can reclaim it with the task.
+   */
+  private childTrajectoryDir(taskId: string): string {
+    return join(
+      resolveStateDir(),
+      "orchestrator",
+      "child-trajectories",
+      taskId,
+    );
+  }
+
+  /**
+   * The trace-correlation env stamped onto a spawned sub-agent (#13775). Carries
+   * the parent turn's traceId + parent step so the child's self-recorded
+   * trajectories join the parent's trace, and — only when the shared gate is on
+   * — points the child recorder at {@link childTrajectoryDir}. The trajectory
+   * flag is ALWAYS set explicitly ("1"/"0") so the broad ELIZA_ env forwarding
+   * in AcpService never leaks the parent's value ambiguously.
+   */
+  private buildChildTraceEnv(taskId: string): Record<string, string> {
+    const ctx = getTrajectoryContext();
+    const env: Record<string, string> = {
+      [TRACE_ENV.TRACE_ID]: ctx?.traceId ?? randomUUID(),
+      [TRACE_ENV.TASK_ID]: taskId,
+    };
+    if (ctx?.trajectoryStepId) {
+      env[TRACE_ENV.PARENT_STEP_ID] = ctx.trajectoryStepId;
+    }
+    if (resolveTrajectoryGate().enabled) {
+      env.ELIZA_TRAJECTORY_LOGGING = "1";
+      env.ELIZA_TRAJECTORY_DIR = this.childTrajectoryDir(taskId);
+    } else {
+      env.ELIZA_TRAJECTORY_LOGGING = "0";
+    }
+    return env;
+  }
+
+  /**
+   * On task_complete, attach the sub-agent's own recorded trajectories (elizaos
+   * / pi-agent children self-record their inner model prompts/responses under
+   * {@link childTrajectoryDir}) to the task as `trajectory` artifacts and record
+   * their ids on the session (#13775). Attach-by-reference: the file stays where
+   * the child wrote it; no normalize-and-copy. A missing or empty dir is a
+   * legitimate empty result — a non-eliza backend self-records nothing, and a
+   * gate-off run writes nothing — never an error. Returns the ingested
+   * trajectory ids so the caller can append them to the session record.
+   */
+  private async ingestChildTrajectories(
+    taskId: string,
+    sessionId: string,
+  ): Promise<string[]> {
+    const dir = this.childTrajectoryDir(taskId);
+    let files: string[];
+    try {
+      // Recursive string listing (the recorder nests trajectories under an
+      // <agentId>/ subdir); resolve each to an absolute path.
+      const relPaths = await readdir(dir, { recursive: true });
+      files = relPaths
+        .filter((p) => p.endsWith(".json"))
+        .map((p) => join(dir, p));
+    } catch (err) {
+      // error-policy:J4 a missing child-trajectory dir is the designed empty
+      // result (non-eliza backend or gate off); only ENOENT degrades silently.
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw err;
+    }
+    if (files.length === 0) return [];
+
+    // Newest first, capped so a runaway child can't flood the task doc; the
+    // store's MAX_ARTIFACTS also clamps.
+    const withMtime = await Promise.all(
+      files.map(async (path) => ({
+        path,
+        mtimeMs: (await stat(path)).mtimeMs,
+      })),
+    );
+    withMtime.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    const capped = withMtime.slice(0, MAX_CHILD_TRAJECTORY_ARTIFACTS);
+
+    const session = (await this.store.findSession(sessionId))?.session;
+    const ingested: string[] = [];
+    for (const { path } of capped) {
+      // The recorder names files `<trajectoryId>.json`.
+      const trajectoryId = basename(path, ".json");
+      await this.store.addArtifact({
+        id: randomUUID(),
+        taskId,
+        sessionId,
+        artifactType: "trajectory",
+        title: `Sub-agent trajectory ${trajectoryId}`,
+        path,
+        verificationStatus: "pending",
+        metadata: {
+          correlation: {
+            traceId: session?.traceId,
+            taskId,
+            sessionId,
+            parentStepId: session?.parentTrajectoryStepId,
+            childTrajectoryId: trajectoryId,
+          },
+        },
+        createdAt: nowIso(),
+      });
+      ingested.push(trajectoryId);
+    }
+
+    if (ingested.length > 0) {
+      const existing = session?.childTrajectoryIds ?? [];
+      await this.store.updateSession(sessionId, {
+        childTrajectoryIds: [...existing, ...ingested],
+      });
+    }
+    return ingested;
   }
 
   /**
@@ -1335,23 +1598,140 @@ export class OrchestratorTaskService extends Service {
   }
 
   /**
-   * Advance a non-terminal task to `next`, but never override a status the
-   * operator or validation owns. `validating`/`waiting_on_user`/`blocked` are
-   * not stomped by a later `active`, and terminal tasks are immutable here.
+   * The single durable task-status write. Every status change on the event
+   * bridge, the verifier, and the crash producer routes a named
+   * {@link TaskLifecycleTrigger} through {@link resolveTaskTransition}, so the
+   * legal-transition table — not scattered inline guards — decides the target.
+   * An illegal `(from, trigger)` (a stale/out-of-order session event that no
+   * longer applies, e.g. a late `session_active` after `validating`) is dropped
+   * as a no-op rather than stomping the current status. Terminal immutability
+   * and the "weak `active` only promotes `open`" rule are encoded as absent
+   * edges in the table, not as branches here. Paused tasks never advance from a
+   * session event; operator lifecycle writes (pause/resume/archive/restart) set
+   * their own status directly and clear `paused` where appropriate.
    */
   private async advanceTaskStatus(
     taskId: string,
-    next: OrchestratorTaskStatus,
+    trigger: TaskLifecycleTrigger,
   ): Promise<void> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return;
-    const current = doc.task.status;
-    if (TERMINAL_TASK_STATUSES.has(current)) return;
     if (doc.task.paused) return;
-    if (next === current) return;
-    // `active` is the weakest signal: only promote into it from `open`.
-    if (next === "active" && current !== "open") return;
+    const next = resolveTaskTransition(doc.task.status, trigger);
+    if (next === null || next === doc.task.status) return;
     await this.store.updateTask(taskId, { status: next });
+  }
+
+  /**
+   * The `failed` producer. An unrecoverable session error moves a task to
+   * terminal `failed`. Until this existed, an `error` event marked the SESSION
+   * errored and (for auth/429) failed the account over, but never touched the
+   * task status, so a crashed sub-agent left the task stuck `active`/`validating`
+   * forever, waiting on the 3-minute stall watchdog or a human.
+   *
+   * Status termination MUST agree with whether `sub-agent-router.ts` will
+   * respawn the crash, because the retry budget below only advances when a
+   * FURTHER error re-enters — and a further error only exists if a respawn
+   * produced a new session. The router respawns exactly two crash classes:
+   *   - `session_state_lost` (respawnStateLost, always under the lineage cap), and
+   *   - a pooled-account failure (rate-limit / needs-reauth) while a healthy
+   *     sibling account remains (in-router account failover).
+   * A PLAIN crash — a non-zero exit, a `TypeError`, a build-tool segfault — is
+   * respawned by NEITHER path, so no successor session is ever spawned, no
+   * further error re-enters, and a `retrying` (non-terminal) verdict wedges the
+   * task forever (the P0 #13771 this producer exists to prevent). Such a crash
+   * is therefore terminal on its FIRST occurrence.
+   *
+   * - Un-respawnable crash → `unrecoverable`: terminal `failed` immediately.
+   * - Respawnable crash under budget → `retrying` (task returns to `active`) so
+   *   the router's respawn can re-engage a fresh worker; if that successor also
+   *   crashes it re-enters here and the budget still drives `failed`.
+   * - Respawnable crash, budget spent → `unrecoverable`: terminal `failed`.
+   *
+   * Budget = {@link MAX_SESSION_RETRY_ATTEMPTS} errored sessions across THIS
+   * task's lineage (each respawn is a fresh session row, so the count of
+   * terminally-errored sessions IS the retry count — no separate counter to
+   * drift). The erroring session's typed `retryCount` is stamped with that
+   * lineage count so the durable record carries the budget position, reconciling
+   * the field the router's respawn lineage also tracks.
+   *
+   * `login_required` is handled separately (→ `waiting_on_user`) because there a
+   * human genuinely can unblock; a plain crash cannot, so it must not park.
+   */
+  private async advanceTaskOnSessionError(
+    taskId: string,
+    sessionId: string,
+    failure: { failureKind?: string; message: string },
+  ): Promise<void> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return;
+    if (doc.task.paused) return;
+    if (TERMINAL_TASK_STATUSES.has(doc.task.status)) return;
+
+    const erroredSessionIds = new Set(
+      doc.sessions
+        .filter((s) => SESSION_ERROR_STATUSES.has(s.status))
+        .map((s) => s.sessionId),
+    );
+    erroredSessionIds.add(sessionId);
+    const erroredSessions = erroredSessionIds.size;
+    // The just-errored session's status was written to `errored` before this
+    // runs, so it is already counted. Stamp that lineage position onto the
+    // canonical typed counter.
+    await this.store.updateSession(sessionId, { retryCount: erroredSessions });
+
+    const respawnable = this.routerWillRespawn(
+      doc.sessions.find((s) => s.sessionId === sessionId),
+      failure,
+    );
+    const budgetSpent = erroredSessions >= MAX_SESSION_RETRY_ATTEMPTS;
+    // Terminal unless the router will respawn this crash class AND the lineage
+    // budget still has room. An un-respawnable crash fails on its first
+    // occurrence — nothing will re-drive it, so a non-terminal verdict wedges.
+    const terminal = !respawnable || budgetSpent;
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      sessionId,
+      eventType: terminal ? "task_failed" : "session_error_retrying",
+      summary: terminal
+        ? `Sub-agent failed unrecoverably after ${erroredSessions} attempt(s); task marked failed.`
+        : `Sub-agent errored (attempt ${erroredSessions}/${MAX_SESSION_RETRY_ATTEMPTS}); retrying.`,
+      data: {
+        failureKind: failure.failureKind ?? null,
+        message: failure.message,
+        attempt: erroredSessions,
+        budget: MAX_SESSION_RETRY_ATTEMPTS,
+        respawnable,
+      },
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+    await this.advanceTaskStatus(
+      taskId,
+      terminal ? "unrecoverable" : "retrying",
+    );
+    this.emitChange(taskId);
+  }
+
+  /**
+   * Whether `sub-agent-router.ts` will deterministically respawn this crash —
+   * the same gate the router itself uses, mirrored here so status termination
+   * and respawn agree. Only these two classes get a successor session:
+   *   - `session_state_lost` (unconditional respawn under the lineage cap), and
+   *   - a pooled-account failure whose message classifies as rate-limit /
+   *     needs-reauth, while the session carried a pooled account and a healthy
+   *     sibling remains for failover.
+   * Everything else is un-respawnable and must fail immediately.
+   */
+  private routerWillRespawn(
+    session: OrchestratorTaskSession | undefined,
+    failure: { failureKind?: string; message: string },
+  ): boolean {
+    if (failure.failureKind === "session_state_lost") return true;
+    if (classifyAccountFailure(failure.message) === null) return false;
+    if (!session?.accountProviderId || !session.accountId) return false;
+    return hasHealthyPooledAccount(session.framework);
   }
 
   private async markSessionAccountUnhealthy(
@@ -1501,8 +1881,9 @@ export class OrchestratorTaskService extends Service {
   // ---- lifecycle ---------------------------------------------------------
 
   async createTask(input: CreateTaskInput): Promise<TaskThreadDetailDto> {
+    const bound = this.bindProject(input);
     const doc = await this.store.createTask(
-      await this.withDefaultAcceptanceCriteria(input),
+      await this.withDefaultAcceptanceCriteria(bound),
     );
     if (input.originalRequest) {
       await this.recordMessage(doc.task.id, {
@@ -1513,6 +1894,19 @@ export class OrchestratorTaskService extends Service {
     }
     const detail = await this.store.getTask(doc.task.id);
     return toTaskThreadDetail(detail ?? doc);
+  }
+
+  /**
+   * Stamp the task's project binding: an explicit `projectId` (validated against
+   * the registry) wins; otherwise the resolved `workdir` is realpath-matched to
+   * a registered project. The `workdir` hint is stripped so it is never
+   * persisted on the record — only the resolved `projectId` is. No match leaves
+   * the task unbound, preserving per-session workdir re-resolution.
+   */
+  private bindProject(input: CreateTaskInput): CreateTaskInput {
+    const projectId = resolveTaskProjectId(input);
+    const { workdir: _workdir, ...rest } = input;
+    return { ...rest, projectId };
   }
 
   /**
@@ -1581,7 +1975,24 @@ export class OrchestratorTaskService extends Service {
 
   async getTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
-    return doc ? toTaskThreadDetail(doc) : null;
+    if (!doc) return null;
+    return this.withAdmissionPosition(toTaskThreadDetail(doc));
+  }
+
+  /** Fill the DTO's `admission.position` from the live DISPATCH order (1-based,
+   * priority-band + aging applied), which the mapper cannot see. A parked task
+   * not currently in the in-memory queue keeps position 0. */
+  private async withAdmissionPosition<T extends TaskThreadDetailDto>(
+    detail: T,
+  ): Promise<T> {
+    if (!detail.admission) return detail;
+    const { queuedTaskIds } = await this.getAdmissionSnapshot();
+    const idx = queuedTaskIds.indexOf(detail.id);
+    detail.admission = {
+      ...detail.admission,
+      position: idx >= 0 ? idx + 1 : 0,
+    };
+    return detail;
   }
 
   /**
@@ -1630,23 +2041,90 @@ export class OrchestratorTaskService extends Service {
     return this.getTask(taskId);
   }
 
+  /**
+   * Pause is a HARD stop: it kills the ACP subprocesses (they can't be
+   * re-attached later — a subprocess is gone once stopped), then sets `paused`.
+   * When it actually stopped in-flight work it records `pausedWithActiveWork` so
+   * {@link resumeTask} knows to re-engage a fresh worker rather than flip a flag
+   * on a task with no running agent — the two must be symmetric or resume is a
+   * silent no-op (the #13771 bug).
+   */
   async pauseTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
+    // A paused task must not dispatch — drop it from the in-memory order but
+    // KEEP its admission record so resume can replay the original spawn.
+    await this.dequeueAdmission(taskId, false);
+    const hadActiveWork = doc.sessions.some(
+      (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
+    );
     await this.stopActiveSessions(doc);
-    await this.store.updateTask(taskId, { paused: true });
+    await this.store.updateTask(taskId, {
+      paused: true,
+      metadata: { ...doc.task.metadata, pausedWithActiveWork: hadActiveWork },
+    });
     return this.getTask(taskId);
   }
 
+  /**
+   * Resume clears `paused` and, symmetrically with {@link pauseTask}, re-engages
+   * the work pause stopped: because pause kills the subprocesses, resume must
+   * spawn a FRESH sub-agent to continue from the task's durable context (goal,
+   * criteria, timeline all survive on the store). A task paused before any
+   * sub-agent ran (`pausedWithActiveWork` unset/false) just unpauses — there is
+   * nothing to re-engage. A terminal task never re-engages.
+   */
   async resumeTask(taskId: string): Promise<TaskThreadDetailDto | null> {
-    const updated = await this.store.updateTask(taskId, { paused: false });
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return null;
+    const shouldReEngage =
+      doc.task.metadata?.pausedWithActiveWork === true &&
+      !TERMINAL_TASK_STATUSES.has(doc.task.status);
+    const nextMetadata = { ...doc.task.metadata };
+    delete nextMetadata.pausedWithActiveWork;
+    const updated = await this.store.updateTask(taskId, {
+      paused: false,
+      metadata: nextMetadata,
+    });
     if (!updated) return null;
+    // If the task was parked when paused, re-seed the in-memory order from its
+    // retained admission record so it competes for a slot again. A resumed task
+    // that already ran (had a session) carries no admission record and is a
+    // no-op here.
+    const admission = OrchestratorTaskService.admissionOf(doc.task);
+    if (
+      admission &&
+      this.admissionQueueEnabled() &&
+      !this.admissionQueue.includes(taskId)
+    ) {
+      this.admissionQueue.push(taskId);
+      void this.drainAdmissionQueue();
+    }
+    // A task interrupted mid-work (pausedWithActiveWork) had its subprocesses
+    // killed by pause, so resume must spawn a FRESH sub-agent to continue from
+    // durable context rather than flip a flag on a task with no running agent.
+    if (shouldReEngage && this.acp()) {
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        eventType: "resume_reengaged",
+        summary:
+          "Task resumed; re-engaging a sub-agent to continue the interrupted work.",
+        data: {},
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      await this.spawnAgentForTask(taskId, {
+        task: "Resume this task from its current durable context. Reinspect the task timeline and any partial work, then continue until the goal is met or you are blocked.",
+      });
+    }
     return this.getTask(taskId);
   }
 
   async archiveTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
+    await this.dequeueAdmission(taskId);
     await this.stopActiveSessions(doc);
     await this.store.updateTask(taskId, {
       archived: true,
@@ -1675,6 +2153,7 @@ export class OrchestratorTaskService extends Service {
   async deleteTask(taskId: string): Promise<boolean> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return false;
+    await this.dequeueAdmission(taskId);
     await this.stopActiveSessions(doc);
     for (const session of doc.sessions) {
       this.sessionTaskIndex.delete(session.sessionId);
@@ -2031,7 +2510,7 @@ export class OrchestratorTaskService extends Service {
         timestamp: Date.now(),
         createdAt: nowIso(),
       });
-      await this.advanceTaskStatus(taskId, "waiting_on_user");
+      await this.advanceTaskStatus(taskId, "awaiting_user");
       this.emitChange(taskId);
       return;
     }
@@ -2103,7 +2582,7 @@ export class OrchestratorTaskService extends Service {
         timestamp: Date.now(),
         createdAt: nowIso(),
       });
-      await this.advanceTaskStatus(taskId, "waiting_on_user");
+      await this.advanceTaskStatus(taskId, "awaiting_user");
     }
     this.emitChange(taskId);
   }
@@ -2182,6 +2661,11 @@ export class OrchestratorTaskService extends Service {
       workdir,
       initialTask: prompt,
       approvalPreset: "verifier",
+      // Draw on the reserved system-session headroom, not a worker slot: the
+      // task being verified still holds its worker slot (orchestrator sessions
+      // stay alive after task_complete), so counting the verifier as a worker
+      // would deadlock validation behind the very cap it is trying to clear.
+      slotClass: "system",
       metadata: {
         taskId,
         source: "independent-verifier",
@@ -2658,9 +3142,15 @@ export class OrchestratorTaskService extends Service {
     }
     const acp = this.acp();
     if (!acp) throw new Error("ACP service unavailable");
+    // An explicit caller workdir wins and re-pins the binding; otherwise a
+    // follow-up spawn reuses the workdir pinned at the task's first spawn so it
+    // can't silently migrate repos when routing env changes between sessions
+    // (#13776). `boundWorkdir` was validated when first pinned, so reuse skips
+    // the allow-list probe — it may point at a configured project root the
+    // probe would otherwise reject once env drifts.
     const workdir = opts.workdir
       ? await resolveAllowedWorkdir(opts.workdir)
-      : undefined;
+      : doc.task.boundWorkdir;
 
     const policy = doc.task.providerPolicy ?? {};
     // Give every sub-agent a distinct person-name. An explicit caller label
@@ -2678,6 +3168,7 @@ export class OrchestratorTaskService extends Service {
     const capabilityProfile = coerceGoalCapabilityProfile(
       doc.task.metadata?.capabilityProfile,
     );
+    const brokerWired = isParentAgentBrokerWired(this.runtime);
     const goalPrompt = buildGoalPrompt({
       agentName,
       goal: doc.task.goal,
@@ -2690,6 +3181,7 @@ export class OrchestratorTaskService extends Service {
       // doesn't repeat them (#8899).
       attemptReflections: readAttemptReflections(doc.task.metadata),
       ...(capabilityProfile ? { capabilityProfile } : {}),
+      brokerWired,
     });
 
     // Economics tasks drive the monetized-app loop through the parent-agent
@@ -2716,43 +3208,94 @@ export class OrchestratorTaskService extends Service {
       }
     }
 
-    const result = await acp.spawnSession({
-      // Coding-agent selection: explicit request → routing policy → the
-      // deployment's configured default (ELIZA_ACP_DEFAULT_AGENT /
-      // ELIZA_DEFAULT_AGENT_TYPE — e.g. "elizaos" for the eliza-code coding
-      // sub-agent) → opencode as the safe fallback. Honoring the configured
-      // default here keeps this spawn path consistent with acp-service's
-      // `defaultAgent`; previously this hardcoded "opencode" because elizaos had
-      // no ACP command, but elizaos is now a supported ACP agent via
-      // ELIZA_ELIZAOS_ACP_COMMAND, so a host that selects it (local or cloud
-      // image) gets eliza-code, while unconfigured hosts still get opencode.
-      agentType:
-        opts.framework ??
-        policy.preferredFramework ??
-        configuredDefaultAgentType(this.runtime) ??
-        "opencode",
-      workdir,
-      initialTask: goalPrompt,
-      model: opts.model ?? policy.model,
-      approvalPreset: opts.approvalPreset,
-      metadata: {
-        taskId,
-        roomId: doc.task.taskRoomId ?? doc.task.roomId,
-        label: agentName,
-        source: "orchestrator",
-        // Persist the bare goal (the same key the direct-API spawn stamps) so
-        // completion-time consumers that read the task text off session
-        // metadata — the built-apps registry's app-build gate, interruption
-        // relevance — see what this session is building.
-        goal: doc.task.goal,
-        // Orchestrator sessions outlive their first prompt so follow-ups and
-        // validation re-dispatch can reuse them.
-        keepAliveAfterComplete: true,
-        // Carried so a child this sub-agent spawns can compute its own depth
-        // (parent depth + 1) and the nesting guard above can enforce the cap.
-        nestingDepth,
-      },
-    });
+    // Trace correlation (#13775): stamp the parent turn's traceId +
+    // parent-step onto the sub-agent env so its self-recorded trajectories join
+    // the parent's trace, and point ELIZA_TRAJECTORY_DIR at a per-task child dir
+    // this service scans on task_complete. When the gate is off we forward an
+    // explicit ELIZA_TRAJECTORY_LOGGING="0": the broad ELIZA_ env forwarding
+    // (acp-service.forwardableSubAgentEnv) would otherwise leak the parent's
+    // ambiguous value to the child.
+    const traceEnv = this.buildChildTraceEnv(taskId);
+
+    const framework =
+      opts.framework ??
+      policy.preferredFramework ??
+      configuredDefaultAgentType(this.runtime) ??
+      "opencode";
+    let result: SpawnResult;
+    try {
+      result = await acp.spawnSession({
+        env: traceEnv,
+        // Coding-agent selection: explicit request → routing policy → the
+        // deployment's configured default (ELIZA_ACP_DEFAULT_AGENT /
+        // ELIZA_DEFAULT_AGENT_TYPE — e.g. "elizaos" for the eliza-code coding
+        // sub-agent) → opencode as the safe fallback. Honoring the configured
+        // default here keeps this spawn path consistent with acp-service's
+        // `defaultAgent`; previously this hardcoded "opencode" because elizaos had
+        // no ACP command, but elizaos is now a supported ACP agent via
+        // ELIZA_ELIZAOS_ACP_COMMAND, so a host that selects it (local or cloud
+        // image) gets eliza-code, while unconfigured hosts still get opencode.
+        agentType: framework,
+        workdir,
+        initialTask: goalPrompt,
+        model: opts.model ?? policy.model,
+        approvalPreset: opts.approvalPreset,
+        // Economics tasks drive the monetized-app loop; enrich the always-written
+        // SKILLS.md with the Cloud app-build skills and the ViewKind contract so a
+        // deploying sub-agent categorizes any view it ships (#8917). The broker
+        // skill entry itself is added by spawnSession when the router is wired.
+        ...(capabilityProfile === "economics"
+          ? {
+              skillsManifest: {
+                recommendedSlugs: ["build-monetized-app", "eliza-cloud"],
+                includeViewKindContract: true,
+              },
+            }
+          : {}),
+        metadata: {
+          taskId,
+          roomId: doc.task.taskRoomId ?? doc.task.roomId,
+          label: agentName,
+          source: "orchestrator",
+          // Persist the bare goal (the same key the direct-API spawn stamps) so
+          // completion-time consumers that read the task text off session
+          // metadata — the built-apps registry's app-build gate, interruption
+          // relevance — see what this session is building.
+          goal: doc.task.goal,
+          // Orchestrator sessions outlive their first prompt so follow-ups and
+          // validation re-dispatch can reuse them.
+          keepAliveAfterComplete: true,
+          // Carried so a child this sub-agent spawns can compute its own depth
+          // (parent depth + 1) and the nesting guard above can enforce the cap.
+          nestingDepth,
+        },
+      });
+    } catch (err) {
+      // The worker cap is full. A TOP-LEVEL spawn parks in the admission queue
+      // (task stays `open`, admission metadata persisted) and the caller gets a
+      // truthful detail with the queued position instead of a hard failure. A
+      // NESTED spawn (a running sub-agent spawning a child) must NOT park — its
+      // parent is blocked awaiting the child, so queuing would deadlock; it
+      // re-throws so the parent sees the cap and can back off.
+      if (
+        err instanceof SessionCapError &&
+        err.slotClass === "worker" &&
+        nestingDepth === 0 &&
+        this.admissionQueueEnabled()
+      ) {
+        return this.enqueueAdmission(taskId, doc.task.priority, {
+          framework: opts.framework,
+          model: opts.model ?? policy.model,
+          workdir: opts.workdir,
+          repo: opts.repo,
+          label: opts.label,
+          task: opts.task,
+          approvalPreset: opts.approvalPreset,
+          providerSource: opts.providerSource ?? policy.providerSource,
+        });
+      }
+      throw err;
+    }
 
     const account = accountMetaFromSessionMetadata(
       result.metadata as Record<string, unknown> | undefined,
@@ -2793,6 +3336,14 @@ export class OrchestratorTaskService extends Service {
       cacheTokens: 0,
       costUsd: 0,
       usageState: "unavailable",
+      // Trace correlation (#13775): persisted so task_complete can ingest child
+      // trajectories under the same header the sub-agent was spawned with.
+      ...(traceEnv[TRACE_ENV.TRACE_ID]
+        ? { traceId: traceEnv[TRACE_ENV.TRACE_ID] }
+        : {}),
+      ...(traceEnv[TRACE_ENV.PARENT_STEP_ID]
+        ? { parentTrajectoryStepId: traceEnv[TRACE_ENV.PARENT_STEP_ID] }
+        : {}),
       metadata: {},
       createdAt: ts,
       updatedAt: ts,
@@ -2809,7 +3360,16 @@ export class OrchestratorTaskService extends Service {
     this.sessionTaskIndex.set(result.sessionId, taskId);
     try {
       await this.store.addSession(session);
-      await this.advanceTaskStatus(taskId, "active");
+      // Pin (or re-pin, on explicit override) the durable workdir/repo binding
+      // from the workdir the session actually landed in, so subsequent
+      // follow-up spawns of this task reuse it deterministically (#13776).
+      await this.bindTaskWorkdir(taskId, doc.task, result.workdir, opts.repo, {
+        allowRebind:
+          Boolean(opts.workdir) &&
+          Boolean(doc.task.boundWorkdir) &&
+          doc.task.boundWorkdir !== result.workdir,
+      });
+      await this.advanceTaskStatus(taskId, "session_active");
       return this.getTask(taskId);
     } catch (err) {
       // error-policy:J4 the ACP spawn already succeeded (session is live); a
@@ -2834,6 +3394,62 @@ export class OrchestratorTaskService extends Service {
         ...doc,
         sessions: [...doc.sessions, session],
       });
+    }
+  }
+
+  /**
+   * Pin the task's durable workdir/repo binding. Idempotent for a stable
+   * workdir: the FIRST spawn sets `boundWorkdir`; later spawns only re-pin when
+   * the caller lands the session in a DIFFERENT directory (an explicit user
+   * override), which is the intended "override wins and updates the binding"
+   * behavior. `spawnAgentForTask` reads `boundWorkdir` back as its default so a
+   * follow-up with no explicit workdir deterministically reuses the first
+   * session's directory instead of re-resolving from mutable routing env.
+   *
+   * `current` is the caller's already-loaded task record (attachSession /
+   * spawnAgentForTask both hold a fresh doc); passing it avoids a redundant
+   * read. Stopgap for #13776 item 3 — a future `task.projectId` supersedes this.
+   */
+  private async bindTaskWorkdir(
+    taskId: string,
+    current: OrchestratorTaskRecord,
+    workdir: string | undefined,
+    repo: string | undefined,
+    opts: { allowRebind?: boolean } = {},
+  ): Promise<void> {
+    if (!workdir) return;
+    const previous =
+      this.taskWorkdirBindQueues.get(taskId)?.catch(
+        // error-policy:J5 bind queue promises are awaited by the originating
+        // bind call; the continuation must still run so one failed bind does
+        // not permanently block later corrections.
+        () => undefined,
+      ) ?? Promise.resolve();
+    const canSetRepo = (latest: OrchestratorTaskRecord) =>
+      !latest.boundWorkdir ||
+      (latest.boundWorkdir === workdir && current.boundWorkdir === workdir) ||
+      opts.allowRebind === true;
+    const next = previous.then(async () => {
+      const latest = (await this.store.getTask(taskId))?.task ?? current;
+      const canSetWorkdir = !latest.boundWorkdir || opts.allowRebind === true;
+      const patch: Partial<OrchestratorTaskRecord> = {};
+      const workdirChanged = latest.boundWorkdir !== workdir;
+      if (canSetWorkdir && workdirChanged) patch.boundWorkdir = workdir;
+      if (canSetRepo(latest) && repo && latest.boundRepo !== repo) {
+        patch.boundRepo = repo;
+      } else if (canSetWorkdir && workdirChanged && latest.boundRepo) {
+        patch.boundRepo = null;
+      }
+      if (Object.keys(patch).length === 0) return;
+      await this.store.updateTask(taskId, patch);
+    });
+    this.taskWorkdirBindQueues.set(taskId, next);
+    try {
+      await next;
+    } finally {
+      if (this.taskWorkdirBindQueues.get(taskId) === next) {
+        this.taskWorkdirBindQueues.delete(taskId);
+      }
     }
   }
 
@@ -2917,12 +3533,19 @@ export class OrchestratorTaskService extends Service {
     };
     await this.store.addSession(session);
     this.sessionTaskIndex.set(input.sessionId, taskId);
+    // Pin the durable workdir/repo binding at first spawn so follow-up spawns of
+    // this task reuse it instead of re-resolving from routing env (#13776).
+    await this.bindTaskWorkdir(taskId, doc.task, input.workdir, input.repo, {
+      allowRebind:
+        Boolean(doc.task.boundWorkdir) &&
+        doc.task.boundWorkdir !== input.workdir,
+    });
     // Only claim liveness if the session actually is live — a terminal-on-
     // arrival session (chat action's runPromptAndClose already stopped it) gets
     // indexed for history + future token attribution without falsely promoting
     // task status.
     if (!TERMINAL_TASK_SESSION_STATUSES.has(input.status)) {
-      await this.advanceTaskStatus(taskId, "active");
+      await this.advanceTaskStatus(taskId, "session_active");
     }
     return true;
   }
@@ -3244,6 +3867,374 @@ export class OrchestratorTaskService extends Service {
           failures.length === 1 ? "" : "s"
         }`,
       );
+    }
+  }
+
+  // ---- admission queue (#13772) -----------------------------------------
+
+  /** The queue is on by default; `ELIZA_ACP_ADMISSION_QUEUE=0` disables it and
+   * restores hard-fail-at-cap for spawnAgentForTask (the SessionCapError is
+   * re-thrown). */
+  private admissionQueueEnabled(): boolean {
+    const raw = this.readSetting("ELIZA_ACP_ADMISSION_QUEUE");
+    return raw !== "0";
+  }
+
+  /** Max parked tasks. A cap-park beyond this depth is back-pressure the caller
+   * must see, not more queue (AdmissionQueueFullError → 429). */
+  private admissionQueueDepthCap(): number {
+    return parsePositiveIntSetting(
+      this.readSetting("ELIZA_ACP_ADMISSION_QUEUE_DEPTH"),
+      32,
+    );
+  }
+
+  /** Aging promotion interval: a queued entry gains one priority band per this
+   * many ms waited, so a low-priority task can't starve (guard #1). */
+  private admissionAgingMs(): number {
+    return parsePositiveIntSetting(
+      this.readSetting("ELIZA_ACP_QUEUE_AGING_MS"),
+      600_000,
+    );
+  }
+
+  private readSetting(key: string): string | undefined {
+    const raw = this.runtime.getSetting?.(key);
+    if (typeof raw === "string" && raw.length > 0) return raw;
+    const env = process.env[key];
+    return typeof env === "string" && env.length > 0 ? env : undefined;
+  }
+
+  /** Read the admission record off a task's metadata, or null if not queued. */
+  private static admissionOf(
+    task: OrchestratorTaskRecord,
+  ): AdmissionRecord | null {
+    const admission = task.metadata?.admission;
+    if (
+      isRecord(admission) &&
+      admission.state === "queued" &&
+      typeof admission.enqueuedAt === "string" &&
+      isRecord(admission.spawnOpts)
+    ) {
+      return admission as unknown as AdmissionRecord;
+    }
+    return null;
+  }
+
+  /** Persist (or clear) the admission record on a task's metadata. updateTask
+   * shallow-merges `task`, so we replace the whole metadata object to add/remove
+   * the single `admission` key without disturbing the rest. */
+  private async writeAdmission(
+    taskId: string,
+    admission: AdmissionRecord | null,
+  ): Promise<void> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return;
+    const nextMeta = { ...doc.task.metadata };
+    if (admission) nextMeta.admission = admission;
+    else delete nextMeta.admission;
+    await this.store.updateTask(taskId, { metadata: nextMeta });
+  }
+
+  /**
+   * Park a task that met the worker cap. Persists the admission record, seeds
+   * the in-memory order, kicks a drain (a slot may have freed between the cap
+   * check and here), and returns the task detail carrying the queued position.
+   * Throws AdmissionQueueFullError when the queue is at its depth cap.
+   */
+  private async enqueueAdmission(
+    taskId: string,
+    priority: OrchestratorTaskPriority,
+    spawnOpts: SerializableSpawnOpts,
+  ): Promise<TaskThreadDetailDto | null> {
+    if (
+      !this.admissionQueue.includes(taskId) &&
+      this.admissionQueue.length >= this.admissionQueueDepthCap()
+    ) {
+      throw new AdmissionQueueFullError(this.admissionQueueDepthCap());
+    }
+    const admission: AdmissionRecord = {
+      state: "queued",
+      enqueuedAt: nowIso(),
+      priorityAtEnqueue: priority,
+      spawnOpts,
+    };
+    await this.writeAdmission(taskId, admission);
+    if (!this.admissionQueue.includes(taskId)) this.admissionQueue.push(taskId);
+    this.log("info", "task parked in admission queue", {
+      taskId,
+      priority,
+      depth: this.admissionQueue.length,
+    });
+    // A slot may have freed between the cap rejection and this write; try now.
+    void this.drainAdmissionQueue();
+    return this.getTask(taskId);
+  }
+
+  /**
+   * Remove a task from the in-memory dispatch order. Lifecycle transitions call
+   * this so a parked spawn stops competing for a slot.
+   *
+   * `clearMetadata` controls the durable record: archive/delete/cancel clear it
+   * (the parked spawn is moot); pause keeps it so resume can replay the ORIGINAL
+   * spawnOpts instead of re-admitting with an empty request.
+   */
+  private async dequeueAdmission(
+    taskId: string,
+    clearMetadata = true,
+  ): Promise<void> {
+    const idx = this.admissionQueue.indexOf(taskId);
+    if (idx >= 0) this.admissionQueue.splice(idx, 1);
+    if (!clearMetadata) return;
+    const doc = await this.store.getTask(taskId);
+    if (doc && OrchestratorTaskService.admissionOf(doc.task)) {
+      await this.writeAdmission(taskId, null);
+    }
+  }
+
+  /** Rebuild the in-memory dispatch order from the store on start() so a restart
+   * mid-queue resumes deterministically. Scans `open` tasks for a queued
+   * admission record and seeds `admissionQueue` in current priority order. */
+  private async rebuildAdmissionQueueFromStore(): Promise<void> {
+    const open = await this.store.listTasks({ status: "open" });
+    const entries: QueueEntry[] = [];
+    for (const task of open) {
+      const admission = OrchestratorTaskService.admissionOf(task);
+      if (!admission) continue;
+      entries.push({
+        taskId: task.id,
+        enqueuedAt: admission.enqueuedAt,
+        priorityAtEnqueue: admission.priorityAtEnqueue,
+      });
+    }
+    const ordered = orderQueue(entries, Date.now(), this.admissionAgingMs());
+    this.admissionQueue.length = 0;
+    for (const entry of ordered) this.admissionQueue.push(entry.taskId);
+    if (this.admissionQueue.length > 0) {
+      this.log("info", "rebuilt admission queue from store", {
+        depth: this.admissionQueue.length,
+      });
+    }
+  }
+
+  /**
+   * Full capacity + queue overview for `GET /api/orchestrator/capacity`: live
+   * worker/system slot accounting plus the ordered admission queue with each
+   * entry's 1-based position, priority, and enqueue time. Unlike the provider
+   * snapshot this route payload MAY carry timestamps — it is a live poll, not a
+   * cached planner segment.
+   */
+  async getCapacityOverview(): Promise<{
+    maxSessions: number;
+    systemHeadroom: number;
+    activeWorkers: number;
+    activeSystem: number;
+    freeWorkerSlots: number;
+    freeSystemSlots: number;
+    queueDepth: number;
+    queue: Array<{
+      taskId: string;
+      position: number;
+      priority: OrchestratorTaskPriority;
+      enqueuedAt: string;
+    }>;
+  }> {
+    const acp = this.acp();
+    const capacity = acp
+      ? await acp.getCapacity()
+      : {
+          maxSessions: 0,
+          systemHeadroom: 0,
+          activeWorkers: 0,
+          activeSystem: 0,
+          freeWorkerSlots: 0,
+          freeSystemSlots: 0,
+        };
+    const entries = orderQueue(
+      await this.currentQueueEntries(),
+      Date.now(),
+      this.admissionAgingMs(),
+    );
+    return {
+      maxSessions: capacity.maxSessions,
+      systemHeadroom: capacity.systemHeadroom,
+      activeWorkers: capacity.activeWorkers,
+      activeSystem: capacity.activeSystem,
+      freeWorkerSlots: capacity.freeWorkerSlots,
+      freeSystemSlots: capacity.freeSystemSlots,
+      queueDepth: entries.length,
+      queue: entries.map((entry, index) => ({
+        taskId: entry.taskId,
+        position: index + 1,
+        priority: entry.priorityAtEnqueue,
+        enqueuedAt: entry.enqueuedAt,
+      })),
+    };
+  }
+
+  /** Snapshot for the provider + capacity route: current queue depth and the
+   * ordered taskIds. Counts/ids only — NO timestamps — so the provider segment
+   * stays cache-stable turn over turn. */
+  async getAdmissionSnapshot(): Promise<{
+    queueDepth: number;
+    queuedTaskIds: string[];
+  }> {
+    const entries: QueueEntry[] = [];
+    for (const taskId of this.admissionQueue) {
+      const doc = await this.store.getTask(taskId);
+      const admission = doc && OrchestratorTaskService.admissionOf(doc.task);
+      if (!admission) continue;
+      entries.push({
+        taskId,
+        enqueuedAt: admission.enqueuedAt,
+        priorityAtEnqueue: admission.priorityAtEnqueue,
+      });
+    }
+    const ordered = orderQueue(entries, Date.now(), this.admissionAgingMs());
+    return {
+      queueDepth: ordered.length,
+      queuedTaskIds: ordered.map((e) => e.taskId),
+    };
+  }
+
+  /**
+   * Dispatch parked tasks into freed worker slots, most-eligible first.
+   * Serialized via a promise-chain lock so a terminal-event drain and the
+   * reconcile tick never double-dispatch. For each free slot it re-reads the
+   * head task's live state (dropping terminal/paused entries — starvation guard
+   * #2 is covered by idle-reclaim below), clears the admission record, and
+   * replays the saved spawn. A fresh SessionCapError re-parks the head and stops
+   * the pass (another spawn raced us). When no slot is free but the queue is
+   * non-empty, one idle keepAlive session whose task is already terminal is
+   * reclaimed to unblock the queue.
+   */
+  private async drainAdmissionQueue(): Promise<void> {
+    const run = this.admissionDrainLock.then(() => this.drainOnce());
+    this.admissionDrainLock = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private async drainOnce(): Promise<void> {
+    const acp = this.acp();
+    if (!acp) return;
+    // Bound the pass by the current queue length so a task re-parked at the head
+    // (SessionCapError race) can't spin this loop.
+    let budget = this.admissionQueue.length;
+    while (budget-- > 0 && this.admissionQueue.length > 0) {
+      const capacity = await acp.getCapacity();
+      if (capacity.freeWorkerSlots <= 0) {
+        // No worker slot free. Reclaim one idle keepAlive session whose task has
+        // already reached a terminal state (its slot is dead weight) so the
+        // queue isn't starved by workers that finished but stayed alive.
+        const reclaimed = await this.reclaimIdleSession(acp);
+        if (!reclaimed) break;
+        continue;
+      }
+      const ordered = orderQueue(
+        await this.currentQueueEntries(),
+        Date.now(),
+        this.admissionAgingMs(),
+      );
+      const head = ordered[0];
+      if (!head) break;
+      // Drop the head from the in-memory order up front; a re-park below will
+      // re-add it. This keeps the loop from re-selecting the same head when the
+      // task turned out to be terminal/paused.
+      const idx = this.admissionQueue.indexOf(head.taskId);
+      if (idx >= 0) this.admissionQueue.splice(idx, 1);
+      const doc = await this.store.getTask(head.taskId);
+      const admission = doc && OrchestratorTaskService.admissionOf(doc.task);
+      if (!doc || !admission) continue;
+      if (TERMINAL_TASK_STATUSES.has(doc.task.status) || doc.task.paused) {
+        await this.writeAdmission(head.taskId, null);
+        continue;
+      }
+      await this.writeAdmission(head.taskId, null);
+      try {
+        await this.spawnAgentForTask(head.taskId, {
+          ...admission.spawnOpts,
+          approvalPreset: admission.spawnOpts.approvalPreset as
+            | ApprovalPreset
+            | undefined,
+        });
+      } catch (err) {
+        if (err instanceof SessionCapError) {
+          // A concurrent spawn took the slot. Re-park at the head and stop —
+          // the next terminal event or reconcile tick drains again.
+          await this.writeAdmission(head.taskId, admission);
+          if (!this.admissionQueue.includes(head.taskId)) {
+            this.admissionQueue.unshift(head.taskId);
+          }
+          break;
+        }
+        // error-policy:J7 the dispatch of a parked task failed for a non-cap
+        // reason (bad workdir, transport error). Report it so the agent/owner
+        // sees the parked task did not launch; do not silently drop or re-park
+        // forever (that would spin the reconcile tick).
+        this.runtime.reportError("OrchestratorTask.drainAdmissionQueue", err, {
+          taskId: head.taskId,
+        });
+      }
+    }
+  }
+
+  /** The queue's entries with their live admission records, for ordering. */
+  private async currentQueueEntries(): Promise<QueueEntry[]> {
+    const entries: QueueEntry[] = [];
+    for (const taskId of this.admissionQueue) {
+      const doc = await this.store.getTask(taskId);
+      const admission = doc && OrchestratorTaskService.admissionOf(doc.task);
+      if (!admission) continue;
+      entries.push({
+        taskId,
+        enqueuedAt: admission.enqueuedAt,
+        priorityAtEnqueue: admission.priorityAtEnqueue,
+      });
+    }
+    return entries;
+  }
+
+  /**
+   * Free one worker slot for the queue by stopping the oldest live keepAlive
+   * session whose owning task has already reached a terminal state. Such a
+   * session is finished work holding a slot; reclaiming it is safe and unblocks
+   * queued tasks (starvation guard #2). Returns true when a session was stopped.
+   */
+  private async reclaimIdleSession(acp: AcpService): Promise<boolean> {
+    const sessions = await acp.listSessions();
+    const candidates: Array<{ id: string; createdAt: number }> = [];
+    for (const session of sessions) {
+      if (TERMINAL_SESSION_STATUSES.has(session.status)) continue;
+      const taskId = this.sessionTaskIndex.get(session.id);
+      if (!taskId) continue;
+      const doc = await this.store.getTask(taskId);
+      if (!doc || !TERMINAL_TASK_STATUSES.has(doc.task.status)) continue;
+      candidates.push({
+        id: session.id,
+        createdAt: session.createdAt.getTime(),
+      });
+    }
+    if (candidates.length === 0) return false;
+    candidates.sort((a, b) => a.createdAt - b.createdAt);
+    const victim = candidates[0];
+    if (!victim) return false;
+    try {
+      await acp.stopSession(victim.id);
+      this.log("info", "reclaimed idle keepAlive session for queued task", {
+        sessionId: victim.id,
+      });
+      return true;
+    } catch (err) {
+      // error-policy:J7 idle-reclaim is a best-effort starvation guard; a failed
+      // stop is reported (so a wedged session is visible) but must not abort the
+      // drain — the reconcile tick retries.
+      this.runtime.reportError("OrchestratorTask.reclaimIdleSession", err, {
+        sessionId: victim.id,
+      });
+      return false;
     }
   }
 

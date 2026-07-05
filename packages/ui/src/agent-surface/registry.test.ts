@@ -264,6 +264,33 @@ describe("handleAgentSurfaceCapability", () => {
     ).toThrow(/requires an `id`/);
   });
 
+  // The signal the server-side view-scoped action handler keys on to throw a
+  // typed VIEW_SCOPED_ACTION_ELEMENT_MISSING error (#13589): a fill/click/focus
+  // against an UNMOUNTED useAgentElement id must resolve to `{ ok: false,
+  // reason: "element not found" }`, never a thrown capability error and never a
+  // silent success. This pins the cross-boundary contract on the UI side.
+  it("reports { ok:false, reason } for a missing element id (never silent, never throw)", () => {
+    const registry = getOrCreateViewRegistry("test-view", "gui");
+    // No elements registered → every action targets an unmounted id.
+    for (const capability of [
+      "agent-fill",
+      "agent-click",
+      "agent-focus",
+    ] as const) {
+      const params =
+        capability === "agent-fill"
+          ? { id: "ghost", value: "x" }
+          : { id: "ghost" };
+      const result = handleAgentSurfaceCapability(
+        registry,
+        capability,
+        params,
+      ) as { ok: boolean; reason?: string };
+      expect(result.ok).toBe(false);
+      expect(result.reason ?? "").toMatch(/not found|not mounted/i);
+    }
+  });
+
   it("exposes the same registry instance through the module map", () => {
     const a = getOrCreateViewRegistry("test-view", "gui");
     const b = getViewRegistry("test-view", "gui");

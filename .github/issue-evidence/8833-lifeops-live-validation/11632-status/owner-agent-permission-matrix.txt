@@ -1,9 +1,0 @@
-
- RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza
-
-
- Test Files  1 passed (1)
-      Tests  20 passed (20)
-   Start at  05:56:42
-   Duration  20.06s (transform 11.62s, setup 48ms, import 16.27s, tests 3.61s, environment 0ms)
-

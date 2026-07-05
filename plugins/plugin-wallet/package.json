@@ -72,14 +72,8 @@
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist"
   },
   "peerDependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "@elizaos/app-core": {
-      "optional": true
-    }
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",

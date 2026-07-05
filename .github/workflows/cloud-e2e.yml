@@ -31,7 +31,7 @@ permissions:
 jobs:
   e2e:
     name: Mock-stack E2E
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     env:
       NODE_ENV: test

@@ -384,7 +384,7 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
             <div className="grid gap-2">
               <label
                 htmlFor="api-key-name"
-                className="text-xs font-medium text-white/70 uppercase tracking-wide"
+                className="text-xs font-medium text-txt uppercase tracking-wide"
               >
                 {t("cloud.apiKeys.nameLabel", { defaultValue: "Name" })}
               </label>
@@ -398,14 +398,14 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
                   setFormData({ ...formData, name: e.target.value })
                 }
                 autoFocus
-                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40   "
+                className="rounded-sm border-border bg-surface text-txt-strong placeholder:text-muted   "
               />
             </div>
 
             <div className="grid gap-2">
               <label
                 htmlFor="api-key-description"
-                className="text-xs font-medium text-white/70 uppercase tracking-wide"
+                className="text-xs font-medium text-txt uppercase tracking-wide"
               >
                 {t("cloud.apiKeys.descriptionLabel", {
                   defaultValue: "Description",
@@ -422,12 +422,12 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
                   setFormData({ ...formData, description: e.target.value })
                 }
                 rows={3}
-                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40   "
+                className="rounded-sm border-border bg-surface text-txt-strong placeholder:text-muted   "
               />
             </div>
 
             <div className="grid gap-2">
-              <p className="text-xs font-medium text-white/70 uppercase tracking-wide">
+              <p className="text-xs font-medium text-txt uppercase tracking-wide">
                 {t("cloud.apiKeys.rateLimitLabel", {
                   defaultValue: "Rate limit",
                 })}
@@ -438,19 +438,19 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
                   setRateLimitPreset(value as RateLimitPreset)
                 }
               >
-                <SelectTrigger className="rounded-sm border-white/10 bg-black/40 text-white  ">
+                <SelectTrigger className="rounded-sm border-border bg-surface text-txt-strong  ">
                   <SelectValue
                     placeholder={t("cloud.apiKeys.selectLimit", {
                       defaultValue: "Select a limit",
                     })}
                   />
                 </SelectTrigger>
-                <SelectContent className="rounded-sm border-white/10 bg-black/90">
+                <SelectContent className="rounded-sm border-border bg-popover">
                   {rateLimitPresets.map((preset) => (
                     <SelectItem
                       key={preset.value}
                       value={preset.value}
-                      className="rounded-sm text-white hover:bg-white/10 "
+                      className="rounded-sm text-txt-strong hover:bg-surface "
                     >
                       {t(preset.labelKey, {
                         defaultValue: preset.defaultLabel,
@@ -460,10 +460,10 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
                 </SelectContent>
               </Select>
               {rateLimitPreset === "custom" && (
-                <div className="grid gap-2 rounded-sm border border-dashed border-white/10 bg-black/40 p-4">
+                <div className="grid gap-2 rounded-sm border border-dashed border-border bg-surface p-4">
                   <label
                     htmlFor="api-key-rate-custom"
-                    className="text-xs font-medium text-white/70 uppercase tracking-wide"
+                    className="text-xs font-medium text-txt uppercase tracking-wide"
                   >
                     {t("cloud.apiKeys.customRateLabel", {
                       defaultValue: "Custom requests / minute",
@@ -484,7 +484,7 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
                     }
                     min={100}
                     step={100}
-                    className="rounded-sm border-white/10 bg-black/60 text-white placeholder:text-white/40   "
+                    className="rounded-sm border-border bg-surface text-txt-strong placeholder:text-muted   "
                   />
                 </div>
               )}
@@ -531,22 +531,22 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
             </DialogHeader>
             <div className="space-y-4">
               <div className="grid gap-2">
-                <p className="text-xs font-medium text-white/70 uppercase tracking-wide">
+                <p className="text-xs font-medium text-txt uppercase tracking-wide">
                   {t("cloud.apiKeys.keyName", { defaultValue: "Key name" })}
                 </p>
-                <div className="font-mono text-sm font-semibold text-white">
+                <div className="font-mono text-sm font-semibold text-txt-strong">
                   {createdKey.name}
                 </div>
               </div>
               <div className="grid gap-2">
-                <p className="text-xs font-medium text-white/70 uppercase tracking-wide">
+                <p className="text-xs font-medium text-txt uppercase tracking-wide">
                   {t("cloud.apiKeys.apiKeyLabel", { defaultValue: "API Key" })}
                 </p>
                 <div className="flex gap-2">
                   <Input
                     value={createdKey.plainKey}
                     readOnly
-                    className="font-mono text-sm rounded-sm border-white/10 bg-black/40 text-white"
+                    className="font-mono text-sm rounded-sm border-border bg-surface text-txt-strong"
                   />
                   <BrandButton
                     variant="outline"

@@ -25,7 +25,7 @@ vi.mock("@capacitor/core", () => ({
 
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { setBootConfig } from "../../config/boot-config";
-import { ApiError, api } from "./api-client";
+import { ApiError, api, apiWithStatus } from "./api-client";
 
 function makeJwt(payload: Record<string, unknown>): string {
   const b64url = (value: object) =>
@@ -380,6 +380,125 @@ describe("cloud api-client transport bridge", () => {
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       const [, calledInit] = fetchSpy.mock.calls[0];
+      expect(
+        new Headers((calledInit as RequestInit).headers).get("Authorization"),
+      ).toBeNull();
+    });
+  });
+
+  // --- STATUS-AWARE VARIANT: the agent provision/suspend job protocol uses
+  // the HTTP status itself (202 accepted-and-queued / 409 already-in-flight),
+  // so `apiWithStatus` must resolve — not throw — for every real HTTP response
+  // while keeping auth + transport identical to `api`.
+
+  describe("apiWithStatus (202/409 job protocol)", () => {
+    it("202 accepted: resolves { status: 202, data } with cookie credentials AND the Bearer", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ data: { jobId: "job-1" } }), {
+          status: 202,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      const result = await apiWithStatus<{ data?: { jobId?: string } }>(
+        "/api/v1/eliza/agents/agent-1/provision",
+        { method: "POST" },
+      );
+
+      expect(result.status).toBe(202);
+      expect(result.data?.data?.jobId).toBe("job-1");
+      const [calledUrl, calledInit] = fetchSpy.mock.calls[0];
+      expect(calledUrl).toBe("/api/v1/eliza/agents/agent-1/provision");
+      // Bearer rides ALONGSIDE the session cookie, so API-key sessions work too.
+      expect((calledInit as RequestInit).credentials).toBe("include");
+      expect(
+        new Headers((calledInit as RequestInit).headers).get("Authorization"),
+      ).toBe(`Bearer ${STEWARD_TOKEN}`);
+    });
+
+    it("409 conflict: resolves with the status and the already-in-flight job body instead of throwing", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: "Suspend already in progress",
+            data: { jobId: "job-2" },
+          }),
+          { status: 409, headers: { "content-type": "application/json" } },
+        ),
+      );
+
+      const result = await apiWithStatus<{
+        data?: { jobId?: string };
+        error?: string;
+      }>("/api/v1/eliza/agents/agent-1", {
+        method: "PATCH",
+        json: { action: "suspend" },
+      });
+
+      expect(result.status).toBe(409);
+      expect(result.data?.data?.jobId).toBe("job-2");
+      expect(result.data?.error).toBe("Suspend already in progress");
+    });
+
+    it("5xx: resolves with the status + error body so callers own the failure branch", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ error: "node offline" }), {
+          status: 502,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      const result = await apiWithStatus<{ error?: string }>(
+        "/api/v1/eliza/agents/agent-1/provision",
+        { method: "POST" },
+      );
+
+      expect(result.status).toBe(502);
+      expect(result.data?.error).toBe("node offline");
+    });
+
+    it("STILL throws on transport/URL-policy failures (cross-origin, status 0)", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+      await expectCrossOriginThrow(
+        apiWithStatus("https://evil.example.com/api/v1/eliza/agents/x", {
+          method: "POST",
+        }),
+      );
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("STILL throws on network errors (fetch rejection is not an HTTP status)", async () => {
+      vi.spyOn(globalThis, "fetch").mockRejectedValue(
+        new TypeError("Failed to fetch"),
+      );
+
+      await expect(
+        apiWithStatus("/api/v1/eliza/agents/agent-1/provision", {
+          method: "POST",
+        }),
+      ).rejects.toThrow("Failed to fetch");
+    });
+
+    it("web: a cookie-only session (no Steward JWT) still rides credentials: include without a Bearer", async () => {
+      window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ data: { jobId: "job-3" } }), {
+          status: 202,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      const result = await apiWithStatus(
+        "/api/v1/eliza/agents/agent-1/provision",
+        { method: "POST" },
+      );
+
+      expect(result.status).toBe(202);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const [, calledInit] = fetchSpy.mock.calls[0];
+      expect((calledInit as RequestInit).credentials).toBe("include");
       expect(
         new Headers((calledInit as RequestInit).headers).get("Authorization"),
       ).toBeNull();

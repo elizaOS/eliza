@@ -41,7 +41,7 @@ permissions:
 jobs:
   cpu-smoke:
     name: CPU smoke (lint + import)
-    runs-on: ubuntu-22.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - name: Checkout

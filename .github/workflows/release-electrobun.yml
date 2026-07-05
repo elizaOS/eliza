@@ -1785,7 +1785,7 @@ jobs:
     name: Publish OTA Channel Manifest
     if: ${{ success() && needs.release.result == 'success' }}
     needs: [prepare, release]
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     permissions:
       contents: write
     steps:

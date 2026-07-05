@@ -3,6 +3,7 @@
  */
 
 import type { IAgentRuntime, Media, Memory } from "@elizaos/core";
+import type { NavigateViewDetail } from "@elizaos/shared/events";
 import { BACKGROUND_APPLY_EVENT as SHARED_BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -453,5 +454,189 @@ describe("BACKGROUND action handler", () => {
 		expect(
 			await action.validate(runtime, message("make the background teal")),
 		).toBe(true);
+	});
+});
+
+describe("BACKGROUND action — catalog name-select + upload handoff (#13538)", () => {
+	function setup() {
+		const emitted: BackgroundApplyPayload[] = [];
+		const navigated: NavigateViewDetail[] = [];
+		const replies: string[] = [];
+		const action = createBackgroundAction({
+			emit: async (payload) => {
+				emitted.push(payload);
+			},
+			generateImage: async () => "/api/media/generated.png",
+			navigate: async (detail) => {
+				navigated.push(detail);
+			},
+		});
+		const callback = vi.fn(async (content: { text?: string }) => {
+			if (content.text) replies.push(content.text);
+			return [];
+		});
+		return { action, emitted, navigated, replies, callback };
+	}
+
+	it("names a curated catalog entry via catalogId (no color/preset)", async () => {
+		const { action, emitted, replies, callback } = setup();
+		const result = await action.handler(
+			runtime,
+			message("use the misty-forest background"),
+			undefined,
+			undefined,
+			callback,
+		);
+		expect(emitted).toEqual([{ op: "set", catalogId: "misty-forest" }]);
+		expect(result.success).toBe(true);
+		expect(replies[0]).toContain("Misty Forest");
+	});
+
+	it("resolves a fuzzy catalog name to the canonical id", async () => {
+		const { action, emitted } = setup();
+		await action.handler(
+			runtime,
+			message("switch the wallpaper to ocean deep"),
+			undefined,
+			undefined,
+			vi.fn(async () => []),
+		);
+		expect(emitted).toEqual([{ op: "set", catalogId: "ocean-deep" }]);
+	});
+
+	it("an explicit generate wins over a same-named catalog entry", async () => {
+		const { action, emitted } = setup();
+		await action.handler(
+			runtime,
+			message("generate a misty forest background"),
+			undefined,
+			undefined,
+			vi.fn(async () => []),
+		);
+		// generate path emits an image (generated url), NOT a catalogId select.
+		expect(emitted).toEqual([
+			{ op: "set", mode: "image", imageUrl: "/api/media/generated.png" },
+		]);
+	});
+
+	it("routes an upload intent to the /background view (no dead end)", async () => {
+		const { action, emitted, navigated, replies, callback } = setup();
+		const result = await action.handler(
+			runtime,
+			message("i want to upload my own background image"),
+			undefined,
+			undefined,
+			callback,
+		);
+		expect(emitted).toEqual([]);
+		expect(navigated).toEqual([
+			{ viewId: "background", viewPath: "/background" },
+		]);
+		expect(result.success).toBe(true);
+		expect(replies[0]).toContain("Background view");
+	});
+
+	it("'choose a green background' applies the COLOR, not an upload handoff", async () => {
+		const { action, emitted, navigated } = setup();
+		await action.handler(
+			runtime,
+			message("choose a green background"),
+			undefined,
+			undefined,
+			vi.fn(async () => []),
+		);
+		expect(navigated).toEqual([]);
+		expect(emitted).toEqual([{ op: "set", mode: "shader", color: "#059669" }]);
+	});
+
+	it("'pick a blue wallpaper' applies the COLOR, not an upload handoff", async () => {
+		const { action, emitted, navigated } = setup();
+		await action.handler(
+			runtime,
+			message("pick a blue wallpaper"),
+			undefined,
+			undefined,
+			vi.fn(async () => []),
+		);
+		expect(navigated).toEqual([]);
+		expect(emitted).toEqual([{ op: "set", mode: "shader", color: "#2563eb" }]);
+	});
+
+	it("'choose from my photos' IS an upload handoff (device-file intent)", async () => {
+		const { action, navigated } = setup();
+		await action.handler(
+			runtime,
+			message("choose a background from my photos"),
+			undefined,
+			undefined,
+			vi.fn(async () => []),
+		);
+		expect(navigated).toEqual([
+			{ viewId: "background", viewPath: "/background" },
+		]);
+	});
+
+	it("a generic color word does NOT resolve to a catalog entry", async () => {
+		const { action, emitted } = setup();
+		// "green" is a tag on misty-forest but must stay a COLOR request.
+		await action.handler(
+			runtime,
+			message("make the background green"),
+			undefined,
+			undefined,
+			vi.fn(async () => []),
+		);
+		expect(emitted).toEqual([{ op: "set", mode: "shader", color: "#059669" }]);
+	});
+
+	it("an ATTACHED image wins over a same-named catalog entry", async () => {
+		const { action, emitted } = setup();
+		await action.handler(
+			runtime,
+			message("use this misty forest background", [
+				{ url: "/api/media/mine.png", contentType: "image" } as Media,
+			]),
+			undefined,
+			undefined,
+			vi.fn(async () => []),
+		);
+		// The attachment is applied — NOT the curated Misty Forest catalog entry.
+		expect(emitted).toEqual([
+			{ op: "set", mode: "image", imageUrl: "/api/media/mine.png" },
+		]);
+	});
+
+	it("does NOT hijack a described-image set as an upload handoff", async () => {
+		const { action, emitted, navigated } = setup();
+		await action.handler(
+			runtime,
+			message("set the background to a picture of a forest"),
+			undefined,
+			undefined,
+			vi.fn(async () => []),
+		);
+		// A described image → generate path, NOT the upload view.
+		expect(navigated).toEqual([]);
+		expect(emitted).toEqual([
+			{ op: "set", mode: "image", imageUrl: "/api/media/generated.png" },
+		]);
+	});
+
+	it("does NOT hijack an attachment-backed set as an upload handoff", async () => {
+		const { action, emitted, navigated } = setup();
+		await action.handler(
+			runtime,
+			message("set this as my background", [
+				{ url: "/api/media/photo.png", contentType: "image" } as Media,
+			]),
+			undefined,
+			undefined,
+			vi.fn(async () => []),
+		);
+		// With a usable attachment, apply it — don't route to the upload view.
+		expect(navigated).toEqual([]);
+		expect(emitted).toEqual([
+			{ op: "set", mode: "image", imageUrl: "/api/media/photo.png" },
+		]);
 	});
 });

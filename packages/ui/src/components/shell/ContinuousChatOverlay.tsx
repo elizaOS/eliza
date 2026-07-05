@@ -4,13 +4,12 @@
  */
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
+  ArrowDown,
   FileText,
   Film,
   LayoutGrid,
   Loader2,
-  Maximize2,
   Mic,
-  Minimize2,
   Music,
   RotateCcw,
   SendHorizontal,
@@ -56,7 +55,6 @@ import {
   sqrtRubberBand,
   useRafCoalescer,
 } from "../../gestures";
-import { useConversationSwipeJank } from "../../hooks/useConversationSwipeJank";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
@@ -88,6 +86,7 @@ import { SensitiveRequestBlock } from "../chat/MessageContent";
 import { findChoiceRegions } from "../chat/message-choice-parser";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
+import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import { ChatMessage } from "../composites/chat/chat-message";
 import type {
   ChatMessageData,
@@ -197,6 +196,20 @@ export type ChatMode = "pill" | "input" | "half" | "full";
 type MotionControls = { stop: () => void };
 
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
+// Pull-to-maximize threshold (#13531). The FULL detent already rises to just
+// under the status bar (`openH` ≈ 0.9×viewportH, an INSET sheet with side margins
+// and a top gap); "maximize" is the edge-to-edge variant. The product spec is
+// "pull up past 80% of viewport height" — since FULL already exceeds that, the
+// faithful, unambiguous trigger is an OVER-pull whose peak raw (pre-clamp) pull
+// height clears max(0.8×viewportH, FULL) by this margin. In practice a pull that
+// pushes the sheet meaningfully past the FULL detent into the rubber-band zone
+// commits to full-bleed. A plain rest AT full never trips it (the margin gates
+// it above openH).
+const MAXIMIZE_OVERPULL_PX = 56;
+// Restore-from-maximized grab zone (#13531): while full-bleed, a downward pull
+// that STARTS within this fraction of the panel height from the top animates
+// back to the inset overlay. 0.2 = the "top 20%" per the product spec.
+const MAXIMIZE_RESTORE_ZONE_VH = 0.2;
 // The panel's top clearance + max height (which decide where the header buttons
 // land relative to the notch) live in the pure, unit-tested
 // `resolveChatPanelLayout` — see chat-panel-layout.ts.
@@ -367,7 +380,7 @@ function HeaderButton({
   disabled,
   testId,
 }: {
-  icon: typeof Maximize2;
+  icon: typeof LayoutGrid;
   label: string;
   onClick: () => void;
   active?: boolean;
@@ -402,34 +415,6 @@ function HeaderButton({
   );
 }
 
-/** Horizontal travel (px) at which a conversation-swipe edge hint is fully lit. */
-const SWIPE_HINT_FULL = 96;
-
-/**
- * Follow-the-finger conversation rail (#8929 tracking fix). While a horizontal
- * swipe is in progress the transcript content translates with the finger (rather
- * than the old edge-glow-only affordance, which never moved the content and read
- * as "broken" / non-native). The live drag is rubber-band-damped past the edges
- * of what the drag can commit, so the pull always feels attached but resists.
- */
-/** Fraction of raw finger travel the content actually translates by. Slightly
- *  under 1 gives the neighbour a touch of parallax lead (the edge hint sits
- *  ahead of the content), so the rail reads as revealing a neighbour, not just
- *  sliding the current thread. */
-const SWIPE_RAIL_TRACK_RATIO = 0.92;
-/** Extra damping applied to the portion of a drag that heads toward an edge with
- *  no neighbour to commit to (first/last conversation) — the content still gives
- *  a little so the gesture feels alive, but resists to signal the dead end. */
-const SWIPE_RAIL_EDGE_RESISTANCE = 0.32;
-/** Spring used to settle the rail back to rest (or animate the committed side
- *  out) on release. Snappy but not brittle — mirrors the iOS pager feel. */
-const SWIPE_RAIL_SPRING = {
-  type: "spring",
-  stiffness: 520,
-  damping: 44,
-  mass: 1,
-} as const;
-
 /** Inert conversation-nav fallback for minimal mock controllers. */
 const EMPTY_CONVERSATION_NAV: ConversationNav = {
   hasPrev: false,
@@ -439,38 +424,6 @@ const EMPTY_CONVERSATION_NAV: ConversationNav = {
   activeId: null,
   index: -1,
 };
-
-/**
- * A soft glass glow on the sheet edge the next/previous conversation will slide
- * in from during a horizontal swipe (#8929). Brightens with the drag distance;
- * inert and non-interactive.
- */
-function SwipeEdgeHint({
-  side,
-  active,
-  amount,
-}: {
-  side: "left" | "right";
-  active: boolean;
-  amount: number;
-}): React.JSX.Element | null {
-  if (!active) return null;
-  const opacity = Math.min(1, Math.max(0, amount) / SWIPE_HINT_FULL);
-  if (opacity <= 0) return null;
-  return (
-    <div
-      aria-hidden
-      data-testid={`conversation-swipe-hint-${side}`}
-      className={cn(
-        "pointer-events-none absolute inset-y-0 z-20 w-16",
-        side === "left"
-          ? "left-0 bg-gradient-to-r from-border-strong to-transparent"
-          : "right-0 bg-gradient-to-l from-border-strong to-transparent",
-      )}
-      style={{ opacity }}
-    />
-  );
-}
 
 /**
  * The drag handle at the top of the chat sheet — pull UP to open the history,
@@ -787,21 +740,6 @@ function ThreadLineText({ content }: { content: string }): React.ReactNode {
 }
 
 /**
- * True while there's a live (non-collapsed) text selection. The
- * conversation-swipe binding lives on the transcript surface, which contains
- * the selectable message bubbles — so a MOUSE drag to highlight bubble text
- * travels horizontally and otherwise reads as a swipe, navigating away and
- * destroying the selection on release. The swipe handlers consult this to skip
- * navigation when the gesture was really a highlight, mirroring the ThreadLine
- * tap-reveal guard (`window.getSelection()` non-collapsed). Touch drags don't
- * create a selection, so a genuine finger swipe is unaffected.
- */
-function hasLiveTextSelection(): boolean {
-  const sel = typeof window !== "undefined" ? window.getSelection() : null;
-  return !!sel && sel.toString().trim().length > 0;
-}
-
-/**
  * The overlay's message BODY — everything rendered inside the canonical
  * ChatMessage glass row: the no-provider recovery gate, the in-flight breathing
  * dots (TurnStatus), a user turn's slash-bolded text, and a settled assistant
@@ -888,6 +826,13 @@ function renderOverlayMessageBody(
           <SensitiveRequestBlock request={message.secretRequest} />
         </div>
       ) : null}
+      {message.toolEvents?.length ? (
+        <div className="pointer-events-auto mt-2 flex flex-col gap-1.5">
+          {message.toolEvents.map((event) => (
+            <ToolCallEventLog key={event.callId ?? event.id} event={event} />
+          ))}
+        </div>
+      ) : null}
       {!ctx?.suppressReasoning && message.reasoning?.trim() ? (
         <ThinkingBlock reasoning={message.reasoning} />
       ) : null}
@@ -913,6 +858,7 @@ function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     ...(m.source ? { source: m.source } : {}),
     ...(m.failureKind ? { failureKind: m.failureKind } : {}),
     ...(m.reasoning ? { reasoning: m.reasoning } : {}),
+    ...(m.toolEvents?.length ? { toolEvents: m.toolEvents } : {}),
     ...(m.attachments ? { attachments: m.attachments } : {}),
     ...(m.secretRequest ? { secretRequest: m.secretRequest } : {}),
   };
@@ -1000,7 +946,6 @@ export function ContinuousChatOverlay({
     openSettings,
     navigateHome,
     currentTab,
-    clearConversation,
     stop,
     speak,
     stopSpeaking,
@@ -1019,137 +964,20 @@ export function ContinuousChatOverlay({
   // it reaches the in-chat conductor (and never the server); post-onboarding it
   // is unused here (the composer sends via `controller.send`). In stories/tests
   // with no AppContext the store returns an inert no-op.
-  const { sendActionMessage } = useAppSelectorShallow((s) => ({
-    sendActionMessage: s.sendActionMessage,
-  }));
+  const { sendActionMessage, handleChatDelete } = useAppSelectorShallow(
+    (s) => ({
+      sendActionMessage: s.sendActionMessage,
+      // Persistent per-message delete (#13533): server DELETE + optimistic
+      // removal with rollback. Inert no-op in stories/tests with no AppContext.
+      handleChatDelete: s.handleChatDelete,
+    }),
+  );
   // Defensive default so a minimal mock controller (stories/tests) that predates
   // the swipe-nav surface still renders without crashing.
   const conversationNav = controller.conversationNav ?? EMPTY_CONVERSATION_NAV;
   // True while a clear/swipe is fetching an uncached thread — gates the empty
   // thread's loading spinner. Defaulted for minimal mock controllers.
   const conversationLoading = controller.conversationLoading ?? false;
-
-  // Horizontal swipe between conversations (#8929). `swipeDx` is the live
-  // horizontal drag (+left toward the next/older chat, -right toward the
-  // newer/previous chat) and drives the edge hint. The gesture defers pointer
-  // capture until a horizontal commit, so vertical thread scrolling is
-  // unaffected; it is only bound while the sheet is open (below).
-  const [swipeDx, setSwipeDx] = React.useState(0);
-  // Frame-budget telemetry scoped to the swipe gesture (#9954): begin sampling
-  // on the first live drag and flush a dropped-frame/p95/fps summary into the
-  // telemetry ring on release, so swipe jank is observable without the dev HUD.
-  const swipeJank = useConversationSwipeJank();
-
-  // Follow-the-finger rail (#8929 tracking fix). `railX` is the live horizontal
-  // translate (px) of the transcript content — driven straight off the gesture's
-  // live drag so the content tracks the pointer instead of only lighting an edge
-  // glow. It's a MotionValue (not React state) so a per-frame drag writes to the
-  // compositor without a re-render; React state (`swipeDx`) is kept in parallel
-  // only for the (cheap, already-existing) edge-hint + jank telemetry.
-  const railX = useMotionValue(0);
-  // Reads used inside the gesture callbacks are funnelled through refs so the
-  // (stable) callback closures never go stale on a conversationNav / reduce
-  // change — `conversationSwipe` is memo-free but the gesture engine holds these
-  // handlers across a drag, so a mid-drag prop change must still be visible.
-  const railReduceRef = React.useRef(false);
-  const railHasNextRef = React.useRef(false);
-  const railHasPrevRef = React.useRef(false);
-  railHasNextRef.current = conversationNav.hasNext;
-  railHasPrevRef.current = conversationNav.hasPrev;
-  // Stop any in-flight settle spring the previous gesture left running before a
-  // fresh drag grabs the rail, so a new touch takes over from where it sits.
-  const railSettleRef = React.useRef<{ stop: () => void } | null>(null);
-  const stopRailSettle = React.useCallback(() => {
-    railSettleRef.current?.stop();
-    railSettleRef.current = null;
-  }, []);
-  // Spring the rail back to rest (0). Under reduced motion it jumps instantly so
-  // the follow-the-finger animation never fights the OS setting — this is the
-  // reduced-motion fallback for the settle (the drag itself already no-ops the
-  // translate when reduced, see the onDragX guard below).
-  const settleRailHome = React.useCallback(() => {
-    stopRailSettle();
-    if (railReduceRef.current) {
-      railX.set(0);
-      return;
-    }
-    railSettleRef.current = animate(railX, 0, SWIPE_RAIL_SPRING);
-  }, [railX, stopRailSettle]);
-
-  const conversationSwipe = usePullGesture({
-    // The transcript is BOTH this horizontal swipe surface and the native
-    // vertical scroller. Bias axis-commit toward vertical so a thumb SCROLL is
-    // never captured as a conversation swipe and blocked from scrolling on real
-    // mobile web (#chat-scroll-web); a deliberate horizontal flick still
-    // navigates via the unchanged release-time recognition.
-    verticalScrollPriority: true,
-    onDragX: (dx) => {
-      // A non-zero offset means the gesture is actively dragging; 0 is the
-      // settle/cancel reset the gesture emits on release. `begin` is idempotent,
-      // so calling it every frame only starts one sampling window per gesture.
-      if (dx !== 0) swipeJank.begin();
-      else swipeJank.end();
-      setSwipeDx(dx);
-      // Follow-the-finger: translate the transcript with the drag. `dx` is
-      // positive dragging LEFT (toward the next/older chat), so the content
-      // moves LEFT (negative translateX) to reveal the right neighbour. Under
-      // reduced motion the content stays put (the edge hint alone signals the
-      // pending nav — the reduced-motion fallback), matching the prior behaviour.
-      if (railReduceRef.current) return;
-      if (dx === 0) {
-        // The gesture's own settle/cancel reset — spring home rather than snap,
-        // unless a commit handler is about to drive the rail itself.
-        settleRailHome();
-        return;
-      }
-      stopRailSettle();
-      // Damp the portion of the drag that has no neighbour to commit to so the
-      // first/last conversation resists instead of sliding into a blank void.
-      const canGo = dx > 0 ? railHasNextRef.current : railHasPrevRef.current;
-      const tracked = canGo
-        ? dx * SWIPE_RAIL_TRACK_RATIO
-        : dx * SWIPE_RAIL_EDGE_RESISTANCE;
-      railX.set(-tracked);
-    },
-    onSwipeLeft: () => {
-      setSwipeDx(0);
-      // A mouse highlight drag inside a bubble finishes here too; never switch
-      // the conversation out from under a live text selection (destroying it).
-      // Mirrors the ThreadLine tap-reveal selection guard.
-      if (hasLiveTextSelection()) {
-        swipeJank.end();
-        settleRailHome();
-        return;
-      }
-      // Tag the flushed window with the committed direction so the ring shows
-      // which way a janky swipe went (left → "next", the older conversation).
-      swipeJank.end("next");
-      // Settle the rail home while the controller swaps in the neighbour's
-      // content underneath (the transcript re-renders with the new thread and
-      // cross-fades in via threadContentOpacity) — a native pager settles the
-      // committed page in; without the neighbour pre-rendered, springing home as
-      // the content swaps reads the same without a blank frame.
-      settleRailHome();
-      conversationNav.goNext();
-    },
-    onSwipeRight: () => {
-      setSwipeDx(0);
-      if (hasLiveTextSelection()) {
-        swipeJank.end();
-        settleRailHome();
-        return;
-      }
-      swipeJank.end("prev");
-      settleRailHome();
-      conversationNav.goPrev();
-    },
-    onCancel: () => {
-      // pointercancel / lost-capture with no committed swipe — bring the rail
-      // back to rest so a half-dragged transcript never sticks off-centre.
-      setSwipeDx(0);
-      settleRailHome();
-    },
-  });
 
   // Copy a message (reveal-row Copy). Stable identity so the memoized row isn't
   // re-rendered every parent tick.
@@ -1205,6 +1033,18 @@ export function ContinuousChatOverlay({
     [send],
   );
 
+  // Persistent per-message delete from the glass row (#13533). Routes through
+  // the app-level handler so the server DELETE + optimistic removal + rollback
+  // are identical to the panel (ChatView) surface; the shell transcript mirrors
+  // conversationMessages, so the row disappears optimistically and re-appears
+  // if the DELETE fails.
+  const handleDeleteMessage = React.useCallback(
+    (id: string) => {
+      void handleChatDelete?.(id);
+    },
+    [handleChatDelete],
+  );
+
   // Retry a failed/interrupted assistant turn by re-sending its preceding user
   // turn — the SAME send() path the edit-resend action uses. (The ShellController
   // exposes no handleChatRetry, so the overlay owns the walk-back locally; a
@@ -1256,10 +1096,6 @@ export function ContinuousChatOverlay({
   // Honor the OS "reduce motion" setting: every overlay animation collapses to
   // a near-instant cross-fade with no positional movement when this is true.
   const reduce = useReducedMotion() ?? false;
-  // Keep the follow-the-finger rail's reduced-motion read current for the
-  // gesture callbacks (which capture a ref, not `reduce` directly, so a mid-drag
-  // OS-setting toggle takes effect and the callback identity stays stable).
-  railReduceRef.current = reduce;
 
   // The composer draft + pending attachments are the SHARED ChatComposerContext
   // slot (one draft per active conversation, edited by every surface): under
@@ -1439,6 +1275,13 @@ export function ContinuousChatOverlay({
   // the morph keeps the pill↔input crossfade from stranding both bars visible.
   const settleDragRef = React.useRef<(() => void) | null>(null);
   const draggingRef = React.useRef(false);
+  // Peak RAW (pre-clamp) pull height reached during the current upward drag
+  // (#13531). The visible `threadHeight` is rubber-band-clamped at `openH`, so a
+  // deliberate over-pull past FULL is invisible to a `threadHeight.get()` read on
+  // release. This ref records the true finger height each frame so the release
+  // path can tell an over-pull past the 80%-viewport maximize threshold from a
+  // plain release at FULL. Reset to 0 at the start of every gesture.
+  const maxPullRawRef = React.useRef(0);
   // At rest the collapsed composer should not carry hidden transcript/header
   // DOM. During an upward pull, though, the sheet needs a mounted body so the
   // MotionValue-driven height can follow the finger before the release commits
@@ -1544,7 +1387,11 @@ export function ContinuousChatOverlay({
   // (pre-paint — the thread never flashes at the top), a NEW line re-pins with
   // a smooth glide while the reader rests at the bottom, streaming growth
   // follows in a single rAF, and a reader who scrolled up is never yanked.
-  const { scrollRef: threadRef } = useThreadAutoScroll<HTMLDivElement>({
+  const {
+    scrollRef: threadRef,
+    atBottom: threadAtBottom,
+    jumpToLatest,
+  } = useThreadAutoScroll<HTMLDivElement>({
     growthKey: `${visibleMessages.length}:${lastId ?? ""}:${lastContent.length}`,
     lineKey: lastId ?? "",
     enabled: threadPresented,
@@ -1654,6 +1501,7 @@ export function ContinuousChatOverlay({
           onLongPressCopy={handleLongPressCopy}
           onSpeak={handleSpeakMessage}
           onEdit={handleEditResend}
+          onDelete={handleDeleteMessage}
           onRetry={handleRetry}
           playing={speaking && playingMessageId === m.id}
           renderContent={renderRowBody}
@@ -1670,6 +1518,7 @@ export function ContinuousChatOverlay({
       handleLongPressCopy,
       handleSpeakMessage,
       handleEditResend,
+      handleDeleteMessage,
       handleRetry,
       speaking,
       playingMessageId,
@@ -2365,17 +2214,13 @@ export function ContinuousChatOverlay({
     [closeSheet, maximized, reduce],
   );
 
-  // Maximize toggle. Maximizing from ANY open detent (half or a free rest) first
-  // rises to the FULL detent, then drops the inset — so the height spring
-  // animates up and the panel goes edge-to-edge in one gesture (previously
-  // full-bleed required `expanded`, so tapping maximize at the half detent did
-  // nothing). Un-maximizing drops back to the inset FULL detent.
-  const toggleMaximize = React.useCallback(() => {
-    if (maximized) {
-      stopThreadAnimation();
-      setMaximized(false);
-      return;
-    }
+  // Maximize via a vertical PULL, not a button (#13531). A pull-up that crosses
+  // the 80%-of-viewport threshold rises to the FULL detent and drops the inset,
+  // so the panel goes edge-to-edge in one continuous gesture. The button-only
+  // `toggleMaximize` is gone; this is the single entry into full-bleed and is
+  // called from the pull-gesture release path (maybeMaximizeOnRelease) once the
+  // peak raw pull clears the maximize threshold (see MAXIMIZE_OVERPULL_PX).
+  const maximizeFromPull = React.useCallback(() => {
     // Snap the morph fully open BEFORE flipping to full-bleed so no in-flight
     // pill-open spring can leak a sub-1 scale into the maximized frame (top gap).
     draggingRef.current = false;
@@ -2385,7 +2230,22 @@ export function ContinuousChatOverlay({
     setFreeH(null);
     setMode("full");
     setMaximized(true);
-  }, [maximized, openProgress, stopThreadAnimation, stopOpenProgressAnimation]);
+    detentHaptic();
+  }, [openProgress, stopThreadAnimation, stopOpenProgressAnimation]);
+
+  // Restore OUT of full-bleed back to the inset FULL-detent overlay (#13531).
+  // Driven by a downward pull that starts in the top 20% of the maximized panel
+  // (the top-20% grab zone below); it drops full-bleed but keeps the thread open
+  // at the FULL detent, so it reads as shrinking the edge-to-edge view back into
+  // the overlay chat rather than collapsing the whole sheet (Escape/back still
+  // collapse to the input).
+  const restoreFromMaximized = React.useCallback(() => {
+    draggingRef.current = false;
+    stopThreadAnimation();
+    setMaximized(false);
+    setMode("full");
+    detentHaptic();
+  }, [stopThreadAnimation]);
 
   // The single detent→detent animator: whenever the settled detent (or viewport)
   // changes and we're not mid finger-drag, spring the history height to it. The
@@ -2913,11 +2773,14 @@ export function ContinuousChatOverlay({
         navigateTab: slash.navigateTab,
         navigateSettings: slash.navigateSettings,
         navigateView: slash.navigateView,
-        clearChat: slash.clearChat,
-        newConversation: () => controller.clearConversation(),
-        // The overlay owns full-screen via the `maximized` detent flag, not a
-        // controller method, so toggle it directly here.
-        toggleFullscreen: toggleMaximize,
+        // One infinite thread (#13531): the overlay no longer resets/switches
+        // conversations (clear-chat / new-conversation) or toggles full-screen
+        // via a command — maximize is a vertical pull now. These slash paths are
+        // inert in the overlay; the shared subsystem plumbing (first-run/wipe/
+        // switch, CommandPalette, TUI) is untouched and handled elsewhere.
+        clearChat: () => {},
+        newConversation: () => {},
+        toggleFullscreen: () => {},
         openCommandPalette: openPaletteCollapsed,
         showCommands: openPaletteCollapsed,
         toggleTranscription: toggleTranscriptionMode,
@@ -2929,15 +2792,7 @@ export function ContinuousChatOverlay({
         inputRef.current?.focus();
       }
     },
-    [
-      slash,
-      controller,
-      submitText,
-      setDraft,
-      toggleMaximize,
-      toggleTranscriptionMode,
-      collapse,
-    ],
+    [slash, submitText, setDraft, toggleTranscriptionMode, collapse],
   );
 
   const submit = React.useCallback(() => {
@@ -3305,6 +3160,8 @@ export function ContinuousChatOverlay({
       if (!draggingRef.current) {
         stopThreadAnimation();
         stopOpenProgressAnimation();
+        // Fresh gesture: reset the peak raw-pull tracker (#13531).
+        maxPullRawRef.current = 0;
       }
       draggingRef.current = true;
       // PILL drag: map the upward travel to the pill→input morph (openProgress).
@@ -3343,6 +3200,13 @@ export function ContinuousChatOverlay({
         : expanded
           ? Math.min(0, offset)
           : offset;
+      // Record the TRUE upward finger travel (pre-clamp AND pre-pin) so the
+      // release path can detect an over-pull past the maximize threshold even
+      // from the FULL detent, where the visible height is pinned (off is clamped
+      // to <=0 above) and the rendered height rubber-bands at openH (#13531). A
+      // pull DOWN (offset<0) never advances the maximize tracker.
+      const rawUpH = baseH + Math.max(0, offset);
+      if (rawUpH > maxPullRawRef.current) maxPullRawRef.current = rawUpH;
       threadHeight.set(clampHeight(baseH + off));
     },
     [
@@ -3360,6 +3224,26 @@ export function ContinuousChatOverlay({
       setDragPreviewMounted,
     ],
   );
+
+  // Pull-to-maximize decision (#13531): a released upward pull whose PEAK raw
+  // upward travel (maxPullRawRef, pre-clamp/pre-pin) cleared the maximize
+  // threshold commits to edge-to-edge full-bleed. The threshold is the greater
+  // of "80% of viewport height" (the product spec) and the FULL detent height
+  // (openH ≈ 0.9×viewportH, already inset-full), plus an over-pull margin — so a
+  // plain release AT full never trips it, only a deliberate over-pull past full
+  // does. Returns true when it took over the release so the caller skips its
+  // normal detent settle. Onboarding never maximizes (the sheet is pinned FULL
+  // and undismissable).
+  const maybeMaximizeOnRelease = React.useCallback((): boolean => {
+    if (firstRunOpen) return false;
+    const threshold = Math.max(viewportH * 0.8, openH) + MAXIMIZE_OVERPULL_PX;
+    if (maxPullRawRef.current >= threshold) {
+      focusThreadRef.current = true;
+      maximizeFromPull();
+      return true;
+    }
+    return false;
+  }, [firstRunOpen, viewportH, openH, maximizeFromPull]);
 
   const pullBinding: PullGestureBinding = usePullGesture({
     onDrag: onDragOffset,
@@ -3399,6 +3283,9 @@ export function ContinuousChatOverlay({
         }
         return;
       }
+      // Over-pull past the 80%-viewport threshold maximizes from ANY open state
+      // (#13531) — this must win before the per-state detent settle below.
+      if (maybeMaximizeOnRelease()) return;
       if (!sheetOpen) {
         if (!hasRevealableThread) return settleDrag();
         const releasedH = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
@@ -3500,6 +3387,10 @@ export function ContinuousChatOverlay({
         }
         return;
       }
+      // A slow over-pull past the 80%-viewport threshold maximizes (#13531),
+      // even though the visible height rubber-banded at FULL — the peak raw pull
+      // (maxPullRawRef) carries the intent. Must win before detent magnetism.
+      if (maybeMaximizeOnRelease()) return;
       const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
       // DETENT MAGNETISM — the resting positions are the detents {collapsed:0,
       // half, full}; a release within SHEET_DETENT_MAGNET of one snaps to it
@@ -3526,6 +3417,30 @@ export function ContinuousChatOverlay({
         setMode("half");
         setMaximized(false);
       }
+    },
+  });
+
+  // Top-20% pull-down-to-restore (#13531). While maximized (full-bleed) there is
+  // no SheetGrabber; this binding drives an invisible grab strip over the top
+  // 20% of the panel. A downward pull/flick that STARTS in that zone animates
+  // back to the inset FULL-detent overlay (restoreFromMaximized) rather than
+  // collapsing the whole sheet — Escape / Android-back still fully collapse. A
+  // pull UP or a tap in the zone is a no-op (it stays maximized); only a
+  // committed downward gesture restores. Onboarding pins the sheet, so the zone
+  // is inert there (it is only rendered under `fullBleed`, never during
+  // first-run, but guard anyway for safety).
+  const restoreFromMaximizedGuarded = React.useCallback(() => {
+    if (firstRunOpen) return;
+    restoreFromMaximized();
+  }, [firstRunOpen, restoreFromMaximized]);
+  const maximizeRestoreBinding: PullGestureBinding = usePullGesture({
+    // No horizontal nav on the maximize grab strip.
+    swipeEnabled: false,
+    onPullDown: restoreFromMaximizedGuarded,
+    // A slow drag DOWN released past the tap slop also restores; up/stationary
+    // keeps the maximized view.
+    onSettleFree: (direction) => {
+      if (direction === "down") restoreFromMaximizedGuarded();
     },
   });
 
@@ -3902,6 +3817,14 @@ export function ContinuousChatOverlay({
           <span className="sr-only" data-testid="chat-detent-probe">
             {`chat-detent:${detentLabel}`}
           </span>
+          {/* AX-tree mirror of data-maximized (#13531). `detentLabel` folds the
+              full-bleed MAXIMIZED state into "full" (both rest at the top), so the
+              detent probe alone cannot tell them apart — the on-device XCUITest
+              maximize/restore leg reads this separate probe to observe whether the
+              chat committed to edge-to-edge full-bleed. */}
+          <span className="sr-only" data-testid="chat-maximized-probe">
+            {`chat-maximized:${fullBleed ? "true" : "false"}`}
+          </span>
           {firstRunProbe ? (
             <span className="sr-only" data-testid="onboarding-state-probe">
               {`onboarding-step:${firstRunProbe.step} onboarding-choices:${firstRunProbe.choices}`}
@@ -3950,22 +3873,6 @@ export function ContinuousChatOverlay({
               }
             }}
           >
-            {/* Conversation-swipe edge hints (#8929): glow the edge the next /
-                previous conversation will slide in from as the user drags. */}
-            {sheetOpen ? (
-              <>
-                <SwipeEdgeHint
-                  side="left"
-                  active={swipeDx < 0 && conversationNav.hasPrev}
-                  amount={-swipeDx}
-                />
-                <SwipeEdgeHint
-                  side="right"
-                  active={swipeDx > 0 && conversationNav.hasNext}
-                  amount={swipeDx}
-                />
-              </>
-            ) : null}
             {/* Specular sheen — a soft light from the top edge, the liquid-glass
             highlight. Subtle + non-interactive. */}
             <div
@@ -3973,12 +3880,43 @@ export function ContinuousChatOverlay({
               className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-surface to-transparent"
             />
 
+            {/* Top-20% pull-down-to-restore grab zone (#13531). Only mounted
+                while maximized (full-bleed) — where the SheetGrabber isn't
+                rendered — so a downward pull starting in the top 20% animates
+                the edge-to-edge view back into the inset overlay. `z-10` sits
+                UNDER the header (`z-20`) but above the transcript so the
+                launcher button keeps its taps while real pulls still hit the zone;
+                this strip catches pulls on the surrounding empty header space.
+                Keyboard-operable (Enter/Space/ArrowDown restore) so the
+                gesture-only affordance stays WCAG 2.1.1 operable. */}
+            {fullBleed ? (
+              <button
+                {...maximizeRestoreBinding}
+                type="button"
+                data-testid="chat-maximize-restore-zone"
+                aria-label="drag down to exit full screen"
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" ||
+                    e.key === " " ||
+                    e.key === "ArrowDown"
+                  ) {
+                    e.preventDefault();
+                    restoreFromMaximizedGuarded();
+                  }
+                }}
+                className="pointer-events-auto absolute inset-x-0 top-0 z-[15] touch-none bg-transparent"
+                style={{ height: `${MAXIMIZE_RESTORE_ZONE_VH * 100}%` }}
+              />
+            ) : null}
+
             {/* Sheet header — shown at the HALF detent and up (not just FULL).
-              Left: Maximize (toggle edge-to-edge full-screen) + Clear (reset to
-              a fresh greeted thread, RotateCcw — it resets, it doesn't delete).
+              One infinite thread (#13531): no maximize/minimize (that's a
+              vertical pull now) and no clear/new-chat (the thread never resets).
               Right: one Launcher/Home launcher. Settings lives inside the
               Launcher grid, so the chat header stops acting like a second app
-              nav bar. */}
+              nav bar. The left slot is intentionally empty so the launcher
+              stays anchored right. */}
             {threadPresented ? (
               <motion.div
                 // Mounted while the sheet is open, or while an upward drag is
@@ -4010,24 +3948,9 @@ export function ContinuousChatOverlay({
                   "relative z-20 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
                 )}
               >
-                <div className="flex items-center gap-1.5">
-                  <HeaderButton
-                    icon={maximized ? Minimize2 : Maximize2}
-                    label={maximized ? "exit full screen" : "full screen"}
-                    active={maximized}
-                    onClick={toggleMaximize}
-                    testId="chat-full-maximize"
-                  />
-                  <HeaderButton
-                    icon={RotateCcw}
-                    label="clear conversation"
-                    // Clearing mid-onboarding would wipe the seeded first-run
-                    // choices and strand the flow — inert until it completes.
-                    disabled={firstRunOpen}
-                    onClick={() => clearConversation()}
-                    testId="chat-full-clear"
-                  />
-                </div>
+                {/* Empty left slot: keeps the launcher pinned to the right now
+                    that maximize/clear were removed (#13531). */}
+                <div className="flex items-center gap-1.5" />
                 {transcriptionMode ? (
                   <div
                     data-testid="chat-transcribing-badge"
@@ -4091,6 +4014,7 @@ export function ContinuousChatOverlay({
               >
                 <motion.div
                   id="continuous-thread"
+                  data-testid="chat-thread-scroll"
                   ref={threadRef}
                   role="log"
                   aria-label="conversation history"
@@ -4103,11 +4027,6 @@ export function ContinuousChatOverlay({
                       collapse();
                     }
                   }}
-                  // Horizontal-swipe navigation between conversations, sheet-open
-                  // only (#8929). Deferred capture keeps vertical scroll native.
-                  // Gated during onboarding so a swipe can't leave the seeded
-                  // first-run transcript.
-                  {...(sheetOpen && !firstRunOpen ? conversationSwipe : {})}
                   // `flex-1 min-h-0` (not `h-full`): as the single child of the
                   // flex-column thread above, the scroller fills the parent's
                   // BOUNDED height via the flex algorithm — a resolution that is
@@ -4151,18 +4070,9 @@ export function ContinuousChatOverlay({
                   until the thread overflows, then it scrolls. The ref measures
                   this content so onboarding can size the sheet to it (grow from
                   the bottom). */}
-                  <motion.div
+                  <div
                     ref={threadContentRef}
                     className="mt-auto flex flex-col pb-3 pt-1"
-                    // Follow-the-finger rail (#8929): the transcript content
-                    // tracks the horizontal swipe live (railX, px) and
-                    // spring-settles home on release. Transform-only (compositor,
-                    // no layout thrash); the scroll container + mask above stay
-                    // put so vertical scroll and the top fade are untouched. Under
-                    // reduced motion railX is never written (stays 0), so this is
-                    // an inert identity transform — the edge hint alone signals the
-                    // pending nav (the reduced-motion fallback).
-                    style={{ x: railX }}
                   >
                     {hasTopics
                       ? // Topic-grouped transcript: each cluster collapses via a
@@ -4224,8 +4134,22 @@ export function ContinuousChatOverlay({
                         />
                       ) : null}
                     </AnimatePresence>
-                  </motion.div>
+                  </div>
                 </motion.div>
+                {sheetOpen && hasThread && !threadAtBottom ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={jumpToLatest}
+                    aria-label="jump to latest message"
+                    data-testid="chat-jump-to-latest"
+                    className="absolute bottom-3 left-1/2 z-[3] flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full border border-border-strong bg-surface/95 px-3 text-xs font-medium text-txt shadow-lg transition-colors hover:bg-bg-hover"
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+                    <span>Jump to latest</span>
+                  </Button>
+                ) : null}
               </motion.div>
             ) : null}
             {/* Pending image attachments + any read error, just above the input. */}

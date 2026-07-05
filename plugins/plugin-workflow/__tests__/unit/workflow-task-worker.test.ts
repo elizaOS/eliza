@@ -35,7 +35,7 @@ async function makeRuntime(): Promise<TestRuntimeContext> {
     agentId: 'agent-test',
     character: { settings: {} },
     db,
-    getSetting: () => null,
+    getSetting: (key: string) => (key === 'WORKFLOW_SEED_DEFAULTS' ? false : null),
     getService: () => null,
     registerTaskWorker(worker: TaskWorker) {
       workers.set(worker.name, worker);

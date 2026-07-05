@@ -60,15 +60,33 @@ bun run --cwd packages/app test:e2e:walkthrough:ios
 ### iOS physical device
 
 ```bash
-bun run --cwd packages/app build:ios:local:device
-bun run --cwd packages/app install:ios:sideload
-bun run --cwd packages/app test:e2e:walkthrough:device
+bun run --cwd packages/app ios:device:deploy                 # build + sign + stage App.app FIRST
+bun run --cwd packages/app test:e2e:walkthrough:device       # detects the tethered iPhone + captures
 ```
 
-- **Prereqs (macOS only):** a tethered, provisioned iPhone + the sideload
-  toolchain (`preflight:ios:sideload`).
-- **Skip reason (recorded automatically):** "iOS physical-device capture
-  requires a tethered, provisioned device; none detected on this host".
+- **Prereqs (macOS only):** a tethered, provisioned iPhone in devicectl state
+  `connected`, and the signed staged app at
+  `ios/build/device-deploy-stage/App.app` produced by `ios:device:deploy`
+  (rebuild-before-capture rule — the lane refuses to capture without it). Target
+  a specific device with `--ios-device <id>` or `ELIZA_IOS_DEVICE_ID` (matched on
+  the devicectl identifier, hardware UDID, or device name).
+- **Detection (real, not hardcoded):** the lane runs
+  `xcrun devicectl list devices`, picks a `connected`/`available` device
+  (honoring the requested id), then invokes the proven on-device capture
+  pipeline `ios-device-capture.mjs --platform device --device <id> --skip-build
+  --app-path <staged>` (boot + walkthrough XCUITest suites; WKWebView has no CDP,
+  so the in-app narrative parity runs through the committed
+  AppUITests/BootCaptureUITests harness).
+- **Produces:** an XCUITest attachment dir under
+  `ios/build/boot-capture/walkthrough-ios-device-<stamp>/` (screenshots + AX
+  snapshots), recorded as the lane's `outputDir` in `device-matrix.json`.
+- **Skip reason (recorded automatically, derived from the actual devicectl
+  probe):** "host is not darwin"; "devicectl unavailable: <error>"; "no paired
+  devices"; "no connected iOS device on this host (devicectl listing: …)"; the
+  requested device "not present"/"is not connected (state: …)"; or "connected,
+  but no signed staged app at … — run `ios:device:deploy` first". Unavailable is
+  a non-fatal `n/a`; a device that is present but whose capture breaks records a
+  fatal `error`.
 
 ### Android emulator
 

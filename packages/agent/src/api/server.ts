@@ -38,9 +38,7 @@ import {
   ServiceType,
   sendJson,
   sendJsonError,
-  stringToUuid,
   tryHandleTrajectoryReadRoutes,
-  type UUID,
 } from "@elizaos/core";
 import type {
   AppManagerLike,
@@ -48,6 +46,7 @@ import type {
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
 import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
+import { readAliasedEnv } from "@elizaos/shared";
 import {
   getStylePresets,
   normalizeCharacterLanguage,
@@ -384,6 +383,7 @@ import {
 import { resolveAbsentPluginRouteStub } from "./absent-plugin-route-stubs.ts";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
 import { persistConfigEnv } from "./config-env.ts";
+import { restoreConversationsFromDb as restoreConversationsFromDbImpl } from "./conversation-restore.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { createDeliveryDedupeState } from "./delivery-dedupe.ts";
 import { computeCanRespond } from "./health-routes.ts";
@@ -399,6 +399,10 @@ import {
   buildPluginDiagnosticEntry,
   resolveWalletDiagnosticStatus,
 } from "./plugin-diagnostic.ts";
+import {
+  handleRuntimeModePreDispatch,
+  handleRuntimeModeRemoteForward,
+} from "./runtime-mode/pre-dispatch.ts";
 import { createRuntimeReadyGate } from "./runtime-ready-gate.ts";
 import { handleRuntimeSwitchRoutes } from "./runtime-switch-routes.ts";
 import {
@@ -412,7 +416,6 @@ import {
 import { routeAutonomyTextToUser as routeProactiveText } from "./server-helpers-swarm.ts";
 import {
   createConnectorHealthMonitor,
-  extractConversationMetadataFromRoom,
   handleAccountsRoutes,
   handleAgentAdminRoutes,
   handleAgentLifecycleRoutes,
@@ -1874,6 +1877,19 @@ async function handleRequest(
     if (serveMediaFile(req, res, pathname)) return;
   }
 
+  // ── Runtime-mode visibility gate ────────────────────────────────────────
+  // Enforced here, in the server every host shares, so the bare agent
+  // (`bun run start`) honors the same mode contract as the app-core wrapper:
+  // routes outside the active runtime mode return 404 before auth runs
+  // (hidden, not probeable). OPTIONS is exempt so CORS preflight keeps its
+  // unconditional 204 below.
+  if (
+    method !== "OPTIONS" &&
+    (await handleRuntimeModePreDispatch(req, res, state.runtime))
+  ) {
+    return;
+  }
+
   if (
     method !== "OPTIONS" &&
     isAuthProtectedPath &&
@@ -1889,6 +1905,17 @@ async function handleRequest(
     !isBoundaryRoleAuthorized(req, method, pathname)
   ) {
     json(res, { error: "Unauthorized" }, 401);
+    return;
+  }
+
+  // Remote-mode cloud mutations are forwarded only after the request passes
+  // the normal API auth gate; the forwarder attaches the controller's target
+  // token, so pre-auth forwarding would let an unauthenticated caller mutate
+  // the controlled target.
+  if (
+    method !== "OPTIONS" &&
+    (await handleRuntimeModeRemoteForward(req, res))
+  ) {
     return;
   }
 
@@ -3588,7 +3615,7 @@ export async function startApiServer(opts?: {
   // of 2138, so this change is transparent for non-desktop users.
   const port =
     opts?.port ??
-    (process.env.ELIZA_API_PORT
+    (readAliasedEnv("ELIZA_API_PORT")
       ? resolveDesktopApiPort(process.env)
       : resolveServerOnlyPort(process.env));
   const host = resolveApiBindHost(process.env);
@@ -4036,7 +4063,7 @@ export async function startApiServer(opts?: {
   const requestTimeoutEnvRaw =
     process.env.ELIZA_HTTP_REQUEST_TIMEOUT_MS?.trim() ?? "";
   const chatTimeoutEnvRaw =
-    process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS?.trim() ?? "";
+    readAliasedEnv("ELIZA_CHAT_GENERATION_TIMEOUT_MS") ?? "";
   const requestTimeoutMs = (() => {
     const explicit = Number.parseInt(requestTimeoutEnvRaw, 10);
     if (Number.isFinite(explicit) && explicit > 0) return explicit;
@@ -4175,7 +4202,7 @@ export async function startApiServer(opts?: {
   // ── Deferred startup work (non-blocking) ────────────────────────────────
   // Keep API startup fast: listen first, then warm optional subsystems.
   const startDeferredStartupWork = async (): Promise<void> => {
-    void registerBuiltinViews().catch((err) => {
+    void registerBuiltinViews(state.runtime).catch((err) => {
       logger.warn(
         `[eliza-api] Built-in view registration failed after listen: ${
           err instanceof Error ? err.message : String(err)
@@ -5049,6 +5076,19 @@ export async function startApiServer(opts?: {
     }
   };
 
+  // Give the views module a process-level broadcaster so the view-scoped action
+  // handler (which fires from the planner loop, outside any HTTP request) can
+  // drive a mounted shell through the same `view:interact` path the route uses.
+  void import("./views-routes.ts")
+    .then(({ setViewsBroadcastWs }) => {
+      setViewsBroadcastWs(state.broadcastWs ?? null);
+    })
+    .catch((err) => {
+      logger.error(
+        `[eliza-api] failed to wire views broadcaster: ${err instanceof Error ? err.message : err}`,
+      );
+    });
+
   state.broadcastWsToClientId = (clientId: string, data: object) => {
     const message = JSON.stringify(data);
     let delivered = 0;
@@ -5105,72 +5145,19 @@ export async function startApiServer(opts?: {
   const statusInterval = setInterval(broadcastStatus, 5000);
 
   /**
-   * Restore the in-memory conversation list from the database.
-   * Web-chat rooms live in a deterministic world; we scan it for rooms
-   * whose channelId starts with "web-conv-" and reconstruct the metadata.
+   * Restore the in-memory conversation list from the database. The scan/rebuild
+   * logic lives in `./conversation-restore.ts` so the relaunch round-trip can be
+   * driven against a real DB in tests (#13689); here we just bind it to this
+   * server's live `state` + structured log sink.
    */
   const restoreConversationsFromDb = async (
     rt: AgentRuntime,
   ): Promise<void> => {
-    try {
-      const agentName = rt.character.name ?? "Eliza";
-      const worldId = stringToUuid(`${agentName}-web-chat-world`);
-      const rooms = await rt.getRoomsByWorld(worldId);
-      if (!rooms.length) return;
-
-      let restored = 0;
-      for (const room of rooms) {
-        // channelId is "web-conv-{uuid}" — extract the conversation id
-        const channelId =
-          typeof room.channelId === "string" ? room.channelId : "";
-        if (!channelId.startsWith("web-conv-")) continue;
-        const convId = channelId.replace("web-conv-", "");
-        if (!convId || state.conversations.has(convId)) continue;
-        if (state.deletedConversationIds.has(convId)) continue;
-
-        // Peek at the latest message to get a timestamp
-        let updatedAt = new Date().toISOString();
-        try {
-          const msgs = await rt.getMemories({
-            roomId: room.id as UUID,
-            tableName: "messages",
-            limit: 1,
-          });
-          if (msgs.length > 0 && msgs[0].createdAt) {
-            updatedAt = new Date(msgs[0].createdAt).toISOString();
-          }
-        } catch {
-          // non-fatal — use current time
-        }
-
-        const conversationMetadata = await extractConversationMetadataFromRoom(
-          room,
-          convId,
-        );
-
-        state.conversations.set(convId, {
-          id: convId,
-          title: room.name || "Chat",
-          roomId: room.id as UUID,
-          ...(conversationMetadata ? { metadata: conversationMetadata } : {}),
-          createdAt: updatedAt,
-          updatedAt,
-        });
-        restored++;
-      }
-      if (restored > 0) {
-        addLog(
-          "info",
-          `Restored ${restored} conversation(s) from database`,
-          "system",
-          ["system"],
-        );
-      }
-    } catch (err) {
-      logger.warn(
-        `[eliza-api] Failed to restore conversations from DB: ${err instanceof Error ? err.message : err}`,
-      );
-    }
+    await restoreConversationsFromDbImpl(rt, {
+      conversations: state.conversations,
+      deletedConversationIds: state.deletedConversationIds,
+      log: (message) => addLog("info", message, "system", ["system"]),
+    });
   };
 
   const beginConversationRestore = (rt: AgentRuntime): Promise<void> => {

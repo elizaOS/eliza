@@ -12,7 +12,8 @@
  *  3. Verifies the new access token (same path as
  *     `/api/auth/steward-session`).
  *  4. Sets new HttpOnly cookies (`steward-token`, `steward-refresh-token`)
- *     and the non-HttpOnly `steward-authed=1` marker.
+ *     and the non-HttpOnly `steward-authed=1` marker, using environment-
+ *     scoped names outside production.
  *  5. Returns `{ ok, expiresAt }`. Trusted first-party browser origins also
  *     receive the short-lived access token so the SPA can hydrate its
  *     localStorage mirror while route auth remains synchronous.
@@ -24,10 +25,7 @@
  * to `/api/auth/steward-session` continue to work during the rollout window.
  */
 
-import {
-  STEWARD_AUTHED_COOKIE,
-  type StewardSessionErrorCode,
-} from "@elizaos/shared/steward-session-client";
+import type { StewardSessionErrorCode } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
@@ -37,13 +35,15 @@ import {
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
+import {
+  LEGACY_STEWARD_COOKIES,
+  stewardCookieNames,
+} from "@/lib/auth/steward-cookies";
 import { signStewardMutatingRequest } from "@/lib/steward/sign";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
-const STEWARD_TOKEN_COOKIE = "steward-token";
-const STEWARD_REFRESH_TOKEN_COOKIE = "steward-refresh-token";
 const BEARER_REFRESH_TTL_SECONDS = 60 * 60;
 
 // ─── CSRF origin allowlist (must stay in lockstep with steward-session) ───
@@ -324,7 +324,15 @@ app.post("/", async (c) => {
     return c.json(errorBody("Forbidden", "forbidden_origin"), 403);
   }
 
-  const refreshToken = getCookie(c, STEWARD_REFRESH_TOKEN_COOKIE);
+  const cookieNames = stewardCookieNames(c.env.ENVIRONMENT);
+  // Read only THIS environment's own refresh cookie. The legacy unsuffixed slot
+  // lives on the shared parent zone (Domain=elizacloud.ai) where it is
+  // production's LIVE refresh token. A non-prod refresh must never read-and-send
+  // it to Steward (refresh rotates the token, invalidating prod's copy) nor
+  // delete it — that is exactly the deterministic cross-env sign-out of #13728.
+  // Pre-rename non-prod sessions simply re-login once as their legacy cookie
+  // expires naturally; prod is unaffected (names are identical there).
+  const refreshToken = getCookie(c, cookieNames.refreshToken);
   if (!refreshToken) {
     logRefresh("missing-refresh-cookie");
     return c.json(errorBody("Refresh token required", "missing_token"), 401);
@@ -379,9 +387,10 @@ app.post("/", async (c) => {
     if (refresh.status === 401) {
       const domain = cookieDomainForHost(c.req.header("host"));
       const opts = domain ? { path: "/", domain } : { path: "/" };
-      deleteCookie(c, STEWARD_TOKEN_COOKIE, opts);
-      deleteCookie(c, STEWARD_REFRESH_TOKEN_COOKIE, opts);
-      deleteCookie(c, STEWARD_AUTHED_COOKIE, opts);
+      deleteCookie(c, cookieNames.token, opts);
+      deleteCookie(c, cookieNames.refreshToken, opts);
+      deleteCookie(c, cookieNames.authed, opts);
+      deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, opts);
       return c.json(errorBody("Refresh token rejected", "invalid_token"), 401);
     }
     return c.json(
@@ -404,7 +413,7 @@ app.post("/", async (c) => {
   const secure = c.env.NODE_ENV === "production";
   const domain = cookieDomainForHost(c.req.header("host"));
 
-  setCookie(c, STEWARD_TOKEN_COOKIE, token, {
+  setCookie(c, cookieNames.token, token, {
     httpOnly: true,
     secure,
     sameSite: "Lax",
@@ -414,7 +423,7 @@ app.post("/", async (c) => {
   });
 
   if (typeof newRefreshToken === "string" && newRefreshToken.length > 0) {
-    setCookie(c, STEWARD_REFRESH_TOKEN_COOKIE, newRefreshToken, {
+    setCookie(c, cookieNames.refreshToken, newRefreshToken, {
       httpOnly: true,
       secure,
       sameSite: "Lax",
@@ -424,7 +433,7 @@ app.post("/", async (c) => {
     });
   }
 
-  setCookie(c, STEWARD_AUTHED_COOKIE, "1", {
+  setCookie(c, cookieNames.authed, "1", {
     httpOnly: false,
     secure,
     sameSite: "Lax",

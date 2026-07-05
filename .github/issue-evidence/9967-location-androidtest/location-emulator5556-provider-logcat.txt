@@ -1,5 +1,0 @@
-06-30 13:55:54.270  6914  6933 I TestRunner: started: readProviderStatus_matchesRealLocationManagerProviders(ai.eliza.plugins.location.LocationFixReaderDeviceStateInstrumentedTest)
-06-30 13:55:54.283  6914  6933 I GrantPermissionCallable: Permission: android.permission.ACCESS_FINE_LOCATION is already granted!
-06-30 13:55:54.284  6914  6933 I GrantPermissionCallable: Permission: android.permission.ACCESS_COARSE_LOCATION is already granted!
-06-30 13:55:54.295   957  1106 D BtGatt.ScanManager: uid 10128 isForeground true scanMode -1
-06-30 13:55:54.297  6914  6933 I TestRunner: finished: readProviderStatus_matchesRealLocationManagerProviders(ai.eliza.plugins.location.LocationFixReaderDeviceStateInstrumentedTest)

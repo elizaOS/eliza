@@ -23,6 +23,7 @@ import {
   type Memory,
   type MessageConnectorChatContext,
   type MessageConnectorTarget,
+  resolveAliasedEnvValue,
   Service,
   type TargetInfo,
   type UUID,
@@ -242,7 +243,7 @@ const ROOM_KEY_NONCE_BYTES = 12;
  * room-key files land next to the rest of the agent's persistent state.
  */
 function resolveStateDir(): string {
-  return process.env.ELIZA_STATE_DIR || join(homedir(), ".local/state/eliza");
+  return resolveAliasedEnvValue("ELIZA_STATE_DIR") || join(homedir(), ".local/state/eliza");
 }
 
 /**

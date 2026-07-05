@@ -9,7 +9,7 @@
 set -euo pipefail
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
-HOOK_SRC="${REPO_ROOT}/git-hooks/pre-commit-gitleaks.sh"
+HOOK_SRC="${REPO_ROOT}/scripts/git-hooks/pre-commit-gitleaks.sh"
 HOOK_DST="${REPO_ROOT}/.git/hooks/pre-commit"
 MARKER="# >>> elizaos gitleaks pre-commit >>>"
 END_MARKER="# <<< elizaos gitleaks pre-commit <<<"

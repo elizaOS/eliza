@@ -543,6 +543,48 @@ describe("DesktopManager main window controls", () => {
     );
   });
 
+  it("presses a registered shortcut through the test seam", async () => {
+    const manager = new DesktopManager();
+    const sendToWebview = vi.fn();
+    manager.setSendToWebview(sendToWebview);
+    electrobunMock.GlobalShortcut.register.mockReturnValueOnce(true);
+
+    await expect(
+      manager.registerShortcut({
+        id: "chat-overlay",
+        accelerator: "CommandOrControl+Shift+C",
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(manager.pressRegisteredShortcut({ id: "chat-overlay" })).toBe(true);
+    expect(manager.pressRegisteredShortcut({ id: "missing-shortcut" })).toBe(
+      false,
+    );
+    expect(sendToWebview).toHaveBeenCalledWith("desktopShortcutPressed", {
+      id: "chat-overlay",
+      accelerator: "CommandOrControl+Shift+C",
+    });
+  });
+
+  it("surfaces registered shortcuts in shell diagnostics", async () => {
+    const manager = new DesktopManager();
+    electrobunMock.GlobalShortcut.register.mockReturnValueOnce(true);
+
+    await manager.registerShortcut({
+      id: "command-palette",
+      accelerator: "CommandOrControl+K",
+    });
+
+    await expect(manager.getShellDiagnosticsState()).resolves.toMatchObject({
+      shortcuts: [
+        {
+          id: "command-palette",
+          accelerator: "CommandOrControl+K",
+        },
+      ],
+    });
+  });
+
   it("opens tray popover as an app renderer with preload, rpc, partition, and API injection", async () => {
     const manager = new DesktopManager();
     const rpc = { request: {}, send: {}, setTransport: vi.fn() };
@@ -588,9 +630,41 @@ describe("DesktopManager main window controls", () => {
     const seen: unknown[] = [];
     manager.forEachTrayPopoverWindow((window) => seen.push(window));
     expect(seen).toEqual([win]);
+    expect(manager.getTrayPopoverDiagnostics()).toEqual({
+      configured: true,
+      windowPresent: true,
+      visible: true,
+      lastAnchorBounds: {
+        x: 100 + 900 - 360 - 8,
+        y: 50 + 8,
+        width: 360,
+        height: 480,
+      },
+    });
 
     win.emitWebview("dom-ready");
     expect(injectApiBase).toHaveBeenCalledWith(win);
+
+    manager.hideTrayPopover();
+    expect(manager.getTrayPopoverDiagnostics()).toMatchObject({
+      configured: true,
+      windowPresent: true,
+      visible: false,
+      lastAnchorBounds: {
+        x: 100 + 900 - 360 - 8,
+        y: 50 + 8,
+        width: 360,
+        height: 480,
+      },
+    });
+
+    manager.closeTrayPopover();
+    expect(manager.getTrayPopoverDiagnostics()).toMatchObject({
+      configured: true,
+      windowPresent: false,
+      visible: false,
+      lastAnchorBounds: null,
+    });
   });
 
   it("awaits tray teardown during dispose", async () => {
@@ -609,6 +683,60 @@ describe("DesktopManager main window controls", () => {
       expect.any(Function),
     );
     expect(tray.remove).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("DesktopManager notifications", () => {
+  beforeEach(() => {
+    resetDesktopManagerForTesting();
+    electrobunMock.reset();
+  });
+
+  afterEach(() => {
+    resetDesktopManagerForTesting();
+  });
+
+  it("maps notification options to Utils.showNotification and returns monotonic ids", async () => {
+    const manager = new DesktopManager();
+
+    await expect(
+      manager.showNotification({
+        title: "Build finished",
+        body: "Desktop build completed.",
+        urgency: "critical",
+        silent: false,
+      }),
+    ).resolves.toEqual({ id: "notification_1" });
+    await expect(
+      manager.showNotification({
+        title: "Quiet sync",
+        body: "Background sync completed.",
+        urgency: "low",
+        silent: true,
+      }),
+    ).resolves.toEqual({ id: "notification_2" });
+
+    expect(electrobunMock.Utils.showNotification).toHaveBeenNthCalledWith(1, {
+      title: "Build finished",
+      body: "Desktop build completed.",
+      subtitle: undefined,
+      silent: false,
+    });
+    expect(electrobunMock.Utils.showNotification).toHaveBeenNthCalledWith(2, {
+      title: "Quiet sync",
+      body: "Background sync completed.",
+      subtitle: undefined,
+      silent: true,
+    });
+  });
+
+  it("documents closeNotification as an Electrobun no-op", async () => {
+    const manager = new DesktopManager();
+
+    await expect(
+      manager.closeNotification({ id: "notification_1" }),
+    ).resolves.toBeUndefined();
+    expect(electrobunMock.Utils.showNotification).not.toHaveBeenCalled();
   });
 });
 

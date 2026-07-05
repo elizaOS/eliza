@@ -1,11 +1,10 @@
 /**
  * Drizzle-backed AccountPoolDeps (#11332).
  *
- * The self-host AccountPool brain (@elizaos/app-core/account-pool) is
- * dependency-injected: give it `readAccounts` / `writeAccount` /
- * `deleteAccount` and every selection strategy, health rule, and affinity
- * behavior works unchanged. This implements those deps against the
- * `pooled_credentials` table for ONE organization:
+ * The cloud account-pool brain is dependency-injected: give it `readAccounts`
+ * / `writeAccount` / `deleteAccount` and every selection strategy, health
+ * rule, and affinity behavior works against the `pooled_credentials` table for
+ * ONE organization:
  *
  * - `readAccounts` is synchronous by contract (the self-host impl reads a
  *   local JSON file), so this deps object serves an in-memory snapshot that
@@ -23,7 +22,6 @@
  * metadata records; callers resolve ciphertext via SecretsService at use time.
  */
 
-import type { AccountPoolDeps, PoolProviderId } from "@elizaos/app-core/account-pool";
 import type { LinkedAccountConfig, LinkedAccountHealth } from "@elizaos/contracts";
 import {
   type PooledCredential,
@@ -31,6 +29,7 @@ import {
 } from "../../../db/repositories/pooled-credentials";
 import { logger } from "../../utils/logger";
 import { secretsService } from "../secrets/secrets";
+import type { AccountPoolDeps, PoolProviderId } from "./account-pool-contract";
 
 function poolRecordKey(providerId: string, accountId: string): string {
   return `${providerId}:${accountId}`;
@@ -132,8 +131,10 @@ export class DrizzleAccountPoolDeps implements AccountPoolDeps {
         source: "team-credential-pool",
       });
     } catch (err) {
-      // The pool row is already gone (the credential can never be selected
-      // again); an orphaned vault secret is a deletion concern, not a failure.
+      // error-policy:J6 best-effort teardown — the authoritative pool-row
+      // delete already succeeded, so the credential can never be selected
+      // again; an orphaned vault secret is a GC concern (warned, not fatal),
+      // not a failure of the removal. A DB delete failure above still throws.
       logger.warn("[DrizzleAccountPoolDeps] secret cleanup failed after credential delete", {
         organizationId: this.organizationId,
         credentialId: accountId,

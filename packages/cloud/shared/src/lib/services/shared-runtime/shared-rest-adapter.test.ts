@@ -18,6 +18,7 @@
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
+import { InsufficientCreditsError } from "../../api/errors";
 import * as realElizaSandbox from "../eliza-sandbox";
 
 const bridge = mock();
@@ -240,5 +241,23 @@ describe("shared-rest-adapter — messages", () => {
     await expect(sharedRestMessageSend(AGENT, ORG, AGENT, "hi", "Eliza")).rejects.toThrow(
       "Sandbox is not running",
     );
+  });
+
+  test("POST surfaces a bridge credit rejection as the TYPED 402 error, not a plain Error", async () => {
+    bridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "x",
+      error: {
+        code: realElizaSandbox.BRIDGE_INSUFFICIENT_CREDITS_CODE,
+        message: "Insufficient credits. Required: $0.0500, Available: $0.0000",
+      },
+    });
+    const rejection = sharedRestMessageSend(AGENT, ORG, AGENT, "hi", "Eliza");
+    await expect(rejection).rejects.toBeInstanceOf(InsufficientCreditsError);
+    await expect(rejection).rejects.toMatchObject({
+      code: "insufficient_credits",
+      status: 402,
+      message: "Insufficient credits. Required: $0.0500, Available: $0.0000",
+    });
   });
 });

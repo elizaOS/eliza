@@ -369,6 +369,11 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
           strategy,
           ...(opts?.sessionKey ? { sessionKey: opts.sessionKey } : {}),
           ...(opts?.exclude ? { exclude: opts.exclude } : {}),
+          // Follow-up pin: a continuing session restricts the pool to its
+          // spawn-time account so an expired session-affinity can't strategy-
+          // drift the subprocess onto a sibling (billing/health stay keyed to
+          // the account actually serving). Null when the pin is unselectable.
+          ...(opts?.accountIds ? { accountIds: opts.accountIds } : {}),
         });
         if (!account) continue;
         // A prior Codex session may have rotated the one-time refresh token

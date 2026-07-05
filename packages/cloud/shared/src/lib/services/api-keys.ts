@@ -5,8 +5,11 @@
  */
 
 import crypto from "crypto";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { dbWrite } from "../../db/client";
 import { encryptApiKey } from "../../db/crypto/api-keys";
 import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories";
+import { apiKeys } from "../../db/schemas/api-keys";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { API_KEY_PREFIX_LENGTH } from "../pricing";
@@ -237,28 +240,119 @@ export class ApiKeysService {
     apiKey: ApiKey;
     plainKey: string;
   }> {
+    const { apiKey, plainKey } = await this.buildApiKeyInsert(data);
+    const created = await apiKeysRepository.create(apiKey);
+
+    return {
+      apiKey: created,
+      plainKey,
+    };
+  }
+
+  private async buildApiKeyInsert(
+    data: Omit<
+      NewApiKey,
+      | "key_hash"
+      | "key_prefix"
+      | "key_ciphertext"
+      | "key_nonce"
+      | "key_auth_tag"
+      | "key_kms_key_id"
+      | "key_kms_key_version"
+    >,
+  ): Promise<{ apiKey: NewApiKey; plainKey: string }> {
     const { key, hash, prefix } = this.generateApiKey();
 
     // Pre-allocate the row id so the encryption AAD can bind to it.
     const rowId = crypto.randomUUID();
     const encrypted = await encryptApiKey(data.organization_id, rowId, key);
 
-    const apiKey = await apiKeysRepository.create({
-      ...data,
-      id: rowId,
-      key_hash: hash,
-      key_prefix: prefix,
-      key_ciphertext: encrypted.ciphertext,
-      key_nonce: encrypted.nonce,
-      key_auth_tag: encrypted.auth_tag,
-      key_kms_key_id: encrypted.kms_key_id,
-      key_kms_key_version: encrypted.kms_key_version,
-    });
-
     return {
-      apiKey,
+      apiKey: {
+        ...data,
+        id: rowId,
+        key_hash: hash,
+        key_prefix: prefix,
+        key_ciphertext: encrypted.ciphertext,
+        key_nonce: encrypted.nonce,
+        key_auth_tag: encrypted.auth_tag,
+        key_kms_key_id: encrypted.kms_key_id,
+        key_kms_key_version: encrypted.kms_key_version,
+      },
       plainKey: key,
     };
+  }
+
+  /**
+   * Required default-key provisioning for flows that must not report success
+   * until the user has a usable personal key in the target organization.
+   * The transaction takes a per-user/org advisory lock and re-checks the
+   * primary connection before inserting, so concurrent accept/sync paths cannot
+   * mint duplicate default keys.
+   */
+  async provisionDefaultApiKey(userId: string, organizationId: string): Promise<void> {
+    if (!userId?.trim() || !organizationId?.trim()) {
+      throw new Error("Invalid userId or organizationId for default API key provisioning");
+    }
+
+    await dbWrite.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`default_api_key:${userId}:${organizationId}`}))`,
+      );
+
+      const now = new Date();
+      const existingKeys = await tx
+        .select()
+        .from(apiKeys)
+        .where(
+          and(
+            eq(apiKeys.user_id, userId),
+            eq(apiKeys.organization_id, organizationId),
+            eq(apiKeys.name, "Default API Key"),
+            eq(apiKeys.is_active, true),
+            isNull(apiKeys.deleted_at),
+          ),
+        );
+      if (existingKeys.some((key) => !key.expires_at || key.expires_at > now)) {
+        return;
+      }
+
+      const { apiKey } = await this.buildApiKeyInsert({
+        user_id: userId,
+        organization_id: organizationId,
+        name: "Default API Key",
+        is_active: true,
+      });
+      await tx.insert(apiKeys).values(apiKey);
+    });
+  }
+
+  /**
+   * Best-effort default-key self-heal for session resolution. Provisioning
+   * surfaces call `provisionDefaultApiKey` so they fail honestly; this wrapper
+   * keeps older session-cache-miss repair observable without taking down auth.
+   */
+  async ensureUserHasApiKey(userId: string, organizationId: string): Promise<void> {
+    if (!userId?.trim() || !organizationId?.trim()) {
+      logger.warn("[ApiKeysService] Invalid userId or organizationId, skipping default key", {
+        userId,
+        organizationId,
+      });
+      return;
+    }
+
+    try {
+      await this.provisionDefaultApiKey(userId, organizationId);
+    } catch (error) {
+      // error-policy:J7 diagnostics-must-not-kill-the-loop: this session heal
+      // is a retry path for older broken accounts; signup/invite call the strict
+      // provisioner and fail before reporting success.
+      logger.error("[ApiKeysService] Failed to provision default API key", {
+        userId,
+        organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   async update(id: string, data: Partial<NewApiKey>): Promise<ApiKey | undefined> {
@@ -293,6 +387,19 @@ export class ApiKeysService {
     }
 
     await apiKeysRepository.deactivateUserKeysByName(userId, name);
+  }
+
+  async deactivateByUserAndOrganization(userId: string, organizationId: string): Promise<void> {
+    const existingKeys = await apiKeysRepository.listByUser(userId);
+    const keysInOrganization = existingKeys.filter(
+      (key) => key.organization_id === organizationId && key.is_active,
+    );
+
+    for (const key of keysInOrganization) {
+      await this.invalidateCache(key.key_hash);
+    }
+
+    await apiKeysRepository.deactivateByUserAndOrganization(userId, organizationId);
   }
 
   // Sandbox-scoped keys are named "agent-sandbox:<id>". Listing/revoking by that

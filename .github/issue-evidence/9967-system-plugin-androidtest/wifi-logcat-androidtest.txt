@@ -1,5 +1,0 @@
---------- beginning of main
-03-11 02:22:45.841 I/TestRunner( 3000): run started: 1 tests
-03-11 02:22:45.841 I/TestRunner( 3000): started: readWifiState_reflectsLiveRadioState(ai.eliza.plugins.wifi.WiFiStateReaderInstrumentedTest)
-03-11 02:22:45.848 I/TestRunner( 3000): finished: readWifiState_reflectsLiveRadioState(ai.eliza.plugins.wifi.WiFiStateReaderInstrumentedTest)
-03-11 02:22:45.850 I/TestRunner( 3000): run finished: 1 tests, 0 failed, 0 ignored

@@ -9,6 +9,7 @@
  * sessions.
  */
 import {
+  readAliasedEnv,
   resolveApiBindHost,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
@@ -68,7 +69,7 @@ const editorTheme: EditorTheme = {
 
 function resolveDefaultApiBaseUrl(): string {
   const host = resolveApiBindHost(process.env);
-  const port = process.env.ELIZA_API_PORT
+  const port = readAliasedEnv("ELIZA_API_PORT")
     ? resolveDesktopApiPort(process.env)
     : resolveServerOnlyPort(process.env);
   const displayHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;

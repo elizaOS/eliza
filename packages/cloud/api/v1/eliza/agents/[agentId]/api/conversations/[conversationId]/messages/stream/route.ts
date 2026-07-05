@@ -1,9 +1,11 @@
 // Handles v1 cloud API v1 eliza agents agentid api conversations conversationid messages stream route traffic with route-local auth expectations.
 import { Hono } from "hono";
+import { InsufficientCreditsError } from "@/lib/api/errors";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
@@ -84,11 +86,36 @@ app.post("/", async (c) => {
     params: { text, roomId: conversationId },
   };
 
-  const upstream = await elizaSandboxService.bridgeStream(
-    r.agentId,
-    r.orgId,
-    rpc,
-  );
+  let upstream: Response | null;
+  try {
+    upstream = await elizaSandboxService.bridgeStream(r.agentId, r.orgId, rpc);
+  } catch (error) {
+    // error-policy:J1 route boundary translates pre-stream bridge failures to HTTP responses.
+    // Insufficient credits is rejected before any SSE bytes exist, so answer
+    // with the same canonical 402 as the non-stream send — not an SSE error
+    // frame inside a 200 stream, which the app cannot distinguish from a
+    // transient turn failure. Permanent until the org adds credits.
+    if (error instanceof InsufficientCreditsError) {
+      logger.warn(
+        "[shared-runtime REST] stream send rejected: insufficient credits",
+        { agentId: r.agentId },
+      );
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: error.message,
+            code: "insufficient_credits",
+            retryable: false,
+          },
+          { status: 402 },
+        ),
+        CORS_METHODS,
+        origin,
+      );
+    }
+    throw error;
+  }
   if (!upstream?.body) {
     // No reply produced (or the turn errored without an SSE body): emit an SSE
     // error frame the client's stream reader understands, instead of a 404 that

@@ -1,26 +1,24 @@
 /**
- * TaskWidget — minimal inline chat widget for an orchestrator task thread.
+ * TaskWidget — the inline `[TASK:<threadId>]<title>[/TASK]` chat card, upgraded
+ * to a live orchestrator pipeline (issue #13536 §(b),(c)).
  *
- * Rendered by `MessageContent` when an assistant message contains a
- * `[TASK:<threadId>]<title>[/TASK]` block (see `../message-task-parser.ts`).
+ * Rendered by `MessageContent` from the `[TASK]` marker (see
+ * `../message-task-parser.ts`). The collapsed header shows the task's title +
+ * status + agent count; expanding it reveals the running sub-agents nested
+ * under it, each with its live current step, tool-call rows, and plan checklist
+ * — the Codex/Claude-Code "child session" model.
  *
- * Anatomy: one compact card (~64px). Title line on top, structured status
- * line below — status dot + label, agents (active/total), relative last
- * activity, token total. The whole card is a button that navigates to
- * `/orchestrator?taskId=<threadId>` so the workbench can mount its full
- * inspector. Action buttons live in the workbench, not here — this widget
- * exists to surface state, not to compete with the workbench's
- * view-dependent action bar.
- *
- * Live updates are by short polling (5s). When the task is terminal
- * (done/failed/archived) the poll stops and the row freezes. A deleted
- * task (404) renders as muted "Task removed."; we never throw into the
- * chat surface. After a run of consecutive fetch errors (e.g. a stale
- * auth token) polling also stops so we don't hammer the endpoint.
+ * Updates are **stream-driven**: the body reads `useTaskActivity(threadId)`,
+ * which regroups the `pty-session-event` WS feed into this task's subtree. There
+ * is NO poll. A single hydrate fetch on mount fills the durable header fields
+ * (title/status/token total) that predate the current WS session; everything
+ * after arrives on the stream. A deleted task (404) renders "Task removed.";
+ * we never throw into the chat surface.
  */
 
 import {
   Archive,
+  ChevronDown,
   Circle,
   CircleAlert,
   CircleCheck,
@@ -35,32 +33,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api/client";
 import type { CodingAgentTaskThreadDetail } from "../../../api/client-types-cloud";
 import { dispatchNavigateViewEvent } from "../../../events";
-import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { useTaskActivity } from "../../../state/task-activity-store";
 import { Button } from "../../ui/button";
 import { findTaskRegions, type TaskRegion } from "../message-task-parser";
 import { registerInlineWidget } from "./inline-registry";
-
-/**
- * Poll cadence, deliberately matched to the workbench's `POLL_INTERVAL_MS`.
- * The two constants are independent (different packages) but kept equal so a
- * task opened from a chat widget and from the workbench refresh in lockstep.
- */
-const POLL_INTERVAL_MS = 5_000;
-/**
- * After this many CONSECUTIVE fetch errors we stop polling. A 401/403 from a
- * stale auth token would otherwise hammer the endpoint every 5 seconds for
- * the lifetime of the chat. The widget freezes on the last good state; the
- * user can refresh to retry.
- */
-const MAX_CONSECUTIVE_ERRORS = 3;
+import { PlanChecklist, SubagentBlock } from "./task-pipeline";
 
 type Status = CodingAgentTaskThreadDetail["status"];
-
-const TERMINAL_STATUSES: ReadonlySet<Status> = new Set<Status>([
-  "done",
-  "failed",
-  "archived",
-]);
 
 const STATUS_ICON: Record<Status, LucideIcon> = {
   open: Circle,
@@ -104,7 +83,7 @@ const STATUS_LABEL: Record<Status, string> = {
 };
 
 function formatRelative(ts: number | null | undefined): string | null {
-  if (ts == null) return null;
+  if (ts == null || ts <= 0) return null;
   const delta = Math.max(0, Math.floor((Date.now() - ts) / 1000));
   if (delta < 5) return "just now";
   if (delta < 60) return `${delta}s ago`;
@@ -132,59 +111,36 @@ export function TaskWidget({ threadId, fallbackTitle }: TaskWidgetProps) {
     null,
   );
   const [removed, setRemoved] = useState(false);
-  const [pollingStopped, setPollingStopped] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const cancelledRef = useRef(false);
-  const errorCountRef = useRef(0);
+  const activity = useTaskActivity(threadId);
 
-  const fetchDetail = useCallback(async () => {
-    try {
-      const next = await client.getCodingAgentTaskThread(threadId);
-      if (cancelledRef.current) return;
-      errorCountRef.current = 0;
-      if (next === null) {
-        setRemoved(true);
-        return;
-      }
-      setDetail(next);
-    } catch {
-      // error-policy:J4 silent for transient poll failures, but count
-      // consecutive errors so a
-      // 401/403 stale-token loop can't poll the endpoint forever. After
-      // MAX_CONSECUTIVE_ERRORS we freeze on the last good state.
-      if (cancelledRef.current) return;
-      errorCountRef.current += 1;
-      if (errorCountRef.current >= MAX_CONSECUTIVE_ERRORS) {
-        setPollingStopped(true);
-      }
-    }
+  // Single durable hydrate — NOT a poll. Fills header fields that predate the
+  // current WS session (title/status/token total). Live progress arrives on the
+  // stream via `useTaskActivity`.
+  const hydrate = useCallback(async () => {
+    const next = await client.getCodingAgentTaskThread(threadId).catch(() => {
+      // error-policy:J4 hydrate is best-effort — a transient failure leaves the
+      // header on its fallback title while the live stream still drives the
+      // body. It is a one-shot fetch, not a poll loop, so nothing to back off.
+      return undefined;
+    });
+    if (cancelledRef.current || next === undefined) return;
+    if (next === null) setRemoved(true);
+    else setDetail(next);
   }, [threadId]);
 
   useEffect(() => {
     cancelledRef.current = false;
-    errorCountRef.current = 0;
-    void fetchDetail();
+    void hydrate();
     return () => {
       cancelledRef.current = true;
     };
-  }, [fetchDetail]);
+  }, [hydrate]);
 
-  // Poll only while visible and while the task is still live — pause in a
-  // backgrounded app, and stop once it's removed / terminal.
-  const taskStatus = detail?.status;
-  const pollTaskActive =
-    !removed &&
-    !pollingStopped &&
-    !(taskStatus != null && TERMINAL_STATUSES.has(taskStatus));
-  useIntervalWhenDocumentVisible(
-    () => void fetchDetail(),
-    POLL_INTERVAL_MS,
-    pollTaskActive,
-  );
-
-  const handleOpen = useCallback(() => {
+  const handleOpenWorkbench = useCallback(() => {
     if (typeof window === "undefined") return;
-    const navDetail = { viewPath: `/orchestrator?taskId=${threadId}` };
-    dispatchNavigateViewEvent(navDetail);
+    dispatchNavigateViewEvent({ viewPath: `/orchestrator?taskId=${threadId}` });
   }, [threadId]);
 
   if (removed) {
@@ -200,79 +156,128 @@ export function TaskWidget({ threadId, fallbackTitle }: TaskWidgetProps) {
     );
   }
 
-  const status: Status = detail?.status ?? "open";
+  const hasLive = activity.subagents.length > 0;
+  const liveActive = activity.subagents.filter(
+    (a) => a.status === "running" || a.status === "waiting",
+  ).length;
+
+  const status: Status = detail?.status ?? (hasLive ? "active" : "open");
   const StatusIcon = STATUS_ICON[status];
   const title = detail?.title ?? fallbackTitle;
-  const sessionCount = detail?.sessionCount ?? 0;
-  const activeSessionCount = detail?.activeSessionCount ?? 0;
-  const relative = formatRelative(detail?.latestActivityAt ?? null);
+  const sessionCount = hasLive
+    ? activity.subagents.length
+    : (detail?.sessionCount ?? 0);
+  const activeSessionCount = hasLive
+    ? liveActive
+    : (detail?.activeSessionCount ?? 0);
+  const relative = formatRelative(
+    activity.updatedAt || detail?.latestActivityAt || null,
+  );
   const tokens =
     detail?.usage?.state === "unavailable"
       ? null
       : formatCompactTokens(detail?.usage?.totalTokens ?? null);
 
   return (
-    <Button
+    <div
       data-testid="task-widget"
       data-task-id={threadId}
       data-task-status={status}
-      onClick={handleOpen}
-      variant="ghost"
-      className="my-2 flex h-auto w-full items-start justify-start gap-2 whitespace-normal rounded-sm border border-border bg-card px-3 py-2 text-left font-normal transition-colors hover:bg-bg-hover"
+      data-expanded={expanded ? "true" : "false"}
+      className="my-2 overflow-hidden rounded-sm border border-border bg-card"
     >
-      <span
-        className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center ${STATUS_TONE[status]}`}
-        role="img"
-        aria-label={STATUS_LABEL[status]}
-        title={STATUS_LABEL[status]}
+      <Button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        variant="ghost"
+        aria-expanded={expanded}
+        className="flex h-auto w-full items-start justify-start gap-2 whitespace-normal rounded-none px-3 py-2 text-left font-normal transition-colors hover:bg-bg-hover"
       >
-        <StatusIcon
-          className={`h-3.5 w-3.5 ${
-            STATUS_PULSE.has(status) ? "animate-pulse" : ""
+        <span
+          className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center ${STATUS_TONE[status]}`}
+          role="img"
+          aria-label={STATUS_LABEL[status]}
+          title={STATUS_LABEL[status]}
+        >
+          <StatusIcon
+            className={`h-3.5 w-3.5 ${
+              STATUS_PULSE.has(status) ? "animate-pulse" : ""
+            }`}
+          />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-txt">
+            {title}
+          </span>
+          <span
+            data-testid="task-widget-status"
+            className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted"
+          >
+            <span className={STATUS_TONE[status]}>{STATUS_LABEL[status]}</span>
+            {sessionCount > 0 ? (
+              <>
+                <span className="text-muted/40">·</span>
+                <span>
+                  {activeSessionCount}/{sessionCount} agents
+                </span>
+              </>
+            ) : null}
+            {relative ? (
+              <>
+                <span className="text-muted/40">·</span>
+                <span>{relative}</span>
+              </>
+            ) : null}
+            {tokens ? (
+              <>
+                <span className="text-muted/40">·</span>
+                <span className="tabular-nums">{tokens}</span>
+              </>
+            ) : null}
+          </span>
+        </span>
+        <ChevronDown
+          className={`mt-0.5 h-4 w-4 shrink-0 text-muted transition-transform ${
+            expanded ? "rotate-180" : ""
           }`}
         />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-txt">
-          {title}
-        </span>
-        <span
-          data-testid="task-widget-status"
-          className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted"
+      </Button>
+
+      {expanded ? (
+        <div
+          data-testid="task-widget-pipeline"
+          className="flex flex-col gap-3 border-t border-border px-3 py-3"
         >
-          <span className={STATUS_TONE[status]}>{STATUS_LABEL[status]}</span>
-          {sessionCount > 0 ? (
-            <>
-              <span className="text-muted/40">·</span>
-              <span>
-                {activeSessionCount}/{sessionCount} agents
-              </span>
-            </>
+          {activity.plan.length > 0 && activity.subagents.length <= 1 ? (
+            <PlanChecklist entries={activity.plan} title="Plan" />
           ) : null}
-          {relative ? (
-            <>
-              <span className="text-muted/40">·</span>
-              <span>{relative}</span>
-            </>
-          ) : null}
-          {tokens ? (
-            <>
-              <span className="text-muted/40">·</span>
-              <span className="tabular-nums">{tokens}</span>
-            </>
-          ) : null}
-        </span>
-      </span>
-    </Button>
+          {hasLive ? (
+            activity.subagents.map((agent) => (
+              <SubagentBlock key={agent.sessionId} agent={agent} />
+            ))
+          ) : (
+            <div className="text-xs text-muted">
+              Waiting for agent activity…
+            </div>
+          )}
+          <Button
+            type="button"
+            onClick={handleOpenWorkbench}
+            variant="ghost"
+            className="h-auto w-fit self-start px-2 py-1 text-xs text-accent hover:text-accent-hover"
+          >
+            Open in workbench →
+          </Button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
 /**
  * Register the `[TASK:<threadId>]…[/TASK]` inline widget into the chat-reply
- * registry. NOT auto-invoked — the orchestrator plugin (plugin-task-coordinator)
- * calls this at boot, so the task widget only renders in chat when the
- * orchestrator UI is loaded. This is the canonical example of a plugin owning an
- * inline widget: `MessageContent` knows nothing about tasks.
+ * registry. NOT auto-invoked — the orchestrator plugin calls this at boot, so
+ * the task widget only renders in chat when the orchestrator UI is loaded.
  */
 export function registerTaskWidget(): void {
   registerInlineWidget<TaskRegion>({

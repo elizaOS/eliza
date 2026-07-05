@@ -176,6 +176,17 @@
     "reason": "gates that the facewear plugin's research checkouts, docs, and implemented surface files are present"
   },
   {
+    "file": "scripts/check-markdown-links.mjs",
+    "tokens": [
+      "plugins/plugin-agent-orchestrator",
+      "plugins/plugin-computeruse",
+      "plugins/plugin-local-inference",
+      "plugins/plugin-wallet",
+      "plugins/plugin-xai"
+    ],
+    "reason": "Markdown link hygiene excludes stale/prototype documentation subtrees by concrete path prefix so maintained contributor-facing docs can remain hard-gated"
+  },
+  {
     "file": "scripts/check-smartglasses-completion-gate.mjs",
     "tokens": [
       "@elizaos/plugin-facewear",

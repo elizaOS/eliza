@@ -1,0 +1,96 @@
+Command:
+bun run --cwd packages/ui test:chat-sheet-e2e -- --only-autoscroll
+
+Result:
+CHAT-SHEET E2E PASSED
+
+Key assertions:
+- [mouse] AUTOSCROLL opens the sheet to FULL
+- [mouse] AUTOSCROLL fixture has real overflow (scrollHeight=2843, clientHeight=642)
+- [mouse] AUTOSCROLL single streamed growth exceeds 80px (712px)
+- [mouse] AUTOSCROLL stays pinned after >80px growth (delta=0)
+- [mouse] AUTOSCROLL real wheel scroll moves reader into history (2945 -> 2535)
+- [mouse] AUTOSCROLL preserves reading scrollback on growth (2535 -> 2535)
+- [mouse] AUTOSCROLL shows jump-to-latest while reader is above bottom
+- [mouse] AUTOSCROLL jump-to-latest re-pins to bottom (delta=18)
+- [touch] AUTOSCROLL opens the sheet to FULL
+- [touch] AUTOSCROLL fixture has real overflow (scrollHeight=2843, clientHeight=1941)
+- [touch] AUTOSCROLL single streamed growth exceeds 80px (712px)
+- [touch] AUTOSCROLL stays pinned after >80px growth (delta=0)
+- [touch] AUTOSCROLL real touch scroll moves reader into history (1660 -> 1308)
+- [touch] AUTOSCROLL preserves reading scrollback on growth (1308 -> 1308)
+- [touch] AUTOSCROLL shows jump-to-latest while reader is above bottom
+- [touch] AUTOSCROLL jump-to-latest re-pins to bottom (delta=17)
+- no uncaught page errors (0)
+- no error-level console messages (0)
+
+Browser console sample:
+- [fixture] setComposerHasDraft -> false
+- [fixture] phase=responding messages=41 recording=false
+- [fixture] growLastAssistant length=2422
+- [fixture] appendAssistant length=71
+
+Manual review:
+- Opened 13690-chat-autoscroll-desktop-repinned.png. The full chat sheet is repinned at the bottom after the jump action, with the fresh assistant line visible above the composer and no broken overlay state.
+- Opened 13690-chat-autoscroll-mobile-repinned.png. The mobile full-page capture shows the chat transcript repinned at the bottom with the streamed burst and fresh assistant line visible above the composer.
+
+Canary command:
+Temporarily changed `useThreadAutoScroll({ enabled: threadPresented })` to `enabled: false`, then ran:
+bun run --cwd packages/ui test:chat-sheet-e2e -- --only-autoscroll
+
+Canary result:
+Expected failure. The autoscroll leg caught the disabled hook:
+- [mouse] AUTOSCROLL starts pinned to bottom failed with delta=2201
+- [mouse] AUTOSCROLL stays pinned after >80px growth failed with delta=2913
+- [mouse] AUTOSCROLL stays pinned after a new assistant line failed with delta=2907
+- [mouse] AUTOSCROLL real wheel scroll moves reader into history failed because scrollTop stayed 0
+- [mouse] AUTOSCROLL shows jump-to-latest while reader is above bottom failed, then clicking `chat-jump-to-latest` timed out
+
+Canary cleanup:
+Restored `ContinuousChatOverlay.tsx` to the passing implementation before committing this evidence.
+
+Full chat-sheet command:
+bun run --cwd packages/ui test:chat-sheet-e2e
+
+Full chat-sheet result:
+CHAT-SHEET E2E PASSED
+
+Full chat-sheet coverage observed in the passing run:
+- Desktop and real-touch detent drag suites passed, including restored #13531 maximize/restore-zone behavior.
+- Mouse and touch AUTOSCROLL suites passed inside the full run.
+- Grabber horizontal real-touch swipe and janked-main-thread swipe paths passed.
+- Voice, dictation, push-to-talk, keyboard, no-provider, pill morph, navigation, maximize, state mapping, streaming, multi-send, and onboarding states passed.
+- Browser console checks passed: no uncaught page errors, no error-level console messages, and fixture voice interaction logged.
+
+Full chat-sheet manual review:
+- Opened the latest desktop and mobile autoscroll repinned screenshots copied from the full run.
+- Reviewed the full drag-suite video artifact path: 13690-chat-sheet-full-drag-suite.webm.
+
+App audit command:
+bun run --cwd packages/app audit:app
+
+App audit result:
+373 passed (17.0m)
+
+App audit machine summary:
+- 372 findings
+- broken=0
+- needs-work=0
+- needs-eyeball=24
+- good=348
+- minimalism-budget-failures=0
+- minimalism-ratchet-failures=0
+- hover-probe-failures=72
+- density-probe-failures=0
+
+App audit builtin-chat report:
+- mobile-portrait: verdict=good, console errors=0, blue colors=none, hover probe failures=none, density probe failures=none, floating chat overlay present=yes, floating chat overlay clearance=clear
+- mobile-landscape: verdict=good, console errors=0, blue colors=none, hover probe failures=none, density probe failures=none, floating chat overlay present=yes, floating chat overlay clearance=clear
+- desktop-landscape: verdict=good, console errors=0, blue colors=none, hover probe failures=none, density probe failures=none, floating chat overlay present=yes, floating chat overlay clearance=clear
+- ipad-portrait: verdict=good, console errors=0, blue colors=none, hover probe failures=none, density probe failures=none, floating chat overlay present=yes, floating chat overlay clearance=clear
+
+App audit manual review:
+- Opened 13690-app-audit-chat-desktop-landscape.png. Chat launcher/input is visible and unobstructed at the bottom, with no broken sheet framing.
+- Opened 13690-app-audit-chat-mobile-portrait.png. Chat input is anchored at the bottom, prompt pills fit, and no visible overlap is present.
+- Opened 13690-app-audit-chat-mobile-landscape.png. Chat input is anchored and clear in the constrained landscape layout.
+- Opened 13690-app-audit-chat-ipad-portrait.png. Chat input is anchored and clear with ample spacing.

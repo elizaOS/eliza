@@ -21,7 +21,7 @@ import { adminService } from "./services/admin";
 import { apiKeysService } from "./services/api-keys";
 import { userSessionsService } from "./services/user-sessions";
 import { usersService } from "./services/users";
-import { syncUserFromSteward } from "./steward-sync";
+import { ensureDefaultCharacter, syncUserFromSteward } from "./steward-sync";
 import type { ApiKey, UserWithOrganization } from "./types";
 import { logger } from "./utils/logger";
 
@@ -60,32 +60,6 @@ export async function invalidateUserSessionCache(sessionToken: string): Promise<
 export async function invalidateSessionCaches(sessionToken: string): Promise<void> {
   await invalidateStewardTokenCache(sessionToken);
   logger.debug("[AUTH] Invalidated all session caches (Steward + user)");
-}
-
-/**
- * Ensure user has a default API key for programmatic access.
- * Creates one if it doesn't exist (for users who registered before auto-generation).
- */
-async function ensureUserHasApiKey(userId: string, organizationId: string): Promise<void> {
-  if (!userId || userId.trim() === "") {
-    logger.warn("[Auth] Invalid userId, skipping API key check");
-    return;
-  }
-  if (!organizationId || organizationId.trim() === "") {
-    logger.warn(`[Auth] No organization for user ${userId}, skipping API key check`);
-    return;
-  }
-
-  const existingKeys = await apiKeysService.listByOrganization(organizationId);
-  const userHasKey = existingKeys.some((key) => key.user_id === userId);
-  if (userHasKey) return;
-
-  await apiKeysService.create({
-    user_id: userId,
-    organization_id: organizationId,
-    name: "Default API Key",
-    is_active: true,
-  });
 }
 
 export type AuthResult = {
@@ -186,7 +160,20 @@ export async function getCurrentUserFromRequest(
 
     if (user.organization_id) {
       void trackSessionActivity(user.id, user.organization_id, stewardToken);
-      void ensureUserHasApiKey(user.id, user.organization_id);
+      // Opportunistic self-heal for accounts that predate mint-at-provision
+      // (or whose mint failed): idempotent and swallows its own errors, so
+      // fire-and-forget is safe here.
+      void apiKeysService.ensureUserHasApiKey(user.id, user.organization_id);
+      // Self-heal a missing default Eliza character: its only create site is
+      // the one-time new-user signup branch in steward-sync, where a failed
+      // create is swallowed so the signup itself survives — without this
+      // session-time re-run such an account would stay character-less
+      // forever. Awaited, not void-fired: this runs on Cloudflare Workers,
+      // where an un-awaited promise may be cancelled once the response
+      // returns — the exact failure mode that loses the signup-time create.
+      // Idempotent (one indexed SELECT per session-cache miss; seeds only
+      // when the org has zero characters) and it never rejects.
+      await ensureDefaultCharacter(user.id, user.organization_id);
     } else {
       logger.error("[AUTH] User missing organization_id:", user.id);
     }

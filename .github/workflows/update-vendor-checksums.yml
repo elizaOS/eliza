@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   update-checksums:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     permissions:
       contents: write
       pull-requests: write

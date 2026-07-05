@@ -1,8 +1,0 @@
-# #10203 — multi-turn on-device chat soak: app -> host agent -> response, x4, verifying the agent stays alive.
-
-turn 1: response rendered=true | agent health="running" | msgs=8
-turn 2: response rendered=true | agent health="running" | msgs=10
-turn 3: response rendered=true | agent health="running" | msgs=12
-turn 4: response rendered=true | agent health="running" | msgs=14
-
-app pid before soak: 4110 ; after soak: 4110 (same pid = app never crashed)

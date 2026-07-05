@@ -15,6 +15,7 @@ import { conversationsRepository } from "../../db/repositories/conversations";
 import { getInitialCredits } from "../signup-credits";
 import { generateInviteToken, hashInviteToken } from "../utils/invite-tokens";
 import { logger } from "../utils/logger";
+import { apiKeysService } from "./api-keys";
 import { emailService } from "./email";
 import { managedDomainsService } from "./managed-domains";
 import { organizationsService } from "./organizations";
@@ -193,6 +194,9 @@ export class InvitesService {
       role: invite.invited_role,
       updated_at: new Date(),
     });
+    if (!movedUser) {
+      throw new Error("Failed to move user into invited organization");
+    }
 
     const updatedInvite = await organizationInvitesRepository.markAsAccepted(invite.id, userId);
 
@@ -203,6 +207,20 @@ export class InvitesService {
     if (vacatedSoloOrgId && movedUser?.organization_id === invite.organization_id) {
       await this.cleanUpVacatedSoloOrganization(userId, vacatedSoloOrgId, invite.organization_id);
     }
+
+    const previousOrganizationId = user.organization_id;
+    if (
+      previousOrganizationId &&
+      previousOrganizationId !== invite.organization_id &&
+      previousOrganizationId !== vacatedSoloOrgId
+    ) {
+      await apiKeysService.deactivateByUserAndOrganization(userId, previousOrganizationId);
+      await apiKeysService.invalidateInferenceContextForUser(userId);
+    }
+
+    // The old key is scoped to the org they left; invite accept must not return
+    // success until the new org has a usable personal default key.
+    await apiKeysService.provisionDefaultApiKey(userId, invite.organization_id);
 
     return updatedInvite;
   }

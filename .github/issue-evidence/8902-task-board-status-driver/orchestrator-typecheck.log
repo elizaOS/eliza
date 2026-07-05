@@ -1,2 +1,0 @@
-$ bun run --cwd plugins/plugin-agent-orchestrator typecheck
-$ tsgo --noEmit -p tsconfig.json

@@ -77,7 +77,7 @@ function ConnectionLoadingCard({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "rounded-sm border bg-card text-card-foreground ",
+        "min-w-0 overflow-hidden rounded-sm border bg-card text-card-foreground",
         className,
       )}
     >
@@ -379,19 +379,19 @@ function ConnectionCard({
     <div
       data-slot="connection-card"
       className={cn(
-        "rounded-sm border bg-card text-card-foreground ",
+        "min-w-0 overflow-hidden rounded-sm border bg-card text-card-foreground",
         className,
       )}
     >
       {/* Header */}
-      <div className="flex flex-col space-y-1.5 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="flex items-center gap-2 text-2xl font-semibold leading-none tracking-tight">
-              <span className="[&>svg]:h-5 [&>svg]:w-5">{icon}</span>
-              {name}
+      <div className="flex min-w-0 flex-col space-y-1.5 p-4 sm:p-6">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h3 className="flex min-w-0 items-center gap-2 text-xl font-semibold leading-tight tracking-tight sm:text-2xl">
+              <span className="shrink-0 [&>svg]:h-5 [&>svg]:w-5">{icon}</span>
+              <span className="min-w-0 break-words">{name}</span>
             </h3>
-            <p className="text-sm text-muted-foreground mt-1.5">
+            <p className="mt-1.5 break-words text-sm text-muted-foreground">
               {status === "not-configured"
                 ? `${name} integration is not configured`
                 : status === "error"
@@ -399,12 +399,14 @@ function ConnectionCard({
                   : description}
             </p>
           </div>
-          {status === "connected" && statusBadge}
+          {status === "connected" && statusBadge ? (
+            <div className="shrink-0 self-start">{statusBadge}</div>
+          ) : null}
         </div>
       </div>
 
       {/* Content */}
-      <div className="p-6 pt-0">
+      <div className="min-w-0 p-4 pt-0 sm:p-6 sm:pt-0">
         {status === "not-configured" && (
           <div className="p-4 bg-muted rounded-sm">
             <p className="text-sm text-muted-foreground">

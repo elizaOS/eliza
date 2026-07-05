@@ -499,6 +499,8 @@ class AdvertisingService {
     try {
       parsed = JSON.parse(this.base64UrlDecode(payload));
     } catch {
+      // error-policy:J3 the token payload is caller-supplied; a decode/parse
+      // failure is an invalid token, not a valid default — fail closed.
       throw new Error("Invalid attribution token");
     }
     if (parsed.v !== 1 || !parsed.c || !parsed.o) {
@@ -834,7 +836,9 @@ class AdvertisingService {
       actorId: account.connected_by_user_id ?? "advertising-service",
       source: "advertising-service",
     };
-    // Delete secrets - log but don't fail if already deleted
+    // error-policy:J6 best-effort teardown — the account row is being removed;
+    // a secret that is already gone must not block disconnect. Warns so a real
+    // deletion failure is observable.
     if (account.access_token_secret_id) {
       await secretsService
         .delete(account.access_token_secret_id, organizationId, audit)
@@ -845,6 +849,7 @@ class AdvertisingService {
         );
     }
     if (account.refresh_token_secret_id) {
+      // error-policy:J6 best-effort teardown — see access-token deletion above.
       await secretsService
         .delete(account.refresh_token_secret_id, organizationId, audit)
         .catch((e) =>

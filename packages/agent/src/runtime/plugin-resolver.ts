@@ -1933,8 +1933,17 @@ export async function resolvePlugins(
         }
       } else if (isOfficialElizaPlugin) {
         // Mobile bundles have no node_modules tree. If the plugin wasn't
-        // pre-registered in STATIC_ELIZA_PLUGINS it can't be loaded — skip it.
+        // pre-registered in STATIC_ELIZA_PLUGINS it can't be loaded. Anything
+        // reaching this point on mobile already survived the mobile allow-list
+        // in plugin-collector.ts, so a miss here is a bundle-contract breach
+        // (a host-declared mobile plugin with no static registration) — the
+        // exact drift that shipped four dead mobile plugins with health
+        // reporting failed:0. Surface it; never skip silently.
         if (isMobilePlatform()) {
+          const reason =
+            "not registered in STATIC_ELIZA_PLUGINS (mobile bundle has no node_modules to import from)";
+          logger.warn(`[eliza] Cannot load ${pluginName} on mobile: ${reason}`);
+          failedPlugins.push({ name: pluginName, error: reason });
           return null;
         }
         // Eliza plugins can resolve either from bundled local wrappers

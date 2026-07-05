@@ -1,5 +1,0 @@
-03-11 04:01:22.643 12447 12471 I TestRunner: started: dnsCodecParsesQueryAndBuildsBlockedUdpResponseOnDevice(ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest)
-03-11 04:01:22.643  1246  1246 D AOC     : A3:MSG: tmd3719_device.cc, 3643: USF: TMD3719: Device appears to be covered or in high-IR, cancel baseline calibration.
-03-11 04:01:22.644  1246  1246 D AOC     : A3:MSG: tmd3719_device.cc, 3052: USF: TMD3719: Far00
-03-11 04:01:22.647  1018  1694 I sensor-suez: Vendor atom [id = 100245] reported.
-03-11 04:01:22.654 12447 12471 I TestRunner: finished: dnsCodecParsesQueryAndBuildsBlockedUdpResponseOnDevice(ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreInstrumentedTest)

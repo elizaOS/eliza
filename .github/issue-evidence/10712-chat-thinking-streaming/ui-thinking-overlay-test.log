@@ -1,9 +1,0 @@
-$ NODE_OPTIONS="${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning" vitest run --config ./vitest.config.ts src/components/chat/ThinkingBlock.test.tsx src/components/shell/ContinuousChatOverlay.test.tsx "--coverage.enabled=false"
-
- RUN  v4.1.5 /Users/shawwalters/.codex/worktrees/94c9/eliza/packages/ui
-
-
- Test Files  2 passed (2)
-      Tests  107 passed (107)
-   Start at  09:09:53
-   Duration  15.85s (transform 10.79s, setup 427ms, import 13.58s, tests 1.48s, environment 2.27s)

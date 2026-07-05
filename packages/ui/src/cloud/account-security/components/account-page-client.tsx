@@ -37,15 +37,14 @@ export function AccountPageClient({ user }: AccountPageClientProps) {
         <CornerBrackets size="sm" className="opacity-50" />
         <div className="relative z-10 flex items-start gap-3">
           <div className="flex-1">
-            <p className="text-sm text-white">
+            <p className="text-sm text-txt-strong">
               Welcome back, <span className="font-semibold">{displayName}</span>
               !
             </p>
             {user.organization?.name && (
-              <p className="text-xs text-white/60 mt-1">
+              <p className="text-xs text-muted mt-1">
                 You&apos;re part of{" "}
-                <span className="font-medium">{user.organization.name}</span>{" "}
-                organization
+                <span className="font-medium">{user.organization.name}</span>
               </p>
             )}
           </div>

@@ -173,6 +173,33 @@ describe("ChoiceWidget — pick an option", () => {
     ).toBe(true);
     expect(screen.getByRole("status").textContent).toMatch(/Ship it/);
   });
+
+  it("renders the cloud-only first-run sign-in CTA as a real clickable button", () => {
+    const onChoose = vi.fn();
+    render(
+      <ChoiceWidget
+        id="runtime"
+        scope="first-run"
+        options={[
+          {
+            value: "__first_run__:runtime:cloud",
+            label: "Sign in to Eliza Cloud",
+          },
+        ]}
+        onChoose={onChoose}
+      />,
+    );
+
+    const signIn = screen.getByRole("button", {
+      name: "Sign in to Eliza Cloud",
+    });
+    expect(signIn.tagName).toBe("BUTTON");
+    expect(signIn.closest("button")).toBe(signIn);
+
+    fireEvent.click(signIn);
+    expect(onChoose).toHaveBeenCalledTimes(1);
+    expect(onChoose).toHaveBeenCalledWith("__first_run__:runtime:cloud");
+  });
 });
 
 describe("ChoiceWidget — put their own in (allowCustom)", () => {

@@ -85,10 +85,7 @@ export function estimateEchoAlignment(
   far: Float32Array,
   options: EchoAlignmentOptions = {},
 ): EchoAlignmentEstimate {
-  const minOverlap = Math.max(
-    1,
-    Math.floor(options.minOverlapSamples ?? 4000),
-  );
+  const minOverlap = Math.max(1, Math.floor(options.minOverlapSamples ?? 4000));
   const maxOffset = Math.max(
     0,
     Math.floor(options.maxOffsetSamples ?? far.length - minOverlap),

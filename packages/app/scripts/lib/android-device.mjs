@@ -292,9 +292,9 @@ export async function ensureEmulatorBooted({
   log(`booting emulator AVD ${chosen}`);
   const logFile = path.join(os.tmpdir(), `eliza-emulator-${chosen}.log`);
   const out = fs.openSync(logFile, "a");
-  // The embedded on-device agent (bun + a ~556MB GGUF) needs real headroom;
-  // a stock 2GB AVD OOM-thrashes during model load/inference. Give the test
-  // emulator 6GB RAM + 4 cores unless overridden.
+  // The embedded on-device agent (bun + a 1,270,808,512-byte GGUF) needs real
+  // headroom; a stock 2GB AVD OOM-thrashes during model load/inference. Give
+  // the test emulator 6GB RAM + 4 cores unless overridden.
   const memoryMb = process.env.ELIZA_EMULATOR_MEMORY_MB ?? "6144";
   const cores = process.env.ELIZA_EMULATOR_CORES ?? "4";
   // The on-device agent's bun + llama-cpp are compiled with -mavx2 -mfma -mf16c,

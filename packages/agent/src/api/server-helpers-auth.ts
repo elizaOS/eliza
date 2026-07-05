@@ -11,6 +11,7 @@ import {
   isNullOriginAllowed,
   isTrustedLocalRequest as isTrustedLocalRequestShared,
   isWildcardBindHost,
+  readAliasedEnv,
   resolveAllowedHosts,
   resolveAllowedOrigins,
   resolveApiBindHost,
@@ -116,7 +117,7 @@ export function resolveCorsOrigin(origin?: string): string | null {
 
   // Cloud-provisioned containers default to allowing all origins so the
   // browser web UI can reach the agent API without extra config.
-  if (process.env.ELIZA_CLOUD_PROVISIONED === "1") {
+  if (readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
     return trimmed;
   }
 
@@ -251,7 +252,7 @@ export function getConfiguredApiToken(): string | undefined {
  * `getConfiguredApiToken()` — same crypto.timingSafeEqual path as Bearer.
  */
 function extractSseQueryToken(req: http.IncomingMessage): string | null {
-  if (process.env.ELIZA_ALLOW_WS_QUERY_TOKEN !== "1") return null;
+  if (readAliasedEnv("ELIZA_ALLOW_WS_QUERY_TOKEN") !== "1") return null;
   if ((req.method ?? "GET").toUpperCase() !== "GET") return null;
   const accept = firstHeaderValue(req.headers.accept) ?? "";
   if (!accept.toLowerCase().includes("text/event-stream")) return null;
@@ -486,7 +487,7 @@ const pairingAttempts = new Map<string, { count: number; resetAt: number }>();
 export function pairingEnabled(): boolean {
   return (
     Boolean(getConfiguredApiToken()) &&
-    process.env.ELIZA_PAIRING_DISABLED !== "1"
+    readAliasedEnv("ELIZA_PAIRING_DISABLED") !== "1"
   );
 }
 
@@ -592,7 +593,7 @@ export function resolveTerminalRunRejection(
   req: http.IncomingMessage,
   body: TerminalRunRequestBody,
 ): TerminalRunRejection | null {
-  const expected = process.env.ELIZA_TERMINAL_RUN_TOKEN?.trim();
+  const expected = readAliasedEnv("ELIZA_TERMINAL_RUN_TOKEN");
   const apiTokenEnabled = Boolean(getConfiguredApiToken());
 
   // Compatibility mode: local loopback sessions without API token keep
@@ -640,7 +641,7 @@ export function resolveTerminalRunRejection(
 // ---------------------------------------------------------------------------
 
 function extractWsQueryToken(url: URL): string | null {
-  const allowQueryToken = process.env.ELIZA_ALLOW_WS_QUERY_TOKEN === "1";
+  const allowQueryToken = readAliasedEnv("ELIZA_ALLOW_WS_QUERY_TOKEN") === "1";
   if (!allowQueryToken) return null;
 
   const token =

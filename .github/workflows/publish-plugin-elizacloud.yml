@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   verify_version:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     outputs:
       should_publish: ${{ steps.check.outputs.should_publish }}
       version: ${{ steps.check.outputs.version }}
@@ -58,7 +58,7 @@ jobs:
   publish_npm:
     needs: verify_version
     if: needs.verify_version.outputs.should_publish == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     permissions:
       contents: write
       id-token: write   # npm OIDC trusted publishing (SOC2 CC9.2)

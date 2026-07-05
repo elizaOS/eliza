@@ -21,12 +21,12 @@ pointer/touch gesture — identified by three low-false-positive markers (see
 1. `setPointerCapture(` — you only capture a pointer to run a drag/pan gesture.
 2. a custom touch registration — `onTouchStart` / `addEventListener("touchstart"`
    / `.on("touchstart"` (a hand-rolled touch gesture, not a click).
-3. a named gesture-engine hook — `usePullGesture` / `useHorizontalPager` /
-   `useConversationSwipeJank` (definition or consumer).
+3. a named gesture-engine hook — `usePullGesture` / `useHorizontalPager`
+   (definition or consumer).
 
 A plain `onClick` / `onPointerDown` button is intentionally **not** a gesture
 site. `*.test.*` / `*.fuzz.*` specs, `__e2e__` fixtures, and `testing/`
-scaffolding are excluded. The current roster is 13 files (pinned in the gate).
+scaffolding are excluded. The current roster is 12 files (pinned in the gate).
 
 **Out of scope of this matrix:** HTML5 native drag-and-drop reorder
 (`CharacterEditorPanels.tsx`, `draggable`/`onDragStart`) is a distinct input
@@ -68,7 +68,7 @@ gate's `sites`). `Coverage` = the levels with a real test today.
 | # | Interaction | Surface | Sites | Coverage |
 | --- | --- | --- | --- | --- |
 | 1 | Sheet drag detents (pill↔input↔full), flick vs slow | overlay grabber | `use-pull-gesture.ts`, `ContinuousChatOverlay.tsx` | L1 `chat-panel-layout.test.ts` + `use-pull-gesture.test.ts`; L3 `run-chat-sheet-e2e.mjs` (video) + `gesture-matrix.spec.ts` |
-| 2 | Conversation edge-swipe L/R (+ jank telemetry) | overlay transcript | `ContinuousChatOverlay.tsx`, `useConversationSwipeJank.ts`, `use-pull-gesture.ts` | L1 `useConversationSwipeJank.test.ts`; L3 `run-conversation-swipe-e2e.mjs` (video) |
+| 2 | Pull-to-maximize / top-pull-restore (full-bleed toggle) | overlay grabber + top strip | `ContinuousChatOverlay.tsx`, `use-pull-gesture.ts` | L1 `use-pull-gesture.test.ts`; L3 `run-chat-perf-gate.mjs` + `run-perf-gate-e2e.mjs` (video, real maximize↔restore) |
 | 3 | Long-press copy on message (420 ms, move-cancel) | overlay row | `ContinuousChatOverlay.tsx` | L3 `run-chat-sheet-e2e.mjs` |
 | 4 | Tap-reveal action row (touch) / hover rail (desktop) | chat-message | `chat-message.tsx` | L2 `chat-message.tap-reveal.test.tsx` |
 | 5 | Long-press conversation item → context menu (450 ms) | chat-conversation-item | `usePressAndHold.ts` (spread by `chat-conversation-item.tsx`) | L2 `chat-conversation-item.test.tsx`, `gestures.test.ts` |
@@ -79,7 +79,7 @@ gate's `sites`). `Coverage` = the levels with a real test today.
 | 10 | Send/stop/edit/delete/retry; streaming render; typing phases | chat thread | `ContinuousChatOverlay.tsx` | L3 `run-chat-sheet-e2e.mjs` (video) |
 | 11 | Attachments: add/paste/remove outbound; open/lightbox inbound | composer + thread | _not a gesture (see note)_ | L2 `MessageAttachments.test.tsx` |
 | 12 | Keyboard avoidance (visualViewport vs native lift) | overlay layout | _layout math_ | L1 `chat-panel-layout.test.ts` |
-| 13 | Auto-scroll at bottom vs reading-scrollback | thread | `ContinuousChatOverlay.tsx` | L3 `run-chat-sheet-e2e.mjs` (video) |
+| 13 | Auto-scroll at bottom, reading-scrollback, jump-to-latest | thread | `ContinuousChatOverlay.tsx` | L1 `useThreadAutoScroll.test.tsx` + L3 `run-chat-sheet-e2e.mjs` AUTOSCROLL leg (desktop screenshot + mobile video) |
 | 14 | Kiosk window drag; sidebar/panel resize drags | shell surfaces | `KioskViewCanvas.tsx`, `TasksEventsPanel.tsx`, `sidebar-root.tsx` | L2 `KioskViewCanvas.gestures.test.tsx` |
 | 15 | Graph pan/pinch/wheel-zoom | RelationshipsGraphPanel | `RelationshipsGraphPanel.tsx` | **gap** — L3 planned (app-side `touchPinch`/`touchPan`) |
 | 16 | Slash menu open/dismiss (incl. outside pointerdown) | composer | _composer_ | L2 `ContinuousChatOverlay.slash.test.tsx` + `composer-core.test.tsx` + `MessageContent.slash-command.test.tsx` |
@@ -93,7 +93,7 @@ app) rather than a row here.
 
 ## Coverage gaps
 
-Every one of the 13 discovered gesture-handler sites is in a matrix row (the
+Every one of the 12 discovered gesture-handler sites is in a matrix row (the
 gate proves it). Two rows are honest **gaps** with no automated test yet:
 
 - **Row 15 (graph pan/pinch/wheel-zoom)** — `RelationshipsGraphPanel.tsx` has no
@@ -125,9 +125,8 @@ relevant) for the PR per `PR_EVIDENCE.md`.
 
 ## Scope boundary vs #12179
 
-The gesture **engines** (`use-pull-gesture.ts`, `useHorizontalPager.ts`,
-`useConversationSwipeJank.ts`) and the shared runner
-toolkit are owned here (#12188). Row 8's launcher-surface files
+The gesture **engines** (`use-pull-gesture.ts`, `useHorizontalPager.ts`) and the
+shared runner toolkit are owned here (#12188). Row 8's launcher-surface files
 (`Launcher.tsx`, `HomeLauncherSurface.tsx`) and their long-loop interaction
 tests are owned by **#12179**; this matrix references those tests but does not
 edit the launcher internals.

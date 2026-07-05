@@ -5,10 +5,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  resolveCorsOrigin,
   isSafeResetStateDir as upstreamIsSafeResetStateDir,
-  resolveCorsOrigin as upstreamResolveCorsOrigin,
 } from "@elizaos/agent";
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/shared";
+
+export { resolveCorsOrigin };
 
 const PACKAGE_ROOT_NAMES = new Set(["eliza", "elizaai", "elizaos"]);
 
@@ -80,15 +81,4 @@ export function findOwnPackageRoot(startDir: string): string {
   }
 
   return startDir;
-}
-
-export function resolveCorsOrigin(
-  ...args: Parameters<typeof upstreamResolveCorsOrigin>
-): ReturnType<typeof upstreamResolveCorsOrigin> {
-  syncElizaEnvAliases();
-  syncAppEnvToEliza();
-  const result = upstreamResolveCorsOrigin(...args);
-  syncAppEnvToEliza();
-  syncElizaEnvAliases();
-  return result;
 }

@@ -1,2 +1,0 @@
-[11632-status] wrote /Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/8833-lifeops-live-validation/11632-status/status.json
-[11632-status] closeable=false blocked=google,discord,telegram,slack,signal,whatsapp,x,twilio,health,finance,native_ios_macos,native_android

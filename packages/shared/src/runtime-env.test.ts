@@ -9,6 +9,7 @@ import { getBootConfig, setBootConfig } from "./config/boot-config";
 import {
   firstWinningEnvString,
   isAndroidMobile,
+  isDevApiWatchEnabled,
   isIosMobile,
   isLoopbackBindHost,
   isMobilePlatform,
@@ -74,6 +75,25 @@ describe("runtime env host security helpers", () => {
       "http://localhost:2138",
     ]);
     expect(config.allowedHosts).toEqual(["app.example", "localhost"]);
+  });
+});
+
+describe("dev API watch detection", () => {
+  it("detects node/bun --watch from exec argv", () => {
+    expect(isDevApiWatchEnabled({}, ["--watch"])).toBe(true);
+  });
+
+  it("detects desktop API watch and dev-ui source watcher env flags", () => {
+    expect(isDevApiWatchEnabled({ ELIZA_DESKTOP_API_WATCH: "1" }, [])).toBe(
+      true,
+    );
+    expect(isDevApiWatchEnabled({ ELIZA_DEV_SOURCE_WATCH: "1" }, [])).toBe(
+      true,
+    );
+  });
+
+  it("does not treat ELIZA_DEV_NO_WATCH=0 as an enabled watcher", () => {
+    expect(isDevApiWatchEnabled({ ELIZA_DEV_NO_WATCH: "0" }, [])).toBe(false);
   });
 });
 

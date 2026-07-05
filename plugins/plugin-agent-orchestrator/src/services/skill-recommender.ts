@@ -9,8 +9,10 @@
  *     match already scores ≥ 0.9 (no need to spend a model call) or when the
  *     runtime model is unavailable.
  *
- * The output is task-aware ranking: the orchestrator can then write the top
- * N into SKILLS.md and reference them in the spawned agent's initial prompt.
+ * The output is a task-aware ranking of installed skill slugs. Callers pass the
+ * top slugs to `buildSkillsManifest` via `recommendedSlugs`, which surfaces them
+ * in a "Recommended for this task" section of the SKILLS.md written into the
+ * spawn workspace. It does not itself write any file or edit the spawn prompt.
  *
  * @module services/skill-recommender
  */

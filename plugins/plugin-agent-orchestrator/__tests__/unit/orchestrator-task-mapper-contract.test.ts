@@ -53,6 +53,7 @@ function fixtureDocument(): OrchestratorTaskDocument {
       currentPlan: { summary: "do it", steps: ["a", "b"] },
       ownerUserId: "user-1",
       worldId: "world-1",
+      projectId: "project-1",
       roomId: "room-1",
       taskRoomId: "task-room-1",
       parentTaskId: "parent-1",
@@ -222,6 +223,7 @@ const clientThreadReference: CodingAgentTaskThread = {
   latestSessionLabel: "worker",
   latestWorkdir: "/repo",
   latestRepo: "owner/repo",
+  projectId: "project-1",
   latestActivityAt: 1,
   decisionCount: 1,
   usage: {
@@ -258,6 +260,7 @@ const clientDetailReference: CodingAgentTaskThreadDetail = {
   roomId: "room-1",
   taskRoomId: "task-room-1",
   worldId: "world-1",
+  projectId: "project-1",
   ownerUserId: "user-1",
   parentTaskId: "parent-1",
   acceptanceCriteria: ["a"],

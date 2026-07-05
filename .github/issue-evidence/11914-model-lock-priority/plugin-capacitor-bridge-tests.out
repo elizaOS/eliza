@@ -1,8 +1,0 @@
- RUN  v4.1.5 /home/shaw/eliza-worktrees/fix-11914-model-lock-priority/plugins/plugin-capacitor-bridge
-
-
- Test Files  8 passed (8)
-      Tests  50 passed (50)
-   Start at  08:06:25
-   Duration  18.90s (transform 7.72s, setup 0ms, import 9.24s, tests 7.95s, environment 1ms)
-

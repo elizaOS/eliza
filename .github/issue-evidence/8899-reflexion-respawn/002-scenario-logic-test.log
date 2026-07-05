@@ -1,9 +1,0 @@
-
- RUN  v4.1.5 /private/tmp/orch-wt-B/plugins/plugin-agent-orchestrator
-
-
- Test Files  1 passed (1)
-      Tests  5 passed (5)
-   Start at  20:29:12
-   Duration  18.04s (transform 14.60s, setup 157ms, import 16.88s, tests 463ms, environment 2ms)
-

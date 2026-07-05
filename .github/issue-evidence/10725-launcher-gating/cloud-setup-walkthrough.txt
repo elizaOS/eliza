@@ -1,5 +1,0 @@
-Recorded by launcher-cloud-gating.spec.ts (cloud setup walkthrough).
-Flow: launcher without cloud-apps tile → Settings → Eliza Cloud →
-Connect Cloud → status flips connected → launcher shows the tile.
-
-Repro: bun run --cwd packages/app test:e2e -- --project=chromium test/ui-smoke/launcher-cloud-gating.spec.ts

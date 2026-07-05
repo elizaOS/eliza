@@ -44,7 +44,7 @@ env:
 jobs:
   multi-account-e2e:
     name: multi-account selection e2e
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     steps:
       - name: Checkout

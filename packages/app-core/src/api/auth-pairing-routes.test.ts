@@ -13,6 +13,11 @@ import crypto from "node:crypto";
 import * as http from "node:http";
 import { Socket } from "node:net";
 import {
+  buildBrandEnvAliases,
+  getBootConfig,
+  setBootConfig,
+} from "@elizaos/shared";
+import {
   afterEach,
   beforeAll,
   beforeEach,
@@ -327,6 +332,98 @@ describe("auth pairing pair-code route", () => {
     }
   });
 
+  it("fails closed with a retryable 503 (never the static token) when the runtime DB is not ready, and keeps the code valid for retry (#13985)", async () => {
+    vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
+    sessionMocks.createMachineSession.mockClear();
+
+    // Prime the in-memory pair code (it lives in module state, not the DB).
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/auth/pair-code",
+        ip: "127.0.0.1",
+        host: "localhost:2138",
+      }),
+      fakeRes().res,
+      STATE,
+    );
+
+    // A remote device submits the correct code during the boot window, before
+    // the runtime DB is up (STATE.current === null → getCompatDrizzleDb null).
+    const remote = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "203.0.113.10",
+    });
+    (remote as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
+    const res = fakeRes();
+    await handleAuthPairingCompatRoutes(remote, res.res, STATE);
+
+    // Fail closed: retryable 503, no session minted, and — critically — the
+    // forever-valid static ELIZA_API_TOKEN is NEVER returned.
+    expect(res.status()).toBe(503);
+    expect(sessionMocks.createMachineSession).not.toHaveBeenCalled();
+    expect(JSON.stringify(res.body())).not.toContain("pairing-test-token");
+
+    // The 503 did NOT consume the code, so a retry once the DB is up completes
+    // normally and mints a revocable session (not the static token).
+    const retry = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "203.0.113.10",
+    });
+    (retry as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
+    const res2 = fakeRes();
+    await handleAuthPairingCompatRoutes(retry, res2.res, STATE_WITH_DB);
+    expect(res2.status()).toBe(200);
+    expect(res2.body()).toEqual({ token: "test-machine-session-id" });
+  });
+
+  it("does not spend the invalid-code rate limit on valid no-DB retries", async () => {
+    vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
+    sessionMocks.createMachineSession.mockClear();
+
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/auth/pair-code",
+        ip: "127.0.0.1",
+        host: "localhost:2138",
+      }),
+      fakeRes().res,
+      STATE,
+    );
+
+    for (let i = 0; i < 6; i += 1) {
+      const retryDuringBoot = fakeReq({
+        method: "POST",
+        pathname: "/api/auth/pair",
+        ip: "203.0.113.10",
+      });
+      (retryDuringBoot as unknown as { body: unknown }).body = {
+        code: "AAAA-AAAA-AAAA",
+      };
+      const res = fakeRes();
+      await handleAuthPairingCompatRoutes(retryDuringBoot, res.res, STATE);
+      expect(res.status()).toBe(503);
+    }
+
+    const retryAfterBoot = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "203.0.113.10",
+    });
+    (retryAfterBoot as unknown as { body: unknown }).body = {
+      code: "AAAA-AAAA-AAAA",
+    };
+    const res = fakeRes();
+    await handleAuthPairingCompatRoutes(retryAfterBoot, res.res, STATE_WITH_DB);
+
+    expect(res.status()).toBe(200);
+    expect(res.body()).toEqual({ token: "test-machine-session-id" });
+    expect(sessionMocks.createMachineSession).toHaveBeenCalledTimes(1);
+  });
+
   it("mints a machine session on successful pair (returns session id, not the static API token)", async () => {
     vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
     sessionMocks.createMachineSession.mockClear();
@@ -438,5 +535,85 @@ describe("auth pairing pair-code route", () => {
 
     expect(res.status()).toBe(503);
     expect(res.body()).toMatchObject({ error: "Pairing not enabled" });
+  });
+
+  // #13422: the pairing gate reads ELIZA_PAIRING_DISABLED through the
+  // alias-aware reader, so a rebranded deployment's MILADY_PAIRING_DISABLED must
+  // disable pairing WITHOUT the process.env alias-sync mirror mutation, and a
+  // present canonical ELIZA_PAIRING_DISABLED must still win over the branded key.
+  it("does not reveal a code when pairing is disabled via a branded (non-ELIZA) alias", async () => {
+    const savedConfig = getBootConfig();
+    const savedBranded = process.env.MILADY_PAIRING_DISABLED;
+    setBootConfig({
+      ...savedConfig,
+      envAliases: buildBrandEnvAliases("MILADY"),
+    });
+    process.env.MILADY_PAIRING_DISABLED = "1";
+    delete process.env.ELIZA_PAIRING_DISABLED;
+
+    try {
+      const res = fakeRes();
+      await handleAuthPairingCompatRoutes(
+        fakeReq({
+          method: "GET",
+          pathname: "/api/auth/pair-code",
+          ip: "127.0.0.1",
+          host: "localhost:2138",
+        }),
+        res.res,
+        STATE,
+      );
+
+      expect(res.status()).toBe(503);
+      expect(res.body()).toMatchObject({ error: "Pairing not enabled" });
+      // Resolving the branded alias must never materialize the canonical mirror.
+      expect(process.env.ELIZA_PAIRING_DISABLED).toBeUndefined();
+    } finally {
+      setBootConfig(savedConfig);
+      if (savedBranded === undefined) {
+        delete process.env.MILADY_PAIRING_DISABLED;
+      } else {
+        process.env.MILADY_PAIRING_DISABLED = savedBranded;
+      }
+    }
+  });
+
+  it("keeps a present canonical ELIZA_PAIRING_DISABLED ahead of the branded alias", async () => {
+    const savedConfig = getBootConfig();
+    const savedBranded = process.env.MILADY_PAIRING_DISABLED;
+    setBootConfig({
+      ...savedConfig,
+      envAliases: buildBrandEnvAliases("MILADY"),
+    });
+    // Canonical present (and not "1") wins over a branded "1": pairing stays
+    // ENABLED, proving the reader honors the ELIZA_* precedence contract.
+    process.env.ELIZA_PAIRING_DISABLED = "0";
+    process.env.MILADY_PAIRING_DISABLED = "1";
+
+    try {
+      vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
+      const res = fakeRes();
+      await handleAuthPairingCompatRoutes(
+        fakeReq({
+          method: "GET",
+          pathname: "/api/auth/pair-code",
+          ip: "127.0.0.1",
+          host: "localhost:2138",
+        }),
+        res.res,
+        STATE,
+      );
+
+      expect(res.status()).toBe(200);
+      expect(res.body()).toMatchObject({ code: "AAAA-AAAA-AAAA" });
+    } finally {
+      setBootConfig(savedConfig);
+      delete process.env.ELIZA_PAIRING_DISABLED;
+      if (savedBranded === undefined) {
+        delete process.env.MILADY_PAIRING_DISABLED;
+      } else {
+        process.env.MILADY_PAIRING_DISABLED = savedBranded;
+      }
+    }
   });
 });

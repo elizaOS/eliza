@@ -70,7 +70,7 @@ env:
 jobs:
   live-drift:
     name: External-API mocks vs live APIs (nightly)
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     continue-on-error: true
     steps:

@@ -53,7 +53,7 @@ permissions:
 
 jobs:
   lint-and-types:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -65,7 +65,7 @@ jobs:
         run: bun run --cwd packages/cloud/shared check:tenant-scope
 
   unit-tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     env:
       NODE_ENV: test
@@ -84,7 +84,7 @@ jobs:
         run: bun run --cwd packages/cloud/shared test:vitest
 
   integration-tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     env:
       NODE_ENV: test
@@ -98,7 +98,7 @@ jobs:
         run: bun run test:cloud:integration
 
   e2e-tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     needs: [lint-and-types]
     env:

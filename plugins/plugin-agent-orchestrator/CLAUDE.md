@@ -73,7 +73,7 @@ All under the elizaOS runtime HTTP server:
 | `/api/orchestrator/*` | `handleOrchestratorRoutes` | Durable task CRUD, lifecycle, event log, usage rollup |
 | `/api/coding-agents/*` | `handleAgentRoutes` | ACP session CRUD: list, spawn, get, send, stop, output |
 | `/api/coding-agents/:id/credentials/*` | `handleBridgeRoutes` | Credential bridge (request + long-poll redemption) for spawned sub-agents |
-| `/api/coding-agents/:id/context` | `handleParentContextRoutes` | Read-only parent-context bridge: memory, workspace state |
+| `/api/coding-agents/:id/{parent-context,memory,active-workspaces}` | `handleParentContextRoutes` | Read-only parent-context bridge: memory, workspace state |
 | `/api/workspace/*` | `handleWorkspaceRoutes` | Git workspace: provision, status, commit, push, PR, delete |
 | `/api/issues/*` | `handleIssueRoutes` | GitHub issue CRUD (separate from manage_issues action) |
 | `/api/task-agents/*` | (aliased to `/api/coding-agents/*`) | Legacy path alias |
@@ -215,7 +215,7 @@ plugins/plugin-agent-orchestrator/
       agent-routes.ts            /api/coding-agents/* handlers
       orchestrator-routes.ts     /api/orchestrator/* handlers
       bridge-routes.ts           /api/coding-agents/:id/credentials/* handlers
-      parent-context-routes.ts   /api/coding-agents/:id/context handlers
+      parent-context-routes.ts   /api/coding-agents/:id/{parent-context,memory,active-workspaces} handlers
       workspace-routes.ts        /api/workspace/* handlers
       issue-routes.ts            /api/issues/* handlers (GitHub issue CRUD)
       route-utils.ts             parseBody, sendJson, sendError, RouteContext
@@ -264,6 +264,7 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap |
+| `ELIZA_ACP_SYSTEM_SESSION_HEADROOM` | `2` | Reserved concurrent slots for short-lived `system` spawns (the #8898 read-only verifier), counted separately from `ELIZA_ACP_MAX_SESSIONS` so validation never deadlocks behind the worker cap |
 | `ELIZA_MAX_SPAWNS_PER_ORIGIN` | `3` | Max sub-agent spawns per root user message before relaying the best captured result instead of re-spawning (bounds the weak-model re-spawn loop) |
 | `ELIZA_ACP_STATE_DIR` | `~/.eliza/plugin-acp` | Session state persistence dir when no runtime DB |
 | `ELIZA_ACP_SESSION_STORE_BACKEND` | unset | Override session store backend (`db`, `file`, or `memory`) |

@@ -344,6 +344,9 @@ export class HetznerContainersClient {
 
       return rowToSummary(updated ?? { ...row, metadata });
     } catch (err) {
+      // error-policy:J2 translate the create failure into a typed provisioning
+      // error (with `err` as cause) after marking the row `failed`; the throw
+      // below surfaces it to the route boundary rather than fabricating a summary.
       const message = err instanceof Error ? err.message : String(err);
       logger.error("[hetzner-client] container create failed", {
         containerId: row.id,
@@ -354,7 +357,13 @@ export class HetznerContainersClient {
       // Hetzner Cloud volume intact; it may contain data if this is a
       // redeploy and the container start failed after attach. Operators can
       // retry because the volume is found by label on the next attempt.
-      await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, 30_000).catch(() => {});
+      // error-policy:J6 teardown-only; a cleanup failure is logged, never masks
+      // the create error rethrown below.
+      await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, 30_000).catch((rmErr) =>
+        logger.warn(`[hetzner-client] cleanup rm failed for ${containerName}`, {
+          error: rmErr instanceof Error ? rmErr.message : String(rmErr),
+        }),
+      );
       await containersRepository.updateStatus(row.id, "failed", message);
       throw new HetznerClientError("container_create_failed", message, err);
     }
@@ -394,6 +403,8 @@ export class HetznerContainersClient {
     const meta = readMetadata(row);
     if (meta) {
       await this.execOnNode(meta, async (ssh) => {
+        // error-policy:J6 best-effort graceful stop; the authoritative teardown
+        // is the un-caught `docker rm -f` below, whose failure DOES propagate.
         await ssh
           .exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, 30_000)
           .catch((err) => {
@@ -412,6 +423,8 @@ export class HetznerContainersClient {
               `[hetzner-client] refusing to purge unexpected volume path ${meta.volumePath}`,
             );
           } else {
+            // error-policy:J6 best-effort local-volume purge (path already
+            // prefix-guarded above); a failure is logged, not thrown.
             await ssh.exec(`rm -rf ${shellQuote(meta.volumePath)}`, 60_000).catch((err) =>
               logger.warn(`[hetzner-client] volume purge failed for ${meta.volumePath}`, {
                 error: err instanceof Error ? err.message : String(err),
@@ -424,6 +437,8 @@ export class HetznerContainersClient {
       // Idempotent slot release (#8342): only the first stop/delete of this
       // container actually decrements the node — a re-claimed job can't free a
       // phantom slot belonging to a live container. Atomic marker + decrement.
+      // error-policy:J6 best-effort idempotent slot release; a failure is logged
+      // for operator follow-up and does not block the stop/delete lifecycle.
       await containersRepository
         .tryReleaseNodeSlot(containerId, organizationId, meta.nodeId)
         .catch((err) => {
@@ -436,6 +451,9 @@ export class HetznerContainersClient {
     if (row.hcloud_volume_id !== null && isHetznerVolumesAvailable()) {
       const volService = getHetznerVolumeService();
       if (options.purgeVolume) {
+        // error-policy:J6 best-effort volume teardown during container removal;
+        // a delete failure is logged (paid resource left for operator cleanup)
+        // rather than aborting the removal, but is never fabricated as success.
         await volService.deleteProjectVolume(row.hcloud_volume_id).catch((err) => {
           logger.error(
             `[hetzner-client] hcloud volume delete failed for volume ${row.hcloud_volume_id}`,
@@ -445,6 +463,8 @@ export class HetznerContainersClient {
       } else if (meta?.volumePath) {
         const node = await dockerNodesRepository.findByNodeId(meta.nodeId);
         if (node) {
+          // error-policy:J6 best-effort soft-detach; a failure is logged and the
+          // volume stays attached for the next deploy, never faked as detached.
           await volService
             .detachFromNode(row.hcloud_volume_id, node, meta.volumePath)
             .catch((err) => {
@@ -491,6 +511,8 @@ export class HetznerContainersClient {
     const meta = readMetadata(row);
     if (meta) {
       await this.execOnNode(meta, async (ssh) => {
+        // error-policy:J6 best-effort graceful stop; the authoritative teardown
+        // is the un-caught `docker rm -f` below, whose failure DOES propagate.
         await ssh
           .exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, 30_000)
           .catch((err) => {
@@ -515,6 +537,8 @@ export class HetznerContainersClient {
               `[hetzner-client] refusing to purge unexpected volume path ${meta.volumePath}`,
             );
           } else {
+            // error-policy:J6 best-effort local-volume purge (path already
+            // prefix-guarded above); a failure is logged, not thrown.
             await ssh.exec(`rm -rf ${shellQuote(meta.volumePath)}`, 60_000).catch((err) =>
               logger.warn(`[hetzner-client] volume purge failed for ${meta.volumePath}`, {
                 error: err instanceof Error ? err.message : String(err),
@@ -527,6 +551,8 @@ export class HetznerContainersClient {
       // Idempotent slot release (#8342): only the first stop/delete of this
       // container actually decrements the node — a re-claimed job can't free a
       // phantom slot belonging to a live container. Atomic marker + decrement.
+      // error-policy:J6 best-effort idempotent slot release; a failure is logged
+      // for operator follow-up and does not block the stop/delete lifecycle.
       await containersRepository
         .tryReleaseNodeSlot(containerId, organizationId, meta.nodeId)
         .catch((err) => {
@@ -542,6 +568,9 @@ export class HetznerContainersClient {
       const volService = getHetznerVolumeService();
       if (options.purgeVolume) {
         // Hard-delete: detach + delete the block device. All data is lost.
+        // error-policy:J6 best-effort volume teardown during container removal;
+        // a delete failure is logged (paid resource left for operator cleanup)
+        // rather than aborting the removal, but is never fabricated as success.
         await volService.deleteProjectVolume(row.hcloud_volume_id).catch((err) => {
           logger.error(
             `[hetzner-client] hcloud volume delete failed for volume ${row.hcloud_volume_id}`,
@@ -559,6 +588,8 @@ export class HetznerContainersClient {
         const mountPath = meta.volumePath as string;
         const node = await dockerNodesRepository.findByNodeId(meta.nodeId);
         if (node) {
+          // error-policy:J6 best-effort soft-detach; a failure is logged and the
+          // volume stays attached for the next deploy, never faked as detached.
           await volService.detachFromNode(row.hcloud_volume_id, node, mountPath).catch((err) => {
             logger.warn(
               `[hetzner-client] hcloud volume detach failed for volume ${row.hcloud_volume_id}`,
@@ -604,7 +635,16 @@ export class HetznerContainersClient {
     const { meta } = row;
 
     await this.execOnNode(meta, async (ssh) => {
-      await ssh.exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, 30_000).catch(() => {});
+      // error-policy:J6 best-effort stop before the authoritative rm -f below;
+      // a stop failure is logged, not thrown, because rm -f performs the real
+      // teardown and its failure DOES propagate.
+      await ssh
+        .exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, 30_000)
+        .catch((stopErr) =>
+          logger.warn(`[hetzner-client] docker stop failed for ${meta.containerName}`, {
+            error: stopErr instanceof Error ? stopErr.message : String(stopErr),
+          }),
+        );
       await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, 30_000);
 
       const envFlags = Object.entries(environmentVars)
@@ -858,6 +898,10 @@ export class HetznerContainersClient {
         }
         // else still starting — leave alone
       } catch (err) {
+        // error-policy:J7 diagnostics-must-not-kill-the-loop — one container's
+        // probe failure is logged and the row is left in `deploying` for the
+        // next cron tick to retry; it must not abort the whole batch. No status
+        // is fabricated, so a persistently-failing probe never reads as healthy.
         logger.warn(`[hetzner-client] monitor probe failed for ${row.id}`, {
           error: err instanceof Error ? err.message : String(err),
         });
@@ -904,9 +948,10 @@ export class HetznerContainersClient {
     try {
       return await fn(ssh);
     } catch (err) {
+      // error-policy:J2 boundary translation — reclassify SSH connection-level
+      // failures to a typed `ssh_unreachable` (so the route returns 503 not 500)
+      // and rethrow everything else unchanged; nothing is swallowed.
       const message = err instanceof Error ? err.message : String(err);
-      // SSH connection-level failures are reclassified so the route layer
-      // can return a 503 instead of a 500.
       if (
         message.includes("ECONNREFUSED") ||
         message.includes("ETIMEDOUT") ||

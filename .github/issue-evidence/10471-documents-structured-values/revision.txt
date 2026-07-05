@@ -1,4 +1,0 @@
-branch=fix/10471-documents-structured-values
-head=8c8294a7fb9cb157ec38590ed597392ebd83ae63
-origin_develop=7495e589c19d9b1e41db8f908d041b9b32a9f1b7
-date=2026-06-30T23:29:09Z

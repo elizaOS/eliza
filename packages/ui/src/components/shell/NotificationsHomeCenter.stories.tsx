@@ -91,6 +91,41 @@ export const MixedPriorities: Story = {
   ),
 };
 
+/**
+ * The default notification set a fresh install ships with (seeded once per agent
+ * by the server's onboarding seeder) rendered in the integrated home center —
+ * the steady-state "empty but welcoming" inbox a new user first sees.
+ */
+export const OnboardingDefaults: Story = {
+  render: () => (
+    <Seeded
+      notifications={[
+        {
+          title: "Take the tour",
+          body: "New here? A two-minute guided tour shows you chat, the launcher, and your home screen.",
+          category: "general",
+          priority: "normal",
+          deepLink: "/tutorial",
+        },
+        {
+          title: "Get help any time",
+          body: "Stuck or curious? The help center answers common questions and can restart the tour.",
+          category: "general",
+          priority: "low",
+          deepLink: "/help",
+        },
+        {
+          title: "Connect your calendar",
+          body: "Link a calendar so your agent can brief you on what's next and keep your day on track.",
+          category: "general",
+          priority: "low",
+          deepLink: "/connectors",
+        },
+      ]}
+    />
+  ),
+};
+
 export const ScrollingInbox: Story = {
   render: () => (
     <Seeded

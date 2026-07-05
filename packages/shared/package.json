@@ -53,6 +53,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./automation-node-contributors": {
+      "types": "./dist/automation-node-contributors.d.ts",
+      "eliza-source": {
+        "types": "./src/automation-node-contributors.ts",
+        "import": "./src/automation-node-contributors.ts",
+        "default": "./src/automation-node-contributors.ts"
+      },
+      "import": "./dist/automation-node-contributors.js",
+      "default": "./dist/automation-node-contributors.js"
+    },
     "./connector-account-catalog": {
       "types": "./dist/connector-account-catalog.d.ts",
       "eliza-source": {
@@ -72,6 +82,16 @@
       "types": "./dist/config/allowed-hosts.d.ts",
       "import": "./dist/config/allowed-hosts.js",
       "default": "./dist/config/allowed-hosts.js"
+    },
+    "./config/brand-env-aliases": {
+      "types": "./dist/config/brand-env-aliases.d.ts",
+      "eliza-source": {
+        "types": "./src/config/brand-env-aliases.ts",
+        "import": "./src/config/brand-env-aliases.ts",
+        "default": "./src/config/brand-env-aliases.ts"
+      },
+      "import": "./dist/config/brand-env-aliases.js",
+      "default": "./dist/config/brand-env-aliases.js"
     },
     "./dev-settings-banner-style": {
       "types": "./dist/dev-settings-banner-style.d.ts",
@@ -110,6 +130,11 @@
     },
     "./runtime-env": {
       "types": "./dist/runtime-env.d.ts",
+      "eliza-source": {
+        "types": "./src/runtime-env.ts",
+        "import": "./src/runtime-env.ts",
+        "default": "./src/runtime-env.ts"
+      },
       "import": "./dist/runtime-env.js",
       "default": "./dist/runtime-env.js"
     },
@@ -157,6 +182,16 @@
       },
       "import": "./dist/events/index.js",
       "default": "./dist/events/index.js"
+    },
+    "./backgrounds/catalog-index": {
+      "types": "./dist/backgrounds/catalog-index.d.ts",
+      "eliza-source": {
+        "types": "./src/backgrounds/catalog-index.ts",
+        "import": "./src/backgrounds/catalog-index.ts",
+        "default": "./src/backgrounds/catalog-index.ts"
+      },
+      "import": "./dist/backgrounds/catalog-index.js",
+      "default": "./dist/backgrounds/catalog-index.js"
     },
     "./contracts": {
       "types": "./dist/contracts/index.d.ts",

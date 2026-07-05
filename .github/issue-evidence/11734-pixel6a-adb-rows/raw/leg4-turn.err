@@ -1,7 +1,0 @@
-error: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()
-  path: "http://127.0.0.1:31337/v1/chat/completions",
- errno: 0,
-  code: "ECONNRESET"
-
-
-Bun v1.4.0-canary.1+64ae83c2f (Linux x64)

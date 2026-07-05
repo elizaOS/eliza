@@ -1,3 +1,0 @@
-[test]
-timeout = 120000
-coverage = false

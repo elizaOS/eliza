@@ -1,9 +1,0 @@
-$ vitest run src/actions/playbackOp.test.ts
-
- RUN  v4.1.5 /home/shaw/eliza/eliza-wt-10471-playback-op/plugins/plugin-music
-
-
- Test Files  1 passed (1)
-      Tests  5 passed (5)
-   Start at  15:53:26
-   Duration  737ms (transform 460ms, setup 77ms, import 488ms, tests 10ms, environment 0ms)

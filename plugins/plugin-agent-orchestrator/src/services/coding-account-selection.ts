@@ -97,6 +97,8 @@ export async function selectCodingAccount(
     sessionKey?: string;
     strategy?: CodingAccountStrategy;
     exclude?: string[];
+    /** Pin selection to these account ids (see the bridge contract in core). */
+    accountIds?: string[];
   } = {},
 ): Promise<ResolvedCodingAccount | null> {
   if (!isMultiAccountAgentType(agentType)) return null;
@@ -154,6 +156,29 @@ export function diagnoseCodingAccountFallback(
     );
   }
   return null;
+}
+
+/**
+ * Whether the pool still has ≥1 healthy pooled account for this agent type —
+ * the gate the router's in-router account failover and the task service's
+ * crash-termination decision BOTH consult, so "will a spawned account failure
+ * be respawned onto a sibling?" is answered in one place. False when the bridge
+ * is absent (single-account host) or the pool is fully exhausted; in that case
+ * there is no sibling to fail over to, so the crash is un-respawnable and the
+ * task must terminate rather than park waiting for a respawn that will never
+ * come. Fails safe to false on a probe error.
+ */
+export function hasHealthyPooledAccount(agentType: string): boolean {
+  const bridge = getCodingAccountBridge();
+  if (!bridge) return false;
+  try {
+    const rows = bridge.describe()[agentType.toLowerCase()] ?? [];
+    return rows.some((row) => row.healthy > 0);
+  } catch {
+    // error-policy:J3 account-bridge probe failure → fail-safe "no healthy
+    // account"; declines failover so the task's honest failure reaches the user.
+    return false;
+  }
 }
 
 /**

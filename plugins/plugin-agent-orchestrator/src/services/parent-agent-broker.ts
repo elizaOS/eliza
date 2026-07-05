@@ -46,6 +46,29 @@ export const PARENT_AGENT_BROKER_MANIFEST_ENTRY = {
     'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. Mutating, paid, or destructive Cloud commands require an explicit user yes on a follow-up turn (not LLM `confirmed`). Fixed-cost self-spend commands such as `containers.create` may auto-authorize within the configured agent spend cap; variable-cost self-spend commands such as `domains.buy`, `media.*`, `promote.*`, and `advertising.*` always require human confirmation because the server-quoted price cannot be trusted from child-declared `params.spendEstimateUsd`. To delegate part of your work to a NEW parallel sub-agent on this same task, use `USE_SKILL parent-agent {"mode":"spawn-sub-agent","task":"<instruction for the child>","label":"<optional name>"}` — it spawns a child sub-agent (bounded nesting depth) whose progress shows in this task\'s thread; keep working, do not block waiting on it.',
 } as const;
 
+/**
+ * Is the child→parent broker actually reachable for a spawn happening now?
+ *
+ * The broker only functions when the `SubAgentRouter` is bound to the ACP
+ * session-event stream — that binding is what greps each child's stdout for the
+ * `USE_SKILL parent-agent` directive and dispatches it. When the router is
+ * disabled (`ACPX_SUB_AGENT_ROUTER_DISABLED`), stopped, or has not yet bound,
+ * no directive is ever picked up, so advertising the broker to a sub-agent would
+ * be a lie. Discovery surfaces (the operating manual, the default capability
+ * fence) gate on this so a child is only told about a bridge it can use.
+ *
+ * Read structurally via `isActive()` rather than importing `SubAgentRouter` to
+ * avoid a value/type import cycle (the router imports broker symbols).
+ */
+export function isParentAgentBrokerWired(runtime: IAgentRuntime): boolean {
+  const getService = (runtime as { getService?: unknown }).getService;
+  if (typeof getService !== "function") return false;
+  const router = getService.call(runtime, "ACPX_SUB_AGENT_ROUTER") as {
+    isActive?: () => boolean;
+  } | null;
+  return typeof router?.isActive === "function" && router.isActive();
+}
+
 type ParentAgentMode =
   | "ask"
   | "list-actions"

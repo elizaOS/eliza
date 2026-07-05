@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * test-realness-audit.mjs
  *
@@ -37,6 +38,7 @@
  * `--report` / `--json` to produce issue-evidence artifacts for #10718.
  */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -92,9 +94,16 @@ export const ENFORCED_CATEGORIES = Object.freeze([
   "xSkippedTest",
 ]);
 
+export const DIFF_SCOPED_CATEGORIES = Object.freeze([
+  "mockCallOnlyAssertion",
+  "tautologicalAssertion",
+]);
+
 export const REPORT_ONLY_CATEGORIES = Object.freeze(
   CHECKED_CATEGORIES.filter(
-    (category) => !ENFORCED_CATEGORIES.includes(category),
+    (category) =>
+      !ENFORCED_CATEGORIES.includes(category) &&
+      !DIFF_SCOPED_CATEGORIES.includes(category),
   ),
 );
 
@@ -267,8 +276,8 @@ function addRegexFinding({
   );
 }
 
-function analyzeFile(repoRoot, filePath) {
-  const sourceText = fs.readFileSync(filePath, "utf8");
+export function analyzeTestSource(repoRoot, relativePath, sourceText) {
+  const filePath = path.join(repoRoot, relativePath);
   const codeText = stripCommentsAndStrings(sourceText);
   const codeLines = codeText.split(/\r?\n/u);
   const findings = [];
@@ -400,6 +409,15 @@ function analyzeFile(repoRoot, filePath) {
   return findings;
 }
 
+function analyzeFile(repoRoot, filePath) {
+  const sourceText = fs.readFileSync(filePath, "utf8");
+  return analyzeTestSource(
+    repoRoot,
+    repoRelative(repoRoot, filePath),
+    sourceText,
+  );
+}
+
 function summarize(findings, filesScanned) {
   const byCategory = Object.fromEntries(
     CHECKED_CATEGORIES.map((category) => [category, 0]),
@@ -463,6 +481,66 @@ export function collectFailures(result) {
   return failures;
 }
 
+function countByFileAndCategory(findings, categories) {
+  const counts = new Map();
+  for (const finding of findings) {
+    if (!categories.includes(finding.category)) continue;
+    const key = `${finding.path}\0${finding.category}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+export function collectDiffScopedRegressions({
+  currentFindings,
+  baseFindings,
+  changedFiles,
+  categories = DIFF_SCOPED_CATEGORIES,
+}) {
+  const current = countByFileAndCategory(currentFindings, categories);
+  const base = countByFileAndCategory(baseFindings, categories);
+  const changed = new Set(changedFiles);
+  const regressions = [];
+
+  for (const file of changed) {
+    for (const category of categories) {
+      const key = `${file}\0${category}`;
+      const currentCount = current.get(key) ?? 0;
+      const baseCount = base.get(key) ?? 0;
+      if (currentCount > baseCount) {
+        regressions.push({
+          file,
+          category,
+          current: currentCount,
+          base: baseCount,
+        });
+      }
+    }
+  }
+
+  return regressions.sort(
+    (left, right) =>
+      left.file.localeCompare(right.file) ||
+      left.category.localeCompare(right.category),
+  );
+}
+
+export function collectDiffScopedFailures(regressions) {
+  return regressions.map(
+    (r) =>
+      `${r.category} increased in touched test file ${r.file}: ${r.current} current > ${r.base} base`,
+  );
+}
+
+export function collectDiffScopedGateFailures(diffScoped) {
+  if (diffScoped.skipped) {
+    return [
+      `diff-scoped ratchet could not run: ${diffScoped.reason}. Ensure CI fetches origin/develop before running --check.`,
+    ];
+  }
+  return diffScoped.failures;
+}
+
 export function buildBaseline(result) {
   return {
     version: 2,
@@ -479,7 +557,12 @@ function markdownEscape(value) {
   return String(value).replace(/\|/gu, "\\|");
 }
 
-export function buildMarkdownReport(result, baseline, failures = []) {
+export function buildMarkdownReport(
+  result,
+  baseline,
+  failures = [],
+  diffScoped = null,
+) {
   const lines = [];
   lines.push("# #10718 Test Realness Inventory");
   lines.push("");
@@ -509,7 +592,9 @@ export function buildMarkdownReport(result, baseline, failures = []) {
     const allowed = baseline?.thresholds?.[category] ?? 0;
     const mode = ENFORCED_CATEGORIES.includes(category)
       ? "enforced"
-      : "report-only";
+      : DIFF_SCOPED_CATEGORIES.includes(category)
+        ? "diff-scoped"
+        : "report-only";
     lines.push(
       `| ${markdownEscape(CATEGORY_LABELS[category])} | ${mode} | ${current} | ${allowed} | ${current - allowed} |`,
     );
@@ -525,6 +610,32 @@ export function buildMarkdownReport(result, baseline, failures = []) {
     for (const failure of failures) {
       lines.push(`- ${failure}`);
     }
+    lines.push("");
+  }
+
+  if (diffScoped && !diffScoped.skipped) {
+    lines.push("## Diff-Scoped Ratchet");
+    lines.push("");
+    lines.push(
+      `- Base: \`${diffScoped.baseRef}\` (${diffScoped.base.slice(0, 10)})`,
+    );
+    lines.push(`- Changed test files: **${diffScoped.changedFiles.length}**`);
+    lines.push(`- Regressions: **${diffScoped.regressions.length}**`);
+    if (diffScoped.regressions.length > 0) {
+      lines.push("");
+      lines.push("| File | Category | Base | Current |");
+      lines.push("| --- | --- | ---: | ---: |");
+      for (const regression of diffScoped.regressions) {
+        lines.push(
+          `| \`${regression.file}\` | ${markdownEscape(CATEGORY_LABELS[regression.category])} | ${regression.base} | ${regression.current} |`,
+        );
+      }
+    }
+    lines.push("");
+  } else if (diffScoped?.skipped) {
+    lines.push("## Diff-Scoped Ratchet");
+    lines.push("");
+    lines.push(`- Skipped: ${diffScoped.reason}`);
     lines.push("");
   }
 
@@ -595,6 +706,115 @@ function parseArgs(argv) {
   return args;
 }
 
+function git(repoRoot, argv, { allowFailure = false } = {}) {
+  try {
+    return execFileSync("git", argv, {
+      cwd: repoRoot,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", allowFailure ? "ignore" : "inherit"],
+    });
+  } catch (error) {
+    if (allowFailure) return null;
+    throw error;
+  }
+}
+
+function resolveBaseRef(repoRoot) {
+  const candidates = ["origin/develop", "develop"];
+  for (const ref of candidates) {
+    if (
+      git(repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], {
+        allowFailure: true,
+      })
+    ) {
+      return ref;
+    }
+  }
+  return null;
+}
+
+function mergeBaseWith(repoRoot, ref) {
+  const out = git(repoRoot, ["merge-base", ref, "HEAD"], {
+    allowFailure: true,
+  });
+  return out ? out.trim() : null;
+}
+
+function changedTestFiles(repoRoot, base) {
+  const out = git(repoRoot, ["diff", "--name-only", "-z", base, "HEAD"], {
+    allowFailure: true,
+  });
+  if (!out) return [];
+  return [...new Set(out.split("\0").filter(Boolean))]
+    .filter(isTestFile)
+    .sort();
+}
+
+function baseContent(repoRoot, base, relPath) {
+  return git(repoRoot, ["show", `${base}:${relPath}`], {
+    allowFailure: true,
+  });
+}
+
+function collectBaseFindingsForChangedFiles(repoRoot, base, files) {
+  return files.flatMap((relPath) => {
+    const sourceText = baseContent(repoRoot, base, relPath);
+    if (sourceText === null) return [];
+    return analyzeTestSource(repoRoot, relPath, sourceText);
+  });
+}
+
+function diffScopedCheck(result, repoRoot) {
+  const baseRef = resolveBaseRef(repoRoot);
+  if (!baseRef) {
+    return {
+      skipped: true,
+      reason: "no base ref found",
+      baseRef: null,
+      base: null,
+      changedFiles: [],
+      regressions: [],
+      failures: [],
+    };
+  }
+
+  const base = mergeBaseWith(repoRoot, baseRef);
+  if (!base) {
+    return {
+      skipped: true,
+      reason: `could not compute merge-base with ${baseRef}`,
+      baseRef,
+      base: null,
+      changedFiles: [],
+      regressions: [],
+      failures: [],
+    };
+  }
+
+  const changedFiles = changedTestFiles(repoRoot, base);
+  const baseFindings = collectBaseFindingsForChangedFiles(
+    repoRoot,
+    base,
+    changedFiles,
+  );
+  const regressions = collectDiffScopedRegressions({
+    currentFindings: result.findings,
+    baseFindings,
+    changedFiles,
+  });
+
+  return {
+    skipped: false,
+    reason: null,
+    baseRef,
+    base,
+    changedFiles,
+    regressions,
+    failures: collectDiffScopedFailures(regressions),
+  };
+}
+
 function writeFileEnsuringDir(filePath, content) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content, "utf8");
@@ -612,7 +832,13 @@ function main() {
   const baseline = fs.existsSync(args.baselinePath)
     ? readJson(args.baselinePath)
     : buildBaseline(result);
-  const failures = collectFailures(result);
+  const diffScoped = diffScopedCheck(result, args.repoRoot);
+  const failures = [
+    ...collectFailures(result),
+    ...(args.check
+      ? collectDiffScopedGateFailures(diffScoped)
+      : diffScoped.failures),
+  ];
 
   if (args.jsonPath) {
     writeFileEnsuringDir(
@@ -620,6 +846,7 @@ function main() {
       `${JSON.stringify(
         {
           summary: result.summary,
+          diffScoped,
           findings: result.findings,
         },
         null,
@@ -631,7 +858,7 @@ function main() {
   if (args.reportPath) {
     writeFileEnsuringDir(
       args.reportPath,
-      buildMarkdownReport(result, baseline, failures),
+      buildMarkdownReport(result, baseline, failures, diffScoped),
     );
   }
 
@@ -641,7 +868,9 @@ function main() {
   for (const category of CHECKED_CATEGORIES) {
     const mode = ENFORCED_CATEGORIES.includes(category)
       ? "enforced"
-      : "report-only";
+      : DIFF_SCOPED_CATEGORIES.includes(category)
+        ? "diff-scoped"
+        : "report-only";
     process.stdout.write(
       `[test-realness-audit] ${category}=${result.summary.byCategory[category] ?? 0} reference=${baseline?.thresholds?.[category] ?? 0} mode=${mode}\n`,
     );
@@ -649,6 +878,15 @@ function main() {
   process.stdout.write(
     `[test-realness-audit] untrackedSkips=${result.summary.untrackedSkips} reference=${baseline?.thresholds?.untrackedSkips ?? 0} mode=report-only\n`,
   );
+  if (diffScoped.skipped) {
+    process.stdout.write(
+      `[test-realness-audit] diffScoped=skipped reason=${diffScoped.reason}\n`,
+    );
+  } else {
+    process.stdout.write(
+      `[test-realness-audit] diffScoped=checked base=${diffScoped.baseRef} changedTestFiles=${diffScoped.changedFiles.length} regressions=${diffScoped.regressions.length}\n`,
+    );
+  }
 
   if (args.check && failures.length > 0) {
     for (const failure of failures) {

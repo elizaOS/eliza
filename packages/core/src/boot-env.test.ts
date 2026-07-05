@@ -1,94 +1,15 @@
 /**
- * Covers boot-env's env-alias mirroring (branded ↔ ELIZA_ keys with stale-target
- * clearing) and the write-once boot-config store: a late window mirror cannot
- * replace an established store, and the singleton is held through the
- * ambient-context accessor. Deterministic; mutates and restores process.env and
+ * Covers boot-env's non-mutating brand<->ELIZA alias reader
+ * (`resolveAliasedEnvValue`) and the write-once boot-config store: a late window
+ * mirror cannot replace an established store, and the singleton is held through
+ * the ambient-context accessor. There is no `process.env` alias-sync mutation
+ * anymore (#13423) — the reader resolves aliases without writing, and the store
+ * cases assert that fact. Deterministic; mutates and restores process.env and
  * globalThis around each case.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { peekAmbientSingleton } from "./ambient-context";
-import {
-	resolveAliasedEnvValue,
-	syncAppEnvToEliza,
-	syncBrandEnvToEliza,
-	syncElizaEnvToBrand,
-} from "./boot-env";
-
-function withCleanEnv(keys: string[], run: () => void): void {
-	const previous = new Map(keys.map((key) => [key, process.env[key]] as const));
-	try {
-		for (const key of keys) {
-			delete process.env[key];
-		}
-		run();
-	} finally {
-		for (const [key, value] of previous) {
-			if (value === undefined) {
-				delete process.env[key];
-			} else {
-				process.env[key] = value;
-			}
-		}
-	}
-}
-
-describe("boot env alias syncing", () => {
-	it("mirrors branded env to Eliza env and clears stale mirrored targets", () => {
-		const keys = [
-			"ELIZA_BOOT_ENV_TEST_SOURCE",
-			"ELIZA_BOOT_ENV_TEST_MISSING",
-			"ELIZA_BOOT_ENV_TEST_TARGET",
-			"ELIZA_BOOT_ENV_TEST_MANUAL",
-		];
-		withCleanEnv(keys, () => {
-			process.env.ELIZA_BOOT_ENV_TEST_SOURCE = "brand-value";
-			process.env.ELIZA_BOOT_ENV_TEST_MANUAL = "manual-value";
-
-			syncBrandEnvToEliza([
-				["ELIZA_BOOT_ENV_TEST_SOURCE", "ELIZA_BOOT_ENV_TEST_TARGET"],
-				["ELIZA_BOOT_ENV_TEST_MISSING", "ELIZA_BOOT_ENV_TEST_MANUAL"],
-			]);
-
-			expect(process.env.ELIZA_BOOT_ENV_TEST_TARGET).toBe("brand-value");
-			expect(process.env.ELIZA_BOOT_ENV_TEST_MANUAL).toBe("manual-value");
-
-			delete process.env.ELIZA_BOOT_ENV_TEST_SOURCE;
-			syncBrandEnvToEliza([
-				["ELIZA_BOOT_ENV_TEST_SOURCE", "ELIZA_BOOT_ENV_TEST_TARGET"],
-			]);
-
-			expect(process.env.ELIZA_BOOT_ENV_TEST_TARGET).toBeUndefined();
-		});
-	});
-
-	it("mirrors Eliza env to branded env and clears stale mirrored targets", () => {
-		const keys = [
-			"ELIZA_BOOT_ENV_TEST_TARGET",
-			"ELIZA_BOOT_ENV_TEST_MANUAL",
-			"ELIZA_BOOT_ENV_TEST_SOURCE",
-			"ELIZA_BOOT_ENV_TEST_MISSING",
-		];
-		withCleanEnv(keys, () => {
-			process.env.ELIZA_BOOT_ENV_TEST_SOURCE = "eliza-value";
-			process.env.ELIZA_BOOT_ENV_TEST_MANUAL = "manual-value";
-
-			syncElizaEnvToBrand([
-				["ELIZA_BOOT_ENV_TEST_TARGET", "ELIZA_BOOT_ENV_TEST_SOURCE"],
-				["ELIZA_BOOT_ENV_TEST_MANUAL", "ELIZA_BOOT_ENV_TEST_MISSING"],
-			]);
-
-			expect(process.env.ELIZA_BOOT_ENV_TEST_TARGET).toBe("eliza-value");
-			expect(process.env.ELIZA_BOOT_ENV_TEST_MANUAL).toBe("manual-value");
-
-			delete process.env.ELIZA_BOOT_ENV_TEST_SOURCE;
-			syncElizaEnvToBrand([
-				["ELIZA_BOOT_ENV_TEST_TARGET", "ELIZA_BOOT_ENV_TEST_SOURCE"],
-			]);
-
-			expect(process.env.ELIZA_BOOT_ENV_TEST_TARGET).toBeUndefined();
-		});
-	});
-});
+import { resolveAliasedEnvValue } from "./boot-env";
 
 // The boot-config store is shared across core/shared/ui bundles via the same
 // global slot; getBootConfigStore must be write-once so a late window mirror
@@ -128,7 +49,7 @@ describe("boot config store is write-once", () => {
 		}
 	});
 
-	it("the window-key mirror cannot replace an established store", () => {
+	it("resolves aliases from the established store, never the late window mirror", () => {
 		const slot = globalThis as Slot;
 		slot[STORE_KEY] = {
 			current: {
@@ -141,9 +62,11 @@ describe("boot config store is write-once", () => {
 		process.env.ELIZA_ESTABLISHED_SRC = "established";
 		process.env.ELIZA_WINDOW_SRC = "window";
 
-		syncAppEnvToEliza();
-
-		expect(process.env.ELIZA_ESTABLISHED_DST).toBe("established");
+		// The reader uses the established store's alias table; the window mirror's
+		// table is ignored, and nothing is written to process.env.
+		expect(resolveAliasedEnvValue("ELIZA_ESTABLISHED_DST")).toBe("established");
+		expect(resolveAliasedEnvValue("ELIZA_WINDOW_DST")).toBeUndefined();
+		expect(process.env.ELIZA_ESTABLISHED_DST).toBeUndefined();
 		expect(process.env.ELIZA_WINDOW_DST).toBeUndefined();
 	});
 
@@ -152,10 +75,10 @@ describe("boot config store is write-once", () => {
 		slot[WINDOW_KEY] = { envAliases: [["ELIZA_SEED_SRC", "ELIZA_SEED_DST"]] };
 		process.env.ELIZA_SEED_SRC = "seed";
 
-		syncAppEnvToEliza();
-
-		expect(process.env.ELIZA_SEED_DST).toBe("seed");
+		expect(resolveAliasedEnvValue("ELIZA_SEED_DST")).toBe("seed");
 		expect(slot[STORE_KEY]).toBeDefined();
+		// Resolution is read-only — the alias target is never materialized.
+		expect(process.env.ELIZA_SEED_DST).toBeUndefined();
 	});
 
 	it("stores the singleton through the ambient-context accessor", () => {
@@ -163,7 +86,7 @@ describe("boot config store is write-once", () => {
 		slot[WINDOW_KEY] = { envAliases: [["ELIZA_SEED_SRC", "ELIZA_SEED_DST"]] };
 
 		// First access seeds the store via setAmbientSingleton(STORE_KEY, …).
-		syncAppEnvToEliza();
+		resolveAliasedEnvValue("ELIZA_SEED_DST");
 
 		// The accessor and the raw global slot observe the same instance, proving
 		// the store is read/written through ambient-context.ts, not a hand-rolled
@@ -171,6 +94,74 @@ describe("boot config store is write-once", () => {
 		const viaAccessor = peekAmbientSingleton(STORE_KEY);
 		expect(viaAccessor).toBeDefined();
 		expect(viaAccessor).toBe(slot[STORE_KEY]);
+	});
+});
+
+// Non-ELIZA white-label brand boot: with a MILADY_* alias table on the store and
+// NO process.env mirror mutation, every boot-critical key must still resolve to
+// its MILADY_* value through the reader, and a canonical ELIZA_* value must win
+// when both are set. This is the regression proof that deleting the mirror is
+// safe for brands like Milady (#13423 / #12251 finale).
+describe("non-ELIZA brand boot resolves via the reader (no mirror)", () => {
+	const BOOT_CRITICAL: ReadonlyArray<readonly [string, string]> = [
+		["MILADY_STATE_DIR", "ELIZA_STATE_DIR"],
+		["MILADY_API_TOKEN", "ELIZA_API_TOKEN"],
+		["MILADY_API_PORT", "ELIZA_API_PORT"],
+		["MILADY_UI_PORT", "ELIZA_UI_PORT"],
+		["MILADY_NAMESPACE", "ELIZA_NAMESPACE"],
+		["MILADY_CONFIG_PATH", "ELIZA_CONFIG_PATH"],
+		["MILADY_ALLOWED_ORIGINS", "ELIZA_ALLOWED_ORIGINS"],
+		["MILADY_PLATFORM", "ELIZA_PLATFORM"],
+	];
+	const tracked = BOOT_CRITICAL.flat();
+	const savedEnv: Record<string, string | undefined> = {};
+	const slot = globalThis as Slot;
+
+	beforeEach(() => {
+		delete slot[STORE_KEY];
+		delete slot[WINDOW_KEY];
+		slot[STORE_KEY] = { current: { envAliases: BOOT_CRITICAL } };
+		for (const key of tracked) {
+			savedEnv[key] = process.env[key];
+			delete process.env[key];
+		}
+	});
+
+	afterEach(() => {
+		delete slot[STORE_KEY];
+		delete slot[WINDOW_KEY];
+		for (const key of tracked) {
+			if (savedEnv[key] === undefined) delete process.env[key];
+			else process.env[key] = savedEnv[key];
+		}
+	});
+
+	it("resolves each boot-critical key from its MILADY_* value without mirroring", () => {
+		for (const [brand] of BOOT_CRITICAL) {
+			process.env[brand] = `milady-${brand}`;
+		}
+		const before = { ...process.env };
+
+		for (const [brand, eliza] of BOOT_CRITICAL) {
+			// A consumer that reads the canonical ELIZA_* key resolves the branded
+			// value through the alias table, without the mirror ever running.
+			expect(resolveAliasedEnvValue(eliza)).toBe(`milady-${brand}`);
+			// And nothing was written back — the ELIZA_* mirror is never created.
+			expect(process.env[eliza]).toBeUndefined();
+		}
+		// A spread snapshot (plain object) compares by value; the live process.env
+		// proxy would fail toStrictEqual on descriptor identity, not content.
+		expect({ ...process.env }).toStrictEqual(before);
+	});
+
+	it("prefers the canonical ELIZA_* value when both brand and canonical are set", () => {
+		for (const [brand, eliza] of BOOT_CRITICAL) {
+			process.env[brand] = `milady-${brand}`;
+			process.env[eliza] = `eliza-${eliza}`;
+		}
+		for (const [_brand, eliza] of BOOT_CRITICAL) {
+			expect(resolveAliasedEnvValue(eliza)).toBe(`eliza-${eliza}`);
+		}
 	});
 });
 

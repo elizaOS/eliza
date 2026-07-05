@@ -1,9 +1,0 @@
-<?xml version='1.0' encoding='UTF-8' ?>
-<testsuite name="ai.eliza.plugins.camera.CameraDeviceReaderInstrumentedTest" tests="1" failures="0" errors="0" skipped="0" time="0.579" timestamp="2026-06-30T07:21:06" hostname="localhost">
-  <properties>
-    <property name="device" value="Pixel 6a - 16" />
-    <property name="flavor" value="" />
-    <property name="project" value=":elizaos-capacitor-camera" />
-  </properties>
-  <testcase name="readDevices_enumeratesRealCameras" classname="ai.eliza.plugins.camera.CameraDeviceReaderInstrumentedTest" time="0.023" />
-</testsuite>

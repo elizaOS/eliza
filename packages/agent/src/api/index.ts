@@ -43,6 +43,7 @@ export * from "./bug-report-routes.ts";
 export * from "./character-routes.ts";
 export * from "./compat-utils.ts";
 export * from "./connector-health.ts";
+export * from "./conversation-restore.ts";
 export * from "./credit-detection.ts";
 export * from "./database.ts";
 export * from "./diagnostics-routes.ts";

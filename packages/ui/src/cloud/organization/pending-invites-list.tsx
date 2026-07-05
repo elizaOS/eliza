@@ -46,11 +46,9 @@ export function PendingInvitesList({
 
   if (pendingInvites.length === 0) {
     return (
-      <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-6 text-center">
-        <Mail className="h-10 w-10 mx-auto text-white/40 mb-3" />
-        <p className="text-sm font-mono text-white/60">
-          No pending invitations
-        </p>
+      <div className="bg-surface border border-brand-surface p-6 text-center">
+        <Mail className="h-10 w-10 mx-auto text-muted mb-3" />
+        <p className="text-sm font-mono text-muted">No pending invitations</p>
       </div>
     );
   }
@@ -80,28 +78,28 @@ export function PendingInvitesList({
     switch (invite.status) {
       case "pending":
         return (
-          <span className="px-2 py-0.5 border border-white/20 bg-white/10 text-white flex items-center gap-1 text-xs font-mono">
+          <span className="px-2 py-0.5 border border-border-strong bg-surface text-txt-strong flex items-center gap-1 text-xs font-mono">
             <Clock className="h-3 w-3" />
             Pending
           </span>
         );
       case "accepted":
         return (
-          <span className="px-2 py-0.5 border border-green-500/40 bg-green-500/20 text-green-400 flex items-center gap-1 text-xs font-mono">
+          <span className="px-2 py-0.5 border border-green-500/40 bg-green-500/20 text-green-700 dark:text-green-300 flex items-center gap-1 text-xs font-mono">
             <CheckCircle2 className="h-3 w-3" />
             Accepted
           </span>
         );
       case "revoked":
         return (
-          <span className="px-2 py-0.5 border border-white/10 bg-white/5 text-white/40 flex items-center gap-1 text-xs font-mono">
+          <span className="px-2 py-0.5 border border-border bg-surface text-muted flex items-center gap-1 text-xs font-mono">
             <XCircle className="h-3 w-3" />
             Revoked
           </span>
         );
       default:
         return (
-          <span className="px-2 py-0.5 border border-white/10 text-xs font-mono text-white/60">
+          <span className="px-2 py-0.5 border border-border text-xs font-mono text-muted">
             {invite.status}
           </span>
         );
@@ -122,21 +120,21 @@ export function PendingInvitesList({
         return (
           <div
             key={invite.id}
-            className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4"
+            className="bg-surface border border-brand-surface p-3 md:p-4"
           >
             <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
               <div className="flex-1 min-w-0 w-full space-y-2">
                 {/* Email */}
                 <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-white/40 flex-shrink-0" />
-                  <span className="font-mono font-medium text-sm md:text-base text-white truncate">
+                  <Mail className="h-4 w-4 text-muted flex-shrink-0" />
+                  <span className="font-mono font-medium text-sm md:text-base text-txt-strong truncate">
                     {invite.email}
                   </span>
                 </div>
 
                 {/* Role */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="px-2 py-0.5 border border-white/20 text-xs font-mono text-white/60 flex items-center gap-1">
+                  <span className="px-2 py-0.5 border border-border-strong text-xs font-mono text-muted flex items-center gap-1">
                     {getRoleIcon(invite.role)}
                     <span className="capitalize">{invite.role}</span>
                   </span>
@@ -144,7 +142,7 @@ export function PendingInvitesList({
                 </div>
 
                 {/* Metadata */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs font-mono text-white/40">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs font-mono text-muted">
                   <span>Invited by {getInviterName(invite)}</span>
                   <span className="hidden sm:inline">•</span>
                   <span>
@@ -173,19 +171,19 @@ export function PendingInvitesList({
                     <Button
                       variant="ghost"
                       type="button"
-                      className="p-2 hover:bg-white/5 transition-colors border border-white/10"
+                      className="p-2 hover:bg-surface transition-colors border border-border"
                     >
                       <X className="h-4 w-4 text-[#EB4335]" />
                     </Button>
                   </AlertDialogTrigger>
-                  <AlertDialogContent className="bg-neutral-950 border border-brand-surface">
+                  <AlertDialogContent className="bg-popover border border-brand-surface">
                     <AlertDialogHeader>
-                      <AlertDialogTitle className="text-white font-mono">
+                      <AlertDialogTitle className="text-txt-strong font-mono">
                         Revoke Invitation
                       </AlertDialogTitle>
-                      <AlertDialogDescription className="text-white/60 font-mono text-sm">
+                      <AlertDialogDescription className="text-muted font-mono text-sm">
                         Are you sure you want to revoke the invitation for{" "}
-                        <span className="font-medium text-white">
+                        <span className="font-medium text-txt-strong">
                           {invite.email}
                         </span>
                         ? They will not be able to join using this invitation
@@ -193,7 +191,7 @@ export function PendingInvitesList({
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel className="bg-transparent border-[#303030] text-white hover:bg-white/5">
+                      <AlertDialogCancel className="bg-transparent border-border text-txt-strong hover:bg-surface">
                         Cancel
                       </AlertDialogCancel>
                       <AlertDialogAction
@@ -214,7 +212,7 @@ export function PendingInvitesList({
       {/* Show revoked/accepted invites */}
       {invites.filter((i) => i.status !== "pending").length > 0 && (
         <details className="mt-4 md:mt-6">
-          <summary className="cursor-pointer text-xs md:text-sm font-mono text-white/60 hover:text-white transition-colors">
+          <summary className="cursor-pointer text-xs md:text-sm font-mono text-muted hover:text-txt-strong transition-colors">
             Show past invitations (
             {invites.filter((i) => i.status !== "pending").length})
           </summary>
@@ -224,24 +222,24 @@ export function PendingInvitesList({
               .map((invite) => (
                 <div
                   key={invite.id}
-                  className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 opacity-60"
+                  className="bg-surface border border-brand-surface p-3 md:p-4 opacity-60"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0 space-y-2">
                       <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4 text-white/40 flex-shrink-0" />
-                        <span className="font-mono font-medium text-sm text-white truncate">
+                        <Mail className="h-4 w-4 text-muted flex-shrink-0" />
+                        <span className="font-mono font-medium text-sm text-txt-strong truncate">
                           {invite.email}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-2 py-0.5 border border-white/20 text-xs font-mono text-white/60 flex items-center gap-1">
+                        <span className="px-2 py-0.5 border border-border-strong text-xs font-mono text-muted flex items-center gap-1">
                           {getRoleIcon(invite.role)}
                           <span className="capitalize">{invite.role}</span>
                         </span>
                         {getStatusBadge(invite)}
                       </div>
-                      <div className="text-xs font-mono text-white/40">
+                      <div className="text-xs font-mono text-muted">
                         {invite.status === "accepted" && invite.accepted_at && (
                           <span>
                             Accepted{" "}

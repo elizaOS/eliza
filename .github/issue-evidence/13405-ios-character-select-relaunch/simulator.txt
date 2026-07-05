@@ -1,4 +1,0 @@
-== Devices ==
--- iOS 18.1 --
-    iPhone 16 Pro (F165C3A3-5069-4174-A40C-89F0BCC4B9FB) (Booted)
--- iOS 26.4 --

@@ -99,30 +99,21 @@ export function setActiveViewElements(
   return true;
 }
 
-/**
- * Host-owned action affinity. Plugin-owned views declare their own
- * `ViewDeclaration.relatedActions`; the live view registry is the source of
- * truth for those relationships. This small fallback remains only for built-in
- * shell views without plugin declarations.
- */
-const HOST_VIEW_ACTION_AFFINITY: Readonly<Record<string, readonly string[]>> = {
-  "plugins-page": ["RUNTIME"],
-  settings: ["RUNTIME"],
-};
-
 function normalizeRelatedActions(actions: readonly string[] | undefined) {
   return [...new Set((actions ?? []).map((a) => a.trim()).filter(Boolean))];
 }
 
 /**
- * Current view-id -> related action map derived from registered view
- * declarations plus host-owned built-in affinities.
+ * Current view-id -> related action map derived entirely from registered view
+ * declarations. The live view registry — plugin views AND the built-in shell
+ * views (registered from `builtin-views.ts`, which carry their own
+ * `relatedActions`) — is the single source of truth. There is no host-owned
+ * fallback table: a view that wants an action weighted while it is foreground
+ * declares `relatedActions`; a view that wants a GATED action it exposes only
+ * while active declares `scopedActions` (see view-scoped-actions.ts).
  */
 export function viewActionAffinityMap(): Record<string, readonly string[]> {
   const map = new Map<string, string[]>();
-  for (const [viewId, actions] of Object.entries(HOST_VIEW_ACTION_AFFINITY)) {
-    map.set(viewId, [...actions]);
-  }
   for (const viewType of VIEW_TYPES) {
     for (const view of listViews({
       developerMode: true,
@@ -149,16 +140,36 @@ function getViewRelatedActions(viewId: string): string[] {
 
 /**
  * Resolve the set of action names to keep at full param detail for the active
- * view. Returns an empty set when no view is active or the view has no mapped
- * actions (control still works through agent-surface capabilities).
+ * view — its declared `relatedActions`. Returns an empty set when no view is
+ * active or the view declares none (control still works through agent-surface
+ * capabilities and, for gated named actions, the view-scoped action registry).
  */
 export function viewScopedActionNames(
   viewId: string | null | undefined,
 ): Set<string> {
   if (!viewId) return new Set();
-  const declared = getViewRelatedActions(viewId);
-  if (declared.length > 0) return new Set(declared);
-  return new Set(HOST_VIEW_ACTION_AFFINITY[viewId] ?? []);
+  return new Set(getViewRelatedActions(viewId));
+}
+
+/**
+ * Named view-scoped agent actions (`ViewDeclaration.scopedActions`) a view
+ * exposes, as `{ name, description }`. These are gated actions — the host only
+ * exposes them to the planner while this view is active (see
+ * view-scoped-actions.ts) — so the awareness block names them for the planner.
+ * Read from the registry entry (which carries the declaration) rather than the
+ * action registry to avoid an import cycle with the registration module.
+ */
+export function viewScopedNamedActions(
+  viewId: string | null | undefined,
+): { name: string; description: string }[] {
+  if (!viewId) return [];
+  for (const viewType of VIEW_TYPES) {
+    const scoped = getView(viewId, { viewType })?.scopedActions;
+    if (scoped && scoped.length > 0) {
+      return scoped.map((a) => ({ name: a.name, description: a.description }));
+    }
+  }
+  return [];
 }
 
 /**
@@ -259,6 +270,15 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
     lines.push(
       `Actions most relevant while on this view (prefer these when the request fits): ${scoped.join(", ")}.`,
     );
+  }
+  const named = viewScopedNamedActions(view.viewId);
+  if (named.length > 0) {
+    lines.push(
+      "Named actions this view exposes only while it is active (invoke by name — they drive its controls for you):",
+    );
+    for (const action of named) {
+      lines.push(`- ${action.name}: ${action.description}`);
+    }
   }
   const elements = view.elements ?? [];
   if (elements.length > 0) {

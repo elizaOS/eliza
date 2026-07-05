@@ -61,7 +61,7 @@ env:
 jobs:
   lifeops-bench:
     name: "lifeops-bench: ${{ matrix.agent }}"
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     strategy:
       fail-fast: false

@@ -3,10 +3,7 @@
  * connectors and capabilities (Google, Discord, Signal, Telegram, permissions)
  * as automation nodes the owner can wire into workflows in the automation UI.
  */
-import {
-  type AutomationNodeContributorContext,
-  registerAutomationNodeContributor,
-} from "@elizaos/app-core/api/automation-node-contributors";
+
 import { logger } from "@elizaos/core";
 import type {
   AutomationNodeDescriptor,
@@ -17,6 +14,10 @@ import type {
   LifeOpsTelegramConnectorStatus,
   PermissionState,
 } from "@elizaos/shared";
+import {
+  type AutomationNodeContributorContext,
+  registerAutomationNodeContributor,
+} from "@elizaos/shared/automation-node-contributors";
 import { LifeOpsService } from "./lifeops/service";
 
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";

@@ -47,6 +47,7 @@ src/
                           reload-hot.ts, repository.ts, types.ts
   api/
     server.ts             startApiServer() — HTTP stack, auth, CORS, WS upgrade, route dispatch
+    runtime-mode/         mode resolution (local/local-only/cloud/remote), route-visibility gate + remote-mode forwarder run pre-dispatch by every host
     dispatch-route.ts     dispatchRoute() — maps requests to handlers
     *-routes.ts           ~38 route modules (agent admin/lifecycle/status, auth, character, memory, models, permissions, registry, etc.)
     server-helpers*.ts    Auth/conversation/wallet helpers (trusted-local checks, tokens)

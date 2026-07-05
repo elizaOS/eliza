@@ -527,7 +527,11 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                     }}
                   />
                   <Bar dataKey="newUsers" fill="#e11d48" name="New Users" />
-                  <Bar dataKey="users" fill="var(--accent)" name="Total Users" />
+                  <Bar
+                    dataKey="users"
+                    fill="var(--accent)"
+                    name="Total Users"
+                  />
                 </BarChart>
               </ResponsiveContainer>
             ) : (

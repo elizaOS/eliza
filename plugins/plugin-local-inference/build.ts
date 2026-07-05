@@ -32,6 +32,12 @@ const external = await externalsFromPackageJson("./package.json", {
 	// binding; bun:* covers the desktop bun:ffi loader.
 	extra: [
 		"@elizaos/agent",
+		// AOSP-only companion plugin, reached via a lazy `import(...)` gated on
+		// ELIZA_LOCAL_LLAMA (getAospLocalInferenceApi in local-inference-routes).
+		// It is not a declared dependency (present only on AOSP images), so the
+		// mobile bundler must treat it as external or the build fails to resolve
+		// it on every stock target.
+		"@elizaos/plugin-aosp-local-inference",
 		"llama-cpp-capacitor",
 		"@reflink/reflink",
 		"ws",

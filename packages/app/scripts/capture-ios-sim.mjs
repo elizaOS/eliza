@@ -11,6 +11,7 @@
 //   --duration <seconds>     recording length (default 6)
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
+import { resolveApiPort } from "../../../scripts/e2e-recordings/native-capture-common.mjs";
 import {
   captureBackendLog,
   evidenceBaseName,
@@ -112,7 +113,15 @@ async function main() {
     log("recording produced no file (simulator finalize failed)");
   }
 
-  const logPath = captureBackendLog(base);
+  // Backend-log port: an explicit `--api-port <n>` wins (shared resolver, keeps
+  // 31337 as the final fallback); otherwise captureBackendLog keeps resolving
+  // from ELIZA_API_PORT / ELIZA_PORT so port-shifted parallel stacks still work.
+  const logPath =
+    flags["api-port"] !== undefined
+      ? captureBackendLog(base, {
+          port: resolveApiPort(process.argv.slice(2), process.env),
+        })
+      : captureBackendLog(base);
   log(
     logPath
       ? `backend log → ${logPath}`

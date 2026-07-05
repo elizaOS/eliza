@@ -16,6 +16,7 @@ import path from "node:path";
 import process from "node:process";
 
 import { logger } from "@elizaos/core";
+import { isDevApiWatchEnabled } from "@elizaos/shared/runtime-env";
 
 import { resolveStateDir } from "../config/paths.ts";
 import type { BootSummary } from "./boot-timer.ts";
@@ -167,7 +168,7 @@ interface BootEvent {
   pid: number;
   /** Supervisor spawn timestamp, when known (restart-correlation key). */
   spawnedAtMs: number | null;
-  /** True when the API runs under `node --watch` (ELIZA_DEV_NO_WATCH=0). */
+  /** True when the API is running under an active dev watcher. */
   watch: boolean;
   /** Short label, e.g. the BootTimer label. */
   label: string;
@@ -196,7 +197,7 @@ export async function recordBootEvent(label: string): Promise<void> {
     pid: process.pid,
     spawnedAtMs:
       Number.isFinite(spawnedAtMs) && spawnedAtMs > 0 ? spawnedAtMs : null,
-    watch: process.env.ELIZA_DEV_NO_WATCH === "0",
+    watch: isDevApiWatchEnabled(),
     label,
   };
 

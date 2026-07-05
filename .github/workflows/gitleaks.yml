@@ -23,7 +23,7 @@ permissions:
 jobs:
   gitleaks:
     name: gitleaks
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Checkout
         # actions/checkout@v4

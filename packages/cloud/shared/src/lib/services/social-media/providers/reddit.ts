@@ -12,7 +12,6 @@ import type {
   SocialMediaProvider,
 } from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
-import { parseJsonErrorBody } from "../../../utils/json-parsing";
 import { logger } from "../../../utils/logger";
 import { withRetry } from "../rate-limit";
 
@@ -115,31 +114,6 @@ async function redditApiRequest<T>(
   return data;
 }
 
-async function _redditApiRequestLegacy<T>(
-  endpoint: string,
-  accessToken: string,
-  options: RequestInit = {},
-): Promise<T> {
-  const url = endpoint.startsWith("http") ? endpoint : `${REDDIT_API_BASE}${endpoint}`;
-
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": "ElizaCloud/1.0 (social-media-automation)",
-      ...options.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await parseJsonErrorBody<{ message?: string }>(response);
-    throw new Error(error.message || `Reddit API error: ${response.status}`);
-  }
-
-  return response.json();
-}
-
 export const redditProvider: SocialMediaProvider = {
   platform: "reddit",
 
@@ -176,6 +150,8 @@ export const redditProvider: SocialMediaProvider = {
         avatarUrl: user.data.icon_img?.split("?")[0],
       };
     } catch (error) {
+      // error-policy:J1 Boundary translation: an outbound Reddit auth/API failure
+      // becomes a structured invalid-credentials result for the caller.
       return {
         valid: false,
         error: extractErrorMessage(error),
@@ -306,6 +282,8 @@ export const redditProvider: SocialMediaProvider = {
         postUrl: `https://reddit.com${postData.url || `/r/${subreddit}/comments/${postData.id}`}`,
       };
     } catch (error) {
+      // error-policy:J1 Boundary translation: a failed Reddit submit call becomes a
+      // structured PostResult failure surfaced to the caller.
       logger.error("[Reddit] Post failed", { error });
       return {
         platform: "reddit",
@@ -343,6 +321,8 @@ export const redditProvider: SocialMediaProvider = {
 
       return { success: true };
     } catch (error) {
+      // error-policy:J1 Boundary translation: a failed Reddit API call becomes a
+      // structured failure result for the caller.
       return {
         success: false,
         error: extractErrorMessage(error),
@@ -363,38 +343,37 @@ export const redditProvider: SocialMediaProvider = {
       return null;
     }
 
-    try {
-      const accessToken = await getAccessToken(
-        credentials.apiKey,
-        credentials.apiSecret,
-        credentials.username,
-        credentials.password,
-      );
+    const accessToken = await getAccessToken(
+      credentials.apiKey,
+      credentials.apiSecret,
+      credentials.username,
+      credentials.password,
+    );
 
-      const cleanId = postId.replace("t3_", "");
+    const cleanId = postId.replace("t3_", "");
 
-      const response = await redditApiRequest<
-        Array<{ data: { children: Array<{ data: RedditSubmission }> } }>
-      >(`/api/info?id=t3_${cleanId}`, accessToken, {
-        headers: { "Content-Type": "application/json" },
-      });
+    const response = await redditApiRequest<
+      Array<{ data: { children: Array<{ data: RedditSubmission }> } }>
+    >(`/api/info?id=t3_${cleanId}`, accessToken, {
+      headers: { "Content-Type": "application/json" },
+    });
 
-      const post = response[0]?.data?.children?.[0]?.data;
-      if (!post) return null;
+    // A missing post (empty children) is a legitimately-empty result and stays
+    // null; internal failures (auth/network/rate-limit) propagate from
+    // redditApiRequest so a broken pipeline never reads as "no analytics".
+    const post = response[0]?.data?.children?.[0]?.data;
+    if (!post) return null;
 
-      return {
-        platform: "reddit",
-        postId,
-        metrics: {
-          likes: post.score,
-          comments: post.num_comments,
-          engagementRate: post.upvote_ratio * 100,
-        },
-        fetchedAt: new Date(),
-      };
-    } catch {
-      return null;
-    }
+    return {
+      platform: "reddit",
+      postId,
+      metrics: {
+        likes: post.score,
+        comments: post.num_comments,
+        engagementRate: post.upvote_ratio * 100,
+      },
+      fetchedAt: new Date(),
+    };
   },
 
   async getAccountAnalytics(credentials: SocialCredentials): Promise<AccountAnalytics | null> {
@@ -407,29 +386,25 @@ export const redditProvider: SocialMediaProvider = {
       return null;
     }
 
-    try {
-      const accessToken = await getAccessToken(
-        credentials.apiKey,
-        credentials.apiSecret,
-        credentials.username,
-        credentials.password,
-      );
+    const accessToken = await getAccessToken(
+      credentials.apiKey,
+      credentials.apiSecret,
+      credentials.username,
+      credentials.password,
+    );
 
-      const user = await redditApiRequest<{ data: RedditUser }>("/api/v1/me", accessToken, {
-        headers: { "Content-Type": "application/json" },
-      });
+    const user = await redditApiRequest<{ data: RedditUser }>("/api/v1/me", accessToken, {
+      headers: { "Content-Type": "application/json" },
+    });
 
-      return {
-        platform: "reddit",
-        accountId: user.data.id,
-        metrics: {
-          totalPosts: (user.data.link_karma || 0) + (user.data.comment_karma || 0),
-        },
-        fetchedAt: new Date(),
-      };
-    } catch {
-      return null;
-    }
+    return {
+      platform: "reddit",
+      accountId: user.data.id,
+      metrics: {
+        totalPosts: (user.data.link_karma || 0) + (user.data.comment_karma || 0),
+      },
+      fetchedAt: new Date(),
+    };
   },
 
   async replyToPost(
@@ -490,6 +465,8 @@ export const redditProvider: SocialMediaProvider = {
         postId: commentId || postId,
       };
     } catch (error) {
+      // error-policy:J1 Boundary translation: a failed Reddit comment call becomes a
+      // structured PostResult failure surfaced to the caller.
       return {
         platform: "reddit",
         success: false,
@@ -528,6 +505,8 @@ export const redditProvider: SocialMediaProvider = {
 
       return { success: true };
     } catch (error) {
+      // error-policy:J1 Boundary translation: a failed Reddit API call becomes a
+      // structured failure result for the caller.
       return {
         success: false,
         error: extractErrorMessage(error),

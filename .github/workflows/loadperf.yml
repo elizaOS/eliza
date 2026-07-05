@@ -41,7 +41,7 @@ env:
 jobs:
   loadperf-stack:
     name: Bundle, boot, and frontend KPIs
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -93,7 +93,7 @@ jobs:
   statesync:
     name: State-sync KPI against live stack
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_statesync }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 20
     steps:
       - name: Checkout

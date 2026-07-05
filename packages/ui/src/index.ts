@@ -275,6 +275,20 @@ export {
 } from "./components/settings/settings-section-registry";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar";
 export {
+  isSectionPath,
+  SectionNav,
+  SectionNavTab,
+  type SectionPathRewrite,
+  type SectionTab,
+  SectionTabStrip,
+  sectionTabs,
+} from "./components/shared/SectionNav";
+export {
+  navigateBackToLauncher,
+  ViewBackButton,
+  ViewHeader,
+} from "./components/shared/ViewHeader";
+export {
   AssistantOverlay,
   type AssistantOverlayProps,
 } from "./components/shell/AssistantOverlay";
@@ -397,8 +411,6 @@ export {
   setBootConfig,
   setByPath,
   shouldUseCloudOnlyBranding,
-  syncBrandEnvToEliza,
-  syncElizaEnvToBrand,
   toCapacitorAllowNavigation,
   toViteAllowedHosts,
   visibility,
@@ -653,8 +665,6 @@ export {
   setElizaApiToken,
   sqlLiteral,
   stripAssistantStageDirections,
-  syncAppEnvToEliza,
-  syncElizaEnvAliases,
   tokenizeNameOccurrences,
   ttsDebug,
   ttsDebugTextPreview,

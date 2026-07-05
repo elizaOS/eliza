@@ -2152,7 +2152,12 @@ export class DiscordService extends Service implements IDiscordService {
 				}
 			}
 		}
-		return this.dedupeConnectorTargets(targets).slice(0, 50);
+		// The complete set is the contract: list_channels/list_connections derive
+		// channel + muted counts from the returned length, so any cap here makes
+		// those counts silently wrong past the cap. The gateway cache already
+		// holds every channel per guild (GUILD_CREATE delivers the full list);
+		// bounding what gets rendered is the op layer's job.
+		return this.dedupeConnectorTargets(targets);
 	}
 
 	public async listRecentConnectorTargets(
@@ -2420,18 +2425,29 @@ export class DiscordService extends Service implements IDiscordService {
 		if (!client) {
 			return [];
 		}
-		return Array.from(client.guilds.cache.values()).map((guild) => ({
-			id: createUniqueUuid(this.runtime, guild.id),
-			agentId: this.runtime.agentId,
-			name: guild.name,
-			messageServerId: stringToUuid(guild.id),
-			metadata: {
-				source: "discord",
-				accountId,
-				discordGuildId: guild.id,
-				memberCount: guild.memberCount,
-			},
-		}));
+		return Promise.all(
+			Array.from(client.guilds.cache.values()).map(async (guild) => {
+				const worldId = createUniqueUuid(this.runtime, guild.id);
+				// The persisted world carries durable metadata (server-wide
+				// agentMuteState, ownership/roles) that a freshly fabricated World
+				// would drop — start from it and refresh the live guild fields.
+				const persisted = await this.runtime.getWorld(worldId);
+				return {
+					...persisted,
+					id: worldId,
+					agentId: this.runtime.agentId,
+					name: guild.name,
+					messageServerId: stringToUuid(guild.id),
+					metadata: {
+						...persisted?.metadata,
+						source: "discord",
+						accountId,
+						discordGuildId: guild.id,
+						memberCount: guild.memberCount,
+					},
+				};
+			}),
+		);
 	}
 
 	public async fetchConnectorMessages(

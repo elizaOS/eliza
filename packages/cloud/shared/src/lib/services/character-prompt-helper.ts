@@ -55,16 +55,22 @@ export async function getCharacterPromptContext(
 
   const bio = Array.isArray(character.bio) ? character.bio.join(" ") : character.bio || "";
 
+  // Every list field below is caller-supplied jsonb stored verbatim (the
+  // character POST/PUT routes don't validate shapes), so any of them can be a
+  // non-array JSON value. buildCharacterSystemPrompt spreads them (`[...arr]`
+  // via getRandomSample and the style merge), which throws on truthy
+  // non-iterables — one malformed character must not 500 the social-automation
+  // routes that post in its voice (#13637 class).
   const style = character.style || {};
-  const postStyle = style.post || [];
-  const allStyle = style.all || [];
+  const postStyle = Array.isArray(style.post) ? style.post : [];
+  const allStyle = Array.isArray(style.all) ? style.all : [];
 
   const context = {
     name: character.name,
     bio,
-    adjectives: character.adjectives || [],
-    topics: character.topics || [],
-    postExamples: character.post_examples || [],
+    adjectives: Array.isArray(character.adjectives) ? character.adjectives : [],
+    topics: Array.isArray(character.topics) ? character.topics : [],
+    postExamples: Array.isArray(character.post_examples) ? character.post_examples : [],
     postStyle,
     allStyle,
   };

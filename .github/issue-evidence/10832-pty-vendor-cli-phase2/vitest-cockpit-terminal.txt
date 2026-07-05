@@ -1,7 +1,0 @@
- RUN  v4.1.5 /home/shaw/eliza-worktrees/10832-pty-phase2/plugins/plugin-task-coordinator
-
-
- Test Files  1 passed (1)
-      Tests  11 passed (11)
-   Start at  13:48:06
-   Duration  9.80s (transform 591ms, setup 0ms, import 1.33s, tests 1.07s, environment 6.80s)

@@ -16,18 +16,27 @@
  * - Failures must NOT crash the runtime — every I/O operation is wrapped in
  *   try/catch and routed through `runtime.logger.warn`.
  *
- * Toggle via `ELIZA_TRAJECTORY_RECORDING=0`. Default on.
+ * On/off is decided by the shared gate resolver (trajectory-gate.ts), so this
+ * recorder and the DB logger agree: prod is opt-in (SOC2 O-5), test is off.
  */
 
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveAliasedEnvValue } from "../boot-env";
 import {
 	computeCallCostUsd,
 	PRICE_TABLE_ID,
 } from "../features/trajectories/pricing";
 import type { EvaluationResult } from "../types/components";
 import type { ChatMessage, ToolChoice } from "../types/model";
+import { readEnv } from "../utils/read-env";
 import { resolveStateDir } from "../utils/state-dir";
+import {
+	resolveTraceCorrelationFromEnv,
+	type TraceCorrelation,
+} from "./trace-correlation";
+import { resolveTrajectoryGate } from "./trajectory-gate";
 
 // ---------------------------------------------------------------------------
 // Schema (mirrors PLAN.md §18.1)
@@ -297,6 +306,14 @@ export interface RecordedTrajectory {
 	roomId?: string;
 	runId?: string;
 	scenarioId?: string;
+	// Correlation header (#13775) joining this file trajectory to the DB row and
+	// any orchestrator task. `traceId` is minted at the root turn or inherited
+	// from a spawning parent; the rest are set when the recorder runs inside a
+	// sub-agent. Optional because pre-rollout trajectories carry none.
+	traceId?: string;
+	taskId?: string;
+	sessionId?: string;
+	parentStepId?: string;
 	rootMessage: { id: string; text: string; sender?: string };
 	startedAt: number;
 	endedAt?: number;
@@ -319,6 +336,14 @@ export interface StartTrajectoryInput {
 	// group trajectories per scenario without inferring from filesystem layout.
 	runId?: string;
 	scenarioId?: string;
+	// Correlation header (#13775). `traceId` is passed from the root turn
+	// (message.ts); when absent the recorder falls back to env, then mints one.
+	// The rest are inherited from a spawning parent's env when this recorder
+	// runs inside a sub-agent.
+	traceId?: string;
+	taskId?: string;
+	sessionId?: string;
+	parentStepId?: string;
 }
 
 export interface ListTrajectoriesOptions {
@@ -373,17 +398,20 @@ export function resolveTrajectoryDir(): string {
 	const explicit = process.env.ELIZA_TRAJECTORY_DIR?.trim();
 	if (explicit) return explicit;
 
-	const elizaState = process.env.ELIZA_STATE_DIR?.trim();
+	const elizaState = resolveAliasedEnvValue("ELIZA_STATE_DIR")?.trim();
 	if (elizaState) return path.join(elizaState, "trajectories");
 
 	return path.join(resolveStateDir(), "trajectories");
 }
 
 /**
- * Whether the recorder is enabled. Off when ELIZA_TRAJECTORY_RECORDING=0.
+ * Whether the file recorder is enabled. Delegates to the single gate resolver
+ * (trajectory-gate.ts) so the file recorder and the DB logger can no longer
+ * disagree (#13775). Prod is now opt-in and test is off — the prior
+ * always-on-unless-`=0` default is retired in favor of the SOC2 O-5 policy.
  */
 export function isTrajectoryRecordingEnabled(): boolean {
-	return envFlagEnabled("ELIZA_TRAJECTORY_RECORDING", true);
+	return resolveTrajectoryGate().enabled;
 }
 
 /**
@@ -1161,12 +1189,32 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			return id;
 		}
 
+		// Correlation resolution mirrors the existing runId/scenarioId env
+		// fallback: explicit input wins, else the env the spawner set, else — for
+		// traceId specifically — mint one so every trajectory is joinable even
+		// when no parent stamped a trace.
+		const inheritedCorrelation = resolveTraceCorrelationFromEnv();
+		const correlation: TraceCorrelation = {
+			traceId:
+				input.traceId ?? inheritedCorrelation.traceId ?? crypto.randomUUID(),
+			taskId: input.taskId ?? inheritedCorrelation.taskId,
+			sessionId: input.sessionId ?? process.env.PARALLAX_SESSION_ID,
+			parentStepId: input.parentStepId ?? inheritedCorrelation.parentStepId,
+		};
+
 		const trajectory: MutableTrajectory = {
 			trajectoryId: id,
 			agentId: input.agentId,
 			roomId: input.roomId,
-			runId: input.runId ?? process.env.ELIZA_LIFEOPS_RUN_ID,
-			scenarioId: input.scenarioId ?? process.env.ELIZA_LIFEOPS_SCENARIO_ID,
+			// The scenario CLI stamps these before each run/scenario (cli.ts); an
+			// explicit call-site value wins. readEnv treats blank/whitespace as
+			// unset so a cleared env var never writes an empty correlation key.
+			runId: input.runId ?? readEnv("ELIZA_LIFEOPS_RUN_ID"),
+			scenarioId: input.scenarioId ?? readEnv("ELIZA_LIFEOPS_SCENARIO_ID"),
+			traceId: correlation.traceId,
+			taskId: correlation.taskId,
+			sessionId: correlation.sessionId,
+			parentStepId: correlation.parentStepId,
 			rootMessage: cloneRootMessageForRecord(input.rootMessage),
 			startedAt: Date.now(),
 			status: "running",

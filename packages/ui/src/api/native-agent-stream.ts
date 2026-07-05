@@ -89,6 +89,18 @@ export async function createNativeStreamingResponse(
   const stream = await agent.requestStream(options);
   const { streamId } = stream;
 
+  // Liveness bounds: the head must arrive within HEAD_TIMEOUT_MS, and once the
+  // body is streaming each chunk must arrive within IDLE_TIMEOUT_MS. Without
+  // these a dropped head/terminal event (agent crash, killed loopback, lost
+  // Capacitor event) would hang the reply forever — Android's `requestStream`
+  // carries no `completion` safety net, so the transport's try/catch fallback
+  // never fires. On timeout the head rejects (caller falls back to the buffered
+  // request) or the body errors, and `detach()` clears both timers.
+  const HEAD_TIMEOUT_MS = options.timeoutMs ?? 30000;
+  const IDLE_TIMEOUT_MS = options.timeoutMs ?? 30000;
+  let headTimer: ReturnType<typeof setTimeout> | null = null;
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
   let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
   // Buffer events that land before `start()` runs (and the terminal state if it
   // arrives before any reader pulls), so nothing is dropped on either edge.
@@ -97,9 +109,17 @@ export async function createNativeStreamingResponse(
   const handles: NativeStreamListenerHandle[] = [];
   let detached = false;
 
+  const clearTimers = (): void => {
+    if (headTimer !== null) clearTimeout(headTimer);
+    if (idleTimer !== null) clearTimeout(idleTimer);
+    headTimer = null;
+    idleTimer = null;
+  };
+
   const detach = (): void => {
     if (detached) return;
     detached = true;
+    clearTimers();
     for (const handle of handles) void handle.remove();
   };
   const trackHandle = (handle: NativeStreamListenerHandle): void => {
@@ -158,6 +178,44 @@ export async function createNativeStreamingResponse(
     }
   };
 
+  // Terminal on a SUCCESSFUL native completion (the resolution, not just the
+  // rejection failStream handles): if the head never arrived, settle it with a
+  // 200 so the caller gets a Response, then close the body. Idempotent — a
+  // later `agentStreamComplete` sees `detached` and no-ops.
+  const finishStream = (): void => {
+    if (detached) return;
+    if (!headSettled) {
+      headSettled = true;
+      resolveHead(new Response(body, { status: 200 }));
+    }
+    if (controller) {
+      controller.close();
+      detach();
+    } else {
+      terminal = { error: null };
+    }
+  };
+
+  // Re-arm the idle deadline; called once the head settles and on every chunk.
+  const bumpIdle = (): void => {
+    if (detached) return;
+    if (idleTimer !== null) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      if (detached) return;
+      const idle = new Error("native stream idle timeout");
+      if (!headSettled) {
+        failStream(idle);
+        return;
+      }
+      if (controller) {
+        controller.error(idle);
+        detach();
+      } else {
+        terminal = { error: "native stream idle timeout" };
+      }
+    }, IDLE_TIMEOUT_MS);
+  };
+
   const onResponse = (event: unknown): void => {
     const e = event as NativeStreamResponseEvent;
     if (!e || e.streamId !== streamId || headSettled) return;
@@ -169,6 +227,7 @@ export async function createNativeStreamingResponse(
         headers: e.headers ?? {},
       }),
     );
+    bumpIdle();
   };
 
   const onChunk = (event: unknown): void => {
@@ -177,18 +236,25 @@ export async function createNativeStreamingResponse(
     const bytes = base64ToBytes(e.dataBase64);
     if (controller) controller.enqueue(bytes);
     else pending.push(bytes);
+    bumpIdle();
   };
 
   const onComplete = (event: unknown): void => {
     const e = event as NativeStreamCompleteEvent;
-    if (!e || e.streamId !== streamId) return;
-    // A failure before the head ever arrived can't yield a Response — reject the
-    // head so the caller falls back / surfaces the error.
-    if (e.error && !headSettled) {
+    if (!e || e.streamId !== streamId || detached) return;
+    // Always settle the head before touching the body — a terminal event that
+    // beats the response (empty stream completing head-first, or a dropped head
+    // event) must still resolve/reject the caller's promise, never leave it
+    // hanging. A failure can't yield a Response, so it rejects; a success
+    // resolves a 200 and falls through to close the body.
+    if (!headSettled) {
       headSettled = true;
-      rejectHead(new Error(e.error));
-      detach();
-      return;
+      if (e.error) {
+        rejectHead(new Error(e.error));
+        detach();
+        return;
+      }
+      resolveHead(new Response(body, { status: 200 }));
     }
     if (controller) {
       if (e.error) controller.error(new Error(e.error));
@@ -200,12 +266,21 @@ export async function createNativeStreamingResponse(
   };
 
   if (stream.completion) {
-    void stream.completion.catch(failStream);
+    // Both settlements are terminal: a resolved completion closes the stream via
+    // `finishStream` (missing the terminal event still ends the reply); a
+    // rejected one fails it. Wiring only `.catch` would hang on a silent success.
+    void stream.completion.then(finishStream, failStream);
   }
 
   trackHandle(await agent.addListener("agentStreamResponse", onResponse));
   trackHandle(await agent.addListener("agentStreamChunk", onChunk));
   trackHandle(await agent.addListener("agentStreamComplete", onComplete));
+
+  // Head deadline: if no response arrives in time, fail the head so the caller's
+  // try/catch falls back to the buffered request instead of hanging.
+  headTimer = setTimeout(() => {
+    if (!headSettled) failStream(new Error("native stream head timeout"));
+  }, HEAD_TIMEOUT_MS);
 
   return head;
 }

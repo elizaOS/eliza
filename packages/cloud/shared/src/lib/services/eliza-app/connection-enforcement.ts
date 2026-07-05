@@ -151,16 +151,15 @@ async function loadConversationState(
   organizationId: string,
   userId: string,
 ): Promise<ConversationState> {
-  try {
-    return (
-      (await cache.get<ConversationState>(getConversationKey(organizationId, userId))) ?? {
-        messageCount: 0,
-        messages: [],
-      }
-    );
-  } catch {
-    return { messageCount: 0, messages: [] };
-  }
+  // A cache MISS legitimately yields no history (`?? { empty }`, designed-empty). A cache
+  // read ERROR must propagate — masking it as an empty conversation would silently reset the
+  // nudge cadence and drop history, conflating a broken cache with a brand-new conversation.
+  return (
+    (await cache.get<ConversationState>(getConversationKey(organizationId, userId))) ?? {
+      messageCount: 0,
+      messages: [],
+    }
+  );
 }
 
 async function saveConversationState(
@@ -179,6 +178,9 @@ async function saveConversationState(
       CONVERSATION_TTL_SECONDS,
     );
   } catch (error) {
+    // error-policy:J7 auxiliary continuity write — runs after the user-facing reply is already
+    // produced; a cache write blip must not turn a successful reply into a user error. Warns so
+    // the failure stays observable; the only fallout is a degraded nudge cadence next turn.
     logger.warn("[ConnectionEnforcement] Failed to persist conversation state", {
       organizationId,
       userId,
@@ -315,6 +317,9 @@ async function generateOAuthLinks(
     }),
   );
 
+  // error-policy:J4 designed degrade — fan out per provider and return whichever links
+  // succeeded; one provider's auth-init failure must not deny the user the others. Failures
+  // are warned, and the caller renders whatever links come back (or none if all failed).
   return results.flatMap((result) => {
     if (result.status === "fulfilled" && result.value) {
       return [result.value];
@@ -344,29 +349,24 @@ function detectProviderFromMessage(message: string): RequiredPlatform | null {
 }
 
 class ConnectionEnforcementService {
+  // Fail closed: a connection check that cannot complete throws. Substituting `true` on error
+  // would treat every cache/oauth failure as "already connected" and silently disable the
+  // enforcement gate, letting unconnected tenants through. A genuinely-negative result
+  // (`hasRequired === false`) stays distinct from an internal failure (throws).
   async hasRequiredConnection(organizationId: string, userId: string): Promise<boolean> {
-    try {
-      const cacheKey = getConnectionStatusKey(organizationId, userId);
-      const cached = await cache.get<boolean>(cacheKey);
-      if (typeof cached === "boolean") {
-        return cached;
-      }
-
-      const connectedPlatforms = await oauthService.getConnectedPlatforms(organizationId, userId);
-      const hasRequired = connectedPlatforms.some((platform) =>
-        (REQUIRED_PLATFORMS as readonly string[]).includes(platform),
-      );
-
-      await cache.set(cacheKey, hasRequired, CONNECTION_STATUS_TTL_SECONDS);
-      return hasRequired;
-    } catch (error) {
-      logger.error("[ConnectionEnforcement] Failed to check connections", {
-        organizationId,
-        userId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return true;
+    const cacheKey = getConnectionStatusKey(organizationId, userId);
+    const cached = await cache.get<boolean>(cacheKey);
+    if (typeof cached === "boolean") {
+      return cached;
     }
+
+    const connectedPlatforms = await oauthService.getConnectedPlatforms(organizationId, userId);
+    const hasRequired = connectedPlatforms.some((platform) =>
+      (REQUIRED_PLATFORMS as readonly string[]).includes(platform),
+    );
+
+    await cache.set(cacheKey, hasRequired, CONNECTION_STATUS_TTL_SECONDS);
+    return hasRequired;
   }
 
   async invalidateRequiredConnectionCache(organizationId: string, userId?: string): Promise<void> {
@@ -384,6 +384,9 @@ class ConnectionEnforcementService {
         cache.delPattern(`connection-enforcement:conversation:${organizationId}:*`),
       ]);
     } catch (error) {
+      // error-policy:J6 best-effort cache invalidation — a failed del self-heals when the
+      // 30s status TTL expires (worst case: a just-connected user is nudged once more). The
+      // sole caller (oauth generic-callback) also wraps this in its own boundary handler.
       logger.warn("[ConnectionEnforcement] Failed to invalidate connection cache", {
         organizationId,
         userId,
@@ -458,6 +461,9 @@ class ConnectionEnforcementService {
 
       return result.text;
     } catch (error) {
+      // error-policy:J4 designed user-facing degrade — on model failure, reply with a canned
+      // in-character nudge that still steers the user to connect a data source. This is a
+      // designed fallback response, not fabricated pipeline data; the failure is logged.
       logger.error("[ConnectionEnforcement] LLM generation failed", {
         platform,
         mode,

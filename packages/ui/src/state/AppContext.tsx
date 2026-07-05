@@ -20,6 +20,7 @@ import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import {
   classifyActionMessage,
+  getFirstRunCloudLoginFallbackPath,
   tryHandleFirstRunAction,
   tryHandleFirstRunText,
 } from "../first-run/first-run-action-channel";
@@ -330,6 +331,7 @@ function AppProviderInner({
     setActiveConversationId,
     setCompanionMessageCutoffTs,
     setConversationMessages,
+    prependConversationMessages,
     setAutonomousEvents,
     setAutonomousLatestEventId,
     setAutonomousRunHealthByRunId,
@@ -1158,6 +1160,7 @@ function AppProviderInner({
     handleChatStop,
     handleChatRetry,
     handleChatEdit,
+    handleChatDelete,
     handleChatClear,
     handleSelectConversation,
     handleDeleteConversation,
@@ -1187,9 +1190,19 @@ function AppProviderInner({
       // and NEVER reach the server — regardless of onboarding state.
       if (tryHandleModelAction(text)) return Promise.resolve();
       switch (classifyActionMessage(text, firstRunComplete === true)) {
-        case "first-run":
-          tryHandleFirstRunAction(text);
+        case "first-run": {
+          const handled = tryHandleFirstRunAction(text);
+          const fallbackPath = handled
+            ? null
+            : getFirstRunCloudLoginFallbackPath(
+                text,
+                firstRunComplete === true,
+              );
+          if (fallbackPath && typeof window !== "undefined") {
+            window.location.assign(fallbackPath);
+          }
           return Promise.resolve();
+        }
         case "conductor":
           tryHandleFirstRunText(text);
           return Promise.resolve();
@@ -1686,8 +1699,14 @@ function AppProviderInner({
       conversationMessages,
       removeConversationMessage,
       setConversationMessages,
+      prependConversationMessages,
     }),
-    [conversationMessages, removeConversationMessage, setConversationMessages],
+    [
+      conversationMessages,
+      removeConversationMessage,
+      setConversationMessages,
+      prependConversationMessages,
+    ],
   );
 
   // Live assistant-turn status (rich status indicator) lives in its own context
@@ -2016,6 +2035,7 @@ function AppProviderInner({
       handleChatStop,
       handleChatRetry,
       handleChatEdit,
+      handleChatDelete,
       handleChatClear,
       handleStartDraftConversation,
       handleNewConversation,
@@ -2397,6 +2417,7 @@ function AppProviderInner({
       handleChatStop,
       handleChatRetry,
       handleChatEdit,
+      handleChatDelete,
       handleChatClear,
       handleStartDraftConversation,
       handleNewConversation,

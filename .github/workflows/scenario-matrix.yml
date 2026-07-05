@@ -56,7 +56,7 @@ jobs:
   disabled:
     name: Scenario Matrix Disabled
     if: ${{ inputs.enabled != 'true' && vars.ELIZA_SCENARIO_MATRIX_ENABLED != 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 5
     steps:
       - name: Explain disabled state
@@ -73,7 +73,7 @@ jobs:
       matrix:
         shard:
           - name: messaging
-            runs-on: ubuntu-24.04
+            runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
             globs: "packages/test/scenarios/messaging.*/**/*.scenario.ts"
           # NOTE: the two apple-ecosystem shards (messaging-apple,
           # selfcontrol-activity) require a self-hosted macOS runner labeled
@@ -88,29 +88,29 @@ jobs:
           #   runs-on: [self-hosted, eliza-e2e-macos]
           #   globs: "packages/test/scenarios/messaging.imessage/**/*.scenario.ts packages/test/scenarios/messaging.signal/**/*.scenario.ts"
           - name: todos-reminders
-            runs-on: ubuntu-24.04
+            runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
             globs: "packages/test/scenarios/todos/**/*.scenario.ts packages/test/scenarios/reminders/**/*.scenario.ts"
           - name: calendar
-            runs-on: ubuntu-24.04
+            runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
             globs: "packages/test/scenarios/calendar/**/*.scenario.ts"
           - name: relationships
-            runs-on: ubuntu-24.04
+            runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
             globs: "packages/test/scenarios/relationships/**/*.scenario.ts"
           # - name: selfcontrol-activity  (apple shard, see note above; re-enable
           #   with the macOS runner)
           #   runs-on: [self-hosted, eliza-e2e-macos]
           #   globs: "packages/test/scenarios/selfcontrol/**/*.scenario.ts packages/test/scenarios/activity/**/*.scenario.ts"
           - name: browser-social
-            runs-on: ubuntu-24.04
+            runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
             globs: "packages/test/scenarios/browser.*/**/*.scenario.ts packages/test/scenarios/social.*/**/*.scenario.ts"
           - name: personality-payments
-            runs-on: ubuntu-24.04
+            runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
             globs: "packages/test/scenarios/personality/**/*.scenario.ts packages/test/scenarios/personality/shut_up/*.scenario.ts packages/test/scenarios/payments/*.scenario.ts packages/test/scenarios/payments/**/*.scenario.ts packages/test/scenarios/lifeops.payments/*.scenario.ts packages/test/scenarios/lifeops.payments/**/*.scenario.ts packages/test/scenarios/lifeops.morning-brief/*.scenario.ts"
           - name: cross-cutting-gateway
-            runs-on: ubuntu-24.04
+            runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
             globs: "packages/test/scenarios/cross-cutting/**/*.scenario.ts packages/test/scenarios/gateway/**/*.scenario.ts packages/test/scenarios/remote/**/*.scenario.ts packages/test/scenarios/lifeops.*/*.scenario.ts packages/test/scenarios/lifeops.*/**/*.scenario.ts packages/test/scenarios/lifeops.sleep/*.scenario.ts packages/test/scenarios/lifeops.travel-buffer/*.scenario.ts packages/test/scenarios/lifeops.travel/*.scenario.ts packages/test/scenarios/lifeops.workflow-events/*.scenario.ts packages/test/scenarios/goals/**/*.scenario.ts packages/test/scenarios/convo/**/*.scenario.ts"
           - name: lifeops-app
-            runs-on: ubuntu-24.04
+            runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
             root: plugins/plugin-personal-assistant/test/scenarios
             globs: "**/*.scenario.ts"
     runs-on: ${{ matrix.shard.runs-on }}
@@ -259,7 +259,7 @@ jobs:
     name: Matrix summary
     needs: [matrix]
     if: ${{ always() && needs.matrix.result != 'skipped' }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     steps:
       - name: Checkout

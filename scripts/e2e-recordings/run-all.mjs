@@ -20,6 +20,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveRequireEvidence } from "../../packages/app/scripts/lib/issue-evidence.mjs";
 import { RECORDINGS_DIR, REPO_ROOT, UI_E2E_SUITES } from "./suites.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -49,6 +50,15 @@ const skipSheets =
   flagMap.get("skip-sheets") === true || flagMap.get("skip-sheets") === "true";
 const skipViewer =
   flagMap.get("skip-viewer") === true || flagMap.get("skip-viewer") === "true";
+
+// When evidence is required (explicit --require-evidence, or auto-on under CI),
+// a suite that soft-skips (SKIP_EXIT_CODE=77, missing dir/script/package.json,
+// or an unavailable availability-check) produced ZERO artifacts and must count
+// as a FAILURE, not a benign skip. Otherwise the recordings sweep goes green on
+// a headless runner with nothing captured (#13624 "green-with-nothing"). We
+// hand argv explicitly (stripping the `=value` join key parsing above only
+// affects flagMap; resolveRequireEvidence re-scans raw argv).
+const requireEvidence = resolveRequireEvidence(args);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -262,6 +272,14 @@ async function main() {
   // ─── Step 1: Run tests ─────────────────────────────────────
   const results = [];
 
+  if (skipTests && requireEvidence) {
+    console.error(
+      "[require-evidence] --skip-tests cannot be combined with --require-evidence: " +
+        "a run that skips every suite captures no evidence.",
+    );
+    process.exit(1);
+  }
+
   if (skipTests) {
     console.log("Skipping test runs (--skip-tests).");
     for (const pkg of packagesToRun) {
@@ -319,9 +337,8 @@ async function main() {
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   banner("Summary");
 
-  const passed = results.filter((r) => r.passed && !r.skipped);
-  const failed = results.filter((r) => !r.passed && !r.skipped);
-  const skipped = results.filter((r) => r.skipped);
+  const { passed, failed, softSkipped, skippedButRequired } =
+    classifyRunResults(results, requireEvidence);
 
   if (passed.length > 0) {
     console.log(`\nPassed (${passed.length}):`);
@@ -329,13 +346,23 @@ async function main() {
   }
   if (failed.length > 0) {
     console.log(`\nFailed (${failed.length}):`);
-    for (const r of failed) console.log(`  ✗ ${r.name}  (exit ${r.exitCode})`);
+    for (const r of failed) {
+      const why = r.skipped
+        ? `skipped but evidence required${r.reason ? `: ${r.reason}` : ""}`
+        : `exit ${r.exitCode}`;
+      console.log(`  ✗ ${r.name}  (${why})`);
+    }
   }
-  if (skipped.length > 0) {
-    console.log(`\nSkipped (${skipped.length}):`);
-    for (const r of skipped) {
+  if (softSkipped.length > 0) {
+    console.log(`\nSkipped (${softSkipped.length}):`);
+    for (const r of softSkipped) {
       console.log(`  - ${r.name}${r.reason ? `: ${r.reason}` : ""}`);
     }
+  }
+  if (requireEvidence && skippedButRequired.length > 0) {
+    console.warn(
+      `\n[require-evidence] ${skippedButRequired.length} suite(s) skipped with no artifacts — failing the run.`,
+    );
   }
 
   const indexPath = path.join(RECORDINGS_DIR, "index.html");
@@ -352,7 +379,34 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+// Exported so the require-evidence exit contract is unit-testable without
+// spawning the full sweep. Under --require-evidence a `skipped` suite captured
+// ZERO artifacts, so it must count as a FAILURE (not a benign skip) — otherwise
+// the recordings sweep goes green on a headless runner having recorded nothing
+// (#13624 "green-with-nothing"). Without the flag, behavior is preserved: a
+// skip stays a soft skip and only real non-zero exits fail the run.
+export function classifyRunResults(results, requireEvidence) {
+  const passed = results.filter((r) => r.passed && !r.skipped);
+  const skipped = results.filter((r) => r.skipped);
+  const failedRuns = results.filter((r) => !r.passed && !r.skipped);
+  const skippedButRequired = requireEvidence ? skipped : [];
+  const softSkipped = requireEvidence ? [] : skipped;
+  const failed = [...failedRuns, ...skippedButRequired];
+  return {
+    passed,
+    failed,
+    softSkipped,
+    skippedButRequired,
+    shouldFail: failed.length > 0,
+  };
+}
+
+// The orchestrator self-executes only when run as a script, so the pure helper
+// above can be imported by tests without kicking off the whole sweep.
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === __filename;
+if (isMain) {
+  main().catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });
+}

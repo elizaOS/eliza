@@ -61,9 +61,17 @@ export const ChatThreadLayout = React.forwardRef<
   ref,
 ) {
   const isGameModal = variant === "game-modal";
+  // overflowAnchor "none": the infinite upward scroll (#13532,
+  // useLoadOlderOnScroll) compensates prepends manually (scrollTop += grown
+  // height). Browsers with native CSS scroll anchoring (Chrome/Firefox) would
+  // ALSO adjust scrollTop for content inserted above the viewport, doubling
+  // the shift and shoving the reader one page down per load. Disabling it
+  // makes the manual compensation the single owner on every browser (Safari
+  // never anchors natively, so it needs the manual path regardless).
   const resolvedMessagesStyle = isGameModal
     ? {
         zIndex: 1,
+        overflowAnchor: "none" as const,
         top: gameModalMessageTop,
         bottom:
           composerHeight > 0
@@ -81,6 +89,7 @@ export const ChatThreadLayout = React.forwardRef<
       }
     : {
         zIndex: 1,
+        overflowAnchor: "none" as const,
         ...messagesStyle,
       };
 
