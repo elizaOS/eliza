@@ -116,7 +116,7 @@ export function recordResumableChunk(
     );
   }
 
-  const sha256 = sha256Hex(options.bytes);
+  const sha256 = resumableSha256Hex(options.bytes);
   if (options.sha256 !== undefined && options.sha256 !== sha256) {
     throw new Error(
       `recordResumableChunk: chunk ${options.index} sha256 mismatch`,
@@ -327,7 +327,7 @@ export function mergeResumableUploadSessions(
   };
 }
 
-export function sha256Hex(bytes: Uint8Array | string): string {
+export function resumableSha256Hex(bytes: Uint8Array | string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 

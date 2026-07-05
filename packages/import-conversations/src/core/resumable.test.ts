@@ -14,7 +14,7 @@ import {
   getResumableUploadProgress,
   mergeResumableUploadSessions,
   recordResumableChunk,
-  sha256Hex,
+  resumableSha256Hex,
   validateResumableUploadSession,
 } from "./resumable.ts";
 
@@ -152,7 +152,7 @@ describe("resumable import upload state", () => {
         index: 0,
         offset: 0,
         bytes: "aaaa",
-        sha256: sha256Hex("bbbb"),
+        sha256: resumableSha256Hex("bbbb"),
       }),
     ).toThrow(/sha256/);
     expect(() =>
