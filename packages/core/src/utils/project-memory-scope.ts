@@ -34,6 +34,7 @@
  *     read, and are NOT treated as a cross-project leak under a scoped read.
  */
 
+import { ElizaError } from "../errors.ts";
 import type { UUID } from "../types/primitives.ts";
 import { stringToUuid } from "../utils.ts";
 
@@ -42,6 +43,18 @@ import { stringToUuid } from "../utils.ts";
  * never collide with an entity/room base used elsewhere in `createUniqueUuid`.
  */
 export const PROJECT_WORLD_PREFIX = "project:";
+
+function projectMemoryScopeError(
+	message: string,
+	code: string,
+	context: Record<string, unknown>,
+): ElizaError {
+	return new ElizaError(message, {
+		code,
+		context,
+		severity: "fatal",
+	});
+}
 
 function normalizeProjectId(projectId: string | undefined): string | undefined {
 	const trimmed = projectId?.trim();
@@ -64,10 +77,18 @@ function normalizeProjectId(projectId: string | undefined): string | undefined {
 export function projectWorldId(agentId: UUID, projectId: string): UUID {
 	const normalizedProjectId = normalizeProjectId(projectId);
 	if (!normalizedProjectId) {
-		throw new Error("projectWorldId: projectId must be a non-empty string");
+		throw projectMemoryScopeError(
+			"projectWorldId: projectId must be a non-empty string",
+			"PROJECT_MEMORY_SCOPE_INVALID_PROJECT_ID",
+			{ projectId },
+		);
 	}
 	if (!agentId || (agentId as string).length === 0) {
-		throw new Error("projectWorldId: agentId must be a non-empty UUID");
+		throw projectMemoryScopeError(
+			"projectWorldId: agentId must be a non-empty UUID",
+			"PROJECT_MEMORY_SCOPE_INVALID_AGENT_ID",
+			{ agentId },
+		);
 	}
 	const base = `${PROJECT_WORLD_PREFIX}${normalizedProjectId}`;
 	// Mirror createUniqueUuid: `${baseUserId}:${runtime.agentId}`.
@@ -114,8 +135,15 @@ export function scopeMemoryFilterToProject<T extends WorldScopedFilter>(
 	if (!projectId) return filter;
 	const worldId = projectWorldId(opts.agentId, projectId);
 	if (filter.worldId !== undefined && filter.worldId !== worldId) {
-		throw new Error(
+		throw projectMemoryScopeError(
 			`scopeMemoryFilterToProject: filter.worldId (${filter.worldId}) conflicts with active project world (${worldId}); refusing cross-project read`,
+			"PROJECT_MEMORY_SCOPE_FILTER_WORLD_CONFLICT",
+			{
+				agentId: opts.agentId,
+				projectId,
+				filterWorldId: filter.worldId,
+				projectWorldId: worldId,
+			},
 		);
 	}
 	return { ...filter, worldId };
@@ -148,8 +176,15 @@ export function scopeMemoryToProject<T extends WorldScopedMemory>(
 	if (!projectId) return memory;
 	const worldId = projectWorldId(opts.agentId, projectId);
 	if (memory.worldId !== undefined && memory.worldId !== worldId) {
-		throw new Error(
+		throw projectMemoryScopeError(
 			`scopeMemoryToProject: memory.worldId (${memory.worldId}) conflicts with active project world (${worldId}); refusing to write cross-project memory`,
+			"PROJECT_MEMORY_SCOPE_MEMORY_WORLD_CONFLICT",
+			{
+				agentId: opts.agentId,
+				projectId,
+				memoryWorldId: memory.worldId,
+				projectWorldId: worldId,
+			},
 		);
 	}
 	return { ...memory, worldId };
@@ -181,8 +216,15 @@ export function assertMemoriesInProject<T extends WorldScopedMemory>(
 	for (const memory of memories) {
 		if (memory.worldId === undefined) continue; // legacy global memory
 		if (memory.worldId !== worldId) {
-			throw new Error(
+			throw projectMemoryScopeError(
 				`assertMemoriesInProject: retrieved memory in world ${memory.worldId} does not belong to active project world ${worldId}; refusing cross-project leak`,
+				"PROJECT_MEMORY_SCOPE_RETRIEVED_WORLD_CONFLICT",
+				{
+					agentId: opts.agentId,
+					projectId,
+					memoryWorldId: memory.worldId,
+					projectWorldId: worldId,
+				},
 			);
 		}
 	}

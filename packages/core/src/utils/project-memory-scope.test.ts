@@ -13,6 +13,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { ElizaError } from "../errors.ts";
 import type { UUID } from "../types/primitives.ts";
 import { stringToUuid } from "../utils.ts";
 import {
@@ -75,9 +76,11 @@ describe("project-memory-scope: projectWorldId derivation", () => {
 	});
 
 	it("rejects empty projectId / agentId", () => {
-		expect(() => projectWorldId(AGENT_A, "")).toThrow();
-		expect(() => projectWorldId(AGENT_A, "   ")).toThrow();
-		expect(() => projectWorldId("" as UUID, PROJECT_A)).toThrow();
+		expect(() => projectWorldId(AGENT_A, "")).toThrowError(ElizaError);
+		expect(() => projectWorldId(AGENT_A, "   ")).toThrowError(ElizaError);
+		expect(() => projectWorldId("" as UUID, PROJECT_A)).toThrowError(
+			ElizaError,
+		);
 	});
 
 	it("trims projectId before deriving the project world", () => {
@@ -166,6 +169,12 @@ describe("project-memory-scope: (b) cross-project isolation (A cannot read B)", 
 				projectId: PROJECT_A,
 			}),
 		).toThrow(/cross-project leak/);
+		expect(() =>
+			assertMemoriesInProject([leaked], {
+				agentId: AGENT_A,
+				projectId: PROJECT_A,
+			}),
+		).toThrowError(ElizaError);
 	});
 
 	it("refuses a filter whose worldId conflicts with the active project", () => {
@@ -175,6 +184,12 @@ describe("project-memory-scope: (b) cross-project isolation (A cannot read B)", 
 				{ agentId: AGENT_A, projectId: PROJECT_A },
 			),
 		).toThrow(/cross-project read/);
+		expect(() =>
+			scopeMemoryFilterToProject(
+				{ worldId: projectWorldId(AGENT_A, PROJECT_B) },
+				{ agentId: AGENT_A, projectId: PROJECT_A },
+			),
+		).toThrowError(ElizaError);
 	});
 
 	it("refuses to write a memory pre-tagged for a different project", () => {
@@ -184,6 +199,12 @@ describe("project-memory-scope: (b) cross-project isolation (A cannot read B)", 
 				{ agentId: AGENT_A, projectId: PROJECT_A },
 			),
 		).toThrow(/cross-project memory/);
+		expect(() =>
+			scopeMemoryToProject(
+				{ id: "x", worldId: projectWorldId(AGENT_A, PROJECT_B), text: "x" },
+				{ agentId: AGENT_A, projectId: PROJECT_A },
+			),
+		).toThrowError(ElizaError);
 	});
 });
 
