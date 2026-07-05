@@ -12,6 +12,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { RENDERER_MANIFEST_FILENAME } from "./device-renderer-status.mjs";
 
 const IS_WINDOWS = process.platform === "win32";
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -393,6 +394,58 @@ export function isInstalled(adbBin, serial) {
 
 export function installApk(adbBin, serial, apk) {
   adbDevice(adbBin, serial, ["install", "-r", "-d", apk], { stdio: "inherit" });
+}
+
+export function readApkRendererStamp(apkPath, label = "APK") {
+  const manifestPath = `assets/public/${RENDERER_MANIFEST_FILENAME}`;
+  let text;
+  try {
+    text = execFileSync("unzip", ["-p", apkPath, manifestPath], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (error) {
+    throw new Error(
+      `${label} renderer manifest is missing or unreadable at ${manifestPath}: ${apkPath}`,
+      { cause: error },
+    );
+  }
+  const parsed = JSON.parse(text);
+  if (typeof parsed.buildId !== "string" || parsed.buildId.length === 0) {
+    throw new Error(`${label} renderer manifest has no buildId: ${apkPath}`);
+  }
+  return parsed;
+}
+
+export function readInstalledRendererStamp(adbBin, serial) {
+  const pathOutput = adbTry(adbBin, [
+    "-s",
+    serial,
+    "shell",
+    "pm",
+    "path",
+    APP_ID,
+  ]).trim();
+  if (!pathOutput) return null;
+  const remoteApk = pathOutput
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/^package:/, ""))
+    .find((line) => line.endsWith("/base.apk"));
+  if (!remoteApk) {
+    throw new Error(
+      `Cannot locate ${APP_ID} base.apk on ${serial}; pm path output was: ${pathOutput}`,
+    );
+  }
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-android-apk-"));
+  const localApk = path.join(tempDir, "base.apk");
+  try {
+    adbDevice(adbBin, serial, ["pull", remoteApk, localApk], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return readApkRendererStamp(localApk, `installed ${APP_ID} on ${serial}`);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 }
 
 export function clearAppData(adbBin, serial) {

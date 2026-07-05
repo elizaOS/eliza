@@ -20,14 +20,14 @@ import path from "node:path";
  *
  * @returns {{ result?: { devices?: Array<Record<string, unknown>> } }}
  */
-export function readDevicectlDeviceList() {
+export function readDevicectlDeviceList({ quiet = false } = {}) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-devicectl-"));
   const jsonPath = path.join(tmpDir, "devices.json");
   try {
     execFileSync(
       "xcrun",
       ["devicectl", "list", "devices", "--json-output", jsonPath, "--quiet"],
-      { stdio: ["ignore", "ignore", "inherit"] },
+      { stdio: ["ignore", "ignore", quiet ? "pipe" : "inherit"] },
     );
     return JSON.parse(fs.readFileSync(jsonPath, "utf8"));
   } finally {

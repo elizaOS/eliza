@@ -14,20 +14,31 @@
 //
 // Flags: --serial <s>  --skip-local-chat  --skip-route-coverage  --cloud
 //        --launcher-loop (≥200-action seeded launcher gesture loop; opt-in)
-//        --build (build the APK first)  --no-emulator-boot
+//        --force-build (build+reinstall the APK first)  --skip-build
+//        --build (compat alias for --force-build)  --no-emulator-boot
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  rendererLaneStampMismatches,
+  resolveExpectedRendererStamp,
+} from "../../app-core/scripts/lib/mobile-lane-stamp.mjs";
+import {
   ensureEmulatorBooted,
   ensureEmulatorPermissive,
   installApk,
-  isInstalled,
+  readApkRendererStamp,
+  readInstalledRendererStamp,
   resolveAdb,
   resolveApk,
   resolveSerial,
 } from "./lib/android-device.mjs";
+import {
+  decideAndroidInstall,
+  freshRendererManifestPath,
+  readRendererManifestFile,
+} from "./lib/device-renderer-status.mjs";
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const elizaRoot = path.resolve(appDir, "..", "..");
@@ -38,6 +49,13 @@ const val = (flag, fb) => {
   return i >= 0 ? process.argv[i + 1] : fb;
 };
 const log = (m) => console.log(`[android-e2e] ${m}`);
+const ANDROID_RENDERER_POLICY = Object.freeze({
+  buildVariant: "direct",
+  capacitorTarget: "android",
+  androidRuntimeMode: "local",
+  iosRuntimeMode: null,
+  runtimeExecutionMode: "local-yolo",
+});
 
 // Smallest local tier; same id the smoke + catalog use.
 const SMOKE_MODEL = {
@@ -171,6 +189,113 @@ function run(cmd, args, env = {}) {
   }
 }
 
+function buildAndroidApk() {
+  log("building WebView-debuggable APK…");
+  run("bun", ["run", "build:android"], {
+    ELIZA_MOBILE_REPO_ROOT: elizaRoot,
+    ELIZA_WEBVIEW_DEBUG: "1",
+    ELIZA_BUN_RISCV64_OPTIONAL: "1",
+  });
+}
+
+function readFreshRendererStampOrNull() {
+  const manifestPath = freshRendererManifestPath({ appDir });
+  if (!fs.existsSync(manifestPath)) return null;
+  return readRendererManifestFile(manifestPath, "fresh dist");
+}
+
+function androidLaneMismatches(stamp) {
+  return rendererLaneStampMismatches(
+    stamp,
+    resolveExpectedRendererStamp({
+      policy: ANDROID_RENDERER_POLICY,
+      env: process.env,
+    }),
+  );
+}
+
+function ensureFreshAndroidArtifacts({ forceBuild, skipBuild }) {
+  let fresh = readFreshRendererStampOrNull();
+  let apk = null;
+  let apkStamp = null;
+  let shouldBuild = forceBuild;
+  if (fresh) {
+    const mismatches = androidLaneMismatches(fresh);
+    if (mismatches.length > 0) {
+      log(`existing dist is for the wrong lane: ${mismatches.join("; ")}`);
+      shouldBuild = true;
+    }
+  } else {
+    log("fresh dist renderer manifest is missing.");
+    shouldBuild = true;
+  }
+  if (!shouldBuild) {
+    try {
+      apk = resolveApk(process.env.ELIZA_ANDROID_APK);
+      apkStamp = readApkRendererStamp(apk, "candidate APK");
+      if (apkStamp.buildId !== fresh.buildId) {
+        log(
+          `candidate APK buildId ${apkStamp.buildId} != fresh dist ${fresh.buildId}; rebuilding APK.`,
+        );
+        shouldBuild = true;
+      }
+    } catch (error) {
+      log(`candidate APK is not reusable: ${error?.message ?? error}`);
+      shouldBuild = true;
+    }
+  }
+  if (shouldBuild) {
+    if (skipBuild) {
+      throw new Error(
+        "--skip-build was set, but the Android dist/APK is missing or stale for this lane.",
+      );
+    }
+    buildAndroidApk();
+    fresh = readFreshRendererStampOrNull();
+    if (!fresh) {
+      throw new Error(
+        "build:android completed without a fresh renderer stamp.",
+      );
+    }
+    const mismatches = androidLaneMismatches(fresh);
+    if (mismatches.length > 0) {
+      throw new Error(
+        `build:android produced a renderer stamp for the wrong lane: ${mismatches.join("; ")}`,
+      );
+    }
+    apk = resolveApk(process.env.ELIZA_ANDROID_APK);
+    apkStamp = readApkRendererStamp(apk, "fresh APK");
+    if (apkStamp.buildId !== fresh.buildId) {
+      throw new Error(
+        `fresh APK buildId ${apkStamp.buildId} != fresh dist ${fresh.buildId}`,
+      );
+    }
+  }
+  return { apk, fresh };
+}
+
+function ensureInstalledRendererFresh({ adb, serial, apk, fresh, skipBuild }) {
+  const installed = readInstalledRendererStamp(adb, serial);
+  const decision = decideAndroidInstall({ installed, fresh, skipBuild });
+  if (decision.error) throw new Error(decision.error);
+  if (!decision.install) {
+    log(
+      `installed renderer is fresh: buildId=${fresh.buildId.slice(0, 12)} commit=${String(fresh.commit ?? "unknown").slice(0, 12)}`,
+    );
+    return;
+  }
+  const current = installed?.buildId ?? "not installed";
+  log(`${current} != fresh ${fresh.buildId} — reinstalling ${apk}`);
+  installApk(adb, serial, apk);
+  const after = readInstalledRendererStamp(adb, serial);
+  if (!after || after.buildId !== fresh.buildId) {
+    throw new Error(
+      `post-install renderer stamp mismatch: installed ${after?.buildId ?? "missing"} != fresh ${fresh.buildId}`,
+    );
+  }
+  log(`installed renderer verified: buildId=${after.buildId.slice(0, 12)}`);
+}
+
 // Node's fetch chokes on the HF Xet LFS redirect; curl handles it. Pre-cache the
 // model so the smoke reuses it offline instead of failing on the redirect.
 function ensureSmokeModelCached() {
@@ -195,6 +320,16 @@ function ensureSmokeModelCached() {
 
 async function main() {
   const adb = resolveAdb();
+  const forceBuild = has("--force-build") || has("--build");
+  const skipBuild = has("--skip-build");
+  if (has("--build")) {
+    log("--build is deprecated; treating it as --force-build.");
+  }
+  if (forceBuild && skipBuild) {
+    throw new Error(
+      "--force-build/--build cannot be combined with --skip-build.",
+    );
+  }
 
   let serial = val("--serial", process.env.ANDROID_SERIAL);
   if (!has("--no-emulator-boot")) {
@@ -206,19 +341,8 @@ async function main() {
 
   await ensureEmulatorPermissive(adb, serial, { log });
 
-  if (has("--build")) {
-    log("building WebView-debuggable APK…");
-    run("bun", ["run", "build:android"], {
-      ELIZA_MOBILE_REPO_ROOT: elizaRoot,
-      ELIZA_WEBVIEW_DEBUG: "1",
-      ELIZA_BUN_RISCV64_OPTIONAL: "1",
-    });
-  }
-  if (!isInstalled(adb, serial)) {
-    const apk = resolveApk(process.env.ELIZA_ANDROID_APK);
-    log(`installing ${apk}`);
-    installApk(adb, serial, apk);
-  }
+  const { apk, fresh } = ensureFreshAndroidArtifacts({ forceBuild, skipBuild });
+  ensureInstalledRendererFresh({ adb, serial, apk, fresh, skipBuild });
 
   if (!has("--skip-local-chat")) {
     const modelPath = ensureSmokeModelCached();

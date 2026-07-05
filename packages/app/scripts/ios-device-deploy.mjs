@@ -57,6 +57,11 @@ import {
   selectProvisioningProfile,
   selectSigningIdentity,
 } from "./ios-device-lib.mjs";
+import { appendIosDeployLedgerEntry } from "./lib/device-renderer-status.mjs";
+import {
+  readRendererManifest,
+  rendererManifestPathFromAppPath,
+} from "./lib/ios-renderer-stamp.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptDir, "..");
@@ -481,6 +486,18 @@ async function main() {
     device.identifier,
     stagedApp,
   ]);
+  const stamp = readRendererManifest(
+    rendererManifestPathFromAppPath(stagedApp),
+    "staged iOS app",
+  );
+  const { ledgerPath } = appendIosDeployLedgerEntry({
+    device,
+    bundleId,
+    stamp,
+  });
+  log(
+    `deploy ledger wrote buildId=${stamp.buildId.slice(0, 12)} commit=${String(stamp.commit ?? "unknown").slice(0, 12)} to ${ledgerPath}`,
+  );
 
   // 6. Launch (default on; --no-launch to skip). Console capture is
   //    ios-device-logs.mjs's job — this launch does not hold the terminal.
