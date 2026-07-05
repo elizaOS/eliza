@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { resolveWithinDeadline } from "./server";
+import { resolveWithinDeadline } from "./plugin-registry-load-deadline";
 
 describe("resolveWithinDeadline", () => {
   it("returns the value when the promise settles inside the deadline", async () => {

@@ -168,6 +168,10 @@ import {
   normalizeRouteKey,
   recordRouteTiming,
 } from "./perf-instrument";
+import {
+  PLUGIN_REGISTRY_LOAD_DEADLINE_MS,
+  resolveWithinDeadline,
+} from "./plugin-registry-load-deadline";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
@@ -202,30 +206,6 @@ function getPluginRegistryApi(): Promise<
 > {
   pluginRegistryApiPromise ??= import("@elizaos/plugin-registry");
   return pluginRegistryApiPromise;
-}
-
-/** How long a /api/plugins request waits for the lazy plugin-registry module
- * before answering 503 (the import keeps loading; retries land once warm). */
-export const PLUGIN_REGISTRY_LOAD_DEADLINE_MS = 2_000;
-
-/** Resolve `promise` or null after `ms` — never rejects from the timer side.
- * Exported for tests (#13859). */
-export async function resolveWithinDeadline<T>(
-  promise: Promise<T>,
-  ms: number,
-): Promise<T | null> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<null>((resolve) => {
-        timer = setTimeout(() => resolve(null), ms);
-        timer.unref?.();
-      }),
-    ]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
 }
 
 import {
