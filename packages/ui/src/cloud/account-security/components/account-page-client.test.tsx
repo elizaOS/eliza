@@ -1,7 +1,7 @@
 /**
- * Account page banner tests for generated and manually named organizations.
- * Lower panels are mocked so the assertions stay focused on welcome-card copy
- * and shell-header publication.
+ * The account page renders the profile form + account-details card and — since
+ * the console presents plain per-user accounts — shows NO org/welcome banner,
+ * even when the user has an organization. Lower panels are mocked.
  */
 
 // @vitest-environment jsdom
@@ -15,10 +15,6 @@ import { AccountPageClient } from "./account-page-client";
 const setPageHeaderMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../../cloud-ui", () => ({
-  BrandCard: ({ children }: { children: ReactNode }) => (
-    <section>{children}</section>
-  ),
-  CornerBrackets: () => null,
   DashboardPageContainer: ({ children }: { children: ReactNode }) => (
     <main>{children}</main>
   ),
@@ -29,15 +25,11 @@ vi.mock("./account-details", () => ({
   AccountDetails: () => <div>account details</div>,
 }));
 
-vi.mock("./organization-info", () => ({
-  OrganizationInfo: () => <div>organization info</div>,
-}));
-
 vi.mock("./profile-form", () => ({
   ProfileForm: () => <div>profile form</div>,
 }));
 
-function makeUser(organizationName: string): UserProfile {
+function makeUser(): UserProfile {
   const now = new Date("2026-07-05T00:00:00.000Z");
   return {
     id: "user-1",
@@ -76,7 +68,7 @@ function makeUser(organizationName: string): UserProfile {
     updated_at: now,
     organization: {
       id: "org-1",
-      name: organizationName,
+      name: "Sol's Organization",
       slug: "org-1",
       billing_email: null,
       credit_balance: "0",
@@ -93,25 +85,18 @@ describe("AccountPageClient", () => {
     setPageHeaderMock.mockReset();
   });
 
-  it("does not append a second organization noun to generated org names", () => {
-    const { container } = render(
-      <AccountPageClient user={makeUser("0x1234's Organization")} />,
-    );
+  it("renders the profile form + account details, with no org/welcome banner", () => {
+    const { container } = render(<AccountPageClient user={makeUser()} />);
     const text = container.textContent ?? "";
 
-    expect(text).toContain("You're part of 0x1234's Organization");
-    expect(text).not.toMatch(/Organization organization/i);
+    expect(text).toContain("profile form");
+    expect(text).toContain("account details");
+    // Per-user-account console: no org surfacing even when one exists.
+    expect(text).not.toMatch(/Welcome back/i);
+    expect(text).not.toMatch(/You're part of/i);
+    expect(text).not.toMatch(/organization/i);
     expect(setPageHeaderMock).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Account" }),
     );
-  });
-
-  it("does not append an organization noun to custom org names", () => {
-    const { container } = render(
-      <AccountPageClient user={makeUser("Team Sol")} />,
-    );
-
-    expect(container.textContent).toContain("You're part of Team Sol");
-    expect(container.textContent).not.toMatch(/Team Sol organization/i);
   });
 });

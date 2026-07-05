@@ -1,6 +1,5 @@
 /**
- * Profile form for updating user profile information: name, email add, and
- * read-only org role.
+ * Profile form for updating user profile information: name and email add.
  *
  * Talks directly to the canonical profile routes via the typed cloud client:
  *   PATCH /api/v1/user        (name)
@@ -10,7 +9,7 @@
  * the updated identity without depending on cross-section query invalidation.
  */
 
-import { Loader2, Mail, Shield, User } from "lucide-react";
+import { Loader2, Mail, User } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
@@ -279,50 +278,6 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 disabled={isPending}
                 className="min-h-touch rounded-sm border-input bg-bg-elevated text-txt placeholder:text-muted disabled:opacity-50 disabled:cursor-not-allowed"
               />
-            </div>
-
-            {user.wallet_address && (
-              <div className="space-y-2">
-                <label
-                  htmlFor="wallet-address"
-                  className="text-xs font-medium text-muted uppercase tracking-wide flex items-center gap-2"
-                >
-                  <User className="h-4 w-4" />
-                  Wallet Address
-                </label>
-                <Input
-                  id="wallet-address"
-                  type="text"
-                  value={user.wallet_address}
-                  disabled
-                  className="min-h-touch rounded-sm border-border bg-bg-muted text-muted font-mono text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-                {user.wallet_chain_type && (
-                  <p className="text-xs text-muted capitalize">
-                    Connected via {user.wallet_chain_type} wallet
-                  </p>
-                )}
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <label
-                htmlFor="user-role"
-                className="text-xs font-medium text-muted uppercase tracking-wide flex items-center gap-2"
-              >
-                <Shield className="h-4 w-4" />
-                Role
-              </label>
-              <Input
-                id="user-role"
-                type="text"
-                value={user.role}
-                disabled
-                className="min-h-touch rounded-sm border-border bg-bg-muted text-muted capitalize disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-              <p className="text-xs text-muted">
-                Your role in the organization. Contact an admin to change this.
-              </p>
             </div>
           </div>
 
