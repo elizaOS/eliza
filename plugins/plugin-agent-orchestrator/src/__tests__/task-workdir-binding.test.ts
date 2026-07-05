@@ -10,7 +10,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type IAgentRuntime, upsertProject } from "@elizaos/core";
+import { type IAgentRuntime, type UUID, upsertProject } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
@@ -53,9 +53,13 @@ function makeWorkdirCapturingAcp() {
   return { service, spawns };
 }
 
+/** The agentId the fake runtime reports; project worlds are agent-scoped, so the
+ * worldId assertions below must derive against this exact id. */
+const AGENT_ID = "00000000-0000-4000-8000-000000000abc" as UUID;
+
 function makeRuntime(acpService: unknown): IAgentRuntime {
   return {
-    agentId: "00000000-0000-4000-8000-000000000abc",
+    agentId: AGENT_ID,
     character: { name: "Binder" },
     logger: {
       debug: () => undefined,
@@ -498,11 +502,13 @@ describe("project memory-world stamping at bind time (#13776 D3)", () => {
         workdir: firstDir,
       });
       expect(detail.projectId).toBe(project.id);
-      expect(detail.worldId).toBe(deriveProjectWorldId(project.id));
+      expect(detail.worldId).toBe(deriveProjectWorldId(AGENT_ID, project.id));
       // Persisted, not just returned.
       const record = await store.getTask(detail.id);
       expect(record?.task.projectId).toBe(project.id);
-      expect(record?.task.worldId).toBe(deriveProjectWorldId(project.id));
+      expect(record?.task.worldId).toBe(
+        deriveProjectWorldId(AGENT_ID, project.id),
+      );
     } finally {
       await service.stop().catch(() => undefined);
     }

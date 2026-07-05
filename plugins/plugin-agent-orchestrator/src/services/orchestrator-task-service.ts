@@ -2195,7 +2195,10 @@ export class OrchestratorTaskService extends Service {
     const projectId = resolveTaskProjectId(input);
     const { workdir: _workdir, ...rest } = input;
     const worldId =
-      rest.worldId ?? (projectId ? deriveProjectWorldId(projectId) : undefined);
+      rest.worldId ??
+      (projectId
+        ? deriveProjectWorldId(this.runtime.agentId, projectId)
+        : undefined);
     return { ...rest, projectId, worldId };
   }
 

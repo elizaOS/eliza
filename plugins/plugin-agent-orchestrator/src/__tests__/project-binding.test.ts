@@ -12,6 +12,7 @@ import {
   logger,
   setActiveProject,
   stringToUuid,
+  type UUID,
   upsertProject,
   writeWorkspaceFolderConfig,
 } from "@elizaos/core";
@@ -190,14 +191,16 @@ describe("project-binding", () => {
     });
   });
 
-  it("deriveProjectWorldId is deterministic in the project id and matches the stringToUuid convention", () => {
-    // #13776 D3: the world must be reproducible from the id alone so the agent
-    // runtime, desktop picker, and bind seam all land on the same partition
-    // without coordinating through disk.
-    const a = deriveProjectWorldId("proj-1");
-    expect(deriveProjectWorldId("proj-1")).toBe(a);
-    expect(deriveProjectWorldId("proj-2")).not.toBe(a);
-    expect(a).toBe(stringToUuid("project:proj-1"));
+  it("deriveProjectWorldId is deterministic and matches core's per-agent createUniqueUuid convention", () => {
+    // #14171: the bind seam delegates to core's projectWorldId, so the world is
+    // keyed on (agent, project) — `createUniqueUuid(runtime, 'project:' + id)` —
+    // not the project id alone. Same agent+project ⇒ same world; a different
+    // project (or a different agent) ⇒ a different world.
+    const agentId = "00000000-0000-4000-8000-000000000abc" as UUID;
+    const a = deriveProjectWorldId(agentId, "proj-1");
+    expect(deriveProjectWorldId(agentId, "proj-1")).toBe(a);
+    expect(deriveProjectWorldId(agentId, "proj-2")).not.toBe(a);
+    expect(a).toBe(stringToUuid(`project:proj-1:${agentId}`));
     expect(a).toMatch(/^[0-9a-f-]{36}$/);
   });
 

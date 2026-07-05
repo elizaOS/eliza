@@ -13,8 +13,9 @@
  * Binding also stamps the task's memory world ({@link deriveProjectWorldId}):
  * this is the live implementation of #13776 design D3's per-project memory
  * partition — subagents on project B never see project A's injected context.
- * The derivation is deterministic in the project id, so it is the source of
- * truth even though the core `ProjectRecord.worldId` also persists it for CRUD.
+ * The world is derived by delegating to core's `projectWorldId` (the single
+ * source of truth, #14171) so this bind seam and the runtime's memory-scope
+ * guards can never land on different partitions for the same (agent, project).
  */
 
 import { realpathSync } from "node:fs";
@@ -22,12 +23,11 @@ import { resolve } from "node:path";
 import {
   getProjectById,
   logger,
-  PROJECT_WORLD_ID_PREFIX,
   type ProjectRecord,
+  projectWorldId,
   readProjectRegistry,
-  stringToUuid,
-  upsertProject,
   type UUID,
+  upsertProject,
 } from "@elizaos/core";
 
 /** Canonicalize a path for identity comparison; falls back to a resolved
@@ -76,14 +76,18 @@ export function resolveTaskProjectId(
 }
 
 /**
- * The memory world a project partitions into — `stringToUuid('project:' + id)`.
- * Deterministic so the agent runtime, desktop picker, and this bind seam all
- * derive the same world for a project id without coordinating through disk. This
- * is #13776 design D3's cheaper option: a dedicated free partition in the
- * existing memory schema, no column change.
+ * The memory world a project partitions into, for a given agent. A thin
+ * delegate to core's {@link projectWorldId} — the single source of truth for
+ * this derivation (#14171). Worlds are agent-scoped (`World.agentId`), so the
+ * world is keyed on both the agent and the project, matching what
+ * `createUniqueUuid(runtime, 'project:' + projectId)` produces at runtime. This
+ * bind seam and core's memory-scope guards therefore always agree on a
+ * project's partition. Kept as a plugin-local export (rather than importing core
+ * at every call site) so a cross-package test can pin the two to equality and
+ * catch any future re-divergence.
  */
-export function deriveProjectWorldId(projectId: string): UUID {
-  return stringToUuid(`${PROJECT_WORLD_ID_PREFIX}${projectId}`);
+export function deriveProjectWorldId(agentId: UUID, projectId: string): UUID {
+  return projectWorldId(agentId, projectId);
 }
 
 /** The localPath of the registered project a bound task targets, or `null` when
