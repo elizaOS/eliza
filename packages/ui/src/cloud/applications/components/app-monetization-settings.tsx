@@ -459,7 +459,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                     </TooltipTrigger>
                     <TooltipContent
                       side="right"
-                      className="max-w-[200px] bg-popover border-border text-txt"
+                      className="max-w-[200px] bg-card border-border text-txt"
                     >
                       {t("cloud.monetization.inferenceMarkupTooltip", {
                         defaultValue:
@@ -521,7 +521,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                     </TooltipTrigger>
                     <TooltipContent
                       side="right"
-                      className="max-w-[200px] bg-popover border-border text-txt"
+                      className="max-w-[200px] bg-card border-border text-txt"
                     >
                       {t("cloud.monetization.purchaseShareTooltip", {
                         defaultValue:

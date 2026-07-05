@@ -220,7 +220,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
           <SelectTrigger className="w-[140px] h-9 bg-card border-border rounded-sm">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="bg-popover border-border rounded-sm">
+          <SelectContent className="bg-card border-border rounded-sm">
             <SelectItem value="7">Last 7 days</SelectItem>
             <SelectItem value="30">Last 30 days</SelectItem>
             <SelectItem value="90">Last 90 days</SelectItem>

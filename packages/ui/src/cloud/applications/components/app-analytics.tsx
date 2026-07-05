@@ -404,7 +404,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               <SelectTrigger className="w-[130px] h-9 bg-card border-border rounded-sm">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-popover border-border rounded-sm">
+              <SelectContent className="bg-card border-border rounded-sm">
                 <SelectItem value="hourly">Hourly</SelectItem>
                 <SelectItem value="daily">Daily</SelectItem>
                 <SelectItem value="monthly">Monthly</SelectItem>

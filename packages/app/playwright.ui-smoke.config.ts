@@ -74,6 +74,11 @@ const AUDIT_APP_SPEC = /all-views-aesthetic-audit\.spec\.ts/;
 // cloud route (packages/ui/src/cloud/register-all.ts) at desktop + mobile; a
 // dedicated tool run via `audit:cloud`, not part of the default e2e smoke.
 const AUDIT_CLOUD_SPEC = /cloud-surfaces-aesthetic-audit\.spec\.ts/;
+// Focused light/dark contrast proof for the Applications dropdown/select
+// popovers (#14232): renders the two touched surfaces in BOTH themes with the
+// SelectContent popover open. Run via `--project=audit-app-dropdown`; kept out
+// of the default e2e lane like the other dedicated aesthetic-audit tools.
+const AUDIT_APP_DROPDOWN_SPEC = /applications-dropdown-contrast\.spec\.ts/;
 // The WebKit lane (#10104/#10722): the assertion-grade dashboard specs, the
 // core shell smoke, and the input-modality spec on a real Desktop Safari
 // engine. WebKit-only behavior differences are real (see
@@ -123,7 +128,12 @@ export default defineConfig({
       // in the dedicated `chromium-voice-mic` project below, not here. The
       // all-views aesthetic audit runs only via the `audit:app` project; the
       // cloud-surface audit only via `audit:cloud`.
-      testIgnore: [VOICE_MIC_SPEC, AUDIT_APP_SPEC, AUDIT_CLOUD_SPEC],
+      testIgnore: [
+        VOICE_MIC_SPEC,
+        AUDIT_APP_SPEC,
+        AUDIT_CLOUD_SPEC,
+        AUDIT_APP_DROPDOWN_SPEC,
+      ],
       use: {
         ...devices["Desktop Chrome"],
         ...(chromiumExecutablePath
@@ -237,6 +247,20 @@ export default defineConfig({
       // project so a cached non-auth build cannot skip the local auth shell.
       name: "audit-cloud",
       testMatch: AUDIT_CLOUD_SPEC,
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(chromiumExecutablePath
+          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+          : {}),
+      },
+    },
+    {
+      // Applications dropdown/select light+dark contrast proof (#14232), run
+      // via `--project=audit-app-dropdown`. Like audit-cloud it needs the
+      // renderer built with VITE_PLAYWRIGHT_TEST_AUTH=true so the Steward auth
+      // shell serves the app-detail route.
+      name: "audit-app-dropdown",
+      testMatch: AUDIT_APP_DROPDOWN_SPEC,
       use: {
         ...devices["Desktop Chrome"],
         ...(chromiumExecutablePath
