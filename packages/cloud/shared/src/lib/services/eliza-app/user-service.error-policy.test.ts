@@ -47,7 +47,9 @@ mock.module("../credits", () => ({
 }));
 mock.module("../signup-code", () => ({ redeemSignupCode: mock() }));
 
-const { elizaAppUserService } = await import("./user-service");
+const { elizaAppUserService } = await import(
+  `./user-service.ts?test=user-service-error-policy-${Date.now()}`
+);
 
 function uniqueConstraintError(): Error {
   return Object.assign(new Error("duplicate key value violates unique constraint"), {

@@ -94,6 +94,7 @@ describe("onboarding-chat phone-link error policy", () => {
 
   afterAll(() => {
     mock.module("../../runtime/cloud-bindings", () => REAL_CLOUD_BINDINGS);
+    mock.restore();
   });
 
   test("a genuine linkPhoneToUser infra failure PROPAGATES (fail closed, never swallowed)", async () => {
