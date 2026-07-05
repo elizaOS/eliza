@@ -322,6 +322,7 @@ export class DesktopManager {
   private trayPopoverWindow: BrowserWindow | null = null;
   private trayPopoverConfig: TrayPopoverConfig | null = null;
   private trayPopoverVisible = false;
+  private trayPopoverLastAnchorBounds: Rect | null = null;
   // Deferred blur-to-dismiss: blur schedules a hide ~200ms out; a tray-icon
   // re-click (which fires blur then tray-clicked) cancels the pending hide and
   // toggles closed instead, so a click on the icon never double-fires.
@@ -421,12 +422,24 @@ export class DesktopManager {
     mainWindowPresent: boolean;
     windowVisible: boolean;
     windowFocused: boolean;
+    shortcuts: Array<{ id: string; accelerator: string }>;
+    trayPopover: {
+      configured: boolean;
+      windowPresent: boolean;
+      visible: boolean;
+      lastAnchorBounds: Rect | null;
+    };
   }> {
     return {
       trayPresent: Boolean(this.tray),
       mainWindowPresent: Boolean(this.mainWindow),
       windowVisible: (await this.isWindowVisible()).visible,
       windowFocused: this._windowFocused,
+      shortcuts: Array.from(this.shortcuts.values()).map((shortcut) => ({
+        id: shortcut.id,
+        accelerator: shortcut.accelerator,
+      })),
+      trayPopover: this.getTrayPopoverDiagnostics(),
     };
   }
 
@@ -900,6 +913,18 @@ export class DesktopManager {
     accelerator: string;
   }): Promise<{ registered: boolean }> {
     return { registered: GlobalShortcut.isRegistered(options.accelerator) };
+  }
+
+  pressRegisteredShortcut(options: { id: string }): boolean {
+    const shortcut = this.shortcuts.get(options.id);
+    if (!shortcut) {
+      return false;
+    }
+    this.send("desktopShortcutPressed", {
+      id: shortcut.id,
+      accelerator: shortcut.accelerator,
+    });
+    return true;
   }
 
   // MARK: - Auto Launch
@@ -2059,6 +2084,20 @@ X-GNOME-Autostart-enabled=true
     return this.trayPopoverVisible;
   }
 
+  getTrayPopoverDiagnostics(): {
+    configured: boolean;
+    windowPresent: boolean;
+    visible: boolean;
+    lastAnchorBounds: Rect | null;
+  } {
+    return {
+      configured: Boolean(this.trayPopoverConfig),
+      windowPresent: Boolean(this.trayPopoverWindow),
+      visible: this.trayPopoverVisible,
+      lastAnchorBounds: this.trayPopoverLastAnchorBounds,
+    };
+  }
+
   /** Read the tray icon's screen bounds; zero-rect on any failure or no tray. */
   private readTrayBounds(): Rect {
     const zero: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -2125,6 +2164,7 @@ X-GNOME-Autostart-enabled=true
 
     this.clearTrayPopoverBlurTimer();
     const frame = this.resolveTrayPopoverFrame();
+    this.trayPopoverLastAnchorBounds = frame;
 
     if (this.trayPopoverWindow) {
       const win = this.trayPopoverWindow;
@@ -2177,6 +2217,7 @@ X-GNOME-Autostart-enabled=true
     win.on("close", () => {
       this.trayPopoverWindow = null;
       this.trayPopoverVisible = false;
+      this.trayPopoverLastAnchorBounds = null;
       this.clearTrayPopoverBlurTimer();
     });
 
@@ -2220,6 +2261,7 @@ X-GNOME-Autostart-enabled=true
       );
     }
     this.trayPopoverWindow = null;
+    this.trayPopoverLastAnchorBounds = null;
   }
 
   // MARK: - Clipboard

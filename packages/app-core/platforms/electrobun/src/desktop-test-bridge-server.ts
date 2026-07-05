@@ -24,6 +24,10 @@ type MenuActionBody = {
   action?: string;
 };
 
+type ShortcutPressBody = {
+  id?: string;
+};
+
 function isLoopback(addr: string | undefined): boolean {
   return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
 }
@@ -236,6 +240,38 @@ export async function startDesktopTestBridgeServer(): Promise<
           invoked
             ? { ok: true }
             : { error: "application menu handler unavailable" },
+        );
+        return;
+      }
+
+      if (pathname === "/tray/popover/toggle" && method === "POST") {
+        const desktop = getDesktopManager();
+        const before = await desktop.getShellDiagnosticsState();
+        if (!before.trayPopover.configured) {
+          json(res, 503, { error: "tray popover is not configured" });
+          return;
+        }
+        await desktop.toggleTrayPopover();
+        json(res, 200, {
+          ok: true,
+          trayPopover: (await desktop.getShellDiagnosticsState()).trayPopover,
+        });
+        return;
+      }
+
+      if (pathname === "/shortcut/press" && method === "POST") {
+        const body = await readJsonBody<ShortcutPressBody>(req);
+        const id = body?.id?.trim();
+        if (!id) {
+          json(res, 400, { error: "id is required" });
+          return;
+        }
+        const desktop = getDesktopManager();
+        const invoked = desktop.pressRegisteredShortcut({ id });
+        json(
+          res,
+          invoked ? 200 : 404,
+          invoked ? { ok: true, id } : { error: "shortcut is not registered" },
         );
         return;
       }
