@@ -70,19 +70,23 @@ async function runCaptureCommand(
 async function captureLinuxRootWindow(
   tmpPath: string,
   options: { quality?: number } = {},
-): Promise<boolean> {
+): Promise<{ ok: boolean; reason?: string }> {
+  const attempted: string[] = [];
   const scrotCommand = options.quality
     ? ["scrot", "--quality", String(options.quality), tmpPath]
     : ["scrot", tmpPath];
-  if (await runCaptureCommand(scrotCommand, tmpPath)) return true;
+  attempted.push("scrot");
+  if (await runCaptureCommand(scrotCommand, tmpPath)) return { ok: true };
 
+  attempted.push("import");
   if (
     await runCaptureCommand(["import", "-window", "root", tmpPath], tmpPath)
   ) {
-    return true;
+    return { ok: true };
   }
 
   const display = process.env.DISPLAY?.trim();
+  attempted.push("ffmpeg x11grab");
   if (
     display &&
     (await runCaptureCommand(
@@ -103,9 +107,10 @@ async function captureLinuxRootWindow(
       tmpPath,
     ))
   ) {
-    return true;
+    return { ok: true };
   }
 
+  attempted.push("xwd + ffmpeg");
   const xwdPath = `${tmpPath}.xwd`;
   try {
     if (
@@ -114,9 +119,12 @@ async function captureLinuxRootWindow(
         xwdPath,
       ))
     ) {
-      return false;
+      return {
+        ok: false,
+        reason: linuxCaptureUnavailableReason(attempted, display),
+      };
     }
-    return runCaptureCommand(
+    const converted = await runCaptureCommand(
       [
         "ffmpeg",
         "-y",
@@ -129,6 +137,12 @@ async function captureLinuxRootWindow(
       ],
       tmpPath,
     );
+    return converted
+      ? { ok: true }
+      : {
+          ok: false,
+          reason: linuxCaptureUnavailableReason(attempted, display),
+        };
   } finally {
     try {
       if (fs.existsSync(xwdPath)) fs.unlinkSync(xwdPath);
@@ -140,6 +154,24 @@ async function captureLinuxRootWindow(
     }
   }
 }
+
+function linuxCaptureUnavailableReason(
+  attempted: string[],
+  display: string | undefined,
+): string {
+  const displayHint = display
+    ? `DISPLAY=${display}`
+    : "DISPLAY is unset, so ffmpeg/xwd X11 capture cannot run";
+  return `Linux screenshot capture unavailable after trying ${attempted.join(
+    ", ",
+  )}; install scrot, imagemagick, ffmpeg, and x11-apps on the runner (${displayHint})`;
+}
+
+export type ScreenshotCaptureResult = {
+  available: boolean;
+  data?: string;
+  reason?: string;
+};
 
 /**
  * Allow-list for game-capture URLs.
@@ -208,7 +240,7 @@ export class ScreenCaptureManager {
     };
   }
 
-  async takeScreenshot(): Promise<{ available: boolean; data?: string }> {
+  async takeScreenshot(): Promise<ScreenshotCaptureResult> {
     const tmpPath = path.join(
       os.tmpdir(),
       `elizaos-screenshot-${Date.now()}.png`,
@@ -236,7 +268,10 @@ $bmp.Dispose()`;
           stderr: "ignore",
         });
       } else {
-        await captureLinuxRootWindow(tmpPath);
+        const linuxCapture = await captureLinuxRootWindow(tmpPath);
+        if (!linuxCapture.ok) {
+          return { available: false, reason: linuxCapture.reason };
+        }
       }
 
       if (proc) await proc.exited;
@@ -247,7 +282,17 @@ $bmp.Dispose()`;
           ? `${tmpPath}.png`
           : null;
 
-      if (!actualPath) return { available: false };
+      if (!actualPath) {
+        return {
+          available: false,
+          reason:
+            process.platform === "darwin"
+              ? "macOS screencapture produced no output; verify Screen Recording/TCC access and that the runner display is unlocked"
+              : process.platform === "win32"
+                ? "Windows CopyFromScreen produced no output; verify an interactive desktop is available"
+                : "Linux screenshot capture produced no output file",
+        };
+      }
 
       const data = fs.readFileSync(actualPath).toString("base64");
       return { available: true, data: `data:image/png;base64,${data}` };
@@ -256,7 +301,10 @@ $bmp.Dispose()`;
         error: screenCaptureErrorMessage(err),
         tmpPath,
       });
-      return { available: false };
+      return {
+        available: false,
+        reason: `screenshot capture failed: ${screenCaptureErrorMessage(err)}`,
+      };
     } finally {
       for (const p of [tmpPath, `${tmpPath}.png`]) {
         try {
@@ -273,7 +321,7 @@ $bmp.Dispose()`;
 
   async captureWindow(options?: {
     windowId?: string;
-  }): Promise<{ available: boolean; data?: string }> {
+  }): Promise<ScreenshotCaptureResult> {
     // macOS: use screencapture -l <windowId> if a windowId is provided.
     // Other platforms: fall back to full-screen capture.
     if (process.platform === "darwin" && options?.windowId) {
