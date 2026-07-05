@@ -3,7 +3,7 @@
 ## Change
 
 - Added a `Test Integrity (lane coverage)` job to `.github/workflows/develop-pr.yml`.
-- The job runs `node packages/scripts/lint-lane-coverage.mjs` without `--dry-run`, so the seeded allowlist now gates develop PRs instead of only printing advisory output in `ci.yaml`.
+- The job runs `node packages/scripts/lint-lane-coverage.mjs` without `--dry-run`, so the seeded allowlist now produces a failing develop-PR workflow job instead of only printing advisory output in `ci.yaml`.
 - The job is read-only and install-free: checkout, Node 24 setup, then the existing script.
 
 ## Local verification
@@ -19,4 +19,4 @@
 - Real-LLM trajectories: N/A - workflow-only CI coverage wiring; no agent/action/provider/prompt/model behavior changed.
 - Backend logs: N/A - no runtime backend path changed.
 - Frontend screenshots/video: N/A - no user-facing UI changed.
-- Domain artifacts: `.github/workflows/develop-pr.yml` now contains an enforced lane coverage job.
+- Domain artifacts: `.github/workflows/develop-pr.yml` now contains a non-`continue-on-error` lane coverage job for develop PRs.
