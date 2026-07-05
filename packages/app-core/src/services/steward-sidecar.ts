@@ -29,6 +29,7 @@ import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { logger } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared";
 import { waitForHealthy } from "./steward-sidecar/health-check";
 import {
   allocateFirstFreeLoopbackPort,
@@ -527,7 +528,7 @@ export function createDesktopStewardSidecar(
   overrides?: Partial<StewardSidecarConfig>,
 ): StewardSidecar {
   const home = process.env.HOME || process.env.USERPROFILE || "";
-  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
+  const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
   const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
   const stateHome = xdgStateHome
     ? path.isAbsolute(xdgStateHome)

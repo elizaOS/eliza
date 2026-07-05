@@ -3,26 +3,29 @@
  * the OS keychain. The id is a deterministic sha256 over the canonical state dir
  * (XDG / `ELIZA_STATE_DIR` precedence, realpath-normalized), base64url-truncated
  * behind a stable `mldy1-` prefix, so one install always resolves the same vault
- * and two state dirs never collide. Kept dependency-light for the Electrobun
- * bootstrap path (no `@elizaos/core` barrel import), and pairs the vault id with
- * a secret kind to form the keychain account handle.
+ * and two state dirs never collide. The state-dir logic is inlined rather than
+ * imported from core's heavier composition helpers, and the vault id is paired
+ * with a secret kind to form the keychain account handle.
  */
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
+import { readAliasedEnv } from "@elizaos/shared";
 import type { SecureStoreSecretKind } from "./platform-secure-store";
 
 /** Fixed Keychain / Secret Service “service” identifier (see docs/guides/platform-secure-store.md). */
 export const ELIZA_AGENT_VAULT_SERVICE = "ai.elizaos.agent.vault";
 
-// Keep this dependency-light: platform secure-store modules are imported by
-// Electrobun bootstrap code where pulling the @elizaos/core barrel is costly.
+// Inlined state-dir resolution (rather than core's composition helper) that
+// reads via the alias-aware `readAliasedEnv`, so a branded prefix (e.g.
+// `MILADY_STATE_DIR`) resolves the same vault id without depending on the
+// `syncBrandEnvToEliza` process.env mirror.
 function resolveStateDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR?.trim();
+  const explicit = readAliasedEnv("ELIZA_STATE_DIR");
   if (explicit) return explicit;
-  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
+  const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
   const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
   const stateHome = xdgStateHome
     ? path.isAbsolute(xdgStateHome)

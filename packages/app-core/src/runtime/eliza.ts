@@ -69,6 +69,7 @@ import {
   formatError,
   formatErrorWithStack,
   isMobilePlatform,
+  readAliasedEnv,
   resolveApiExposePort,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
@@ -1637,7 +1638,7 @@ export async function startEliza(
 ): Promise<Awaited<ReturnType<typeof upstreamStartEliza>>> {
   syncAppEnvToEliza();
   // Eliza app: load PTY / coding-swarm orchestration unless explicitly opted out.
-  const orchRaw = process.env.ELIZA_AGENT_ORCHESTRATOR?.trim().toLowerCase();
+  const orchRaw = readAliasedEnv("ELIZA_AGENT_ORCHESTRATOR")?.toLowerCase();
   if (orchRaw !== "0" && orchRaw !== "false" && orchRaw !== "no") {
     process.env.ELIZA_AGENT_ORCHESTRATOR = "1";
   }
@@ -1706,7 +1707,9 @@ export async function startEliza(
       // renderer's hardcoded API base; honor it when present. CLI/server-only
       // mode (no ELIZA_API_PORT) keeps the legacy `resolveServerOnlyPort`
       // default (2138) so this change is transparent for non-desktop users.
-      const apiPort = process.env.ELIZA_API_PORT
+      // The presence check is alias-aware so a branded `MILADY_API_PORT` also
+      // selects the desktop port without relying on the process.env mirror.
+      const apiPort = readAliasedEnv("ELIZA_API_PORT")
         ? resolveDesktopApiPort(process.env)
         : resolveServerOnlyPort(process.env);
       let actualApiPort: number;

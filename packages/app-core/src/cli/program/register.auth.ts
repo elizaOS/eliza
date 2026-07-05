@@ -21,7 +21,12 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { isLoopbackBindHost, resolveApiBindHost, theme } from "@elizaos/shared";
+import {
+  isLoopbackBindHost,
+  readAliasedEnv,
+  resolveApiBindHost,
+  theme,
+} from "@elizaos/shared";
 import type { Command } from "commander";
 import { runCommandWithRuntime } from "../cli-utils";
 
@@ -36,9 +41,9 @@ const RESET_PROOF_FILENAME = "RESET_PROOF.txt";
  * `resolveStateDir`.
  */
 function resolveElizaStateDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR?.trim();
+  const explicit = readAliasedEnv("ELIZA_STATE_DIR");
   if (explicit) return path.resolve(explicit);
-  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
+  const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
   const home =
     process.env.HOME?.trim() ||
     process.env.USERPROFILE?.trim() ||

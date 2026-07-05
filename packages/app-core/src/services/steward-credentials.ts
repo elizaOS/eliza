@@ -11,20 +11,21 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { readAliasedEnv } from "@elizaos/shared";
 import type {
   PlatformSecureStore,
   SecureStoreSecretKind,
 } from "../security/platform-secure-store";
 import { createNodePlatformSecureStore } from "../security/platform-secure-store-node";
 
-// Inlined to avoid pulling the @elizaos/core source barrel into consumers
-// that only need state-dir resolution (e.g. the Electrobun bun bundle, which
-// would otherwise transitively bundle plugin-sql, transformers, and onnxruntime).
-// Mirrors the canonical implementation in @elizaos/core's state-dir helper.
+// Inlined mirror of @elizaos/core's state-dir helper so this module doesn't pull
+// the heavier core runtime-composition graph. Env reads go through the
+// alias-aware `readAliasedEnv` so branded prefixes (e.g. `MILADY_STATE_DIR`)
+// resolve without depending on the `syncBrandEnvToEliza` process.env mirror.
 function resolveStateDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR?.trim();
+  const explicit = readAliasedEnv("ELIZA_STATE_DIR");
   if (explicit) return explicit;
-  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
+  const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
   const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
   const stateHome = xdgStateHome
     ? path.isAbsolute(xdgStateHome)
