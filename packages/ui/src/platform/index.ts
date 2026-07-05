@@ -23,6 +23,7 @@ export {
 export * from "./cloud-preference-patch";
 export * from "./desktop-permissions-client";
 export * from "./first-run-reset";
+export * from "./onboarding-replay";
 export {
   canHostLocalAgent,
   canRunLocal,

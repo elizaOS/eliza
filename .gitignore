@@ -720,6 +720,8 @@ docs/*
 !docs/tee-architecture-implementation-plan.md
 !docs/security/
 !docs/security/**
+!docs/testing/
+!docs/testing/**
 !docs/transcripts/
 !docs/transcripts/**
 yolov8n.pt
