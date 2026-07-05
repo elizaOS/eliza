@@ -1,0 +1,42 @@
+[
+  {
+    "slug": "dashboard-agents",
+    "viewport": "desktop",
+    "path": "/dashboard/agents",
+    "route": "dashboard/agents",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 240,
+    "quality": {
+      "width": 96,
+      "height": 60,
+      "sampledPixels": 5760,
+      "colorBuckets": 36,
+      "dominantRatio": 0.6732638888888889
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  },
+  {
+    "slug": "dashboard-agents",
+    "viewport": "mobile",
+    "path": "/dashboard/agents",
+    "route": "dashboard/agents",
+    "consoleErrors": [],
+    "blueColors": [],
+    "hoverViolations": [],
+    "hoverFailures": [],
+    "readableChars": 303,
+    "quality": {
+      "width": 44,
+      "height": 96,
+      "sampledPixels": 4224,
+      "colorBuckets": 67,
+      "dominantRatio": 0.3626893939393939
+    },
+    "qualityIssues": [],
+    "verdict": "needs-eyeball"
+  }
+]
