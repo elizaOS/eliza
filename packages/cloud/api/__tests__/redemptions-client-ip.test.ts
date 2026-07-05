@@ -96,14 +96,27 @@ describe("POST /api/v1/redemptions client IP resolution", () => {
     expect(createdRedemptionMetadata().ipAddress).toBe("198.51.100.44");
   });
 
-  test("falls back to the rightmost X-Forwarded-For hop", async () => {
+  test("canonicalizes a valid Cloudflare IPv6 client IP", async () => {
     const res = await postRedemption({
-      "X-Forwarded-For": "192.0.2.123, 203.0.113.9",
+      "CF-Connecting-IP": "2001:0DB8::1",
     });
 
     expect(res.status).toBe(200);
     expect(createRedemption).toHaveBeenCalledTimes(1);
-    expect(createdRedemptionMetadata().ipAddress).toBe("203.0.113.9");
+    expect(createdRedemptionMetadata().ipAddress).toBe("2001:db8::1");
+  });
+
+  test("denies X-Forwarded-For without Cloudflare client IP", async () => {
+    const res = await postRedemption({
+      "X-Forwarded-For": "192.0.2.123, 203.0.113.9",
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      success: false,
+      error: ORIGIN_ERROR,
+    });
+    expect(createRedemption).not.toHaveBeenCalled();
   });
 
   test("rejects malformed IP headers instead of using them as identities", async () => {

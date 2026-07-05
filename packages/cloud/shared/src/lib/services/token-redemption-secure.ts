@@ -58,6 +58,7 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { ELIZA_TOKEN_ADDRESSES, type SupportedNetwork } from "./eliza-token-price";
 import { redeemableEarningsService } from "./redeemable-earnings";
+import { normalizeRedemptionClientIp } from "./redemption-client-ip";
 import { twapPriceOracle } from "./twap-price-oracle";
 
 // ============================================================================
@@ -149,27 +150,6 @@ const IP_RATE_LIMITS = {
 
 export const REDEMPTION_ORIGIN_VERIFICATION_ERROR =
   "Unable to verify redemption origin. Please try again later.";
-
-function isTrustedClientIp(value: string): boolean {
-  if (!value || /[\r\n]/.test(value) || value.length > 128) return false;
-
-  const maybeIpv4 = value.split(".");
-  if (maybeIpv4.length === 4) {
-    return maybeIpv4.every((part) => {
-      if (!/^\d{1,3}$/.test(part)) return false;
-      const octet = Number(part);
-      return octet >= 0 && octet <= 255;
-    });
-  }
-
-  if (!value.includes(":")) return false;
-  try {
-    new URL(`http://[${value}]/`);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 interface SecureRedemptionResult {
   success: boolean;
@@ -342,8 +322,8 @@ export class SecureTokenRedemptionService {
       return { success: false, error: "Amount exceeds absolute maximum" };
     }
 
-    const ipAddress = metadata?.ipAddress?.trim();
-    if (!ipAddress || !isTrustedClientIp(ipAddress)) {
+    const ipAddress = normalizeRedemptionClientIp(metadata?.ipAddress);
+    if (!ipAddress) {
       logger.warn("[SecureRedemption] Missing trusted client IP", {
         userId: `${userId.slice(0, 8)}...`,
       });

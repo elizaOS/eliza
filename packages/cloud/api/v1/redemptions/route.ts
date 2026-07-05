@@ -14,6 +14,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { payoutStatusService } from "@/lib/services/payout-status";
+import { normalizeRedemptionClientIp } from "@/lib/services/redemption-client-ip";
 import {
   REDEMPTION_ORIGIN_VERIFICATION_ERROR,
   secureTokenRedemptionService,
@@ -43,52 +44,10 @@ function normalizeRedemptionNetwork(
   return network === "bsc" ? "bnb" : network;
 }
 
-function cleanForwardedIp(
-  value: string | null | undefined,
-): string | undefined {
-  const trimmed = value?.trim();
-  if (!trimmed || /[\r\n]/.test(trimmed)) return undefined;
-  if (trimmed.length > 128) return undefined;
-  if (isIpAddress(trimmed)) return trimmed;
-  return undefined;
-}
-
-function isIpAddress(value: string): boolean {
-  const maybeIpv4 = value.split(".");
-  if (maybeIpv4.length === 4) {
-    return maybeIpv4.every((part) => {
-      if (!/^\d{1,3}$/.test(part)) return false;
-      const octet = Number(part);
-      return octet >= 0 && octet <= 255;
-    });
-  }
-
-  if (!value.includes(":")) return false;
-  try {
-    new URL(`http://[${value}]/`);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function resolveRedemptionClientIp(
   headers: Headers,
 ): string | undefined {
-  const cloudflareIp = headers.get("cf-connecting-ip");
-  if (cloudflareIp !== null) return cleanForwardedIp(cloudflareIp);
-
-  const forwardedFor = headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    const hops = forwardedFor
-      .split(",")
-      .map((hop) => cleanForwardedIp(hop))
-      .filter((hop): hop is string => Boolean(hop));
-    const trustedHop = hops.at(-1);
-    if (trustedHop) return trustedHop;
-  }
-
-  return undefined;
+  return normalizeRedemptionClientIp(headers.get("cf-connecting-ip"));
 }
 
 const app = new Hono<AppEnv>();
