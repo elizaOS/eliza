@@ -507,6 +507,15 @@ export async function handlePermissionRoutes(
   );
 }
 
+type ProjectRoutesModule = typeof import("./project-routes.ts");
+export async function handleProjectRoutes(
+  ...args: Parameters<ProjectRoutesModule["handleProjectRoutes"]>
+): ReturnType<ProjectRoutesModule["handleProjectRoutes"]> {
+  const ctx = routeContext(args);
+  if (!ctx?.pathname.startsWith("/api/projects")) return false;
+  return (await import("./project-routes.ts")).handleProjectRoutes(...args);
+}
+
 type PermissionsExtraRoutesModule =
   typeof import("./permissions-routes-extra.ts");
 export async function handlePermissionsExtraRoutes(

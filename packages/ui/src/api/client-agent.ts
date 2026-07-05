@@ -90,6 +90,8 @@ import type {
   OrchestratorRoomRosterOverview,
   PluginInfo,
   PluginMutationResult,
+  ProjectListResponse,
+  ProjectSummary,
   ProviderModelRecord,
   RawAcpSession,
   RelationshipsActivityResponse,
@@ -1021,12 +1023,16 @@ declare module "./client-base" {
       status?: string;
       search?: string;
       limit?: number;
+      /** Restrict to tasks bound to this project (#13776 item 5). */
+      projectId?: string;
     }): Promise<CodingAgentTaskThread[]>;
     getCodingAgentTaskThread(
       threadId: string,
     ): Promise<CodingAgentTaskThreadDetail | null>;
     archiveCodingAgentTaskThread(threadId: string): Promise<boolean>;
     reopenCodingAgentTaskThread(threadId: string): Promise<boolean>;
+    listProjects(): Promise<ProjectListResponse>;
+    activateProject(projectId: string): Promise<ProjectSummary>;
     getOrchestratorStatus(): Promise<CodingAgentOrchestratorStatus | null>;
     getOrchestratorAccounts(): Promise<OrchestratorAccountOverview>;
     getOrchestratorAccountReadiness(opts?: {
@@ -3837,6 +3843,7 @@ ElizaClient.prototype.listCodingAgentTaskThreads = async function (
   if (options?.includeArchived) params.set("includeArchived", "true");
   if (options?.status) params.set("status", options.status);
   if (options?.search) params.set("search", options.search);
+  if (options?.projectId) params.set("projectId", options.projectId);
   if (typeof options?.limit === "number") {
     params.set("limit", String(options.limit));
   }
@@ -3886,6 +3893,32 @@ ElizaClient.prototype.reopenCodingAgentTaskThread = async function (
     { method: "POST" },
   );
   return true;
+};
+
+// --- Project registry (#13776 item 5): list + switch the active project ----
+// The switcher reads the merged core registry through these; an absent registry
+// (mobile/web where the surface isn't hosted) resolves to an empty list so the
+// switcher renders its no-projects empty state instead of erroring.
+
+ElizaClient.prototype.listProjects = async function (this: ElizaClient) {
+  try {
+    return await this.fetch<ProjectListResponse>("/api/projects");
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return { projects: [], activeProjectId: null };
+    }
+    throw error;
+  }
+};
+
+ElizaClient.prototype.activateProject = async function (
+  this: ElizaClient,
+  projectId,
+) {
+  return this.fetch<ProjectSummary>(
+    `/api/projects/${encodeURIComponent(projectId)}/activate`,
+    { method: "POST" },
+  );
 };
 
 // --- Orchestrator-native task operations (/api/orchestrator/*) -------------

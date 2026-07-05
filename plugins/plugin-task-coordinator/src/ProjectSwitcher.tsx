@@ -1,0 +1,205 @@
+/**
+ * ProjectSwitcher — the per-project switcher affordance (#13776 item 5).
+ *
+ * Reads the merged core project registry through `client.listProjects()` and
+ * lets the user switch the active project via `client.activateProject(id)`.
+ * The active project drives the task list's `projectId` filter (the caller
+ * passes `onActiveProjectChange` and threads the id into its task fetch).
+ *
+ * Design: a compact dropdown trigger showing the active project's name (or a
+ * neutral "All projects" label when none is active), matching the task panel's
+ * header chrome — design tokens only (no raw hex, no purple/blue, no
+ * backdrop-blur), a single lucide folder glyph, and a check mark on the active
+ * row. When the registry is empty (mobile/web or a fresh install) the switcher
+ * self-hides so it never renders a dead control.
+ */
+import {
+  Button,
+  client,
+  type ProjectSummary,
+  useAppSelectorShallow,
+} from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+// Direct subpath (mirrors the sibling panels): the browser barrel doesn't
+// reliably re-export the newer dropdown-menu primitives.
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@elizaos/ui/components/ui/dropdown-menu";
+import { Check, FolderGit2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+
+const fallbackTranslate = (
+  key: string,
+  vars?: Record<string, unknown>,
+): string => String(vars?.defaultValue ?? key);
+
+export interface ProjectSwitcherProps {
+  /** Fired with the newly-active project id (or null when cleared) after a
+   *  successful switch, so the host can re-filter its task list. */
+  onActiveProjectChange?: (projectId: string | null) => void;
+}
+
+interface ProjectSwitcherState {
+  projects: ProjectSummary[];
+  activeProjectId: string | null;
+  loading: boolean;
+  switching: boolean;
+  error: string | null;
+}
+
+const INITIAL_STATE: ProjectSwitcherState = {
+  projects: [],
+  activeProjectId: null,
+  loading: true,
+  switching: false,
+  error: null,
+};
+
+export function ProjectSwitcher({
+  onActiveProjectChange,
+}: ProjectSwitcherProps) {
+  const { t: appT } = useAppSelectorShallow((s) => ({ t: s.t }));
+  const t = appT ?? fallbackTranslate;
+  const [state, setState] = useState<ProjectSwitcherState>(INITIAL_STATE);
+
+  const loadProjects = useCallback(async (signal: { cancelled: boolean }) => {
+    try {
+      const { projects, activeProjectId } = await client.listProjects();
+      if (signal.cancelled) return;
+      setState((prev) => ({
+        ...prev,
+        projects,
+        activeProjectId,
+        loading: false,
+        error: null,
+      }));
+    } catch (error) {
+      if (signal.cancelled) return;
+      // A registry read failure is non-fatal: the switcher simply hides. Keep
+      // the message for debugging but don't surface a red banner in a header.
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : "Unknown",
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    const signal = { cancelled: false };
+    void loadProjects(signal);
+    return () => {
+      signal.cancelled = true;
+    };
+  }, [loadProjects]);
+
+  const handleSelect = useCallback(
+    async (projectId: string) => {
+      if (projectId === state.activeProjectId || state.switching) return;
+      setState((prev) => ({ ...prev, switching: true, error: null }));
+      try {
+        const activated = await client.activateProject(projectId);
+        setState((prev) => ({
+          ...prev,
+          activeProjectId: activated.id,
+          // Reflect the freshly-stamped lastOpenedAt in the list too.
+          projects: prev.projects.map((p) =>
+            p.id === activated.id ? { ...p, ...activated } : p,
+          ),
+          switching: false,
+        }));
+        onActiveProjectChange?.(activated.id);
+      } catch (error) {
+        setState((prev) => ({
+          ...prev,
+          switching: false,
+          error: error instanceof Error ? error.message : "Unknown",
+        }));
+      }
+    },
+    [state.activeProjectId, state.switching, onActiveProjectChange],
+  );
+
+  const triggerLabel = t("projectswitcher.trigger", {
+    defaultValue: "Switch project",
+  });
+  const { ref: triggerRef, agentProps: triggerAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "project-switcher-trigger",
+      role: "button",
+      label: triggerLabel,
+      group: "project-switcher",
+      description: "Open the project switcher to change the active project",
+    });
+
+  // Hide entirely when there are no registered projects — a switcher with
+  // nothing to switch to is dead chrome (mobile/web, or a fresh install).
+  if (state.loading || state.projects.length === 0) {
+    return null;
+  }
+
+  const active =
+    state.projects.find((p) => p.id === state.activeProjectId) ?? null;
+  const activeName =
+    active?.name ??
+    t("projectswitcher.none", { defaultValue: "All projects" });
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          ref={triggerRef}
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={state.switching}
+          data-testid="project-switcher-trigger"
+          aria-label={triggerLabel}
+          className="inline-flex h-8 max-w-[12rem] items-center gap-1.5 rounded-xl border border-border/50 bg-bg-accent/30 px-2.5 text-xs font-medium text-txt hover:text-txt-strong"
+          {...triggerAgentProps}
+        >
+          <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-accent" />
+          <span className="truncate">{activeName}</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="min-w-[13rem]"
+        data-testid="project-switcher-menu"
+      >
+        {state.projects.map((project) => {
+          const isActive = project.id === state.activeProjectId;
+          return (
+            <DropdownMenuItem
+              key={project.id}
+              onSelect={() => {
+                void handleSelect(project.id);
+              }}
+              data-testid={`project-switcher-item-${project.id}`}
+              data-active={isActive ? "true" : undefined}
+              className="flex items-start gap-2"
+            >
+              <Check
+                className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${
+                  isActive ? "text-accent" : "text-transparent"
+                }`}
+                aria-hidden="true"
+              />
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate text-xs font-medium text-txt">
+                  {project.name}
+                </span>
+                <span className="truncate text-2xs text-muted">
+                  {project.localPath}
+                </span>
+              </span>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
