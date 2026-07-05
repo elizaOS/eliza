@@ -1,7 +1,10 @@
 /**
  * Bare "no messages yet" placeholder for a chat pane: an agent glyph, a hint,
- * and an optional call-to-action. The recommendation-chip variant lives in
- * ChatEmptyStateWithRecommendations; this is the minimal form.
+ * and an optional call-to-action. The `default` variant carries no suggestion
+ * chips — per the views-redesign doctrine the agent's proactive greeting seeds
+ * the first turn in chat, not tappable in-view prompts. Callers that are a game
+ * surface (the `game-modal` variant) pass their own `suggestions` as game-flow
+ * controls, which are not agent suggestions.
  */
 import type * as React from "react";
 import { cn } from "../../../lib/utils";
@@ -31,7 +34,7 @@ export function ChatEmptyState({
   hint,
   labels = {},
   onSuggestionClick,
-  suggestions = ["Hello!", "How are you?", "Tell me a joke", "Help me with..."],
+  suggestions = [],
   variant = "default",
 }: ChatEmptyStateProps) {
   return (

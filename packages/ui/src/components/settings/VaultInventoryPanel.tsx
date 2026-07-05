@@ -273,7 +273,7 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
           data-testid="vault-inventory-empty"
           className="px-3 py-3 text-center text-xs text-muted"
         >
-          No secrets yet. Add an API key.
+          No secrets yet.
         </p>
       ) : (
         <div className="space-y-3">

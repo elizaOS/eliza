@@ -17,6 +17,7 @@ import {
   Layers,
   Lock,
   Shield,
+  Upload,
   User,
 } from "lucide-react";
 import {
@@ -1323,20 +1324,19 @@ export function DocumentsView({
     >
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end">
         {fileInputId ? (
+          // The only upload affordance when the selector rail is unmounted, so
+          // it stays — but as a quiet neutral control (#13588), not an accent
+          // "Add Knowledge" marketing chip.
           <label
             htmlFor={fileInputId}
-            // Borderless accent action (#10710); text-accent (not accent-fg,
-            // which is near-white and illegible on a 10% wash).
-            className={`inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-sm bg-accent/10 px-3 text-xs font-semibold text-accent transition hover:bg-accent/20 ${
+            className={`inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-sm border border-border px-3 text-xs font-medium text-muted transition hover:text-txt ${
               uploading ? "pointer-events-none opacity-60" : ""
             }`}
           >
-            <FileText className="h-3.5 w-3.5" aria-hidden />
+            <Upload className="h-3.5 w-3.5" aria-hidden />
             {uploading
               ? t("documentsview.Uploading", { defaultValue: "Uploading" })
-              : t("documentsview.AddKnowledge", {
-                  defaultValue: "Add Knowledge",
-                })}
+              : t("documentsview.Upload", { defaultValue: "Upload" })}
           </label>
         ) : null}
       </div>

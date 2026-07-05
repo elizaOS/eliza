@@ -3,7 +3,6 @@
 import {
   ApiError,
   Button,
-  ChatEmptyStateWithRecommendations,
   type CodingAgentTaskThread,
   type CodingAgentTaskThreadDetail,
   client,
@@ -23,6 +22,7 @@ import {
   SparseWatermark,
   TaskCard,
   TaskCountChip,
+  TaskEmptyState,
   TaskListHeader,
   TaskMetaChip,
   TaskSearchInput,
@@ -980,9 +980,7 @@ export function CodingAgentTasksPanel({
           })}
         </div>
       ) : (
-        <ChatEmptyStateWithRecommendations
-          icon={Bot}
-          testId="task-empty-state"
+        <TaskEmptyState
           title={
             backendAbsent
               ? t("codingagenttaskspanel.empty.setupTitle", {
@@ -992,30 +990,9 @@ export function CodingAgentTasksPanel({
                   defaultValue: "No coding tasks yet.",
                 })
           }
-          // Full-page Tasks is a designed-empty surface (#13565): no
-          // suggestion/create CTAs here — the proactive-greeting child offers
-          // to start a task in chat, so the empty state stays a quiet glyph +
-          // one line. The embedded (non-fullPage) panel keeps its recommendation
-          // chips for the spatial/coordinator surfaces that have no chat rail.
-          recommendations={
-            fullPage
-              ? undefined
-              : [
-                  t("codingagenttaskspanel.empty.rec.fixBug", {
-                    defaultValue: "Dispatch a coding agent to fix a failing test",
-                  }),
-                  t("codingagenttaskspanel.empty.rec.addFeature", {
-                    defaultValue: "Have a coding agent add a small feature",
-                  }),
-                  backendAbsent
-                    ? t("codingagenttaskspanel.empty.rec.setup", {
-                        defaultValue: "Help me set up coding agents",
-                      })
-                    : t("codingagenttaskspanel.empty.rec.refactor", {
-                        defaultValue: "Ask a coding agent to refactor a file",
-                      }),
-                ]
-          }
+          hint={t("codingagenttaskspanel.empty.hint", {
+            defaultValue: "Dispatched coding tasks show up here.",
+          })}
         />
       )}
     </div>

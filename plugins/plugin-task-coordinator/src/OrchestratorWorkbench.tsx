@@ -12,7 +12,6 @@ import {
   AlertDialogTrigger,
   Button,
   type ChangeSetData,
-  ChatEmptyStateWithRecommendations,
   type CodingAgentAddAgentInput,
   type CodingAgentOrchestratorStatus,
   type CodingAgentRerunFromEventInput,
@@ -99,6 +98,7 @@ import {
   BackChip,
   SparseWatermark,
   TaskCard,
+  TaskEmptyState,
   TaskMetaChip,
   TaskSearchInput,
   TaskStatusChip,
@@ -3112,31 +3112,20 @@ export function OrchestratorWorkbench() {
                   })}
                 </p>
               ) : (
-                <ChatEmptyStateWithRecommendations
-                  icon={Layers}
-                  testId="task-empty-state"
+                <TaskEmptyState
                   title={
                     backendAbsent
                       ? t("orchestrator.empty.setupTitle", {
                           defaultValue:
-                            "Connect a cloud or desktop agent, then describe a task in the chat below.",
+                            "Connect a cloud or desktop agent to run tasks here.",
                         })
                       : t("orchestrator.empty.title", {
-                          defaultValue:
-                            "Describe a task in the chat below and it will appear here.",
+                          defaultValue: "No tasks yet.",
                         })
                   }
-                  recommendations={[
-                    t("orchestrator.empty.rec.fixBug", {
-                      defaultValue: "Ask Eliza to fix a bug",
-                    }),
-                    t("orchestrator.empty.rec.tests", {
-                      defaultValue: "Ask Eliza to write tests for a module",
-                    }),
-                    t("orchestrator.empty.rec.feature", {
-                      defaultValue: "Ask Eliza to build a small feature",
-                    }),
-                  ]}
+                  hint={t("orchestrator.empty.hint", {
+                    defaultValue: "Tasks you start appear here.",
+                  })}
                 />
               )
             ) : (
