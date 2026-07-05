@@ -40,7 +40,9 @@ export type FormResultValue = string | boolean;
  * so no custom picker or dependency is added. Any other type is a plain text
  * box. Exported for the field-type unit test.
  */
-export function htmlInputTypeForField(fieldType: FormFieldSpec["type"]): string {
+export function htmlInputTypeForField(
+  fieldType: FormFieldSpec["type"],
+): string {
   switch (fieldType) {
     case "number":
       return "number";
@@ -61,19 +63,24 @@ export type FormRequestProps = {
   onSubmit: (formId: string, values: Record<string, FormResultValue>) => void;
 };
 
+function createFormRecord<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
+}
 function initialValueFor(field: FormFieldSpec): FormResultValue {
   return field.type === "checkbox" ? false : "";
 }
 
 export function FormRequest({ form, onSubmit }: FormRequestProps) {
   const [values, setValues] = useState<Record<string, FormResultValue>>(() => {
-    const initial: Record<string, FormResultValue> = {};
+    const initial = createFormRecord<FormResultValue>();
     for (const field of form.fields) {
       initial[field.name] = initialValueFor(field);
     }
     return initial;
   });
-  const [errors, setErrors] = useState<Record<string, string[]>>({});
+  const [errors, setErrors] = useState<Record<string, string[]>>(() =>
+    createFormRecord<string[]>(),
+  );
   const [submitted, setSubmitted] = useState(false);
 
   const requiredFields = useMemo(
@@ -82,7 +89,11 @@ export function FormRequest({ form, onSubmit }: FormRequestProps) {
   );
 
   const setValue = useCallback((name: string, value: FormResultValue) => {
-    setValues((prev) => ({ ...prev, [name]: value }));
+    setValues((prev) =>
+      Object.assign(createFormRecord<FormResultValue>(), prev, {
+        [name]: value,
+      }),
+    );
   }, []);
 
   const validateField = useCallback(
@@ -97,7 +108,11 @@ export function FormRequest({ form, onSubmit }: FormRequestProps) {
         ],
         value,
       );
-      setErrors((prev) => ({ ...prev, [field.name]: fieldErrors }));
+      setErrors((prev) =>
+        Object.assign(createFormRecord<string[]>(), prev, {
+          [field.name]: fieldErrors,
+        }),
+      );
     },
     [],
   );
@@ -107,7 +122,7 @@ export function FormRequest({ form, onSubmit }: FormRequestProps) {
       event.preventDefault();
       if (submitted) return;
 
-      const nextErrors: Record<string, string[]> = {};
+      const nextErrors = createFormRecord<string[]>();
       for (const field of requiredFields) {
         const fieldErrors = runValidation(
           [
@@ -124,7 +139,7 @@ export function FormRequest({ form, onSubmit }: FormRequestProps) {
       if (Object.keys(nextErrors).length > 0) return;
 
       setSubmitted(true);
-      onSubmit(form.id, values);
+      onSubmit(form.id, { ...values });
     },
     [form.id, onSubmit, requiredFields, submitted, values],
   );

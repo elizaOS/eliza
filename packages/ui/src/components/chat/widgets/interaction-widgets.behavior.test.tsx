@@ -109,6 +109,33 @@ describe("FormRequest — every input + submit", () => {
     expect(screen.getByRole("button", { name: "Submitted" })).toBeTruthy();
   });
 
+  it("handles a protocol-valid field named constructor without inherited object state", () => {
+    const onSubmit = vi.fn();
+    const formWithConstructorField: FormRequestSpec = {
+      id: "prototype-safe",
+      submitLabel: "Send",
+      fields: [
+        {
+          name: "constructor",
+          type: "text",
+          label: "Constructor",
+          required: true,
+        },
+      ],
+    };
+    render(<FormRequest form={formWithConstructorField} onSubmit={onSubmit} />);
+
+    expect(screen.queryByText(/Constructor is required/i)).toBeNull();
+    fireEvent.change(screen.getByLabelText("Constructor"), {
+      target: { value: "safe-value" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit).toHaveBeenCalledWith("prototype-safe", {
+      constructor: "safe-value",
+    });
+  });
   it("renders a select field's options", () => {
     const onSubmit = vi.fn();
     const withSelect: FormRequestSpec = {
