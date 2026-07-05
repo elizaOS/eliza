@@ -196,6 +196,21 @@ Current Launch QA routing: Project
 <https://github.com/orgs/elizaOS/discussions/14292>, tracker/history
 <https://github.com/elizaOS/eliza/issues/13406>.
 
+LifeOps Personal Assistant MVP routing: Project
+<https://github.com/orgs/elizaOS/projects/15>. Product scope, the seven
+personas, and the per-workstream acceptance bar live in
+[`packages/docs/ongoing-development/mvp/MVP.md`](packages/docs/ongoing-development/mvp/MVP.md);
+in-flight design docs (per-workstream research + status snapshots) live under
+[`packages/docs/ongoing-development/`](packages/docs/ongoing-development/README.md).
+This folder adds a **design-doc layer** to the workflow above: discussion →
+design doc here → issues on the board → PR with evidence → doc updated on merge.
+
+Evidence attaches **inline in the issue/PR**, not committed to the repo: MP4
+video (renders inline in GitHub), JPG over PNG for screenshots, logs in a
+`<details>` block. Bug reports include a screenshot or recording of the *wrong*
+behavior. `.github/issue-evidence/` is retired; the full standard is
+`PR_EVIDENCE.md`.
+
 ## Error-Handling Simplification
 
 Binding policy for all error handling (parent #12182, foundation #12263). The
@@ -470,10 +485,14 @@ The non-negotiables in practice:
   - **Domain artifacts** — the things the change produced (memory/knowledge/DB
     rows, scheduled tasks, wallet balance before/after, on-chain tx hashes,
     generated files, device output) — inspected by hand and shown.
-  - Artifacts land in `.github/issue-evidence/<issue#>-<slug>.<ext>` (see that
-    dir's `README.md`). Each evidence type is attached **or** explicitly marked
-    N/A with a reason — never left blank. If `develop` moved and changed
-    behavior, **re-capture** evidence; stale proof is worse than none.
+  - Evidence is posted **inline in the issue/PR itself** (drag-and-drop):
+    videos as **MP4** (GitHub renders MP4 inline — convert `.mov`/`.webm`),
+    screenshots as **JPG** rather than PNG where possible, long logs in a
+    `<details>` block. Do not commit evidence files to the repo
+    (`.github/issue-evidence/` is retired). Each evidence type is attached
+    **or** explicitly marked N/A with a reason — never left blank. If `develop`
+    moved and changed behavior, **re-capture** evidence; stale proof is worse
+    than none.
 
 ## Contributing
 

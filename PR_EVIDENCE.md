@@ -74,13 +74,13 @@ leave it blank.
 
 | Evidence | Required when the change touches… | How to produce it | Where it goes |
 | --- | --- | --- | --- |
-| **Real LLM-call trajectory** | agent behavior, actions, providers, prompts, models | `scenario-runner` against a **live** LLM (not the deterministic proxy) — JSON report + run viewer + native jsonl | scenario report path + `.github/issue-evidence/` |
-| **Backend logs** | runtime, API, services, schedulers | structured logger output (`[ClassName] …`) showing the code path firing end to end | paste in PR + file in `.github/issue-evidence/` |
-| **Frontend logs** | any UI / client | browser console + network trace showing the request/response and state change | paste in PR + screenshot |
-| **Full-page screenshots** | any UI change | `audit:app` (app) / `audit:cloud` (cloud-frontend) or `test:e2e:record` sheets; before **and** after; desktop **and** mobile; portrait **and** landscape | `.github/issue-evidence/` |
-| **Video walkthrough** | any user-facing flow | `bun run test:e2e:record` (records the run) — a full click-through of the feature, start to finish | `.github/issue-evidence/` (link if large) |
-| **Audio/voice walkthrough** | voice, transcript, TTS/STT, kokoro | captured audio of the real round-trip + a narrated walkthrough | `.github/issue-evidence/` (link if large) |
-| **Domain artifacts** | memory, knowledge, DB, wallet/chain, scheduled tasks, files, devices | the *things the change produced* — memory rows, embeddings, knowledge, DB rows, scheduled-task records, relationships, wallet balance before/after, on-chain tx hashes + explorer links, generated files, device output — inspected by hand | paste/screenshot in PR + `.github/issue-evidence/` |
+| **Real LLM-call trajectory** | agent behavior, actions, providers, prompts, models | `scenario-runner` against a **live** LLM (not the deterministic proxy) — JSON report + run viewer + native jsonl | report attached to the PR + key excerpts pasted inline |
+| **Backend logs** | runtime, API, services, schedulers | structured logger output (`[ClassName] …`) showing the code path firing end to end | pasted inline in the PR (`<details>` block when long) |
+| **Frontend logs** | any UI / client | browser console + network trace showing the request/response and state change | pasted inline in the PR |
+| **Full-page screenshots** | any UI change | `audit:app` (app) / `audit:cloud` (cloud-frontend) or `test:e2e:record` sheets; before **and** after; desktop **and** mobile; portrait **and** landscape | attached inline in the PR (JPG) |
+| **Video walkthrough** | any user-facing flow | `bun run test:e2e:record` (records the run) — a full click-through of the feature, start to finish | attached inline in the PR (MP4 — renders in GitHub) |
+| **Audio/voice walkthrough** | voice, transcript, TTS/STT, kokoro | captured audio of the real round-trip + a narrated walkthrough | attached inline (MP4/M4A); if hosted externally, inline JPG still + link |
+| **Domain artifacts** | memory, knowledge, DB, wallet/chain, scheduled tasks, files, devices | the *things the change produced* — memory rows, embeddings, knowledge, DB rows, scheduled-task records, relationships, wallet balance before/after, on-chain tx hashes + explorer links, generated files, device output — inspected by hand | pasted/screenshotted inline in the PR |
 
 The point of all of them is the same: **prove the real thing happened.** Real
 model calls, real log lines, real pixels, real audio, real chain/DB/memory
@@ -131,23 +131,29 @@ bun run --cwd packages/app capture:linux-desktop
 bun run --cwd packages/app capture:windows-desktop
 ```
 
-### Where artifacts live
+### Where evidence goes: inline in the issue/PR
 
-- Issue/PR-scoped artifacts: **`.github/issue-evidence/<issue#>-<slug>.<ext>`**
-  (e.g. `8810-cloud-handoff-banner-states.png`). One prefix per issue; see that
-  directory's `README.md`.
-- Scenario reports + run viewers: the `--report` path you pass; reference it in
-  the PR and copy the viewer/JSON into `.github/issue-evidence/` if it's the
-  proof.
-- E2E recordings/sheets: under the recordings dir produced by
-  `test:e2e:record`; link or embed the relevant frames.
-- App audit: `packages/app/aesthetic-audit-output/` (fill
-  `manual-review/<slug>.md` per page — no page may stay `needs-work` /
-  `broken`).
+Evidence attaches **directly to the GitHub issue/PR** — drag-and-drop into the
+description or a comment — so a reviewer sees the proof next to the change it
+proves. Do **not** commit evidence files to the repo: the old
+`.github/issue-evidence/` directory is retired (it bloated the repo and
+detached the proof from the conversation it belonged to).
 
-Large media (video/audio) that doesn't belong in git: upload it and put the
-link in the PR body, but keep a representative still/clip in `issue-evidence/`
-so the proof survives even if the link rots.
+- **Video: MP4 only.** GitHub renders MP4 inline in issues/PRs; `.mov` /
+  `.webm` often won't. Convert:
+  `ffmpeg -i in.mov -c:v libx264 -pix_fmt yuv420p out.mp4`. Compress to fit
+  GitHub's upload limit; if a video genuinely can't fit, host it, link it, and
+  attach a representative JPG still inline so the proof survives link rot.
+- **Screenshots: JPG preferred over PNG** — smaller and faster to load in
+  review. Use PNG only when fine text or pixel-level UI detail would be lost.
+- **Logs:** paste inline; wrap long output in a collapsible `<details>` block.
+- **Scenario reports / run viewers:** attach the JSON (zip if needed) to the
+  PR, paste the key trajectory excerpts inline, and note the exact command that
+  regenerates the report.
+- App audit output stays where the tool writes it
+  (`packages/app/aesthetic-audit-output/` — fill `manual-review/<slug>.md` per
+  page; no page may stay `needs-work` / `broken`); attach the relevant pages to
+  the PR as JPG.
 
 ## 4. Real tests — no larp, no front-door-only
 

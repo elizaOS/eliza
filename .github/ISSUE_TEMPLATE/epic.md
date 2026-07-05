@@ -10,6 +10,11 @@ assignees: ""
 
 <!-- What user-visible or maintainer-visible state should be true when this epic is done? -->
 
+## Design doc
+
+<!-- Link the design doc under packages/docs/ongoing-development/ that this
+     epic implements. Non-trivial epics should have one; write it first. -->
+
 ## Scope
 
 <!-- List the product areas, packages, services, or workflows included. -->
@@ -27,7 +32,7 @@ assignees: ""
 
 - [ ] The implemented behavior is verified end to end.
 - [ ] Required tests and CI gates are added or updated.
-- [ ] Evidence artifacts are attached under `.github/issue-evidence/<issue#>-<slug>/`.
+- [ ] Evidence is posted inline in this epic and/or the child PRs (MP4 video, JPG screenshots, logs) — not committed to the repo.
 
 ## Evidence Plan
 

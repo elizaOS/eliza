@@ -26,9 +26,10 @@ frontend-testable change, a PR is not ready unless it includes:
 If an evidence type does not apply, keep the row visible and write
 `N/A - <reason>`. Do not leave evidence rows blank.
 
-Artifacts belong in [`.github/issue-evidence/`](.github/issue-evidence/); see
-[`.github/issue-evidence/README.md`](.github/issue-evidence/README.md) for
-naming and examples.
+Attach artifacts **inline in the issue/PR** (drag-and-drop into the description
+or a comment): videos as **MP4** so GitHub renders them inline, screenshots as
+**JPG** rather than PNG where possible, long logs in a `<details>` block. Do
+not commit evidence files to the repo.
 
 ## Capture Commands
 

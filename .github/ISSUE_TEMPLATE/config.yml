@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: LifeOps Personal Assistant MVP board
+    url: https://github.com/orgs/elizaOS/projects/15
+    about: The active kanban. MVP work items live here; workstream design docs are under packages/docs/ongoing-development/.
   - name: Security vulnerability
     url: https://github.com/elizaOS/eliza/blob/develop/SECURITY.md
     about: Do not open a public issue for security bugs. Read the security policy for private reporting instructions.
