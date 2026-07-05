@@ -295,6 +295,43 @@ describe("invite accept provisions the personal default API key", () => {
   );
 
   test(
+    "stale user-owned target-org keys do not satisfy the personal default-key guarantee",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const seeded = await seedInviteScenario();
+      await dbWrite.execute(
+        `UPDATE users SET role = 'member' WHERE id = '${seeded.inviteeUserId}';`,
+      );
+      await dbWrite.insert(schemas.users).values({
+        id: uid(),
+        steward_user_id: `steward-owner-${seeded.inviteeOrgId}`,
+        email: `owner-${seeded.inviteeOrgId}@example.com`,
+        organization_id: seeded.inviteeOrgId,
+        role: "owner",
+      });
+      await dbWrite.insert(schemas.apiKeys).values({
+        id: uid(),
+        name: "Default API Key",
+        key_hash: `hash-stale-${seeded.inviteeUserId}`,
+        key_prefix: "eliza_old",
+        organization_id: seeded.inviterOrgId,
+        user_id: seeded.inviteeUserId,
+        is_active: true,
+        expires_at: new Date(Date.now() - 60_000),
+        deleted_at: new Date(Date.now() - 30_000),
+      });
+
+      await invitesService.acceptInvite(seeded.token, seeded.inviteeUserId);
+
+      const keys = await readActiveKeys(seeded.inviteeUserId, seeded.inviterOrgId);
+      expect(keys.length).toBe(1);
+      expect(keys[0].name).toBe("Default API Key");
+      expect(keys[0].key_prefix).not.toBe("eliza_old");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "brand-new invited signup (steward-sync pending-invite branch) has the default key when sync resolves",
     async () => {
       expect(pgliteReady).toBe(true);

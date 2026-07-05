@@ -285,8 +285,17 @@ export class ApiKeysService {
     }
 
     try {
+      const now = new Date();
       const existingKeys = await this.listByUser(userId);
-      if (existingKeys.some((key) => key.organization_id === organizationId && key.is_active)) {
+      if (
+        existingKeys.some(
+          (key) =>
+            key.organization_id === organizationId &&
+            key.is_active &&
+            key.deleted_at === null &&
+            (!key.expires_at || key.expires_at > now),
+        )
+      ) {
         return;
       }
 
