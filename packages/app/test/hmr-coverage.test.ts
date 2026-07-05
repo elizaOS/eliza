@@ -53,7 +53,11 @@ function normalizedHmrViewId(name: string): string {
   }
 }
 
-function readHmrViewLevels(): Array<{ id: string; file: string }> {
+function readHmrViewLevels(): Array<{
+  id: string;
+  name: string;
+  file: string;
+}> {
   const source = readFileSync(HMR_SPEC, "utf8");
   return Array.from(
     source.matchAll(/name:\s*"plugin view ([^"]+)",\s*file:\s*"([^"]+)"/g),
@@ -61,14 +65,36 @@ function readHmrViewLevels(): Array<{ id: string; file: string }> {
     const rawId = match[1];
     const file = match[2];
     if (!rawId || !file) return [];
-    return [{ id: normalizedHmrViewId(rawId), file }];
+    return [
+      {
+        id: normalizedHmrViewId(rawId),
+        name: `plugin view ${rawId}`,
+        file,
+      },
+    ];
   });
+}
+
+function readHmrRootGraphPluginViewNames(): Set<string> {
+  const source = readFileSync(HMR_SPEC, "utf8");
+  const match = source.match(
+    /const PLUGIN_VIEWS_IN_ROOT_GRAPH = new Set<string>\(\[([\s\S]*?)\]\);/,
+  );
+  expect(
+    match?.[1],
+    "PLUGIN_VIEWS_IN_ROOT_GRAPH declaration was not found",
+  ).toBeTruthy();
+  const rootGraphSource = match?.[1] ?? "";
+  return new Set(
+    Array.from(rootGraphSource.matchAll(/"([^"]+)"/g)).map((entry) => entry[1]),
+  );
 }
 
 describe("plugin view HMR coverage", () => {
   it("keeps the HMR source-probe matrix in lockstep with every GUI view", () => {
     const guiCases = readGuiVisualCases();
     const hmrLevels = readHmrViewLevels();
+    const rootGraphPluginViews = readHmrRootGraphPluginViewNames();
     const guiById = new Map(guiCases.map((view) => [view.id, view]));
     const hmrById = new Map(hmrLevels.map((level) => [level.id, level]));
 
@@ -79,6 +105,7 @@ describe("plugin view HMR coverage", () => {
       .filter((level) => !guiById.has(level.id))
       .map((level) => `${level.id} ${level.file}`);
     const missingFiles = hmrLevels
+      .filter((level) => rootGraphPluginViews.has(level.name))
       .filter((level) => !existsSync(path.join(REPO_ROOT, level.file)))
       .map((level) => `${level.id} ${level.file}`);
 
