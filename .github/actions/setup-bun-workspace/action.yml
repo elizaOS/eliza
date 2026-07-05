@@ -89,12 +89,6 @@ runs:
         apt_ok=""
         if [ "${FORCE_PROTOC_GITHUB_FALLBACK}" = "true" ]; then
           echo "forcing protoc GitHub fallback for setup action self-test"
-        # Only attempt apt when passwordless sudo actually works. GitHub-hosted
-        # runners have it; the self-hosted hetzner-robot runners currently do
-        # NOT, so every `sudo` call fails with "sudo: a password is required",
-        # which reds the entire develop test matrix at this setup step (the exact
-        # wedge that is forcing admin-bypass merges). When apt isn't usable we
-        # fall back to a fully sudo-free protoc install below.
         elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
           # GitHub-hosted Ubuntu images include Microsoft feeds that are unrelated
           # to our protoc install. If those feeds return 403, apt-get update fails
