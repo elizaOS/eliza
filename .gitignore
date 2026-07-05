@@ -27,6 +27,8 @@ packages/ui/src/components/composites/__e2e__/output-resize-handles/
 packages/ui/src/components/shell/__e2e__/output-launcher-loop/
 # Activity-feedback e2e output (screenshots + esbuild html bundle — regenerate via test:activity-feedback-e2e; committed evidence lives in .github/issue-evidence/13535-agent-activity-feedback/)
 packages/ui/src/components/chat/__e2e__/output-activity-feedback/
+# Chat-widget e2e output (task-pipeline / orchestrator-accounts esbuild html bundles + screenshots — regenerate via test:task-pipeline-e2e / test:orchestrator-accounts-e2e; committed evidence lives in .github/issue-evidence/13536-pipeline-activity-inline/)
+packages/ui/src/components/chat/widgets/__e2e__/output/
 
 .next/
 **/.next/**
