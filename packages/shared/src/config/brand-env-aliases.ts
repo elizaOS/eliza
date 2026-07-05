@@ -140,6 +140,11 @@ export function buildBrandEnvSyncAliases(prefix: string): BrandEnvAliasPair[] {
       "vite" in definition && definition.vite
         ? `VITE_${normalizedPrefix}_${definition.brandSuffix}`
         : `${normalizedPrefix}_${definition.brandSuffix}`;
-    return [brandKey, definition.syncElizaKey ?? definition.elizaKey] as const;
+    // Only some alias definitions carry a sync-specific target key — narrow
+    // with the same `in` guard the vite flag uses (the union has no common
+    // optional member).
+    const syncKey =
+      "syncElizaKey" in definition ? definition.syncElizaKey : undefined;
+    return [brandKey, syncKey ?? definition.elizaKey] as const;
   });
 }
