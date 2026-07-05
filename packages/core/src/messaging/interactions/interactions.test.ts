@@ -349,16 +349,24 @@ describe("buildInteractionUrlResolver (#8908)", () => {
 		);
 	});
 
+<<<<<<< Updated upstream
 	// #14321 — there is no hosted /forms/:id page and form specs are never
 	// persisted, so a form block must NOT mint a link-out (that would be a dead
 	// route). It resolves to undefined and the layout degrades to a free-text
 	// reply, while a hosted-page block type (task) still resolves its real URL.
 	it("does not mint a link-out for a form block (no hosted page → free-text fallback)", () => {
 		const form: FormInteraction = {
+=======
+	it("mints no URL for a form block — the /forms/:id page does not exist, so connectors fall back to free-text (#14321)", () => {
+		const block: FormInteraction = {
+>>>>>>> Stashed changes
 			kind: "form",
 			id: "form_7",
+			title: "Trip details",
+			description: "Tell me where and when",
 			fields: [{ name: "k", type: "text" }],
 		};
+<<<<<<< Updated upstream
 		expect(resolver.resolveUrl?.(form)).toBeUndefined();
 
 		const layout = toNeutralLayout(form, resolver);
@@ -380,6 +388,18 @@ describe("buildInteractionUrlResolver (#8908)", () => {
 		expect(toNeutralLayout(task, resolver).rows[0]?.buttons?.[0]?.url).toBe(
 			"https://app.test/orchestrator?taskId=abc-123",
 		);
+=======
+		// No hosted form page exists; the resolver must not fabricate a dead link.
+		expect(resolver.resolveUrl?.(block)).toBeUndefined();
+		const layout = toNeutralLayout(block, resolver);
+		// Designed degrade: prose shown, zero buttons, free-text fallback flagged.
+		expect(layout.needsFallback).toBe(true);
+		expect(layout.rows).toEqual([]);
+		expect(layout.text).toBe("Trip details");
+		// Adversarial: no button anywhere in the layout carries a /forms/ URL.
+		const urls = layout.rows.flatMap((r) => r.buttons ?? []).map((b) => b.url);
+		expect(urls.some((u) => u?.includes("/forms/"))).toBe(false);
+>>>>>>> Stashed changes
 	});
 
 	it("resolves navigate payloads (path + viewId) against the base url", () => {

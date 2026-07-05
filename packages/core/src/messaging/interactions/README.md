@@ -75,7 +75,7 @@ FollowupsInteraction | TaskInteraction | SecretInteraction`) in
 |---|---|---|---|
 | choice | `ChoiceWidget` ✅ | inline-keyboard callback buttons ✅ | button action row ✅ |
 | followups | `FollowupsWidget` ✅ | callback buttons ✅ | button action row ✅ |
-| form | `FormRequest` ✅ | link-out (multi-field is awkward as a keyboard) ⏳ | link-out ⏳ |
+| form | `FormRequest` ✅ | free-text fallback ✅ (no dead link-out) | free-text fallback ✅ (no dead link-out) |
 | task | `TaskWidget` (live poll) ✅ | link button + title ✅ (live status ⏳) | link button + title ✅ |
 | secret/oauth | `SensitiveRequestBlock` ✅ | DM link via `sensitive-request-adapter` ✅ | DM link via `sensitive-request-adapter` ✅ |
 
@@ -85,6 +85,16 @@ FollowupsInteraction | TaskInteraction | SecretInteraction`) in
   `handleMessage` as a user turn (`plugin-telegram/src/messageManager.ts`).
 - **Discord**: the `isButton` handler in `discord-interactions.ts` decodes the
   `customId` with `decodeCallback` and dispatches via `messageService.handleMessage`.
+
+**Forms on connectors render as free-text fallback by design (#14321).** There is
+no hosted `/forms/:id` page (form specs are never persisted server-side), so
+`buildInteractionUrlResolver` mints no URL for a `form` block; the neutral layout
+flags `needsFallback`, the connector shows the form's title/description prose and
+invites a free-text reply, and no dead "Open form" button is ever produced.
+Secret-bearing input must instead use the sensitive-request flow, which has a real
+hosted page. A native multi-field connector form is deferred scope (needs
+server-side persistence; no MVP scenario requires non-secret multi-field input on
+a connector).
 
 The floating chat overlay (`ContinuousChatOverlay`) also renders these widgets.
 It does **not** route through `MessageContent`: it renders assistant turns via

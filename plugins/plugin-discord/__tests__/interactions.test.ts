@@ -4,7 +4,7 @@
  * Pure-function assertions.
  */
 import type { Content } from "@elizaos/core";
-import { decodeCallback } from "@elizaos/core";
+import { buildInteractionUrlResolver, decodeCallback } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { renderDiscordInteractions } from "../interactions";
 
@@ -51,6 +51,33 @@ describe("renderDiscordInteractions", () => {
 		expect(button?.style).toBe(5); // Link
 		expect(button?.url).toContain(id);
 		expect(button?.custom_id).toBe("");
+	});
+
+	it("renders a [FORM] as free-text prose with NO dead /forms/ link button, using the real url resolver (#14321)", () => {
+		// The exact wiring the connector uses in production (messages.ts:1006).
+		const resolver = buildInteractionUrlResolver("https://app.test");
+		const content: Content = {
+			text: `Let's get your trip details.\n[FORM]\n${JSON.stringify({
+				title: "Trip details",
+				description: "Where and when?",
+				fields: [
+					{ name: "dest", type: "text", label: "Destination" },
+					{ name: "when", type: "text", label: "When" },
+				],
+			})}\n[/FORM]`,
+		};
+		const out = renderDiscordInteractions(content, resolver);
+		// No hosted /forms/:id page exists → the connector must render no button.
+		expect(out.components).toHaveLength(0);
+		expect(out.text).toContain("Let's get your trip details.");
+		expect(out.text).toContain("Trip details");
+		expect(out.needsFreeTextReply).toBe(true);
+		// Adversarial: no button in any action row carries a /forms/ URL.
+		const urls = out.components.flatMap((row) =>
+			row.components.map((b) => (b as { url?: string }).url ?? ""),
+		);
+		expect(urls.some((u) => u.includes("/forms/"))).toBe(false);
+		expect(out.text).not.toContain("/forms/");
 	});
 
 	it("caps action rows at the Discord limit of 5", () => {

@@ -198,10 +198,23 @@ export function buildInteractionUrlResolver(
 			switch (block.kind) {
 				case "task":
 					return `${base}/orchestrator?taskId=${encodeURIComponent(block.threadId)}`;
+<<<<<<< Updated upstream
 				// `form` and secret/OAuth blocks fall through to undefined: a form
 				// has no hosted `/forms/:id` page (degrade to free-text reply), and
 				// secret/OAuth blocks carry their own out-of-band entry URL that the
 				// layout defers to.
+=======
+				// `form` deliberately resolves no URL: there is no hosted
+				// `/forms/:id` page anywhere (not in the cloud public-pages
+				// registry, not in cloud/api), and form specs are never persisted
+				// server-side, so any minted link is dead. Returning undefined
+				// drops the form to the neutral layout's `needsFallback` free-text
+				// path — prose + "reply with your answer" — instead of a broken
+				// "Open form" button on Telegram/Discord (#14321). Secret-bearing
+				// input still routes through the sensitive-request flow, which has
+				// a real hosted page. Secret/OAuth blocks likewise carry their own
+				// out-of-band entry URL; defer to it via the layout fallback.
+>>>>>>> Stashed changes
 				default:
 					return undefined;
 			}

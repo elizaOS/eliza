@@ -5,7 +5,7 @@
  * Deterministic; no live API.
  */
 import type { Content } from "@elizaos/core";
-import { decodeCallback } from "@elizaos/core";
+import { buildInteractionUrlResolver, decodeCallback } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { renderTelegramInteractions } from "./interactions";
 
@@ -58,6 +58,35 @@ describe("renderTelegramInteractions", () => {
     } as Content);
     expect(out.text).toContain("Ship it");
     expect(out.keyboardRows).toHaveLength(0);
+  });
+
+  it("renders a [FORM] as free-text prose with NO dead /forms/ button, using the real url resolver (#14321)", () => {
+    // The exact wiring the connector uses in production (messageManager.ts:970).
+    const resolver = buildInteractionUrlResolver("https://app.test");
+    const content: Content = {
+      text: `Let's get your trip details.\n[FORM]\n${JSON.stringify({
+        title: "Trip details",
+        description: "Where and when?",
+        fields: [
+          { name: "dest", type: "text", label: "Destination" },
+          { name: "when", type: "text", label: "When" },
+        ],
+      })}\n[/FORM]`,
+    };
+    const out = renderTelegramInteractions(content, resolver);
+    // No hosted /forms/:id page exists → the connector must not render a button.
+    expect(out.keyboardRows).toHaveLength(0);
+    // The prose (cleaned text + the form's own title) is preserved for the user.
+    expect(out.text).toContain("Let's get your trip details.");
+    expect(out.text).toContain("Trip details");
+    // The user is invited to answer in free text instead of a broken control.
+    expect(out.needsFreeTextReply).toBe(true);
+    // Adversarial: prove no button ANYWHERE carries a /forms/ URL.
+    const urls = out.keyboardRows
+      .flat()
+      .map((b) => (b as { url?: string }).url ?? "");
+    expect(urls.some((u) => u.includes("/forms/"))).toBe(false);
+    expect(out.text).not.toContain("/forms/");
   });
 
   it("renders a navigate followup as a URL button via resolveNavigateUrl (#8908)", () => {
