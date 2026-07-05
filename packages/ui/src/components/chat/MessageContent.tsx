@@ -61,6 +61,7 @@ import {
   splitInlineCode,
 } from "./message-parser-helpers";
 import { ThinkingBlock } from "./ThinkingBlock";
+import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 // Side effect: registers the built-in inline widgets (choice/followups/form/task).
 import "./widgets/inline-builtins";
 import { getInlineWidget } from "./widgets/inline-registry";
@@ -1182,6 +1183,13 @@ export function MessageContent({
     <div>
       {message.role === "assistant" && message.reasoning?.trim() ? (
         <ThinkingBlock reasoning={message.reasoning} />
+      ) : null}
+      {message.role === "assistant" && message.toolEvents?.length ? (
+        <div className="mb-2 flex flex-col gap-1.5">
+          {message.toolEvents.map((event) => (
+            <ToolCallEventLog key={event.callId ?? event.id} event={event} />
+          ))}
+        </div>
       ) : null}
       {(() => {
         const keyCounts = new Map<string, number>();

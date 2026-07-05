@@ -86,6 +86,7 @@ import { SensitiveRequestBlock } from "../chat/MessageContent";
 import { findChoiceRegions } from "../chat/message-choice-parser";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
+import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import { ChatMessage } from "../composites/chat/chat-message";
 import type {
   ChatMessageData,
@@ -825,6 +826,13 @@ function renderOverlayMessageBody(
           <SensitiveRequestBlock request={message.secretRequest} />
         </div>
       ) : null}
+      {message.toolEvents?.length ? (
+        <div className="pointer-events-auto mt-2 flex flex-col gap-1.5">
+          {message.toolEvents.map((event) => (
+            <ToolCallEventLog key={event.callId ?? event.id} event={event} />
+          ))}
+        </div>
+      ) : null}
       {!ctx?.suppressReasoning && message.reasoning?.trim() ? (
         <ThinkingBlock reasoning={message.reasoning} />
       ) : null}
@@ -850,6 +858,7 @@ function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     ...(m.source ? { source: m.source } : {}),
     ...(m.failureKind ? { failureKind: m.failureKind } : {}),
     ...(m.reasoning ? { reasoning: m.reasoning } : {}),
+    ...(m.toolEvents?.length ? { toolEvents: m.toolEvents } : {}),
     ...(m.attachments ? { attachments: m.attachments } : {}),
     ...(m.secretRequest ? { secretRequest: m.secretRequest } : {}),
   };

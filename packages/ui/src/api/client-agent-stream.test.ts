@@ -423,6 +423,74 @@ describe("ElizaClient chat-turn status SSE (#8813)", () => {
     ]);
   });
 
+  it("routes additive `tool` events to onToolEvent, correlated by callId", async () => {
+    const client = streamFromSse(
+      'data: {"type":"status","kind":"running_tool","toolName":"WEB_SEARCH"}\n\n' +
+        'data: {"type":"tool","phase":"call","callId":"c1","toolName":"WEB_SEARCH","args":{"query":"elizaOS"}}\n\n' +
+        'data: {"type":"tool","phase":"result","callId":"c1","toolName":"WEB_SEARCH","result":{"hits":3}}\n\n' +
+        'data: {"type":"token","text":"Found 3.","fullText":"Found 3."}\n\n' +
+        'data: {"type":"done","fullText":"Found 3.","agentName":"Eliza"}\n\n',
+    );
+    const onToken = vi.fn();
+    const onStatus = vi.fn();
+    const onToolEvent = vi.fn();
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "search elizaOS",
+      onToken,
+      "DM",
+      undefined,
+      undefined,
+      undefined,
+      onStatus,
+      onToolEvent,
+    );
+
+    // The reply still streams + completes — tool events are purely additive.
+    expect(result.text).toBe("Found 3.");
+    expect(result.completed).toBe(true);
+    expect(onToolEvent.mock.calls.map((c) => c[0])).toEqual([
+      {
+        phase: "call",
+        callId: "c1",
+        toolName: "WEB_SEARCH",
+        args: { query: "elizaOS" },
+      },
+      {
+        phase: "result",
+        callId: "c1",
+        toolName: "WEB_SEARCH",
+        result: { hits: 3 },
+      },
+    ]);
+  });
+
+  it("drops a malformed `tool` frame (missing callId) without crashing the stream", async () => {
+    const client = streamFromSse(
+      'data: {"type":"tool","phase":"call","toolName":"WEB_SEARCH"}\n\n' +
+        'data: {"type":"tool","phase":"future_phase","callId":"c1","toolName":"X"}\n\n' +
+        'data: {"type":"done","fullText":"ok","agentName":"Eliza"}\n\n',
+    );
+    const onToolEvent = vi.fn();
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "hi",
+      vi.fn(),
+      "DM",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      onToolEvent,
+    );
+
+    // Neither malformed frame (no callId; unknown phase) reaches the consumer.
+    expect(onToolEvent).not.toHaveBeenCalled();
+    expect(result.completed).toBe(true);
+  });
+
   it("leaves token/done behaviour byte-for-byte unchanged when no onStatus is passed", async () => {
     const client = streamFromSse(
       'data: {"type":"status","kind":"thinking"}\n\n' +

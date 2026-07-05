@@ -6,6 +6,7 @@ import type {
   ChatFailureKind,
   ConversationSecretRequest,
   MessageAttachment,
+  NativeToolCallEvent,
 } from "../../api";
 
 /**
@@ -40,6 +41,9 @@ export interface ShellMessage {
   failureKind?: ChatFailureKind;
   /** Agent reasoning/thought for this turn, rendered as a collapsed block. */
   reasoning?: string;
+  /** Inline tool-call rows for this turn, streamed live from the chat SSE `tool`
+   *  events and rendered via ToolCallEventLog (#13535). */
+  toolEvents?: NativeToolCallEvent[];
   /** Media attached to this turn — user uploads and agent-generated media. */
   attachments?: MessageAttachment[];
   /** Pending secret / OAuth request (rendered as an actionable block). */
