@@ -1189,13 +1189,20 @@ export async function completeOtherProviderSettingsHandoff(
 
   await pickTutorial(page, click, tutorial);
 
+  // The Other/configure-later path ships no floating "choose a provider"
+  // banner (removed with ActionBanner): the honest surfaces are in-chat — the
+  // composer placeholder points at Settings while the agent has no provider,
+  // and the transcript's no-provider gate answers a send. Assert the banner
+  // never renders and the placeholder hint does.
   await expect(
     page.getByText("Choose a model provider in Settings before sending", {
       exact: false,
     }),
-  ).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("button", { name: "Open Settings" })).toBeVisible(
-    { timeout: 15_000 },
+  ).toHaveCount(0);
+  await expect(page.getByTestId("chat-composer-textarea")).toHaveAttribute(
+    "placeholder",
+    /Settings/,
+    { timeout: 30_000 },
   );
 
   const chatOverlay = page.getByTestId("continuous-chat-overlay");

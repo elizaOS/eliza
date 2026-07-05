@@ -146,6 +146,13 @@ function PermissionPrimingModalView({
         showCloseButton
         data-testid="permission-priming-modal"
         aria-describedby="permission-priming-subtitle"
+        // The completion edge leaves the chat sheet open at the HALF detent
+        // (its container stacks at the shell-overlay level), so this modal
+        // must sit above the ambient chat — content and dim both — or the
+        // sheet paints over it and eats its taps (mobile bottom-sheet dialogs
+        // and the half sheet are both bottom-anchored).
+        className="z-[9500]"
+        overlayClassName="z-[9490]"
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

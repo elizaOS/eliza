@@ -46,14 +46,28 @@ const DialogContent = React.forwardRef<
     container?: HTMLElement | null;
     /** Hide the default top-right close button when the consumer renders its own close affordance. */
     showCloseButton?: boolean;
+    /**
+     * Extra classes for the backdrop dim. A dialog that must beat the ambient
+     * chat overlay's stacking (z≈9000) raises BOTH layers — content via
+     * `className`, dim via this — so the sheet is dimmed under it instead of
+     * painting over the modal.
+     */
+    overlayClassName?: string;
   }
 >(
   (
-    { className, children, container, showCloseButton = true, ...props },
+    {
+      className,
+      children,
+      container,
+      showCloseButton = true,
+      overlayClassName,
+      ...props
+    },
     ref,
   ) => (
     <DialogPortal container={container}>
-      <DialogOverlay />
+      <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
