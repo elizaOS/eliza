@@ -271,6 +271,7 @@ export {
 export { AppPageSidebar } from "./components/shared/AppPageSidebar";
 export {
   isSectionPath,
+  navigateToSectionPath,
   SectionNav,
   SectionNavTab,
   type SectionPathRewrite,

@@ -120,17 +120,20 @@ function activeTabId(path: string, tabs: readonly SectionTab[]): string {
   return match?.id ?? tabs[0]?.id ?? "";
 }
 
-function navigate(path: string): void {
-  try {
-    if (typeof window === "undefined") return;
-    if (window.location.protocol === "file:") {
-      window.location.hash = path;
-    } else {
-      window.history.pushState(null, "", path);
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    }
-  } catch {
-    // Sandboxed navigation is best-effort.
+/**
+ * Push a section route and notify the router. Shared by every section strip
+ * (registry-driven {@link SectionNav} and static-entry families like Character)
+ * so hash-vs-history routing is decided in exactly one place. `file:` origins
+ * (packaged desktop) route through the hash; everything else pushes history and
+ * fires `popstate` so the App's path listener re-resolves the active view.
+ */
+export function navigateToSectionPath(path: string): void {
+  if (typeof window === "undefined") return;
+  if (window.location.protocol === "file:") {
+    window.location.hash = path;
+  } else {
+    window.history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
   }
 }
 
@@ -252,7 +255,7 @@ export function SectionNav({
       activeId={active}
       onSelect={(id) => {
         const tab = tabs.find((candidate) => candidate.id === id);
-        if (tab) navigate(tab.path);
+        if (tab) navigateToSectionPath(tab.path);
       }}
       testId={`section-nav-${group}`}
       ariaLabel={ariaLabel ?? `${group} sections`}

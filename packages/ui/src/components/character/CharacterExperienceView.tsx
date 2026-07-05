@@ -6,16 +6,16 @@ import { useCallback, useMemo, useState } from "react";
 import { client } from "../../api/client";
 import type { ExperienceRecord } from "../../api/client-types";
 import { useFetchData } from "../../hooks/useFetchData";
-import { ViewHeader } from "../shared/ViewHeader";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { CharacterExperienceWorkspace } from "./CharacterExperienceWorkspace";
 import { mapExperienceRecordToHubRecord } from "./character-hub-helpers";
 
 /**
- * Experience — a top-level view (promoted out of the old Character hub). Lists
- * the agent's learned experiences and lets the user edit/delete them. Owns just
- * the experiences fetch (not the hub's other four reads), so opening it never
- * pulls documents/history/relationships/skills it doesn't render.
+ * The Experience section of the Character family (#13591): the agent's learned
+ * experiences, editable/deletable. Owns just the experiences fetch (not the
+ * hub's other reads), so opening it never pulls data it doesn't render. Renders
+ * a headerless body — the shared `CharacterSectionNav` supplies the "Character"
+ * header + section strip in the shell nav slot.
  */
 export function CharacterExperienceView() {
   const fetchState = useFetchData<ExperienceRecord[]>(async () => {
@@ -97,41 +97,34 @@ export function CharacterExperienceView() {
 
   return (
     <ShellViewAgentSurface viewId="experience">
-      <div className="flex h-full min-h-0 w-full flex-col">
-        <ViewHeader title="Experience" />
-        <div className="custom-scrollbar mx-auto flex min-h-0 w-full min-w-0 max-w-6xl flex-1 flex-col gap-4 overflow-y-auto px-4 pb-32 pt-1 sm:px-5 lg:px-6">
-          {error ? (
-            <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-              {error}
-            </div>
-          ) : null}
-          {loading ? (
-            <div className="text-sm text-muted">Loading experiences…</div>
-          ) : (
-            <CharacterExperienceWorkspace
-              showTitle={false}
-              experiences={hubRecords}
-              selectedExperienceId={selectedExperienceId}
-              onSelectExperience={setSelectedExperienceId}
-              onSaveExperience={(experience, draft) => {
-                const source = records.find(
-                  (item) => item.id === experience.id,
-                );
-                if (!source) return;
-                void handleSaveExperience(source, draft);
-              }}
-              onDeleteExperience={(experience) => {
-                const source = records.find(
-                  (item) => item.id === experience.id,
-                );
-                if (!source) return;
-                void handleDeleteExperience(source);
-              }}
-              savingExperienceId={savingExperienceId}
-              deletingExperienceId={deletingExperienceId}
-            />
-          )}
-        </div>
+      <div className="custom-scrollbar mx-auto flex min-h-0 w-full min-w-0 max-w-6xl flex-1 flex-col gap-4 overflow-y-auto px-4 pb-32 pt-1 sm:px-5 lg:px-6">
+        {error ? (
+          <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+            {error}
+          </div>
+        ) : null}
+        {loading ? (
+          <div className="text-sm text-muted">Loading experiences…</div>
+        ) : (
+          <CharacterExperienceWorkspace
+            showTitle={false}
+            experiences={hubRecords}
+            selectedExperienceId={selectedExperienceId}
+            onSelectExperience={setSelectedExperienceId}
+            onSaveExperience={(experience, draft) => {
+              const source = records.find((item) => item.id === experience.id);
+              if (!source) return;
+              void handleSaveExperience(source, draft);
+            }}
+            onDeleteExperience={(experience) => {
+              const source = records.find((item) => item.id === experience.id);
+              if (!source) return;
+              void handleDeleteExperience(source);
+            }}
+            savingExperienceId={savingExperienceId}
+            deletingExperienceId={deletingExperienceId}
+          />
+        )}
       </div>
     </ShellViewAgentSurface>
   );

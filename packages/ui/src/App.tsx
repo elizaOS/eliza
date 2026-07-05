@@ -187,6 +187,10 @@ import {
 // eagerly elsewhere in the app graph (plugin-loader / boot-config), so a
 // lazy() boundary here would only fold back into main. The remaining page
 // views are lazy-split below.
+import {
+  CharacterSectionNav,
+  isCharacterSectionPath,
+} from "./components/character/CharacterSectionNav";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
 import { LauncherSurface } from "./components/pages/LauncherSurface";
 import {
@@ -1162,6 +1166,7 @@ interface StaticTabRenderContext {
   navigationPath: string;
   settingsInitialSection?: string | null;
   walletNav?: ReactNode;
+  characterNav?: ReactNode;
 }
 
 /**
@@ -1199,10 +1204,25 @@ function buildStaticTabRenderers(): Record<
     skills: wrap(<SkillsView />),
     trajectories: wrap(<TrajectoriesView />),
     transcripts: wrap(<TranscriptsPageView />),
-    relationships: wrap(<RelationshipsView />),
+    // Relationships is a Character-family section: the shared CharacterSectionNav
+    // (passed as `nav`) owns the "Character" header + strip, so the view renders
+    // headerless.
+    relationships: ({ characterNav }) => (
+      <TabContentView nav={characterNav}>
+        <RelationshipsView hideHeader={Boolean(characterNav)} />
+      </TabContentView>
+    ),
     documents: wrap(<KnowledgeView />),
-    experience: wrap(<CharacterExperienceView />),
-    "character-skills": wrap(<CharacterSkillsView />),
+    experience: ({ characterNav }) => (
+      <TabContentView nav={characterNav}>
+        <CharacterExperienceView />
+      </TabContentView>
+    ),
+    "character-skills": ({ characterNav }) => (
+      <TabContentView nav={characterNav}>
+        <CharacterSkillsView />
+      </TabContentView>
+    ),
     memories: wrap(<MemoryViewerView />),
     files: () => (
       <TabScrollView>
@@ -1236,13 +1256,13 @@ function buildStaticTabRenderers(): Record<
     // Rendered directly (no opaque TabContentView chrome) so the live app
     // background shows through behind the controls.
     background: () => <BackgroundView />,
-    character: () => (
-      <TabContentView>
+    character: ({ characterNav }) => (
+      <TabContentView nav={characterNav}>
         <CharacterEditor />
       </TabContentView>
     ),
-    "character-select": () => (
-      <TabContentView>
+    "character-select": ({ characterNav }) => (
+      <TabContentView nav={characterNav}>
         <CharacterEditor />
       </TabContentView>
     ),
@@ -1261,12 +1281,14 @@ function renderStaticViewRouterTab({
   navigationPath,
   settingsInitialSection,
   walletNav,
+  characterNav,
 }: {
   tab: string;
   nativeOsSurfaceEnabled: boolean;
   navigationPath: string;
   settingsInitialSection?: string | null;
   walletNav?: ReactNode;
+  characterNav?: ReactNode;
 }): ReactNode {
   // Resolve legacy alias ids (e.g. `triggers` -> `automations`, `advanced` ->
   // `fine-tuning`) onto their canonical builtin id via the shared registry, so
@@ -1279,6 +1301,7 @@ function renderStaticViewRouterTab({
       navigationPath,
       settingsInitialSection,
       walletNav,
+      characterNav,
     });
   }
   return <ViewUnavailableFallback />;
@@ -1325,6 +1348,13 @@ function renderViewRouterContent({
     <WalletSectionNav activePath={navigationPath} />
   ) : undefined;
 
+  // Character-family routes (Personality/Relationships/Skills/Experience) share
+  // one "Character" header + section strip in the same nav slot (#13591). Unlike
+  // Wallet, the members are a fixed host-owned set, so the strip is static.
+  const characterNav = isCharacterSectionPath(navigationPath) ? (
+    <CharacterSectionNav activePath={navigationPath} />
+  ) : undefined;
+
   const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
   if (
     appShellPageForRoute &&
@@ -1349,6 +1379,7 @@ function renderViewRouterContent({
     navigationPath,
     settingsInitialSection,
     walletNav,
+    characterNav,
   });
 }
 
