@@ -102,8 +102,53 @@ html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
 body.native,
 body.pwa-standalone {
   position: fixed;
-  inset: 0;
   touch-action: pan-y;
+}
+
+/* Native Capacitor build: the WKWebView is the app window, so a fixed body's
+   initial containing block IS the full screen — `inset: 0` fills it. */
+body.native {
+  inset: 0;
+}
+
+/* iOS SAFARI standalone PWA — fixed-body ICB collapse fix (kills the residual
+   bottom black band + restores the bottom flick zone).
+
+   #14293 made this body `position: fixed` for the first time on the iOS *Safari*
+   standalone PWA (not the Capacitor native build). On Safari's WKWebView a
+   `position: fixed` BODY collapses the initial containing block for descendant
+   `position: fixed` elements to the LAYOUT (small) viewport — ~59px shorter than
+   `100dvh` (the large viewport) on a home-indicator phone. So `inset: 0` on the
+   body — and every `fixed inset-0` layer inside it (the ImageBackground
+   wallpaper, the app-safe-area-floor) — anchored `bottom: 0` to that collapsed
+   box and stopped ~59px above the true screen bottom. Below them, html/body/#root
+   painted `--launch-bg` (#160d07) → the measured near-black band. The same
+   collapse seated the chat composer + its bottom flick zone ~59px high and left
+   the strip below OUTSIDE the fixed body box, where touches hit html
+   (touch-action: auto) and Safari's edge-pan ate the swipe-up.
+
+   Fix: pin the fixed body to the LARGE viewport height so its ICB fills the real
+   screen. `100lvh` is the large-viewport unit (stable regardless of the
+   fixed-body ICB collapse); `100dvh`/`100vh` are progressive-enhancement
+   fallbacks for engines without `lvh`. `top: 0; left: 0; right: 0` anchor it;
+   height (not `bottom: 0`) drives the extent so it reaches the true bottom. */
+body.pwa-standalone {
+  top: 0;
+  left: 0;
+  right: 0;
+  /* Explicitly release `bottom` (base.css's lockdown `inset: 0` sets it): with
+     top + height driving the box, a leftover `bottom: 0` would re-anchor the
+     fixed body to the collapsed layout-viewport bottom — the exact bug. */
+  bottom: auto;
+  height: 100vh;
+  height: 100dvh;
+  height: 100lvh;
+  /* Defensive floor color: if a 1px sub-pixel seam survives at the very bottom
+     edge (rounding between 100lvh and the device screen), paint it the warm
+     ember-floor tone the ImageBackground bottom-gradient + ShaderBackground
+     fallback already pool there, so a seam reads as lock-screen ambience —
+     never the near-black --launch-bg band. Sits UNDER the fixed wallpaper. */
+  background-color: color-mix(in srgb, var(--launch-bg, #160d07) 82%, #ef5a1f);
 }
 
 body.native #root,

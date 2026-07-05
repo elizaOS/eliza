@@ -140,3 +140,94 @@ describe("CSS lockdown contract — base.css / styles.css cover body.pwa-standal
     expect(rootBlock?.[0]).toContain("body.pwa-standalone #root");
   });
 });
+
+describe("CSS geometry contract — fixed-body ICB collapse fix (bottom black band)", () => {
+  // The residual bottom band regression: #14293's `position: fixed` body on the
+  // iOS Safari standalone PWA collapsed the fixed-descendant initial containing
+  // block to the layout (small) viewport, so `fixed inset-0` layers (wallpaper,
+  // safe-area floor) stopped ~59px above the true bottom and html/body/#root
+  // --launch-bg (#160d07) showed through as a near-black band. The fix pins the
+  // fixed body to the LARGE viewport height so its ICB fills the real screen.
+  const stylesDir = resolve(process.cwd(), "src/styles");
+  const stylesCss = readFileSync(resolve(stylesDir, "styles.css"), "utf8");
+
+  /** Extract the declaration block for the bare `body.pwa-standalone { ... }`
+   *  GEOMETRY rule (the one carrying the lvh height fix), NOT the grouped
+   *  `body.native, body.pwa-standalone { ... }` lockdown rule nor the
+   *  `body.pwa-standalone #root` rule. Walks every `body.pwa-standalone {`
+   *  block and returns the one whose body contains `100lvh`. */
+  function standalonePwaOwnBlock(): string {
+    // A selector that is EXACTLY `body.pwa-standalone` (preceded by start/`\n`,
+    // and — critically — not the tail of a comma group: the char before the
+    // preceding newline must not be a comma). Capture each block body and pick
+    // the one with the lvh height fix.
+    const re = /(?:^|[^,]\n)body\.pwa-standalone\s*\{([\s\S]*?)\}/g;
+    let match: RegExpExecArray | null;
+    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex walk
+    while ((match = re.exec(stylesCss)) !== null) {
+      if (match[1].includes("100lvh")) return match[1];
+    }
+    // Fall back to the first bare block if none carried lvh (test will then
+    // fail loudly on the missing-100lvh assertion, which is the intent).
+    const first = stylesCss.match(
+      /(?:^|[^,]\n)body\.pwa-standalone\s*\{([\s\S]*?)\}/,
+    );
+    expect(first).not.toBeNull();
+    return first?.[1] ?? "";
+  }
+
+  it("pins the standalone-PWA fixed body to the LARGE viewport height (100lvh)", () => {
+    const block = standalonePwaOwnBlock();
+    // `100lvh` is the load-bearing declaration: it forces the fixed body's ICB
+    // to the large viewport so `fixed inset-0` children reach the true bottom.
+    expect(block).toContain("100lvh");
+    // Progressive-enhancement fallbacks for engines without lvh.
+    expect(block).toContain("100dvh");
+    expect(block).toContain("100vh");
+  });
+
+  it("releases `bottom` on the standalone-PWA body so top+height drive the box", () => {
+    // base.css's lockdown group sets `inset: 0` (=> bottom: 0) on
+    // body.pwa-standalone; leaving it would re-anchor the fixed body to the
+    // collapsed layout-viewport bottom (the bug). The geometry rule must reset
+    // it to `auto` so height governs the extent.
+    const block = standalonePwaOwnBlock();
+    expect(block).toMatch(/bottom:\s*auto/);
+  });
+
+  it("anchors the standalone-PWA body to the top-left of the viewport", () => {
+    const block = standalonePwaOwnBlock();
+    expect(block).toMatch(/top:\s*0/);
+    expect(block).toMatch(/left:\s*0/);
+    expect(block).toMatch(/right:\s*0/);
+  });
+
+  it("paints a warm ember floor color on the standalone body (no --launch-bg black seam)", () => {
+    // Defensive: any sub-pixel seam at the true bottom must read as the warm
+    // ember-floor ambience, never the near-black --launch-bg band.
+    const block = standalonePwaOwnBlock();
+    expect(block).toMatch(/background-color:\s*color-mix/);
+    expect(block).toContain("--launch-bg");
+  });
+
+  it("keeps the native (Capacitor) body on `inset: 0` — the fix is PWA-scoped", () => {
+    // Native WKWebView's fixed-ICB is already the full screen, so inset:0 is
+    // correct there; the lvh override must NOT bleed onto body.native. Find the
+    // BARE `body.native { ... }` rule (not the grouped lockdown selector) by
+    // picking the block that carries `inset: 0`.
+    const re = /(?:^|[^,]\n)body\.native\s*\{([\s\S]*?)\}/g;
+    let nativeOwn: string | null = null;
+    let match: RegExpExecArray | null;
+    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex walk
+    while ((match = re.exec(stylesCss)) !== null) {
+      if (/inset:\s*0/.test(match[1])) {
+        nativeOwn = match[1];
+        break;
+      }
+    }
+    expect(nativeOwn).not.toBeNull();
+    expect(nativeOwn ?? "").toMatch(/inset:\s*0/);
+    // And the native own-block must not carry the lvh height override.
+    expect(nativeOwn ?? "").not.toContain("100lvh");
+  });
+});
