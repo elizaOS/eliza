@@ -17,6 +17,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
+import { SessionCapError, type SessionInfo } from "../../src/services/types.js";
 import {
   type CreateTaskInput,
   type OrchestratorTaskSession,
@@ -60,9 +61,19 @@ class FakeAcp {
   readonly spawnArgs: Record<string, unknown>[] = [];
   readonly sent: { sessionId: string; message: string }[] = [];
   readonly stopped: string[] = [];
+  readonly sessions: SessionInfo[] = [];
+  capacity = {
+    maxSessions: 1,
+    systemHeadroom: 1,
+    activeWorkers: 1,
+    activeSystem: 0,
+    freeWorkerSlots: 0,
+    freeSystemSlots: 1,
+  };
   failSend = false;
   failStop = false;
   failSpawn = false;
+  capFull = false;
 
   onSessionEvent(
     cb: (sessionId: string, event: string, data: unknown) => void,
@@ -79,14 +90,36 @@ class FakeAcp {
 
   spawnSession(opts: Record<string, unknown>): Promise<SpawnResult> {
     if (this.failSpawn) return Promise.reject(new Error("spawn failed"));
+    if (this.capFull) {
+      return Promise.reject(new SessionCapError("worker", 1, 1));
+    }
     this.spawnArgs.push(opts);
     this.counter += 1;
-    return Promise.resolve({
+    const result: SpawnResult = {
       sessionId: `session-${this.counter}`,
       agentType: (opts.agentType as string | undefined) ?? "codex",
       workdir: (opts.workdir as string | undefined) ?? "/repo",
       status: "ready",
+    };
+    const createdAt = new Date(this.counter * 1000);
+    this.sessions.push({
+      id: result.sessionId,
+      agentType: result.agentType,
+      workdir: result.workdir,
+      status: result.status,
+      approvalPreset: "standard",
+      createdAt,
+      lastActivityAt: createdAt,
     });
+    return Promise.resolve(result);
+  }
+
+  getCapacity(): Promise<typeof this.capacity> {
+    return Promise.resolve(this.capacity);
+  }
+
+  listSessions(): Promise<SessionInfo[]> {
+    return Promise.resolve([...this.sessions]);
   }
 
   sendToSession(sessionId: string, message: string): Promise<void> {
@@ -98,6 +131,8 @@ class FakeAcp {
   stopSession(sessionId: string): Promise<void> {
     if (this.failStop) return Promise.reject(new Error("stop failed"));
     this.stopped.push(sessionId);
+    const session = this.sessions.find((item) => item.id === sessionId);
+    if (session) session.status = "stopped";
     return Promise.resolve();
   }
 }
@@ -1652,6 +1687,39 @@ describe("OrchestratorTaskService — restart reconstruction (#13771)", () => {
     const after = must(await restarted.getTask(task.id), "after restart");
     expect(after.status).toBe("blocked");
     expect(after.events?.some((e) => e.eventType === "blocked")).toBe(true);
+  });
+
+  it("reclaims pre-restart idle keepAlive sessions through the durable store", async () => {
+    const acp = new FakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const first = new OrchestratorTaskService(runtime(acp), { store });
+    await first.start();
+
+    const finished = await first.createTask(createInput({ title: "finished" }));
+    const detail = must(
+      await first.spawnAgentForTask(finished.id),
+      "spawn detail",
+    );
+    const sessionId = must(detail.sessions[0], "session").sessionId;
+    await first.updateTask(finished.id, { status: "validating" });
+    await first.validateTask(finished.id, {
+      passed: true,
+      summary: "verified",
+    });
+
+    // Simulate restart: the durable store still knows session->task, but the
+    // new service's in-memory sessionTaskIndex is empty. A queued task with no
+    // free worker slots should still reclaim the finished keepAlive session.
+    const restarted = new OrchestratorTaskService(runtime(acp), { store });
+    await restarted.start();
+    const queued = await restarted.createTask(createInput({ title: "queued" }));
+    acp.capFull = true;
+    await restarted.spawnAgentForTask(queued.id);
+    await (
+      restarted as unknown as { drainAdmissionQueue: () => Promise<void> }
+    ).drainAdmissionQueue();
+
+    expect(acp.stopped).toContain(sessionId);
   });
 });
 

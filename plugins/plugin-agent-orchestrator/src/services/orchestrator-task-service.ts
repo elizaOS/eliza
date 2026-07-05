@@ -4250,7 +4250,7 @@ export class OrchestratorTaskService extends Service {
     const candidates: Array<{ id: string; createdAt: number }> = [];
     for (const session of sessions) {
       if (TERMINAL_SESSION_STATUSES.has(session.status)) continue;
-      const taskId = this.sessionTaskIndex.get(session.id);
+      const taskId = await this.resolveTaskId(session.id);
       if (!taskId) continue;
       const doc = await this.store.getTask(taskId);
       if (!doc || !TERMINAL_TASK_STATUSES.has(doc.task.status)) continue;
