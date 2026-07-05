@@ -861,6 +861,13 @@ export async function handleViewsRoutes(
             viewType: resolvedViewType,
             previousViewId,
             initiatedBy: source,
+            // Resolve the view's declared anticipatory intent + purpose so the
+            // proactive judge can produce a scoped greeting (#13587). Absent for
+            // intent-less/developer views → judge falls back to label-only.
+            ...(entry?.anticipatoryIntent
+              ? { anticipatoryIntent: entry.anticipatoryIntent }
+              : {}),
+            ...(entry?.description ? { viewPurpose: entry.description } : {}),
           })
           .catch((err) => {
             logger.debug(

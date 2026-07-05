@@ -39,6 +39,7 @@ const VALID_SCOPES = new Set<ConversationScope>([
   "page-browser",
   "page-automations",
   "page-knowledge",
+  "page-transcripts",
 ]);
 
 const VALID_AUTOMATION_TYPES = new Set(["coordinator_text", "workflow"]);

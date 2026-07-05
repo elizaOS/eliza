@@ -45,6 +45,7 @@ export const ConversationScopeSchema = z.enum([
   "page-browser",
   "page-automations",
   "page-knowledge",
+  "page-transcripts",
 ]);
 
 export const ConversationAutomationTypeSchema = z.enum([
