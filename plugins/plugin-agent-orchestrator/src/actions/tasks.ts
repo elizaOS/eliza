@@ -53,7 +53,7 @@ import { resolveCodingBackendLogged } from "../services/coding-backend-routing.j
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
-import { resolveBoundProjectWorkdir } from "../services/project-binding.js";
+import { resolveTaskSpawnWorkdir } from "../services/project-binding.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
 import {
   runDurableTask,
@@ -1057,17 +1057,22 @@ function maxSpawnsPerOrigin(runtime: IAgentRuntime): number {
 /** The registered project's localPath for a durable task, or null when the task
  * id is absent, the task is unbound, or its project id is stale. Used to lock a
  * follow-up spawn to the same repo the task was bound to. */
-async function resolveBoundTaskWorkdir(
+/** Read the registered-project id a task is bound to (if any), so the caller
+ * can feed it to {@link resolveTaskSpawnWorkdir} and apply the shared
+ * project > explicit > bound precedence (#14108). Returns `undefined` for an
+ * unbound task, a missing service, or an unknown taskId. */
+async function resolveTaskProjectBinding(
   runtime: IAgentRuntime,
   taskId: string | undefined,
-): Promise<string | null> {
-  if (!taskId) return null;
+): Promise<string | undefined> {
+  if (!taskId) return undefined;
   const taskService = runtime.getService?.(
     OrchestratorTaskService.serviceType,
   ) as OrchestratorTaskService | null | undefined;
-  if (!taskService || typeof taskService.getTask !== "function") return null;
+  if (!taskService || typeof taskService.getTask !== "function")
+    return undefined;
   const detail = await taskService.getTask(taskId);
-  return resolveBoundProjectWorkdir(detail?.projectId ?? undefined);
+  return detail?.projectId ?? undefined;
 }
 
 async function runSpawnAgent(
@@ -1129,11 +1134,26 @@ async function runSpawnAgent(
     // so route/convention resolution is skipped and every session of the task
     // targets the same repo (the #13776 per-session drift fix). Unbound tasks
     // fall through to the normal explicit/route/convention resolution.
-    const boundProjectWorkdir = await resolveBoundTaskWorkdir(
+    //
+    // Precedence is delegated to the shared resolver so this action path and
+    // the direct-service `spawnAgentForTask` path can never diverge on the same
+    // operator input (#14108): project localPath > explicit caller workdir >
+    // bound pin. When an explicit workdir loses to a project binding the shared
+    // resolver logs loudly instead of silently substituting.
+    const boundProjectId = await resolveTaskProjectBinding(
       runtime,
       pickString(params, content, "taskId") ??
         pickString(params, content, "threadId"),
     );
+    const explicitWorkdir = pickString(params, content, "workdir");
+    const resolvedTaskWorkdir = resolveTaskSpawnWorkdir({
+      projectId: boundProjectId,
+      explicitWorkdir,
+      // The action path never reuses the first-spawn pin here; boundWorkdir
+      // reuse happens later in the service layer when no explicit workdir is
+      // passed. Omitting it keeps unbound tasks falling through to route /
+      // convention resolution below.
+    });
     const {
       workdir,
       route,
@@ -1142,10 +1162,10 @@ async function runSpawnAgent(
       runtime,
       task,
       routingRequest,
-      boundProjectWorkdir ?? pickString(params, content, "workdir"),
+      resolvedTaskWorkdir.workdir ?? explicitWorkdir,
       {
         lockWorkdir:
-          boundProjectWorkdir != null ||
+          resolvedTaskWorkdir.lockWorkdir ||
           pickBoolean(params, content, "lockWorkdir") === true,
       },
     );

@@ -15,6 +15,7 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   getProjectById,
+  logger,
   type ProjectRecord,
   readProjectRegistry,
 } from "@elizaos/core";
@@ -74,4 +75,83 @@ export function resolveBoundProjectWorkdir(
   const id = projectId?.trim();
   if (!id) return null;
   return getProjectById(id, env)?.localPath ?? null;
+}
+
+/** The single source of truth for a spawn's workdir when a task may be bound.
+ * Result of {@link resolveTaskSpawnWorkdir}. `lockWorkdir` is true only when a
+ * project binding forced the directory — the caller must then SKIP route /
+ * convention resolution so every session of a bound task targets the same repo
+ * (#13776). */
+export interface ResolvedTaskWorkdir {
+  /** The winning workdir (project localPath, explicit param, or bound pin), or
+   *  `undefined` when nothing is bound/explicit and the caller must fall back
+   *  to route/convention/default resolution. */
+  workdir: string | undefined;
+  /** True when a registered project binding produced `workdir`; the caller must
+   *  treat it as LOCKED (skip route/convention resolution). */
+  lockWorkdir: boolean;
+  /** How the workdir was chosen, for diagnostics. */
+  source: "project" | "explicit" | "bound" | "unresolved";
+}
+
+/**
+ * Resolve the workdir a task should spawn in, applying ONE precedence order at
+ * BOTH the action entry point and the direct-service (`spawnAgentForTask`)
+ * entry point so the same operator input can never diverge (#14108).
+ *
+ * Precedence (highest first):
+ *   1. **project localPath** — a task bound to a registered Project always
+ *      spawns in that project's `localPath`; this is a deliberate binding that
+ *      outranks a per-call guess. Returned LOCKED (route/convention skipped).
+ *   2. **explicit caller `workdir`** — an operator/caller-supplied directory
+ *      beats the first-spawn pin. Not locked: it is still allow-list validated
+ *      downstream, and unbound tasks fall through to route resolution.
+ *   3. **`boundWorkdir`** — the directory pinned at the task's first spawn, so
+ *      follow-up sessions can't silently migrate repos when routing env drifts
+ *      between sessions (#13801 / #13776 item 3).
+ *   4. otherwise **unresolved** — the caller resolves route/convention/default.
+ *
+ * When an explicit caller workdir LOSES to a project binding we do NOT silently
+ * substitute: we log a loud warning so the divergence is visible instead of
+ * mysterious (per the #14108 audit recommendation).
+ */
+export function resolveTaskSpawnWorkdir(
+  input: {
+    projectId?: string;
+    boundWorkdir?: string;
+    explicitWorkdir?: string;
+  },
+  env: NodeJS.ProcessEnv = process.env,
+): ResolvedTaskWorkdir {
+  const projectWorkdir = resolveBoundProjectWorkdir(input.projectId, env);
+  const explicit = input.explicitWorkdir?.trim() || undefined;
+  const bound = input.boundWorkdir?.trim() || undefined;
+
+  // 1. Project binding wins — and is LOCKED.
+  if (projectWorkdir) {
+    if (explicit && canonical(explicit) !== canonical(projectWorkdir)) {
+      // Loud, not silent: the explicit workdir is being overridden by the
+      // project binding. Every entry point now behaves identically, so this
+      // warning fires at both the action and the direct-service paths.
+      logger.warn(
+        `[workdir-precedence] explicit workdir ${explicit} overridden by ` +
+          `project binding ${projectWorkdir} (projectId=${input.projectId}); ` +
+          `a bound task always spawns in its project localPath (#14108).`,
+      );
+    }
+    return { workdir: projectWorkdir, lockWorkdir: true, source: "project" };
+  }
+
+  // 2. Explicit caller workdir beats the first-spawn pin (not locked).
+  if (explicit) {
+    return { workdir: explicit, lockWorkdir: false, source: "explicit" };
+  }
+
+  // 3. The workdir pinned at the task's first spawn.
+  if (bound) {
+    return { workdir: bound, lockWorkdir: false, source: "bound" };
+  }
+
+  // 4. Nothing bound/explicit — caller resolves route/convention/default.
+  return { workdir: undefined, lockWorkdir: false, source: "unresolved" };
 }

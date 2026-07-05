@@ -142,7 +142,10 @@ import {
   isParentAgentBrokerWired,
   PARENT_AGENT_BROKER_MANIFEST_ENTRY,
 } from "./parent-agent-broker.js";
-import { resolveTaskProjectId } from "./project-binding.js";
+import {
+  resolveTaskProjectId,
+  resolveTaskSpawnWorkdir,
+} from "./project-binding.js";
 import { buildSkillsManifest } from "./skill-manifest.js";
 import {
   configureSpendLedger,
@@ -3275,15 +3278,34 @@ export class OrchestratorTaskService extends Service {
     }
     const acp = this.acp();
     if (!acp) throw new Error("ACP service unavailable");
-    // An explicit caller workdir wins and re-pins the binding; otherwise a
-    // follow-up spawn reuses the workdir pinned at the task's first spawn so it
-    // can't silently migrate repos when routing env changes between sessions
-    // (#13776). `boundWorkdir` was validated when first pinned, so reuse skips
-    // the allow-list probe — it may point at a configured project root the
-    // probe would otherwise reject once env drifts.
-    const workdir = opts.workdir
-      ? await resolveAllowedWorkdir(opts.workdir)
-      : doc.task.boundWorkdir;
+    // Resolve the spawn workdir through the SHARED precedence resolver so this
+    // direct-service path and the SPAWN_AGENT action path can never diverge on
+    // the same task+input (#14108): project localPath > explicit caller workdir
+    // > first-spawn `boundWorkdir`.
+    //
+    // - A project-bound task ALWAYS spawns in its project's localPath, even via
+    //   this API/service entry point (previously this path ignored `projectId`
+    //   entirely, so a bound task could land in `boundWorkdir` or an explicit
+    //   workdir — the divergence #14108 reports). When an explicit workdir loses
+    //   to the binding the resolver logs loudly instead of silently swapping.
+    // - An explicit caller workdir otherwise wins and re-pins the binding.
+    // - Else a follow-up spawn reuses the workdir pinned at first spawn so it
+    //   can't silently migrate repos when routing env drifts between sessions
+    //   (#13776).
+    //
+    // A project localPath / `boundWorkdir` was validated when first bound, so
+    // reuse of those skips the allow-list probe — they may point at a configured
+    // project root the probe would otherwise reject once env drifts. Only a
+    // freshly-supplied explicit workdir is re-probed.
+    const resolvedWorkdir = resolveTaskSpawnWorkdir({
+      projectId: doc.task.projectId,
+      boundWorkdir: doc.task.boundWorkdir,
+      explicitWorkdir: opts.workdir,
+    });
+    const workdir =
+      resolvedWorkdir.source === "explicit" && resolvedWorkdir.workdir
+        ? await resolveAllowedWorkdir(resolvedWorkdir.workdir)
+        : resolvedWorkdir.workdir;
 
     const policy = doc.task.providerPolicy ?? {};
     // Give every sub-agent a distinct person-name. An explicit caller label
@@ -3504,7 +3526,12 @@ export class OrchestratorTaskService extends Service {
       // from the workdir the session actually landed in, so subsequent
       // follow-up spawns of this task reuse it deterministically (#13776).
       await this.bindTaskWorkdir(taskId, doc.task, result.workdir, opts.repo, {
+        // Only an explicit caller workdir that actually WON (source=explicit)
+        // may re-pin the binding. A project-bound task's localPath won here, so
+        // an ignored explicit `opts.workdir` must NOT be treated as a rebind
+        // request (#14108) — the project binding, not the pin, is authoritative.
         allowRebind:
+          resolvedWorkdir.source === "explicit" &&
           Boolean(opts.workdir) &&
           Boolean(doc.task.boundWorkdir) &&
           doc.task.boundWorkdir !== result.workdir,

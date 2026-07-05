@@ -8,15 +8,17 @@ import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import {
+  logger,
   setActiveProject,
   upsertProject,
   writeWorkspaceFolderConfig,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   findProjectByWorkdir,
   resolveBoundProjectWorkdir,
   resolveTaskProjectId,
+  resolveTaskSpawnWorkdir,
 } from "../services/project-binding.ts";
 
 describe("project-binding", () => {
@@ -79,6 +81,108 @@ describe("project-binding", () => {
     expect(resolveBoundProjectWorkdir(p.id, env)).toBe("/tmp/bound-project");
     expect(resolveBoundProjectWorkdir("stale-id", env)).toBeNull();
     expect(resolveBoundProjectWorkdir(undefined, env)).toBeNull();
+  });
+
+  describe("resolveTaskSpawnWorkdir precedence (#14108)", () => {
+    it("a project binding beats an explicit caller workdir, LOCKED", () => {
+      const p = upsertProject(
+        { name: "proj", localPath: "/tmp/the-project" },
+        env,
+      );
+      const r = resolveTaskSpawnWorkdir(
+        { projectId: p.id, explicitWorkdir: "/tmp/somewhere-else" },
+        env,
+      );
+      expect(r).toEqual({
+        workdir: "/tmp/the-project",
+        lockWorkdir: true,
+        source: "project",
+      });
+    });
+
+    it("logs LOUDLY (not silently) when an explicit workdir loses to a project binding", () => {
+      const p = upsertProject(
+        { name: "proj", localPath: "/tmp/the-project" },
+        env,
+      );
+      const warn = vi.spyOn(logger, "warn").mockImplementation(() => logger);
+      try {
+        resolveTaskSpawnWorkdir(
+          { projectId: p.id, explicitWorkdir: "/tmp/somewhere-else" },
+          env,
+        );
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(String(warn.mock.calls[0]?.[0])).toContain("workdir-precedence");
+        expect(String(warn.mock.calls[0]?.[0])).toContain(
+          "/tmp/somewhere-else",
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("does NOT warn when the explicit workdir already equals the project localPath", () => {
+      const p = upsertProject(
+        { name: "proj", localPath: realpathSync(os.tmpdir()) },
+        env,
+      );
+      const warn = vi.spyOn(logger, "warn").mockImplementation(() => logger);
+      try {
+        const r = resolveTaskSpawnWorkdir(
+          { projectId: p.id, explicitWorkdir: os.tmpdir() },
+          env,
+        );
+        expect(r.source).toBe("project");
+        expect(r.lockWorkdir).toBe(true);
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("an explicit caller workdir beats the first-spawn bound pin (not locked)", () => {
+      const r = resolveTaskSpawnWorkdir(
+        { boundWorkdir: "/tmp/pinned", explicitWorkdir: "/tmp/explicit" },
+        env,
+      );
+      expect(r).toEqual({
+        workdir: "/tmp/explicit",
+        lockWorkdir: false,
+        source: "explicit",
+      });
+    });
+
+    it("falls back to the bound pin when neither project nor explicit is present", () => {
+      const r = resolveTaskSpawnWorkdir({ boundWorkdir: "/tmp/pinned" }, env);
+      expect(r).toEqual({
+        workdir: "/tmp/pinned",
+        lockWorkdir: false,
+        source: "bound",
+      });
+    });
+
+    it("returns unresolved (undefined) when nothing is bound or explicit", () => {
+      const r = resolveTaskSpawnWorkdir({}, env);
+      expect(r).toEqual({
+        workdir: undefined,
+        lockWorkdir: false,
+        source: "unresolved",
+      });
+    });
+
+    it("a stale/unregistered projectId does not force a workdir — explicit still wins", () => {
+      const r = resolveTaskSpawnWorkdir(
+        {
+          projectId: "unregistered",
+          explicitWorkdir: "/tmp/explicit",
+          boundWorkdir: "/tmp/pinned",
+        },
+        env,
+      );
+      expect(r.source).toBe("explicit");
+      expect(r.workdir).toBe("/tmp/explicit");
+      expect(r.lockWorkdir).toBe(false);
+    });
   });
 
   it("a projectId bound via the legacy workspace-folder.json synthesis resolves back to its workdir", () => {

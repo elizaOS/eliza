@@ -11,6 +11,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import { upsertProject } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
@@ -372,6 +373,61 @@ describe("durable task→workdir binding (#13776)", () => {
       expect(record?.task.boundRepo).toBeNull();
     } finally {
       await service.stop().catch(() => undefined);
+    }
+  });
+
+  it("a project-bound task spawns in the project localPath even when the service caller passes an explicit workdir (#14108)", async () => {
+    // The direct-service path (`spawnAgentForTask`, e.g. the /agents API route)
+    // previously ignored `task.projectId` entirely, so a project-bound task
+    // could land in an explicit caller workdir — diverging from the action
+    // path, which forces the project localPath. Both must now agree: project
+    // localPath > explicit caller workdir.
+    const stateDir = realpathSync(
+      mkdtempSync(path.join(os.tmpdir(), "task-workdir-binding-state-")),
+    );
+    const savedStateDir = process.env.ELIZA_STATE_DIR;
+    process.env.ELIZA_STATE_DIR = stateDir;
+    try {
+      // Register a real project whose localPath is firstDir.
+      const project = upsertProject(
+        { name: "bound-proj", localPath: firstDir },
+        process.env,
+      );
+
+      const store = new OrchestratorTaskStore({ backend: "memory" });
+      const acp = makeWorkdirCapturingAcp();
+      const service = new OrchestratorTaskService(makeRuntime(acp.service), {
+        store,
+      });
+      await service.start();
+      try {
+        const detail = await store.createTask({
+          title: "Project-bound task",
+          goal: "always spawn in the bound project",
+          acceptanceCriteria: [],
+          roomId: "binding-room",
+          worldId: "binding-world",
+          projectId: project.id,
+        });
+        const taskId = detail.task.id;
+        expect((await store.getTask(taskId))?.task.projectId).toBe(project.id);
+
+        // Caller passes an explicit workdir that CONFLICTS with the project
+        // binding. The project localPath (firstDir) must win, not overrideDir.
+        await service.spawnAgentForTask(taskId, { workdir: overrideDir });
+        expect(acp.spawns.at(0)?.workdir).toBe(firstDir);
+
+        // The ignored explicit workdir must NOT re-pin the binding away from
+        // the project localPath.
+        const record = await store.getTask(taskId);
+        expect(record?.task.boundWorkdir).toBe(firstDir);
+      } finally {
+        await service.stop().catch(() => undefined);
+      }
+    } finally {
+      if (savedStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+      else process.env.ELIZA_STATE_DIR = savedStateDir;
+      rmSync(stateDir, { recursive: true, force: true });
     }
   });
 
