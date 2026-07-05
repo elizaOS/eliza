@@ -38,7 +38,7 @@ import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
-import { ChatEmptyStateWithRecommendations } from "../composites/chat";
+import { PagePanel } from "../composites/page-panel";
 import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
@@ -2622,44 +2622,33 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           </div>
         ) : (
           <div className="flex h-full min-h-0 flex-col items-center justify-center overflow-y-auto pt-3 pb-[calc(var(--eliza-continuous-chat-clearance,5.25rem)+1rem)]">
-            <ChatEmptyStateWithRecommendations
-              icon={Globe}
-              className="flex-none gap-2 py-1 sm:gap-3 sm:py-2"
-              recommendations={[
-                {
-                  label: t("browserworkspace.RecOpenDocs", {
-                    defaultValue: "Open docs.elizaos.ai",
-                  }),
-                  prompt: "Open docs.elizaos.ai in the browser",
-                },
-                {
-                  label: t("browserworkspace.RecSearch", {
-                    defaultValue: "Search the web",
-                  }),
-                  prompt:
-                    "Search Google for the latest elizaOS release notes and open the top result",
-                },
-                {
-                  label: t("browserworkspace.RecSummarize", {
-                    defaultValue: "Summarize a page",
-                  }),
-                  prompt:
-                    "Open a website and summarize what's on the page for me",
-                },
-              ]}
-              primaryAction={{
-                label: t("browserworkspace.OpenWebsite", {
-                  defaultValue: "Open a website",
-                }),
-                icon: Plus,
-                onClick: () =>
-                  void runBrowserWorkspaceAction("open:home", async () => {
-                    await openNewBrowserWorkspaceTab(
-                      BROWSER_WORKSPACE_DEFAULT_HOME_URL,
-                      "user",
-                    );
-                  }),
-              }}
+            <PagePanel.Empty
+              variant="inset"
+              className="flex-none py-1 sm:py-2"
+              icon={<Globe className="h-6 w-6" aria-hidden />}
+              title={t("browserworkspace.EmptyTitle", {
+                defaultValue: "No page open",
+              })}
+              action={
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="min-h-11 gap-1.5"
+                  onClick={() =>
+                    void runBrowserWorkspaceAction("open:home", async () => {
+                      await openNewBrowserWorkspaceTab(
+                        BROWSER_WORKSPACE_DEFAULT_HOME_URL,
+                        "user",
+                      );
+                    })
+                  }
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                  {t("browserworkspace.OpenWebsite", {
+                    defaultValue: "Open a website",
+                  })}
+                </Button>
+              }
             />
             {workspace.mode === "web" &&
             browserBridgeSupported &&

@@ -47,7 +47,6 @@ import {
   maybeCompressDocumentUploadImage,
 } from "../../utils/documents-upload-image";
 import { formatByteSize } from "../../utils/format";
-import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { Button } from "../ui/button";
@@ -1254,36 +1253,12 @@ export function DocumentsView({
           )}
 
           {!loading && !isShowingSearchResults && documents.length === 0 && (
-            <ChatEmptyStateWithRecommendations
-              icon={FileText}
+            <PagePanel.Empty
+              className="flex-1"
+              icon={<FileText className="h-6 w-6" aria-hidden />}
               title={t("documentsview.NoDocumentsYet", {
                 defaultValue: "No documents yet",
               })}
-              recommendations={[
-                {
-                  label: t("documentsview.RecImportUrl", {
-                    defaultValue: "Import a document from a URL",
-                  }),
-                  prompt: t("documentsview.RecImportUrlPrompt", {
-                    defaultValue:
-                      "Import a document into my knowledge base from this URL: ",
-                  }),
-                },
-                {
-                  label: t("documentsview.RecCreateNote", {
-                    defaultValue: "Create a text note",
-                  }),
-                  prompt: t("documentsview.RecCreateNotePrompt", {
-                    defaultValue:
-                      "Create a text knowledge document for me to remember: ",
-                  }),
-                },
-                {
-                  label: t("documentsview.RecWhatToAdd", {
-                    defaultValue: "What should I add to Knowledge?",
-                  }),
-                },
-              ]}
             />
           )}
 

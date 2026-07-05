@@ -32,7 +32,6 @@ import {
   formatTrajectoryTimestamp,
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
-import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
@@ -700,24 +699,14 @@ export function TrajectoriesView({
         {loading && trajectories.length === 0 ? (
           <ListSkeleton rows={8} />
         ) : !loading && trajectories.length === 0 ? (
-          <ChatEmptyStateWithRecommendations
-            icon={Route}
+          <PagePanel.Empty
+            className="flex-1"
+            icon={<Route className="h-6 w-6" aria-hidden />}
             title={
               hasActiveFilters
                 ? t("trajectoriesview.NoTrajectoriesMatchingFilters")
                 : t("trajectoriesview.NoTrajectoriesYet")
             }
-            recommendations={[
-              t("trajectoriesview.RecRunAgent", {
-                defaultValue: "Run the agent so a turn shows up here",
-              }),
-              t("trajectoriesview.RecSummarize", {
-                defaultValue: "Summarize what the agent did on its last turn",
-              }),
-              t("trajectoriesview.RecExplainPipeline", {
-                defaultValue: "Explain each stage of the reasoning pipeline",
-              }),
-            ]}
           />
         ) : detailTrajectoryId ? (
           <TrajectoryDetailView trajectoryId={detailTrajectoryId} />
