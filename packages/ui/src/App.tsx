@@ -58,6 +58,7 @@ import { PermissionPrimingOverlay } from "./components/permissions/PermissionPri
 import { ActionBanner } from "./components/shell/ActionBanner";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
+import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { CloudHandoffBanner } from "./components/shell/CloudHandoffBanner";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
@@ -2596,6 +2597,11 @@ export function App() {
             to the dashboard, where NotificationsHomeCenter is the one
             notification surface. Renders null. */}
         <NotificationsShellBoot />
+        {/* Tiny dismissible build stamp (bottom-left) so testers can verify
+            PWA cache freshness at a glance. Best-effort: hidden when
+            /build-info.json is absent (production builds without the
+            build-time stamp render nothing). */}
+        <BuildBadge />
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}

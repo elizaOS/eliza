@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // UI build: Capacitor plugins then Vite. Requires prior `bun install` (postinstall).
 // ELIZA_BUILD_FULL_SETUP=1 prepends install --ignore-scripts + run-repo-setup (CI-style).
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -95,10 +95,47 @@ function run(command, args, cwd) {
   });
 }
 
+// Best-effort build stamp for the in-app BuildBadge (PWA cache-freshness
+// check). Writes public/build-info.json with the current git sha + build
+// time. The file is gitignored, so it never commits a stale local stamp; when
+// git is unavailable (some CI/tarball builds) it is skipped and the badge
+// simply renders nothing.
+function stampBuildInfo() {
+  try {
+    const commit = execFileSync("git", ["rev-parse", "--short=10", "HEAD"], {
+      cwd: repoRoot,
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim();
+    if (!commit) return;
+    const now = new Date();
+    const builtAt = now.toISOString();
+    const stampDate = now.toLocaleString("en-US", {
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const label = `${commit} \u00b7 ${stampDate}`;
+    const outDir = path.join(appDir, "public");
+    fs.mkdirSync(outDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(outDir, "build-info.json"),
+      `${JSON.stringify({ commit, builtAt, label })}\n`,
+    );
+  } catch {
+    // git absent or non-repo build context — skip the stamp silently.
+  }
+}
+
 if (fullSetup) {
   await run(bunExecutable, ["install", "--ignore-scripts"], repoRoot);
   await run(process.execPath, [repoSetupScript], repoRoot);
 }
+
+stampBuildInfo();
 
 await run(process.execPath, [path.join(__dirname, "plugin-build.mjs")], appDir);
 
