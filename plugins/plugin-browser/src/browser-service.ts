@@ -131,16 +131,14 @@ export class BrowserService extends Service {
     }
     // Seed the Safari-style default search tab so the browser never opens
     // empty-and-sad (#13596). Best-effort with a bounded desktop bridge
-    // readiness window: failure must not prevent the service from starting.
-    try {
-      await ensureBrowserWorkspaceDefaultTabWithRetry();
-    } catch (err) {
+    // readiness window, but startup itself must not wait for the bridge.
+    void ensureBrowserWorkspaceDefaultTabWithRetry().catch((err) => {
       // error-policy:J4 startup should expose the browser even when the optional default tab cannot be seeded.
       const message = err instanceof Error ? err.message : String(err);
       logger.warn(
         `[BrowserService] default search tab not seeded at start: ${message}`,
       );
-    }
+    });
     return service;
   }
 

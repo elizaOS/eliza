@@ -8,7 +8,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserService } from "../../browser-service.js";
 import {
   __resetBrowserWorkspaceStateForTests,
@@ -21,6 +21,20 @@ import {
 } from "../browser-workspace.js";
 
 const webEnv: NodeJS.ProcessEnv = {};
+const bridgeKeys = [
+  "ELIZA_BROWSER_WORKSPACE_URL",
+  "ELIZA_BROWSER_WORKSPACE_TOKEN",
+];
+const savedBridge: Record<string, string | undefined> = {};
+
+async function waitForWorkspaceTabs(count: number) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const tabs = await listBrowserWorkspaceTabs();
+    if (tabs.length === count) return tabs;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  return await listBrowserWorkspaceTabs();
+}
 
 describe("browser workspace default search tab (web mode)", () => {
   beforeEach(async () => {
@@ -155,18 +169,20 @@ describe("browser workspace default search tab (web mode)", () => {
 });
 
 describe("BrowserService seeds the default tab at start", () => {
-  const bridgeKeys = [
-    "ELIZA_BROWSER_WORKSPACE_URL",
-    "ELIZA_BROWSER_WORKSPACE_TOKEN",
-  ];
-  const savedBridge: Record<string, string | undefined> = {};
-
   beforeEach(async () => {
     for (const key of bridgeKeys) {
       savedBridge[key] = process.env[key];
       delete process.env[key];
     }
     await __resetBrowserWorkspaceStateForTests();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    for (const key of bridgeKeys) {
+      if (savedBridge[key] === undefined) delete process.env[key];
+      else process.env[key] = savedBridge[key];
+    }
   });
 
   it("opens one default search tab when the service boots in web mode", async () => {
@@ -176,16 +192,37 @@ describe("BrowserService seeds the default tab at start", () => {
 
     const service = await BrowserService.start(runtime);
     try {
-      const tabs = await listBrowserWorkspaceTabs();
+      const tabs = await waitForWorkspaceTabs(1);
       expect(tabs).toHaveLength(1);
       expect(tabs[0]?.url).toBe(BROWSER_WORKSPACE_DEFAULT_SEARCH_URL);
       expect(tabs[0]?.visible).toBe(true);
     } finally {
       await service.stop();
-      for (const key of bridgeKeys) {
-        if (savedBridge[key] === undefined) delete process.env[key];
-        else process.env[key] = savedBridge[key];
-      }
+    }
+  });
+
+  it("does not wait for a pending desktop bridge default-tab seed", async () => {
+    process.env.ELIZA_BROWSER_WORKSPACE_URL = "http://127.0.0.1:39299";
+    process.env.ELIZA_BROWSER_WORKSPACE_TOKEN = "test-token";
+    const pendingRequest = Promise.withResolvers<Response>();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValue(pendingRequest.promise);
+    const runtime = {
+      getService: () => null,
+    } as unknown as IAgentRuntime;
+
+    const service = await BrowserService.start(runtime);
+    try {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://127.0.0.1:39299/tabs",
+        expect.any(Object),
+      );
+      expect(fetchMock.mock.results[0]?.type).toBe("return");
+    } finally {
+      pendingRequest.reject(new Error("desktop bridge unavailable"));
+      await Promise.resolve();
+      await service.stop();
     }
   });
 });
