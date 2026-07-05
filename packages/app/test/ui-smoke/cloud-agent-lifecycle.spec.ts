@@ -390,9 +390,7 @@ test("cloud handoff: home tile tracks migrating→switched, failures speak in ch
   // window listener) renders after the boot sequence; a CustomEvent fired
   // before the listener is attached is simply dropped (not buffered) — re-emit
   // until the in-chat card lands so the test isn't racing the shell mount.
-  const retrySetup = page.getByTestId(
-    "choice-__boot_recovery__:retry-handoff",
-  );
+  const retrySetup = page.getByTestId("choice-__boot_recovery__:retry-handoff");
   await expect(async () => {
     await emitPhase({
       agentId: "agent-keep",

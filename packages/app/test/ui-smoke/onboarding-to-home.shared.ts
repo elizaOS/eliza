@@ -1086,12 +1086,11 @@ export async function completeCloudOnlyOnboardingToHome(
   await expectCloudOnlySignInOnboarding(page);
 
   // The session token lands as the login flow the tap launches completes
-  // (mocked at the storage boundary — same token the poll mock returns). This
-  // deliberately RACES the conductor's 500ms session poll, exactly like a real
-  // login landing while the user reaches for the button: whichever side wins,
-  // onboarding must complete. The click therefore tolerates the button
-  // collapsing/unmounting under it (poll won) instead of chasing a detached
-  // element until the test times out.
+  // (mocked at the storage boundary — same token the poll mock returns).
+  // Seeding it also arms the conductor's 500ms token poll, which can win the
+  // race and complete onboarding BEFORE the tap lands — the button then sits
+  // in a settling sheet and never reads "stable". Bound the click and let the
+  // completion assertions carry the contract either way.
   await setStewardSession(page, { token: CLOUD_AUTH_TOKEN });
   try {
     await page
@@ -1099,8 +1098,7 @@ export async function completeCloudOnlyOnboardingToHome(
       .first()
       .click({ timeout: 8_000 });
   } catch {
-    // Button gone/unstable because the session poll already completed
-    // onboarding — the completion assertions below are the real contract.
+    // The token poll already completed onboarding — nothing left to tap.
   }
 
   return expectCloudOnlyCompletion(page, opts.state);
