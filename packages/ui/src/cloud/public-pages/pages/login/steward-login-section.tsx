@@ -355,7 +355,7 @@ export default function StewardLoginSection() {
           getErrorMessage(sessionError, "Could not establish a local session"),
         );
       });
-  }, [searchParams]);
+  }, [searchParams, t]);
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
