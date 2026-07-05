@@ -259,7 +259,7 @@ function selfTest() {
     {
       name: "self-hosted classifier",
       text: good.replace(
-        /runs-on: \$\{\{ fromJSON[^\n]+\}\}\n    timeout-minutes/,
+        /runs-on: \$\{\{ fromJSON[^\n]+\}\}\n {4}timeout-minutes/,
         "runs-on: [self-hosted, hetzner-robot]\n    timeout-minutes",
       ),
     },
