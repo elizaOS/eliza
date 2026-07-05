@@ -22,16 +22,16 @@ const TRUTHY = new Set(["1", "true", "yes", "on"]);
  * a non-empty set-but-not-truthy value coerces to false (an explicit opt-out).
  */
 function coerceFlag(raw: string | undefined): boolean | undefined {
-	if (raw === undefined) return undefined;
-	const normalized = raw.trim().toLowerCase();
-	if (normalized.length === 0) return undefined;
-	return TRUTHY.has(normalized);
+  if (raw === undefined) return undefined;
+  const normalized = raw.trim().toLowerCase();
+  if (normalized.length === 0) return undefined;
+  return TRUTHY.has(normalized);
 }
 
 export interface TrajectoryGateDecision {
-	enabled: boolean;
-	/** Which precedence tier decided, for diagnostics/logging. */
-	reason: string;
+  enabled: boolean;
+  /** Which precedence tier decided, for diagnostics/logging. */
+  reason: string;
 }
 
 /**
@@ -46,29 +46,29 @@ export interface TrajectoryGateDecision {
  *   6. otherwise (dev / unset NODE_ENV) — on, for local debugging.
  */
 export function resolveTrajectoryGate(
-	env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env,
 ): TrajectoryGateDecision {
-	if (env.ELIZA_DISABLE_TRAJECTORY_LOGGING === "1") {
-		return { enabled: false, reason: "disable-flag" };
-	}
+  if (env.ELIZA_DISABLE_TRAJECTORY_LOGGING === "1") {
+    return { enabled: false, reason: "disable-flag" };
+  }
 
-	const explicit = coerceFlag(env.ELIZA_TRAJECTORY_LOGGING);
-	if (explicit !== undefined) {
-		return { enabled: explicit, reason: "explicit-logging" };
-	}
+  const explicit = coerceFlag(env.ELIZA_TRAJECTORY_LOGGING);
+  if (explicit !== undefined) {
+    return { enabled: explicit, reason: "explicit-logging" };
+  }
 
-	const legacy = coerceFlag(env.ELIZA_TRAJECTORY_RECORDING);
-	if (legacy !== undefined) {
-		return { enabled: legacy, reason: "explicit-recording-legacy" };
-	}
+  const legacy = coerceFlag(env.ELIZA_TRAJECTORY_RECORDING);
+  if (legacy !== undefined) {
+    return { enabled: legacy, reason: "explicit-recording-legacy" };
+  }
 
-	if (env.NODE_ENV === "test") {
-		return { enabled: false, reason: "test-default-off" };
-	}
+  if (env.NODE_ENV === "test") {
+    return { enabled: false, reason: "test-default-off" };
+  }
 
-	if (env.NODE_ENV === "production") {
-		return { enabled: false, reason: "production-opt-in" };
-	}
+  if (env.NODE_ENV === "production") {
+    return { enabled: false, reason: "production-opt-in" };
+  }
 
-	return { enabled: true, reason: "dev-default-on" };
+  return { enabled: true, reason: "dev-default-on" };
 }
