@@ -147,6 +147,126 @@ async function snap(p, name) {
   console.log(`  📸 ${file}`);
 }
 
+const threadMetrics = (p) =>
+  p.evaluate(() => {
+    const el = document.querySelector("#continuous-thread");
+    if (!el) return null;
+    return {
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+      distanceFromBottom: el.scrollHeight - el.scrollTop - el.clientHeight,
+    };
+  });
+
+async function waitForThreadDistance(p, maxDistance, timeout = 1600) {
+  await p
+    .waitForFunction(
+      (maxDistance) => {
+        const el = document.querySelector("#continuous-thread");
+        if (!el) return false;
+        return el.scrollHeight - el.scrollTop - el.clientHeight <= maxDistance;
+      },
+      maxDistance,
+      { timeout },
+    )
+    .catch(() => {});
+}
+
+async function openSheetToFull(p, pointer) {
+  await gesture(p, 170, { pointer, slow: false, steps: 2 });
+  await p.waitForTimeout(SETTLE);
+  await gesture(p, 190, { pointer, slow: false, steps: 2 });
+  await p.waitForTimeout(SETTLE);
+  assert((await detent(p)) === "full", `[${pointer}] autoscroll setup opens to FULL`);
+  await waitForThreadDistance(p, 20);
+}
+
+async function scrollThreadUp(p, pointer) {
+  const before = await threadMetrics(p);
+  if (pointer === "mouse") {
+    const box = await p.locator("#continuous-thread").boundingBox();
+    await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await p.mouse.wheel(0, -520);
+  } else {
+    await touchSwipe(p, "#continuous-thread", 0, 300, {
+      steps: 14,
+      stepDelayMs: 18,
+    });
+  }
+  await p
+    .waitForFunction(
+      ({ beforeTop }) => {
+        const el = document.querySelector("#continuous-thread");
+        return !!el && el.scrollTop < beforeTop - 80;
+      },
+      { beforeTop: before?.scrollTop ?? 0 },
+      { timeout: 1200 },
+    )
+    .catch(() => {});
+  // Real touch scrolling can coast briefly after finger release. Record the
+  // scrollback baseline only after that momentum has settled.
+  await p.waitForTimeout(pointer === "touch" ? 650 : 100);
+  return threadMetrics(p);
+}
+
+async function runAutoScrollSuite(p, pointer, tag) {
+  await openSheetToFull(p, pointer);
+  let metrics = await threadMetrics(p);
+  assert(
+    !!metrics && metrics.distanceFromBottom <= 24,
+    `[${pointer}] AUTOSCROLL starts pinned at bottom (distance ${Math.round(metrics?.distanceFromBottom ?? -1)}px)`,
+  );
+
+  await p.evaluate(() => window.__appendTallAssistantMessage?.());
+  await waitForThreadDistance(p, 24, 2200);
+  // A new line follows with smooth scrolling while at-bottom. Wait for that
+  // glide to finish before starting the manual scrollback gesture, otherwise
+  // the tail end of the smooth follow can race the wheel/touch scroll.
+  await p.waitForTimeout(900);
+  await waitForThreadDistance(p, 8, 2200);
+  metrics = await threadMetrics(p);
+  assert(
+    !!metrics && metrics.distanceFromBottom <= 24,
+    `[${pointer}] AUTOSCROLL stays pinned after one >80px growth commit (distance ${Math.round(metrics?.distanceFromBottom ?? -1)}px)`,
+  );
+
+  const reading = await scrollThreadUp(p, pointer);
+  assert(
+    !!reading && reading.distanceFromBottom > 120,
+    `[${pointer}] AUTOSCROLL reader scrolled up into history (distance ${Math.round(reading?.distanceFromBottom ?? -1)}px)`,
+  );
+  await p.evaluate(() =>
+    window.__appendAssistantMessage?.(
+      "A fresh assistant update landed while the reader was in scrollback. The thread must not yank them to the newest line.",
+    ),
+  );
+  await p.waitForTimeout(650);
+  const afterAppend = await threadMetrics(p);
+  assert(
+    !!afterAppend && Math.abs(afterAppend.scrollTop - reading.scrollTop) <= 24,
+    `[${pointer}] AUTOSCROLL preserves scrollTop while reading scrollback (${Math.round(reading.scrollTop)} → ${Math.round(afterAppend?.scrollTop ?? -1)})`,
+  );
+  assert(
+    await p.getByTestId("chat-sheet-jump-to-latest").isVisible(),
+    `[${pointer}] AUTOSCROLL shows jump-to-latest while new content waits below`,
+  );
+  await snap(p, `${tag}-autoscroll-scrollback`);
+
+  if (pointer === "mouse") {
+    await p.getByTestId("chat-sheet-jump-to-latest").click();
+  } else {
+    await touchTap(p, '[data-testid="chat-sheet-jump-to-latest"]');
+  }
+  await waitForThreadDistance(p, 24, 2200);
+  metrics = await threadMetrics(p);
+  assert(
+    !!metrics && metrics.distanceFromBottom <= 24,
+    `[${pointer}] AUTOSCROLL jump-to-latest re-pins the thread (distance ${Math.round(metrics?.distanceFromBottom ?? -1)}px)`,
+  );
+  await snap(p, `${tag}-autoscroll-repinned`);
+}
+
 // Sample the ACTUAL rendered pixel at a viewport point (decoded from a 1px
 // screenshot clip). Proves visual paint, unlike elementFromPoint which skips
 // pointer-events:none layers — the #12178 opaque onboarding backdrop is
@@ -446,6 +566,33 @@ try {
     outDir,
     name: "chat-sheet-drag-suite.webm",
   });
+
+  // ===== AUTO-SCROLL + SCROLLBACK, MOUSE AND TOUCH (#13690) =====
+  {
+    const p = await browser.newPage({ viewport: { width: 1180, height: 820 } });
+    attachConsole(p, sink);
+    await gotoFixture(p, `${url}?many`);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(700);
+    await runAutoScrollSuite(p, "mouse", "desktop");
+    await p.close();
+  }
+  {
+    const ctx = await browser.newContext({
+      viewport: { width: 402, height: 874 },
+      hasTouch: true,
+      isMobile: true,
+      deviceScaleFactor: 2,
+    });
+    const p = await ctx.newPage();
+    attachConsole(p, sink);
+    await gotoFixture(p, `${url}?many`);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(700);
+    await runAutoScrollSuite(p, "touch", "mobile");
+    await p.close();
+    await ctx.close();
+  }
 
   // ===== GRABBER horizontal flick → launcher intent, REAL touch (#9943) =====
   // The collapsed grabber's horizontal swipe pages home → launcher through the

@@ -236,7 +236,8 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
   },
   {
     id: 13,
-    interaction: "Auto-scroll at bottom vs reading-scrollback",
+    interaction:
+      "Auto-scroll at bottom vs reading-scrollback (large growth + jump-to-latest)",
     sites: [OVERLAY],
     tests: [CHAT_SHEET_RUNNER],
   },

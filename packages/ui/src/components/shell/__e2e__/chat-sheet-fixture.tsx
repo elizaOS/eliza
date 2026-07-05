@@ -188,6 +188,37 @@ function Harness(): React.JSX.Element {
     ).__setFirstRun = setFirstRunOpen;
   }, []);
 
+  React.useEffect(() => {
+    const w = window as unknown as {
+      __appendAssistantMessage?: (content: string) => void;
+      __appendTallAssistantMessage?: () => void;
+    };
+    w.__appendAssistantMessage = (content) => {
+      setMessages((m) => [
+        ...m,
+        {
+          id: uid(),
+          role: "assistant",
+          content,
+          createdAt: nextId,
+        },
+      ]);
+    };
+    w.__appendTallAssistantMessage = () => {
+      w.__appendAssistantMessage?.(
+        Array.from(
+          { length: 10 },
+          (_, i) =>
+            `Large streamed commit line ${i + 1}: this assistant update intentionally grows the transcript by more than eighty pixels in one React commit so the e2e can prove bottom-follow uses pre-growth scroll geometry.`,
+        ).join("\n\n"),
+      );
+    };
+    return () => {
+      w.__appendAssistantMessage = undefined;
+      w.__appendTallAssistantMessage = undefined;
+    };
+  }, []);
+
   // Log lifecycle so the e2e harness can assert the interaction flow from the
   // console (the user asked for logs to be checked alongside the visuals).
   React.useEffect(() => {
