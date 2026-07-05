@@ -119,6 +119,8 @@ runs:
     - name: Install setuptools for distutils (Python 3.12+)
       if: ${{ inputs.setup-python == 'true' }}
       shell: bash
+      env:
+        RUNNER_ENVIRONMENT: ${{ runner.environment }}
       run: |
         python_bin="${{ steps.system-python.outputs.python-bin }}"
         if [ -z "$python_bin" ]; then
@@ -131,6 +133,22 @@ runs:
         if "$python_bin" -c 'import setuptools' >/dev/null 2>&1; then
           echo "setuptools already present: $("$python_bin" -c 'import setuptools; print(setuptools.__version__)')"
           exit 0
+        fi
+        if "$python_bin" - <<'PY'
+        import sys
+        raise SystemExit(0 if sys.version_info < (3, 12) else 1)
+        PY
+        then
+          echo "Python <3.12; setuptools distutils shim is not required"
+          exit 0
+        fi
+        if ! "$python_bin" -m pip --version >/dev/null 2>&1; then
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+            echo "::warning::No usable pip found; skipping setuptools install (node-gyp fallback unavailable)"
+            exit 0
+          fi
+          echo "::error::No usable pip found for setuptools install"
+          exit 1
         fi
         "$python_bin" -m pip install setuptools \
           || "$python_bin" -m pip install --user setuptools \
