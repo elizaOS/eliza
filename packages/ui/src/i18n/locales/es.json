@@ -780,7 +780,7 @@
   "cloud.agents.detail.webUiPort": "Puerto Web UI",
   "cloud.agents.loading": "Cargando instancias",
   "cloud.agents.metaDescription": "Mira, lanza y gestiona tus instancias respaldadas por Eliza Cloud.",
-  "cloud.agents.metaTitle": "Instancias",
+  "cloud.agents.metaTitle": "Agentes",
   "cloud.analytics.custom": "Personalizado",
   "cloud.analytics.dataPointsCount": "{{n}} puntos de datos",
   "cloud.analytics.filters.aggregation": "Agregación",

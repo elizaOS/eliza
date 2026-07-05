@@ -780,7 +780,7 @@
   "cloud.agents.detail.webUiPort": "Web UIポート",
   "cloud.agents.loading": "インスタンスを読み込み中",
   "cloud.agents.metaDescription": "Eliza Cloudで動くインスタンスの確認・起動・管理。",
-  "cloud.agents.metaTitle": "インスタンス",
+  "cloud.agents.metaTitle": "エージェント",
   "cloud.analytics.custom": "カスタム",
   "cloud.analytics.dataPointsCount": "{{n}}件のデータポイント",
   "cloud.analytics.filters.aggregation": "集計",

@@ -780,7 +780,7 @@
   "cloud.agents.detail.webUiPort": "Web UI 端口",
   "cloud.agents.loading": "正在加载实例",
   "cloud.agents.metaDescription": "查看、启动和管理由 Eliza Cloud 支持的实例。",
-  "cloud.agents.metaTitle": "实例",
+  "cloud.agents.metaTitle": "智能体",
   "cloud.analytics.custom": "自定义",
   "cloud.analytics.dataPointsCount": "{{n}} 个数据点",
   "cloud.analytics.filters.aggregation": "聚合",

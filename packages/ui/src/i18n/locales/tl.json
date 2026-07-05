@@ -780,7 +780,7 @@
   "cloud.agents.detail.webUiPort": "Port ng Web UI",
   "cloud.agents.loading": "Naglo-load ng instances",
   "cloud.agents.metaDescription": "Tingnan, ilunsad, at i-manage ang instances mo sa Eliza Cloud.",
-  "cloud.agents.metaTitle": "Mga instance",
+  "cloud.agents.metaTitle": "Mga Ahente",
   "cloud.analytics.custom": "Pasadya",
   "cloud.analytics.dataPointsCount": "{{n}} mga punto ng datos",
   "cloud.analytics.filters.aggregation": "Aggregasyon",

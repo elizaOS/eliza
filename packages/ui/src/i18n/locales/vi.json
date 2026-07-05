@@ -780,7 +780,7 @@
   "cloud.agents.detail.webUiPort": "Cổng giao diện web",
   "cloud.agents.loading": "Đang tải instances",
   "cloud.agents.metaDescription": "Xem, khởi chạy và quản lý instances của bạn trên Eliza Cloud.",
-  "cloud.agents.metaTitle": "Phiên bản",
+  "cloud.agents.metaTitle": "Tác nhân",
   "cloud.analytics.custom": "Tùy chỉnh",
   "cloud.analytics.dataPointsCount": "{{n}} điểm dữ liệu",
   "cloud.analytics.filters.aggregation": "Tổng hợp",
