@@ -6,7 +6,7 @@
 
 import { Lock } from "lucide-react";
 import { useEffect, useState } from "react";
-import { BrandCard, CornerBrackets } from "../../../cloud-ui";
+import { BrandButton, BrandCard, CornerBrackets } from "../../../cloud-ui";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
@@ -23,6 +23,20 @@ type MfaState =
   | { kind: "ready"; enrolled: boolean; method: string | null }
   | { kind: "error"; message: string };
 
+function stateFromMfaPayload(payload: MfaStatusResponse): MfaState {
+  if (payload.available === false) {
+    return { kind: "unavailable", reason: payload.reason ?? null };
+  }
+  if (typeof payload.enrolled !== "boolean") {
+    throw new Error("MFA status response is missing enrolled.");
+  }
+  return {
+    kind: "ready",
+    enrolled: payload.enrolled,
+    method: payload.method ?? null,
+  };
+}
+
 export function MfaPanel() {
   const t = useCloudT();
   const [state, setState] = useState<MfaState>({ kind: "loading" });
@@ -32,15 +46,7 @@ export function MfaPanel() {
     void api<MfaStatusResponse>("/api/v1/me/mfa")
       .then((payload) => {
         if (!active) return;
-        if (payload.available === false) {
-          setState({ kind: "unavailable", reason: payload.reason ?? null });
-          return;
-        }
-        setState({
-          kind: "ready",
-          enrolled: Boolean(payload.enrolled),
-          method: payload.method ?? null,
-        });
+        setState(stateFromMfaPayload(payload));
       })
       .catch((error) => {
         if (!active) return;
@@ -60,20 +66,20 @@ export function MfaPanel() {
       <div className="relative z-10 space-y-3">
         <div className="flex items-center gap-2">
           <Lock className="h-5 w-5 text-[var(--brand-orange)]" />
-          <h3 className="text-lg font-bold text-white">
+          <h3 className="text-lg font-bold text-txt-strong">
             {t("cloud.mfaPanel.title", {
               defaultValue: "Two-factor authentication",
             })}
           </h3>
         </div>
         {state.kind === "loading" ? (
-          <p className="text-sm text-white/50">
+          <p className="text-sm text-muted">
             {t("cloud.mfaPanel.loading", {
               defaultValue: "Loading MFA status...",
             })}
           </p>
         ) : state.kind === "unavailable" ? (
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-muted">
             {t("cloud.mfaPanel.notAvailable", {
               reason: state.reason ?? "",
               defaultValue: "MFA enrollment is unavailable on this server.",
@@ -93,12 +99,19 @@ export function MfaPanel() {
             })}
           </p>
         ) : (
-          <p className="text-sm text-white/60">
-            {t("cloud.mfaPanel.notEnabled", {
-              defaultValue:
-                "MFA is not enabled. Adding a second factor protects your account even if your password is compromised.",
-            })}
-          </p>
+          <div className="space-y-2">
+            <p className="text-sm text-muted">
+              {t("cloud.mfaPanel.notEnabled", {
+                defaultValue:
+                  "MFA is not enabled. Adding a second factor protects your account even if your password is compromised.",
+              })}
+            </p>
+            <BrandButton size="sm" variant="outline" disabled>
+              {t("cloud.mfaPanel.enroll", {
+                defaultValue: "Enroll a second factor",
+              })}
+            </BrandButton>
+          </div>
         )}
       </div>
     </BrandCard>

@@ -27,7 +27,7 @@ export function NumericField({
 }: NumericFieldProps) {
   return (
     <div className="space-y-1">
-      <Label className="text-white font-mono text-sm">{label}</Label>
+      <Label className="text-txt-strong font-mono text-sm">{label}</Label>
       <div className="relative">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#717171] font-mono z-10 pointer-events-none">
           $

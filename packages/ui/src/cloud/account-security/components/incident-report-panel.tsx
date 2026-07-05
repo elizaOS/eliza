@@ -68,12 +68,12 @@ export function IncidentReportPanel() {
       <CornerBrackets size="sm" className="opacity-50" />
       <div className="relative z-10 space-y-3">
         <div>
-          <h3 className="text-lg font-bold text-white">
+          <h3 className="text-lg font-bold text-txt-strong">
             {t("cloud.incidentReport.title", {
               defaultValue: "Report a security incident",
             })}
           </h3>
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-muted">
             {t("cloud.incidentReport.emailPre", { defaultValue: "Email" })}{" "}
             <a
               href={`mailto:${SECURITY_EMAIL}`}

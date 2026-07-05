@@ -56,6 +56,9 @@ vi.mock("lucide-react", () => ({
   Download: () => <span data-testid="icon-download" />,
   Lock: () => <span data-testid="icon-lock" />,
   ScrollText: () => <span data-testid="icon-scroll-text" />,
+  ShieldAlert: () => <span data-testid="icon-shield-alert" />,
+  ShieldCheck: () => <span data-testid="icon-shield-check" />,
+  ShieldX: () => <span data-testid="icon-shield-x" />,
   Trash2: () => <span data-testid="icon-trash" />,
 }));
 
@@ -143,6 +146,19 @@ describe("account-security panels", () => {
     expect(apiMock).toHaveBeenCalledWith("/api/v1/sessions");
   });
 
+  it("renders malformed sessions DTOs as errors instead of healthy empty", async () => {
+    apiMock.mockResolvedValueOnce({});
+
+    render(<ActiveSessionsPanel />);
+
+    expect(
+      await screen.findByText(
+        "Session inventory response is missing sessions.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/No other active sessions found/i)).toBeNull();
+  });
+
   it("renders MFA errors separately from unavailable and disabled", async () => {
     apiMock.mockRejectedValueOnce(new Error("mfa route failed"));
 
@@ -150,6 +166,17 @@ describe("account-security panels", () => {
 
     expect(await screen.findByText("mfa route failed")).toBeTruthy();
     expect(screen.queryByText(/MFA enrollment is unavailable/i)).toBeNull();
+    expect(screen.queryByText(/MFA is not enabled/i)).toBeNull();
+  });
+
+  it("renders malformed MFA DTOs as errors instead of disabled", async () => {
+    apiMock.mockResolvedValueOnce({});
+
+    render(<MfaPanel />);
+
+    expect(
+      await screen.findByText("MFA status response is missing enrolled."),
+    ).toBeTruthy();
     expect(screen.queryByText(/MFA is not enabled/i)).toBeNull();
   });
 

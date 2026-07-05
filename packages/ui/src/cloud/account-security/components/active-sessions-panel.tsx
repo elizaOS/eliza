@@ -24,11 +24,32 @@ interface SessionsResponse {
   sessions?: SessionRow[];
 }
 
+interface UiSessionRow extends SessionRow {
+  lastSeenLabel: string;
+}
+
 type SessionsState =
   | { kind: "loading" }
   | { kind: "unavailable"; reason: string | null }
-  | { kind: "ready"; sessions: SessionRow[] }
+  | { kind: "ready"; sessions: UiSessionRow[] }
   | { kind: "error"; message: string };
+
+function formatSessionLastSeen(lastSeen: string | null | undefined): string {
+  if (!lastSeen) return "-";
+  const date = new Date(lastSeen);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toISOString();
+}
+
+function sessionsFromPayload(payload: SessionsResponse): UiSessionRow[] {
+  if (!Array.isArray(payload.sessions)) {
+    throw new Error("Session inventory response is missing sessions.");
+  }
+  return payload.sessions.map((session) => ({
+    ...session,
+    lastSeenLabel: formatSessionLastSeen(session.last_seen),
+  }));
+}
 
 export function ActiveSessionsPanel() {
   const t = useCloudT();
@@ -48,7 +69,7 @@ export function ActiveSessionsPanel() {
         }
         setState({
           kind: "ready",
-          sessions: Array.isArray(payload.sessions) ? payload.sessions : [],
+          sessions: sessionsFromPayload(payload),
         });
       })
       .catch((error) => {
@@ -68,12 +89,12 @@ export function ActiveSessionsPanel() {
       <CornerBrackets size="sm" className="opacity-50" />
       <div className="relative z-10 space-y-4">
         <div>
-          <h3 className="text-lg font-bold text-white">
+          <h3 className="text-lg font-bold text-txt-strong">
             {t("cloud.activeSessions.title", {
               defaultValue: "Active sessions",
             })}
           </h3>
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-muted">
             {t("cloud.activeSessions.description", {
               defaultValue:
                 "Devices and browsers currently signed in to your account.",
@@ -81,13 +102,13 @@ export function ActiveSessionsPanel() {
           </p>
         </div>
         {state.kind === "loading" ? (
-          <p className="text-sm text-white/50">
+          <p className="text-sm text-muted">
             {t("cloud.activeSessions.loading", {
               defaultValue: "Loading sessions...",
             })}
           </p>
         ) : state.kind === "unavailable" ? (
-          <p className="text-sm text-white/50">
+          <p className="text-sm text-muted">
             {t("cloud.activeSessions.notAvailable", {
               reason: state.reason ?? "",
               defaultValue: "Session listing is unavailable on this server.",
@@ -96,20 +117,20 @@ export function ActiveSessionsPanel() {
         ) : state.kind === "error" ? (
           <p className="text-sm text-red-300">{state.message}</p>
         ) : state.sessions.length === 0 ? (
-          <p className="text-sm text-white/50">
+          <p className="text-sm text-muted">
             {t("cloud.activeSessions.noOther", {
               defaultValue: "No other active sessions found.",
             })}
           </p>
         ) : (
-          <ul className="divide-y divide-white/10">
+          <ul className="divide-y divide-line">
             {state.sessions.map((session) => (
               <li
                 key={session.id}
                 className="flex items-center justify-between gap-3 py-2 text-sm"
               >
                 <div className="space-y-0.5">
-                  <p className="font-medium text-white">
+                  <p className="font-medium text-txt-strong">
                     {session.device ??
                       t("cloud.activeSessions.unknownDevice", {
                         defaultValue: "Unknown device",
@@ -122,12 +143,10 @@ export function ActiveSessionsPanel() {
                       </span>
                     ) : null}
                   </p>
-                  <p className="font-mono text-[11px] text-white/50">
+                  <p className="font-mono text-[11px] text-muted">
                     {t("cloud.activeSessions.ipLastSeen", {
                       ip: session.ip ?? "-",
-                      lastSeen: session.last_seen
-                        ? new Date(session.last_seen).toLocaleString()
-                        : "-",
+                      lastSeen: session.lastSeenLabel,
                       defaultValue: "{{ip}} - last seen {{lastSeen}}",
                     })}
                   </p>

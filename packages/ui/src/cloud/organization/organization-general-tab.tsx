@@ -37,23 +37,23 @@ export function OrganizationGeneralTab({
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <p className="text-xs font-mono font-medium text-white/50 uppercase tracking-wide">
+              <p className="text-xs font-mono font-medium text-muted uppercase tracking-wide">
                 Organization Name
               </p>
-              <p className="mt-1 text-sm font-mono font-semibold text-white">
+              <p className="mt-1 text-sm font-mono font-semibold text-txt-strong">
                 {organization.name}
               </p>
             </div>
             <div>
-              <p className="text-xs font-mono font-medium text-white/50 uppercase tracking-wide">
+              <p className="text-xs font-mono font-medium text-muted uppercase tracking-wide">
                 Organization Slug
               </p>
-              <p className="mt-1 text-sm font-mono text-white">
+              <p className="mt-1 text-sm font-mono text-txt-strong">
                 {organization.slug}
               </p>
             </div>
             <div>
-              <p className="text-xs font-mono font-medium text-white/50 uppercase tracking-wide">
+              <p className="text-xs font-mono font-medium text-muted uppercase tracking-wide">
                 Status
               </p>
               <div className="mt-1">
@@ -65,10 +65,10 @@ export function OrganizationGeneralTab({
               </div>
             </div>
             <div>
-              <p className="text-xs font-mono font-medium text-white/50 uppercase tracking-wide">
+              <p className="text-xs font-mono font-medium text-muted uppercase tracking-wide">
                 Created
               </p>
-              <p className="mt-1 text-sm font-mono flex items-center gap-1.5 text-white">
+              <p className="mt-1 text-sm font-mono flex items-center gap-1.5 text-txt-strong">
                 <Calendar className="h-3.5 w-3.5 text-[var(--accent)]" />
                 {format(new Date(organization.created_at), "MMM d, yyyy")}
               </p>
@@ -93,19 +93,19 @@ export function OrganizationGeneralTab({
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <p className="text-xs font-mono font-medium text-white/50 uppercase tracking-wide">
+              <p className="text-xs font-mono font-medium text-muted uppercase tracking-wide">
                 Credit Balance
               </p>
-              <p className="mt-1 text-xl md:text-2xl font-mono font-bold text-white">
+              <p className="mt-1 text-xl md:text-2xl font-mono font-bold text-txt-strong">
                 {Number(organization.credit_balance).toLocaleString()} credits
               </p>
             </div>
             {organization.billing_email && (
               <div>
-                <p className="text-xs font-mono font-medium text-white/50 uppercase tracking-wide">
+                <p className="text-xs font-mono font-medium text-muted uppercase tracking-wide">
                   Billing Email
                 </p>
-                <p className="mt-1 text-sm font-mono text-white break-all">
+                <p className="mt-1 text-sm font-mono text-txt-strong break-all">
                   {organization.billing_email}
                 </p>
               </div>

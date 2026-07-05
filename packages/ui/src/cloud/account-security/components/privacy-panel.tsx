@@ -3,8 +3,9 @@
  *   - vision / screen-capture consent toggle (local consent store)
  *   - trajectory logging toggle (local consent store)
  *
- * DSR export/deletion controls are disabled when the Worker does not expose
- * those jobs, so the launch surface never implies that a request was scheduled.
+ * DSR export/deletion jobs are not exposed by the Worker yet. Keep those
+ * controls visible but disabled so the launch surface does not issue dead
+ * `/api/v1/me/*` calls or imply a request was scheduled.
  */
 
 import { Camera, Download, ScrollText, Trash2 } from "lucide-react";
@@ -53,10 +54,10 @@ export function PrivacyPanel() {
       <CornerBrackets size="sm" className="opacity-50" />
       <div className="relative z-10 space-y-4">
         <div>
-          <h3 className="text-lg font-bold text-white">
+          <h3 className="text-lg font-bold text-txt-strong">
             {t("cloud.privacyPanel.title", { defaultValue: "Privacy" })}
           </h3>
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-muted">
             {t("cloud.privacyPanel.subtitle", {
               defaultValue:
                 "Control optional data capture and exercise your data rights.",
@@ -64,18 +65,19 @@ export function PrivacyPanel() {
           </p>
         </div>
 
-        <div className="flex items-start justify-between gap-3 rounded-sm border border-white/10 bg-black/40 p-4">
+        {/* Vision toggle */}
+        <div className="flex items-start justify-between gap-3 rounded-sm border border-border bg-surface p-4">
           <div className="flex items-start gap-3">
             <div className="rounded-sm border border-purple-500/40 bg-purple-500/20 p-2">
               <Camera className="h-4 w-4 text-purple-300" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-medium text-white">
+              <p className="text-sm font-medium text-txt-strong">
                 {t("cloud.privacyPanel.visionTitle", {
                   defaultValue: "Allow vision / screen capture",
                 })}
               </p>
-              <p className="text-xs text-white/60">
+              <p className="text-xs text-muted">
                 {t("cloud.privacyPanel.visionDescription", {
                   defaultValue:
                     "Off by default. When on, plugins may request screen frames or webcam capture. Remote models charge per image — review your model's per-call fee in Settings → Billing before enabling.",
@@ -90,18 +92,19 @@ export function PrivacyPanel() {
           />
         </div>
 
-        <div className="flex items-start justify-between gap-3 rounded-sm border border-white/10 bg-black/40 p-4">
+        {/* Trajectory logging toggle */}
+        <div className="flex items-start justify-between gap-3 rounded-sm border border-border bg-surface p-4">
           <div className="flex items-start gap-3">
             <div className="rounded-sm border border-[var(--brand-orange)]/40 bg-[var(--brand-orange)]/15 p-2">
               <ScrollText className="h-4 w-4 text-[var(--brand-orange)]" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-medium text-white">
+              <p className="text-sm font-medium text-txt-strong">
                 {t("cloud.privacyPanel.trajectoryTitle", {
                   defaultValue: "Trajectory logging",
                 })}
               </p>
-              <p className="text-xs text-white/60">
+              <p className="text-xs text-muted">
                 {t("cloud.privacyPanel.trajectoryDescription", {
                   defaultValue:
                     "Off by default. When on, Eliza records per-step plan/action traces locally with a 30-day retention. Redacted content is marked separately from raw.",
@@ -116,18 +119,19 @@ export function PrivacyPanel() {
           />
         </div>
 
-        <div className="flex items-start justify-between gap-3 rounded-sm border border-white/10 bg-black/40 p-4">
+        {/* DSR — Export */}
+        <div className="flex items-start justify-between gap-3 rounded-sm border border-border bg-surface p-4">
           <div className="flex items-start gap-3">
             <div className="rounded-sm border border-green-500/40 bg-green-500/20 p-2">
               <Download className="h-4 w-4 text-green-300" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-medium text-white">
+              <p className="text-sm font-medium text-txt-strong">
                 {t("cloud.privacyPanel.downloadTitle", {
                   defaultValue: "Download my data",
                 })}
               </p>
-              <p className="text-xs text-white/60">
+              <p className="text-xs text-muted">
                 {t("cloud.privacyPanel.downloadDescription", {
                   defaultValue:
                     "Bundle your conversations, agents, and connector data into a portable archive (GDPR / CCPA right-to-export).",
@@ -140,7 +144,8 @@ export function PrivacyPanel() {
             variant="outline"
             disabled
             title={t("cloud.privacyPanel.exportComingSoon", {
-              defaultValue: "Data export is unavailable on this server.",
+              defaultValue:
+                "Data export is coming soon — not yet available on this server.",
             })}
           >
             {t("cloud.privacyPanel.exportUnavailable", {
@@ -149,18 +154,19 @@ export function PrivacyPanel() {
           </BrandButton>
         </div>
 
+        {/* DSR — Delete */}
         <div className="flex items-start justify-between gap-3 rounded-sm border border-red-500/30 bg-red-500/5 p-4">
           <div className="flex items-start gap-3">
             <div className="rounded-sm border border-red-500/40 bg-red-500/20 p-2">
               <Trash2 className="h-4 w-4 text-red-300" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-medium text-white">
+              <p className="text-sm font-medium text-txt-strong">
                 {t("cloud.privacyPanel.deleteTitle", {
                   defaultValue: "Delete my account",
                 })}
               </p>
-              <p className="text-xs text-white/60">
+              <p className="text-xs text-muted">
                 {t("cloud.privacyPanel.deleteDescription", {
                   defaultValue:
                     "Schedules a 30-day soft-delete. You can sign back in during the window to cancel. After 30 days, all data is purged.",
@@ -174,7 +180,8 @@ export function PrivacyPanel() {
             className="border-red-500/40 text-red-300"
             disabled
             title={t("cloud.privacyPanel.deletionComingSoon", {
-              defaultValue: "Account deletion is unavailable on this server.",
+              defaultValue:
+                "Account deletion is coming soon — not yet available on this server.",
             })}
             data-testid="delete-account-trigger"
           >
