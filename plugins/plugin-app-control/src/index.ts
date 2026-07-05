@@ -72,6 +72,7 @@ export {
 	parseBooleanValue,
 	parseSettingsRequest,
 	resolveSectionId,
+	SETTINGS_WRITE_REGISTRY,
 	type SettingsActionDeps,
 	type SettingsRequest,
 	type SettingsRouteFetch,
@@ -80,7 +81,6 @@ export {
 	type SettingsSectionListing,
 	type SettingsVerb,
 	type SettingsWritableKey,
-	SETTINGS_WRITE_REGISTRY,
 	settingsAction,
 } from "./actions/settings.js";
 export {

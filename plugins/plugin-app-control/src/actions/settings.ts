@@ -487,7 +487,7 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 		name: "SETTINGS",
 		contexts: ["general", "settings"],
 		contextGate: { anyOf: ["general", "settings"] },
-		roleGate: { minRole: "USER" },
+		roleGate: { minRole: "OWNER" },
 		similes: [
 			"CHANGE_SETTING",
 			"UPDATE_SETTINGS",

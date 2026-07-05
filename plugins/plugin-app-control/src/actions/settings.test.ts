@@ -14,8 +14,8 @@ import {
 	parseBooleanValue,
 	parseSettingsRequest,
 	resolveSectionId,
-	type SettingsRouteFetch,
 	SETTINGS_WRITE_REGISTRY,
+	type SettingsRouteFetch,
 } from "./settings.ts";
 
 const runtime = {} as IAgentRuntime;
@@ -148,8 +148,9 @@ describe("SETTINGS action: list", () => {
 	it("lists writable sections with how each is written", async () => {
 		const { result } = await invoke({ action: "list" });
 		expect(result?.success).toBe(true);
-		const sections = (result?.data as { sections: Array<Record<string, unknown>> })
-			.sections;
+		const sections = (
+			result?.data as { sections: Array<Record<string, unknown>> }
+		).sections;
 		expect(sections).toHaveLength(SETTINGS_SECTION_META.length);
 		const model = sections.find((s) => s.id === "ai-model");
 		expect(model).toMatchObject({ writable: true, via: "MODEL_SWITCH" });
@@ -210,7 +211,12 @@ describe("SETTINGS action: set on an owned route section", () => {
 	it("rejects a non-boolean value without calling the route", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
 		const { result } = await invoke(
-			{ action: "set", section: "permissions", key: "shell", value: "sometimes" },
+			{
+				action: "set",
+				section: "permissions",
+				key: "shell",
+				value: "sometimes",
+			},
 			routeFetch,
 		);
 		expect(routeFetch).not.toHaveBeenCalled();
@@ -263,6 +269,10 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 });
 
 describe("SETTINGS action: get and validate", () => {
+	it("is owner-gated because it can mutate shell permission state", () => {
+		expect(createSettingsAction().roleGate).toEqual({ minRole: "OWNER" });
+	});
+
 	it("reports a section's write capability on get", async () => {
 		const { result } = await invoke({ action: "get", section: "permissions" });
 		expect(result?.success).toBe(true);
