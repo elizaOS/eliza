@@ -53,17 +53,20 @@ const dynamicViewLoaderMock = vi.hoisted(() => ({
   render: vi.fn(
     ({
       bundleUrl,
+      frameUrl,
       surface,
       viewId,
       viewType,
     }: {
       bundleUrl: string;
+      frameUrl?: string;
       surface?: { capabilities?: string[] };
       viewId: string;
       viewType?: string;
     }) => (
       <div
         data-bundle-url={bundleUrl}
+        data-frame-url={frameUrl ?? ""}
         data-surface-capabilities={surface?.capabilities?.join(",") ?? ""}
         data-testid="dynamic-view-loader"
         data-view-id={viewId}
@@ -145,6 +148,17 @@ const documentsView = {
   viewType: "gui" as const,
 };
 
+const sandboxDocumentView = {
+  id: "sandbox-doc",
+  label: "Sandbox Doc",
+  available: true,
+  pluginName: "@local/plugin-sandbox-doc",
+  path: "/apps/sandbox-doc",
+  frameUrl: "/api/views/sandbox-doc/frame.html?v=123",
+  viewType: "gui" as const,
+  isolation: "sandboxed-iframe" as const,
+};
+
 const mockAvailableViews = [
   remoteLedgerView,
   viewsManagerView,
@@ -153,6 +167,7 @@ const mockAvailableViews = [
   calendarView,
   sharedCanvasView,
   documentsView,
+  sandboxDocumentView,
 ];
 
 function resetMockAvailableViews() {
@@ -166,6 +181,7 @@ function resetMockAvailableViews() {
     calendarView,
     sharedCanvasView,
     documentsView,
+    sandboxDocumentView,
   );
 }
 
@@ -521,6 +537,33 @@ describe("App navigate-view event wiring", () => {
     ).toBe(true);
     expect(getByTestId("app-opaque-background")).toBeTruthy();
     expect(queryByTestId("app-background-shader")).toBeNull();
+  });
+
+  it("renders a sandboxed frame-only route through DynamicViewLoader in the mounted App", async () => {
+    appState.tab = "apps";
+    window.history.replaceState(null, "", "/apps/sandbox-doc");
+
+    const { getByTestId } = render(<App />);
+
+    await waitFor(() => {
+      expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bundleUrl: "/api/views/sandbox-doc/frame.html?v=123",
+          frameUrl: "/api/views/sandbox-doc/frame.html?v=123",
+          viewId: "sandbox-doc",
+          viewType: "gui",
+        }),
+        undefined,
+      );
+    });
+
+    const loader = getByTestId("dynamic-view-loader");
+    expect(loader.getAttribute("data-bundle-url")).toBe(
+      "/api/views/sandbox-doc/frame.html?v=123",
+    );
+    expect(loader.getAttribute("data-frame-url")).toBe(
+      "/api/views/sandbox-doc/frame.html?v=123",
+    );
   });
 
   it("renders no global corner back button on app routes (removed in favor of per-page back affordances + browser/OS back)", async () => {

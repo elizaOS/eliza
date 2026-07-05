@@ -7,6 +7,7 @@
 // asserting against a mock.
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared/events";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { transform } from "esbuild";
 import { type ReactElement, useState } from "react";
@@ -22,6 +23,8 @@ import {
   hostImport,
   isSameOriginBundleUrl,
 } from "./DynamicViewLoader";
+import { sandboxStorageKey } from "./SandboxedViewFrame";
+import { SANDBOXED_VIEW_CHANNEL } from "./sandboxed-view-broker";
 
 describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
   it("accepts same-origin and root-relative /api/views bundle URLs", () => {
@@ -105,6 +108,35 @@ vi.mock("../../api", () => ({
   client: { sendWsMessage },
 }));
 
+function postFromSandboxFrame(
+  frameWindow: Window,
+  capability: string,
+  payload: unknown,
+  requestId: string,
+): void {
+  const event = new MessageEvent("message", {
+    data: {
+      channel: SANDBOXED_VIEW_CHANNEL,
+      kind: "request",
+      requestId,
+      capability,
+      payload,
+    },
+  });
+  Object.defineProperty(event, "source", { value: frameWindow });
+  window.dispatchEvent(event);
+}
+
+function lastSandboxResponse(postSpy: ReturnType<typeof vi.spyOn>) {
+  const calls = postSpy.mock.calls;
+  return calls[calls.length - 1]?.[0] as {
+    requestId: string;
+    ok: boolean;
+    result?: unknown;
+    error?: string;
+  };
+}
+
 describe("DynamicViewLoader", () => {
   beforeEach(() => {
     Object.defineProperty(HTMLElement.prototype, "innerText", {
@@ -148,6 +180,75 @@ describe("DynamicViewLoader", () => {
     expect(importBundle).not.toHaveBeenCalledWith(
       expect.stringContaining("/api/views/remote.panel/bundle.js"),
     );
+  });
+
+  it("loads sandboxed dynamic views through the frame URL and brokers frame requests", async () => {
+    const bundleUrl = "/api/views/sandboxed-panel/bundle.js?v=bundle";
+    const frameUrl = "/api/views/sandboxed-panel/frame.html?v=frame";
+    const importBundle = vi.fn();
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
+    window.localStorage.clear();
+    const navSpy = vi.fn();
+    window.addEventListener(NAVIGATE_VIEW_EVENT, navSpy);
+
+    render(
+      <DynamicViewLoader
+        bundleUrl={bundleUrl}
+        frameUrl={frameUrl}
+        viewId="sandboxed-panel"
+        surface={{
+          isolation: "sandboxed-iframe",
+          capabilities: ["navigate", "storage"],
+        }}
+      />,
+    );
+
+    const iframe = screen.getByTestId(
+      "sandboxed-view-frame-sandboxed-panel",
+    ) as HTMLIFrameElement;
+    expect(iframe.getAttribute("src")).toBe(frameUrl);
+    expect(iframe.getAttribute("src")).not.toBe(bundleUrl);
+    expect(importBundle).not.toHaveBeenCalled();
+
+    const frameWindow = iframe.contentWindow;
+    if (!frameWindow) throw new Error("iframe contentWindow missing in jsdom");
+    const postSpy = vi
+      .spyOn(frameWindow, "postMessage")
+      .mockImplementation(() => {});
+
+    postFromSandboxFrame(
+      frameWindow,
+      "storage",
+      { op: "set", key: "draft", value: "inside-frame" },
+      "req-store",
+    );
+    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(1));
+    expect(lastSandboxResponse(postSpy)).toMatchObject({
+      requestId: "req-store",
+      ok: true,
+    });
+    expect(
+      window.localStorage.getItem(
+        sandboxStorageKey("sandboxed-panel", "draft"),
+      ),
+    ).toBe("inside-frame");
+
+    postFromSandboxFrame(
+      frameWindow,
+      "navigate",
+      { viewId: "chat" },
+      "req-nav",
+    );
+    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(2));
+    expect(lastSandboxResponse(postSpy)).toMatchObject({
+      requestId: "req-nav",
+      ok: true,
+    });
+    await waitFor(() => expect(navSpy).toHaveBeenCalledTimes(1));
+    expect((navSpy.mock.calls[0][0] as CustomEvent).detail).toMatchObject({
+      viewId: "chat",
+    });
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, navSpy);
   });
 
   it("registers remote view interact handlers after the bundle loads", async () => {
