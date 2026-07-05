@@ -423,6 +423,45 @@ describe('EmbeddedWorkflowService', () => {
     }
   }, 90_000);
 
+  test('does not seed the default into an existing non-default workflow store', async () => {
+    const harness = await seedingHarness({ WORKFLOW_SEED_DEFAULTS: false });
+    const first = await harness.start();
+    await first.createWorkflow({
+      id: 'user-nightly-summary',
+      name: 'User nightly summary',
+      active: false,
+      nodes: [
+        {
+          id: 'manual',
+          name: 'Manual Trigger',
+          type: 'workflows-nodes-base.manualTrigger',
+          typeVersion: 1,
+          position: [0, 0],
+          parameters: {},
+        },
+      ],
+      connections: {},
+    });
+    await first.stop();
+    harness.setSetting('WORKFLOW_SEED_DEFAULTS', true);
+
+    const second = await harness.start();
+    try {
+      const workflows = await second.listWorkflows();
+      expect(workflows.data.map((workflow) => workflow.id)).toEqual(['user-nightly-summary']);
+      expect(workflows.data.filter((workflow) => workflow.id === DEFAULT_WORKFLOW_ID)).toHaveLength(
+        0
+      );
+      expect(harness.tasks).toHaveLength(0);
+      expect(harness.cache.get(SEED_MARKER_KEY)).toMatchObject({
+        workflowId: DEFAULT_WORKFLOW_ID,
+      });
+    } finally {
+      await second.stop();
+      await harness.close();
+    }
+  }, 90_000);
+
   test('preserves a pre-marker deletion via the delete revision on upgrade', async () => {
     // Simulate an install upgraded from a pre-marker build where the user had
     // ALREADY deleted the default: seed, delete (leaving a `delete` revision),

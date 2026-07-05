@@ -2311,7 +2311,9 @@ export class EmbeddedWorkflowService extends Service {
    * default is never re-seeded — so a user who deletes it does NOT get a zombie
    * re-seed on the next restart. Seeding also stays a no-op when the default
    * row already exists (covers a pre-marker install that seeded under the old
-   * row-existence check).
+   * row-existence check). A non-empty workflow store also suppresses seeding:
+   * existing installs with user-created workflows are not a first run, even if
+   * the default row/marker is missing.
    */
   private async seedDefaultWorkflows(): Promise<void> {
     // Deletion-respecting gate. Three outcomes:
@@ -2329,23 +2331,21 @@ export class EmbeddedWorkflowService extends Service {
     const rows = await this.getDb()
       .select({ id: embeddedWorkflows.id })
       .from(embeddedWorkflows)
-      .where(eq(embeddedWorkflows.id, DEVICE_HEALTH_CHECK_WORKFLOW_ID))
       .limit(1);
-    // Pre-marker install that already has the row (upgraded from a build that
-    // seeded under the old row-existence-only check): backfill the marker so
+    // Pre-marker install that already has workflows: backfill the marker so
     // future boots take the fast path and the deletion-respecting guard is
-    // active. We do NOT roll back this row on a marker-write failure — it is a
-    // legitimate existing workflow the user may rely on, not one we just
-    // created. Instead, if the marker cannot be persisted we log and retry the
-    // backfill on every subsequent boot until it sticks; the marker-less window
-    // is unavoidable for a row that predates the marker, and re-seeding is
-    // still bounded because the row itself keeps existing.
+    // active. We do NOT roll back or alter these rows on a marker-write
+    // failure — they are legitimate existing workflows the user may rely on,
+    // not rows we just created. Instead, if the marker cannot be persisted we
+    // log and retry the backfill on every subsequent boot until it sticks; the
+    // marker-less window is unavoidable for rows that predate the marker, and
+    // seeding is still bounded because the non-empty store keeps existing.
     if (rows.length > 0) {
       const backfilled = await this.markDefaultWorkflowsSeeded();
       if (!backfilled) {
         logger.warn(
           { src: 'plugin:workflow:embedded' },
-          'Could not backfill default-workflow seed marker for an existing default row; will retry next boot'
+          'Could not backfill default-workflow seed marker for an existing workflow store; will retry next boot'
         );
       }
       return;
