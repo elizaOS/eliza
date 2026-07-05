@@ -6,9 +6,8 @@
  *   PATCH /api/v1/user        (name)
  *   PATCH /api/v1/user/email  (add email)
  *
- * Follow-up: this still uses `window.location.reload()` after a successful
- * mutation rather than react-query invalidation — ported as-is to preserve
- * behavior; convert when the page is reshaped into a settings section.
+ * Successful mutations reload the page so every shell/profile consumer observes
+ * the updated identity without depending on cross-section query invalidation.
  */
 
 import { Loader2, Mail, Shield, User } from "lucide-react";

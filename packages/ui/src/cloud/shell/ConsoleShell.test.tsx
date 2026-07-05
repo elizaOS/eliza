@@ -6,7 +6,13 @@
  * calls `useSetPageHeader` gets its title surfaced in the top bar.
  */
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -19,7 +25,13 @@ const sessionState = {
   } | null,
 };
 let storedToken = false;
+const stewardSessionMock = vi.hoisted(() => ({
+  clearStewardSession: vi.fn(),
+  clearStoredStewardToken: vi.fn(),
+}));
 vi.mock("../lib/steward-session", () => ({
+  clearStewardSession: stewardSessionMock.clearStewardSession,
+  clearStoredStewardToken: stewardSessionMock.clearStoredStewardToken,
   hasHydratableStewardToken: () => storedToken,
 }));
 
@@ -93,6 +105,8 @@ describe("ConsoleShell", () => {
     sessionState.ready = true;
     sessionState.authenticated = true;
     storedToken = false;
+    stewardSessionMock.clearStewardSession.mockReset();
+    stewardSessionMock.clearStoredStewardToken.mockReset();
   });
 
   it("renders the sidebar directory, the page body, and the captured page title", () => {
@@ -159,6 +173,31 @@ describe("ConsoleShell", () => {
     expect(
       screen.getByRole("link", { name: /Account/i }).getAttribute("href"),
     ).toBe("/dashboard/account");
+  });
+
+  it("clears the stored Steward token when signing out from the header menu", async () => {
+    render(
+      <MemoryRouter initialEntries={["/dashboard"]}>
+        <Routes>
+          <Route path="/login" element={<div data-testid="login-page" />} />
+          <Route
+            path="*"
+            element={
+              <ConsoleShell>
+                <TitledPage />
+              </ConsoleShell>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /qa@e\.test/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /sign out/i }));
+
+    expect(stewardSessionMock.clearStoredStewardToken).toHaveBeenCalledTimes(1);
+    expect(stewardSessionMock.clearStewardSession).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByTestId("login-page")).toBeTruthy());
   });
 
   it("redirects to /login (returnTo preserved) when the session dies — never a fake-empty console (#13709)", () => {

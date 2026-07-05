@@ -41,6 +41,7 @@ import { useCreditsBalance } from "../instances/lib/data/credits";
 import { formatUsd } from "../lib/format-usd";
 import {
   clearStewardSession,
+  clearStoredStewardToken,
   hasHydratableStewardToken,
 } from "../lib/steward-session";
 import { useSessionAuth } from "../lib/use-session-auth";
@@ -154,6 +155,7 @@ function ConsoleUserMenu({
           <DropdownMenuItem
             className="text-red-400 focus:text-red-300"
             onSelect={() => {
+              clearStoredStewardToken();
               clearStewardSession();
               navigate("/login", { replace: true });
             }}
