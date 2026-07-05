@@ -31,7 +31,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
@@ -39,6 +39,8 @@ import {
   listDevices,
   resolveAdb,
 } from "./lib/android-device.mjs";
+import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
+import { resolveDeviceId } from "./ios-device-lib.mjs";
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const APP_DIR = resolve(dirname(SCRIPT_PATH), "..");
@@ -156,6 +158,188 @@ function runScript(rel, args, env = {}) {
 
 function lane(status, reason, extra = {}) {
   return { status, reason, ...extra };
+}
+
+/** devicectl live-connection states that mean the device is reachable for an
+ * on-device test run. `connected` is the normal tethered/tunnel-up value; some
+ * toolchain versions report `available`. Everything else (`disconnected`,
+ * `unavailable`, missing) is not connectable. */
+const CONNECTABLE_IOS_STATES = new Set(["connected", "available"]);
+
+/** Normalize a devicectl device record's live tunnel/connection state to a
+ * lowercase token (`"unknown"` when absent). Pure. */
+export function iosDeviceConnectionState(device) {
+  const raw = device?.connectionProperties?.tunnelState ?? "";
+  return String(raw).toLowerCase() || "unknown";
+}
+
+/** Human-readable "<name> [<state>]" label for a devicectl device record. Pure. */
+export function iosDeviceLabel(device) {
+  const name =
+    device?.deviceProperties?.name ||
+    device?.hardwareProperties?.udid ||
+    device?.identifier ||
+    "(unnamed)";
+  return `${name} [${iosDeviceConnectionState(device)}]`;
+}
+
+/**
+ * Pure detection: choose a connectable physical iOS device out of a
+ * `xcrun devicectl list devices --json-output` payload, honoring an optional
+ * requested identifier (`--ios-device` / `ELIZA_IOS_DEVICE_ID`, matched on the
+ * devicectl identifier, hardware UDID, or device name — same keys as
+ * `findDeviceRecord`).
+ *
+ * This replaces the old hardcoded-`n/a` iOS-device lane: the branching that
+ * decides "run the real capture" vs "record an honest n/a with the reason
+ * derived from the actual probe output" is pure and unit-testable here; only
+ * the surrounding {@link captureIosDevice} performs I/O.
+ *
+ * @param {{ result?: { devices?: Array<Record<string, any>> } }} payload
+ * @param {{ requestedId?: string | null }} [options]
+ * @returns {{ device: object | null, reason: string | null, listing: string }}
+ */
+export function selectIosDevice(payload, { requestedId = null } = {}) {
+  const devices = payload?.result?.devices ?? [];
+  const listing = devices.length
+    ? devices.map(iosDeviceLabel).join(", ")
+    : "(none)";
+  if (!devices.length) {
+    return {
+      device: null,
+      reason:
+        "xcrun devicectl list devices reported no paired devices (tether + trust an iPhone first)",
+      listing,
+    };
+  }
+  if (requestedId) {
+    const wanted = requestedId.trim().toLowerCase();
+    const match = devices.find((d) => {
+      const id = String(d?.identifier ?? "").toLowerCase();
+      const udid = String(d?.hardwareProperties?.udid ?? "").toLowerCase();
+      const name = String(d?.deviceProperties?.name ?? "").toLowerCase();
+      return id === wanted || udid === wanted || (name && name === wanted);
+    });
+    if (!match) {
+      return {
+        device: null,
+        reason: `requested iOS device "${requestedId}" not present in devicectl listing (${listing})`,
+        listing,
+      };
+    }
+    if (!CONNECTABLE_IOS_STATES.has(iosDeviceConnectionState(match))) {
+      return {
+        device: null,
+        reason: `requested iOS device "${requestedId}" is not connected (devicectl state: ${iosDeviceConnectionState(match)})`,
+        listing,
+      };
+    }
+    return { device: match, reason: null, listing };
+  }
+  const connectable = devices.find((d) =>
+    CONNECTABLE_IOS_STATES.has(iosDeviceConnectionState(d)),
+  );
+  if (!connectable) {
+    return {
+      device: null,
+      reason: `no connected iOS device on this host (devicectl listing: ${listing})`,
+      listing,
+    };
+  }
+  return { device: connectable, reason: null, listing };
+}
+
+/** Path of the signed, staged device app produced by `ios:device:deploy`
+ * (`ios-device-deploy.mjs` stages to `ios/build/device-deploy-stage/App.app`). */
+const STAGED_DEVICE_APP = join(
+  APP_DIR,
+  "ios",
+  "build",
+  "device-deploy-stage",
+  "App.app",
+);
+
+/**
+ * iOS physical-device walkthrough lane. Mirrors the Android device leg:
+ * detect → preflight the rebuild-before-capture artifact → invoke the proven
+ * on-device capture pipeline; record an honest `captured`/`error`/`n/a`.
+ *
+ * I/O is injectable so the detect/preflight branching is unit-testable without
+ * a tethered device:
+ *   - `onDarwin`        gate (devicectl is macOS-only)
+ *   - `readDeviceList`  → devicectl JSON payload (defaults to the real probe)
+ *   - `stagedAppExists` → staged-app preflight predicate
+ *   - `run`            → per-platform capture script runner
+ */
+export function captureIosDevice({ iosDevice, deps = {} } = {}) {
+  const {
+    onDarwin = process.platform === "darwin",
+    readDeviceList = readDevicectlDeviceList,
+    stagedApp = STAGED_DEVICE_APP,
+    stagedAppExists = (p) => existsSync(p),
+    run = runScript,
+  } = deps;
+
+  if (!onDarwin) {
+    return lane(
+      "n/a",
+      "iOS physical-device capture requires macOS + Xcode devicectl; host is not darwin",
+    );
+  }
+
+  let payload;
+  try {
+    payload = readDeviceList();
+  } catch (error) {
+    return lane(
+      "n/a",
+      `xcrun devicectl list devices failed (Xcode command-line tools/devicectl unavailable): ${error.message}`,
+    );
+  }
+
+  const requestedId = resolveDeviceId({ flagValue: iosDevice ?? null });
+  const { device, reason } = selectIosDevice(payload, { requestedId });
+  if (!device) return lane("n/a", reason);
+
+  const identifier = String(device?.identifier ?? "");
+  const udid = String(device?.hardwareProperties?.udid ?? "");
+  const name = String(device?.deviceProperties?.name ?? "");
+  const deviceKey = identifier || udid;
+
+  if (!stagedAppExists(stagedApp)) {
+    return lane(
+      "n/a",
+      `iPhone "${name || deviceKey}" is connected, but no signed staged app at ${stagedApp} — run \`bun run --cwd packages/app ios:device:deploy\` first (rebuild-before-capture rule; capturing a stale install proves nothing)`,
+      { device: deviceKey },
+    );
+  }
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const outputDir = join(
+    APP_DIR,
+    "ios",
+    "build",
+    "boot-capture",
+    `walkthrough-ios-device-${stamp}`,
+  );
+  const code = run("ios-device-capture.mjs", [
+    "--platform",
+    "device",
+    "--device",
+    deviceKey,
+    "--skip-build",
+    "--app-path",
+    stagedApp,
+    "--output",
+    outputDir,
+  ]);
+  return lane(code === 0 ? "captured" : "error", null, {
+    outputDir,
+    note: "On-device XCUITest capture (boot + walkthrough suites) against the signed staged app via ios-device-capture.mjs --platform device; WKWebView has no CDP, so the in-app narrative parity runs through the committed AppUITests/BootCaptureUITests harness. See DEVICE_MATRIX.md.",
+    device: deviceKey,
+    deviceName: name || null,
+    appPath: stagedApp,
+  });
 }
 
 function captureIos({ duration }) {
@@ -312,10 +496,7 @@ async function main() {
   if (want("ios") || args.platform === "all")
     matrix["ios-simulator"] = captureIos({ duration: args.duration });
   if (args.platform === "device")
-    matrix["ios-device"] = lane(
-      "n/a",
-      "iOS physical-device capture requires a tethered, provisioned device + `bun run --cwd packages/app install:ios:sideload`; none detected on this host",
-    );
+    matrix["ios-device"] = captureIosDevice({ iosDevice: args.iosDevice });
   if (want("android") || args.platform === "all")
     matrix["android-emulator"] = await captureAndroid({
       serial: args.serial,
