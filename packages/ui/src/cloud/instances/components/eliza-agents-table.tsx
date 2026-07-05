@@ -176,6 +176,29 @@ export function mergeAgentList(
   return [...updated, ...added];
 }
 
+/**
+ * Merge a background API refresh while retiring explicit-delete tombstones only
+ * AFTER that refresh has used them to filter the existing local rows. The order
+ * matters: the first API response that omits a deleted id is also the response
+ * that should remove the local row, not resurrect it by clearing the tombstone
+ * too early.
+ */
+export function mergeAgentListAndRetireTombstones(
+  prev: ElizaAgentRow[],
+  apiAgents: SandboxListAgent[],
+  tombstoned: Set<string>,
+): ElizaAgentRow[] {
+  const tombstonesForThisMerge = new Set(tombstoned);
+  const merged = mergeAgentList(prev, apiAgents, tombstonesForThisMerge);
+
+  const apiIds = new Set(apiAgents.map((a) => a.id));
+  for (const id of tombstoned) {
+    if (!apiIds.has(id)) tombstoned.delete(id);
+  }
+
+  return merged;
+}
+
 function isDockerBacked(sb: ElizaAgentRow): boolean {
   return !!sb.node_id || sb.execution_tier === "custom" || !!sb.docker_image;
 }
@@ -316,14 +339,8 @@ export function ElizaAgentsTable({
   }, [initialSandboxes, withoutDeleted]);
 
   const mergeApiData = useCallback((apiAgents: SandboxListAgent[]) => {
-    // Retire tombstones the API has stopped returning, so a future agent
-    // reusing that id isn't silently hidden.
-    const apiIds = new Set(apiAgents.map((a) => a.id));
-    for (const id of deletedIdsRef.current) {
-      if (!apiIds.has(id)) deletedIdsRef.current.delete(id);
-    }
     setLocalSandboxes((prev) =>
-      mergeAgentList(prev, apiAgents, deletedIdsRef.current),
+      mergeAgentListAndRetireTombstones(prev, apiAgents, deletedIdsRef.current),
     );
   }, []);
 

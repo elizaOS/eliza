@@ -6,7 +6,11 @@
 
 import { describe, expect, it } from "vitest";
 import type { SandboxListAgent } from "../lib/use-sandbox-status-poll";
-import { type ElizaAgentRow, mergeAgentList } from "./eliza-agents-table";
+import {
+  type ElizaAgentRow,
+  mergeAgentList,
+  mergeAgentListAndRetireTombstones,
+} from "./eliza-agents-table";
 
 function row(id: string, status: string): ElizaAgentRow {
   return {
@@ -70,5 +74,19 @@ describe("mergeAgentList", () => {
       tombstoned,
     );
     expect(merged.map((r) => r.id)).toEqual(["a"]);
+  });
+
+  it("drops a deleted local row on the API response that retires its tombstone", () => {
+    const prev = [row("a", "running"), row("b", "running")];
+    const tombstoned = new Set(["b"]);
+
+    const merged = mergeAgentListAndRetireTombstones(
+      prev,
+      [apiAgent("a", "running")],
+      tombstoned,
+    );
+
+    expect(merged.map((r) => r.id)).toEqual(["a"]);
+    expect(tombstoned.has("b")).toBe(false);
   });
 });
