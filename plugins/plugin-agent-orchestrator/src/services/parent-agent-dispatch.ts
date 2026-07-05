@@ -2,18 +2,19 @@
  * Child → parent `USE_SKILL parent-agent` dispatcher.
  *
  * A spawned coding agent (driven over ACP) cannot run account-bound Eliza Cloud
- * commands itself. The `build-monetized-app` skill and the SKILLS.md written for
- * economics tasks tell it to emit `USE_SKILL parent-agent <json>` in its output
- * instead. This module is the production caller the economics runbook
- * (`docs/economics-goal-runbook.md`) identified as missing: it detects that
- * directive in the child's streamed text, bridges it to `runParentAgentBroker`,
- * and sends the broker's reply back into the child session so the loop
- * continues (read cloud commands, self-authorize spend within the cap, etc.).
+ * commands or the parent's loaded actions itself. The sub-agent operating manual
+ * (`sub-agent-identity.ts`), the `build-monetized-app` skill, and the SKILLS.md
+ * scaffolded into a spawn's workdir all tell it to emit
+ * `USE_SKILL parent-agent <json>` in its output instead. This module is the
+ * production caller the economics runbook (`docs/economics-goal-runbook.md`)
+ * identified as missing: it detects that directive in the child's streamed text,
+ * bridges it to `runParentAgentBroker`, and sends the broker's reply back into
+ * the child session so the loop continues (read cloud commands, self-authorize
+ * spend within the cap, etc.).
  *
  * The detection is intentionally narrow — it only acts on text containing the
- * literal `USE_SKILL parent-agent` marker, which ordinary coding tasks never
- * emit, so wiring it into the session-event hot path is inert for every other
- * flow.
+ * literal `USE_SKILL parent-agent` marker, so wiring it into the session-event
+ * hot path stays inert for any session whose agent never emits it.
  *
  * @module services/parent-agent-dispatch
  */

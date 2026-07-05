@@ -23,7 +23,11 @@ const IDENTITY_FILENAMES = ["AGENTS.md", "CLAUDE.md"] as const;
  * chase a possibly-stale skill file to know it is non-interactive. Bridge facts
  * are stated accurately: `memory` is global semantic search (not the originating
  * room's recent messages), `parent-context` does not expose the original task,
- * and the endpoints only work when `PARALLAX_SESSION_ID` is wired.
+ * and the read-only/credential endpoints only work when `PARALLAX_SESSION_ID` is
+ * wired. The parent-agent broker (`USE_SKILL parent-agent <json>`) is documented
+ * for every profile because `SubAgentRouter` intercepts that directive on every
+ * session, not only economics tasks — the manual is the one place a default
+ * coding spawn learns the bridge exists.
  */
 export const SUB_AGENT_IDENTITY_MD = `# Eliza coding sub-agent — operating manual
 
@@ -76,6 +80,45 @@ state, but only when the bridge is wired (env var \`PARALLAX_SESSION_ID\` set):
 - \`.../memory?q=<query>&limit=<N>\` → GLOBAL semantic search over the parent's
   memory (facts, messages, knowledge) — not the originating room's recency.
 - \`.../active-workspaces\` → sibling sub-agents.
+
+## Asking the parent agent to act (parent-agent broker)
+
+The parent Eliza agent runs with its own loaded capabilities — actions,
+providers, connectors, a human-confirmation flow, and Eliza Cloud commands. When
+your workspace context is not enough and the task needs one of those, ask the
+parent to do it by emitting a single line of the form:
+
+    USE_SKILL parent-agent <json>
+
+The orchestrator intercepts that line in your output, runs the request against
+the running parent, and streams the reply back to you. This bridge is live for
+EVERY spawned session — not just app-building tasks — so an ordinary coding task
+that needs, say, a calendar lookup or a repo's connector can use it too. The
+\`mode\` field selects the operation (default \`ask\`):
+
+- \`{"request":"Find the next free 30-minute slot on my calendar"}\` — free-form
+  request the parent fulfils with its own actions/providers.
+- \`{"mode":"list-actions","query":"github"}\` — enumerate the parent's loaded
+  actions (optional \`query\` filter).
+- \`{"mode":"list-cloud-commands"}\` — list the Eliza Cloud commands the parent
+  can run.
+- \`{"mode":"cloud-command","command":"apps.list"}\` — run ONE Cloud command.
+  Available surfaces include apps (\`apps.create\`, \`apps.update\`,
+  \`apps.monetization.update\`, \`apps.charges.*\`), container deploys
+  (\`containers.create\`, \`containers.quota\`), domains (\`domains.search\`,
+  \`domains.check\`, \`domains.buy\`, \`domains.attach\`), payments
+  (\`x402.requests.*\`), and balances (\`credits.*\`, \`redemptions.*\`).
+- \`{"mode":"spawn-sub-agent","task":"<instruction>","label":"<optional>"}\` —
+  delegate part of your work to a new parallel child on this same task (bounded
+  nesting depth); keep working, do not block waiting on it.
+
+Mutating, paid, or destructive Cloud commands require an explicit human "yes" on
+a follow-up turn — you cannot self-approve them. Read-only commands and
+fixed-cost self-spend commands (e.g. \`containers.create\`) may run within the
+parent's configured spend cap; variable-cost ones (e.g. \`domains.buy\`) always
+need human confirmation. If a \`SKILLS.md\` was scaffolded into your workspace it
+lists the parent's installed skills and this broker, but you do not need it to
+use the broker.
 
 ## Requesting a missing credential
 
