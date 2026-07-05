@@ -104,3 +104,74 @@ export async function gcOrphanedWorkspaces(
     );
   }
 }
+
+/**
+ * True only for an isolated per-session scratch dir the AcpService itself
+ * created: `spawnSession` names an isolated workdir exactly `task-<sessionId>`
+ * (`computeSessionWorkdir` with isolate=true) as a DIRECT child of a scratch
+ * root. A cwd self-checkout, or a route/convention/explicit workdir, never
+ * carries this basename — so this can never authorize removing a user's repo or
+ * the runtime's own checkout. `sessionId` is an unguessable UUID, making the
+ * basename match a strong ownership proof; the root check is defense in depth.
+ */
+export function isIsolatedScratchDir(
+  workdir: string,
+  sessionId: string,
+  scratchRoots: readonly string[],
+): boolean {
+  const resolved = path.resolve(workdir);
+  if (resolved === path.resolve(process.cwd())) return false;
+  if (path.basename(resolved) !== `task-${sessionId}`) return false;
+  const parent = path.dirname(resolved);
+  return scratchRoots.some((root) => path.resolve(root) === parent);
+}
+
+/**
+ * Reclaim per-session `task-<id>` scratch dirs left behind when a SIGKILL hit
+ * mid-teardown so the terminal-event removal never ran. Scans each scratch root
+ * and removes every `task-<id>` child whose id is not currently live; a
+ * non-`task-` entry is never considered, so a configured root that also holds
+ * real project checkouts is safe. Returns the number of dirs reclaimed.
+ */
+export async function reclaimOrphanedScratchDirs(
+  scratchRoots: readonly string[],
+  isLiveSessionId: (id: string) => boolean,
+  log: (msg: string) => void,
+): Promise<number> {
+  const prefix = "task-";
+  let removed = 0;
+  const scanned = new Set<string>();
+  for (const root of scratchRoots) {
+    const resolvedRoot = path.resolve(root);
+    if (scanned.has(resolvedRoot)) continue;
+    scanned.add(resolvedRoot);
+
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(resolvedRoot, {
+        withFileTypes: true,
+      });
+    } catch {
+      // error-policy:J4 root absent (readdir failed) → nothing to reclaim; designed no-op
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !entry.name.startsWith(prefix)) continue;
+      const id = entry.name.slice(prefix.length);
+      if (id.length === 0 || isLiveSessionId(id)) continue;
+      const dir = path.join(resolvedRoot, entry.name);
+      // Re-validate through the same ownership guard the teardown path uses.
+      if (!isIsolatedScratchDir(dir, id, [resolvedRoot])) continue;
+      try {
+        await fs.promises.rm(dir, { recursive: true, force: true });
+        removed++;
+        log(`Startup scratch GC: reclaimed orphaned session dir ${dir}`);
+      } catch (err) {
+        // error-policy:J6 best-effort orphan reclaim; per-dir rm failure is logged and skipped so the scan continues
+        log(`Startup scratch GC: failed to remove ${dir}: ${err}`);
+      }
+    }
+  }
+  return removed;
+}

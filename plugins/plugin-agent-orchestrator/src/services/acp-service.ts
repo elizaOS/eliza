@@ -19,7 +19,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, stat, unlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE as CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
   type IAgentRuntime,
@@ -87,6 +87,11 @@ import {
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
 import { captureBaselineDirty, captureBaselineSha } from "./workspace-diff.js";
+import {
+  isIsolatedScratchDir,
+  reclaimOrphanedScratchDirs,
+  removeScratchDir,
+} from "./workspace-lifecycle.js";
 
 type RuntimeLike = IAgentRuntime & {
   logger?: Partial<
@@ -376,6 +381,7 @@ export class AcpService extends Service {
     await this.reconcileOrphanedSessions();
     await this.cleanReverseOrphanedAcpxFiles();
     await this.cleanStaleLocks();
+    await this.gcOrphanedScratchDirs();
     this.healthCheckTimer = setInterval(() => {
       void this.runHealthCheck();
     }, ACP_HEALTH_CHECK_INTERVAL_MS);
@@ -692,6 +698,88 @@ export class AcpService extends Service {
 
   private async hasAcpxSessionState(acpxSessionId: string): Promise<boolean> {
     return (await this.acpxSessionStateStat(acpxSessionId)).exists;
+  }
+
+  // The roots under which spawnSession may place a per-session `task-<id>`
+  // scratch dir. Kept in exact lockstep with where spawns actually land: the
+  // DIRECT-caller precedence (ELIZA_ACP_WORKSPACE_ROOT ?? ACPX_DEFAULT_CWD ??
+  // DEFAULT_WORKDIR_ROOT) plus the extra roots the orchestrated resolver
+  // (resolveDefaultSpawnWorkdir) may land on. DEFAULT_WORKDIR_ROOT is included
+  // ONLY when neither of the two DIRECT-caller keys is set — otherwise spawns
+  // never fall back to it, and scanning it would let an empty store reclaim
+  // another live orchestrator's scratch dirs. A workdir is only ever reclaimable
+  // when it is a DIRECT `task-<id>` child of one of these — never a cwd
+  // self-checkout or a caller-chosen repo.
+  private acpScratchRoots(): string[] {
+    const acpRoot = this.setting("ELIZA_ACP_WORKSPACE_ROOT")?.trim();
+    const acpxCwd = this.setting("ACPX_DEFAULT_CWD")?.trim();
+    const roots = [
+      acpRoot,
+      acpxCwd,
+      this.setting("ELIZA_WORKSPACE_DIR")?.trim(),
+      this.setting("ELIZA_CODING_WORKSPACE")?.trim(),
+      this.setting("ELIZA_CODING_DIRECTORY")?.trim(),
+    ].filter((value): value is string => Boolean(value));
+    if (!acpRoot && !acpxCwd) roots.push(DEFAULT_WORKDIR_ROOT);
+    return roots;
+  }
+
+  // Remove a terminal session's isolated scratch dir. spawnSession mkdirs a
+  // fresh `<scratchRoot>/task-<id>` for every isolated spawn and nothing ever
+  // reclaimed it, so each completed sub-agent leaked its scratch tree forever
+  // (issue #13773). Guarded twice: isIsolatedScratchDir proves the dir is this
+  // service's own per-session dir, and removeScratchDir re-checks it sits under
+  // the root. A non-isolated workdir (self-checkout / explicit dir) is a no-op.
+  private async reclaimSessionScratchDir(session: SessionInfo): Promise<void> {
+    if (!session.workdir) return;
+    if (
+      !isIsolatedScratchDir(session.workdir, session.id, this.acpScratchRoots())
+    ) {
+      return;
+    }
+    await removeScratchDir(
+      session.workdir,
+      dirname(resolve(session.workdir)),
+      (msg) => this.log("debug", msg),
+    );
+  }
+
+  /**
+   * Reclaim per-session scratch dirs orphaned by a SIGKILL that hit mid-teardown
+   * (the terminal-event removal in reclaimSessionScratchDir never ran). Runs on
+   * service start after session reconciliation, so a session reconciled to a
+   * terminal status counts as non-live and its dir is reclaimed here. Only
+   * `task-<id>` dirs whose id is not a currently-live session are removed.
+   */
+  async gcOrphanedScratchDirs(): Promise<number> {
+    let liveIds: Set<string>;
+    try {
+      const sessions = await this.store.list();
+      liveIds = new Set(
+        sessions
+          .filter((s) => !TERMINAL_SESSION_STATUSES.has(s.status))
+          .map((s) => s.id),
+      );
+    } catch (err) {
+      // error-policy:J7 store read failed; skip this GC pass rather than risk
+      // treating a live session's dir as orphaned. Next startup retries.
+      this.runtime.reportError("AcpService.gcOrphanedScratchDirs", err, {
+        phase: "store.list",
+      });
+      this.log("warn", "scratch GC skipped: store read failed", { err });
+      return 0;
+    }
+    const removed = await reclaimOrphanedScratchDirs(
+      this.acpScratchRoots(),
+      (id) => liveIds.has(id),
+      (msg) => this.log("info", msg),
+    );
+    if (removed > 0) {
+      this.log("info", "scratch GC reclaimed orphaned session dirs", {
+        removed,
+      });
+    }
+    return removed;
   }
 
   async spawnSession(opts: SpawnOptions): Promise<SpawnResult> {
@@ -1112,6 +1200,7 @@ export class AcpService extends Service {
           this.nativeStoppingSessionIds.delete(sessionId);
         }
       }
+      await this.reclaimSessionScratchDir(session);
       return;
     }
     await this.stopTrackedProcess(sessionId);
@@ -1137,6 +1226,7 @@ export class AcpService extends Service {
       sessionId,
       response: this.lastOutput(sessionId),
     });
+    await this.reclaimSessionScratchDir(session);
   }
 
   async deleteSession(sessionId: string): Promise<void> {
