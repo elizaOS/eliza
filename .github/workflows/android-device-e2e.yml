@@ -14,6 +14,18 @@ name: android-device-e2e
 # expected-to-surface) signal. For green route coverage on the emulator, supply
 # an Eliza Cloud token (ELIZA_CLOUD_AUTH_TOKEN secret) so the app onboards to a
 # real cloud agent.
+#
+# iOS onboarding-smoke parity (#13580): mobile-build-smoke.yml runs
+# ios-onboarding-smoke.mjs on every path-gated PR, but the Android
+# onboarding->home smoke (test:e2e:android:onboarding) is intentionally NOT
+# per-PR. The iOS smoke boots a simulator on a macOS runner cheaply; the
+# Android smoke needs a KVM-accelerated x86_64 emulator on a Linux runner,
+# which is too heavy to boot on every PR (issue #9943). Android
+# onboarding->home instead runs on three cadences: the label-gated
+# (ci:device) pr-device-smoke job below, the weekly host-backed schedule,
+# and workflow_dispatch -- so an onboarding regression is caught on a PR
+# opt-in or within one weekly cycle rather than never. This is the
+# documented divergence the parity checkbox in #13580 asks for.
 
 on:
   schedule:
