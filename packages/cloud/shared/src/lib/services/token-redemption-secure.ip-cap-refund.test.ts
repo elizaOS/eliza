@@ -64,9 +64,11 @@ mock.module("../../db/client", () => ({
   },
 }));
 
-const { SecureTokenRedemptionService, CorruptRedemptionLimitError } = await import(
-  "./token-redemption-secure"
-);
+const {
+  SecureTokenRedemptionService,
+  CorruptRedemptionLimitError,
+  REDEMPTION_ORIGIN_VERIFICATION_ERROR,
+} = await import("./token-redemption-secure");
 
 type IPRateCheck = (
   ipAddress: string,
@@ -149,6 +151,42 @@ describe("checkIPRateLimits — per-IP daily USD cap (fail-closed)", () => {
     executeResults = [{ rows: [{ count: "0" }] }, { rows: [{ count: "0", total_usd: "0" }] }];
     const result = await callCheckIPRateLimits(1000);
     expect(result.valid).toBe(true);
+  });
+});
+
+describe("createRedemption — trusted client IP gate (fail-closed)", () => {
+  test("REGRESSION: missing metadata ipAddress denies before DB limit reads", async () => {
+    const service = new SecureTokenRedemptionService();
+    const result = await service.createRedemption({
+      userId: "00000000-0000-4000-8000-000000142390",
+      pointsAmount: 100,
+      network: "base",
+      asset: "usdc",
+      payoutAddress: "0x0000000000000000000000000000000000000001",
+      metadata: { userAgent: "test" },
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: REDEMPTION_ORIGIN_VERIFICATION_ERROR,
+    });
+    expect(executeResults).toEqual([]);
+  });
+
+  test("REGRESSION: blank metadata ipAddress denies before DB limit reads", async () => {
+    const service = new SecureTokenRedemptionService();
+    const result = await service.createRedemption({
+      userId: "00000000-0000-4000-8000-000000142391",
+      pointsAmount: 100,
+      network: "base",
+      asset: "usdc",
+      payoutAddress: "0x0000000000000000000000000000000000000001",
+      metadata: { userAgent: "test", ipAddress: "   " },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe(REDEMPTION_ORIGIN_VERIFICATION_ERROR);
+    expect(executeResults).toEqual([]);
   });
 });
 
