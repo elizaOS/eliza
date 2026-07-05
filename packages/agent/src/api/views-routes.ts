@@ -10,6 +10,7 @@
  *   GET  /api/views/search?q=&limit=   — hybrid keyword+semantic ranked search (JSON)
  *   GET  /api/views/:id                — single view metadata (JSON)
  *   GET  /api/views/:id/bundle.js      — compiled view bundle (JS)
+ *   GET  /api/views/:id/frame.html     — sandboxed iframe document (HTML)
  *   GET  /api/views/:id/<asset>        — compiled bundle chunk/asset
  *   GET  /api/views/:id/hero           — hero image (image/*)
  *   POST /api/views/:id/navigate       — broadcast shell navigation event (JSON)
@@ -65,6 +66,7 @@ import {
   findHeroOnDisk,
   generateViewHeroSvg,
   getBundleDiskPath,
+  getFrameDiskPath,
   getView,
   listViews,
 } from "./views-registry.ts";
@@ -626,6 +628,79 @@ export async function handleViewsRoutes(
         raw.setHeader("X-Content-Hash", `sha256-${contentHash}`);
       }
     }
+    raw.end?.(method === "HEAD" ? undefined : data);
+    return true;
+  }
+
+  // ── GET/HEAD /api/views/:id/frame.html ───────────────────────────────────
+  if ((method === "GET" || method === "HEAD") && subResource === "frame.html") {
+    const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
+    const entry = getView(id, { viewType });
+    if (!entry) {
+      error(res, `View "${id}" not found`, 404);
+      return true;
+    }
+
+    const framePath = getFrameDiskPath(entry);
+    if (!framePath) {
+      error(res, `View "${id}" has no sandbox frame document configured.`, 404);
+      return true;
+    }
+
+    let stat: import("node:fs").Stats;
+    try {
+      stat = await fs.stat(framePath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        error(res, `Sandbox frame document not built for view "${id}".`, 404);
+      } else {
+        logger.error(
+          { src: "ViewsRoutes", viewId: id, framePath, err },
+          `[ViewsRoutes] Failed to stat sandbox frame for view "${id}"`,
+        );
+        error(res, `Failed to read sandbox frame for view "${id}"`, 500);
+      }
+      return true;
+    }
+
+    let data: Buffer;
+    try {
+      data = method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(framePath);
+    } catch (err) {
+      logger.error(
+        { src: "ViewsRoutes", viewId: id, framePath, err },
+        `[ViewsRoutes] Failed to read sandbox frame for view "${id}"`,
+      );
+      error(res, `Failed to read sandbox frame for view "${id}"`, 500);
+      return true;
+    }
+
+    const etagRaw = `${stat.mtimeMs}-${stat.size}`;
+    const etag = `"${createHash("sha256").update(etagRaw).digest("hex").slice(0, 16)}"`;
+    if (req.headers["if-none-match"] === etag) {
+      const raw304 = res as {
+        writeHead?: (status: number, headers: Record<string, string>) => void;
+        end?: () => void;
+      };
+      raw304.writeHead?.(304, {});
+      raw304.end?.();
+      return true;
+    }
+
+    const raw = res as {
+      writeHead?: (
+        status: number,
+        headers: Record<string, string | number>,
+      ) => void;
+      end?: (chunk?: unknown) => void;
+    };
+    raw.writeHead?.(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Length": stat.size,
+      "Cache-Control": "no-cache",
+      "X-Content-Type-Options": "nosniff",
+      ETag: etag,
+    });
     raw.end?.(method === "HEAD" ? undefined : data);
     return true;
   }

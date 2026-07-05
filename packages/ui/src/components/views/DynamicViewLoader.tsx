@@ -100,13 +100,13 @@ import { Button } from "../ui/button.tsx";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { Input } from "../ui/input.tsx";
 import { Spinner } from "../ui/spinner.tsx";
+import { SandboxedViewFrame } from "./SandboxedViewFrame";
 import {
   navigateToViews,
   ViewErrorState,
   ViewLoadingSkeleton,
   ViewRestrictedState,
 } from "./ViewStatusStates";
-import { SandboxedViewFrame } from "./SandboxedViewFrame";
 import { brokerViewInteract } from "./view-capability-broker";
 import { registerViewInteractHandler } from "./view-interact-registry";
 
@@ -1165,6 +1165,8 @@ async function handleStandardCapability(
 interface DynamicViewLoaderProps {
   /** The URL of the JS bundle to dynamically import. */
   bundleUrl: string;
+  /** HTML document URL for sandboxed-iframe views. */
+  frameUrl?: string;
   /** Named export inside the bundle to use as the root component. Defaults to "default". */
   componentExport?: string;
   /** The view's stable ID, used in error state messages. */
@@ -1196,6 +1198,7 @@ interface DynamicViewLoaderProps {
  */
 export const DynamicViewLoader = memo(function DynamicViewLoader({
   bundleUrl,
+  frameUrl,
   componentExport = "default",
   viewId,
   viewProps: forwardedViewProps,
@@ -1262,7 +1265,13 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
       cancelled = true;
       lease.release();
     };
-  }, [bundleUrl, componentExport, dynamicLoadingAllowed, isSandboxed, reloadKey]);
+  }, [
+    bundleUrl,
+    componentExport,
+    dynamicLoadingAllowed,
+    isSandboxed,
+    reloadKey,
+  ]);
 
   // Register this view's interact handler whenever the bundle is loaded.
   // The handler is unregistered on unmount or when the bundle changes.
@@ -1360,16 +1369,30 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     setReloadKey((k) => k + 1);
   }, [bundleUrl, componentExport]);
 
-  // A sandboxed-iframe view embeds cross-realm; its `bundleUrl` is the framed
-  // document entry, not a host-external JS bundle. Delegating here means untrusted
-  // web content never executes in the shell's realm (#14180).
+  // A sandboxed-iframe view embeds cross-realm through a real HTML document URL.
+  // Never feed the JS module `bundleUrl` to an iframe: `/api/views/:id/bundle.js`
+  // is served as JavaScript and is only valid for host-realm dynamic import.
   if (isSandboxed) {
+    if (!frameUrl) {
+      return (
+        <ViewErrorState
+          viewId={viewId}
+          error={
+            new Error(
+              "Sandboxed iframe views require a frameUrl HTML document; bundleUrl is a JavaScript module.",
+            )
+          }
+          onRetry={recoverView}
+          onBack={navigateToViews}
+        />
+      );
+    }
     return (
       <div ref={containerRef} className="contents">
         <SandboxedViewFrame
           viewId={viewId}
           surface={surface}
-          src={bundleUrl}
+          src={frameUrl}
           title={viewId}
         />
       </div>

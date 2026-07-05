@@ -19,6 +19,8 @@ export interface ViewRegistryEntry extends ViewDeclaration {
   pluginDir?: string;
   /** Resolved URL served by the agent: `/api/views/<id>/bundle.js`. */
   bundleUrl?: string;
+  /** Resolved sandbox document URL served by the agent: `/api/views/<id>/frame.html`. */
+  frameUrl?: string;
   /** Resolved URL served by the agent: `/api/views/<id>/hero`. */
   heroImageUrl?: string;
   /**

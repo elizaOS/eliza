@@ -188,6 +188,18 @@ export function getBundleDiskPath(entry: ViewRegistryEntry): string | null {
 }
 
 /**
+ * Resolve the absolute on-disk path for a sandbox frame HTML document.
+ * Returns `null` when the entry has no `framePath` or no `pluginDir`.
+ */
+export function getFrameDiskPath(entry: ViewRegistryEntry): string | null {
+  if (!entry.framePath || !entry.pluginDir) return null;
+  const resolved = path.resolve(entry.pluginDir, entry.framePath);
+  const packageRoot = `${path.resolve(entry.pluginDir)}${path.sep}`;
+  if (!resolved.startsWith(packageRoot)) return null;
+  return resolved;
+}
+
+/**
  * Resolve the absolute on-disk path for a hero image.
  * Returns `null` when the entry has no `heroImagePath` or no `pluginDir`.
  * This only handles declared paths; for extension-probing see `findHeroOnDisk`.
@@ -528,7 +540,7 @@ async function buildEntry(
   const registryKey = viewRegistryKey(view.id, normalizedViewType);
 
   // Check bundle availability and collect hash + size when resolvable.
-  let available = Boolean(view.bundleUrl);
+  let available = Boolean(view.bundleUrl || view.frameUrl);
   let bundleHash: string | undefined;
   let bundleSize: number | undefined;
   if (!view.bundleUrl && pluginDir && view.bundlePath) {
@@ -570,12 +582,19 @@ async function buildEntry(
       }
     }
   }
+  if (!available && !view.frameUrl && pluginDir && view.framePath) {
+    const frameAbs = path.resolve(pluginDir, view.framePath);
+    const packageRoot = `${path.resolve(pluginDir)}${path.sep}`;
+    if (frameAbs.startsWith(packageRoot)) {
+      available = await fileExists(frameAbs);
+    }
+  }
 
   const encodedId = encodeURIComponent(view.id);
   // bundleUrl uses a timestamp ?v= param for backwards-compat; bundleUrlVersioned
   // uses the content hash when available (allows immutable long-lived caching).
   const buildAssetUrl = (
-    asset: "bundle.js" | "hero",
+    asset: "bundle.js" | "frame.html" | "hero",
     version?: number | string,
   ): string => {
     const params = new URLSearchParams();
@@ -599,6 +618,11 @@ async function buildEntry(
     : view.bundlePath && bundleHash
       ? buildAssetUrl("bundle.js", bundleHash)
       : bundleUrl;
+  const frameUrl = view.frameUrl
+    ? view.frameUrl
+    : view.framePath
+      ? buildAssetUrl("frame.html", loadedAt)
+      : undefined;
 
   const heroImageUrl = buildAssetUrl("hero");
   // Probe for a real hero asset so the client can choose a photo vs. its icon.
@@ -622,6 +646,7 @@ async function buildEntry(
     pluginDir,
     bundleUrl,
     bundleUrlVersioned,
+    frameUrl,
     heroImageUrl,
     hasHeroImage,
     available,

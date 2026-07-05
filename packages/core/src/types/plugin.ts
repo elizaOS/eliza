@@ -1000,6 +1000,17 @@ export interface ViewDeclaration {
 	 * the code is served by a sandbox/container rather than the agent process.
 	 */
 	bundleUrl?: string;
+	/**
+	 * Path from the plugin's package root to a sandbox frame HTML document.
+	 * Required for `surface.isolation: "sandboxed-iframe"` local plugin views;
+	 * the registry resolves this to `/api/views/<id>/frame.html`.
+	 */
+	framePath?: string;
+	/**
+	 * Fully resolved sandbox frame document URL for remote/containerized views.
+	 * This is an HTML document URL, not a JavaScript bundle URL.
+	 */
+	frameUrl?: string;
 	/** Capabilities the agent can exercise on this view when it is mounted. */
 	capabilities?: ViewCapability[];
 	/**

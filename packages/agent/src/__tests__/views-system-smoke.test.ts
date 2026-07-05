@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   generateViewHeroSvg,
   getBundleDiskPath,
+  getFrameDiskPath,
   getView,
   listViews,
   registerPluginViews,
@@ -297,6 +298,62 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
     );
     expect(view?.heroImageUrl).toBe("/api/views/smoke.main/hero");
   });
+
+  it("GET /api/views response includes frameUrl for sandboxed iframe views with framePath", async () => {
+    const pluginDir = await mkdtemp(path.join(os.tmpdir(), "eliza-frame-"));
+    try {
+      await mkdir(path.join(pluginDir, "dist", "views"), { recursive: true });
+      await writeFile(
+        path.join(pluginDir, "dist", "views", "frame.html"),
+        "<!doctype html><title>Sandbox smoke</title>",
+      );
+
+      await registerPluginViews(
+        {
+          name: SMOKE_PLUGIN,
+          description: "smoke plugin",
+          actions: [],
+          views: [
+            {
+              ...SMOKE_VIEW,
+              bundlePath: undefined,
+              framePath: "dist/views/frame.html",
+              surface: { isolation: "sandboxed-iframe" },
+            },
+          ],
+        },
+        pluginDir,
+      );
+
+      const { ctx, json } = makeCtx("GET", "/api/views");
+      await handleViewsRoutes(ctx);
+
+      const [, body] = json.mock.calls[0] as [
+        unknown,
+        {
+          views: {
+            id: string;
+            bundleUrl?: string;
+            frameUrl?: string;
+            available: boolean;
+          }[];
+        },
+      ];
+      const view = body.views.find((v) => v.id === "smoke.main");
+      expect(view?.bundleUrl).toBeUndefined();
+      expect(view?.frameUrl).toMatch(
+        /^\/api\/views\/smoke\.main\/frame\.html\?v=\d+$/,
+      );
+      expect(view?.available).toBe(true);
+      const registryEntry = getView("smoke.main");
+      expect(registryEntry).toBeTruthy();
+      expect(registryEntry ? getFrameDiskPath(registryEntry) : null).toBe(
+        path.join(pluginDir, "dist", "views", "frame.html"),
+      );
+    } finally {
+      await rm(pluginDir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -437,6 +494,84 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
     } finally {
       await rm(pluginDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("stage 4b: GET /api/views/:id/frame.html serves sandbox frame documents", () => {
+  it("serves a configured sandbox frame document as HTML", async () => {
+    const pluginDir = await mkdtemp(path.join(os.tmpdir(), "eliza-frame-"));
+    try {
+      await mkdir(path.join(pluginDir, "dist", "views"), { recursive: true });
+      await writeFile(
+        path.join(pluginDir, "dist", "views", "frame.html"),
+        "<!doctype html><title>Sandbox smoke</title>",
+      );
+
+      await registerPluginViews(
+        {
+          name: SMOKE_PLUGIN,
+          description: "smoke plugin",
+          actions: [],
+          views: [
+            {
+              ...SMOKE_VIEW,
+              bundlePath: undefined,
+              framePath: "dist/views/frame.html",
+              surface: { isolation: "sandboxed-iframe" },
+            },
+          ],
+        },
+        pluginDir,
+      );
+
+      const res = {
+        writeHead: vi.fn(),
+        end: vi.fn(),
+      };
+      const { ctx } = makeCtx("GET", "/api/views/smoke.main/frame.html", {
+        res: res as unknown as http.ServerResponse,
+      });
+      const handled = await handleViewsRoutes(ctx);
+
+      expect(handled).toBe(true);
+      expect(res.writeHead).toHaveBeenCalledWith(
+        200,
+        expect.objectContaining({
+          "Content-Type": "text/html; charset=utf-8",
+          "X-Content-Type-Options": "nosniff",
+        }),
+      );
+      const served = res.end.mock.calls[0]?.[0];
+      expect(Buffer.isBuffer(served)).toBe(true);
+      expect(String(served)).toContain("<title>Sandbox smoke</title>");
+    } finally {
+      await rm(pluginDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not serve bundle.js as the sandbox frame document fallback", async () => {
+    await registerPluginViews(
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [SMOKE_VIEW],
+      },
+      undefined,
+    );
+
+    const { ctx, error } = makeCtx("GET", "/api/views/smoke.main/frame.html");
+    const handled = await handleViewsRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(error).toHaveBeenCalledOnce();
+    const [, message, status] = error.mock.calls[0] as [
+      unknown,
+      string,
+      number,
+    ];
+    expect(status).toBe(404);
+    expect(message).toContain("no sandbox frame document configured");
   });
 });
 

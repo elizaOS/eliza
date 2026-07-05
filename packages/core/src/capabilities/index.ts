@@ -246,6 +246,8 @@ export type RemotePluginViewManifest = {
 	backgroundPolicy?: RemotePluginBackgroundPolicy;
 	bundlePath?: string;
 	bundleUrl?: string;
+	framePath?: string;
+	frameUrl?: string;
 	contentType?: string;
 	integrity?: string;
 };
@@ -3413,11 +3415,19 @@ function requireRemotePluginView(
 	}
 	const bundlePath = optionalNonEmptyString(object, "bundlePath", method);
 	const bundleUrl = optionalNonEmptyString(object, "bundleUrl", method);
+	const framePath = optionalNonEmptyString(object, "framePath", method);
+	const frameUrl = optionalNonEmptyString(object, "frameUrl", method);
 	if (bundlePath !== undefined) {
 		validateRemotePluginAssetPath(bundlePath, "bundlePath", method);
 	}
 	if (bundleUrl !== undefined) {
 		validateRemotePluginBundleUrl(bundleUrl, "bundleUrl", method);
+	}
+	if (framePath !== undefined) {
+		validateRemotePluginAssetPath(framePath, "framePath", method);
+	}
+	if (frameUrl !== undefined) {
+		validateRemotePluginBrowserUrl(frameUrl, "frameUrl", method);
 	}
 	const backgroundPolicy = optionalBackgroundPolicy(
 		object,
@@ -3433,6 +3443,8 @@ function requireRemotePluginView(
 		...(backgroundPolicy === undefined ? {} : { backgroundPolicy }),
 		...(bundlePath === undefined ? {} : { bundlePath }),
 		...(bundleUrl === undefined ? {} : { bundleUrl }),
+		...(framePath === undefined ? {} : { framePath }),
+		...(frameUrl === undefined ? {} : { frameUrl }),
 		...(contentType === undefined ? {} : { contentType }),
 		...(integrity === undefined ? {} : { integrity }),
 	};
