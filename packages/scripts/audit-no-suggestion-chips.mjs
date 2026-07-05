@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 /**
- * audit-no-suggestion-chips.mjs — regression gate for the views doctrine
- * "the agent suggests in chat, the view stays quiet" (epic #13560, child
- * #13588). Once the in-view suggestion-chip surface is deleted, nothing may
- * reintroduce it. This gate fails CI when a banned surface reappears in tracked
- * source:
+ * Regression gate for the views doctrine "the agent suggests in chat, the view
+ * stays quiet" (epic #13560, child #13588). Once the in-view suggestion-chip
+ * surface is deleted, nothing may reintroduce it. This gate fails CI when a
+ * banned surface reappears in tracked source:
  *
  *   1. DELETED SYMBOLS — the `ChatEmptyStateWithRecommendations` component and
  *      the `useChatPrefill` chip hook were removed. Any reference (import, JSX,

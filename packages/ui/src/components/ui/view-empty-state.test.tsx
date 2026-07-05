@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
-// Real jsdom render of the designed-empty surface — asserts the #13588 contract
-// that a view's empty state carries a glyph + one terse line and NO tappable
-// suggestion chip or setup CTA (the agent suggests in chat, not the view).
+/**
+ * Real jsdom render of the designed-empty surface asserts the #13588 contract
+ * that a view's empty state carries a glyph plus one terse line and no tappable
+ * suggestion chip or setup CTA.
+ */
 
 import { render } from "@testing-library/react";
 import { LifeBuoy } from "lucide-react";
