@@ -374,3 +374,40 @@ jobs:
             packages/app/test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  # A nightly that is always red is indistinguishable from no lane: without an
+  # alert, nobody notices the desktop loop has no green unattended cadence and
+  # regressions accumulate silently (issue #13681). This job turns a red
+  # scheduled run into an actionable signal by commenting on the tracking issue
+  # with the per-job results and a link to the run. Scheduled runs only —
+  # manual workflow_dispatch runs stay quiet to avoid noise.
+  notify-on-failure:
+    name: notify on red nightly
+    needs: [app-live-chat, walkthrough-live, cloud-live, desktop-packaged]
+    if: ${{ always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    steps:
+      - name: Comment red-nightly diagnostic on tracking issue #13681
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          R_CHAT: ${{ needs.app-live-chat.result }}
+          R_WALK: ${{ needs.walkthrough-live.result }}
+          R_CLOUD: ${{ needs.cloud-live.result }}
+          R_DESKTOP: ${{ needs.desktop-packaged.result }}
+        run: |
+          set -euo pipefail
+          {
+            printf '## 🌙 Nightly App Live E2E failed (scheduled run)\n\n'
+            printf 'The only scheduled desktop-packaged lane went red. Per-job results:\n\n'
+            printf -- '- app live chat: `%s`\n' "$R_CHAT"
+            printf -- '- full walkthrough: `%s`\n' "$R_WALK"
+            printf -- '- cloud login+provision+chat: `%s`\n' "$R_CLOUD"
+            printf -- '- desktop packaged (build+boot+renderer): `%s`\n' "$R_DESKTOP"
+            printf '\nRun log + failure artifacts: %s\n\n' "$RUN_URL"
+            printf '_Auto-posted by app-live-e2e.yml so a red nightly notifies someone (Done-when, #13681)._\n'
+          } > "$RUNNER_TEMP/nightly-red.md"
+          gh issue comment 13681 --repo "$REPO" --body-file "$RUNNER_TEMP/nightly-red.md"
