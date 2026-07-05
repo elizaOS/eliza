@@ -43,6 +43,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { client, type RegistryAppInfo } from "../../../api";
@@ -451,69 +452,72 @@ function AppRunsWidget({
     };
   }, []);
 
+  const runsPollEnabled =
+    supportsFullAppShellRoutes(currentBaseUrl) && authenticated;
+  // The poll pushes appRuns into the global AppContext, which re-renders every
+  // useApp() consumer. Persist the last-seen run set across ticks so we only
+  // push when it actually changed and a steady poll doesn't bust the whole app.
+  // A ref (not effect-local state) because refreshRuns now outlives a single
+  // effect run — the visibility-gated interval re-subscribes on every
+  // foreground/background transition.
+  const lastAppRunsKeyRef = useRef("");
+
+  const refreshRuns = useCallback(async () => {
+    if (!runsPollEnabled) return;
+    try {
+      const nextRuns = await client.listAppRuns();
+      const nextRunsSafe = Array.isArray(nextRuns) ? nextRuns : [];
+      setError(null);
+      const nextKey = JSON.stringify(nextRunsSafe);
+      const changed = nextKey !== lastAppRunsKeyRef.current;
+      lastAppRunsKeyRef.current = nextKey;
+      startTransition(() => {
+        setRuns(nextRunsSafe);
+        if (changed) setState("appRuns", nextRunsSafe);
+      });
+    } catch (refreshError) {
+      // error-policy:J4 load failure renders the widget's error state
+      setError(
+        getClientErrorMessage(
+          refreshError,
+          t("agentorchestrator.loadRunsError", {
+            defaultValue: "Failed to load app runs.",
+          }),
+        ),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [runsPollEnabled, setState, t]);
+
   useEffect(() => {
-    if (!supportsFullAppShellRoutes(currentBaseUrl) || !authenticated) {
+    if (!runsPollEnabled) {
       // Idempotent reset: keep the previous reference when already empty. A
       // fresh `[]` here re-renders unconditionally, and because the update
       // rides a transition lane it dodges React's synchronous nested-update
       // guard — with any unstable dep this loops render→effect→render until
-      // the worker OOMs (the #11107 WidgetHost test crash).
+      // the worker OOMs (the #11107 WidgetHost test crash). Clear the change
+      // key too so the first fetch after re-auth always repopulates AppContext.
+      lastAppRunsKeyRef.current = "";
       startTransition(() => {
         setRuns((prev) => (prev.length === 0 ? prev : []));
         setState("appRuns", []);
       });
       setError(null);
       setLoading(false);
-      return undefined;
+      return;
     }
-
-    let cancelled = false;
-    // The 5s poll pushes appRuns into the global AppContext, which re-renders
-    // every useApp() consumer. Only push when the run set actually changed so a
-    // steady poll doesn't bust the whole app every 5 seconds.
-    let lastAppRunsKey = "";
-
-    const refreshRuns = async () => {
-      try {
-        const nextRuns = await client.listAppRuns();
-        const nextRunsSafe = Array.isArray(nextRuns) ? nextRuns : [];
-        if (cancelled) return;
-        setError(null);
-        const nextKey = JSON.stringify(nextRunsSafe);
-        const changed = nextKey !== lastAppRunsKey;
-        lastAppRunsKey = nextKey;
-        startTransition(() => {
-          setRuns(nextRunsSafe);
-          if (changed) setState("appRuns", nextRunsSafe);
-        });
-      } catch (refreshError) {
-        // error-policy:J4 load failure renders the widget's error state
-        if (cancelled) return;
-        setError(
-          getClientErrorMessage(
-            refreshError,
-            t("agentorchestrator.loadRunsError", {
-              defaultValue: "Failed to load app runs.",
-            }),
-          ),
-        );
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
     void refreshRuns();
-    const timer = setInterval(() => {
-      void refreshRuns();
-    }, 5_000);
+  }, [runsPollEnabled, refreshRuns, setState]);
 
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [authenticated, currentBaseUrl, setState, t]);
+  // Gate the recurring poll on document visibility so a backgrounded window
+  // stops waking the API (and the radio). 15s matches the sibling orchestrator
+  // widgets — no live-run progress requirement justifies a tighter cadence.
+  useIntervalWhenDocumentVisible(
+    () => void refreshRuns(),
+    15_000,
+    runsPollEnabled,
+  );
 
   if (shouldHideWidget) {
     return null;

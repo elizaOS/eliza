@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 //
 // AppRunsWidget polling gates: skips the app-run poll on limited cloud agent
-// bases and while unauthenticated, and starts once the session authenticates.
-// jsdom render with the API client + auth hook + app store mocked (no backend).
-import { cleanup, render, waitFor } from "@testing-library/react";
+// bases and while unauthenticated, starts once the session authenticates, and
+// (the #14346 gate) pauses the recurring poll while the tab is backgrounded and
+// resumes it on foreground. jsdom render with the API client + auth hook + app
+// store mocked (no backend); document.visibilityState is driven directly.
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -57,6 +59,14 @@ if (!AppRunsWidget) {
   throw new Error("agent-orchestrator.apps widget not registered");
 }
 
+function setVisibility(state: "visible" | "hidden") {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => state,
+  });
+  document.dispatchEvent(new Event("visibilitychange"));
+}
+
 beforeEach(() => {
   getBaseUrlMock.mockReset();
   getBaseUrlMock.mockReturnValue("http://localhost");
@@ -65,10 +75,13 @@ beforeEach(() => {
   mockState.setTab.mockClear();
   mockState.setState.mockClear();
   authMock.authenticated = true;
+  setVisibility("visible");
 });
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
+  setVisibility("visible");
 });
 
 describe("AppRunsWidget", () => {
@@ -110,5 +123,34 @@ describe("AppRunsWidget", () => {
     await waitFor(() => {
       expect(listAppRunsMock).toHaveBeenCalled();
     });
+  });
+
+  // #14346 — a backgrounded webview must stop waking the API. The recurring
+  // poll is gated on document visibility; the immediate first fetch still fires
+  // once on mount (that gate governs the interval, not the initial load).
+  it("does not poll while the document is hidden and resumes on foreground", async () => {
+    vi.useFakeTimers();
+
+    render(
+      <AppRunsWidget slot="chat-sidebar" events={[]} clearEvents={vi.fn()} />,
+    );
+    // Flush the mount effect's immediate fetch.
+    await act(async () => {});
+    expect(listAppRunsMock).toHaveBeenCalledTimes(1);
+
+    // Background the tab: advancing well past several 15s ticks yields no
+    // further requests — the interval is unsubscribed while hidden.
+    act(() => setVisibility("hidden"));
+    await act(async () => {
+      vi.advanceTimersByTime(15_000 * 3);
+    });
+    expect(listAppRunsMock).toHaveBeenCalledTimes(1);
+
+    // Foreground again: the poll resumes on the next tick.
+    act(() => setVisibility("visible"));
+    await act(async () => {
+      vi.advanceTimersByTime(15_000);
+    });
+    expect(listAppRunsMock).toHaveBeenCalledTimes(2);
   });
 });
