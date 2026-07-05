@@ -25,11 +25,8 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, type Route, test } from "@playwright/test";
-import {
-  installDefaultAppRoutes,
-  openAppPath,
-  seedAppStorage,
-} from "./helpers";
+import { installDefaultAppRoutes, openAppPath } from "./helpers";
+import { seedStewardSession } from "./helpers/test-auth";
 
 const EVIDENCE_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -39,28 +36,6 @@ const EVIDENCE_DIR = resolve(
 const APP_ID = "6e0a4f1c-9d2b-4c33-8f0e-5a7b1c2d3e4f";
 const APP_NAME = "Deep Link Deploy Proof";
 const DEPLOY_COMMIT_SHA = "0123456789abcdef0123456789abcdef01234567";
-
-function base64Url(input: string): string {
-  return Buffer.from(input, "utf8")
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-/** Unsigned-but-decodable Steward JWT (the native studio only decodes claims). */
-function fakeStewardJwt(): string {
-  const header = base64Url(JSON.stringify({ alg: "none", typ: "JWT" }));
-  const payload = base64Url(
-    JSON.stringify({
-      sub: "user-deploy-proof",
-      userId: "user-deploy-proof",
-      email: "qa@example.test",
-      exp: 4102444800, // 2100-01-01 — comfortably fresh, no pre-render refresh
-    }),
-  );
-  return `${header}.${payload}.unsigned`;
-}
 
 function mockApp(): Record<string, unknown> {
   return {
@@ -187,7 +162,11 @@ test.beforeEach(async ({ page }) => {
       window as unknown as { __electrobunWindowId?: number }
     ).__electrobunWindowId = 1;
   });
-  await seedAppStorage(page, { steward_session_token: fakeStewardJwt() });
+  await seedStewardSession(page, {
+    jwt: true,
+    subject: "user-deploy-proof",
+    userId: "user-deploy-proof",
+  });
   await installDefaultAppRoutes(page);
 });
 
