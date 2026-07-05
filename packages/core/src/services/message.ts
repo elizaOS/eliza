@@ -269,7 +269,9 @@ import {
 } from "./message/direct-action-heuristics";
 import {
 	buildFailureReplyPrompt,
+	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
+	isInsufficientCreditsError,
 	isRateLimitError,
 	stripReasoningBlocks,
 } from "./message/fallback-reply";
@@ -1500,6 +1502,7 @@ interface StrategyResult {
 type FailureReplyAttempt =
 	| { kind: "text"; value: string }
 	| { kind: "noProvider" }
+	| { kind: "creditsExhausted" }
 	| { kind: "rateLimited" }
 	| { kind: "authFailed" };
 
@@ -1518,7 +1521,10 @@ export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
 
 export {
 	buildFailureReplyPrompt,
+	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
+	isInsufficientCreditsError,
+	isInsufficientCreditsMessage,
 	isModelProviderFallbackError,
 	isRateLimitError,
 	stripReasoningBlocks,
@@ -10592,6 +10598,7 @@ export class DefaultMessageService implements IMessageService {
 		prompt: string,
 		stage: string,
 	): Promise<FailureReplyAttempt> {
+		let sawCreditsExhausted = false;
 		let sawRateLimit = false;
 		let sawAuthError = false;
 		for (const modelType of [
@@ -10635,6 +10642,10 @@ export class DefaultMessageService implements IMessageService {
 				// the user in a mixed-failure run (one slot throttled, others
 				// failed for unrelated reasons where retrying won't help). The
 				// all-429 cascade from the live incident still lands here.
+				// Credits are classified before rate limits below: a 429 *with*
+				// billing context is a drained balance ("top up"), not a
+				// transient throttle ("try again in a few seconds").
+				sawCreditsExhausted = isInsufficientCreditsError(error);
 				sawRateLimit = isRateLimitError(error);
 				sawAuthError = isAuthError(error);
 				runtime.logger.warn(
@@ -10649,9 +10660,15 @@ export class DefaultMessageService implements IMessageService {
 			}
 		}
 		// Every model slot failed without a usable reply. When the final cause
-		// was provider rate-limiting (429), tell the user that plainly instead
-		// of the opaque generic message — the honest signal is "try again
-		// shortly", not "something broke".
+		// was credit exhaustion (402/insufficient_credits), the condition is
+		// permanent until the user tops up — "try again" can never succeed, so
+		// surface the actionable top-up message.
+		if (sawCreditsExhausted) {
+			return { kind: "creditsExhausted" };
+		}
+		// When the final cause was provider rate-limiting (429), tell the user
+		// that plainly instead of the opaque generic message — the honest
+		// signal is "try again shortly", not "something broke".
 		if (sawRateLimit) {
 			return { kind: "rateLimited" };
 		}
@@ -10705,17 +10722,20 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 
-		let replyText =
-			attempt.kind === "rateLimited" || attempt.kind === "authFailed"
-				? ""
-				: attempt.value;
+		let replyText = attempt.kind === "text" ? attempt.value : "";
 		if (!replyText) {
 			// Last-ditch fallback when every model call above also failed.
 			// Voice-neutral so any character can ship this default; characters
 			// can override with their own phrasing via
 			// character.templates.transientFailureReply (or
-			// rateLimitedReply for the throttling-specific case).
-			if (attempt.kind === "rateLimited") {
+			// rateLimitedReply / insufficientCreditsReply for the specific
+			// cases).
+			if (attempt.kind === "creditsExhausted") {
+				const tmpl = runtime.character.templates?.insufficientCreditsReply;
+				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					INSUFFICIENT_CREDITS_REPLY;
+			} else if (attempt.kind === "rateLimited") {
 				const tmpl = runtime.character.templates?.rateLimitedReply;
 				replyText =
 					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
@@ -10735,10 +10755,17 @@ export class DefaultMessageService implements IMessageService {
 
 		replyText = truncateToCompleteSentence(replyText.trim(), 2000);
 
+		// Credit exhaustion is not transient — it persists until the user tops
+		// up — so the synthetic reply carries the structural kind downstream
+		// consumers already key on (chat DTO failureKind gate, recent-messages
+		// synthetic-failure filter) instead of masquerading as a blip.
 		const responseContent: Content = {
 			thought: `Handle a temporary reply failure during ${stage}.`,
 			actions: ["REPLY"],
-			failureKind: "transient_failure",
+			failureKind:
+				attempt.kind === "creditsExhausted"
+					? "insufficient_credits"
+					: "transient_failure",
 			elizaSyntheticFailure: true,
 			transient: true,
 			doNotPersist: true,

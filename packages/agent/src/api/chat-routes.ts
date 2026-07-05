@@ -21,6 +21,7 @@ import {
   createMessageMemory,
   EventType,
   getSwarmCoordinatorService,
+  INSUFFICIENT_CREDITS_REPLY,
   isRateLimitError,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -1115,8 +1116,9 @@ async function resolveExactDocumentValueForChat(
 // Do NOT use as the generic empty-response fallback; that mislabels every
 // IGNORE / empty-action / empty-normalized-text path as a provider failure.
 const PROVIDER_ISSUE_CHAT_REPLY = "Sorry, I'm having a provider issue";
-const INSUFFICIENT_CREDITS_CHAT_REPLY =
-  "Eliza Cloud credits are depleted. Top up the cloud balance and try again.";
+// Shared with the connector failure-reply path in @elizaos/core so every
+// delivery surface phrases credit exhaustion identically.
+const INSUFFICIENT_CREDITS_CHAT_REPLY = INSUFFICIENT_CREDITS_REPLY;
 // A transient 429 (no billing context) — e.g. the shared model key briefly
 // over its requests/min under concurrent load. Tell the user it's momentary so
 // they retry, instead of the generic "provider issue" which reads as broken.
