@@ -26,6 +26,11 @@ const ROOT = join(fileURLToPath(new URL("..", import.meta.url)));
 
 const SCANNED_PATHS = [
   "account-security",
+  // #14205 retokenized these two Settings surfaces after the #13755 audit
+  // found ~170 hardcoded light-on-dark utilities; scanning them keeps the
+  // fix regression-proof (the gap that let the drift accumulate unnoticed).
+  "applications",
+  "mcps",
   "organization",
   "billing/components",
   "connectors/discord-gateway-connection.tsx",
