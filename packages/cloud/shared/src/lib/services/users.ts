@@ -126,9 +126,9 @@ export class UsersService {
         logger.debug("[UsersService] Cached user data by stewardId");
       }
       return user;
+    } catch (error) {
       // error-policy:J2 auth hot path — read-replica lookup failed; add context and
       // fail over to the primary. Never fabricates a user; rethrows via the inner catch.
-    } catch (error) {
       const errorDetails = getErrorDetails(error);
 
       logger.warn("[UsersService] Read-path Steward lookup failed, retrying on primary", {
@@ -140,9 +140,9 @@ export class UsersService {
         return await retryOnTransientDbError(() => this.getByStewardIdForWrite(stewardUserId), {
           attempts: 2,
         });
+      } catch (fallbackError) {
         // error-policy:J2 both replica and primary failed — record combined context and
         // rethrow the primary error (its cause chain is preserved) so the caller 500s.
-      } catch (fallbackError) {
         logger.error("[UsersService] Primary Steward lookup retry failed", {
           stewardUserId,
           readError: errorDetails,
@@ -257,9 +257,9 @@ export class UsersService {
     try {
       const keys = await apiKeysRepository.listByUser(userId);
       await invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash));
+    } catch (error) {
       // error-policy:J6 best-effort IAC cache eviction — a cache blip must not break the
       // lifecycle write (deactivate/detach/delete). The slow path still enforces is_active.
-    } catch (error) {
       logger.warn("[UsersService] Failed to invalidate inference auth cache for user", {
         userId,
         ...getErrorDetails(error),
@@ -374,9 +374,9 @@ export class UsersService {
       // Don't strand an empty org when the move fails.
       try {
         await organizationsRepository.delete(organization.id);
+      } catch (rollbackError) {
         // error-policy:J6 best-effort rollback of the just-created empty org; log and
         // fall through to rethrow the original move failure (never masks it).
-      } catch (rollbackError) {
         logger.error("[UsersService] Failed to roll back personal org after detach failure", {
           userId: id,
           organizationId: organization.id,
