@@ -168,6 +168,10 @@ async function buildTrajectoryMetadata(
 		"sourceConversationId",
 		"scenarioId",
 		"batchId",
+		// Correlation join key (#13775) stamped on message.metadata at the turn
+		// boundary before MESSAGE_RECEIVED so the DB trajectory shares the file
+		// recorder's traceId.
+		"traceId",
 	]) {
 		copyJsonMetadataField(metadata, meta, key);
 	}
@@ -247,11 +251,13 @@ export const trajectoriesPlugin: Plugin = {
 					);
 					const scenarioId = readNonEmptyString(trajectoryMetadata.scenarioId);
 					const batchId = readNonEmptyString(trajectoryMetadata.batchId);
+					const traceId = readNonEmptyString(trajectoryMetadata.traceId);
 					const trajectoryId = await logger.startTrajectory(runtime.agentId, {
 						source: source ?? (meta.source as string) ?? "chat",
 						metadata: trajectoryMetadata,
 						...(scenarioId ? { scenarioId } : {}),
 						...(batchId ? { batchId } : {}),
+						...(traceId ? { traceId } : {}),
 					});
 
 					const normalizedTrajectoryId =

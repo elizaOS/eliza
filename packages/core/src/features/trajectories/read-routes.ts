@@ -93,6 +93,7 @@ interface TrajectoriesServiceLike {
 		source?: string;
 		status?: string;
 		scenarioId?: string;
+		traceId?: string;
 		batchId?: string;
 		search?: string;
 	}) => Promise<{ trajectories: ServiceTrajectoryListItem[]; total: number }>;
@@ -334,6 +335,8 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 				source: url.searchParams.get("source") || undefined,
 				status: url.searchParams.get("status") || undefined,
 				scenarioId: url.searchParams.get("scenarioId") || undefined,
+				// Correlation join key (#13775): list every trajectory in one trace.
+				traceId: url.searchParams.get("traceId") || undefined,
 				batchId: url.searchParams.get("batchId") || undefined,
 				// The SQL reader filters + counts by `search` (id/scenario_id/
 				// batch_id/metadata/steps_json LIKE). On mobile this owns
