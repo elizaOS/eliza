@@ -11,6 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  registerBuiltinViews,
   registerPluginViews,
   unregisterPluginViews,
 } from "../api/views-registry.ts";
@@ -30,6 +31,7 @@ import {
   validateViewCoverage,
   viewActionAffinityMap,
   viewScopedActionNames,
+  viewScopedNamedActions,
 } from "./view-action-affinity.ts";
 
 const AWARE_VIEW = {
@@ -249,6 +251,19 @@ describe("view-action-affinity", () => {
     expect(viewActionAffinityMap().documents).toContain("OWNER_DOCUMENTS");
   });
 
+  it("built-in plugins-page/settings keep RUNTIME affinity via their declarations (#13589 stub migration)", () => {
+    // The 2-entry HOST_VIEW_ACTION_AFFINITY stub ({plugins-page,settings}→RUNTIME)
+    // was deleted; both built-in views declare relatedActions: ["RUNTIME"] in
+    // builtin-views.ts, so once registered the derived map (and the scoped-name
+    // resolver the planner reads) must still yield RUNTIME — no behavior change.
+    registerBuiltinViews();
+    const map = viewActionAffinityMap();
+    expect(map["plugins-page"]).toContain("RUNTIME");
+    expect(map.settings).toContain("RUNTIME");
+    expect(viewScopedActionNames("plugins-page").has("RUNTIME")).toBe(true);
+    expect(viewScopedActionNames("settings").has("RUNTIME")).toBe(true);
+  });
+
   it("validateViewCoverage warns for a registered view with no affinity and no capabilities", () => {
     const warnings: string[] = [];
     const uncovered = validateViewCoverage(
@@ -276,6 +291,49 @@ describe("view-action-affinity", () => {
     // The wallet view scopes actions → the block names them for the planner.
     expect(block).toContain("most relevant while on this view");
     expect(block).toContain("EVM_SWAP");
+  });
+
+  it("surfaces a view's named scopedActions in the awareness block (#13589)", async () => {
+    // A view that declares scopedActions (gated named actions) → the awareness
+    // block names them so the planner knows what it can invoke while here.
+    const SCOPED_PLUGIN = "@test/view-scoped-named";
+    // Unique view id — the beforeEach fixture already owns "wallet", and the
+    // registry's conflict guard keeps the first registration for a shared id.
+    await registerPluginViews({
+      name: SCOPED_PLUGIN,
+      description: "Scoped named action fixture.",
+      views: [
+        {
+          id: "scoped-wallet",
+          label: "Scoped Wallet",
+          scopedActions: [
+            {
+              name: "VIEW_WALLET_SWAP_TOKENS",
+              description: "Swap tokens using the wallet view controls",
+              steps: [{ kind: "agent-click", target: "swap-button" }],
+            },
+          ],
+        },
+      ],
+    });
+    try {
+      expect(viewScopedNamedActions("scoped-wallet")).toEqual([
+        {
+          name: "VIEW_WALLET_SWAP_TOKENS",
+          description: "Swap tokens using the wallet view controls",
+        },
+      ]);
+      const block = renderActiveViewContextBlock({
+        viewId: "scoped-wallet",
+        viewLabel: "Scoped Wallet",
+        viewType: "gui",
+        viewPath: "/scoped-wallet",
+      });
+      expect(block).toContain("Named actions this view exposes only while");
+      expect(block).toContain("VIEW_WALLET_SWAP_TOKENS: Swap tokens");
+    } finally {
+      unregisterPluginViews(SCOPED_PLUGIN);
+    }
   });
 
   it("acknowledges a just-happened switch only while it is fresh (#8788)", () => {

@@ -4203,7 +4203,7 @@ export async function startApiServer(opts?: {
   // ── Deferred startup work (non-blocking) ────────────────────────────────
   // Keep API startup fast: listen first, then warm optional subsystems.
   const startDeferredStartupWork = async (): Promise<void> => {
-    void registerBuiltinViews().catch((err) => {
+    void registerBuiltinViews(state.runtime).catch((err) => {
       logger.warn(
         `[eliza-api] Built-in view registration failed after listen: ${
           err instanceof Error ? err.message : String(err)
@@ -5076,6 +5076,19 @@ export async function startApiServer(opts?: {
       }
     }
   };
+
+  // Give the views module a process-level broadcaster so the view-scoped action
+  // handler (which fires from the planner loop, outside any HTTP request) can
+  // drive a mounted shell through the same `view:interact` path the route uses.
+  void import("./views-routes.ts")
+    .then(({ setViewsBroadcastWs }) => {
+      setViewsBroadcastWs(state.broadcastWs ?? null);
+    })
+    .catch((err) => {
+      logger.error(
+        `[eliza-api] failed to wire views broadcaster: ${err instanceof Error ? err.message : err}`,
+      );
+    });
 
   state.broadcastWsToClientId = (clientId: string, data: object) => {
     const message = JSON.stringify(data);
