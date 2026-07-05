@@ -153,7 +153,7 @@ export function DashboardActionCards({
           <Server className="h-5 w-5" />
           <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
         </div>
-        <h3 className="text-base font-semibold">Instances</h3>
+        <h3 className="text-base font-semibold">Agents</h3>
       </Link>
 
       <Link

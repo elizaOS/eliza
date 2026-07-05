@@ -88,7 +88,7 @@ export default function AgentsPage() {
               agentsQuery.error instanceof Error
                 ? agentsQuery.error.message
                 : t("cloud.agents.loadFailed", {
-                    defaultValue: "Failed to load instances",
+                    defaultValue: "Failed to load agents",
                   })
             }
           />
