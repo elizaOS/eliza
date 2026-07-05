@@ -1,6 +1,6 @@
 /**
- * Account surface — profile form, organization info, account details. Gates on
- * the Steward session via {@link useUserProfile} and renders the account body.
+ * Account surface — profile form and account details. Gates on the Steward
+ * session via {@link useUserProfile} and renders the account body.
  * Mounted by the `cloud-account` Settings section (`/settings#cloud-account`).
  */
 
