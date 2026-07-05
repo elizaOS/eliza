@@ -666,7 +666,14 @@ export function analyzePluginStateDrift(
 function buildPluginDriftDiagnostics(
   runtime: AgentRuntime | null,
 ): PluginDriftDiagnosticsReport {
-  const pluginList = buildPluginListResponse(runtime).plugins;
+  return buildPluginDriftDiagnosticsForList(
+    buildPluginListResponse(runtime).plugins,
+  );
+}
+
+function buildPluginDriftDiagnosticsForList(
+  pluginList: CompatPluginRecord[],
+): PluginDriftDiagnosticsReport {
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   const configEntries = config.plugins?.entries ?? {};
@@ -1530,7 +1537,9 @@ export async function handlePluginsCompatRoutes(
     logger.debug(
       `[api/plugins] source=registry total=${pluginResponse.plugins.length} runtime=${state.current ? "active" : "null"}`,
     );
-    maybeLogPluginStateDrift(buildPluginDriftDiagnostics(state.current));
+    maybeLogPluginStateDrift(
+      buildPluginDriftDiagnosticsForList(pluginResponse.plugins),
+    );
     sendJsonResponse(res, 200, pluginResponse);
     return true;
   }

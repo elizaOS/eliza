@@ -1,3 +1,4 @@
+import { logger } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -233,5 +234,59 @@ describe("handlePluginRoutes config persistence", () => {
     expect(handled).toBe(true);
     expect(requirePluginManager).not.toHaveBeenCalled();
     expect(ctx.error).toHaveBeenCalledWith(ctx.res, expect.any(String), 400);
+  });
+
+  it("returns /api/plugins with best-effort metadata when registry refresh hangs", async () => {
+    vi.useFakeTimers();
+    try {
+      const config = { env: {}, plugins: { entries: {} } };
+      const ctx = makeContext({}, config, {
+        method: "GET",
+        pathname: "/api/plugins",
+        url: new URL("http://localhost/api/plugins"),
+      });
+      const never = new Promise<Map<string, never>>(() => {});
+      const listInstalledPlugins = vi.fn().mockResolvedValue([
+        {
+          name: "@elizaos/plugin-discord",
+          version: "1.2.3",
+          releaseStream: "latest",
+          requestedVersion: "1.2.3",
+          latestVersion: "1.2.3",
+          betaVersion: null,
+        },
+      ]);
+      const refreshRegistry = vi.fn(() => never);
+      ctx.requirePluginManager = vi.fn(() => ({
+        listInstalledPlugins,
+        refreshRegistry,
+      })) as never;
+      ctx.buildPluginEvmDiagnosticEntry = vi.fn(() => ({
+        ...makePlugin(),
+        id: "evm",
+        name: "EVM",
+        npmName: "@elizaos/plugin-evm",
+      })) as never;
+
+      const handled = handlePluginRoutes(ctx);
+
+      await vi.advanceTimersByTimeAsync(2500);
+
+      await expect(handled).resolves.toBe(true);
+      expect(ctx.json).toHaveBeenCalledWith(ctx.res, {
+        plugins: expect.arrayContaining([
+          expect.objectContaining({
+            id: "discord",
+            version: "1.2.3",
+            latestVersion: "1.2.3",
+          }),
+        ]),
+      });
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("registry plugin metadata"),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
