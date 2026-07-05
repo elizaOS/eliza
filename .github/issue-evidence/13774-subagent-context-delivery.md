@@ -11,6 +11,24 @@
 
 ## Verification
 
+Live spawned-agent proof:
+
+```text
+bun .codex-tmp-13774/live-13774-proof.ts
+
+{"phase":"spawned","sessionId":"ee378fc4-b201-4a30-b47d-eeb281f1f748","workdir":"/var/folders/n9/khgbz07x3vn8lny5vxd8v1080000gn/T/eliza-13774-live-Jx2hSq/workdir","skillsMdExists":true,"skillsMdHasParentAgent":true}
+{"phase":"prompt-result","stopReason":"end_turn","proofExists":true,"proof":"{\"parentAgentMentioned\":true,\"skillsEndpointMentioned\":true,\"summary\":\"SKILLS.md documents parent-agent usage and skill-related local instructions.\"}\n"}
+{"phase":"events","events":["ready", "...", "task_complete"]}
+```
+
+Manually reviewed live artifacts:
+
+- `.github/issue-evidence/13774-live-spawn-proof/LIVE_13774_PROOF.json`
+- `.github/issue-evidence/13774-live-spawn-proof/SKILLS.md`
+- `.github/issue-evidence/13774-live-spawn-proof/service.log`
+
+The live run used the machine's real Codex login through native ACP. The spawned agent read the generated `SKILLS.md`, wrote `LIVE_13774_PROOF.json`, and emitted `task_complete`. The copied artifacts exclude Codex auth/cache files.
+
 Passed:
 
 ```bash
@@ -48,4 +66,4 @@ The command fails before completing because this checkout lacks workspace/depend
 N/A:
 
 - Screenshots/video: no UI surface changed.
-- Live model trajectory: no model/action/provider prompt execution path was exercised; this patch changes sub-agent scaffolding/bridge discovery and deterministic route/service behavior.
+- Real-LLM trajectory: captured by the live Codex ACP proof above.
