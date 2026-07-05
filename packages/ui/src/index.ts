@@ -586,6 +586,11 @@ export type {
   ViewLifecyclePolicy,
   ViewLifecycleTransition,
 } from "./state/view-lifecycle-types";
+export { CapacitorNativeSurfaceShell } from "./surface/capacitor-native-surface-shell";
+export * from "./surface/mobile-surface-manager";
+// Mobile surface manager — layers native-webview views as their own native-shell
+// surfaces driven by the resolved SurfaceManifest (#14182).
+export * from "./surface/native-surface-shell";
 export * from "./themes/index.js";
 export * from "./types/index";
 export type {
