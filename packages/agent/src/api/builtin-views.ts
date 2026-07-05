@@ -85,6 +85,72 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     tags: ["identity", "personality", "character"],
     anticipatoryIntent:
       "Offer to refine the agent's identity, personality, or style from the current character state, and point out the highest-leverage next edit.",
+    // Named actions the agent can invoke ONLY while the Character view is the
+    // foreground view (#14155, deferred step 8 of #13591/#14123). Each targets
+    // a `useAgentElement` id in the Character editor (`CharacterEditor` /
+    // `CharacterEditorPanels`) and expands into the same `agent-fill`/
+    // `agent-click` interact sequence the element-level protocol drives — no
+    // parallel DOM path. Only ids that are ALWAYS mounted are targeted: the
+    // editor renders all three panels (personality/style/examples) up front and
+    // toggles visibility with CSS (`hidden`/`display:none`), so `identity-bio`,
+    // `style-add-input-all`/`style-add-all`, `example-add-conversation`, and
+    // `post-example-add` are registered regardless of the active tab. Row-level
+    // ids (`style-rule-remove-<section>-<index>`, `example-message-<c>-<m>`) are
+    // index-dependent and only mounted when that row exists, so they are NOT
+    // declared here — a blind declaration against them would target an unmounted
+    // element and fail loudly (`VIEW_SCOPED_ACTION_ELEMENT_MISSING`).
+    scopedActions: [
+      {
+        name: "VIEW_CHARACTER_FILL_BIO",
+        description:
+          "Set the agent's bio / about-me text on the Character view's Personality section. Autosaves.",
+        similes: [
+          "set bio",
+          "edit bio",
+          "update about me",
+          "write the agent's bio",
+          "rewrite the character bio",
+        ],
+        parameters: ["bio"],
+        steps: [
+          { kind: "agent-fill", target: "identity-bio", value: "{{bio}}" },
+        ],
+      },
+      {
+        name: "VIEW_CHARACTER_ADD_STYLE_RULE",
+        description:
+          "Add a style rule to the agent's writing style on the Character view's Style section. Autosaves.",
+        similes: [
+          "add style rule",
+          "add a writing style rule",
+          "add style guideline",
+          "append a style rule",
+        ],
+        parameters: ["rule"],
+        steps: [
+          {
+            kind: "agent-fill",
+            target: "style-add-input-all",
+            value: "{{rule}}",
+          },
+          { kind: "agent-click", target: "style-add-all" },
+        ],
+      },
+      {
+        name: "VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE",
+        description:
+          "Add a new chat-example conversation on the Character view's Examples section, ready for turns to be filled in. Autosaves.",
+        similes: [
+          "add message example",
+          "add a chat example",
+          "add conversation example",
+          "create a new example conversation",
+        ],
+        steps: [
+          { kind: "agent-click", target: "example-add-conversation" },
+        ],
+      },
+    ],
     visibleInManager: true,
     desktopTabEnabled: true,
   },

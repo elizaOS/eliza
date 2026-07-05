@@ -706,8 +706,9 @@ export async function registerBuiltinViews(
 ): Promise<void> {
   (await import("./views-registry.ts")).registerBuiltinViews();
   // Register the built-in shell views' scoped actions once the runtime exists.
-  // Mechanism only: BUILTIN_VIEWS carries no scoped actions until per-view
-  // children add them, so this is a no-op today but wires the boot path.
+  // The Character view declares FILL_BIO / ADD_STYLE_RULE / ADD_MESSAGE_EXAMPLE
+  // (#14155); other builtin views carry none yet. registerViewScopedActions is
+  // idempotent, so re-running on reload reconciles the builtin set cleanly.
   if (runtime) {
     const { BUILTIN_VIEWS } = await import("./builtin-views.ts");
     const { registerViewScopedActions } = await import(
