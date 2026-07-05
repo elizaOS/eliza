@@ -7,7 +7,6 @@
 
 import {
   Bot,
-  Building2,
   CreditCard,
   Home,
   KeyRound,
@@ -77,14 +76,10 @@ export const CONSOLE_SURFACES: ReadonlyArray<ConsoleSurface> = [
     descKey: "cloud.home.accountDesc",
     descDefault: "Profile, email, identity, and security.",
   },
-  {
-    id: "organization",
-    href: "/dashboard/organization",
-    icon: Building2,
-    label: "Organization",
-    titleKey: "cloud.home.organization",
-    titleDefault: "Organization",
-    descKey: "cloud.home.organizationDesc",
-    descDefault: "Members, credentials, and invites.",
-  },
 ];
+
+// The console presents as plain per-user accounts — the "Organization" surface
+// is intentionally NOT promoted here (a solo user's org already IS their
+// account). The org route stays registered (register-all's `import
+// "./organization/routes"`) so invite deep-links keep working; it's just not
+// surfaced in the sidebar or the overview cards. Backend/DB orgs are untouched.

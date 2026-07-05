@@ -58,13 +58,15 @@ const NAV_HREFS = [
   "/dashboard/billing",
   "/dashboard/api-keys",
   "/dashboard/account",
-  "/dashboard/organization",
 ];
 
 /** De-navved surfaces — routable, but must NOT appear in the sidebar. */
 const CULLED_HREFS = [
   // Apps moved into the Eliza app; the console route now redirects.
   "/dashboard/apps",
+  // Organization is de-surfaced (console presents as plain user accounts); the
+  // route stays registered for invite deep-links but is not in the sidebar.
+  "/dashboard/organization",
   "/dashboard/my-agents",
   "/dashboard/mcps",
   "/dashboard/analytics",

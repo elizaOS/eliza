@@ -54,7 +54,6 @@ const EXPECTED_LINKS = [
   "/dashboard/billing",
   "/dashboard/api-keys",
   "/dashboard/account",
-  "/dashboard/organization",
 ];
 
 describe("DashboardHomePage", () => {
