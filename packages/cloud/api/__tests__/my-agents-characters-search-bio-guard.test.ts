@@ -177,3 +177,58 @@ describe("GET /api/my-agents/characters?search= — non-string bio entries", () 
     expect(body.data.characters).toHaveLength(2);
   });
 });
+
+describe("POST /api/my-agents/characters — malformed name rejected as 400, never 500", () => {
+  // A non-string `name` used to 500: with no username, create() calls
+  // generateUniqueUsername(name) -> slugify(name).toLowerCase() -> TypeError
+  // ("name.toLowerCase is not a function"), which inferStatusFromLegacyError
+  // maps to 500. With a username supplied, slugify is skipped and the
+  // non-string name would persist, then 500 the public discovery/list reads
+  // (char.name.toLowerCase / localeCompare) for every viewer (#13637 / #13713).
+  test("non-string name (number) returns 400, not 500", async () => {
+    expect(pgliteReady).toBe(true);
+    const res = await createCharacter({ name: 42, bio: ["x"] });
+    expect(res.status).toBe(400);
+  });
+
+  test("object / array / null name all return 400", async () => {
+    expect(pgliteReady).toBe(true);
+    for (const bad of [{}, ["a"], null]) {
+      const res = await createCharacter({ name: bad as never, bio: ["x"] });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  test("missing name returns 400", async () => {
+    expect(pgliteReady).toBe(true);
+    const res = await createCharacter({ bio: ["x"] });
+    expect(res.status).toBe(400);
+  });
+
+  test("empty / whitespace-only name returns 400", async () => {
+    expect(pgliteReady).toBe(true);
+    for (const bad of ["", "   "]) {
+      const res = await createCharacter({ name: bad, bio: ["x"] });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  test("non-string name is rejected even when a valid username is supplied (before persist)", async () => {
+    expect(pgliteReady).toBe(true);
+    const res = await createCharacter({
+      name: 7,
+      username: "valid-name-guard",
+      bio: ["x"],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("a normal string name still creates (200) — no over-rejection", async () => {
+    expect(pgliteReady).toBe(true);
+    const res = await createCharacter({
+      name: "Charlie Helper",
+      bio: ["hello"],
+    });
+    expect(res.status).toBe(200);
+  });
+});

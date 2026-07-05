@@ -204,6 +204,16 @@ export class CharactersService {
   }
 
   async create(data: NewUserCharacter): Promise<UserCharacter> {
+    // `name` arrives from the same pre-validation request body as `username`
+    // (the route casts raw JSON to ElizaCharacter). A non-string name 500s via
+    // slugify(name).toLowerCase() in generateUniqueUsername below; and when a
+    // username IS supplied so slugify is skipped, a non-string name persists
+    // and then 500s the public discovery/list reads (char.name.toLowerCase(),
+    // localeCompare) for every viewer (#13637 / #13713 class). Reject up front.
+    if (typeof data.name !== "string" || data.name.trim().length === 0) {
+      throw ValidationError("Invalid name: must be a non-empty string");
+    }
+
     // Generate username if not provided
     let username = data.username;
     if (username === undefined || username === null) {
