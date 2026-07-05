@@ -41,6 +41,10 @@ vi.mock("../../api/client", () => ({
     createTranscript: vi
       .fn()
       .mockResolvedValue({ transcript: { id: "t1", title: "Transcript" } }),
+    // The header search control drives the real client method; per-test the
+    // resolved value is the real `GET /api/conversations/messages/search`
+    // response shape so the query→results→jump path is exercised end to end.
+    searchConversationMessages: vi.fn(),
   },
 }));
 
@@ -51,9 +55,11 @@ vi.mock("../../utils/clipboard", () => ({
 }));
 
 import * as React from "react";
+import { client } from "../../api/client";
 import type {
   Conversation,
   ConversationMessage,
+  ConversationMessageSearchResult,
   ImageAttachment,
 } from "../../api/client-types-chat";
 import { CHAT_PREFILL_EVENT, ELIZA_BACK_INTENT_EVENT } from "../../events";
@@ -62,6 +68,7 @@ import {
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
 import { __resetAssistantLaunchPayloadClaimsForTests } from "../../platform/assistant-launch-payload";
+import { __setAppValueForTests } from "../../state/app-store";
 import {
   getShellSurface,
   resetShellSurfaceForTests,
@@ -89,6 +96,9 @@ afterEach(() => {
   cleanup();
   resetShellSurfaceForTests();
   setViewChatBinding(null);
+  // Search-jump tests seed the AppContext store with spies; clear it so the
+  // inert test-fallback proxy backs every other test again.
+  __setAppValueForTests(null);
 });
 
 function makeController(
@@ -2459,6 +2469,98 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     // Tapping again toggles it closed.
     fireEvent.click(screen.getByTestId("chat-full-search"));
     expect(screen.queryByTestId("chat-message-search")).toBeNull();
+  });
+
+  it("drives the header search → query → jump path against the real search API shape (#14330)", async () => {
+    // Real jump plumbing: the overlay pulls handleSelectConversation from the
+    // AppContext store, so seed it with a spy the jump must call. Mirror the
+    // inert test-fallback proxy (noop for everything else the overlay reads via
+    // other selectors) so only the jump collaborators are observable.
+    const selectSpy = vi.fn<(id: string) => Promise<void>>(async () => {});
+    const aroundSpy = vi.fn(async () => false);
+    const noop = () => {};
+    __setAppValueForTests(
+      new Proxy({} as never, {
+        get(_t, prop) {
+          if (prop === "handleSelectConversation") return selectSpy;
+          if (prop === "loadConversationMessagesAround") return aroundSpy;
+          if (prop === "t") return (k: string) => k;
+          if (prop === "uiLanguage") return "en";
+          if (prop === "navigation") {
+            return { scheduleAfterTabCommit: (fn: () => void) => fn() };
+          }
+          return noop;
+        },
+      }),
+    );
+
+    // The panel renders exactly what the server route returns; use its real
+    // response shape (ranked hits with snippet/role/createdAt).
+    const hit: ConversationMessageSearchResult = {
+      messageId: "m-hit",
+      conversationId: "conv-42",
+      roomId: "room-1",
+      role: "assistant",
+      text: "the quarterly budget review is on friday",
+      snippet: "the quarterly …budget… review is on friday",
+      createdAt: 1_700_000_000_000,
+      score: 12.5,
+    };
+    vi.mocked(client.searchConversationMessages).mockResolvedValue({
+      results: [hit],
+      count: 1,
+    });
+
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    openSheet();
+
+    fireEvent.click(screen.getByTestId("chat-full-search"));
+    const input = screen.getByTestId("message-search-input");
+    fireEvent.change(input, { target: { value: "budget" } });
+
+    // The debounced (250ms) search calls the real client method and lists the
+    // ranked snippet result.
+    const result = await waitFor(() =>
+      screen.getByTestId("message-search-result"),
+    );
+    expect(client.searchConversationMessages).toHaveBeenCalledWith(
+      "budget",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(result.textContent).toContain("budget");
+
+    // Selecting the hit jumps to its conversation (the real jump plumbing) and
+    // closes the panel.
+    fireEvent.click(result);
+    expect(selectSpy).toHaveBeenCalledWith("conv-42");
+    await waitFor(() =>
+      expect(screen.queryByTestId("chat-message-search")).toBeNull(),
+    );
+  });
+
+  it("renders a distinguishable error state when the search API rejects (#14330)", async () => {
+    // Three-state rule: a rejected search must surface an error render, never a
+    // fabricated empty result.
+    vi.mocked(client.searchConversationMessages).mockRejectedValue(
+      new Error("search route 500"),
+    );
+
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    openSheet();
+
+    fireEvent.click(screen.getByTestId("chat-full-search"));
+    fireEvent.change(screen.getByTestId("message-search-input"), {
+      target: { value: "budget" },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("message-search-error")).toBeTruthy(),
+    );
+    // The error state is NOT the empty state — a caught failure must not read as
+    // "no matches".
+    expect(screen.queryByTestId("message-search-empty")).toBeNull();
   });
 
   it("starts a fresh thread from the header new-chat control (#14279)", () => {
