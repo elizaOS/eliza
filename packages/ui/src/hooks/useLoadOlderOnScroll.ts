@@ -32,6 +32,7 @@
  * shares the SAME scroller node with `useThreadAutoScroll` via `scrollRef`.
  */
 
+import { logger } from "@elizaos/logger";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
 /**
@@ -106,10 +107,12 @@ export function useLoadOlderOnScroll<T extends HTMLElement = HTMLDivElement>({
     pendingAnchorHeightRef.current = el.scrollHeight;
     void onLoadOlderRef
       .current()
-      .catch(() => {
-        // Transient failure: drop the pending anchor so we don't wrongly adjust
-        // scrollTop on the next unrelated top-item change, and let the next
-        // scroll-up retry.
+      .catch((err: unknown) => {
+        // error-policy:J4 the transcript above stays intact and the next
+        // scroll-up retries the page; logged so a persistently failing
+        // load-older endpoint is not silent. Drop the pending anchor so we
+        // don't wrongly adjust scrollTop on the next unrelated top-item change.
+        logger.warn({ err }, "[useLoadOlderOnScroll] older-page load failed");
         pendingAnchorHeightRef.current = null;
       })
       .finally(() => {

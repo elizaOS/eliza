@@ -104,6 +104,67 @@ describe("loadOlderConversationMessages", () => {
     expect(result).toEqual({ hasMore: false, prependedCount: 0 });
   });
 
+  it("advances the cursor past a fully-non-renderable page instead of refetching it", async () => {
+    // Page 1 (before=100): a run of silent assistant turns — filters to nothing.
+    // The retained-oldest cursor alone would refetch this exact page forever;
+    // the in-invocation hop must advance below it and prepend page 2.
+    const prependMessages = vi.fn();
+    const calls: Array<{ before?: number }> = [];
+    const client: LoadOlderClient = {
+      getConversationMessages: vi.fn(async (_id, options) => {
+        calls.push({ before: options?.before });
+        if (options?.before === 100) {
+          return {
+            messages: [blankAssistant("s1", 60), blankAssistant("s2", 70)],
+            hasMore: true,
+          };
+        }
+        return {
+          messages: [userMsg("a", 40), userMsg("b", 50)],
+          hasMore: false,
+        };
+      }),
+    };
+
+    const result = await loadOlderConversationMessages({
+      client,
+      conversationId: "conv-1",
+      currentMessages: [userMsg("c", 100)],
+      prependMessages,
+    });
+
+    expect(calls.map((c) => c.before)).toEqual([100, 60]);
+    expect(
+      prependMessages.mock.calls[0][0].map((m: ConversationMessage) => m.id),
+    ).toEqual(["a", "b"]);
+    expect(result).toEqual({ hasMore: false, prependedCount: 2 });
+  });
+
+  it("stops at the hop budget on a long filtered run but keeps hasMore armed", async () => {
+    const prependMessages = vi.fn();
+    let call = 0;
+    const client: LoadOlderClient = {
+      getConversationMessages: vi.fn(async () => {
+        call += 1;
+        return {
+          messages: [blankAssistant(`s-${call}`, 1000 - call * 10)],
+          hasMore: true,
+        };
+      }),
+    };
+
+    const result = await loadOlderConversationMessages({
+      client,
+      conversationId: "conv-1",
+      currentMessages: [userMsg("c", 2000)],
+      prependMessages,
+    });
+
+    expect(call).toBe(5);
+    expect(prependMessages).not.toHaveBeenCalled();
+    expect(result).toEqual({ hasMore: true, prependedCount: 0 });
+  });
+
   it("propagates fetch failures so the caller can retry", async () => {
     const client: LoadOlderClient = {
       getConversationMessages: vi.fn(async () => {

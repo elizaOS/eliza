@@ -439,15 +439,28 @@ export function ChatView({
   // Infinite upward scroll load-older orchestration (#13532). The `before`
   // cursor is the oldest currently-held message; the game-modal companion
   // surface has its own carryover window and is excluded.
+  //
+  // The ref mirrors the active id so the async result can be dropped after a
+  // mid-flight conversation switch: a page fetched for the previous thread must
+  // never prepend into (or re-arm paging state for) the newly active one.
+  const loadOlderConversationIdRef = useRef(activeConversationId);
+  loadOlderConversationIdRef.current = activeConversationId;
   const loadOlderMessages = useCallback(async () => {
-    if (!activeConversationId) return;
+    const conversationId = activeConversationId;
+    if (!conversationId) return;
     const result = await loadOlderConversationMessages({
       client,
-      conversationId: activeConversationId,
+      conversationId,
       currentMessages: conversationMessages,
-      prependMessages: prependConversationMessages,
+      prependMessages: (older) => {
+        if (loadOlderConversationIdRef.current === conversationId) {
+          prependConversationMessages(older);
+        }
+      },
     });
-    setHasMoreOlder(result.hasMore);
+    if (loadOlderConversationIdRef.current === conversationId) {
+      setHasMoreOlder(result.hasMore);
+    }
   }, [activeConversationId, conversationMessages, prependConversationMessages]);
 
   // A fresh conversation may have older history — re-arm the loader on switch.
@@ -488,13 +501,29 @@ export function ChatView({
   // (e.g. coding-agent updates) arrive in rapid succession during smooth
   // scrolling. Only smooth-scroll when the user has scrolled up and a new
   // message nudges them back down.
+  //
+  // Previous FIRST visible id, used to recognize an older-page prepend
+  // (#13532): the prior top message is still present, just pushed down by the
+  // new page. New content always lands at the TAIL, so a moved-but-present top
+  // means the reader is parked in history and useLoadOlderOnScroll has just
+  // restored their anchor — pulling them to the bottom would undo it.
+  const prevTopVisibleIdRef = useRef<string | null>(null);
   useEffect(() => {
+    const prevTopId = prevTopVisibleIdRef.current;
+    prevTopVisibleIdRef.current = visibleMsgs[0]?.id ?? null;
     const displayedCompanionMessageCount =
       (companionCarryover?.messages.length ?? 0) + gameModalVisibleMsgs.length;
     if (
       !chatSending &&
       visibleMsgs.length === 0 &&
       (!isGameModal || displayedCompanionMessageCount === 0)
+    ) {
+      return;
+    }
+    if (
+      prevTopId !== null &&
+      visibleMsgs[0]?.id !== prevTopId &&
+      visibleMsgs.some((m) => m.id === prevTopId)
     ) {
       return;
     }
