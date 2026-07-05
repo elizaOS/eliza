@@ -180,7 +180,6 @@ import {
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,
 } from "./ios-runtime";
-import { runIosVoiceSelfTestSmokeIfRequested } from "./ios-voice-selftest-smoke";
 import { startKeyboardDictationSession } from "./keyboard-dictation";
 import {
   createMobileLifecycle,
@@ -1857,15 +1856,24 @@ async function initializePlatform(): Promise<void> {
     waitForElement: waitForIosOnboardingElement,
     readStorageSnapshot: readIosOnboardingSmokeStorageSnapshot,
   });
-  void runIosVoiceSelfTestSmokeIfRequested({
-    isIOS,
-    client,
-    getPreference: boundedPreferenceGet,
-    removePreference: (key) =>
-      boundedPreferenceWrite(() => Preferences.remove({ key })),
-    writeResult: writeIosPreferenceSmokeResult,
-    readStorageSnapshot: readIosOnboardingSmokeStorageSnapshot,
-  });
+  // Lazy + iOS-gated: the voice self-test pulls the whole @elizaos/ui/voice
+  // graph, which a static import anchors into every web/desktop entry chunk.
+  // Non-iOS platforms never ran the smoke anyway (the module self-gates), so
+  // they now skip fetching the chunk entirely.
+  if (isIOS) {
+    void import("./ios-voice-selftest-smoke").then(
+      ({ runIosVoiceSelfTestSmokeIfRequested }) =>
+        runIosVoiceSelfTestSmokeIfRequested({
+          isIOS,
+          client,
+          getPreference: boundedPreferenceGet,
+          removePreference: (key) =>
+            boundedPreferenceWrite(() => Preferences.remove({ key })),
+          writeResult: writeIosPreferenceSmokeResult,
+          readStorageSnapshot: readIosOnboardingSmokeStorageSnapshot,
+        }),
+    );
+  }
 
   if (isIOS || isAndroid) {
     await initializeStatusBar();

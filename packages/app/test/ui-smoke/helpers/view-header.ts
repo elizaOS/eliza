@@ -63,12 +63,14 @@ export async function assertSharedViewHeaderContract(
     const box = await back.boundingBox();
     expect(box, "the back control has a measurable box").not.toBeNull();
     if (box) {
-      // The icon glyph is 20px but the hit target (h-9 w-9 = 36px) plus the
-      // header's min-h-14 row give a ≥44px effective tap height on mobile.
-      const effectiveHeight = Math.max(box.height, 44);
+      // The icon button's own box is 36px (h-9 w-9); the effective tap target
+      // extends to the header row (min-h-14). Assert the MEASURED row height —
+      // clamping the measurement to the threshold would make this vacuous.
+      const headerBox = await header.boundingBox();
+      const effectiveHeight = Math.max(box.height, headerBox?.height ?? 0);
       expect(
         effectiveHeight,
-        `the back control tap target is at least 44px (got ${box.height})`,
+        `the back control tap target is at least 44px (button ${box.height}px, header row ${headerBox?.height ?? 0}px)`,
       ).toBeGreaterThanOrEqual(44);
       expect(
         box.width,
