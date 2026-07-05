@@ -7,10 +7,11 @@
  * self-hides — a pure-local or fully-provisioned user never sees this tile.
  *
  * No new state seam: it consumes the SAME `useCloudHandoffPhase()` event that
- * `CloudHandoffBanner` (the floating toast) uses, so the two stay in sync. The
- * banner floats over every view; this widget is the durable home-grid surface.
- * The optional status poll is best-effort, bounded by withTimeout, and only
- * enriches the "migrating" copy — it never gates the tile.
+ * the in-chat boot-recovery conductor reads, so the two stay in sync. The
+ * conductor's card lives in the chat transcript; this widget is the durable
+ * home-grid surface. The optional status poll is best-effort, bounded by
+ * withTimeout, and only enriches the "migrating" copy — it never gates the
+ * tile.
  */
 
 import { CloudCog } from "lucide-react";

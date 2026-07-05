@@ -919,11 +919,10 @@ describe("ContinuousChatOverlay", () => {
     expect(mic.className).not.toMatch(/\bborder\b/);
   });
 
-  it("does not render the resting suggestion strip (feature-flagged off)", () => {
+  it("never renders a resting suggestion strip (removed — the agent is proactive)", () => {
     render(
       <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
     );
-    // SHOW_PROMPT_SUGGESTIONS is off — the resting strip must not mount.
     expect(screen.queryByTestId("chat-suggestions")).toBeNull();
     expect(screen.queryByTestId("chat-suggestion-0")).toBeNull();
   });
@@ -3419,12 +3418,12 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
   });
 });
 
-// The cold-boot banner (chat-boot-status) is gated by the parent on a 600ms
-// grace delay so a warm agent — where `phase` is momentarily "booting" on first
-// paint before the status fetch resolves — never flashes it; only a genuine
-// cold boot (still booting past the window) shows it. This exercises that
-// parent gate end-to-end, which the isolated BootStatusIndicator test can't.
-describe("ContinuousChatOverlay — cold-boot banner grace gate", () => {
+// The floating boot pill was removed outright: boot state has NO surface above
+// the chat. A stalled boot speaks INSIDE the transcript via the boot-recovery
+// conductor (use-boot-recovery-conductor.test.tsx covers that path); this pins
+// the overlay's side of the contract — no pill ever, no matter how long the
+// boot runs.
+describe("ContinuousChatOverlay — no floating boot pill", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -3432,106 +3431,29 @@ describe("ContinuousChatOverlay — cold-boot banner grace gate", () => {
     vi.useRealTimers();
   });
 
-  it("does not flash the banner for a warm agent that leaves booting within the grace window", () => {
-    const { rerender } = render(
-      <ContinuousChatOverlay
-        controller={makeController({ phase: "booting" })}
-      />,
-    );
-    // Warm agent: booting only briefly, flips ready before 600ms elapses.
-    act(() => {
-      vi.advanceTimersByTime(300);
-    });
-    rerender(
-      <ContinuousChatOverlay
-        controller={makeController({ phase: "summoned" })}
-      />,
-    );
-    act(() => {
-      vi.advanceTimersByTime(600);
-    });
-    expect(screen.queryByTestId("chat-boot-status")).toBeNull();
-  });
-
-  it("shows the banner once a cold boot outlasts the grace window", () => {
+  it("never renders a floating boot-status pill, even deep into a cold boot", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({ phase: "booting" })}
       />,
     );
-    expect(screen.queryByTestId("chat-boot-status")).toBeNull();
     act(() => {
-      vi.advanceTimersByTime(600);
+      vi.advanceTimersByTime(120_000);
     });
-    expect(screen.getByTestId("chat-boot-status").textContent).toContain(
-      "Waking",
-    );
-  });
-
-  it("hides the banner the moment the agent becomes ready", () => {
-    const { rerender } = render(
-      <ContinuousChatOverlay
-        controller={makeController({ phase: "booting" })}
-      />,
-    );
-    act(() => {
-      vi.advanceTimersByTime(600);
-    });
-    expect(screen.getByTestId("chat-boot-status")).toBeTruthy();
-    rerender(
-      <ContinuousChatOverlay
-        controller={makeController({ phase: "summoned" })}
-      />,
-    );
     expect(screen.queryByTestId("chat-boot-status")).toBeNull();
   });
 });
 
 // When no LLM/model provider is configured the agent's `canRespond` never flips,
-// so `phase` stays "booting" forever. Without this fix the "Waking …" spinner
-// would spin indefinitely; instead the controller flags `noProviderConfigured`
-// and the overlay suppresses the boot banner (the in-transcript no_provider gate
-// is the real error surface) and stops promising the agent is "waking up".
+// so `phase` stays "booting" forever. The controller flags `noProviderConfigured`
+// and the overlay stops promising the agent is "waking up" — the in-transcript
+// no_provider gate is the real error surface.
 describe("ContinuousChatOverlay — no LLM provider configured", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
   afterEach(() => {
     vi.useRealTimers();
-  });
-
-  it("suppresses the forever 'Waking …' boot banner when no provider is configured", () => {
-    render(
-      <ContinuousChatOverlay
-        controller={makeController({
-          phase: "booting",
-          noProviderConfigured: true,
-        })}
-      />,
-    );
-    // Well past the 600ms grace window — a cold boot WOULD show the banner here.
-    act(() => {
-      vi.advanceTimersByTime(2000);
-    });
-    // No spinner: the agent is not "waking", it's misconfigured.
-    expect(screen.queryByTestId("chat-boot-status")).toBeNull();
-  });
-
-  it("still shows the boot banner when it IS a genuine warm-up (no no_provider signal)", () => {
-    render(
-      <ContinuousChatOverlay
-        controller={makeController({
-          phase: "booting",
-          noProviderConfigured: false,
-        })}
-      />,
-    );
-    act(() => {
-      vi.advanceTimersByTime(600);
-    });
-    expect(screen.getByTestId("chat-boot-status").textContent).toContain(
-      "Waking",
-    );
   });
 
   it("swaps the 'waking up…' composer placeholder for a Settings CTA hint", () => {

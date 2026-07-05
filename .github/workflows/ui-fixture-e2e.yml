@@ -124,10 +124,6 @@ jobs:
       - name: Orchestrator accounts widget e2e
         run: bun run --cwd packages/ui test:orchestrator-accounts-e2e
 
-      # First-time-user welcome lifecycle (#9959): show once, retire, persist.
-      - name: FTU home widget e2e
-        run: bun run --cwd packages/ui test:ftu-home-e2e
-
       # Agent-activity surfaces (#13535): the REAL TurnStatus working indicator +
       # ToolCallEventLog inline row across thinking / tool-running / settled, after
       # the 900ms grace, desktop + mobile.

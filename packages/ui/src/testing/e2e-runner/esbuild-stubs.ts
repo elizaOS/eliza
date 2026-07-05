@@ -1,11 +1,10 @@
 /**
  * esbuild resolve/load plugins the `__e2e__` fixture runners share to bundle a
  * shell fixture for the browser. The overlay's import graph transitively reaches
- * server-only code — the API-touching `usePromptSuggestions` hook, `@elizaos/core`
- * module-init that touches `process` + node builtins — which is dead at render in
- * a headless page. Production Vite resolves core's `browser` export condition and
- * a real API; a raw esbuild bundle does not, so these three plugins replace those
- * edges with no-op proxies / a local stub.
+ * server-only code — `@elizaos/core` module-init that touches `process` + node
+ * builtins — which is dead at render in a headless page. Production Vite
+ * resolves core's `browser` export condition; a raw esbuild bundle does not, so
+ * these plugins replace those edges with no-op proxies.
  *
  * Type-only esbuild import: importing these factories pulls no runtime esbuild, so
  * the frame-glitch harness (which resolves esbuild itself) can share them too.
@@ -13,18 +12,6 @@
 
 import { builtinModules } from "node:module";
 import type { Plugin } from "esbuild";
-
-/** Redirect the API-backed prompt-suggestions hook to a local no-op stub. */
-export function stubPromptSuggestions(stubPath: string): Plugin {
-  return {
-    name: "stub-prompt-suggestions",
-    setup(build) {
-      build.onResolve({ filter: /usePromptSuggestions$/ }, () => ({
-        path: stubPath,
-      }));
-    },
-  };
-}
 
 /**
  * Replace `@elizaos/core` with a no-op Proxy that answers the render-path symbols

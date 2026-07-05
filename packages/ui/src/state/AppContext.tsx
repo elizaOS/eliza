@@ -28,6 +28,7 @@ import {
   isMobileLocalAgentIpcBase,
   persistMobileRuntimeModeForServerTarget,
 } from "../first-run/mobile-runtime-mode";
+import { tryHandleBootRecoveryAction } from "../first-run/boot-recovery-channel";
 import { tryHandleModelAction } from "../first-run/model-action-channel";
 import {
   activeServerKindToFirstRunRuntimeTarget,
@@ -1198,6 +1199,9 @@ function AppProviderInner({
       // unconditionally — a tap on a leftover tour widget in an old transcript
       // must never become a literal chat message to the agent.
       if (tryHandleTutorialAction(text)) return Promise.resolve();
+      // Same contract for the in-chat boot-recovery card's `__boot_recovery__:`
+      // controls (re-log in / try again / retry setup).
+      if (tryHandleBootRecoveryAction(text)) return Promise.resolve();
       const firstRunIsComplete = firstRunComplete === true;
       switch (
         classifyActionMessage(text, firstRunIsComplete, {

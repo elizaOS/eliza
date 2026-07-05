@@ -3,9 +3,12 @@
  *
  * Bundles the REAL ContinuousChatOverlay (via chat-sheet-fixture.tsx) with the
  * same esbuild pipeline as run-chat-sheet-e2e.mjs, loads it in headless
- * chromium, and screenshots the BEFORE (buggy: forever "Waking …" spinner over a
- * no_provider turn) and AFTER (fixed: spinner suppressed, Settings-hint
+ * chromium, and screenshots the BEFORE (buggy: composer keeps promising
+ * "waking up" over a no_provider turn) and AFTER (fixed: Settings-hint
  * placeholder, no_provider gate is the error surface, openSettings fires).
+ * The floating boot pill (`chat-boot-status`) no longer exists — boot trouble
+ * surfaces as an in-chat boot-recovery turn — so both captures also assert
+ * the pill never renders.
  *
  * Run: bun packages/ui/src/components/shell/__e2e__/capture-no-provider-evidence.mjs
  */
@@ -25,14 +28,6 @@ const outDir = join(here, "output");
 await mkdir(outDir, { recursive: true });
 
 // --- esbuild stubs (mirror run-chat-sheet-e2e.mjs) --------------------------
-const stubPromptSuggestions = {
-  name: "stub-prompt-suggestions",
-  setup(b) {
-    b.onResolve({ filter: /usePromptSuggestions$/ }, () => ({
-      path: join(here, "usePromptSuggestions.stub.ts"),
-    }));
-  },
-};
 const stubElizaCore = {
   name: "stub-eliza-core",
   setup(b) {
@@ -90,7 +85,7 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubPromptSuggestions, stubElizaCore, stubNodeBuiltins],
+  plugins: [stubElizaCore, stubNodeBuiltins],
   write: false,
 });
 const js = result.outputFiles[0].text;
@@ -108,7 +103,7 @@ const browser = await chromium.launch();
 let failures = 0;
 const openSettingsLog = [];
 
-async function capture(name, query, { assertBanner, assertPlaceholder }) {
+async function capture(name, query, { assertPlaceholder }) {
   const page = await browser.newPage({ viewport: { width: 420, height: 900 } });
   page.on("console", (msg) => {
     const text = msg.text();
@@ -119,15 +114,14 @@ async function capture(name, query, { assertBanner, assertPlaceholder }) {
     }
   });
   await page.goto(`${url}${query}`);
-  // Open the sheet so the transcript (with the no_provider gate) is visible, and
-  // wait out the 600ms boot-banner grace so the banner state is settled.
+  // Open the sheet so the transcript (with the no_provider gate) is visible,
+  // and give the overlay a beat to settle before asserting.
   await page.getByTestId("chat-sheet-grabber").click({ force: true }).catch(() => {});
   await page.waitForTimeout(1200);
 
-  const bannerVisible = await page
-    .getByTestId("chat-boot-status")
-    .isVisible()
-    .catch(() => false);
+  // The floating boot pill was removed outright — boot trouble now lands as an
+  // in-chat boot-recovery turn — so its testid must never render in ANY phase.
+  const bootPillCount = await page.getByTestId("chat-boot-status").count();
   const placeholder = await page
     .locator('[data-testid="chat-composer-textarea"]')
     .getAttribute("placeholder")
@@ -141,13 +135,15 @@ async function capture(name, query, { assertBanner, assertPlaceholder }) {
   const file = join(evidenceDir, `11879-${name}.png`);
   await page.screenshot({ path: file, fullPage: false });
   console.log(
-    `[${name}] bootBanner=${bannerVisible} placeholder=${JSON.stringify(
+    `[${name}] bootPillCount=${bootPillCount} placeholder=${JSON.stringify(
       placeholder,
     )} noProviderGate=${gateVisible} → ${file}`,
   );
 
-  if (assertBanner !== undefined && bannerVisible !== assertBanner) {
-    console.log(`✗ [${name}] expected bootBanner=${assertBanner}`);
+  if (bootPillCount !== 0) {
+    console.log(
+      `✗ [${name}] boot pill (chat-boot-status) rendered — it was removed and must never appear`,
+    );
     failures += 1;
   }
   if (assertPlaceholder && !(placeholder ?? "").includes(assertPlaceholder)) {
@@ -178,19 +174,20 @@ async function capture(name, query, { assertBanner, assertPlaceholder }) {
   await page.close();
 }
 
-// BEFORE (pre-fix): forever "Waking …" spinner sits over the no_provider turn.
+// BEFORE (pre-fix): the composer keeps promising "waking up…" over the
+// no_provider turn.
 await capture(
   "before-waking-spinner",
   "?phase=booting&failure=no_provider&noprovider=off",
-  { assertBanner: true, assertPlaceholder: "waking up" },
+  { assertPlaceholder: "waking up" },
 );
-// AFTER (fixed): spinner suppressed, Settings-hint placeholder, gate is the
-// error surface. openSettings is invoked (the fixture logs it) — the real
-// controller navigates via setTab("settings").
+// AFTER (fixed): Settings-hint placeholder, gate is the error surface.
+// openSettings is invoked (the fixture logs it) — the real controller
+// navigates via setTab("settings").
 await capture(
   "after-settings-cta",
   "?phase=booting&failure=no_provider",
-  { assertBanner: false, assertPlaceholder: "Settings" },
+  { assertPlaceholder: "Settings" },
 );
 
 console.log(

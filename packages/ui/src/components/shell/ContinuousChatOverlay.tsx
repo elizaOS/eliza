@@ -124,7 +124,6 @@ import {
   hasMultipleTopicGroups,
 } from "./topic-grouping";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
-import { usePromptSuggestions } from "./usePromptSuggestions";
 import type { ConversationNav, ShellController } from "./useShellController";
 
 /** No-op slash controller so the overlay renders without a provider (stories). */
@@ -236,10 +235,6 @@ const MAXIMIZE_RESTORE_ZONE_VH = 0.2;
 // of resting free — so near-detent releases are deterministic + clean, and only
 // the clear gaps between detents keep the free-drag rest height.
 const SHEET_DETENT_MAGNET = 64;
-
-// Feature flag: the resting one-tap prompt-suggestion strip. Off for now so the
-// composer can be tested without it; flip to true to bring the strip back.
-const SHOW_PROMPT_SUGGESTIONS = false;
 
 // A light iOS-style impact on each detent cross. Self-contained + guarded so it
 // is a no-op off-native (and in jsdom tests) without coupling the overlay to the
@@ -660,117 +655,6 @@ function TurnStatusIndicator({
   );
 }
 
-// After this long WITHOUT OBSERVED PROGRESS still booting, the banner escalates
-// to a "taking longer than usual" state with a settings escape, so a truly
-// stuck boot never reads as a silent hang — but a slow-yet-progressing boot
-// does NOT trip it (#14040 sub-defect 3): the escalation keys off
-// absence-of-progress, not raw elapsed wall-clock. Exported for the unit test
-// (see the __-seam note below).
-export const BOOT_SLOW_AFTER_MS = 90_000;
-
-// Grace before the banner appears: a warm agent leaves the "booting" phase
-// within a frame, so only a real cold boot outlasts this and shows the banner
-// — no flash on a first paint / warm reconnect.
-const BOOT_BANNER_GRACE_MS = 600;
-
-/**
- * Cold-start boot feedback (resting, pre-send): an indeterminate spinner + live
- * "Waking …" label, escalating after {@link BOOT_SLOW_AFTER_MS} to a "taking
- * longer than usual" state with an Open-settings escape. The parent gates
- * mounting on {@link BOOT_BANNER_GRACE_MS} (see the render site).
- *
- * Exported (with BOOT_SLOW_AFTER_MS) only as a unit-test seam — not part of the
- * public overlay API; cf. `__renderThreadLineForParity`.
- */
-export function BootStatusIndicator({
-  agentName,
-  onOpenSettings,
-  reduce,
-  progressSignal,
-}: {
-  agentName: string;
-  onOpenSettings?: () => void;
-  reduce?: boolean;
-  /**
-   * A token that changes whenever fresh boot progress is observed (#14040
-   * sub-defect 3). The slow-boot escalation restarts its timer on each change,
-   * so a slow-but-progressing boot never trips "taking longer than usual" while
-   * a genuinely stalled boot still escalates. When `undefined` (no progress
-   * channel available) the timer falls back to raw-elapsed escalation — the
-   * prior behaviour — by keying off a stable token.
-   */
-  progressSignal?: string;
-}): React.JSX.Element {
-  // Escalate on ABSENCE of progress, not raw elapsed time (#14040 sub-defect
-  // 3): the timer is (re)armed on mount AND whenever `progressSignal` changes,
-  // so each fresh progress observation pushes the "taking longer than usual"
-  // threshold out by another window. A boot that keeps reporting progress never
-  // trips it; a stalled boot (token stable for BOOT_SLOW_AFTER_MS) still does.
-  // The parent unmounts this the instant readiness flips, so the timer never
-  // outlives the boot.
-  const [slow, setSlow] = React.useState(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: progressSignal is the RESET trigger, not read in the body — re-running the effect on each change restarts the escalation window (that IS the fix for #14040 sub-defect 3). Removing it would revert to raw-elapsed escalation.
-  React.useEffect(() => {
-    // Fresh progress clears any prior escalation and restarts the window.
-    setSlow(false);
-    const id = window.setTimeout(() => setSlow(true), BOOT_SLOW_AFTER_MS);
-    return () => window.clearTimeout(id);
-  }, [progressSignal]);
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-      data-testid="chat-boot-status"
-      data-aesthetic-audit-ignore-text-density="true"
-      data-slow={slow ? "true" : undefined}
-      className="pointer-events-none relative mb-2 flex w-full justify-center"
-    >
-      <span
-        className={cn(
-          "inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-sm font-medium text-txt",
-          FLOAT_SHADOW,
-        )}
-      >
-        {slow ? (
-          <>
-            <RotateCcw
-              className={cn(
-                "h-3.5 w-3.5 text-accent",
-                reduce ? "" : "animate-spin [animation-duration:2.4s]",
-              )}
-              aria-hidden="true"
-            />
-            <span>{agentName} is taking longer than usual to wake…</span>
-            {onOpenSettings ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onOpenSettings}
-                data-testid="chat-boot-open-settings"
-                className="pointer-events-auto ml-1 h-auto rounded-full border border-border-strong bg-surface px-2 py-0.5 text-xs text-txt transition-colors hover:border-border-hover hover:bg-bg-hover"
-              >
-                Open settings
-              </Button>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <Loader2
-              className={cn(
-                "h-3.5 w-3.5 text-accent",
-                reduce ? "" : "animate-spin",
-              )}
-              aria-hidden="true"
-            />
-            <span>Waking {agentName}…</span>
-          </>
-        )}
-      </span>
-    </div>
-  );
-}
-
 /**
  * Render a user turn's text, bolding a leading slash command so a sent
  * `/command` reads as a command in the transcript (mirroring the composer's
@@ -976,7 +860,6 @@ export function ContinuousChatOverlay({
   const {
     messages,
     phase,
-    bootProgressSignal,
     responding,
     turnStatus,
     send,
@@ -1847,43 +1730,6 @@ export function ContinuousChatOverlay({
   const hasDraft = draft.trim().length > 0;
   const hasImages = pendingImages.length > 0;
 
-  // `booting` (= `phase === "booting"`) is true whenever the agent isn't ready
-  // YET — including first paint before the status fetch resolves, even for a
-  // warm agent. So require it to hold past BOOT_BANNER_GRACE_MS before showing
-  // the banner: a warm agent flips ready within a frame and never crosses it.
-  const [showBootBanner, setShowBootBanner] = React.useState(false);
-  React.useEffect(() => {
-    if (!booting) {
-      setShowBootBanner(false);
-      return;
-    }
-    const id = window.setTimeout(
-      () => setShowBootBanner(true),
-      BOOT_BANNER_GRACE_MS,
-    );
-    return () => window.clearTimeout(id);
-  }, [booting]);
-
-  // The suggestion strip is a keyboard-style row of one-tap prompts shown in the
-  // RESTING (closed) state — ready, nothing typed or attached, not recording. It
-  // unmounts once the sheet opens or a draft starts; this condition also gates
-  // the small-model fetch so it isn't called for a hidden strip.
-  const suggestionsVisible =
-    SHOW_PROMPT_SUGGESTIONS &&
-    !pilled &&
-    !sheetOpen &&
-    !recording &&
-    !booting &&
-    canSend &&
-    !hasDraft &&
-    !hasImages;
-
-  // Three tailored prompt suggestions for the resting overlay (model-backed via
-  // TEXT_SMALL, with a static offline fallback).
-  const suggestions = usePromptSuggestions(messages, {
-    enabled: suggestionsVisible,
-  });
-
   // Send `text` (and optional images) through the normal chat pipeline, clearing
   // the composer. Shared by the send button, the slash menu (agent commands),
   // and suggestion taps.
@@ -1980,23 +1826,6 @@ export function ContinuousChatOverlay({
       setPendingImages,
       viewChatBinding,
     ],
-  );
-
-  // Tapping a suggestion sends it immediately (same path as submit), so the
-  // strip is a one-tap shortcut, not just a draft pre-fill.
-  const pickSuggestion = React.useCallback(
-    (text: string) => {
-      if (!canSend) return;
-      setDraft("");
-      clearChatDraft(activeConversationIdRef.current);
-      send(text);
-      // Open to HALF (conversation above the keyboard), not a full-screen jump.
-      setFreeH(null);
-      setMode((m) => (m === "half" || m === "full" ? m : "half"));
-      detentHaptic();
-      inputRef.current?.focus();
-    },
-    [canSend, send, setDraft],
   );
 
   const addImageFiles = React.useCallback(
@@ -2397,9 +2226,6 @@ export function ContinuousChatOverlay({
   const scrimVisibility = useTransform(threadHeight, (h) =>
     h > 0 ? "visible" : "hidden",
   );
-  const suggestionsOpacity = useTransform(threadHeight, (h) =>
-    Math.max(0, 1 - h / Math.max(1, openH * 0.5)),
-  );
   const threadFlexBasis = useTransform(threadHeight, (h) => `${h}px`);
   // Corner radius tracks the live height with real pixel radii. `9999px` works
   // for a static pill, but while the panel grows the browser keeps reclamping it
@@ -2662,12 +2488,13 @@ export function ContinuousChatOverlay({
   );
 
   // First-run onboarding pin + release. While onboarding is active the sheet
-  // stays pinned FULL — the seeded greeting/choices must be visible and the
-  // chat undismissable (every collapse path below is also gated on
-  // `firstRunOpen`). On the FALLING edge — onboarding just completed — auto-
-  // collapse to the input bar so the home screen underneath is revealed.
-  // Edge-detected via a ref so an ordinary session (onboarding never active)
-  // never triggers the collapse.
+  // stays pinned FULL — a true full-screen chat (the seeded greeting/choices
+  // own the screen and the chat is undismissable; every collapse path below is
+  // also gated on `firstRunOpen`). On the FALLING edge — onboarding just
+  // completed — settle to the HALF detent: the sheet springs full → half in
+  // step with the opaque backdrop fade, so the home screen is revealed behind
+  // the top half while the conversation stays in hand. Edge-detected via a ref
+  // so an ordinary session (onboarding never active) never triggers it.
   const wasFirstRunOpenRef = React.useRef(firstRunOpen);
   React.useEffect(() => {
     const was = wasFirstRunOpenRef.current;
@@ -2676,7 +2503,7 @@ export function ContinuousChatOverlay({
       setMode("full");
       return;
     }
-    if (was) goToDetent("collapsed");
+    if (was) goToDetent("half");
   }, [firstRunOpen, goToDetent]);
 
   // First-run opaque backdrop (#12178). While onboarding pins the sheet FULL,
@@ -2698,32 +2525,6 @@ export function ContinuousChatOverlay({
       prev === "opaque" ? (reduce ? "off" : "revealing") : prev,
     );
   }, [firstRunOpen, reduce]);
-
-  // Onboarding grows from the BOTTOM: size the sheet to its content (capped at
-  // full) via the freeH rest-height seam, so the greeting + choice widget sit
-  // just above the composer instead of floating under a tall empty panel. Drags
-  // are gated while onboarding, so nothing fights freeH; on completion
-  // goToDetent("collapsed") clears it and collapses smoothly. `data-detent`
-  // still reports "full" (the pinned-open contract) even when visually shorter.
-  // jsdom has no layout (offsetHeight 0), so this no-ops there — the unit tests
-  // keep the full-height pin.
-  React.useLayoutEffect(() => {
-    if (!firstRunOpen || typeof ResizeObserver === "undefined") return;
-    const content = threadContentRef.current;
-    if (!content) return;
-    const measure = () => {
-      const h = content.offsetHeight;
-      if (h <= 0) return; // not laid out (jsdom) — leave the full-height pin
-      const next = Math.min(h + 28, panelMaxH);
-      setFreeH((prev) =>
-        prev != null && Math.abs(prev - next) < 2 ? prev : next,
-      );
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(content);
-    return () => ro.disconnect();
-  }, [firstRunOpen, panelMaxH]);
 
   const openFromGrabber = React.useCallback(() => {
     if (hasRevealableThread) {
@@ -3962,58 +3763,10 @@ export function ContinuousChatOverlay({
       {/* Local model download/load status renders as the home-grid
           model-download widget only — no floating pill above the composer (the
           double status read as clutter). Send stays ungated; the server holds
-          the turn until the model is ready. */}
-
-      {/* Cold-start boot feedback — sibling of the model-download banner above.
-          See BootStatusIndicator; `showBootBanner` is the grace-gated flag.
-          Suppressed once we know no provider is configured: the agent will NEVER
-          become ready, so "Waking …" would spin forever — the in-transcript
-          no-provider gate is the honest error surface instead. Also suppressed
-          for the whole of onboarding (#13377): the conductor owns every word on
-          that screen, and a floating "Waking …" chip above the sign-in chat
-          read as clutter. */}
-      {showBootBanner && !noProviderConfigured && !firstRunOpen ? (
-        <BootStatusIndicator
-          agentName={agentName}
-          onOpenSettings={openSettings}
-          reduce={reduce}
-          progressSignal={bootProgressSignal}
-        />
-      ) : null}
-
-      {/* Three tailored prompt suggestions — a keyboard-style strip shown in the
-          resting (closed) state when nothing is typed. Tapping one sends it
-          immediately, which also pulls the chat sheet up. `order: -1` floats the
-          strip ABOVE the chat sheet (sheet-below-bubbles layout); the strip fades
-          out as the sheet is dragged up so the unmount on open never pops. */}
-      {suggestionsVisible ? (
-        <motion.fieldset
-          aria-label="Suggested prompts"
-          className={cn(
-            "pointer-events-auto relative m-0 mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 border-0 p-0",
-          )}
-          style={{ order: -1, opacity: suggestionsOpacity }}
-          data-testid="chat-suggestions"
-        >
-          {suggestions.map((s, i) => (
-            <Button
-              key={s}
-              variant="ghost"
-              size="sm"
-              data-testid={`chat-suggestion-${i}`}
-              aria-label={s}
-              onClick={() => pickSuggestion(s)}
-              className={cn(
-                "h-auto max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3 py-1.5",
-                "text-[12px] text-white/80 transition-colors",
-                "hover:border-white/30 hover:bg-white/15 hover:text-white",
-              )}
-            >
-              {s}
-            </Button>
-          ))}
-        </motion.fieldset>
-      ) : null}
+          the turn until the model is ready. Boot status likewise has NO
+          floating surface: a stalled boot speaks in the transcript via the
+          boot-recovery conductor (use-boot-recovery-conductor.ts), and the
+          in-transcript no-provider gate covers the unconfigured state. */}
 
       {/* THE chat — one connected object. Its base is the always-present input;
           the conversation grows UP out of it on a pull, inside this same panel.

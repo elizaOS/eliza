@@ -244,17 +244,6 @@ export async function handleAvatarRoutes(
   return (await import("./avatar-routes.ts")).handleAvatarRoutes(...args);
 }
 
-type SuggestionsRoutesModule = typeof import("./suggestions-routes.ts");
-export async function handleSuggestionsRoutes(
-  ...args: Parameters<SuggestionsRoutesModule["handleSuggestionsRoutes"]>
-): ReturnType<SuggestionsRoutesModule["handleSuggestionsRoutes"]> {
-  const ctx = routeContext(args);
-  if (ctx?.pathname !== "/api/suggestions") return false;
-  return (await import("./suggestions-routes.ts")).handleSuggestionsRoutes(
-    ...args,
-  );
-}
-
 type InteractionsRoutesModule = typeof import("./interactions-routes.ts");
 export async function handleInteractionsRoutes(
   ...args: Parameters<InteractionsRoutesModule["handleInteractionsRoutes"]>

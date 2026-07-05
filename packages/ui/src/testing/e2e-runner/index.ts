@@ -18,11 +18,7 @@ export {
   type Snapper,
   withChromium,
 } from "./browser-harness.ts";
-export {
-  stubElizaCore,
-  stubNodeBuiltins,
-  stubPromptSuggestions,
-} from "./esbuild-stubs.ts";
+export { stubElizaCore, stubNodeBuiltins } from "./esbuild-stubs.ts";
 export {
   type BundleFixtureOptions,
   buildFixtureHtml,

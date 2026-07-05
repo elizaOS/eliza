@@ -40,14 +40,6 @@ async function snap(name) {
 }
 
 // --- Bundle the fixture (same stubs as run-chat-sheet-e2e.mjs) ------------
-const stubPromptSuggestions = {
-  name: "stub-prompt-suggestions",
-  setup(b) {
-    b.onResolve({ filter: /usePromptSuggestions$/ }, () => ({
-      path: join(here, "usePromptSuggestions.stub.ts"),
-    }));
-  },
-};
 const stubElizaCore = {
   name: "stub-eliza-core",
   setup(b) {
@@ -104,7 +96,7 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubPromptSuggestions, stubElizaCore, stubNodeBuiltins],
+  plugins: [stubElizaCore, stubNodeBuiltins],
   write: false,
 });
 const js = result.outputFiles[0].text;

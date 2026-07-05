@@ -3,12 +3,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-// usePromptSuggestions fetches via the shared client; stub it (as the sibling
-// overlay test does) so the resting strip stays on its static fallback.
-vi.mock("../../api/client", () => ({
-  client: { fetch: vi.fn().mockRejectedValue(new Error("no api in test")) },
-}));
-
 import type { SlashCommandCatalogItem } from "../../chat/slash-menu";
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";

@@ -20,7 +20,6 @@ import {
   runBrowserFixtureE2E,
   stubElizaCore,
   stubNodeBuiltins,
-  stubPromptSuggestions,
 } from "../../../testing/e2e-runner/index.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -41,11 +40,7 @@ await runBrowserFixtureE2E(
       outDir,
       htmlName: "warmup-eviction.html",
       title: "warmup eviction e2e",
-      plugins: [
-        stubPromptSuggestions(join(here, "usePromptSuggestions.stub.ts")),
-        stubElizaCore(),
-        stubNodeBuiltins(),
-      ],
+      plugins: [stubElizaCore(), stubNodeBuiltins()],
       processShim: true,
       background: "#0a0d16",
     },

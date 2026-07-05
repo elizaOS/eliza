@@ -15,7 +15,7 @@
  *   - EVERY control/state via deterministic fixture loads + interactions:
  *       empty · peek/half/full · typing→send · attach image→thumbnail→remove ·
  *       mic press→recording · voice speaking→mute toggle · responding typing
- *       dots · booting (disabled) · suggestions · reduced-motion.
+ *       dots · booting (disabled) · reduced-motion.
  *   - Screenshots every state; captures the browser console and fails on any
  *     page error or error-level log.
  *
@@ -33,7 +33,6 @@ import {
   renameRecordedVideo,
   stubElizaCore,
   stubNodeBuiltins,
-  stubPromptSuggestions,
   writeFixturePage,
 } from "../../../testing/e2e-runner/index.ts";
 import {
@@ -61,20 +60,16 @@ function near(a, b, tol) {
   return Math.abs(a - b) <= tol;
 }
 
-// Bundle the fixture with the shared stubs: the API-touching prompt-suggestions
-// hook is replaced with a local stub, and @elizaos/core + node builtins (dead at
-// render in the browser; the only render-path core symbol, findInteractionRegions,
-// is test-only) with no-op proxies, mirroring the sibling shell runners.
+// Bundle the fixture with the shared stubs: @elizaos/core + node builtins (dead
+// at render in the browser; the only render-path core symbol,
+// findInteractionRegions, is test-only) are replaced with no-op proxies,
+// mirroring the sibling shell runners.
 const url = await writeFixturePage({
   entry: join(here, "chat-sheet-fixture.tsx"),
   outDir,
   htmlName: "chat-sheet.html",
   title: "chat sheet e2e",
-  plugins: [
-    stubPromptSuggestions(join(here, "usePromptSuggestions.stub.ts")),
-    stubElizaCore(),
-    stubNodeBuiltins(),
-  ],
+  plugins: [stubElizaCore(), stubNodeBuiltins()],
   processShim: true,
   background: "#0a0d16",
   headHtml: "<style>.bg-bg{background-color:#0a0d16}</style>",
@@ -802,7 +797,7 @@ try {
       hasTouch: true,
     });
 
-  // empty thread: no sheet, just the composer (suggestion strip is flagged off)
+  // empty thread: no sheet, just the composer
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -810,7 +805,6 @@ try {
     await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(650);
     assert((await p.locator('[data-testid="chat-thread"]').count()) === 0, "EMPTY: no thread/history mounted (just the input panel)");
-    assert((await p.getByTestId("chat-suggestions").count()) === 0, "EMPTY: suggestion strip NOT shown (flagged off)");
     assert(await p.getByTestId("chat-composer-attach").isVisible(), "EMPTY: attach (+) button shown");
     assert((await p.getByTestId("chat-composer-mic").count()) === 1, "EMPTY: mic button shown (no draft)");
     await snap(p, "state-empty");
@@ -1232,21 +1226,6 @@ try {
       sink.logs.slice(m).some((l) => l.includes("setComposerHasDraft -> false")),
       "TYPING-PAUSE: clearing the draft resumes the loop (setComposerHasDraft false)",
     );
-    await p.close();
-  }
-
-  // suggestions are feature-flagged off — no strip, no chips at rest
-  {
-    const p = await ctrl();
-    attachConsole(p, sink);
-    await gotoFixture(p, `${url}?empty`);
-    await p.waitForSelector('[data-testid="chat-composer-textarea"]');
-    await p.waitForTimeout(500);
-    assert(
-      (await p.locator('[data-testid^="chat-suggestion-"]').count()) === 0,
-      "SUGGESTIONS: no chips rendered (flagged off)",
-    );
-    await snap(p, "state-suggestions-off");
     await p.close();
   }
 

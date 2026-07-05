@@ -24,7 +24,6 @@ import {
   runBrowserFixtureE2E,
   stubElizaCore,
   stubNodeBuiltins,
-  stubPromptSuggestions,
 } from "../../../testing/e2e-runner/index.ts";
 import {
   shouldReportFrameBudget,
@@ -171,11 +170,7 @@ await runBrowserFixtureE2E(
       outDir,
       htmlName: "chat-perf-gate.html",
       title: "chat perf gate",
-      plugins: [
-        stubPromptSuggestions(join(here, "usePromptSuggestions.stub.ts")),
-        stubElizaCore(),
-        stubNodeBuiltins(),
-      ],
+      plugins: [stubElizaCore(), stubNodeBuiltins()],
       processShim: true,
       background: "#16121c",
       headHtml: `<script>${OBSERVER_INIT}</script>`,

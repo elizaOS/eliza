@@ -227,8 +227,9 @@ export async function runStartingRuntime(
     // ~minutes while the container binds the runtime. Declaring ready off the
     // shim routed the user to a washed-out /character/select instead of the
     // booting chat. Gate readiness on the passthrough genuinely serving so we
-    // stay in starting-runtime (booting chat + BootStatusIndicator) until the
-    // warmed runtime actually answers. Scoped to `kind: "cloud"` — a
+    // stay in starting-runtime (booting chat; a stuck boot surfaces as the
+    // boot-recovery conductor's in-chat card) until the warmed runtime
+    // actually answers. Scoped to `kind: "cloud"` — a
     // self-hosted `remote-backend` and the desktop/mobile embedded-local agent
     // never go through this passthrough, so they keep the immediate-ready
     // behavior unchanged.
@@ -533,9 +534,9 @@ export async function runStartingRuntime(
  * Polls the genuine per-agent proxy passthrough (`GET /api/conversations` via
  * `client.listConversations()`) until it actually serves, THEN hydrates and
  * dispatches AGENT_RUNNING. Until then we stay in the starting-runtime phase,
- * which renders the booting chat (with BootStatusIndicator / "connecting…")
- * rather than flipping ready and routing the user to a washed-out
- * /character/select while the container is still warming.
+ * which renders the booting chat (a stuck boot surfaces as the boot-recovery
+ * conductor's in-chat card) rather than flipping ready and routing the user
+ * to a washed-out /character/select while the container is still warming.
  *
  * Deadline handling mirrors the local boot loop: start with the web policy's
  * 180s budget, then — while the passthrough is still warming — slide the

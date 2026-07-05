@@ -789,6 +789,7 @@ describe("CloudAgentsSection load state (error vs empty)", () => {
 
 // The shared→dedicated handoff no longer drives this Settings row's "Waking…"
 // badge: PR3 re-points the live client SILENTLY (no row-level waking state), and
-// the in-flight progress is shown by the chat-shell handoff toast
-// (CloudHandoffBanner). The row's only "Waking…" state is now the local
-// suspended→resume flow, covered by "CloudAgentsSection waking on switch" above.
+// the in-flight progress is shown by the in-chat boot-recovery card and the
+// home-grid agent-provisioning tile. The row's only "Waking…" state is now the
+// local suspended→resume flow, covered by "CloudAgentsSection waking on switch"
+// above.

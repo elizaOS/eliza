@@ -57,13 +57,11 @@ import { CustomActionEditor } from "./components/custom-actions/CustomActionEdit
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
 import { PermissionPrimingOverlay } from "./components/permissions/PermissionPrimingOverlay";
-import { ActionBanner } from "./components/shell/ActionBanner";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
 import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatSurface } from "./components/shell/ChatSurface";
-import { CloudHandoffBanner } from "./components/shell/CloudHandoffBanner";
-import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
+import { BootRecoveryConductorMount } from "./first-run/use-boot-recovery-conductor";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
@@ -2505,6 +2503,7 @@ export function App() {
           <ChatOverlayShell />
           <FirstRunConductorMount />
           <ModelStatusConductorMount />
+          <BootRecoveryConductorMount />
         </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>
@@ -2694,10 +2693,7 @@ export function App() {
             />
           ) : null}
           <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
-            <ConnectionFailedBanner />
             <SystemWarningBanner />
-            <ActionBanner />
-            <CloudHandoffBanner />
             {shellContent}
           </div>
         </div>
@@ -2746,6 +2742,11 @@ export function App() {
             downloading/loading/missing/errored it seeds ONE live status turn
             with cancel / switch-to-cloud / retry controls. Renders null. */}
         <ModelStatusConductorMount />
+        {/* In-chat boot-recovery card (headless) — a stalled boot or a failed
+            dedicated-agent handoff seeds ONE live turn with re-log-in /
+            try-again / retry-setup controls; the transcript is the only boot
+            status surface (no floating banner). Renders null. */}
+        <BootRecoveryConductorMount />
         {/* In-chat tutorial conductor (headless) — while the tour is active it
             seeds one conversational turn per step into the SAME live transcript
             the overlay renders, narrates through the real voice engine, and

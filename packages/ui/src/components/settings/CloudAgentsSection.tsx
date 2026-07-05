@@ -572,8 +572,9 @@ export function CloudAgentsSection() {
             // Show "Waking…" for a locally-driven resume (wakingId). The
             // first-run shared→dedicated handoff no longer surfaces here: it
             // re-points the live client SILENTLY (no row-level "waking" state),
-            // and its in-flight progress is shown by the chat-shell handoff
-            // toast (CloudHandoffBanner), not this Settings row.
+            // and its in-flight progress is shown by the in-chat boot-recovery
+            // card and the home-grid agent-provisioning tile, not this
+            // Settings row.
             const waking = wakingId === agent.agent_id;
             const status = (agent.status || "").toLowerCase();
             const canSuspend = status === "running";

@@ -664,7 +664,6 @@ async function collectOverlayClearanceIssues(
           "[data-testid='chat-sheet']",
           "[data-testid='chat-pill']",
           "[data-testid='chat-sheet-grabber']",
-          "[data-testid='chat-suggestions']",
           "button",
           "textarea",
           "input",
@@ -676,11 +675,7 @@ async function collectOverlayClearanceIssues(
         if (!isVisible(element)) return false;
         const style = getComputedStyle(element);
         const testId = element.getAttribute("data-testid");
-        return (
-          style.pointerEvents !== "none" ||
-          testId === "chat-sheet" ||
-          testId === "chat-suggestions"
-        );
+        return style.pointerEvents !== "none" || testId === "chat-sheet";
       })
       .map((element) => element.getBoundingClientRect())
       .filter((rect) => rect.width > 0 && rect.height > 0);

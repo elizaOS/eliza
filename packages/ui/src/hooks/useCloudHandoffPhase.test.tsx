@@ -1,14 +1,7 @@
 // @vitest-environment jsdom
 
-import {
-  act,
-  cleanup,
-  render,
-  renderHook,
-  screen,
-} from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CloudHandoffBanner } from "../components/shell/CloudHandoffBanner";
 import {
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
@@ -71,58 +64,7 @@ describe("useCloudHandoffPhase", () => {
   });
 });
 
-describe("CloudHandoffBanner", () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => {
-    cleanup();
-    vi.useRealTimers();
-  });
-
-  it("renders nothing until a handoff starts", () => {
-    const { container } = render(<CloudHandoffBanner />);
-    expect(container.firstChild).toBeNull();
-  });
-
-  it("shows the migrating copy, then the switched confirmation", () => {
-    render(<CloudHandoffBanner />);
-    emit({ agentId: "a1", phase: "migrating" });
-    expect(screen.queryByText(/keep chatting/i)).not.toBeNull();
-
-    emit({ agentId: "a1", phase: "switched", imported: 2 });
-    expect(screen.queryByText(/now on your dedicated agent/i)).not.toBeNull();
-  });
-
-  it("shows reassuring fallback copy on a failed/timed-out handoff", () => {
-    render(<CloudHandoffBanner />);
-    emit({ agentId: "a1", phase: "timed-out" });
-    expect(screen.queryByText(/still on the shared one/i)).not.toBeNull();
-  });
-
-  it("offers a retry on failure that dispatches a retry event for the agent", () => {
-    render(<CloudHandoffBanner />);
-    emit({ agentId: "a1", phase: "failed", error: "boom" });
-
-    const retried: string[] = [];
-    const onRetry = (event: Event) => {
-      retried.push((event as CustomEvent<{ agentId: string }>).detail.agentId);
-    };
-    window.addEventListener("eliza:cloud-handoff-retry", onRetry);
-
-    const button = screen.getByTestId("cloud-handoff-retry");
-    act(() => {
-      button.click();
-    });
-    window.removeEventListener("eliza:cloud-handoff-retry", onRetry);
-
-    expect(retried).toEqual(["a1"]);
-  });
-
-  it("shows no retry button on the migrating / success phases", () => {
-    render(<CloudHandoffBanner />);
-    emit({ agentId: "a1", phase: "migrating" });
-    expect(screen.queryByTestId("cloud-handoff-retry")).toBeNull();
-
-    emit({ agentId: "a1", phase: "switched", imported: 1 });
-    expect(screen.queryByTestId("cloud-handoff-retry")).toBeNull();
-  });
-});
+// The floating CloudHandoffBanner was removed: failure/timeout phases now
+// surface as the in-chat boot-recovery card (use-boot-recovery-conductor.test
+// covers the retry-handoff control) and the home-grid agent-provisioning tile
+// remains the durable surface.

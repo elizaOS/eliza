@@ -33,7 +33,6 @@ import {
   runBrowserFixtureE2E,
   stubElizaCore,
   stubNodeBuiltins,
-  stubPromptSuggestions,
 } from "../../../testing/e2e-runner/index.ts";
 import {
   FRAME_SAMPLER_INIT,
@@ -181,11 +180,7 @@ await runBrowserFixtureE2E(
       outDir,
       htmlName: "perf-gate.html",
       title: "perf gate e2e",
-      plugins: [
-        stubPromptSuggestions(join(here, "usePromptSuggestions.stub.ts")),
-        stubElizaCore(),
-        stubNodeBuiltins(),
-      ],
+      plugins: [stubElizaCore(), stubNodeBuiltins()],
       processShim: true,
       background: "#16121c",
     },

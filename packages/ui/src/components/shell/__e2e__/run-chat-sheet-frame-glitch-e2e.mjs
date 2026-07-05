@@ -44,7 +44,6 @@ import { chromium } from "playwright";
 import {
   stubElizaCore,
   stubNodeBuiltins,
-  stubPromptSuggestions,
 } from "../../../testing/e2e-runner/esbuild-stubs.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -107,10 +106,10 @@ function assert(cond, msg) {
 }
 
 // Bundle the fixture with the shared shell stubs (same as run-chat-sheet-e2e):
-// the API-touching prompt-suggestions hook → a local stub, and @elizaos/core +
-// node builtins (dead at render in the browser) → no-op proxies. The stubs are
-// type-only esbuild consumers, so this node-run harness (which resolves esbuild
-// itself, below) can import them without pulling runtime esbuild.
+// @elizaos/core + node builtins (dead at render in the browser) → no-op
+// proxies. The stubs are type-only esbuild consumers, so this node-run harness
+// (which resolves esbuild itself, below) can import them without pulling
+// runtime esbuild.
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 await mkdir(evidenceDir, { recursive: true });
@@ -124,11 +123,7 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [
-    stubPromptSuggestions(join(here, "usePromptSuggestions.stub.ts")),
-    stubElizaCore(),
-    stubNodeBuiltins(),
-  ],
+  plugins: [stubElizaCore(), stubNodeBuiltins()],
   write: false,
 });
 const js = result.outputFiles[0].text;

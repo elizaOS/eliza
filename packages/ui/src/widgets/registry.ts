@@ -33,7 +33,6 @@ import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/ag
 import { AGENT_PROVISIONING_HOME_WIDGET } from "../components/chat/widgets/agent-provisioning";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status.helpers";
 import { CALENDAR_HOME_WIDGET } from "../components/chat/widgets/calendar-upcoming";
-import { FTU_WELCOME_HOME_WIDGET } from "../components/chat/widgets/ftu-welcome";
 import { GOALS_HOME_WIDGET } from "../components/chat/widgets/goals-attention";
 import { HEALTH_HOME_WIDGET } from "../components/chat/widgets/health-sleep";
 import { MODEL_DOWNLOAD_HOME_WIDGET } from "../components/chat/widgets/model-download";
@@ -76,14 +75,6 @@ registerWidgetComponent(
   AGENT_PROVISIONING_HOME_WIDGET.pluginId,
   AGENT_PROVISIONING_HOME_WIDGET.id,
   AGENT_PROVISIONING_HOME_WIDGET.Component,
-);
-// First-time-user welcome card (#9959): a core FTU surface, not a loadable
-// plugin, so it's always-visible and self-retires via the sunset lifecycle once
-// the user engages or dismisses it.
-registerWidgetComponent(
-  FTU_WELCOME_HOME_WIDGET.pluginId,
-  FTU_WELCOME_HOME_WIDGET.id,
-  FTU_WELCOME_HOME_WIDGET.Component,
 );
 // Chat-native tutorial launch card: a core FTU surface that is always-visible
 // until the user launches or dismisses it.
@@ -136,26 +127,11 @@ export function registerBuiltinWidgetDeclarations(
 // available client-side for zero-config rendering.
 
 export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
-  // First-time-user welcome (#9959) — guided cold-start home: greeting + tappable
-  // "try saying…" chips. Ranks at the top for a cold user (welcome weight, below
-  // approval/escalation/blocked) and retires permanently once the user engages or
-  // dismisses it (sunset lifecycle).
-  {
-    id: FTU_WELCOME_HOME_WIDGET.id,
-    pluginId: FTU_WELCOME_HOME_WIDGET.pluginId,
-    slot: "home",
-    label: "Welcome",
-    icon: "Sparkles",
-    order: FTU_WELCOME_HOME_WIDGET.order,
-    defaultEnabled: true,
-    // Core FTU surface, not a loadable plugin — always-visible, self-retires.
-    visibility: "always",
-    signalKinds: FTU_WELCOME_HOME_WIDGET.signalKinds,
-    size: FTU_WELCOME_HOME_WIDGET.size,
-    sunset: FTU_WELCOME_HOME_WIDGET.sunset,
-  },
-  // Chat-native tutorial launch: ranks just below the FTU welcome for a cold
-  // user and retires permanently once the tour is launched or dismissed.
+  // The first-time-user welcome card (greeting + "try saying…" suggestion
+  // chips) was removed deliberately: the agent is proactive on a cold home —
+  // no canned prompt suggestions anywhere on the dashboard.
+  // Chat-native tutorial launch remains as the durable, explicit way to rerun
+  // onboarding help from the home grid.
   {
     id: TUTORIAL_LAUNCH_HOME_WIDGET.id,
     pluginId: TUTORIAL_LAUNCH_HOME_WIDGET.pluginId,

@@ -91,10 +91,6 @@ jobs:
       - name: Agent surface e2e
         run: bun run --cwd packages/ui test:agent-surface-e2e
 
-      # First-time-use onboarding widget states and retired-state persistence.
-      - name: FTU home widget e2e
-        run: bun run --cwd packages/ui test:ftu-home-e2e
-
       # Coding account + task-room roster widget visual states.
       - name: Orchestrator accounts widget e2e
         run: bun run --cwd packages/ui test:orchestrator-accounts-e2e
