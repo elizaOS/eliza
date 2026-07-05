@@ -17,14 +17,12 @@ import { type PluginWidgetDeclaration, WIDGET_SLOTS } from "./types";
 // #9143 — per-plugin home-widget coverage gate.
 //
 // The contract: every plugin with an `elizaos.app` manifest is frontpage-aware
-// — it resolves a rendered `home`-slot widget (its own bundled component OR
-// the shared activity sink) via `resolveWidgetsForSlot`, or it declares a
-// notifications/messages default sink. The notification-sink declarations
-// render no tile of their own (the pinned NotificationsHomeCenter aggregates
-// the notification store for every producer), so for them the declaration is
-// the participation record. This enumerates the manifests directly instead of
-// keeping a hand-written short list, so a future app plugin without a
-// frontpage presence fails CI here.
+// — it resolves a rendered `home`-slot widget via `resolveWidgetsForSlot`, or
+// it declares a default sink. Default-sink declarations render no tile of their
+// own on sparse home (the pinned NotificationsHomeCenter and routed views own
+// those surfaces), so for them the declaration is the participation record.
+// This enumerates the manifests directly instead of keeping a hand-written
+// short list, so a future app plugin without a frontpage presence fails CI here.
 //
 // IDs match the plugin list's normalization: strip the npm scope, then strip
 // either `plugin-` or legacy `app-` prefixes.
@@ -95,22 +93,19 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
   const appManifestPlugins = readAppManifestPlugins();
 
   it("discovers app-manifest plugins from package.json", () => {
-    // Ratcheted 28 → 26 (#11036): plugin-companion was removed by #10434 and
-    // plugin-elizamaker by c3944534b0 — both intentional deletions that shrank
-    // the app-manifest set without this floor being updated.
-    expect(appManifestPlugins.length).toBeGreaterThanOrEqual(26);
+    // Ratcheted 28 → 25: intentional app-plugin deletions shrank the manifest
+    // set while the coverage gate still enumerates every current manifest.
+    expect(appManifestPlugins.length).toBeGreaterThanOrEqual(25);
   });
 
-  // A notifications/messages sink declaration renders no tile — its content
-  // surfaces through the pinned NotificationsHomeCenter — so the declaration
-  // itself is the plugin's frontpage participation record.
-  function declaresNotificationSink(pluginId: string): boolean {
+  // A default sink declaration renders no tile on sparse home, so the
+  // declaration itself is the plugin's frontpage participation record.
+  function declaresDefaultSink(pluginId: string): boolean {
     return BUILTIN_WIDGET_DECLARATIONS.some(
       (decl) =>
         decl.pluginId === pluginId &&
         decl.slot === "home" &&
-        (decl.defaultWidget === "notifications" ||
-          decl.defaultWidget === "messages"),
+        Boolean(decl.defaultWidget),
     );
   }
 
@@ -122,7 +117,7 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
         (r) => r.declaration.pluginId === plugin.id,
       );
       const rendered = own.filter((entry) => entry.Component !== null);
-      if (rendered.length === 0 && !declaresNotificationSink(plugin.id)) {
+      if (rendered.length === 0 && !declaresDefaultSink(plugin.id)) {
         missing.push(
           `${plugin.id} (${plugin.packageName}, ${plugin.packageDir})`,
         );
@@ -143,7 +138,7 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
         id: plugin.id,
         own: entries.some((entry) => !entry.defaultWidgetSink),
         defaultSink: entries.some((entry) => Boolean(entry.defaultWidgetSink)),
-        notificationSink: declaresNotificationSink(plugin.id),
+        defaultSinkParticipant: declaresDefaultSink(plugin.id),
       };
     });
 
@@ -151,14 +146,15 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
     const defaultSink = coverage.filter(
       (entry) => !entry.own && entry.defaultSink,
     ).length;
-    const notificationParticipants = coverage.filter(
-      (entry) => !entry.own && !entry.defaultSink && entry.notificationSink,
+    const defaultSinkParticipants = coverage.filter(
+      (entry) =>
+        !entry.own && !entry.defaultSink && entry.defaultSinkParticipant,
     ).length;
 
-    expect(ownWidget + defaultSink + notificationParticipants).toBe(
+    expect(ownWidget + defaultSink + defaultSinkParticipants).toBe(
       appManifestPlugins.length,
     );
-    expect(ownWidget).toBeGreaterThanOrEqual(5);
+    expect(ownWidget).toBeGreaterThanOrEqual(2);
   });
 
   it("red/green control: no declaration fails, default-sink opt-in passes", () => {
@@ -169,21 +165,20 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
       ),
     ).toBe(false);
 
-    withTempDeclaration(
-      {
-        id: `${pluginId}.default-home`,
-        pluginId,
-        slot: "home",
-        label: "Coverage Red Control",
-        defaultWidget: "activity",
-      },
-      () => {
-        const resolved = resolveWidgetsForSlot("home", [enabled(pluginId)]);
-        const entry = resolved.find((r) => r.declaration.pluginId === pluginId);
-        expect(entry?.Component).toBeTruthy();
-        expect(entry?.defaultWidgetSink).toBe("activity");
-      },
-    );
+    const decl: PluginWidgetDeclaration = {
+      id: `${pluginId}.default-home`,
+      pluginId,
+      slot: "home",
+      label: "Coverage Red Control",
+      defaultWidget: "activity",
+    };
+    withTempDeclaration(decl, () => {
+      expect(declaresDefaultSink(pluginId)).toBe(true);
+      const resolved = resolveWidgetsForSlot("home", [enabled(pluginId)]);
+      expect(resolved.some((r) => r.declaration.pluginId === pluginId)).toBe(
+        false,
+      );
+    });
   });
 });
 

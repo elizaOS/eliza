@@ -3,14 +3,14 @@
  *
  * One source of truth for "the home dashboard, populated with attention-worthy
  * data" — shared between the home-screen e2e fixture and the Storybook story so
- * both render the REAL per-plugin home widgets (calendar / goals / finances /
- * health / relationships / inbox) plus notifications, fed by injected DATA only
+ * both render the REAL kept home widgets (calendar / goals / health) plus
+ * notifications/approvals, fed by injected DATA only
  * (no stubbing of WidgetHost or the widget components).
  *
  * NO node imports — this is bundled into a browser IIFE (e2e) and into the
  * Storybook renderer (vite). Times are RELATIVE to `Date.now()` so the calendar
- * card lands inside its 2h urgent window and the bills land within a week,
- * matching the live ranking the home surface performs.
+ * card lands inside its 2h urgent window, matching the live ranking the home
+ * surface performs.
  *
  * The payload shapes mirror packages/app/test/ui-smoke/home-widget-priority.spec.ts
  * and were verified field-by-field against each widget's parser.
@@ -26,11 +26,10 @@ import {
 import type { AppContextValue } from "../../state/types";
 
 // ---------------------------------------------------------------------------
-// Plugin snapshot — the per-plugin home widgets resolve only when the matching
+// Plugin snapshot — plugin-gated home widgets resolve only when the matching
 // plugin id is enabled+active in the app-store plugins snapshot
-// (registry.ts `isWidgetEnabled`). Notifications + messages are always-visible
-// core surfaces; agent-orchestrator is in the built-in fallback set. Mirrors the
-// ui-smoke spec's `pluginInfo()`.
+// (registry.ts `isWidgetEnabled`). Notifications are pinned outside WidgetHost.
+// Mirrors the ui-smoke spec's `pluginInfo()`.
 // ---------------------------------------------------------------------------
 
 function pluginInfo(id: string, name: string): PluginInfo {
@@ -53,12 +52,8 @@ function pluginInfo(id: string, name: string): PluginInfo {
 export const HOME_WIDGET_MOCK_PLUGINS: PluginInfo[] = [
   pluginInfo("calendar", "Calendar"),
   pluginInfo("goals", "Goals"),
-  pluginInfo("finances", "Finances"),
   pluginInfo("health", "Health"),
-  pluginInfo("relationships", "Relationships"),
-  // Inbox: the cross-channel unread card (inbox-unread.tsx, pluginId "inbox").
-  pluginInfo("inbox", "Inbox"),
-  pluginInfo("agent-orchestrator", "Agent Orchestrator"),
+  pluginInfo("todo", "Todos"),
 ];
 
 // ---------------------------------------------------------------------------
@@ -66,13 +61,10 @@ export const HOME_WIDGET_MOCK_PLUGINS: PluginInfo[] = [
 // attention window so the cards render AND float up.
 // ---------------------------------------------------------------------------
 
-const NOW = () => Date.now();
 const minutesFromNow = (m: number) =>
   new Date(Date.now() + m * 60_000).toISOString();
 const hoursFromNow = (h: number) =>
   new Date(Date.now() + h * 3_600_000).toISOString();
-const daysFromNow = (d: number) =>
-  new Date(Date.now() + d * 24 * 3_600_000).toISOString();
 
 // ---------------------------------------------------------------------------
 // Per-widget payloads (verified against each widget's parser).
@@ -122,33 +114,6 @@ function goalsPayload() {
   };
 }
 
-/** FinancesAlertsWidget reads /api/lifeops/money/{dashboard,recurring,sources};
- *  netUsd < 0 (overdrawn) floats up at escalation weight. A connected source is
- *  required for the card to render. */
-function moneyDashboard() {
-  return {
-    spending: { netUsd: -125.5 },
-    generatedAt: new Date(NOW()).toISOString(),
-  };
-}
-function moneySources() {
-  return { sources: [{ id: "src-1", status: "active", label: "Checking" }] };
-}
-function moneyRecurring() {
-  return {
-    charges: [
-      {
-        merchantNormalized: "netflix",
-        merchantDisplay: "Netflix",
-        cadence: "monthly",
-        averageAmountUsd: 15.99,
-        nextExpectedAt: daysFromNow(3),
-        category: "entertainment",
-      },
-    ],
-  };
-}
-
 /** HealthSleepWidget reads /api/lifeops/sleep/{history,regularity}; an
  *  "irregular" classification floats up at check-in weight. A latest episode is
  *  required for the card to render. */
@@ -181,81 +146,6 @@ function sleepRegularity() {
   };
 }
 
-/** RelationshipsAttentionWidget reads client.getRelationshipsPeople() ->
- *  GET /api/relationships/people ({ data, stats }) and
- *  client.getRelationshipsCandidates() -> GET /api/relationships/candidates
- *  ({ data }). A pending merge candidate floats up at approval weight. */
-function relationshipsPeople() {
-  return {
-    data: [
-      {
-        groupId: "grp-pat",
-        primaryEntityId: "ent-pat",
-        memberEntityIds: ["ent-pat"],
-        displayName: "Pat Doe",
-        aliases: [],
-        platforms: ["discord"],
-        identities: [],
-        emails: [],
-        phones: [],
-        websites: [],
-        preferredCommunicationChannel: null,
-        categories: [],
-        tags: [],
-        factCount: 0,
-        relationshipCount: 1,
-        isOwner: false,
-        profiles: [],
-        lastInteractionAt: daysFromNow(-60),
-      },
-    ],
-    stats: { totalPeople: 1, totalRelationships: 1, totalIdentities: 1 },
-  };
-}
-function relationshipsCandidates() {
-  return {
-    data: [
-      {
-        id: "cand-1",
-        entityA: "ent-pat",
-        entityB: "ent-patrick",
-        confidence: 0.88,
-        evidence: { platform: "discord", handle: "pat#1" },
-        status: "pending",
-        proposedAt: new Date(NOW()).toISOString(),
-      },
-    ],
-  };
-}
-
-/** InboxUnreadWidget reads /api/lifeops/inbox; the wire shape is
- *  { messages: [{ id, sender: { displayName }, subject, snippet, unread }] }
- *  (see inbox-unread.tsx parseUnread). Only `unread === true` rows are kept. */
-function inboxPayload() {
-  return {
-    messages: [
-      {
-        id: "msg-1",
-        channel: "imessage",
-        sender: { displayName: "Alex Rivera" },
-        subject: "Deck for the 5pm",
-        snippet: "see you at 5, bring the deck",
-        unread: true,
-        receivedAt: minutesFromNow(-3),
-      },
-      {
-        id: "msg-2",
-        channel: "email",
-        sender: { displayName: "Acme Billing" },
-        subject: "Invoice past due",
-        snippet: "Your March invoice is overdue",
-        unread: true,
-        receivedAt: minutesFromNow(-90),
-      },
-    ],
-  };
-}
-
 /** The pinned dashboard notification center (NotificationsHomeCenter, mounted
  *  by HomeScreen) reads the notification store (hydrated from
  *  GET /api/notifications). An urgent unread notification ranks at the top. */
@@ -265,7 +155,7 @@ export const HOME_WIDGET_MOCK_NOTIFICATION: AgentNotification = {
   body: "Your card was declined for the Acme invoice.",
   category: "system",
   priority: "urgent",
-  source: "finances",
+  source: "system",
   createdAt: Date.now(),
   readAt: null,
 };
@@ -305,28 +195,6 @@ function approvalsPayload() {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Direct accessors for the relationships widget, which fetches via the typed
-// `client.getRelationshipsPeople()` / `client.getRelationshipsCandidates()`
-// methods rather than raw `window.fetch`. The e2e api-stub `client` delegates
-// to these; the Storybook story relies on the fetch mock below (the real client
-// fetches `/api/relationships/*` through `window.fetch`).
-// ---------------------------------------------------------------------------
-
-export function homeWidgetRelationshipsPeople(): {
-  people: ReturnType<typeof relationshipsPeople>["data"];
-  stats: ReturnType<typeof relationshipsPeople>["stats"];
-} {
-  const payload = relationshipsPeople();
-  return { people: payload.data, stats: payload.stats };
-}
-
-export function homeWidgetRelationshipsCandidates(): ReturnType<
-  typeof relationshipsCandidates
->["data"] {
-  return relationshipsCandidates().data;
-}
-
 export function homeWidgetNotificationsResponse() {
   return notificationsPayload();
 }
@@ -357,17 +225,8 @@ function routeTable(): RouteMatch[] {
       }),
     },
     { test: has("/api/lifeops/goals"), body: goalsPayload },
-    { test: has("/api/lifeops/money/dashboard"), body: moneyDashboard },
-    { test: has("/api/lifeops/money/recurring"), body: moneyRecurring },
-    { test: has("/api/lifeops/money/sources"), body: moneySources },
     { test: has("/api/lifeops/sleep/history"), body: sleepHistory },
     { test: has("/api/lifeops/sleep/regularity"), body: sleepRegularity },
-    { test: has("/api/lifeops/inbox"), body: inboxPayload },
-    { test: has("/api/relationships/people"), body: relationshipsPeople },
-    {
-      test: has("/api/relationships/candidates"),
-      body: relationshipsCandidates,
-    },
     { test: has("/api/notifications"), body: notificationsPayload },
     { test: has("/api/approvals"), body: approvalsPayload },
   ];

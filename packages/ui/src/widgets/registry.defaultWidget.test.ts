@@ -1,19 +1,15 @@
 /**
- * Unit coverage for the shared default-widget path (#9143): an activity opt-in
- * resolves to the shared frontpage widget, while the notifications/messages
- * sink kinds yield no tile (the pinned dashboard notification center owns the
- * inbox). Pure, no harness.
+ * Unit coverage for the shared default-widget path (#9143): default sink
+ * declarations are home participation records, not resident cards. The pinned
+ * dashboard notification center and routed views own the visible surfaces.
  */
 import { describe, expect, it } from "vitest";
 import { BUILTIN_WIDGET_DECLARATIONS, resolveWidgetsForSlot } from "./registry";
 import type { PluginWidgetDeclaration } from "./types";
 
-// #9143 — a plugin with live state but no bundled component opts into a shared
-// "default" frontpage widget via `defaultWidget`, and resolves to the shared
-// sink's registered component on the home slot. The notifications/messages sink
-// kinds resolve to NO tile: the dashboard notification center is pinned by
-// HomeScreen and already renders every store notification, so a per-plugin
-// notifications card would double-render the inbox.
+// #9143/#14343 — a plugin with live state but no bundled component can still
+// opt into frontpage coverage via `defaultWidget`, but the sparse home no longer
+// maps any default sink to a rendered card.
 describe("home defaultWidget opt-in sink (#9143)", () => {
   function withTempDeclaration<T>(
     decl: PluginWidgetDeclaration,
@@ -64,7 +60,7 @@ describe("home defaultWidget opt-in sink (#9143)", () => {
     });
   });
 
-  it("resolves an activity-sink declaration to a component", () => {
+  it("resolves an activity-sink declaration to NO home tile (routed views own activity)", () => {
     const decl: PluginWidgetDeclaration = {
       id: "sink-test.act",
       pluginId: "sink-test",
@@ -76,9 +72,9 @@ describe("home defaultWidget opt-in sink (#9143)", () => {
       const resolved = resolveWidgetsForSlot("home", [
         { id: "sink-test", enabled: true, isActive: true },
       ]);
-      const entry = resolved.find((r) => r.declaration.id === "sink-test.act");
-      expect(entry?.Component).toBeTruthy();
-      expect(entry?.defaultWidgetSink).toBe("activity");
+      expect(
+        resolved.find((r) => r.declaration.id === "sink-test.act"),
+      ).toBeUndefined();
     });
   });
 
@@ -101,7 +97,7 @@ describe("home defaultWidget opt-in sink (#9143)", () => {
     });
   });
 
-  it("prefers an own registered component over the sink (sink is a fallback only)", () => {
+  it("prefers an own registered component over the non-rendering sink record", () => {
     // agent-orchestrator.activity HAS an own registered component already; a
     // defaultWidget on it must not override that component.
     const decl: PluginWidgetDeclaration = {

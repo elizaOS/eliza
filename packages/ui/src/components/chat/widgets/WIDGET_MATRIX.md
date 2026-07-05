@@ -85,17 +85,14 @@ the inbox.
 
 | Widget id | Slot | Data source / updates | Component | Host mount | Status |
 |---|---|---|---|---|---|
-| `agent-orchestrator.activity` | chat-sidebar + home | `useActivityEvents` <- WS `pty-session-event` / `proactive-message` / `agent_event` | `agent-orchestrator.tsx` `OrchestratorActivityWidget` | TasksEventsPanel + ViewCatalog | wired |
-| `agent-orchestrator.apps` | chat-sidebar + home | poll `listAppRuns()` 5s | `agent-orchestrator.tsx` `AppRunsWidget` | TasksEventsPanel + ViewCatalog | wired |
+| `agent-orchestrator.activity` | chat-sidebar | `useActivityEvents` <- WS `pty-session-event` / `proactive-message` / `agent_event` | `agent-orchestrator.tsx` `OrchestratorActivityWidget` | TasksEventsPanel | wired |
+| `agent-orchestrator.apps` | chat-sidebar | poll `listAppRuns()` 5s | `agent-orchestrator.tsx` `AppRunsWidget` | TasksEventsPanel | wired |
 | `agent-orchestrator.accounts` | chat-sidebar | poll `listAccounts()`/`getOrchestratorAccounts()`/`getOrchestratorRooms()` 15s | `agent-orchestrator-accounts-view.tsx` | TasksEventsPanel | wired |
 | `browser.status` | chat-sidebar | browser-workspace status | `browser-status.tsx` | TasksEventsPanel | wired |
 | `music-player.stream` | chat-sidebar | music-player state | `music-player.tsx` | TasksEventsPanel | wired |
 | `todo.items` | home | todo store | `todo.tsx` | ViewCatalog | wired |
-| `inbox.unread` | home | inbox store | `inbox-unread.tsx` | ViewCatalog | wired |
-| `relationships.attention` | home | relationships store | `relationships-attention.tsx` | ViewCatalog | wired |
 | `calendar.upcoming` | home | calendar store | `calendar-upcoming.tsx` | ViewCatalog | wired |
 | `goals.attention` | home | goals store | `goals-attention.tsx` | ViewCatalog | wired |
-| `finances.alerts` | home | finances store | `finances-alerts.tsx` | ViewCatalog | wired |
 | `health.sleep` | home | health store | `health-sleep.tsx` | ViewCatalog | wired |
 | `music-library.playlists` | character | music-library state | n/a | CharacterHubView | wired |
 

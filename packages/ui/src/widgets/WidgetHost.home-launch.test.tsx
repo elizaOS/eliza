@@ -4,10 +4,9 @@
  * Launch integration (#9304 / #9143): the home `WidgetHost` is what the /chat
  * launch screen mounts (`HomeScreen` → `<WidgetHost slot="home" layout="grid">`),
  * so this drives the REAL host + REAL registry resolution + REAL widget
- * components — not a stub. The curated home-grid tiles (agent activity, …)
- * render when their core API surface has data and self-hide when it doesn't;
- * the per-plugin lifeops cards are API-polled and self-hide without a backend,
- * which is the correct fresh-launch behavior.
+ * components — not a stub. Sparse home keeps activity/app-run/domain widgets out
+ * of the launch host; retained cards self-hide without a backend, which is the
+ * correct fresh-launch behavior.
  *
  * Notifications are NOT a host widget: HomeScreen pins NotificationsHomeCenter
  * as a sibling of the host, so the host rendering nothing notification-shaped —
@@ -72,8 +71,8 @@ vi.mock("../api/client", () => ({
     getBaseUrl: () => "http://localhost:3000",
     listConversations: async () => ({ conversations: mockState.conversations }),
     getConversationMessages: (id: string) => getConversationMessages(id),
-    // The always-visible Tasks tile (workflow.running) polls these on mount;
-    // empty envelopes make it self-hide, the correct cold-launch render.
+    // Retained for callers that still touch task APIs; sparse home no longer
+    // mounts workflow.running on launch.
     listAutomations: async () => ({ automations: [] }),
     listScheduledTasks: async () => ({ tasks: [] }),
   },

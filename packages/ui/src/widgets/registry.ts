@@ -34,21 +34,16 @@ export {
 // -- Bundled widget component imports ----------------------------------------
 
 import { MusicLibraryCharacterWidget } from "../components/character/MusicLibraryCharacterWidget";
-import { AgentActivityWidget } from "../components/chat/widgets/agent-activity";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { AGENT_PROVISIONING_HOME_WIDGET } from "../components/chat/widgets/agent-provisioning";
-import { AutomationsWidget } from "../components/chat/widgets/automations";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status.helpers";
 import { CALENDAR_HOME_WIDGET } from "../components/chat/widgets/calendar-upcoming";
-import { FINANCES_HOME_WIDGET } from "../components/chat/widgets/finances-alerts";
 import { FTU_WELCOME_HOME_WIDGET } from "../components/chat/widgets/ftu-welcome";
 import { GOALS_HOME_WIDGET } from "../components/chat/widgets/goals-attention";
 import { HEALTH_HOME_WIDGET } from "../components/chat/widgets/health-sleep";
-import { INBOX_HOME_WIDGET } from "../components/chat/widgets/inbox-unread";
 import { MODEL_DOWNLOAD_HOME_WIDGET } from "../components/chat/widgets/model-download";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
 import { NEEDS_ATTENTION_HOME_WIDGET } from "../components/chat/widgets/needs-attention";
-import { RELATIONSHIPS_HOME_WIDGET } from "../components/chat/widgets/relationships-attention";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 import { WalletBalanceWidget } from "../components/chat/widgets/wallet-balance";
 
@@ -65,20 +60,13 @@ registerWidgetComponent(
   "music-library.playlists",
   MusicLibraryCharacterWidget,
 );
-// Curated home-grid widgets backed by core API surfaces (conversations, agent
-// activity, wallet, running workflows). Each renders populated data, a
-// connected-but-empty state, or self-hides — always-visible so the home grid is
-// populated even before the runtime plugin snapshot arrives. The connector
-// status strip and discord recent tiles were intentionally dropped from the
-// home surface: they surfaced connector warn/error chips and a "Connect Discord"
-// affordance that crowded the naked home grid with setup noise.
-registerWidgetComponent("feed", "feed.agent-activity", AgentActivityWidget);
+// Curated home-grid widgets backed by core API surfaces. Each renders populated
+// data, a connected-but-empty state, or self-hides — always-visible so the home
+// grid can surface essential state before the runtime plugin snapshot arrives.
+// Activity, running workflow, inbox, finances, relationships, and orchestrator
+// cards are intentionally kept off home; those domains remain available through
+// launcher/routed views.
 registerWidgetComponent("wallet", "wallet.balance", WalletBalanceWidget);
-// Running-automations tile (ITEM 5): backed by the core GET /api/automations
-// surface (system automations + active user workflows), so it is always-visible
-// and self-hides when nothing is running. The widget kind stays "workflow" —
-// it is the backend widget-registration key, not a user-facing label.
-registerWidgetComponent("workflow", "workflow.running", AutomationsWidget);
 // Setup-progress home tiles: the local model download (LOCAL mode, backed by the
 // local-inference hub) and the cloud-agent provisioning handoff (CLOUD mode,
 // backed by the cloud handoff phase event). Neither is a loadable plugin, so
@@ -111,10 +99,7 @@ registerWidgetComponent(
 for (const w of [
   CALENDAR_HOME_WIDGET,
   GOALS_HOME_WIDGET,
-  FINANCES_HOME_WIDGET,
   HEALTH_HOME_WIDGET,
-  RELATIONSHIPS_HOME_WIDGET,
-  INBOX_HOME_WIDGET,
   NEEDS_ATTENTION_HOME_WIDGET,
 ]) {
   registerWidgetComponent(w.pluginId, w.id, w.Component);
@@ -206,36 +191,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     defaultEnabled: true,
     visibility: "fallback",
   },
-  // Agent Orchestrator — activity surfaced on the home/frontpage too (#9143).
-  // Same pluginId+id reuses the registered component; the `home` slot is a
-  // separate resolveWidgetsForSlot pass, so this doesn't disturb the sidebar.
-  {
-    id: "agent-orchestrator.activity",
-    pluginId: "agent-orchestrator",
-    slot: "home",
-    label: "Activity",
-    icon: "Activity",
-    order: 100,
-    defaultEnabled: true,
-    visibility: "fallback",
-    // The orchestrator activity card bubbles up when a run is blocked, escalated,
-    // or busy — the highest-attention home signals.
-    signalKinds: ["blocked", "escalation", "workflow", "activity"],
-  },
-  // Agent Orchestrator — running app instances on the home (#9143). Distinct
-  // from the launcher icons (which open views): this lists live app runs.
-  // Reuses the registered AppRunsWidget component (self-contained data).
-  {
-    id: "agent-orchestrator.apps",
-    pluginId: "agent-orchestrator",
-    slot: "home",
-    label: "Apps",
-    icon: "LayoutGrid",
-    order: 70,
-    defaultEnabled: true,
-    visibility: "fallback",
-    signalKinds: ["activity"],
-  },
   // Todos — the todo plugin's frontpage widget (#9143 per-plugin breadth).
   {
     id: "todo.items",
@@ -252,21 +207,10 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     visibility: "fallback",
     signalKinds: ["reminder", "check-in", "nudge"],
   },
-  // -- Per-plugin real-data frontpage widgets (#9143) ------------------------
-  // These carry their own bundled component (registered above) showing a
-  // compact, attention-ranked slice of the plugin's state, replacing the
-  // generic default-widget sinks for plugins that warrant a richer card. Each
-  // self-hides when empty and self-publishes a home-attention signal.
-  {
-    id: INBOX_HOME_WIDGET.id,
-    pluginId: INBOX_HOME_WIDGET.pluginId,
-    slot: "home",
-    label: "Inbox",
-    icon: "Inbox",
-    order: INBOX_HOME_WIDGET.order,
-    defaultEnabled: true,
-    signalKinds: INBOX_HOME_WIDGET.signalKinds,
-  },
+  // -- Sparse home widgets ---------------------------------------------------
+  // Home keeps only essential, low-noise cards. Rich domain surfaces like inbox,
+  // finances, relationships, workflow activity, feed activity, and orchestrator
+  // app runs remain available through launcher/routed views, not resident cards.
   // Needs response — the canonical "actions requiring your response" card
   // (#9449). Backed by the core ApprovalService (GET /api/approvals), not a
   // loadable plugin, so it is always-visible (declaration `visibility:
@@ -285,20 +229,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     signalKinds: NEEDS_ATTENTION_HOME_WIDGET.signalKinds,
   },
   {
-    id: RELATIONSHIPS_HOME_WIDGET.id,
-    pluginId: RELATIONSHIPS_HOME_WIDGET.pluginId,
-    slot: "home",
-    label: "Relationships",
-    icon: "Users",
-    order: RELATIONSHIPS_HOME_WIDGET.order,
-    defaultEnabled: true,
-    // Core API-backed home tile; renders regardless of snapshot, self-hides
-    // when empty. A `present + disabled` snapshot entry still hides it.
-    visibility: "always",
-    signalKinds: RELATIONSHIPS_HOME_WIDGET.signalKinds,
-    size: { cols: 2, rows: 1 },
-  },
-  {
     id: CALENDAR_HOME_WIDGET.id,
     pluginId: CALENDAR_HOME_WIDGET.pluginId,
     slot: "home",
@@ -314,9 +244,8 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     size: { cols: 4, rows: 1 },
   },
   // -- Curated home-grid widgets (4-col grid `size`) -------------------------
-  // Recent conversations, agent activity, wallet, and running workflows. Each is
-  // backed by a core API surface and renders populated data, a connected-but-
-  // empty state, or self-hides when empty.
+  // Setup progress and wallet remain on home. Other app/domain views are
+  // launcher destinations so an idle home does not poll those feature APIs.
   // Local model download (LOCAL mode): surfaces the recommended on-device text
   // model downloading — queued / %-progress / loading / failed-with-retry — so a
   // fresh "This device" agent shows progress instead of a dead chat. Self-hides
@@ -357,20 +286,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     size: { cols: 2, rows: 1 },
   },
   {
-    id: "feed.agent-activity",
-    pluginId: "feed",
-    slot: "home",
-    label: "Agent activity",
-    icon: "Activity",
-    order: 65,
-    defaultEnabled: true,
-    // Core API-backed home tile; renders regardless of snapshot, self-hides
-    // when empty.
-    visibility: "always",
-    signalKinds: ["workflow", "activity"],
-    size: { cols: 2, rows: 1 },
-  },
-  {
     id: "wallet.balance",
     pluginId: "wallet",
     slot: "home",
@@ -383,24 +298,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     signalKinds: ["activity"],
     size: { cols: 2, rows: 1 },
   },
-  // Running tasks tile — surfaces the agent's currently-running tasks: system
-  // automations + active user workflows (GET /api/automations) merged with
-  // boot-seeded LifeOps scheduled tasks (GET /api/lifeops/scheduled-tasks).
-  // Self-hides when nothing is running.
-  {
-    id: "workflow.running",
-    pluginId: "workflow",
-    slot: "home",
-    label: "Tasks",
-    icon: "Workflow",
-    order: 130,
-    defaultEnabled: true,
-    // Backed by GET /api/automations; always-visible, self-hides when nothing
-    // is running. A `present + disabled` snapshot entry still hides it.
-    visibility: "always",
-    signalKinds: ["workflow", "activity"],
-    size: { cols: 2, rows: 1 },
-  },
   {
     id: GOALS_HOME_WIDGET.id,
     pluginId: GOALS_HOME_WIDGET.pluginId,
@@ -410,16 +307,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: GOALS_HOME_WIDGET.order,
     defaultEnabled: true,
     signalKinds: GOALS_HOME_WIDGET.signalKinds,
-  },
-  {
-    id: FINANCES_HOME_WIDGET.id,
-    pluginId: FINANCES_HOME_WIDGET.pluginId,
-    slot: "home",
-    label: "Bills & Balance",
-    icon: "Wallet",
-    order: FINANCES_HOME_WIDGET.order,
-    defaultEnabled: true,
-    signalKinds: FINANCES_HOME_WIDGET.signalKinds,
   },
   {
     id: HEALTH_HOME_WIDGET.id,
@@ -520,11 +407,11 @@ function isWidgetEnabled(
 
   const visibility = widgetVisibilityClass(declaration, source);
 
-  // Some always-visible ids (calendar / relationships / workflow) ARE backed by
+  // Some always-visible ids (calendar / health) ARE backed by
   // real loadable plugins, so an explicit "present + disabled" snapshot entry
   // must still hide them — the always/fallback short-circuits are for core
   // surfaces with NO plugin package (welcome/notifications/needs-attention/
-  // feed/wallet/…), which never appear in the snapshot and so pass this check
+  // wallet/…), which never appear in the snapshot and so pass this check
   // untouched.
   const snapshotPlugin = plugins.find((p) => p.id === declaration.pluginId);
   const explicitlyDisabled =
@@ -571,25 +458,21 @@ function isWidgetEnabled(
  */
 /**
  * Maps a declaration's `defaultWidget` opt-in (#9143) to the registered shared
- * frontpage sink component (already registered above via
- * `registerWidgetComponent`), or to `null` when the sink kind produces no home
- * tile. A `home`-slot plugin with no own component renders the mapped shared
- * widget instead of shipping its own.
+ * frontpage sink component, or to `null` when the sink kind produces no home
+ * tile. Sparse home treats every default sink as a participation record: routed
+ * views and the pinned notification center own the actual UI, so opt-in rows do
+ * not create duplicate resident cards.
  */
 export const DEFAULT_WIDGET_SINK_COMPONENT: Readonly<
   Record<DefaultHomeWidgetSink, { pluginId: string; id: string } | null>
 > = {
-  // The notifications sink yields NO tile: the dashboard notification center
-  // (NotificationsHomeCenter, pinned by HomeScreen) already renders every
-  // store notification regardless of producer, so a per-plugin "recent
-  // notifications" card would double-render the inbox. The `messages` sink
-  // folded into the notification rail in #10697, so it resolves the same way.
+  // The dashboard notification center (NotificationsHomeCenter, pinned by
+  // HomeScreen) already renders every store notification regardless of producer,
+  // and launcher/routed views own activity detail. Default sinks therefore
+  // remain non-rendering coverage/participation declarations.
   notifications: null,
   messages: null,
-  activity: {
-    pluginId: "agent-orchestrator",
-    id: "agent-orchestrator.activity",
-  },
+  activity: null,
 };
 
 export function resolveWidgetsForSlot(

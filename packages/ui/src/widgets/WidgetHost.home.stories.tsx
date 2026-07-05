@@ -11,8 +11,8 @@ import { WidgetHost } from "./WidgetHost";
  * The home `WidgetHost` (#9143) — exactly what the /chat launch screen mounts
  * (`HomeScreen` → `<WidgetHost slot="home" layout="grid">`). This story seeds
  * the module-level app store so the real home cards render the way they do on
- * a populated launch. The per-plugin lifeops cards self-hide here (no backend),
- * which is the intended fresh-launch behavior. The notification center is NOT
+ * a populated launch. Sparse home keeps activity/app-run/domain cards out of
+ * this host; routed views own those details. The notification center is NOT
  * part of the host — HomeScreen pins NotificationsHomeCenter as a sibling (see
  * HomeDashboard.stories for the composed dashboard).
  */
@@ -73,13 +73,13 @@ function HomeWidgetsHarness() {
   useEffect(() => {
     // Seed the module-level stores the real widgets read.
     __setAppValueForTests({
-      plugins: [{ id: "agent-orchestrator", enabled: true, isActive: true }],
+      plugins: [{ id: "todo", enabled: true, isActive: true }],
       conversations: CONVERSATIONS,
       t,
       // biome-ignore lint/suspicious/noExplicitAny: partial seed — widgets read only the fields above
     } as any);
-    // No backend in storybook: the API-polled cards (apps, lifeops) get an empty
-    // payload so they self-hide cleanly instead of showing a fetch error.
+    // No backend in storybook: API-polled cards get empty payloads so they
+    // self-hide cleanly instead of showing a fetch error.
     const realFetch = globalThis.fetch;
     globalThis.fetch = async (input) => {
       const url =

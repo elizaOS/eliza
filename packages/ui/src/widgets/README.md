@@ -55,16 +55,19 @@ being enabled (`isWidgetEnabled`), and resolves the component by
 ## The `home` / frontpage surface (#9143)
 
 The Home/Launcher surface mounts `<WidgetHost slot="home" layout="grid" …>`
-on the home page next to the launcher. Ships with shared **default widgets** any
-install gets out of the box — the orchestrator **Activity** + **Apps** — so the
-frontpage shows real activity, not just app icons. The notification inbox is NOT
-a host widget: HomeScreen pins the dashboard notification center
+on the home page next to the launcher. Home is intentionally sparse: the
+ambient time/weather base and pinned notification center carry resting state,
+while only essential self-hiding cards live in the ranked widget host. The
+notification inbox is NOT a host widget: HomeScreen pins the dashboard
+notification center
 (`components/shell/NotificationsHomeCenter.tsx`) directly below the
 time/weather base, so a registry declaration would double-render it.
 
-**To put a plugin on the frontpage:** declare a widget with `slot: "home"` (as
-above). Read your own store/API in the component; it receives `WidgetProps`
-(`pluginId`, `events?`, …). Keep it compact — the home is a summary surface.
+**To put a plugin on the frontpage:** declare a widget with `slot: "home"` only
+when it is a keeper for the sparse home surface. Read your own store/API in the
+component; it receives `WidgetProps` (`pluginId`, `events?`, …). Keep it
+compact and self-hiding — domain dashboards belong in launcher/routed views, not
+resident home cards.
 
 If a plugin has live state but no bundled React card, opt into a shared default
 sink instead of shipping a component:
@@ -81,11 +84,11 @@ sink instead of shipping a component:
 ```
 
 Default-sink declarations are participation records: the shared Activity card
-renders once and aggregates the sink data, while the declaration lets coverage
-prove the plugin is frontpage-aware. The `notifications` / `messages` sink
-kinds yield no home tile — that content already surfaces through the pinned
-notification center, which aggregates the notification store regardless of
-producer.
+no longer renders on sparse home, while the declaration lets coverage prove the
+plugin is frontpage-aware. The `notifications` / `messages` / `activity` sink
+kinds yield no home tile — notification content already surfaces through the
+pinned notification center, and activity/detail surfaces live in launcher/routed
+views.
 
 The home is **priority-ranked**, not all-or-nothing: `home-priority.ts`
 (`rankHomeWidgets`) scores each home widget by base `order` plus decayed

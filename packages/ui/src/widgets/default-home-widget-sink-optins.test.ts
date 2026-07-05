@@ -14,8 +14,8 @@
  *   2. The builder reproduces the exact prior declaration shape (behavior-
  *      preserving id/slot/order/defaultEnabled derivation).
  *   3. Structural fields are derived uniformly — a row cannot drift on shape.
- *   4. A plugin-owned/server declaration wins over its legacy fallback row, so
- *      the fallback table cannot silently diverge from a migrated plugin.
+ *   4. Legacy fallback rows remain non-visual participation records and do not
+ *      double-render beside plugin-owned/server declarations.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -75,8 +75,8 @@ describe("default-home widget sink opt-ins drift guard (#12089 item 35)", () => 
       expect(decl.icon).toBe(optIn.icon);
       expect(decl.defaultWidget).toBe(optIn.defaultWidget);
       expect(decl.signalKinds).toEqual(optIn.signalKinds);
-      // None carry an explicit visibility flag — they are snapshot-gated, so a
-      // plugin must be present+active for its default-sink tile to show.
+      // None carry an explicit visibility flag — they are snapshot-gated
+      // participation records.
       expect(decl.visibility).toBeUndefined();
     });
   });
@@ -114,30 +114,27 @@ describe("default-home widget sink opt-ins drift guard (#12089 item 35)", () => 
 
   it("keeps every legacy opt-in row keyed by a unique pluginId", () => {
     // Membership-not-position is the contract; duplicate pluginIds would produce
-    // colliding `.default-home` ids and a silently-dropped tile.
+    // colliding `.default-home` ids and a silently-dropped participation row.
     const ids = LEGACY_DEFAULT_HOME_WIDGET_SINK_OPTINS.map((o) => o.pluginId);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("suppresses the legacy fallback row once its plugin ships an owned home card", () => {
+  it("does not render a legacy fallback row once its plugin ships an owned home card", () => {
     // The drift mode the audit flags: a plugin migrating to its own
-    // `Plugin.widgets` must not be shadowed by — nor double up with — a stale
-    // legacy fallback row. Because the resolver dedupes on `pluginId/id`, an
-    // owned server widget with a DIFFERENT id would otherwise render alongside
-    // the plugin's `${pluginId}.default-home` sink tile. The resolver now
-    // suppresses the generic default-sink fallback for any plugin that already
-    // resolves to its own home card, so exactly the owned card renders.
+    // `Plugin.widgets` must not double up with a stale legacy participation row.
+    // Sparse home makes default sinks non-visual, so exactly the owned card
+    // renders.
     const legacyRow = LEGACY_DEFAULT_HOME_WIDGET_SINK_OPTINS[0];
     const pluginId = legacyRow.pluginId;
 
-    // First: with NO owned card, the legacy default-sink fallback resolves for a
-    // present+active plugin (baseline the suppression acts against).
+    // First: with NO owned card, the legacy default-sink fallback remains a
+    // non-rendering participation record.
     const fallbackOnly = resolveWidgetsForSlot("home", [
       { id: pluginId, enabled: true, isActive: true },
     ]);
     expect(
       fallbackOnly.find((r) => r.declaration.id === `${pluginId}.default-home`),
-    ).toBeTruthy();
+    ).toBeUndefined();
 
     // Now the plugin ships its own home card under a DIFFERENT id.
     registerWidgetComponent(pluginId, `${pluginId}.owned-home`, () => null);
@@ -165,23 +162,21 @@ describe("default-home widget sink opt-ins drift guard (#12089 item 35)", () => 
     expect(owned?.declaration.label).toBe("Owned card");
 
     // …and the stale generic default-sink fallback row for the same plugin is
-    // suppressed (no duplicate home tile during migration).
+    // still absent from rendered results (no duplicate home tile).
     expect(
       resolved.find((r) => r.declaration.id === `${pluginId}.default-home`),
     ).toBeUndefined();
   });
 
-  it("does NOT suppress the fallback for a server card this host cannot render", () => {
+  it("drops an unrenderable server card without resurrecting the default sink", () => {
     // Edge case: a plugin migrates by shipping a server `Plugin.widgets` home
     // declaration that has NO registered component and NO uiSpec (e.g. a
     // remote/componentExport-only declaration this build can't render). That
-    // declaration is dropped downstream by the `Component || uiSpec` gate, so it
-    // must NOT suppress the shared sink — otherwise the plugin would render no
-    // home tile at all (a regression vs. the pre-refactor behavior).
+    // declaration is dropped downstream by the `Component || uiSpec` gate, and
+    // sparse home must not resurrect a generic activity card in its place.
     //
-    // Needs an ACTIVITY-sink row (notifications-sink rows resolve to no tile by
-    // design), and not row 0 — the suppression test above registers an owned
-    // card for that plugin, which would suppress this fallback.
+    // Needs an ACTIVITY-sink row, and not row 0 — the suppression test above
+    // registers an owned card for that plugin.
     const legacyRow = LEGACY_DEFAULT_HOME_WIDGET_SINK_OPTINS.find(
       (row, index) => index > 0 && row.defaultWidget === "activity",
     );
@@ -209,12 +204,11 @@ describe("default-home widget sink opt-ins drift guard (#12089 item 35)", () => 
     expect(
       resolved.find((r) => r.declaration.id === `${pluginId}.remote-only`),
     ).toBeUndefined();
-    // …so the shared default-sink fallback still renders (plugin keeps a tile).
+    // …and the default-sink participation row stays non-visual.
     const fallback = resolved.find(
       (r) => r.declaration.id === `${pluginId}.default-home`,
     );
-    expect(fallback).toBeTruthy();
-    expect(fallback?.defaultWidgetSink).toBe(legacyRow.defaultWidget);
+    expect(fallback).toBeUndefined();
   });
 
   it("does NOT suppress a renderable uiSpec declaration that also names a defaultWidget", () => {
@@ -253,12 +247,11 @@ describe("default-home widget sink opt-ins drift guard (#12089 item 35)", () => 
     expect(card?.declaration.uiSpec).toBeDefined();
   });
 
-  it("does NOT suppress a server-provided shared-sink widget alongside an owned card", () => {
+  it("does not render a server-provided sink-only widget alongside an owned card", () => {
     // The migration guard targets ONLY the built-in legacy `.default-home`
     // fallback rows. A plugin may intentionally ship both an owned home card and
-    // a separate server-declared shared-sink widget via its own `Plugin.widgets`
-    // — that server sink declaration is a deliberate choice and must still
-    // render even though the plugin now has an owned card.
+    // a separate server-declared shared-sink participation record via its own
+    // `Plugin.widgets`; the sink-only record remains non-visual on sparse home.
     const pluginId = "owned-plus-server-sink";
     registerWidgetComponent(pluginId, `${pluginId}.owned`, () => null);
 
@@ -288,14 +281,13 @@ describe("default-home widget sink opt-ins drift guard (#12089 item 35)", () => 
       serverDecls,
     );
 
-    // Both the owned card and the intentional server sink widget render.
+    // The owned card renders; the sink-only participation row does not.
     expect(
       resolved.find((r) => r.declaration.id === `${pluginId}.owned`),
     ).toBeTruthy();
     const sink = resolved.find(
       (r) => r.declaration.id === `${pluginId}.extra-sink`,
     );
-    expect(sink).toBeTruthy();
-    expect(sink?.defaultWidgetSink).toBe("activity");
+    expect(sink).toBeUndefined();
   });
 });

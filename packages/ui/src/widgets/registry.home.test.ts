@@ -1,31 +1,37 @@
 /**
  * Unit coverage for Home/Launcher slot resolution: plugins opting into the `home`
- * slot, and the orchestrator Activity widget reusing its component (#9143).
+ * slot, while non-MVP widgets stay reachable only through their routed/sidebar
+ * surfaces (#9143 / #14343).
  */
 import { describe, expect, it } from "vitest";
 import { resolveWidgetsForSlot } from "./registry";
 
-// #9143 — plugins opt a widget onto the Home/Launcher surface by
-// declaring the new `home` slot; the bundled agent-orchestrator Activity widget
-// opts in (reusing its registered component) so the frontpage isn't empty.
-const enabledOrchestrator = [
+const enabledRemovedWidgetPlugins = [
   { id: "agent-orchestrator", enabled: true, isActive: true },
+  { id: "feed", enabled: true, isActive: true },
+  { id: "workflow", enabled: true, isActive: true },
+  { id: "finances", enabled: true, isActive: true },
+  { id: "relationships", enabled: true, isActive: true },
+  { id: "inbox", enabled: true, isActive: true },
 ] as const;
 
 describe("home frontpage widget slot (#9143)", () => {
-  it("resolves the agent-orchestrator Activity widget on the home slot, with its component", () => {
-    const resolved = resolveWidgetsForSlot("home", enabledOrchestrator);
-    const home = resolved.find(
-      (r) => r.declaration.id === "agent-orchestrator.activity",
-    );
-    expect(home).toBeTruthy();
-    expect(home?.declaration.slot).toBe("home");
-    // Reused component resolves (same pluginId+id as the sidebar declaration).
-    expect(home?.Component).toBeTruthy();
+  it("keeps non-MVP activity/domain widgets off the home slot (#14343)", () => {
+    const resolved = resolveWidgetsForSlot("home", enabledRemovedWidgetPlugins);
+    const ids = new Set(resolved.map((r) => r.declaration.id));
+    expect(ids).not.toContain("agent-orchestrator.activity");
+    expect(ids).not.toContain("agent-orchestrator.apps");
+    expect(ids).not.toContain("feed.agent-activity");
+    expect(ids).not.toContain("workflow.running");
+    expect(ids).not.toContain("finances.alerts");
+    expect(ids).not.toContain("relationships.attention");
+    expect(ids).not.toContain("inbox.unread");
   });
 
   it("keeps the chat-sidebar Activity declaration on its own slot (home doesn't steal it)", () => {
-    const sidebar = resolveWidgetsForSlot("chat-sidebar", enabledOrchestrator);
+    const sidebar = resolveWidgetsForSlot("chat-sidebar", [
+      { id: "agent-orchestrator", enabled: true, isActive: true },
+    ]);
     const decl = sidebar.find(
       (r) => r.declaration.id === "agent-orchestrator.activity",
     )?.declaration;
@@ -51,13 +57,23 @@ describe("home frontpage widget slot (#9143)", () => {
     ).toBeUndefined();
   });
 
-  it("resolves the agent-orchestrator Apps widget on home (reused component)", () => {
-    const resolved = resolveWidgetsForSlot("home", enabledOrchestrator);
-    const apps = resolved.find(
+  it("keeps the chat-sidebar Apps declaration on its own slot", () => {
+    const sidebar = resolveWidgetsForSlot("chat-sidebar", [
+      { id: "agent-orchestrator", enabled: true, isActive: true },
+    ]);
+    const apps = sidebar.find(
       (r) => r.declaration.id === "agent-orchestrator.apps",
     );
-    expect(apps?.declaration.slot).toBe("home");
+    expect(apps?.declaration.slot).toBe("chat-sidebar");
     expect(apps?.Component).toBeTruthy();
+  });
+
+  it("does not render default-sink participation rows as resident home cards", () => {
+    const resolved = resolveWidgetsForSlot("home", enabledRemovedWidgetPlugins);
+    const apps = resolved.find(
+      (r) => r.declaration.id === "agent-orchestrator.default-home",
+    );
+    expect(apps).toBeUndefined();
   });
 
   it("resolves the Todos widget on home (per-plugin breadth opt-in)", () => {

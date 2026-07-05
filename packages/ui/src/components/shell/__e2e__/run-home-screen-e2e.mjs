@@ -370,15 +370,13 @@ try {
     undefined,
     { timeout: 5000 },
   );
-  // Each per-plugin home widget renders only when its injected data is
-  // attention-worthy — visibility is the proof the REAL widget parsed the data.
+  // Kept per-plugin home widgets render only when their injected data is
+  // attention-worthy. The removed autonomous/domain cards must stay absent even
+  // though the fixture still exposes their plugins/routes elsewhere.
   const WIDGET_CARDS = [
-    ["chat-widget-finances-alerts", "Overdrawn"],
     ["widget-goals-attention", "Ship the release"],
-    ["chat-widget-relationships", null],
     ["chat-widget-calendar-upcoming", "Design review"],
     ["widget-health-sleep", "Irregular"],
-    ["chat-widget-inbox-unread", "Alex Rivera"],
   ];
   for (const [testId, text] of WIDGET_CARDS) {
     const card = homeWidgetHost.getByTestId(testId);
@@ -390,6 +388,16 @@ try {
         `home widget ${testId} shows "${text}"`,
       );
     }
+  }
+  for (const testId of [
+    "chat-widget-finances-alerts",
+    "chat-widget-relationships",
+    "chat-widget-inbox-unread",
+  ]) {
+    assert(
+      (await homeWidgetHost.getByTestId(testId).count()) === 0,
+      `removed home widget ${testId} stays absent`,
+    );
   }
   // No home widget may fall back to the "Widget failed to render" boundary — an
   // ErrorBoundary catch is invisible to the page-error guard, so assert it here.

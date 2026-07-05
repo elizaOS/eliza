@@ -18,14 +18,12 @@ import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality"
 // #9143 — the home launcher mounts <WidgetHost slot="home"> and ranks the
 // per-plugin home widgets by importance: a stable base order plus live
 // activity/notification signals plus each widget's self-published attention.
-// This spec boots the app to the Views launcher with the lifeops/health/
-// relationships plugins enabled+active, seeds ATTENTION-worthy data into every
-// widget's data source (overdrawn balance, at-risk goal, imminent calendar
-// event, irregular sleep, a pending relationships merge, an urgent
-// notification), and proves the urgent widgets render AND rank at the top of
-// the home host. The notification inbox is NOT a ranked tile: it renders in
-// the pinned NotificationsHomeCenter, always directly below the time/weather
-// base and outside the WidgetHost — asserted here alongside the ranking.
+// This spec boots the app to the Views launcher with sparse home widgets
+// enabled, seeds attention-worthy data into the kept widget sources (at-risk
+// goal, imminent calendar event, irregular sleep, urgent notification), and
+// proves the urgent widgets render and rank correctly. Finance, relationships,
+// inbox, workflow, feed, and orchestrator app/activity cards are intentionally
+// absent from the ranked home host.
 // Desktop + mobile screenshots land under
 // aesthetic-audit-output/home-widget-priority/.
 
@@ -82,13 +80,10 @@ const VIEW_FIXTURES = [
   },
 ];
 
-const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
-
 // Plugin snapshot (GET /api/plugins) — the home widgets resolve only when the
 // matching plugin id is enabled+active in the runtime snapshot (registry.ts
-// `isWidgetEnabled`). The widget declarations key off the normalized plugin id
-// (calendar/goals/finances/health/relationships). Notifications + messages are
-// always-visible core surfaces; agent-orchestrator is in the fallback set.
+// `isWidgetEnabled`). The kept sparse-home declarations key off calendar/goals/
+// health/todo. Notifications are pinned outside WidgetHost.
 function pluginInfo(id: string, name: string) {
   return {
     id,
@@ -109,10 +104,8 @@ function pluginInfo(id: string, name: string) {
 const PLUGIN_SNAPSHOT = [
   pluginInfo("calendar", "Calendar"),
   pluginInfo("goals", "Goals"),
-  pluginInfo("finances", "Finances"),
   pluginInfo("health", "Health"),
-  pluginInfo("relationships", "Relationships"),
-  pluginInfo("agent-orchestrator", "Agent Orchestrator"),
+  pluginInfo("todo", "Todos"),
 ];
 
 async function fulfillJson(
@@ -127,35 +120,6 @@ async function fulfillJson(
 }
 
 // -- Seeded attention payloads ------------------------------------------------
-
-// FinancesAlertsWidget reads /api/lifeops/money/{dashboard,recurring,sources}.
-// netUsd < 0 -> overdrawn -> escalation self-signal (weight 10). A connected
-// source is required for the widget to render at all.
-function moneyDashboard() {
-  return {
-    spending: { netUsd: -125.5 },
-    generatedAt: SMOKE_GENERATED_AT,
-  };
-}
-function moneySources() {
-  return { sources: [{ id: "src-1", status: "active", label: "Checking" }] };
-}
-function moneyRecurring() {
-  const inDays = (n: number) =>
-    new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString();
-  return {
-    charges: [
-      {
-        merchantNormalized: "netflix",
-        merchantDisplay: "Netflix",
-        cadence: "monthly",
-        averageAmountUsd: 15.99,
-        nextExpectedAt: inDays(3),
-        category: "entertainment",
-      },
-    ],
-  };
-}
 
 // GoalsAttentionWidget reads /api/lifeops/goals. A goal whose reviewState is
 // at_risk -> escalation self-signal (weight 10) and renders an urgent row.
@@ -235,53 +199,6 @@ function sleepRegularity() {
   };
 }
 
-// RelationshipsAttentionWidget reads client.getRelationshipsPeople() ->
-// GET /api/relationships/people ({ data, stats }) and
-// client.getRelationshipsCandidates() -> GET /api/relationships/candidates
-// ({ data }). A pending merge candidate -> approval self-signal (weight 9).
-function relationshipsPeople() {
-  return {
-    data: [
-      {
-        groupId: "grp-pat",
-        primaryEntityId: "ent-pat",
-        memberEntityIds: ["ent-pat"],
-        displayName: "Pat Doe",
-        aliases: [],
-        platforms: ["discord"],
-        identities: [],
-        emails: [],
-        phones: [],
-        websites: [],
-        preferredCommunicationChannel: null,
-        categories: [],
-        tags: [],
-        factCount: 0,
-        relationshipCount: 1,
-        isOwner: false,
-        profiles: [],
-        lastInteractionAt: "2026-04-01T00:00:00.000Z",
-      },
-    ],
-    stats: { totalPeople: 1, totalRelationships: 1, totalIdentities: 1 },
-  };
-}
-function relationshipsCandidates() {
-  return {
-    data: [
-      {
-        id: "cand-1",
-        entityA: "ent-pat",
-        entityB: "ent-patrick",
-        confidence: 0.88,
-        evidence: { platform: "discord", handle: "pat#1" },
-        status: "pending",
-        proposedAt: SMOKE_GENERATED_AT,
-      },
-    ],
-  };
-}
-
 // The pinned NotificationsHomeCenter reads the notification store, hydrated
 // from GET /api/notifications ({ notifications, unreadCount }). The inbox is
 // not a ranked tile — it renders in the pinned center below the time/weather
@@ -297,7 +214,7 @@ function notificationsPayload() {
         body: "Your card was declined for the Acme invoice.",
         category: "system",
         priority: "urgent",
-        source: "finances",
+        source: "system",
         createdAt: Date.now(),
         readAt: null,
       },
@@ -464,16 +381,7 @@ async function installHomeWidgetRoutes(page: Page): Promise<void> {
     await fulfillJson(route, { views: VIEW_FIXTURES });
   });
 
-  // Seeded attention data for every per-plugin home widget.
-  await page.route("**/api/lifeops/money/dashboard**", async (route) => {
-    await fulfillJson(route, moneyDashboard());
-  });
-  await page.route("**/api/lifeops/money/recurring**", async (route) => {
-    await fulfillJson(route, moneyRecurring());
-  });
-  await page.route("**/api/lifeops/money/sources**", async (route) => {
-    await fulfillJson(route, moneySources());
-  });
+  // Seeded attention data for kept sparse-home widgets.
   await page.route("**/api/lifeops/goals**", async (route) => {
     await fulfillJson(route, goalsPayload());
   });
@@ -486,13 +394,6 @@ async function installHomeWidgetRoutes(page: Page): Promise<void> {
   await page.route("**/api/lifeops/sleep/regularity**", async (route) => {
     await fulfillJson(route, sleepRegularity());
   });
-  await page.route("**/api/relationships/people**", async (route) => {
-    await fulfillJson(route, relationshipsPeople());
-  });
-  await page.route("**/api/relationships/candidates**", async (route) => {
-    await fulfillJson(route, relationshipsCandidates());
-  });
-
   // Notification inbox hydrate — the pinned center + the urgent signal.
   await page.route("**/api/notifications**", async (route) => {
     if (route.request().method() !== "GET") {
@@ -642,22 +543,20 @@ async function screenshot(page: Page, name: string): Promise<void> {
 }
 
 // The WidgetSection testIds each widget renders (read from source — not guessed).
-const FINANCES_TESTID = "chat-widget-finances-alerts";
 const GOALS_TESTID = "widget-goals-attention";
 const CALENDAR_TESTID = "chat-widget-calendar-upcoming";
 const HEALTH_TESTID = "widget-health-sleep";
-const RELATIONSHIPS_TESTID = "chat-widget-relationships";
 // The notification inbox renders in the pinned NotificationsHomeCenter
 // (outside the ranked WidgetHost), asserted separately below.
 const NOTIFICATION_CENTER_TESTID = "home-notification-center";
 
-const URGENT_TESTIDS = [FINANCES_TESTID, GOALS_TESTID];
-const SEEDED_TESTIDS = [
-  FINANCES_TESTID,
-  GOALS_TESTID,
-  CALENDAR_TESTID,
-  HEALTH_TESTID,
-  RELATIONSHIPS_TESTID,
+const URGENT_TESTIDS = [GOALS_TESTID];
+const SEEDED_TESTIDS = [GOALS_TESTID, CALENDAR_TESTID, HEALTH_TESTID];
+const REMOVED_HOME_TESTIDS = [
+  "chat-widget-finances-alerts",
+  "chat-widget-relationships",
+  "chat-widget-inbox-unread",
+  "chat-widget-automations",
 ];
 
 /**
@@ -723,10 +622,15 @@ test.describe("home widget priority (#9143)", () => {
     }
 
     // Sanity-check the seeded urgent content actually rendered.
-    await expect(host.getByTestId(FINANCES_TESTID)).toContainText("Overdrawn");
     await expect(host.getByTestId(GOALS_TESTID)).toContainText(
       "Ship the release",
     );
+    for (const testId of REMOVED_HOME_TESTIDS) {
+      await expect(
+        host.getByTestId(testId),
+        `removed resident card ${testId} must stay out of sparse home`,
+      ).toHaveCount(0);
+    }
 
     // The seeded urgent notification surfaces in the PINNED center — always
     // directly below the time/weather base, outside the ranked WidgetHost, its
@@ -759,10 +663,8 @@ test.describe("home widget priority (#9143)", () => {
 
     // The ranking re-settles once useNow installs the real clock in an effect
     // (it returns 0 on the first render for determinism). Poll for the stable
-    // post-effect order: the two urgent widgets (finances + goals, both at
-    // escalation weight 10 from their self-published attention) must occupy
-    // the top of the host, ahead of the non-urgent calendar/health/
-    // relationships cards.
+    // post-effect order: the urgent goal widget must occupy the top of the host,
+    // ahead of non-urgent calendar/health cards.
     await expect
       .poll(
         async () => {
@@ -794,7 +696,7 @@ test.describe("home widget priority (#9143)", () => {
     // Mobile screenshot (Pixel-7-ish 390px width).
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(host).toBeVisible();
-    // Keep the urgent widgets + the pinned center visible at the mobile width.
+    // Keep the urgent widget + the pinned center visible at the mobile width.
     for (const testId of URGENT_TESTIDS) {
       await expect(host.getByTestId(testId)).toBeVisible({ timeout: 15_000 });
     }

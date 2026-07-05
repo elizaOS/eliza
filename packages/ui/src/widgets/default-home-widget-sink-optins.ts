@@ -60,6 +60,13 @@ export interface DefaultHomeWidgetSinkOptIn {
 export const LEGACY_DEFAULT_HOME_WIDGET_SINK_OPTINS: readonly DefaultHomeWidgetSinkOptIn[] =
   [
     {
+      pluginId: "agent-orchestrator",
+      label: "Agent Orchestrator",
+      icon: "Activity",
+      defaultWidget: "notifications",
+      signalKinds: ["blocked", "escalation", "workflow", "activity"],
+    },
+    {
       pluginId: "birdclaw",
       label: "Birdclaw",
       icon: "Bird",
@@ -94,8 +101,22 @@ export const LEGACY_DEFAULT_HOME_WIDGET_SINK_OPTINS: readonly DefaultHomeWidgetS
       defaultWidget: "activity",
       signalKinds: ["approval", "workflow", "activity"],
     },
-    // The `feed` plugin owns the real `feed.agent-activity` home tile (declared
-    // in registry.ts), so it no longer opts into the shared messages sink here.
+    {
+      // The feed activity tile was removed from home; detailed activity remains
+      // in routed views and notification producers fold into the pinned center.
+      pluginId: "feed",
+      label: "Feed",
+      icon: "Activity",
+      defaultWidget: "notifications",
+      signalKinds: ["workflow", "activity", "notification"],
+    },
+    {
+      pluginId: "finances",
+      label: "Finances",
+      icon: "Wallet",
+      defaultWidget: "notifications",
+      signalKinds: ["approval", "escalation", "notification"],
+    },
     {
       pluginId: "form",
       label: "Forms",
@@ -109,6 +130,13 @@ export const LEGACY_DEFAULT_HOME_WIDGET_SINK_OPTINS: readonly DefaultHomeWidgetS
       icon: "ChartCandlestick",
       defaultWidget: "notifications",
       signalKinds: ["escalation", "notification", "activity"],
+    },
+    {
+      pluginId: "inbox",
+      label: "Inbox",
+      icon: "Inbox",
+      defaultWidget: "notifications",
+      signalKinds: ["message", "approval", "notification"],
     },
     {
       pluginId: "model-tester",
@@ -159,6 +187,13 @@ export const LEGACY_DEFAULT_HOME_WIDGET_SINK_OPTINS: readonly DefaultHomeWidgetS
       signalKinds: ["escalation", "notification", "activity"],
     },
     {
+      pluginId: "relationships",
+      label: "Relationships",
+      icon: "Users",
+      defaultWidget: "notifications",
+      signalKinds: ["approval", "nudge", "notification"],
+    },
+    {
       pluginId: "screenshare",
       label: "Screen Share",
       icon: "MonitorUp",
@@ -194,6 +229,13 @@ export const LEGACY_DEFAULT_HOME_WIDGET_SINK_OPTINS: readonly DefaultHomeWidgetS
       signalKinds: ["workflow", "activity"],
     },
     {
+      pluginId: "workflow",
+      label: "Workflows",
+      icon: "Workflow",
+      defaultWidget: "notifications",
+      signalKinds: ["workflow", "activity", "notification"],
+    },
+    {
       pluginId: "trajectory-logger",
       label: "Trajectory Logger",
       icon: "Route",
@@ -226,7 +268,7 @@ export const LEGACY_DEFAULT_HOME_WIDGET_SINK_OPTINS: readonly DefaultHomeWidgetS
 /**
  * First `order` slot for the default-home sink opt-ins. Kept above the
  * per-plugin real-data widgets so a bespoke card always outranks a plugin's
- * generic default-sink tile.
+ * generic default-sink participation record.
  */
 export const DEFAULT_HOME_WIDGET_OPTIN_ORDER_BASE = 300;
 

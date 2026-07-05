@@ -21,8 +21,6 @@ import {
 // route layer live here once and the two specs differ only in browser context
 // (desktop vs Pixel-class touch viewport) and screenshot output directory.
 
-export const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
-
 // A tiny silent WAV so a mocked TTS POST returns bytes decodeAudioData accepts
 // on every Chromium build, keeping the page-diagnostics guard clean when the
 // tutorial narrator speaks. The old truncated-mp3 fixture stopped decoding
@@ -130,10 +128,8 @@ function pluginInfo(id: string, name: string) {
 const PLUGIN_SNAPSHOT = [
   pluginInfo("calendar", "Calendar"),
   pluginInfo("goals", "Goals"),
-  pluginInfo("finances", "Finances"),
   pluginInfo("health", "Health"),
-  pluginInfo("relationships", "Relationships"),
-  pluginInfo("agent-orchestrator", "Agent Orchestrator"),
+  pluginInfo("todo", "Todos"),
 ];
 
 async function fulfillJson(
@@ -159,31 +155,6 @@ function requestAllowsBody(route: Route): boolean {
 
 // -- Seeded attention payloads (mirror home-widget-priority.spec) -------------
 
-function moneyDashboard() {
-  return {
-    spending: { netUsd: -125.5 },
-    generatedAt: SMOKE_GENERATED_AT,
-  };
-}
-function moneySources() {
-  return { sources: [{ id: "src-1", status: "active", label: "Checking" }] };
-}
-function moneyRecurring() {
-  const inDays = (n: number) =>
-    new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString();
-  return {
-    charges: [
-      {
-        merchantNormalized: "netflix",
-        merchantDisplay: "Netflix",
-        cadence: "monthly",
-        averageAmountUsd: 15.99,
-        nextExpectedAt: inDays(3),
-        category: "entertainment",
-      },
-    ],
-  };
-}
 function goalsPayload() {
   return {
     goals: [
@@ -243,48 +214,6 @@ function sleepRegularity() {
     windowDays: 14,
   };
 }
-function relationshipsPeople() {
-  return {
-    data: [
-      {
-        groupId: "grp-pat",
-        primaryEntityId: "ent-pat",
-        memberEntityIds: ["ent-pat"],
-        displayName: "Pat Doe",
-        aliases: [],
-        platforms: ["discord"],
-        identities: [],
-        emails: [],
-        phones: [],
-        websites: [],
-        preferredCommunicationChannel: null,
-        categories: [],
-        tags: [],
-        factCount: 0,
-        relationshipCount: 1,
-        isOwner: false,
-        profiles: [],
-        lastInteractionAt: "2026-04-01T00:00:00.000Z",
-      },
-    ],
-    stats: { totalPeople: 1, totalRelationships: 1, totalIdentities: 1 },
-  };
-}
-function relationshipsCandidates() {
-  return {
-    data: [
-      {
-        id: "cand-1",
-        entityA: "ent-pat",
-        entityB: "ent-patrick",
-        confidence: 0.88,
-        evidence: { platform: "discord", handle: "pat#1" },
-        status: "pending",
-        proposedAt: SMOKE_GENERATED_AT,
-      },
-    ],
-  };
-}
 function notificationsPayload() {
   return {
     notifications: [
@@ -294,7 +223,7 @@ function notificationsPayload() {
         body: "Your card was declined for the Acme invoice.",
         category: "system",
         priority: "urgent",
-        source: "finances",
+        source: "system",
         createdAt: Date.now(),
         readAt: null,
       },
@@ -530,16 +459,7 @@ export async function installHomeRoutes(
     await fulfillJson(route, { views: VIEW_FIXTURES });
   });
 
-  // Seeded attention data for every per-plugin home widget.
-  await page.route("**/api/lifeops/money/dashboard**", async (route) => {
-    await fulfillJson(route, moneyDashboard());
-  });
-  await page.route("**/api/lifeops/money/recurring**", async (route) => {
-    await fulfillJson(route, moneyRecurring());
-  });
-  await page.route("**/api/lifeops/money/sources**", async (route) => {
-    await fulfillJson(route, moneySources());
-  });
+  // Seeded attention data for kept sparse-home widgets.
   await page.route("**/api/lifeops/goals**", async (route) => {
     await fulfillJson(route, goalsPayload());
   });
@@ -552,14 +472,7 @@ export async function installHomeRoutes(
   await page.route("**/api/lifeops/sleep/regularity**", async (route) => {
     await fulfillJson(route, sleepRegularity());
   });
-  await page.route("**/api/relationships/people**", async (route) => {
-    await fulfillJson(route, relationshipsPeople());
-  });
-  await page.route("**/api/relationships/candidates**", async (route) => {
-    await fulfillJson(route, relationshipsCandidates());
-  });
-
-  // Notification inbox hydrate — the notifications widget + the urgent signal.
+  // Notification inbox hydrate — the pinned center + the urgent signal.
   // (installDefaultAppRoutes registers an empty default; this override wins.)
   await page.route("**/api/notifications**", async (route) => {
     if (route.request().method() !== "GET") {
@@ -792,7 +705,6 @@ export function makeScreenshotter(
 // The WidgetSection testIds each widget renders (read from source). The
 // notification inbox is not a ranked tile: it renders in the pinned
 // NotificationsHomeCenter (`home-notification-center`), outside the WidgetHost.
-export const FINANCES_TESTID = "chat-widget-finances-alerts";
 export const GOALS_TESTID = "widget-goals-attention";
 
 // First-run runtime/provider buttons live in the real chat transcript. The
@@ -932,20 +844,26 @@ async function expectPostOnboardingChat(
   });
 }
 
-/** Assert the seeded per-plugin home widgets render with their attention data. */
+/** Assert the kept sparse-home widgets render with their attention data. */
 async function expectPopulatedHome(page: Page): Promise<Locator> {
   const host = page.getByTestId("widget-host-home");
   await expect(host).toBeVisible({ timeout: 30_000 });
-  for (const testId of [FINANCES_TESTID, GOALS_TESTID]) {
+  for (const testId of [GOALS_TESTID]) {
     await expect(
       host.getByTestId(testId),
       `home widget ${testId} should render with seeded attention data`,
     ).toBeVisible({ timeout: 30_000 });
   }
-  await expect(host.getByTestId(FINANCES_TESTID)).toContainText("Overdrawn");
   await expect(host.getByTestId(GOALS_TESTID)).toContainText(
     "Ship the release",
   );
+  for (const testId of [
+    "chat-widget-finances-alerts",
+    "chat-widget-relationships",
+    "chat-widget-inbox-unread",
+  ]) {
+    await expect(host.getByTestId(testId)).toHaveCount(0);
+  }
   // The seeded urgent notification surfaces in the pinned dashboard center
   // (below the time/weather base), not as a ranked WidgetHost tile.
   const notificationCenter = page.getByTestId("home-notification-center");

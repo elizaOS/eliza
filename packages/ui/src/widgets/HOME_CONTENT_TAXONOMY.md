@@ -14,15 +14,19 @@ Clock + weather (`DefaultHomeWidgets`). Never ranked, never sunset; the calm
 backdrop a brand-new account still sees.
 
 ### Tier 2 — Live agent work (ongoing, self-hiding)
-What the agent is doing *right now*: `agent-orchestrator.activity`,
-`agent-orchestrator.apps`, `workflow.running`, `needs-attention`. Ranked by
-`blocked`/`escalation`/`approval`/`workflow` signals; self-hides when idle. These
-are NOT chat echoes — they are live work state.
+Only work that needs the user's response belongs here:
+`needs-attention.pending`, plus setup-progress cards such as
+`model-download.status` and `agent-provisioning.status`. These rank by
+`approval`/`escalation`/setup signals and self-hide when idle. Continuous
+activity streams, app-run lists, and running workflow lists stay in the
+launcher/sidebar/routed views.
 
 ### Tier 3 — Data attention (urgency from the widget's own data)
-Calendar, finances, goals, health, inbox, relationships. Each fetches its own
-data, self-publishes a `home-attention` weight while a condition holds (an
-overdrawn balance, an event in 10 minutes), and self-hides otherwise.
+Calendar, goals, health, todos, and wallet. Each fetches its own data,
+self-publishes a `home-attention` weight while a condition holds, and self-hides
+otherwise where appropriate. Finances, inbox, relationships, feed activity,
+workflow activity, and orchestrator app/activity cards do not live on home; use
+their launcher/routed surfaces.
 
 ### Tier 4 — Transient guidance (show-once-then-sunset)
 FTU welcome, connector nudges, the tutorial nudge. These rank for a cold user
@@ -53,10 +57,13 @@ welcome card self-publishes it so a cold home shows it at the top, yet a real
 "act now" signal always outranks it. It is the only signal kind tied to the
 sunset lifecycle rather than to live data.
 
-## `messages.recent` — kept, not a chat echo
+## Removed resident cards
 
-The "Recent conversations" tile (`messages.recent`) is a **launcher into past
-threads**, not a live mirror of the active chat overlay (the topic's "home must
-not echo chat" rule targets a live transcript echo, which the home does not
-have). It stays in Tier 2/3 as a navigational affordance. If a live-transcript
-echo is ever added to the home, it must be removed under this rule.
+The following components/routes can still exist, but their `slot:"home"`
+declarations are removed: `agent-orchestrator.activity`,
+`agent-orchestrator.apps`, `feed.agent-activity`, `workflow.running`,
+`finances.alerts`, `relationships.attention`, and `inbox.unread`.
+
+The old `messages.recent` card also remains removed. Follow-up-worthy messages
+surface through notifications, and conversation navigation lives in chat history
+instead of a resident home tile.
