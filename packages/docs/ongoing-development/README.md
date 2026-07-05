@@ -25,9 +25,10 @@ pipeline:
 
 1. **Discussion** — conversation starts in
    [GitHub Discussions](https://github.com/elizaOS/eliza/discussions): one
-   kickoff thread per workstream (General, titled `[MVP] <workstream>`) plus a
-   pinned master coordination thread (Announcements). Discussions are for
-   conversation, not storage — if something was decided, it belongs in a doc.
+   kickoff thread per workstream (General) plus the master coordination thread
+   ([#14407](https://github.com/orgs/elizaOS/discussions/14407), Announcements).
+   Discussions are for conversation, not storage — if something was decided, it
+   belongs in a doc. (Live thread links: [`status/STATUS.md`](status/STATUS.md).)
 2. **Design doc** — decisions land here as a PR: a `research/` doc for the
    initial audit + plan, a `design/` doc for an accepted design being built.
    A stale design doc is a bug; the PR that diverges from it updates it.
