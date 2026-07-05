@@ -15,6 +15,15 @@
  * expressed as a factor over the 60fps budget so a 60Hz CI runner and a 120Hz dev
  * box both pass. Mechanics come from the shared e2e-runner.
  *
+ * The steady-state CLS is 0.0000 because every maximize/restore shift is inside
+ * the overlay's `data-eliza-layout-shift-intent="transient"` marker. A 0.0000
+ * that big an exclusion could hide a regression, so before trusting it the gate
+ * proves its detector has TEETH: it injects a REAL non-transient shift on the
+ * pilled fixture (measureInjectedNonTransientShift) and asserts the same observer
+ * + detector flag it. This is the exact class the removed horizontal
+ * conversation-swipe once produced here — CLS 0.80 (#14333) — before #13531
+ * deleted swipe and #13826 retargeted the gate onto scroll + maximize/restore.
+ *
  * Run: bun run --cwd packages/ui test:perf-gate-e2e
  */
 
@@ -35,6 +44,7 @@ import {
   LAYOUT_SHIFT_OBSERVER_INIT,
   summarizeStability,
 } from "../../../testing/layout-stability.ts";
+import { measureInjectedNonTransientShift } from "../../../testing/layout-shift-teeth.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-perf-gate-e2e");
@@ -225,6 +235,27 @@ await runBrowserFixtureE2E(
 
     await page.waitForTimeout(600);
 
+    // GUARD (#14333) — prove the gate has TEETH before trusting its green. A CLS
+    // of 0.0000 later can be a true "every shift was intentional" pass OR a silent
+    // regression: a dead PerformanceObserver, or an over-broad
+    // `data-eliza-layout-shift-intent="transient"` marker swallowing a genuine
+    // shift. Injecting REAL non-transient shifts on the still-pilled fixture (whole
+    // surface visible, so impact is large and the margin over 0.1 is comfortable)
+    // and asserting the SAME observer + detector flag them proves a re-introduced
+    // real shift — the exact class the removed horizontal conversation-swipe once
+    // produced here (CLS 0.80) — would red the gate, not hide behind the exclusion.
+    const teeth = await measureInjectedNonTransientShift(page, {
+      rootSelector: '[data-testid="perf-gate-root"]',
+      maxCls: MAX_CLS,
+    });
+    console.log(
+      `  [teeth] injected non-transient cls=${teeth.cls.toFixed(4)} shifts=${teeth.shiftCount} flagged=${teeth.flagged}`,
+    );
+    assert(
+      teeth.flagged && teeth.cls > MAX_CLS,
+      `the gate catches a REAL non-transient shift (injected CLS ${teeth.cls.toFixed(4)} > ${MAX_CLS}) — the transient-intent exclusion cannot silently swallow a regression`,
+    );
+
     // Open the sheet to FULL so `#continuous-thread` (the real scroll surface) is
     // mounted + bound. Two pull-ups: collapsed → half → full.
     await drag(page, '[data-testid="chat-sheet-grabber"]', 0, -120, { steps: 6 });
@@ -303,6 +334,16 @@ await runBrowserFixtureE2E(
     assert(
       !stability.flagged,
       `layout stable during scroll + maximize/restore (CLS ${stability.cls.toFixed(4)} ≤ ${MAX_CLS}, ${stability.shiftCount} shifts)`,
+    );
+
+    // The maximize/restore transitions move the whole panel, so the observer MUST
+    // have recorded real layout-shift entries — a CLS of 0 with ZERO raw entries
+    // is a dead observer, not a stable surface, and every future reading would be
+    // a vacuous pass. (The teeth-check above already proved the detector flags a
+    // real shift; this proves the observer was live for THIS interaction.)
+    assert(
+      shifts.length > 0,
+      `observer captured real layout-shift entries during the interaction (${shifts.length}) — CLS=0 is a true all-intentional pass, not a dead observer`,
     );
 
     assert(errors.length === 0, `no page errors (saw ${errors.length})`);

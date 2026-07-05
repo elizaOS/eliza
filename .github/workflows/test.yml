@@ -416,10 +416,13 @@ jobs:
           path: packages/ui/src/spatial/__e2e__/output-immersive/
           if-no-files-found: ignore
 
-      # Perf gate (#9954): drive REAL overlay-scroll + conversation-swipe in
-      # headless chromium, feed REAL rAF/longtask/layout-shift entries through the
-      # shared frame-budget + layout-stability detectors, HARD-FAIL on dropped
-      # frames, p95 frame time, or CLS. Previously ran in no workflow.
+      # Perf gate (#9954): drive REAL overlay thread-scroll + pull-to-maximize /
+      # top-pull-restore in headless chromium, feed REAL rAF/longtask/layout-shift
+      # entries through the shared frame-budget + layout-stability detectors,
+      # HARD-FAIL on dropped frames, p95 frame time, or CLS. The gate first proves
+      # its CLS detector has teeth by injecting a real non-transient shift and
+      # asserting it is flagged (#14333), so a true CLS of 0.0000 cannot be a
+      # vacuous pass from a dead observer or an over-broad transient marker.
       - name: Perf gate e2e (#9954)
         run: bun run --cwd packages/ui test:perf-gate-e2e
 

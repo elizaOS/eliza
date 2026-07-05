@@ -34,6 +34,7 @@ import {
   LAYOUT_SHIFT_OBSERVER_INIT,
   summarizeStability,
 } from "../../../testing/layout-stability.ts";
+import { measureInjectedNonTransientShift } from "../../../testing/layout-shift-teeth.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-perf-gate");
@@ -194,6 +195,20 @@ await runBrowserFixtureE2E(
     const check = gate.assert;
     await page.waitForTimeout(600);
 
+    // GUARD (#14333) — prove the CLS detector has teeth before trusting its green.
+    // CLS 0.0000 below could be a dead observer or an over-broad transient marker
+    // swallowing a real shift. Inject REAL non-transient shifts on the pilled
+    // fixture and assert the SAME observer + detector flag them.
+    const teeth = await measureInjectedNonTransientShift(page, {
+      rootSelector: '[data-testid="perf-gate-root"]',
+      maxCls: STABILITY_BUDGET.maxCls,
+    });
+    console.log(`teeth: injected non-transient cls ${teeth.cls.toFixed(4)} flagged ${teeth.flagged}`);
+    check(
+      teeth.flagged && teeth.cls > STABILITY_BUDGET.maxCls,
+      `gate catches a REAL non-transient shift (injected CLS ${teeth.cls.toFixed(4)} > ${STABILITY_BUDGET.maxCls})`,
+    );
+
     // Open the sheet to FULL so the thread (scroll surface) is mounted.
     await drag(page, '[data-testid="chat-sheet-grabber"]', 0, -120, { steps: 6 });
     await page.waitForTimeout(450);
@@ -270,6 +285,12 @@ await runBrowserFixtureE2E(
       `non-intentional CLS ${stability.cls.toFixed(4)} within ${STABILITY_BUDGET.maxCls}`,
     );
     check(!stability.flagged, "layout-stability detector does not flag the window");
+    // The maximize/restore transitions move the whole panel, so a CLS of 0 with
+    // ZERO raw shift entries is a dead observer, not a stable surface.
+    check(
+      shifts.length > 0,
+      `observer captured real layout-shift entries during the interaction (${shifts.length}) — CLS=0 is not a dead observer`,
+    );
     check(errors.length === 0, `no page errors (saw ${errors.length})`);
     if (errors.length) console.log(errors.join("\n"));
   },

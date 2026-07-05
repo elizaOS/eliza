@@ -22,6 +22,8 @@ name: Chat shell gestures
 # so CLS is now 0.0000 on develop (stable across runs, not timing-flaky). It is
 # re-enabled below (#14333) — CLS is structural so it will not flake on slower
 # fleet hardware, and the frame budget carries ~3x margin (p95 ~10ms ≤ 33ms).
+# Both gates self-verify their detector's teeth: each injects a real non-transient
+# shift and asserts it is flagged, so a 0.0000 can never be a dead-observer pass.
 #
 # Path-gated to packages/ui (and the app-side gate + matrix) so it only runs when
 # the surface it covers changes. The e2e runners bundle the fixtures with esbuild
@@ -181,9 +183,12 @@ jobs:
       - name: Chat ambient pulse e2e
         run: bun run --cwd packages/ui test:chat-ambient-e2e
 
-      # Perf gates: drive the overlay under scroll + swipe, feed real
-      # PerformanceObserver + rAF entries into the shared frame-budget +
-      # layout-stability detectors, hard-fail on dropped-frame % / p95 / CLS.
+      # Perf gates: drive the overlay under thread-scroll + pull-to-maximize /
+      # top-pull-restore, feed real PerformanceObserver + rAF entries into the
+      # shared frame-budget + layout-stability detectors, hard-fail on dropped-
+      # frame % / p95 / CLS. Each gate first proves its CLS detector has teeth by
+      # injecting a real non-transient shift and asserting it is flagged (#14333),
+      # so a true CLS of 0.0000 cannot be a vacuous pass from a dead observer.
       - name: Chat overlay perf gate
         run: bun run --cwd packages/ui test:chat-perf-gate
 
