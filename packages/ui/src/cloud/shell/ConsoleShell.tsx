@@ -13,7 +13,7 @@
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
-import { ChevronDown, LogOut } from "lucide-react";
+import { ChevronDown, LogOut, UserRound } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -118,8 +118,8 @@ function ConsoleLogo(): ReactNode {
 
 /** Credits balance pill + the account dropdown (Account / Billing / Sign out) —
  * the console's only sign-out affordance, so it must always be reachable.
- * Sign-out goes through the shared `clearStewardSession` (server DELETE + local
- * token clear), the same hardened teardown the auth cookie work relies on. */
+ * Sign-out clears the local token before the best-effort server session DELETE,
+ * the same hardened teardown the auth cookie work relies on. */
 function ConsoleUserMenu({
   email,
 }: {
@@ -138,7 +138,11 @@ function ConsoleUserMenu({
         </span>
       ) : null}
       <DropdownMenu>
-        <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-white/70 outline-none hover:bg-white/5 hover:text-white">
+        <DropdownMenuTrigger
+          aria-label={email ? `Account menu for ${email}` : "Account menu"}
+          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-white/70 outline-none hover:bg-white/5 hover:text-white"
+        >
+          <UserRound className="h-3.5 w-3.5 md:hidden" aria-hidden />
           <span className="hidden max-w-[160px] truncate md:inline">
             {email ?? "Account"}
           </span>

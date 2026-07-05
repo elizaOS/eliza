@@ -192,7 +192,11 @@ describe("ConsoleShell", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: /qa@e\.test/i }));
+    const accountMenu = screen.getByRole("button", { name: /qa@e\.test/i });
+    expect(accountMenu.getAttribute("aria-label")).toBe(
+      "Account menu for qa@e.test",
+    );
+    fireEvent.pointerDown(accountMenu, { button: 0, pointerId: 1 });
     fireEvent.click(await screen.findByRole("menuitem", { name: /sign out/i }));
 
     expect(stewardSessionMock.clearStoredStewardToken).toHaveBeenCalledTimes(1);
