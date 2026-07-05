@@ -692,6 +692,9 @@ describe("NativeAcpClient terminal actions", () => {
           { name: "GIT_INDEX_FILE", value: "/tmp/attacker-index" },
           { name: "GIT_DIR", value: "/tmp/attacker-git-dir" },
           { name: "GIT_WORK_TREE", value: "/tmp/attacker-work-tree" },
+          { name: "git_index_file", value: "/tmp/lower-index" },
+          { name: "git_dir", value: "/tmp/lower-git-dir" },
+          { name: "Git_Work_Tree", value: "/tmp/mixed-work-tree" },
         ],
       },
     });
@@ -705,6 +708,9 @@ describe("NativeAcpClient terminal actions", () => {
     );
     expect(env).not.toHaveProperty("GIT_DIR");
     expect(env).not.toHaveProperty("GIT_WORK_TREE");
+    expect(env).not.toHaveProperty("git_index_file");
+    expect(env).not.toHaveProperty("git_dir");
+    expect(env).not.toHaveProperty("Git_Work_Tree");
   });
 });
 

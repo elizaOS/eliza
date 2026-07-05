@@ -766,8 +766,9 @@ function protectTerminalGitEnv(
   env: Record<string, string | undefined>,
   trusted: NodeJS.ProcessEnv | undefined,
 ): void {
-  for (const key of ["GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE"]) {
-    delete env[key];
+  const protectedKeys = new Set(["GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE"]);
+  for (const key of Object.keys(env)) {
+    if (protectedKeys.has(key.toUpperCase())) delete env[key];
   }
   if (typeof trusted?.GIT_INDEX_FILE === "string") {
     env.GIT_INDEX_FILE = trusted.GIT_INDEX_FILE;

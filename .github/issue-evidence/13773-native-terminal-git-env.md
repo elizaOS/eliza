@@ -43,3 +43,28 @@ bun run --cwd plugins/plugin-agent-orchestrator typecheck
 No UI, browser, mobile, live-model, or screenshot evidence applies; this is a
 subprocess environment isolation fix covered by unit-level process-env
 assertions.
+
+## Follow-up: case-insensitive git env protection
+
+After #14238 merged, native terminal env protection was hardened to delete
+`GIT_INDEX_FILE`, `GIT_DIR`, and `GIT_WORK_TREE` case-insensitively before
+restoring the trusted session-owned `GIT_INDEX_FILE`. This covers Windows child
+process environments, where variable lookup is case-insensitive.
+
+Passed:
+
+```bash
+bunx vitest run plugins/plugin-agent-orchestrator/__tests__/unit/acp-native-transport.test.ts
+# Test Files  1 passed (1)
+# Tests       21 passed (21)
+```
+
+```bash
+bunx biome check plugins/plugin-agent-orchestrator/src/services/acp-native-transport.ts plugins/plugin-agent-orchestrator/__tests__/unit/acp-native-transport.test.ts .github/issue-evidence/13773-native-terminal-git-env.md
+# Checked 2 files. No fixes applied.
+```
+
+```bash
+git diff --check -- plugins/plugin-agent-orchestrator/src/services/acp-native-transport.ts plugins/plugin-agent-orchestrator/__tests__/unit/acp-native-transport.test.ts .github/issue-evidence/13773-native-terminal-git-env.md
+# passed
+```
