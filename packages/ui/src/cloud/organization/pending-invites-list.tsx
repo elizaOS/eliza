@@ -85,7 +85,7 @@ export function PendingInvitesList({
         );
       case "accepted":
         return (
-          <span className="px-2 py-0.5 border border-green-500/40 bg-green-500/20 text-green-400 flex items-center gap-1 text-xs font-mono">
+          <span className="px-2 py-0.5 border border-green-500/40 bg-green-500/20 text-green-700 dark:text-green-300 flex items-center gap-1 text-xs font-mono">
             <CheckCircle2 className="h-3 w-3" />
             Accepted
           </span>

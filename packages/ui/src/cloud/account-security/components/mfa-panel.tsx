@@ -36,9 +36,16 @@ export function MfaPanel() {
           setState({ kind: "unavailable", reason: payload.reason ?? null });
           return;
         }
+        if (typeof payload.enrolled !== "boolean") {
+          setState({
+            kind: "error",
+            message: "MFA status response was malformed.",
+          });
+          return;
+        }
         setState({
           kind: "ready",
-          enrolled: Boolean(payload.enrolled),
+          enrolled: payload.enrolled,
           method: payload.method ?? null,
         });
       })
@@ -80,9 +87,11 @@ export function MfaPanel() {
             })}
           </p>
         ) : state.kind === "error" ? (
-          <p className="text-sm text-red-300">{state.message}</p>
+          <p className="text-sm text-red-600 dark:text-red-300">
+            {state.message}
+          </p>
         ) : state.enrolled ? (
-          <p className="text-sm text-green-300">
+          <p className="text-sm text-green-700 dark:text-green-300">
             {t("cloud.mfaPanel.enabled", {
               method:
                 state.method ??

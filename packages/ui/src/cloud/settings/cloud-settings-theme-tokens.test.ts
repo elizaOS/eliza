@@ -33,6 +33,13 @@ const SCANNED_PATHS = [
   "api-keys/ApiKeysView.tsx",
 ];
 
+const STATUS_TOKEN_FILES = [
+  "account-security/components/active-sessions-panel.tsx",
+  "account-security/components/mfa-panel.tsx",
+  "account-security/components/privacy-panel.tsx",
+  "organization/pending-invites-list.tsx",
+];
+
 // Theme-locked color utilities: hardcoded light-on-dark values that render
 // white/near-white text or opaque dark surfaces regardless of the active theme.
 const FORBIDDEN_TOKEN_PATTERNS: RegExp[] = [
@@ -54,7 +61,8 @@ const FORBIDDEN_TOKEN_PATTERNS: RegExp[] = [
 // solid saturated background (white-on-color reads in both themes).
 const SOLID_COLOR_BG =
   /\bbg-(?:accent|primary|destructive)\b|\bbg-\[#(?:eb4335|ff5800|e54f00)\]|\bbg-\[(?:rgba\()?var\(--accent/i;
-const isWhiteTextToken = (pattern: RegExp) => pattern.source.includes("text-white");
+const isWhiteTextToken = (pattern: RegExp) =>
+  pattern.source.includes("text-white");
 
 // direct-crypto-credit-card renders its explicit black/white cloud aesthetic only
 // under an in-component `surface === "cloud"` branch, not on the settings surface.
@@ -76,7 +84,8 @@ function collectFiles(path: string): string[] {
 
 // Every quoted / backtick string literal in the file — className attributes,
 // cn()/ternary class fragments, and `${…}`-nested class strings all surface here.
-const STRING_LITERAL = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|`([^`\\]*(?:\\.[^`\\]*)*)`/g;
+const STRING_LITERAL =
+  /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|`([^`\\]*(?:\\.[^`\\]*)*)`/g;
 
 describe("Cloud settings theme tokens", () => {
   it("keeps lifted Cloud settings bodies readable without a dark theme island", () => {
@@ -93,6 +102,23 @@ describe("Cloud settings theme tokens", () => {
           if (!pattern.test(classString)) continue;
           if (isWhiteTextToken(pattern) && hasSolidColorBg) continue;
           offenders.push(`${file}: ${pattern.source}`);
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("keeps account security status colors readable on light settings surfaces", () => {
+    const offenders: string[] = [];
+    const paleStatusTokens = /\b(?<!dark:)text-(?:red|green)-(?:300|400)\b/;
+
+    for (const file of STATUS_TOKEN_FILES) {
+      const source = readFileSync(join(ROOT, file), "utf8");
+      for (const match of source.matchAll(STRING_LITERAL)) {
+        const classString = match[1] ?? match[2] ?? match[3] ?? "";
+        if (paleStatusTokens.test(classString)) {
+          offenders.push(file);
         }
       }
     }

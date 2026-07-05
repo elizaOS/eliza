@@ -123,7 +123,7 @@ export function PrivacyPanel() {
         <div className="flex items-start justify-between gap-3 rounded-sm border border-border bg-surface p-4">
           <div className="flex items-start gap-3">
             <div className="rounded-sm border border-green-500/40 bg-green-500/20 p-2">
-              <Download className="h-4 w-4 text-green-300" />
+              <Download className="h-4 w-4 text-green-700 dark:text-green-300" />
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-txt-strong">
@@ -158,7 +158,7 @@ export function PrivacyPanel() {
         <div className="flex items-start justify-between gap-3 rounded-sm border border-red-500/30 bg-red-500/5 p-4">
           <div className="flex items-start gap-3">
             <div className="rounded-sm border border-red-500/40 bg-red-500/20 p-2">
-              <Trash2 className="h-4 w-4 text-red-300" />
+              <Trash2 className="h-4 w-4 text-red-600 dark:text-red-300" />
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-txt-strong">
@@ -177,7 +177,7 @@ export function PrivacyPanel() {
           <BrandButton
             size="sm"
             variant="outline"
-            className="border-red-500/40 text-red-300"
+            className="border-red-500/40 text-red-600 dark:text-red-300"
             disabled
             title={t("cloud.privacyPanel.deletionComingSoon", {
               defaultValue:

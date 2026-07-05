@@ -46,9 +46,16 @@ export function ActiveSessionsPanel() {
           });
           return;
         }
+        if (!Array.isArray(payload.sessions)) {
+          setState({
+            kind: "error",
+            message: "Session inventory response was malformed.",
+          });
+          return;
+        }
         setState({
           kind: "ready",
-          sessions: Array.isArray(payload.sessions) ? payload.sessions : [],
+          sessions: payload.sessions,
         });
       })
       .catch((error) => {
@@ -94,7 +101,9 @@ export function ActiveSessionsPanel() {
             })}
           </p>
         ) : state.kind === "error" ? (
-          <p className="text-sm text-red-300">{state.message}</p>
+          <p className="text-sm text-red-600 dark:text-red-300">
+            {state.message}
+          </p>
         ) : state.sessions.length === 0 ? (
           <p className="text-sm text-muted">
             {t("cloud.activeSessions.noOther", {
@@ -115,7 +124,7 @@ export function ActiveSessionsPanel() {
                         defaultValue: "Unknown device",
                       })}
                     {session.current ? (
-                      <span className="ml-2 rounded-sm border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-green-300">
+                      <span className="ml-2 rounded-sm border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-green-700 dark:text-green-300">
                         {t("cloud.activeSessions.current", {
                           defaultValue: "current",
                         })}
