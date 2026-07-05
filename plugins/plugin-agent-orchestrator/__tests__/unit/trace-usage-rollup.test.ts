@@ -199,6 +199,40 @@ describeCore("getTraceUsage", () => {
     expect(rollup?.trajectoryCount).toBe(0);
   });
 
+  it("counts a trajectory file once even when duplicate artifact rows point at it (multi-session/retry rescan)", async () => {
+    const store = new InMemoryTaskStore();
+    const { taskId, sessionId } = await seedTaskWithSession(store, {
+      traceId: "trace-parent",
+    });
+    const svc = new OrchestratorTaskService(makeRuntime(), { store });
+
+    const dir = join(
+      stateDir,
+      "orchestrator",
+      "child-trajectories",
+      taskId,
+      "child-agent",
+    );
+    await mkdir(dir, { recursive: true });
+    writeFileSync(join(dir, "tj-dup.json"), trajectoryJson("trace-parent", 80, 0.008));
+
+    // ingestChildTrajectories rescans the whole task dir each call, so a second
+    // completion appends a SECOND artifact row for the same file path.
+    await ingest(svc, taskId, sessionId);
+    await ingest(svc, taskId, sessionId);
+    const doc = await store.getTask(taskId);
+    const trajRows = (doc?.artifacts ?? []).filter(
+      (a) => a.artifactType === "trajectory",
+    );
+    expect(trajRows.length).toBeGreaterThan(1); // duplicate rows exist
+
+    const rollup = await svc.getTraceUsage(taskId);
+    // ...but the file's spend is counted exactly once.
+    expect(rollup?.promptTokens).toBe(80);
+    expect(rollup?.trajectoryCount).toBe(1);
+    expect(rollup?.costUsd).toBeCloseTo(0.008, 6);
+  });
+
   it("returns null for an unknown task", async () => {
     const store = new InMemoryTaskStore();
     const svc = new OrchestratorTaskService(makeRuntime(), { store });

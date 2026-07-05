@@ -3150,12 +3150,21 @@ export class OrchestratorTaskService extends Service {
   async getTraceUsage(taskId: string): Promise<TrajectoryUsageRollup | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
-    const paths = doc.artifacts
-      .filter(
-        (artifact) =>
-          artifact.artifactType === "trajectory" && Boolean(artifact.path),
-      )
-      .map((artifact) => artifact.path as string);
+    // Dedupe by path: `ingestChildTrajectories` rescans the task-wide child
+    // dir on every task_complete, so a multi-session / retried task can hold
+    // more than one artifact row pointing at the SAME trajectory file. Summing
+    // each row would double-count that file's tokens/cost, so read each
+    // distinct path once.
+    const paths = [
+      ...new Set(
+        doc.artifacts
+          .filter(
+            (artifact) =>
+              artifact.artifactType === "trajectory" && Boolean(artifact.path),
+          )
+          .map((artifact) => artifact.path as string),
+      ),
+    ];
     const trajectories: RecordedTrajectory[] = [];
     for (const path of paths) {
       try {
