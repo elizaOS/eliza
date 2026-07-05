@@ -8,6 +8,8 @@ on:
   pull_request:
     branches: [develop, main]
     paths:
+      - ".github/actions/cloud-setup-test-env/**"
+      - ".github/workflows/cloud-tests.yml"
       - "packages/cloud/api/**"
       - "packages/cloud/shared/**"
       - "packages/cloud/sdk/**"
