@@ -41,7 +41,10 @@ describe("createConversationImportDocumentSink", () => {
           importBatchId: "batch-1",
         },
         tags: ["import", "import:chatgpt"],
+        source: "import",
+        addedFrom: "import",
       },
+      addedFrom: "import",
     });
 
     await sink.deleteDocument("doc-1");

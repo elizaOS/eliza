@@ -694,7 +694,11 @@ function createImportBatchId(): string {
   return `batch-${Date.now().toString(36)}`;
 }
 
-function ConversationImportPanel({ onImported }: { onImported: () => void }) {
+export function ConversationImportPanel({
+  onImported,
+}: {
+  onImported: () => void;
+}) {
   const { t } = useTranslation();
   const [source, setSource] =
     useState<BrowserConversationImportSource>("chatgpt");

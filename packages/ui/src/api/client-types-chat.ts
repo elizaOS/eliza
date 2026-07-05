@@ -439,6 +439,7 @@ export type DocumentScope =
   | "agent-private";
 
 export type DocumentProvenanceKind =
+  | "import"
   | "upload"
   | "learned"
   | "character"

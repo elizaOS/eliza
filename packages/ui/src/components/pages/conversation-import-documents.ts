@@ -12,6 +12,7 @@ export interface ConversationImportDocumentClient {
     entityId?: string;
     scope?: SinkDocument["scope"];
     scopedToEntityId?: string;
+    addedFrom?: SinkDocument["addedFrom"];
   }): Promise<{ documentId: string }>;
   deleteDocument(documentId: string): Promise<unknown>;
 }
@@ -25,9 +26,14 @@ export function createConversationImportDocumentSink(
         content: doc.content,
         filename: doc.originalFilename,
         contentType: doc.contentType,
-        metadata: doc.metadata,
+        metadata: {
+          ...doc.metadata,
+          source: doc.addedFrom ?? "import",
+          addedFrom: doc.addedFrom ?? "import",
+        },
         scope: doc.scope,
         scopedToEntityId: doc.scopedToEntityId,
+        addedFrom: doc.addedFrom,
       });
       return {
         id: result.documentId,
