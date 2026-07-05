@@ -85,7 +85,7 @@ export default function AgentDetailPage() {
   const titleId = id ? id.slice(0, 8) : "";
   useDocumentTitle(
     t("cloud.agents.detail.metaTitle", {
-      defaultValue: "Agent {{id}} — Instances",
+      defaultValue: "Agent {{id}} — Agents",
       id: titleId,
     }),
   );
@@ -137,7 +137,7 @@ export default function AgentDetailPage() {
           </div>
           <span>
             {t("cloud.agents.detail.backToInstances", {
-              defaultValue: "Instances",
+              defaultValue: "Agents",
             })}
           </span>
         </Link>
@@ -273,7 +273,9 @@ export default function AgentDetailPage() {
                   plural: agent.errorCount !== 1 ? "s" : "",
                 })}
               </p>
-              <p className="text-sm text-destructive/70">{agent.errorMessage}</p>
+              <p className="text-sm text-destructive/70">
+                {agent.errorMessage}
+              </p>
             </div>
           </div>
         )}

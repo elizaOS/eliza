@@ -10,19 +10,17 @@
 
 import { Lock } from "lucide-react";
 import { Link } from "react-router-dom";
-import { PageHeaderProvider } from "../../cloud-ui/components/layout";
-import { useDocumentTitle } from "../lib/use-document-title";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AccountSurface } from "./AccountSurface";
 
 export function AccountPage() {
   const t = useCloudT();
-  useDocumentTitle(t("cloud.account.metaTitle", { defaultValue: "Account" }));
+  // No local PageHeaderProvider: the surface's useSetPageHeader must reach
+  // ConsoleShell's provider or the top bar shows no title (a local provider
+  // is a dead context nothing reads). Document title is set by AccountSurface.
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 md:px-6 md:py-8">
-      <PageHeaderProvider>
-        <AccountSurface />
-      </PageHeaderProvider>
+      <AccountSurface />
       {/* Security lost its sidebar slot in the launch nav cut; keep it one
           click away from the account it belongs to. */}
       <Link

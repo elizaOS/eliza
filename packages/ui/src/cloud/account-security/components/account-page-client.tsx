@@ -44,8 +44,7 @@ export function AccountPageClient({ user }: AccountPageClientProps) {
             {user.organization?.name && (
               <p className="text-xs text-muted mt-1">
                 You&apos;re part of{" "}
-                <span className="font-medium">{user.organization.name}</span>{" "}
-                organization
+                <span className="font-medium">{user.organization.name}</span>
               </p>
             )}
           </div>

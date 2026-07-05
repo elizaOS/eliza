@@ -1,5 +1,5 @@
 /**
- * Instances page (`/dashboard/agents`) — the hosted agent management table.
+ * Agents page (`/dashboard/agents`) — the hosted agent management table.
  */
 
 import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
@@ -50,13 +50,13 @@ export default function AgentsPage() {
   const agentsQuery = useAgents();
   const credits = useCreditsBalance();
 
-  useDocumentTitle(t("cloud.agents.metaTitle", { defaultValue: "Instances" }));
+  useDocumentTitle(t("cloud.agents.metaTitle", { defaultValue: "Agents" }));
 
   if (!session.ready) {
     return (
       <DashboardLoadingState
         label={t("cloud.agents.loading", {
-          defaultValue: "Loading instances",
+          defaultValue: "Loading agents",
         })}
       />
     );
@@ -77,9 +77,9 @@ export default function AgentsPage() {
     <ElizaAgentsPageWrapper>
       <DashboardPageContainer className="space-y-6">
         {/* Page title is surfaced in the console top bar by
-            ElizaAgentsPageWrapper (DashboardRoutePage title="Instances" →
+            ElizaAgentsPageWrapper (DashboardRoutePage title="Agents" →
             useSetPageHeader). No inline page-level heading here — a second
-            "Instances" title under the top bar read as a double title. */}
+            "Agents" title under the top bar read as a double title. */}
         {showSkeleton ? (
           <ContainersSkeleton />
         ) : showAgentsError ? (
