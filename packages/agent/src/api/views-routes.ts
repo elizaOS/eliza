@@ -153,6 +153,42 @@ const STANDARD_CAPABILITY_IDS: ReadonlySet<string> = new Set<string>([
   ...AGENT_SURFACE_CAPABILITY_IDS,
 ]);
 
+const READ_ONLY_VIEW_CAPABILITIES: ReadonlySet<string> = new Set<string>([
+  STANDARD_CAPABILITIES.GET_STATE,
+  STANDARD_CAPABILITIES.GET_TEXT,
+  "list-elements",
+  "describe-element",
+  "get-focus",
+  "get-agent-state",
+]);
+
+function isSurfaceBrokeredCapability(capability: string): boolean {
+  return (
+    STANDARD_CAPABILITY_IDS.has(capability) ||
+    AGENT_SURFACE_CAPABILITY_IDS.has(capability)
+  );
+}
+
+function isReadOnlyViewCapability(capability: string): boolean {
+  return READ_ONLY_VIEW_CAPABILITIES.has(capability);
+}
+
+function viewManifestAllowsCapability(
+  entry: ViewRegistryEntry,
+  capability: string,
+): boolean {
+  if (!isSurfaceBrokeredCapability(capability)) return true;
+  if (isReadOnlyViewCapability(capability)) return true;
+  return entry.surface?.capabilities?.includes("agent-surface") === true;
+}
+
+function capabilityDeniedMessage(viewId: string, capability: string): string {
+  return (
+    `View "${viewId}" is not granted capability "${capability}" ` +
+    "(its surface manifest does not grant `agent-surface`)"
+  );
+}
+
 /** Module-level map of pending interact requests awaiting a frontend result. */
 const pendingInteractRequests = new PendingRequestMap();
 
@@ -1087,6 +1123,11 @@ export async function handleViewsRoutes(
       `[ViewsRoutes] Interact with view "${id}" capability="${capability}"`,
     );
 
+    if (!viewManifestAllowsCapability(entry, capability)) {
+      error(res, capabilityDeniedMessage(id, capability), 403);
+      return true;
+    }
+
     if (typeof entry.serverInteract === "function") {
       try {
         const result = await entry.serverInteract(capability, params);
@@ -1184,6 +1225,14 @@ export async function dispatchViewInteract(
   timeoutMs = 5_000,
 ): Promise<ViewInteractDispatchResult> {
   const requestId = randomUUID();
+
+  if (!viewManifestAllowsCapability(entry, capability)) {
+    return {
+      requestId,
+      success: false,
+      error: capabilityDeniedMessage(viewId, capability),
+    };
+  }
 
   if (typeof entry.serverInteract === "function") {
     try {

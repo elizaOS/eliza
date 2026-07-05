@@ -79,6 +79,7 @@ describe("POST /api/views/:id/activate", () => {
             // A serverInteract handler takes the in-process dispatch path so the
             // test does not need a frontend round-trip.
             serverInteract,
+            surface: { capabilities: ["agent-surface"] },
             capabilities: [{ id: "get-state", description: "Read state." }],
           },
         ],

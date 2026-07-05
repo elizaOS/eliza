@@ -40,6 +40,7 @@ import {
 
 const REFERENCE_PLUGIN = "@test/views-manager-reference";
 const DECLARED_PLUGIN = "@test/views-declared-caps";
+const SURFACE_PLUGIN = "@test/views-surface-grants";
 
 /**
  * A deterministic, self-contained stand-in for the plugin-app-control
@@ -170,12 +171,42 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
       },
       process.cwd(),
     );
+
+    await registerPluginViews(
+      {
+        name: SURFACE_PLUGIN,
+        description: "Synthetic views for server-side surface grant coverage.",
+        views: [
+          {
+            id: "surface-denied-server",
+            label: "Surface Denied Server",
+            path: "/surface-denied-server",
+            serverInteract: async (capability) => ({
+              success: true,
+              capability,
+            }),
+          },
+          {
+            id: "surface-granted-server",
+            label: "Surface Granted Server",
+            path: "/surface-granted-server",
+            surface: { capabilities: ["agent-surface"] },
+            serverInteract: async (capability) => ({
+              success: true,
+              capability,
+            }),
+          },
+        ],
+      },
+      process.cwd(),
+    );
   });
 
   afterEach(() => {
     clearCurrentViewState();
     unregisterPluginViews(REFERENCE_PLUGIN);
     unregisterPluginViews(DECLARED_PLUGIN);
+    unregisterPluginViews(SURFACE_PLUGIN);
     vi.restoreAllMocks();
   });
 
@@ -290,7 +321,8 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
 
   it("accepts a standard capability even when the view declares its own allowlist", async () => {
     // get-state is a STANDARD capability accepted on any view, so it bypasses
-    // the declared-allowlist gate and dispatches through serverInteract.
+    // the declared-allowlist gate and dispatches through serverInteract. It is
+    // read-only, so the surface broker allows it without the agent-surface grant.
     const { ctx, json, error } = makeCtx(
       "POST",
       "/api/views/declared-caps/interact",
@@ -306,6 +338,40 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
     };
     expect(payload.success).toBe(true);
     expect(payload.result.capability).toBe("get-state");
+  });
+
+  it("denies mutating standard capabilities before serverInteract when the view lacks the agent-surface grant", async () => {
+    const { ctx, json, error } = makeCtx(
+      "POST",
+      "/api/views/surface-denied-server/interact",
+      { capability: "click-element", params: { id: "submit" } },
+    );
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+    expect(json).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      'View "surface-denied-server" is not granted capability "click-element" (its surface manifest does not grant `agent-surface`)',
+      403,
+    );
+  });
+
+  it("allows mutating standard capabilities through serverInteract when the view grants agent-surface", async () => {
+    const { ctx, json, error } = makeCtx(
+      "POST",
+      "/api/views/surface-granted-server/interact",
+      { capability: "click-element", params: { id: "submit" } },
+    );
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+    expect(error).not.toHaveBeenCalled();
+
+    const payload = json.mock.calls[0][1] as {
+      success: boolean;
+      result: { capability: string };
+    };
+    expect(payload.success).toBe(true);
+    expect(payload.result.capability).toBe("click-element");
   });
 
   it("404s an interact against an unregistered view id", async () => {

@@ -39,6 +39,7 @@ import {
 } from "./view-scoped-actions.ts";
 
 const TEST_PLUGIN = "@test/view-scoped-actions";
+const INTERACTIVE_VIEW_ID = "settings_fixture";
 
 /**
  * Mounted view whose serverInteract stands in for the shell's agent-surface
@@ -56,6 +57,7 @@ function makeInteractiveView(id: string, mountedIds: Set<string>) {
       id,
       label: `${id} view`,
       path: `/${id}`,
+      surface: { capabilities: ["agent-surface"] },
       relatedActions: [] as string[],
       scopedActions: [
         {
@@ -174,7 +176,7 @@ afterEach(() => {
 
 describe("view-scoped action validate() gating on the active view", () => {
   it("returns false when the declaring view is not active and true when it is", async () => {
-    const settings = makeInteractiveView("settings", new Set());
+    const settings = makeInteractiveView(INTERACTIVE_VIEW_ID, new Set());
     await registerPluginViews(
       {
         name: TEST_PLUGIN,
@@ -184,7 +186,7 @@ describe("view-scoped action validate() gating on the active view", () => {
       process.cwd(),
     );
     const action = buildViewScopedAction(
-      "settings",
+      INTERACTIVE_VIEW_ID,
       settings.view.scopedActions[0],
     );
 
@@ -196,7 +198,7 @@ describe("view-scoped action validate() gating on the active view", () => {
     expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(false);
 
     // Switch INTO the declaring view via the real navigate route → open.
-    await navigateTo("settings");
+    await navigateTo(INTERACTIVE_VIEW_ID);
     expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(true);
 
     // Switch away again → closes without any restart.
@@ -208,7 +210,7 @@ describe("view-scoped action validate() gating on the active view", () => {
 describe("view-scoped action handler drives the interact protocol", () => {
   it("resolves a named action to the real agent-fill/click sequence", async () => {
     const settings = makeInteractiveView(
-      "settings",
+      INTERACTIVE_VIEW_ID,
       new Set(["provider-select", "save-button"]),
     );
     await registerPluginViews(
@@ -219,10 +221,10 @@ describe("view-scoped action handler drives the interact protocol", () => {
       },
       process.cwd(),
     );
-    await navigateTo("settings");
+    await navigateTo(INTERACTIVE_VIEW_ID);
 
     const action = buildViewScopedAction(
-      "settings",
+      INTERACTIVE_VIEW_ID,
       settings.view.scopedActions[0],
     );
     const result = await action.handler(
@@ -247,7 +249,7 @@ describe("view-scoped action handler drives the interact protocol", () => {
 
   it("throws a typed missing-element error when a target useAgentElement id is not mounted", async () => {
     const settings = makeInteractiveView(
-      "settings",
+      INTERACTIVE_VIEW_ID,
       new Set(["provider-select"]),
     );
     await registerPluginViews(
@@ -258,11 +260,11 @@ describe("view-scoped action handler drives the interact protocol", () => {
       },
       process.cwd(),
     );
-    await navigateTo("settings");
+    await navigateTo(INTERACTIVE_VIEW_ID);
 
     // The MISSING_TARGET action clicks "ghost-button", which is never mounted.
     const action = buildViewScopedAction(
-      "settings",
+      INTERACTIVE_VIEW_ID,
       settings.view.scopedActions[1],
     );
 
@@ -281,7 +283,7 @@ describe("view-scoped action handler drives the interact protocol", () => {
 
   it("throws a typed param-missing error when a {{param}} value is not supplied", async () => {
     const settings = makeInteractiveView(
-      "settings",
+      INTERACTIVE_VIEW_ID,
       new Set(["provider-select", "save-button"]),
     );
     await registerPluginViews(
@@ -292,10 +294,10 @@ describe("view-scoped action handler drives the interact protocol", () => {
       },
       process.cwd(),
     );
-    await navigateTo("settings");
+    await navigateTo(INTERACTIVE_VIEW_ID);
 
     const action = buildViewScopedAction(
-      "settings",
+      INTERACTIVE_VIEW_ID,
       settings.view.scopedActions[0],
     );
     // No `provider` param → the {{provider}} fill step must fail loudly, not
@@ -311,7 +313,7 @@ describe("view-scoped action handler drives the interact protocol", () => {
 
   it("throws VIEW_SCOPED_ACTION_VIEW_INACTIVE when invoked while its view is not active", async () => {
     const settings = makeInteractiveView(
-      "settings",
+      INTERACTIVE_VIEW_ID,
       new Set(["provider-select", "save-button"]),
     );
     await registerPluginViews(
@@ -327,7 +329,7 @@ describe("view-scoped action handler drives the interact protocol", () => {
     await navigateTo("chat");
 
     const action = buildViewScopedAction(
-      "settings",
+      INTERACTIVE_VIEW_ID,
       settings.view.scopedActions[0],
     );
     await expect(
