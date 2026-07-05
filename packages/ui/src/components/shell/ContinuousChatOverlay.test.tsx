@@ -529,6 +529,74 @@ describe("ContinuousChatOverlay", () => {
     expect(grabber.className).toContain("before:bottom-0");
   });
 
+  // #14331: the overlay mic must pulse whenever a live capture is hot, so its
+  // motion agrees with the accent color (previously it only recolored, never
+  // pulsed, while every sibling surface pulsed). Reduced-motion falls back to the
+  // static accent. The pill/grabber pulse already shipped; pin it here.
+  describe("mic + pill pulse while capture is hot (#14331)", () => {
+    it("does not pulse the mic while idle (neutral resting, no motion)", () => {
+      render(<ContinuousChatOverlay controller={makeController()} />);
+      const mic = screen.getByTestId("chat-composer-mic");
+      expect(mic.className).not.toContain("animate-pulse");
+      expect(mic.className).not.toContain("text-accent");
+    });
+
+    it.each([
+      ["recording", { recording: true }],
+      ["hands-free", { handsFree: true }],
+      ["transcribing", { transcriptionMode: true }],
+    ] as const)("pulses the accent mic while %s", (_label, override) => {
+      render(<ContinuousChatOverlay controller={makeController(override)} />);
+      const mic = screen.getByTestId("chat-composer-mic");
+      expect(mic.className).toContain("animate-pulse");
+      expect(mic.className).toContain("motion-reduce:animate-none");
+      expect(mic.className).toContain("text-accent");
+    });
+
+    it("drops the pulse the moment the capture predicate clears", () => {
+      const { rerender } = render(
+        <ContinuousChatOverlay
+          controller={makeController({ recording: true })}
+        />,
+      );
+      expect(screen.getByTestId("chat-composer-mic").className).toContain(
+        "animate-pulse",
+      );
+      rerender(
+        <ContinuousChatOverlay
+          controller={makeController({ recording: false })}
+        />,
+      );
+      expect(screen.getByTestId("chat-composer-mic").className).not.toContain(
+        "animate-pulse",
+      );
+    });
+
+    it("pulses the collapsed pill bar only while listening (regression guard)", () => {
+      const { rerender } = render(
+        <ContinuousChatOverlay controller={makeController()} />,
+      );
+      const sheet = screen.getByTestId("chat-sheet");
+      const barOf = () =>
+        screen.getByTestId("chat-pill").querySelector("span")?.className ?? "";
+      expect(barOf()).not.toContain("animate-pulse");
+      expect(barOf()).toContain("bg-muted-strong");
+      rerender(
+        <ContinuousChatOverlay
+          controller={makeController({ phase: "listening", recording: true })}
+        />,
+      );
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+      fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+      fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+      fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+      expect(sheet.getAttribute("data-detent")).toBe("pill");
+      expect(barOf()).toContain("animate-pulse");
+      expect(barOf()).toContain("bg-accent");
+      expect(barOf()).toContain("motion-reduce:animate-none");
+    });
+  });
+
   it("toggles the sheet open and closed on repeated grabber taps", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
@@ -832,6 +900,8 @@ describe("ContinuousChatOverlay", () => {
     const mic = screen.getByTestId("chat-composer-mic");
     expect(mic.getAttribute("aria-pressed")).toBe("true");
     expect(mic.className).toContain("text-accent");
+    expect(mic.className).toContain("animate-pulse");
+    expect(mic.className).toContain("motion-reduce:animate-none");
     expect(mic.className).not.toMatch(/bg-white/);
     expect(mic.className).not.toMatch(/\bborder\b/);
   });

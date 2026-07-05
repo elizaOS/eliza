@@ -116,7 +116,6 @@ import {
   deriveChannelTopics,
   groupMessagesByTopic,
   hasMultipleTopicGroups,
-  humanizeTopicLabel,
 } from "./topic-grouping";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import { usePromptSuggestions } from "./usePromptSuggestions";
@@ -331,6 +330,7 @@ function SoftButton({
   onPointerLeave,
   disabled,
   active,
+  pulse,
   testId,
 }: {
   /** A hand-drawn SVG path glyph (legacy), OR pass `icon` for a lucide icon. */
@@ -344,6 +344,8 @@ function SoftButton({
   onPointerLeave?: React.PointerEventHandler<HTMLButtonElement>;
   disabled?: boolean;
   active?: boolean;
+  /** Breathe the accent glyph while a live capture is hot. */
+  pulse?: boolean;
   testId?: string;
 }): React.JSX.Element {
   return (
@@ -370,13 +372,18 @@ function SoftButton({
         // blue.
         "grid h-11 w-11 shrink-0 place-items-center bg-transparent p-0 transition-colors hover:bg-transparent",
         active ? "text-accent" : "text-muted-strong hover:text-txt",
+        // Pulse the accent glyph while capture is hot; reduced-motion falls back
+        // to the static accent without adding background or border chrome.
+        pulse && "animate-pulse motion-reduce:animate-none",
         disabled && "opacity-40",
       )}
     >
       {Icon ? (
         <Icon className="h-[26px] w-[26px]" aria-hidden={true} />
       ) : glyph ? (
-        <Glyph d={glyph} className="h-[30px] w-[30px]" />
+        // Hand-drawn glyphs fill their 36-unit box, so 24px balances their
+        // optical weight against the padded lucide mic/send marks.
+        <Glyph d={glyph} className="h-[24px] w-[24px]" />
       ) : null}
     </Button>
   );
@@ -4735,6 +4742,7 @@ export function ContinuousChatOverlay({
                       // the composer while onboarding is choice-driven.
                       disabled={firstRunOpen}
                       active={recording || handsFree || transcriptionMode}
+                      pulse={recording || handsFree || transcriptionMode}
                       onClick={handleMicClick}
                       onPointerDown={micHoldHandlers.onPointerDown}
                       onPointerUp={micHoldHandlers.onPointerUp}
