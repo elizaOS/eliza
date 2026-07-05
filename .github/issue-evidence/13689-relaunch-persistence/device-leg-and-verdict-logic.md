@@ -17,13 +17,16 @@ logic** shared by every surface.
 
 2. **`--relaunch-persistence`** in `packages/app/scripts/mobile-local-chat-smoke.mjs`
    (lane `test:sim:local-chat:android:relaunch-persistence`). After the verified
-   turn it: creates a fresh conversation → seeds the unique marker through the
-   real inference-free `/import` route (the main turn already proves the live
-   send+inference path; this leg isolates DB survival) → `GET /messages` (before)
-   → `am force-stop` + cold `am start` so `ElizaAgentService` re-boots against the
-   **same on-device SQLite DB** → re-acquires the forwarded API + waits for
-   process stability → `GET /messages` (after) → `assertMarkerSurvivedRelaunch`.
-   Pre/post screenshots + the after-relaunch server thread are written to
+   turn it: creates a fresh conversation → sends the unique marker through the
+   real streamed chat endpoint (`POST /api/conversations/:id/messages/stream`)
+   with the same deterministic local-model reply gate used by the Android smoke
+   turn → `GET /messages` (before) → `am force-stop` + cold `am start` so
+   `ElizaAgentService` re-boots against the **same on-device SQLite DB** →
+   re-acquires the forwarded API + waits for process stability → `GET /messages`
+   (after) → `assertMarkerSurvivedRelaunch` → Android accessibility hierarchy
+   dump must expose the marker or deterministic reply after relaunch. Pre/post
+   screenshots, UI hierarchy dump, live-stream usage, and the after-relaunch
+   server thread are written to
    `packages/app/test-results/relaunch-persistence/android-<id>.json`.
 
    iOS (in-process IPC-only agent, no HTTP the harness can reach) and `--api-base`
@@ -43,8 +46,8 @@ logic** shared by every surface.
 
 - **Android on-device leg execution:** needs a booted emulator with the app
   installed (`test:sim:local-chat:android:relaunch-persistence`). Wired to real
-  `adb` / `am force-stop` / forwarded HTTP `GET /messages`; not runnable on this
-  headless host.
+  `adb` / `am force-stop` / forwarded HTTP stream+`GET /messages` and rendered
+  Android UI-hierarchy proof; not runnable on this headless host.
 - **iOS leg:** the on-device agent is IPC-only; its relaunch check needs the
   Preferences-handshake / XCUITest path (issue item 1) — surfaced as N/A.
 - **Web nightly live-walkthrough (item 4 second half):** belongs to the

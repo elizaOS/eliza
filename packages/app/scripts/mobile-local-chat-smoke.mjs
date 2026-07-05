@@ -207,8 +207,9 @@ Options:
   --android-background             Background Android, force-fire the WorkManager job, and poll /api/health
   --ios-background                 Background iOS, fire a BGTaskScheduler task via LLDB, and poll /api/health
   --ios-background-task-id ID      iOS BGTask identifier to simulate (default: ai.eliza.tasks.refresh)
-  --relaunch-persistence           After the turn, persist a unique marker message, force-stop + relaunch the app,
-                                   and assert the marker survives from server truth (GET /messages). Android only:
+  --relaunch-persistence           After the turn, send a unique marker through the live stream path, force-stop +
+                                   relaunch the app, and assert server truth plus rendered transcript proof.
+                                   Android only:
                                    the iOS on-device agent is IPC-only, so its relaunch check needs the Preferences
                                    handshake / XCUITest path (#13689).
   --help                           Print this help
@@ -1570,6 +1571,71 @@ function takeAndroidScreenshot(context, label) {
   return outPath;
 }
 
+function dumpAndroidUiHierarchy(context, label) {
+  if (!context?.installed) return null;
+  const outDir = path.join(os.tmpdir(), "eliza-android-ui-dumps");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(
+    outDir,
+    `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.xml`,
+  );
+  const remote = `/sdcard/${path.basename(outPath)}`;
+  if (
+    tryExec(context.adb, [
+      "-s",
+      context.serial,
+      "shell",
+      "uiautomator",
+      "dump",
+      remote,
+    ]) === null
+  ) {
+    return null;
+  }
+  if (
+    tryExec(context.adb, ["-s", context.serial, "pull", remote, outPath]) ===
+    null
+  ) {
+    return null;
+  }
+  tryExec(context.adb, ["-s", context.serial, "shell", "rm", remote]);
+  return outPath;
+}
+
+function readTextFileIfPresent(filePath) {
+  if (!filePath) return "";
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function assertAndroidRenderedTranscript({ context, marker, expectedReply }) {
+  const dumpPath = dumpAndroidUiHierarchy(context, "relaunch-persistence-post");
+  const uiXml = readTextFileIfPresent(dumpPath);
+  const visibleMarker = uiXml.includes(marker);
+  const visibleReply =
+    typeof expectedReply === "string" &&
+    expectedReply.length > 0 &&
+    uiXml.toLowerCase().includes(expectedReply.toLowerCase());
+  if (!visibleMarker && !visibleReply) {
+    const screenshot = takeAndroidScreenshot(
+      context,
+      "relaunch-persistence-render-missing",
+    );
+    throw new Error(
+      `Relaunch-persistence server thread survived, but the Android UI hierarchy did not expose the marker or expected reply after relaunch. ` +
+        `marker=${marker} expectedReply=${expectedReply} uiDump=${dumpPath ?? "<unavailable>"} screenshot=${screenshot ?? "<unavailable>"}`,
+    );
+  }
+  return {
+    uiHierarchyDump: dumpPath,
+    visibleMarker,
+    visibleReply,
+  };
+}
+
 function androidBackgroundServicesReady(services, id) {
   const foregroundCount = services.match(/isForeground=true/g)?.length ?? 0;
   return (
@@ -2500,14 +2566,12 @@ async function reacquireAndroidApiAfterRelaunch(context) {
 }
 
 /**
- * Android relaunch-persistence leg (#13689). Seeds a unique marker message into
- * a fresh conversation through the real inference-free bulk-insert route (the
- * main smoke turn already proves the live send+inference path; this leg isolates
- * the DB-survival property), captures the thread from server truth, force-stops
- * and cold-relaunches the app, then re-fetches the thread from the restarted
- * agent and asserts the marker survived. The verdict — including the loud
- * failure when the thread comes back empty (a lost/fresh state dir) — is the
- * pure `assertMarkerSurvivedRelaunch`.
+ * Android relaunch-persistence leg (#13689). Sends a unique marker message
+ * through the real streamed chat path, captures the thread from server truth,
+ * force-stops and cold-relaunches the app, then re-fetches the thread from the
+ * restarted agent and asserts the marker survived. It also requires post-relaunch
+ * rendered proof from the Android accessibility hierarchy, so the lane cannot
+ * pass from a database row that never reappears in the transcript UI.
  */
 async function verifyAndroidChatHistoryPersistence(context, initialApi) {
   if (!context?.installed) {
@@ -2538,22 +2602,39 @@ async function verifyAndroidChatHistoryPersistence(context, initialApi) {
     runId: conversationId,
   });
   const messagesPath = `/api/conversations/${encodeURIComponent(conversationId)}/messages`;
+  const markerPrompt = `${marker}\nReply with exactly these four words: ${ANDROID_FULL_TURN_EXPECTED_REPLY}.`;
 
-  const imported = await requestJson(
-    "POST",
-    `/api/conversations/${encodeURIComponent(conversationId)}/import`,
-    {
-      title: `Relaunch persistence ${marker}`,
-      messages: [{ role: "user", text: marker }],
+  const { done, reply } = await withTransientRetry(
+    "relaunch-persistence streamed marker turn",
+    async () => {
+      const streamText = await requestTextResponse(
+        "POST",
+        `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
+        {
+          text: markerPrompt,
+          channelType: "DM",
+          source: "android-local-relaunch-persistence",
+          metadata: {
+            smoke: "android-relaunch-persistence",
+            marker,
+          },
+        },
+        apiBase,
+        token,
+        ANDROID_FULL_TURN_TIMEOUT_MS,
+      );
+      if (!streamText) {
+        throw new Error(
+          "Relaunch-persistence marker turn returned an empty body.",
+        );
+      }
+      const doneEvent = extractDoneEventFromSse(streamText);
+      return {
+        done: doneEvent,
+        reply: requireUsableFullTurnReply(doneEvent, streamText),
+      };
     },
-    apiBase,
-    token,
   );
-  if (imported.inserted !== 1) {
-    throw new Error(
-      `Marker message was not persisted before relaunch: ${JSON.stringify(imported)}`,
-    );
-  }
 
   const beforeBody = await requestJson(
     "GET",
@@ -2586,6 +2667,11 @@ async function verifyAndroidChatHistoryPersistence(context, initialApi) {
     beforeBody,
     afterBody,
   });
+  const renderedTranscript = assertAndroidRenderedTranscript({
+    context,
+    marker,
+    expectedReply: reply,
+  });
 
   fs.mkdirSync(relaunchPersistenceResultDir, { recursive: true });
   const evidencePath = path.join(
@@ -2600,8 +2686,13 @@ async function verifyAndroidChatHistoryPersistence(context, initialApi) {
         conversationId,
         marker,
         result,
+        liveStream: {
+          reply,
+          usage: done?.usage ?? null,
+        },
         preRelaunchScreenshot: preShot,
         postRelaunchScreenshot: postShot,
+        renderedTranscript,
         afterRelaunchServerThread: afterBody,
       },
       null,
@@ -2610,7 +2701,7 @@ async function verifyAndroidChatHistoryPersistence(context, initialApi) {
   );
 
   console.log(
-    `[local-chat-smoke] Relaunch persistence PASSED: marker survived (${result.beforeCount} → ${result.afterCount} message(s) from server truth). Evidence: ${evidencePath}`,
+    `[local-chat-smoke] Relaunch persistence PASSED: marker survived (${result.beforeCount} → ${result.afterCount} message(s) from server truth) and rendered proof was visible. Evidence: ${evidencePath}`,
   );
   return result;
 }

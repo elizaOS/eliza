@@ -53,11 +53,29 @@ test("buildRelaunchMarker is unique per call and carries the prefix + platform",
   assert.equal(pinned, `${RELAUNCH_MARKER_PREFIX}-ios-r-1000-abcd1234`);
 });
 
+test("buildRelaunchMarker sanitizes marker segments so generated markers validate", () => {
+  const marker = buildRelaunchMarker({
+    platform: "android local",
+    runId: "conversation:123",
+    now: 1783280000000,
+    random: "abcd1234",
+  });
+  assert.equal(
+    marker,
+    `${RELAUNCH_MARKER_PREFIX}-androidlocal-conversation123-1783280000000-abcd1234`,
+  );
+  assert.ok(isRelaunchMarker(marker));
+});
+
 test("isRelaunchMarker rejects arbitrary user text", () => {
   assert.ok(!isRelaunchMarker("hello world"));
   assert.ok(!isRelaunchMarker(""));
   assert.ok(!isRelaunchMarker(undefined));
   assert.ok(!isRelaunchMarker(`prefixed-${RELAUNCH_MARKER_PREFIX}-x`));
+  assert.ok(!isRelaunchMarker(`${RELAUNCH_MARKER_PREFIX}-hardcoded`));
+  assert.ok(
+    !isRelaunchMarker(`${RELAUNCH_MARKER_PREFIX}-android-run-123-short`),
+  );
 });
 
 test("extractMessageTexts returns ordered texts and treats {messages:[]} as a real empty thread", () => {
@@ -156,15 +174,17 @@ test("assertMarkerSurvivedRelaunch refuses to pass when the marker never reached
 });
 
 test("assertMarkerSurvivedRelaunch refuses a non-unique marker so a hardcoded string can't false-green", () => {
-  assert.throws(
-    () =>
-      assertMarkerSurvivedRelaunch({
-        marker: "hello",
-        beforeBody: threadBody(["hello"]),
-        afterBody: threadBody(["hello"]),
-      }),
-    (err) => err.code === "INVALID_MARKER",
-  );
+  for (const marker of ["hello", `${RELAUNCH_MARKER_PREFIX}-hardcoded`]) {
+    assert.throws(
+      () =>
+        assertMarkerSurvivedRelaunch({
+          marker,
+          beforeBody: threadBody([marker]),
+          afterBody: threadBody([marker]),
+        }),
+      (err) => err.code === "INVALID_MARKER",
+    );
+  }
 });
 
 test("assertMarkerSurvivedRelaunch surfaces a malformed after-relaunch read as an error, not a pass", () => {
