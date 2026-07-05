@@ -7,11 +7,14 @@
  * here). This view owns only Personality: one `CharacterSectionNav` (a shared
  * `ViewHeader` + section strip) over the active section's panel.
  *
- * Edits autosave — there is no Save button. Every field/style/example change is
- * debounced into a single `client.updateCharacter` patch; the header's trailing
- * slot shows the saving/saved/error status so the write stays observable.
+ * Edits autosave — there is no standing Save button. Every field/style/example
+ * change is debounced into a single `client.updateCharacter` patch; the
+ * header's trailing slot shows the saving/saved/error status so the write
+ * stays observable. A failed write requeues its patch and surfaces an explicit
+ * Retry control in that slot, so no edit is ever stranded in local state.
  */
 import type { MessageExampleGroup } from "@elizaos/core";
+import { RotateCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api/client";
 import type { CharacterData } from "../../api/client-types";
@@ -25,6 +28,7 @@ import { useAppSelectorShallow } from "../../state";
 // Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
 // chunk-level circular dependency.
 import { WidgetHost } from "../../widgets/WidgetHost";
+import { Button } from "../ui/button";
 import {
   CharacterChatExamplesPanel,
   CharacterIdentityPanel,
@@ -63,6 +67,12 @@ function updateCharacterSectionPath(
     return;
   }
   window.history.pushState(null, "", path);
+  // pushState alone does not notify the shell router: ViewRouter /
+  // useCurrentNavigationPath listen for popstate/hashchange, and every shared
+  // navigator in this package (SectionNav, ViewHeader.navigateBackToLauncher)
+  // dispatches popstate right after a non-hash pushState. Match them so shell
+  // state derived from the navigation path never observes a stale route.
+  window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
 export function CharacterHubView({
@@ -125,8 +135,16 @@ export function CharacterHubView({
       }, 2500);
     } catch {
       // error-policy:J4 the write failure degrades to a visible "error" status
-      // in the header (not a fabricated "saved"); the edit stays in the draft so
-      // the next keystroke retries the patch.
+      // in the header (not a fabricated "saved"). The failed patch is REQUEUED
+      // so it is never dropped: with the manual Save button gone, this ref is
+      // the only owner of unsynced edits. Edits made while the failed write was
+      // in flight win over the stale failed patch (they merge on top). The
+      // header renders an explicit Retry affordance next to the error status,
+      // and any later edit's debounce also re-flushes the requeued patch.
+      pendingAutoSavePatchRef.current = mergeCharacterPatch(
+        patch,
+        pendingAutoSavePatchRef.current,
+      );
       setSaveStatus("error");
     }
   }, []);
@@ -277,22 +295,34 @@ export function CharacterHubView({
   );
 
   const saveStatusIndicator =
-    saveStatus === "idle" ? null : (
+    saveStatus === "idle" ? null : saveStatus === "error" ? (
       <span
         data-testid="character-save-status"
-        className={
-          saveStatus === "error"
-            ? "text-2xs font-medium text-status-danger"
-            : "text-2xs font-medium text-muted"
-        }
+        className="flex items-center gap-2"
+      >
+        <span className="text-2xs font-medium text-status-danger">
+          {t("charactereditor.SaveFailed", { defaultValue: "Save failed" })}
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-6 gap-1 rounded-sm px-2 text-2xs"
+          onClick={() => void flushPendingAutoSave()}
+          data-testid="character-save-retry"
+        >
+          <RotateCw className="h-3 w-3" aria-hidden="true" />
+          {t("charactereditor.RetrySave", { defaultValue: "Retry" })}
+        </Button>
+      </span>
+    ) : (
+      <span
+        data-testid="character-save-status"
+        className="text-2xs font-medium text-muted"
       >
         {saveStatus === "saving"
           ? t("charactereditor.Saving", { defaultValue: "Saving…" })
-          : saveStatus === "saved"
-            ? t("charactereditor.Saved", { defaultValue: "Saved" })
-            : t("charactereditor.SaveFailed", {
-                defaultValue: "Save failed",
-              })}
+          : t("charactereditor.Saved", { defaultValue: "Saved" })}
       </span>
     );
 

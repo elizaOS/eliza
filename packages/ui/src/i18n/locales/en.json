@@ -472,6 +472,7 @@
   "charactereditor.RemovePost": "Remove Post",
   "charactereditor.ResetConfirmBody": "Reset Confirm Body",
   "charactereditor.ResetToDefaults": "Reset to Defaults",
+  "charactereditor.RetrySave": "Retry",
   "charactereditor.SaveFailed": "Save failed",
   "charactereditor.Saved": "Saved",
   "charactereditor.Saving": "Saving…",
