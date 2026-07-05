@@ -87,6 +87,10 @@ export function databaseIdentityKey(value: string): string | null {
   try {
     parsed = new URL(trimmed);
   } catch {
+    // error-policy:J3 untrusted forwarded-header/config value; an unparseable
+    // URL yields the explicit invalid signal `null`, which every caller treats
+    // as fail-closed (reject the forward / drop from the trusted set) — never a
+    // fabricated-valid default.
     return null;
   }
 

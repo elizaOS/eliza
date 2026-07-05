@@ -126,6 +126,13 @@ async function fetchGhcrDigest(
     if (!tokenJson.token) return null;
     token = tokenJson.token;
   } catch (err) {
+    // error-policy:J7 best-effort ghcr probe for a retrying reconciler. This is
+    // an outbound-HTTP transport boundary whose only consumers (fleet-upgrade
+    // reconciler tick + post-provision metadata read) treat null as "digest
+    // unknown → skip, retry next tick"; a transport error must not abort an
+    // already-provisioned container or kill the reconciler loop. Surface it via
+    // warn (distinct from the silent designed-empty paths) and fail safe to null
+    // — the risky action (blue/green upgrade) is what gets skipped.
     logger.warn(
       `[registry-probe] ghcr token network error for ${repo}: ${err instanceof Error ? err.message : String(err)}`,
     );
@@ -159,6 +166,9 @@ async function fetchGhcrDigest(
     }
     return manifestResp.headers.get("docker-content-digest");
   } catch (err) {
+    // error-policy:J7 same best-effort reconciler-probe boundary as the token
+    // fetch above: a manifest-HEAD transport error surfaces via warn and fails
+    // safe to null so the caller skips + retries, never aborting provisioning.
     logger.warn(
       `[registry-probe] ghcr manifest network error for ${repo}:${tag}: ${err instanceof Error ? err.message : String(err)}`,
     );
