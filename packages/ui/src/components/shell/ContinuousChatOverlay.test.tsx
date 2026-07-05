@@ -869,7 +869,9 @@ describe("ContinuousChatOverlay", () => {
 
   it("keeps the hot-mic pulse OFF under reduced motion — static accent, no breathing (#14331)", () => {
     render(
-      <ContinuousChatOverlay controller={makeController({ recording: true })} />,
+      <ContinuousChatOverlay
+        controller={makeController({ recording: true })}
+      />,
     );
     const mic = screen.getByTestId("chat-composer-mic");
     // The animate-pulse ships paired with motion-reduce:animate-none so an OS
