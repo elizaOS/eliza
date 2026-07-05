@@ -94,6 +94,11 @@ test("launch script records the real detached agent child status", () => {
 
 test("stock Android staging fails when the required SIGSYS shim is missing", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-seccomp-missing-"));
+  // Hermetic: an empty cache normally triggers the pinned-zig auto-provision
+  // (download + compile); force it off so this asserts the hard error that
+  // guards air-gapped/unsupported hosts.
+  const priorNoProvision = process.env.ELIZA_SECCOMP_SHIM_NO_AUTOPROVISION;
+  process.env.ELIZA_SECCOMP_SHIM_NO_AUTOPROVISION = "1";
   try {
     const abiAssetsDir = path.join(tmp, "assets", "arm64-v8a");
     fs.mkdirSync(abiAssetsDir, { recursive: true });
@@ -112,6 +117,11 @@ test("stock Android staging fails when the required SIGSYS shim is missing", () 
       /Missing compiled SIGSYS shim for arm64-v8a/,
     );
   } finally {
+    if (priorNoProvision === undefined) {
+      delete process.env.ELIZA_SECCOMP_SHIM_NO_AUTOPROVISION;
+    } else {
+      process.env.ELIZA_SECCOMP_SHIM_NO_AUTOPROVISION = priorNoProvision;
+    }
     removePathRecursive(tmp);
   }
 });

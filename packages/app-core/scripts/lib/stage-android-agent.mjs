@@ -870,6 +870,106 @@ function writeIfChanged(target, content) {
  *
  * Exported for testing.
  */
+/**
+ * Best-effort auto-provision of the compiled SIGSYS shim: download the pinned
+ * zig 0.13.0 toolchain into the eliza cache (same auto-download pattern this
+ * script already uses for bun + the Alpine loader set) and run
+ * compile-shim.mjs for the ABI. Returns true when the shim cache exists
+ * afterwards. Failures return false — the caller decides whether that is
+ * fatal (stock-Android app builds) or tolerated (explicit opt-out).
+ */
+export function autoProvisionSeccompShim({
+  androidAbi,
+  cacheDir = SECCOMP_SHIM_CACHE_DIR,
+  log,
+}) {
+  // Operator/test escape: never download or compile (air-gapped builders,
+  // hermetic tests). The missing-shim hard error downstream still applies.
+  if (process.env.ELIZA_SECCOMP_SHIM_NO_AUTOPROVISION === "1") {
+    return false;
+  }
+  const abiCacheDir = path.join(cacheDir, androidAbi);
+  if (fs.existsSync(path.join(abiCacheDir, "libsigsys-handler.so"))) {
+    return true;
+  }
+  const ZIG_VERSION = "0.13.0";
+  const zigPlatform =
+    process.platform === "darwin"
+      ? "macos"
+      : process.platform === "linux"
+        ? "linux"
+        : null;
+  const zigArch =
+    process.arch === "arm64"
+      ? "aarch64"
+      : process.arch === "x64"
+        ? "x86_64"
+        : null;
+  if (!zigPlatform || !zigArch) {
+    log?.(
+      `Cannot auto-provision the SIGSYS shim on ${process.platform}/${process.arch}; ` +
+        `no pinned zig ${ZIG_VERSION} build for this host.`,
+    );
+    return false;
+  }
+  const zigDirName = `zig-${zigPlatform}-${zigArch}-${ZIG_VERSION}`;
+  const zigCacheRoot = path.join(
+    os.homedir(),
+    ".cache",
+    "eliza-android-agent",
+    "zig",
+  );
+  const zigBin = path.join(zigCacheRoot, zigDirName, "zig");
+  try {
+    if (!fs.existsSync(zigBin)) {
+      fs.mkdirSync(zigCacheRoot, { recursive: true });
+      const tarball = path.join(zigCacheRoot, `${zigDirName}.tar.xz`);
+      const url = `https://ziglang.org/download/${ZIG_VERSION}/${zigDirName}.tar.xz`;
+      log?.(`Downloading pinned zig ${ZIG_VERSION} for the SIGSYS shim: ${url}`);
+      execFileSync("curl", ["-fsSL", "-o", tarball, url], {
+        stdio: ["ignore", "inherit", "inherit"],
+      });
+      execFileSync("tar", ["xJf", tarball, "-C", zigCacheRoot], {
+        stdio: ["ignore", "inherit", "inherit"],
+      });
+      fs.rmSync(tarball, { force: true });
+    }
+    const compileShim = path.join(
+      APP_CORE_ROOT,
+      "scripts",
+      "aosp",
+      "compile-shim.mjs",
+    );
+    log?.(`Compiling SIGSYS shim for ${androidAbi} with pinned zig ${ZIG_VERSION}.`);
+    execFileSync(
+      process.execPath,
+      [
+        compileShim,
+        "--abi",
+        androidAbi,
+        "--cache-dir",
+        cacheDir,
+        "--skip-if-present",
+      ],
+      {
+        stdio: ["ignore", "inherit", "inherit"],
+        env: {
+          ...process.env,
+          PATH: `${path.dirname(zigBin)}${path.delimiter}${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+  } catch (error) {
+    log?.(
+      `SIGSYS shim auto-provision failed for ${androidAbi}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return false;
+  }
+  return fs.existsSync(path.join(abiCacheDir, "libsigsys-handler.so"));
+}
+
 export function stageSeccompShimForAbi({
   androidAbi,
   ldName,
@@ -880,6 +980,13 @@ export function stageSeccompShimForAbi({
   const abiCacheDir = path.join(cacheDir, androidAbi);
   const cachedWrap = path.join(abiCacheDir, ldName);
   const cachedShim = path.join(abiCacheDir, "libsigsys-handler.so");
+  if (!fs.existsSync(cachedWrap) || !fs.existsSync(cachedShim)) {
+    // Provision in place before refusing: pinned-zig download + compile-shim,
+    // the same self-sufficiency this script's bun/Alpine downloads already
+    // have, so fresh hosts and CI runners build device-valid APKs without a
+    // manual toolchain step.
+    autoProvisionSeccompShim({ androidAbi, cacheDir, log });
+  }
   if (!fs.existsSync(cachedWrap) || !fs.existsSync(cachedShim)) {
     throw new Error(
       `[stage-android-agent] Missing compiled SIGSYS shim for ${androidAbi}. ` +
