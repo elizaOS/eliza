@@ -1,10 +1,8 @@
 /**
- * The console's launch-core surface catalog (nubs's 2026-07-04 cut): agents,
- * apps, money, keys, account plumbing. Single source for BOTH the ConsoleShell
- * sidebar and the /dashboard overview cards — the two previously maintained
- * parallel constants that could only drift (#13916). De-navved surfaces
- * (my-agents, analytics, api-explorer, mcps, monetization, connectors,
- * security) stay routable but aren't advertised by either consumer.
+ * Console surface catalog shared by the sidebar and overview cards. The
+ * advertised control-plane routes are intentionally narrower than the complete
+ * router: deep-linkable specialist surfaces stay registered, but only the core
+ * agent, app, billing, key, account, and organization paths are promoted here.
  */
 
 import {

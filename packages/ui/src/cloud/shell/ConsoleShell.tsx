@@ -13,15 +13,6 @@
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
-import {
-  Bot,
-  Building2,
-  CreditCard,
-  Grid3x3,
-  Home,
-  KeyRound,
-  User,
-} from "lucide-react";
 import { type ReactNode, useCallback, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import {
@@ -40,12 +31,9 @@ import {
 } from "./console-surfaces";
 
 /**
- * The console nav: one flat list, launch-core surfaces only (nubs's cut,
- * 2026-07-04 — manage account, funds, agents, apps, API keys). Everything
- * else (my-agents, mcps, analytics, api-explorer, monetization, connectors,
- * security) stays REGISTERED and deep-linkable — it just isn't advertised
- * here until it earns its slot back. One unsectioned list means no section
- * titles at all, which also settles the Account/Account double-label.
+ * The console nav is one flat list so sidebar section labels never compete
+ * with Account and Organization route labels. Specialist routes stay registered
+ * for deep links but are not promoted into the default console chrome.
  */
 const CONSOLE_NAV_SECTIONS: DashboardSidebarSection[] = [
   {

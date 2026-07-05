@@ -2,24 +2,14 @@
  * Cloud console home mounted by the cloud router shell at `dashboard` — the
  * authenticated landing for apex control-plane hosts (elizacloud.ai), where
  * the agent app never mounts (see `AppCatchAllRoute`). One screen answers
- * "where is everything": the org credit balance with an add-funds path, and a
- * directory card for every console surface (agents, apps, analytics, billing,
- * API keys, monetization, connectors, account, security, organization). Cards
- * navigate to the standalone `dashboard/*` routes, so the whole console is
- * reachable from here without ever entering the agent app.
+ * "where is everything": the org credit balance with an add-funds path, and
+ * directory cards for the promoted console surfaces. Cards navigate to the
+ * standalone `dashboard/*` routes, so the core console is reachable from here
+ * without ever entering the agent app.
  *
  * Default export for `React.lazy` code-splitting from the route registration.
  */
 
-import type { LucideIcon } from "lucide-react";
-import {
-  Bot,
-  Building2,
-  CreditCard,
-  Grid3x3,
-  KeyRound,
-  User,
-} from "lucide-react";
 import { Link } from "react-router-dom";
 import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
 import { useSetPageHeader } from "../../cloud-ui/components/layout";
