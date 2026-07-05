@@ -2,7 +2,7 @@
  * Console surface catalog shared by the sidebar and overview cards. The
  * advertised control-plane routes are intentionally narrower than the complete
  * router: deep-linkable specialist surfaces stay registered, but only the core
- * agent, app, billing, key, account, and organization paths are promoted here.
+ * agent, billing, key, and account paths are promoted here.
  */
 
 import {
@@ -78,8 +78,7 @@ export const CONSOLE_SURFACES: ReadonlyArray<ConsoleSurface> = [
   },
 ];
 
-// The console presents as plain per-user accounts — the "Organization" surface
-// is intentionally NOT promoted here (a solo user's org already IS their
-// account). The org route stays registered (register-all's `import
-// "./organization/routes"`) so invite deep-links keep working; it's just not
-// surfaced in the sidebar or the overview cards. Backend/DB orgs are untouched.
+// The console presents as plain per-user accounts. The org route stays
+// registered (register-all's `import "./organization/routes"`) so invite
+// deep-links keep working; it is just not surfaced in the sidebar or overview
+// cards. Backend/DB orgs are untouched.

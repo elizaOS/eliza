@@ -98,7 +98,7 @@ export function DashboardHomePage() {
   useSetPageHeader({
     title: t("cloud.home.title", { defaultValue: "Overview" }),
     description: t("cloud.home.subtitle", {
-      defaultValue: "Manage your agents, credits, keys, and organization.",
+      defaultValue: "Manage your agents, credits, keys, and account.",
     }),
   });
 

@@ -49,8 +49,8 @@ import { clearStaleStewardSession } from "./StewardProviderShared";
 
 /**
  * The console nav is one flat list so sidebar section labels never compete
- * with Account and Organization route labels. Specialist routes stay registered
- * for deep links but are not promoted into the default console chrome.
+ * with route labels. Specialist routes stay registered for deep links but are
+ * not promoted into the default console chrome.
  */
 const CONSOLE_NAV_SECTIONS: DashboardSidebarSection[] = [
   {
