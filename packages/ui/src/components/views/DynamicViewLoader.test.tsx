@@ -134,6 +134,45 @@ describe("host-external importer resolution (factory hostImport)", () => {
     expect(calls).toEqual(["first:/first", "second:/second"]);
     setActiveSurfaceRealmScope(null);
   });
+
+  it("wraps root @elizaos/ui navigation and storage exports through the active scope", async () => {
+    const calls: string[] = [];
+    const manifest = resolveSurfaceManifest({
+      surface: { capabilities: ["navigate"] },
+    });
+    const scope = new SurfaceRealmScope(
+      manifest,
+      "root.import.view",
+      window.localStorage,
+      (path) => calls.push(path),
+    );
+    const uiRoot = await resolveHostExternal("@elizaos/ui");
+    const navigateBrowserPath = uiRoot.navigateBrowserPath as (
+      path: string,
+    ) => void;
+    const getStorageValue = uiRoot.getStorageValue as (
+      key: string,
+    ) => Promise<string | null>;
+    const setStorageValue = uiRoot.setStorageValue as (
+      key: string,
+      value: string,
+    ) => Promise<void>;
+    const removeStorageValue = uiRoot.removeStorageValue as (
+      key: string,
+    ) => Promise<void>;
+
+    setActiveSurfaceRealmScope(scope);
+    navigateBrowserPath("/root-import");
+    await setStorageValue("root-key", "root-value");
+
+    expect(calls).toEqual(["/root-import"]);
+    expect(window.localStorage.getItem("root-key")).toBeNull();
+    expect(await getStorageValue("root-key")).toBe("root-value");
+
+    await removeStorageValue("root-key");
+    expect(await getStorageValue("root-key")).toBeNull();
+    setActiveSurfaceRealmScope(null);
+  }, 15_000);
 });
 
 const { sendWsMessage } = vi.hoisted(() => ({

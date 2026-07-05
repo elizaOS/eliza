@@ -391,7 +391,39 @@ async function importUiComponentsCompat(): Promise<Record<string, unknown>> {
 }
 
 async function importUiRootCompat(): Promise<Record<string, unknown>> {
-  return import("../../index.ts");
+  const uiRoot = await import("../../index.ts");
+  return {
+    ...uiRoot,
+    navigateBrowserPath(path: string): void {
+      const scope = getActiveSurfaceRealmScope();
+      if (scope) {
+        scope.navigate(path);
+        return;
+      }
+      uiRoot.navigateBrowserPath(path);
+    },
+    async getStorageValue(key: string): Promise<string | null> {
+      const scope = getActiveSurfaceRealmScope();
+      if (scope) return scope.storage.getItem(key);
+      return uiRoot.getStorageValue(key);
+    },
+    async setStorageValue(key: string, value: string): Promise<void> {
+      const scope = getActiveSurfaceRealmScope();
+      if (scope) {
+        scope.storage.setItem(key, value);
+        return;
+      }
+      await uiRoot.setStorageValue(key, value);
+    },
+    async removeStorageValue(key: string): Promise<void> {
+      const scope = getActiveSurfaceRealmScope();
+      if (scope) {
+        scope.storage.removeItem(key);
+        return;
+      }
+      await uiRoot.removeStorageValue(key);
+    },
+  };
 }
 
 async function importUiAppNavigateViewCompat(): Promise<
