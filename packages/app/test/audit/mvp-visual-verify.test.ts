@@ -121,8 +121,10 @@ describe("diff", () => {
     expect(totalPixels).toBe(2);
     expect(changedPixels).toBe(1);
     expect(sumAbsDelta).toBe(200);
+    expect(highlight).not.toBeNull();
     // Changed pixel is highlighted magenta.
-    expect([highlight![4], highlight![5], highlight![6]]).toEqual([255, 0, 255]);
+    const px = highlight ?? Buffer.alloc(0);
+    expect([px[4], px[5], px[6]]).toEqual([255, 0, 255]);
   });
 
   it("comparePixels throws when a buffer is too small", () => {
