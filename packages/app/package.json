@@ -28,6 +28,7 @@
     "audit:cloud": "VITE_PLAYWRIGHT_TEST_AUTH=true node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts --project=audit-cloud",
     "audit:app:minimalism:update": "bun scripts/update-minimalism-baseline.mjs",
     "audit:views": "node scripts/audit-views-soak.mjs",
+    "audit:ocr": "bun scripts/ocr-triage.ts --audit-dir aesthetic-audit-output --baseline test/ui-smoke/ocr-triage-baseline.json",
     "test:desktop:packaged": "node scripts/run-ui-playwright.mjs --config playwright.electrobun.packaged.config.ts",
     "test:desktop:packaged:windows": "node scripts/run-desktop-packaged-windows.mjs",
     "test:desktop:voice": "node scripts/run-ui-playwright.mjs --config playwright.electrobun.packaged.config.ts test/electrobun-packaged/desktop-voice-selftest.e2e.spec.ts",

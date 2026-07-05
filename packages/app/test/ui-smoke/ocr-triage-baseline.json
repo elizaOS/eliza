@@ -1,0 +1,14 @@
+{
+  "note": "slug::viewport of pixel-broken renders the DOM audit passed, already tracked by an issue. Remove an entry once the underlying render is fixed; the gate then fails if it regresses. New keys must NOT be added here without an accompanying issue — a new pixel-broken render should fail the gate, not be baselined away.",
+  "known": [
+    "plugin-polymarket-gui::desktop-landscape",
+    "plugin-polymarket-gui::ipad-portrait",
+    "plugin-polymarket-gui::mobile-portrait",
+    "plugin-polymarket-tui::desktop-landscape",
+    "plugin-polymarket-tui::ipad-portrait",
+    "plugin-polymarket-tui::mobile-portrait"
+  ],
+  "tracking": {
+    "plugin-polymarket": "PolymarketSpatialView paints 'Cannot read properties of undefined (reading ready)' — see the filed issue"
+  }
+}

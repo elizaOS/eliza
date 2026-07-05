@@ -1,0 +1,175 @@
+{
+  "summary": {
+    "total": 359,
+    "verified": 100,
+    "broken": 6,
+    "needsEyeball": 253,
+    "regressions": 6,
+    "knownRegressions": 6,
+    "newRegressions": 0
+  },
+  "regressions": [
+    {
+      "slug": "plugin-polymarket-gui",
+      "viewport": "desktop-landscape",
+      "domVerdict": "needs-eyeball",
+      "ocrVerdict": "broken",
+      "reasons": [
+        "developer string on screen: undefined, Cannot read properties"
+      ],
+      "image": "packages/app/aesthetic-audit-output/desktop-landscape/plugin-polymarket-gui.png"
+    },
+    {
+      "slug": "plugin-polymarket-gui",
+      "viewport": "ipad-portrait",
+      "domVerdict": "needs-eyeball",
+      "ocrVerdict": "broken",
+      "reasons": [
+        "developer string on screen: undefined, Cannot read properties"
+      ],
+      "image": "packages/app/aesthetic-audit-output/ipad-portrait/plugin-polymarket-gui.png"
+    },
+    {
+      "slug": "plugin-polymarket-gui",
+      "viewport": "mobile-portrait",
+      "domVerdict": "needs-eyeball",
+      "ocrVerdict": "broken",
+      "reasons": [
+        "developer string on screen: undefined, Cannot read properties"
+      ],
+      "image": "packages/app/aesthetic-audit-output/mobile-portrait/plugin-polymarket-gui.png"
+    },
+    {
+      "slug": "plugin-polymarket-tui",
+      "viewport": "desktop-landscape",
+      "domVerdict": "good",
+      "ocrVerdict": "broken",
+      "reasons": [
+        "developer string on screen: undefined, Cannot read properties"
+      ],
+      "image": "packages/app/aesthetic-audit-output/desktop-landscape/plugin-polymarket-tui.png"
+    },
+    {
+      "slug": "plugin-polymarket-tui",
+      "viewport": "ipad-portrait",
+      "domVerdict": "good",
+      "ocrVerdict": "broken",
+      "reasons": [
+        "developer string on screen: undefined, Cannot read properties"
+      ],
+      "image": "packages/app/aesthetic-audit-output/ipad-portrait/plugin-polymarket-tui.png"
+    },
+    {
+      "slug": "plugin-polymarket-tui",
+      "viewport": "mobile-portrait",
+      "domVerdict": "good",
+      "ocrVerdict": "broken",
+      "reasons": [
+        "developer string on screen: undefined, Cannot read properties"
+      ],
+      "image": "packages/app/aesthetic-audit-output/mobile-portrait/plugin-polymarket-tui.png"
+    }
+  ],
+  "verified_sample": [
+    {
+      "slug": "builtin-apps",
+      "viewport": "desktop-landscape"
+    },
+    {
+      "slug": "builtin-apps",
+      "viewport": "ipad-portrait"
+    },
+    {
+      "slug": "builtin-apps",
+      "viewport": "mobile-landscape"
+    },
+    {
+      "slug": "builtin-apps",
+      "viewport": "mobile-portrait"
+    },
+    {
+      "slug": "builtin-automations",
+      "viewport": "desktop-landscape"
+    },
+    {
+      "slug": "builtin-automations",
+      "viewport": "ipad-portrait"
+    },
+    {
+      "slug": "builtin-automations",
+      "viewport": "mobile-landscape"
+    },
+    {
+      "slug": "builtin-automations",
+      "viewport": "mobile-portrait"
+    },
+    {
+      "slug": "builtin-browser",
+      "viewport": "desktop-landscape"
+    },
+    {
+      "slug": "builtin-browser",
+      "viewport": "ipad-portrait"
+    },
+    {
+      "slug": "builtin-browser",
+      "viewport": "mobile-landscape"
+    },
+    {
+      "slug": "builtin-browser",
+      "viewport": "mobile-portrait"
+    },
+    {
+      "slug": "builtin-character",
+      "viewport": "desktop-landscape"
+    },
+    {
+      "slug": "builtin-character",
+      "viewport": "ipad-portrait"
+    },
+    {
+      "slug": "builtin-character",
+      "viewport": "mobile-landscape"
+    },
+    {
+      "slug": "builtin-character",
+      "viewport": "mobile-portrait"
+    },
+    {
+      "slug": "builtin-character-select",
+      "viewport": "desktop-landscape"
+    },
+    {
+      "slug": "builtin-character-select",
+      "viewport": "ipad-portrait"
+    },
+    {
+      "slug": "builtin-character-select",
+      "viewport": "mobile-landscape"
+    },
+    {
+      "slug": "builtin-character-select",
+      "viewport": "mobile-portrait"
+    },
+    {
+      "slug": "builtin-chat",
+      "viewport": "desktop-landscape"
+    },
+    {
+      "slug": "builtin-chat",
+      "viewport": "ipad-portrait"
+    },
+    {
+      "slug": "builtin-chat",
+      "viewport": "mobile-landscape"
+    },
+    {
+      "slug": "builtin-chat",
+      "viewport": "mobile-portrait"
+    },
+    {
+      "slug": "builtin-database",
+      "viewport": "desktop-landscape"
+    }
+  ]
+}
