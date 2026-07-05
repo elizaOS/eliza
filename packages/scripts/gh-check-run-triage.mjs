@@ -78,7 +78,16 @@ function defaultRepo() {
 }
 
 function ghJson(args) {
-  return JSON.parse(run("gh", ["api", ...args]));
+  const output = run("gh", ["api", ...args]);
+  if (!output) return null;
+  const lines = output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length > 1) {
+    return lines.map((line) => JSON.parse(line));
+  }
+  return JSON.parse(output);
 }
 
 function prHeadSha(repo, prNumber) {
@@ -87,16 +96,17 @@ function prHeadSha(repo, prNumber) {
 }
 
 function checkRunsForRef(repo, ref) {
-  const pages = ghJson([
+  const checkRuns = ghJson([
     "--paginate",
-    "--slurp",
     "--method",
     "GET",
     `repos/${repo}/commits/${ref}/check-runs`,
     "-f",
     "per_page=100",
+    "--jq",
+    ".check_runs[]",
   ]);
-  return normalizeCheckRuns(pages);
+  return normalizeCheckRuns(checkRuns ?? []);
 }
 
 function runTime(checkRun) {
