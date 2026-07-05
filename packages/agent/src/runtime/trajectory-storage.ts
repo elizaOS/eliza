@@ -425,6 +425,9 @@ function buildTrajectoryWhereClauses(options: TrajectoryListOptions): string[] {
   if (options.scenarioId) {
     whereClauses.push(`scenario_id = ${sqlQuote(options.scenarioId)}`);
   }
+  if (options.traceId) {
+    whereClauses.push(`trace_id = ${sqlQuote(options.traceId)}`);
+  }
   if (options.batchId) {
     whereClauses.push(`batch_id = ${sqlQuote(options.batchId)}`);
   }
@@ -485,6 +488,7 @@ async function loadPersistedTrajectoriesForExport(
     endDate: options.endDate,
     search: options.search,
     scenarioId: options.scenarioId,
+    traceId: options.traceId,
     batchId: options.batchId,
   });
   if (options.trajectoryIds && options.trajectoryIds.length > 0) {

@@ -17,6 +17,15 @@ import { flushTrajectoryWrites } from "./trajectory-storage.ts";
 interface MockLogger {
   logLlmCall: (...args: unknown[]) => void;
   logProviderAccess: (...args: unknown[]) => void;
+  listTrajectories?: (options?: {
+    limit?: number;
+    offset?: number;
+    traceId?: string;
+  }) => Promise<unknown>;
+  exportTrajectories?: (options: {
+    format: "json";
+    traceId?: string;
+  }) => Promise<unknown>;
   isEnabled: () => boolean;
   setEnabled: (v: boolean) => void;
   llmCalls: unknown[];
@@ -47,6 +56,23 @@ function makeRuntime() {
     },
   } as unknown as AgentRuntime;
   return { runtime, logger, originalLogLlmCall, execute };
+}
+
+function sqlText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return "";
+  const chunks = (value as { queryChunks?: Array<{ value?: unknown }> })
+    .queryChunks;
+  if (!Array.isArray(chunks)) return String(value);
+  return chunks
+    .flatMap((chunk) => (Array.isArray(chunk.value) ? chunk.value : []))
+    .join("");
+}
+
+function hasTraceFilter(execute: ReturnType<typeof vi.fn>, traceId: string) {
+  return execute.mock.calls.some(([query]) =>
+    sqlText(query).includes(`trace_id = '${traceId}'`),
+  );
 }
 
 describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
@@ -87,5 +113,26 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
     const patched = logger.logLlmCall;
     await installDatabaseTrajectoryLogger(runtime);
     expect(logger.logLlmCall).toBe(patched);
+  });
+
+  it("applies traceId filters to the SQL-backed list reader", async () => {
+    const { runtime, logger, execute } = makeRuntime();
+    execute.mockResolvedValueOnce([{ total: 0 }]).mockResolvedValueOnce([]);
+
+    await installDatabaseTrajectoryLogger(runtime);
+    await logger.listTrajectories?.({ traceId: "trace-1", limit: 10 });
+
+    expect(hasTraceFilter(execute, "trace-1")).toBe(true);
+  });
+
+  it("applies traceId filters to the compatibility export reader", async () => {
+    const { runtime, logger, execute } = makeRuntime();
+
+    await installDatabaseTrajectoryLogger(runtime);
+    execute.mockClear();
+
+    await logger.exportTrajectories?.({ format: "json", traceId: "trace-1" });
+
+    expect(hasTraceFilter(execute, "trace-1")).toBe(true);
   });
 });
