@@ -20,6 +20,7 @@
  */
 
 import { createServer } from "node:http";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,12 +36,25 @@ const ENGINE = process.env.ENGINE === "webkit" ? webkit : chromium;
 const ENGINE_NAME = process.env.ENGINE === "webkit" ? "webkit" : "chromium";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const outDir = join(here, "output-infinite-scroll");
+const videoDir = join(outDir, "video");
+await mkdir(outDir, { recursive: true });
+await mkdir(videoDir, { recursive: true });
 
 let failures = 0;
+const assertions = [];
 function assert(cond, msg) {
   console.log(`${cond ? "✓" : "✗"} ${msg}`);
+  assertions.push({ status: cond ? "pass" : "fail", message: msg });
   if (!cond) failures += 1;
   return cond;
+}
+
+async function screenshot(page, name) {
+  await page.screenshot({
+    path: join(outDir, `${ENGINE_NAME}-${name}.png`),
+    fullPage: false,
+  });
 }
 
 // --- bundle the fixture (same stub set as the sibling chat-scroll runner) ---
@@ -173,26 +187,42 @@ const browser = await ENGINE.launch(
   ENGINE_NAME === "chromium" ? { args: ["--no-sandbox"] } : {},
 );
 const consoleErrors = [];
+const networkRequests = [];
 
 async function newPage(query) {
-  const page = await browser.newPage({
+  const context = await browser.newContext({
     viewport: { width: 480, height: 700 },
+    recordVideo: { dir: videoDir, size: { width: 480, height: 700 } },
   });
+  const page = await context.newPage();
   const requests = [];
-  page.on("request", (r) => requests.push(r.url()));
+  page.on("request", (r) => {
+    requests.push(r.url());
+    networkRequests.push(r.url());
+  });
   page.on("console", (m) => {
     if (m.type() === "error") consoleErrors.push(m.text());
   });
   page.on("pageerror", (e) => consoleErrors.push(String(e)));
   await page.goto(`${base}/${query}`);
   await page.waitForSelector(SCROLLER);
-  return { page, requests };
+  return { page, requests, context };
+}
+
+async function closePageWithVideo(run, name) {
+  const video = run.page.video();
+  await run.page.close();
+  await run.context.close();
+  if (!video) return;
+  const videoPath = await video.path();
+  await rename(videoPath, join(outDir, `${ENGINE_NAME}-${name}.webm`));
 }
 
 try {
   // ── 1) Load-older: scroll to top → ?before= fires → prepend → no jump ──────
   {
-    const { page, requests } = await newPage("");
+    const run = await newPage("");
+    const { page, requests } = run;
     await page.waitForSelector(ROW);
     // The thread mounts pinned to the bottom (sentinel off-screen), so NO fetch
     // has fired yet — the load-older is entirely reader-driven below.
@@ -204,11 +234,16 @@ try {
       requests.filter((u) => /\/messages\?before=/.test(u)).length === 0,
       "no ?before= fetch fired at mount (thread starts pinned to bottom)",
     );
+    await screenshot(page, "01-mounted-bottom");
 
     // Scroll to the very top and, in the SAME evaluate, capture the anchor: the
     // top-most row's identity + viewport-y at scrollTop=0, BEFORE the prepend
     // lands. The prefetch fires from this scroll; the only thing that then moves
     // this row is the older-page grow — exactly the anchor behaviour under test.
+    const beforeRequest = page.waitForRequest(
+      (r) => /\/messages\?before=/.test(r.url()),
+      { timeout: 8_000 },
+    );
     const anchorInfo = await page.evaluate(
       ({ scrollerSel, rowSel }) => {
         const scroller = document.querySelector(scrollerSel);
@@ -223,15 +258,14 @@ try {
       },
       { scrollerSel: SCROLLER, rowSel: ROW },
     );
+    await screenshot(page, "02-before-prepend-top");
     assert(
       anchorInfo && anchorInfo.id,
       "captured the top anchor row at scrollTop=0 before the load-older",
     );
 
     // The `?before=` request must fire on scroll-to-top.
-    await page.waitForRequest((r) => /\/messages\?before=/.test(r.url()), {
-      timeout: 8_000,
-    });
+    await beforeRequest;
     assert(
       requests.some((u) => /\/messages\?before=/.test(u)),
       "a GET .../messages?before= request fired on scroll-to-top",
@@ -272,15 +306,18 @@ try {
         `anchor row viewport-y preserved across the prepend (drift ${drift.toFixed(1)}px ≤ 4px, ${anchorInfo.y.toFixed(0)} → ${yAfter.toFixed(0)})`,
       );
     }
-    await page.close();
+    await screenshot(page, "03-after-prepend-anchored");
+    await closePageWithVideo(run, "01-prepend-anchor");
   }
 
   // ── 2) Empty history: NO fetch loop ────────────────────────────────────────
   {
-    const { page, requests } = await newPage("?empty");
+    const run = await newPage("?empty");
+    const { page, requests } = run;
     await page.waitForTimeout(600);
     const rows = await page.locator(ROW).count();
     assert(rows === 0, "empty thread renders zero rows");
+    await screenshot(page, "04-empty-history");
     // Scroll (no-op on an empty scroller) — still must not fetch.
     await page.evaluate((sel) => {
       const el = document.querySelector(sel);
@@ -291,12 +328,13 @@ try {
       !requests.some((u) => /\/messages\?before=/.test(u)),
       "empty thread issues NO ?before= fetch (no cursor to page below)",
     );
-    await page.close();
+    await closePageWithVideo(run, "02-empty-history");
   }
 
   // ── 3) Fetch failure: error surfaces, guard re-arms, no retry storm ─────────
   {
-    const { page } = await newPage("?fail");
+    const run = await newPage("?fail");
+    const { page } = run;
     await page.waitForSelector(ROW);
     const rowsBefore = await page.locator(ROW).count();
     // Trigger the (failing) older-page load.
@@ -320,11 +358,37 @@ try {
       resolves <= 2,
       `no retry storm on failure (older-page loads resolved ${resolves} times ≤ 2)`,
     );
-    await page.close();
+    await screenshot(page, "05-fetch-failure");
+    await closePageWithVideo(run, "03-fetch-failure");
   }
 } finally {
   await browser.close();
   server.close();
+  const evidence = {
+    engine: ENGINE_NAME,
+    assertions,
+    serverRequests,
+    networkRequests,
+    consoleErrors,
+  };
+  await writeFile(
+    join(outDir, `${ENGINE_NAME}-evidence.json`),
+    `${JSON.stringify(evidence, null, 2)}\n`,
+  );
+  await writeFile(
+    join(outDir, `${ENGINE_NAME}-frontend-log.txt`),
+    [
+      `engine=${ENGINE_NAME}`,
+      `consoleErrors=${consoleErrors.length}`,
+      ...consoleErrors.map((entry) => `ERROR ${entry}`),
+      "",
+      "networkRequests:",
+      ...networkRequests,
+      "",
+      "serverRequests:",
+      JSON.stringify(serverRequests, null, 2),
+    ].join("\n"),
+  );
 }
 
 assert(consoleErrors.length === 0, `no console errors (${consoleErrors.length})`);

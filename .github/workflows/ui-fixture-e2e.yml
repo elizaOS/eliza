@@ -161,6 +161,7 @@ jobs:
             packages/ui/src/components/shell/__e2e__/output
             packages/ui/src/components/shell/__e2e__/output-bottombar
             packages/ui/src/components/pages/__e2e__/output-background
+            packages/ui/src/components/pages/__e2e__/output-infinite-scroll
             packages/ui/src/components/pages/__e2e__/output-launcher
             packages/ui/src/components/pages/__e2e__/output-connectors
             packages/ui/src/components/views/__e2e__/output-view-lifecycle
