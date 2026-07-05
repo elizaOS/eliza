@@ -7,6 +7,7 @@
 // asserting against a mock.
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { resolveSurfaceManifest } from "@elizaos/core";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { transform } from "esbuild";
 import { type ReactElement, useState } from "react";
@@ -17,11 +18,20 @@ import {
 } from "../../cache-telemetry";
 import { APP_PAUSE_EVENT } from "../../events";
 import {
+  SurfaceRealmScope,
+  setActiveSurfaceRealmScope,
+  surfaceViewStoragePrefix,
+} from "../../surface-realm-broker";
+import {
   __resetDynamicViewLoaderCacheForTests,
   DynamicViewLoader,
   hostImport,
   isSameOriginBundleUrl,
 } from "./DynamicViewLoader";
+
+const NO_SURFACE_GRANTS = resolveSurfaceManifest({
+  surface: { capabilities: [] },
+});
 
 describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
   it("accepts same-origin and root-relative /api/views bundle URLs", () => {
@@ -70,6 +80,11 @@ describe("host-external importer resolution (factory hostImport)", () => {
     specifier: string,
   ): Promise<Record<string, unknown>> => hostImport(specifier);
 
+  afterEach(() => {
+    setActiveSurfaceRealmScope(null);
+    window.localStorage.clear();
+  });
+
   it("consults an importer contributed through registerHostExternalImporter", async () => {
     const { registerHostExternalImporter } = await import(
       "../../app-shell-registry"
@@ -94,6 +109,46 @@ describe("host-external importer resolution (factory hostImport)", () => {
     await expect(
       resolveHostExternal("@test/never-registered-external"),
     ).rejects.toThrow(/unsupported host external/);
+  });
+
+  it("resolves the active view scope at host-bridge call time, not import time", async () => {
+    const bridge = await resolveHostExternal("@elizaos/ui/bridge");
+    const scopeA = new SurfaceRealmScope(
+      NO_SURFACE_GRANTS,
+      "view-a",
+      window.localStorage,
+      () => undefined,
+    );
+    const scopeB = new SurfaceRealmScope(
+      NO_SURFACE_GRANTS,
+      "view-b",
+      window.localStorage,
+      () => undefined,
+    );
+
+    setActiveSurfaceRealmScope(scopeA);
+    await (bridge.setStorageValue as (key: string, value: string) => void)(
+      "shared-key",
+      "a",
+    );
+
+    setActiveSurfaceRealmScope(scopeB);
+    await (bridge.setStorageValue as (key: string, value: string) => void)(
+      "shared-key",
+      "b",
+    );
+
+    expect(
+      window.localStorage.getItem(
+        `${surfaceViewStoragePrefix("view-a")}shared-key`,
+      ),
+    ).toBe("a");
+    expect(
+      window.localStorage.getItem(
+        `${surfaceViewStoragePrefix("view-b")}shared-key`,
+      ),
+    ).toBe("b");
+    expect(window.localStorage.getItem("shared-key")).toBeNull();
   });
 });
 
@@ -122,6 +177,8 @@ describe("DynamicViewLoader", () => {
   });
 
   afterEach(() => {
+    setActiveSurfaceRealmScope(null);
+    window.localStorage.clear();
     delete window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__;
     sendWsMessage.mockClear();
     cleanup();

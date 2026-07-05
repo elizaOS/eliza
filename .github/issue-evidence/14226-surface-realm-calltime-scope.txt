@@ -1,0 +1,27 @@
+Issue/PR: #14226 follow-up
+PR: pending at capture time
+
+Scope reviewed:
+- packages/ui/src/components/views/DynamicViewLoader.tsx
+- packages/ui/src/components/views/DynamicViewLoader.test.tsx
+
+Manual review:
+- Confirmed the merged host-external wrappers captured `getActiveSurfaceRealmScope()` once when `@elizaos/ui/app-navigate-view` or `@elizaos/ui/bridge` was imported.
+- Changed those wrappers to resolve the active scope inside each exported method call.
+- Added a regression that imports `@elizaos/ui/bridge` once, then publishes two different active scopes and verifies storage writes land in each view namespace instead of raw shell storage.
+
+Verification:
+- node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+- bunx @biomejs/biome check packages/ui/src/components/views/DynamicViewLoader.tsx packages/ui/src/components/views/DynamicViewLoader.test.tsx --write --no-errors-on-unmatched
+- bun run --cwd packages/ui test src/components/views/DynamicViewLoader.test.tsx -t "host-external importer resolution"
+
+Focused test result:
+- Test Files: 1 passed
+- Tests: 4 passed, 23 skipped
+
+Known unrelated failing verification:
+- bun run --cwd packages/ui test src/components/views/DynamicViewLoader.test.tsx
+- Result: 9 existing DynamicViewLoader interaction tests fail on agent-surface capability expectations in this develop snapshot. The new host-external importer group passes in isolation.
+
+Evidence gaps:
+- Full rendered app audit/screenshot/video evidence is still required before merge because this is a shared UI runtime isolation change.
