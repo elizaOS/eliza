@@ -18,6 +18,7 @@ import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
 import { assignAgentName } from "../services/agent-name-assignment.js";
 import { buildGoalFollowUp, buildGoalPrompt } from "../services/goal-prompt.js";
+import { isParentAgentBrokerWired } from "../services/parent-agent-broker.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
 import {
   type AgentType,
@@ -643,6 +644,7 @@ export async function handleAgentRoutes(
             workdir,
             taskRoomId,
             worktreeRoomId,
+            brokerWired: isParentAgentBrokerWired(ctx.runtime),
           })
         : undefined;
 

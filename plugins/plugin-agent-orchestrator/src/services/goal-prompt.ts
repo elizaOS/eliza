@@ -28,6 +28,16 @@ export const DEFAULT_GOAL_CAPABILITIES: readonly string[] = [
 ];
 
 /**
+ * The single broker capability line advertised on the DEFAULT fence when the
+ * broker is wired for the spawn. Discovery only: it tells a coding sub-agent the
+ * parent-agent bridge exists so it can ask the parent to run a capability it
+ * lacks. Paid/mutating Cloud commands stay gated server-side and by the broker
+ * spend cap — the economics fence lists the full command surface separately.
+ */
+export const BROKER_GOAL_CAPABILITY =
+  "ask the parent Eliza agent to run its own capabilities via the parent-agent bridge (USE_SKILL parent-agent) — paid/mutating commands stay gated";
+
+/**
  * Capability fence for goal tasks that build and monetize an Eliza Cloud app.
  * Extends the coding capabilities with the parent-agent Cloud command bridge so
  * a `/goal` sub-agent can drive the create-app → deploy → monetize → buy-domain
@@ -102,6 +112,12 @@ export interface GoalPromptInput {
   /** Explicit capability fence; overrides {@link GoalPromptInput.capabilityProfile}
    * and defaults to {@link DEFAULT_GOAL_CAPABILITIES}. */
   allowedCapabilities?: readonly string[];
+  /** Advertise the parent-agent broker on the DEFAULT capability fence. Set only
+   * when the broker is actually wired for the spawn (see
+   * `isParentAgentBrokerWired`). Ignored for the economics profile, which already
+   * lists the full Cloud command surface, and when `allowedCapabilities` is an
+   * explicit override. */
+  brokerWired?: boolean;
   /** Reflexion-style post-mortems from prior failed verification attempts of
    * this same task. Injected on re-spawn so the worker doesn't repeat them. */
   attemptReflections?: readonly AttemptReflection[];
@@ -146,6 +162,16 @@ export function buildGoalPrompt(input: GoalPromptInput): string {
   const capabilities = [
     ...(input.allowedCapabilities ?? resolveGoalCapabilities(profile)),
   ];
+  // Advertise the broker on the DEFAULT fence only. The economics fence already
+  // enumerates the full Cloud command surface, and an explicit
+  // `allowedCapabilities` override is trusted verbatim — never widened here.
+  if (
+    input.brokerWired &&
+    profile === "default" &&
+    input.allowedCapabilities === undefined
+  ) {
+    capabilities.push(BROKER_GOAL_CAPABILITY);
+  }
   const sections: string[] = [
     "--- Goal ---",
     `You are ${input.agentName.trim()}, an autonomous coding sub-agent working as part of a swarm on a durable orchestrator task. Keep working until the goal is met or you are genuinely blocked.`,

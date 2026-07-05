@@ -17,7 +17,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, rm, stat, unlink } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import {
@@ -63,10 +63,15 @@ import {
   resolveVendoredOpencodeAcpCommand,
 } from "./opencode-config.js";
 import {
+  isParentAgentBrokerWired,
+  PARENT_AGENT_BROKER_MANIFEST_ENTRY,
+} from "./parent-agent-broker.js";
+import {
   AcpSessionStore,
   InMemorySessionStore,
   type SessionStoreBackend,
 } from "./session-store.js";
+import { buildSkillsManifest } from "./skill-manifest.js";
 import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
 import {
   appendSubagentStdout,
@@ -894,10 +899,20 @@ export class AcpService extends Service {
     const isolate = opts.workdir ? opts.isolateWorkdir === true : true;
     const workdir = computeSessionWorkdir(baseWorkdir, id, isolate);
     await mkdir(workdir, { recursive: true });
+    // The parent-agent broker is only reachable when the SubAgentRouter is bound
+    // to the ACP event stream; gate every broker advertisement (manual section,
+    // SKILLS.md broker entry) on that so a child is never told about a bridge it
+    // cannot use.
+    const brokerWired = isParentAgentBrokerWired(this.runtime);
     // Give the sub-agent its eliza-context + non-interactive operating manual on
     // disk (where every backend reads it) — only when the workspace is bare, so
     // a real repo's own AGENTS.md/CLAUDE.md is never clobbered.
-    await writeWorkspaceIdentity(workdir);
+    await writeWorkspaceIdentity(workdir, { brokerWired });
+    // Write SKILLS.md into every spawn workspace so a child can discover (and
+    // request, via the parent) the parent's installed skills — not just the
+    // economics loop. The broker skill is advertised only when wired; the
+    // recommended-slugs / ViewKind extras are opt-in via opts.skillsManifest.
+    await this.writeSkillsManifest(workdir, id, brokerWired, opts);
 
     // Record the workspace HEAD + already-dirty files at spawn so the change
     // set captured at task_complete is scoped to exactly what this sub-agent
@@ -1104,6 +1119,45 @@ export class AcpService extends Service {
     const updated = await this.store.get(id);
     const sessionSnapshot: SessionInfo = { ...session, status: "ready" };
     return toSpawnResult(updated ?? sessionSnapshot);
+  }
+
+  /**
+   * Write SKILLS.md into a spawn workspace so the sub-agent can discover the
+   * parent's installed skills and request them back via the parent. Runs on the
+   * SHARED spawn path (every `spawnSession`) so direct `/api/coding-agents` and
+   * `TASKS_SPAWN_AGENT` spawns get it, not just the economics loop. The broker
+   * skill is advertised only when the router is wired; `opts.skillsManifest`
+   * adds the recommended-slug highlight and Cloud ViewKind contract for
+   * app-building tasks. Best-effort — a failed write warns and the spawn
+   * proceeds without the manifest.
+   */
+  private async writeSkillsManifest(
+    workdir: string,
+    sessionId: string,
+    brokerWired: boolean,
+    opts: SpawnOptions,
+  ): Promise<void> {
+    try {
+      const manifest = await buildSkillsManifest(this.runtime, {
+        ...(opts.skillsManifest?.recommendedSlugs
+          ? { recommendedSlugs: opts.skillsManifest.recommendedSlugs }
+          : {}),
+        ...(brokerWired
+          ? { virtualSkills: [{ ...PARENT_AGENT_BROKER_MANIFEST_ENTRY }] }
+          : {}),
+        includeViewKindContract:
+          opts.skillsManifest?.includeViewKindContract ?? false,
+      });
+      await writeFile(join(workdir, "SKILLS.md"), manifest.markdown, "utf8");
+    } catch (err) {
+      // error-policy:J7 SKILLS.md scaffolding is best-effort; a failed write is
+      // warned and the spawn proceeds without it — a missing manifest only
+      // degrades skill discovery.
+      this.runtime.logger?.warn?.(
+        { src: "acp-service", sessionId, workdir },
+        `failed to write SKILLS.md: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   async sendPrompt(
