@@ -265,11 +265,14 @@ describe("createMobileSignalsPermissionsRegistry", () => {
     const native = plugin();
     const calendar = appleCalendarPlugin();
     const push = pushNotificationsPlugin();
+    const initPushRegistration = vi.fn(async () => {});
     const registry = createMobileSignalsPermissionsRegistry(
       native,
       undefined,
       calendar,
       push,
+      {},
+      initPushRegistration,
     );
 
     const state = await registry.check("notifications");
@@ -286,7 +289,30 @@ describe("createMobileSignalsPermissionsRegistry", () => {
 
     expect(push.checkPermissions).toHaveBeenCalled();
     expect(push.requestPermissions).toHaveBeenCalled();
+    expect(initPushRegistration).toHaveBeenCalledTimes(1);
     expect(native.requestPermissions).not.toHaveBeenCalled();
+  });
+
+  it("does not initialize push registration when notification permission remains denied", async () => {
+    const native = plugin();
+    const calendar = appleCalendarPlugin();
+    const push = pushNotificationsPlugin({ receive: "denied" });
+    const initPushRegistration = vi.fn(async () => {});
+    const registry = createMobileSignalsPermissionsRegistry(
+      native,
+      undefined,
+      calendar,
+      push,
+      {},
+      initPushRegistration,
+    );
+
+    await registry.request("notifications", {
+      reason: "Send reminder prompts.",
+      feature: { app: "lifeops", action: "reminders.notify" },
+    });
+
+    expect(initPushRegistration).not.toHaveBeenCalled();
   });
 
   it("opens notification settings when native notifications cannot prompt", async () => {
