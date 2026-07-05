@@ -18,8 +18,8 @@
  * bug stays visible without wedging CI while a NEW pixel-broken render fails it.
  */
 import { spawn } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
-import { join, basename, dirname } from "node:path";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   evaluateOcrContent,
@@ -90,19 +90,22 @@ function listPngs(dir: string): string[] {
 
 function runVisionOcr(paths: string[]): Promise<OcrRecord[]> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("swift", [SWIFT_HELPER], { stdio: ["pipe", "pipe", "inherit"] });
+    const proc = spawn("swift", [SWIFT_HELPER], {
+      stdio: ["pipe", "pipe", "inherit"],
+    });
     let buf = "";
     proc.stdout.on("data", (d) => (buf += d.toString()));
     proc.on("error", reject);
     proc.on("close", (code) => {
-      if (code !== 0) return reject(new Error(`ocr-vision.swift exited ${code}`));
+      if (code !== 0)
+        return reject(new Error(`ocr-vision.swift exited ${code}`));
       const recs = buf
         .split("\n")
         .filter((l) => l.trim())
         .map((l) => JSON.parse(l) as OcrRecord);
       resolve(recs);
     });
-    proc.stdin.write(paths.join("\n") + "\n");
+    proc.stdin.write(`${paths.join("\n")}\n`);
     proc.stdin.end();
   });
 }
@@ -170,19 +173,25 @@ async function main() {
   }
 
   entries.sort((a, b) => {
-    const rank = (e: TriageEntry) => (e.regression ? 0 : e.ocrVerdict === "broken" ? 1 : 2);
+    const rank = (e: TriageEntry) =>
+      e.regression ? 0 : e.ocrVerdict === "broken" ? 1 : 2;
     return rank(a) - rank(b) || a.slug.localeCompare(b.slug);
   });
 
   const regressions = entries.filter((e) => e.regression);
-  const newRegressions = regressions.filter((e) => !baseline.has(`${e.slug}::${e.viewport}`));
-  const knownRegressions = regressions.filter((e) => baseline.has(`${e.slug}::${e.viewport}`));
+  const newRegressions = regressions.filter(
+    (e) => !baseline.has(`${e.slug}::${e.viewport}`),
+  );
+  const knownRegressions = regressions.filter((e) =>
+    baseline.has(`${e.slug}::${e.viewport}`),
+  );
 
   const summary = {
     total: entries.length,
     verified: entries.filter((e) => e.ocrVerdict === "verified").length,
     broken: entries.filter((e) => e.ocrVerdict === "broken").length,
-    needsEyeball: entries.filter((e) => e.ocrVerdict === "needs-eyeball").length,
+    needsEyeball: entries.filter((e) => e.ocrVerdict === "needs-eyeball")
+      .length,
     regressions: regressions.length,
     knownRegressions: knownRegressions.length,
     newRegressions: newRegressions.length,
@@ -190,17 +199,27 @@ async function main() {
 
   writeFileSync(outPath, JSON.stringify({ summary, entries }, null, 2));
 
-  console.log(`[ocr-triage] ${summary.total} views | verified ${summary.verified} | broken ${summary.broken} | needs-eyeball ${summary.needsEyeball}`);
+  console.log(
+    `[ocr-triage] ${summary.total} views | verified ${summary.verified} | broken ${summary.broken} | needs-eyeball ${summary.needsEyeball}`,
+  );
   if (knownRegressions.length) {
-    console.log(`\n[ocr-triage] ${knownRegressions.length} known regression(s) (baselined — tracked by issue):`);
+    console.log(
+      `\n[ocr-triage] ${knownRegressions.length} known regression(s) (baselined — tracked by issue):`,
+    );
     for (const e of knownRegressions) {
-      console.log(`  · ${e.slug} [${e.viewport}] dom=${e.domVerdict} → broken: ${e.reasons.join("; ")}`);
+      console.log(
+        `  · ${e.slug} [${e.viewport}] dom=${e.domVerdict} → broken: ${e.reasons.join("; ")}`,
+      );
     }
   }
   if (newRegressions.length) {
-    console.log(`\n[ocr-triage] ${newRegressions.length} NEW REGRESSION(S) — DOM audit passed, pixels are broken:`);
+    console.log(
+      `\n[ocr-triage] ${newRegressions.length} NEW REGRESSION(S) — DOM audit passed, pixels are broken:`,
+    );
     for (const e of newRegressions) {
-      console.log(`  ✗ ${e.slug} [${e.viewport}] dom=${e.domVerdict} → broken: ${e.reasons.join("; ")}`);
+      console.log(
+        `  ✗ ${e.slug} [${e.viewport}] dom=${e.domVerdict} → broken: ${e.reasons.join("; ")}`,
+      );
     }
   }
   console.log(`\n[ocr-triage] wrote ${outPath}`);

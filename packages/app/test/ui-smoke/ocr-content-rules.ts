@@ -159,7 +159,10 @@ export function evaluateOcrContent({
       if (!hay.includes(normalize(label))) missingRequired.push(label);
     }
     const anyLabels = expectation.requireAny ?? [];
-    if (anyLabels.length > 0 && !anyLabels.some((l) => hay.includes(normalize(l)))) {
+    if (
+      anyLabels.length > 0 &&
+      !anyLabels.some((l) => hay.includes(normalize(l)))
+    ) {
       // Report the whole disjunction as one miss so the reason is legible.
       missingRequired.push(anyLabels.join(" | "));
     }
@@ -168,11 +171,18 @@ export function evaluateOcrContent({
     }
   }
 
-  if (blankPixels) reasons.push("pixels are blank — view painted no readable text");
-  if (errorLeaks.length) reasons.push(`developer string on screen: ${errorLeaks.join(", ")}`);
-  if (missingRequired.length) reasons.push(`missing expected content: ${missingRequired.join(", ")}`);
-  if (placeholderLeaks.length) reasons.push(`placeholder/scaffolding on screen: ${placeholderLeaks.join(", ")}`);
-  if (forbiddenPresent.length) reasons.push(`forbidden content on screen: ${forbiddenPresent.join(", ")}`);
+  if (blankPixels)
+    reasons.push("pixels are blank — view painted no readable text");
+  if (errorLeaks.length)
+    reasons.push(`developer string on screen: ${errorLeaks.join(", ")}`);
+  if (missingRequired.length)
+    reasons.push(`missing expected content: ${missingRequired.join(", ")}`);
+  if (placeholderLeaks.length)
+    reasons.push(
+      `placeholder/scaffolding on screen: ${placeholderLeaks.join(", ")}`,
+    );
+  if (forbiddenPresent.length)
+    reasons.push(`forbidden content on screen: ${forbiddenPresent.join(", ")}`);
 
   // Precedence: a user-visible defect (blank, dev-string, or a required label the
   // view exists to show but didn't) is broken. Softer signals — scaffolding text,
@@ -184,7 +194,10 @@ export function evaluateOcrContent({
     verdict = "broken";
   } else if (placeholderLeaks.length > 0 || forbiddenPresent.length > 0) {
     verdict = "needs-eyeball";
-  } else if (expectation && (expectation.requireAll?.length || expectation.requireAny?.length)) {
+  } else if (
+    expectation &&
+    (expectation.requireAll?.length || expectation.requireAny?.length)
+  ) {
     verdict = "verified";
     reasons.push("pixels match declared expectation");
   } else {

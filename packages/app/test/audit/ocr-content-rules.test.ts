@@ -4,7 +4,7 @@
  * branch (blank, dev-string leak, placeholder, missing/forbidden expectation,
  * positive verify) is exercised deterministically.
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   detectErrorLeaks,
   detectPlaceholderLeaks,
@@ -27,10 +27,14 @@ function ocr(text: string, over: Partial<OcrResult> = {}): OcrResult {
 
 describe("detectErrorLeaks", () => {
   it("flags machine residue a user should never see", () => {
-    expect(detectErrorLeaks("Hi [object Object] there")).toContain("[object Object]");
+    expect(detectErrorLeaks("Hi [object Object] there")).toContain(
+      "[object Object]",
+    );
     expect(detectErrorLeaks("value: undefined")).toContain("undefined");
     expect(detectErrorLeaks("TypeError: x")).toContain("TypeError");
-    expect(detectErrorLeaks("Cannot read properties of null")).not.toHaveLength(0);
+    expect(detectErrorLeaks("Cannot read properties of null")).not.toHaveLength(
+      0,
+    );
   });
   it("does NOT flag a designed error state's copy", () => {
     expect(detectErrorLeaks("Something went wrong. Retry?")).toHaveLength(0);
@@ -66,13 +70,18 @@ describe("evaluateOcrContent", () => {
   });
 
   it("exempts TUI/canvas surfaces from the blank floor", () => {
-    const f = evaluateOcrContent({ ocr: ocr("", { words: 0 }), exemptFromBlank: true });
+    const f = evaluateOcrContent({
+      ocr: ocr("", { words: 0 }),
+      exemptFromBlank: true,
+    });
     expect(f.blankPixels).toBe(false);
     expect(f.verdict).not.toBe("broken");
   });
 
   it("catches a developer string that reached the pixels", () => {
-    const f = evaluateOcrContent({ ocr: ocr("Balance: [object Object]\nSend\nReceive") });
+    const f = evaluateOcrContent({
+      ocr: ocr("Balance: [object Object]\nSend\nReceive"),
+    });
     expect(f.errorLeaks).toContain("[object Object]");
     expect(f.verdict).toBe("broken");
   });
@@ -80,7 +89,10 @@ describe("evaluateOcrContent", () => {
   it("verifies a view whose pixels contain every required label", () => {
     const f = evaluateOcrContent({
       ocr: ocr("Good evening\nWeather\nAsk Eliza"),
-      expectation: { requireAll: ["Ask Eliza"], requireAny: ["Good evening", "Good morning"] },
+      expectation: {
+        requireAll: ["Ask Eliza"],
+        requireAny: ["Good evening", "Good morning"],
+      },
     });
     expect(f.verdict).toBe("verified");
     expect(f.missingRequired).toHaveLength(0);
@@ -114,7 +126,9 @@ describe("evaluateOcrContent", () => {
   });
 
   it("keeps healthy-but-unexpectationed pixels as a soft signal, not a green claim", () => {
-    const f = evaluateOcrContent({ ocr: ocr("Some readable content on screen") });
+    const f = evaluateOcrContent({
+      ocr: ocr("Some readable content on screen"),
+    });
     expect(f.verdict).toBe("needs-eyeball");
     expect(f.reasons.join(" ")).toMatch(/no expectation/);
   });

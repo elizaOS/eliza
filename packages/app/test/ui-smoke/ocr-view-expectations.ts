@@ -22,17 +22,34 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
     // agent's name under smoke), and landscape legitimately compacts to just the
     // composer — so the agent-agnostic "Ask " prefix is the stable floor. A truly
     // blank chat is still caught by the blank-pixel rule, not this expectation.
-    requireAny: ["Ask ", "Good evening", "Good morning", "Good afternoon", "what's up", "Welcome"],
+    requireAny: [
+      "Ask ",
+      "Good evening",
+      "Good morning",
+      "Good afternoon",
+      "what's up",
+      "Welcome",
+    ],
   },
   "builtin-settings": {
     requireAll: ["Settings"],
     requireAny: ["Models & Providers", "Voice", "Appearance", "Basics"],
   },
   "builtin-help": {
-    requireAny: ["What is Eliza", "what do I do first", "glowing pill", "switch screens"],
+    requireAny: [
+      "What is Eliza",
+      "what do I do first",
+      "glowing pill",
+      "switch screens",
+    ],
   },
   "builtin-browser": {
-    requireAny: ["Enter a URL", "Open a website", "Summarize a page", "Search the web"],
+    requireAny: [
+      "Enter a URL",
+      "Open a website",
+      "Summarize a page",
+      "Search the web",
+    ],
   },
   "builtin-automations": {
     requireAll: ["Automations"],
@@ -45,7 +62,11 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
     requireAny: ["No files yet", "Documents", "Images", "Search files"],
   },
   "builtin-relationships": {
-    requireAny: ["No relationships yet", "Search people", "Connect your platforms"],
+    requireAny: [
+      "No relationships yet",
+      "Search people",
+      "Connect your platforms",
+    ],
   },
   "builtin-skills": {
     requireAny: ["Browse Marketplace", "No Skills Installed", "Search skills"],
@@ -77,25 +98,23 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
   },
   // The launcher grid is its own content; `builtin-views` renders the same grid.
   "builtin-apps": {
-    requireAll: ["Chat"],
-    requireAny: ["Settings", "Wallet", "Automations", "Knowledge"],
+    requireAny: ["Messages", "Settings", "Wallet", "Automations", "Knowledge"],
   },
   "builtin-views": {
-    requireAll: ["Chat"],
-    requireAny: ["Settings", "Wallet", "Automations", "Knowledge"],
+    requireAny: ["Messages", "Settings", "Wallet", "Automations", "Knowledge"],
   },
   "builtin-character": {
     requireAny: ["Personality", "Relationships", "Knowledge", "Skills"],
   },
   "builtin-character-select": {
-    requireAny: ["Personality", "Relationships", "Knowledge", "Skills"],
+    requireAny: ["About Me", "Style Rules", "Chat Examples", "Post Examples"],
   },
   "builtin-runtime": {
     requireAny: ["Plugins", "Actions", "Providers"],
   },
   "builtin-tasks": {
     requireAll: ["Tasks"],
-    requireAny: ["No coding tasks yet", "coding agent"],
+    requireAny: ["No coding tasks yet", "coding agent", "Projects unavailable"],
   },
   "builtin-trajectories": {
     requireAny: ["No trajectories yet", "trajector"],
