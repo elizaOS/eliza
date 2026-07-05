@@ -64,14 +64,12 @@ CEREBRAS_API_KEY=... python -m multitask_bench --harness hermes --lanes 1,5,10 \
 
 Reports land at `results/multitask_<timestamp>.json`.
 
-### openclaw lane — CLI-native
+### openclaw lane — transport choice
 
-The openclaw lane runs the **real `openclaw agent` CLI** (not the direct-compat
-shim) once a Cerebras custom provider is registered in an isolated openclaw
-profile. This is a one-time setup — see
-[`openclaw-adapter/README.md`](../openclaw-adapter/README.md) §"CLI-native
-provider registration" for the exact key-free config
-(`openclaw-adapter/config/cerebras.openclaw.json5`):
+Register a Cerebras custom provider in an isolated openclaw profile (one-time
+setup; see [`openclaw-adapter/README.md`](../openclaw-adapter/README.md)
+§"CLI-native provider registration") and the openclaw lane can spawn the **real
+`openclaw agent` CLI**:
 
 ```bash
 openclaw --profile bench-cerebras config patch \
@@ -85,10 +83,27 @@ CEREBRAS_API_KEY=... python -m multitask_bench --harness openclaw --lanes 1,5,10
     --model gpt-oss-120b --output-dir results
 ```
 
-Without `OPENCLAW_USE_CLI=1`, setting `OPENCLAW_DIRECT_OPENAI_COMPAT=1` falls
-back to the keyless/offline direct-compat shim — a **partial** transport, not
-CLI-native tool-call parity; the report discloses which transport each lane
-used.
+The CLI turns are live (real POSTs to Cerebras, `status=200`), **but this lane
+scores `mean_score=0.000` CLI-native**: the `openclaw agent` command owns its
+own tool execution and returns natural-language `payloads`, so the LifeOpsBench
+tool catalog can only be passed as context-only text — the model emits its tool
+call as JSON *text* the scorer can't execute, and multi-turn scenarios overflow
+context. This is a boundary of the CLI (`2026.6.11`), not a config gap.
+
+For a **scored** openclaw lane, run the direct OpenAI-compatible path — it
+returns the structured `tool_calls` the runner executes against the LifeWorld —
+which stays disclosed as **partial**, not CLI-native tool-call parity:
+
+```bash
+OPENCLAW_DIRECT_OPENAI_COMPAT=1 CEREBRAS_API_KEY=... \
+    python -m multitask_bench --harness openclaw --lanes 1,5,10 \
+    --model gpt-oss-120b --output-dir results
+```
+
+The report discloses which transport each lane used. See
+[`.github/issue-evidence/13777-multitask-live/openclaw-cli-native/`](../../../.github/issue-evidence/13777-multitask-live/openclaw-cli-native/)
+for the full CLI-native investigation (myth-busting + the scoring-gap
+trajectory).
 
 ## Tests
 

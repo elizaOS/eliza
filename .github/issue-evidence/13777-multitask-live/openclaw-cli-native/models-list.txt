@@ -1,0 +1,2 @@
+Model                                      Input      Ctx         Local Auth  Tags
+cerebras/gpt-oss-120b                      text       125k        no    yes   default

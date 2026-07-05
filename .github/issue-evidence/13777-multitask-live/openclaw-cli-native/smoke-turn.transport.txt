@@ -1,0 +1,3 @@
+[provider-transport-fetch] [model-fetch] start provider=cerebras api=openai-completions model=gpt-oss-120b method=POST url=https://api.cerebras.ai/v1/chat/completions timeoutMs=undefined proxy=none policy=custom
+[provider-transport-fetch] [model-fetch] response provider=cerebras api=openai-completions model=gpt-oss-120b status=200 elapsedMs=466 contentType=text/event-stream; charset=utf-8
+[agent] run 911cd566-0107-4748-98bf-63e532223fe9 ended with stopReason=stop

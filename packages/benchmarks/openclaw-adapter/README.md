@@ -75,14 +75,35 @@ flag, so the env pair is how the isolated config reaches the spawned CLI. With
 this in place, `openclaw agent --local --json --model cerebras/gpt-oss-120b`
 runs a genuine CLI-native turn (real `provider-transport-fetch` POST to
 `https://api.cerebras.ai/v1/chat/completions`, `status=200`, `reasoningTokens`
-populated), and the multitask-bench openclaw lane runs CLI-native — **not** the
-direct-compat shim. See `config/cerebras.openclaw.json5` for the exact,
-key-free config and `.github/issue-evidence/13777-multitask-live/` for a live
-transcript.
+populated). See `config/cerebras.openclaw.json5` for the exact, key-free config
+and `.github/issue-evidence/13777-multitask-live/openclaw-cli-native/` for the
+live transcript.
 
 The one catalog nuance: set `reasoning: true` on the model entry, else OpenClaw
 gates the model to `--thinking off` only (the adapter defaults to
 `--thinking medium`).
+
+### CLI-native runs, but does not *score* on tool-execution benchmarks
+
+Provider registration makes the CLI path fully live — but the `openclaw agent`
+command **owns its own tool execution** and returns natural-language
+`payloads`. It has no mode to accept a benchmark-injected tool catalog and hand
+back *unexecuted* structured `tool_calls` for the harness to run against a
+benchmark-owned world (LifeWorld). On the CLI path the benchmark tools are
+flattened into `--message` as context-only, so the model emits its intended
+call as **JSON text inside the assistant message** rather than a structured
+`tool_calls` array, and multi-turn scenarios hit `Context overflow` from
+re-flattening the whole conversation. The multitask-bench openclaw lane run
+CLI-native therefore completes every task but scores `mean_score=0.000`
+(`turns=1`, `tokens=0`) — see the N=1 report + trajectory in the evidence dir.
+
+**Consequence:** for tool-execution benchmarks (LifeOpsBench, BFCL native
+function-call), the **direct OpenAI-compatible path is the transport that
+yields the structured `tool_calls` the scorer executes**, and it stays
+disclosed as *partial*. This is an architectural boundary of the CLI as of
+`2026.6.11`, not a config gap. The `FailoverError: Unknown model` / "custom
+registration is undocumented" story is what was wrong (busted above); the
+scoring limitation is real and is what the "partial" label durably denotes.
 
 ## Layout
 
