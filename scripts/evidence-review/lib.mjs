@@ -55,6 +55,7 @@ export function inferSource(root, filePath) {
   const rel = toPosixPath(path.relative(root, filePath));
   if (rel.startsWith("evidence/")) return "evidence";
   if (rel.startsWith("e2e-recordings/")) return "e2e-recordings";
+  if (rel.startsWith("device-e2e-output/")) return "device-e2e";
   if (rel.startsWith("packages/app/aesthetic-audit-output/")) {
     return "app-audit";
   }
@@ -66,6 +67,12 @@ export function inferSource(root, filePath) {
     return "ios-device-logs";
   }
   if (rel.startsWith("packages/app/test-results/")) return "app-test-results";
+  if (rel.startsWith("packages/app/reports/walkthrough/")) {
+    return "walkthrough";
+  }
+  if (rel.startsWith("packages/scenario-runner/reports/")) {
+    return "scenario-runner";
+  }
   if (rel.startsWith("reports/live-test-runs/")) return "live-test-runs";
   if (rel.startsWith("reports/walkthrough/")) return "walkthrough";
   if (rel.startsWith(".github/issue-evidence/")) {

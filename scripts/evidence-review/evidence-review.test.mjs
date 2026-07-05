@@ -35,6 +35,18 @@ test("infers the standard evidence source directories", () => {
     inferSource(root, "/repo/reports/live-test-runs/run/trajectory.jsonl"),
     "live-test-runs",
   );
+  assert.equal(
+    inferSource(root, "/repo/device-e2e-output/android/run.json"),
+    "device-e2e",
+  );
+  assert.equal(
+    inferSource(root, "/repo/packages/app/reports/walkthrough/run/steps.json"),
+    "walkthrough",
+  );
+  assert.equal(
+    inferSource(root, "/repo/packages/scenario-runner/reports/run.jsonl"),
+    "scenario-runner",
+  );
   assert.equal(inferSource(root, "/repo/evidence/matrix-run.json"), "evidence");
 });
 
