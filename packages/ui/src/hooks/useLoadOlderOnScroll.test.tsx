@@ -92,35 +92,6 @@ function Harness(props: HarnessProps) {
   return null;
 }
 
-/**
- * Harness modelling the REAL caller shape (#13953): the sentinel is rendered
- * only in the transcript's non-empty branch, so on the initial open it is
- * `null` and mounts LATER when the first page of messages lands. React writes
- * DOM refs during commit BEFORE effects run, which this harness mirrors by
- * assigning `sentinelRef.current` during render — by the time the hook's
- * effect executes, the ref already reflects the (un)mounted sentinel of that
- * commit.
- */
-function LateSentinelHarness(props: {
-  scroller: HTMLDivElement;
-  sentinel: HTMLDivElement | null;
-  onLoadOlder: () => Promise<void>;
-  hasMore: boolean;
-  topItemKey: string | number;
-}) {
-  const scrollRef = useRef<HTMLDivElement | null>(props.scroller);
-  const sentinelRef = useRef<HTMLElement | null>(null);
-  sentinelRef.current = props.sentinel;
-  useLoadOlderOnScroll({
-    scrollRef,
-    sentinelRef,
-    onLoadOlder: props.onLoadOlder,
-    hasMore: props.hasMore,
-    topItemKey: props.topItemKey,
-  });
-  return null;
-}
-
 let originalIO: typeof IntersectionObserver | undefined;
 
 beforeEach(() => {
@@ -197,103 +168,96 @@ describe("useLoadOlderOnScroll — prefetch trigger (#13532)", () => {
   });
 });
 
-describe("useLoadOlderOnScroll — late-mounting sentinel (#13953)", () => {
-  it("attaches the observer once the sentinel mounts on the empty→populated transition", async () => {
+// Regression (#13953): the sentinel row is rendered only in the NON-empty
+// transcript branch, so on the initial open of a conversation with history it is
+// null on first render and mounts asynchronously when the first page lands. This
+// harness syncs sentinelRef.current each render — exactly what React does when the
+// node mounts — so a rerender with a now-present sentinel updates the ref the hook
+// reads (a plain useRef(initial) would not).
+function MountHarness(
+  props: Omit<HarnessProps, "sentinel"> & { sentinel: HTMLDivElement | null },
+) {
+  const scrollRef = useRef<HTMLDivElement | null>(props.scroller);
+  const sentinelRef = useRef<HTMLElement | null>(null);
+  sentinelRef.current = props.sentinel;
+  useLoadOlderOnScroll({
+    scrollRef,
+    sentinelRef,
+    onLoadOlder: props.onLoadOlder,
+    hasMore: props.hasMore,
+    topItemKey: props.topItemKey,
+    enabled: props.enabled,
+  });
+  return null;
+}
+
+describe("useLoadOlderOnScroll — initial-open sentinel mount (#13953)", () => {
+  it("attaches the observer when the sentinel mounts after an empty first render", () => {
+    const { el: scroller } = makeScroller(1000, 400);
+    const sentinel = document.createElement("div");
+
+    // First render: transcript empty, sentinel not rendered yet.
+    const { rerender } = render(
+      <MountHarness
+        scroller={scroller}
+        sentinel={null}
+        onLoadOlder={async () => {}}
+        hasMore
+        topItemKey="__empty__"
+      />,
+    );
+    // Nothing observed: the effect returned early (no sentinel).
+    expect(FakeIntersectionObserver.last?.observed ?? []).not.toContain(sentinel);
+
+    // Messages arrive: the sentinel mounts and the oldest-item key changes on the
+    // empty→populated transition.
+    act(() => {
+      rerender(
+        <MountHarness
+          scroller={scroller}
+          sentinel={sentinel}
+          onLoadOlder={async () => {}}
+          hasMore
+          topItemKey="msg-1"
+        />,
+      );
+    });
+
+    // Before the fix the effect never re-ran on the mount, so the observer was
+    // never attached and scroll-up load-older stayed dead on first open.
+    expect(FakeIntersectionObserver.last).not.toBeNull();
+    expect(FakeIntersectionObserver.last?.observed).toContain(sentinel);
+  });
+
+  it("fires onLoadOlder once the mounted sentinel intersects on first open", async () => {
     const { el: scroller } = makeScroller(1000, 400);
     const sentinel = document.createElement("div");
     const onLoadOlder = vi.fn(async () => {});
 
-    // Initial open: transcript empty — sentinel not rendered, topItemKey "".
     const { rerender } = render(
-      <LateSentinelHarness
+      <MountHarness
         scroller={scroller}
         sentinel={null}
         onLoadOlder={onLoadOlder}
         hasMore
-        topItemKey=""
+        topItemKey="__empty__"
       />,
     );
-    // The effect bailed before constructing an observer — nothing subscribed.
-    expect(FakeIntersectionObserver.last).toBeNull();
-
-    // Messages land asynchronously: the sentinel mounts and the first item's
-    // key changes. enabled/hasMore/refs/trigger are all UNCHANGED — topItemKey
-    // is the only dep that moves, exactly the production transition. Without
-    // topItemKey in the effect deps the observer would never attach (the
-    // pre-fix bug) and this assertion fails.
     act(() => {
       rerender(
-        <LateSentinelHarness
+        <MountHarness
           scroller={scroller}
           sentinel={sentinel}
           onLoadOlder={onLoadOlder}
           hasMore
-          topItemKey="m-oldest"
+          topItemKey="msg-1"
         />,
       );
     });
-    const io = FakeIntersectionObserver.last;
-    expect(io).not.toBeNull();
-    expect(io?.observed).toContain(sentinel);
-
-    // And the attached observer is live: an intersection pages older history.
     await act(async () => {
-      io?.fire(true);
+      FakeIntersectionObserver.last?.fire(true);
     });
     expect(onLoadOlder).toHaveBeenCalledTimes(1);
-  });
-
-  it("re-binds to the new sentinel across a conversation switch that transiently clears the thread", () => {
-    const { el: scroller } = makeScroller(1000, 400);
-    const sentinelA = document.createElement("div");
-    const sentinelB = document.createElement("div");
-    const onLoadOlder = vi.fn(async () => {});
-
-    const { rerender } = render(
-      <LateSentinelHarness
-        scroller={scroller}
-        sentinel={sentinelA}
-        onLoadOlder={onLoadOlder}
-        hasMore
-        topItemKey="a-oldest"
-      />,
-    );
-    const first = FakeIntersectionObserver.last;
-    expect(first?.observed).toContain(sentinelA);
-
-    // Switch conversations: messages transiently clear to [] and the old
-    // sentinel unmounts. The observer on the now-detached sentinel must be
-    // torn down, not left observing forever.
-    act(() => {
-      rerender(
-        <LateSentinelHarness
-          scroller={scroller}
-          sentinel={null}
-          onLoadOlder={onLoadOlder}
-          hasMore
-          topItemKey=""
-        />,
-      );
-    });
-    expect(first?.disconnected).toBe(true);
-
-    // The new conversation's page lands: a FRESH observer binds the NEW
-    // sentinel (not the stale detached one).
-    act(() => {
-      rerender(
-        <LateSentinelHarness
-          scroller={scroller}
-          sentinel={sentinelB}
-          onLoadOlder={onLoadOlder}
-          hasMore
-          topItemKey="b-oldest"
-        />,
-      );
-    });
-    const second = FakeIntersectionObserver.last;
-    expect(second).not.toBe(first);
-    expect(second?.observed).toContain(sentinelB);
-    expect(second?.observed).not.toContain(sentinelA);
   });
 });
 

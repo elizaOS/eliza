@@ -135,24 +135,7 @@ export function useLoadOlderOnScroll<T extends HTMLElement = HTMLDivElement>({
   // `hasMore` is an intentional dependency (not just read via ref): once it
   // flips false there is nothing older to observe, so we tear the observer down;
   // the false→true edge on a conversation switch re-subscribes.
-  //
-  // `topItemKey` is ALSO an intentional dependency (#13953): callers render the
-  // sentinel only in the transcript's non-empty branch, so on the INITIAL open
-  // of a conversation the first effect run sees `sentinelRef.current === null`
-  // and bails without observing. Messages then land asynchronously and mount
-  // the sentinel — but mutating a ref never re-runs an effect, and none of the
-  // other deps are guaranteed to change on the empty→populated transition, so
-  // without this dep the observer would never attach and scroll-up load-older
-  // would be silently dead. `topItemKey` changes exactly when the first item
-  // changes (empty→populated, conversation switch, prepend), so it doubles as
-  // the "sentinel (re)mounted" signal: the effect re-runs, sees the mounted
-  // sentinel, and subscribes. It also tears down + re-binds across a
-  // conversation switch that transiently clears the thread to [] — the old
-  // (now detached) sentinel is dropped instead of being observed forever. A
-  // re-subscribe after an ordinary prepend is cheap (disconnect + observe) and
-  // an immediately-intersecting sentinel just continues paging, which the
-  // in-flight guard already serializes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: hasMore + topItemKey are intentional re-subscribe triggers; the callback reads live gates via refs.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hasMore and topItemKey are intentional re-subscribe triggers (topItemKey re-runs the effect when the sentinel mounts on the empty→populated first open, #13953); the callback reads live gates via refs.
   useEffect(() => {
     if (!enabled) return;
     const root = scrollRef.current;
@@ -178,9 +161,18 @@ export function useLoadOlderOnScroll<T extends HTMLElement = HTMLDivElement>({
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-    // Re-subscribe when the scroller (re)mounts, hasMore flips, or the first
-    // item changes (topItemKey) — the latter is what attaches the observer once
-    // the sentinel mounts on the empty→populated transition (#13953).
+    // Re-subscribe when the scroller (re)mounts, hasMore flips, or the sentinel
+    // first mounts on the empty→populated transition (topItemKey) — a disabled→
+    // enabled overlay mounts its scroller in the same commit; once hasMore goes
+    // false there's no reason to keep observing; and on the INITIAL open of a
+    // conversation with history the transcript is momentarily empty, so the
+    // sentinel row is not rendered yet (`sentinelRef.current === null`) and the
+    // effect returns without observing. Messages then arrive asynchronously and
+    // mount the sentinel, but none of the other deps change, so without a mount
+    // signal the observer would never attach and scroll-up load-older would be
+    // dead on first open (#13953). topItemKey changes when the oldest message id
+    // lands, re-running the effect exactly when the sentinel mounts; re-subscribing
+    // on later prepends is a harmless no-op (stable sentinel node, in-flight guard).
   }, [enabled, hasMore, topItemKey, scrollRef, sentinelRef, triggerLoadOlder]);
 
   // Preserve viewport on prepend: after the older page grew the scroller
