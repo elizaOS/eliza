@@ -26,11 +26,11 @@ const RECALL_CORPUS = Number(process.env.MESSAGE_SEARCH_RECALL_CORPUS ?? 3_000);
 
 describe("searchMessages FTS + trigram (real DB)", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
-  let runtime: Awaited<ReturnType<typeof createIsolatedTestDatabase>>["runtime"];
   let cleanup: () => Promise<void>;
   let agentId: UUID;
   let entityId: UUID;
   let worldId: UUID;
+  let trigramAvailable = false;
   const roomA = v4() as UUID;
   const roomB = v4() as UUID;
   let seq = 0;
@@ -61,7 +61,7 @@ describe("searchMessages FTS + trigram (real DB)", () => {
   };
 
   const searchTexts = async (query: string, room: UUID = roomA) => {
-    const hits = await runtime.searchMessages({
+    const hits = await adapter.searchMessages({
       roomIds: [room],
       query,
       tableName: "messages",
@@ -73,9 +73,18 @@ describe("searchMessages FTS + trigram (real DB)", () => {
   beforeAll(async () => {
     const s = await createIsolatedTestDatabase("message_search_fts");
     adapter = s.adapter;
-    runtime = s.runtime;
     cleanup = s.cleanup;
     agentId = s.testAgentId;
+    try {
+      await (adapter.getDatabase() as DrizzleDatabase).execute(
+        sql`SELECT similarity('configuration', 'configuraton')`
+      );
+      trigramAvailable = true;
+    } catch {
+      // error-policy:J3 extension probing intentionally treats unsupported
+      // `pg_trgm` as absent in the PGlite harness.
+      trigramAvailable = false;
+    }
 
     worldId = v4() as UUID;
     await adapter.createWorld({
@@ -152,6 +161,11 @@ describe("searchMessages FTS + trigram (real DB)", () => {
     expect((await searchTexts("config")).some((t) => t.includes("configuration"))).toBe(true);
   });
 
+  it("4b. typo word (trigram) — 'configuraton' matches 'configuration'", async () => {
+    if (!trigramAvailable) return;
+    expect((await searchTexts("configuraton")).some((t) => t.includes("configuration"))).toBe(true);
+  });
+
   it("5. stemming — 'configure' matches 'configuring'", async () => {
     expect((await searchTexts("configure")).some((t) => t.includes("configuring"))).toBe(true);
   });
@@ -184,7 +198,7 @@ describe("searchMessages FTS + trigram (real DB)", () => {
   });
 
   it("11. near-duplicates all returned, deterministically ordered by recency then id", async () => {
-    const hits = await runtime.searchMessages({
+    const hits = await adapter.searchMessages({
       roomIds: [roomA],
       query: "zephyr",
       tableName: "messages",
@@ -198,7 +212,7 @@ describe("searchMessages FTS + trigram (real DB)", () => {
     const t1 = dups[1].memory.createdAt ?? 0;
     expect(t0).toBeGreaterThanOrEqual(t1);
     // Re-running the same query yields the identical order.
-    const hits2 = await runtime.searchMessages({
+    const hits2 = await adapter.searchMessages({
       roomIds: [roomA],
       query: "zephyr",
       tableName: "messages",
@@ -216,7 +230,7 @@ describe("searchMessages FTS + trigram (real DB)", () => {
   });
 
   it("13. role attribution surfaces via entityId (assistant vs user)", async () => {
-    const hits = await runtime.searchMessages({
+    const hits = await adapter.searchMessages({
       roomIds: [roomA],
       query: "configuring",
       tableName: "messages",
@@ -302,7 +316,7 @@ describe("searchMessages FTS + trigram (real DB)", () => {
       await db.insert(memoryTable).values(rows.slice(start, start + 2000) as never);
     }
     const started = Date.now();
-    const hits = await runtime.searchMessages({
+    const hits = await adapter.searchMessages({
       roomIds: [roomB],
       query: needle,
       tableName: "messages",
@@ -317,7 +331,7 @@ describe("searchMessages FTS + trigram (real DB)", () => {
   }, 120_000);
 
   it("18. empty room set short-circuits to no rows without a query", async () => {
-    const hits = await runtime.searchMessages({
+    const hits = await adapter.searchMessages({
       roomIds: [],
       query: "anything",
       tableName: "messages",
