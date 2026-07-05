@@ -291,6 +291,7 @@ async function dispatchOrchestratorRoutes(
       status: query.get("status") ?? undefined,
       search: query.get("search") ?? undefined,
       includeArchived: query.get("includeArchived") === "true",
+      projectId: query.get("projectId") ?? undefined,
       limit: parseLimit(query.get("limit")),
     });
     sendJson(res, { tasks });

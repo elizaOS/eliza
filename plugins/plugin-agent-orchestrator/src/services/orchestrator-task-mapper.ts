@@ -58,6 +58,9 @@ export interface TaskThreadDto {
    */
   latestWorkdir: string | null;
   latestRepo: string | null;
+  /** Registered Project this task is bound to (null = unbound). Lets the task
+   * list group by project without fetching each task's detail. */
+  projectId: string | null;
   latestActivityAt: number | null;
   decisionCount: number;
   usage: TaskUsageSummary;
@@ -416,6 +419,7 @@ export function toTaskThread(doc: OrchestratorTaskDocument): TaskThreadDto {
     latestSessionLabel: latest?.label ?? null,
     latestWorkdir: doc.task.boundWorkdir ?? latest?.workdir ?? null,
     latestRepo,
+    projectId: doc.task.projectId ?? null,
     latestActivityAt: doc.task.lastActivityAt,
     decisionCount: doc.decisions.length,
     usage: summarizeUsage(doc),

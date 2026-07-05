@@ -93,6 +93,7 @@ import {
   toTaskTimelineMessageDto,
 } from "./orchestrator-task-mapper.js";
 import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
+import { resolveTaskProjectId } from "./project-binding.js";
 import {
   type AttemptReflection,
   type CreateTaskInput,
@@ -1625,8 +1626,9 @@ export class OrchestratorTaskService extends Service {
   // ---- lifecycle ---------------------------------------------------------
 
   async createTask(input: CreateTaskInput): Promise<TaskThreadDetailDto> {
+    const bound = this.bindProject(input);
     const doc = await this.store.createTask(
-      await this.withDefaultAcceptanceCriteria(input),
+      await this.withDefaultAcceptanceCriteria(bound),
     );
     if (input.originalRequest) {
       await this.recordMessage(doc.task.id, {
@@ -1637,6 +1639,19 @@ export class OrchestratorTaskService extends Service {
     }
     const detail = await this.store.getTask(doc.task.id);
     return toTaskThreadDetail(detail ?? doc);
+  }
+
+  /**
+   * Stamp the task's project binding: an explicit `projectId` (validated against
+   * the registry) wins; otherwise the resolved `workdir` is realpath-matched to
+   * a registered project. The `workdir` hint is stripped so it is never
+   * persisted on the record — only the resolved `projectId` is. No match leaves
+   * the task unbound, preserving per-session workdir re-resolution.
+   */
+  private bindProject(input: CreateTaskInput): CreateTaskInput {
+    const projectId = resolveTaskProjectId(input);
+    const { workdir: _workdir, ...rest } = input;
+    return { ...rest, projectId };
   }
 
   /**

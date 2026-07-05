@@ -293,6 +293,7 @@ function newTaskDocument(input: CreateTaskInput): OrchestratorTaskDocument {
     currentPlan: input.currentPlan,
     ownerUserId: input.ownerUserId,
     worldId: input.worldId,
+    projectId: input.projectId,
     roomId: input.roomId,
     taskRoomId: input.taskRoomId,
     projectId: input.projectId,
@@ -983,6 +984,10 @@ export class RuntimeDbTaskStore {
     if (filter.search?.trim()) {
       clauses.push("search_text LIKE ?");
       params.push(`%${filter.search.trim().toLowerCase()}%`);
+    }
+    if (filter.projectId?.trim()) {
+      clauses.push("project_id = ?");
+      params.push(filter.projectId.trim());
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const limit =
