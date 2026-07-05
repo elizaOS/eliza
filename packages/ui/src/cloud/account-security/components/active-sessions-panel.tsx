@@ -4,55 +4,11 @@
  * instead of issuing dead account-session calls on every Security page load.
  */
 
-import { useState } from "react";
-import { toast } from "sonner";
-import { BrandButton, BrandCard, CornerBrackets } from "../../../cloud-ui";
+import { BrandCard, CornerBrackets } from "../../../cloud-ui";
 import { useCloudT } from "../../shell/CloudI18nProvider";
-import { emitAuditEvent } from "../data/audit-client";
-
-interface SessionRow {
-  id: string;
-  device?: string | null;
-  ip?: string | null;
-  user_agent?: string | null;
-  last_seen?: string | null;
-  current?: boolean;
-}
-
-type SessionsState =
-  | { kind: "loading" }
-  | { kind: "missing" }
-  | { kind: "ready"; sessions: SessionRow[] }
-  | { kind: "error"; message: string };
 
 export function ActiveSessionsPanel() {
   const t = useCloudT();
-  const [state] = useState<SessionsState>({ kind: "missing" });
-  const [revoking, setRevoking] = useState<string | null>(null);
-
-  const revoke = async (id: string) => {
-    setRevoking(id);
-    try {
-      await emitAuditEvent({
-        action: "auth.session.revoke",
-        result: "allow",
-        resource: { type: "session", id },
-      });
-      toast.success(
-        t("cloud.activeSessions.revoked", { defaultValue: "Session revoked" }),
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      toast.error(
-        t("cloud.activeSessions.revokeFailed", {
-          message,
-          defaultValue: "Failed to revoke session: {{message}}",
-        }),
-      );
-    } finally {
-      setRevoking(null);
-    }
-  };
 
   return (
     <BrandCard className="relative">
@@ -71,76 +27,11 @@ export function ActiveSessionsPanel() {
             })}
           </p>
         </div>
-        {state.kind === "loading" ? (
-          <p className="text-sm text-white/50">
-            {t("cloud.activeSessions.loading", {
-              defaultValue: "Loading sessions…",
-            })}
-          </p>
-        ) : state.kind === "missing" ? (
-          <p className="text-sm text-white/50">
-            {t("cloud.activeSessions.notAvailable", {
-              defaultValue:
-                "Session listing isn't available yet on this server.",
-            })}
-          </p>
-        ) : state.kind === "error" ? (
-          <p className="text-sm text-red-300">{state.message}</p>
-        ) : state.sessions.length === 0 ? (
-          <p className="text-sm text-white/50">
-            {t("cloud.activeSessions.noOther", {
-              defaultValue: "No other active sessions found.",
-            })}
-          </p>
-        ) : (
-          <ul className="divide-y divide-white/10">
-            {state.sessions.map((s) => (
-              <li
-                key={s.id}
-                className="flex items-center justify-between gap-3 py-2 text-sm"
-              >
-                <div className="space-y-0.5">
-                  <p className="font-medium text-white">
-                    {s.device ??
-                      t("cloud.activeSessions.unknownDevice", {
-                        defaultValue: "Unknown device",
-                      })}
-                    {s.current ? (
-                      <span className="ml-2 rounded-sm border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-green-300">
-                        {t("cloud.activeSessions.current", {
-                          defaultValue: "current",
-                        })}
-                      </span>
-                    ) : null}
-                  </p>
-                  <p className="font-mono text-[11px] text-white/50">
-                    {t("cloud.activeSessions.ipLastSeen", {
-                      ip: s.ip ?? "—",
-                      lastSeen: s.last_seen
-                        ? new Date(s.last_seen).toLocaleString()
-                        : "—",
-                      defaultValue: "{{ip}} · last seen {{lastSeen}}",
-                    })}
-                  </p>
-                </div>
-                <BrandButton
-                  size="sm"
-                  variant="outline"
-                  disabled={revoking === s.id || s.current}
-                  onClick={() => void revoke(s.id)}
-                >
-                  {revoking === s.id
-                    ? t("cloud.activeSessions.revoking", {
-                        defaultValue: "Revoking…",
-                      })
-                    : t("cloud.activeSessions.revoke", {
-                        defaultValue: "Revoke",
-                      })}
-                </BrandButton>
-              </li>
-            ))}
-          </ul>
-        )}
+        <p className="text-sm text-white/50">
+          {t("cloud.activeSessions.notAvailable", {
+            defaultValue: "Session listing is unavailable on this server.",
+          })}
+        </p>
       </div>
     </BrandCard>
   );

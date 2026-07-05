@@ -1,17 +1,17 @@
 /**
- * Account-security panel tests for the pinned-unavailable design (#13666).
+ * Account-security panel tests for unavailable launch surfaces.
  *
- * The Worker does not currently expose MFA status or session enumeration, so
- * both panels hold the explicit designed-unavailable state and must not fire
- * dead requests on Security page load. These tests pin that contract: the
- * unavailable copy renders, it never reads as a healthy success state, and no
- * account-security API call leaves either panel. If the backend ships real
- * /api/v1/me/mfa or /api/v1/sessions data flows, rewire the panels first and
- * replace these pins with DTO-driven tests.
+ * The cloud Worker does not expose account-security read/write routes for these
+ * panels yet, so the UI must render explicit unavailable states without firing
+ * dead account calls, fabricating successful requests, or reading unavailable
+ * data as a healthy empty state.
  */
 
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { render, screen } from "@testing-library/react";
 import type { ButtonHTMLAttributes, PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,10 +40,34 @@ vi.mock("../../../cloud-ui", () => ({
   ),
   BrandCard: ({ children }: PropsWithChildren) => <section>{children}</section>,
   CornerBrackets: () => null,
+  Switch: ({
+    checked,
+    onCheckedChange: _onCheckedChange,
+    ...props
+  }: PropsWithChildren<{
+    checked?: boolean;
+    onCheckedChange?: unknown;
+    "data-testid"?: string;
+  }>) => <input type="checkbox" checked={checked} readOnly {...props} />,
+}));
+
+vi.mock("lucide-react", () => ({
+  Camera: () => <span data-testid="icon-camera" />,
+  Download: () => <span data-testid="icon-download" />,
+  Lock: () => <span data-testid="icon-lock" />,
+  ScrollText: () => <span data-testid="icon-scroll-text" />,
+  Trash2: () => <span data-testid="icon-trash" />,
 }));
 
 vi.mock("../data/audit-client", () => ({
   emitAuditEvent: vi.fn(),
+}));
+
+vi.mock("../data/consent-store", () => ({
+  getTrajectoryLoggingEnabled: vi.fn(() => false),
+  getVisionEnabled: vi.fn(() => false),
+  setTrajectoryLoggingEnabled: vi.fn(),
+  setVisionEnabled: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -55,6 +79,10 @@ vi.mock("sonner", () => ({
 
 import { ActiveSessionsPanel } from "./active-sessions-panel";
 import { MfaPanel } from "./mfa-panel";
+import { RecentAuditEvents } from "./recent-audit-events";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const PRIVACY_PANEL_SOURCE = path.join(HERE, "privacy-panel.tsx");
 
 describe("account-security panels", () => {
   beforeEach(() => {
@@ -62,27 +90,39 @@ describe("account-security panels", () => {
     apiFetchMock.mockReset();
   });
 
-  it("renders the designed MFA-unavailable state without firing a dead request", async () => {
+  it("renders MFA unavailable without calling the missing status endpoint", () => {
     render(<MfaPanel />);
 
-    expect(
-      await screen.findByText(/MFA enrollment is not yet available/i),
-    ).toBeTruthy();
-    // Unavailable must never read as MFA-disabled success.
+    expect(screen.getByText(/MFA enrollment is unavailable/i)).toBeTruthy();
     expect(screen.queryByText(/MFA is not enabled/i)).toBeNull();
     expect(apiMock).not.toHaveBeenCalled();
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
-  it("renders the designed sessions-unavailable state without firing a dead request", async () => {
+  it("renders sessions unavailable without calling session inventory", () => {
     render(<ActiveSessionsPanel />);
 
-    expect(
-      await screen.findByText(/Session listing isn't available yet/i),
-    ).toBeTruthy();
-    // Unavailable must never read as a healthy empty session list.
+    expect(screen.getByText(/Session listing is unavailable/i)).toBeTruthy();
     expect(screen.queryByText(/No other active sessions found/i)).toBeNull();
     expect(apiMock).not.toHaveBeenCalled();
     expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("renders audit events unavailable without calling the missing read route", () => {
+    render(<RecentAuditEvents />);
+
+    expect(screen.getByText(/Audit log reading is unavailable/i)).toBeTruthy();
+    expect(apiMock).not.toHaveBeenCalled();
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps DSR controls disabled without wiring missing export/delete endpoints", () => {
+    const source = readFileSync(PRIVACY_PANEL_SOURCE, "utf8");
+
+    expect(source).toContain("Export unavailable");
+    expect(source).toContain("Deletion unavailable");
+    expect(source).toContain('data-testid="delete-account-trigger"');
+    expect(source).not.toContain("/api/v1/me/export");
+    expect(source).not.toContain("/api/v1/me/delete-request");
   });
 });

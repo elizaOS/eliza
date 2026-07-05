@@ -3,9 +3,8 @@
  *   - vision / screen-capture consent toggle (local consent store)
  *   - trajectory logging toggle (local consent store)
  *
- * DSR export/deletion jobs are not exposed by the Worker yet. Keep those
- * controls visible but disabled so the launch surface does not issue dead
- * `/api/v1/me/*` calls or imply a request was scheduled.
+ * DSR export/deletion controls are disabled when the Worker does not expose
+ * those jobs, so the launch surface never implies that a request was scheduled.
  */
 
 import { Camera, Download, ScrollText, Trash2 } from "lucide-react";
@@ -65,7 +64,6 @@ export function PrivacyPanel() {
           </p>
         </div>
 
-        {/* Vision toggle */}
         <div className="flex items-start justify-between gap-3 rounded-sm border border-white/10 bg-black/40 p-4">
           <div className="flex items-start gap-3">
             <div className="rounded-sm border border-purple-500/40 bg-purple-500/20 p-2">
@@ -92,7 +90,6 @@ export function PrivacyPanel() {
           />
         </div>
 
-        {/* Trajectory logging toggle */}
         <div className="flex items-start justify-between gap-3 rounded-sm border border-white/10 bg-black/40 p-4">
           <div className="flex items-start gap-3">
             <div className="rounded-sm border border-[var(--brand-orange)]/40 bg-[var(--brand-orange)]/15 p-2">
@@ -119,7 +116,6 @@ export function PrivacyPanel() {
           />
         </div>
 
-        {/* DSR — Export */}
         <div className="flex items-start justify-between gap-3 rounded-sm border border-white/10 bg-black/40 p-4">
           <div className="flex items-start gap-3">
             <div className="rounded-sm border border-green-500/40 bg-green-500/20 p-2">
@@ -144,8 +140,7 @@ export function PrivacyPanel() {
             variant="outline"
             disabled
             title={t("cloud.privacyPanel.exportComingSoon", {
-              defaultValue:
-                "Data export is coming soon — not yet available on this server.",
+              defaultValue: "Data export is unavailable on this server.",
             })}
           >
             {t("cloud.privacyPanel.exportUnavailable", {
@@ -154,7 +149,6 @@ export function PrivacyPanel() {
           </BrandButton>
         </div>
 
-        {/* DSR — Delete */}
         <div className="flex items-start justify-between gap-3 rounded-sm border border-red-500/30 bg-red-500/5 p-4">
           <div className="flex items-start gap-3">
             <div className="rounded-sm border border-red-500/40 bg-red-500/20 p-2">
@@ -180,8 +174,7 @@ export function PrivacyPanel() {
             className="border-red-500/40 text-red-300"
             disabled
             title={t("cloud.privacyPanel.deletionComingSoon", {
-              defaultValue:
-                "Account deletion is coming soon — not yet available on this server.",
+              defaultValue: "Account deletion is unavailable on this server.",
             })}
             data-testid="delete-account-trigger"
           >

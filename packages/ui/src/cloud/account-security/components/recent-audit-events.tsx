@@ -4,20 +4,11 @@
  * unavailable state without issuing a dead account-audit request.
  */
 
-import { useState } from "react";
 import { BrandCard, CornerBrackets } from "../../../cloud-ui";
 import { useCloudT } from "../../shell/CloudI18nProvider";
-import { AuditEventList, type AuditEventRow } from "./AuditEventList";
-
-type AuditState =
-  | { kind: "loading" }
-  | { kind: "missing" }
-  | { kind: "ready"; events: AuditEventRow[] }
-  | { kind: "error"; message: string };
 
 export function RecentAuditEvents() {
   const t = useCloudT();
-  const [state] = useState<AuditState>({ kind: "missing" });
 
   return (
     <BrandCard className="relative">
@@ -36,21 +27,11 @@ export function RecentAuditEvents() {
             })}
           </p>
         </div>
-        {state.kind === "loading" ? (
-          <p className="text-sm text-white/50">
-            {t("cloud.recentAuditEvents.loading", { defaultValue: "Loading…" })}
-          </p>
-        ) : state.kind === "missing" ? (
-          <p className="text-sm text-white/50">
-            {t("cloud.recentAuditEvents.notExposed", {
-              defaultValue: "Audit log isn't exposed yet on this server.",
-            })}
-          </p>
-        ) : state.kind === "error" ? (
-          <p className="text-sm text-red-300">{state.message}</p>
-        ) : (
-          <AuditEventList events={state.events} />
-        )}
+        <p className="text-sm text-white/50">
+          {t("cloud.recentAuditEvents.notExposed", {
+            defaultValue: "Audit log reading is unavailable on this server.",
+          })}
+        </p>
       </div>
     </BrandCard>
   );
