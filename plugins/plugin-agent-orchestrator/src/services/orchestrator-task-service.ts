@@ -241,6 +241,10 @@ const INDEPENDENT_ACP_VERIFIER_NAME = "independent-acp-verifier";
 /** Cap on child trajectories ingested per task_complete (#13775) so a runaway
  *  sub-agent can't flood the task doc; the store's MAX_ARTIFACTS also clamps. */
 const MAX_CHILD_TRAJECTORY_ARTIFACTS = 20;
+/** Title prefix for an ingested sub-agent trajectory artifact. Kept as a
+ * constant so the #14110 dedupe fallback (parse the id back out of the title
+ * for pre-stamp records) stays in lockstep with how the title is written. */
+const TRAJECTORY_TITLE_PREFIX = "Sub-agent trajectory ";
 
 /** Default upper bound on how long the independent verifier session may run
  *  before its await is abandoned (treated as inconclusive). Overridable via
@@ -1241,10 +1245,33 @@ export class OrchestratorTaskService extends Service {
     }
     if (files.length === 0) return [];
 
+    // Idempotency: the trajectory dir is per-TASK but this runs per-session-
+    // completion (#14110). Two paths would otherwise duplicate: (a) a follow-up
+    // prompt RE-COMPLETING the same session re-scans the same files, and (b) a
+    // RESPAWNED session B on the same task re-scans session A's files — worse,
+    // it would stamp B's correlation (sessionId/parentStepId) onto trajectories
+    // A actually recorded, corrupting the file↔DB trace join #13871 exists to
+    // provide. Both are the same defect: re-ingesting an already-attached file.
+    //
+    // The stable dedupe key is the recorder's `<trajectoryId>` (the file
+    // basename), scoped to the task. A trajectory id is already attached iff a
+    // `trajectory` artifact on THIS task carries it (correlation.childTrajectoryId,
+    // with a title-suffix fallback for older records). Skipping such files keeps
+    // ingest idempotent and preserves the ORIGINAL session's correlation.
+    const alreadyIngested = await this.ingestedTrajectoryIds(taskId);
+
+    // Drop files already attached to this task (re-completion or respawn-replay)
+    // BEFORE the cap so the cap governs only NEW trajectories — otherwise a
+    // task with >MAX already-ingested files could crowd out genuinely new ones.
+    const fresh = files.filter(
+      (path) => !alreadyIngested.has(basename(path, ".json")),
+    );
+    if (fresh.length === 0) return [];
+
     // Newest first, capped so a runaway child can't flood the task doc; the
     // store's MAX_ARTIFACTS also clamps.
     const withMtime = await Promise.all(
-      files.map(async (path) => ({
+      fresh.map(async (path) => ({
         path,
         mtimeMs: (await stat(path)).mtimeMs,
       })),
@@ -1262,7 +1289,7 @@ export class OrchestratorTaskService extends Service {
         taskId,
         sessionId,
         artifactType: "trajectory",
-        title: `Sub-agent trajectory ${trajectoryId}`,
+        title: `${TRAJECTORY_TITLE_PREFIX}${trajectoryId}`,
         path,
         verificationStatus: "pending",
         metadata: {
@@ -1280,12 +1307,57 @@ export class OrchestratorTaskService extends Service {
     }
 
     if (ingested.length > 0) {
+      // De-dupe the session's id list too: a re-completion of the SAME session
+      // could otherwise re-append ids that survived on the session record even
+      // when the artifact skip above prevented a duplicate artifact.
       const existing = session?.childTrajectoryIds ?? [];
-      await this.store.updateSession(sessionId, {
-        childTrajectoryIds: [...existing, ...ingested],
-      });
+      const merged = [...existing];
+      const seen = new Set(existing);
+      for (const id of ingested) {
+        if (!seen.has(id)) {
+          seen.add(id);
+          merged.push(id);
+        }
+      }
+      if (merged.length !== existing.length) {
+        await this.store.updateSession(sessionId, {
+          childTrajectoryIds: merged,
+        });
+      }
     }
     return ingested;
+  }
+
+  /**
+   * The set of child `<trajectoryId>`s already attached to a task as
+   * `trajectory` artifacts (#14110 dedupe key). Reads the correlation stamp the
+   * ingest writes (`correlation.childTrajectoryId`); falls back to the id parsed
+   * from the artifact title for records written before the stamp existed. Used
+   * to make {@link ingestChildTrajectories} idempotent across re-completions and
+   * respawned-session replays without double-attaching a file or overwriting the
+   * original session's correlation.
+   */
+  private async ingestedTrajectoryIds(taskId: string): Promise<Set<string>> {
+    const doc = await this.store.getTask(taskId);
+    const ids = new Set<string>();
+    if (!doc) return ids;
+    for (const artifact of doc.artifacts) {
+      if (artifact.artifactType !== "trajectory") continue;
+      const correlation = isRecord(artifact.metadata?.correlation)
+        ? artifact.metadata.correlation
+        : undefined;
+      const stamped = correlation ? str(correlation.childTrajectoryId) : undefined;
+      if (stamped) {
+        ids.add(stamped);
+        continue;
+      }
+      // Fallback for pre-#14110 records: title is `Sub-agent trajectory <id>`.
+      const fromTitle = artifact.title.startsWith(TRAJECTORY_TITLE_PREFIX)
+        ? artifact.title.slice(TRAJECTORY_TITLE_PREFIX.length).trim()
+        : undefined;
+      if (fromTitle) ids.add(fromTitle);
+    }
+    return ids;
   }
 
   /**
