@@ -35,6 +35,7 @@ import {
 	transcriptPreview,
 	transcriptSpeakerCount,
 } from "@elizaos/shared/transcripts";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import {
 	createWriteStream,
 	existsSync,
@@ -547,7 +548,7 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
 		process.env.MOBILE_WORKSPACE_ROOT ||
 		argvEnv.appSupportDir ||
 		process.env.ELIZA_WORKSPACE_DIR ||
-		process.env.ELIZA_STATE_DIR ||
+		readAliasedEnv("ELIZA_STATE_DIR") ||
 		process.env.ELIZA_HOME ||
 		(process.env.HOME
 			? `${process.env.HOME}/Library/Application Support/Eliza/workspace`
@@ -1943,11 +1944,8 @@ function callIosHost(
 	});
 }
 
-function resolveMobileStateDir(): string {
-	const explicit =
-		process.env.ELIZA_STATE_DIR ||
-		process.env.ELIZA_STATE_DIR ||
-		process.env.ELIZA_HOME;
+export function resolveMobileStateDir(): string {
+	const explicit = readAliasedEnv("ELIZA_STATE_DIR") || process.env.ELIZA_HOME;
 	if (explicit?.trim()) return explicit.trim();
 	if (process.env.HOME?.trim()) {
 		return path.join(process.env.HOME.trim(), ".eliza");
