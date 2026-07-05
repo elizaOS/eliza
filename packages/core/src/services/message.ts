@@ -10637,15 +10637,15 @@ export class DefaultMessageService implements IMessageService {
 				) {
 					return { kind: "noProvider" };
 				}
-				// Track the most recent slot's cause. Reporting "rate-limited"
-				// only when the LAST attempted slot was a 429 avoids misleading
-				// the user in a mixed-failure run (one slot throttled, others
-				// failed for unrelated reasons where retrying won't help). The
-				// all-429 cascade from the live incident still lands here.
+				// Credit exhaustion is sticky across slots because no later
+				// fallback model can make a drained account retryable. The
+				// rate/auth flags still track the most recent slot's cause:
+				// reporting "rate-limited" only when the LAST attempted slot was
+				// a 429 avoids misleading the user in a mixed-failure run.
 				// Credits are classified before rate limits below: a 429 *with*
 				// billing context is a drained balance ("top up"), not a
 				// transient throttle ("try again in a few seconds").
-				sawCreditsExhausted = isInsufficientCreditsError(error);
+				sawCreditsExhausted ||= isInsufficientCreditsError(error);
 				sawRateLimit = isRateLimitError(error);
 				sawAuthError = isAuthError(error);
 				runtime.logger.warn(
