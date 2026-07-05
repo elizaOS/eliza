@@ -143,4 +143,50 @@ describe("api-base-owner", () => {
       externalApiBase: null,
     });
   });
+
+  it("neutralizes a </script> breakout in the injected base and token (js/bad-code-sanitization)", () => {
+    // Both the base and the token flow verbatim into an inline <script>.
+    // JSON.stringify alone leaves `</script>`/`<script>` intact, so a crafted
+    // value could terminate the element and inject markup; the escaper must map
+    // the angle brackets so only the snippet's own closing tag survives.
+    setCurrent(
+      "http://127.0.0.1:31337/</script><script>alert(1)</script>",
+      "tok</script><img src=x onerror=alert(2)>",
+    );
+
+    const injected = injectIntoHtml("<html><head></head><body></body></html>");
+
+    // Exactly one real opening + closing tag — the injected snippet's own.
+    expect((injected.match(/<script>/g) ?? []).length).toBe(1);
+    expect((injected.match(/<\/script>/g) ?? []).length).toBe(1);
+    // The payload's angle brackets are emitted as \uXXXX escapes, not raw.
+    expect(injected).not.toContain('apiBase:"http://127.0.0.1:31337/</script>');
+    expect(injected).toContain("\\u003C/script\\u003E");
+    // The value still round-trips to the identical string at renderer parse
+    // time (the \uXXXX escapes decode back inside the JS string literal).
+    const baseLiteral = injected.match(/apiBase:("(?:[^"\\]|\\.)*")/)?.[1];
+    expect(baseLiteral).toBeDefined();
+    expect(JSON.parse(baseLiteral as string)).toBe(
+      "http://127.0.0.1:31337/</script><script>alert(1)</script>",
+    );
+  });
+
+  it("escapes U+2028 / U+2029 line separators in injected values", () => {
+    const ls = String.fromCharCode(0x2028);
+    const ps = String.fromCharCode(0x2029);
+    setCurrent(`http://127.0.0.1:31337/${ls}p`, `token${ps}x`);
+
+    const injected = injectIntoHtml("<html><head></head><body></body></html>");
+
+    // Raw separators are illegal in older JS string literals; they must be
+    // escaped, and the runtime value must still round-trip.
+    expect(injected).not.toContain(ls);
+    expect(injected).not.toContain(ps);
+    expect(injected).toContain("\\u2028");
+    expect(injected).toContain("\\u2029");
+    const baseLiteral = injected.match(/apiBase:("(?:[^"\\]|\\.)*")/)?.[1];
+    expect(JSON.parse(baseLiteral as string)).toBe(
+      `http://127.0.0.1:31337/${ls}p`,
+    );
+  });
 });
