@@ -27,6 +27,12 @@ vi.mock("../lib/use-session-auth", () => ({
   useSessionAuth: () => sessionState,
 }));
 
+// The header's account menu reads the credit balance; give it a stubbed value
+// so the console renders without a live QueryClient.
+vi.mock("../instances/lib/data/credits", () => ({
+  useCreditsBalance: () => ({ data: { balance: 12.5 } }),
+}));
+
 import {
   EnsurePageHeaderProvider,
   useSetPageHeader,
@@ -37,7 +43,6 @@ import { ConsoleShell } from "./ConsoleShell";
 const NAV_HREFS = [
   "/dashboard",
   "/dashboard/agents",
-  "/dashboard/apps",
   "/dashboard/billing",
   "/dashboard/api-keys",
   "/dashboard/account",
@@ -46,6 +51,8 @@ const NAV_HREFS = [
 
 /** De-navved surfaces — routable, but must NOT appear in the sidebar. */
 const CULLED_HREFS = [
+  // Apps moved into the Eliza app; the console route now redirects.
+  "/dashboard/apps",
   "/dashboard/my-agents",
   "/dashboard/mcps",
   "/dashboard/analytics",

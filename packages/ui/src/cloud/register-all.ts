@@ -39,13 +39,18 @@ import "./monetization/routes";
 import "./connectors/routes";
 import "./organization/routes";
 
+import { lazy } from "react";
 import { registerAdminCloudRoutes } from "./admin";
 import { registerApiExplorerCloudRoute } from "./api-explorer";
-import { registerApplicationsCloudRoutes } from "./applications";
+import {
+  APPLICATIONS_DETAIL_ROUTE_PATH,
+  APPLICATIONS_LIST_ROUTE_PATH,
+} from "./applications";
 import { registerJoinFlow } from "./join";
 import { registerMcpsCloudRoute } from "./mcps";
 import { registerPublicPages } from "./public-pages";
 import { registerCloudSettingsSections } from "./settings";
+import { registerCloudRoute } from "./shell/cloud-route-registry";
 
 let registered = false;
 
@@ -61,7 +66,22 @@ export function registerAllCloudSurfaces(): void {
   registerPublicPages();
 
   registerApiExplorerCloudRoute();
-  registerApplicationsCloudRoutes();
+  // The Applications module self-registers its real routes at import time (line
+  // 40's `import "./applications"` chain), but the console no longer surfaces
+  // Apps — management moved into the Eliza app. Override both paths (later
+  // same-path registration wins) so a stale /dashboard/apps link redirects to
+  // the dashboard. The applications components stay for the native eliza app.
+  const AppsMovedRoute = lazy(() => import("./applications/AppsMovedRoute"));
+  registerCloudRoute({
+    path: APPLICATIONS_LIST_ROUTE_PATH,
+    element: AppsMovedRoute,
+    group: "dashboard",
+  });
+  registerCloudRoute({
+    path: APPLICATIONS_DETAIL_ROUTE_PATH,
+    element: AppsMovedRoute,
+    group: "dashboard",
+  });
   registerAdminCloudRoutes();
   registerMcpsCloudRoute();
 

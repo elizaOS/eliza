@@ -13,13 +13,14 @@
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
+import { ChevronDown, LogOut } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
   useState,
   useSyncExternalStore,
 } from "react";
-import { Link, Navigate, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import {
   DashboardHeader,
   DashboardShellLayout,
@@ -29,7 +30,19 @@ import {
   PageHeaderProvider,
   usePageHeader,
 } from "../../cloud-ui/components/layout";
-import { hasHydratableStewardToken } from "../lib/steward-session";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../../components/ui/dropdown-menu";
+import { useCreditsBalance } from "../instances/lib/data/credits";
+import { formatUsd } from "../lib/format-usd";
+import {
+  clearStewardSession,
+  hasHydratableStewardToken,
+} from "../lib/steward-session";
 import { useSessionAuth } from "../lib/use-session-auth";
 import {
   CONSOLE_OVERVIEW_NAV_ITEM,
@@ -102,6 +115,58 @@ function ConsoleLogo(): ReactNode {
   );
 }
 
+/** Credits balance pill + the account dropdown (Account / Billing / Sign out) —
+ * the console's only sign-out affordance, so it must always be reachable.
+ * Sign-out goes through the shared `clearStewardSession` (server DELETE + local
+ * token clear), the same hardened teardown the auth cookie work relies on. */
+function ConsoleUserMenu({
+  email,
+}: {
+  email: string | null;
+}): React.JSX.Element {
+  const navigate = useNavigate();
+  const credits = useCreditsBalance();
+  const balance =
+    typeof credits.data?.balance === "number" ? credits.data.balance : null;
+
+  return (
+    <div className="flex items-center gap-2">
+      {balance !== null ? (
+        <span className="hidden rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/80 md:inline">
+          {formatUsd(balance)} credits
+        </span>
+      ) : null}
+      <DropdownMenu>
+        <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-white/70 outline-none hover:bg-white/5 hover:text-white">
+          <span className="hidden max-w-[160px] truncate md:inline">
+            {email ?? "Account"}
+          </span>
+          <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-44">
+          <DropdownMenuItem onSelect={() => navigate("/dashboard/account")}>
+            Account
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => navigate("/dashboard/billing")}>
+            Billing
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="text-red-400 focus:text-red-300"
+            onSelect={() => {
+              clearStewardSession();
+              navigate("/login", { replace: true });
+            }}
+          >
+            <LogOut className="mr-2 h-3.5 w-3.5" aria-hidden />
+            Sign out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 /** Top bar wired to the captured page header (title + actions) and the
  * signed-in identity. Lives inside PageHeaderProvider. */
 function ConsoleHeader({
@@ -116,13 +181,7 @@ function ConsoleHeader({
     <DashboardHeader
       onToggleSidebar={onToggleSidebar}
       pageInfo={pageInfo}
-      rightContent={
-        email ? (
-          <span className="hidden truncate text-xs text-white/62 md:inline">
-            {email}
-          </span>
-        ) : undefined
-      }
+      rightContent={<ConsoleUserMenu email={email} />}
     />
   );
 }

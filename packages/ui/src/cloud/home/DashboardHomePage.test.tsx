@@ -51,7 +51,6 @@ function renderHome(): void {
 /** The launch-core directory (mirrors the sidebar cut exactly). */
 const EXPECTED_LINKS = [
   "/dashboard/agents",
-  "/dashboard/apps",
   "/dashboard/billing",
   "/dashboard/api-keys",
   "/dashboard/account",
