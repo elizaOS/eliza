@@ -1317,6 +1317,20 @@ describe("buildIosXcuitestShardPlan (#13686)", () => {
       false,
     );
   });
+
+  it("treats a terminate of a not-running app as benign (fresh-container reset)", () => {
+    // `simctl terminate <udid> <bundle>` exits non-zero with this message when
+    // the app is installed but not currently running — the exact state a
+    // per-shard reset hits when it terminates before uninstalling (#13571).
+    expect(
+      isBenignIosAppAbsence(
+        'The request to terminate "ai.elizaos.app" failed. found nothing to terminate',
+      ),
+    ).toBe(true);
+    expect(isBenignIosAppAbsence("No matching processes belonging to you")).toBe(
+      true,
+    );
+  });
 });
 
 describe("evaluateRunnerStaleness (#13566)", () => {

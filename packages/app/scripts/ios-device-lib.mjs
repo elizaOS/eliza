@@ -921,7 +921,12 @@ export function findUncoveredIosXcuitestEntries({ entries, shards }) {
 }
 
 export function isBenignIosAppAbsence(output) {
-  return /not installed|not found|no such app|unknown application|does not exist|could not find/i.test(
+  // simctl reports an absent app differently per verb: uninstall/get-container
+  // say "not installed"/"could not find", while `terminate` against an app that
+  // is not currently running exits non-zero with "found nothing to terminate".
+  // For a fresh-container reset all of these mean the same benign thing — there
+  // was nothing to clean up — so the reset must not treat them as failures.
+  return /not installed|not found|no such app|unknown application|does not exist|could not find|found nothing to terminate|no matching processes|not currently running/i.test(
     String(output ?? ""),
   );
 }

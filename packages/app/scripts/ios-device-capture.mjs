@@ -763,27 +763,27 @@ async function main() {
       ["simctl", "get_app_container", simUdid, bundleId, "data"],
       { label: `reset ${label}: get data container`, required: false },
     );
+    // `simctl listapps` takes the device as its first positional and prints a
+    // NeXTSTEP plist. Xcode 26 dropped the `-j` JSON flag from this subcommand,
+    // so passing `-j` makes simctl read it as the device ("Invalid device: -j")
+    // and JSON.parse on the plist would fail regardless. We only need a presence
+    // proof that the bundle survived the reinstall, so match the bundle key in
+    // the plist text instead of parsing it.
     const listappsRaw = runCaptureCommand(
       "xcrun",
-      ["simctl", "listapps", "-j", simUdid],
+      ["simctl", "listapps", simUdid],
       { label: `reset ${label}: listapps proof` },
     );
-    let listappsEntry = null;
-    try {
-      const parsed = JSON.parse(listappsRaw);
-      listappsEntry = parsed?.[bundleId] ?? null;
-    } catch (error) {
-      fail(
-        `reset ${label}: could not parse simctl listapps proof (${error?.message ?? error})`,
-      );
-    }
-    if (!listappsEntry) {
+    const bundleKey = new RegExp(
+      `"${bundleId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*=`,
+    );
+    if (!bundleKey.test(listappsRaw)) {
       fail(`reset ${label}: ${bundleId} missing from simctl listapps proof`);
     }
     return {
       appContainer,
       dataContainer,
-      listappsEntry,
+      listappsPresent: true,
     };
   };
 
@@ -868,7 +868,12 @@ async function main() {
       args["only-testing"] ||
       (strictGate ? "AppUITests/BootCaptureUITests" : "AppUITests"),
   });
-  if (!args["only-testing"]) {
+  // The full-matrix coverage guard only applies to the DEFAULT lane that is
+  // meant to run every committed XCUITest class. `--strict-gate` deliberately
+  // narrows the plan to the boot/chat health class (BootCaptureUITests) — a
+  // boot gate is not a coverage gate — so it must not be rejected for "missing"
+  // the gesture/widget/device-extension matrix it was never asked to run.
+  if (!args["only-testing"] && !strictGate) {
     const uncovered = findUncoveredIosXcuitestEntries({
       entries: extractSwiftXcuitestEntries(collectAppUITestsSources()),
       shards: shardPlan.map((shard) => shard.identifier),
