@@ -1,17 +1,12 @@
 // @vitest-environment jsdom
-//
-// Contract test: validate the view's consumed shape against the REAL
-// @elizaos/capacitor-system implementation rather than hand-written mocks.
-//
-// vitest.config.ts aliases "@elizaos/capacitor-system" to the real
-// plugin-native-system/src/index.ts, so `System` here is the registered
-// Capacitor plugin proxy. In jsdom (no native bridge) it falls back to the
-// real `SystemWeb` web implementation — the same code that runs in a browser
-// build. We instantiate SystemWeb directly to assert its response satisfies the
-// DeviceSettingsStatus / SystemStatus contracts the view reads, then render the
-// view wired to the live `System` proxy and assert the volume cards/percentages
-// render from that real data. This proves the consumer parses the actual API
-// shape, not a fixture that could drift from the provider.
+
+/**
+ * Contract test: verifies `DeviceSettingsAppView` against the REAL
+ * `@elizaos/capacitor-system` web fallback (aliased in `vitest.config.ts`),
+ * not hand-written mocks — protects against the view's parsing assumptions
+ * drifting from the actual `DeviceSettingsStatus`/`SystemStatus` shapes the
+ * provider returns.
+ */
 
 import {
   type AndroidRoleName,

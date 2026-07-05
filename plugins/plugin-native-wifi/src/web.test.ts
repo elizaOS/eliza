@@ -1,3 +1,5 @@
+/** Covers only the `WiFiWeb` fallback's disabled default state, option validation, and the single-warning behavior; the native Android Kotlin implementation is untested here. */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WiFiWeb } from "./web";

@@ -1,3 +1,14 @@
+/**
+ * Unit tests for `createAlarmAction`'s context gating, subaction resolution,
+ * and platform `validate()` branch — pure logic, no process spawned (see
+ * `helper.test.ts` for the Swift IPC layer).
+ *
+ * #10471 — the ALARM action must route by the planner's structured context
+ * decision + structured params, NOT by English (or multilingual) keyword
+ * matching on raw message text. These pin that the removed `ALARM_TERMS` keyword
+ * bank and text-regex subaction inference stay gone.
+ */
+
 import type { Memory, State } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -5,13 +16,6 @@ import {
   hasAlarmContext,
   resolveSubaction,
 } from "../src/actions";
-
-/**
- * #10471 — the ALARM action must route by the planner's structured context
- * decision + structured params, NOT by English (or multilingual) keyword
- * matching on raw message text. These pin that the removed `ALARM_TERMS` keyword
- * bank and text-regex subaction inference stay gone.
- */
 
 function msg(text = "", content: Record<string, unknown> = {}): Memory {
   return {

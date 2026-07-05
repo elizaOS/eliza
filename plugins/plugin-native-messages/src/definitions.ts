@@ -1,3 +1,14 @@
+/**
+ * Type definitions for the `@elizaos/capacitor-messages` bridge.
+ *
+ * The native side is implemented in Kotlin under
+ * `android/src/main/java/ai/eliza/plugins/messages/MessagesPlugin.kt` and
+ * registered with Capacitor as `ElizaMessages`, wrapping Android's
+ * `SmsManager` (send) and `content://sms` provider (read). The web fallback
+ * in `./web.ts` throws on `sendSms` and resolves empty from `listMessages`
+ * rather than emulating SMS in the browser.
+ */
+
 export interface SendSmsOptions {
   address: string;
   body: string;

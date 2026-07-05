@@ -1,3 +1,9 @@
+/**
+ * Rollup config bundling the tsc-emitted ESM output into the IIFE and CJS
+ * artifacts a Capacitor plugin ships. `inlineDynamicImports` folds the lazy
+ * `import("./web")` in `index.ts` into each bundle so there is no separate
+ * chunk to resolve at load time.
+ */
 export default {
   input: "dist/esm/index.js",
   output: [

@@ -1,3 +1,10 @@
+/**
+ * Shared TypeScript type contracts for elizaOS native plugin bridges
+ * (Capacitor mobile, Electrobun desktop) and the Web Speech API shims that
+ * Swabble/TalkMode need. Type-only — no runtime values and no build step;
+ * consumers resolve straight to this source via `workspace:*`.
+ */
+
 /** Generic event callback used across Capacitor/Electrobun plugin bridges. */
 export type EventCallback<T = unknown> = (event: T) => void;
 

@@ -1,3 +1,13 @@
+/**
+ * Web fallback for `@elizaos/capacitor-mobile-signals`. Browsers have no
+ * HealthKit/Health Connect or Screen Time/Usage Stats access, so permission
+ * and screen-time state always report `"not-applicable"`/`"unavailable"`
+ * rather than fabricating granted/denied status. Device state (active,
+ * idle, background, battery) is approximated from `document.visibilityState`,
+ * window focus/blur, and the Battery Status API — all optional, feature-detected
+ * per call so a missing API degrades to `null` rather than throwing.
+ */
+
 import { WebPlugin } from "@capacitor/core";
 import type {
   MobileSignalsHealthSnapshot,

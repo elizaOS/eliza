@@ -1,3 +1,11 @@
+/**
+ * Covers the `SwabbleWeb` fallback against a faked `SpeechRecognition` and
+ * a faked Electrobun desktop bridge — permission reporting, config
+ * validation, wake-word/transcript event emission (including non-Latin
+ * scripts), and native-IPC bridge lifecycle. Not the native Swift/Kotlin
+ * implementations.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SwabbleWeb } from "./web";

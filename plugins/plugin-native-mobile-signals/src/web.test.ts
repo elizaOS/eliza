@@ -1,3 +1,9 @@
+/**
+ * Covers `MobileSignalsWeb`'s permission/settings/snapshot fallbacks over
+ * mocked `navigator`/`document` shapes — not the native HealthKit, Health
+ * Connect, or Screen Time paths.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MobileSignalsWeb } from "./web";

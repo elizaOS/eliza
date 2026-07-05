@@ -1,3 +1,5 @@
+/** Covers `createNativeWebsiteBlockerBackend`'s mapping between the Capacitor `WebsiteBlockerPlugin` shape and the `@elizaos/plugin-blocker` engine's `SelfControlStatus`/`SelfControlPermissionState` shapes, against a hand-built fake plugin (no real native or HTTP calls). */
+
 import { describe, expect, it, vi } from "vitest";
 
 import { createNativeWebsiteBlockerBackend } from "./backend";

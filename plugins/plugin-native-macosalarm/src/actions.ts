@@ -1,3 +1,13 @@
+/**
+ * Implements the ALARM action: resolves the requested subaction (set / cancel
+ * / list) from structured parameters only, then drives the Swift helper
+ * (`helper.ts`) to schedule, cancel, or enumerate macOS notification-based
+ * alarms. Routing is gated to the tasks/calendar/automation contexts and to
+ * the ADMIN role; see `hasAlarmContext` and `resolveSubaction` below for why
+ * routing and subaction inference deliberately never parse raw message text
+ * (#10471).
+ */
+
 import { randomUUID } from "node:crypto";
 import {
   type Action,

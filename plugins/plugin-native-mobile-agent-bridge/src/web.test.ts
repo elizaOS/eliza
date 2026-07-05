@@ -1,3 +1,8 @@
+/**
+ * Covers `MobileAgentBridgeWeb`'s option validation and idle/error state
+ * transitions — not the native iOS/Android WebSocket tunnel.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MobileAgentBridgeWeb } from "./web";

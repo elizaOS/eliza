@@ -1,3 +1,8 @@
+/**
+ * Source-text guard: keeps the overlay's copy compact by asserting removed
+ * paragraph-style helper text doesn't reappear in `DeviceSettingsAppView.tsx`.
+ */
+
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,3 +1,13 @@
+/**
+ * Web fallback for `@elizaos/capacitor-phone`. Calling, dialing, and
+ * transcript writes are Android-only capabilities with no browser
+ * equivalent, so those methods validate their input and then throw;
+ * `getStatus`/`listRecentCalls` resolve with disabled/empty results instead
+ * of throwing so read paths compile and degrade quietly off-Android.
+ * Validation runs before the Android-only rejection so malformed input is
+ * never silently swallowed by the platform check.
+ */
+
 import { WebPlugin } from "@capacitor/core";
 
 import type {

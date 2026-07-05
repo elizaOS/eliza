@@ -1,3 +1,12 @@
+/**
+ * Smoke test for the native shared-types contract package (issue #9943: it
+ * shipped with zero tests). The package exposes only type contracts used across
+ * the Capacitor/Electrobun native bridges, so this (a) proves the module is
+ * importable at runtime and (b) constructs values against the exported generic
+ * contracts and exercises them — a compile-time + runtime guard that the
+ * contracts stay consumable and behave as documented.
+ */
+
 import { describe, expect, test } from "bun:test";
 import type {
   EventCallback,
@@ -7,14 +16,6 @@ import type {
 } from "./index";
 import * as sharedTypes from "./index";
 
-/**
- * Smoke test for the native shared-types contract package (issue #9943: it
- * shipped with zero tests). The package exposes only type contracts used across
- * the Capacitor/Electrobun native bridges, so this (a) proves the module is
- * importable at runtime and (b) constructs values against the exported generic
- * contracts and exercises them — a compile-time + runtime guard that the
- * contracts stay consumable and behave as documented.
- */
 describe("@elizaos/native-plugin-shared-types", () => {
   test("the module is importable at runtime", () => {
     expect(typeof sharedTypes).toBe("object");

@@ -1,3 +1,14 @@
+/**
+ * Web fallback for `@elizaos/capacitor-websiteblocker`. Unlike the
+ * Android/iOS implementations, which enforce blocking on-device (VPN DNS /
+ * Safari content blocker), the browser has no equivalent primitive — this
+ * class instead proxies every method to the Eliza runtime's
+ * `/api/website-blocker` HTTP API, which is the actual enforcement point on
+ * web. Hostname inputs are normalized and validated here (protocol/wildcard
+ * stripping, IDN lowercasing, requiring a public dot) before being sent, so
+ * the server only ever receives well-formed hostnames.
+ */
+
 import { WebPlugin } from "@capacitor/core";
 import type {
   StartWebsiteBlockOptions,

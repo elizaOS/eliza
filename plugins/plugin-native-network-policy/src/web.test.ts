@@ -1,3 +1,9 @@
+/**
+ * Covers `NetworkPolicyWeb`'s conservative fallbacks over the various shapes
+ * `navigator.connection` can take across browsers — not the native
+ * Android/iOS bridge.
+ */
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import { NetworkPolicyWeb } from "./web";

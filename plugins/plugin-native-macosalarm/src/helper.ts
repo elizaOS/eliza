@@ -1,3 +1,13 @@
+/**
+ * Spawns the compiled Swift helper binary and speaks its line-delimited JSON
+ * IPC protocol: one JSON request written to stdin, one JSON response taken
+ * from the last non-empty stdout line (earlier lines may be helper debug
+ * output). Refuses to run on non-darwin platforms unless a test supplies
+ * `spawnImpl`, and throws `MacosAlarmHelperUnavailableError` — distinct from a
+ * real alarm-scheduling failure — when darwin but the binary hasn't been
+ * built yet (see `scripts/build-helper.mjs`).
+ */
+
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";

@@ -1,3 +1,14 @@
+/**
+ * Web/desktop fallback for `@elizaos/capacitor-swabble`. In-browser it runs
+ * wake-word detection directly against the Web Speech API via
+ * `WakeWordGate`; on desktop (Electrobun) it detects the
+ * `window.__ELIZA_ELECTROBUN_RPC__` bridge and delegates start/stop/config
+ * to the native Whisper.cpp backend, additionally capturing raw PCM in the
+ * renderer and streaming it to the main process over IPC. `setAudioDevice`
+ * throws unconditionally — the Web Speech API has no device-selection API,
+ * so there is no fallback to provide.
+ */
+
 import { WebPlugin } from "@capacitor/core";
 import type {
   SpeechRecognitionCtor,
@@ -156,13 +167,11 @@ class WakeWordGate {
       const triggerIndex = normalizedTranscript.indexOf(trigger);
       if (triggerIndex === -1) continue;
 
-      // Extract command after the trigger phrase
       const commandStart = triggerIndex + trigger.length;
       const command = transcript.slice(commandStart).trim();
 
       if (command.length < this.minCommandLength) continue;
 
-      // postGap=-1 indicates timing unavailable on web platform
       return { wakeWord: trigger, command, postGap: -1 };
     }
     return null;
@@ -492,7 +501,6 @@ export class SwabbleWeb extends WebPlugin {
   async stop(): Promise<void> {
     this.isActive = false;
 
-    // Clean up native IPC if in native mode
     if (this.usingNativeIpc) {
       this.usingNativeIpc = false;
       this.removeNativeListeners();
@@ -533,7 +541,6 @@ export class SwabbleWeb extends WebPlugin {
       }
     }
 
-    // Sync to native IPC if active
     if (this.usingNativeIpc) {
       void this.invokeDesktopRequest({
         rpcMethod: "swabbleUpdateConfig",

@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the `MessagesWeb` fallback: input validation (address/body/
+ * limit, including hostile coercion attempts) and the always-throws /
+ * always-empty Android-only contract. Does not exercise the real Kotlin
+ * `SmsManager` / `content://sms` side.
+ */
+
 import { describe, expect, it } from "vitest";
 
 import type { ListMessagesOptions, SendSmsOptions } from "./definitions";

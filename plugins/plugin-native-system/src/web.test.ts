@@ -1,3 +1,5 @@
+/** Covers only the `SystemWeb` fallback's default values and validation/rejection messages; the native Kotlin side is untested here. */
+
 import { describe, expect, it } from "vitest";
 
 import { SystemWeb } from "./web";

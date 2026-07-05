@@ -1,3 +1,14 @@
+/**
+ * Web fallback for `@elizaos/capacitor-talkmode`, loaded on browser/desktop
+ * platforms without a native bridge. Bridges the Web Speech API
+ * (`SpeechRecognition` + `SpeechSynthesis`) to the same `TalkModePlugin`
+ * surface the native iOS/Android/Electrobun implementations expose.
+ * ElevenLabs streaming TTS is CORS-blocked in browsers, so `speak()` always
+ * falls through to system `SpeechSynthesis` (`usedSystemTts` is always
+ * `true` here). `startAudioFrames` has no Web Speech equivalent and always
+ * resolves `{ started: false }`.
+ */
+
 import { WebPlugin } from "@capacitor/core";
 import type {
   SpeechRecognitionCtor,
@@ -44,7 +55,6 @@ export class TalkModeWeb extends WebPlugin {
       this.config = { ...this.config, ...options.config };
     }
 
-    // Check for Web Speech API support
     const SpeechRecognitionAPI: SpeechRecognitionCtor | undefined =
       ((window as SpeechRecognitionWindow).SpeechRecognition as
         | SpeechRecognitionCtor
@@ -67,7 +77,6 @@ export class TalkModeWeb extends WebPlugin {
     this.enabled = true;
     this.setState("listening", "Listening");
 
-    // Initialize speech recognition
     this.recognition = new SpeechRecognitionAPI();
     this.recognition.continuous = true;
     this.recognition.interimResults = true;
@@ -83,8 +92,8 @@ export class TalkModeWeb extends WebPlugin {
       this.notifyListeners("transcript", { transcript, isFinal });
 
       if (isFinal && transcript.trim()) {
-        // Note: Full talk mode flow would need Gateway plugin integration
-        // For web, we just emit the transcript
+        // Web only emits the transcript event; it does not drive chat
+        // orchestration itself (unlike the native start()/stop() flow).
       }
     };
 
@@ -227,16 +236,13 @@ export class TalkModeWeb extends WebPlugin {
     };
   }
 
-  async stopAudioFrames(): Promise<void> {
-    // no-op on web
-  }
+  async stopAudioFrames(): Promise<void> {}
 
   async isCapturingAudioFrames(): Promise<{ capturing: boolean }> {
     return { capturing: false };
   }
 
   async checkPermissions(): Promise<TalkModePermissionStatus> {
-    // Check microphone permission
     let microphone: TalkModePermissionStatus["microphone"] = "prompt";
     try {
       const result = await navigator.permissions?.query?.({
@@ -250,10 +256,10 @@ export class TalkModeWeb extends WebPlugin {
         microphone = result.state;
       }
     } catch {
-      // Permissions API may not support microphone query
+      // Older browsers lack the Permissions API microphone descriptor; fall
+      // through to the "prompt" default set above.
     }
 
-    // Check if speech recognition is supported
     const SpeechRecognitionAPI: SpeechRecognitionCtor | undefined =
       ((window as SpeechRecognitionWindow).SpeechRecognition as
         | SpeechRecognitionCtor
@@ -269,7 +275,8 @@ export class TalkModeWeb extends WebPlugin {
   }
 
   async requestPermissions(): Promise<TalkModePermissionStatus> {
-    // Request microphone permission by attempting to get user media
+    // getUserMedia is the only way to trigger the browser's mic permission
+    // prompt; the stream itself is discarded once it has done its job.
     try {
       const stream = await navigator.mediaDevices?.getUserMedia?.({
         audio: true,
@@ -279,7 +286,8 @@ export class TalkModeWeb extends WebPlugin {
         track.stop();
       });
     } catch {
-      // Permission denied or error
+      // Denied or unsupported — checkPermissions() below reports the
+      // resulting state instead of surfacing the raw error here.
     }
 
     return this.checkPermissions();

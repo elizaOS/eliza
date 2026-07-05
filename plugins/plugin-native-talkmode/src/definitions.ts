@@ -1,3 +1,17 @@
+/**
+ * Type definitions for the @elizaos/capacitor-talkmode bridge — the full
+ * voice-conversation surface (start/stop, TTS `speak`, permission checks,
+ * the state/transcript/speaking/playback event stream, and raw PCM frame
+ * capture for diarization/VAD/wake-word).
+ *
+ * Native iOS/Android/Electrobun drive STT via the platform recognizer and
+ * TTS via ElevenLabs streaming (PCM/MP3) with system-TTS fallback; the web
+ * fallback in `./web.ts` uses the Web Speech API only, since ElevenLabs
+ * streaming is CORS-blocked in browsers. `startAudioFrames` is a
+ * native-only diarization tap — Android cannot run `AudioRecord` and
+ * `SpeechRecognizer` concurrently, so starting it suspends STT for the
+ * capture's duration; it no-ops with an explicit error on web.
+ */
 import type { PluginListenerHandle } from "@capacitor/core";
 
 /**

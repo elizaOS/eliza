@@ -1,3 +1,18 @@
+/**
+ * Full-screen Android device-settings overlay: brightness, per-stream
+ * volume, default-role assignment (Home/Phone/SMS/Assistant), and shortcuts
+ * into system settings panels — all read/written through the
+ * `@elizaos/capacitor-system` native bridge (`System.*`). Rendered via
+ * `deviceSettingsApp.loader` (`device-settings-app.ts`), so it must stay
+ * self-contained with no module-level side-effect imports.
+ *
+ * Brightness/volume writes require Android's `WRITE_SETTINGS` permission;
+ * the view surfaces a permission button rather than failing silently when
+ * `canWriteSettings` is false. Values from the bridge are clamped
+ * client-side (`clampUnit`/`clampVolumeValue`) since a stale or racing OS
+ * read can report brightness/volume outside the valid range.
+ */
+
 import {
   type AndroidRoleName,
   type AndroidRoleStatus,

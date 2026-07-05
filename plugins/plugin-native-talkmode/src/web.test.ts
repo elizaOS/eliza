@@ -1,3 +1,5 @@
+/** Covers only the `TalkModeWeb` Web Speech API fallback — unsupported-browser handling, transcript sanitization, and TTS completion/error mapping; the native iOS/Android/Electrobun STT+ElevenLabs paths are untested here. */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TalkModeWeb } from "./web";

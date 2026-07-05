@@ -1,3 +1,5 @@
+/** `@elizaos/capacitor-mobile-signals` — registers the `MobileSignals` Capacitor bridge, loading the browser fallback in `./web` lazily on non-native platforms. */
+
 import { registerPlugin } from "@capacitor/core";
 import type { MobileSignalsPlugin } from "./definitions";
 

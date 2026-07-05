@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `runHelper`'s stdin/stdout JSON framing, driven against a
+ * fake spawned process (`EventEmitter` + `PassThrough` streams) — no real
+ * Swift binary involved. See `integration.macos.test.ts` for that.
+ */
+
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";

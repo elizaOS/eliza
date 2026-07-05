@@ -1,5 +1,14 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers `DeviceSettingsAppView` rendering and interactions against a
+ * hand-mocked `@elizaos/capacitor-system` bridge — populated data display,
+ * apply/refresh/role-request flows, empty states, and hostile bridge values
+ * (NaN brightness, out-of-range volume) that must be clamped before being
+ * written back. Shape fidelity against the real bridge is covered
+ * separately by `device-settings-contract.test.ts`.
+ */
+
 import type {
   DeviceSettingsStatus,
   SystemStatus,

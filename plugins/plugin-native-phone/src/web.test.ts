@@ -1,3 +1,9 @@
+/**
+ * Covers only the `PhoneWeb` no-op/validation fallback (status disabled,
+ * mutating calls rejected, input sanitized before rejection) — not the
+ * native Kotlin Telecom/CallLog side.
+ */
+
 import { describe, expect, it } from "vitest";
 
 import { PhoneWeb } from "./web";

@@ -1,3 +1,5 @@
+/** Covers only that `MlKitTextWeb.recognize` rejects off-Android; the native ML Kit path is untested here. */
+
 import { describe, expect, it } from "vitest";
 import { MlKitTextWeb } from "./web";
 

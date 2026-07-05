@@ -1,3 +1,11 @@
+/**
+ * Type definitions for the `@elizaos/capacitor-mlkit-text` bridge, published
+ * as the Capacitor plugin `Tesseract` so `@elizaos/plugin-vision`'s
+ * renderer-pulled OCR bridge can call it with a `Tesseract`-compatible
+ * surface without bundling Tesseract binaries. `recognize()` runs Google ML
+ * Kit's text recognizer on Android; there is no iOS or web implementation.
+ */
+
 export interface MlKitTextWord {
   text: string;
   left: number;

@@ -1,3 +1,5 @@
+/** Covers only `WebsiteBlockerWeb`'s hostname/duration validation and its HTTP proxying to `/api/website-blocker` against a mocked `fetch`; the Android VPN and iOS content-blocker enforcement paths are untested here. */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WebsiteBlockerWeb } from "./web";

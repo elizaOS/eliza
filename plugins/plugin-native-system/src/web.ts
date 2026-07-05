@@ -1,3 +1,15 @@
+/**
+ * Web fallback for `@elizaos/capacitor-system`, loaded on non-Android
+ * platforms. Read-only status queries (`getStatus`, `getDeviceSettings`)
+ * resolve with safe placeholder data so type-only/non-Android consumers
+ * compile and run cleanly; every action that requires real OS control
+ * (settings shortcuts, role requests, brightness/volume writes) throws,
+ * since silently no-oping a permission or hardware write would be worse
+ * than an explicit error. Input validation (role/stream/range checks) runs
+ * before the platform-unavailable error so malformed calls fail on their
+ * own merits rather than being masked by the Android-only rejection.
+ */
+
 import { WebPlugin } from "@capacitor/core";
 
 import type {

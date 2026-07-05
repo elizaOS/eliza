@@ -1,3 +1,15 @@
+/**
+ * Type definitions for the @elizaos/capacitor-phone bridge to Android's
+ * Telecom and CallLog APIs.
+ *
+ * The native side is implemented in Kotlin under
+ * android/src/main/java/ai/eliza/plugins/phone/PhonePlugin.kt and is
+ * registered with Capacitor as `ElizaPhone`. The web fallback in `./web.ts`
+ * rejects mutating calls (calling/dialing/transcripts are Android-only) but
+ * resolves `listRecentCalls` with an empty array so read paths compile and
+ * degrade quietly on non-Android platforms.
+ */
+
 export interface PlaceCallOptions {
   number: string;
 }

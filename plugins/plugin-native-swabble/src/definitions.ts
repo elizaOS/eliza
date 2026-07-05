@@ -1,3 +1,16 @@
+/**
+ * Type definitions for the @elizaos/capacitor-swabble bridge: wake-word
+ * detection and live speech transcription.
+ *
+ * Native implementations: Swift `Speech`/`AVFoundation` on iOS/macOS
+ * (`ios/Sources/SwabblePlugin/SwabblePlugin.swift`), Kotlin
+ * `SpeechRecognizer` on Android (`android/.../SwabblePlugin.kt`). The web
+ * fallback in `./web.ts` uses the Web Speech API directly in-browser, or
+ * delegates to an Electrobun/Whisper.cpp desktop bridge when present —
+ * `postGap`/segment timing fields are only meaningful off-web, since the
+ * Web Speech API exposes no word-level timing.
+ */
+
 import type { PluginListenerHandle } from "@capacitor/core";
 
 /**

@@ -1,3 +1,9 @@
+/**
+ * Wire types for the line-delimited JSON IPC protocol between the TS action
+ * layer and the Swift helper binary (`helper.ts`, `swift-helper/main.swift`),
+ * plus the action-level parameter/result shapes consumed by `actions.ts`.
+ */
+
 export type MacosAlarmAction = "schedule" | "cancel" | "list" | "permission";
 
 export interface MacosAlarmHelperRequest {

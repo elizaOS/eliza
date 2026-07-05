@@ -1,4 +1,14 @@
 #!/usr/bin/env node
+/**
+ * Build-time wiring check for iOS Screen Time / DeviceActivity support:
+ * confirms the app entitlements, Xcode build settings, DeviceActivity
+ * extension targets/Info.plists, and podspec framework links are all
+ * present before a build ships a Screen Time feature that Apple's
+ * FamilyControls entitlement (provisioned per-app, not requestable at
+ * runtime) would otherwise silently disable. Optionally inspects a
+ * supplied `.mobileprovision` for the same entitlement — binary profiles
+ * are decoded via macOS's `security cms`, so that check is a no-op off Darwin.
+ */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

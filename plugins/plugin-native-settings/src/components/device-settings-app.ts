@@ -1,3 +1,11 @@
+/**
+ * `OverlayApp` descriptor for the Android device-settings overlay —
+ * the entire runtime surface this plugin contributes (no actions,
+ * providers, or services). `androidOnly: true` keeps it out of the apps
+ * grid on non-Android shells; the view itself is lazy-loaded so importing
+ * this module never pulls in React/the UI bundle.
+ */
+
 import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 
 export const DEVICE_SETTINGS_APP_NAME = "@elizaos/plugin-native-settings";

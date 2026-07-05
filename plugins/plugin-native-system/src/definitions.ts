@@ -1,3 +1,16 @@
+/**
+ * Type definitions for the @elizaos/capacitor-system bridge.
+ *
+ * The native side is implemented in Kotlin under
+ * android/src/main/java/ai/eliza/plugins/system/SystemPlugin.kt and is
+ * registered with Capacitor as `ElizaSystem`. It exposes Android
+ * RoleManager status, system-settings shortcuts, screen-brightness, and
+ * per-stream audio-volume control. The web fallback in `./web.ts` returns
+ * safe read defaults for status/settings queries but throws for every
+ * Android-only action (settings shortcuts, role requests, brightness/volume
+ * writes) — callers must guard those with a platform check rather than
+ * expect empty-data silence.
+ */
 export type AndroidRoleName = "home" | "dialer" | "sms" | "assistant";
 
 export interface AndroidRoleStatus {

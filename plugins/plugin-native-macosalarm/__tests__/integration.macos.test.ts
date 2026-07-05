@@ -1,3 +1,18 @@
+/**
+ * requires.os: "macos"
+ *
+ * Darwin-only integration test: compiles `swift-helper/main.swift` with
+ * `swiftc` and invokes the resulting binary end-to-end via `runHelper`.
+ * Skipped on non-darwin so CI on other OSes stays green.
+ *
+ * `UNUserNotificationCenter` requires the binary to run inside a signed app
+ * bundle; invoked as a bare CLI it throws `NSInternalInconsistencyException`
+ * ("bundleProxyForCurrentProcess is nil"). Packaging/signing is owned by
+ * eliza-devops (deferred per T8b), so this test accepts that documented
+ * bundle-proxy error as a valid "ran but unbundled" outcome alongside a real
+ * structured response.
+ */
+
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -5,18 +20,6 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { runHelper } from "../src/helper";
-
-// requires.os: "macos"
-//
-// Builds the Swift helper with swiftc and invokes it end-to-end. Skipped on
-// non-darwin so CI on other OSes stays green.
-//
-// Note: UNUserNotificationCenter requires the binary to live inside a signed
-// app bundle at runtime. Invoked as a bare CLI, it throws
-// NSInternalInconsistencyException about `bundleProxyForCurrentProcess is
-// nil`. Packaging/signing is owned by eliza-devops (deferred per T8b); this
-// test therefore asserts the helper builds and runs, and accepts the known
-// bundle-proxy error as a documented "unbundled" signal.
 
 const isMac = process.platform === "darwin";
 const suite = isMac ? describe : describe.skip;

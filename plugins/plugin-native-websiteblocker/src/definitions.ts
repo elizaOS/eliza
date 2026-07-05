@@ -1,3 +1,15 @@
+/**
+ * Type definitions for the @elizaos/capacitor-websiteblocker bridge, which
+ * enforces website blocking with a different mechanism per platform: a
+ * split-tunnel VPN with DNS-level filtering on Android
+ * (android/.../WebsiteBlockerPlugin.kt), a Safari content-blocker extension
+ * backed by shared App Group `UserDefaults` on iOS
+ * (ios/Sources/WebsiteBlockerPlugin/), and a proxy to the Eliza runtime's
+ * `/api/website-blocker` HTTP API on web (`./web.ts`). `engine` and
+ * `settingsTarget` distinguish which mechanism is active so callers can
+ * render platform-appropriate consent/settings UI rather than assuming
+ * hosts-file semantics.
+ */
 export type WebsiteBlockerPermissionStatus =
   | "granted"
   | "denied"

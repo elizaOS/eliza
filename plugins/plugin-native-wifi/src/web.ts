@@ -1,3 +1,12 @@
+/**
+ * Web fallback for `@elizaos/capacitor-wifi`, loaded on non-Android
+ * platforms. Every read resolves with empty/disabled data (see the class
+ * docblock below) rather than throwing, so browser/desktop dev sessions and
+ * type-only consumers keep working; a single console warning per session
+ * (`warnOnce`) signals that no real Wi-Fi data is available instead of
+ * repeating on every call.
+ */
+
 import { WebPlugin } from "@capacitor/core";
 
 import type {

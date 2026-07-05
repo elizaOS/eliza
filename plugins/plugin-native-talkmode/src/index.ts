@@ -1,3 +1,5 @@
+/** Registers the `TalkMode` Capacitor plugin and re-exports its types; see `./definitions.ts` for the bridge contract. */
+
 import { registerPlugin } from "@capacitor/core";
 import type { TalkModePlugin } from "./definitions";
 

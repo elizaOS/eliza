@@ -1,3 +1,5 @@
+/** Covers the overlay descriptor's shape and that registration forwards it verbatim to `registerOverlayApp` — a mocked `@elizaos/ui`, not the real registry. */
+
 import { describe, expect, it, vi } from "vitest";
 
 const registerOverlayApp = vi.hoisted(() => vi.fn());

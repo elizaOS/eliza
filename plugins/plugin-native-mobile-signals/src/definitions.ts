@@ -1,3 +1,14 @@
+/**
+ * Type definitions for the `@elizaos/capacitor-mobile-signals` bridge
+ * (`MobileSignalsPlugin`), which surfaces device wake/lock/battery state
+ * and health/screen-time signals to Eliza mobile agents. iOS backs
+ * `screenTime`/health fields with HealthKit + FamilyControls/DeviceActivity
+ * (permanently coarse — see `rawUsageExportAvailable` below); Android backs
+ * them with Health Connect + `PACKAGE_USAGE_STATS`. `scheduleBackgroundRefresh`
+ * / `cancelBackgroundRefresh` are structurally present but always report
+ * `scheduled: false` / `cancelled: false` — no native implementation
+ * registers a background task today.
+ */
 import type { PluginListenerHandle } from "@capacitor/core";
 
 export type MobileSignalsPlatform = "android" | "ios" | "web";

@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// Builds the macOS alarm helper binary via `swiftc`.
-//
-// Outputs the binary to `bin/macosalarm-helper` inside this package so the
-// TS runtime can locate it deterministically. Skips on non-darwin platforms.
+/**
+ * Builds the macOS alarm helper binary via `swiftc`, writing it to
+ * `bin/macosalarm-helper` inside this package so the TS runtime
+ * (`src/helper.ts`) can locate it deterministically. Skips on non-darwin
+ * platforms.
+ */
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, statSync } from "node:fs";

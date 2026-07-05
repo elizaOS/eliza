@@ -1,3 +1,11 @@
+/**
+ * Web fallback for `@elizaos/capacitor-messages`. SMS is an Android-only
+ * capability with no browser equivalent, so `sendSms` always rejects and
+ * `listMessages` always resolves empty — but both still run the same input
+ * validation as the native side first, so malformed payloads fail identically
+ * on every platform rather than only surfacing on Android.
+ */
+
 import { WebPlugin } from "@capacitor/core";
 
 import type {

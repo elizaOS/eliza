@@ -1,3 +1,9 @@
+/**
+ * Exercises `validateIosScreenTimeBuildWiring` against real, temp-directory
+ * entitlements/Xcode-project/podspec fixtures (written and torn down per
+ * test) rather than mocking `fs` — the checks are plain text/plist parsing,
+ * so the fixture files are the fastest faithful stand-in for a real iOS app tree.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

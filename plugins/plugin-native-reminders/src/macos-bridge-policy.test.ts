@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `appleRemindersMacosBridgeCandidates`'s candidate ordering
+ * and env-override opt-in/opt-out. Pure path-string logic — no filesystem or
+ * EventKit access.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME,
