@@ -11,7 +11,7 @@
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { readWorkspaceFolderConfig } from "@elizaos/core";
+import { getActiveProject, readWorkspaceFolderConfig } from "@elizaos/core";
 import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
 
 const EXPLICIT_WORKSPACE_DIR_KEYS = ["ELIZA_WORKSPACE_DIR"] as const;
@@ -78,6 +78,17 @@ export function resolveDefaultAgentWorkspaceDir(
   const explicitWorkspaceDir = readWorkspaceDirOverride(env);
   if (explicitWorkspaceDir) {
     return resolveUserPath(explicitWorkspaceDir);
+  }
+
+  // The active project in <stateDir>/projects.json wins over the legacy
+  // single-folder config: it is the first-class replacement for it, and the
+  // desktop picker upserts+activates a project here. When projects.json is
+  // absent the registry synthesizes an active project from the legacy
+  // workspace-folder.json (see readProjectRegistry), so this step subsumes the
+  // legacy read below without changing behavior for a lone picked folder.
+  const activeProject = getActiveProject(env);
+  if (activeProject?.localPath?.trim()) {
+    return resolveUserPath(activeProject.localPath);
   }
 
   // Store-distributed desktop builds write the user-picked workspace folder
