@@ -117,6 +117,7 @@ import {
   isAppWindowRoute,
 } from "@elizaos/ui/navigation";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
+import { isStandalonePwa } from "@elizaos/ui/platform";
 import {
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,
@@ -2488,6 +2489,19 @@ function setupPlatformStyles(): void {
 
   if (isNative) {
     document.body.classList.add("native");
+  }
+
+  // Installed PWA on the WEB platform (iOS home-screen app, chrome-less Android
+  // PWA): tag the body so base.css/styles.css apply the mobile touch-viewport
+  // lockdown + #14319 large-viewport geometry. This is the SECONDARY path: the
+  // CSS-first `@media (display-mode: standalone) and (pointer: coarse)` rules
+  // are the source of truth (they land even when this class does not), but the
+  // class is kept for back-compat (legacy iOS Safari signalling only via
+  // navigator.standalone) and parity with the @elizaos/ui setupPlatformStyles.
+  // Scoped to `platform === "web"`: the native build already locks via `native`
+  // and desktop (electrobun) must keep its window scroll/trackpad behavior.
+  if (platform === "web" && isStandalonePwa()) {
+    document.body.classList.add("pwa-standalone");
   }
 
   const chatOverlayShell = isChatOverlayWindowShell(windowShellRoute);

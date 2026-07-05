@@ -361,6 +361,51 @@ body.pwa-standalone {
   --text-2xs: 0.6875rem;
 }
 
+/* ─── CSS-FIRST installed-PWA lockdown (detection-independent) ───
+   The block above relies on the JS-added `body.pwa-standalone` class
+   (platform/init.ts). On a real installed iOS home-screen PWA that class
+   PROVABLY does not land: the app entry (packages/app/src/main.tsx) runs its
+   own local `setupPlatformStyles()` that never calls `isStandalonePwa()`, so
+   #14293/#14319 had zero effect on device (band + dead swipe persisted) while
+   the pure-CSS scrollbar fix (#14294, a `@media (display-mode: standalone)`
+   rule) WORKED on the same device.
+
+   So make the media query the source of truth: apply the SAME touch-viewport
+   lockdown whenever the display-mode is standalone/fullscreen, with NO
+   dependence on any JS class. Gated on `(pointer: coarse)` so a desktop
+   browser window in fullscreen (F11) — a fine pointer — keeps its normal
+   scroll/trackpad behavior and is never locked. The JS class above stays as a
+   back-compat/secondary path (e.g. legacy iOS Safari where
+   `navigator.standalone` is the only signal and display-mode may be absent). */
+@media all and (display-mode: standalone) and (pointer: coarse),
+  all and (display-mode: fullscreen) and (pointer: coarse) {
+  /* biome-ignore lint/style/noDescendingSpecificity: intentional bare-body lockdown that must win regardless of the JS class landing. */
+  body {
+    touch-action: pan-x pan-y;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    --text-3xs: 0.625rem;
+    --text-2xs: 0.6875rem;
+  }
+
+  /* Keep typing surfaces selectable — the global lockdown disables selection
+     to protect gestures, but inputs must still allow type/select/copy/paste. */
+  body input,
+  body textarea,
+  body [contenteditable="true"],
+  body [data-chat-selectable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+}
+
 /* Allow text selection inside inputs/contenteditable so users can still type,
    select, copy and paste. */
 body.native input,

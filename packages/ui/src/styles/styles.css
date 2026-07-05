@@ -164,6 +164,50 @@ body.pwa-standalone textarea {
   resize: none;
 }
 
+/* ─── CSS-FIRST installed-PWA geometry (detection-independent) ───
+   Mirror of the `body.pwa-standalone` rules above, gated on the standalone/
+   fullscreen display-mode + a coarse pointer instead of the JS-added class.
+   This is the SOURCE OF TRUTH for the installed iOS PWA because the class does
+   not land on device (app/main.tsx runs a local setupPlatformStyles that never
+   tags the body — see base.css note + issue). Same three rules the class path
+   applies: `pan-y` (hand horizontal drags to the app rail/grabber), the #14319
+   large-viewport (100lvh) fixed-body geometry (kills the residual bottom black
+   band + restores the swipe-up flick zone), and the #root 100dvh lock. Desktop
+   fullscreen (fine pointer) is excluded by `(pointer: coarse)`. */
+@media all and (display-mode: standalone) and (pointer: coarse),
+  all and (display-mode: fullscreen) and (pointer: coarse) {
+  /* biome-ignore lint/style/noDescendingSpecificity: intentional bare-body geometry that must apply regardless of the JS class landing. */
+  body {
+    position: fixed;
+    touch-action: pan-y;
+    top: 0;
+    left: 0;
+    right: 0;
+    /* Release `bottom` (base.css lockdown sets inset: 0 => bottom: 0): with
+       top + height driving the box, a leftover bottom would re-anchor the fixed
+       body to the collapsed layout-viewport bottom — the #14319 bug. */
+    bottom: auto;
+    height: 100vh;
+    height: 100dvh;
+    height: 100lvh;
+    /* Warm ember floor: any sub-pixel seam at the true bottom reads as
+       lock-screen ambience, never the near-black --launch-bg band. */
+    background-color: color-mix(in srgb, var(--launch-bg, #160d07) 82%, #ef5a1f);
+  }
+
+  /* biome-ignore lint/style/noDescendingSpecificity: intentional bare #root lock mirroring body.pwa-standalone #root. */
+  body #root {
+    min-height: 100dvh;
+    max-height: 100dvh;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body textarea {
+    resize: none;
+  }
+}
+
 /* ─── Mobile safe-area: top banners ───
    The app column (App.tsx) reserves the status-bar safe area with
    `padding-top: var(--safe-area-top)` so view headers + back buttons sit below

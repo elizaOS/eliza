@@ -37,6 +37,7 @@ export {
   isIOS,
   isNative,
   isPopoutWindow,
+  isStandalonePwa,
   isWebPlatform,
   platform,
   type ShareTargetFile,

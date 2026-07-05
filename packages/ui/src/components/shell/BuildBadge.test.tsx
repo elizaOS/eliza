@@ -57,8 +57,9 @@ describe("BuildBadge", () => {
     mockFetchOk(BUILD_INFO);
     const user = userEvent.setup();
     render(<BuildBadge />);
-    const badge = await screen.findByTestId("build-badge");
-    await user.click(badge);
+    await screen.findByTestId("build-badge");
+    // The X button dismisses (the label button now opens diagnostics instead).
+    await user.click(screen.getByTestId("build-badge-dismiss"));
     expect(screen.queryByTestId("build-badge")).toBeNull();
     expect(window.sessionStorage.getItem("eliza.buildBadge.dismissed")).toBe(
       "1",
@@ -71,6 +72,29 @@ describe("BuildBadge", () => {
     render(<BuildBadge />);
     expect(screen.queryByTestId("build-badge")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("opens the on-device diagnostics overlay on badge tap", async () => {
+    mockFetchOk(BUILD_INFO);
+    const user = userEvent.setup();
+    render(<BuildBadge />);
+    const badge = await screen.findByTestId("build-badge");
+    expect(screen.queryByTestId("build-badge-diag")).toBeNull();
+    await user.click(badge);
+    const diag = await screen.findByTestId("build-badge-diag");
+    // The overlay must surface the ground-truth rows that decide the PWA
+    // lockdown so a screenshot ends the blind-fix loop.
+    expect(diag.textContent).toContain("pwa-standalone");
+    expect(diag.textContent).toContain("display-mode");
+    expect(diag.textContent).toContain("100lvh");
+    expect(diag.textContent).toContain("safe-inset-bottom");
+    // Tapping the badge does NOT dismiss it.
+    expect(screen.queryByTestId("build-badge")).not.toBeNull();
+    // Close via the overlay's own close button.
+    await user.click(screen.getByTestId("build-badge-diag-close"));
+    expect(screen.queryByTestId("build-badge-diag")).toBeNull();
+    // Badge is still present after closing diagnostics.
+    expect(screen.queryByTestId("build-badge")).not.toBeNull();
   });
 
   it("renders nothing when build info is unavailable", async () => {

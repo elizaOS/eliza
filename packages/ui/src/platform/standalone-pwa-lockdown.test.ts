@@ -231,3 +231,120 @@ describe("CSS geometry contract — fixed-body ICB collapse fix (bottom black ba
     expect(nativeOwn ?? "").not.toContain("100lvh");
   });
 });
+
+describe("CSS-FIRST contract — media-query lockdown is detection-independent", () => {
+  // The decisive fix: the installed-PWA lockdown + #14319 geometry must NOT
+  // depend on the JS-added `body.pwa-standalone` class, because that class does
+  // not land on the real iOS PWA (app/main.tsx runs a local setupPlatformStyles
+  // that never tags the body). The pure-CSS `@media (display-mode: standalone)`
+  // rule PROVABLY matches on device (the #14294 scrollbar fix worked), so it is
+  // the source of truth. These assertions pin that the media-query blocks exist
+  // AND carry the load-bearing declarations, gated on `(pointer: coarse)` so a
+  // fine-pointer desktop fullscreen window is never locked.
+  const stylesDir = resolve(process.cwd(), "src/styles");
+  const baseCss = readFileSync(resolve(stylesDir, "base.css"), "utf8");
+  const stylesCss = readFileSync(resolve(stylesDir, "styles.css"), "utf8");
+
+  /** Extract the body of a `@media ... { ... }` at-rule whose prelude matches
+   *  `preludeIncludes` (all substrings) and whose body contains `bodyMarker`.
+   *  Balances nested braces so the whole media block (incl. inner rules) is
+   *  returned. */
+  function mediaBlock(
+    css: string,
+    preludeIncludes: string[],
+    bodyMarker: string,
+  ): string | null {
+    let i = 0;
+    while (true) {
+      const at = css.indexOf("@media", i);
+      if (at < 0) return null;
+      const open = css.indexOf("{", at);
+      if (open < 0) return null;
+      const prelude = css.slice(at + "@media".length, open);
+      // Balance braces from `open` to find the matching close.
+      let depth = 0;
+      let end = open;
+      for (let p = open; p < css.length; p++) {
+        if (css[p] === "{") depth++;
+        else if (css[p] === "}") {
+          depth--;
+          if (depth === 0) {
+            end = p;
+            break;
+          }
+        }
+      }
+      const body = css.slice(open + 1, end);
+      if (
+        preludeIncludes.every((s) => prelude.includes(s)) &&
+        body.includes(bodyMarker)
+      ) {
+        return body;
+      }
+      i = end + 1;
+    }
+  }
+
+  it("base.css gates the touch lockdown on display-mode + pointer:coarse (no JS class)", () => {
+    const block = mediaBlock(
+      baseCss,
+      ["display-mode: standalone", "pointer: coarse"],
+      "touch-action: pan-x pan-y",
+    );
+    expect(block).not.toBeNull();
+    // Fullscreen display-mode must also be covered (chrome-less PWA).
+    expect(block ?? "").not.toBeNull();
+    // The bare-body lockdown must claim touch-action + pin the body fixed.
+    expect(block ?? "").toContain("touch-action: pan-x pan-y");
+    expect(block ?? "").toMatch(/position:\s*fixed/);
+    expect(block ?? "").toMatch(/overscroll-behavior:\s*none/);
+  });
+
+  it("base.css standalone media prelude also matches fullscreen + guards pointer:coarse", () => {
+    // Assert the prelude carries BOTH display-modes and BOTH pointer guards so
+    // desktop fullscreen (fine pointer) is excluded.
+    const at = baseCss.indexOf(
+      "@media all and (display-mode: standalone) and (pointer: coarse)",
+    );
+    expect(at).toBeGreaterThan(-1);
+    const open = baseCss.indexOf("{", at);
+    const prelude = baseCss.slice(at + "@media".length, open);
+    expect(prelude).toContain("display-mode: standalone");
+    expect(prelude).toContain("display-mode: fullscreen");
+    // Every branch of the comma prelude must carry the coarse-pointer guard.
+    const branches = prelude.split(",");
+    for (const branch of branches) {
+      expect(branch).toContain("pointer: coarse");
+    }
+  });
+
+  it("styles.css gates the #14319 geometry (100lvh) on display-mode + pointer:coarse", () => {
+    const block = mediaBlock(
+      stylesCss,
+      ["display-mode: standalone", "pointer: coarse"],
+      "100lvh",
+    );
+    expect(block).not.toBeNull();
+    // The load-bearing large-viewport fix + its progressive fallbacks.
+    expect(block ?? "").toContain("100lvh");
+    expect(block ?? "").toContain("100dvh");
+    expect(block ?? "").toContain("100vh");
+    // Hand horizontal drags to the app gestures.
+    expect(block ?? "").toContain("touch-action: pan-y");
+    // Release `bottom` so top+height drive the box (the #14319 anchor fix).
+    expect(block ?? "").toMatch(/bottom:\s*auto/);
+    // Warm ember floor instead of the near-black --launch-bg band.
+    expect(block ?? "").toMatch(/background-color:\s*color-mix/);
+    expect(block ?? "").toContain("--launch-bg");
+  });
+
+  it("styles.css media block locks #root to the viewport too", () => {
+    const block = mediaBlock(
+      stylesCss,
+      ["display-mode: standalone", "pointer: coarse"],
+      "100lvh",
+    );
+    expect(block).not.toBeNull();
+    expect(block ?? "").toMatch(/#root\s*\{[\s\S]*?max-height:\s*100dvh/);
+  });
+});
