@@ -15,6 +15,7 @@ import {
 import { agentsRepository } from "../../../db/repositories/agents/agents";
 import { elizaRoomCharactersTable, userCharacters, users } from "../../../db/schemas";
 import { memoryTable, participantTable, roomTable } from "../../../db/schemas/eliza";
+import { ValidationError } from "../../api/cloud-worker-errors";
 import { cache } from "../../cache/client";
 import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../../cache/keys";
@@ -280,6 +281,12 @@ export class CharactersService {
       if (updates.username === null) {
         // Allow clearing username - no validation needed
         logger.info(`[Characters] Username cleared: @${character.username} → null`);
+      } else if (typeof updates.username !== "string") {
+        // The PUT route passes the request body through unvalidated, so
+        // username can be any JSON shape; a non-string can't be normalized or
+        // validated and must reject as a 400, not a TypeError 500 (#13637
+        // class).
+        throw ValidationError("Invalid username: must be a string");
       } else {
         const normalizedUsername = updates.username.toLowerCase();
         if (normalizedUsername !== character.username) {

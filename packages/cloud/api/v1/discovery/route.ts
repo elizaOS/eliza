@@ -286,8 +286,14 @@ async function fetchLocalAgents(
         char.name.toLowerCase().includes(query) ||
         (typeof char.bio === "string" &&
           char.bio.toLowerCase().includes(query)) ||
+        // bio is caller-supplied jsonb stored verbatim by the character
+        // routes, so array entries are not guaranteed to be strings — one
+        // malformed public character must not 500 the whole public catalog
+        // (#13637 class). Non-string entries simply can't match a text query.
         (Array.isArray(char.bio) &&
-          char.bio.some((b) => b.toLowerCase().includes(query))),
+          char.bio.some(
+            (b) => typeof b === "string" && b.toLowerCase().includes(query),
+          )),
     );
   }
 
@@ -299,7 +305,15 @@ async function fetchLocalAgents(
   }
 
   return characters.map((char): DiscoveredService => {
-    const bio = Array.isArray(char.bio) ? char.bio.join(" ") : char.bio;
+    // description must come out a string: getDiscoveryKey() and the query
+    // filter call .trim()/.toLowerCase() on it, so a non-string non-array bio
+    // (user-controlled jsonb, e.g. `{}`) would otherwise 500 every catalog
+    // listing — including unfiltered ones (#13637 class).
+    const bio = Array.isArray(char.bio)
+      ? char.bio.join(" ")
+      : typeof char.bio === "string"
+        ? char.bio
+        : "";
     const slug = "slug" in char ? (char as { slug?: string }).slug : undefined;
 
     return {
