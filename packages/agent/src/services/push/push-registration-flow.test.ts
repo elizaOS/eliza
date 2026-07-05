@@ -117,7 +117,11 @@ describe("push registration → delivery loop", () => {
       seq: 1,
       ts: Date.now(),
       stream: NOTIFICATION_STREAM,
-      data: { type: "notification", notification: notification(), unreadCount: 1 },
+      data: {
+        type: "notification",
+        notification: notification(),
+        unreadCount: 1,
+      },
     });
     await flush();
 

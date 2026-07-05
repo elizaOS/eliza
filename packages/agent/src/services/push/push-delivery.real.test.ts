@@ -54,8 +54,11 @@ describe.skipIf(!hasFcm)("FcmProvider live delivery (FCM v1)", () => {
 
 // Guard: when neither transport is credentialed the suite must not silently
 // vanish — record why, so "pending-hardware" is visible in the run output.
-describe.skipIf(hasApns || hasFcm)("push live delivery (no credentials)", () => {
-  it("is pending-hardware: set ELIZA_APNS_* / ELIZA_FCM_SERVICE_ACCOUNT to run", () => {
-    expect(hasApns || hasFcm).toBe(false);
-  });
-});
+describe.skipIf(hasApns || hasFcm)(
+  "push live delivery (no credentials)",
+  () => {
+    it("is pending-hardware: set ELIZA_APNS_* / ELIZA_FCM_SERVICE_ACCOUNT to run", () => {
+      expect(hasApns || hasFcm).toBe(false);
+    });
+  },
+);

@@ -68,9 +68,7 @@ let started = false;
 let registeredToken: string | null = null;
 
 /** Only the native mobile platforms carry a remote-push transport. */
-function pushPlatform(
-  platform: FrontendPlatform,
-): "ios" | "android" | null {
+function pushPlatform(platform: FrontendPlatform): "ios" | "android" | null {
   return platform === "ios" || platform === "android" ? platform : null;
 }
 
