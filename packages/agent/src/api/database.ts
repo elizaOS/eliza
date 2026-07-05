@@ -45,6 +45,16 @@ import {
   normalizeIpForPolicy,
 } from "../security/network-policy.ts";
 
+export {
+  stripSqlBlockComments,
+  stripSqlDollarQuotedLiterals,
+} from "../shared/sql-sanitizers.ts";
+
+import {
+  stripSqlBlockComments,
+  stripSqlDollarQuotedLiterals,
+} from "../shared/sql-sanitizers.ts";
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -1038,35 +1048,6 @@ async function handleDeleteRow(
 }
 
 /**
- * Strip non-nested C-style block comments (opened with slash-star, closed with
- * star-slash) from SQL in a single linear pass. Used instead of the obvious
- * `/\/\*[\s\S]*?\*\//g` regex because that regex's global re-scan is O(n²) on
- * adversarial input — a string with many block-comment openers and no closer
- * forces a fresh scan-to-end from every opener. Since the SQL text comes
- * straight off the request body, that quadratic blowup is a ReDoS vector.
- * An unterminated opener is left intact, matching the lazy regex's non-match.
- */
-export function stripSqlBlockComments(sql: string): string {
-  let result = "";
-  let i = 0;
-  while (i < sql.length) {
-    const open = sql.indexOf("/*", i);
-    if (open === -1) {
-      result += sql.slice(i);
-      break;
-    }
-    const close = sql.indexOf("*/", open + 2);
-    if (close === -1) {
-      result += sql.slice(i);
-      break;
-    }
-    result += sql.slice(i, open);
-    i = close + 2;
-  }
-  return result;
-}
-
-/**
  * POST /api/database/query
  * Execute a raw SQL query. Body: { sql: string, readOnly?: boolean }
  */
@@ -1108,9 +1089,10 @@ async function handleQuery(
     // Strip string literals so that mutation keywords/functions inside quoted
     // strings are ignored. Handles single-quoted ('...'), dollar-quoted
     // ($$...$$), and tagged dollar-quoted ($tag$...$tag$) strings.
-    const noLiterals = stripped
-      .replace(/\$([A-Za-z0-9_]*)\$[\s\S]*?\$\1\$/g, " ")
-      .replace(/'(?:[^']|'')*'/g, " ");
+    const noLiterals = stripSqlDollarQuotedLiterals(stripped).replace(
+      /'(?:[^']|'')*'/g,
+      " ",
+    );
 
     // For keyword checks, also strip double-quoted identifiers to avoid
     // matching words inside quoted table/column names.

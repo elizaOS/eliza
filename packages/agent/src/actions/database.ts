@@ -25,6 +25,10 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import type { ColumnInfo, TableInfo } from "@elizaos/shared";
+import {
+  stripSqlBlockComments,
+  stripSqlDollarQuotedLiterals,
+} from "../shared/sql-sanitizers.ts";
 
 // ---------------------------------------------------------------------------
 // Op dispatch
@@ -207,16 +211,14 @@ const DANGEROUS_FUNCTIONS = [
   "pg_advisory_unlock_all",
 ];
 
-function checkReadOnly(
+export function checkReadOnly(
   sqlText: string,
 ): { ok: true } | { ok: false; reason: string } {
-  const stripped = sqlText
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/--.*$/gm, "")
-    .trim();
-  const noLiterals = stripped
-    .replace(/\$([A-Za-z0-9_]*)\$[\s\S]*?\$\1\$/g, " ")
-    .replace(/'(?:[^']|'')*'/g, " ");
+  const stripped = stripSqlBlockComments(sqlText).replace(/--.*$/gm, "").trim();
+  const noLiterals = stripSqlDollarQuotedLiterals(stripped).replace(
+    /'(?:[^']|'')*'/g,
+    " ",
+  );
   const noStrings = noLiterals.replace(/"(?:[^"]|"")*"/g, " ");
 
   const mutation = new RegExp(

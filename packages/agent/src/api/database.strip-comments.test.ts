@@ -8,7 +8,10 @@
  * Deterministic, no server or DB.
  */
 import { describe, expect, it } from "vitest";
-import { stripSqlBlockComments } from "./database.ts";
+import {
+  stripSqlBlockComments,
+  stripSqlDollarQuotedLiterals,
+} from "./database.ts";
 
 describe("stripSqlBlockComments", () => {
   it("leaves comment-free SQL untouched", () => {
@@ -44,11 +47,36 @@ describe("stripSqlBlockComments", () => {
 
   it("is linear on the ReDoS input (many openers, no closer)", () => {
     // The old regex was O(n²) here and took seconds; this must finish in ms.
-    const evil = "/*" + "a/*".repeat(200_000);
+    const evil = `/*${"a/*".repeat(200_000)}`;
     const start = performance.now();
     const out = stripSqlBlockComments(evil);
     const elapsed = performance.now() - start;
     // No closing "*/" anywhere, so nothing is stripped.
+    expect(out).toBe(evil);
+    expect(elapsed).toBeLessThan(1000);
+  });
+});
+
+describe("stripSqlDollarQuotedLiterals", () => {
+  it("strips untagged and tagged dollar-quoted SQL literals", () => {
+    expect(
+      stripSqlDollarQuotedLiterals("SELECT $$DROP$$, $tag$ALTER$tag$"),
+    ).toBe("SELECT  ,  ");
+  });
+
+  it("leaves unterminated literals intact so the guard still sees following SQL", () => {
+    expect(
+      stripSqlDollarQuotedLiterals("SELECT $tag$ unterminated DELETE"),
+    ).toBe("SELECT $tag$ unterminated DELETE");
+  });
+
+  it("is linear on many unterminated dollar-quote openers", () => {
+    const evil = Array.from({ length: 50_000 }, (_, i) => `$tag${i}$x`).join(
+      "",
+    );
+    const start = performance.now();
+    const out = stripSqlDollarQuotedLiterals(evil);
+    const elapsed = performance.now() - start;
     expect(out).toBe(evil);
     expect(elapsed).toBeLessThan(1000);
   });
