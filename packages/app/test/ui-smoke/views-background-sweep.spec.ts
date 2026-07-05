@@ -1,19 +1,24 @@
 // Real-browser sweep of the unified-background contract (#9143 / #13452 /
-// #13538) across the `backgroundPolicy: "shared"` surfaces — not just Settings.
-// settings-background.spec.ts proved Settings' routed shell is transparent and
-// paints no opaque `bg-bg` over the wallpaper; this spec runs the SAME
-// no-opaque-ancestor assertion — via the shared
-// `assertNoOpaqueBackgroundAncestor` helper, parameterized by a per-view shell
-// selector — across every shared-policy surface (chat + settings) at desktop and
-// mobile, so the #13538 backgrounds catalog can't reintroduce an opaque layer on
-// any of them.
+// #13538) across the `backgroundPolicy: "shared"` surfaces BEYOND Settings.
+// settings-background.spec.ts already owns the Settings no-opaque-ancestor +
+// shader assertion end to end (its own routed-shell mount setup); this spec
+// runs the SAME assertion — via the shared `assertNoOpaqueBackgroundAncestor`
+// helper, parameterized by a per-view shell selector — on the OTHER shared
+// surface the #13538 backgrounds catalog can regress: the /chat overlay. That
+// generalizes the guard so a new catalog background can't reintroduce an opaque
+// layer over the wallpaper on the chat surface, at desktop and mobile.
 //
 // Scope note: only views declaring `backgroundPolicy: "shared"` (chat, settings,
 // launcher) sit on the unified fixed wallpaper; every OTHER view is `"opaque"` by
 // design (App.tsx normalizeBackgroundPolicy default) and correctly paints its own
 // `bg-bg`, so this no-opaque-ancestor rule does not apply to them — asserting it
-// there would be a false positive. Each shared surface is seeded over a known
-// shader wallpaper so the fixed background actually mounts.
+// there would be a false positive. Settings is deliberately NOT re-tested here:
+// its shared-shell mount needs the dedicated settings route+bridge setup that
+// settings-background.spec.ts already provides, and duplicating it would add no
+// coverage. The VIEW_CASES table + parameterized helper are the seam for adding
+// the launcher (or any future shared surface) without re-deriving the assertion.
+// Each shared surface is seeded over a known shader wallpaper so the fixed
+// background actually mounts.
 
 import { expect, test } from "@playwright/test";
 import {
@@ -38,7 +43,8 @@ interface ViewCase {
 }
 
 // Only `backgroundPolicy: "shared"` surfaces belong here (see the scope note in
-// the header). Chat and Settings both sit on the unified wallpaper.
+// the header). Settings is owned by settings-background.spec.ts; this sweep adds
+// the OTHER shared surface — /chat — and is the drop-in seam for the launcher.
 const VIEW_CASES: readonly ViewCase[] = [
   {
     name: "chat",
@@ -47,12 +53,6 @@ const VIEW_CASES: readonly ViewCase[] = [
     // the overlay is the stable per-view marker to walk up from.
     shellSelector: '[data-testid="continuous-chat-overlay"]',
     readySelector: '[data-testid="chat-composer-textarea"]',
-  },
-  {
-    name: "settings",
-    path: "/settings",
-    shellSelector: '[data-testid="settings-shell"]',
-    readySelector: '[data-testid="settings-shell"]',
   },
 ];
 

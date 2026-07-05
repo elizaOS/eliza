@@ -24,9 +24,18 @@ export const VIEW_HEADER_TESTID = "view-header";
  */
 export async function assertSharedViewHeaderContract(
   page: Page,
-  { requireTapTarget = false }: { requireTapTarget?: boolean } = {},
+  {
+    requireTapTarget = false,
+    within,
+  }: { requireTapTarget?: boolean; within?: string } = {},
 ): Promise<void> {
-  const header = page.getByTestId(VIEW_HEADER_TESTID).first();
+  // A route can float its view over the ambient home, so the page may carry more
+  // than one `view-header`. When the caller knows the routed view's shell
+  // (`within`), scope to the header INSIDE it so we assert the routed view's
+  // header, not whichever one paints first in the DOM.
+  const header = within
+    ? page.locator(within).getByTestId(VIEW_HEADER_TESTID).first()
+    : page.getByTestId(VIEW_HEADER_TESTID).first();
   await expect(
     header,
     "a normal view must render the shared ViewHeader ([data-testid=view-header])",
@@ -75,8 +84,13 @@ export async function assertSharedViewHeaderContract(
  * launcher grid by default, or a sub-view's hub — so this asserts survival + a
  * URL change away from the current route rather than a specific destination.
  */
-export async function clickViewHeaderBack(page: Page): Promise<void> {
-  const header = page.getByTestId(VIEW_HEADER_TESTID).first();
+export async function clickViewHeaderBack(
+  page: Page,
+  { within }: { within?: string } = {},
+): Promise<void> {
+  const header = within
+    ? page.locator(within).getByTestId(VIEW_HEADER_TESTID).first()
+    : page.getByTestId(VIEW_HEADER_TESTID).first();
   await expect(header).toBeVisible({ timeout: 30_000 });
   const back = header.getByRole("button").first();
   const urlBefore = page.url();

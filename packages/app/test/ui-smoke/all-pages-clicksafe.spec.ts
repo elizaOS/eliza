@@ -1643,7 +1643,11 @@ async function clickSafeAllowlist(
 
 test.beforeEach(async ({ page }) => {
   await installDesktopPermissionsBridge(page);
-  await seedAppStorage(page);
+  // Mark permissions already primed so the soft-ask "Set up Eliza" overlay never
+  // pops over a routed view mid-sweep (it renders above the shell and its buttons
+  // would otherwise be the first ones a header probe reaches). first-run is
+  // already complete via DEFAULT_APP_STORAGE; this closes the other gate.
+  await seedAppStorage(page, { "eliza:permissions-primed": "1" });
   await installSupplementalSafeRoutes(page);
   await installDefaultAppRoutes(page);
 });
@@ -1700,10 +1704,13 @@ test("shared ViewHeader back control navigates away without crashing (#13586)", 
   await page.setViewportSize(DESKTOP_PROBE.size);
 
   // Settings is a canonical `normal` view with the shared ViewHeader. Open it,
-  // assert the icon-only-back contract, then click back and assert the shell
-  // survives the navigation (no crash, no 404) and leaves the view.
+  // assert the icon-only-back contract on the SETTINGS shell's header (the route
+  // floats over the ambient home, which can carry its own header), then click
+  // back and assert the shell survives the navigation (no crash, no 404) and
+  // leaves the view.
+  const SETTINGS_SHELL = '[data-testid="settings-shell"]';
   await probeRoute(page, coreRouteProbe("settings"));
-  await assertSharedViewHeaderContract(page);
-  await clickViewHeaderBack(page);
+  await assertSharedViewHeaderContract(page, { within: SETTINGS_SHELL });
+  await clickViewHeaderBack(page, { within: SETTINGS_SHELL });
   await expectNoPageIssues(issues, "settings view-header back");
 });
