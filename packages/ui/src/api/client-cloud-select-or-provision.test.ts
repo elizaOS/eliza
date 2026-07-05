@@ -140,6 +140,48 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(createCloudCompatAgent).toHaveBeenCalledTimes(1);
   });
 
+  it("forwards forceCreate through the create branch so explicit new-agent requests cannot reuse an existing backend row", async () => {
+    const { client, getCloudCompatAgents, createCloudCompatAgent } =
+      fakeClient();
+    createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "agent-forced-new",
+        agentName: "Demo Fresh",
+        jobId: "job-1",
+        status: "provisioning",
+        nodeId: null,
+        message: "",
+      },
+    });
+    (client.getCloudCompatAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      data: makeAgent({
+        agent_id: "agent-forced-new",
+        agent_name: "Demo Fresh",
+        status: "provisioning",
+        web_ui_url: "https://agent-forced-new.example.test",
+        webUiUrl: "https://agent-forced-new.example.test",
+      }),
+    });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      name: "Demo Fresh",
+      forceCreate: true,
+    });
+
+    expect(getCloudCompatAgents).not.toHaveBeenCalled();
+    expect(createCloudCompatAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentName: "Demo Fresh",
+        forceCreate: true,
+      }),
+    );
+    expect(result.created).toBe(true);
+    expect(result.agentId).toBe("agent-forced-new");
+  });
+
   // First-run handoff: a freshly-created dedicated agent whose container is still
   // provisioning must start on the SHARED REST adapter base (the always-on
   // in-Worker runtime serves the first turn instantly) — NOT on the dedicated

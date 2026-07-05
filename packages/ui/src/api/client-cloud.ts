@@ -3194,6 +3194,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   const created = await this.createCloudCompatAgent({
     agentName: name,
     ...(bio?.length ? { agentConfig: { bio } } : {}),
+    ...(forceCreate ? { forceCreate: true } : {}),
     ...(preferSharedTier ? { preferSharedTier: true } : {}),
   });
   if (!created.success || !created.data.agentId) {
