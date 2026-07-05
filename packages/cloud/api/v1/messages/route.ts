@@ -45,6 +45,7 @@ import {
 import {
   canonicalizeCerebrasModelId,
   getLanguageModel,
+  isProviderConfigurationError,
   resolveAiProviderSource,
 } from "@/lib/providers/language-model";
 import { getRequestIdempotencyKey } from "@/lib/runtime/request-context";
@@ -505,6 +506,18 @@ function anthropicError(
   );
 }
 
+/**
+ * Client-facing message for an unresolvable model. Mirrors the
+ * /v1/chat/completions boundary (#13913): when `getLanguageModel` /
+ * the gateway raises a provider-configuration error (e.g. an unknown model on a
+ * deployment where only `AI_GATEWAY_API_KEY` is set, whose GatewayError message
+ * embeds internal setup guidance), the caller must see a clean, model-scoped
+ * error — never the internal provider/gateway config detail.
+ */
+function modelNotAvailableMessage(model: string): string {
+  return `model '${model}' is not available on this deployment`;
+}
+
 const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.RELAXED));
 
@@ -786,6 +799,20 @@ app.post("/", async (c) => {
   } catch (error) {
     await settleReservation?.(0);
     const message = error instanceof Error ? error.message : String(error);
+    // A provider-configuration failure (unknown model / unconfigured gateway)
+    // carries internal setup guidance in its message — return a clean,
+    // model-scoped 400 instead of leaking it as a 500 api_error (#13913 for the
+    // sibling /v1/chat/completions boundary).
+    if (isProviderConfigurationError(error)) {
+      logger.error("[Messages API] Provider configuration error", {
+        error: message,
+      });
+      return anthropicError(
+        "invalid_request_error",
+        modelNotAvailableMessage(model),
+        400,
+      );
+    }
     logger.error("[Messages API] Error", { error: message });
     return anthropicError("api_error", message, 500);
   }
@@ -1551,13 +1578,31 @@ async function handleStream(
           await refundStreamingReservationOnce();
         }
         const message = error instanceof Error ? error.message : String(error);
-        logger.error("[Messages API] Stream error", { error: message });
-        controller.enqueue(
-          sse("error", {
-            type: "error",
-            error: { type: "api_error", message },
-          }),
-        );
+        // Same provider-configuration redaction as the non-streaming path: a
+        // GatewayError's internal setup guidance must not reach the caller in
+        // the terminal SSE error event (#13913).
+        if (isProviderConfigurationError(error)) {
+          logger.error("[Messages API] Stream provider configuration error", {
+            error: message,
+          });
+          controller.enqueue(
+            sse("error", {
+              type: "error",
+              error: {
+                type: "invalid_request_error",
+                message: modelNotAvailableMessage(model),
+              },
+            }),
+          );
+        } else {
+          logger.error("[Messages API] Stream error", { error: message });
+          controller.enqueue(
+            sse("error", {
+              type: "error",
+              error: { type: "api_error", message },
+            }),
+          );
+        }
       } finally {
         controller.close();
       }
