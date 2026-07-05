@@ -109,9 +109,13 @@ class FakeAcp {
   }
 }
 
-function runtime(acp?: FakeAcp): IAgentRuntime {
+function runtime(
+  acp?: FakeAcp,
+  settings: Record<string, string> = {},
+): IAgentRuntime {
   return {
     getService: () => acp ?? null,
+    getSetting: (key: string) => settings[key],
     logger: {
       debug: vi.fn(),
       info: vi.fn(),
@@ -121,19 +125,25 @@ function runtime(acp?: FakeAcp): IAgentRuntime {
   } as never;
 }
 
-function makeServiceWithStore(acp?: FakeAcp): {
+function makeServiceWithStore(
+  acp?: FakeAcp,
+  settings: Record<string, string> = {},
+): {
   service: OrchestratorTaskService;
   store: OrchestratorTaskStore;
 } {
   const store = new OrchestratorTaskStore({ backend: "memory" });
   return {
-    service: new OrchestratorTaskService(runtime(acp), { store }),
+    service: new OrchestratorTaskService(runtime(acp, settings), { store }),
     store,
   };
 }
 
-function makeService(acp?: FakeAcp): OrchestratorTaskService {
-  return makeServiceWithStore(acp).service;
+function makeService(
+  acp?: FakeAcp,
+  settings: Record<string, string> = {},
+): OrchestratorTaskService {
+  return makeServiceWithStore(acp, settings).service;
 }
 
 function createInput(
@@ -1895,62 +1905,57 @@ describe("OrchestratorTaskService — retry-budget/router-cap reconciliation (#1
   });
 
   it("honors an operator-raised state-lost cap before failing the task", async () => {
-    const previous = process.env.ACPX_STATE_LOST_RESPAWN_CAP;
-    process.env.ACPX_STATE_LOST_RESPAWN_CAP = "3";
-    try {
-      const acp = new FakeAcp();
-      const { service, store } = makeServiceWithStore(acp);
-      await service.start();
-      const task = await service.createTask(createInput());
-      let loopState = createRouterLoopState({ stateLostRespawnCap: 3 });
+    const acp = new FakeAcp();
+    const { service, store } = makeServiceWithStore(acp, {
+      ACPX_STATE_LOST_RESPAWN_CAP: "3",
+    });
+    await service.start();
+    const task = await service.createTask(createInput());
+    let loopState = createRouterLoopState({ stateLostRespawnCap: 3 });
 
-      for (let i = 0; i < 3; i += 1) {
-        const detail = must(
-          await service.spawnAgentForTask(task.id),
-          "spawn detail",
-        );
-        const sessionId = must(detail.sessions.at(-1), "session").sessionId;
-        await drive(acp, sessionId, "error", {
-          failureKind: "session_state_lost",
-          message: `state lost override ${i + 1}`,
-        });
-        const transition = routerLoopTransition(loopState, {
-          type: "state_lost",
-          lineageKey: "override-lineage",
-        });
-        loopState = transition.state;
-        expect(transition.decision.kind).toBe("respawn");
-        expect(must(await service.getTask(task.id), "after").status).not.toBe(
-          "failed",
-        );
-        const found = must(await store.findSession(sessionId), "found");
-        expect(found.session.retryCount).toBe(i + 1);
-      }
-
-      const terminalSpawn = must(
+    for (let i = 0; i < 3; i += 1) {
+      const detail = must(
         await service.spawnAgentForTask(task.id),
-        "terminal spawn detail",
+        "spawn detail",
       );
-      const terminalSessionId = must(
-        terminalSpawn.sessions.at(-1),
-        "terminal session",
-      ).sessionId;
-      await drive(acp, terminalSessionId, "error", {
+      const sessionId = must(detail.sessions.at(-1), "session").sessionId;
+      await drive(acp, sessionId, "error", {
         failureKind: "session_state_lost",
-        message: "state lost override terminal",
+        message: `state lost override ${i + 1}`,
       });
-      const terminalTransition = routerLoopTransition(loopState, {
+      const transition = routerLoopTransition(loopState, {
         type: "state_lost",
         lineageKey: "override-lineage",
       });
-      expect(terminalTransition.decision.kind).toBe("terminal_failure");
-      expect(must(await service.getTask(task.id), "final").status).toBe(
+      loopState = transition.state;
+      expect(transition.decision.kind).toBe("respawn");
+      expect(must(await service.getTask(task.id), "after").status).not.toBe(
         "failed",
       );
-    } finally {
-      if (previous === undefined) delete process.env.ACPX_STATE_LOST_RESPAWN_CAP;
-      else process.env.ACPX_STATE_LOST_RESPAWN_CAP = previous;
+      const found = must(await store.findSession(sessionId), "found");
+      expect(found.session.retryCount).toBe(i + 1);
     }
+
+    const terminalSpawn = must(
+      await service.spawnAgentForTask(task.id),
+      "terminal spawn detail",
+    );
+    const terminalSessionId = must(
+      terminalSpawn.sessions.at(-1),
+      "terminal session",
+    ).sessionId;
+    await drive(acp, terminalSessionId, "error", {
+      failureKind: "session_state_lost",
+      message: "state lost override terminal",
+    });
+    const terminalTransition = routerLoopTransition(loopState, {
+      type: "state_lost",
+      lineageKey: "override-lineage",
+    });
+    expect(terminalTransition.decision.kind).toBe("terminal_failure");
+    expect(must(await service.getTask(task.id), "final").status).toBe(
+      "failed",
+    );
   });
 
   it("restartTask resets the crash-retry budget so a restarted task survives its first recoverable blip", async () => {
