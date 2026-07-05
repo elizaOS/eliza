@@ -124,17 +124,26 @@ const ANDROID_SMOKE_MODEL_CONTEXT_SIZE = Number.parseInt(
 );
 const ANDROID_SMOKE_MODEL_ID =
   process.env.ANDROID_SMOKE_MODEL_ID?.trim() || "eliza-1-2b";
+const DEFAULT_ANDROID_SMOKE_MODEL = {
+  relativePath: "bundles/e2b/text/eliza-1-e2b-32k.gguf",
+  file: "eliza-1-e2b-32k.gguf",
+  sizeBytes: 1_270_808_512,
+};
 const ANDROID_SMOKE_MODEL_RELATIVE_PATH =
   process.env.ANDROID_SMOKE_MODEL_RELATIVE_PATH?.trim() ||
-  "bundles/2b/text/eliza-1-2b-128k.gguf";
+  DEFAULT_ANDROID_SMOKE_MODEL.relativePath;
 const ANDROID_SMOKE_MODEL_FILE =
-  process.env.ANDROID_SMOKE_MODEL_FILE?.trim() || "eliza-1-2b-128k.gguf";
-// Size/sha defaults are unset for the 2B entry tier — set them via env to
-// re-enable the exact-match download verification against a known artifact.
-const ANDROID_SMOKE_MODEL_SIZE_BYTES = Number.parseInt(
-  process.env.ANDROID_SMOKE_MODEL_SIZE_BYTES?.trim() || "",
-  10,
-);
+  process.env.ANDROID_SMOKE_MODEL_FILE?.trim() ||
+  DEFAULT_ANDROID_SMOKE_MODEL.file;
+const androidSmokeModelSizeOverride =
+  process.env.ANDROID_SMOKE_MODEL_SIZE_BYTES?.trim();
+const ANDROID_SMOKE_MODEL_SIZE_BYTES = androidSmokeModelSizeOverride
+  ? Number.parseInt(androidSmokeModelSizeOverride, 10)
+  : ANDROID_SMOKE_MODEL_RELATIVE_PATH ===
+        DEFAULT_ANDROID_SMOKE_MODEL.relativePath &&
+      ANDROID_SMOKE_MODEL_FILE === DEFAULT_ANDROID_SMOKE_MODEL.file
+    ? DEFAULT_ANDROID_SMOKE_MODEL.sizeBytes
+    : Number.NaN;
 const ANDROID_SMOKE_MODEL_SHA256 =
   process.env.ANDROID_SMOKE_MODEL_SHA256?.trim() || "";
 const ANDROID_SMOKE_MODEL_URL =
@@ -762,6 +771,11 @@ async function verifySmokeModelFile(filePath) {
   return true;
 }
 
+function describeAndroidSmokeModelSize(sizeBytes) {
+  if (!Number.isFinite(sizeBytes)) return "unknown size";
+  return `${sizeBytes} bytes`;
+}
+
 async function ensureAndroidSmokeModelLocalFile() {
   const explicit = process.env.ANDROID_SMOKE_MODEL_PATH?.trim();
   if (explicit) {
@@ -840,17 +854,24 @@ async function stageAndroidSmokeModel(context) {
     "Failed to inspect Android smoke model.",
     { allowFailure: true },
   );
-  const expectedSize = String(ANDROID_SMOKE_MODEL_SIZE_BYTES);
-  if (existingBytes?.trim() === expectedSize) {
+  const expectedSize = Number.isFinite(ANDROID_SMOKE_MODEL_SIZE_BYTES)
+    ? String(ANDROID_SMOKE_MODEL_SIZE_BYTES)
+    : null;
+  if (
+    expectedSize
+      ? existingBytes?.trim() === expectedSize
+      : Boolean(existingBytes?.trim())
+  ) {
     writeAndroidSmokeModelManifest(context, targetDir);
     writeAndroidLocalInferenceRegistry(context, localInferenceDir);
     console.log(
-      `[local-chat-smoke] Reused staged Android smoke model ${ANDROID_SMOKE_MODEL_ID}: ${targetFile}`,
+      `[local-chat-smoke] Reused staged Android smoke model ${ANDROID_SMOKE_MODEL_ID} (${existingBytes.trim()} bytes): ${targetFile}`,
     );
     return;
   }
 
   const source = await ensureAndroidSmokeModelLocalFile();
+  const sourceSize = fs.statSync(source).size;
   const tmpTarget = `/data/local/tmp/${ANDROID_SMOKE_MODEL_FILE}`;
   requireExec(
     context.adb,
@@ -876,7 +897,7 @@ async function stageAndroidSmokeModel(context) {
     allowFailure: true,
   });
   console.log(
-    `[local-chat-smoke] Staged Android smoke model ${ANDROID_SMOKE_MODEL_ID}: ${targetFile}`,
+    `[local-chat-smoke] Staged Android smoke model ${ANDROID_SMOKE_MODEL_ID} (${describeAndroidSmokeModelSize(sourceSize)}): ${targetFile}`,
   );
 }
 

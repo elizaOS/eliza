@@ -81,10 +81,10 @@ bun run --cwd packages/app test:e2e:android:routes
 
 ## Hard-won environment facts
 
-- **Emulator RAM.** The on-device agent (bun + a ~556MB GGUF) needs real
-  headroom. A stock ≤2GB AVD OOM-kills the agent mid model-load. The harness
-  boots emulators with **6GB** (`-memory 6144`); if you reuse an existing AVD,
-  raise `hw.ramSize` to `6144M`.
+- **Emulator RAM.** The on-device agent (bun + the 1,270,808,512-byte
+  `eliza-1-e2b-32k.gguf`) needs real headroom. A stock ≤2GB AVD OOM-kills the
+  agent mid model-load. The harness boots emulators with **6GB** (`-memory
+  6144`); if you reuse an existing AVD, raise `hw.ramSize` to `6144M`.
 - **SELinux.** On a stock emulator the app is `untrusted_app` and SELinux
   (enforcing) blocks the bun runtime's syscalls, so the agent never goes
   healthy. The harness runs `adb root` + `setenforce 0` on emulators
@@ -98,9 +98,11 @@ bun run --cwd packages/app test:e2e:android:routes
 - **Route navigation.** Capacitor's WebView has no SPA fallback for nested
   paths, so a hard `page.goto('/apps/x')` 404s. The harness navigates
   client-side via the History API (`gotoRoute`), like a user tap.
-- **Smallest model.** `eliza-1-2b` (Q-quant, 128k ctx) — the smallest
-  catalog tier. Node `fetch` chokes on HF's Xet LFS redirect; the orchestrator
-  pre-caches via `curl`.
+- **Smallest model.** `eliza-1-2b` (Q-quant, 32k ctx,
+  `eliza-1-e2b-32k.gguf`, 1,270,808,512 bytes) — the smallest catalog tier
+  staged by the Android smoke. The smoke caps runtime context at 4096 tokens,
+  so the 128k artifact does not improve this lane. Node `fetch` chokes on HF's
+  Xet LFS redirect; the orchestrator pre-caches via `curl`.
 
 ## Useful knobs
 
