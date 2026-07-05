@@ -340,7 +340,8 @@ function matchesFilter(
   if (!filter.includeArchived && task.archived) return false;
   if (filter.status && filter.status !== "all" && task.status !== filter.status)
     return false;
-  if (filter.projectId && task.projectId !== filter.projectId) return false;
+  const projectId = filter.projectId?.trim();
+  if (projectId && task.projectId !== projectId) return false;
   if (filter.search) {
     const needle = filter.search.trim().toLowerCase();
     if (needle && !searchText.includes(needle)) return false;

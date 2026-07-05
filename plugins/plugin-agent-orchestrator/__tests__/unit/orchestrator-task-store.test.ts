@@ -1042,6 +1042,9 @@ describe("task.projectId binding (#13776)", () => {
     expect(onlyA.map((t) => t.title).sort()).toEqual(["a", "c"]);
     expect(onlyA.every((t) => t.projectId === "proj-a")).toBe(true);
 
+    const trimmedA = await store.listTasks({ projectId: "  proj-a  " });
+    expect(trimmedA.map((t) => t.title).sort()).toEqual(["a", "c"]);
+
     const onlyB = await store.listTasks({ projectId: "proj-b" });
     expect(onlyB.map((t) => t.title)).toEqual(["b"]);
   });
@@ -1056,6 +1059,9 @@ describe("task.projectId binding (#13776)", () => {
     const reader = new FileTaskStore(path);
     const reloaded = await reader.getTask(task.id);
     expect(reloaded?.task.projectId).toBe("proj-file");
+
+    const listed = await reader.listTasks({ projectId: "  proj-file  " });
+    expect(listed.map((t) => t.id)).toEqual([task.id]);
   });
 
   it("writes and filters on the indexed project_id column in the SQL backend", async () => {
