@@ -9,9 +9,11 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertAndroidApkRendererFresh } from "./lib/android-renderer-stamp.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptDir, "..");
+const repoRoot = path.resolve(appRoot, "..", "..");
 
 function readFlag(name) {
   const prefix = `${name}=`;
@@ -117,6 +119,11 @@ function sha256File(filePath) {
   return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
+function currentHeadCommit() {
+  const result = run("git", ["rev-parse", "HEAD"], { cwd: repoRoot });
+  return result.status === 0 ? result.stdout.trim() || null : null;
+}
+
 function latestApk() {
   const roots = [
     path.join(appRoot, "android", "app", "build", "outputs", "apk"),
@@ -206,6 +213,14 @@ if (apkPackage && apkPackage !== appId) {
       `You likely built the wrong brand (check repoRoot / ELIZA_ANDROID_USE_APP_DIR). Pass the matching --apk.`,
   );
 }
+
+assertAndroidApkRendererFresh({
+  apkPath,
+  repoRoot,
+  expectedCommit: currentHeadCommit(),
+  label: path.relative(process.cwd(), apkPath),
+  log: (message) => console.log(`android-adb-install: ${message}`),
+});
 
 console.log(
   `Installing ${path.relative(process.cwd(), apkPath)} (${apkPackage ?? appId}) to ${serial ?? onlineDevices[0]}`,

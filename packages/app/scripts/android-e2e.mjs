@@ -14,16 +14,20 @@
 //
 // Flags: --serial <s>  --skip-local-chat  --skip-route-coverage  --cloud
 //        --launcher-loop (≥200-action seeded launcher gesture loop; opt-in)
-//        --build (build the APK first)  --no-emulator-boot
+//        --force-build/--build (build the APK first)  --skip-build
+//        --no-emulator-boot
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  androidDistNeedsBuild,
+  androidInstallDecision,
   ensureEmulatorBooted,
   ensureEmulatorPermissive,
   installApk,
-  isInstalled,
+  readFreshAndroidRendererStamp,
+  readInstalledRendererStamp,
   resolveAdb,
   resolveApk,
   resolveSerial,
@@ -171,6 +175,89 @@ function run(cmd, args, env = {}) {
   }
 }
 
+function currentHeadCommit() {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: elizaRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function buildAndroidApk() {
+  log("building WebView-debuggable APK…");
+  run("bun", ["run", "build:android"], {
+    ELIZA_MOBILE_REPO_ROOT: elizaRoot,
+    ELIZA_WEBVIEW_DEBUG: "1",
+    ELIZA_BUN_RISCV64_OPTIONAL: "1",
+  });
+}
+
+function stampLabel(stamp) {
+  if (!stamp) return "missing";
+  const buildId = String(stamp.buildId ?? "unknown").slice(0, 12);
+  const commit = stamp.commit
+    ? ` commit=${String(stamp.commit).slice(0, 12)}`
+    : "";
+  return `${buildId}${commit}`;
+}
+
+function ensureFreshApkInstalled(adb, serial) {
+  const forceBuild = has("--force-build") || has("--build");
+  const skipBuild = has("--skip-build");
+  const headCommit = currentHeadCommit();
+  let freshStamp = readFreshAndroidRendererStamp();
+  const buildDecision = androidDistNeedsBuild({ freshStamp, headCommit });
+
+  if (forceBuild) {
+    buildAndroidApk();
+  } else if (buildDecision.build) {
+    if (skipBuild) {
+      throw new Error(
+        `--skip-build requested, but Android dist is not usable: ${buildDecision.reason}`,
+      );
+    }
+    log(`${buildDecision.reason} — rebuilding before install check.`);
+    buildAndroidApk();
+  } else {
+    log(`fresh dist renderer stamp: ${stampLabel(freshStamp)}`);
+  }
+
+  freshStamp = readFreshAndroidRendererStamp();
+  if (!freshStamp) {
+    throw new Error(
+      "Android build did not produce dist/eliza-renderer-build.json; refusing to install an unverifiable APK.",
+    );
+  }
+
+  const apk = resolveApk(process.env.ELIZA_ANDROID_APK);
+  const installedStamp = readInstalledRendererStamp(adb, serial, { log });
+  const installDecision = forceBuild
+    ? { install: true, reason: "--force-build/--build requested" }
+    : androidInstallDecision({ freshStamp, installedStamp });
+  if (installDecision.install) {
+    log(`${installDecision.reason} — installing ${apk}`);
+    installApk(adb, serial, apk);
+    const readback = readInstalledRendererStamp(adb, serial, { log });
+    const readbackDecision = androidInstallDecision({
+      freshStamp,
+      installedStamp: readback,
+    });
+    if (readbackDecision.install) {
+      throw new Error(
+        `Android install did not produce the fresh renderer stamp: ${readbackDecision.reason}`,
+      );
+    }
+    log(`installed renderer stamp verified: ${stampLabel(readback)}`);
+    return;
+  }
+
+  log(`${installDecision.reason} — skipping APK install.`);
+}
+
 // Node's fetch chokes on the HF Xet LFS redirect; curl handles it. Pre-cache the
 // model so the smoke reuses it offline instead of failing on the redirect.
 function ensureSmokeModelCached() {
@@ -206,19 +293,7 @@ async function main() {
 
   await ensureEmulatorPermissive(adb, serial, { log });
 
-  if (has("--build")) {
-    log("building WebView-debuggable APK…");
-    run("bun", ["run", "build:android"], {
-      ELIZA_MOBILE_REPO_ROOT: elizaRoot,
-      ELIZA_WEBVIEW_DEBUG: "1",
-      ELIZA_BUN_RISCV64_OPTIONAL: "1",
-    });
-  }
-  if (!isInstalled(adb, serial)) {
-    const apk = resolveApk(process.env.ELIZA_ANDROID_APK);
-    log(`installing ${apk}`);
-    installApk(adb, serial, apk);
-  }
+  ensureFreshApkInstalled(adb, serial);
 
   if (!has("--skip-local-chat")) {
     const modelPath = ensureSmokeModelCached();
