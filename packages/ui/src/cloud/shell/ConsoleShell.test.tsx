@@ -204,6 +204,19 @@ describe("ConsoleShell", () => {
     await waitFor(() => expect(screen.getByTestId("login-page")).toBeTruthy());
   });
 
+  it("keeps a visible keyboard focus treatment on the account menu trigger", () => {
+    render(
+      <MemoryRouter initialEntries={["/dashboard"]}>
+        <ConsoleShell>
+          <TitledPage />
+        </ConsoleShell>
+      </MemoryRouter>,
+    );
+
+    const accountMenu = screen.getByRole("button", { name: /qa@e\.test/i });
+    expect(accountMenu.className).toContain("focus-visible:ring-2");
+  });
+
   it("redirects to /login (returnTo preserved) when the session dies — never a fake-empty console (#13709)", () => {
     sessionState.authenticated = false;
     render(
