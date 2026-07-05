@@ -6,7 +6,6 @@
     "ocr": { "absent": ["undefined", "NaN", "[object Object]", "objectobject"] }
   },
   "builtin-settings": {
-    "accentOrange": true,
     "ocr": {
       "perViewport": {
         "desktop": { "present": ["Models", "Voice"] },
@@ -18,8 +17,8 @@
     "accentOrange": true,
     "ocr": {
       "perViewport": {
-        "desktop": { "present": ["Personality", "Knowledge"] },
-        "desktop-landscape": { "present": ["Personality", "Knowledge"] },
+        "desktop": { "present": ["Personality", "Skills"] },
+        "desktop-landscape": { "present": ["Personality", "Skills"] },
         "mobile-portrait": { "present": ["Character", "About Me"] }
       }
     }
@@ -27,10 +26,9 @@
   "builtin-automations": {
     "accentOrange": true,
     "ocr": {
-      "present": ["Automations"],
       "perViewport": {
-        "desktop": { "present": ["Tasks", "Workflows"] },
-        "desktop-landscape": { "present": ["Tasks", "Workflows"] },
+        "desktop": { "present": ["Workflows"] },
+        "desktop-landscape": { "present": ["Workflows"] },
         "mobile-portrait": { "present": ["Workflows"] }
       }
     }

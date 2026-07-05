@@ -414,7 +414,9 @@ describe("sparse-home OCR regression guard (#14343)", () => {
 describe("mvp-visual-verify CLI", () => {
   it("strict mode fails when the run has skipped checks or first-run baselines", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "eliza-mvp-visual-verify-"));
+    const baselineDir = path.join(dir, "empty-baseline");
     const viewportDir = path.join(dir, "mobile-portrait");
+    mkdirSync(baselineDir);
     mkdirSync(viewportDir);
     await sharp({
       create: {
@@ -435,6 +437,8 @@ describe("mvp-visual-verify CLI", () => {
           path.resolve(__dirname, "../../scripts/mvp-visual-verify.mjs"),
           "--input",
           dir,
+          "--baseline",
+          baselineDir,
           "--strict",
         ],
         {

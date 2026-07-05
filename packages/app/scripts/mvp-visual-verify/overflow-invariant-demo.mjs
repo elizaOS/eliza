@@ -26,8 +26,7 @@ import { chromium } from "playwright";
 
 const TOLERANCE_PX = 2;
 const VIEWPORT = { width: 390, height: 844 };
-const LONG_TOKEN =
-  "https://example.com/a/really/long/unbreakable/path/token/" + "x".repeat(400);
+const LONG_TOKEN = `https://example.com/a/really/long/unbreakable/path/token/${"x".repeat(400)}`;
 
 const SHELL = (
   transcriptCss,
