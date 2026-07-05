@@ -350,4 +350,18 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     await waitFor(() => expect(getWalletMarketOverview).toHaveBeenCalled());
     await waitFor(() => expect(container.firstChild).toBeNull());
   });
+
+  it("does not render no-holdings defaults when balances are unavailable", async () => {
+    getWalletBalances.mockRejectedValue(new Error("balances 503"));
+    getWalletMarketOverview.mockResolvedValue(
+      overview([
+        { symbol: "BTC", priceUsd: 64000 },
+        { symbol: "SOL", priceUsd: 150 },
+        { symbol: "ETH", priceUsd: 3000 },
+      ]),
+    );
+    const { container } = render(<WalletBalanceWidget />);
+    await waitFor(() => expect(getWalletBalances).toHaveBeenCalled());
+    await waitFor(() => expect(container.firstChild).toBeNull());
+  });
 });

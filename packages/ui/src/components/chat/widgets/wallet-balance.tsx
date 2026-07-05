@@ -35,6 +35,8 @@ const REFRESH_INTERVAL_MS = 60_000;
 
 const DEFAULT_SPAN = "col-span-2 row-span-1";
 
+type RefreshResult<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
 /** Format a unit price: more decimals for sub-dollar assets, 2 for the rest. */
 function formatPrice(priceUsd: number): string {
   const digits = priceUsd > 0 && priceUsd < 1 ? 6 : 2;
@@ -88,22 +90,53 @@ export function WalletBalanceWidget(
 
   // Prices (BTC/SOL/ETH + trending) come from the market-overview endpoint;
   // balances decide the held-vs-default branch. Both are fetched together and
-  // best-effort (J4): a null overview means prices are unavailable → hide; a
-  // null balances alone still shows the default rows.
+  // best-effort (J4): either unavailable response hides the initial tile rather
+  // than presenting an unknown wallet as an empty wallet.
   const refresh = useCallback(async () => {
     refreshSeqRef.current += 1;
     const seq = refreshSeqRef.current;
-    const [balances, overview] = await Promise.all([
-      // error-policy:J4 balances failure ⇒ no held rows; default rows still show
-      (client.getWalletBalances() as Promise<WalletBalancesResponse>).catch(
-        () => null,
-      ),
-      // error-policy:J4 overview failure ⇒ no prices at all ⇒ widget hides
-      client.getWalletMarketOverview().catch(() => null),
+    const [balancesResult, overviewResult] = await Promise.all([
+      (client.getWalletBalances() as Promise<WalletBalancesResponse>)
+        .then<RefreshResult<WalletBalancesResponse>>((value) => ({
+          ok: true,
+          value,
+        }))
+        .catch<RefreshResult<WalletBalancesResponse>>((error) => ({
+          // error-policy:J4 balances unavailable means holdings are unknown; do
+          // not fabricate "empty wallet" default rows.
+          ok: false,
+          error,
+        })),
+      client
+        .getWalletMarketOverview()
+        .then<
+          RefreshResult<
+            Awaited<ReturnType<typeof client.getWalletMarketOverview>>
+          >
+        >((value) => ({ ok: true, value }))
+        .catch<
+          RefreshResult<
+            Awaited<ReturnType<typeof client.getWalletMarketOverview>>
+          >
+        >((error) => ({
+          // error-policy:J4 overview failure ⇒ no prices at all ⇒ widget hides
+          ok: false,
+          error,
+        })),
     ]);
     if (!activeRef.current || seq !== refreshSeqRef.current) return;
-    const held = selectPricedHoldings(balances, overview?.prices);
-    const next = held.length > 0 ? held : selectDefaultPriceRows(overview);
+    const next =
+      overviewResult.ok && balancesResult.ok
+        ? (() => {
+            const held = selectPricedHoldings(
+              balancesResult.value,
+              overviewResult.value.prices,
+            );
+            return held.length > 0
+              ? held
+              : selectDefaultPriceRows(overviewResult.value);
+          })()
+        : [];
     // A failed refresh (next empty) keeps the last-good rows so a transient
     // outage does not flicker the tile out; only a first load with no prices
     // resolves to empty (→ hidden).
