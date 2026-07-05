@@ -397,6 +397,50 @@ describe("CodingAgentTasksPanel — list", () => {
   });
 });
 
+// #13565: in `fullPage` mode the Tasks nav view hosts this panel UNDER the
+// shared, uniform `ViewHeader` (icon-only back + centered "Tasks"). The panel
+// therefore drops its own internal title row (no duplicate heading) and renders
+// a designed-empty state with NO suggestion/create CTAs — the proactive-greeting
+// child offers to start a task in chat instead. The embedded (default) mode
+// keeps its own header + recommendation chips for the surfaces that have no chat
+// rail, which the tests above already cover.
+describe("CodingAgentTasksPanel — fullPage (uniform header host)", () => {
+  it("renders NO internal <h1> title row (the shell ViewHeader owns the title)", async () => {
+    listCodingAgentTaskThreads.mockResolvedValue([ACTIVE_THREAD, DONE_THREAD]);
+    const { container } = render(<CodingAgentTasksPanel fullPage />);
+    await screen.findByText("Fix the broken CI build");
+    expect(container.querySelector("h1")).toBeNull();
+    // The counts survive as a lightweight secondary meta strip instead.
+    expect(screen.getByTestId("task-count-strip")).toBeTruthy();
+  });
+
+  it("the default (embedded) mode STILL renders its own <h1> header", async () => {
+    listCodingAgentTaskThreads.mockResolvedValue([ACTIVE_THREAD, DONE_THREAD]);
+    const { container } = render(<CodingAgentTasksPanel />);
+    await screen.findByText("Fix the broken CI build");
+    const heading = container.querySelector("h1");
+    expect(heading?.textContent).toBe("Coding Tasks");
+  });
+
+  it("the fullPage empty state has NO suggestion/create CTA buttons", async () => {
+    listCodingAgentTaskThreads.mockResolvedValue([]);
+    render(<CodingAgentTasksPanel fullPage />);
+    const empty = await screen.findByTestId("task-empty-state");
+    expect(within(empty).queryAllByRole("button")).toHaveLength(0);
+    // The quiet designed-empty title still names the state.
+    expect(screen.getByText("No coding tasks yet.")).toBeTruthy();
+  });
+
+  it("the default (embedded) empty state KEEPS its recommendation chips", async () => {
+    listCodingAgentTaskThreads.mockResolvedValue([]);
+    render(<CodingAgentTasksPanel />);
+    const empty = await screen.findByTestId("task-empty-state");
+    expect(
+      within(empty).getAllByRole("button").length,
+    ).toBeGreaterThan(0);
+  });
+});
+
 describe("CodingAgentTasksPanel — controls", () => {
   it("typing in search re-fetches the thread list with that search term", async () => {
     listCodingAgentTaskThreads.mockResolvedValue([ACTIVE_THREAD]);
