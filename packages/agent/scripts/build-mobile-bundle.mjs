@@ -376,7 +376,6 @@ const nativeStubs = {
   // and API dispatch, so keep PDF parsing behind a clear mobile runtime error
   // instead of paying that no-JIT parse cost on every app launch.
   unpdf: path.join(stubsDir, "unpdf.cjs"),
-  "puppeteer-core": path.join(stubsDir, "puppeteer-core.cjs"),
   "pty-manager": path.join(stubsDir, "pty-manager.cjs"),
   sharp: path.join(stubsDir, "sharp.cjs"),
   canvas: path.join(stubsDir, "canvas.cjs"),
