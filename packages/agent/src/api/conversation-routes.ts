@@ -64,6 +64,7 @@ import {
   readChatRequestPayload,
   resolveNoResponseFallback,
   writeChatStatusSse,
+  writeChatToolSse,
   writeChatTokenSse,
   writeSse,
   writeSseJson,
@@ -2458,6 +2459,15 @@ export async function handleConversationRoutes(
               return;
             }
             writeChatStatusSse(res, status);
+          },
+          onToolEvent: (event) => {
+            if (
+              disconnectTracker.isAborted() ||
+              disconnectTracker.checkConnectionClosed()
+            ) {
+              return;
+            }
+            writeChatToolSse(res, event);
           },
           onChunk: (chunk) => {
             if (!chunk) return;

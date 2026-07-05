@@ -6,6 +6,7 @@
 
 import type {
   ChatFailureKind,
+  ChatToolCallEvent,
   ChatTurnStatus,
   LinkedAccountProviderId,
 } from "@elizaos/shared";
@@ -18,7 +19,7 @@ import type {
 // here so existing `@elizaos/ui` `api` consumers keep their import path. Imported
 // (not export-from) because `failureKind` fields below reference the type in this
 // module's scope.
-export type { ChatFailureKind, ChatTurnStatus };
+export type { ChatFailureKind, ChatToolCallEvent, ChatTurnStatus };
 
 // Conversations
 export interface Conversation {

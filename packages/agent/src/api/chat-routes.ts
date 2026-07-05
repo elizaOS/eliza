@@ -34,6 +34,7 @@ import {
 } from "@elizaos/core";
 import type {
   ChatFailureKind,
+  ChatToolCallEvent,
   ChatTurnStatus,
   LinkedAccountProviderId,
   LogEntry,
@@ -742,6 +743,13 @@ export interface ChatGenerateOptions {
    * itself; a caller that omits it loses only the status surface.
    */
   onStatus?: (status: ChatTurnStatus) => void;
+  /**
+   * Inline tool/action-call steps for the chat thread's tool rows (#13535).
+   * Forked from the runtime's native planner/tool stream — the same channel the
+   * reply streams on — so a `call` is followed by its correlated `result`/
+   * `error`. Additive; a caller that omits it loses only the inline tool surface.
+   */
+  onToolEvent?: (event: ChatToolCallEvent) => void;
   isAborted?: () => boolean;
   abortSignal?: AbortSignal;
   resolveNoResponseText?: () => string;
@@ -805,8 +813,132 @@ function isInternalStructuredStreamText(text: string): boolean {
   try {
     return isInternalStructuredStreamPayload(JSON.parse(trimmed));
   } catch {
+    // error-policy:J3 an unparseable "{"-prefixed chunk is not a structured
+    // payload — let it flow to the visible text path, which handles it.
     return false;
   }
+}
+
+function firstNonEmptyString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+/** Coerce a tool-call's arguments (object, JSON string, or absent) into a plain
+ *  record for the inline tool row, or undefined when there's nothing to show. */
+function normalizeToolArgs(
+  toolCall: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const raw = toolCall.arguments ?? toolCall.args ?? toolCall.input;
+  const record = asRecord(raw);
+  if (record) return record;
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = asRecord(JSON.parse(raw));
+      if (parsed) return parsed;
+    } catch {
+      // error-policy:J3 a non-JSON args string is shown verbatim under `raw`.
+      return { raw };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Project the runtime's internal planner/tool stream payload — forwarded through
+ * `onStreamChunk` as a JSON string, then filtered out of the visible reply by
+ * {@link isInternalStructuredStreamText} — onto the two chat surfaces it should
+ * drive: the working-indicator phase (`running_tool` / `evaluating`) and, for
+ * tool steps, an inline tool-call row. Returns null for payloads with no
+ * chat-visible signal (e.g. `context_event`) so the caller drops them (#13535).
+ */
+export function chatEventsFromStructuredStreamPayload(
+  payload: unknown,
+): { status?: ChatTurnStatus; toolEvent?: ChatToolCallEvent } | null {
+  const record = asRecord(payload);
+  if (!record) return null;
+  const type = typeof record.type === "string" ? record.type : "";
+
+  if (type === "tool_call") {
+    const toolCall = asRecord(record.toolCall);
+    if (!toolCall) return null;
+    const toolName = firstNonEmptyString(
+      toolCall.name,
+      toolCall.toolName,
+      toolCall.tool,
+      toolCall.action,
+    );
+    if (!toolName) return null;
+    const callId =
+      firstNonEmptyString(toolCall.id, toolCall.toolCallId, record.messageId) ??
+      toolName;
+    const args = normalizeToolArgs(toolCall);
+    return {
+      status: { kind: "running_tool", toolName },
+      toolEvent: {
+        phase: "call",
+        callId,
+        toolName,
+        ...(args ? { args } : {}),
+      },
+    };
+  }
+
+  if (type === "tool_result" || type === "tool_error") {
+    const toolCall = asRecord(record.toolCall);
+    const toolName =
+      firstNonEmptyString(
+        toolCall?.name,
+        toolCall?.toolName,
+        toolCall?.tool,
+        toolCall?.action,
+      ) ?? "tool";
+    const callId =
+      firstNonEmptyString(record.toolCallId, toolCall?.id, record.messageId) ??
+      toolName;
+    const statusText = firstNonEmptyString(record.status, toolCall?.status);
+    const failed = type === "tool_error" || statusText === "failed";
+    const result = record.result ?? toolCall?.result;
+    if (failed) {
+      return {
+        toolEvent: {
+          phase: "error",
+          callId,
+          toolName,
+          error: firstNonEmptyString(result, statusText) ?? "tool failed",
+        },
+      };
+    }
+    return { toolEvent: { phase: "result", callId, toolName, result } };
+  }
+
+  if (type === "evaluation") {
+    return { status: { kind: "evaluating" } };
+  }
+
+  return null;
+}
+
+/** Text-level companion to {@link chatEventsFromStructuredStreamPayload}: parse a
+ *  raw stream chunk and, when it is an internal structured payload, return the
+ *  chat events it drives. Null when the chunk is visible reply text or an
+ *  internal payload with no chat-visible signal. */
+function chatEventsFromStructuredStreamText(
+  text: string,
+): { status?: ChatTurnStatus; toolEvent?: ChatToolCallEvent } | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{")) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    // error-policy:J3 a non-JSON "{"-chunk is visible text, not a payload.
+    return null;
+  }
+  if (!isInternalStructuredStreamPayload(parsed)) return null;
+  return chatEventsFromStructuredStreamPayload(parsed);
 }
 
 function getLatestVisibleResponseMessageText(
@@ -1667,6 +1799,13 @@ export function writeChatStatusSse(
   writeSse(res, { type: "status", ...status });
 }
 
+export function writeChatToolSse(
+  res: http.ServerResponse,
+  event: ChatToolCallEvent,
+): void {
+  writeSse(res, { type: "tool", ...event });
+}
+
 export function writeSseData(
   res: http.ServerResponse,
   data: string,
@@ -2501,8 +2640,19 @@ export async function generateChatResponse(
                           generationTimeoutMs,
                         );
                       }
-                      if (!chunk || isInternalStructuredStreamText(chunk))
+                      if (!chunk) return;
+                      if (isInternalStructuredStreamText(chunk)) {
+                        // A native planner/tool step, not visible reply text:
+                        // fork it onto the working indicator + inline tool row
+                        // instead of leaking JSON into the bubble.
+                        const events =
+                          chatEventsFromStructuredStreamText(chunk);
+                        if (events?.status) emitStatus(events.status);
+                        if (events?.toolEvent) {
+                          opts?.onToolEvent?.(events.toolEvent);
+                        }
                         return;
+                      }
                       if (!claimStreamSource("onStreamChunk")) return;
                       appendIncomingText(chunk);
                     }

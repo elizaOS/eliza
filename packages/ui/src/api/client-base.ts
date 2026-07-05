@@ -30,6 +30,7 @@ import type {
   ChatActionResultSummary,
   ChatFailureKind,
   ChatTokenUsage,
+  ChatToolCallEvent,
   ChatTurnStatus,
   ConnectionStateInfo,
   ConversationChannelType,
@@ -81,11 +82,18 @@ type StreamChatEvent = {
   actionResults?: ChatActionResultSummary[];
   // `type: "status"` carries the in-flight phase flat on the event (the server
   // spreads ChatTurnStatus into the SSE payload), so `kind` + the optional
-  // action/tool name live alongside the discriminator.
+  // action/tool name live alongside the discriminator. `type: "tool"` likewise
+  // spreads ChatToolCallEvent flat, so `phase` / `callId` / args / result / error
+  // share the event shape.
   kind?: ChatTurnStatus["kind"];
   label?: string;
   actionName?: string;
   toolName?: string;
+  phase?: ChatToolCallEvent["phase"];
+  callId?: string;
+  args?: Record<string, unknown>;
+  result?: unknown;
+  error?: string;
   usage?: {
     promptTokens?: number;
     completionTokens?: number;
@@ -149,6 +157,33 @@ function parseChatTurnStatus(parsed: StreamChatEvent): ChatTurnStatus | null {
       : {}),
     ...(typeof parsed.toolName === "string" && parsed.toolName
       ? { toolName: parsed.toolName }
+      : {}),
+  };
+}
+
+const CHAT_TOOL_PHASES: ReadonlySet<ChatToolCallEvent["phase"]> = new Set<
+  ChatToolCallEvent["phase"]
+>(["call", "result", "error"]);
+
+/** Build a typed ChatToolCallEvent from a `type: "tool"` SSE event, or null when
+ *  the phase/callId/toolName are missing/unknown (a future server phase is
+ *  ignored, not crashed on). */
+function parseChatToolCallEvent(
+  parsed: StreamChatEvent,
+): ChatToolCallEvent | null {
+  if (!parsed.phase || !CHAT_TOOL_PHASES.has(parsed.phase)) return null;
+  if (typeof parsed.callId !== "string" || !parsed.callId) return null;
+  if (typeof parsed.toolName !== "string" || !parsed.toolName) return null;
+  return {
+    phase: parsed.phase,
+    callId: parsed.callId,
+    toolName: parsed.toolName,
+    ...(parsed.args && typeof parsed.args === "object"
+      ? { args: parsed.args }
+      : {}),
+    ...(parsed.result !== undefined ? { result: parsed.result } : {}),
+    ...(typeof parsed.error === "string" && parsed.error
+      ? { error: parsed.error }
       : {}),
   };
 }
@@ -278,6 +313,7 @@ function applyStreamChatDataLine(
   state: StreamChatState,
   onToken: (token: string, accumulatedText?: string) => void,
   onStatus?: (status: ChatTurnStatus) => void,
+  onToolEvent?: (event: ChatToolCallEvent) => void,
 ): boolean {
   const parsed = parseStreamChatDataLine(line);
   if (!parsed) return false;
@@ -290,6 +326,14 @@ function applyStreamChatDataLine(
     if (onStatus) {
       const status = parseChatTurnStatus(parsed);
       if (status) onStatus(status);
+    }
+    return false;
+  }
+  if (parsed.type === "tool") {
+    // Additive: an inline tool-call step (call → result/error). Non-terminal.
+    if (onToolEvent) {
+      const event = parseChatToolCallEvent(parsed);
+      if (event) onToolEvent(event);
     }
     return false;
   }
@@ -1553,6 +1597,9 @@ export class ElizaClient {
     /** Additive: in-flight phase changes (thinking / streaming / running_action
      *  / waking …). Omitting it leaves the token/done/error behaviour unchanged. */
     onStatus?: (status: ChatTurnStatus) => void,
+    /** Additive: inline tool-call steps (call → result/error) for the thread's
+     *  tool rows. Omitting it leaves token/done/error behaviour unchanged. */
+    onToolEvent?: (event: ChatToolCallEvent) => void,
   ): Promise<{
     text: string;
     agentName: string;
@@ -1701,7 +1748,7 @@ export class ElizaClient {
         buffer = buffer.slice(eventBreak.index + eventBreak.length);
         for (const line of rawEvent.split(/\r?\n/)) {
           if (!line.startsWith("data:")) continue;
-          if (applyStreamChatDataLine(line, streamState, onToken, onStatus)) {
+          if (applyStreamChatDataLine(line, streamState, onToken, onStatus, onToolEvent)) {
             buffer = "";
             // error-policy:J6 best-effort reader teardown after terminal done.
             void reader
@@ -1719,7 +1766,7 @@ export class ElizaClient {
     if (!streamState.receivedDone && buffer.trim()) {
       for (const line of buffer.split(/\r?\n/)) {
         if (line.startsWith("data:")) {
-          applyStreamChatDataLine(line, streamState, onToken, onStatus);
+          applyStreamChatDataLine(line, streamState, onToken, onStatus, onToolEvent);
         }
       }
     }
