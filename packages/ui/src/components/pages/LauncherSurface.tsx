@@ -17,6 +17,7 @@ import { getActiveViewModality } from "../../platform/platform-guards";
 import { useAppSelectorShallow } from "../../state";
 import {
   loadLauncherFavorites,
+  loadLauncherRecents,
   recordLauncherRecent,
   saveLauncherFavorites,
 } from "../../state/persistence";
@@ -40,7 +41,9 @@ export const LauncherSurface = React.memo(
     const activeModality = React.useMemo(() => getActiveViewModality(), []);
     const isAosp = React.useMemo(() => isAospShellEnabled(), []);
 
-    const [recentIds, setRecentIds] = React.useState<string[]>([]);
+    const [recentIds, setRecentIds] = React.useState<string[]>(() =>
+      loadLauncherRecents(),
+    );
     const [favoriteIds, setFavoriteIds] = React.useState<string[]>(() =>
       loadLauncherFavorites(),
     );
