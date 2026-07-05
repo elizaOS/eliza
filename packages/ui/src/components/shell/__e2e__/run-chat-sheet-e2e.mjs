@@ -864,6 +864,15 @@ try {
         .evaluate((el) => el.className.includes("animate-pulse")),
       "LISTENING: the grabber bar pulses while the mic is hot",
     );
+    // #14331: the overlay's own mic button must pulse too — color AND motion
+    // agree on the primary surface, matching the grabber/pill instead of only
+    // turning accent.
+    assert(
+      await p
+        .getByTestId("chat-composer-mic")
+        .evaluate((el) => el.className.includes("animate-pulse")),
+      "LISTENING: the mic button itself pulses (accent) while hot (#14331)",
+    );
     await snap(p, "state-recording-listening");
     await p.close();
   }
