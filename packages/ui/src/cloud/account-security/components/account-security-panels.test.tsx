@@ -56,6 +56,9 @@ vi.mock("lucide-react", () => ({
   Download: () => <span data-testid="icon-download" />,
   Lock: () => <span data-testid="icon-lock" />,
   ScrollText: () => <span data-testid="icon-scroll-text" />,
+  ShieldAlert: () => <span data-testid="icon-shield-alert" />,
+  ShieldCheck: () => <span data-testid="icon-shield-check" />,
+  ShieldX: () => <span data-testid="icon-shield-x" />,
   Trash2: () => <span data-testid="icon-trash" />,
 }));
 

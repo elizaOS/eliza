@@ -104,12 +104,12 @@ export function CredentialsTab({
       {/* Header with Contribute + Invite & connect */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h3 className="text-base md:text-lg font-mono font-semibold text-white">
+          <h3 className="text-base md:text-lg font-mono font-semibold text-txt-strong">
             {t("cloud.credentialsTab.title", {
               defaultValue: "Team Credential Pool",
             })}
           </h3>
-          <p className="text-xs md:text-sm font-mono text-white/60">
+          <p className="text-xs md:text-sm font-mono text-muted">
             {t("cloud.credentialsTab.subtitle", {
               defaultValue:
                 "Provider API keys your org rotates across. Keys are encrypted; only the last 4 characters are ever shown.",

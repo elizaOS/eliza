@@ -190,7 +190,7 @@ export function TelegramConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Bot className="h-6 w-6 text-white" />}
+            icon={<Bot className="h-6 w-6 text-txt-strong" />}
             iconClassName="bg-accent"
             title={`@${status?.botUsername}`}
             subtitle={`Bot ID: ${status?.botId}`}

@@ -33,8 +33,8 @@ export function OrganizationSection() {
         ? "Sign in to Eliza Cloud to manage your organization."
         : "Unable to load your organization.";
     return (
-      <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-8 text-center">
-        <p className="text-sm font-mono text-white/60">{message}</p>
+      <div className="bg-surface border border-brand-surface p-8 text-center">
+        <p className="text-sm font-mono text-muted">{message}</p>
       </div>
     );
   }
