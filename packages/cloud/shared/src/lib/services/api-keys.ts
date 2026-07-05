@@ -352,6 +352,19 @@ export class ApiKeysService {
     await apiKeysRepository.deactivateUserKeysByName(userId, name);
   }
 
+  async deactivateByUserAndOrganization(userId: string, organizationId: string): Promise<void> {
+    const existingKeys = await apiKeysRepository.listByUser(userId);
+    const keysInOrganization = existingKeys.filter(
+      (key) => key.organization_id === organizationId && key.is_active,
+    );
+
+    for (const key of keysInOrganization) {
+      await this.invalidateCache(key.key_hash);
+    }
+
+    await apiKeysRepository.deactivateByUserAndOrganization(userId, organizationId);
+  }
+
   // Sandbox-scoped keys are named "agent-sandbox:<id>". Listing/revoking by that
   // canonical name is enough — no need for a separate metadata column today.
   private static agentApiKeyName(agentSandboxId: string): string {

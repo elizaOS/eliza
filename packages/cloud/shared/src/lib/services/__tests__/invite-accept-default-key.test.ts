@@ -20,6 +20,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import crypto from "node:crypto";
 
 // This proof owns its DB: force an isolated in-memory PGlite regardless of the
 // ambient DATABASE_URL / TEST_DATABASE_URL the CI lane exports.
@@ -48,6 +49,7 @@ const PGLITE_TIMEOUT = 60_000;
 let pgliteReady = true;
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
+let apiKeysService: typeof import("../api-keys").apiKeysService;
 let invitesService: typeof import("../invites").invitesService;
 let syncUserFromSteward: typeof import("../../steward-sync").syncUserFromSteward;
 let generateInviteToken: typeof import("../../utils/invite-tokens").generateInviteToken;
@@ -65,12 +67,17 @@ function uid(): string {
   return `00000000-0000-4000-9000-${String(seq).padStart(12, "0")}`;
 }
 
+function hashApiKey(key: string): string {
+  return crypto.createHash("sha256").update(key).digest("hex");
+}
+
 interface SeedResult {
   inviterOrgId: string;
   inviterUserId: string;
   inviteeOrgId: string;
   inviteeUserId: string;
   inviteeEmail: string;
+  inviteeOldApiKey: string;
   token: string;
 }
 
@@ -86,6 +93,7 @@ async function seedInviteScenario(): Promise<SeedResult> {
   const inviteeOrgId = uid();
   const inviteeUserId = uid();
   const inviteeEmail = `invitee-${inviteeUserId}@example.com`;
+  const inviteeOldApiKey = `eliza_old_${inviteeUserId.replaceAll("-", "")}`;
 
   await dbWrite.insert(schemas.organizations).values([
     { id: inviterOrgId, name: "Team Org", slug: `team-${inviterOrgId}` },
@@ -124,7 +132,7 @@ async function seedInviteScenario(): Promise<SeedResult> {
     {
       id: uid(),
       name: "Default API Key",
-      key_hash: `hash-invitee-${inviteeUserId}`,
+      key_hash: hashApiKey(inviteeOldApiKey),
       key_prefix: "eliza_sol",
       organization_id: inviteeOrgId,
       user_id: inviteeUserId,
@@ -149,6 +157,7 @@ async function seedInviteScenario(): Promise<SeedResult> {
     inviteeOrgId,
     inviteeUserId,
     inviteeEmail,
+    inviteeOldApiKey,
     token,
   };
 }
@@ -168,6 +177,7 @@ async function readActiveKeys(
 beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
+    ({ apiKeysService } = await import("../api-keys"));
     ({ invitesService } = await import("../invites"));
     ({ syncUserFromSteward } = await import("../../steward-sync"));
     ({ generateInviteToken, hashInviteToken } = await import("../../utils/invite-tokens"));
@@ -285,8 +295,13 @@ describe("invite accept provisions the personal default API key", () => {
 
       await invitesService.acceptInvite(seeded.token, seeded.inviteeUserId);
 
-      // The old key still exists but belongs to the org they left; the new org
-      // must hold its own personal default key for this user.
+      // The old org survives, but the user's old keys authenticate as that
+      // tenant and must be revoked when the user moves.
+      const oldOrgKeys = await readActiveKeys(seeded.inviteeUserId, seeded.inviteeOrgId);
+      expect(oldOrgKeys.length).toBe(0);
+      await expect(apiKeysService.validateApiKey(seeded.inviteeOldApiKey)).resolves.toBeNull();
+
+      // The new org must hold its own personal default key for this user.
       const keys = await readActiveKeys(seeded.inviteeUserId, seeded.inviterOrgId);
       expect(keys.length).toBe(1);
       expect(keys[0].name).toBe("Default API Key");

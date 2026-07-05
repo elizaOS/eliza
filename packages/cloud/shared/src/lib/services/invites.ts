@@ -205,6 +205,15 @@ export class InvitesService {
       await this.cleanUpVacatedSoloOrganization(userId, vacatedSoloOrgId, invite.organization_id);
     }
 
+    const previousOrganizationId = user.organization_id;
+    if (
+      previousOrganizationId &&
+      previousOrganizationId !== invite.organization_id &&
+      previousOrganizationId !== vacatedSoloOrgId
+    ) {
+      await apiKeysService.deactivateByUserAndOrganization(userId, previousOrganizationId);
+    }
+
     // The user's personal default key belongs to the org they left (a vacated
     // solo org's cascade even deletes it), so without the same mint a direct
     // signup gets they would join the team unable to use inference. Awaited:
