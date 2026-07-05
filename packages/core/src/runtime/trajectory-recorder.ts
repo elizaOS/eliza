@@ -21,6 +21,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveAliasedEnvValue } from "../boot-env";
 import {
 	computeCallCostUsd,
 	PRICE_TABLE_ID,
@@ -374,7 +375,7 @@ export function resolveTrajectoryDir(): string {
 	const explicit = process.env.ELIZA_TRAJECTORY_DIR?.trim();
 	if (explicit) return explicit;
 
-	const elizaState = process.env.ELIZA_STATE_DIR?.trim();
+	const elizaState = resolveAliasedEnvValue("ELIZA_STATE_DIR")?.trim();
 	if (elizaState) return path.join(elizaState, "trajectories");
 
 	return path.join(resolveStateDir(), "trajectories");
