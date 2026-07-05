@@ -23,6 +23,7 @@ Chromium renderer tests that need a Steward session use
 | Surface | Canonical test-auth path | Representative? | Token / secret shape |
 | --- | --- | --- | --- |
 | Web/desktop renderer UI-smoke | `seedStewardSession` or `setStewardSession` plus mocked `/api/cloud/*` routes | Bypass for renderer coverage | Opaque token by default; opt into helper JWT for JWT lifecycle tests |
+| Web/desktop real pairing UI-smoke | `test/ui-smoke/auth-pairing-real.spec.ts` starts a real `startApiServer` with `ELIZA_API_TOKEN` and `ELIZA_REQUIRE_LOCAL_AUTH=1`, reads the server-side pair code, and submits it through the pairing UI | Production-auth representative for pair-code → machine-session behavior | Rotating pair code plus minted revocable machine-session bearer; never the static API token |
 | Cloud console audit (`audit:cloud`) | Build renderer with `VITE_PLAYWRIGHT_TEST_AUTH=true`; StewardProvider mounts the test-auth shell | Bypass for visual coverage | Build-time flag, no user token |
 | iOS simulator local lane | Host agent on `127.0.0.1:31337` with `ELIZA_PAIRING_DISABLED=1`; Capacitor Preferences carries remote-connect state | Production-like local agent with pairing disabled | No cloud token |
 | Android emulator/device local lane | Host agent plus `adb reverse`; deep link `elizaos://first-run/runtime/remote?api=...` | Production-like local agent with pairing disabled | No cloud token |
@@ -46,3 +47,13 @@ when the lane is optional or label-gated; blocking lanes should fail.
 4. If a JWT lifecycle is the behavior under test, seed a short-expiry JWT with
    `seedStewardSession(page, { jwt: true, exp })` and attach the refresh network
    evidence.
+
+## First-Run Remote Deep Links
+
+`elizaos://first-run/runtime/remote?api=<url>` may preselect the Remote runtime
+and carry the remote agent URL. It must not carry access tokens or pair codes:
+those credentials belong in the inline Remote connect form or the pairing UI so
+the app can apply the normal trust, storage, and redaction path. Harnesses that
+need unattended pairing must either run `auth-pairing-real.spec.ts`'s server-side
+pair-code handoff or add an explicit reviewed credential contract here before
+using a token-bearing deep link.

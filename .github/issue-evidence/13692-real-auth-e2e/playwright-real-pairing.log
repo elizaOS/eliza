@@ -1,0 +1,55 @@
+[WebServer] (node:12575) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 1 test using 1 worker
+
+(node:12832) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:12832) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ Info       [Migration] Starting pre-1.6.5 → 1.6.5+ schema migration...
+ Info       [Migration] ✓ Migration complete - pre-1.6.5 → 1.6.5+ schema migration finished
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] DatabaseMigrationService initialized
+ Info       [PLUGIN:SQL] Starting migrations (environment=DEVELOPMENT, pluginCount=1, dryRun=false)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-sql, statementCount=167)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-sql, tag=0000_@elizaos/plugin-sql_mr76ix8t)
+ Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] All migrations completed successfully (successCount=1)
+ Info       [PLUGIN:SQL] Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)
+ Warn       #agent:PairingUiSmoke  [AGENT] No TEXT_EMBEDDING model registered, skipping embedding setup
+ Warn       #agent:PairingUiSmoke  [PLUGIN:BASIC-CAPABILITIES:SERVICE:EMBEDDING] No TEXT_EMBEDDING model registered - service will not be initialized
+ Info       Starting Documents service for agent: 866d478b-351a-09bb-b105-6e45818c5329
+ Info       [RelationshipsService] Loaded 0 contacts from components
+ Info       [RelationshipsService] Initialized successfully
+ Info       [FollowUpService] Successfully acquired RelationshipsService via service promise
+ Info       [FollowUpService] Initialized successfully
+ Info       [trajectories] Trajectories service initialized
+ Info       [eliza] Registered edge-tts for runtime TEXT_TO_SPEECH (streaming / swarm voice)
+ Warn       [eliza-api] AGENT_EVENT service not found on runtime — event streaming will be unavailable
+ Warn       #agent:PairingUiSmoke  [AGENT] Send handler already registered, overwriting (handlerSource=client_chat)
+[eliza-api] Listening on http://127.0.0.1:52205
+ Info       [eliza-api] Listening on http://127.0.0.1:52205
+ Info       [eliza-api] upstreamStartApiServer took 101ms
+ Warn       [model-catalog] Failed to fetch Ollama models: fetch failed
+ Info       [first-run] extractAndPersistFirstRunApiKey: credentialInputs=missing, keys=name
+ Warn       [first-run] No first-run credentials resolved from request body
+ Warn       [api] Failed to persist first-run state: Loopback config sync failed (401): {"error":"Unauthorized"}
+ Warn       [api] Pairing code for remote devices: 8M8W-7Y2F-QXZ9 (valid for 10 minutes)
+ Warn       [api] Pairing code for remote devices: GSS9-8629-LNWK (valid for 10 minutes)
+ Warn       [eliza-api] WebSocket message rejected before auth
+ Warn       [eliza-api] WebSocket message rejected before auth
+ Warn       [eliza-api] WebSocket message rejected before auth
+ Info       [API:PLUGINS] Plugin enable-state drift detected between /api/plugins and /api/plugins/core models (driftCount=1, byFlag={"entries_vs_compat":0,"entries_vs_allowlist":0,"inactive_but_enabled":1,"active_but_disabled":0}, plugins=["experience:inactive_but_enabled"])
+ Warn       [eliza-api] WebSocket message rejected before auth
+ Info       Documents service stopping for agent: PairingUiSmoke
+ Info       [RelationshipsService] Stopped successfully
+ Info       [FollowUpService] Stopped successfully
+  ✓  1 [chromium] › packages/app/test/ui-smoke/auth-pairing-real.spec.ts:101:1 › remote pairing against real app-core mints a machine session and survives reload (7.8s)
+
+  1 passed (19.9s)
