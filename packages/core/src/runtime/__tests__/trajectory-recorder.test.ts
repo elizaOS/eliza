@@ -25,6 +25,7 @@ let tmpDir: string;
 const originalReviewMode = process.env.ELIZA_TRAJECTORY_REVIEW_MODE;
 const originalMarkdownDir = process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR;
 const originalCerebrasKey = process.env.CEREBRAS_API_KEY;
+const originalTrajectoryLogging = process.env.ELIZA_TRAJECTORY_LOGGING;
 
 beforeEach(async () => {
 	tmpDir = await fs.mkdtemp(
@@ -33,6 +34,11 @@ beforeEach(async () => {
 	delete process.env.ELIZA_TRAJECTORY_REVIEW_MODE;
 	delete process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR;
 	delete process.env.CEREBRAS_API_KEY;
+	// The unified gate (#13775) defaults recording OFF under NODE_ENV=test,
+	// which vitest sets; this suite exercises real file writes, so it opts in
+	// explicitly. The gate's default-off policy stays covered by
+	// trajectory-gate.test.ts and the gate-default test below.
+	process.env.ELIZA_TRAJECTORY_LOGGING = "1";
 });
 
 afterEach(async () => {
@@ -51,6 +57,11 @@ afterEach(async () => {
 		delete process.env.CEREBRAS_API_KEY;
 	} else {
 		process.env.CEREBRAS_API_KEY = originalCerebrasKey;
+	}
+	if (originalTrajectoryLogging === undefined) {
+		delete process.env.ELIZA_TRAJECTORY_LOGGING;
+	} else {
+		process.env.ELIZA_TRAJECTORY_LOGGING = originalTrajectoryLogging;
 	}
 });
 
@@ -789,6 +800,40 @@ describe("JsonFileTrajectoryRecorder", () => {
 		// No files should have been written.
 		const entries = await fs.readdir(tmpDir).catch(() => [] as string[]);
 		expect(entries).toEqual([]);
+	});
+
+	it("defaults to disabled under NODE_ENV=test when no trajectory knob is set (#13775 gate)", async () => {
+		delete process.env.ELIZA_TRAJECTORY_LOGGING;
+		const priorLegacyRecording = process.env.ELIZA_TRAJECTORY_RECORDING;
+		delete process.env.ELIZA_TRAJECTORY_RECORDING;
+		const priorNodeEnv = process.env.NODE_ENV;
+		process.env.NODE_ENV = "test";
+		try {
+			const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+			const id = recorder.startTrajectory({
+				agentId: "gate-default",
+				rootMessage: { id: "0", text: "n" },
+			});
+			await recorder.recordStage(id, {
+				stageId: "ignored",
+				kind: "planner",
+				startedAt: 1,
+				endedAt: 2,
+				latencyMs: 1,
+			});
+			await recorder.endTrajectory(id, "finished");
+
+			// The suite-level ELIZA_TRAJECTORY_LOGGING opt-in is load-bearing:
+			// a bare recorder under the test default stays dark and writes nothing.
+			const entries = await fs.readdir(tmpDir).catch(() => [] as string[]);
+			expect(entries).toEqual([]);
+		} finally {
+			if (priorNodeEnv === undefined) delete process.env.NODE_ENV;
+			else process.env.NODE_ENV = priorNodeEnv;
+			if (priorLegacyRecording === undefined)
+				delete process.env.ELIZA_TRAJECTORY_RECORDING;
+			else process.env.ELIZA_TRAJECTORY_RECORDING = priorLegacyRecording;
+		}
 	});
 
 	it("writes redacted markdown review artifacts when review mode is enabled", async () => {
