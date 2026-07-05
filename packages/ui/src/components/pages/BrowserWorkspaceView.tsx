@@ -45,6 +45,7 @@ import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
+import { ViewHeader } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useConfirm } from "../ui/confirm-dialog.hooks";
@@ -2948,20 +2949,34 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     </div>
   );
 
+  // Uniform top bar (#13451/#13596): a bare-icon ViewHeader with a centered
+  // "Browser" title sits ABOVE the browser toolbar (URL bar + tab control),
+  // never replacing it. The toolbar stays inside WorkspaceLayout's
+  // contentHeader; the ViewHeader is a sibling stacked on top so back always
+  // returns to the launcher and the header reads identically to every other
+  // view. `min-h-0` keeps the WorkspaceLayout free to fill the remaining
+  // height below the fixed-height header.
   const mainNode = (
-    <WorkspaceLayout
-      sidebar={browserTabsSidebar}
-      contentHeader={navNode}
-      contentHeaderClassName="mb-0"
-      headerPlacement="inside"
-      contentPadding={false}
-      contentClassName="overflow-hidden"
-      contentInnerClassName="min-h-0 overflow-hidden"
-      mobileSidebarLabel={tabsLabel}
-      mobileSidebarTriggerClassName="ml-3 mt-3"
-    >
-      {browserSurface}
-    </WorkspaceLayout>
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <ViewHeader
+        title={t("browserworkspace.ViewTitle", { defaultValue: "Browser" })}
+      />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <WorkspaceLayout
+          sidebar={browserTabsSidebar}
+          contentHeader={navNode}
+          contentHeaderClassName="mb-0"
+          headerPlacement="inside"
+          contentPadding={false}
+          contentClassName="overflow-hidden"
+          contentInnerClassName="min-h-0 overflow-hidden"
+          mobileSidebarLabel={tabsLabel}
+          mobileSidebarTriggerClassName="ml-3 mt-3"
+        >
+          {browserSurface}
+        </WorkspaceLayout>
+      </div>
+    </div>
   );
 
   return (
