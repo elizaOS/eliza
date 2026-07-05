@@ -53,6 +53,7 @@ const FORBIDDEN_TOKEN_PATTERNS: RegExp[] = [
   /\bborder-white\/[\w.[\]%]+/,
   /\bdivide-white\/[\w.[\]%]+/,
   /\bbg-black(?:\/[\w.[\]%]+)?/, // opaque / translucent black surfaces
+  /\bbg-neutral-800\b/,
   /\bbg-neutral-900\b/,
   /\bbg-\[rgba\(10,10,10/, // bespoke near-black panels
   /\bbg-\[rgba\(29,29,29/,
