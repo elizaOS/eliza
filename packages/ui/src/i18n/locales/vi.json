@@ -5480,7 +5480,6 @@
   "automationsfeed.refresh": "Làm mới",
   "automationsfeed.new": "Mới",
   "automationsfeed.empty": "Chưa có tự động hóa nào.",
-  "automationsfeed.createFirst": "Tạo tự động hóa đầu tiên của bạn",
   "automationsfeed.runError": "Không thể chạy tự động hóa.",
   "automationsfeed.workflow": "Quy trình",
   "automationsfeed.promptAutomation": "Nhiệm vụ",

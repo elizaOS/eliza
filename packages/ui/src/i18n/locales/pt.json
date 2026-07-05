@@ -5480,7 +5480,6 @@
   "automationsfeed.refresh": "Atualizar",
   "automationsfeed.new": "Novo",
   "automationsfeed.empty": "Nenhuma automação ainda.",
-  "automationsfeed.createFirst": "Crie sua primeira automação",
   "automationsfeed.runError": "Falha ao executar automação.",
   "automationsfeed.workflow": "Fluxo de trabalho",
   "automationsfeed.promptAutomation": "Tarefa",

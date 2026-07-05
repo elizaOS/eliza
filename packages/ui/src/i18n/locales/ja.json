@@ -5480,7 +5480,6 @@
   "automationsfeed.refresh": "更新",
   "automationsfeed.new": "新規",
   "automationsfeed.empty": "オートメーションがまだありません。",
-  "automationsfeed.createFirst": "最初のオートメーションを作成",
   "automationsfeed.runError": "オートメーションの実行に失敗しました。",
   "automationsfeed.workflow": "ワークフロー",
   "automationsfeed.promptAutomation": "タスク",

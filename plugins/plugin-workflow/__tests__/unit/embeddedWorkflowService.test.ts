@@ -450,9 +450,6 @@ describe('EmbeddedWorkflowService', () => {
   }, 90_000);
 
   test('fails closed when the prior default deletion check fails', async () => {
-    // Same pre-marker deletion shape as above, but the revision lookup fails on
-    // reboot. The service must surface that failure instead of treating it as
-    // "not deleted" and re-seeding the default.
     const harness = await seedingHarness({ WORKFLOW_SEED_DEFAULTS: false });
     const first = await harness.start();
     await first.createWorkflow({

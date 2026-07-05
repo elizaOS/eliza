@@ -5480,7 +5480,6 @@
   "automationsfeed.refresh": "새로고침",
   "automationsfeed.new": "새로 만들기",
   "automationsfeed.empty": "아직 자동화가 없습니다.",
-  "automationsfeed.createFirst": "첫 번째 자동화 만들기",
   "automationsfeed.runError": "자동화 실행에 실패했습니다.",
   "automationsfeed.workflow": "워크플로우",
   "automationsfeed.promptAutomation": "작업",

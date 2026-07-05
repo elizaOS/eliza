@@ -5480,7 +5480,6 @@
   "automationsfeed.refresh": "刷新",
   "automationsfeed.new": "新建",
   "automationsfeed.empty": "暂无自动化。",
-  "automationsfeed.createFirst": "创建您的第一个自动化",
   "automationsfeed.runError": "运行自动化失败。",
   "automationsfeed.workflow": "工作流",
   "automationsfeed.promptAutomation": "任务",

@@ -173,4 +173,43 @@ describe("AutomationsFeed", () => {
     await screen.findByText("Nightly review");
     expect(screen.queryByRole("button", { name: "New" })).toBeNull();
   });
+
+  it("renders the uniform ViewHeader with a centered title and bare-icon back", async () => {
+    render(<AutomationsFeed />);
+
+    await screen.findByText("Nightly review");
+    const header = screen.getByTestId("view-header");
+    expect(header).toBeTruthy();
+    // Title lives in the header, not a page-level heading block.
+    expect(within(header).getByText("Automations")).toBeTruthy();
+    // Bare-icon back affordance (no text label, aria-labelled).
+    expect(within(header).getByRole("button", { name: /back/i })).toBeTruthy();
+  });
+
+  it("shows a designed-empty state with NO create CTA when nothing is scheduled", async () => {
+    clientMock.listAutomations.mockResolvedValue({
+      automations: [],
+      summary: {
+        total: 0,
+        coordinatorCount: 0,
+        workflowCount: 0,
+        scheduledCount: 0,
+        draftCount: 0,
+      },
+      workflowStatus: null,
+      workflowFetchError: null,
+    });
+
+    render(<AutomationsFeed />);
+
+    expect(await screen.findByText("Nothing scheduled yet")).toBeTruthy();
+    // The empty state is unreachable in practice (a default is seeded on first
+    // run); when it does render for the deleted-everything edge it must carry
+    // NO create CTA — the agent offers re-creation from chat instead.
+    expect(
+      screen.queryByRole("button", { name: /create your first/i }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /create/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: "New" })).toBeNull();
+  });
 });

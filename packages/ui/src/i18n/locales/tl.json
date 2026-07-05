@@ -5480,7 +5480,6 @@
   "automationsfeed.refresh": "I-refresh",
   "automationsfeed.new": "Bago",
   "automationsfeed.empty": "Wala pang mga automation.",
-  "automationsfeed.createFirst": "Gumawa ng iyong unang automation",
   "automationsfeed.runError": "Nabigong patakbuhin ang automation.",
   "automationsfeed.workflow": "Workflow",
   "automationsfeed.promptAutomation": "Gawain",

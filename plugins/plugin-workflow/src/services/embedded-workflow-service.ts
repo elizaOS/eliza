@@ -2357,7 +2357,8 @@ export class EmbeddedWorkflowService extends Service {
     // left a `delete` revision in workflow_revisions, so treat that as the
     // missing deletion signal: if one exists, DO NOT re-seed, and backfill the
     // marker so future boots skip fast without re-querying revisions.
-    if (await this.hasPriorDefaultWorkflowDeletion()) {
+    const priorDeletion = await this.getPriorDefaultWorkflowDeletionState();
+    if (priorDeletion === 'deleted') {
       const backfilled = await this.markDefaultWorkflowsSeeded();
       if (!backfilled) {
         logger.warn(
@@ -2449,8 +2450,8 @@ export class EmbeddedWorkflowService extends Service {
       );
       return marker && typeof marker === 'object' && marker.seededAt ? 'seeded' : 'not-seeded';
     } catch {
-      // Fail closed: a deleted default must not come back just because the
-      // cache was momentarily unreadable.
+      // error-policy:J4 fail closed: a deleted default must not come back just
+      // because the cache was momentarily unreadable.
       logger.warn(
         { src: 'plugin:workflow:embedded' },
         'Default-workflow seed marker read failed; skipping seed this boot to preserve any prior deletion'
@@ -2460,14 +2461,14 @@ export class EmbeddedWorkflowService extends Service {
   }
 
   /**
-   * True when workflow_revisions holds a `delete` revision for the default
-   * workflow id — the signal that a user deleted it (possibly on a pre-marker
-   * build). Used to preserve that deletion across an upgrade so "no marker + no
-   * row" is not misread as a first run. This query must fail closed: an
-   * unreadable deletion history cannot be treated as "not deleted" without
-   * risking a zombie default re-seed.
+   * Resolve whether workflow_revisions holds a `delete` revision for the
+   * default workflow id — the signal that a user deleted it (possibly on a
+   * pre-marker build). Used to preserve that deletion across an upgrade so
+   * "no marker + no row" is not misread as a first run. This check must fail
+   * closed and observably: treating an unreadable deletion history as "none"
+   * can resurrect a default workflow the user already deleted.
    */
-  private async hasPriorDefaultWorkflowDeletion(): Promise<boolean> {
+  private async getPriorDefaultWorkflowDeletionState(): Promise<'deleted' | 'none'> {
     try {
       await this.ensureSchema();
       const rows = await this.getDb()
@@ -2480,7 +2481,7 @@ export class EmbeddedWorkflowService extends Service {
           )
         )
         .limit(1);
-      return rows.length > 0;
+      return rows.length > 0 ? 'deleted' : 'none';
     } catch (error) {
       // error-policy:J2 context-adding rethrow; default seeding must fail closed
       // when the deletion-history guard cannot be evaluated.
@@ -2531,6 +2532,8 @@ export class EmbeddedWorkflowService extends Service {
       }
       return true;
     } catch {
+      // error-policy:J4 a failed marker write turns into an explicit
+      // not-persisted result; the caller rolls back any just-created row.
       logger.warn(
         { src: 'plugin:workflow:embedded' },
         'Failed to persist default-workflow seed marker'
