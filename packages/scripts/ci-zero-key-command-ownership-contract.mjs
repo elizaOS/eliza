@@ -40,6 +40,7 @@ const IGNORED_LINE =
 const ALLOWED_DUPLICATE_COMMANDS = new Set([
   "node packages/app-core/scripts/ensure-shared-i18n-data.mjs",
   "bunx playwright install --with-deps chromium",
+  "node packages/scripts/ci-zero-key-command-ownership-contract.mjs",
 ]);
 
 function assert(condition, message) {
