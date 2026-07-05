@@ -381,6 +381,7 @@
   "browserworkspace.Tabs": "탭",
   "browserworkspace.UnsupportedProtocol": "http와 https URL만 지원해요.",
   "browserworkspace.UserTabs": "사용자 탭",
+  "browserworkspace.ViewTitle": "브라우저",
   "browserworkspace.Visible": "표시됨",
   "browserworkspace.WebWorkspace": "웹 iframe 워크스페이스",
   "browserworkspace.Working": "작업 중: {{action}}",

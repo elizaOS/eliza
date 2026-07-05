@@ -381,6 +381,7 @@
   "browserworkspace.Tabs": "标签页",
   "browserworkspace.UnsupportedProtocol": "仅支持 http 和 https URL。",
   "browserworkspace.UserTabs": "用户标签页",
+  "browserworkspace.ViewTitle": "浏览器",
   "browserworkspace.Visible": "可见",
   "browserworkspace.WebWorkspace": "Web iframe 工作区",
   "browserworkspace.Working": "正在执行：{{action}}",

@@ -381,6 +381,7 @@
   "browserworkspace.Tabs": "Abas",
   "browserworkspace.UnsupportedProtocol": "Apenas URLs http e https são suportadas.",
   "browserworkspace.UserTabs": "Abas do usuário",
+  "browserworkspace.ViewTitle": "Navegador",
   "browserworkspace.Visible": "Visível",
   "browserworkspace.WebWorkspace": "Workspace em iframe da Web",
   "browserworkspace.Working": "Trabalhando: {{action}}",
