@@ -57,14 +57,14 @@ const SIZE_UNITS: Record<string, number> = {
  * that is not a single well-formed decimal (throws `invalid_input`).
  */
 function parseCpuPercent(raw: string): number {
-  const token = raw.replace("%", "").trim();
-  if (!/^\d+(?:\.\d+)?$/.test(token)) {
+  const match = raw.trim().match(/^(\d+(?:\.\d+)?)%$/);
+  if (!match) {
     throw new HetznerClientError(
       "invalid_input",
       `Failed to parse docker stats CPU percent: ${JSON.stringify(raw)}`,
     );
   }
-  return Number(token);
+  return Number(match[1]);
 }
 
 function parseSize(raw: string): number {

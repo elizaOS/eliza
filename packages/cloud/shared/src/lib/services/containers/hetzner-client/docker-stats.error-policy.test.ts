@@ -118,6 +118,9 @@ describe("parseDockerStats — internal failure propagates (fail closed)", () =>
       line("50.0%", ". / 512MiB", "0B / 0B", "0B / 0B"), // bare dot -> NaN
       line("50.0%", "12abc / 512MiB", "0B / 0B", "0B / 0B"), // trailing garbage
       line("1e3%", "128MiB / 512MiB", "0B / 0B", "0B / 0B"), // exponent form (not docker output)
+      line("%12", "128MiB / 512MiB", "0B / 0B", "0B / 0B"), // misplaced percent
+      line("12%3", "128MiB / 512MiB", "0B / 0B", "0B / 0B"), // embedded percent
+      line("12.3", "128MiB / 512MiB", "0B / 0B", "0B / 0B"), // missing percent suffix
     ];
     for (const bad of malformed) {
       let err: unknown;
