@@ -31,6 +31,7 @@ export * from "./permissions/types";
 // would shadow the real api/server, runtime/eliza, etc. exports above with
 // inert browser aliases. Browser bundlers alias it in via the path map; Node imports
 // the originals directly through this barrel.
+export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings.generated";
 export * from "./platform/ios-runtime-backends";
 export {
   IOS_FULL_BUN_SMOKE_REQUEST_KEY,

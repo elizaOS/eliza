@@ -6,8 +6,8 @@
 // wrong" heading) as a "genuine model reply".
 //
 // This parity test proves:
-//   1. the derived regexes reproduce the historical hand-authored source exactly
-//      (behaviour-preserving), and stay in lockstep with the fragment lists;
+//   1. the derived regexes reproduce the historical hand-authored classifier
+//      behaviour, and stay in lockstep with the fragment lists;
 //   2. the committed Swift artifact byte-matches the generator output (so a hand
 //      edit / stale regen is caught in CI, not on device);
 //   3. representative error renders are classified as failures and a real reply
@@ -23,6 +23,7 @@ import {
   IOS_FAILURE_FRAGMENTS,
   IOS_FULL_BUN_SMOKE_FAILURE_RE,
   renderSwiftFailureStrings,
+  renderTypeScriptFailureStrings,
   THINK_TAG_FAILURE_FRAGMENTS,
 } from "./chat-failure-strings.mjs";
 
@@ -35,17 +36,27 @@ const bootCaptureUITestsPath = path.resolve(
   here,
   "../../../app-core/platforms/ios/App/AppUITests/BootCaptureUITests.swift",
 );
+const appCoreTsArtifactPath = path.resolve(
+  here,
+  "../../../app-core/src/platform/chat-failure-strings.generated.ts",
+);
+const iosRuntimeBridgePath = path.resolve(
+  here,
+  "../../../app-core/src/platform/ios-runtime-bridge.ts",
+);
+const appMainPath = path.resolve(here, "../../src/main.tsx");
 
-// The exact hand-authored source that lived inline in mobile-local-chat-smoke.mjs
-// before #13687. Pinned here so a fragment reorder/edit that changes matching
-// behaviour is caught, not silently accepted.
+// The exact hand-authored classifier sources that lived inline in
+// mobile-local-chat-smoke.mjs before #13687. Android includes the old regex plus
+// its old inline think-tag sidecar. Pinned here so a fragment reorder/edit that
+// changes matching behaviour is caught, not silently accepted.
 const HISTORICAL_IOS_SOURCE =
   "something went wrong|backend is not running|local backend is not running|no local backend|no local model|no model registered|no provider|connect a provider|waiting for the model download|timed out|<think\\b|<\\/think>|\\/?\\bno_think\\b";
 const HISTORICAL_ANDROID_SOURCE =
-  "something went wrong|no local gguf|no local model|no model registered|no provider|connect a provider|device_disconnected|device_timeout|timed out|chat generation failed|waiting for the model download|set chat routing|progress:\\s*0%";
+  "something went wrong|no local gguf|no local model|no model registered|no provider|connect a provider|device_disconnected|device_timeout|timed out|chat generation failed|waiting for the model download|set chat routing|progress:\\s*0%|<think\\b|<\\/think>|\\/?\\bno_think\\b";
 
 describe("chat-failure-strings single source of truth (#13687)", () => {
-  it("reproduces the historical iOS/Android failure regexes byte-for-byte", () => {
+  it("reproduces the historical iOS/Android failure classifiers byte-for-byte", () => {
     expect(IOS_FULL_BUN_SMOKE_FAILURE_RE.source).toBe(HISTORICAL_IOS_SOURCE);
     expect(IOS_FULL_BUN_SMOKE_FAILURE_RE.flags).toBe("i");
     expect(ANDROID_FULL_TURN_FAILURE_RE.source).toBe(HISTORICAL_ANDROID_SOURCE);
@@ -62,9 +73,9 @@ describe("chat-failure-strings single source of truth (#13687)", () => {
   });
 
   it("shares the think-tag leakage fragments across surfaces", () => {
-    // The iOS list carries the shared think-tag group; Android checks it inline.
     for (const fragment of THINK_TAG_FAILURE_FRAGMENTS) {
       expect(IOS_FAILURE_FRAGMENTS).toContain(fragment);
+      expect(ANDROID_FAILURE_FRAGMENTS).toContain(fragment);
     }
     expect(THINK_TAG_FAILURE_FRAGMENTS.length).toBeGreaterThan(0);
   });
@@ -77,6 +88,20 @@ describe("chat-failure-strings single source of truth (#13687)", () => {
   it("committed Swift artifact byte-matches the generator (no drift / stale regen)", () => {
     const committed = fs.readFileSync(swiftArtifactPath, "utf8");
     expect(committed).toBe(renderSwiftFailureStrings());
+  });
+
+  it("committed app-core TypeScript artifact byte-matches the generator", () => {
+    const committed = fs.readFileSync(appCoreTsArtifactPath, "utf8");
+    expect(committed).toBe(renderTypeScriptFailureStrings());
+  });
+
+  it("browser/runtime smoke checks consume the generated TypeScript artifact", () => {
+    const bridge = fs.readFileSync(iosRuntimeBridgePath, "utf8");
+    const appMain = fs.readFileSync(appMainPath, "utf8");
+    expect(bridge).toContain('from "./chat-failure-strings.generated"');
+    expect(appMain).toContain("IOS_FULL_BUN_SMOKE_FAILURE_RE");
+    expect(bridge).not.toContain("backend is not running|local backend");
+    expect(appMain).not.toContain("something went wrong|<think");
   });
 
   it("the XCUITest reply verifier consumes the shared vocabulary (not dead code)", () => {

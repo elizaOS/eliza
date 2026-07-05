@@ -30,7 +30,7 @@ import { pathToFileURL } from "node:url";
 /**
  * Think-tag / no-think leakage fragments. A model that leaks its raw reasoning
  * scaffolding into the user-visible reply is a broken pipeline, not a reply.
- * Shared by the iOS failure regex and used inline by the Android turn check.
+ * Shared by the iOS and Android failure regexes.
  */
 export const THINK_TAG_FAILURE_FRAGMENTS = Object.freeze([
   "<think\\b",
@@ -59,7 +59,8 @@ export const IOS_FAILURE_FRAGMENTS = Object.freeze([
 
 /**
  * Android full-turn failure fragments (in the exact alternation order of the
- * historical `ANDROID_FULL_TURN_FAILURE_RE`).
+ * historical `ANDROID_FULL_TURN_FAILURE_RE`, plus the shared think-tag group
+ * that used to be checked inline beside that regex).
  */
 export const ANDROID_FAILURE_FRAGMENTS = Object.freeze([
   "something went wrong",
@@ -75,6 +76,7 @@ export const ANDROID_FAILURE_FRAGMENTS = Object.freeze([
   "waiting for the model download",
   "set chat routing",
   "progress:\\s*0%",
+  ...THINK_TAG_FAILURE_FRAGMENTS,
 ]);
 
 /**
@@ -135,6 +137,41 @@ ${swiftArray("android", ANDROID_FAILURE_FRAGMENTS)}
 `;
 }
 
+/**
+ * Generate the deterministic TypeScript artifact consumed by app-core and the
+ * app renderer. This keeps browser/runtime smoke checks on the same vocabulary
+ * without making app-core import from packages/app/scripts at runtime.
+ * @returns {string}
+ */
+export function renderTypeScriptFailureStrings() {
+  const tsArray = (name, fragments) => {
+    const rows = fragments.map((f) => `  ${JSON.stringify(f)},`).join("\n");
+    return `export const ${name} = [\n${rows}\n] as const;`;
+  };
+
+  return `// GENERATED FILE - DO NOT EDIT BY HAND.
+// Source of truth: packages/app/scripts/lib/chat-failure-strings.mjs
+// Regenerate: node packages/app/scripts/lib/chat-failure-strings.mjs --emit-ts
+// Parity guard: packages/app/scripts/lib/chat-failure-strings.test.mjs
+
+${tsArray("IOS_FAILURE_FRAGMENTS", IOS_FAILURE_FRAGMENTS)}
+
+${tsArray("ANDROID_FAILURE_FRAGMENTS", ANDROID_FAILURE_FRAGMENTS)}
+
+function buildFailureRegExp(fragments: readonly string[]): RegExp {
+  return new RegExp(fragments.join("|"), "i");
+}
+
+export const IOS_FULL_BUN_SMOKE_FAILURE_RE = buildFailureRegExp(
+  IOS_FAILURE_FRAGMENTS,
+);
+
+export const ANDROID_FULL_TURN_FAILURE_RE = buildFailureRegExp(
+  ANDROID_FAILURE_FRAGMENTS,
+);
+`;
+}
+
 // Allow `node chat-failure-strings.mjs --emit-swift` to print the Swift artifact
 // (used by the regenerate step + verified byte-for-byte by the parity test). The
 // guard keeps a bare `import` of this module side-effect-free.
@@ -144,5 +181,7 @@ if (
 ) {
   if (process.argv.includes("--emit-swift")) {
     process.stdout.write(renderSwiftFailureStrings());
+  } else if (process.argv.includes("--emit-ts")) {
+    process.stdout.write(renderTypeScriptFailureStrings());
   }
 }

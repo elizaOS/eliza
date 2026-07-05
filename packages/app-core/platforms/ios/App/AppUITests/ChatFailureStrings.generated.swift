@@ -38,5 +38,8 @@ enum ChatFailureStrings {
         "waiting for the model download",
         "set chat routing",
         "progress:\\s*0%",
+        "<think\\b",
+        "<\\/think>",
+        "\\/?\\bno_think\\b",
     ]
 }

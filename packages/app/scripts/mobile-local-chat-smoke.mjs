@@ -2269,10 +2269,7 @@ function requireUsableFullTurnReply(done, rawStreamText) {
   if (!reply) {
     throw new Error(`Full-turn smoke returned empty reply: ${rawStreamText}`);
   }
-  if (
-    /<think\b|<\/think>|\/?\bno_think\b/i.test(reply) ||
-    ANDROID_FULL_TURN_FAILURE_RE.test(reply)
-  ) {
+  if (ANDROID_FULL_TURN_FAILURE_RE.test(reply)) {
     throw new Error(`Full-turn smoke returned unusable reply: ${reply}`);
   }
   const normalizedReply = reply

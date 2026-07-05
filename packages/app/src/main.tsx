@@ -48,6 +48,7 @@ import {
   DesktopSurfaceNavigationRuntime,
   DesktopTrayRuntime,
   DetachedShellRoot,
+  IOS_FULL_BUN_SMOKE_FAILURE_RE,
 } from "@elizaos/app-core";
 import {
   installIosLocalAgentFetchBridge,
@@ -1740,9 +1741,7 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     );
     if (
       !streamMessage.includes('"type":"done"') ||
-      /something went wrong|<think\b|<\/think>|\/?\bno_think\b/i.test(
-        streamMessage,
-      )
+      IOS_FULL_BUN_SMOKE_FAILURE_RE.test(streamMessage)
     ) {
       throw new Error(
         `full Bun conversation stream returned unusable SSE: ${streamMessage.slice(0, 500)}`,
