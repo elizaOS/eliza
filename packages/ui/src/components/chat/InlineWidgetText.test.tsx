@@ -31,6 +31,11 @@ const { clientMock } = vi.hoisted(() => ({
     openPermissionSettings: vi.fn(),
     requestPermission: vi.fn(),
     updatePlugin: vi.fn(),
+    // The task card hydrates its header once and subscribes to the WS activity
+    // feed on mount; a never-resolving fetch + no-op unsubscribe keep it on its
+    // fallback title without a backend (marker-leak assertion is all this needs).
+    getCodingAgentTaskThread: vi.fn(() => new Promise(() => undefined)),
+    onWsEvent: () => () => undefined,
   },
 }));
 

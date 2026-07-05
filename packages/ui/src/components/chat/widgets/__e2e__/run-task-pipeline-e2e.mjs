@@ -1,12 +1,13 @@
 /**
  * Real-browser render pass for the inline task-activity pipeline (#13536).
  * Bundles the fixture with esbuild (single React copy), loads it in headless
- * chromium, drives the live task card by delivering genuine server
- * `pty-session-event` frames through the client fan-out, expands the card, and
- * screenshots the grouped task → sub-agent → step tree at desktop and mobile
- * widths — asserting the nested sub-agents, in-place tool steps, live plan
- * checklist, workflow pipeline, and standalone checklist all render with a clean
- * console.
+ * chromium, and screenshots the grouped task → sub-agent → step tree at desktop
+ * and mobile widths — asserting the nested sub-agents, in-place tool steps, live
+ * plan checklist, workflow pipeline, and standalone checklist all render with a
+ * clean console. This is the rendered-pixel half: the fixture mounts the real
+ * pipeline components on the exact `SubagentActivity`/plan shapes the store
+ * produces. The WS stream → those shapes seam is proven separately (real
+ * `client.deliverWsMessageForTest` → `bindWs`) in `task-activity-store.test.ts`.
  *
  * Run: bun run --cwd packages/ui test:task-pipeline-e2e
  */
