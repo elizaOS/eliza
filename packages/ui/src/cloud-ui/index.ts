@@ -22,6 +22,13 @@ export {
 export * from "./components/auth/authorize-content";
 export * from "./components/auth/authorize-return";
 export * from "./components/brand";
+export {
+  BulkDeleteDialog,
+  type BulkDeleteOutcome,
+  BulkSelectionBar,
+  type BulkSelectionBarLabels,
+  runBulkDelete,
+} from "./components/bulk/bulk-select";
 export * from "./components/code";
 export * from "./components/connection-card";
 export {

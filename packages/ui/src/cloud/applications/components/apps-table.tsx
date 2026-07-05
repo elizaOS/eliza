@@ -15,17 +15,12 @@ import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { AppsListView } from "../../../cloud-ui/components/data-list";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../../../components/ui/alert-dialog";
+  BulkDeleteDialog,
+  BulkSelectionBar,
+  runBulkDelete,
+} from "../../../cloud-ui/components/bulk/bulk-select";
+import { AppsListView } from "../../../cloud-ui/components/data-list";
 import { Button } from "../../../components/ui/button";
 import { copyTextToClipboard } from "../../../utils/clipboard";
 import { useCloudT } from "../../shell/CloudI18nProvider";
@@ -70,11 +65,9 @@ export function AppsTable({ apps }: { apps: App[] }) {
     setDeletingIds(new Set(ids));
     setDeleteTargets(null);
     try {
-      const results = await Promise.allSettled(ids.map((id) => deleteApp(id)));
-      const deletedIds = ids.filter(
-        (_, i) => results[i].status === "fulfilled",
-      );
-      const failed = targets.filter((_, i) => results[i].status === "rejected");
+      const outcome = await runBulkDelete(targets, (app) => deleteApp(app.id));
+      const deletedIds = outcome.deleted.map((app) => app.id);
+      const failed = outcome.failed;
 
       if (deletedIds.length > 0) {
         // Drop deleted rows from the cache directly — see the file header for
@@ -98,9 +91,7 @@ export function AppsTable({ apps }: { apps: App[] }) {
       }
 
       if (failed.length > 0) {
-        const firstError = results.find(
-          (r): r is PromiseRejectedResult => r.status === "rejected",
-        )?.reason;
+        const firstError = outcome.firstError;
         toast.error(
           t("cloud.apps.toast.deleteSomeFailed", {
             count: failed.length,
@@ -130,40 +121,24 @@ export function AppsTable({ apps }: { apps: App[] }) {
 
   return (
     <>
-      {selectedIds.size > 0 && (
-        <div className="mb-2 flex items-center justify-between gap-3 rounded-sm border border-white/10 bg-white/5 px-3 py-2">
-          <span className="text-sm text-white">
-            {t("cloud.apps.selectedCount", {
-              count: selectedIds.size,
-              defaultValue: "{{count}} selected",
-            })}
-          </span>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => setSelectedIds(new Set())}
-              className="h-8 px-3 text-white/62 hover:text-white"
-            >
-              {t("cloud.apps.clearSelection", { defaultValue: "Clear" })}
-            </Button>
-            <Button
-              variant="ghost"
-              type="button"
-              disabled={deletingIds.size > 0}
-              onClick={() =>
-                setDeleteTargets(apps.filter((app) => selectedIds.has(app.id)))
-              }
-              className="h-8 px-3 text-red-400 hover:bg-red-500/10 hover:text-red-300"
-            >
-              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-              {t("cloud.apps.deleteSelected", {
-                defaultValue: "Delete selected",
-              })}
-            </Button>
-          </div>
-        </div>
-      )}
+      <BulkSelectionBar
+        count={selectedIds.size}
+        onClear={() => setSelectedIds(new Set())}
+        onDelete={() =>
+          setDeleteTargets(apps.filter((app) => selectedIds.has(app.id)))
+        }
+        deleteDisabled={deletingIds.size > 0}
+        labels={{
+          selected: t("cloud.apps.selectedCount", {
+            count: selectedIds.size,
+            defaultValue: "{{count}} selected",
+          }),
+          clear: t("cloud.apps.clearSelection", { defaultValue: "Clear" }),
+          deleteSelected: t("cloud.apps.deleteSelected", {
+            defaultValue: "Delete selected",
+          }),
+        }}
+      />
 
       <AppsListView
         apps={apps}
@@ -186,53 +161,46 @@ export function AppsTable({ apps }: { apps: App[] }) {
         selectedIds={selectedIds}
       />
 
-      <AlertDialog
+      <BulkDeleteDialog
         open={deleteTargets !== null}
         onOpenChange={(open) => !open && setDeleteTargets(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
+        title={
+          dialogCount > 1
+            ? t("cloud.apps.deleteDialog.titleMany", {
+                count: dialogCount,
+                defaultValue: "Delete {{count}} Apps",
+              })
+            : t("cloud.apps.deleteDialog.title", {
+                defaultValue: "Delete App",
+              })
+        }
+        description={
+          <>
+            {t("cloud.apps.deleteDialog.confirmPrefix", {
+              defaultValue: "Are you sure you want to delete",
+            })}{" "}
+            <span className="font-semibold text-txt-strong">
               {dialogCount > 1
-                ? t("cloud.apps.deleteDialog.titleMany", {
+                ? t("cloud.apps.deleteDialog.manyApps", {
                     count: dialogCount,
-                    defaultValue: "Delete {{count}} Apps",
+                    defaultValue: "{{count}} apps",
                   })
-                : t("cloud.apps.deleteDialog.title", {
-                    defaultValue: "Delete App",
-                  })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("cloud.apps.deleteDialog.confirmPrefix", {
-                defaultValue: "Are you sure you want to delete",
-              })}{" "}
-              <span className="font-semibold text-white">
-                {dialogCount > 1
-                  ? t("cloud.apps.deleteDialog.manyApps", {
-                      count: dialogCount,
-                      defaultValue: "{{count}} apps",
-                    })
-                  : `"${deleteTargets?.[0]?.name}"`}
-              </span>
-              ?{" "}
-              {t("cloud.apps.deleteDialog.cannotBeUndone", {
-                defaultValue: "This action cannot be undone.",
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t("cloud.apps.deleteDialog.cancel", { defaultValue: "Cancel" })}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmDelete}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {t("cloud.apps.deleteDialog.delete", { defaultValue: "Delete" })}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+                : `"${deleteTargets?.[0]?.name}"`}
+            </span>
+            ?{" "}
+            {t("cloud.apps.deleteDialog.cannotBeUndone", {
+              defaultValue: "This action cannot be undone.",
+            })}
+          </>
+        }
+        cancelLabel={t("cloud.apps.deleteDialog.cancel", {
+          defaultValue: "Cancel",
+        })}
+        confirmLabel={t("cloud.apps.deleteDialog.delete", {
+          defaultValue: "Delete",
+        })}
+        onConfirm={handleConfirmDelete}
+      />
     </>
   );
 }

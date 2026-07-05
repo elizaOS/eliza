@@ -14,12 +14,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Badge,
+  BulkDeleteDialog,
+  BulkSelectionBar,
   DashboardDataList,
   DashboardDataListDesktop,
   DashboardDataListFilteredCount,
   DashboardDataListMobile,
   DataListEmptyState,
   Input,
+  runBulkDelete,
   Select,
   SelectContent,
   SelectItem,
@@ -655,15 +658,10 @@ export function ElizaAgentsTable({
     for (const id of ids) deletedIdsRef.current.add(id);
     setLocalSandboxes((prev) => prev.filter((sb) => !ids.includes(sb.id)));
     try {
-      const results = await Promise.allSettled(
-        ids.map((id) =>
-          api(`/api/v1/eliza/agents/${id}`, { method: "DELETE" }),
-        ),
+      const outcome = await runBulkDelete(ids, (id) =>
+        api(`/api/v1/eliza/agents/${id}`, { method: "DELETE" }),
       );
-      const failed: string[] = [];
-      ids.forEach((id, i) => {
-        if (results[i].status === "rejected") failed.push(id);
-      });
+      const failed = outcome.failed;
       if (failed.length > 0) {
         for (const id of failed) deletedIdsRef.current.delete(id);
         setLocalSandboxes((prev) => [
@@ -672,9 +670,7 @@ export function ElizaAgentsTable({
             .map((id) => rowById.get(id))
             .filter((sb): sb is ElizaAgentRow => Boolean(sb)),
         ]);
-        const firstError = results.find(
-          (r): r is PromiseRejectedResult => r.status === "rejected",
-        )?.reason;
+        const firstError = outcome.firstError;
         toast.error(
           t("cloud.elizaAgentsTable.deleteSomeFailed", {
             count: failed.length,
@@ -747,46 +743,30 @@ export function ElizaAgentsTable({
   return (
     <TooltipProvider>
       <DashboardDataList>
-        {selectedIds.size > 0 && (
-          <div className="flex items-center justify-between gap-3 rounded-sm border border-border bg-card px-3 py-2">
-            <span className="text-sm text-txt">
-              {t("cloud.elizaAgentsTable.selectedCount", {
-                count: selectedIds.size,
-                defaultValue: "{{count}} selected",
-              })}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                type="button"
-                onClick={() => setSelectedIds(new Set())}
-                className="h-8 px-3 text-muted hover:text-txt"
-              >
-                {t("cloud.elizaAgentsTable.clearSelection", {
-                  defaultValue: "Clear",
-                })}
-              </Button>
-              <Button
-                variant="ghost"
-                type="button"
-                disabled={isDeleting}
-                onClick={() =>
-                  setDeleteIds(
-                    [...selectedIds].filter((id) =>
-                      localSandboxes.some((sb) => sb.id === id),
-                    ),
-                  )
-                }
-                className="h-8 px-3 text-destructive hover:bg-destructive-subtle"
-              >
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                {t("cloud.elizaAgentsTable.deleteSelected", {
-                  defaultValue: "Delete selected",
-                })}
-              </Button>
-            </div>
-          </div>
-        )}
+        <BulkSelectionBar
+          count={selectedIds.size}
+          onClear={() => setSelectedIds(new Set())}
+          onDelete={() =>
+            setDeleteIds(
+              [...selectedIds].filter((id) =>
+                localSandboxes.some((sb) => sb.id === id),
+              ),
+            )
+          }
+          deleteDisabled={isDeleting}
+          labels={{
+            selected: t("cloud.elizaAgentsTable.selectedCount", {
+              count: selectedIds.size,
+              defaultValue: "{{count}} selected",
+            }),
+            clear: t("cloud.elizaAgentsTable.clearSelection", {
+              defaultValue: "Clear",
+            }),
+            deleteSelected: t("cloud.elizaAgentsTable.deleteSelected", {
+              defaultValue: "Delete selected",
+            }),
+          }}
+        />
         {/* Search + filter + create */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -1363,65 +1343,54 @@ export function ElizaAgentsTable({
       </DashboardDataList>
 
       {/* Delete confirmation — one dialog for the row action and the bulk bar */}
-      <AlertDialog
+      <BulkDeleteDialog
         open={deleteIds !== null}
         onOpenChange={() => setDeleteIds(null)}
-      >
-        <AlertDialogContent className="bg-card border-border">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-txt-strong">
-              {(deleteIds?.length ?? 0) > 1
-                ? t("cloud.elizaAgentsTable.deleteAgentsTitle", {
-                    count: deleteIds?.length,
-                    defaultValue: "Delete {{count}} Agents",
-                  })
-                : t("cloud.elizaAgentsTable.deleteAgentTitle", {
-                    defaultValue: "Delete Agent",
-                  })}
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-muted">
-              {deleteTargetBusy
-                ? t("cloud.elizaAgentsTable.deleteBusyDesc", {
-                    defaultValue:
-                      "This agent is still provisioning. Wait for the job to finish before deleting.",
-                  })
-                : (deleteIds?.length ?? 0) > 1
-                  ? t("cloud.elizaAgentsTable.deleteManyDesc", {
-                      count: deleteIds?.length,
-                      defaultValue:
-                        "This will permanently delete {{count}} agents and stop their running containers.",
-                    })
-                  : t("cloud.elizaAgentsTable.deleteDesc", {
-                      defaultValue:
-                        "This will permanently delete the agent and stop any running container.",
-                    })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="border-border bg-transparent text-txt-strong hover:bg-bg-hover">
-              {t("cloud.elizaAgentsTable.cancel", { defaultValue: "Cancel" })}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() =>
-                deleteIds &&
-                deleteIds.length > 0 &&
-                !deleteTargetBusy &&
-                handleDelete(deleteIds)
-              }
-              disabled={isDeleting || deleteTargetBusy}
-              className="bg-destructive hover:bg-accent-hover text-accent-foreground disabled:opacity-50"
-            >
-              {isDeleting
-                ? t("cloud.elizaAgentsTable.deleting", {
-                    defaultValue: "Deleting…",
-                  })
-                : t("cloud.elizaAgentsTable.delete", {
-                    defaultValue: "Delete",
-                  })}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={
+          (deleteIds?.length ?? 0) > 1
+            ? t("cloud.elizaAgentsTable.deleteAgentsTitle", {
+                count: deleteIds?.length,
+                defaultValue: "Delete {{count}} Agents",
+              })
+            : t("cloud.elizaAgentsTable.deleteAgentTitle", {
+                defaultValue: "Delete Agent",
+              })
+        }
+        description={
+          deleteTargetBusy
+            ? t("cloud.elizaAgentsTable.deleteBusyDesc", {
+                defaultValue:
+                  "This agent is still provisioning. Wait for the job to finish before deleting.",
+              })
+            : (deleteIds?.length ?? 0) > 1
+              ? t("cloud.elizaAgentsTable.deleteManyDesc", {
+                  count: deleteIds?.length,
+                  defaultValue:
+                    "This will permanently delete {{count}} agents and stop their running containers.",
+                })
+              : t("cloud.elizaAgentsTable.deleteDesc", {
+                  defaultValue:
+                    "This will permanently delete the agent and stop any running container.",
+                })
+        }
+        cancelLabel={t("cloud.elizaAgentsTable.cancel", {
+          defaultValue: "Cancel",
+        })}
+        confirmLabel={
+          isDeleting
+            ? t("cloud.elizaAgentsTable.deleting", {
+                defaultValue: "Deleting…",
+              })
+            : t("cloud.elizaAgentsTable.delete", { defaultValue: "Delete" })
+        }
+        confirmDisabled={isDeleting || deleteTargetBusy}
+        onConfirm={() =>
+          deleteIds &&
+          deleteIds.length > 0 &&
+          !deleteTargetBusy &&
+          handleDelete(deleteIds)
+        }
+      />
     </TooltipProvider>
   );
 }
