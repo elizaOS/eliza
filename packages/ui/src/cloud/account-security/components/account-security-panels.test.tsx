@@ -1,9 +1,13 @@
 /**
- * Account-security panel tests for explicit backend-unavailable DTOs.
+ * Account-security panel tests for the pinned-unavailable design (#13666).
  *
- * The Security page used to infer "not available" from route 404s. These tests
- * pin the cleaner contract: the backend responds, and the panels render the
- * designed unavailable copy without turning malformed DTOs into empty success.
+ * The Worker does not currently expose MFA status or session enumeration, so
+ * both panels hold the explicit designed-unavailable state and must not fire
+ * dead requests on Security page load. These tests pin that contract: the
+ * unavailable copy renders, it never reads as a healthy success state, and no
+ * account-security API call leaves either panel. If the backend ships real
+ * /api/v1/me/mfa or /api/v1/sessions data flows, rewire the panels first and
+ * replace these pins with DTO-driven tests.
  */
 
 // @vitest-environment jsdom
@@ -58,54 +62,27 @@ describe("account-security panels", () => {
     apiFetchMock.mockReset();
   });
 
-  it("renders MFA unavailable from the explicit DTO", async () => {
-    apiMock.mockResolvedValue({
-      available: false,
-      reason: "mfa_enrollment_unavailable",
-      enrolled: false,
-      method: null,
-    });
-
+  it("renders the designed MFA-unavailable state without firing a dead request", async () => {
     render(<MfaPanel />);
 
     expect(
       await screen.findByText(/MFA enrollment is not yet available/i),
     ).toBeTruthy();
-    expect(apiMock).toHaveBeenCalledWith("/api/v1/me/mfa");
+    // Unavailable must never read as MFA-disabled success.
+    expect(screen.queryByText(/MFA is not enabled/i)).toBeNull();
+    expect(apiMock).not.toHaveBeenCalled();
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
-  it("renders sessions unavailable from the explicit DTO", async () => {
-    apiMock.mockResolvedValue({
-      available: false,
-      reason: "session_inventory_unavailable",
-      sessions: [],
-    });
-
+  it("renders the designed sessions-unavailable state without firing a dead request", async () => {
     render(<ActiveSessionsPanel />);
 
     expect(
       await screen.findByText(/Session listing isn't available yet/i),
     ).toBeTruthy();
-    expect(apiMock).toHaveBeenCalledWith("/api/v1/sessions");
-  });
-
-  it("does not turn a malformed sessions DTO into a healthy empty state", async () => {
-    apiMock.mockResolvedValue({});
-
-    render(<ActiveSessionsPanel />);
-
-    expect(await screen.findByText("Malformed sessions response")).toBeTruthy();
+    // Unavailable must never read as a healthy empty session list.
     expect(screen.queryByText(/No other active sessions found/i)).toBeNull();
-  });
-
-  it("does not turn a malformed MFA DTO into disabled-MFA success", async () => {
-    apiMock.mockResolvedValue({});
-
-    render(<MfaPanel />);
-
-    expect(
-      await screen.findByText("Malformed MFA status response"),
-    ).toBeTruthy();
-    expect(screen.queryByText(/MFA is not enabled/i)).toBeNull();
+    expect(apiMock).not.toHaveBeenCalled();
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 });
