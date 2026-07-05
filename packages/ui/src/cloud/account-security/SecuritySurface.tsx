@@ -34,7 +34,7 @@ export function SecuritySurface() {
               which is what SettingsView listens to for section switches. */}
           <a
             href="#cloud-plugin-grants"
-            className="rounded-sm bg-surface px-3 py-1 text-txt hover:bg-surface"
+            className="rounded-sm bg-surface px-3 py-1 text-txt hover:bg-bg-hover"
           >
             {t("cloud.security.pluginPermissionsLink", {
               defaultValue: "Plugin permissions →",

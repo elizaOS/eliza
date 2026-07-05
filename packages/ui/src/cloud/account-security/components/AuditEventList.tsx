@@ -51,7 +51,7 @@ export function AuditEventList({
   }
   return (
     <ul
-      className={`divide-y divide-white/10 ${className ?? ""}`}
+      className={`divide-y divide-border ${className ?? ""}`}
       data-testid="audit-event-list"
     >
       {events.map((event) => {

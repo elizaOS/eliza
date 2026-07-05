@@ -145,7 +145,7 @@ export function CredentialsList({
                     <span
                       data-testid={`health-dot-${credential.id}`}
                       data-health={credential.health}
-                      className={`inline-block w-2 h-2 rounded-full ${credential.enabled ? healthDotClass(credential.health) : "bg-white/30"}`}
+                      className={`inline-block w-2 h-2 rounded-full ${credential.enabled ? healthDotClass(credential.health) : "bg-muted"}`}
                     />
                     <span className="capitalize">
                       {healthLabel(credential)}
@@ -249,7 +249,7 @@ export function CredentialsList({
                         </AlertDialogCancel>
                         <AlertDialogAction
                           onClick={() => onRemove(credential.id)}
-                          className="bg-[#EB4335] hover:bg-[#EB4335]/90 text-txt-strong"
+                          className="bg-[#EB4335] hover:bg-[#EB4335]/90 text-white"
                         >
                           {t("cloud.credentialsList.remove", {
                             defaultValue: "Remove",

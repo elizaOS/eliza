@@ -27,11 +27,11 @@ export function OrganizationGeneralTab({
           <div>
             <div className="flex items-center gap-2 mb-2">
               <div className="w-2 h-2 rounded-full bg-[var(--accent)]" />
-              <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
+              <h3 className="text-sm md:text-base font-mono text-txt uppercase">
                 Organization Details
               </h3>
             </div>
-            <p className="text-xs md:text-sm font-mono text-[#858585]">
+            <p className="text-xs md:text-sm font-mono text-muted">
               Basic information about your organization
             </p>
           </div>
@@ -83,11 +83,11 @@ export function OrganizationGeneralTab({
           <div>
             <div className="flex items-center gap-2 mb-2">
               <div className="w-2 h-2 rounded-full bg-[var(--accent)]" />
-              <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
+              <h3 className="text-sm md:text-base font-mono text-txt uppercase">
                 Billing Information
               </h3>
             </div>
-            <p className="text-xs md:text-sm font-mono text-[#858585]">
+            <p className="text-xs md:text-sm font-mono text-muted">
               Credit balance and billing details
             </p>
           </div>

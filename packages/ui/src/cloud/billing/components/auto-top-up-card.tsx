@@ -167,13 +167,13 @@ export function AutoTopUpCard() {
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-[var(--accent)]" />
-            <h3 className="text-base font-mono text-[#e1e1e1] uppercase">
+            <h3 className="text-base font-mono text-txt uppercase">
               {t("cloud.autoTopUp.title", {
                 defaultValue: "Auto Top-Up (Card)",
               })}
             </h3>
           </div>
-          <p className="text-xs font-mono text-[#858585] tracking-tight">
+          <p className="text-xs font-mono text-muted tracking-tight">
             {t("cloud.autoTopUp.description", {
               defaultValue:
                 "Automatically charge your saved card when credits dip below the threshold. Earnings auto-fund runs first, so this only fires if earnings can't cover the gap.",
@@ -188,7 +188,7 @@ export function AutoTopUpCard() {
                 defaultValue: "Enable card auto top-up",
               })}
             </Label>
-            <p className="text-xs font-mono text-[#858585]">
+            <p className="text-xs font-mono text-muted">
               {settings?.enabled
                 ? t("cloud.autoTopUp.activeState", {
                     defaultValue:

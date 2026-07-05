@@ -271,7 +271,7 @@ export function MembersList({
                           </AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() => onRemove(member.id)}
-                            className="bg-[#EB4335] hover:bg-[#EB4335]/90 text-txt-strong"
+                            className="bg-[#EB4335] hover:bg-[#EB4335]/90 text-white"
                           >
                             {t("cloud.membersList.remove", {
                               defaultValue: "Remove",

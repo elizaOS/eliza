@@ -1,3 +1,22 @@
+/**
+ * Regression guard for #13767: the lifted Eliza Cloud settings bodies must stay
+ * readable on the LIGHT theme after #13755 removed the `theme-cloud bg-black`
+ * island that used to wrap them (#13452 one-opaque-surface). The bodies used to
+ * hardcode light-on-dark styling (`text-white`, `bg-[rgba(10,10,10,0.75)]`,
+ * near-white/gray hexes, `divide-white/10`, …) that reads as white-on-white once
+ * the dark island is gone. This test scans the section-body sources and fails on
+ * any hardcoded theme-locked color, forcing the design-system tokens
+ * (`text-txt`, `text-muted`, `bg-surface`, `border-border`, …) that resolve for
+ * both themes instead.
+ *
+ * White/light text ON a solid saturated fill (the red destructive-action
+ * buttons, `bg-[#EB4335] … text-white`) is legitimate — white-on-red is readable
+ * in both themes and `text-primary-foreground` is NOT a substitute (`.theme-cloud`
+ * maps it to brand-black). So the scan is per-className: a `text-white`-family
+ * token is allowed only when its own className also carries a solid colored
+ * background.
+ */
+
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,23 +33,31 @@ const SCANNED_PATHS = [
   "api-keys/ApiKeysView.tsx",
 ];
 
-const FORBIDDEN_THEME_LOCKED_CLASSES = [
-  "text-white",
-  "text-white/",
-  "bg-white/10",
-  "bg-white/5",
-  "bg-white/[",
-  "border-white/10",
-  "border-white/15",
-  "border-white/20",
-  "bg-black/40",
-  "bg-black/60",
-  "bg-black/90",
-  "bg-[rgba(10,10,10,0.75)]",
-  "bg-[#1a1a1a]",
-  "bg-neutral-950",
+// Theme-locked color utilities: hardcoded light-on-dark values that render
+// white/near-white text or opaque dark surfaces regardless of the active theme.
+const FORBIDDEN_TOKEN_PATTERNS: RegExp[] = [
+  /\btext-white(?:\/[\w.[\]%]+)?\b/, // white body text (opacity-graded or not)
+  /\bbg-white\/[\w.[\]%]+/, // translucent white fills
+  /\bborder-white\/[\w.[\]%]+/,
+  /\bdivide-white\/[\w.[\]%]+/,
+  /\bbg-black(?:\/[\w.[\]%]+)?/, // opaque / translucent black surfaces
+  /\bbg-\[rgba\(10,10,10/, // bespoke near-black panels
+  /\bbg-\[rgba\(29,29,29/,
+  /\bbg-\[#(?:1a1a1a|0b0d11)\]/,
+  /\bbg-neutral-950\b/,
+  /\btext-\[#(?:e1e1e1|858585|717171)\]/, // near-white / mid-gray text
+  /\bborder-\[#303030\]/, // dark hairline borders
+  /\bborder-\[rgba\(255,255,255/, // translucent white borders
 ];
 
+// A `text-white`-family token is permitted when the same className also paints a
+// solid saturated background (white-on-color reads in both themes).
+const SOLID_COLOR_BG =
+  /\bbg-(?:accent|primary|destructive)\b|\bbg-\[#(?:eb4335|ff5800|e54f00)\]|\bbg-\[(?:rgba\()?var\(--accent/i;
+const isWhiteTextToken = (pattern: RegExp) => pattern.source.includes("text-white");
+
+// direct-crypto-credit-card renders its explicit black/white cloud aesthetic only
+// under an in-component `surface === "cloud"` branch, not on the settings surface.
 const ALLOWED_EXPLICIT_BLACK_CONTROLS = new Set([
   "billing/components/direct-crypto-credit-card.tsx",
 ]);
@@ -47,6 +74,10 @@ function collectFiles(path: string): string[] {
   });
 }
 
+// Every quoted / backtick string literal in the file — className attributes,
+// cn()/ternary class fragments, and `${…}`-nested class strings all surface here.
+const STRING_LITERAL = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|`([^`\\]*(?:\\.[^`\\]*)*)`/g;
+
 describe("Cloud settings theme tokens", () => {
   it("keeps lifted Cloud settings bodies readable without a dark theme island", () => {
     const offenders: string[] = [];
@@ -55,8 +86,14 @@ describe("Cloud settings theme tokens", () => {
       if (ALLOWED_EXPLICIT_BLACK_CONTROLS.has(file)) continue;
 
       const source = readFileSync(join(ROOT, file), "utf8");
-      for (const token of FORBIDDEN_THEME_LOCKED_CLASSES) {
-        if (source.includes(token)) offenders.push(`${file}: ${token}`);
+      for (const match of source.matchAll(STRING_LITERAL)) {
+        const classString = match[1] ?? match[2] ?? match[3] ?? "";
+        const hasSolidColorBg = SOLID_COLOR_BG.test(classString);
+        for (const pattern of FORBIDDEN_TOKEN_PATTERNS) {
+          if (!pattern.test(classString)) continue;
+          if (isWhiteTextToken(pattern) && hasSolidColorBg) continue;
+          offenders.push(`${file}: ${pattern.source}`);
+        }
       }
     }
 

@@ -196,7 +196,7 @@ export function PendingInvitesList({
                       </AlertDialogCancel>
                       <AlertDialogAction
                         onClick={() => onRevoke(invite.id)}
-                        className="bg-[#EB4335] hover:bg-[#EB4335]/90 text-txt-strong"
+                        className="bg-[#EB4335] hover:bg-[#EB4335]/90 text-white"
                       >
                         Revoke
                       </AlertDialogAction>
