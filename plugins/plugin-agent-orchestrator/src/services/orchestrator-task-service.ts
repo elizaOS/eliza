@@ -1705,7 +1705,24 @@ export class OrchestratorTaskService extends Service {
 
   async getTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
-    return doc ? toTaskThreadDetail(doc) : null;
+    if (!doc) return null;
+    return this.withAdmissionPosition(toTaskThreadDetail(doc));
+  }
+
+  /** Fill the DTO's `admission.position` from the live DISPATCH order (1-based,
+   * priority-band + aging applied), which the mapper cannot see. A parked task
+   * not currently in the in-memory queue keeps position 0. */
+  private async withAdmissionPosition<T extends TaskThreadDetailDto>(
+    detail: T,
+  ): Promise<T> {
+    if (!detail.admission) return detail;
+    const { queuedTaskIds } = await this.getAdmissionSnapshot();
+    const idx = queuedTaskIds.indexOf(detail.id);
+    detail.admission = {
+      ...detail.admission,
+      position: idx >= 0 ? idx + 1 : 0,
+    };
+    return detail;
   }
 
   /**
@@ -3611,6 +3628,55 @@ export class OrchestratorTaskService extends Service {
         depth: this.admissionQueue.length,
       });
     }
+  }
+
+  /**
+   * Full capacity + queue overview for `GET /api/orchestrator/capacity`: live
+   * worker/system slot accounting plus the ordered admission queue with each
+   * entry's 1-based position, priority, and enqueue time. Unlike the provider
+   * snapshot this route payload MAY carry timestamps — it is a live poll, not a
+   * cached planner segment.
+   */
+  async getCapacityOverview(): Promise<{
+    maxSessions: number;
+    activeWorkers: number;
+    activeSystem: number;
+    freeSlots: number;
+    queueDepth: number;
+    queue: Array<{
+      taskId: string;
+      position: number;
+      priority: OrchestratorTaskPriority;
+      enqueuedAt: string;
+    }>;
+  }> {
+    const acp = this.acp();
+    const capacity = acp
+      ? await acp.getCapacity()
+      : {
+          maxSessions: 0,
+          activeWorkers: 0,
+          activeSystem: 0,
+          freeWorkerSlots: 0,
+        };
+    const entries = orderQueue(
+      await this.currentQueueEntries(),
+      Date.now(),
+      this.admissionAgingMs(),
+    );
+    return {
+      maxSessions: capacity.maxSessions,
+      activeWorkers: capacity.activeWorkers,
+      activeSystem: capacity.activeSystem,
+      freeSlots: capacity.freeWorkerSlots,
+      queueDepth: entries.length,
+      queue: entries.map((entry, index) => ({
+        taskId: entry.taskId,
+        position: index + 1,
+        priority: entry.priorityAtEnqueue,
+        enqueuedAt: entry.enqueuedAt,
+      })),
+    };
   }
 
   /** Snapshot for the provider + capacity route: current queue depth and the

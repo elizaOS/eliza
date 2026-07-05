@@ -26,6 +26,16 @@ import type {
 } from "./orchestrator-task-types.js";
 import { TERMINAL_TASK_SESSION_STATUSES } from "./orchestrator-task-types.js";
 
+/** Admission-queue state surfaced on a task when it is parked at the session
+ * cap (#13772). `position` is 1-based and filled by the service from the live
+ * dispatch order; the mapper derives only `state` + `enqueuedAt` from durable
+ * metadata (it has no view of the in-memory order), leaving `position` at 0. */
+export interface TaskAdmissionDto {
+  state: "queued";
+  position: number;
+  enqueuedAt: string;
+}
+
 export interface TaskThreadDto {
   id: string;
   title: string;
@@ -55,6 +65,8 @@ export interface TaskThreadDto {
   updatedAt: string;
   closedAt: string | null;
   archivedAt: string | null;
+  /** Present only while the task is parked in the admission queue. */
+  admission?: TaskAdmissionDto;
 }
 
 export interface TaskSessionDto {
@@ -410,7 +422,29 @@ export function toTaskThread(doc: OrchestratorTaskDocument): TaskThreadDto {
     updatedAt: doc.task.updatedAt,
     closedAt: doc.task.closedAt ?? null,
     archivedAt: doc.task.archivedAt ?? null,
+    ...(deriveAdmission(doc) ? { admission: deriveAdmission(doc)! } : {}),
   };
+}
+
+/** Derive the admission DTO from a task's durable metadata. `position` stays 0
+ * here — only the service, which holds the live dispatch order, can fill it. */
+function deriveAdmission(
+  doc: OrchestratorTaskDocument,
+): TaskAdmissionDto | null {
+  const admission = doc.task.metadata?.admission;
+  if (
+    typeof admission === "object" &&
+    admission !== null &&
+    (admission as Record<string, unknown>).state === "queued" &&
+    typeof (admission as Record<string, unknown>).enqueuedAt === "string"
+  ) {
+    return {
+      state: "queued",
+      position: 0,
+      enqueuedAt: (admission as Record<string, unknown>).enqueuedAt as string,
+    };
+  }
+  return null;
 }
 
 export function toTaskThreadDetail(

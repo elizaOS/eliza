@@ -32,6 +32,7 @@ import type {
   OrchestratorTaskPriority,
   TaskProviderPolicy,
 } from "../services/orchestrator-task-types.js";
+import { AdmissionQueueFullError } from "../services/types.js";
 import type { RouteContext } from "./route-utils.js";
 import {
   asBoolean,
@@ -236,16 +237,10 @@ async function dispatchOrchestratorRoutes(
     return true;
   }
 
-  // GET /api/orchestrator/capacity — live session-cap back-pressure: worker and
-  // system slot usage so a client can see whether a spawn would be rejected at
-  // the cap before attempting it.
+  // GET /api/orchestrator/capacity — live worker/system slot accounting plus the
+  // ordered admission queue, for the dashboard's cap-pressure surface (#13772).
   if (method === "GET" && pathname === `${PREFIX}/capacity`) {
-    const acp = ctx.acpService;
-    if (!acp?.getCapacity) {
-      sendServiceUnavailable(res, "ACP service not available");
-      return true;
-    }
-    sendJson(res, await acp.getCapacity());
+    sendJson(res, await service.getCapacityOverview());
     return true;
   }
 
@@ -966,7 +961,14 @@ async function dispatchOrchestratorRoutes(
             task: asString(body.task),
           });
         } catch (error) {
-          // error-policy:J1 route boundary — spawn failure becomes a 500 response.
+          // error-policy:J1 route boundary — a full admission queue is
+          // back-pressure the caller must see (429); any other spawn failure
+          // becomes a 500. A plain SessionCapError should no longer reach here:
+          // spawnAgentForTask parks it in the queue instead of throwing.
+          if (error instanceof AdmissionQueueFullError) {
+            sendError(res, error.message, 429);
+            return true;
+          }
           sendError(
             res,
             error instanceof Error ? error.message : "Failed to spawn agent",
@@ -978,7 +980,9 @@ async function dispatchOrchestratorRoutes(
           sendError(res, "Task not found", 404);
           return true;
         }
-        sendJson(res, task, 201);
+        // 202 when the spawn was parked at the session cap (task carries the
+        // admission DTO with its queue position); 201 when a session spawned.
+        sendJson(res, task, task.admission ? 202 : 201);
         return true;
       }
       // POST /tasks/:taskId/agents/:sessionId/stop
