@@ -146,7 +146,7 @@ export function resolveBuiltinBackgroundPolicy(
 ): AppShellBackgroundPolicy | null {
   const decl = BUILTIN_TAB_BY_ID.get(tab)?.surface;
   if (decl === undefined) return null;
-  if ("shared" in decl && typeof decl.shared === "function") {
+  if ("shared" in decl) {
     return decl.shared(trimmedNavigationPath) ? "shared" : null;
   }
   return resolveSurfaceBackgroundPolicy({ surface: decl });
