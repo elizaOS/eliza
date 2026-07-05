@@ -99,12 +99,10 @@ bun run --cwd packages/app cap:sync:ios               # Capacitor sync iOS only
 bun run --cwd packages/app cap:sync:android           # Capacitor sync Android only
 
 # Simulator smoke tests
-bun run --cwd packages/app test:e2e:ios              # Boot sim, build, auth smoke, full-Bun local chat
-bun run --cwd packages/app test:e2e:ios:cloud        # iOS e2e plus cloud provisioning probe
-bun run --cwd packages/app test:sim:local-chat        # iOS simulator local-chat smoke; requires installed app
-bun run --cwd packages/app test:sim:local-chat:android # Android emulator local-chat smoke; requires installed app
-bun run --cwd packages/app test:sim:auth:ios
-bun run --cwd packages/app test:sim:auth:android
+bun run --cwd packages/app test:sim:local-chat        # iOS simulator local-chat smoke
+bun run --cwd packages/app test:sim:local-chat:android
+bun run --cwd packages/app test:sim:auth:ios        # callback delivery + in-app handler classification, not full login
+bun run --cwd packages/app test:sim:auth:android    # callback delivery + in-app handler classification, not full login
 
 # Mobile release preflight
 bun run --cwd packages/app preflight:ios:sideload
@@ -141,22 +139,20 @@ bun run --cwd packages/app ios:device:deploy -- --device <id>   # flags: --skip-
 bun run --cwd packages/app ios:device:logs -- --device <id> --duration 120
 bun run --cwd packages/app ios:device:logs -- --device <id> --no-console --pull-boot-trace
 
-# Watchable capture via the committed AppUITests XCUITest harness. A full run
-# shards AppUITests into fresh-container per-test/per-class invocations, with
-# uninstall/reinstall between shards so first-run and chat state cannot cascade.
-# Pass --only-testing AppUITests/<Class>[/test] for a single narrow shard.
+# Watchable boot capture via the committed AppUITests XCUITest harness
+# (BootCaptureUITests): screenshots every 15 s via XCUIScreen, asserts the boot
+# reaches home or the "Startup failed:"/"Retry startup" card, exports all
+# attachments (filmstrip PNGs + AX hierarchy) from the .xcresult.
 bun run --cwd packages/app capture:ios-sim:boot                  # simulator (booted sim auto-detected)
 bun run --cwd packages/app ios:device:capture -- --device <id> --app-path <signed App.app>  # physical device
 ```
 
 Produced artifacts: deploy stages into `ios/build/device-deploy-stage/`; logs
 land in `ios/build/device-logs/`; captures land in
-`ios/build/boot-capture/<timestamp>/` (`shards/<id>/attachments/`,
-`shards/<id>/*.xcresult`, per-shard raw `test-summary.json`, and a top-level
-aggregate `test-summary.json` naming each shard/container reset) unless
-`--output` is given. The harness source lives in the canonical template
-(`packages/app-core/platforms/ios/App/AppUITests/` + the `AppUITests`
-target/scheme in the template Xcode project) and is
+`ios/build/boot-capture/<timestamp>/` (`attachments/` + `BootCapture.xcresult`
++ `test-summary.json`) unless `--output` is given. The harness source lives in
+the canonical template (`packages/app-core/platforms/ios/App/AppUITests/` +
+the `AppUITests` target/scheme in the template Xcode project) and is
 materialized into the gitignored `packages/app/ios` by cap sync. Pure decision
 logic (profile matching/selection, entitlement derivation, plist/xctestrun
 handling) is in `scripts/ios-device-lib.mjs`, unit-tested by
@@ -219,10 +215,6 @@ bun run --cwd packages/app test:e2e
 - **Plugin module caching.** `main.tsx` resolves each plugin module exactly once via the `initializeAppModules()` Promise.all; `React.lazy()` consumers share the same promise via `lazyNamedComponent()`.
 - **`@elizaos/app-core` must be evaluated before the boot config is assembled** — it owns the `AppBootConfig` singleton. `main.tsx` statically imports its desktop bindings, so the package loads with the entry chunk; never re-add a dynamic `import("@elizaos/app-core")` on the boot path — its escaping namespace anchors the whole `@elizaos/ui/browser` barrel into the entry chunk (#13187).
 - **Desktop API base injection.** Electrobun injects `window.__ELIZA_APP_API_BASE__` before React boots via its static server; Vite dev uses a `<script>` tag injected by `appDevWsBasePlugin()`.
-- **Test auth contract.** Use `docs/TEST_AUTH.md` for the canonical automated
-  auth path per surface. Renderer specs seed Steward sessions through
-  `test/ui-smoke/helpers/test-auth.ts`; do not hand-roll
-  `steward_session_token` values in individual specs.
 - **iOS store CSP.** When `ELIZA_BUILD_VARIANT=store` + `ELIZA_RELEASE_AUTHORITY=apple-app-store`, the build strips all `localhost`/`127.0.0.1` CSP sources and Capacitor allowNavigation entries. Do not hardcode local origins.
 - **Capacitor `ios/` and `android/` dirs are generated.** Run `bun run --cwd packages/app cap:sync` after any `capacitor.config.ts` change. Do not hand-edit the native project settings that Capacitor generates.
 - **Vite config aliases.** `vite.config.ts` builds workspace package aliases dynamically from `packages/` and `plugins/` directories. Native Capacitor plugins (`@elizaos/capacitor-*`) are aliased from `plugins/plugin-native-*/src/index.ts`. Plugins with `elizaos.app` in their `package.json` are included; others are excluded from the browser bundle.

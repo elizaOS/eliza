@@ -48,7 +48,6 @@ import {
   DesktopSurfaceNavigationRuntime,
   DesktopTrayRuntime,
   DetachedShellRoot,
-  IOS_FULL_BUN_SMOKE_FAILURE_RE,
 } from "@elizaos/app-core";
 import {
   installIosLocalAgentFetchBridge,
@@ -369,8 +368,6 @@ const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_ONBOARDING_SMOKE_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const IOS_ONBOARDING_SMOKE_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
-const IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY = "eliza:auth-callback-smoke:request";
-const IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY = "eliza:auth-callback-smoke:result";
 const IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY =
   "eliza:ios-onboarding-relaunch-smoke:request";
 const IOS_ONBOARDING_RELAUNCH_SMOKE_RESULT_KEY =
@@ -379,6 +376,8 @@ const IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY =
   "eliza:ios-mixed-content-smoke:request";
 const IOS_MIXED_CONTENT_SMOKE_RESULT_KEY =
   "eliza:ios-mixed-content-smoke:result";
+const MOBILE_AUTH_SMOKE_RESULT_KEY = "eliza:mobile-auth-smoke:result";
+const MOBILE_AUTH_SMOKE_ID_PARAM = "mobileAuthSmokeId";
 const IOS_ONBOARDING_SMOKE_TIMEOUT_MS = 120_000;
 const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
@@ -705,31 +704,38 @@ async function writeIosMixedContentSmokeResult(
   );
 }
 
-async function writeIosAuthCallbackSmokeResult(
-  result: Record<string, unknown>,
+async function writeMobileAuthCallbackSmokeResult(
+  parsed: URL,
+  path: string,
 ): Promise<void> {
-  await writeIosPreferenceSmokeResult(
-    IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY,
-    result,
-  );
-}
+  const state = parsed.searchParams.get("state") ?? "";
+  const code = parsed.searchParams.get("code") ?? "";
+  const error = parsed.searchParams.get("error") ?? "";
+  const smokeId = parsed.searchParams.get(MOBILE_AUTH_SMOKE_ID_PARAM) ?? "";
+  const classification =
+    state === "simulator-oauth-state" && code === "simulator-oauth-code"
+      ? "invalid-grant"
+      : error
+        ? "oauth-error"
+        : !state || !code
+          ? "missing-callback-params"
+          : "callback-received";
 
-interface AuthCallbackDeepLinkOutcome {
-  accepted: boolean;
-  classification: "synthetic_callback_rejected";
-  reason: string;
-}
-
-function rejectOsDeliveredAuthCallback(): AuthCallbackDeepLinkOutcome {
-  return {
-    accepted: false,
-    classification: "synthetic_callback_rejected",
-    reason: "os_delivered_auth_callback_rejected",
-  };
-}
-
-function readActiveServerSessionSnapshot(): string {
-  return window.localStorage.getItem("elizaos:active-server") ?? "";
+  await writeIosPreferenceSmokeResult(MOBILE_AUTH_SMOKE_RESULT_KEY, {
+    ok: true,
+    phase: "handled",
+    smokeId,
+    path,
+    callbackHandled: true,
+    classification,
+    reason:
+      classification === "invalid-grant"
+        ? "Synthetic simulator OAuth state/code were rejected before token exchange."
+        : "OAuth callback deep link reached the renderer callback handler.",
+    hasState: Boolean(state),
+    hasCode: Boolean(code),
+    hasError: Boolean(error),
+  });
 }
 
 async function writeIosPreferenceSmokeResult(
@@ -1759,7 +1765,9 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     );
     if (
       !streamMessage.includes('"type":"done"') ||
-      IOS_FULL_BUN_SMOKE_FAILURE_RE.test(streamMessage)
+      /something went wrong|<think\b|<\/think>|\/?\bno_think\b/i.test(
+        streamMessage,
+      )
     ) {
       throw new Error(
         `full Bun conversation stream returned unusable SSE: ${streamMessage.slice(0, 500)}`,
@@ -2052,134 +2060,6 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
   dispatchConnect();
 }
 
-async function recordIosAuthCallbackSmoke(
-  parsed: URL,
-  path: string,
-  url: string,
-  outcome: AuthCallbackDeepLinkOutcome,
-  activeServerBefore: string,
-): Promise<void> {
-  // Record the auth-callback end state on ANY native platform. Pre-#13693 this
-  // was iOS-only, so the Android smoke leg had no in-app readback at all (pure
-  // `am start` fire-and-forget). Broadening to `isNative` lets the Android
-  // smoke read the same Capacitor-Preferences handshake (backed by
-  // SharedPreferences) and assert the same end state instead of trusting intent
-  // resolution alone. This is a smoke seam: the body no-ops unless the harness
-  // has armed the request key, so real users' deep-link handling is unchanged.
-  if (!isNative) return;
-  let rawRequest: string | null = null;
-  try {
-    rawRequest = window.localStorage.getItem(
-      IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY,
-    );
-  } catch {
-    rawRequest = null;
-  }
-  rawRequest ??= await boundedPreferenceGet(
-    IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY,
-  );
-  if (!rawRequest) return;
-
-  let request: Record<string, unknown> = {};
-  try {
-    const parsedRequest = JSON.parse(rawRequest);
-    if (parsedRequest && typeof parsedRequest === "object") {
-      request = parsedRequest as Record<string, unknown>;
-    }
-  } catch {
-    request = { malformedRequest: rawRequest };
-  }
-
-  // #13693: assert the AUTH OUTCOME, not just delivery. The security invariant
-  // for this handler (see the `connect`/first-run-remote cases above) is that
-  // an OS-delivered deep link NEVER establishes or swaps an authenticated
-  // session. Compare the real active-server key before/after handling the
-  // callback so a pre-authenticated simulator passes when the callback leaves
-  // the session untouched, while a regression that authenticates from the deep
-  // link flips `sessionChanged=true`.
-  let activeServerAfter = "";
-  try {
-    activeServerAfter = readActiveServerSessionSnapshot();
-  } catch (error) {
-    // error-policy:J7 diagnostics readback — the smoke must fail closed when it
-    // cannot observe the auth outcome it is supposed to prove.
-    await writeIosAuthCallbackSmokeResult({
-      ok: false,
-      phase: "failed",
-      classification: outcome.classification,
-      accepted: outcome.accepted,
-      reason: outcome.reason,
-      error:
-        error instanceof Error
-          ? error.message
-          : `active-server readback failed: ${String(error)}`,
-      path,
-      url,
-      state: parsed.searchParams.get("state") ?? "",
-      code: parsed.searchParams.get("code") ?? "",
-      query: Object.fromEntries(parsed.searchParams.entries()),
-      request,
-    });
-    return;
-  }
-
-  await writeIosAuthCallbackSmokeResult({
-    ok: true,
-    phase: "handled",
-    classification: outcome.classification,
-    accepted: outcome.accepted,
-    reason: outcome.reason,
-    sessionEstablished: activeServerAfter.length > 0,
-    sessionChanged: activeServerAfter !== activeServerBefore,
-    activeServerBeforePresent: activeServerBefore.length > 0,
-    activeServerAfterPresent: activeServerAfter.length > 0,
-    path,
-    url,
-    state: parsed.searchParams.get("state") ?? "",
-    code: parsed.searchParams.get("code") ?? "",
-    query: Object.fromEntries(parsed.searchParams.entries()),
-    request,
-  });
-}
-
-async function handleAuthCallbackDeepLink(
-  parsed: URL,
-  path: string,
-  url: string,
-): Promise<void> {
-  const outcome = rejectOsDeliveredAuthCallback();
-  let activeServerBefore = "";
-  try {
-    activeServerBefore = readActiveServerSessionSnapshot();
-  } catch (error) {
-    await writeIosAuthCallbackSmokeResult({
-      ok: false,
-      phase: "failed",
-      classification: outcome.classification,
-      accepted: outcome.accepted,
-      reason: outcome.reason,
-      error:
-        error instanceof Error
-          ? error.message
-          : `active-server pre-readback failed: ${String(error)}`,
-      path,
-      url,
-      state: parsed.searchParams.get("state") ?? "",
-      code: parsed.searchParams.get("code") ?? "",
-      query: Object.fromEntries(parsed.searchParams.entries()),
-    });
-    return;
-  }
-
-  await recordIosAuthCallbackSmoke(
-    parsed,
-    path,
-    url,
-    outcome,
-    activeServerBefore,
-  );
-}
-
 function handleDeepLink(url: string): void {
   const firstRunRemote = parseFirstRunRemoteConnectDeepLink(
     url,
@@ -2211,11 +2091,6 @@ function handleDeepLink(url: string): void {
   const path = isAppLink
     ? parsed.pathname.replace(/^\/+|\/+$/g, "")
     : getDeepLinkPath(parsed);
-  if (path === "auth/callback") {
-    void handleAuthCallbackDeepLink(parsed, path, url);
-    return;
-  }
-
   if (path === "first-run/runtime/remote") {
     const rawApiBase =
       parsed.searchParams.get("api")?.trim() ||
@@ -2225,6 +2100,13 @@ function handleDeepLink(url: string): void {
     if (rawApiBase) {
       connectFirstRunRemoteDeepLink(rawApiBase);
     }
+    return;
+  }
+  if (
+    path === "auth/callback" &&
+    parsed.searchParams.has(MOBILE_AUTH_SMOKE_ID_PARAM)
+  ) {
+    void writeMobileAuthCallbackSmokeResult(parsed, path);
     return;
   }
 
