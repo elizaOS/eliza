@@ -16,7 +16,7 @@
  */
 
 import * as React from "react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import type { ConversationMessage } from "../../../api/client-types-chat";
@@ -28,6 +28,11 @@ import {
 
 const CONVERSATION_ID = "conv-infinite";
 const PAGE_SIZE = 20;
+// The mounted tail is a full page taller than the viewport so the thread starts
+// scrolled to the BOTTOM with the top sentinel off-screen — no mount-time
+// prefetch. The reader (the runner) then scrolls to the top to trigger the one
+// older page deliberately, which is the behaviour under test.
+const TAIL_SIZE = 40;
 
 type Win = typeof window & {
   /** Every `?before=` cursor the client actually fetched, in order. */
@@ -47,12 +52,12 @@ function initialMessages(): ConversationMessage[] {
   if (MODE_EMPTY) return [];
   const now = Date.now();
   const msgs: ConversationMessage[] = [];
-  for (let i = 0; i < PAGE_SIZE; i += 1) {
+  for (let i = 0; i < TAIL_SIZE; i += 1) {
     msgs.push({
       id: `tail-${i}`,
       role: i % 2 === 0 ? "user" : "assistant",
       text: `Tail message ${i} — the newest page mounted first.`,
-      timestamp: now - (PAGE_SIZE - i) * 1000,
+      timestamp: now - (TAIL_SIZE - i) * 1000,
     });
   }
   return msgs;
@@ -127,6 +132,14 @@ function Harness(): React.JSX.Element {
     topItemKey: messages[0]?.id ?? "",
     enabled: true,
   });
+
+  // Start pinned to the newest turn (bottom) like a real chat, so the top
+  // sentinel is off-screen at mount and the older-page load only fires when the
+  // runner deliberately scrolls up — never as an accidental mount prefetch.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, []);
 
   return (
     <div

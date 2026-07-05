@@ -98,34 +98,45 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><title>chat infin
 // The mock corpus is a long history; each `?before=<cursor>` returns the page
 // strictly older than the cursor, newest-first-clamped to a page, with a
 // hasMore flag until the corpus is exhausted (mirrors the real server contract).
-const NOW = Date.now();
-const CORPUS_OLDER = 60; // older messages available behind the mounted tail.
+//
+// The corpus holds exactly ONE page older than the mounted tail, then latches
+// hasMore=false. This is deliberate: the hook prefetches a full viewport of
+// runway before the literal top, so parking the scroller at the top would
+// otherwise cascade page after page while the sentinel stays intersecting. A
+// single bounded page makes the scroll-anchor-preservation assertion below an
+// isolated, deterministic measurement of ONE prepend rather than a moving target.
+const PAGE_LIMIT_DEFAULT = 20;
+// Serve exactly one older page, ever. The first `?before=` request gets a full
+// page + hasMore=false (which latches the loader off); any subsequent request
+// (should never happen once hasMore=false, but the prefetch margin can race one
+// in) gets an empty page. This keeps the prepend a single isolated event.
+let servedFirstPage = false;
 function olderPage(before, limit) {
-  // Deterministic older messages, all with timestamp < before. `id` is stable
-  // per timestamp so a re-fetch dedupes.
-  const out = [];
-  for (let i = 0; i < CORPUS_OLDER; i += 1) {
+  if (servedFirstPage) return { messages: [], hasMore: false };
+  servedFirstPage = true;
+  const size = limit || PAGE_LIMIT_DEFAULT;
+  // One page of deterministic older messages strictly below the cursor, newest
+  // first. `id` is stable per timestamp so a re-fetch dedupes cleanly.
+  const page = [];
+  for (let i = 0; i < size; i += 1) {
     const ts = before - (i + 1) * 1000;
-    out.push({
+    page.push({
       id: `older-${ts}`,
       role: i % 2 === 0 ? "assistant" : "user",
       text: `Older message at ${ts}.`,
       timestamp: ts,
     });
   }
-  // Newest-first page below the cursor, then clamp to limit.
-  out.sort((a, b) => b.timestamp - a.timestamp);
-  const page = out.slice(0, limit);
-  // hasMore: the corpus has a floor; below it, no more.
-  const floor = NOW - 3_600_000;
-  const hasMore = page.length > 0 && page[page.length - 1].timestamp > floor;
-  return { messages: page, hasMore };
+  return { messages: page, hasMore: false };
 }
 
 const serverRequests = [];
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
   if (url.pathname === "/") {
+    // Each page load starts a fresh single-page budget (the runner opens the
+    // fixture several times for the different modes).
+    servedFirstPage = false;
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     res.end(html);
     return;
@@ -172,23 +183,44 @@ try {
   {
     const { page, requests } = await newPage("");
     await page.waitForSelector(ROW);
+    // The thread mounts pinned to the bottom (sentinel off-screen), so NO fetch
+    // has fired yet — the load-older is entirely reader-driven below.
+    await page.waitForTimeout(300);
+
     const rowsBefore = await page.locator(ROW).count();
-    assert(rowsBefore > 0, `tail page mounted with ${rowsBefore} rows`);
-
-    // The message the reader is anchored on: the FIRST visible (oldest tail)
-    // row. Capture its identity + on-screen y BEFORE the prepend.
-    const firstId = await page.locator(ROW).first().getAttribute("data-message-id");
-    // Scroll to the very top so the sentinel intersects and the prefetch fires.
-    await page.evaluate((sel) => {
-      const el = document.querySelector(sel);
-      if (el) el.scrollTop = 0;
-    }, SCROLLER);
-
-    // The `?before=` request must fire.
-    await page.waitForRequest(
-      (r) => /\/messages\?before=/.test(r.url()),
-      { timeout: 8_000 },
+    assert(rowsBefore > 0, `thread mounted with ${rowsBefore} rows`);
+    assert(
+      requests.filter((u) => /\/messages\?before=/.test(u)).length === 0,
+      "no ?before= fetch fired at mount (thread starts pinned to bottom)",
     );
+
+    // Scroll to the very top and, in the SAME evaluate, capture the anchor: the
+    // top-most row's identity + viewport-y at scrollTop=0, BEFORE the prepend
+    // lands. The prefetch fires from this scroll; the only thing that then moves
+    // this row is the older-page grow — exactly the anchor behaviour under test.
+    const anchorInfo = await page.evaluate(
+      ({ scrollerSel, rowSel }) => {
+        const scroller = document.querySelector(scrollerSel);
+        if (!scroller) return null;
+        scroller.scrollTop = 0;
+        const firstRow = document.querySelector(rowSel);
+        if (!firstRow) return null;
+        return {
+          id: firstRow.getAttribute("data-message-id"),
+          y: firstRow.getBoundingClientRect().top,
+        };
+      },
+      { scrollerSel: SCROLLER, rowSel: ROW },
+    );
+    assert(
+      anchorInfo && anchorInfo.id,
+      "captured the top anchor row at scrollTop=0 before the load-older",
+    );
+
+    // The `?before=` request must fire on scroll-to-top.
+    await page.waitForRequest((r) => /\/messages\?before=/.test(r.url()), {
+      timeout: 8_000,
+    });
     assert(
       requests.some((u) => /\/messages\?before=/.test(u)),
       "a GET .../messages?before= request fired on scroll-to-top",
@@ -197,36 +229,36 @@ try {
     // Older rows prepend (row count grew).
     await page
       .waitForFunction(
-        ({ sel, prev }) =>
-          document.querySelectorAll(sel).length > prev,
+        ({ sel, prev }) => document.querySelectorAll(sel).length > prev,
         { sel: ROW, prev: rowsBefore },
         { timeout: 8_000 },
       )
       .catch(() => {});
     const rowsAfter = await page.locator(ROW).count();
-    assert(rowsAfter > rowsBefore, `older rows prepended (${rowsBefore} → ${rowsAfter})`);
-
-    // SCROLL-ANCHOR PRESERVATION: the previously-first row's on-screen y is
-    // unchanged (±tolerance) despite the upward growth — no viewport jump.
-    const anchor = page.locator(`[data-message-id="${firstId}"]`);
-    const boxAfter = await anchor.boundingBox();
-    // Give layout a beat, then re-measure to confirm it's stable (not mid-anim).
-    await page.waitForTimeout(200);
-    const boxSettled = await anchor.boundingBox();
     assert(
-      boxAfter && boxSettled,
+      rowsAfter > rowsBefore,
+      `older rows prepended (${rowsBefore} → ${rowsAfter})`,
+    );
+
+    // SCROLL-ANCHOR PRESERVATION: despite a page inserted ABOVE it, the anchor
+    // row's viewport-y is unchanged (±tolerance) — the hook's useLayoutEffect
+    // added the grown height back to scrollTop so the reader's viewport did not
+    // jump. This is the whole point of the load-older contract, and jsdom cannot
+    // fake the real scrollHeight/scrollTop geometry.
+    await page.waitForTimeout(200);
+    const yAfter = await page.evaluate((id) => {
+      const el = document.querySelector(`[data-message-id="${id}"]`);
+      return el ? el.getBoundingClientRect().top : null;
+    }, anchorInfo.id);
+    assert(
+      yAfter !== null,
       "the pre-prepend anchor row is still in the DOM after the prepend",
     );
-    if (boxAfter && boxSettled) {
-      const drift = Math.abs(boxSettled.y - boxAfter.y);
+    if (yAfter !== null) {
+      const drift = Math.abs(yAfter - anchorInfo.y);
       assert(
         drift <= 4,
-        `anchor row stayed put after settle (drift ${drift.toFixed(1)}px ≤ 4px)`,
-      );
-      // And it did not get shoved off the bottom of the viewport.
-      assert(
-        boxSettled.y < 700 && boxSettled.y > -50,
-        `anchor row remains in the viewport (y=${boxSettled.y.toFixed(0)})`,
+        `anchor row viewport-y preserved across the prepend (drift ${drift.toFixed(1)}px ≤ 4px, ${anchorInfo.y.toFixed(0)} → ${yAfter.toFixed(0)})`,
       );
     }
     await page.close();
