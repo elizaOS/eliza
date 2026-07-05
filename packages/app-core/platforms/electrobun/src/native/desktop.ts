@@ -26,6 +26,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   clearWorkspaceFolderConfig,
+  setActiveProject,
+  upsertProject,
   writeWorkspaceFolderConfig,
 } from "@elizaos/core";
 import Electrobun, {
@@ -2517,6 +2519,28 @@ X-GNOME-Autostart-enabled=true
     } catch (err) {
       logger.warn(
         `[desktop:pickWorkspaceFolder] writeWorkspaceFolderConfig failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    // Register the pick as a first-class Project and make it active, so the
+    // agent runtime resolves the workspace from the project registry (the
+    // higher-priority successor to workspace-folder.json). Non-fatal: the
+    // legacy write above already bridged the pick, so a registry failure only
+    // costs the recents/switcher entry.
+    try {
+      const project = upsertProject({
+        name: path.basename(selectedPath) || selectedPath,
+        localPath: selectedPath,
+        bookmark,
+      });
+      setActiveProject(project.id);
+    } catch (err) {
+      // error-policy:J6 best-effort registry write; the legacy workspace-folder
+      // bridge above already applied the pick, so failure here only drops the
+      // recents/switcher entry — warn and continue.
+      logger.warn(
+        `[desktop:pickWorkspaceFolder] project registry upsert failed: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
