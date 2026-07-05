@@ -3,13 +3,15 @@
  * `TypingIndicator` is the pending-reply bubble (panel `default` and
  * `game-modal` skins, used by ChatView and the homescreen ChatSurface);
  * `TurnStatus` is the phase-aware variant the continuous-chat overlay shows
- * while the agent works — breathing dots plus a debounced phase label
- * ("Replying", "Running <action>", …). All three render paths share the single
- * `TypingDots` triad so there is exactly one dots implementation.
+ * while the agent works — a spinner glyph plus a debounced phase label and a
+ * live elapsed-seconds clock ("Thinking · 4s", "Running WEB_SEARCH · 12s"), the
+ * Codex-style working indicator (#13535). All three render paths share the
+ * single `TypingDots` triad so there is exactly one dots implementation.
  *
  * Brand rule: orange (the accent) tints TurnStatus ONLY for `speaking`; every
  * other phase is neutral. No blue anywhere.
  */
+import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { ChatTurnStatus } from "../../../api/client-types-chat";
@@ -169,14 +171,55 @@ function useDebouncedTurnStatus(
   return shown;
 }
 
+// Grace before the elapsed clock appears: a fast turn settles in under a second,
+// so only a turn that outlasts this shows a timer — no "0s" flash on quick
+// replies. Once shown, the clock ticks each whole second.
+const ELAPSED_VISIBLE_AFTER_MS = 900;
+
+/** Whole-second elapsed clock for the working indicator, started the moment a
+ *  status first appears (`active` goes true) and reset to 0 when it clears.
+ *  Returns -1 until the grace window passes so the caller can hide the timer on
+ *  a sub-second turn. The wall-clock read lives in the interval (effect
+ *  context), never at render, so screenshots stay byte-stable. */
+function useElapsedSeconds(active: boolean): number {
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const startRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!active) {
+      startRef.current = null;
+      setElapsedMs(0);
+      return;
+    }
+    const start = Date.now();
+    startRef.current = start;
+    setElapsedMs(0);
+    const id = window.setInterval(() => {
+      setElapsedMs(Date.now() - start);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [active]);
+  if (!active || elapsedMs < ELAPSED_VISIBLE_AFTER_MS) return -1;
+  return Math.floor(elapsedMs / 1000);
+}
+
+/** Compact elapsed label: "8s" under a minute, "2m 05s" beyond. */
+export function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}m ${secs.toString().padStart(2, "0")}s`;
+}
+
 /**
- * The breathing dots + phase label of the working-status indicator, WITHOUT a
- * bubble/motion wrapper — the overlay wraps it in its own glass chrome and also
- * renders it bare inside the in-flight assistant bubble.
+ * The Codex-style working indicator — a spinner glyph, the debounced phase label
+ * (a word for every phase, including `thinking`), and a live elapsed-seconds
+ * clock — WITHOUT a bubble/motion wrapper; the overlay wraps it in its own glass
+ * chrome. When `showLabel` is false (the in-flight assistant bubble) it degrades
+ * to the bare breathing dots so the streamed text fills in where the dots were.
  *
  * Mirrors ChatVoiceStatusBar's a11y (`role="status"` + `aria-live="polite"`).
- * Honors reduced motion (no pulse). Degrades to plain dots when no status has
- * arrived.
+ * Honors reduced motion (no spin/pulse). Degrades to plain dots when no status
+ * has arrived.
  */
 export function TurnStatus({
   status,
@@ -187,10 +230,34 @@ export function TurnStatus({
 }) {
   const shown = useDebouncedTurnStatus(status);
   const speaking = shown?.kind === "speaking";
-  const label =
-    showLabel && shown && shown.kind !== "thinking"
-      ? turnStatusLabel(shown)
-      : null;
+  // Clock is driven by the raw (un-debounced) status so it starts at turn open,
+  // not after the label's min-dwell debounce.
+  const elapsed = useElapsedSeconds(status !== null);
+
+  if (!showLabel) {
+    // In-bubble variant: bare dots, anchored where the streamed reply fills in.
+    return (
+      <span
+        className="inline-flex items-center gap-2"
+        data-testid="turn-status-indicator"
+        data-status-kind={shown?.kind ?? "none"}
+        role="status"
+        aria-live="polite"
+      >
+        <TypingDots
+          className="flex gap-1.5"
+          dotClassName={cn(
+            "h-1.5 w-1.5 animate-pulse rounded-full motion-reduce:animate-none",
+            speaking ? "bg-[rgba(255,190,140,0.9)]" : "bg-white/70",
+          )}
+          delaysMs={[0, 180, 360]}
+          testId="typing-dots"
+        />
+      </span>
+    );
+  }
+
+  const label = shown ? turnStatusLabel(shown) : null;
   return (
     <span
       className="inline-flex items-center gap-2"
@@ -199,24 +266,31 @@ export function TurnStatus({
       role="status"
       aria-live="polite"
     >
-      <TypingDots
-        className="flex gap-1.5"
-        dotClassName={cn(
-          "h-1.5 w-1.5 animate-pulse rounded-full motion-reduce:animate-none",
-          speaking ? "bg-[rgba(255,190,140,0.9)]" : "bg-white/70",
+      <Loader2
+        aria-hidden="true"
+        data-testid="turn-status-spinner"
+        className={cn(
+          "h-3.5 w-3.5 animate-spin motion-reduce:animate-none",
+          speaking ? "text-[rgba(255,200,150,0.95)]" : "text-white/70",
         )}
-        delaysMs={[0, 180, 360]}
-        testId="typing-dots"
       />
       {label ? (
         <span
           className={cn(
-            "text-[13px] font-medium",
+            "text-[13px] font-medium tabular-nums",
             speaking ? "text-[rgba(255,200,150,0.95)]" : "text-white/90",
           )}
           data-testid="turn-status-label"
         >
           {label}
+          {elapsed >= 0 ? (
+            <span
+              className="ml-1.5 opacity-60"
+              data-testid="turn-status-elapsed"
+            >
+              · {formatElapsed(elapsed)}
+            </span>
+          ) : null}
         </span>
       ) : null}
     </span>

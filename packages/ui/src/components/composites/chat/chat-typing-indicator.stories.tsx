@@ -38,14 +38,30 @@ export const GameModal: Story = {
   },
 };
 
-/** The overlay's phase-aware variant (dots + debounced label) on a dark glass
- * substrate, as it renders in the continuous-chat overlay. */
+/** The overlay's Codex-style working indicator (spinner + label + elapsed clock)
+ * on a dark glass substrate, as it renders in the continuous-chat overlay. */
+export const TurnStatusThinking: Story = {
+  render: () => (
+    <div className="rounded-2xl bg-black/70 p-4">
+      <TurnStatus status={{ kind: "thinking" }} />
+    </div>
+  ),
+};
+
 export const TurnStatusWorking: Story = {
   render: () => (
     <div className="rounded-2xl bg-black/70 p-4">
       <TurnStatus
         status={{ kind: "running_action", actionName: "SEND_MESSAGE" }}
       />
+    </div>
+  ),
+};
+
+export const TurnStatusRunningTool: Story = {
+  render: () => (
+    <div className="rounded-2xl bg-black/70 p-4">
+      <TurnStatus status={{ kind: "running_tool", toolName: "WEB_SEARCH" }} />
     </div>
   ),
 };
