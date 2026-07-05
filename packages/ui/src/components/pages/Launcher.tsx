@@ -153,7 +153,12 @@ const IconTile = memo(function IconTile({
           </Button>
         ) : null}
       </div>
-      <span className="line-clamp-2 max-w-[4.5rem] text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
+      {/* 5.25rem, not the icon's 4rem: the narrowest grid cell (4 cols on a
+          ~380px phone) is ~85px, and the longest single-word label
+          ("Relationships", ~79px at 11px) cannot wrap at a word boundary — a
+          tighter cap clipped it mid-glyph (#14427). line-clamp-2 still wraps
+          multi-word labels. */}
+      <span className="line-clamp-2 max-w-[5.25rem] text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
         {entry.label}
       </span>
     </div>
