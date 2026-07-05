@@ -1896,6 +1896,78 @@ describe("capability router", () => {
 		});
 	});
 
+	it("accepts remote plugin sandbox frame view manifests", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						views: [
+							{
+								id: "weather-sandbox",
+								label: "Weather Sandbox",
+								surface: {
+									isolation: "sandboxed-iframe",
+									capabilities: ["navigate", "storage"],
+								},
+								frameUrl: "https://weather.example/frame.html",
+							},
+						],
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).resolves.toEqual({
+			modules: [
+				expect.objectContaining({
+					id: "remote-weather",
+					views: [
+						expect.objectContaining({
+							id: "weather-sandbox",
+							frameUrl: "https://weather.example/frame.html",
+							surface: {
+								isolation: "sandboxed-iframe",
+								capabilities: ["navigate", "storage"],
+							},
+						}),
+					],
+				}),
+			],
+		});
+	});
+
+	it("rejects remote plugin views with invalid surface manifests", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						views: [
+							{
+								id: "weather-sandbox",
+								label: "Weather Sandbox",
+								surface: {
+									isolation: "sandboxed-iframe",
+									capabilities: ["navigate", "admin"],
+								},
+								frameUrl: "https://weather.example/frame.html",
+							},
+						],
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.views.surface",
+			message: "capabilities contains unsupported capability.",
+		});
+	});
+
 	it("rejects remote plugin views with unsafe bundle paths", async () => {
 		const router = new RuntimeBrokerCapabilityRouter({
 			invokeRuntime: async () => ({

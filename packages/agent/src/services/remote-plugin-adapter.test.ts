@@ -228,7 +228,12 @@ const remoteModule: RemotePluginModuleManifest = {
       id: "remote-view",
       label: "Remote View",
       viewType: "gui",
+      surface: {
+        isolation: "sandboxed-iframe",
+        capabilities: ["navigate", "storage"],
+      },
       bundleUrl: "https://remote.example/assets/remote-view.js",
+      frameUrl: "https://remote.example/assets/remote-view.html",
     },
   ],
 };
@@ -534,6 +539,11 @@ describe("remote plugin adapter", () => {
     expect(plugin.views?.[0]).toMatchObject({
       id: "remote-view",
       bundleUrl: "https://remote.example/assets/remote-view.js",
+      frameUrl: "https://remote.example/assets/remote-view.html",
+      surface: {
+        isolation: "sandboxed-iframe",
+        capabilities: ["navigate", "storage"],
+      },
     });
     expect(plugin.widgets?.[0]).toMatchObject({
       id: "remote.widget",

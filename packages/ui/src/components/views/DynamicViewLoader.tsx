@@ -1369,6 +1369,12 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     setReloadKey((k) => k + 1);
   }, [bundleUrl, componentExport]);
 
+  // iOS App Store and Google Play builds cannot load remote JS or HTML frame
+  // documents at runtime; both execute plugin-provided code.
+  if (!dynamicLoadingAllowed) {
+    return <ViewRestrictedState viewId={viewId} />;
+  }
+
   // A sandboxed-iframe view embeds cross-realm through a real HTML document URL.
   // Never feed the JS module `bundleUrl` to an iframe: `/api/views/:id/bundle.js`
   // is served as JavaScript and is only valid for host-realm dynamic import.
@@ -1397,11 +1403,6 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
         />
       </div>
     );
-  }
-
-  // iOS App Store and Google Play builds cannot load remote JS at runtime.
-  if (!dynamicLoadingAllowed) {
-    return <ViewRestrictedState viewId={viewId} />;
   }
 
   if (loadError) {

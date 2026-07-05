@@ -286,10 +286,15 @@ export function createRemoteCapabilityPlugin(
       ...(view.backgroundPolicy === undefined
         ? {}
         : { backgroundPolicy: view.backgroundPolicy }),
+      ...(view.surface === undefined ? {} : { surface: view.surface }),
       ...(view.bundleUrl === undefined ? {} : { bundleUrl: view.bundleUrl }),
       ...(view.bundleUrl !== undefined || view.bundlePath === undefined
         ? {}
         : { bundlePath: view.bundlePath }),
+      ...(view.frameUrl === undefined ? {} : { frameUrl: view.frameUrl }),
+      ...(view.frameUrl !== undefined || view.framePath === undefined
+        ? {}
+        : { framePath: view.framePath }),
     }),
   );
   const evaluators = (module.evaluators ?? []).map(

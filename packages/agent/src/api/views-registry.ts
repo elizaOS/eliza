@@ -538,17 +538,23 @@ async function buildEntry(
   const loadedAt = Date.now();
   const normalizedViewType = normalizeViewType(view.viewType);
   const registryKey = viewRegistryKey(view.id, normalizedViewType);
+  const requiresFrameDocument = view.surface?.isolation === "sandboxed-iframe";
 
   // Check bundle availability and collect hash + size when resolvable.
-  let available = Boolean(view.bundleUrl || view.frameUrl);
+  let available = requiresFrameDocument
+    ? Boolean(view.frameUrl)
+    : Boolean(view.bundleUrl || view.frameUrl);
   let bundleHash: string | undefined;
   let bundleSize: number | undefined;
   if (!view.bundleUrl && pluginDir && view.bundlePath) {
     const bundleAbs = path.resolve(pluginDir, view.bundlePath);
     const packageRoot = `${path.resolve(pluginDir)}${path.sep}`;
     if (bundleAbs.startsWith(packageRoot)) {
-      available = await fileExists(bundleAbs);
-      if (available) {
+      const bundleExists = await fileExists(bundleAbs);
+      if (!requiresFrameDocument) {
+        available = bundleExists;
+      }
+      if (bundleExists) {
         const [hash, stat] = await Promise.all([
           computeBundleHash(bundleAbs),
           fs.stat(bundleAbs).catch(() => null),
@@ -582,11 +588,16 @@ async function buildEntry(
       }
     }
   }
-  if (!available && !view.frameUrl && pluginDir && view.framePath) {
+  if (!view.frameUrl && pluginDir && view.framePath) {
     const frameAbs = path.resolve(pluginDir, view.framePath);
     const packageRoot = `${path.resolve(pluginDir)}${path.sep}`;
     if (frameAbs.startsWith(packageRoot)) {
-      available = await fileExists(frameAbs);
+      const frameExists = await fileExists(frameAbs);
+      if (requiresFrameDocument) {
+        available = frameExists;
+      } else if (!available) {
+        available = frameExists;
+      }
     }
   }
 

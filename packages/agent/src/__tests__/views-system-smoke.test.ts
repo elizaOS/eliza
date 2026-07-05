@@ -61,6 +61,7 @@ function makeCtx(
     body?: unknown;
     broadcastWs?: (payload: object) => void;
     developerMode?: boolean;
+    headers?: http.IncomingHttpHeaders;
     res?: http.ServerResponse;
   } = {},
 ): {
@@ -74,7 +75,7 @@ function makeCtx(
   const req =
     opts.body !== undefined || method === "POST"
       ? makeReqWithBody(opts.body)
-      : ({ headers: {} } as http.IncomingMessage);
+      : ({ headers: opts.headers ?? {} } as http.IncomingMessage);
   const ctx: ViewsRouteContext = {
     req,
     res: opts.res ?? ({} as http.ServerResponse),
@@ -354,6 +355,99 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
       await rm(pluginDir, { recursive: true, force: true });
     }
   });
+
+  it("marks sandboxed iframe views unavailable when their frame document is missing", async () => {
+    const pluginDir = await mkdtemp(path.join(os.tmpdir(), "eliza-frame-"));
+    try {
+      await mkdir(path.join(pluginDir, "dist", "views"), { recursive: true });
+      await writeFile(
+        path.join(pluginDir, "dist", "views", "bundle.js"),
+        "export default function Smoke() { return null; }",
+      );
+
+      await registerPluginViews(
+        {
+          name: SMOKE_PLUGIN,
+          description: "smoke plugin",
+          actions: [],
+          views: [
+            {
+              ...SMOKE_VIEW,
+              framePath: "dist/views/frame.html",
+              surface: { isolation: "sandboxed-iframe" },
+            },
+          ],
+        },
+        pluginDir,
+      );
+
+      const { ctx, json } = makeCtx("GET", "/api/views");
+      await handleViewsRoutes(ctx);
+
+      const [, body] = json.mock.calls[0] as [
+        unknown,
+        {
+          views: {
+            id: string;
+            available: boolean;
+            bundleUrl?: string;
+            frameUrl?: string;
+          }[];
+        },
+      ];
+      const view = body.views.find((v) => v.id === "smoke.main");
+      expect(view?.bundleUrl).toMatch(
+        /^\/api\/views\/smoke\.main\/bundle\.js\?v=\d+$/,
+      );
+      expect(view?.frameUrl).toMatch(
+        /^\/api\/views\/smoke\.main\/frame\.html\?v=\d+$/,
+      );
+      expect(view?.available).toBe(false);
+    } finally {
+      await rm(pluginDir, { recursive: true, force: true });
+    }
+  });
+
+  it("filters sandbox frame documents from restricted native platforms", async () => {
+    const pluginDir = await mkdtemp(path.join(os.tmpdir(), "eliza-frame-"));
+    try {
+      await mkdir(path.join(pluginDir, "dist", "views"), { recursive: true });
+      await writeFile(
+        path.join(pluginDir, "dist", "views", "frame.html"),
+        "<!doctype html><title>Sandbox smoke</title>",
+      );
+
+      await registerPluginViews(
+        {
+          name: SMOKE_PLUGIN,
+          description: "smoke plugin",
+          actions: [],
+          views: [
+            {
+              ...SMOKE_VIEW,
+              bundlePath: undefined,
+              framePath: "dist/views/frame.html",
+              surface: { isolation: "sandboxed-iframe" },
+            },
+          ],
+        },
+        pluginDir,
+      );
+
+      const { ctx, json } = makeCtx("GET", "/api/views", {
+        headers: { "x-eliza-platform": "ios" },
+      });
+      await handleViewsRoutes(ctx);
+
+      const [, body] = json.mock.calls[0] as [
+        unknown,
+        { views: { id: string }[] },
+      ];
+      expect(body.views.some((v) => v.id === "smoke.main")).toBe(false);
+    } finally {
+      await rm(pluginDir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -544,6 +638,52 @@ describe("stage 4b: GET /api/views/:id/frame.html serves sandbox frame documents
       const served = res.end.mock.calls[0]?.[0];
       expect(Buffer.isBuffer(served)).toBe(true);
       expect(String(served)).toContain("<title>Sandbox smoke</title>");
+    } finally {
+      await rm(pluginDir, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks sandbox frame documents on restricted native platforms", async () => {
+    const pluginDir = await mkdtemp(path.join(os.tmpdir(), "eliza-frame-"));
+    try {
+      await mkdir(path.join(pluginDir, "dist", "views"), { recursive: true });
+      await writeFile(
+        path.join(pluginDir, "dist", "views", "frame.html"),
+        "<!doctype html><title>Sandbox smoke</title>",
+      );
+
+      await registerPluginViews(
+        {
+          name: SMOKE_PLUGIN,
+          description: "smoke plugin",
+          actions: [],
+          views: [
+            {
+              ...SMOKE_VIEW,
+              bundlePath: undefined,
+              framePath: "dist/views/frame.html",
+              surface: { isolation: "sandboxed-iframe" },
+            },
+          ],
+        },
+        pluginDir,
+      );
+
+      const { ctx, error } = makeCtx(
+        "GET",
+        "/api/views/smoke.main/frame.html",
+        {
+          headers: { "x-eliza-platform": "ios" },
+        },
+      );
+      const handled = await handleViewsRoutes(ctx);
+
+      expect(handled).toBe(true);
+      expect(error).toHaveBeenCalledWith(
+        expect.anything(),
+        "Dynamic view frame loading is not permitted on this platform.",
+        403,
+      );
     } finally {
       await rm(pluginDir, { recursive: true, force: true });
     }

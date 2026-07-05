@@ -402,10 +402,10 @@ export async function handleViewsRoutes(
     // user enabled, so kind-gating is a client responsibility.
     const allViews = listViews({ includeAllKinds: true, viewType });
     // On restricted platforms (iOS/Android store builds), only surface views
-    // without a dynamic bundle URL (already in-process).
+    // without dynamic code URLs (already in-process).
     const filtered = dynamicAllowed
       ? allViews
-      : allViews.filter((v) => !v.bundleUrl);
+      : allViews.filter((v) => !v.bundleUrl && !v.frameUrl);
     // Annotate each entry with `builtin: true` when it comes from the shell.
     const views = filtered.map((v) => ({
       ...v,
@@ -634,6 +634,16 @@ export async function handleViewsRoutes(
 
   // ── GET/HEAD /api/views/:id/frame.html ───────────────────────────────────
   if ((method === "GET" || method === "HEAD") && subResource === "frame.html") {
+    const clientPlatform = detectClientPlatform(req);
+    if (!isDynamicLoadingAllowed(clientPlatform)) {
+      error(
+        res,
+        "Dynamic view frame loading is not permitted on this platform.",
+        403,
+      );
+      return true;
+    }
+
     const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
     const entry = getView(id, { viewType });
     if (!entry) {
