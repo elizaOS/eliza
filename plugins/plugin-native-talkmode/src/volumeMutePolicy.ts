@@ -1,3 +1,10 @@
+/**
+ * Headless TalkMode audio policy for the boundary between input capture and
+ * platform output mute/volume state. Native implementations still own real
+ * audio routing; this module gives UI and tests one deterministic contract for
+ * whether capture, indicators, and in-flight TTS should continue under mute.
+ */
+
 export type TalkModeAudioPlatform =
   | "ios"
   | "android"

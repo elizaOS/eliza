@@ -1,3 +1,9 @@
+/**
+ * Deterministic coverage for TalkMode's output mute policy. The harness proves
+ * state transitions that do not require hardware audio, while explicitly
+ * leaving real mute/silent-switch routing to native device evidence.
+ */
+
 import { describe, expect, it } from "vitest";
 
 import {
