@@ -73,7 +73,8 @@ function readRendererManifest(manifestPath, label) {
 
 export function freshAndroidRendererManifestPath({
   repoRoot,
-  rendererDist = process.env.ELIZA_SMOKE_RENDERER_DIST,
+  rendererDist = process.env.ELIZA_ANDROID_RENDERER_DIST ??
+    process.env.ELIZA_SMOKE_RENDERER_DIST,
 }) {
   return path.join(
     rendererDist
@@ -127,7 +128,8 @@ export function compareAndroidRendererBuildIds({
 export function assertAndroidApkRendererFresh({
   apkPath,
   repoRoot,
-  rendererDist = process.env.ELIZA_SMOKE_RENDERER_DIST,
+  rendererDist = process.env.ELIZA_ANDROID_RENDERER_DIST ??
+    process.env.ELIZA_SMOKE_RENDERER_DIST,
   expectedCommit = null,
   label = "Android APK",
   log = () => {},

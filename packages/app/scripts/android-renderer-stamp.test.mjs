@@ -11,6 +11,7 @@ import {
   ANDROID_APK_RENDERER_MANIFEST_PATH,
   assertAndroidApkRendererFresh,
   compareAndroidRendererBuildIds,
+  freshAndroidRendererManifestPath,
   readAndroidApkRendererManifest,
 } from "./lib/android-renderer-stamp.mjs";
 
@@ -106,6 +107,8 @@ function writeFreshDist(repoRoot, buildId) {
 }
 
 afterEach(() => {
+  delete process.env.ELIZA_ANDROID_RENDERER_DIST;
+  delete process.env.ELIZA_SMOKE_RENDERER_DIST;
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -164,6 +167,18 @@ describe("Android renderer stamp", () => {
       buildId: "same",
       builtAt: "2026-07-05T00:01:00.000Z",
     });
+  });
+
+  it("prefers the Android renderer dist override over the generic smoke override", () => {
+    const repoRoot = tempDir();
+    const smokeDist = path.join(repoRoot, "smoke-dist");
+    const androidDist = path.join(repoRoot, "android-dist");
+    process.env.ELIZA_SMOKE_RENDERER_DIST = smokeDist;
+    process.env.ELIZA_ANDROID_RENDERER_DIST = androidDist;
+
+    expect(freshAndroidRendererManifestPath({ repoRoot })).toBe(
+      path.join(androidDist, "eliza-renderer-build.json"),
+    );
   });
 
   it("fails when the APK is missing the renderer manifest", () => {
