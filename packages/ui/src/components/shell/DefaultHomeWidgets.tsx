@@ -12,7 +12,11 @@ import {
 } from "lucide-react";
 import type * as React from "react";
 import { useNow } from "../../hooks/useNow";
-import { useWeather, type WeatherKind } from "../../hooks/useWeather";
+import {
+  prefers24HourClock,
+  useWeather,
+  type WeatherKind,
+} from "../../hooks/useWeather";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 
@@ -32,6 +36,9 @@ import { useAppSelector } from "../../state";
 // wallpaper is a known field (not a theme surface), so `text-white` + this
 // shadow is the intended idiom here rather than themed text tokens.
 const FLOAT_SHADOW = "[text-shadow:0_1px_3px_rgba(0,0,0,0.38)]";
+
+/** Locale hour cycle, resolved once at module load (never per render). */
+const CLOCK_24H = prefers24HourClock();
 
 const WEEKDAYS_LONG = [
   "Sunday",
@@ -94,15 +101,23 @@ function WeatherTile(): React.JSX.Element {
       {weather.status === "loading" ? (
         <div className="text-sm text-white/70">Loading…</div>
       ) : weather.status === "unavailable" ? (
-        <>
+        // Actionable, not a dead-end: an explicit tap is the ONE place allowed
+        // to trigger the OS location prompt (home load never does). (#14345)
+        <button
+          type="button"
+          data-testid="home-weather-enable"
+          onClick={() => weather.requestLocation()}
+          aria-label="Enable location to show weather"
+          className="flex flex-col items-end text-right transition-opacity hover:opacity-80"
+        >
           <Cloud className="h-7 w-7 text-white/70" aria-hidden />
           <div className="mt-1.5 text-sm font-medium text-white/80">
             Weather
           </div>
           <div className="mt-0.5 max-w-[11rem] text-xs-tight leading-tight text-white/60">
-            Enable location for conditions
+            Tap to enable location
           </div>
-        </>
+        </button>
       ) : (
         <>
           <div className="flex items-center gap-2">
@@ -117,11 +132,6 @@ function WeatherTile(): React.JSX.Element {
           <div className="mt-1.5 text-sm font-medium text-white/85">
             {weather.condition}
           </div>
-          {weather.city ? (
-            <div className="mt-0.5 max-w-[9rem] truncate text-xs-tight text-white/60">
-              {weather.city}
-            </div>
-          ) : null}
         </>
       )}
     </div>
@@ -149,9 +159,12 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
   const d = new Date(now);
   const hours = d.getHours();
   const minutes = d.getMinutes();
-  const hour12 = hours % 12 || 12;
-  const ampm = hours < 12 ? "AM" : "PM";
-  const time = `${hour12}:${String(minutes).padStart(2, "0")}`;
+  // Hour cycle follows the locale (resolved once at module load, not per render
+  // — the determinism gate forbids Intl in the render path). 24-hour locales
+  // drop the AM/PM suffix entirely (#14345).
+  const displayHour = CLOCK_24H ? hours : hours % 12 || 12;
+  const ampm = CLOCK_24H ? "" : hours < 12 ? "AM" : "PM";
+  const time = `${displayHour}:${String(minutes).padStart(2, "0")}`;
   const dateLabel = `${WEEKDAYS_LONG[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
 
   return (
@@ -181,9 +194,11 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
               <span className="text-6xl font-semibold leading-[0.9] tabular-nums tracking-tighter">
                 {time}
               </span>
-              <span className="text-base font-semibold uppercase tracking-wide text-white/60">
-                {ampm}
-              </span>
+              {ampm ? (
+                <span className="text-base font-semibold uppercase tracking-wide text-white/60">
+                  {ampm}
+                </span>
+              ) : null}
             </div>
             <div className="mt-3 text-base font-medium text-white/85">
               {dateLabel}

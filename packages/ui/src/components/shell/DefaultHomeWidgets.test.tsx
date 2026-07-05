@@ -1,20 +1,43 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Weather fetches over the network + device location; stub it to a stable
-// "ready" reading so the base widgets render deterministically (the live hook
-// is covered by useWeather.test.ts).
+// Weather fetches over the network + device location; stub it to a mutable
+// reading so the base widgets render deterministically (the live hook is covered
+// by useWeather.test.ts). Default "ready"; individual tests flip the state.
+const { weatherState } = vi.hoisted(() => ({
+  weatherState: {
+    status: "ready" as "ready" | "loading" | "unavailable",
+    temp: 68 as number | null,
+    unit: "°F",
+    condition: "Clear",
+    kind: "clear" as const,
+    requestLocation: (() => {}) as () => void,
+  },
+}));
 vi.mock("../../hooks/useWeather", () => ({
-  useWeather: () => ({
+  useWeather: () => weatherState,
+  // Pin a 12-hour clock so the "2:30 PM" assertion is locale-independent; the
+  // locale→hour-cycle logic itself is unit-tested in useWeather.test.ts.
+  prefers24HourClock: () => false,
+}));
+
+beforeEach(() => {
+  Object.assign(weatherState, {
     status: "ready",
     temp: 68,
     unit: "°F",
     condition: "Clear",
     kind: "clear",
-    city: "Testville",
-  }),
-}));
+    requestLocation: () => {},
+  });
+});
 
 import { __setAppValueForTests } from "../../state/app-store";
 import type { AppContextValue } from "../../state/types";
@@ -50,7 +73,6 @@ describe("DefaultHomeWidgets", () => {
     expect(weather.getAttribute("data-status")).toBe("ready");
     expect(weather.textContent).toContain("68");
     expect(weather.textContent).toContain("Clear");
-    expect(weather.textContent).toContain("Testville");
   });
 
   it("lays the time + weather out as 2×2 grid neighbours", () => {
@@ -101,5 +123,21 @@ describe("DefaultHomeWidgets", () => {
       vi.advanceTimersByTime(1);
     });
     expect(screen.getByTestId("home-time-widget")).toBeTruthy();
+  });
+
+  it("unavailable weather is a tappable tile that requests location (#14345)", () => {
+    const requestLocation = vi.fn();
+    Object.assign(weatherState, {
+      status: "unavailable",
+      temp: null,
+      requestLocation,
+    });
+    render(<DefaultHomeWidgets />);
+    const enable = screen.getByTestId("home-weather-enable");
+    // Actionable, not dead-end copy.
+    expect(enable.tagName).toBe("BUTTON");
+    expect(enable.textContent).toContain("Tap to enable location");
+    fireEvent.click(enable);
+    expect(requestLocation).toHaveBeenCalledTimes(1);
   });
 });
