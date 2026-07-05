@@ -49,29 +49,22 @@ export function useWidgetNavigation(): {
 
 export type HomeWidgetTone = "default" | "danger" | "warn";
 
-// The datum tone. Default is high-contrast text on the warm-dark card; danger/
-// warn carry the accent so an at-risk widget reads at a glance. `text-txt-strong`
-// resolves to the brand off-white on the dark ember card (theme-aware, not a
-// baked-in white), keeping the value crisp without a raw color.
+// Home sits over the ember wallpaper, which can be substantially darker than
+// the theme token surface underneath it. Keep readable text white on every card;
+// urgency is carried by the rail, chip, and badge instead of recoloring the datum.
 const TONE_VALUE_CLASS: Record<HomeWidgetTone, string> = {
-  default: "text-txt-strong",
-  danger: "text-danger",
-  warn: "text-warn",
+  default: "text-white",
+  danger: "text-white",
+  warn: "text-white",
 };
 
-// The icon chip tone: a warm-tinted resting chip, escalating to the status hue.
-// The default chip is the accent at its subtle fill with the accent glyph — the
-// tokenized equivalent of the old raw peach, so light/dark both resolve.
+// The icon chip stays white-tinted because `.theme-app` maps semantic status
+// tokens to black, which is correct on orange panels but illegible on dark
+// glass. Urgency is carried by the visible badge/label, not tiny color fills.
 const TONE_CHIP_CLASS: Record<HomeWidgetTone, string> = {
-  default: "bg-accent-subtle text-accent",
-  danger: "bg-danger/15 text-danger",
-  warn: "bg-warn/15 text-warn",
-};
-
-const TONE_DOT_CLASS: Record<HomeWidgetTone, string> = {
-  default: "bg-muted",
-  danger: "bg-danger",
-  warn: "bg-warn",
+  default: "bg-white/10 text-white",
+  danger: "bg-white/14 text-white",
+  warn: "bg-white/14 text-white",
 };
 
 export interface HomeWidgetCardProps {
@@ -119,9 +112,9 @@ export function HomeWidgetCard({
         // the tone. Tactile: a hair lift + warmer edge on hover, scale-press on
         // tap. Surface/border/hover all resolve through tokens so the tile is
         // theme-aware, never a baked-in white/black opacity ladder.
-        "group relative flex h-auto w-full items-center gap-3 overflow-hidden whitespace-normal rounded-2xl border border-border bg-card px-3.5 py-3 text-left",
+        "group relative flex h-auto w-full items-center gap-3 overflow-hidden whitespace-normal rounded-2xl border border-white/55 bg-black/35 px-3.5 py-3 text-left text-white backdrop-blur-xl",
         "transition-[transform,border-color,background-color] duration-150",
-        "hover:border-border-hover hover:bg-bg-hover",
+        "hover:border-white/75 hover:bg-black/45",
         "active:scale-[0.985] motion-reduce:active:scale-100",
       )}
     >
@@ -132,10 +125,10 @@ export function HomeWidgetCard({
         className={cn(
           "absolute inset-y-2.5 left-0 w-[3px] rounded-full transition-colors duration-150",
           tone === "danger"
-            ? "bg-danger/70"
+            ? "bg-white/80"
             : tone === "warn"
-              ? "bg-warn/70"
-              : "bg-accent/35 group-hover:bg-accent/70",
+              ? "bg-white/70"
+              : "bg-white/35 group-hover:bg-white/70",
         )}
       />
       <span
@@ -145,22 +138,13 @@ export function HomeWidgetCard({
         )}
       >
         {icon}
-        {tone !== "default" ? (
-          <span
-            aria-hidden
-            className={cn(
-              "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-card",
-              TONE_DOT_CLASS[tone],
-            )}
-          />
-        ) : null}
       </span>
 
       {/* The label is now a visible eyebrow (the widgets are the hero, so they
           read as a real dashboard), with the single high-priority datum below
           it. When a widget supplies no datum, the label carries the row alone. */}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-xs-tight font-medium uppercase tracking-[0.08em] text-muted">
+        <span className="truncate text-xs-tight font-medium uppercase tracking-[0.08em] text-white/65">
           {label}
         </span>
         {value != null ? (
@@ -180,7 +164,7 @@ export function HomeWidgetCard({
       </span>
 
       {meta != null ? (
-        <span className="shrink-0 text-xs-tight tabular-nums text-muted-strong">
+        <span className="shrink-0 text-xs-tight tabular-nums text-white/80">
           {meta}
         </span>
       ) : null}
@@ -189,10 +173,10 @@ export function HomeWidgetCard({
           className={cn(
             "shrink-0 rounded-full px-2 py-0.5 text-xs-tight font-semibold tabular-nums",
             tone === "danger"
-              ? "bg-danger/15 text-danger"
+              ? "bg-white/16 text-white"
               : tone === "warn"
-                ? "bg-warn/15 text-warn"
-                : "bg-accent-subtle text-accent",
+                ? "bg-white/16 text-white"
+                : "bg-white/12 text-white",
           )}
         >
           {badge}

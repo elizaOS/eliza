@@ -2,22 +2,20 @@
 //
 // The REAL WidgetHost + home widgets bundle and render; only their data sources
 // are stubbed. Widgets that fetch lifeops routes call `client.getBaseUrl()` then
-// raw `window.fetch` (mocked in the fixture); the relationships widget and the
-// notification store call typed `client.*` methods, delegated here to the shared
-// home-widget mock data so the cards render with injected data.
+// raw `window.fetch` (mocked in the fixture); the notification store calls typed
+// `client.*` methods, delegated here to the shared home-widget mock data so the
+// dashboard center renders with injected data.
 
 import {
   homeWidgetNotificationsResponse,
-  homeWidgetRelationshipsCandidates,
-  homeWidgetRelationshipsPeople,
 } from "../../../widgets/__fixtures__/home-widget-mock-data";
 
 export const client = {
   // Empty base → widgets fetch `/api/lifeops/...` which the window.fetch mock
   // (installed in the fixture) intercepts.
   getBaseUrl: () => "",
-  getRelationshipsPeople: async () => homeWidgetRelationshipsPeople(),
-  getRelationshipsCandidates: async () => homeWidgetRelationshipsCandidates(),
+  getRelationshipsPeople: async () => ({ data: [], stats: {} }),
+  getRelationshipsCandidates: async () => [],
   // Notification store hydrate + live subscription.
   listNotifications: async () => homeWidgetNotificationsResponse(),
   onWsEvent: () => {},

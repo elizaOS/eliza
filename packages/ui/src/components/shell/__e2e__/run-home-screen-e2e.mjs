@@ -50,16 +50,19 @@ const outDir = join(here, "output-home");
 await mkdir(outDir, { recursive: true });
 const RECORDED_VIDEO_FILE = "mobile-launcher-flow.webm";
 
-async function clearGeneratedVideoArtifacts() {
+async function clearGeneratedArtifacts() {
   await rm(join(outDir, RECORDED_VIDEO_FILE), { force: true });
   for (const entry of await readdir(outDir)) {
     if (/^page@.+\.webm$/.test(entry)) {
       await rm(join(outDir, entry), { force: true });
     }
+    if (/^\d+-.*\.png$/.test(entry)) {
+      await rm(join(outDir, entry), { force: true });
+    }
   }
 }
 
-await clearGeneratedVideoArtifacts();
+await clearGeneratedArtifacts();
 
 // Redirect the live data sources to deterministic stubs.
 const stubResolver = {
@@ -68,9 +71,9 @@ const stubResolver = {
     // HomeScreen mounts the REAL unified home-slot WidgetHost (#9143). It resolves
     // its per-plugin widgets from the app-store plugins snapshot and renders them
     // with injected data (seeded in home-screen-fixture.tsx). The data sources —
-    // the `client` (relationships + base URL) and `window.fetch` (lifeops routes)
-    // — are stubbed below / in the fixture; the WidgetHost + widget components
-    // themselves are NOT stubbed.
+    // the `client` (base URL + notification methods) and `window.fetch` (lifeops
+    // routes) — are stubbed below / in the fixture; the WidgetHost + widget
+    // components themselves are NOT stubbed.
     b.onResolve({ filter: /(\/api|\/api\/client)$/ }, () => ({
       path: join(here, "home-screen-fixture.api-stub.ts"),
     }));
@@ -217,6 +220,58 @@ async function touchSwipeRight(page, testId) {
 // must NOT enter edit mode (the launcher is read-only, fixed placement).
 async function longPressHold(page, tileTestId) {
   await touchLongPress(page, `[data-testid="${tileTestId}"] button`, 600);
+}
+async function readHomeDarkForegrounds(page) {
+  return page.evaluate(() => {
+    const parseRgb = (value) => {
+      const match = value.match(/rgba?\(([^)]+)\)/);
+      if (!match) return null;
+      const [r, g, b] = match[1]
+        .split(",")
+        .slice(0, 3)
+        .map((part) => Number.parseFloat(part.trim()));
+      return [r, g, b].every(Number.isFinite) ? { r, g, b } : null;
+    };
+    const channel = (value) => {
+      const normalized = value / 255;
+      return normalized <= 0.03928
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4;
+    };
+    const luminance = ({ r, g, b }) =>
+      0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+    const surfaces = [
+      "home-notification-center",
+      "widget-goals-attention",
+      "widget-health-sleep",
+      "chat-widget-calendar-upcoming",
+    ];
+    const failures = [];
+    for (const testId of surfaces) {
+      const root = document.querySelector(`[data-testid="${testId}"]`);
+      if (!(root instanceof HTMLElement)) continue;
+      const nodes = [root, ...root.querySelectorAll("*")];
+      for (const node of nodes) {
+        if (!(node instanceof HTMLElement)) continue;
+        const text = node.innerText?.replace(/\s+/g, " ").trim();
+        if (!text) continue;
+        const rect = node.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) continue;
+        const rgb = parseRgb(getComputedStyle(node).color);
+        if (!rgb) continue;
+        const lightness = luminance(rgb);
+        if (lightness < 0.45) {
+          failures.push({
+            surface: testId,
+            text: text.slice(0, 80),
+            color: getComputedStyle(node).color,
+            luminance: Number(lightness.toFixed(3)),
+          });
+        }
+      }
+    }
+    return failures;
+  });
 }
 async function waitForSurfacePageSettled(p, pageName) {
   await p.waitForFunction((expectedPage) => {
@@ -542,6 +597,15 @@ try {
     }
   }
   await snap(mobile, "mobile-home");
+  {
+    const darkForegrounds = await readHomeDarkForegrounds(mobile);
+    assert(
+      darkForegrounds.length === 0,
+      `home card foregrounds stay readable on the dark ember field (${JSON.stringify(
+        darkForegrounds.slice(0, 5),
+      )})`,
+    );
+  }
 
   // Layout-stability lock (#9304): the home cards rank + self-hide; a ranking
   // reorder or a card popping in must NOT jump the page. `contain: layout` on
