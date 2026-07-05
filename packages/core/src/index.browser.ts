@@ -199,6 +199,7 @@ export * from "./utils/deterministic";
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
 export { formatError } from "./utils/format-error";
+export * from "./utils/project-memory-scope";
 export * from "./utils/read-env";
 export * from "./utils/resolve-setting";
 export * from "./utils/streaming";
