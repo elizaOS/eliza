@@ -910,6 +910,10 @@ async function runCreate(
   ) as OrchestratorTaskService | null | undefined;
   try {
     if (taskService && typeof taskService.createTask === "function") {
+      // Bind the durable task to the spawn's repo/workdir at creation so every
+      // session it later attaches shares one project root, instead of the task
+      // inferring a workdir from whichever session ran most recently (#13776).
+      const taskRepo = pickString(params, content, "repo");
       const detail = await taskService.createTask({
         title: taskTitle,
         goal: taskGoal,
@@ -920,6 +924,8 @@ async function runCreate(
           ? { roomId: originRoomId ?? taskRoomId }
           : {}),
         ...(taskRoomId ? { taskRoomId } : {}),
+        ...(explicitWorkdir ? { workdir: explicitWorkdir } : {}),
+        ...(taskRepo ? { repo: taskRepo } : {}),
         acceptanceCriteria,
       });
       threadId = detail?.id ?? null;

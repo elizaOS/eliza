@@ -45,7 +45,7 @@ interface Logger {
   debug?: (message: string, ...args: unknown[]) => void;
 }
 
-interface TaskStoreRuntime {
+export interface TaskStoreRuntime {
   /** Modern eliza runtime exposes the DB adapter as `runtime.adapter`. */
   adapter?: unknown;
   /** Legacy alias kept for pre-2026 runtimes and custom container harnesses. */
@@ -56,7 +56,7 @@ interface TaskStoreRuntime {
 
 /** Raw shape: an adapter that exposes flat SQL methods directly. Older test
  * harnesses (and hand-rolled sqlite bindings) look like this. */
-type RawSqlDatabaseAdapter = {
+export type RawSqlDatabaseAdapter = {
   query?: (sql: string, params?: unknown[]) => Promise<unknown> | unknown;
   execute?: (sql: string, params?: unknown[]) => Promise<unknown> | unknown;
   run?: (sql: string, params?: unknown[]) => Promise<unknown> | unknown;
@@ -69,7 +69,7 @@ type RawSqlDatabaseAdapter = {
  * executor lives on `adapter.db.execute(sql\`...\`)` (drizzle's tagged-template
  * SQL). We only need `.execute` here. It returns a rowset for SELECTs and an
  * ack for writes, which is all this store's storage-layer touches. */
-type ElizaDrizzleAdapter = {
+export type ElizaDrizzleAdapter = {
   db: {
     execute: (query: unknown) => Promise<unknown> | unknown;
   };
@@ -77,7 +77,7 @@ type ElizaDrizzleAdapter = {
 
 /** Unified low-level executor. `run` performs a mutation and ignores the
  * result; `all` runs a SELECT and returns rows. */
-interface SqlExecutor {
+export interface SqlExecutor {
   run(sql: string, params?: unknown[]): Promise<void>;
   all(sql: string, params?: unknown[]): Promise<unknown[]>;
 }
@@ -145,7 +145,7 @@ function isElizaDrizzleAdapter(value: unknown): value is ElizaDrizzleAdapter {
   return isRecord(db) && typeof db.execute === "function";
 }
 
-function isPersistableAdapter(
+export function isPersistableAdapter(
   value: unknown,
 ): value is RawSqlDatabaseAdapter | ElizaDrizzleAdapter {
   return isRawSqlDatabaseAdapter(value) || isElizaDrizzleAdapter(value);
@@ -163,7 +163,7 @@ function isPersistableAdapter(
  * that ships `@elizaos/plugin-sql` (drizzle-orm is present), we require it
  * lazily at first use to avoid a hard dependency here.
  */
-async function resolveSqlExecutor(
+export async function resolveSqlExecutor(
   adapter: RawSqlDatabaseAdapter | ElizaDrizzleAdapter,
 ): Promise<SqlExecutor> {
   if (isElizaDrizzleAdapter(adapter)) {
@@ -286,6 +286,9 @@ function newTaskDocument(input: CreateTaskInput): OrchestratorTaskDocument {
     taskRoomId: input.taskRoomId,
     parentTaskId: input.parentTaskId,
     forkSource: input.forkSource,
+    projectId: input.projectId,
+    repo: input.repo,
+    workdir: input.workdir,
     providerPolicy: input.providerPolicy,
     paused: false,
     archived: false,
@@ -328,6 +331,7 @@ function matchesFilter(
   if (!filter.includeArchived && task.archived) return false;
   if (filter.status && filter.status !== "all" && task.status !== filter.status)
     return false;
+  if (filter.projectId && task.projectId !== filter.projectId) return false;
   if (filter.search) {
     const needle = filter.search.trim().toLowerCase();
     if (needle && !searchText.includes(needle)) return false;
@@ -810,6 +814,7 @@ const TASK_TABLE_SQL = `CREATE TABLE IF NOT EXISTS orchestrator_tasks (
   search_text TEXT,
   updated_at TEXT NOT NULL,
   last_activity_at BIGINT NOT NULL,
+  project_id TEXT,
   document TEXT NOT NULL
 )`;
 
@@ -817,6 +822,27 @@ const TASK_INDEX_SQL = [
   "CREATE INDEX IF NOT EXISTS idx_orch_tasks_status ON orchestrator_tasks(status)",
   "CREATE INDEX IF NOT EXISTS idx_orch_tasks_activity ON orchestrator_tasks(last_activity_at)",
 ];
+
+/**
+ * Additive migration for the `project_id` column (#13776), which was added
+ * after the initial schema — a table created earlier lacks it, and `CREATE
+ * TABLE IF NOT EXISTS` above won't add it. A probe `SELECT` distinguishes a
+ * current table (succeeds) from a legacy one (the driver rejects the unknown
+ * column), so the portable `ADD COLUMN` (no backend-specific `IF NOT EXISTS`)
+ * fires at most once per legacy table and never on the happy path.
+ */
+async function ensureProjectIdColumn(executor: SqlExecutor): Promise<void> {
+  try {
+    await executor.all("SELECT project_id FROM orchestrator_tasks LIMIT 1");
+  } catch {
+    // error-policy:J3 additive-migration probe — the SELECT rejecting means the
+    // column predates this schema, so add it. Any other failure re-surfaces
+    // from the ALTER below (fail-fast), never a swallowed no-op.
+    await executor.run(
+      "ALTER TABLE orchestrator_tasks ADD COLUMN project_id TEXT",
+    );
+  }
+}
 
 /** SQL backend. Stores the whole document as a JSON column with indexed
  * columns for the list query, so all reads/writes are single-row operations.
@@ -846,9 +872,11 @@ export class RuntimeDbTaskStore {
 
   private async ensureInitialized(): Promise<void> {
     this.initPromise ??= (async () => {
-      this.executor = await resolveSqlExecutor(this.adapter);
-      await this.executor.run(TASK_TABLE_SQL);
-      for (const sql of TASK_INDEX_SQL) await this.executor.run(sql);
+      const executor = await resolveSqlExecutor(this.adapter);
+      this.executor = executor;
+      await executor.run(TASK_TABLE_SQL);
+      for (const sql of TASK_INDEX_SQL) await executor.run(sql);
+      await ensureProjectIdColumn(executor);
     })();
     await this.initPromise;
   }
@@ -882,8 +910,8 @@ export class RuntimeDbTaskStore {
     // sqlite-only INSERT OR REPLACE form.
     await this.exec().run(
       `INSERT INTO orchestrator_tasks
-       (id, status, archived, priority, title, search_text, updated_at, last_activity_at, document)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (id, status, archived, priority, title, search_text, updated_at, last_activity_at, project_id, document)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET
          status = excluded.status,
          archived = excluded.archived,
@@ -892,6 +920,7 @@ export class RuntimeDbTaskStore {
          search_text = excluded.search_text,
          updated_at = excluded.updated_at,
          last_activity_at = excluded.last_activity_at,
+         project_id = excluded.project_id,
          document = excluded.document`,
       [
         doc.task.id,
@@ -902,6 +931,9 @@ export class RuntimeDbTaskStore {
         searchText,
         doc.task.updatedAt,
         doc.task.lastActivityAt,
+        // Optional binding → SQL NULL (a genuinely nullable column), not a
+        // fabricated default: the authoritative value round-trips in `document`.
+        doc.task.projectId ?? null,
         JSON.stringify(doc),
       ],
     );
@@ -939,6 +971,10 @@ export class RuntimeDbTaskStore {
     if (filter.status && filter.status !== "all") {
       clauses.push("status = ?");
       params.push(filter.status);
+    }
+    if (filter.projectId) {
+      clauses.push("project_id = ?");
+      params.push(filter.projectId);
     }
     if (filter.search?.trim()) {
       clauses.push("search_text LIKE ?");

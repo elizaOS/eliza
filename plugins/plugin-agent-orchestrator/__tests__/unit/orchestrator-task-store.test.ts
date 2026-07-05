@@ -114,6 +114,7 @@ class FakeSqlAdapter {
         searchText,
         updatedAt,
         lastActivityAt,
+        projectId,
         document,
       ] = params;
       this.rows.set(id as string, {
@@ -125,6 +126,7 @@ class FakeSqlAdapter {
         search_text: searchText,
         updated_at: updatedAt,
         last_activity_at: lastActivityAt,
+        project_id: projectId,
         document,
       });
       return;
@@ -152,6 +154,10 @@ class FakeSqlAdapter {
     if (sql.includes("status = ?")) {
       const status = params[paramIndex++];
       rows = rows.filter((row) => row.status === status);
+    }
+    if (sql.includes("project_id = ?")) {
+      const projectId = params[paramIndex++];
+      rows = rows.filter((row) => row.project_id === projectId);
     }
     if (sql.includes("search_text LIKE ?")) {
       const needle = String(params[paramIndex++]).replace(/%/g, "");
@@ -995,5 +1001,142 @@ describe("orchestrator-task-store audit follow-ups (#11028)", () => {
     const reader = new FileTaskStore(path);
     const after = await reader.getTask(t.task.id);
     expect(after?.task.status).toBe("done");
+  });
+});
+
+describe("task ↔ project binding (#13776)", () => {
+  it("InMemoryTaskStore persists the first-class projectId/repo/workdir on the record", async () => {
+    const store = new InMemoryTaskStore();
+    const { task } = await store.createTask(
+      createInput({
+        projectId: "proj-1",
+        repo: "elizaOS/eliza",
+        workdir: "/repo/eliza",
+      }),
+    );
+    const loaded = await store.getTask(task.id);
+    expect(loaded?.task.projectId).toBe("proj-1");
+    expect(loaded?.task.repo).toBe("elizaOS/eliza");
+    expect(loaded?.task.workdir).toBe("/repo/eliza");
+  });
+
+  it("leaves projectId unset when the create input omits it (back-compat)", async () => {
+    const store = new InMemoryTaskStore();
+    const { task } = await store.createTask(createInput());
+    expect((await store.getTask(task.id))?.task.projectId).toBeUndefined();
+  });
+
+  it("filters the in-memory list by projectId", async () => {
+    const store = new InMemoryTaskStore();
+    const bound = await store.createTask(
+      createInput({ title: "bound", projectId: "proj-A" }),
+    );
+    await store.createTask(createInput({ title: "unbound" }));
+    await store.createTask(
+      createInput({ title: "other", projectId: "proj-B" }),
+    );
+    const onlyA = await store.listTasks({ projectId: "proj-A" });
+    expect(onlyA.map((t) => t.id)).toEqual([bound.task.id]);
+  });
+
+  it("FileTaskStore round-trips projectId through JSON persistence and a fresh reopen", async () => {
+    const file = await tempFile();
+    const store = new FileTaskStore(file);
+    const { task } = await store.createTask(
+      createInput({ title: "durable bind", projectId: "proj-file" }),
+    );
+
+    // The projectId is inside the persisted document JSON, not lost on write.
+    const raw = JSON.parse(await readFile(file, "utf8")) as Array<{
+      task: { projectId?: string };
+    }>;
+    expect(raw[0]?.task.projectId).toBe("proj-file");
+
+    const reopened = new FileTaskStore(file);
+    expect((await reopened.getTask(task.id))?.task.projectId).toBe("proj-file");
+  });
+
+  it("RuntimeDbTaskStore round-trips projectId and writes it to the dedicated column", async () => {
+    const adapter = new FakeSqlAdapter();
+    const store = new RuntimeDbTaskStore(adapter);
+    const { task } = await store.createTask(
+      createInput({ title: "sql bind", projectId: "proj-sql" }),
+    );
+    // Survives via the document JSON on read-back...
+    expect((await store.getTask(task.id))?.task.projectId).toBe("proj-sql");
+    // ...and is mirrored into the indexed `project_id` column.
+    expect(adapter.rows.get(task.id)?.project_id).toBe("proj-sql");
+  });
+
+  it("RuntimeDbTaskStore filters listTasks through the project_id WHERE clause", async () => {
+    const seenSql: string[] = [];
+    const adapter = new FakeSqlAdapter();
+    const capturing = {
+      execute: (sql: string, params?: unknown[]) =>
+        adapter.execute(sql, params),
+      all: (sql: string, params?: unknown[]) => {
+        seenSql.push(sql);
+        return adapter.all(sql, params);
+      },
+    };
+    const store = new RuntimeDbTaskStore(capturing);
+    const bound = await store.createTask(
+      createInput({ title: "bound", projectId: "proj-Q" }),
+    );
+    await store.createTask(createInput({ title: "unbound" }));
+
+    const listed = await store.listTasks({ projectId: "proj-Q" });
+    expect(listed.map((t) => t.id)).toEqual([bound.task.id]);
+    expect(seenSql.some((s) => /project_id = \?/.test(s))).toBe(true);
+  });
+
+  it("creates the orchestrator_tasks table with a project_id column", async () => {
+    const seenSql: string[] = [];
+    const adapter = new FakeSqlAdapter();
+    const capturing = {
+      execute: (sql: string, params?: unknown[]) => {
+        seenSql.push(sql);
+        return adapter.execute(sql, params);
+      },
+      all: (sql: string, params?: unknown[]) => adapter.all(sql, params),
+    };
+    const store = new RuntimeDbTaskStore(capturing);
+    await store.createTask(createInput({ title: "schema" }));
+    const createTable = seenSql.find((s) => /CREATE TABLE/i.test(s));
+    expect(createTable).toMatch(/project_id TEXT/i);
+  });
+
+  it("additively migrates a legacy table that predates the project_id column", async () => {
+    // A legacy adapter whose table rejects any `project_id` reference until the
+    // ALTER lands — reproducing an on-disk DB created before #13776.
+    class LegacyProjectlessAdapter extends FakeSqlAdapter {
+      hasProjectId = false;
+      alterCount = 0;
+
+      override async execute(sql: string, params: unknown[] = []) {
+        if (/ALTER TABLE orchestrator_tasks ADD COLUMN project_id/i.test(sql)) {
+          this.hasProjectId = true;
+          this.alterCount++;
+          return;
+        }
+        return super.execute(sql, params);
+      }
+
+      override async all(sql: string, params: unknown[] = []) {
+        if (/project_id/i.test(sql) && !this.hasProjectId) {
+          throw new Error("no such column: project_id");
+        }
+        return super.all(sql, params);
+      }
+    }
+    const adapter = new LegacyProjectlessAdapter();
+    const store = new RuntimeDbTaskStore(adapter);
+    // Initialization runs the probe → column missing → ALTER exactly once.
+    const { task } = await store.createTask(
+      createInput({ title: "migrated", projectId: "proj-legacy" }),
+    );
+    expect(adapter.alterCount).toBe(1);
+    expect(adapter.hasProjectId).toBe(true);
+    expect((await store.getTask(task.id))?.task.projectId).toBe("proj-legacy");
   });
 });

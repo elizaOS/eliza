@@ -67,6 +67,21 @@ export interface OrchestratorTaskRecord {
   /** Lineage: the task this one was forked from, if any. */
   parentTaskId?: string;
   forkSource?: string;
+  /** First-class binding to a {@link ProjectRecord} in the project registry
+   * (`project-registry.ts`). Pins the task to one project so every session it
+   * spawns targets the same workspace root instead of drifting per-session
+   * (#13776). Optional + nullable: rows created before this field, and tasks
+   * with no resolved project, leave it unset. */
+  projectId?: string;
+  /** Canonical repository this task targets, captured at creation from the
+   * spawn context. First-class task binding, distinct from the per-session
+   * `repo` (which two sessions of one task can set differently) and from the
+   * derived `latestRepo` the mapper reads off the most-recent session. */
+  repo?: string;
+  /** Canonical working directory this task targets, captured at creation.
+   * First-class task binding, distinct from the derived `latestWorkdir`
+   * (most-recent session) the mapper still surfaces for back-compat. */
+  workdir?: string;
   /** Provider/model/subscription policy applied to spawned sub-agents. */
   providerPolicy?: TaskProviderPolicy;
   paused: boolean;
@@ -339,6 +354,8 @@ export interface TaskListFilter {
   search?: string;
   includeArchived?: boolean;
   limit?: number;
+  /** Restrict to tasks bound to this project (`OrchestratorTaskRecord.projectId`). */
+  projectId?: string;
 }
 
 export interface CreateTaskInput {
@@ -354,6 +371,10 @@ export interface CreateTaskInput {
   taskRoomId?: string;
   parentTaskId?: string;
   forkSource?: string;
+  /** Bind the new task to a registry project + its repo/workdir at creation. */
+  projectId?: string;
+  repo?: string;
+  workdir?: string;
   providerPolicy?: TaskProviderPolicy;
   currentPlan?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
