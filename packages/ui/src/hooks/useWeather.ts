@@ -133,6 +133,7 @@ function readCache(): CachedWeather | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CachedWeather;
     if (typeof parsed.fetchedAt !== "number") return null;
+    if (parsed.unit !== TEMPERATURE_UNIT.label) return null;
     return parsed;
   } catch {
     // error-policy:J3 corrupt cache reads as "no cache"; the live fetch is
@@ -273,8 +274,12 @@ export function useWeather(): WeatherState {
         setWeather(next);
         writeCache({ ...next, fetchedAt: Date.now() });
       })
-      .catch(applyUnavailable);
-  }, [applyUnavailable]);
+      .catch(() => {
+        // error-policy:J4 stale/no-location/weather failure renders the
+        // explicit unavailable tile instead of a healthy old reading.
+        setWeather({ ...LOADING, status: "unavailable" });
+      });
+  }, []);
 
   React.useEffect(() => {
     void revalidate();

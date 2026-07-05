@@ -19,6 +19,7 @@ const originalGeolocationDescriptor = Object.getOwnPropertyDescriptor(
   navigator,
   "geolocation",
 );
+const WEATHER_CACHE_KEY = "eliza:weather:v1";
 
 afterEach(() => {
   cleanup();
@@ -143,6 +144,74 @@ describe("useWeather", () => {
     await waitFor(() => {
       expect(result.current.status).toBe("unavailable");
     });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores cached readings whose unit does not match the current locale", async () => {
+    const currentUnit = temperatureUnitForLocale();
+    const wrongUnit = currentUnit.label === "°F" ? "°C" : "°F";
+    localStorage.setItem(
+      WEATHER_CACHE_KEY,
+      JSON.stringify({
+        status: "ready",
+        temp: 72,
+        unit: wrongUnit,
+        condition: "Clear",
+        kind: "clear",
+        fetchedAt: Date.now(),
+      }),
+    );
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock;
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: {
+        query: vi.fn().mockResolvedValue({ state: "denied" }),
+      },
+    });
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: undefined,
+    });
+
+    const { result } = renderHook(() => useWeather());
+
+    expect(result.current.status).toBe("loading");
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+    expect(result.current.unit).toBe(currentUnit.label);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not keep a stale cached reading as ready when revalidation cannot run", async () => {
+    const currentUnit = temperatureUnitForLocale();
+    localStorage.setItem(
+      WEATHER_CACHE_KEY,
+      JSON.stringify({
+        status: "ready",
+        temp: 72,
+        unit: currentUnit.label,
+        condition: "Clear",
+        kind: "clear",
+        fetchedAt: Date.now() - 31 * 60_000,
+      }),
+    );
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock;
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: {
+        query: vi.fn().mockResolvedValue({ state: "denied" }),
+      },
+    });
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: undefined,
+    });
+
+    const { result } = renderHook(() => useWeather());
+
+    expect(result.current.status).toBe("ready");
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
