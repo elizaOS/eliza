@@ -505,6 +505,171 @@ export function rewriteXctestrunUITargetApp(xctestrun, newAppPath) {
 }
 
 /**
+ * Rewrite stale references to the unsigned build-product App.app in every
+ * DependentProductPaths array of a parsed .xctestrun, pointing them at the
+ * signed replacement app. Device runs graft a signed App.app over the
+ * unsigned one that build-for-testing left in DerivedData; rewriteXctestrun-
+ * UITargetApp only fixes UITargetAppPath, but xcodebuild also installs the
+ * bundles listed in each test target's DependentProductPaths — a lingering
+ * reference to the unsigned `…/App.app` there makes the device install fail
+ * with 0xe800801c ("No code signature") even after the UITargetAppPath rewrite.
+ *
+ * A path is considered stale when its basename equals the signed app's
+ * basename (e.g. `App.app`) but the path itself is not already the signed app.
+ * Runner apps, frameworks, and other dependent products are left untouched.
+ * Returns the number of entries rewritten.
+ *
+ * @param {Record<string, unknown>} xctestrun parsed plist root
+ * @param {string} newAppPath absolute path to the signed App.app (already
+ *   __TESTROOT__-resolved)
+ * @returns {number}
+ */
+export function sweepXctestrunDependentProductPaths(xctestrun, newAppPath) {
+  const targetBase = basenameOf(newAppPath);
+  let rewritten = 0;
+  const sweepTarget = (testTarget) => {
+    if (!testTarget || typeof testTarget !== "object") return;
+    const deps = testTarget.DependentProductPaths;
+    if (!Array.isArray(deps)) return;
+    for (let i = 0; i < deps.length; i += 1) {
+      const dep = deps[i];
+      if (typeof dep !== "string") continue;
+      if (dep === newAppPath) continue;
+      if (basenameOf(dep) === targetBase) {
+        deps[i] = newAppPath;
+        rewritten += 1;
+      }
+    }
+  };
+  // FormatVersion 2: TestConfigurations array at the ROOT of the plist.
+  if (Array.isArray(xctestrun.TestConfigurations)) {
+    for (const config of xctestrun.TestConfigurations) {
+      for (const testTarget of config?.TestTargets ?? []) {
+        sweepTarget(testTarget);
+      }
+    }
+  }
+  // FormatVersion 1: one dict per test target at the root.
+  for (const [key, value] of Object.entries(xctestrun)) {
+    if (key === "__xctestrun_metadata__" || key === "TestConfigurations")
+      continue;
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    sweepTarget(value);
+  }
+  return rewritten;
+}
+
+/**
+ * Cross-platform basename that treats both `/` and `\` as separators and
+ * ignores a single trailing separator (an .app path may be written with one).
+ * @param {string} p
+ * @returns {string}
+ */
+function basenameOf(p) {
+  const trimmed = p.replace(/[/\\]+$/, "");
+  const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return idx === -1 ? trimmed : trimmed.slice(idx + 1);
+}
+
+/**
+ * Decide whether — and where — to overwrite the DerivedData build product
+ * App.app with the signed staged app before `test-without-building`.
+ *
+ * On a device run, `build-for-testing` leaves an UNSIGNED `App.app` in
+ * `<derivedData>/Build/Products/<config>-iphoneos/App.app`. Even after the
+ * .xctestrun's UITargetAppPath is rewritten to the signed graft, xcodebuild
+ * still installs the DD product, and the device install fails 0xe800801c.
+ * The proven fix is to `ditto` the signed app over the DD product first.
+ *
+ * Pure: returns the overwrite plan (or a skip reason) so the impure script
+ * layer can log + execute the `ditto`. Only overwrites on device runs when a
+ * signed --app-path is provided and the DD product exists.
+ *
+ * @param {{
+ *   platform: 'sim' | 'device',
+ *   signedAppPath: string | null,
+ *   derivedDataProductApp: string | null,
+ *   productExists: boolean,
+ * }} params
+ * @returns {{ overwrite: boolean, from?: string, to?: string, reason?: string }}
+ */
+export function planSignedAppDdOverwrite({
+  platform,
+  signedAppPath,
+  derivedDataProductApp,
+  productExists,
+}) {
+  if (platform !== "device") {
+    return { overwrite: false, reason: "not a device run" };
+  }
+  if (!signedAppPath) {
+    return { overwrite: false, reason: "no --app-path signed app given" };
+  }
+  if (!derivedDataProductApp) {
+    return {
+      overwrite: false,
+      reason: "could not resolve the DerivedData build-product App.app",
+    };
+  }
+  if (derivedDataProductApp === signedAppPath) {
+    return {
+      overwrite: false,
+      reason: "signed app IS the DerivedData product — nothing to overwrite",
+    };
+  }
+  if (!productExists) {
+    return {
+      overwrite: false,
+      reason: `no build product at ${derivedDataProductApp} (run without --skip-build?)`,
+    };
+  }
+  return {
+    overwrite: true,
+    from: signedAppPath,
+    to: derivedDataProductApp,
+  };
+}
+
+/**
+ * Classify the result of a `codesign --verify` preflight over the runner app
+ * and the (post-overwrite) DerivedData App.app. Pure: the caller passes each
+ * check's boolean `signed` verdict; this returns whether to fail-fast and the
+ * exact remediation text naming 0xe800801c so a device operator gets an
+ * actionable error instead of the opaque devicectl install failure.
+ *
+ * @param {{
+ *   checks: Array<{ label: string, path: string, signed: boolean }>,
+ *   appPathProvided: boolean,
+ * }} params
+ * @returns {{ ok: boolean, unsigned: Array<{ label: string, path: string }>, message: string | null }}
+ */
+export function classifyCodesignPreflight({ checks, appPathProvided }) {
+  const unsigned = checks
+    .filter((check) => !check.signed)
+    .map(({ label, path: p }) => ({ label, path: p }));
+  if (unsigned.length === 0) {
+    return { ok: true, unsigned: [], message: null };
+  }
+  const listed = unsigned
+    .map(({ label, path: p }) => `  - ${label}: ${p}`)
+    .join("\n");
+  const remediation = appPathProvided
+    ? "The signed app was grafted but a bundle is still unsigned. Re-stage the " +
+      "signed app with `bun run ios:device:deploy` and pass it via --app-path."
+    : "The DerivedData build product is unsigned. Stage a signed app with " +
+      "`bun run ios:device:deploy` and re-run with " +
+      "`--app-path <ios/build/device-deploy-stage/App.app>`.";
+  return {
+    ok: false,
+    unsigned,
+    message:
+      "codesign preflight failed — installing this on a device would abort with " +
+      '0xe800801c ("No code signature"). Unsigned bundle(s):\n' +
+      `${listed}\n${remediation}`,
+  };
+}
+
+/**
  * Collect every app bundle a parsed .xctestrun references (TestHostPath +
  * UITargetAppPath, both FormatVersion 1 and 2 layouts), resolving the
  * __TESTROOT__ placeholder against the xctestrun's directory. Used to

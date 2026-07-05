@@ -11,6 +11,7 @@ import {
   buildOnlyTestingIdentifier,
   buildPlistXml,
   CONSOLE_SIGTRAP_SIGNATURE,
+  classifyCodesignPreflight,
   classifyConsoleExit,
   classifyIsolatedReruns,
   deriveSigningEntitlements,
@@ -23,12 +24,14 @@ import {
   parseCodesigningIdentities,
   parseFailedTestIdentifiers,
   parsePlist,
+  planSignedAppDdOverwrite,
   profileMatchesTarget,
   resolveDeviceId,
   resolveXctestrunTestRoot,
   rewriteXctestrunUITargetApp,
   selectProvisioningProfile,
   selectSigningIdentity,
+  sweepXctestrunDependentProductPaths,
 } from "./ios-device-lib.mjs";
 
 const TEAM = "25877RY2EH";
@@ -422,6 +425,214 @@ describe("rewriteXctestrunUITargetApp", () => {
 
   it("returns 0 when there is nothing to rewrite", () => {
     expect(rewriteXctestrunUITargetApp({ Foo: { Bar: "baz" } }, "/x")).toBe(0);
+  });
+});
+
+describe("sweepXctestrunDependentProductPaths (#13564)", () => {
+  it("rewrites stale App.app refs in the FormatVersion 2 layout, leaving runner + others untouched", () => {
+    const xctestrun = {
+      __xctestrun_metadata__: { FormatVersion: 2 },
+      TestConfigurations: [
+        {
+          TestTargets: [
+            {
+              BlueprintName: "AppUITests",
+              DependentProductPaths: [
+                "/dd/Build/Products/Debug-iphoneos/AppUITests-Runner.app",
+                "/dd/Build/Products/Debug-iphoneos/App.app",
+                "/dd/Build/Products/Debug-iphoneos/Some.framework",
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const count = sweepXctestrunDependentProductPaths(
+      xctestrun,
+      "/signed/App.app",
+    );
+    expect(count).toBe(1);
+    const deps =
+      xctestrun.TestConfigurations[0].TestTargets[0].DependentProductPaths;
+    expect(deps).toEqual([
+      "/dd/Build/Products/Debug-iphoneos/AppUITests-Runner.app",
+      "/signed/App.app",
+      "/dd/Build/Products/Debug-iphoneos/Some.framework",
+    ]);
+  });
+
+  it("rewrites the flat FormatVersion 1 layout", () => {
+    const xctestrun = {
+      __xctestrun_metadata__: { FormatVersion: 1 },
+      AppUITests: {
+        TestHostPath: "/dd/Build/Products/Debug-iphoneos/AppUITests-Runner.app",
+        DependentProductPaths: [
+          "/dd/Build/Products/Debug-iphoneos/App.app",
+          "/dd/Build/Products/Debug-iphoneos/AppUITests-Runner.app",
+        ],
+      },
+    };
+    const count = sweepXctestrunDependentProductPaths(
+      xctestrun,
+      "/signed/App.app",
+    );
+    expect(count).toBe(1);
+    expect(xctestrun.AppUITests.DependentProductPaths).toEqual([
+      "/signed/App.app",
+      "/dd/Build/Products/Debug-iphoneos/AppUITests-Runner.app",
+    ]);
+  });
+
+  it("is idempotent: an entry already pointing at the signed app is not re-counted", () => {
+    const xctestrun = {
+      __xctestrun_metadata__: { FormatVersion: 1 },
+      AppUITests: {
+        DependentProductPaths: ["/signed/App.app"],
+      },
+    };
+    expect(
+      sweepXctestrunDependentProductPaths(xctestrun, "/signed/App.app"),
+    ).toBe(0);
+    expect(xctestrun.AppUITests.DependentProductPaths).toEqual([
+      "/signed/App.app",
+    ]);
+  });
+
+  it("returns 0 when there are no DependentProductPaths to sweep", () => {
+    expect(
+      sweepXctestrunDependentProductPaths(
+        { AppUITests: { TestHostPath: "/x/Runner.app" } },
+        "/signed/App.app",
+      ),
+    ).toBe(0);
+  });
+});
+
+describe("planSignedAppDdOverwrite (#13564)", () => {
+  const DD = "/dd/Build/Products/Debug-iphoneos/App.app";
+  const SIGNED = "/stage/App.app";
+
+  it("overwrites the DD product with the signed app on a device run", () => {
+    expect(
+      planSignedAppDdOverwrite({
+        platform: "device",
+        signedAppPath: SIGNED,
+        derivedDataProductApp: DD,
+        productExists: true,
+      }),
+    ).toEqual({ overwrite: true, from: SIGNED, to: DD });
+  });
+
+  it("never overwrites on a simulator run", () => {
+    const plan = planSignedAppDdOverwrite({
+      platform: "sim",
+      signedAppPath: SIGNED,
+      derivedDataProductApp: DD,
+      productExists: true,
+    });
+    expect(plan.overwrite).toBe(false);
+    expect(plan.reason).toMatch(/not a device run/);
+  });
+
+  it("skips when no signed --app-path is given", () => {
+    const plan = planSignedAppDdOverwrite({
+      platform: "device",
+      signedAppPath: null,
+      derivedDataProductApp: DD,
+      productExists: true,
+    });
+    expect(plan.overwrite).toBe(false);
+    expect(plan.reason).toMatch(/no --app-path/);
+  });
+
+  it("skips when the DD product path could not be resolved", () => {
+    const plan = planSignedAppDdOverwrite({
+      platform: "device",
+      signedAppPath: SIGNED,
+      derivedDataProductApp: null,
+      productExists: false,
+    });
+    expect(plan.overwrite).toBe(false);
+    expect(plan.reason).toMatch(/could not resolve/);
+  });
+
+  it("skips (no-op) when the signed app IS the DD product", () => {
+    const plan = planSignedAppDdOverwrite({
+      platform: "device",
+      signedAppPath: DD,
+      derivedDataProductApp: DD,
+      productExists: true,
+    });
+    expect(plan.overwrite).toBe(false);
+    expect(plan.reason).toMatch(/nothing to overwrite/);
+  });
+
+  it("skips with an actionable reason when the DD product is missing", () => {
+    const plan = planSignedAppDdOverwrite({
+      platform: "device",
+      signedAppPath: SIGNED,
+      derivedDataProductApp: DD,
+      productExists: false,
+    });
+    expect(plan.overwrite).toBe(false);
+    expect(plan.reason).toMatch(/no build product at .*skip-build/);
+  });
+});
+
+describe("classifyCodesignPreflight (#13564)", () => {
+  it("passes when every bundle is signed", () => {
+    const verdict = classifyCodesignPreflight({
+      checks: [
+        { label: "XCUITest runner", path: "/x/Runner.app", signed: true },
+        { label: "target app", path: "/x/App.app", signed: true },
+      ],
+      appPathProvided: true,
+    });
+    expect(verdict.ok).toBe(true);
+    expect(verdict.unsigned).toEqual([]);
+    expect(verdict.message).toBeNull();
+  });
+
+  it("fails fast naming 0xe800801c + the unsigned bundle(s)", () => {
+    const verdict = classifyCodesignPreflight({
+      checks: [
+        { label: "XCUITest runner", path: "/x/Runner.app", signed: true },
+        { label: "target app", path: "/x/App.app", signed: false },
+      ],
+      appPathProvided: true,
+    });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.unsigned).toEqual([
+      { label: "target app", path: "/x/App.app" },
+    ]);
+    expect(verdict.message).toMatch(/0xe800801c/);
+    expect(verdict.message).toContain("/x/App.app");
+  });
+
+  it("points a --app-path run at re-staging via ios:device:deploy", () => {
+    const verdict = classifyCodesignPreflight({
+      checks: [{ label: "target app", path: "/x/App.app", signed: false }],
+      appPathProvided: true,
+    });
+    expect(verdict.message).toMatch(/ios:device:deploy/);
+    expect(verdict.message).toMatch(/--app-path/);
+  });
+
+  it("points a no-app-path run at ios:device:deploy + --app-path remediation", () => {
+    const verdict = classifyCodesignPreflight({
+      checks: [
+        {
+          label: "target app (DerivedData product)",
+          path: "/dd/App.app",
+          signed: false,
+        },
+      ],
+      appPathProvided: false,
+    });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.message).toMatch(/0xe800801c/);
+    expect(verdict.message).toMatch(/ios:device:deploy/);
+    expect(verdict.message).toMatch(/--app-path/);
   });
 });
 

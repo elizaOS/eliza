@@ -39,6 +39,7 @@ import { fileURLToPath } from "node:url";
 import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
 import {
   buildPlistXml,
+  classifyCodesignPreflight,
   classifyIsolatedReruns,
   evaluateRunnerStaleness,
   extractXctestrunAppPaths,
@@ -46,9 +47,11 @@ import {
   parseCliArgs,
   parseFailedTestIdentifiers,
   parsePlist,
+  planSignedAppDdOverwrite,
   resolveDeviceId,
   resolveXctestrunTestRoot,
   rewriteXctestrunUITargetApp,
+  sweepXctestrunDependentProductPaths,
 } from "./ios-device-lib.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -68,6 +71,20 @@ function runInherit(command, args, options = {}) {
       `${command} ${args.slice(0, 4).join(" ")} … exited with ${result.status}`,
     );
   }
+}
+
+/**
+ * Is `appPath` code-signed? `codesign --verify` exits 0 when the bundle carries
+ * a valid signature and non-zero (with "code object is not signed at all" on
+ * stderr) when it does not. A missing path is treated as unsigned so the
+ * preflight fails loudly rather than swallowing it.
+ */
+function isCodeSigned(appPath) {
+  if (!fs.existsSync(appPath)) return false;
+  const result = spawnSync("codesign", ["--verify", "--strict", appPath], {
+    stdio: "ignore",
+  });
+  return result.status === 0;
 }
 
 /**
@@ -364,9 +381,85 @@ async function main() {
     log(
       `rewrote ${rewritten} UITargetAppPath entr${rewritten === 1 ? "y" : "ies"} → ${signedApp}`,
     );
+    // xcodebuild also installs the bundles listed in each test target's
+    // DependentProductPaths; a lingering reference to the unsigned build
+    // product App.app there fails the device install 0xe800801c even after
+    // the UITargetAppPath rewrite. Point those stale App.app refs at the graft.
+    const sweptDeps = sweepXctestrunDependentProductPaths(parsed, signedApp);
+    if (sweptDeps > 0) {
+      log(
+        `swept ${sweptDeps} stale DependentProductPaths entr${sweptDeps === 1 ? "y" : "ies"} → ${signedApp}`,
+      );
+    }
   }
   fs.writeFileSync(xmlPath, buildPlistXml(parsed));
   xctestrunPath = xmlPath;
+
+  // Device lane: overwrite the UNSIGNED build-product App.app that
+  // build-for-testing left in DerivedData with the signed staged app before
+  // test-without-building. xcodebuild installs the DD product regardless of
+  // the .xctestrun rewrites, so without this the device install fails
+  // 0xe800801c ("No code signature"). See #13564.
+  if (platform === "device") {
+    const signedApp = args["app-path"] ? path.resolve(args["app-path"]) : null;
+    // The DD build product is the App.app sitting NEXT TO the runner app in
+    // Build/Products; derive it from the xctestrun's own resolved bundle list.
+    const bundles = extractXctestrunAppPaths(parsed, testRoot).filter(
+      (bundle) => bundle.endsWith(".app"),
+    );
+    const derivedDataProductApp =
+      bundles.find(
+        (bundle) => path.basename(bundle) === "App.app" && bundle !== signedApp,
+      ) ?? null;
+    const overwritePlan = planSignedAppDdOverwrite({
+      platform,
+      signedAppPath: signedApp,
+      derivedDataProductApp,
+      productExists: derivedDataProductApp
+        ? fs.existsSync(derivedDataProductApp)
+        : false,
+    });
+    if (overwritePlan.overwrite) {
+      log(
+        `overwriting UNSIGNED DerivedData product ${overwritePlan.to} with the ` +
+          `signed staged app ${overwritePlan.from} (device install would else ` +
+          "fail 0xe800801c)",
+      );
+      fs.rmSync(overwritePlan.to, { recursive: true, force: true });
+      runInherit("ditto", [overwritePlan.from, overwritePlan.to]);
+    } else {
+      log(`DerivedData overwrite skipped: ${overwritePlan.reason}`);
+    }
+
+    // Preflight: verify the runner app AND the (now-overwritten) DD product are
+    // signed, so an unsigned bundle fails fast with the 0xe800801c remediation
+    // text instead of an opaque devicectl install error deep in the run.
+    const runnerApp =
+      bundles.find((bundle) => bundle.endsWith("-Runner.app")) ?? null;
+    const preflightChecks = [];
+    if (runnerApp) {
+      preflightChecks.push({
+        label: "XCUITest runner",
+        path: runnerApp,
+        signed: isCodeSigned(runnerApp),
+      });
+    }
+    if (derivedDataProductApp) {
+      preflightChecks.push({
+        label: "target app (DerivedData product)",
+        path: derivedDataProductApp,
+        signed: isCodeSigned(derivedDataProductApp),
+      });
+    }
+    if (preflightChecks.length > 0) {
+      const verdict = classifyCodesignPreflight({
+        checks: preflightChecks,
+        appPathProvided: Boolean(signedApp),
+      });
+      if (!verdict.ok) fail(verdict.message);
+      log("codesign preflight: runner + target app signed OK");
+    }
+  }
 
   // 4. Destination for the run.
   let destination;
