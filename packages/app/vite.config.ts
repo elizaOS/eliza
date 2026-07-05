@@ -203,6 +203,10 @@ const pluginBrowserBridgeSrcRoot = path.join(
 );
 const uiPkgRoot = path.join(elizaRoot, "packages/ui");
 const cloudUiPkgRoot = path.join(elizaRoot, "packages/cloud-ui");
+const importConversationsSrcRoot = path.join(
+  elizaRoot,
+  "packages/import-conversations/src",
+);
 const capacitorCoreEntry = path.join(
   path.dirname(_require.resolve("@capacitor/core/package.json")),
   "dist/index.js",
@@ -2594,6 +2598,17 @@ export const INVALID_TRACER_PROVIDER = {};
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(uiPkgRoot, "src/$1"),
+      },
+      // The memory viewer imports the browser-safe conversation importer
+      // through @elizaos/ui source. Keep the app renderer on package source so
+      // fresh CI checkouts do not need import-conversations dist artifacts.
+      {
+        find: /^@elizaos\/import-conversations$/,
+        replacement: path.join(importConversationsSrcRoot, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/import-conversations\/(.+)$/,
+        replacement: path.join(importConversationsSrcRoot, "$1.ts"),
       },
       {
         find: /^@elizaos\/shared\/brand$/,

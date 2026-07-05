@@ -96,8 +96,14 @@ jobs:
       - name: Generate shared i18n assets
         run: bun run --cwd packages/shared build:i18n
 
-      # Prebuild the renderer dist so the live stack reuses a fresh bundle instead
-      # of a cold ~12 min in-harness vite build (viteRendererBuildNeeded check).
+      # Vite loads package exports before renderer aliases apply; fresh CI
+      # checkouts need these dist bundles before packages/app can resolve
+      # @elizaos/core and @elizaos/shared subpaths.
+      - name: Build @elizaos/core + @elizaos/shared browser bundles
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+
+      # Prebuild the renderer dist so the live stack reuses a fresh bundle
+      # instead of a cold in-harness vite build (viteRendererBuildNeeded check).
       - name: Build app renderer bundle
         run: bun run --cwd packages/app build:web
 
@@ -169,8 +175,13 @@ jobs:
       - name: Generate shared i18n assets
         run: bun run --cwd packages/shared build:i18n
 
-      # Prebuild the renderer dist so the live stack reuses a fresh bundle instead
-      # of a cold ~12 min in-harness vite build.
+      # Vite resolves linked workspace package exports while loading the app
+      # config, before renderer aliases can redirect to source files.
+      - name: Build @elizaos/core + @elizaos/shared browser bundles
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+
+      # Prebuild the renderer dist so the live stack reuses a fresh bundle
+      # instead of a cold in-harness vite build.
       - name: Build app renderer bundle
         run: bun run --cwd packages/app build:web
 
@@ -230,6 +241,11 @@ jobs:
 
       - name: Generate shared i18n assets
         run: bun run --cwd packages/shared build:i18n
+
+      # Cloud-live still builds the same renderer bundle, so it needs the same
+      # workspace dists before Vite can load packages/app/vite.config.ts.
+      - name: Build @elizaos/core + @elizaos/shared browser bundles
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
 
       - name: Build app renderer bundle
         run: bun run --cwd packages/app build:web
