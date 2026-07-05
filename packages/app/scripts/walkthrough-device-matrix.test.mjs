@@ -206,7 +206,10 @@ describe("iOS device detection (selectIosDevice)", () => {
       { requestedId: "Z" },
     );
     assert.equal(asleep.device, null);
-    assert.match(asleep.reason, /is not connected \(devicectl state: unavailable\)/);
+    assert.match(
+      asleep.reason,
+      /is not connected \(devicectl state: unavailable\)/,
+    );
   });
 });
 
@@ -287,7 +290,10 @@ describe("iOS device lane (captureIosDevice)", () => {
       ["device", "59EBB356-BC44-5AA2-91F1-E6AAE756BB86", "/stage/App.app"],
     );
     assert.ok(invoked.argv.includes("--skip-build"));
-    assert.equal(result.outputDir, invoked.argv[invoked.argv.indexOf("--output") + 1]);
+    assert.equal(
+      result.outputDir,
+      invoked.argv[invoked.argv.indexOf("--output") + 1],
+    );
   });
 
   it("records `error` (never a false-green) when the on-device capture exits non-zero", () => {
@@ -302,9 +308,6 @@ describe("iOS device lane (captureIosDevice)", () => {
     });
     assert.equal(result.status, "error");
     // An attempted-and-errored lane is always fatal, independent of --require.
-    assert.equal(
-      computeExitCode({ "ios-device": result }, new Set()),
-      1,
-    );
+    assert.equal(computeExitCode({ "ios-device": result }, new Set()), 1);
   });
 });

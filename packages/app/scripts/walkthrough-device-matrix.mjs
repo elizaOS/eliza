@@ -34,13 +34,13 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
+import { resolveDeviceId } from "./ios-device-lib.mjs";
 import {
   ensureEmulatorBooted,
   listDevices,
   resolveAdb,
 } from "./lib/android-device.mjs";
-import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
-import { resolveDeviceId } from "./ios-device-lib.mjs";
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const APP_DIR = resolve(dirname(SCRIPT_PATH), "..");
