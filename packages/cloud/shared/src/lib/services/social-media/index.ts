@@ -143,6 +143,8 @@ class SocialMediaService {
     // Auto-refresh if token is expired
     if (needsRefresh(credentials)) {
       const refreshed = await refreshToken(platform, credentials).catch((err) => {
+        // error-policy:J1 outbound OAuth token-refresh failure is normalized to null; the
+        // !refreshed branch below rethrows a typed "Token expired" guidance error (fail-closed).
         logger.warn(`[SocialMedia] Token refresh failed for ${platform}: ${err.message}`);
         return null;
       });
@@ -154,6 +156,9 @@ class SocialMediaService {
           refreshToken: refreshed.refreshToken,
         };
         this.updateStoredToken(organizationId, credential.id, refreshed).catch((err) => {
+          // error-policy:J6 best-effort cache of the refreshed access token; a persist failure
+          // only forces a re-refresh next call (the DB refresh token is untouched) and must not
+          // block returning the valid in-hand credentials for this request.
           logger.error(`[SocialMedia] Failed to persist refreshed token: ${err.message}`);
         });
         logger.info(`[SocialMedia] Token refreshed for ${platform}`);
@@ -362,6 +367,9 @@ class SocialMediaService {
 
           return await provider.createPost(credentials, content, platformOptions);
         } catch (error) {
+          // error-policy:J1 per-platform boundary: a thrown credential/provider error becomes a
+          // settled {success:false} so the refund + alert below run, instead of rejecting the
+          // whole Promise.all (which would skip the refund and charge the user for nothing).
           const errorMessage = extractErrorMessage(error);
           logger.error("[SocialMedia] Post failed", {
             platform,
@@ -388,6 +396,8 @@ class SocialMediaService {
         failed.map((f) => f.platform),
         failed.map((f) => f.error || "Unknown error"),
       ).catch((err) => {
+        // error-policy:J7 best-effort failure alert; a notification error must not corrupt the
+        // already-computed post result the caller is about to receive.
         logger.error(`[SocialMedia] Failed to send alert: ${err.message}`);
       });
     }
@@ -525,6 +535,8 @@ class SocialMediaService {
     try {
       result = await provider.replyToPost(credentials, postId, content, options);
     } catch (error) {
+      // error-policy:J1 boundary: a thrown provider error becomes {success:false} so the refund
+      // below runs; otherwise the user is charged for a reply that never posted.
       const errorMessage = extractErrorMessage(error);
       logger.error("[SocialMedia] Reply failed", {
         platform,

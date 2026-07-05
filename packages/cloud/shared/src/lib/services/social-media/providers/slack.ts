@@ -167,6 +167,7 @@ export const slackProvider: SocialMediaProvider = {
         displayName: response.user?.real_name,
       };
     } catch (error) {
+      // error-policy:J1 outbound auth.test boundary — a reachable API rejecting the token means the credentials are invalid; the upstream error surfaces in the returned `error` field.
       return {
         valid: false,
         error: extractErrorMessage(error),
@@ -243,6 +244,7 @@ export const slackProvider: SocialMediaProvider = {
         metadata: { channel: response.channel },
       };
     } catch (error) {
+      // error-policy:J1 outbound Slack post boundary — translate any send failure into a structured PostResult failure (success:false) the caller renders; the message is not fabricated as sent.
       logger.error("[Slack] Post failed", { error });
       return {
         platform: "slack",
@@ -272,6 +274,7 @@ export const slackProvider: SocialMediaProvider = {
       });
       return { success: true };
     } catch (error) {
+      // error-policy:J1 outbound chat.delete boundary — a failed delete returns a structured failure (success:false) rather than reporting a delete that did not happen.
       return {
         success: false,
         error: extractErrorMessage(error),
@@ -321,6 +324,7 @@ export const slackProvider: SocialMediaProvider = {
       });
       return { success: true };
     } catch (error) {
+      // error-policy:J1 outbound reactions.add boundary — a failed reaction returns a structured failure (success:false) rather than reporting a like that did not land.
       return {
         success: false,
         error: extractErrorMessage(error),
@@ -340,6 +344,9 @@ export const slackProvider: SocialMediaProvider = {
       fileData = Buffer.from(media.base64, "base64");
     } else if (media.url) {
       const response = await fetch(media.url);
+      if (!response.ok) {
+        throw new Error(`Failed to download media from ${media.url}: ${response.status}`);
+      }
       fileData = Buffer.from(await response.arrayBuffer());
       const urlParts = media.url.split("/");
       filename = urlParts[urlParts.length - 1].split("?")[0] || filename;

@@ -88,12 +88,14 @@ export async function withRetry<T>(
       }
 
       if (!response.ok) {
+        // error-policy:J6 best-effort error-body read; the HTTP failure still surfaces via the thrown status error below
         const errorBody = await response.text().catch(() => "");
         throw new Error(`${platform} API error ${response.status}: ${errorBody}`);
       }
 
       return { data: await parser(response) };
     } catch (error) {
+      // error-policy:J1 outbound social-platform API transport boundary — retries transient failures and propagates the last error after exhausting retries (fail-closed)
       lastError = error instanceof Error ? error : new Error(String(error));
       if ((error as RateLimitError).rateLimited) throw error;
 

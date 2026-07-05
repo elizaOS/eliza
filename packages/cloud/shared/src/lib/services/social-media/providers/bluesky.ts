@@ -178,6 +178,8 @@ export const blueskyProvider: SocialMediaProvider = {
         avatarUrl: profile.data?.avatar,
       };
     } catch (error) {
+      // error-policy:J1 boundary translation of the Bluesky auth call into the typed
+      // invalid-credentials result the caller renders; a failure, not a fabricated success.
       return {
         valid: false,
         error: extractErrorMessage(error),
@@ -299,6 +301,8 @@ export const blueskyProvider: SocialMediaProvider = {
         metadata: { cid: response.cid },
       };
     } catch (error) {
+      // error-policy:J1 boundary translation of the Bluesky post call into the typed
+      // PostResult failure the caller renders; a failure, not a fabricated success.
       logger.error("[Bluesky] Post failed", { error });
       return {
         platform: "bluesky",
@@ -330,6 +334,8 @@ export const blueskyProvider: SocialMediaProvider = {
 
       return { success: true };
     } catch (error) {
+      // error-policy:J1 boundary translation of the Bluesky delete call into the typed
+      // failure result the caller renders; a failure, not a fabricated success.
       return {
         success: false,
         error: extractErrorMessage(error),
@@ -341,62 +347,58 @@ export const blueskyProvider: SocialMediaProvider = {
     credentials: SocialCredentials,
     postId: string,
   ): Promise<PostAnalytics | null> {
+    // `null` is the designed "analytics unavailable for an unconfigured account" signal;
+    // a real session/fetch failure must propagate, not be masked as that empty state.
     if (!credentials.handle || !credentials.appPassword) {
       return null;
     }
 
-    try {
-      const session = await createSession(credentials.handle, credentials.appPassword);
+    const session = await createSession(credentials.handle, credentials.appPassword);
 
-      const response = await bskyApiRequest<{
-        post: {
-          likeCount: number;
-          repostCount: number;
-          replyCount: number;
-        };
-      }>(`app.bsky.feed.getPostThread?uri=${encodeURIComponent(postId)}`, session.accessJwt);
-
-      return {
-        platform: "bluesky",
-        postId,
-        metrics: {
-          likes: response.post.likeCount,
-          reposts: response.post.repostCount,
-          comments: response.post.replyCount,
-        },
-        fetchedAt: new Date(),
+    const response = await bskyApiRequest<{
+      post: {
+        likeCount: number;
+        repostCount: number;
+        replyCount: number;
       };
-    } catch {
-      return null;
-    }
+    }>(`app.bsky.feed.getPostThread?uri=${encodeURIComponent(postId)}`, session.accessJwt);
+
+    return {
+      platform: "bluesky",
+      postId,
+      metrics: {
+        likes: response.post.likeCount,
+        reposts: response.post.repostCount,
+        comments: response.post.replyCount,
+      },
+      fetchedAt: new Date(),
+    };
   },
 
   async getAccountAnalytics(credentials: SocialCredentials): Promise<AccountAnalytics | null> {
+    // `null` is the designed "analytics unavailable for an unconfigured account" signal;
+    // a real session/fetch failure must propagate, not be masked as that empty state.
     if (!credentials.handle || !credentials.appPassword) {
       return null;
     }
 
-    try {
-      const session = await createSession(credentials.handle, credentials.appPassword);
+    const session = await createSession(credentials.handle, credentials.appPassword);
 
-      const response = await bskyApiRequest<BskyProfile>(
-        `app.bsky.actor.getProfile?actor=${session.did}`,
-        session.accessJwt,
-      );
+    const response = await bskyApiRequest<BskyProfile>(
+      `app.bsky.actor.getProfile?actor=${session.did}`,
+      session.accessJwt,
+    );
 
-      return {
-        platform: "bluesky",
-        accountId: response.did,
-        metrics: {
-          followers: response.followersCount,
-          following: response.followsCount,
-          totalPosts: response.postsCount,
-        },
-        fetchedAt: new Date(),
-      };
-    } catch {
-      return null;
-    }
+    return {
+      platform: "bluesky",
+      accountId: response.did,
+      metrics: {
+        followers: response.followersCount,
+        following: response.followsCount,
+        totalPosts: response.postsCount,
+      },
+      fetchedAt: new Date(),
+    };
   },
 
   async uploadMedia(credentials: SocialCredentials, media: MediaAttachment) {
@@ -465,6 +467,8 @@ export const blueskyProvider: SocialMediaProvider = {
 
       return { success: true };
     } catch (error) {
+      // error-policy:J1 boundary translation of the Bluesky like call into the typed
+      // failure result the caller renders; a failure, not a fabricated success.
       return {
         success: false,
         error: extractErrorMessage(error),
@@ -515,6 +519,8 @@ export const blueskyProvider: SocialMediaProvider = {
         postId: response.uri,
       };
     } catch (error) {
+      // error-policy:J1 boundary translation of the Bluesky repost call into the typed
+      // PostResult failure the caller renders; a failure, not a fabricated success.
       return {
         platform: "bluesky",
         success: false,

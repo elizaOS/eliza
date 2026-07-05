@@ -134,6 +134,8 @@ export const tiktokProvider: SocialMediaProvider = {
         avatarUrl: user.user.avatar_url,
       };
     } catch (error) {
+      // error-policy:J1 boundary translation — upstream auth-check failure becomes the
+      // structured {valid:false,error} result the credential-connect flow renders.
       return {
         valid: false,
         error: extractErrorMessage(error),
@@ -277,6 +279,9 @@ export const tiktokProvider: SocialMediaProvider = {
         error: "Video URL or data required",
       };
     } catch (error) {
+      // error-policy:J1 boundary translation — a failed post becomes the {success:false}
+      // PostResult the caller inspects; socialMediaService relies on this (not a throw) to
+      // drive the per-platform credit refund (#11680).
       logger.error("[TikTok] Post failed", { error });
       return {
         platform: "tiktok",
@@ -294,44 +299,40 @@ export const tiktokProvider: SocialMediaProvider = {
       return null;
     }
 
-    try {
-      const response = await tiktokApiRequest<{
-        videos: Array<{
-          id: string;
-          like_count?: number;
-          comment_count?: number;
-          share_count?: number;
-          view_count?: number;
-        }>;
-      }>(
-        `/video/query/?fields=id,like_count,comment_count,share_count,view_count`,
-        credentials.accessToken,
-        {
-          method: "POST",
-          body: JSON.stringify({ filters: { video_ids: [postId] } }),
-        },
-      );
+    const response = await tiktokApiRequest<{
+      videos: Array<{
+        id: string;
+        like_count?: number;
+        comment_count?: number;
+        share_count?: number;
+        view_count?: number;
+      }>;
+    }>(
+      `/video/query/?fields=id,like_count,comment_count,share_count,view_count`,
+      credentials.accessToken,
+      {
+        method: "POST",
+        body: JSON.stringify({ filters: { video_ids: [postId] } }),
+      },
+    );
 
-      const video = response.videos?.[0];
-      if (!video) return null;
+    // `null` is the designed-empty result — upstream returned zero matching videos.
+    // An internal failure (transport/5xx/rate-limit) throws out of tiktokApiRequest and
+    // must stay distinguishable from this, so it is deliberately NOT caught here.
+    const video = response.videos?.[0];
+    if (!video) return null;
 
-      return {
-        platform: "tiktok",
-        postId,
-        metrics: {
-          likes: video.like_count,
-          comments: video.comment_count,
-          shares: video.share_count,
-          videoViews: video.view_count,
-        },
-        fetchedAt: new Date(),
-      };
-    } catch (error) {
-      logger.warn("[TikTok] getPostAnalytics failed", {
-        error: extractErrorMessage(error),
-      });
-      return null;
-    }
+    return {
+      platform: "tiktok",
+      postId,
+      metrics: {
+        likes: video.like_count,
+        comments: video.comment_count,
+        shares: video.share_count,
+        videoViews: video.view_count,
+      },
+      fetchedAt: new Date(),
+    };
   },
 
   async getAccountAnalytics(credentials: SocialCredentials): Promise<AccountAnalytics | null> {
@@ -339,28 +340,24 @@ export const tiktokProvider: SocialMediaProvider = {
       return null;
     }
 
-    try {
-      const user = await tiktokApiRequest<{ user: TikTokUser }>(
-        "/user/info/?fields=open_id,display_name,follower_count,following_count,video_count",
-        credentials.accessToken,
-      );
+    // No catch: an upstream failure throws out of tiktokApiRequest and propagates so the
+    // caller sees a broken pipeline, never a fabricated null "no data" result. The only
+    // `null` this method returns is the designed no-credentials guard above.
+    const user = await tiktokApiRequest<{ user: TikTokUser }>(
+      "/user/info/?fields=open_id,display_name,follower_count,following_count,video_count",
+      credentials.accessToken,
+    );
 
-      return {
-        platform: "tiktok",
-        accountId: user.user.open_id,
-        metrics: {
-          followers: user.user.follower_count,
-          following: user.user.following_count,
-          totalPosts: user.user.video_count,
-        },
-        fetchedAt: new Date(),
-      };
-    } catch (error) {
-      logger.warn("[TikTok] getAccountAnalytics failed", {
-        error: extractErrorMessage(error),
-      });
-      return null;
-    }
+    return {
+      platform: "tiktok",
+      accountId: user.user.open_id,
+      metrics: {
+        followers: user.user.follower_count,
+        following: user.user.following_count,
+        totalPosts: user.user.video_count,
+      },
+      fetchedAt: new Date(),
+    };
   },
 
   async uploadMedia(credentials: SocialCredentials, media: MediaAttachment) {

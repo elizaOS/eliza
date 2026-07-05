@@ -102,6 +102,7 @@ export const telegramProvider: SocialMediaProvider = {
         displayName: user.first_name,
       };
     } catch (error) {
+      // error-policy:J1 boundary translation — an outbound Telegram getMe auth failure becomes the typed { valid:false } result the credential validator returns (never a fabricated valid credential)
       return {
         valid: false,
         error: extractErrorMessage(error),
@@ -204,6 +205,7 @@ export const telegramProvider: SocialMediaProvider = {
         metadata: { chatId: message.chat.id },
       };
     } catch (error) {
+      // error-policy:J1 transport boundary — an outbound Telegram send failure becomes the typed { success:false } PostResult the caller renders (never a fabricated success)
       logger.error("[Telegram] Post failed", { error });
       return {
         platform: "telegram",
@@ -236,6 +238,7 @@ export const telegramProvider: SocialMediaProvider = {
 
       return { success: true };
     } catch (error) {
+      // error-policy:J1 boundary translation — a failed Telegram deleteMessage call becomes the typed { success:false } result (never a fabricated deletion success)
       return {
         success: false,
         error: extractErrorMessage(error),

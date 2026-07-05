@@ -101,6 +101,8 @@ export const discordProvider: SocialMediaProvider = {
           accountId: data.id,
           username: data.name,
         };
+        // error-policy:J1 transport boundary — a webhook fetch failure becomes the
+        // structured { valid:false } verdict the caller inspects; the real error is surfaced, not swallowed.
       } catch (error) {
         return {
           valid: false,
@@ -126,6 +128,8 @@ export const discordProvider: SocialMediaProvider = {
           ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png`
           : undefined,
       };
+      // error-policy:J1 transport boundary — a Discord bot-token API failure becomes the
+      // structured { valid:false } verdict the caller inspects; the real error is surfaced, not swallowed.
     } catch (error) {
       return {
         valid: false,
@@ -212,6 +216,8 @@ export const discordProvider: SocialMediaProvider = {
         postId: message.id,
         postUrl: `https://discord.com/channels/@me/${message.channel_id}/${message.id}`,
       };
+      // error-policy:J1 transport boundary — an outbound Discord post failure becomes the
+      // structured { success:false } PostResult the socialMediaService caller inspects and refunds on.
     } catch (error) {
       logger.error("[Discord] Post failed", { error });
       return {
@@ -247,6 +253,8 @@ export const discordProvider: SocialMediaProvider = {
       );
 
       return { success: true };
+      // error-policy:J1 transport boundary — an outbound Discord delete failure becomes the
+      // structured { success:false } result the caller inspects; the real error is surfaced, not swallowed.
     } catch (error) {
       return {
         success: false,
@@ -306,6 +314,8 @@ export const discordProvider: SocialMediaProvider = {
         postId: message.id,
         postUrl: `https://discord.com/channels/@me/${channelId}/${message.id}`,
       };
+      // error-policy:J1 transport boundary — an outbound Discord reply failure becomes the
+      // structured { success:false } PostResult the socialMediaService caller inspects and refunds on.
     } catch (error) {
       return {
         platform: "discord",
@@ -338,6 +348,8 @@ export const discordProvider: SocialMediaProvider = {
       );
 
       return { success: true };
+      // error-policy:J1 transport boundary — an outbound Discord reaction failure becomes the
+      // structured { success:false } result the caller inspects; the real error is surfaced, not swallowed.
     } catch (error) {
       return {
         success: false,

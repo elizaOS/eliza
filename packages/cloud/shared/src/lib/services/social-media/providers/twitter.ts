@@ -214,6 +214,8 @@ export const twitterProvider: SocialMediaProvider = {
         avatarUrl: response.data.profile_image_url,
       };
     } catch (error) {
+      // error-policy:J1 boundary translation — an outbound Twitter auth-check failure becomes
+      // the typed {valid:false} the connect flow depends on, not a fabricated valid credential.
       return {
         valid: false,
         error: extractErrorMessage(error),
@@ -274,6 +276,8 @@ export const twitterProvider: SocialMediaProvider = {
         postUrl: `https://twitter.com/i/status/${response.data.id}`,
       };
     } catch (error) {
+      // error-policy:J1 boundary translation — a failed Twitter post becomes the {success:false}
+      // PostResult the credit-refund flow depends on, never a fabricated success.
       logger.error("[Twitter] Post failed", { error });
       return {
         platform: "twitter",
@@ -295,6 +299,8 @@ export const twitterProvider: SocialMediaProvider = {
 
       return { success: true };
     } catch (error) {
+      // error-policy:J1 boundary translation — a failed Twitter delete becomes a typed
+      // {success:false} result the caller inspects, not a swallowed error.
       return {
         success: false,
         error: extractErrorMessage(error),
@@ -306,80 +312,71 @@ export const twitterProvider: SocialMediaProvider = {
     credentials: SocialCredentials,
     postId: string,
   ): Promise<PostAnalytics | null> {
+    // `null` is reserved for the designed no-credentials guard. An internal upstream
+    // failure throws out of twitterApiRequest and propagates so a broken pipeline never
+    // reads as a fabricated "no analytics" result — it must stay distinguishable from the
+    // provider-not-configured `null` the service layer treats as empty.
     if (!credentials.accessToken) {
       return null;
     }
 
-    try {
-      const response = await twitterApiRequest<{
-        data: {
-          public_metrics: {
-            like_count: number;
-            retweet_count: number;
-            reply_count: number;
-            quote_count: number;
-            impression_count?: number;
-          };
+    const response = await twitterApiRequest<{
+      data: {
+        public_metrics: {
+          like_count: number;
+          retweet_count: number;
+          reply_count: number;
+          quote_count: number;
+          impression_count?: number;
         };
-      }>(`/tweets/${postId}?tweet.fields=public_metrics`, credentials.accessToken);
-
-      const metrics = response.data.public_metrics;
-
-      return {
-        platform: "twitter",
-        postId,
-        metrics: {
-          likes: metrics.like_count,
-          reposts: metrics.retweet_count,
-          comments: metrics.reply_count,
-          shares: metrics.quote_count,
-          impressions: metrics.impression_count,
-        },
-        fetchedAt: new Date(),
       };
-    } catch (error) {
-      logger.warn("[Twitter] getPostAnalytics failed", {
-        error: extractErrorMessage(error),
-      });
-      return null;
-    }
+    }>(`/tweets/${postId}?tweet.fields=public_metrics`, credentials.accessToken);
+
+    const metrics = response.data.public_metrics;
+
+    return {
+      platform: "twitter",
+      postId,
+      metrics: {
+        likes: metrics.like_count,
+        reposts: metrics.retweet_count,
+        comments: metrics.reply_count,
+        shares: metrics.quote_count,
+        impressions: metrics.impression_count,
+      },
+      fetchedAt: new Date(),
+    };
   },
 
   async getAccountAnalytics(credentials: SocialCredentials): Promise<AccountAnalytics | null> {
+    // See getPostAnalytics: `null` is only the no-credentials guard; upstream failures throw.
     if (!credentials.accessToken) {
       return null;
     }
 
-    try {
-      const response = await twitterApiRequest<{
-        data: {
-          id: string;
-          public_metrics: {
-            followers_count: number;
-            following_count: number;
-            tweet_count: number;
-          };
+    const response = await twitterApiRequest<{
+      data: {
+        id: string;
+        public_metrics: {
+          followers_count: number;
+          following_count: number;
+          tweet_count: number;
         };
-      }>("/users/me?user.fields=public_metrics", credentials.accessToken);
-
-      const metrics = response.data.public_metrics;
-
-      return {
-        platform: "twitter",
-        accountId: response.data.id,
-        metrics: {
-          followers: metrics.followers_count,
-          following: metrics.following_count,
-          totalPosts: metrics.tweet_count,
-        },
-        fetchedAt: new Date(),
       };
-    } catch (error) {
-      logger.warn("[Twitter] getAccountAnalytics failed", {
-        error: extractErrorMessage(error),
-      });
-      return null;
-    }
+    }>("/users/me?user.fields=public_metrics", credentials.accessToken);
+
+    const metrics = response.data.public_metrics;
+
+    return {
+      platform: "twitter",
+      accountId: response.data.id,
+      metrics: {
+        followers: metrics.followers_count,
+        following: metrics.following_count,
+        totalPosts: metrics.tweet_count,
+      },
+      fetchedAt: new Date(),
+    };
   },
 
   async uploadMedia(credentials: SocialCredentials, media: MediaAttachment) {
@@ -414,6 +411,8 @@ export const twitterProvider: SocialMediaProvider = {
       });
       return { success: true };
     } catch (error) {
+      // error-policy:J1 boundary translation — a failed Twitter like becomes a typed
+      // {success:false} result the caller inspects, not a swallowed error.
       return { success: false, error: extractErrorMessage(error) };
     }
   },
@@ -437,6 +436,8 @@ export const twitterProvider: SocialMediaProvider = {
       });
       return { platform: "twitter", success: true, postId };
     } catch (error) {
+      // error-policy:J1 boundary translation — a failed Twitter repost becomes the {success:false}
+      // PostResult the caller inspects, never a fabricated success.
       return {
         platform: "twitter",
         success: false,

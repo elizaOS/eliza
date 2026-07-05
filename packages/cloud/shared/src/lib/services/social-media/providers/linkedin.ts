@@ -101,6 +101,7 @@ export const linkedinProvider: SocialMediaProvider = {
         avatarUrl: profile.profilePicture?.displayImage,
       };
     } catch (error) {
+      // error-policy:J1 outbound LinkedIn /me lookup — a failed check is a designed invalid-credentials result the caller reads via `valid: false`, not a fabricated success.
       return {
         valid: false,
         error: extractErrorMessage(error),
@@ -212,11 +213,18 @@ export const linkedinProvider: SocialMediaProvider = {
               ].uploadUrl;
             const asset = registerResponse.value.asset;
 
-            // Download and upload the image
+            // Download and upload the image. A non-OK download or upload must
+            // surface: otherwise the asset below is marked READY and attached to
+            // a published post that references bytes LinkedIn never received.
             const imageResponse = await fetch(media.url);
+            if (!imageResponse.ok) {
+              throw new Error(
+                `LinkedIn image download failed for ${media.url}: ${imageResponse.status}`,
+              );
+            }
             const imageData = await imageResponse.arrayBuffer();
 
-            await fetch(uploadUrl, {
+            const uploadResponse = await fetch(uploadUrl, {
               method: "PUT",
               headers: {
                 Authorization: `Bearer ${credentials.accessToken}`,
@@ -224,6 +232,9 @@ export const linkedinProvider: SocialMediaProvider = {
               },
               body: imageData,
             });
+            if (!uploadResponse.ok) {
+              throw new Error(`LinkedIn asset upload failed: ${uploadResponse.status}`);
+            }
 
             mediaAssets.push({
               status: "READY",
@@ -261,6 +272,7 @@ export const linkedinProvider: SocialMediaProvider = {
         postUrl: `https://www.linkedin.com/feed/update/${shareId}`,
       };
     } catch (error) {
+      // error-policy:J1 outbound LinkedIn publish boundary — the failure surfaces as a typed `success: false` PostResult the caller must check, never a fabricated success.
       logger.error("[LinkedIn] Post failed", { error });
       return {
         platform: "linkedin",
@@ -282,6 +294,7 @@ export const linkedinProvider: SocialMediaProvider = {
 
       return { success: true };
     } catch (error) {
+      // error-policy:J1 outbound LinkedIn delete boundary — failure surfaces as a typed `success: false` result the caller must check.
       return {
         success: false,
         error: extractErrorMessage(error),
@@ -297,30 +310,28 @@ export const linkedinProvider: SocialMediaProvider = {
       return null;
     }
 
-    try {
-      // LinkedIn's social actions API
-      const response = await linkedinApiRequest<{
-        elements?: Array<{
-          likesSummary?: { totalLikes: number };
-          commentsSummary?: { totalComments: number };
-        }>;
-      }>(`/socialActions/${encodeURIComponent(postId)}`, credentials.accessToken);
+    // Internal failures (auth, transport, parse) propagate so the caller can tell
+    // a broken pipeline apart from the designed-empty result: only a missing
+    // `elements[0]` — the post exists but has no recorded social actions — is null.
+    const response = await linkedinApiRequest<{
+      elements?: Array<{
+        likesSummary?: { totalLikes: number };
+        commentsSummary?: { totalComments: number };
+      }>;
+    }>(`/socialActions/${encodeURIComponent(postId)}`, credentials.accessToken);
 
-      const element = response.elements?.[0];
-      if (!element) return null;
+    const element = response.elements?.[0];
+    if (!element) return null;
 
-      return {
-        platform: "linkedin",
-        postId,
-        metrics: {
-          likes: element.likesSummary?.totalLikes || 0,
-          comments: element.commentsSummary?.totalComments || 0,
-        },
-        fetchedAt: new Date(),
-      };
-    } catch {
-      return null;
-    }
+    return {
+      platform: "linkedin",
+      postId,
+      metrics: {
+        likes: element.likesSummary?.totalLikes || 0,
+        comments: element.commentsSummary?.totalComments || 0,
+      },
+      fetchedAt: new Date(),
+    };
   },
 
   async getAccountAnalytics(credentials: SocialCredentials): Promise<AccountAnalytics | null> {
@@ -328,21 +339,17 @@ export const linkedinProvider: SocialMediaProvider = {
       return null;
     }
 
-    try {
-      const profile = await linkedinApiRequest<LinkedInProfile>("/me", credentials.accessToken);
+    // A failed /me lookup propagates rather than masquerading as a valid empty
+    // metrics set. The successful result carries an intentionally empty `metrics`
+    // because LinkedIn's basic API exposes no follower counts (Marketing API only).
+    const profile = await linkedinApiRequest<LinkedInProfile>("/me", credentials.accessToken);
 
-      // LinkedIn doesn't provide follower counts via the basic API
-      // Would need Marketing API for that
-
-      return {
-        platform: "linkedin",
-        accountId: profile.id,
-        metrics: {},
-        fetchedAt: new Date(),
-      };
-    } catch {
-      return null;
-    }
+    return {
+      platform: "linkedin",
+      accountId: profile.id,
+      metrics: {},
+      fetchedAt: new Date(),
+    };
   },
 
   async uploadMedia(credentials: SocialCredentials, media: MediaAttachment) {
@@ -388,13 +395,17 @@ export const linkedinProvider: SocialMediaProvider = {
       imageData = Uint8Array.from(Buffer.from(media.base64, "base64"));
     } else if (media.url) {
       const response = await fetch(media.url);
+      if (!response.ok) {
+        throw new Error(`LinkedIn image download failed for ${media.url}: ${response.status}`);
+      }
       imageData = new Uint8Array(await response.arrayBuffer());
     } else {
       throw new Error("No media data provided");
     }
 
-    // Upload
-    await fetch(uploadUrl, {
+    // A non-OK upload must surface: returning the asset URN as if it succeeded
+    // would hand callers a media handle LinkedIn never actually stored.
+    const uploadResponse = await fetch(uploadUrl, {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${credentials.accessToken}`,
@@ -402,6 +413,9 @@ export const linkedinProvider: SocialMediaProvider = {
       },
       body: Buffer.from(imageData),
     });
+    if (!uploadResponse.ok) {
+      throw new Error(`LinkedIn asset upload failed: ${uploadResponse.status}`);
+    }
 
     return { mediaId: asset };
   },
@@ -440,6 +454,7 @@ export const linkedinProvider: SocialMediaProvider = {
         postId: response.id,
       };
     } catch (error) {
+      // error-policy:J1 outbound LinkedIn comment boundary — failure surfaces as a typed `success: false` PostResult the caller must check.
       return {
         platform: "linkedin",
         success: false,
@@ -469,6 +484,7 @@ export const linkedinProvider: SocialMediaProvider = {
 
       return { success: true };
     } catch (error) {
+      // error-policy:J1 outbound LinkedIn like boundary — failure surfaces as a typed `success: false` result the caller must check.
       return {
         success: false,
         error: extractErrorMessage(error),
