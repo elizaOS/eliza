@@ -12,11 +12,11 @@
  *      bun packages/agent/scripts/proactive-greeting-live-trajectory.ts
  */
 import type { IAgentRuntime, ViewSwitchedPayload } from "@elizaos/core";
+import { renderLiveStateForScope } from "../src/providers/page-scoped-live-state.ts";
 import {
   buildProactiveJudgePrompt,
   parseProactiveJudgeDecisionOutput,
 } from "../src/services/proactive-interaction-decider.ts";
-import { renderLiveStateForScope } from "../src/providers/page-scoped-live-state.ts";
 
 const BASE_URL =
   process.env.OPENAI_BASE_URL ||
@@ -87,8 +87,16 @@ async function buildCases(): Promise<Case[]> {
     },
   ]);
   const transcriptsRuntime = stubRuntime([
-    { agentId: "live-agent", createdAt: now, metadata: { tags: ["transcript"], addedAt: now } },
-    { agentId: "live-agent", createdAt: now, metadata: { tags: ["transcript"], addedAt: now } },
+    {
+      agentId: "live-agent",
+      createdAt: now,
+      metadata: { tags: ["transcript"], addedAt: now },
+    },
+    {
+      agentId: "live-agent",
+      createdAt: now,
+      metadata: { tags: ["transcript"], addedAt: now },
+    },
   ]);
 
   return [
@@ -112,9 +120,13 @@ async function buildCases(): Promise<Case[]> {
         initiatedBy: "user",
         anticipatoryIntent:
           "Offer to triage the newest ingested attachments/documents — summarize, tag, or file them — grounded in the recent-attachment counts.",
-        viewPurpose: "Agent knowledge documents, uploads, and retrieval sources",
+        viewPurpose:
+          "Agent knowledge documents, uploads, and retrieval sources",
       } as ViewSwitchedPayload,
-      liveState: await renderLiveStateForScope(knowledgeRuntime, "page-knowledge"),
+      liveState: await renderLiveStateForScope(
+        knowledgeRuntime,
+        "page-knowledge",
+      ),
     },
     {
       label: "transcripts (intent + real live-state renderer)",
@@ -126,7 +138,10 @@ async function buildCases(): Promise<Case[]> {
           "Offer to summarize or extract action items from the most recent voice transcripts, grounded in the recent-transcript count.",
         viewPurpose: "Recorded voice transcripts — play, scrub, and read",
       } as ViewSwitchedPayload,
-      liveState: await renderLiveStateForScope(transcriptsRuntime, "page-transcripts"),
+      liveState: await renderLiveStateForScope(
+        transcriptsRuntime,
+        "page-transcripts",
+      ),
     },
     {
       label: "wallet (intent + representative live-state brief)",
@@ -168,13 +183,13 @@ async function main() {
       typeof c.payload.anticipatoryIntent === "string" &&
       c.payload.anticipatoryIntent.trim().length > 0;
     const prompt = buildProactiveJudgePrompt(c.payload, c.liveState);
-    console.log("\n" + "=".repeat(78));
+    console.log(`\n${"=".repeat(78)}`);
     console.log(`CASE: ${c.label}`);
     console.log("-".repeat(78));
-    console.log("PROMPT:\n" + prompt);
+    console.log(`PROMPT:\n${prompt}`);
     const raw = await callLiveModel(prompt);
     console.log("-".repeat(78));
-    console.log("RAW MODEL OUTPUT:\n" + raw);
+    console.log(`RAW MODEL OUTPUT:\n${raw}`);
     const parsed = parseProactiveJudgeDecisionOutput(raw, {
       hasDeclaredIntent: hasIntent,
     });
@@ -184,7 +199,7 @@ async function main() {
         (parsed ? JSON.stringify(parsed) : "null (stayed silent)"),
     );
   }
-  console.log("\n" + "=".repeat(78));
+  console.log(`\n${"=".repeat(78)}`);
   console.log("done");
 }
 
