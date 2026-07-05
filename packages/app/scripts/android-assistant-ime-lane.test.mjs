@@ -113,21 +113,59 @@ describe("sessionLanded", () => {
 });
 
 describe("runLane", () => {
-  const landedLog = [
+  const allRoutesLog = [
     `START u0 {act=android.intent.action.VIEW dat=${ASSIST_SESSION_DEEPLINK} cmp=ai.elizaos.app/.MainActivity}`,
     `START u0 {act=android.intent.action.VIEW dat=${IME_SESSION_DEEPLINK} cmp=ai.elizaos.app/.MainActivity}`,
   ].join("\n");
+  const assistRouteLog = `START u0 {act=android.intent.action.VIEW dat=${ASSIST_SESSION_DEEPLINK} cmp=ai.elizaos.app/.MainActivity}`;
+  const imeRouteLog = `START u0 {act=android.intent.action.VIEW dat=${IME_SESSION_DEEPLINK} cmp=ai.elizaos.app/.MainActivity}`;
+
+  function routeAwareExec({
+    voiceinteraction = assistRouteLog,
+    assistKey = assistRouteLog,
+    ime = imeRouteLog,
+    voiceSetting = "ai.elizaos.app/.ElizaVoiceInteractionService",
+    inputMethod = DEFAULT_IME_ID,
+  } = {}) {
+    const calls = [];
+    let route = "voiceinteraction";
+    const exec = (_bin, args) => {
+      calls.push(args);
+      const cmd = args.slice(2).join(" ");
+      if (
+        cmd.startsWith("shell settings get secure voice_interaction_service")
+      ) {
+        return { status: 0, stdout: voiceSetting, stderr: "" };
+      }
+      if (cmd.startsWith("shell settings get secure default_input_method")) {
+        return { status: 0, stdout: inputMethod, stderr: "" };
+      }
+      if (cmd === "shell cmd voiceinteraction show") route = "voiceinteraction";
+      if (cmd === "shell input keyevent KEYCODE_ASSIST") route = "assistKey";
+      if (cmd.startsWith("shell am start ")) route = "ime";
+      if (cmd === "logcat -d") {
+        const stdout =
+          route === "voiceinteraction"
+            ? voiceinteraction
+            : route === "assistKey"
+              ? assistKey
+              : ime;
+        return { status: 0, stdout, stderr: "" };
+      }
+      return { status: 0, stdout: "", stderr: "" };
+    };
+    exec.calls = calls;
+    return exec;
+  }
 
   it("passes when role+IME applied and the assist session lands in MainActivity", async () => {
-    const exec = mockExec({
-      "shell settings get secure voice_interaction_service":
-        "ai.elizaos.app/.voice.ElizaVoiceInteractionService",
-      "shell settings get secure default_input_method": DEFAULT_IME_ID,
-      "logcat -d": landedLog,
-    });
+    const exec = routeAwareExec();
     const result = await runLane({ serial: "emulator-5554", exec });
     expect(result.ok).toBe(true);
     expect(result.failures).toEqual([]);
+    expect(result.voiceinteractionLanded).toBe(true);
+    expect(result.assistKeyLanded).toBe(true);
+    expect(result.imeLanded).toBe(true);
     // Re-apply commands were issued in order.
     const cmds = exec.calls.map((a) => a.slice(2).join(" "));
     expect(cmds).toContain(
@@ -145,32 +183,31 @@ describe("runLane", () => {
     const exec = mockExec({
       "shell settings get secure voice_interaction_service": "null",
       "shell settings get secure default_input_method": DEFAULT_IME_ID,
-      "logcat -d": landedLog,
+      "logcat -d": allRoutesLog,
     });
     const result = await runLane({ serial: "s", exec });
     expect(result.ok).toBe(false);
     expect(result.failures.join("\n")).toMatch(/assistant role not applied/);
   });
 
-  it("fails when the assistant key does not route the deep-link into MainActivity (silent no-op)", async () => {
-    const exec = mockExec({
-      "shell settings get secure voice_interaction_service":
-        "ai.elizaos.app/.voice.ElizaVoiceInteractionService",
-      "shell settings get secure default_input_method": DEFAULT_IME_ID,
-      "logcat -d": "no eliza session here",
-    });
+  it("fails when cmd voiceinteraction does not route into MainActivity", async () => {
+    const exec = routeAwareExec({ voiceinteraction: "no eliza session here" });
     const result = await runLane({ serial: "s", exec });
     expect(result.ok).toBe(false);
-    expect(result.failures.join("\n")).toMatch(/did not route .*MainActivity/);
+    expect(result.assistKeyLanded).toBe(true);
+    expect(result.failures.join("\n")).toMatch(/cmd voiceinteraction/);
+  });
+
+  it("fails when KEYCODE_ASSIST does not route into MainActivity", async () => {
+    const exec = routeAwareExec({ assistKey: "no eliza session here" });
+    const result = await runLane({ serial: "s", exec });
+    expect(result.ok).toBe(false);
+    expect(result.voiceinteractionLanded).toBe(true);
+    expect(result.failures.join("\n")).toMatch(/KEYCODE_ASSIST/);
   });
 
   it("fails when the IME open-app path does not route into MainActivity", async () => {
-    const exec = mockExec({
-      "shell settings get secure voice_interaction_service":
-        "ai.elizaos.app/.ElizaVoiceInteractionService",
-      "shell settings get secure default_input_method": DEFAULT_IME_ID,
-      "logcat -d": `START u0 {dat=${ASSIST_SESSION_DEEPLINK} cmp=ai.elizaos.app/.MainActivity}`,
-    });
+    const exec = routeAwareExec({ ime: assistRouteLog });
     const result = await runLane({ serial: "s", exec });
     expect(result.ok).toBe(false);
     expect(result.failures.join("\n")).toMatch(/IME open-app path/);
