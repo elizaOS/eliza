@@ -128,11 +128,11 @@ import {
 import { isShellPaintable } from "./state/startup-coordinator";
 import { firstRunOwnsLoginSurface } from "./state/top-level-auth-gate";
 import { isLoopbackGatewayHost } from "./state/use-startup-shell-controller";
-import { TutorialConductorMount } from "./tutorial/TutorialConductor";
 import {
   SurfaceRealmScope,
   setActiveSurfaceRealmScope,
 } from "./surface-realm-broker";
+import { TutorialConductorMount } from "./tutorial/TutorialConductor";
 import { confirmDesktopAction } from "./utils/desktop-dialogs";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";

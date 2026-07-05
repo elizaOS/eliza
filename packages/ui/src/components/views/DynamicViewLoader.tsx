@@ -78,6 +78,7 @@ import {
 } from "../../state/bounded-view-lru";
 import { installHeapPressureMonitor } from "../../state/heap-pressure-monitor";
 import { useApp } from "../../state/useApp.ts";
+import { getActiveSurfaceRealmScope } from "../../surface-realm-broker";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
 import {
   formatDetailTimestamp,
@@ -392,6 +393,51 @@ async function importUiRootCompat(): Promise<Record<string, unknown>> {
   return import("../../index.ts");
 }
 
+async function importUiAppNavigateViewCompat(): Promise<
+  Record<string, unknown>
+> {
+  const appNavigateView = await import("../../app-navigate-view.ts");
+  return {
+    ...appNavigateView,
+    navigateBrowserPath(path: string): void {
+      const scope = getActiveSurfaceRealmScope();
+      if (scope) {
+        scope.navigate(path);
+        return;
+      }
+      appNavigateView.navigateBrowserPath(path);
+    },
+  };
+}
+
+async function importUiBridgeCompat(): Promise<Record<string, unknown>> {
+  const bridge = await import("../../bridge/index.ts");
+  return {
+    ...bridge,
+    async getStorageValue(key: string): Promise<string | null> {
+      const scope = getActiveSurfaceRealmScope();
+      if (scope) return scope.storage.getItem(key);
+      return bridge.getStorageValue(key);
+    },
+    async setStorageValue(key: string, value: string): Promise<void> {
+      const scope = getActiveSurfaceRealmScope();
+      if (scope) {
+        scope.storage.setItem(key, value);
+        return;
+      }
+      await bridge.setStorageValue(key, value);
+    },
+    async removeStorageValue(key: string): Promise<void> {
+      const scope = getActiveSurfaceRealmScope();
+      if (scope) {
+        scope.storage.removeItem(key);
+        return;
+      }
+      await bridge.removeStorageValue(key);
+    },
+  };
+}
+
 // Framework + host modules the shell always provides to every view bundle:
 // react, three, `@elizaos/ui/*`, the `@elizaos/app-core` view compat surface,
 // `@elizaos/shared`, and the native capacitor bridges. This map is
@@ -416,9 +462,9 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/shared": () => importHostExternal("@elizaos/shared"),
   "@elizaos/ui": importUiRootCompat,
   "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
-  "@elizaos/ui/app-navigate-view": () => import("../../app-navigate-view.ts"),
+  "@elizaos/ui/app-navigate-view": importUiAppNavigateViewCompat,
   "@elizaos/ui/api": () => import("../../api/index.ts"),
-  "@elizaos/ui/bridge": () => import("../../bridge/index.ts"),
+  "@elizaos/ui/bridge": importUiBridgeCompat,
   "@elizaos/ui/components": importUiComponentsCompat,
   "@elizaos/ui/config": () => import("../../config/index.ts"),
   "@elizaos/ui/events": () => import("../../events/index.ts"),
