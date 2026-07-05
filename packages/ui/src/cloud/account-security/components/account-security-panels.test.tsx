@@ -1,10 +1,10 @@
 /**
- * Account-security panel tests for unavailable launch surfaces.
+ * Account-security panel tests for explicit unavailable DTOs.
  *
- * The cloud Worker does not expose account-security read/write routes for these
- * panels yet, so the UI must render explicit unavailable states without firing
- * dead account calls, fabricating successful requests, or reading unavailable
- * data as a healthy empty state.
+ * The cloud Worker exposes read contracts for MFA and session inventory even
+ * while those features are unavailable. These tests pin the three-state UI:
+ * loading, designed-unavailable, healthy empty, and transport error must remain
+ * distinguishable.
  */
 
 // @vitest-environment jsdom
@@ -12,9 +12,9 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import type { ButtonHTMLAttributes, PropsWithChildren } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMock = vi.hoisted(() => vi.fn());
 const apiFetchMock = vi.hoisted(() => vi.fn());
@@ -90,22 +90,67 @@ describe("account-security panels", () => {
     apiFetchMock.mockReset();
   });
 
-  it("renders MFA unavailable without calling the missing status endpoint", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders MFA unavailable from the backend DTO", async () => {
+    apiMock.mockResolvedValueOnce({
+      available: false,
+      reason: "mfa_enrollment_unavailable",
+      enrolled: false,
+      method: null,
+    });
+
     render(<MfaPanel />);
 
-    expect(screen.getByText(/MFA enrollment is unavailable/i)).toBeTruthy();
+    expect(screen.getByText(/Loading MFA status/i)).toBeTruthy();
+    expect(
+      await screen.findByText(/MFA enrollment is unavailable/i),
+    ).toBeTruthy();
     expect(screen.queryByText(/MFA is not enabled/i)).toBeNull();
-    expect(apiMock).not.toHaveBeenCalled();
+    expect(apiMock).toHaveBeenCalledWith("/api/v1/me/mfa");
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
-  it("renders sessions unavailable without calling session inventory", () => {
+  it("renders sessions unavailable from the backend DTO", async () => {
+    apiMock.mockResolvedValueOnce({
+      available: false,
+      reason: "session_inventory_unavailable",
+      sessions: [],
+    });
+
     render(<ActiveSessionsPanel />);
 
-    expect(screen.getByText(/Session listing is unavailable/i)).toBeTruthy();
+    expect(screen.getByText(/Loading sessions/i)).toBeTruthy();
+    expect(
+      await screen.findByText(/Session listing is unavailable/i),
+    ).toBeTruthy();
     expect(screen.queryByText(/No other active sessions found/i)).toBeNull();
-    expect(apiMock).not.toHaveBeenCalled();
+    expect(apiMock).toHaveBeenCalledWith("/api/v1/sessions");
     expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("renders healthy empty sessions only when the DTO is available", async () => {
+    apiMock.mockResolvedValueOnce({ sessions: [] });
+
+    render(<ActiveSessionsPanel />);
+
+    expect(
+      await screen.findByText(/No other active sessions found/i),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Session listing is unavailable/i)).toBeNull();
+    expect(apiMock).toHaveBeenCalledWith("/api/v1/sessions");
+  });
+
+  it("renders MFA errors separately from unavailable and disabled", async () => {
+    apiMock.mockRejectedValueOnce(new Error("mfa route failed"));
+
+    render(<MfaPanel />);
+
+    expect(await screen.findByText("mfa route failed")).toBeTruthy();
+    expect(screen.queryByText(/MFA enrollment is unavailable/i)).toBeNull();
+    expect(screen.queryByText(/MFA is not enabled/i)).toBeNull();
   });
 
   it("renders audit events unavailable without calling the missing read route", () => {
