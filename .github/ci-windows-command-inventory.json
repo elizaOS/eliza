@@ -1,0 +1,27 @@
+{
+  "$comment": "Coverage floor for the Windows CI lane (#13402). Every command here must stay wired in some jobs.windows.strategy.matrix.include[].commands list in .github/workflows/windows-ci.yml. The Windows lane is a deliberately narrow subset of the Linux gates (see WINDOWS.md), so these suites are the only Windows proof for the runtime/dashboard/shared TypeScript packages — dropping one silently regresses coverage with a still-green pipeline. Enforced by packages/scripts/ci-windows-command-coverage-contract.mjs: adding a command is always allowed (this is a floor, not an exact match); to intentionally retire one, delete it from the matrix AND from this list in the SAME PR so the reduction is reviewable in the diff.",
+  "commands": [
+    "node packages/scripts/run-turbo.mjs run typecheck --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/cloud-shared --concurrency=4",
+    "bun run --cwd packages/core test",
+    "bun run --cwd packages/shared test",
+    "bun run --cwd packages/app-core test",
+    "bun run --cwd packages/elizaos test",
+    "bun run --cwd packages/cloud/shared test",
+    "bun run --cwd packages/scenario-runner test",
+    "bun run --cwd packages/vault test",
+    "bun run --cwd packages/security test",
+    "bun run --cwd plugins/plugin-coding-tools test",
+    "bun run --cwd plugins/plugin-elizacloud test",
+    "bun run --cwd plugins/plugin-discord test",
+    "bun run --cwd plugins/plugin-anthropic test",
+    "bun run --cwd plugins/plugin-openai test",
+    "bun run --cwd plugins/plugin-app-control test",
+    "bun run --cwd plugins/plugin-task-coordinator test",
+    "bun run --cwd plugins/plugin-browser test",
+    "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=4",
+    "node packages/scripts/run-bash-linux-only.mjs scripts/verify-riscv64-buildpaths.sh",
+    "node packages/scripts/run-python.mjs --version",
+    "node packages/scripts/test-cloud-run.mjs",
+    "node packages/scripts/clean-stray-dts.mjs"
+  ]
+}
