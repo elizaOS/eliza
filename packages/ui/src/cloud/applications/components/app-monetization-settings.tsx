@@ -335,7 +335,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                 type="button"
                 onClick={submitForReview}
                 disabled={isSubmittingReview}
-                className="shrink-0 bg-[var(--brand-orange)] text-txt hover:bg-[#e54f00]"
+                className="shrink-0 bg-[var(--brand-orange)] text-white hover:bg-[#e54f00]"
               >
                 {isSubmittingReview ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -553,7 +553,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                     className={cn(
                       "px-2.5 py-1 text-xs rounded-sm transition-colors",
                       settings.purchaseSharePercentage === preset
-                        ? "bg-orange-500/20 text-txt border border-orange-500/30"
+                        ? "bg-orange-500/20 text-white border border-orange-500/30"
                         : "bg-surface text-neutral-400 hover:bg-surface border border-transparent",
                     )}
                     onClick={() =>
@@ -571,7 +571,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
               <Button
                 onClick={handleSave}
                 disabled={!hasChanges || isSaving}
-                className="w-full bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt disabled:bg-surface disabled:text-muted"
+                className="w-full bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white disabled:bg-surface disabled:text-muted"
               >
                 {isSaving ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -653,7 +653,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                   toggleMonetization(true);
                   setShowEnableDialog(false);
                 }}
-                className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt px-6"
+                className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white px-6"
               >
                 {t("cloud.monetization.startEarning", {
                   defaultValue: "Start Earning",
@@ -741,7 +741,7 @@ function SelfHostCTA() {
                   e.preventDefault();
                 }
               }}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt text-sm font-mono transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white text-sm font-mono transition-colors"
             >
               <Server className="h-4 w-4" />
               {t("cloud.monetization.deployAgent", {
