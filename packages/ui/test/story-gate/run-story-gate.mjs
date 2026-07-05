@@ -948,6 +948,17 @@ function backendLogGrep() {
   }
 }
 
+function backendLogTimeoutMs() {
+  const raw = process.env.STORY_GATE_BACKEND_LOG_TIMEOUT_MS;
+  if (!raw) return undefined;
+  const timeoutMs = Number.parseInt(raw, 10);
+  if (Number.isFinite(timeoutMs) && timeoutMs > 0) return timeoutMs;
+  console.warn(
+    `story-gate: ignoring invalid STORY_GATE_BACKEND_LOG_TIMEOUT_MS (${raw})`,
+  );
+  return undefined;
+}
+
 async function writeBackendLogs(dir) {
   const apiBase = configuredBackendApiBase();
   const out = join(dir, "backend-logs.txt");
@@ -957,6 +968,7 @@ async function writeBackendLogs(dir) {
         token: process.env.ELIZA_API_TOKEN,
         out: apiBase ? out : undefined,
         grep: backendLogGrep(),
+        timeoutMs: backendLogTimeoutMs(),
       })
     : { ok: false, reason: "disabled" };
   const artifact = {

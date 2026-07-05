@@ -25,10 +25,18 @@ import { dirname } from "node:path";
 
 /**
  * @param {{ apiBase: string, token?: string, out?: string, maxLines?: number,
- *           maxBytes?: number, grep?: RegExp }} opts
+ *           maxBytes?: number, grep?: RegExp, timeoutMs?: number }} opts
  */
 export async function captureBackendLogs(opts) {
-  const { apiBase, token, out, maxLines = 800, maxBytes = 512000, grep } = opts;
+  const {
+    apiBase,
+    token,
+    out,
+    maxLines = 800,
+    maxBytes = 512000,
+    grep,
+    timeoutMs = 5_000,
+  } = opts;
   if (!apiBase) return { ok: false, reason: "no apiBase" };
 
   const url = new URL("/api/dev/console-log", apiBase);
@@ -36,12 +44,20 @@ export async function captureBackendLogs(opts) {
   url.searchParams.set("maxBytes", String(maxBytes));
 
   let resp;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     resp = await fetch(url, {
       headers: token ? { authorization: `Bearer ${token}` } : {},
+      signal: controller.signal,
     });
   } catch (err) {
+    if (err?.name === "AbortError") {
+      return { ok: false, reason: `timeout after ${timeoutMs}ms` };
+    }
     return { ok: false, reason: `fetch failed: ${err?.message ?? err}` };
+  } finally {
+    clearTimeout(timeout);
   }
   if (!resp.ok) {
     return { ok: false, reason: `HTTP ${resp.status}` };

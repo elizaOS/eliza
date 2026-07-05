@@ -61,7 +61,9 @@ the console + a11y baselines after an intentional change).
 Backend log capture is best-effort because most story-gate runs only serve the
 static Storybook catalog. Configure `--backend-api-base` or
 `STORY_GATE_BACKEND_API_BASE` when a live dev stack is running; otherwise the
-gate still writes `backend-log-status.json` with a `no apiBase` reason.
+gate still writes `backend-log-status.json` with a `no apiBase` reason. Backend
+log fetches time out after 5s by default; set
+`STORY_GATE_BACKEND_LOG_TIMEOUT_MS` to adjust the bound for slow local stacks.
 
 ## Outputs (`test/story-gate/output/`)
 
