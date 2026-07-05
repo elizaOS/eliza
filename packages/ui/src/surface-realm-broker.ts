@@ -281,7 +281,7 @@ export class SurfaceRealmScope {
   readonly navigate: (path: string) => void;
   private readonly rootClassBaseline: ReadonlySet<string>;
   private readonly bodyClassBaseline: ReadonlySet<string>;
-  private readonly rootVarBaseline: ReadonlySet<string>;
+  private readonly rootVarBaseline: ReadonlyMap<string, string>;
 
   constructor(
     readonly manifest: ResolvedSurfaceManifest,
@@ -294,12 +294,15 @@ export class SurfaceRealmScope {
     if (typeof document === "undefined") {
       this.rootClassBaseline = new Set();
       this.bodyClassBaseline = new Set();
-      this.rootVarBaseline = new Set();
+      this.rootVarBaseline = new Map();
     } else {
       this.rootClassBaseline = new Set(document.documentElement.classList);
       this.bodyClassBaseline = new Set(document.body.classList);
-      this.rootVarBaseline = new Set(
-        readRootVarNames(document.documentElement),
+      this.rootVarBaseline = new Map(
+        readRootVarNames(document.documentElement).map((name) => [
+          name,
+          document.documentElement.style.getPropertyValue(name),
+        ]),
       );
     }
   }
@@ -330,9 +333,25 @@ export class SurfaceRealmScope {
       body.classList.remove(cls);
       result.bodyClasses.push(cls);
     }
+    for (const cls of this.rootClassBaseline) {
+      if (isShellOwnedRootClass(cls) || root.classList.contains(cls)) continue;
+      root.classList.add(cls);
+      result.rootClasses.push(cls);
+    }
+    for (const cls of this.bodyClassBaseline) {
+      if (isShellOwnedBodyClass(cls) || body.classList.contains(cls)) continue;
+      body.classList.add(cls);
+      result.bodyClasses.push(cls);
+    }
     for (const name of readRootVarNames(root)) {
       if (isShellOwnedRootVar(name) || this.rootVarBaseline.has(name)) continue;
       root.style.removeProperty(name);
+      result.rootVars.push(name);
+    }
+    for (const [name, value] of this.rootVarBaseline) {
+      if (isShellOwnedRootVar(name)) continue;
+      if (root.style.getPropertyValue(name) === value) continue;
+      root.style.setProperty(name, value);
       result.rootVars.push(name);
     }
     return result;

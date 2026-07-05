@@ -233,6 +233,30 @@ describe("SurfaceRealmScope.resetHostRealm — root/body class + :root var vecto
     );
   });
 
+  it("restores non-shell baseline tokens a view deletes or mutates", () => {
+    document.documentElement.style.setProperty("--view-host-baseline", "blue");
+    document.documentElement.classList.add("pack-preset-a");
+    document.body.classList.add("host-layout-a");
+    const scope = makeScope();
+
+    document.documentElement.style.setProperty("--view-host-baseline", "red");
+    document.documentElement.classList.remove("pack-preset-a");
+    document.body.classList.remove("host-layout-a");
+
+    const reset = scope.resetHostRealm();
+
+    expect(
+      document.documentElement.style.getPropertyValue("--view-host-baseline"),
+    ).toBe("blue");
+    expect(document.documentElement.classList.contains("pack-preset-a")).toBe(
+      true,
+    );
+    expect(document.body.classList.contains("host-layout-a")).toBe(true);
+    expect(reset.rootVars).toContain("--view-host-baseline");
+    expect(reset.rootClasses).toContain("pack-preset-a");
+    expect(reset.bodyClasses).toContain("host-layout-a");
+  });
+
   it("preserves a theme class toggled ON while the view was active (shell writers stay allowed)", () => {
     document.documentElement.className = "light";
     const scope = makeScope();

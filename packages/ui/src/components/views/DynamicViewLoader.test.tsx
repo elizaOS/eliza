@@ -7,6 +7,7 @@
 // asserting against a mock.
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { resolveSurfaceManifest } from "@elizaos/core";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { transform } from "esbuild";
 import { type ReactElement, useState } from "react";
@@ -16,6 +17,10 @@ import {
   type ModuleCacheTelemetryEvent,
 } from "../../cache-telemetry";
 import { APP_PAUSE_EVENT } from "../../events";
+import {
+  SurfaceRealmScope,
+  setActiveSurfaceRealmScope,
+} from "../../surface-realm-broker";
 import {
   __resetDynamicViewLoaderCacheForTests,
   DynamicViewLoader,
@@ -95,6 +100,40 @@ describe("host-external importer resolution (factory hostImport)", () => {
       resolveHostExternal("@test/never-registered-external"),
     ).rejects.toThrow(/unsupported host external/);
   });
+
+  it("looks up the active surface realm scope when a cached host external is called", async () => {
+    const calls: string[] = [];
+    const manifest = resolveSurfaceManifest({
+      surface: { capabilities: ["navigate"] },
+    });
+    const firstScope = new SurfaceRealmScope(
+      manifest,
+      "first.view",
+      window.localStorage,
+      (path) => calls.push(`first:${path}`),
+    );
+    const secondScope = new SurfaceRealmScope(
+      manifest,
+      "second.view",
+      window.localStorage,
+      (path) => calls.push(`second:${path}`),
+    );
+
+    const appNavigateView = await resolveHostExternal(
+      "@elizaos/ui/app-navigate-view",
+    );
+    const navigateBrowserPath = appNavigateView.navigateBrowserPath as (
+      path: string,
+    ) => void;
+
+    setActiveSurfaceRealmScope(firstScope);
+    navigateBrowserPath("/first");
+    setActiveSurfaceRealmScope(secondScope);
+    navigateBrowserPath("/second");
+
+    expect(calls).toEqual(["first:/first", "second:/second"]);
+    setActiveSurfaceRealmScope(null);
+  });
 });
 
 const { sendWsMessage } = vi.hoisted(() => ({
@@ -123,6 +162,7 @@ describe("DynamicViewLoader", () => {
 
   afterEach(() => {
     delete window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__;
+    setActiveSurfaceRealmScope(null);
     sendWsMessage.mockClear();
     cleanup();
     __resetDynamicViewLoaderCacheForTests();

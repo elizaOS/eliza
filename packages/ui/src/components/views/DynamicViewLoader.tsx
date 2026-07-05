@@ -398,10 +398,10 @@ async function importUiAppNavigateViewCompat(): Promise<
   Record<string, unknown>
 > {
   const appNavigateView = await import("../../app-navigate-view.ts");
-  const scope = getActiveSurfaceRealmScope();
   return {
     ...appNavigateView,
     navigateBrowserPath(path: string): void {
+      const scope = getActiveSurfaceRealmScope();
       if (scope) {
         scope.navigate(path);
         return;
@@ -413,14 +413,15 @@ async function importUiAppNavigateViewCompat(): Promise<
 
 async function importUiBridgeCompat(): Promise<Record<string, unknown>> {
   const bridge = await import("../../bridge/index.ts");
-  const scope = getActiveSurfaceRealmScope();
   return {
     ...bridge,
     async getStorageValue(key: string): Promise<string | null> {
+      const scope = getActiveSurfaceRealmScope();
       if (scope) return scope.storage.getItem(key);
       return bridge.getStorageValue(key);
     },
     async setStorageValue(key: string, value: string): Promise<void> {
+      const scope = getActiveSurfaceRealmScope();
       if (scope) {
         scope.storage.setItem(key, value);
         return;
@@ -428,6 +429,7 @@ async function importUiBridgeCompat(): Promise<Record<string, unknown>> {
       await bridge.setStorageValue(key, value);
     },
     async removeStorageValue(key: string): Promise<void> {
+      const scope = getActiveSurfaceRealmScope();
       if (scope) {
         scope.storage.removeItem(key);
         return;
@@ -1421,9 +1423,17 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   }
 
   const View = bundle.component;
+  const exitToApps = () => {
+    const scope = getActiveSurfaceRealmScope();
+    if (scope) {
+      scope.navigate("/views");
+      return;
+    }
+    navigateToViews();
+  };
   const viewProps = {
     ...forwardedViewProps,
-    exitToApps: navigateToViews,
+    exitToApps,
     t: (
       key: string,
       options?: { defaultValue?: string } | Record<string, unknown>,
