@@ -326,7 +326,6 @@ const taskCoordinatorPlugin: Plugin = {
 };
 
 export default taskCoordinatorPlugin;
-export { ProjectSwitcher } from "./ProjectSwitcher";
 export {
   ORCHESTRATOR_STATUS_COMMAND_ACTION,
   ORCHESTRATOR_STATUS_COMMAND_KEY,
@@ -334,3 +333,4 @@ export {
   orchestratorStatusCommandAction,
   registerOrchestratorCommands,
 } from "./orchestrator-command";
+export { ProjectSwitcher } from "./ProjectSwitcher";

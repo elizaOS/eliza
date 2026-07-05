@@ -18,8 +18,8 @@
 import {
   getActiveProject,
   logger,
-  readProjectRegistry,
   type RouteRequestContext,
+  readProjectRegistry,
   setActiveProject,
 } from "@elizaos/core";
 
