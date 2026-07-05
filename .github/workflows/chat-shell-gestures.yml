@@ -121,6 +121,14 @@ jobs:
       - name: Chat-sheet gesture e2e
         run: bun run --cwd packages/ui test:chat-sheet-e2e
 
+      # "can't scroll chat on web" repro (#chat-scroll-web): seeds a long
+      # transcript, opens the sheet to FULL, and asserts the transcript scroller
+      # resolves a BOUNDED clientHeight (so there is overflow) and that a real
+      # vertical finger-drag moves scrollTop natively instead of being hijacked
+      # into the sheet pull. RED before the fix, GREEN after.
+      - name: Chat-scroll web e2e
+        run: bun run --cwd packages/ui test:chat-scroll-web-e2e
+
       # TopicGroup flick-collapse/expand gestures.
       - name: TopicGroup gesture e2e
         run: bun run --cwd packages/ui test:chatux-gesture-e2e
