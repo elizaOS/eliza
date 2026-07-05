@@ -15,6 +15,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import type {
+  AcpCapacity,
   AcpJsonRpcMessage,
   ApprovalPreset,
   AvailableAgentInfo,
@@ -41,6 +42,8 @@ export interface AcpActionService {
   cancelSession?(sessionId: string): Promise<void>;
   getSessionOutput?(sessionId: string, lines?: number): Promise<string>;
   listSessions(): SessionInfo[] | Promise<SessionInfo[]>;
+  /** Live worker/system slot usage for admission-control back-pressure. */
+  getCapacity?(): Promise<AcpCapacity>;
   getSession(
     sessionId: string,
   ): SessionInfo | undefined | Promise<SessionInfo | null | undefined>;

@@ -236,6 +236,19 @@ async function dispatchOrchestratorRoutes(
     return true;
   }
 
+  // GET /api/orchestrator/capacity — live session-cap back-pressure: worker and
+  // system slot usage so a client can see whether a spawn would be rejected at
+  // the cap before attempting it.
+  if (method === "GET" && pathname === `${PREFIX}/capacity`) {
+    const acp = ctx.acpService;
+    if (!acp?.getCapacity) {
+      sendServiceUnavailable(res, "ACP service not available");
+      return true;
+    }
+    sendJson(res, await acp.getCapacity());
+    return true;
+  }
+
   // GET /api/orchestrator/accounts — connected coding accounts, selection
   // strategy, and the live sub-agent → account assignment map.
   if (method === "GET" && pathname === `${PREFIX}/accounts`) {

@@ -2230,6 +2230,11 @@ export class OrchestratorTaskService extends Service {
       workdir,
       initialTask: prompt,
       approvalPreset: "verifier",
+      // Draw on the reserved system-session headroom, not a worker slot: the
+      // task being verified still holds its worker slot (orchestrator sessions
+      // stay alive after task_complete), so counting the verifier as a worker
+      // would deadlock validation behind the very cap it is trying to clear.
+      slotClass: "system",
       metadata: {
         taskId,
         source: "independent-verifier",

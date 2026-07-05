@@ -75,10 +75,65 @@ export type AcpEventCallback = (
   sessionId?: string,
 ) => void;
 
+/**
+ * Which capacity pool a session is admitted against. `worker` sessions are the
+ * fan-out coding agents and count against `ELIZA_ACP_MAX_SESSIONS`. `system`
+ * sessions are short-lived infrastructure spawns (the #8898 read-only verifier)
+ * that get reserved headroom (`ELIZA_ACP_SYSTEM_SESSION_HEADROOM`) so validation
+ * can never deadlock behind the very worker cap it is trying to clear.
+ */
+export type SessionSlotClass = "worker" | "system";
+
+/**
+ * Live view of the session cap: how many worker/system slots are in use and how
+ * many remain. Surfaced by `AcpService.getCapacity()` so the planner provider,
+ * the admission queue dispatcher, and `/api/orchestrator/capacity` all read one
+ * authoritative count instead of re-deriving it from the store.
+ */
+export interface AcpCapacity {
+  maxSessions: number;
+  systemHeadroom: number;
+  activeWorkers: number;
+  activeSystem: number;
+  freeWorkerSlots: number;
+  freeSystemSlots: number;
+}
+
+/**
+ * Thrown by `AcpService` when a spawn is rejected because its slot class is at
+ * capacity. Typed (vs the old opaque string) so callers branch on `code` and an
+ * admission queue can park-and-retry on exactly this failure without
+ * string-matching a message. `slotClass` names which pool was full so a queued
+ * worker is not confused with a rejected system spawn.
+ */
+export class SessionCapError extends Error {
+  readonly code = "SESSION_CAP_REACHED" as const;
+  readonly slotClass: SessionSlotClass;
+  readonly maxSessions: number;
+  readonly activeCount: number;
+  constructor(
+    slotClass: SessionSlotClass,
+    maxSessions: number,
+    activeCount: number,
+  ) {
+    super(`acp ${slotClass} session cap reached (${activeCount}/${maxSessions})`);
+    this.name = "SessionCapError";
+    this.slotClass = slotClass;
+    this.maxSessions = maxSessions;
+    this.activeCount = activeCount;
+  }
+}
+
 export interface SpawnOptions {
   name?: string;
   agentType?: AgentType;
   workdir?: string;
+  /**
+   * Capacity pool this spawn is admitted against; defaults to `worker`.
+   * `spawnReadOnlyVerifier` passes `system` so it draws on the reserved headroom
+   * pool instead of competing for a worker slot it could deadlock on.
+   */
+  slotClass?: SessionSlotClass;
   /**
    * When true, spawnSession places this session in a per-session subdir of
    * `workdir` (a SHARED scratch root) so concurrent tasks can't collide.
