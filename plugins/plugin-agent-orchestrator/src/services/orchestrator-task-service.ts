@@ -1949,11 +1949,14 @@ export class OrchestratorTaskService extends Service {
     // `routerWillRespawn` already folds the state-lost respawn cap into its
     // verdict via the SAME gate + effective cap the router's loop-guard uses
     // (#14104), so a state-lost lineage goes terminal on exactly the error the
-    // router refuses to respawn — no 4th orphan worker. The account-failover
-    // class carries no per-lineage router cap, so the shared errored-session
-    // budget still bounds it here. An un-respawnable crash fails on its first
-    // occurrence — nothing will re-drive it, so a non-terminal verdict wedges.
-    const budgetSpent = erroredSessions >= MAX_SESSION_RETRY_ATTEMPTS;
+    // router refuses to respawn — including when an operator raises or lowers
+    // ACPX_STATE_LOST_RESPAWN_CAP. The account-failover class carries no
+    // per-lineage router cap, so the shared errored-session budget still bounds
+    // it here. An un-respawnable crash fails on its first occurrence — nothing
+    // will re-drive it, so a non-terminal verdict wedges.
+    const stateLost = failure.failureKind === "session_state_lost";
+    const budgetSpent =
+      !stateLost && erroredSessions >= MAX_SESSION_RETRY_ATTEMPTS;
     const terminal = !respawnable || budgetSpent;
     await this.store.addEvent({
       id: randomUUID(),
