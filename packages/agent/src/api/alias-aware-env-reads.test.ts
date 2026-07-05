@@ -1,7 +1,7 @@
 /**
  * Proves the boot-critical auth/token/port env reads migrated to `readAliasedEnv`
  * (#13422 P3) resolve a NON-ELIZA brand prefix (MILADY_*) through the boot-config
- * alias table WITHOUT the `syncBrandEnvToEliza` mirror mutation, and that a present
+ * alias table WITHOUT the `process.env alias-sync` mirror mutation, and that a present
  * canonical `ELIZA_*` value still wins over the branded alias. Drives the real
  * exported helpers (`resolveCorsOrigin`, `pairingEnabled`, `resolveTerminalRunRejection`,
  * `extractAuthToken`, `isWebSocketAuthorized`, `resolveWalletExportRejection`,

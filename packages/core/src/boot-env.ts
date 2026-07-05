@@ -1,15 +1,17 @@
 /**
- * App boot configuration plus env-alias mirroring, shared across every bundled
- * copy of `@elizaos/core`. The boot-config store is a write-once singleton kept
- * on the shared global slot through core's ambient-context accessor so
- * core/shared/ui bundles observe one instance; an established store always wins
- * over the pre-boot `__ELIZAOS_APP_BOOT_CONFIG__` window mirror that the HTML
- * bootstrap / Electrobun preload seeds before any bundle loads.
+ * App boot configuration plus the non-mutating brand<->ELIZA env-alias reader,
+ * shared across every bundled copy of `@elizaos/core`. The boot-config store is
+ * a write-once singleton kept on the shared global slot through core's
+ * ambient-context accessor so core/shared/ui bundles observe one instance; an
+ * established store always wins over the pre-boot `__ELIZAOS_APP_BOOT_CONFIG__`
+ * window mirror that the HTML bootstrap / Electrobun preload seeds before any
+ * bundle loads.
  *
- * syncBrandEnvToEliza / syncElizaEnvToBrand copy values between branded and
- * ELIZA_ env-key aliases and remember which targets they wrote, so a source key
- * that disappears clears only its own mirrored target and never a value set by
- * hand. The sync* wrappers pull the alias list from the boot config.
+ * `resolveAliasedEnvValue` resolves a value for either name in a brand<->ELIZA
+ * alias pair WITHOUT writing to `process.env`: it consults the immutable
+ * BootConfig alias table so a white-label distribution's `<PREFIX>_*` variable
+ * surfaces without materializing the `ELIZA_*` mirror. This replaced the old
+ * `process.env` alias-sync mutation entirely (#12251 / #13423).
  */
 import {
 	peekAmbientSingleton,
@@ -32,9 +34,6 @@ const BOOT_CONFIG_WINDOW_KEY = "__ELIZAOS_APP_BOOT_CONFIG__";
 type GlobalConfigSlot = Record<PropertyKey, unknown> & {
 	[K in typeof BOOT_CONFIG_WINDOW_KEY]?: AppBootConfig;
 };
-
-const mirroredBrandKeys = new Set<string>();
-const mirroredElizaKeys = new Set<string>();
 
 function getGlobalSlot(): GlobalConfigSlot {
 	return globalThis as GlobalConfigSlot;
@@ -92,50 +91,6 @@ function getProcessEnv(): Record<string, string | undefined> | null {
 	}
 }
 
-export function syncBrandEnvToEliza(
-	aliases: readonly (readonly [string, string])[],
-): void {
-	const env = getProcessEnv();
-	if (!env) return;
-	for (const [brandKey, elizaKey] of aliases) {
-		const value = env[brandKey];
-		if (typeof value === "string") {
-			env[elizaKey] = value;
-			mirroredElizaKeys.add(elizaKey);
-		} else if (mirroredElizaKeys.has(elizaKey)) {
-			delete env[elizaKey];
-			mirroredElizaKeys.delete(elizaKey);
-		}
-	}
-}
-
-export function syncElizaEnvToBrand(
-	aliases: readonly (readonly [string, string])[],
-): void {
-	const env = getProcessEnv();
-	if (!env) return;
-	for (const [brandKey, elizaKey] of aliases) {
-		const value = env[elizaKey];
-		if (typeof value === "string") {
-			env[brandKey] = value;
-			mirroredBrandKeys.add(brandKey);
-		} else if (mirroredBrandKeys.has(brandKey)) {
-			delete env[brandKey];
-			mirroredBrandKeys.delete(brandKey);
-		}
-	}
-}
-
-export function syncAppEnvToEliza(): void {
-	const aliases = getBootConfig().envAliases;
-	if (aliases) syncBrandEnvToEliza(aliases);
-}
-
-export function syncElizaEnvAliases(): void {
-	const aliases = getBootConfig().envAliases;
-	if (aliases) syncElizaEnvToBrand(aliases);
-}
-
 /**
  * Build a bidirectional key -> alias-partners lookup from the alias pair table.
  *
@@ -165,12 +120,10 @@ function buildAliasPartnerMap(
 
 /**
  * An env value counts as "present" only when it is a non-empty (after trim)
- * string. This mirrors the shared `normalizeEnvValue` / `readEnv` contract
- * (empty / whitespace-only = unset) AND the `syncBrandEnvToEliza` mutation,
- * which only mirrors a source when `typeof value === "string"` but a blank
- * ELIZA_ value never suppressed a non-blank branded alias in the old sync path.
- * Treating a blank direct value as present would let `ELIZA_API_TOKEN=""`
- * shadow a real `ACME_API_TOKEN`, resolving a set alias as missing.
+ * string, matching the shared `normalizeEnvValue` / `readEnv` contract (empty /
+ * whitespace-only = unset). Treating a blank direct value as present would let
+ * `ELIZA_API_TOKEN=""` shadow a real `ACME_API_TOKEN`, resolving a set alias as
+ * missing.
  */
 function presentEnvValue(value: string | undefined): string | undefined {
 	if (typeof value !== "string") return undefined;
@@ -178,16 +131,16 @@ function presentEnvValue(value: string | undefined): string | undefined {
 }
 
 /**
- * Additive, NON-mutating alias-aware env reader (arch-audit #12251, slice 1).
+ * Additive, NON-mutating alias-aware env reader (arch-audit #12251).
  *
  * Resolves an env value for `key` by consulting the brand<->eliza alias table
  * WITHOUT writing anything to `process.env`. The requested key wins when it is
  * present (non-empty); a blank/whitespace value is treated as absent so a real
  * alias partner still surfaces. If the key is absent, the first present alias
- * partner (in alias-table order) is returned. This is the read-side migration
- * target that lets call sites stop depending on the `syncBrandEnvToEliza` /
- * `syncElizaEnvToBrand` mutation — the mutation stays in place as a fallback
- * until every raw aliased read is migrated (per the staged plan on the issue).
+ * partner (in alias-table order) is returned. This is the sole brand<->eliza
+ * env-resolution path: it replaced the old `process.env` alias-sync mutation
+ * (#13423), so a `<PREFIX>_*` value resolves for either name with nothing ever
+ * written back to the environment.
  *
  * @param key       the env key a caller wants to read
  * @param aliases   alias pair table; defaults to the immutable BootConfig list

@@ -1,7 +1,7 @@
 /**
  * Issue #13422 P8 slice: the aliased env reads migrated to the alias-aware
  * reader across the elizacloud / matrix / streaming / coding-tools plugins must
- * resolve a NON-ELIZA brand prefix (MILADY_*) WITHOUT the syncBrandEnvToEliza
+ * resolve a NON-ELIZA brand prefix (MILADY_*) WITHOUT the process.env alias-sync
  * mirror, with the canonical ELIZA_* key still winning when both are set and an
  * empty branded value reading as unset. Drives the real migrated
  * `isCloudProvisionedContainer()` for its two keys and asserts the shared

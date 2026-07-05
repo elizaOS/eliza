@@ -157,8 +157,8 @@ function resolveModelPath(tier: Eliza1TierId): string | null {
  * Local mirror of `elizaModelsDir()` from `@elizaos/shared/local-inference/paths`,
  * kept so the bench resolves model paths without importing shared. State-dir and
  * namespace resolve through core's non-mutating alias reader so a branded prefix
- * (e.g. `MILADY_STATE_DIR`) is honoured without the `syncBrandEnvToEliza` mirror
- * mutation (#13422).
+ * (e.g. `MILADY_STATE_DIR`) is honoured from the alias table with nothing written
+ * back to `process.env` (#13423).
  */
 export function elizaModelsDir(): string {
   const explicit = resolveAliasedEnvValue("ELIZA_STATE_DIR");

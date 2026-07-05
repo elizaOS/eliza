@@ -18,9 +18,9 @@ import { readAliasedEnv } from "@elizaos/shared/utils/env";
  *
  * Ports resolve through the alias-aware readers so a branded deployment's
  * `<PREFIX>_API_PORT` / `<PREFIX>_UI_PORT` / `<PREFIX>_PORT` /
- * `<PREFIX>_GATEWAY_PORT` / `<PREFIX>_HOME_PORT` are honoured without the
- * `syncBrandEnvToEliza` mirror mutation, with the canonical `ELIZA_*` key still
- * winning when present (#13422).
+ * `<PREFIX>_GATEWAY_PORT` / `<PREFIX>_HOME_PORT` are honoured from the alias
+ * table, with the canonical `ELIZA_*` key still winning when present and nothing
+ * written back to `process.env` (#13423).
  */
 export function buildCorsAllowedPorts(): Set<string> {
   const ports = new Set([

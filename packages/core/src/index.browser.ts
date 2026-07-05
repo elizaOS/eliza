@@ -17,7 +17,7 @@ export * from "./api/route-helpers";
 // Export core modules (all browser-compatible after refactoring)
 export * from "./app-route-plugin-registry";
 // `boot-env` is pure (no node deps — operates on `globalThis`); needed by
-// plugin browser dists that call syncAppEnvToEliza / syncElizaEnvAliases.
+// browser dists that read brand<->ELIZA env aliases via resolveAliasedEnvValue.
 export * from "./boot-env";
 export * from "./build-variant";
 export * from "./capabilities";

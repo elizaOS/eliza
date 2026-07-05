@@ -1,11 +1,10 @@
 /**
  * App-core wrapper around `@elizaos/agent`'s `buildCharacterFromConfig` that
- * layers dashboard branding onto the built character. Syncs the Eliza/app env
- * aliases before and after the upstream build, normalizes message examples, and
- * fills style, adjectives, topics, and post/message examples from the matched
- * bundled style preset (resolved by preset id, avatar index, then name) — but
- * only where both the agent-list entry and the built character leave them unset,
- * so explicit config always wins.
+ * layers dashboard branding onto the built character. Normalizes message
+ * examples and fills style, adjectives, topics, and post/message examples from
+ * the matched bundled style preset (resolved by preset id, avatar index, then
+ * name) — but only where both the agent-list entry and the built character
+ * leave them unset, so explicit config always wins.
  */
 import { buildCharacterFromConfig as upstreamBuildCharacterFromConfig } from "@elizaos/agent";
 import {
@@ -15,14 +14,7 @@ import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-  syncAppEnvToEliza,
-  syncElizaEnvAliases,
 } from "@elizaos/shared";
-
-function syncBrandEnvAliases(): void {
-  syncElizaEnvAliases();
-  syncAppEnvToEliza();
-}
 
 function resolveAppPreset(
   config: Parameters<typeof upstreamBuildCharacterFromConfig>[0],
@@ -49,10 +41,8 @@ function resolveAppPreset(
 export function buildCharacterFromConfig(
   ...args: Parameters<typeof upstreamBuildCharacterFromConfig>
 ): ReturnType<typeof upstreamBuildCharacterFromConfig> {
-  syncBrandEnvAliases();
   const [config] = args;
   const character = upstreamBuildCharacterFromConfig(...args);
-  syncBrandEnvAliases();
 
   const agentEntry = config.agents?.list?.[0];
   const bundledPreset = resolveAppPreset(config, character.name);

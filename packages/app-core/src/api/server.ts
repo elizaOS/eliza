@@ -179,11 +179,7 @@ import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
 
 const _require = createRequire(import.meta.url);
 
-import {
-  readAliasedEnv,
-  syncAppEnvToEliza,
-  syncElizaEnvAliases,
-} from "@elizaos/shared/utils/env";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 
 // Lazy-imported to avoid circular dependency with runtime/eliza.ts
 const lazyEnsureTTS = () =>
@@ -1125,8 +1121,6 @@ export function patchHttpCreateServerForCompat(): () => void {
     }
 
     const wrappedListener: http.RequestListener = async (req, res) => {
-      syncAppEnvToEliza();
-      syncElizaEnvAliases();
       // Re-check cloud TTS key alias on each request so sign-in mid-session
       // is picked up without a restart.
       ensureCloudTtsApiKeyAlias();
@@ -1187,7 +1181,6 @@ export function patchHttpCreateServerForCompat(): () => void {
       }
 
       res.on("finish", () => {
-        syncElizaEnvAliases();
         syncCompatConfigFiles();
       });
 
@@ -1266,8 +1259,6 @@ export function patchHttpCreateServerForCompat(): () => void {
 export async function startApiServer(
   ...args: Parameters<typeof upstreamStartApiServer>
 ): Promise<Awaited<ReturnType<typeof upstreamStartApiServer>>> {
-  syncAppEnvToEliza();
-  syncElizaEnvAliases();
   // Ensure cloud-backed ElevenLabs key is available as ELEVENLABS_API_KEY so
   // the upstream Eliza TTS handler can use it (the `/api/tts/elevenlabs` route
   // passes through to upstream which checks this env var).
@@ -1339,7 +1330,6 @@ export async function startApiServer(
       })();
     };
 
-    syncElizaEnvAliases();
     syncCompatConfigFiles();
     return server;
   } finally {

@@ -6,7 +6,6 @@
  */
 import crypto from "node:crypto";
 import type http from "node:http";
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/core";
 import { readAliasedEnv, type TradePermissionMode } from "@elizaos/shared";
 
 import type { WalletExportRequestBody } from "../contracts.js";
@@ -64,16 +63,8 @@ export function runWithCompatAuthContext<T>(
   req: Pick<http.IncomingMessage, "headers">,
   operation: () => T,
 ): T {
-  syncElizaEnvAliases();
-  syncAppEnvToEliza();
   mirrorCompatHeaders(req);
-
-  try {
-    return operation();
-  } finally {
-    syncAppEnvToEliza();
-    syncElizaEnvAliases();
-  }
+  return operation();
 }
 
 function tokenMatches(expected: string, provided: string): boolean {

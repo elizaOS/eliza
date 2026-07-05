@@ -1,6 +1,6 @@
 /**
  * Proves the issue #13422 P4 core read-migrations resolve a branded (non-ELIZA)
- * env prefix through the boot-config alias table WITHOUT the syncBrandEnvToEliza
+ * env prefix through the boot-config alias table WITHOUT the process.env alias-sync
  * mirror: resolveTrajectoryDir (ELIZA_STATE_DIR) and isElizaSettingsDebugEnabled
  * (ELIZA_SETTINGS_DEBUG / VITE_ELIZA_SETTINGS_DEBUG) now read via
  * resolveAliasedEnvValue. Deterministic; installs and restores the shared

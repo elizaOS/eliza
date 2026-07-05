@@ -1,7 +1,7 @@
 /**
  * Proves the bin.ts boot debug-log env reads migrated to `readAliasedEnv`
  * (#13422 P1 long-tail) resolve a NON-ELIZA brand prefix (MILADY_*) through the
- * boot-config alias table WITHOUT the `syncBrandEnvToEliza` mirror mutation, that
+ * boot-config alias table WITHOUT the `process.env alias-sync` mirror mutation, that
  * a present canonical `ELIZA_*` value wins over the branded alias, and that an
  * empty value reads as unset. bin.ts itself is not import-testable (its module
  * eval configures mobile DNS and pins bootstrap symbols onto globalThis), so this

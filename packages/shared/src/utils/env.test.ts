@@ -334,7 +334,7 @@ describe("syncElizaEnvAliases", () => {
 // alias-aware resolvers — state dir (bin.ts / trajectory-recorder), platform
 // (bin.ts), API port (eliza.ts boot), cloud provisioning, managed-agents
 // segment, and the orchestrator toggle (plugin-collector) — must resolve a
-// branded (non-ELIZA) prefix WITHOUT the syncBrandEnvToEliza mirror, with the
+// branded (non-ELIZA) prefix WITHOUT the process.env alias-sync mirror, with the
 // canonical ELIZA_ key still winning when both are set. A NON-ELIZA prefix is
 // the security-relevant fixture: an ELIZA->ELIZA self-mirror proves nothing.
 describe("issue #13422 P4 agent-boot keys resolve a branded prefix with zero mirror writes", () => {

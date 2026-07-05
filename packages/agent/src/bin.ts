@@ -12,8 +12,8 @@ import * as _earlyFs from "node:fs";
 import { enableCompileCache } from "node:module";
 import { homedir as _earlyHomedir } from "node:os";
 // Resolve a branded `<PREFIX>_STATE_DIR` / `<PREFIX>_PLATFORM` through the
-// boot-config alias table without depending on the syncBrandEnvToEliza mirror
-// (issue #13422). `@elizaos/shared` is already a transitive static import via
+// boot-config alias table — the reader path, with no process.env mirror
+// (issue #13423). `@elizaos/shared` is already a transitive static import via
 // `./cli/index.ts`, so this adds no new module to the boot graph; before the
 // alias table is seeded these fall back to the raw ELIZA_ value.
 import { isAndroidMobile, readAliasedEnv } from "@elizaos/shared";

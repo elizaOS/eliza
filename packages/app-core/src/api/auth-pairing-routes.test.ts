@@ -447,7 +447,7 @@ describe("auth pairing pair-code route", () => {
 
   // #13422: the pairing gate reads ELIZA_PAIRING_DISABLED through the
   // alias-aware reader, so a rebranded deployment's MILADY_PAIRING_DISABLED must
-  // disable pairing WITHOUT the syncBrandEnvToEliza mirror mutation, and a
+  // disable pairing WITHOUT the process.env alias-sync mirror mutation, and a
   // present canonical ELIZA_PAIRING_DISABLED must still win over the branded key.
   it("does not reveal a code when pairing is disabled via a branded (non-ELIZA) alias", async () => {
     const savedConfig = getBootConfig();

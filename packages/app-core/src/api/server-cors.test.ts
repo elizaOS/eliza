@@ -134,7 +134,7 @@ describe("server CORS origin allowlist", () => {
 // reads to the alias-aware readers (`resolveDesktopApiPort` / `resolveUiPort`
 // for the API/UI ports, `resolveAllowedOrigins` for origins, `readAliasedEnv`
 // for the gateway/home ports). A non-ELIZA brand deployment must resolve these
-// from its own `<PREFIX>_*` keys without the `syncBrandEnvToEliza` mirror
+// from its own `<PREFIX>_*` keys without the `process.env alias-sync` mirror
 // mutation, and the canonical `ELIZA_*` key must still win when both are set.
 describe("server CORS allowlist — branded alias resolution (#13422)", () => {
   const BRAND = "MILADY";

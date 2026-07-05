@@ -17,8 +17,6 @@ import type { ComponentType, ReactNode } from "react";
 import type { CodingAgentSession } from "../api/client-types-cloud";
 import type { BrandingConfig } from "./branding";
 
-export { syncBrandEnvToEliza, syncElizaEnvToBrand } from "@elizaos/core";
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

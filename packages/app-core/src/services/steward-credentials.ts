@@ -18,10 +18,10 @@ import type {
 } from "../security/platform-secure-store";
 import { createNodePlatformSecureStore } from "../security/platform-secure-store-node";
 
-// Inlined mirror of @elizaos/core's state-dir helper so this module doesn't pull
+// Inlined copy of @elizaos/core's state-dir helper so this module doesn't pull
 // the heavier core runtime-composition graph. Env reads go through the
 // alias-aware `readAliasedEnv` so branded prefixes (e.g. `MILADY_STATE_DIR`)
-// resolve without depending on the `syncBrandEnvToEliza` process.env mirror.
+// resolve from the alias table, with no `process.env` mirror involved.
 function resolveStateDir(): string {
   const explicit = readAliasedEnv("ELIZA_STATE_DIR");
   if (explicit) return explicit;
