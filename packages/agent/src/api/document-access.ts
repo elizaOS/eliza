@@ -11,11 +11,45 @@
  * agent → plugin-documents cycle; the route plugin imports it the same way it
  * imports `documents-service-loader`.
  */
-import type { Memory, UUID } from "@elizaos/core";
+import { ChannelType, type Memory, type UUID } from "@elizaos/core";
 import type {
   DocumentAddedByRole,
   DocumentVisibilityScope,
 } from "./documents-service-loader.ts";
+
+/**
+ * Room trust classification — the SINGLE source of truth shared by the ingest
+ * spill guard (`attachment-knowledge-ingest.roomIsPrivateSurface`), the send
+ * wall, and the active-room surfacing wall. A DM / SELF / VOICE_DM / API room is
+ * a "private" surface (the owner's own chat); EVERYTHING else — GROUP,
+ * VOICE_GROUP, FEED, THREAD, WORLD, FORUM, AUTONOMOUS — is a "public"/community
+ * surface that must never receive owner-private or user-private knowledge.
+ *
+ * Defined here (not with a hand-rolled public-type allowlist) so no surface can
+ * drift: a THREAD omitted from a public-types set would silently let private
+ * media into a thread. Classifying by the private allowlist + `default: public`
+ * fails closed for any future channel type.
+ */
+export function roomIsPrivateSurface(
+  channelType: ChannelType | string | undefined,
+): boolean {
+  switch (channelType) {
+    case ChannelType.DM:
+    case ChannelType.SELF:
+    case ChannelType.VOICE_DM:
+    case ChannelType.API:
+      return true;
+    default:
+      return false;
+  }
+}
+
+/** A room is a public/community surface iff it is not a private surface. */
+export function roomIsPublicSurface(
+  channelType: ChannelType | string | undefined,
+): boolean {
+  return !roomIsPrivateSurface(channelType);
+}
 
 export const DOCUMENT_SCOPE_VALUES = new Set<DocumentVisibilityScope>([
   "global",
@@ -300,6 +334,41 @@ export function canSendDocumentToPublic(
         scope === "owner-private"
           ? "This is an owner-private item; it cannot be sent into a public room."
           : "This is a private item; it cannot be sent into a public room.",
+      scope,
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * The ACTIVE-ROOM surfacing wall (#13974 shaw-codex review). SEARCH_KNOWLEDGE
+ * and ATTACH_TO_CHAT emit user-facing snippets / attachments INTO the room the
+ * triggering message came from. The actor read wall (`canReadDocumentMemory`)
+ * only checks whether the ACTOR may read the item — an OWNER asking in a public
+ * group still passes it for an owner-private item learned in DM. That would spill
+ * the private item to every other participant of the active public room.
+ *
+ * So before any user-facing output, classify the ACTIVE room: if it is a public
+ * surface, an owner-private or user-private item must be refused/filtered even
+ * for an owner actor. Private (DM-like) active rooms are unrestricted. Same rule
+ * shape as the send wall, keyed on the active room's visibility. Returns a typed
+ * refusal so callers surface WHY.
+ */
+export function canSurfaceDocumentInRoom(
+  memory: DocumentReadableMemory,
+  activeRoomIsPublic: boolean,
+):
+  | { ok: true }
+  | { ok: false; reason: string; scope: DocumentVisibilityScope } {
+  const scope = getDocumentVisibilityScope(asRecord(memory.metadata));
+  if (!activeRoomIsPublic) return { ok: true };
+  if (scope === "owner-private" || scope === "user-private") {
+    return {
+      ok: false,
+      reason:
+        scope === "owner-private"
+          ? "This is an owner-private item; it cannot be surfaced in a public room."
+          : "This is a private item; it cannot be surfaced in a public room.",
       scope,
     };
   }

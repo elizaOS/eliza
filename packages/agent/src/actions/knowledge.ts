@@ -22,7 +22,6 @@
 import {
   type Action,
   type ActionResult,
-  ChannelType,
   type Content,
   type HandlerCallback,
   type HandlerOptions,
@@ -37,15 +36,18 @@ import {
   asUuid,
   canReadDocumentMemory,
   canSendDocumentToPublic,
+  canSurfaceDocumentInRoom,
   type DocumentFilter,
   documentMediaFormat,
   documentTags,
   matchesDocumentFilter,
   type RouteActor,
   type RouteActorRole,
+  roomIsPublicSurface,
 } from "../api/document-access.ts";
 import {
   type DocumentSearchMode,
+  type DocumentsServiceLike,
   getDocumentsService,
 } from "../api/documents-service-loader.ts";
 
@@ -65,16 +67,28 @@ type DispatchResult =
     };
 
 const MEDIA_URL_PREFIX = "/api/media/";
-const PUBLIC_ROOM_TYPES = new Set<ChannelType>([
-  ChannelType.GROUP,
-  ChannelType.VOICE_GROUP,
-  ChannelType.FEED,
-  ChannelType.FORUM,
-  ChannelType.WORLD,
-]);
 
 function fail(text: string, error: string): ActionResult {
   return { success: false, text, data: { error } };
+}
+
+/**
+ * Classify the room a message came from / is targeted at as a public/community
+ * surface. Resolves the room and routes through the SINGLE canonical
+ * classifier (`roomIsPublicSurface`) so the send wall, the active-room surfacing
+ * wall, and the ingest spill guard all agree — including on THREAD, which a
+ * hand-rolled public-types allowlist previously omitted (shaw-codex review).
+ * An unresolvable room fails CLOSED (treated as public) so a missing room record
+ * can never be the reason a private item leaks.
+ */
+async function roomIsPublic(
+  runtime: IAgentRuntime,
+  roomId: UUID | undefined,
+): Promise<boolean> {
+  if (!roomId) return true;
+  const room = await runtime.getRoom(roomId);
+  if (!room) return true;
+  return roomIsPublicSurface(room.type);
 }
 
 /**
@@ -243,6 +257,88 @@ function mediaFromItem(item: {
   };
 }
 
+/** A retrieved knowledge record, from either the semantic or facet path. */
+type KnowledgeSearchRow = {
+  id: UUID;
+  content: { text?: string };
+  similarity?: number;
+  metadata?: Record<string, unknown>;
+};
+
+/** How many document rows to pull per scan batch in the facet-list path. */
+const DOCUMENT_SCAN_BATCH = 200;
+/** Cap the facet scan so a huge corpus can't unbounded-loop an action. */
+const DOCUMENT_SCAN_MAX = 2000;
+
+/**
+ * Free-text retrieval path: semantic/hybrid search over the document store,
+ * scoped by the facet room/entity the same way the REST search route scopes it.
+ */
+async function searchByQuery(
+  service: DocumentsServiceLike,
+  runtime: IAgentRuntime,
+  actor: RouteActor,
+  query: string,
+  filters: DocumentFilter,
+  searchMode: DocumentSearchMode | undefined,
+): Promise<KnowledgeSearchRow[]> {
+  const searchMessage: Memory = {
+    id: crypto.randomUUID() as UUID,
+    entityId: actor.entityId,
+    agentId: runtime.agentId,
+    roomId: (filters.roomId ?? runtime.agentId) as UUID,
+    content: { text: query },
+    createdAt: Date.now(),
+  };
+  const scope: { roomId?: UUID; entityId?: UUID } = {};
+  if (filters.scopedToEntityId) scope.entityId = filters.scopedToEntityId;
+  if (filters.roomId) scope.roomId = filters.roomId;
+  return service.searchDocuments(
+    searchMessage,
+    Object.keys(scope).length > 0 ? scope : undefined,
+    searchMode,
+  );
+}
+
+/**
+ * Filter-only retrieval path (#13595 tag/facet surfacing): scan the documents
+ * table and return every record, letting the caller's shared
+ * `matchesDocumentFilter` + wall filters narrow it. There is no meaningful
+ * embedding for an empty query, so a facet-only request lists by scan instead of
+ * semantic search — the same approach the REST `/api/documents` list route uses.
+ */
+async function listByFacets(
+  service: DocumentsServiceLike,
+  agentId: UUID,
+  _actor: RouteActor,
+  _filters: DocumentFilter,
+): Promise<KnowledgeSearchRow[]> {
+  const rows: KnowledgeSearchRow[] = [];
+  let offset = 0;
+  while (offset < DOCUMENT_SCAN_MAX) {
+    const batch = await service.getMemories({
+      tableName: "documents",
+      count: DOCUMENT_SCAN_BATCH,
+      offset,
+    });
+    if (batch.length === 0) break;
+    for (const memory of batch) {
+      const meta = asRecord(memory.metadata);
+      // Only real document memories for this agent (mirrors isDocumentMemory).
+      if (meta?.type !== "document" && meta?.documentId === undefined) continue;
+      if (memory.agentId && memory.agentId !== agentId) continue;
+      rows.push({
+        id: memory.id as UUID,
+        content: { text: memory.content?.text },
+        metadata: meta,
+      });
+    }
+    if (batch.length < DOCUMENT_SCAN_BATCH) break;
+    offset += DOCUMENT_SCAN_BATCH;
+  }
+  return rows;
+}
+
 export const searchKnowledgeAction: Action = {
   name: "SEARCH_KNOWLEDGE",
   contexts: ["knowledge", "documents", "files", "media", "agent_internal"],
@@ -270,7 +366,6 @@ export const searchKnowledgeAction: Action = {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as Record<string, unknown>;
     const query = typeof params.query === "string" ? params.query.trim() : "";
-    if (!query) return fail("A search query is required.", "KNOWLEDGE_INVALID");
 
     const { service, reason } = await getDocumentsService(
       runtime as unknown as Parameters<typeof getDocumentsService>[0],
@@ -284,34 +379,48 @@ export const searchKnowledgeAction: Action = {
 
     const actor = actorFromMessage(runtime, message);
     const filters = filtersFromParams(params);
+    // Filter-only surfacing (#13595): a tag/room/sender/media-format query with
+    // no free text is valid — it lists every item matching those facets. Only a
+    // completely empty request (no text AND no facet) is rejected.
+    const hasFilter =
+      Boolean(filters.scope) ||
+      Boolean(filters.roomId) ||
+      Boolean(filters.addedBy) ||
+      Boolean(filters.mediaFormat) ||
+      Boolean(filters.tags && filters.tags.length > 0);
+    if (!query && !hasFilter) {
+      return fail(
+        "A search query or at least one filter (tags, room, sender, or media format) is required.",
+        "KNOWLEDGE_INVALID",
+      );
+    }
+
     const limit =
       typeof params.limit === "number" && Number.isFinite(params.limit)
         ? Math.max(1, Math.min(50, Math.floor(params.limit)))
         : 10;
     const searchMode = parseSearchMode(params.searchMode);
 
-    const searchMessage: Memory = {
-      id: crypto.randomUUID() as UUID,
-      entityId: actor.entityId,
-      agentId: runtime.agentId,
-      roomId: (message.roomId ?? runtime.agentId) as UUID,
-      content: { text: query },
-      createdAt: Date.now(),
-    };
-
-    const scope: { roomId?: UUID; entityId?: UUID } = {};
-    if (filters.scopedToEntityId) scope.entityId = filters.scopedToEntityId;
-    if (filters.roomId) scope.roomId = filters.roomId;
-
-    const results = await service.searchDocuments(
-      searchMessage,
-      Object.keys(scope).length > 0 ? scope : undefined,
-      searchMode,
+    // The surfacing wall (#13974): SEARCH renders snippets INTO the active room.
+    // If that room is a public/community surface, owner-private and user-private
+    // items must be dropped even for an OWNER actor, or the private snippet
+    // spills to every participant. Private (DM-like) active rooms are open.
+    const activeRoomIsPublic = await roomIsPublic(
+      runtime,
+      message.roomId as UUID | undefined,
     );
 
-    const items = results
+    // Two retrieval paths that converge on the same facet + wall filtering:
+    //  - free text  -> semantic/hybrid searchDocuments
+    //  - filter-only -> scan the documents table (no meaningful vector for "")
+    const raw = query
+      ? await searchByQuery(service, runtime, actor, query, filters, searchMode)
+      : await listByFacets(service, runtime.agentId, actor, filters);
+
+    const items = raw
       .filter((r) => matchesDocumentFilter(r, { ...filters, query: undefined }))
       .filter((r) => canReadDocumentMemory(r, actor, filters))
+      .filter((r) => canSurfaceDocumentInRoom(r, activeRoomIsPublic).ok)
       .slice(0, limit)
       .map((r) => {
         const meta = asRecord(r.metadata);
@@ -328,8 +437,9 @@ export const searchKnowledgeAction: Action = {
         };
       });
 
+    const label = query ? `for "${query}"` : "for those filters";
     const text = items.length
-      ? `Found ${items.length} knowledge item(s) for "${query}":\n${items
+      ? `Found ${items.length} knowledge item(s) ${label}:\n${items
           .map(
             (it, i) =>
               `${i + 1}. ${it.title}${
@@ -337,10 +447,10 @@ export const searchKnowledgeAction: Action = {
               } — ${it.snippet}`,
           )
           .join("\n")}`
-      : `No knowledge items match "${query}".`;
+      : `No knowledge items match ${label}.`;
 
     logger.info(
-      `[SEARCH_KNOWLEDGE] query="${query}" role=${actor.role} matched=${items.length}`,
+      `[SEARCH_KNOWLEDGE] query="${query}" role=${actor.role} activeRoomPublic=${activeRoomIsPublic} matched=${items.length}`,
     );
     return {
       success: true,
@@ -353,8 +463,9 @@ export const searchKnowledgeAction: Action = {
   parameters: [
     {
       name: "query",
-      description: "Free-text search over knowledge titles + content",
-      required: true,
+      description:
+        "Free-text search over knowledge titles + content. Optional: a facet-only search (tags/room/sender/media-format) with no free text lists every matching item.",
+      required: false,
       schema: { type: "string" as const },
     },
     {
@@ -381,6 +492,19 @@ export const searchKnowledgeAction: Action = {
       description: "Optional tag list (array or comma-separated)",
       required: false,
       schema: { type: "array" as const, items: { type: "string" as const } },
+    },
+    {
+      name: "scope",
+      description:
+        "Optional scope facet: global | owner-private | user-private | agent-private",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "searchMode",
+      description: "Optional retrieval mode: hybrid | vector | keyword",
+      required: false,
+      schema: { type: "string" as const },
     },
     {
       name: "limit",
@@ -443,6 +567,27 @@ export const attachToChatAction: Action = {
       );
     }
 
+    // Surfacing wall (#13974): ATTACH delivers the media INTO the active room.
+    // A private item may be readable by an OWNER actor yet must never be
+    // attached into a public/community room where other participants see it.
+    const activeRoomIsPublic = await roomIsPublic(
+      runtime,
+      message.roomId as UUID | undefined,
+    );
+    const surface = canSurfaceDocumentInRoom(item.memory, activeRoomIsPublic);
+    if (!surface.ok) {
+      logger.warn(
+        `[ATTACH_TO_CHAT] refused ${surface.scope} item into public active room ${message.roomId}`,
+      );
+      return {
+        success: false,
+        text: surface.reason,
+        userFacingText: surface.reason,
+        verifiedUserFacing: true,
+        data: { error: "ATTACH_SCOPE_REFUSED", scope: surface.scope },
+      };
+    }
+
     const media = mediaFromItem(item);
     if (!media) {
       return fail(
@@ -451,11 +596,21 @@ export const attachToChatAction: Action = {
       );
     }
 
+    // B1 (#13974): without a chat callback there is no channel to deliver the
+    // attachment on, so the action CANNOT have succeeded. Report a typed failure
+    // instead of a false success the model would relay as "attached".
+    if (!callback) {
+      return fail(
+        "No chat callback is available to attach into; ATTACH_TO_CHAT needs an active conversation. Use SEND_MEDIA_TO to deliver to a specific room.",
+        "ATTACH_NO_CALLBACK",
+      );
+    }
+
     const content: Content = {
       text: `Attached: ${item.title}`,
       attachments: [media],
     };
-    if (callback) await callback(content, "ATTACH_TO_CHAT");
+    await callback(content, "ATTACH_TO_CHAT");
 
     logger.info(
       `[ATTACH_TO_CHAT] item="${item.title}" url=${media.url} role=${actor.role}`,
@@ -535,9 +690,12 @@ export const sendMediaToAction: Action = {
     }
 
     const targetRoom = await runtime.getRoom(targetRoomId);
+    // Classify via the canonical surface classifier (includes THREAD) and fail
+    // CLOSED for an unresolvable room: an unknown room is treated as public so a
+    // missing room record can never be the reason a private item is sent out.
     const targetIsPublic = targetRoom
-      ? PUBLIC_ROOM_TYPES.has(targetRoom.type)
-      : false;
+      ? roomIsPublicSurface(targetRoom.type)
+      : true;
     const wall = canSendDocumentToPublic(item.memory, targetIsPublic);
     if (!wall.ok) {
       logger.warn(
