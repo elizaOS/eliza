@@ -1,15 +1,25 @@
 /**
- * Deterministic `node --test` coverage for the assistant-role/IME/assist-key
+ * Deterministic vitest coverage for the assistant-role/IME/assist-key
  * verification parsers (#13581). Fixtures are real-shaped `adb`/`dumpsys`/`cmd`/
  * `logcat` output slices, not mocks of the parser — the parsers are pure
  * string→decision functions, so this suite proves the string handling that
  * regresses silently off-device (a garbled scrape reading as "absent"), covering
  * the present, absent, short-vs-full component form, and empty/garbage cases.
  *
- * Run: `node --test packages/app/scripts/lib/android-assistant-verify-lib.test.mjs`
+ * Runs in the normal `packages/app` vitest lane (which collects
+ * `scripts/**\/*.test.mjs`) so a parser regression fails CI — the earlier
+ * `node:test` form was loaded by vitest but collected as ZERO tests, an
+ * unenforced green-by-skip.
+ *
+ * Run: `bun run --cwd packages/app test -- scripts/lib/android-assistant-verify-lib.test.mjs`
  */
 import assert from "node:assert/strict";
-import { test } from "node:test";
+// #13581 enforcement fix: run under vitest (the lane that collects
+// scripts/**/*.test.mjs) instead of node:test, which vitest loads but collects
+// as ZERO tests — a green-by-skip that left this regression guard unenforced.
+// node:assert still throws on failure, so every assertion below fails the
+// vitest test the same way; only the test-registration source changes.
+import { test } from "vitest";
 
 import {
   APP_PACKAGE,

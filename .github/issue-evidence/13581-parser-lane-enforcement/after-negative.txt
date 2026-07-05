@@ -1,0 +1,8 @@
+AFTER (vitest import), clean:
+ Test Files  1 passed (1)
+      Tests  14 passed (14)
+
+NEGATIVE (parseAssistantSurfaces corrupted to defeat the canary):
+ × parseAssistantSurfaces treats a renamed VIS as ABSENT (regression canary)
+ Test Files  1 failed (1)
+      Tests  2 failed | 12 passed (14)
