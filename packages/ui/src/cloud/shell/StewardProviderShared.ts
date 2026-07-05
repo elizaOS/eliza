@@ -179,6 +179,6 @@ export function clearStaleStewardSession(): void {
   try {
     window.dispatchEvent(new CustomEvent("steward-token-sync"));
   } catch {
-    // ignore
+    // error-policy:J6 best-effort sync notification after credentials are scrubbed.
   }
 }
