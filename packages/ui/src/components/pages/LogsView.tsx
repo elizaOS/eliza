@@ -423,7 +423,11 @@ function LogsViewBody() {
             }
             action={
               hasActiveFilters ? (
-                <Button variant="outline" size="sm" onClick={handleClearFilters}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleClearFilters}
+                >
                   {t("logsview.ClearFilters")}
                 </Button>
               ) : undefined
