@@ -6,7 +6,11 @@
 
 import { describe, expect, it } from "vitest";
 import type { SandboxListAgent } from "../lib/use-sandbox-status-poll";
-import { type ElizaAgentRow, mergeAgentList } from "./eliza-agents-table";
+import {
+  type ElizaAgentRow,
+  mergeAgentList,
+  retireExpiredTombstones,
+} from "./eliza-agents-table";
 
 function row(id: string, status: string): ElizaAgentRow {
   return {
@@ -109,5 +113,38 @@ describe("mergeAgentList", () => {
         new Set(deletedIdsRef),
       ).map((r) => r.id),
     ).toEqual(["b"]);
+  });
+});
+
+describe("retireExpiredTombstones (the single time-only retirement clock)", () => {
+  const GRACE = 20_000;
+
+  it("keeps a tombstone within the grace window (a just-deleted agent stays hidden while both eventually-consistent reads converge to gone)", () => {
+    const tombstones = new Map([["a", 1_000]]);
+    retireExpiredTombstones(tombstones, 1_000 + GRACE - 1, GRACE);
+    expect(tombstones.has("a")).toBe(true);
+  });
+
+  it("EXPIRES a tombstone past the grace window — a live, billed agent the API keeps returning must reappear, never stay hidden forever", () => {
+    const tombstones = new Map([["a", 1_000]]);
+    retireExpiredTombstones(tombstones, 1_000 + GRACE + 1, GRACE);
+    expect(tombstones.has("a")).toBe(false);
+  });
+
+  it("does NOT retire by absence — that would race the laggier react-query cache and resurrect a just-deleted row", () => {
+    // "a" tombstoned 1s ago, absent from any API set: a pure absence-retire
+    // would drop it, but time-only keeps it until grace so nothing re-adds it.
+    const tombstones = new Map([["a", 1_000]]);
+    retireExpiredTombstones(tombstones, 2_000, GRACE);
+    expect(tombstones.has("a")).toBe(true);
+  });
+
+  it("drops only tombstones past the grace window, ignoring API presence", () => {
+    const tombstones = new Map([
+      ["fresh", 10_000],
+      ["stale", 1_000],
+    ]);
+    retireExpiredTombstones(tombstones, 25_000, GRACE);
+    expect([...tombstones.keys()]).toEqual(["fresh"]);
   });
 });

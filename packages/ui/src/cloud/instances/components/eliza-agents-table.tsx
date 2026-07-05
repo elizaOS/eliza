@@ -63,7 +63,6 @@ import {
   useSandboxListPoll,
 } from "../lib/use-sandbox-status-poll";
 import { AgentCostBadge } from "./agent-cost-badge";
-import { CreateElizaAgentDialog } from "./create-eliza-agent-dialog";
 
 /**
  * Envelope the agent provision/suspend job endpoints return. 202 and 409
@@ -148,6 +147,46 @@ function mergeSandboxRow(
  * `initialSandboxes` resync) and explicit-delete tombstones (`tombstoned`).
  * Exported for direct unit coverage of that invariant.
  */
+
+/**
+ * How long a delete-tombstone hides an agent the API still returns. The
+ * tombstone exists to absorb the eventual-consistency window after a DELETE (so
+ * a lagging refetch can't resurrect a just-deleted row). But if the API keeps
+ * returning the agent past this window, the delete evidently did NOT take — the
+ * agent is still live and BILLED — so the tombstone must expire and the agent
+ * must reappear. Never hide a billed agent forever ("1 running, $X/mo, but no
+ * agent shown"). Long enough that a genuine container delete completes and the
+ * agent leaves the API list first (retired cleanly, no flicker); short enough
+ * that a delete that never took only hides the billed agent for ~a minute.
+ */
+const TOMBSTONE_GRACE_MS = 60_000;
+
+/**
+ * Retire delete-tombstones by TIME only — the single retirement clock for both
+ * the status poll (`mergeApiData`) and the react-query reconcile effect. A
+ * tombstone lives its full grace window regardless of whether the API still
+ * returns the agent:
+ *  - delete took → both eventually-consistent reads drop the agent well before
+ *    expiry, so at expiry there is nothing left to re-add (no resurrection);
+ *  - delete did NOT take (agent still billed) → at expiry the agent reappears
+ *    because the API keeps returning it.
+ * Retiring by *absence* instead would race the two reads (poll drops the row →
+ * tombstone lifted → the reconcile effect re-adds it from react-query's laggier
+ * list) and resurrect a just-deleted row. Mutates `tombstones` in place;
+ * exported for direct unit coverage of the invariant.
+ */
+export function retireExpiredTombstones(
+  tombstones: Map<string, number>,
+  now: number,
+  graceMs: number,
+): void {
+  for (const [id, since] of tombstones) {
+    if (now - since > graceMs) {
+      tombstones.delete(id);
+    }
+  }
+}
+
 export function mergeAgentList(
   prev: ElizaAgentRow[],
   apiAgents: SandboxListAgent[],
@@ -401,32 +440,93 @@ export function ElizaAgentsTable({
   // resurrect its row (the "deleted but still shown until refresh" bug). Ids
   // stay tombstoned — filtered from every merge — until the API stops
   // returning them, then the entry is dropped.
-  const deletedIdsRef = useRef(new Set<string>());
+  // id → the time it was tombstoned, so tombstones can expire (see
+  // TOMBSTONE_GRACE_MS) instead of hiding a still-billed agent forever.
+  const deletedIdsRef = useRef(new Map<string, number>());
   const withoutDeleted = useCallback(
     (rows: ElizaAgentRow[]) =>
       rows.filter((sb) => !deletedIdsRef.current.has(sb.id)),
     [],
   );
 
+  // Bumped by a post-grace timer scheduled on each delete so the reconcile
+  // effect re-runs to expire the tombstone even when react-query returns a
+  // byte-identical payload (structural sharing → same data ref → no re-render,
+  // so the effect would otherwise never re-fire and the billed agent would stay
+  // hidden the whole session). Cleared on unmount.
+  const [reconcileTick, setReconcileTick] = useState(0);
+  const expiryTimersRef = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(
+    () => () => {
+      for (const timer of expiryTimersRef.current) clearTimeout(timer);
+      expiryTimersRef.current.clear();
+    },
+    [],
+  );
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reconcileTick is a
+  // deliberate re-run trigger, not a read value — handleDelete's post-grace timer
+  // bumps it so this effect fires to expire a tombstone even when react-query
+  // returns a byte-identical payload (no re-render otherwise). Removing it
+  // reintroduces the render-gated-expiry starvation bug.
   useEffect(() => {
+    // Retire by time (the single retirement clock — no path retires by absence).
+    // This reconciles against react-query's list, which lags the faster status
+    // poll; absence-retiring here would lift a tombstone before the laggier view
+    // catches up and let a just-deleted row reappear.
+    retireExpiredTombstones(
+      deletedIdsRef.current,
+      Date.now(),
+      TOMBSTONE_GRACE_MS,
+    );
+
     const newIds = [...initialSandboxes.map((sb) => sb.id)].sort().join(",");
+    const wanted = withoutDeleted(initialSandboxes);
+
     if (newIds !== initialSandboxIdsRef.current) {
+      // The API id-set changed → it is authoritative for membership: replace
+      // wholesale (this also removes agents the API dropped). Optimistic
+      // status/provision state is short-lived and re-applied by the poll.
       initialSandboxIdsRef.current = newIds;
-      setLocalSandboxes(withoutDeleted(initialSandboxes));
+      setLocalSandboxes(wanted);
+      return;
     }
-  }, [initialSandboxes, withoutDeleted]);
+
+    // id-set unchanged, but a non-tombstoned API agent is missing from the local
+    // list — a tombstone that just expired (a delete that never took). Re-add it
+    // WITHOUT wiping optimistic rows. The old "only when the local list is empty"
+    // guard left this billed agent hidden for every case where OTHER agents
+    // remained visible (banner "N running", table shows N-1).
+    const localIds = new Set(localSandboxes.map((sb) => sb.id));
+    const missing = wanted.filter((sb) => !localIds.has(sb.id));
+    if (missing.length > 0) {
+      setLocalSandboxes((prev) => {
+        const have = new Set(prev.map((sb) => sb.id));
+        const toAdd = missing.filter((sb) => !have.has(sb.id));
+        return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+      });
+    }
+  }, [initialSandboxes, localSandboxes, reconcileTick, withoutDeleted]);
 
   const mergeApiData = useCallback((apiAgents: SandboxListAgent[]) => {
-    // Retire tombstones the API stopped returning BEFORE the state update and
-    // hand the updater an immutable snapshot: React StrictMode double-invokes
-    // updaters, so an in-updater mutation of the shared tombstone set diverges
-    // between invocations and can resurrect a tombstoned row the API still
-    // returns.
-    const apiIds = new Set(apiAgents.map((a) => a.id));
-    for (const id of deletedIdsRef.current) {
-      if (!apiIds.has(id)) deletedIdsRef.current.delete(id);
-    }
-    const tombstoned: ReadonlySet<string> = new Set(deletedIdsRef.current);
+    // Retire tombstones by TIME ONLY — one clock for every retirement path.
+    // Retiring by *absence* here (drop the tombstone the moment this poll stops
+    // returning the agent) races the reconcile effect: on a real delete the fast
+    // poll drops the row first, this clears the tombstone, and then the effect's
+    // missing-add re-adds the agent from react-query's laggier list that still
+    // holds it — resurrecting a just-deleted row. Letting the tombstone live its
+    // full grace window means both eventually-consistent reads converge to
+    // "gone" before it expires, so nothing is left to re-add. Snapshot the set
+    // before the updater: StrictMode double-invokes updaters, and an in-updater
+    // mutation of the shared set would diverge between invocations.
+    retireExpiredTombstones(
+      deletedIdsRef.current,
+      Date.now(),
+      TOMBSTONE_GRACE_MS,
+    );
+    const tombstoned: ReadonlySet<string> = new Set(
+      deletedIdsRef.current.keys(),
+    );
     setLocalSandboxes((prev) => mergeAgentList(prev, apiAgents, tombstoned));
   }, []);
 
@@ -483,19 +583,6 @@ export function ElizaAgentsTable({
       void refreshData();
     },
   });
-
-  const handleProvisionQueued = useCallback(
-    (agentId: string, jobId: string) => {
-      jobActionById.current.set(
-        jobId,
-        t("cloud.elizaAgentsTable.agentProvisioning", {
-          defaultValue: "Agent provisioning",
-        }),
-      );
-      poller.track(agentId, jobId);
-    },
-    [poller, t],
-  );
 
   useSandboxListPoll(
     localSandboxes.map((sb) => ({
@@ -732,8 +819,18 @@ export function ElizaAgentsTable({
   async function handleDelete(ids: string[]) {
     setIsDeleting(true);
     const rowById = new Map(localSandboxes.map((sb) => [sb.id, sb]));
-    for (const id of ids) deletedIdsRef.current.add(id);
+    const now = Date.now();
+    for (const id of ids) deletedIdsRef.current.set(id, now);
     setLocalSandboxes((prev) => prev.filter((sb) => !ids.includes(sb.id)));
+    // Force a reconcile just past the grace window: react-query may return a
+    // byte-identical payload (no re-render → the reconcile effect never re-fires
+    // on its own), so without this a delete that never took server-side would
+    // hide the still-billed agent for the whole session.
+    const timer = setTimeout(() => {
+      expiryTimersRef.current.delete(timer);
+      setReconcileTick((n) => n + 1);
+    }, TOMBSTONE_GRACE_MS + 500);
+    expiryTimersRef.current.add(timer);
     try {
       const outcome = await runBulkDelete(ids, (id) =>
         api(`/api/v1/eliza/agents/${id}`, { method: "DELETE" }),
@@ -741,12 +838,19 @@ export function ElizaAgentsTable({
       const failed = outcome.failed;
       if (failed.length > 0) {
         for (const id of failed) deletedIdsRef.current.delete(id);
-        setLocalSandboxes((prev) => [
-          ...prev,
-          ...failed
+        // Restore failed rows, but skip any the poll/refetch already re-added
+        // while the DELETE was in flight — re-appending them would duplicate
+        // React keys.
+        setLocalSandboxes((prev) => {
+          const present = new Set(prev.map((sb) => sb.id));
+          const restored = failed
             .map((id) => rowById.get(id))
-            .filter((sb): sb is ElizaAgentRow => Boolean(sb)),
-        ]);
+            .filter(
+              (sb): sb is ElizaAgentRow =>
+                sb !== undefined && !present.has(sb.id),
+            );
+          return [...prev, ...restored];
+        });
         const firstError = outcome.firstError;
         toast.error(
           t("cloud.elizaAgentsTable.deleteSomeFailed", {
@@ -783,21 +887,18 @@ export function ElizaAgentsTable({
   const deleteTargetBusy = (deleteIds ?? []).some((id) => poller.isActive(id));
 
   if (localSandboxes.length === 0) {
+    // Agent creation lives in the Eliza app now, not the console — so no
+    // create-agent action here (this table only lists/manages existing agents).
+    // TODO: once app.elizacloud.ai ships, make this a link that deep-links there.
     return (
       <DataListEmptyState
         title={t("cloud.elizaAgentsTable.noAgentsYet", {
           defaultValue: "No agents yet",
         })}
         description={t("cloud.elizaAgentsTable.noAgentsYetDesc", {
-          defaultValue: "Deploy your first agent to get started.",
+          defaultValue: "Create and manage agents from the Eliza app.",
         })}
         icon={Boxes}
-        action={
-          <CreateElizaAgentDialog
-            onProvisionQueued={handleProvisionQueued}
-            onCreated={refreshData}
-          />
-        }
       />
     );
   }
@@ -901,10 +1002,8 @@ export function ElizaAgentsTable({
               </SelectItem>
             </SelectContent>
           </Select>
-          <CreateElizaAgentDialog
-            onProvisionQueued={handleProvisionQueued}
-            onCreated={refreshData}
-          />
+          {/* Agent creation moved to the Eliza app — no create button in the
+              console toolbar. TODO: deep-link to app.elizacloud.ai when it ships. */}
         </div>
 
         {(searchQuery || statusFilter !== "all") && (

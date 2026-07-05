@@ -27,6 +27,12 @@ export function useAgents() {
     },
     enabled: gate.enabled,
     refetchInterval: gate.enabled ? 15_000 : false,
+    // Keep polling while the tab is backgrounded so the list converges even when
+    // hidden. The agents table hides a just-deleted row for a 60s grace before
+    // re-checking; if this interval paused while backgrounded, a delete + long
+    // background could freeze the list stale and briefly resurrect the deleted
+    // row on refocus. Cheap authenticated GET; precedent: payment-waiting-overlay.
+    refetchIntervalInBackground: true,
   });
 }
 
