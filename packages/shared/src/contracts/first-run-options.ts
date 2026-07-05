@@ -1226,6 +1226,9 @@ function pruneLegacyCloudRoutingFields(
   }
 
   for (const key of LEGACY_CLOUD_ROUTING_KEYS) {
+    if (key === "enabled" && cloud.enabled === false) {
+      continue;
+    }
     delete cloud[key];
   }
 

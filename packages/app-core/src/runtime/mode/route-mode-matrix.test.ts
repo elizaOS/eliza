@@ -9,6 +9,8 @@
  * un-matrixed routes outside any protected namespace default-allow
  * (arch-audit #12633).
  */
+
+import { migrateLegacyRuntimeConfig } from "@elizaos/shared";
 import { describe, expect, test } from "vitest";
 import { findRegisteredRouteModeRule } from "./route-mode-guard";
 import {
@@ -96,6 +98,20 @@ describe("resolveRuntimeMode", () => {
     expect(
       resolveRuntimeMode({ deploymentTarget: { runtime: "local" } }).mode,
     ).toBe("local");
+  });
+
+  test("migrated legacy cloud.enabled=false still resolves to local-only", () => {
+    const config = {
+      cloud: {
+        enabled: false,
+        provider: "elizacloud",
+        inferenceMode: "cloud",
+      },
+    };
+    migrateLegacyRuntimeConfig(config);
+
+    expect(config).toEqual({ cloud: { enabled: false } });
+    expect(resolveRuntimeMode(config).mode).toBe("local-only");
   });
 });
 
