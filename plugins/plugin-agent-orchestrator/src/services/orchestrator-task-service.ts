@@ -18,16 +18,26 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  readdir,
+  readFile,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
   getTrajectoryContext,
   type IAgentRuntime,
+  type RecordedTrajectory,
   resolveStateDir,
   resolveTrajectoryGate,
+  rollUpTrajectoryUsage,
   Service,
   TRACE_ENV,
+  type TrajectoryUsageRollup,
 } from "@elizaos/core";
 import {
   detectTaskType,
@@ -3118,6 +3128,56 @@ export class OrchestratorTaskService extends Service {
   async getUsage(taskId: string): Promise<TaskUsageSummary | null> {
     const doc = await this.store.getTask(taskId);
     return doc ? summarizeUsage(doc) : null;
+  }
+
+  /**
+   * Per-trace token/cost roll-up across this task's INGESTED SUB-AGENT
+   * TRAJECTORY FILES (#13775 item 5). Distinct from {@link getUsage}: that sums
+   * the ACP terminal `OrchestratorTaskUsage` frames (the spend a sub-agent's
+   * ACP surface reported for the whole session); this reads the file-recorder
+   * `trajectory` artifacts item 2 attached and sums their inner per-model-call
+   * metrics, grouped by the shared `traceId`. The two count different things
+   * (ACP-reported session spend vs. file-recorded inner-call spend) and are
+   * deliberately kept apart so nothing is double-summed. For an eliza-backend
+   * sub-agent whose ACP frame is coarse/absent, this is the only surface that
+   * attributes the real inner spend to the logical run.
+   *
+   * Attach-by-reference means the files live where the child wrote them; a
+   * missing/unreadable/parse-failed file is skipped (best-effort observability,
+   * never throws the roll-up), so a partial read still returns real numbers for
+   * the files that parsed.
+   */
+  async getTraceUsage(taskId: string): Promise<TrajectoryUsageRollup | null> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return null;
+    const paths = doc.artifacts
+      .filter(
+        (artifact) =>
+          artifact.artifactType === "trajectory" && Boolean(artifact.path),
+      )
+      .map((artifact) => artifact.path as string);
+    const trajectories: RecordedTrajectory[] = [];
+    for (const path of paths) {
+      try {
+        const raw = await readFile(path, "utf8");
+        const parsed = JSON.parse(raw) as RecordedTrajectory;
+        // A well-formed trajectory carries a metrics block; anything else is a
+        // mislabeled artifact and is skipped rather than trusted.
+        if (parsed && typeof parsed === "object" && parsed.metrics) {
+          trajectories.push(parsed);
+        }
+      } catch (err) {
+        // error-policy:J7 a missing/corrupt trajectory artifact must not fail
+        // the roll-up; skip it and log at debug so the surface still returns the
+        // spend of the files that parsed.
+        this.log("debug", "skip unreadable trajectory artifact in trace usage", {
+          taskId,
+          path,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return rollUpTrajectoryUsage(trajectories);
   }
 
   // ---- sub-agent control -------------------------------------------------

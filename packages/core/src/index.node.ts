@@ -257,6 +257,7 @@ export * from "./runtime/system-prompt";
 export * from "./runtime/trace-correlation";
 export * from "./runtime/trajectory-gate";
 export * from "./runtime/trajectory-recorder";
+export * from "./runtime/trajectory-usage-rollup";
 export * from "./runtime/turn-controller";
 export {
 	type CallModelWithValidationOptions,
