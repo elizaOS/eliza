@@ -188,6 +188,22 @@ describe("createRedemption — trusted client IP gate (fail-closed)", () => {
     expect(result.error).toBe(REDEMPTION_ORIGIN_VERIFICATION_ERROR);
     expect(executeResults).toEqual([]);
   });
+
+  test("REGRESSION: malformed metadata ipAddress denies before DB limit reads", async () => {
+    const service = new SecureTokenRedemptionService();
+    const result = await service.createRedemption({
+      userId: "00000000-0000-4000-8000-000000142392",
+      pointsAmount: 100,
+      network: "base",
+      asset: "usdc",
+      payoutAddress: "0x0000000000000000000000000000000000000001",
+      metadata: { userAgent: "test", ipAddress: "attacker-controlled-key" },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe(REDEMPTION_ORIGIN_VERIFICATION_ERROR);
+    expect(executeResults).toEqual([]);
+  });
 });
 
 describe("rejectRedemption — refund amount (fail-closed)", () => {

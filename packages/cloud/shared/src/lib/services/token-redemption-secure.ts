@@ -150,6 +150,27 @@ const IP_RATE_LIMITS = {
 export const REDEMPTION_ORIGIN_VERIFICATION_ERROR =
   "Unable to verify redemption origin. Please try again later.";
 
+function isTrustedClientIp(value: string): boolean {
+  if (!value || /[\r\n]/.test(value) || value.length > 128) return false;
+
+  const maybeIpv4 = value.split(".");
+  if (maybeIpv4.length === 4) {
+    return maybeIpv4.every((part) => {
+      if (!/^\d{1,3}$/.test(part)) return false;
+      const octet = Number(part);
+      return octet >= 0 && octet <= 255;
+    });
+  }
+
+  if (!value.includes(":")) return false;
+  try {
+    new URL(`http://[${value}]/`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 interface SecureRedemptionResult {
   success: boolean;
   redemptionId?: string;
@@ -322,7 +343,7 @@ export class SecureTokenRedemptionService {
     }
 
     const ipAddress = metadata?.ipAddress?.trim();
-    if (!ipAddress) {
+    if (!ipAddress || !isTrustedClientIp(ipAddress)) {
       logger.warn("[SecureRedemption] Missing trusted client IP", {
         userId: `${userId.slice(0, 8)}...`,
       });
