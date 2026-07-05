@@ -19,7 +19,11 @@ import {
 	isInteractionCallback,
 	MAX_CALLBACK_BYTES,
 } from "./callback";
-import { buildInteractionUrlResolver, toNeutralLayout } from "./layout";
+import {
+	buildInteractionUrlResolver,
+	FORM_FREE_TEXT_INVITE,
+	toNeutralLayout,
+} from "./layout";
 import {
 	normalizeContentInteractions,
 	stripInteractionMarkers,
@@ -283,13 +287,39 @@ describe("layout", () => {
 		});
 	});
 
-	it("falls back when a form has no link-out url", () => {
+	it("falls back when a form has no link-out url (#14321)", () => {
+		const block: FormInteraction = {
+			kind: "form",
+			id: "f",
+			title: "Set your reminder",
+			fields: [{ name: "k", type: "text" }],
+		};
+		const layout = toNeutralLayout(block);
+		expect(layout.needsFallback).toBe(true);
+		expect(layout.rows).toHaveLength(0);
+		expect(layout.text).toBe(`Set your reminder\n\n${FORM_FREE_TEXT_INVITE}`);
+	});
+
+	it("invites a free-text reply even when a form has no title or description", () => {
 		const block: FormInteraction = {
 			kind: "form",
 			id: "f",
 			fields: [{ name: "k", type: "text" }],
 		};
-		expect(toNeutralLayout(block).needsFallback).toBe(true);
+		expect(toNeutralLayout(block).text).toBe(FORM_FREE_TEXT_INVITE);
+	});
+
+	it("uses a non-blank form description when the title is blank", () => {
+		const block: FormInteraction = {
+			kind: "form",
+			id: "f",
+			title: "  ",
+			description: "Tell us when to remind you.",
+			fields: [{ name: "k", type: "text" }],
+		};
+		expect(toNeutralLayout(block).text).toBe(
+			`Tell us when to remind you.\n\n${FORM_FREE_TEXT_INVITE}`,
+		);
 	});
 
 	// #8908 — navigate followups render as link-out buttons when a URL resolver

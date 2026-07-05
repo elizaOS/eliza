@@ -5,7 +5,11 @@
  * Deterministic; no live API.
  */
 import type { Content } from "@elizaos/core";
-import { decodeCallback } from "@elizaos/core";
+import {
+  buildInteractionUrlResolver,
+  decodeCallback,
+  FORM_FREE_TEXT_INVITE,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { renderTelegramInteractions } from "./interactions";
 
@@ -77,5 +81,20 @@ describe("renderTelegramInteractions", () => {
     expect(nav?.url).toBe("https://app.test/orchestrator");
     expect(reply?.url).toBeUndefined();
     expect(reply?.callback_data).toBeTruthy();
+  });
+  // #14321 — no hosted /forms/:id page exists; the canonical resolver must not
+  // mint a dead link-out. The form renders as prose + a free-text invite.
+  it("renders a form as prose + free-text fallback, never a dead link (#14321)", () => {
+    const out = renderTelegramInteractions(
+      {
+        text: 'Happy to set that up.\n[FORM]\n{"id":"f1","title":"Set your reminder","fields":[{"name":"when","type":"text"}]}\n[/FORM]',
+      } as Content,
+      buildInteractionUrlResolver("https://app.test"),
+    );
+    expect(out.keyboardRows).toHaveLength(0);
+    expect(out.needsFreeTextReply).toBe(true);
+    expect(out.text).toContain("Set your reminder");
+    expect(out.text).toContain(FORM_FREE_TEXT_INVITE);
+    expect(out.text).not.toContain("/forms/");
   });
 });

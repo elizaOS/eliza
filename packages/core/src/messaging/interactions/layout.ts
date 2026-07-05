@@ -67,6 +67,23 @@ export interface LayoutOptions {
 	maxButtonsPerRow?: number;
 }
 
+/**
+ * Copy appended to a form block's prose when it cannot render natively and no
+ * link-out URL exists — the free-text fallback affordance connectors show
+ * instead of a dead button (#14321).
+ */
+export const FORM_FREE_TEXT_INVITE = "Reply with your answer.";
+
+function firstNonBlankText(
+	...values: Array<string | undefined>
+): string | undefined {
+	for (const value of values) {
+		const trimmed = value?.trim();
+		if (trimmed) return trimmed;
+	}
+	return undefined;
+}
+
 function chunk<T>(items: T[], size: number): T[][] {
 	const rows: T[][] = [];
 	for (let i = 0; i < items.length; i += size)
@@ -139,22 +156,31 @@ export function toNeutralLayout(
 		}
 		case "form": {
 			const url = resolveUrl?.(block);
+			if (url) {
+				return {
+					text: firstNonBlankText(block.title, block.description),
+					rows: [
+						{
+							buttons: [
+								{
+									label: block.submitLabel ?? "Open form",
+									url,
+									style: "primary",
+								},
+							],
+						},
+					],
+				};
+			}
+			// No hosted form page: show the form's prose and invite a free-text
+			// reply instead of leaving a bare title with no affordance (#14321).
+			const prose = firstNonBlankText(block.title, block.description);
 			return {
-				text: block.title ?? block.description,
-				rows: url
-					? [
-							{
-								buttons: [
-									{
-										label: block.submitLabel ?? "Open form",
-										url,
-										style: "primary",
-									},
-								],
-							},
-						]
-					: [],
-				needsFallback: !url,
+				text: prose
+					? `${prose}\n\n${FORM_FREE_TEXT_INVITE}`
+					: FORM_FREE_TEXT_INVITE,
+				rows: [],
+				needsFallback: true,
 			};
 		}
 		case "secret": {

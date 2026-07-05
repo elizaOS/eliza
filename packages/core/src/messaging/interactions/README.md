@@ -75,12 +75,17 @@ FollowupsInteraction | TaskInteraction | SecretInteraction`) in
 |---|---|---|---|
 | choice | `ChoiceWidget` ✅ | inline-keyboard callback buttons ✅ | button action row ✅ |
 | followups | `FollowupsWidget` ✅ | callback buttons ✅ | button action row ✅ |
-| form | `FormRequest` ✅ | link-out (multi-field is awkward as a keyboard) ⏳ | link-out ⏳ |
+| form | `FormRequest` ✅ | free-text fallback (by design) ✅ | free-text fallback (by design) ✅ |
 | task | `TaskWidget` (live poll) ✅ | link button + title ✅ (live status ⏳) | link button + title ✅ |
 | secret/oauth | `SensitiveRequestBlock` ✅ | DM link via `sensitive-request-adapter` ✅ | DM link via `sensitive-request-adapter` ✅ |
 
-✅ implemented · ⏳ remaining (seams below). Choice/followups round-trip works on
-**both** connectors:
+✅ implemented · ⏳ remaining (seams below). Forms never link out on
+connectors **by design** (#14321): no hosted `/forms/:id` page exists (form
+specs are not persisted server-side), so `buildInteractionUrlResolver` resolves
+no URL for them and the layout degrades to the form's title/description plus a
+"Reply with your answer." invite. Secret-bearing input must never use a form —
+it goes through the sensitive-request flow, which has a real hosted page.
+Choice/followups round-trip works on **both** connectors:
 - **Telegram**: `handleCallbackQuery` decodes the tap and replays it through
   `handleMessage` as a user turn (`plugin-telegram/src/messageManager.ts`).
 - **Discord**: the `isButton` handler in `discord-interactions.ts` decodes the
