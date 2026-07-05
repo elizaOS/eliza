@@ -9,8 +9,9 @@
  *     match already scores ≥ 0.9 (no need to spend a model call) or when the
  *     runtime model is unavailable.
  *
- * The output is task-aware ranking: the orchestrator can then write the top
- * N into SKILLS.md and reference them in the spawned agent's initial prompt.
+ * The output is task-aware ranking: the shared ACP spawn path can then write
+ * the top N into SKILLS.md and expose them through the spawned agent's
+ * loopback skills bridge.
  *
  * @module services/skill-recommender
  */

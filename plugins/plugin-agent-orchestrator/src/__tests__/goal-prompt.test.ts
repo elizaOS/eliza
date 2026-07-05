@@ -45,6 +45,7 @@ describe("buildGoalPrompt capability fence", () => {
     const prompt = buildGoalPrompt(baseInput);
     expect(prompt).toContain("Use only coding-relevant capabilities");
     expect(prompt).toContain("edit/apply patches");
+    expect(prompt).toContain("USE_SKILL parent-agent");
     expect(prompt).not.toContain("parent-agent Cloud command bridge");
   });
 

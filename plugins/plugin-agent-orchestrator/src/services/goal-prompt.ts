@@ -25,6 +25,7 @@ export const DEFAULT_GOAL_CAPABILITIES: readonly string[] = [
   "run shell/test commands",
   "inspect git diff/status",
   "communicate with the parent/swarm",
+  "use the parent-agent bridge for parent-owned context, skill bodies, and delegated parent capabilities (USE_SKILL parent-agent)",
 ];
 
 /**

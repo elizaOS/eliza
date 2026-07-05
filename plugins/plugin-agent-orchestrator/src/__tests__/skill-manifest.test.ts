@@ -7,8 +7,11 @@ import { describe, expect, it, vi } from "vitest";
 import {
   PARENT_AGENT_BROKER_MANIFEST_ENTRY,
   PARENT_AGENT_BROKER_SLUG,
-} from "../services/parent-agent-broker.js";
-import { buildSkillsManifest } from "../services/skill-manifest.js";
+} from "../services/parent-agent-manifest.js";
+import {
+  buildSkillsManifest,
+  readSkillInstructions,
+} from "../services/skill-manifest.js";
 
 function createRuntime(service?: unknown): IAgentRuntime {
   return {
@@ -101,5 +104,84 @@ describe("buildSkillsManifest", () => {
 
     // The generic manifest must stay clean — ViewKind is app-build-only.
     expect(manifest.markdown).not.toContain("View kind");
+  });
+
+  it("falls back to getLoadedSkills when eligible-skill filtering is unavailable", async () => {
+    const service = {
+      getLoadedSkills: vi.fn(() => [
+        {
+          slug: "repo-review",
+          name: "Repo Review",
+          description: "Review repository code.",
+        },
+      ]),
+    };
+
+    const manifest = await buildSkillsManifest(createRuntime(service), {
+      virtualSkills: [PARENT_AGENT_BROKER_MANIFEST_ENTRY],
+    });
+
+    expect(manifest.slugs).toEqual(["repo-review", PARENT_AGENT_BROKER_SLUG]);
+    expect(manifest.markdown).toContain("Repo Review");
+  });
+
+  it("serves full installed and virtual skill instruction bodies", async () => {
+    const service = {
+      getLoadedSkills: vi.fn(() => [
+        {
+          slug: "repo-review",
+          name: "Repo Review",
+          description: "Review repository code.",
+        },
+      ]),
+      getSkillInstructions: vi.fn((slug: string) =>
+        slug === "repo-review"
+          ? {
+              slug,
+              body: "# Repo Review\n\nRead the code and report risks.",
+              estimatedTokens: 17,
+            }
+          : null,
+      ),
+    };
+
+    await expect(
+      readSkillInstructions(createRuntime(service), "repo-review"),
+    ).resolves.toEqual({
+      slug: "repo-review",
+      body: "# Repo Review\n\nRead the code and report risks.",
+      estimatedTokens: 17,
+      source: "installed",
+    });
+
+    const virtual = await readSkillInstructions(
+      createRuntime(service),
+      PARENT_AGENT_BROKER_SLUG,
+      { virtualSkills: [PARENT_AGENT_BROKER_MANIFEST_ENTRY] },
+    );
+    expect(virtual?.source).toBe("virtual");
+    expect(virtual?.body).toContain("USE_SKILL parent-agent");
+  });
+
+  it("does not serve installed skill bodies for disabled skills", async () => {
+    const service = {
+      getEligibleSkills: vi.fn(async () => [
+        {
+          slug: "disabled-skill",
+          name: "Disabled",
+          description: "Should not be requestable.",
+        },
+      ]),
+      isSkillEnabled: vi.fn(() => false),
+      getSkillInstructions: vi.fn((slug: string) => ({
+        slug,
+        body: "# Disabled\n\nDo not expose.",
+        estimatedTokens: 7,
+      })),
+    };
+
+    await expect(
+      readSkillInstructions(createRuntime(service), "disabled-skill"),
+    ).resolves.toBeNull();
   });
 });

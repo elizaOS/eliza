@@ -2,10 +2,7 @@
  * Self-contained operating manual scaffolded into a spawned sub-agent's
  * workspace so every backend (claude reads CLAUDE.md, codex reads AGENTS.md,
  * opencode reads both) receives the same eliza-context + non-interactive
- * directive regardless of where the spawn cwd lands. The ACP spawn path injects
- * nothing but the task string, so without this a sub-agent in a bare/scratch
- * cwd gets zero orientation — codex in particular ("expected identity files are
- * not present") starves because it only reads AGENTS.md.
+ * directive regardless of where the spawn cwd lands.
  *
  * @module services/sub-agent-identity
  */
@@ -22,8 +19,8 @@ const IDENTITY_FILENAMES = ["AGENTS.md", "CLAUDE.md"] as const;
  * The operating manual. Deliberately self-contained — a sub-agent never has to
  * chase a possibly-stale skill file to know it is non-interactive. Bridge facts
  * are stated accurately: `memory` is global semantic search (not the originating
- * room's recent messages), `parent-context` does not expose the original task,
- * and the endpoints only work when `PARALLAX_SESSION_ID` is wired.
+ * room's recent messages), and the endpoints only work when
+ * `PARALLAX_SESSION_ID` is wired.
  */
 export const SUB_AGENT_IDENTITY_MD = `# Eliza coding sub-agent — operating manual
 
@@ -72,10 +69,23 @@ If the task depends on context not in the prompt, you can GET read-only parent
 state, but only when the bridge is wired (env var \`PARALLAX_SESSION_ID\` set):
 
 - \`curl "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${PARALLAX_SESSION_ID}/parent-context"\`
-  → parent character, originating room, model prefs, your workdir.
+  → parent character, originating room, model prefs, your workdir, and the
+  originating task goal/acceptance criteria when the spawn is bound to a task.
 - \`.../memory?q=<query>&limit=<N>\` → GLOBAL semantic search over the parent's
   memory (facts, messages, knowledge) — not the originating room's recency.
 - \`.../active-workspaces\` → sibling sub-agents.
+- \`.../skills\` → requestable installed skills plus task-scoped broker skills.
+- \`.../skills/<slug>\` → the full instruction body for that skill.
+
+If you need the parent to use capabilities that only it has — cloud app
+commands, calendar/account connectors, GitHub project state, or spawning a
+parallel child for this same task — emit a line like:
+\`USE_SKILL parent-agent {"request":"<what you need>"}\`
+
+For Cloud commands, ask the bridge to list commands first:
+\`USE_SKILL parent-agent {"mode":"list-cloud-commands"}\`
+Mutating, paid, or destructive Cloud commands are still gated by the parent and
+may require explicit owner confirmation; do not fabricate confirmation.
 
 ## Requesting a missing credential
 

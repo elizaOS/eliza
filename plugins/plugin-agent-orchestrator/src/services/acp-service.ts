@@ -62,11 +62,13 @@ import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
 } from "./opencode-config.js";
+import { PARENT_AGENT_BROKER_MANIFEST_ENTRY } from "./parent-agent-manifest.js";
 import {
   AcpSessionStore,
   InMemorySessionStore,
   type SessionStoreBackend,
 } from "./session-store.js";
+import { writeSkillsManifest } from "./skill-manifest.js";
 import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
 import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
@@ -881,6 +883,7 @@ export class AcpService extends Service {
     // disk (where every backend reads it) — only when the workspace is bare, so
     // a real repo's own AGENTS.md/CLAUDE.md is never clobbered.
     await writeWorkspaceIdentity(workdir);
+    await this.writeSpawnSkillsManifest(workdir, opts.metadata);
 
     // Record the workspace HEAD + already-dirty files at spawn so the change
     // set captured at task_complete is scoped to exactly what this sub-agent
@@ -1650,6 +1653,31 @@ export class AcpService extends Service {
       this.codexNoLandlockSandboxMode(),
       this.codexAcpApprovalPolicy() ?? CODEX_NO_LANDLOCK_APPROVAL_POLICY,
     );
+  }
+
+  private async writeSpawnSkillsManifest(
+    workdir: string,
+    metadata: Record<string, unknown> | undefined,
+  ): Promise<void> {
+    const capabilityProfile =
+      typeof metadata?.capabilityProfile === "string"
+        ? metadata.capabilityProfile.trim().toLowerCase()
+        : undefined;
+    const economics = capabilityProfile === "economics";
+    try {
+      await writeSkillsManifest(this.runtime, workdir, {
+        recommendedSlugs: economics
+          ? ["build-monetized-app", "eliza-cloud", "parent-agent"]
+          : ["parent-agent"],
+        virtualSkills: [{ ...PARENT_AGENT_BROKER_MANIFEST_ENTRY }],
+        includeViewKindContract: economics,
+      });
+    } catch (err) {
+      this.log("warn", "failed to write SKILLS.md", {
+        workdir,
+        error: errorMessage(err),
+      });
+    }
   }
 
   private codexLandlockFallbackCommand(

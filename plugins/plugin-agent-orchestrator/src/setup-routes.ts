@@ -141,6 +141,8 @@ const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   { type: "GET", path: "/api/coding-agents/:sessionId/parent-context" },
   { type: "GET", path: "/api/coding-agents/:sessionId/memory" },
   { type: "GET", path: "/api/coding-agents/:sessionId/active-workspaces" },
+  { type: "GET", path: "/api/coding-agents/:sessionId/skills" },
+  { type: "GET", path: "/api/coding-agents/:sessionId/skills/:slug" },
   { type: "POST", path: "/api/coding-agents/:sessionId/credentials/request" },
   {
     type: "GET",

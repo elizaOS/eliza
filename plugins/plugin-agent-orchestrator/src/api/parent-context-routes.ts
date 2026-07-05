@@ -9,9 +9,16 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import { activeWorkspaceContextProvider } from "../providers/active-workspace-context.js";
+import type { IAgentRuntime, Memory, Service } from "@elizaos/core";
+import type {
+  OrchestratorTaskDecision,
+  OrchestratorTaskDocument,
+} from "../services/orchestrator-task-types.js";
+import { PARENT_AGENT_BROKER_MANIFEST_ENTRY } from "../services/parent-agent-manifest.js";
+import {
+  buildSkillsManifest,
+  readSkillInstructions,
+} from "../services/skill-manifest.js";
 import {
   type SessionInfo,
   TERMINAL_SESSION_STATUSES,
@@ -38,6 +45,10 @@ type ParentMemoryHit = { [key: string]: JsonValue } & {
   createdAt: number | null;
   metadata: JsonValue;
 };
+
+interface TaskServiceShape {
+  getTask: (taskId: string) => Promise<OrchestratorTaskDocument | null>;
+}
 
 const BRIDGE_TIMEOUT_MS = 5_000;
 const DEFAULT_MEMORY_LIMIT = 10;
@@ -158,6 +169,63 @@ function toJsonValue(value: unknown): JsonValue {
 
 function readOriginRoomId(metadata: Record<string, unknown>): string | null {
   return readString(metadata.originRoomId) ?? readString(metadata.roomId);
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (entry): entry is string =>
+      typeof entry === "string" && entry.trim().length > 0,
+  );
+}
+
+async function loadTaskDocument(
+  runtime: IAgentRuntime,
+  taskId: string | null,
+): Promise<OrchestratorTaskDocument | null> {
+  if (!taskId) return null;
+  const service = runtime.getService("ORCHESTRATOR_TASK_SERVICE") as
+    | (Service & TaskServiceShape)
+    | undefined;
+  if (!service?.getTask) return null;
+  return await service.getTask(taskId);
+}
+
+function normalizeDecision(decision: OrchestratorTaskDecision): JsonValue {
+  return {
+    id: decision.id,
+    sessionId: decision.sessionId ?? null,
+    event: decision.event,
+    decisionType: decision.decisionType,
+    actionSelected: decision.actionSelected,
+    promptExcerpt: decision.promptExcerpt,
+    response: decision.response ?? null,
+    reasoning: decision.reasoning,
+    timestamp: decision.timestamp,
+  };
+}
+
+async function buildTaskContext(
+  runtime: IAgentRuntime,
+  metadata: Record<string, unknown>,
+): Promise<JsonValue> {
+  const taskId = readString(metadata.taskId);
+  const doc = await loadTaskDocument(runtime, taskId);
+  const goal = doc?.task.goal ?? readString(metadata.goal);
+  const acceptanceCriteria =
+    doc?.task.acceptanceCriteria ??
+    readStringArray(metadata.acceptanceCriteria);
+  const decisions = (doc?.decisions ?? [])
+    .slice(-20)
+    .map((decision) => normalizeDecision(decision));
+  if (!taskId && !goal && acceptanceCriteria.length === 0) return null;
+  return {
+    id: taskId,
+    goal,
+    acceptanceCriteria,
+    capabilityProfile: readString(metadata.capabilityProfile),
+    decisions,
+  };
 }
 
 function normalizeDocumentSources(value: unknown): JsonValue[] {
@@ -282,7 +350,53 @@ async function buildParentContext(
     currentRoom: await loadRoom(ctx.runtime, roomId),
     workdir: session?.workdir ?? null,
     model: normalizeModel(session, metadata),
+    task: await buildTaskContext(ctx.runtime, metadata),
   };
+}
+
+async function listSessionSkills(ctx: RouteContext): Promise<JsonValue> {
+  const manifest = await buildSkillsManifest(ctx.runtime, {
+    recommendedSlugs: ["parent-agent"],
+    virtualSkills: [{ ...PARENT_AGENT_BROKER_MANIFEST_ENTRY }],
+  });
+  return {
+    slugs: manifest.slugs,
+    skills: manifest.entries.map((entry) => ({
+      slug: entry.slug,
+      name: entry.name,
+      description: entry.description,
+      hasBody: true,
+      source:
+        entry.slug === PARENT_AGENT_BROKER_MANIFEST_ENTRY.slug
+          ? "virtual"
+          : "installed",
+    })),
+  };
+}
+
+async function loadSessionSkill(
+  ctx: RouteContext,
+  rawSlug: string,
+): Promise<JsonValue> {
+  const slug = parseSessionId(rawSlug);
+  if (!slug) {
+    throw new BridgeRouteError(
+      "invalid_skill_slug",
+      400,
+      "Invalid skill slug.",
+    );
+  }
+  const instructions = await readSkillInstructions(ctx.runtime, slug, {
+    virtualSkills: [{ ...PARENT_AGENT_BROKER_MANIFEST_ENTRY }],
+  });
+  if (!instructions) {
+    throw new BridgeRouteError(
+      "skill_not_found",
+      404,
+      "Skill is not requestable in this parent runtime.",
+    );
+  }
+  return toJsonValue(instructions);
 }
 
 async function searchParentMemory(
@@ -290,7 +404,7 @@ async function searchParentMemory(
   query: string,
   limit: number,
 ): Promise<JsonValue> {
-  const embedding = await ctx.runtime.useModel(ModelType.TEXT_EMBEDDING, {
+  const embedding = await ctx.runtime.useModel("TEXT_EMBEDDING", {
     text: query,
   });
   const perTableLimit = Math.max(
@@ -322,6 +436,9 @@ async function searchParentMemory(
 async function listActiveWorkspaceContext(
   ctx: RouteContext,
 ): Promise<JsonValue> {
+  const { activeWorkspaceContextProvider } = await import(
+    "../providers/active-workspace-context.js"
+  );
   const result = await activeWorkspaceContextProvider.get(
     ctx.runtime,
     {
@@ -347,7 +464,7 @@ export async function handleParentContextRoutes(
   ctx: RouteContext,
 ): Promise<boolean> {
   const match = pathname.match(
-    /^\/api\/coding-agents\/([^/]+)\/(parent-context|memory|active-workspaces)$/,
+    /^\/api\/coding-agents\/([^/]+)\/(parent-context|memory|active-workspaces|skills)(?:\/([^/]+))?$/,
   );
   if (!match) return false;
 
@@ -418,6 +535,16 @@ export async function handleParentContextRoutes(
             query,
             parseLimit(url.searchParams.get("limit")),
           ),
+        ),
+      );
+      return true;
+    }
+    if (endpoint === "skills") {
+      const rawSlug = match[3];
+      sendJson(
+        res,
+        await withBridgeTimeout(
+          rawSlug ? loadSessionSkill(ctx, rawSlug) : listSessionSkills(ctx),
         ),
       );
       return true;

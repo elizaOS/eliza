@@ -18,7 +18,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { type IAgentRuntime, Service } from "@elizaos/core";
@@ -110,8 +110,6 @@ import {
   TERMINAL_TASK_STATUSES,
   type UsageState,
 } from "./orchestrator-task-types.js";
-import { PARENT_AGENT_BROKER_MANIFEST_ENTRY } from "./parent-agent-broker.js";
-import { buildSkillsManifest } from "./skill-manifest.js";
 import {
   configureSpendLedger,
   createTaskStoreSpendLedger,
@@ -2745,30 +2743,6 @@ export class OrchestratorTaskService extends Service {
       ...(capabilityProfile ? { capabilityProfile } : {}),
     });
 
-    // Economics tasks drive the monetized-app loop through the parent-agent
-    // Cloud command broker. Write a SKILLS.md into the workdir that advertises
-    // the broker slug + its arg contract so the spawned agent knows how to call
-    // back (the dispatcher in SubAgentRouter executes those requests).
-    if (capabilityProfile === "economics" && workdir) {
-      try {
-        const manifest = await buildSkillsManifest(this.runtime, {
-          recommendedSlugs: ["build-monetized-app", "eliza-cloud"],
-          virtualSkills: [{ ...PARENT_AGENT_BROKER_MANIFEST_ENTRY }],
-          // Economics tasks may deploy Cloud views — teach the sub-agent the
-          // ViewKind contract so views are categorized correctly. (#8917)
-          includeViewKindContract: true,
-        });
-        await writeFile(join(workdir, "SKILLS.md"), manifest.markdown, "utf8");
-      } catch (err) {
-        // error-policy:J7 SKILLS.md scaffolding is best-effort; a failed write is
-        // warned and the spawn proceeds without it.
-        this.runtime.logger?.warn?.(
-          { src: "orchestrator-task-service", taskId, workdir },
-          `failed to write SKILLS.md: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
-
     const result = await acp.spawnSession({
       // Coding-agent selection: explicit request → routing policy → the
       // deployment's configured default (ELIZA_ACP_DEFAULT_AGENT /
@@ -2798,6 +2772,8 @@ export class OrchestratorTaskService extends Service {
         // metadata — the built-apps registry's app-build gate, interruption
         // relevance — see what this session is building.
         goal: doc.task.goal,
+        ...(capabilityProfile ? { capabilityProfile } : {}),
+        acceptanceCriteria: doc.task.acceptanceCriteria,
         // Orchestrator sessions outlive their first prompt so follow-ups and
         // validation re-dispatch can reuse them.
         keepAliveAfterComplete: true,
