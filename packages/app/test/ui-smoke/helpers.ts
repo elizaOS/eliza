@@ -113,13 +113,19 @@ function shouldIgnoreRequestFailure(url: string, failureText: string): boolean {
   return false;
 }
 
-// Avatar / background EXISTENCE probes: the client's `hasCustomVrm` /
-// `hasCustomBackground` issue a HEAD to `/api/avatar/vrm|background` with
-// `allowNonOk` and treat any non-ok response as "no custom asset" (falls back
-// to the default avatar/background). In the zero-key smoke stack that probe
-// legitimately answers non-2xx, which is the expected zero-state — the client
-// handles it and renders the default — not a diagnostic error.
+// Best-effort static probes whose non-2xx answer is the DESIGNED zero-state,
+// not a diagnostic error:
+//   - Avatar / background EXISTENCE probes: `hasCustomVrm` / `hasCustomBackground`
+//     HEAD `/api/avatar/vrm|background` with `allowNonOk`; a non-ok response
+//     means "no custom asset" and the client renders the default.
+//   - `/build-info.json`: the BuildBadge (#14174) fetches the build-time stamp
+//     best-effort and renders NOTHING when it is absent (production/CI builds
+//     without the stamp, and the zero-key smoke stack, do not serve it). The
+//     browser still emits an automatic "Failed to load resource" console error
+//     for the 404 that the code's own try/catch cannot suppress — same contract
+//     as the avatar probes, so it is allowlisted here.
 function isOptionalAssetProbeUrl(url: string): boolean {
+  if (/\/build-info\.json(\?|$)/.test(url)) return true;
   return /\/api\/avatar\/(vrm|background)(\?|$)/.test(url);
 }
 
