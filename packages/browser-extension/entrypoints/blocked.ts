@@ -4,7 +4,10 @@
  * and agent base from the query string, then polls the agent for the group's
  * required tasks and links back to LifeOps so the user can clear the block.
  */
-import { normalizeNavigableUrl } from "../src/url";
+import {
+  normalizeHostForComparison,
+  normalizeNavigableUrlForHost,
+} from "../src/url";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -23,8 +26,11 @@ interface BlockedHostResponse {
 }
 
 const params = new URLSearchParams(window.location.search);
-const blockedUrl = params.get("url") || "Unknown site";
-const blockedHost = params.get("host") || blockedUrl;
+const blockedUrl = params.get("url");
+const blockedHost =
+  normalizeHostForComparison(params.get("host")) ??
+  normalizeHostForComparison(blockedUrl) ??
+  "Unknown site";
 const apiBase = normalizeApiBase(params.get("api"));
 
 const blockedSiteEl = document.getElementById("blockedSite");
@@ -120,7 +126,7 @@ async function loadBlockingReason(): Promise<void> {
 async function pollForUnblock(): Promise<void> {
   const data = await fetchBlockingReason();
   if (data && !data.blocked) {
-    const target = normalizeNavigableUrl(blockedUrl);
+    const target = normalizeNavigableUrlForHost(blockedUrl, blockedHost);
     if (target) {
       window.location.href = target;
     }

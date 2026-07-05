@@ -70,12 +70,29 @@ export function normalizeNavigableUrl(
   if (!trimmed) {
     return null;
   }
-  const candidate = /^https?:\/\//i.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
+  if (trimmed.startsWith("//")) {
+    return null;
+  }
+  const schemeMatch = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
+  const scheme = schemeMatch?.[1]?.toLowerCase();
+  const afterSchemeColon = schemeMatch
+    ? trimmed.slice(schemeMatch[0].length)
+    : "";
+  const hostPortLike =
+    scheme !== undefined &&
+    (scheme.includes(".") || scheme === "localhost") &&
+    /^\d+(?:[/?#]|$)/.test(afterSchemeColon);
+  if (scheme && scheme !== "http" && scheme !== "https" && !hostPortLike) {
+    return null;
+  }
+  const candidate =
+    scheme === "http" || scheme === "https" ? trimmed : `https://${trimmed}`;
   try {
     const parsed = new URL(candidate);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    if (parsed.username || parsed.password) {
       return null;
     }
     return parsed.toString();
@@ -83,4 +100,27 @@ export function normalizeNavigableUrl(
     // error-policy:J3 untrusted query-string input resolves to an explicit invalid navigation target.
     return null;
   }
+}
+
+export function normalizeHostForComparison(
+  value: string | null | undefined,
+): string | null {
+  const normalized = normalizeNavigableUrl(value);
+  if (!normalized) {
+    return null;
+  }
+  return new URL(normalized).hostname.toLowerCase();
+}
+
+export function normalizeNavigableUrlForHost(
+  value: string | null | undefined,
+  expectedHost: string | null | undefined,
+): string | null {
+  const target = normalizeNavigableUrl(value);
+  const host = normalizeHostForComparison(expectedHost);
+  if (!target || !host) {
+    return null;
+  }
+  const targetHost = new URL(target).hostname.toLowerCase();
+  return targetHost === host ? target : null;
 }

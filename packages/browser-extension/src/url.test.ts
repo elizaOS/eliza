@@ -4,9 +4,11 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  normalizeHostForComparison,
   normalizeHttpBaseUrl,
   normalizeHttpOrigin,
   normalizeNavigableUrl,
+  normalizeNavigableUrlForHost,
 } from "./url";
 
 describe("normalizeHttpBaseUrl", () => {
@@ -69,19 +71,40 @@ describe("normalizeNavigableUrl", () => {
     expect(normalizeNavigableUrl("  news.example.com/top  ")).toBe(
       "https://news.example.com/top",
     );
+    expect(normalizeNavigableUrl("example.com:443/path")).toBe(
+      "https://example.com/path",
+    );
+    expect(normalizeNavigableUrl("localhost:3000/path")).toBe(
+      "https://localhost:3000/path",
+    );
   });
 
-  it("returns null for a javascript: payload so it never reaches location.href", () => {
+  it("returns null for explicit non-http schemes so they never reach location.href", () => {
     // The block interstitial's `?url=` query param is attacker-controllable;
-    // a `javascript:` scheme must not be force-prefixed into a navigable value.
-    expect(
-      normalizeNavigableUrl("javascript:alert(document.cookie)"),
-    ).toBeNull();
-    expect(normalizeNavigableUrl("JavaScript:alert(1)")).toBeNull();
-    expect(
-      normalizeNavigableUrl("data:text/html,<script>alert(1)</script>"),
-    ).toBeNull();
-    expect(normalizeNavigableUrl("vbscript:msgbox(1)")).toBeNull();
+    // explicit schemes must not be force-prefixed into navigable https URLs.
+    for (const value of [
+      "javascript:alert(document.cookie)",
+      "JavaScript:alert(1)",
+      "javascript:foo@evil.example",
+      "data:text/html,<script>alert(1)</script>",
+      "mailto:foo@example.com",
+      "file://evil.example/path",
+      "vbscript:msgbox(1)",
+      "httpx://not-really-http.example",
+      "//evil.example.com",
+    ]) {
+      expect(normalizeNavigableUrl(value)).toBeNull();
+    }
+  });
+
+  it("returns null for credentialed URLs", () => {
+    for (const value of [
+      "https://user:pass@example.com/path",
+      "http://user@example.com/path",
+      "user:pass@example.com/path",
+    ]) {
+      expect(normalizeNavigableUrl(value)).toBeNull();
+    }
   });
 
   it("returns null for empty or blank input", () => {
@@ -103,10 +126,42 @@ describe("normalizeNavigableUrl", () => {
       "//evil.example.com",
       "\tjavascript:alert(1)",
     ]) {
-      const result = normalizeNavigableUrl(value);
-      if (result !== null) {
-        expect(result).toMatch(/^https?:\/\//);
-      }
+      expect(normalizeNavigableUrl(value)).toBeNull();
     }
+  });
+});
+
+describe("normalizeNavigableUrlForHost", () => {
+  it("allows redirects only when the normalized URL host matches the polled host", () => {
+    expect(
+      normalizeNavigableUrlForHost(
+        "https://blocked.example/read",
+        "blocked.example",
+      ),
+    ).toBe("https://blocked.example/read");
+    expect(
+      normalizeNavigableUrlForHost(
+        "blocked.example:443/read",
+        "https://blocked.example",
+      ),
+    ).toBe("https://blocked.example/read");
+  });
+
+  it("rejects host/url mismatches from attacker-controlled blocked-page query params", () => {
+    expect(
+      normalizeNavigableUrlForHost("https://evil.example", "blocked.example"),
+    ).toBeNull();
+    expect(
+      normalizeNavigableUrlForHost(
+        "https://blocked.example.evil.example",
+        "blocked.example",
+      ),
+    ).toBeNull();
+  });
+
+  it("normalizes hosts to lowercase hostnames for comparison", () => {
+    expect(normalizeHostForComparison("HTTPS://Example.COM:443/path")).toBe(
+      "example.com",
+    );
   });
 });
