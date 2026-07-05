@@ -37,6 +37,7 @@ import { getCachedOrganization } from "../cache/organizations-cache";
 import { creditsService } from "../services/credits";
 import type { UserWithOrganization } from "../types";
 import { logger } from "../utils/logger";
+import { parseMcpCreditBalance } from "./withcredits-numeric";
 
 /**
  * MCP Tool Execution Context
@@ -172,8 +173,15 @@ export function withCredits<TParams, TResult>(
       }
     }
 
-    // Check balance before deducting
-    if (Number(context.org.credit_balance) < toolCost) {
+    // Check balance before deducting.
+    // Fail closed on a corrupt NUMERIC credit_balance (#13415): a bare
+    // `Number(...) < toolCost` reads a corrupt `'NaN'::numeric` value back as
+    // `NaN`, and `NaN < toolCost` is `false`, so the gate is bypassed and the
+    // PAID tool runs free. parseMcpCreditBalance throws on a non-parseable
+    // balance so the corruption denies the call instead of authorizing it.
+    // error-policy:J1
+    const availableCredits = parseMcpCreditBalance(context.org.credit_balance);
+    if (availableCredits < toolCost) {
       throw new Error(
         options.insufficientCreditsMessage ||
           `Insufficient credits. Required: ${toolCost}, Available: ${context.org.credit_balance}`,
