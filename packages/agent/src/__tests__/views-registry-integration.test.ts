@@ -910,9 +910,25 @@ describe("GET /api/views/:id/frame.html", () => {
       ];
       const getBody = getRes.end.mock.calls[0]?.[0] as Buffer;
       expect(getHeaders["Content-Type"]).toBe("text/html; charset=utf-8");
+      expect(getHeaders["Content-Length"]).toBe(getBody.byteLength);
       expect(getHeaders["X-Content-Type-Options"]).toBe("nosniff");
       expect(getHeaders["Cache-Control"]).toBe("no-cache");
       expect(getBody.toString("utf8")).toContain("Frame v1");
+
+      const { ctx: headCtx } = makeCtx(
+        "HEAD",
+        "/api/views/local.frame/frame.html",
+      );
+      await handleViewsRoutes(headCtx);
+      const headRes = rawResponse(headCtx);
+      const [, headHeaders] = headRes.writeHead.mock.calls[0] as [
+        number,
+        Record<string, string | number>,
+      ];
+      expect(headHeaders["Content-Type"]).toBe("text/html; charset=utf-8");
+      expect(headHeaders["Content-Length"]).toBe(getBody.byteLength);
+      expect(headHeaders["Cache-Control"]).toBe("no-cache");
+      expect(headRes.end).toHaveBeenCalledWith(undefined);
 
       const { ctx: immutableCtx } = makeCtx(
         "GET",

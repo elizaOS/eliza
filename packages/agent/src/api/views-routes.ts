@@ -730,14 +730,14 @@ export async function handleViewsRoutes(
     if (typeof raw.writeHead === "function") {
       raw.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
-        "Content-Length": data.byteLength,
+        "Content-Length": stat.size,
         "Cache-Control": cacheControl,
         "X-Content-Type-Options": "nosniff",
         ETag: etag,
       });
     } else if (typeof raw.setHeader === "function") {
       raw.setHeader("Content-Type", "text/html; charset=utf-8");
-      raw.setHeader("Content-Length", data.byteLength);
+      raw.setHeader("Content-Length", stat.size);
       raw.setHeader("Cache-Control", cacheControl);
       raw.setHeader("X-Content-Type-Options", "nosniff");
       raw.setHeader("ETag", etag);
