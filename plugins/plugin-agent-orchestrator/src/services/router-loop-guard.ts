@@ -25,11 +25,23 @@
  * early force-stop, no leaked (unbounded / un-force-stopped) session.
  */
 
+import {
+  MAX_SESSION_RETRY_ATTEMPTS,
+  stateLostRespawnCapFor,
+  stateLostRespawnUnderCap,
+} from "./orchestrator-task-types.js";
+
 /** FIFO bound on every per-session / per-lineage map so state can't grow without limit. */
 export const ROUTER_LOOP_STATE_BOUND = 1024;
 
 export const DEFAULT_ROUND_TRIP_CAP = 32;
-export const DEFAULT_STATE_LOST_RESPAWN_CAP = 3;
+/** Derived from the shared crash-retry budget so the router's respawn cap and
+ * the task service's terminal budget are ONE number (#14104): with a budget of
+ * N errored sessions, the router may respawn at most `N - 1` times, so the Nth
+ * error terminates the task instead of spawning an (N+1)th orphan worker. */
+export const DEFAULT_STATE_LOST_RESPAWN_CAP = stateLostRespawnCapFor(
+  MAX_SESSION_RETRY_ATTEMPTS,
+);
 
 /**
  * The complete loop-guard state. Every field is treated as immutable: the
@@ -223,7 +235,7 @@ export function routerLoopTransition(
         event.lineageKey,
         count,
       );
-      if (count <= state.stateLostRespawnCap) {
+      if (stateLostRespawnUnderCap(count, state.stateLostRespawnCap)) {
         return {
           state: { ...state, stateLostRespawnCounts },
           decision: { kind: "respawn", count },

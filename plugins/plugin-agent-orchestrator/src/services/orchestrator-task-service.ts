@@ -130,7 +130,11 @@ import {
   type OrchestratorTaskSession,
   type OrchestratorTaskStatus,
   type OrchestratorTaskUsage,
+  RETRY_BUDGET_EPOCH_METADATA_KEY,
+  readRetryBudgetEpoch,
+  resolveStateLostRespawnCap,
   resolveTaskTransition,
+  stateLostRespawnUnderCap,
   type TaskLifecycleTrigger,
   type TaskListFilter,
   type TaskMessageDirection,
@@ -1917,9 +1921,17 @@ export class OrchestratorTaskService extends Service {
     if (doc.task.paused) return;
     if (TERMINAL_TASK_STATUSES.has(doc.task.status)) return;
 
+    // Scope the budget to the current run: an operator `restartTask` stamps a
+    // budget epoch, and sessions spawned before it (a prior failed run's dead
+    // lineage) must not count, or a restarted task re-fails on its first blip
+    // (#14104). Absent epoch → every session counts (pre-restart lifetime).
+    const budgetEpoch = readRetryBudgetEpoch(doc.task.metadata);
     const erroredSessionIds = new Set(
       doc.sessions
-        .filter((s) => SESSION_ERROR_STATUSES.has(s.status))
+        .filter(
+          (s) =>
+            SESSION_ERROR_STATUSES.has(s.status) && s.spawnedAt >= budgetEpoch,
+        )
         .map((s) => s.sessionId),
     );
     erroredSessionIds.add(sessionId);
@@ -1932,11 +1944,16 @@ export class OrchestratorTaskService extends Service {
     const respawnable = this.routerWillRespawn(
       doc.sessions.find((s) => s.sessionId === sessionId),
       failure,
+      erroredSessions,
     );
-    const budgetSpent = erroredSessions >= MAX_SESSION_RETRY_ATTEMPTS;
-    // Terminal unless the router will respawn this crash class AND the lineage
-    // budget still has room. An un-respawnable crash fails on its first
+    // `routerWillRespawn` already folds the state-lost respawn cap into its
+    // verdict via the SAME gate + effective cap the router's loop-guard uses
+    // (#14104), so a state-lost lineage goes terminal on exactly the error the
+    // router refuses to respawn — no 4th orphan worker. The account-failover
+    // class carries no per-lineage router cap, so the shared errored-session
+    // budget still bounds it here. An un-respawnable crash fails on its first
     // occurrence — nothing will re-drive it, so a non-terminal verdict wedges.
+    const budgetSpent = erroredSessions >= MAX_SESSION_RETRY_ATTEMPTS;
     const terminal = !respawnable || budgetSpent;
     await this.store.addEvent({
       id: randomUUID(),
@@ -1967,7 +1984,13 @@ export class OrchestratorTaskService extends Service {
    * Whether `sub-agent-router.ts` will deterministically respawn this crash —
    * the same gate the router itself uses, mirrored here so status termination
    * and respawn agree. Only these two classes get a successor session:
-   *   - `session_state_lost` (unconditional respawn under the lineage cap), and
+   *   - `session_state_lost`, respawned by the router only while the lineage's
+   *     errored count stays under the effective respawn cap. `erroredSessions`
+   *     is the 1-based lineage position of the just-errored session, which the
+   *     router tracks as its own per-lineage state-lost count; consulting the
+   *     SAME cap + gate here means the task goes terminal on exactly the error
+   *     the router refuses to respawn, so no 4th orphan worker spawns against a
+   *     `failed` task (#14104).
    *   - a pooled-account failure whose message classifies as rate-limit /
    *     needs-reauth, while the session carried a pooled account and a healthy
    *     sibling remains for failover.
@@ -1976,8 +1999,14 @@ export class OrchestratorTaskService extends Service {
   private routerWillRespawn(
     session: OrchestratorTaskSession | undefined,
     failure: { failureKind?: string; message: string },
+    erroredSessions: number,
   ): boolean {
-    if (failure.failureKind === "session_state_lost") return true;
+    if (failure.failureKind === "session_state_lost") {
+      return stateLostRespawnUnderCap(
+        erroredSessions,
+        resolveStateLostRespawnCap(this.runtime),
+      );
+    }
     if (classifyAccountFailure(failure.message) === null) return false;
     if (!session?.accountProviderId || !session.accountId) return false;
     return hasHealthyPooledAccount(session.framework);
@@ -3286,6 +3315,17 @@ export class OrchestratorTaskService extends Service {
         "Restart this task from the current durable context. Reinspect the task timeline, then continue until the goal is met or you are blocked.",
       planRevision,
     );
+    // Open a fresh budget epoch BEFORE the first spawn of the new run so the
+    // prior (failed) run's dead errored sessions no longer count toward the
+    // crash-retry budget — otherwise a restarted task re-fails on its first
+    // recoverable blip while the router respawns anyway (#14104). Merge into the
+    // existing bag: `updateTask` replaces `metadata` wholesale.
+    await this.store.updateTask(taskId, {
+      metadata: {
+        ...doc.task.metadata,
+        [RETRY_BUDGET_EPOCH_METADATA_KEY]: Date.now(),
+      },
+    });
     await this.spawnAgentForTask(taskId, {
       ...input.agent,
       task: instruction,

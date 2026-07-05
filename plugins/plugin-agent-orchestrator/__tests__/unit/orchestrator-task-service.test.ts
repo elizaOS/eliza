@@ -19,9 +19,16 @@ import { OrchestratorTaskService } from "../../src/services/orchestrator-task-se
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
 import {
   type CreateTaskInput,
+  MAX_SESSION_RETRY_ATTEMPTS,
   type OrchestratorTaskSession,
+  RETRY_BUDGET_EPOCH_METADATA_KEY,
+  stateLostRespawnCapFor,
   TERMINAL_TASK_STATUSES,
 } from "../../src/services/orchestrator-task-types.js";
+import {
+  createRouterLoopState,
+  routerLoopTransition,
+} from "../../src/services/router-loop-guard.js";
 
 // This suite pins the status state machine and the ACP→task event bridge — NOT
 // the #8896 default-criteria feature. createTask now auto-populates acceptance
@@ -1783,5 +1790,156 @@ describe("OrchestratorTaskService — post-completion teardown race (#13830 audi
     await settleStatus(service, taskId, "failed");
     const detail = must(await service.getTask(taskId), "detail");
     expect(must(detail.sessions[0], "session").status).toBe("errored");
+  });
+});
+
+// The #14104 divergence: the task service's terminal budget and the router's
+// per-lineage state-lost respawn cap used to be independent numbers with
+// mismatched arithmetic, so the task went `failed` at the 3rd errored session
+// while the router still respawned a 4th orphan worker on the same event. These
+// tests pin the reconciliation — one budget, one owner — by driving BOTH
+// subsystems over the SAME state-lost stream and asserting they agree, and by
+// checking the restart-budget reset.
+describe("OrchestratorTaskService — retry-budget/router-cap reconciliation (#14104)", () => {
+  it("task terminal decision and router respawn cap agree on the same state-lost stream — no 4th orphan", async () => {
+    const acp = new FakeAcp();
+    const service = makeService(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+
+    // Drive the state-lost lineage session by session, recording at each error
+    // (a) whether the task is now terminal `failed`, and (b) what the router's
+    // loop-guard reducer decides for the SAME event under its default cap.
+    let loopState = createRouterLoopState();
+    const lineageKey = "lineage-a";
+    const routerDecisions: string[] = [];
+    const taskTerminalAtError: boolean[] = [];
+
+    // Enough iterations to pass the budget: budget N ⇒ terminal at the Nth error.
+    for (let i = 0; i < MAX_SESSION_RETRY_ATTEMPTS + 1; i += 1) {
+      const status = must(await service.getTask(task.id), "status").status;
+      // Once terminal, the task refuses further spawns/errors — stop driving it.
+      if (TERMINAL_TASK_STATUSES.has(status)) break;
+
+      const detail = must(
+        await service.spawnAgentForTask(task.id),
+        "spawn detail",
+      );
+      const sessionId = must(detail.sessions.at(-1), "session").sessionId;
+      await drive(acp, sessionId, "error", {
+        failureKind: "session_state_lost",
+        message: `state lost ${i + 1}`,
+      });
+
+      const transition = routerLoopTransition(loopState, {
+        type: "state_lost",
+        lineageKey,
+      });
+      loopState = transition.state;
+      routerDecisions.push(transition.decision.kind);
+      taskTerminalAtError.push(
+        TERMINAL_TASK_STATUSES.has(
+          must(await service.getTask(task.id), "after").status,
+        ),
+      );
+    }
+
+    // The router's default cap is derived from the shared budget, so it stops
+    // respawning on exactly the error at which the task goes terminal. The last
+    // decision is a terminal_failure (not a respawn), and the task is `failed`
+    // at that same error — the divergence (router respawn while task failed) is
+    // gone.
+    expect(routerDecisions.at(-1)).toBe("terminal_failure");
+    const respawnCount = routerDecisions.filter((d) => d === "respawn").length;
+    // With budget N the router respawns N-1 times (sessions #2…#N), never an
+    // (N+1)th orphan.
+    expect(respawnCount).toBe(
+      stateLostRespawnCapFor(MAX_SESSION_RETRY_ATTEMPTS),
+    );
+    expect(taskTerminalAtError.at(-1)).toBe(true);
+
+    const final = must(await service.getTask(task.id), "final");
+    expect(final.status).toBe("failed");
+    // The number of errored sessions equals the budget — no extra orphan
+    // session was spawned past the terminal decision.
+    const erroredSessions = (final.sessions ?? []).filter(
+      (s) => s.status === "errored",
+    ).length;
+    expect(erroredSessions).toBe(MAX_SESSION_RETRY_ATTEMPTS);
+  });
+
+  it("keeps the lineage non-terminal while the router still respawns (each error under the cap)", async () => {
+    const acp = new FakeAcp();
+    const { service, store } = makeServiceWithStore(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+
+    // The first N-1 state-lost errors are under the router's respawn cap, so the
+    // task must stay non-terminal (the router will re-drive it).
+    const respawnBudget = stateLostRespawnCapFor(MAX_SESSION_RETRY_ATTEMPTS);
+    for (let i = 0; i < respawnBudget; i += 1) {
+      const detail = must(
+        await service.spawnAgentForTask(task.id),
+        "spawn detail",
+      );
+      const sessionId = must(detail.sessions.at(-1), "session").sessionId;
+      await drive(acp, sessionId, "error", {
+        failureKind: "session_state_lost",
+        message: `state lost ${i + 1}`,
+      });
+      const detailAfter = must(await service.getTask(task.id), "after");
+      expect(detailAfter.status).not.toBe("failed");
+      const found = must(await store.findSession(sessionId), "found");
+      expect(found.session.retryCount).toBe(i + 1);
+    }
+  });
+
+  it("restartTask resets the crash-retry budget so a restarted task survives its first recoverable blip", async () => {
+    const acp = new FakeAcp();
+    const { service, store } = makeServiceWithStore(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+
+    // Exhaust the budget → terminal failed.
+    for (let i = 0; i < MAX_SESSION_RETRY_ATTEMPTS; i += 1) {
+      const status = must(await service.getTask(task.id), "s").status;
+      if (TERMINAL_TASK_STATUSES.has(status)) break;
+      const detail = must(await service.spawnAgentForTask(task.id), "spawn");
+      const sessionId = must(detail.sessions.at(-1), "session").sessionId;
+      await drive(acp, sessionId, "error", {
+        failureKind: "session_state_lost",
+        message: `state lost ${i + 1}`,
+      });
+    }
+    expect(must(await service.getTask(task.id), "failed").status).toBe(
+      "failed",
+    );
+
+    // Operator restarts. The restart stamps a fresh budget epoch, so the prior
+    // run's dead errored sessions no longer count.
+    const restarted = must(
+      await service.restartTask(task.id, { instruction: "try again" }),
+      "restarted",
+    );
+    expect(restarted.status).toBe("active");
+    const epoch = restarted.metadata?.[RETRY_BUDGET_EPOCH_METADATA_KEY];
+    expect(typeof epoch).toBe("number");
+    expect(epoch as number).toBeGreaterThan(0);
+
+    // A single recoverable state-lost error in the new run must NOT re-fail the
+    // task — the budget reset means this is attempt 1 of the new run, not the
+    // (already-spent) old one. Query the raw store (the DTO omits `spawnedAt`)
+    // for the session the restart spawned at/after the epoch.
+    const doc = must(await store.getTask(task.id), "doc");
+    const freshSession = must(
+      doc.sessions.filter((s) => s.spawnedAt >= (epoch as number)).at(-1),
+      "fresh session spawned by restart",
+    );
+    await drive(acp, freshSession.sessionId, "error", {
+      failureKind: "session_state_lost",
+      message: "recoverable blip after restart",
+    });
+    const afterBlip = must(await service.getTask(task.id), "after blip");
+    expect(afterBlip.status).not.toBe("failed");
   });
 });

@@ -2262,7 +2262,13 @@ describe("SubAgentRouter state_lost respawn cap", () => {
       listSessions: vi.fn(async () => []),
       stopSession,
     };
-    const { runtime, handleMessage } = makeRuntime({ acp: acpService });
+    // Pin the cap to 3 so this stays a mechanism test: the default cap is now
+    // derived from the shared crash-retry budget (#14104), so an explicit cap
+    // keeps this asserting the cap machinery itself, not the default value.
+    const { runtime, handleMessage } = makeRuntime({
+      acp: acpService,
+      setting: { ACPX_STATE_LOST_RESPAWN_CAP: "3" },
+    });
     const router = await SubAgentRouter.start(runtime);
 
     // 5 events: distinct sessionIds, same origin room (taskRoomId fallback)
@@ -2544,8 +2550,11 @@ describe("SubAgentRouter — deterministic session_state_lost recovery", () => {
       listSessions: vi.fn(async () => [...sessions.values()]),
       stopSession: vi.fn(async () => {}),
     };
+    // Pin the cap to 3 so this stays a mechanism test independent of the
+    // budget-derived default (#14104).
     const { runtime, handleMessage, spawnSession } = makeRuntime({
       acp: service,
+      setting: { ACPX_STATE_LOST_RESPAWN_CAP: "3" },
     });
     await SubAgentRouter.start(runtime);
 

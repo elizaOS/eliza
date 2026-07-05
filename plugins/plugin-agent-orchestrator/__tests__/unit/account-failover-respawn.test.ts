@@ -79,7 +79,7 @@ function makeAcp(sessions: SessionInfo[]) {
   };
 }
 
-function makeRuntime(acp: unknown) {
+function makeRuntime(acp: unknown, setting?: Record<string, string>) {
   const handleMessage = vi.fn<
     (rt: unknown, m: Memory, cb?: HandlerCallback) => Promise<unknown>
   >(async () => ({}));
@@ -87,7 +87,7 @@ function makeRuntime(acp: unknown) {
     agentId: "00000000-0000-0000-0000-000000000001",
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     getService: vi.fn(() => acp),
-    getSetting: vi.fn(() => undefined),
+    getSetting: vi.fn((k: string) => setting?.[k]),
     createMemory: vi.fn(async () => undefined),
     createEntity: vi.fn(async () => true),
     addParticipant: vi.fn(async () => true),
@@ -221,10 +221,14 @@ describe("mid-session account failover", () => {
   it("exhausts the shared lineage budget and posts ONE honest account-failure terminal", async () => {
     // Four sessions in the same origin lineage (respawn cascade): the first
     // three rate-limit errors respawn; the fourth crosses the cap (3) and
-    // posts a single terminal narration naming the account failure.
+    // posts a single terminal narration naming the account failure. Pin the cap
+    // to 3 so this stays a mechanism test — the default is now derived from the
+    // shared crash-retry budget (#14104).
     const sessions = ["s-1", "s-2", "s-3", "s-4"].map(makeSession);
     const acp = makeAcp(sessions);
-    const { runtime, handleMessage } = makeRuntime(acp.service);
+    const { runtime, handleMessage } = makeRuntime(acp.service, {
+      ACPX_STATE_LOST_RESPAWN_CAP: "3",
+    });
     const router = await SubAgentRouter.start(runtime);
 
     for (const [i, s] of sessions.entries()) {

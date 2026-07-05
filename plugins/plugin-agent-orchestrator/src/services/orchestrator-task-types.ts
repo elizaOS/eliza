@@ -118,11 +118,60 @@ export interface AttemptReflection {
 /** Cap on retained reflections — keep the most recent few to bound prompt size. */
 export const MAX_ATTEMPT_REFLECTIONS = 5;
 
-/** Crash-retry budget: how many times an unrecoverable session error may
- * re-dispatch a task's sub-agent lineage before the task goes terminal
- * `failed`. Bounds the general-crash respawn the same way
- * `MAX_AUTO_VERIFY_ATTEMPTS` bounds verification re-prompts. */
+/** Crash-retry budget: the total number of errored sessions a task's sub-agent
+ * lineage may accrue before the task goes terminal `failed`. Bounds the
+ * general-crash respawn the same way `MAX_AUTO_VERIFY_ATTEMPTS` bounds
+ * verification re-prompts.
+ *
+ * This is the ONE budget for the whole crash-retry event stream (#14104). The
+ * router's per-lineage `session_state_lost` respawn cap is derived from it via
+ * {@link stateLostRespawnCapFor}, and the task service's terminal decision uses
+ * the same {@link stateLostRespawnUnderCap} gate the router uses — so the two
+ * subsystems can never disagree about when the lineage is exhausted (the "4th
+ * orphan respawn against an already-`failed` task" divergence). */
 export const MAX_SESSION_RETRY_ATTEMPTS = 3;
+
+/** The router respawns AFTER an errored session, so the number of respawns it
+ * may perform is one fewer than the total errored-session budget: with a budget
+ * of N errored sessions, the Nth error is terminal and gets no successor, i.e.
+ * at most `N - 1` respawns produce sessions #2…#N. Deriving the respawn cap from
+ * the shared budget (rather than an independent constant) is what keeps the
+ * router from spawning an (N+1)th orphan worker against a `failed` task. */
+export function stateLostRespawnCapFor(budget: number): number {
+  return Math.max(0, budget - 1);
+}
+
+/** The single gate both the router's loop-guard reducer and the task service's
+ * terminal decision consult: given the 1-based respawn/errored count for a
+ * lineage and the respawn cap, may another successor session spawn? A respawn is
+ * permitted only while the count has not yet reached the cap; once it does, the
+ * lineage is exhausted and the next error is terminal with no orphan spawn. */
+export function stateLostRespawnUnderCap(count: number, cap: number): boolean {
+  return count <= cap;
+}
+
+/** Operator override for the state-lost respawn cap. Kept here (not inline in
+ * the router) so the router's loop-guard AND the task service's terminal
+ * decision resolve the SAME effective cap from the SAME env key — otherwise a
+ * deployment raising this would widen the router's respawn budget while the
+ * task service's terminal threshold stayed fixed, re-opening the #14104 drift. */
+export const STATE_LOST_RESPAWN_CAP_SETTING = "ACPX_STATE_LOST_RESPAWN_CAP";
+
+/** Resolve the effective state-lost respawn cap: a positive operator override
+ * from {@link STATE_LOST_RESPAWN_CAP_SETTING} wins, else the budget-derived
+ * default. `getSetting` reads character settings/secrets, so fall back to
+ * `process.env` for deployments that configure the cap purely via env. */
+export function resolveStateLostRespawnCap(runtime: {
+  getSetting?: (key: string) => unknown;
+}): number {
+  const raw =
+    runtime.getSetting?.(STATE_LOST_RESPAWN_CAP_SETTING) ??
+    process.env[STATE_LOST_RESPAWN_CAP_SETTING];
+  const parsed = typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : stateLostRespawnCapFor(MAX_SESSION_RETRY_ATTEMPTS);
+}
 
 /** The metadata key both the durable session `retryCount` and the router's
  * respawn-lineage counter fold into, so the two subsystems name ONE counter.
@@ -140,6 +189,24 @@ export function readSessionRetryCount(
   metadata: Record<string, unknown> | undefined,
 ): number {
   const raw = metadata?.[SESSION_RETRY_METADATA_KEY];
+  return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : 0;
+}
+
+/** Task-metadata key holding the epoch-ms boundary of the current run. The
+ * crash-retry budget counts errored sessions, but that count is per-RUN, not
+ * per-lifetime: an operator `restartTask` stamps `Date.now()` here so only
+ * sessions spawned at/after the restart count toward the budget. Without it a
+ * previously-`failed` task re-fails on its first recoverable blip because its
+ * dead sessions still fill the budget (#14104). */
+export const RETRY_BUDGET_EPOCH_METADATA_KEY = "retryBudgetEpochMs";
+
+/** Read the current run's budget epoch (epoch ms) off a task-metadata bag.
+ * Absent/non-positive reads to 0 — every session then counts, which is the
+ * correct pre-restart lifetime behavior. */
+export function readRetryBudgetEpoch(
+  metadata: Record<string, unknown> | undefined,
+): number {
+  const raw = metadata?.[RETRY_BUDGET_EPOCH_METADATA_KEY];
   return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : 0;
 }
 

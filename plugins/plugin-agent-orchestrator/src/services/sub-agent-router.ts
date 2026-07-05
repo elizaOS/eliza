@@ -34,6 +34,7 @@ import {
 } from "./coding-account-selection.js";
 import {
   readSessionRetryCount,
+  resolveStateLostRespawnCap,
   SESSION_RETRY_METADATA_KEY,
 } from "./orchestrator-task-types.js";
 import {
@@ -675,12 +676,12 @@ export class SubAgentRouter extends Service {
     }
     const capRaw = readSetting(this.runtime, "ACPX_SUB_AGENT_ROUND_TRIP_CAP");
     const parsed = capRaw ? Number.parseInt(capRaw, 10) : NaN;
-    const slCapRaw = readSetting(this.runtime, "ACPX_STATE_LOST_RESPAWN_CAP");
-    const slParsed = slCapRaw ? Number.parseInt(slCapRaw, 10) : NaN;
+    // Resolve the state-lost respawn cap through the shared resolver so the
+    // router and the task service's terminal decision agree on the SAME
+    // effective cap even under an operator override (#14104).
     this.loopState = createRouterLoopState({
       roundTripCap: Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
-      stateLostRespawnCap:
-        Number.isFinite(slParsed) && slParsed > 0 ? slParsed : undefined,
+      stateLostRespawnCap: resolveStateLostRespawnCap(this.runtime),
     });
     // Service registration runs in parallel — when router.start() executes,
     // AcpService may not yet be registered with the runtime, so getService
