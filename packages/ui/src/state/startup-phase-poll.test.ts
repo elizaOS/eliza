@@ -109,7 +109,7 @@ function createDeps(): PollingBackendDeps {
 const originalWindow = (globalThis as { window?: unknown }).window;
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   clientMock.getAuthStatus.mockResolvedValue({
     required: false,
     pairingEnabled: false,
@@ -131,6 +131,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   (globalThis as { window?: unknown }).window = originalWindow;
 });
 
@@ -1465,6 +1466,9 @@ describe("runPollingBackend bounded native boot (#11030)", () => {
 });
 
 describe("runPollingBackend progress-aware native budget + dead-cloud recovery (iOS boot automation D1)", () => {
+  const originalIosFullBunAvailable =
+    process.env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE;
+
   const nativePolicy = {
     supportsLocalRuntime: true,
     backendTimeoutMs: 30_000,
@@ -1521,7 +1525,19 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
     return { setItemCalls };
   }
 
+  beforeEach(async () => {
+    process.env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE = "true";
+    const transport = await import("../api/ios-local-agent-transport");
+    transport.resetIosNativeAgentBootProgressForTests();
+  });
+
   afterEach(async () => {
+    if (originalIosFullBunAvailable === undefined) {
+      delete process.env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE;
+    } else {
+      process.env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE =
+        originalIosFullBunAvailable;
+    }
     delete (globalThis as Record<string, unknown>).Capacitor;
     const transport = await import("../api/ios-local-agent-transport");
     transport.resetIosNativeAgentBootProgressForTests();
@@ -1838,6 +1854,9 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
     // consecutive-failure budget, a local-capable native build with a stale
     // persisted cloud mode flips to the bundled agent instead of stranding
     // the user on the timeout card.
+    vi.useFakeTimers();
+    const transport = await import("../api/ios-local-agent-transport");
+    transport.resetIosNativeAgentBootProgressForTests();
     const deps = createDeps();
     const dispatch = vi.fn();
     const { setItemCalls } = installNativeWindow({
@@ -1869,16 +1888,33 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
       cloudProvisioned: false,
     });
 
-    await runPollingBackend(
-      deps,
-      dispatch,
-      { ...nativePolicy, nativeConsecutiveFailureBudgetMs: 150 },
-      nativeCtx(deadCloudServer),
-      1,
-      { current: 1 },
-      { current: false },
-      { current: null },
-    );
+    try {
+      const run = runPollingBackend(
+        deps,
+        dispatch,
+        { ...nativePolicy, nativeConsecutiveFailureBudgetMs: 150 },
+        nativeCtx(deadCloudServer),
+        1,
+        { current: 1 },
+        { current: false },
+        { current: null },
+      );
+      let settled = false;
+      const settledRun = run.finally(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      for (let i = 0; i < 800 && !settled; i++) {
+        (globalThis as Record<string, unknown>).Capacitor = {
+          isNativePlatform: () => true,
+        };
+        await vi.advanceTimersByTimeAsync(50);
+      }
+      expect(settled).toBe(true);
+      await settledRun;
+    } finally {
+      vi.useRealTimers();
+    }
 
     expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
       "eliza-local-agent://ipc",
@@ -1892,6 +1928,7 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
   });
 
   it("never auto-flips a user-configured remote-mac mode to the on-device agent", async () => {
+    vi.useFakeTimers();
     const deps = createDeps();
     const dispatch = vi.fn();
     const { setItemCalls } = installNativeWindow({
@@ -1912,7 +1949,7 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
       }),
     );
 
-    await runPollingBackend(
+    const run = runPollingBackend(
       deps,
       dispatch,
       { ...nativePolicy, nativeConsecutiveFailureBudgetMs: 150 },
@@ -1922,6 +1959,19 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
       { current: false },
       { current: null },
     );
+    let settled = false;
+    const settledRun = run.finally(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    for (let i = 0; i < 800 && !settled; i++) {
+      (globalThis as Record<string, unknown>).Capacitor = {
+        isNativePlatform: () => true,
+      };
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    expect(settled).toBe(true);
+    await settledRun;
 
     // Dead-ends on the timeout card (with Retry) — the explicit remote
     // choice is respected, no silent mode flip.

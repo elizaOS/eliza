@@ -571,10 +571,7 @@ export async function runPollingBackend(
    */
   const boundedProbe = <T>(promise: Promise<T>): Promise<T> => {
     const remainingMs = Math.max(0, deadline - Date.now());
-    const capMs = Math.max(
-      1_000,
-      Math.min(PROBE_REQUEST_TIMEOUT_MS, remainingMs),
-    );
+    const capMs = Math.max(1, Math.min(PROBE_REQUEST_TIMEOUT_MS, remainingMs));
     return new Promise<T>((resolve, reject) => {
       const hangTid = setTimeout(() => {
         reject(
