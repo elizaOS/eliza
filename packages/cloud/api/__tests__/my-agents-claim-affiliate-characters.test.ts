@@ -77,7 +77,7 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
-let route: { default: { fetch: (req: Request) => Promise<Response> } };
+let route: typeof import("../my-agents/claim-affiliate-characters/route");
 
 beforeAll(async () => {
   route = await import("../my-agents/claim-affiliate-characters/route");

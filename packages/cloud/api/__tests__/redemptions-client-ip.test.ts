@@ -112,7 +112,7 @@ describe("POST /api/v1/redemptions client IP resolution", () => {
     });
 
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as { success: boolean; error: string }).toEqual({
       success: false,
       error: ORIGIN_ERROR,
     });
@@ -126,7 +126,7 @@ describe("POST /api/v1/redemptions client IP resolution", () => {
     });
 
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as { success: boolean; error: string }).toEqual({
       success: false,
       error: ORIGIN_ERROR,
     });
@@ -137,7 +137,7 @@ describe("POST /api/v1/redemptions client IP resolution", () => {
     const res = await postRedemption();
 
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as { success: boolean; error: string }).toEqual({
       success: false,
       error: ORIGIN_ERROR,
     });
