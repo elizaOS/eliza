@@ -24,7 +24,25 @@ export interface ImageBackgroundProps {
  * warm white that dark text needs. A token scrim (no blur, no per-pixel
  * filter work) is also the cheapest possible treatment: one plain composited
  * layer, gate-safe, GPU-trivial.
- */
+ *
+ * BOTTOM-EDGE FLOOR (kills the residual "black band"): the wallpaper is a
+ * `fixed inset-0` cover-fit layer, so on an iOS standalone PWA it already
+ * paints into the home-indicator safe-area at the true screen bottom (that is
+ * the whole reason the transparent app-safe-area-floor lets it own the edge).
+ * But cover-cropping the stock "Ember Night" sunset — and many user uploads —
+ * shows a DARK image region at the very bottom (the sunset floor samples to
+ * ~lum 31 after the 0.5 --bg scrim), so the strip under the floating composer
+ * read as a near-black band even though the wallpaper was painting there. Prior
+ * fixes only removed the OTHER painters of that zone (the orange host-chrome,
+ * the opaque bg-bg floor, the launch-bg repaint strip); the residual band was
+ * the wallpaper's own dark bottom. A short, bottom-anchored warm floor gradient
+ * lifts just the lowest strip toward the ember floor tone the ShaderBackground
+ * fallback already pools there, so the home-indicator zone reads as intentional
+ * lock-screen ambience in one continuous field with the rest of the wallpaper —
+ * never a dead black bar. It fades out fast (well before the composer) so it
+ * never washes the wallpaper's content region, and it is wallpaper-agnostic:
+ * dark user uploads get the same warm floor. Anchored below the legibility
+ * scrim so the scrim still governs the readable middle of the image. */
 export function ImageBackground({
   imageUrl,
 }: ImageBackgroundProps): React.JSX.Element {
@@ -50,6 +68,25 @@ export function ImageBackground({
         aria-hidden="true"
         data-testid="app-background-image-scrim"
         className="absolute inset-0 bg-bg/50"
+      />
+      {/* Bottom warm-floor lift: a short gradient anchored at the true bottom
+          edge that pulls the lowest strip (the home-indicator safe-area zone
+          under the composer) toward the ember floor glow, so a dark wallpaper
+          bottom never reads as a black band. Uses the brand ember glow at low
+          alpha over the base --bg, matching the ShaderBackground fallback's
+          low ember pool; fades to transparent by ~22% up so it only touches
+          the bottom edge and never the content region. Sits ABOVE the scrim
+          (last child) because it must lift the ALREADY-scrimmed bottom out of
+          near-black — putting it under the scrim would just get dimmed back
+          down. pointer-events inherit none from the parent. */}
+      <div
+        aria-hidden="true"
+        data-testid="app-background-image-floor"
+        className="absolute inset-x-0 bottom-0 h-[22%]"
+        style={{
+          backgroundImage:
+            "linear-gradient(to top, color-mix(in srgb, var(--bg) 62%, #ef5a1f) 0%, transparent 100%)",
+        }}
       />
     </div>
   );
