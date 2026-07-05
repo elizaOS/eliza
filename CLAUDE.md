@@ -55,6 +55,24 @@ Scope any command to one package with `--cwd`:
 `bun run --cwd packages/core test`. The repo has 188 root scripts; the list
 above is the day-to-day set. Use `bun run` with no args to print them all.
 
+### Shared dev server for parallel lanes
+
+When several worktrees are active on the same VPS, do **not** have every lane bind
+the default app UI port (`2138`). `packages/app` keeps `bun run dev` unchanged
+for single-lane local work, but concurrent agents should use the shared scripts:
+
+```bash
+cd packages/app
+bun run dev:shared   # long-lived Vite server on a deterministic worktree port
+bun run dev:status   # list running shared dev servers (port, worktree, pid)
+bun run dev:rebuild  # explicit Vite full-reload trigger for this worktree
+```
+
+Ports are reserved in `~/.eliza/dev-server-registry.json` (override with
+`ELIZA_DEV_SERVER_REGISTRY`) from the normalized worktree path, with registry
+locking and linear probing so active lanes do not collide. See
+[`packages/docs/development/shared-dev-server.md`](packages/docs/development/shared-dev-server.md).
+
 ### Removed Root Command Migrations
 
 | Removed command | Use instead |

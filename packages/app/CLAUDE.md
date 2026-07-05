@@ -75,6 +75,9 @@ All scripts from this package's `package.json`:
 
 ```bash
 bun run --cwd packages/app dev                        # Vite dev server (renderer only; UI port from ELIZA_UI_PORT, default 2138)
+bun run --cwd packages/app dev:shared                 # Shared long-lived Vite server on deterministic worktree port
+bun run --cwd packages/app dev:status                 # List running shared dev servers (port, worktree, pid)
+bun run --cwd packages/app dev:rebuild                # Trigger explicit Vite full reload for this worktree
 bun run --cwd packages/app build                      # Full app build (scripts/build.mjs)
 bun run --cwd packages/app build:web                  # Vite build only (no capacitor sync)
 bun run --cwd packages/app plugin:build               # Plugin-only build
