@@ -3808,6 +3808,14 @@ export function ContinuousChatOverlay({
           <span className="sr-only" data-testid="chat-detent-probe">
             {`chat-detent:${detentLabel}`}
           </span>
+          {/* AX-tree mirror of data-maximized (#13531). `detentLabel` folds the
+              full-bleed MAXIMIZED state into "full" (both rest at the top), so the
+              detent probe alone cannot tell them apart — the on-device XCUITest
+              maximize/restore leg reads this separate probe to observe whether the
+              chat committed to edge-to-edge full-bleed. */}
+          <span className="sr-only" data-testid="chat-maximized-probe">
+            {`chat-maximized:${fullBleed ? "true" : "false"}`}
+          </span>
           {firstRunProbe ? (
             <span className="sr-only" data-testid="onboarding-state-probe">
               {`onboarding-step:${firstRunProbe.step} onboarding-choices:${firstRunProbe.choices}`}

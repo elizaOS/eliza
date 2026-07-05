@@ -6,12 +6,13 @@
  *   - TopicGroup — flick UP on the header collapses to a pill; tap the pill
  *                  (or flick DOWN) expands. NO visible buttons.
  *
- * Conversation-swipe coverage lives in conversation-swipe-fixture.tsx, which
- * mounts the REAL ContinuousChatOverlay. The local `ConversationSwiper` mock that
- * used to live here (a hardcoded array + its own useState(index), sharing only
- * usePullGesture, not the real overlay/nav/async-create path) was DELETED in
- * #9954 — it gave false confidence by passing while exercising none of the real
- * conversation-nav code.
+ * This fixture covers only the TopicGroup flick. A hardcoded-array
+ * `ConversationSwiper` mock once lived here; it was deleted in #9954 for giving
+ * false confidence (it shared only usePullGesture, never the real overlay), and
+ * the single-infinite-thread redesign (#13531) then removed chat-to-chat swipe
+ * from the product entirely — the overlay's surviving perf-critical gestures
+ * (thread-scroll + maximize/restore) are driven against the REAL overlay in
+ * perf-gate-fixture.tsx.
  */
 
 import * as React from "react";
