@@ -35,14 +35,13 @@ import {
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
+import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import { signStewardMutatingRequest } from "@/lib/steward/sign";
 import { describeSyncError, syncUserFromSteward } from "@/lib/steward-sync";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
-const STEWARD_TOKEN_COOKIE = "steward-token";
-const STEWARD_REFRESH_TOKEN_COOKIE = "steward-refresh-token";
 
 // ─── CSRF origin allowlist (must stay in lockstep with steward-session) ───
 const PERMITTED_ORIGIN_HOSTS = new Set<string>([
@@ -450,7 +449,7 @@ app.post("/", async (c) => {
   const secure = c.env.NODE_ENV === "production";
   const domain = cookieDomainForHost(c.req.header("host"));
 
-  setCookie(c, STEWARD_TOKEN_COOKIE, token, {
+  setCookie(c, stewardCookieNames(c.env.ENVIRONMENT).token, token, {
     httpOnly: true,
     secure,
     sameSite: "Lax",
@@ -460,14 +459,19 @@ app.post("/", async (c) => {
   });
 
   if (typeof refreshToken === "string" && refreshToken.length > 0) {
-    setCookie(c, STEWARD_REFRESH_TOKEN_COOKIE, refreshToken, {
-      httpOnly: true,
-      secure,
-      sameSite: "Lax",
-      path: "/",
-      ...(domain ? { domain } : {}),
-      maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
-    });
+    setCookie(
+      c,
+      stewardCookieNames(c.env.ENVIRONMENT).refreshToken,
+      refreshToken,
+      {
+        httpOnly: true,
+        secure,
+        sameSite: "Lax",
+        path: "/",
+        ...(domain ? { domain } : {}),
+        maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
+      },
+    );
   }
 
   setCookie(c, STEWARD_AUTHED_COOKIE, "1", {

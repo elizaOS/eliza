@@ -24,9 +24,16 @@ import {
   verifyPlaywrightTestSessionToken,
 } from "./playwright-test-session";
 import { verifyStewardTokenCached } from "./steward-client";
+import { stewardCookieNames } from "./steward-cookies";
 
 function readStewardCookie(c: AppContext): string | null {
-  return readCookie(c, "steward-token");
+  const names = stewardCookieNames(c.env?.ENVIRONMENT);
+  // Legacy fallback keeps pre-rename non-prod sessions alive for one refresh
+  // cycle; on production the two names are identical. (#13728)
+  return (
+    readCookie(c, names.token) ??
+    (names.token === "steward-token" ? undefined : readCookie(c, "steward-token"))
+  );
 }
 
 function readCookie(c: AppContext, name: string): string | null {

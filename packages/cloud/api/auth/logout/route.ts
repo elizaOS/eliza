@@ -9,6 +9,10 @@ import { deleteCookie, getCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { invalidateSessionCaches } from "@/lib/auth";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
+import {
+  LEGACY_STEWARD_COOKIES,
+  stewardCookieNames,
+} from "@/lib/auth/steward-cookies";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -23,7 +27,10 @@ const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
-  const stewardToken = getCookie(c, "steward-token");
+  const cookieNames = stewardCookieNames(c.env.ENVIRONMENT);
+  const stewardToken =
+    getCookie(c, cookieNames.token) ??
+    getCookie(c, LEGACY_STEWARD_COOKIES.token);
 
   // Clear cookies FIRST. Clearing them is what actually logs the user out, and
   // it must happen even if the server-side teardown below fails (a transient DB
@@ -33,8 +40,12 @@ app.post("/", async (c) => {
   // hygiene (caches expire on their own TTL).
   const domain = cookieDomainForHost(c.req.header("host"));
   const stewardOpts = domain ? { path: "/", domain } : { path: "/" };
-  deleteCookie(c, "steward-token", stewardOpts);
-  deleteCookie(c, "steward-refresh-token", stewardOpts);
+  // Clear the env-scoped pair AND the legacy unsuffixed pair — logout must
+  // always win regardless of which naming era set the cookies. (#13728)
+  deleteCookie(c, cookieNames.token, stewardOpts);
+  deleteCookie(c, cookieNames.refreshToken, stewardOpts);
+  deleteCookie(c, LEGACY_STEWARD_COOKIES.token, stewardOpts);
+  deleteCookie(c, LEGACY_STEWARD_COOKIES.refreshToken, stewardOpts);
   deleteCookie(c, "steward-authed", stewardOpts);
   deleteCookie(c, "eliza-anon-session", { path: "/" });
 
