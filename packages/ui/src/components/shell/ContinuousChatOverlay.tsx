@@ -487,14 +487,17 @@ function SheetGrabber({
         "appearance-none border-0 bg-transparent text-left",
         // ABSOLUTELY positioned over the panel top (zero layout height — it
         // floats slightly on top of the input row, so collapsed height == the
-        // input bar). Keep the invisible hit target local to the visible handle:
-        // it should be forgiving, not register drags far above the bar.
+        // input bar). The grab target is WIDE (a swipe-up from anywhere across
+        // the composer's top edge opens the chat — the lock-screen "swipe up to
+        // open" affordance) but STAYS ABOVE the input row so it never steals
+        // taps meant for the textarea / +/mic controls below it.
         // z-20 keeps it above the input row (z-10) so it always wins the drag.
-        "absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-2 active:cursor-grabbing",
-        // The hit zone reaches only a small distance above the panel and stops
-        // at the handle's own bottom, so the handle does not steal taps intended
-        // for the composer or feel like it starts in empty space.
-        "before:absolute before:-inset-x-4 before:-top-4 before:bottom-0 before:content-['']",
+        "absolute inset-x-6 top-0.5 z-20 flex cursor-grab touch-none select-none items-center justify-center py-2 active:cursor-grabbing",
+        // The invisible hit target reaches a comfortable distance ABOVE the
+        // panel (a swipe-up begun in the empty field just over the composer is
+        // caught) and STOPS at the handle's own bottom, so it never overlaps the
+        // interactive composer row beneath — taps fall through to the input.
+        "before:absolute before:-inset-x-2 before:-top-6 before:bottom-0 before:content-['']",
         "   ",
       )}
     >
@@ -562,8 +565,11 @@ function PillHandle({
       aria-hidden={pilled ? undefined : true}
       className={cn(
         // The bar hugs the BOTTOM (small pb) where the collapsed input sat — not
-        // floating mid-air; the tall pt keeps a generous upward grab/flick zone.
-        "h-auto w-auto cursor-grab touch-none select-none items-end rounded-none bg-transparent px-16 pb-1.5 pt-10 hover:bg-transparent active:cursor-grabbing",
+        // floating mid-air; the tall pt + full width keep a generous upward grab/
+        // flick zone so a swipe-up from anywhere across the bottom opens the chat
+        // (the lock-screen affordance). Flex-center keeps the capsule centred
+        // while the invisible hit area spans wide.
+        "flex h-auto w-full cursor-grab touch-none select-none items-end justify-center rounded-none bg-transparent px-8 pb-1.5 pt-10 hover:bg-transparent active:cursor-grabbing",
         // Interactive only while pilled. When NOT pilled the (faded) handle must
         // let taps fall through to the composer textarea below it — otherwise its
         // tall hit zone steals the tap and the keyboard never opens.
@@ -3512,16 +3518,23 @@ export function ContinuousChatOverlay({
         // Full-bleed fills the screen edge-to-edge: NO overlay bottom padding,
         // so the glass panel reaches the true bottom (no orange gap). The
         // gesture-zone clearance moves INSIDE the composer row (below) so the
-        // input still sits above the home-gesture bar. Non-full-bleed anchors the
-        // composer down: it clears the home-gesture inset (max safe-area /
-        // android inset) and nothing more, so it sits low with no dead gap
-        // beneath. The floor layer below paints that inset zone with the home
-        // surface so it reads continuous, not as a black bar.
+        // input still sits above the home-gesture bar. Non-full-bleed anchors
+        // the composer LOW, lock-screen style. The OS reports a ~34px bottom
+        // safe-area on a home-indicator phone, but the indicator itself is a
+        // thin (~5px) bar seated ~8px off the true bottom — clearing the WHOLE
+        // safe-area floats the pill ~34px up over a dead band. So clear only
+        // what the indicator needs: 60% of the reported inset (clears the bar +
+        // its own margin; the 44px min tap target and the OS bar stay
+        // untouched) with a 0.5rem floor so a device with NO inset still keeps
+        // a hair of breathing room. This seats the pill just above the home
+        // indicator instead of hovering. The floor layer below paints the
+        // reclaimed strip with the home surface so it reads continuous, not as
+        // a black bar.
         paddingBottom: fullBleed
           ? 0
           : keyboardLiftActive
             ? "0.75rem"
-            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)))",
+            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) * 0.6, 0.5rem))",
       }}
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
