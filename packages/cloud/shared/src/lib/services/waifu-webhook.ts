@@ -170,6 +170,9 @@ export function isWaifuWebhookTargetUrl(
     }
     return candidate.pathname.includes(WAIFU_WEBHOOK_PATH_PREFIX);
   } catch {
+    // error-policy:J3 an unparseable candidate URL is definitively not a waifu
+    // receiver — return the explicit invalid answer (false), never fabricate a
+    // match. No signed envelope can target a URL that will not parse.
     return false;
   }
 }
@@ -206,6 +209,9 @@ export async function emitWaifuWebhook(
   try {
     url = await assertSafeOutboundUrl(receiverPath(target.baseUrl, params.kind));
   } catch (err) {
+    // error-policy:J1 SSRF-guard rejection at the outbound boundary, translated
+    // into a structured delivery failure (delivered:false + error). Distinct
+    // from success and from the not_configured skip; fetch never runs.
     const message = err instanceof Error ? err.message : String(err);
     logger.error("[waifu-webhook] refusing unsafe outbound url", { error: message });
     return { delivered: false, status: null, error: message };
@@ -230,6 +236,11 @@ export async function emitWaifuWebhook(
     }
     return { delivered: response.ok, status: response.status };
   } catch (err) {
+    // error-policy:J1 transport-boundary translation: a network/timeout failure
+    // becomes a structured result (delivered:false, status:null, error) so the
+    // billing caller is never blocked, yet the failure stays observable and
+    // distinguishable from a delivered response (status:number) or a designed
+    // not_configured skip. It never fabricates a delivered:true.
     const message = err instanceof Error ? err.message : String(err);
     logger.error("[waifu-webhook] delivery error", {
       kind: params.kind,
