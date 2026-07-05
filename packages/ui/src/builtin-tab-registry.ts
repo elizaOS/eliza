@@ -87,6 +87,21 @@ export const BUILTIN_TAB_METADATA: readonly BuiltinTabMetadata[] = [
   // ── Immersive wallpaper surfaces (grant-backed shared background) ──
   { id: "chat", surface: IMMERSIVE_WALLPAPER_SURFACE },
   { id: "background", surface: IMMERSIVE_WALLPAPER_SURFACE },
+  // ── Native-webview isolation surface (arbitrary third-party web content) ──
+  // The Browser view is the canonical `native-webview` consumer documented in
+  // the isolation catalogue (`surface-isolation.ts`): it hosts arbitrary
+  // third-party pages in a native child web-content surface (desktop
+  // `WebContentsView` / electrobun OOPIF, iOS `WKWebView`, Android `WebView`)
+  // with its own renderer process, so page content never shares the host realm.
+  // Declaring the manifest here makes that isolation level authoritative on the
+  // view instead of only documented. `background: "opaque"` is the default made
+  // explicit — the browser never paints the shared wallpaper (it owns its whole
+  // surface). This declares policy only; the native embedding itself lives in
+  // the tab renderers, not here (#13596).
+  {
+    id: "browser",
+    surface: { isolation: "native-webview", background: "opaque" },
+  },
   // ── Wallpaper only at the tab's launcher root; opaque on sub-routes ──
   {
     id: "views",
