@@ -93,7 +93,6 @@ import {
   toTaskTimelineMessageDto,
 } from "./orchestrator-task-mapper.js";
 import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
-import { resolveTaskProjectId } from "./project-binding.js";
 import {
   type AttemptReflection,
   type CreateTaskInput,
@@ -124,6 +123,7 @@ import {
   isParentAgentBrokerWired,
   PARENT_AGENT_BROKER_MANIFEST_ENTRY,
 } from "./parent-agent-broker.js";
+import { resolveTaskProjectId } from "./project-binding.js";
 import { buildSkillsManifest } from "./skill-manifest.js";
 import {
   configureSpendLedger,
