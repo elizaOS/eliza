@@ -110,7 +110,10 @@ import {
   TERMINAL_TASK_STATUSES,
   type UsageState,
 } from "./orchestrator-task-types.js";
-import { PARENT_AGENT_BROKER_MANIFEST_ENTRY } from "./parent-agent-broker.js";
+import {
+  PARENT_AGENT_BROKER_MANIFEST_ENTRY,
+  PARENT_AGENT_BROKER_SLUG,
+} from "./parent-agent-broker.js";
 import { buildSkillsManifest } from "./skill-manifest.js";
 import {
   configureSpendLedger,
@@ -2751,18 +2754,24 @@ export class OrchestratorTaskService extends Service {
       ...(capabilityProfile ? { capabilityProfile } : {}),
     });
 
-    // Economics tasks drive the monetized-app loop through the parent-agent
-    // Cloud command broker. Write a SKILLS.md into the workdir that advertises
-    // the broker slug + its arg contract so the spawned agent knows how to call
-    // back (the dispatcher in SubAgentRouter executes those requests).
-    if (capabilityProfile === "economics" && workdir) {
+    // The parent-agent broker is live for EVERY spawned session (SubAgentRouter
+    // intercepts `USE_SKILL parent-agent` regardless of capability profile), so
+    // every workdir spawn — not only economics tasks — gets a SKILLS.md that
+    // advertises the broker slug + its arg contract and the parent's installed
+    // skills, so the spawned agent knows how to call back. Economics tasks
+    // additionally pin the monetized-app skills and the ViewKind contract for
+    // the Cloud build→deploy→monetize loop.
+    if (workdir) {
+      const isEconomics = capabilityProfile === "economics";
       try {
         const manifest = await buildSkillsManifest(this.runtime, {
-          recommendedSlugs: ["build-monetized-app", "eliza-cloud"],
+          recommendedSlugs: isEconomics
+            ? ["build-monetized-app", "eliza-cloud"]
+            : [PARENT_AGENT_BROKER_SLUG],
           virtualSkills: [{ ...PARENT_AGENT_BROKER_MANIFEST_ENTRY }],
-          // Economics tasks may deploy Cloud views — teach the sub-agent the
-          // ViewKind contract so views are categorized correctly. (#8917)
-          includeViewKindContract: true,
+          // Only economics tasks deploy Cloud views — the ViewKind contract
+          // (#8917) stays off the generic manifest.
+          includeViewKindContract: isEconomics,
         });
         await writeFile(join(workdir, "SKILLS.md"), manifest.markdown, "utf8");
       } catch (err) {

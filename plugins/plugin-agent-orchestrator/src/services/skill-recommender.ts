@@ -9,8 +9,12 @@
  *     match already scores ≥ 0.9 (no need to spend a model call) or when the
  *     runtime model is unavailable.
  *
- * The output is task-aware ranking: the orchestrator can then write the top
- * N into SKILLS.md and reference them in the spawned agent's initial prompt.
+ * The output is a task-aware ranking. It is a ranking service only: producing
+ * the list does not itself write anything. The durable-task spawn path
+ * (`OrchestratorTaskService.spawnAgentForTask`) is the caller that turns a
+ * ranking into a SKILLS.md via `buildSkillsManifest`, and only when the spawn
+ * has a workdir. Direct `/api/coding-agents/*` and `TASKS_SPAWN_AGENT` spawns do
+ * not yet consume this ranking.
  *
  * @module services/skill-recommender
  */
