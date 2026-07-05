@@ -380,6 +380,15 @@ export interface ViewSwitchedPayload extends EventPayload {
 	initiatedBy: InteractionInitiator;
 	/** Room the switch happened in, for room-scoped proactive gating. */
 	roomId?: UUID;
+	/**
+	 * The target view's declared `anticipatoryIntent` (#13587), resolved from the
+	 * view registry at emit time. Present only for intent-bearing views; drives
+	 * the proactive judge toward a single scoped greeting. Absent → label-only
+	 * fallback (judge may stay silent).
+	 */
+	anticipatoryIntent?: string;
+	/** The target view's one-line description, for judge grounding. */
+	viewPurpose?: string;
 }
 
 /**

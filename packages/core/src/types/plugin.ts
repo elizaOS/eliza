@@ -908,6 +908,16 @@ export interface ViewDeclaration {
 	 * Optional free-form planner hints for this view.
 	 */
 	contextHints?: string[];
+	/**
+	 * One line stating what the agent should proactively offer the moment the
+	 * user enters this view — the anticipatory intent that drives the per-view
+	 * greeting (e.g. wallet: "offer a portfolio summary and a fund/swap next
+	 * step"). When set, a USER-initiated switch to this view is expected to
+	 * produce a single scoped greeting fulfilling this intent against live view
+	 * state; when omitted, the proactive judge falls back to label-only behavior
+	 * and may stay silent. Leave undefined on developer-only surfaces.
+	 */
+	anticipatoryIntent?: string;
 	/** Relative path from the plugin's package root to its hero image. */
 	heroImagePath?: string;
 	/** Screen background policy for this view. Defaults to `"opaque"`. */
