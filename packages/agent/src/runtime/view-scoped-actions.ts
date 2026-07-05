@@ -298,8 +298,9 @@ export function buildViewScopedAction(
 export function scopedActionNames(
   scopedActions: readonly ViewScopedAction[] | undefined,
 ): string[] {
+  if (!scopedActions) return [];
   return [
-    ...new Set((scopedActions ?? []).map((a) => a.name.trim()).filter(Boolean)),
+    ...new Set(scopedActions.map((a) => a.name.trim()).filter(Boolean)),
   ];
 }
 
@@ -378,7 +379,9 @@ export function registerViewScopedActions(
 
   const registered = new Map<string, Action>();
   for (const view of views) {
-    for (const decl of view.scopedActions ?? []) {
+    const scopedActions = view.scopedActions;
+    if (!scopedActions) continue;
+    for (const decl of scopedActions) {
       const name = decl.name.trim();
       if (!name) continue;
       if (registered.has(name)) {

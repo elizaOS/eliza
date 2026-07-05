@@ -80,11 +80,15 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+// Older WebKit exposes the constructor under a vendor prefix; read it through a
+// widened view of the global rather than an `as unknown as` double cast.
+interface WebkitAudioWindow {
+  webkitAudioContext?: typeof AudioContext;
+}
+
 function getAudioCtx(): AudioContext {
-  const Ctor =
-    window.AudioContext ??
-    (window as unknown as { webkitAudioContext?: typeof AudioContext })
-      .webkitAudioContext;
+  const webkitCtor = (window as Window & WebkitAudioWindow).webkitAudioContext;
+  const Ctor = window.AudioContext ?? webkitCtor;
   if (!Ctor) throw new Error("AudioContext unavailable in this WebView");
   return new Ctor();
 }

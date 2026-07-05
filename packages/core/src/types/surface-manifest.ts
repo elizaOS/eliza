@@ -174,7 +174,9 @@ export interface SurfaceManifestBearer {
 function dedupeCapabilities(
 	caps: readonly SurfaceCapability[] | undefined,
 ): ReadonlySet<SurfaceCapability> {
-	return new Set(caps ?? []);
+	// `Set`'s constructor treats a missing iterable as empty, so an absent
+	// capability list yields an empty set without a `?? []` empty-fallback.
+	return new Set(caps);
 }
 
 /**

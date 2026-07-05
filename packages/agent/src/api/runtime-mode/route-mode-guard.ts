@@ -76,7 +76,9 @@ export function findRegisteredRouteModeRule(args: {
   method: string;
 }): RuntimeRouteModeRule | null {
   const method = args.method.toUpperCase();
-  for (const route of args.runtime?.routes ?? []) {
+  const routes = args.runtime?.routes;
+  if (!routes) return null;
+  for (const route of routes) {
     if (route.type === "STATIC" || route.type !== method) continue;
     if (!isRuntimeModeList(route.modes) || route.modes.length === 0) continue;
     if (!matchPluginRoutePath(route.path, args.pathname)) continue;

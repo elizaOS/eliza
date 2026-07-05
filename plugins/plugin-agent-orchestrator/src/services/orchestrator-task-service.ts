@@ -440,6 +440,54 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+const ADMISSION_PRIORITIES: readonly OrchestratorTaskPriority[] = [
+  "low",
+  "normal",
+  "high",
+  "urgent",
+];
+
+function isAdmissionPriority(
+  value: unknown,
+): value is OrchestratorTaskPriority {
+  return ADMISSION_PRIORITIES.includes(value as OrchestratorTaskPriority);
+}
+
+// Every SerializableSpawnOpts field is an optional string, so a persisted value
+// is a valid spawn-opts payload iff each present key is a string.
+function isSerializableSpawnOpts(
+  value: unknown,
+): value is SerializableSpawnOpts {
+  if (!isRecord(value)) return false;
+  for (const key of [
+    "framework",
+    "model",
+    "workdir",
+    "repo",
+    "label",
+    "task",
+    "approvalPreset",
+    "providerSource",
+  ] as const) {
+    const field = value[key];
+    if (field !== undefined && typeof field !== "string") return false;
+  }
+  return true;
+}
+
+/** Structural guard for a durable admission record read back off task metadata,
+ * replacing the former `as unknown as AdmissionRecord` double cast with a real
+ * narrowing so a malformed persisted payload is rejected instead of trusted. */
+function isAdmissionRecord(value: unknown): value is AdmissionRecord {
+  return (
+    isRecord(value) &&
+    value.state === "queued" &&
+    typeof value.enqueuedAt === "string" &&
+    isAdmissionPriority(value.priorityAtEnqueue) &&
+    isSerializableSpawnOpts(value.spawnOpts)
+  );
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -4353,13 +4401,8 @@ export class OrchestratorTaskService extends Service {
     task: OrchestratorTaskRecord,
   ): AdmissionRecord | null {
     const admission = task.metadata?.admission;
-    if (
-      isRecord(admission) &&
-      admission.state === "queued" &&
-      typeof admission.enqueuedAt === "string" &&
-      isRecord(admission.spawnOpts)
-    ) {
-      return admission as unknown as AdmissionRecord;
+    if (isAdmissionRecord(admission)) {
+      return admission;
     }
     return null;
   }
