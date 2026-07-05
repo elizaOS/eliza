@@ -1,20 +1,13 @@
 // @vitest-environment jsdom
 
-// The desktop (hover-chrome) side of #13533's per-message delete: on a hover
-// device the composite ChatMessage renders the panel action rail — and this
-// asserts that rail carries the persistent delete control for a real turn, and
-// correctly omits it when the surface wires no `onDelete` or the turn is an
-// optimistic `temp-` bubble with no persisted memory row to delete. The touch
-// tap-to-reveal path is covered by chat-message.tap-reveal.test.tsx; together
-// they cover both reveal chromes the acceptance criterion names.
-//
-// The rail's show/hide transition on real desktop is CSS/paint driven, which
-// jsdom cannot exercise, so this asserts the meaningful, testable fact — whether
-// the delete control is present for the pointer to reach — not the opacity tween.
-// Runs in its own file because the hover MediaQueryList is cached at module
-// scope; a `matches:false` device installed by a sibling suite would poison it.
+/**
+ * Desktop hover coverage for the per-message delete control. The test runs in
+ * its own file because ChatMessage caches the hover MediaQueryList at module
+ * scope, so a sibling touch-suite install would otherwise poison the device
+ * branch under test.
+ */
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { ChatMessage } from "./chat-message";
@@ -55,7 +48,7 @@ function deleteControl(): HTMLElement | null {
 }
 
 describe("ChatMessage desktop hover-chrome delete control (#13533)", () => {
-  it("surfaces the delete control on a real turn when the surface wires onDelete", () => {
+  it("reveals the delete control on desktop hover when the surface wires onDelete", () => {
     render(
       <ChatMessage
         message={makeMessage()}
@@ -63,9 +56,22 @@ describe("ChatMessage desktop hover-chrome delete control (#13533)", () => {
         onDelete={vi.fn()}
       />,
     );
-    // The persistent per-message delete lives in the panel rail alongside
-    // copy/edit — reachable by the desktop pointer, not just the touch row.
+    const message = screen.getByTestId("chat-message");
+    const rail = screen.getByTestId("chat-message-action-rail");
+
     expect(deleteControl()).not.toBeNull();
+    expect(rail.className).toContain("pointer-events-none");
+    expect(rail.className).toContain("opacity-0");
+
+    fireEvent.mouseEnter(message);
+
+    expect(rail.className).not.toContain("pointer-events-none");
+    expect(rail.className).toContain("opacity-100");
+
+    fireEvent.mouseLeave(message);
+
+    expect(rail.className).toContain("pointer-events-none");
+    expect(rail.className).toContain("opacity-0");
   });
 
   it("omits the delete control when the surface wires no onDelete", () => {

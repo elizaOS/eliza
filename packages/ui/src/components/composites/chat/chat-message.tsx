@@ -618,12 +618,6 @@ export const ChatMessage = memo(function ChatMessage({
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   }, [isEditing]);
 
-  // Panel rail is hover-driven on hover devices; a lingering touch-reveal
-  // state would fight it. Glass reveal is click-driven everywhere, so skip.
-  useEffect(() => {
-    if (!glass && supportsHover && showActions) setShowActions(false);
-  }, [showActions, supportsHover, glass]);
-
   // Outside pointerdown dismisses a revealed action row/rail (touch panel +
   // glass). Also closes an in-progress glass edit, mirroring the shell rule.
   const outsideDismissActive = glass
@@ -1148,6 +1142,7 @@ export const ChatMessage = memo(function ChatMessage({
 
           {!isEditing ? (
             <div
+              data-testid="chat-message-action-rail"
               className={cn(
                 "absolute top-0 flex items-center gap-1 transition-opacity duration-200",
                 // Below the `sm` breakpoint (narrow phones) anchor the
