@@ -265,6 +265,29 @@ describe("startup GC reclaims orphaned scratch dirs", () => {
     expect(await exists(freshDir)).toBe(true);
   });
 
+  it("keeps an untracked stale task-* dir under a user-configured coding root (#13773 data-loss guard)", async () => {
+    const store = new InMemorySessionStore();
+    // A real user project that merely happens to be named `task-*`, under a
+    // user-configured coding root (ELIZA_CODING_DIRECTORY) — NOT the ACP scratch
+    // root. It is untracked and stale, but it is not ACP's to delete. Before the
+    // ownership guard the GC scanned this root and rm -rf'd it (data loss).
+    const userRoot = join(TEST_TMPDIR, "user-code");
+    const userProject = join(userRoot, "task-manager");
+    await makeDir(userProject);
+    await backdate(userProject, 25 * 60 * 60_000); // 25h — past the age gate
+
+    // Control: a same-shape orphan under the ACP-exclusive root IS reclaimed.
+    const acpOrphan = join(ROOT, "task-orphan-under-acp-root");
+    await makeDir(acpOrphan);
+    await backdate(acpOrphan, 25 * 60 * 60_000);
+
+    const service = makeService(store, { ELIZA_CODING_DIRECTORY: userRoot });
+    await gc(service);
+
+    expect(await exists(userProject)).toBe(true); // preserved — not ACP-owned
+    expect(await exists(acpOrphan)).toBe(false); // reclaimed — under ACP root
+  });
+
   it("honors ELIZA_ACP_SCRATCH_GC_MAX_AGE_MS for the untracked age gate", async () => {
     const store = new InMemorySessionStore();
     const dir = join(ROOT, "task-orphan-config");

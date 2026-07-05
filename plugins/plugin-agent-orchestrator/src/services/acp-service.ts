@@ -738,6 +738,13 @@ export class AcpService extends Service {
     let reclaimed = 0;
     let kept = 0;
     for (const root of this.configuredScratchRoots()) {
+      // Only the ACP-exclusive scratch root (DEFAULT_WORKDIR_ROOT) is owned
+      // solely by AcpService, so an UNTRACKED `task-*` dir there is unambiguously
+      // orphaned ACP work. The other configured roots are real user coding/
+      // workspace dirs (ELIZA_CODING_DIRECTORY, ELIZA_WORKSPACE_DIR, …) that may
+      // legitimately contain a `task-*` directory (e.g. a `task-manager` project),
+      // so untracked dirs there must never be deleted (#13773 data-loss guard).
+      const isAcpOwnedRoot = resolve(root) === resolve(DEFAULT_WORKDIR_ROOT);
       let entries: string[];
       try {
         entries = await readdir(root);
@@ -759,10 +766,16 @@ export class AcpService extends Service {
             kept++;
             return;
           }
-          // No owning session in THIS store: the dir may belong to a co-tenant
-          // AcpService sharing this tmp root, so gate removal on age. A dir whose
-          // session is terminal here is unambiguously ours → reclaim regardless.
+          // No owning session in THIS store. Under a user-configured root an
+          // untracked `task-*` dir is not ours (it could be a real user project)
+          // → never reclaim it. Only under the ACP-exclusive root is it orphaned
+          // ACP work; there it may belong to a co-tenant AcpService sharing the
+          // tmp root, so gate removal on age.
           if (!session) {
+            if (!isAcpOwnedRoot) {
+              kept++;
+              return;
+            }
             try {
               const st = await stat(path);
               if (now - st.mtimeMs <= maxAgeMs) {
