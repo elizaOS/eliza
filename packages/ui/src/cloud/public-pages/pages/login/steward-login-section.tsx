@@ -5,15 +5,20 @@
  * (Google / Discord / GitHub), plus the post-redirect OAuth `code` / `#token`
  * consumption + cookie sync.
  *
- * Wallet (SIWE / SIWS) sign-in is intentionally absent: it pulls
- * `@rainbow-me/rainbowkit` + `@solana/*` + `wagmi`, which are not dependencies
- * of `@elizaos/ui`. The wallet branch is gated off (`showWallets` is forced
- * false); email/passkey/OAuth cover the primary sign-in paths.
+ * Wallet (SIWE / SIWS) sign-in is currently absent — it was dropped when the
+ * old cloud-frontend was folded into `@elizaos/ui` (`4056e0e868`), where the
+ * wallet libs weren't yet available. There is no `showWallets` flag; the
+ * branch simply wasn't ported. The original blocker is gone (rainbowkit /
+ * wagmi / @solana are now deps here, added for billing crypto top-up, and the
+ * Steward backend serves `siwe`/`siws` on staging + prod), so re-enabling is a
+ * bounded port of the wallet UI from `cloud-frontend@4056e0e868` gated on the
+ * live `auth.getProviders()` flags — not a flag flip. Tracked for nubs's call.
  */
 
 import {
   hasStewardAuthedCookie,
   readStoredStewardToken,
+  StewardSessionError,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import type {
@@ -122,6 +127,28 @@ function requireCompletedAuth(
     throw new Error("MFA required — not yet supported in this client.");
   }
   return result;
+}
+
+/**
+ * Message for a failed one-time-code exchange. A 401/403/410 from
+ * `steward-nonce-exchange` means the code was rejected — expired, already
+ * consumed, or issued for a different tenant (e.g. a prod code replayed against
+ * staging). That is benign and recoverable: the working sign-in form renders
+ * underneath, so we say "sign in again" instead of surfacing the raw upstream
+ * error, which read as a broken login. Genuine faults (5xx/network) still show
+ * their real message.
+ */
+function describeCodeExchangeError(error: unknown, t: LoginTranslator): string {
+  if (
+    error instanceof StewardSessionError &&
+    (error.status === 401 || error.status === 403 || error.status === 410)
+  ) {
+    return t("cloud.login.callback.codeRejected", {
+      defaultValue:
+        "That sign-in link expired or was already used. Please sign in again below.",
+    });
+  }
+  return getErrorMessage(error, "Could not complete Eliza Cloud sign-in.");
 }
 
 function getCallbackReasonMessage(
@@ -291,12 +318,7 @@ export default function StewardLoginSection() {
         })
         .catch((sessionError) => {
           setCompletingCallback(false);
-          setCallbackError(
-            getErrorMessage(
-              sessionError,
-              "Could not complete Eliza Cloud sign-in.",
-            ),
-          );
+          setCallbackError(describeCodeExchangeError(sessionError, t));
         });
       return;
     }

@@ -12,6 +12,7 @@
  * options again, so a real failure is never hidden behind the spinner.
  */
 
+import { StewardSessionError } from "@elizaos/shared/steward-session-client";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -134,6 +135,29 @@ describe("StewardLoginSection — OAuth callback completion state (#13519)", () 
     );
 
     // Completing spinner is gone; the sign-in options are reachable again.
+    expect(screen.queryByText("Completing sign-in…")).toBeNull();
+    expect(screen.getByPlaceholderText("you@example.com")).toBeTruthy();
+  });
+
+  it("shows a friendly 'expired / try again' message (not the raw 401) when a stale or cross-tenant one-time code is rejected", async () => {
+    // A prod-issued code replayed against staging comes back 401 — benign and
+    // recoverable, so the copy must invite a fresh sign-in, not read as broken.
+    callbackState.exchange = () =>
+      Promise.reject(
+        new StewardSessionError("Unauthorized", 401, "code_tenant_mismatch"),
+      );
+
+    renderSection();
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "That sign-in link expired or was already used. Please sign in again below.",
+        ),
+      ).toBeTruthy(),
+    );
+    // The raw upstream error is not surfaced, and the form is usable again.
+    expect(screen.queryByText(/Unauthorized/)).toBeNull();
     expect(screen.queryByText("Completing sign-in…")).toBeNull();
     expect(screen.getByPlaceholderText("you@example.com")).toBeTruthy();
   });
