@@ -90,7 +90,7 @@ mock.module("./services/api-keys", () => ({
 
 mock.module("./services/characters/characters", () => ({
   charactersService: {
-    listByOrganization: async () => [],
+    existsForOrganization: async () => false,
     create: async () => ({ id: "char-1" }),
   },
 }));

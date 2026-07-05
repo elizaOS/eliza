@@ -701,10 +701,12 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   // Await default provisioning: on Cloudflare Workers an un-awaited promise is
   // cancelled once the response returns unless registered via
   // executionCtx.waitUntil, which this shared-lib function cannot reach — and a
-  // cancelled create leaves the new user permanently without a default
-  // character/API key (this one-time new-user path is the only caller; later
-  // logins return at the existing-user branch). Both helpers are idempotent and
-  // swallow their own errors, so awaiting cannot fail the signup.
+  // cancelled create would leave the new user without a default character/API
+  // key (later logins return at the existing-user branch, never re-entering
+  // this one-time path; recovery then depends on the session-resolution
+  // self-heal in auth.ts getCurrentUserFromRequest). Both helpers are
+  // idempotent and swallow their own errors, so awaiting cannot fail the
+  // signup.
   await ensureUserHasApiKey(userWithOrg.id, userWithOrg.organization?.id || "");
   await ensureDefaultCharacter(userWithOrg.id, userWithOrg.organization?.id || "");
 
@@ -746,17 +748,28 @@ async function ensureUserHasApiKey(userId: string, organizationId: string): Prom
 }
 
 /**
- * Ensures a new account starts with a default Eliza character.
+ * Ensures an account has a default Eliza character, seeding one from the
+ * default template when the organization has none.
+ *
+ * Idempotent and never rejects. Called from two places: the one-time
+ * new-user signup branch above, and every session-cache miss
+ * (auth.ts getCurrentUserFromRequest). The second call site is the recovery
+ * path: a create that fails at signup is swallowed here (signup must not
+ * fail over provisioning), so without the session-time re-run the account
+ * would stay character-less forever — the default character is
+ * deterministically reconstructable, so re-seeding is always safe.
  */
-async function ensureDefaultCharacter(userId: string, organizationId: string): Promise<void> {
+export async function ensureDefaultCharacter(
+  userId: string,
+  organizationId: string,
+): Promise<void> {
   if (!userId?.trim() || !organizationId?.trim()) {
     logger.warn("[StewardSync] Invalid userId or organizationId, skipping default character");
     return;
   }
 
   try {
-    const existing = await charactersService.listByOrganization(organizationId);
-    if (existing.length > 0) {
+    if (await charactersService.existsForOrganization(organizationId)) {
       return;
     }
 
@@ -769,8 +782,13 @@ async function ensureDefaultCharacter(userId: string, organizationId: string): P
 
     logger.info(`[StewardSync] Created default Eliza character for user ${userId}`);
   } catch (error) {
+    // error-policy:J1 provisioning boundary: a default-character failure
+    // must not fail signup or session resolution; it is logged here and
+    // deterministically retried by the next session-cache-miss re-run
+    // (auth.ts getCurrentUserFromRequest), which is where recovery lands.
     logger.error("[StewardSync] Error creating default character", {
       userId,
+      organizationId,
       error: error instanceof Error ? error.message : String(error),
     });
   }

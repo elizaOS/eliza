@@ -8,9 +8,9 @@
  * where a promise not registered via executionCtx.waitUntil may be cancelled
  * once the response returns — and syncUserFromSteward is a shared-lib function
  * with no request context to reach waitUntil. A cancelled promise left the new
- * user permanently with no default character (ensureDefaultCharacter's only
- * caller is this one-time new-user path; every later login returns at the
- * existing-user branch). Fix: await both.
+ * user with no default character until the session-cache-miss self-heal in
+ * auth.ts runs (every later login returns at the existing-user branch, never
+ * re-entering this one-time signup path). Fix: await both.
  *
  * The api-key and character create() mocks below are deferred promises whose
  * settlement the test controls — modeling slow DB writes that would still be
@@ -95,7 +95,7 @@ mock.module("./services/api-keys", () => ({
 }));
 mock.module("./services/characters/characters", () => ({
   charactersService: {
-    listByOrganization: async () => [],
+    existsForOrganization: async () => false,
     create: async () => {
       const v = await characterCreate.promise;
       characterCreateResolved = true;

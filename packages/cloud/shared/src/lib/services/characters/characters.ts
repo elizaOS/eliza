@@ -140,6 +140,15 @@ export class CharactersService {
     return await userCharactersRepository.listByOrganization(organizationId, source);
   }
 
+  /**
+   * Bounded existence probe: does the organization have any cloud character?
+   * For hot paths that only need emptiness (default-character provisioning),
+   * where listByOrganization would fetch every fat character row.
+   */
+  async existsForOrganization(organizationId: string): Promise<boolean> {
+    return await userCharactersRepository.existsForOrganization(organizationId, "cloud");
+  }
+
   async listPublic(options?: {
     search?: string;
     category?: string;

@@ -21,7 +21,7 @@ import { adminService } from "./services/admin";
 import { apiKeysService } from "./services/api-keys";
 import { userSessionsService } from "./services/user-sessions";
 import { usersService } from "./services/users";
-import { syncUserFromSteward } from "./steward-sync";
+import { ensureDefaultCharacter, syncUserFromSteward } from "./steward-sync";
 import type { ApiKey, UserWithOrganization } from "./types";
 import { logger } from "./utils/logger";
 
@@ -187,6 +187,16 @@ export async function getCurrentUserFromRequest(
     if (user.organization_id) {
       void trackSessionActivity(user.id, user.organization_id, stewardToken);
       void ensureUserHasApiKey(user.id, user.organization_id);
+      // Self-heal a missing default Eliza character: its only create site is
+      // the one-time new-user signup branch in steward-sync, where a failed
+      // create is swallowed so the signup itself survives — without this
+      // session-time re-run such an account would stay character-less
+      // forever. Awaited, not void-fired: this runs on Cloudflare Workers,
+      // where an un-awaited promise may be cancelled once the response
+      // returns — the exact failure mode that loses the signup-time create.
+      // Idempotent (one indexed SELECT per session-cache miss; seeds only
+      // when the org has zero characters) and it never rejects.
+      await ensureDefaultCharacter(user.id, user.organization_id);
     } else {
       logger.error("[AUTH] User missing organization_id:", user.id);
     }
