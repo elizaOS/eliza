@@ -914,22 +914,48 @@ function normalizeRemoteModuleManifest(
     ...withEndpoint,
     views: views.map((view) => {
       if (!isRecord(view) || !isJsonValue(view)) return view;
-      if (typeof view.bundleUrl === "string" && view.bundleUrl) {
-        validateRemoteBundleUrl(view.bundleUrl);
-        return view;
+      const normalizedView = { ...view };
+      if (
+        typeof normalizedView.bundleUrl === "string" &&
+        normalizedView.bundleUrl
+      ) {
+        validateRemoteAssetUrl(normalizedView.bundleUrl, "bundleUrl");
+      } else if (
+        typeof normalizedView.bundlePath === "string" &&
+        normalizedView.bundlePath
+      ) {
+        normalizedView.bundleUrl = remoteAssetUrl(
+          endpoint,
+          moduleId,
+          normalizedView.bundlePath,
+        );
       }
-      if (typeof view.bundlePath !== "string" || !view.bundlePath) return view;
-      return {
-        ...view,
-        bundleUrl: remoteAssetUrl(endpoint, moduleId, view.bundlePath),
-      };
+      if (
+        typeof normalizedView.frameUrl === "string" &&
+        normalizedView.frameUrl
+      ) {
+        validateRemoteAssetUrl(normalizedView.frameUrl, "frameUrl");
+      } else if (
+        typeof normalizedView.framePath === "string" &&
+        normalizedView.framePath
+      ) {
+        normalizedView.frameUrl = remoteAssetUrl(
+          endpoint,
+          moduleId,
+          normalizedView.framePath,
+        );
+      }
+      return normalizedView;
     }),
   };
 }
 
-function validateRemoteBundleUrl(bundleUrl: string): void {
+function validateRemoteAssetUrl(
+  assetUrl: string,
+  fieldName: "bundleUrl" | "frameUrl",
+): void {
   try {
-    const parsed = new URL(bundleUrl);
+    const parsed = new URL(assetUrl);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       throw new Error("invalid protocol");
     }
@@ -939,7 +965,7 @@ function validateRemoteBundleUrl(bundleUrl: string): void {
   } catch {
     throw new CapabilityError({
       code: "CAPABILITY_DECODE_FAILED",
-      message: `Remote plugin bundleUrl "${bundleUrl}" must be an absolute http(s) URL without embedded credentials.`,
+      message: `Remote plugin ${fieldName} "${assetUrl}" must be an absolute http(s) URL without embedded credentials.`,
       capability: "plugin",
       method: "plugin.modules.list",
     });

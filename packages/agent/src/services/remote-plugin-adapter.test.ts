@@ -3400,6 +3400,8 @@ describe("remote plugin adapter", () => {
                       id: "device.panel",
                       label: "Device Panel",
                       bundlePath: "/assets/device-panel.js",
+                      framePath: "/assets/device-frame.html",
+                      surface: { isolation: "sandboxed-iframe" },
                     },
                   ],
                 },
@@ -3522,6 +3524,9 @@ describe("remote plugin adapter", () => {
       id: "device.panel",
       bundleUrl:
         "https://device.example/v1/capabilities/assets/device-tools/assets/device-panel.js",
+      frameUrl:
+        "https://device.example/v1/capabilities/assets/device-tools/assets/device-frame.html",
+      surface: { isolation: "sandboxed-iframe" },
     });
     expect(runtime.plugins[0]?.config).toMatchObject({
       remoteCapabilityModuleId: "device-tools",
