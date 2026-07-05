@@ -42,7 +42,12 @@ permissions:
 jobs:
   changes:
     name: Classify changed paths
-    runs-on: ubuntu-24.04
+    # Route with the same fleet-aware conditional as the test lanes. GitHub-hosted
+    # runners are billing-frozen (#13481), so a hardcoded ubuntu-24.04 here queued
+    # forever and — since every lane needs this classifier — stalled the entire
+    # ci-ok chain while the self-hosted fleet sat idle. Self-hosted when online;
+    # hosted only when an operator flags the fleet down (and billing is restored).
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     outputs:
       server: ${{ steps.filter.outputs.server }}
@@ -497,7 +502,8 @@ jobs:
       - changes
       - plugin-tests
     if: ${{ !cancelled() && always() }}
-    runs-on: ubuntu-24.04
+    # Fleet-aware (see `changes`): hardcoded hosted froze this ci-ok dependency.
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     steps:
       - name: Check plugin shard results
@@ -1270,12 +1276,14 @@ jobs:
   # fails biome lint, is unformatted, or commits a secret could still merge to
   # develop as long as tests passed (all of these are required on `main` but were
   # advisory on develop; #13617 F2). This job restores parity: it runs the same
-  # lint / format / typecheck / secret-scan gates that guard `main`, on a
-  # GitHub-hosted runner so it stays green-or-red regardless of the self-hosted
-  # fleet's health, and `ci-ok` needs it. It runs anywhere `ci-ok` treats
-  # skipped jobs as failures (merge queue, develop push, manual dispatch, and
-  # nightly schedule); on PRs quality.yml already covers this surface, so the job
-  # self-skips and `ci-ok`'s lenient PR path lets the skip pass.
+  # lint / format / typecheck / secret-scan gates that guard `main`, and `ci-ok`
+  # needs it. It runs anywhere `ci-ok` treats skipped jobs as failures (merge
+  # queue, develop push, manual dispatch, and nightly schedule); on PRs
+  # quality.yml already covers this surface, so the job self-skips and `ci-ok`'s
+  # lenient PR path lets the skip pass. Runner: fleet-aware like the test lanes —
+  # it was pinned to GitHub-hosted for independence from the self-hosted fleet,
+  # but with hosted runners billing-frozen (#13481) that pin froze this ci-ok
+  # dependency; route to self-hosted while the fleet is online.
   merge-quality-gate:
     name: Merge Queue Quality Gate
     needs: changes
@@ -1284,7 +1292,7 @@ jobs:
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -1390,7 +1398,10 @@ jobs:
       - cloud-live-e2e
       - provider-live-e2e
       - github-live-artifact-validate
-    runs-on: ubuntu-24.04
+    # Fleet-aware (see `changes`): the aggregate gate itself must run to report a
+    # conclusion — a hardcoded hosted pin froze `ci-ok` on the billing-frozen
+    # fleet (#13481), so the required check never posted and nothing could merge.
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     steps:
       - name: Check test results
