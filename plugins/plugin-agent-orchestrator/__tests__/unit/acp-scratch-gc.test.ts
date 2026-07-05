@@ -38,7 +38,7 @@ beforeAll(async () => {
   AcpService = mod.AcpService;
   isOwnedScratchDir = mod.isOwnedScratchDir;
   ROOT = join(TEST_TMPDIR, "eliza-acp");
-});
+}, 30_000);
 
 afterAll(async () => {
   await rm(TEST_TMPDIR, { recursive: true, force: true });
@@ -154,6 +154,26 @@ describe("teardown reclaims the owned scratch dir", () => {
     await makeDir(workdir);
     await store.create(session(id, workdir));
     const service = makeService(store);
+
+    await service.deleteSession(id);
+
+    expect(await exists(workdir)).toBe(false);
+    expect(await store.get(id)).toBeNull();
+  });
+
+  it("deleteSession still removes the owned task dir when the best-effort close fails", async () => {
+    const store = new InMemorySessionStore();
+    const id = "delete-close-fails";
+    const workdir = join(ROOT, `task-${id}`);
+    await makeDir(workdir);
+    await store.create(session(id, workdir));
+    const service = makeService(store, { ELIZA_ACP_TRANSPORT: "cli" });
+    vi.spyOn(
+      service as unknown as {
+        runAcpx: InstanceType<typeof AcpService>["runAcpx"];
+      },
+      "runAcpx",
+    ).mockRejectedValueOnce(new Error("simulated close failure"));
 
     await service.deleteSession(id);
 
