@@ -349,13 +349,37 @@ describe("buildInteractionUrlResolver (#8908)", () => {
 		);
 	});
 
-	it("resolves a form block to the hosted form route", () => {
-		const block: FormInteraction = {
+	// #14321 — there is no hosted /forms/:id page and form specs are never
+	// persisted, so a form block must NOT mint a link-out (that would be a dead
+	// route). It resolves to undefined and the layout degrades to a free-text
+	// reply, while a hosted-page block type (task) still resolves its real URL.
+	it("does not mint a link-out for a form block (no hosted page → free-text fallback)", () => {
+		const form: FormInteraction = {
 			kind: "form",
 			id: "form_7",
 			fields: [{ name: "k", type: "text" }],
 		};
-		expect(resolver.resolveUrl?.(block)).toBe("https://app.test/forms/form_7");
+		expect(resolver.resolveUrl?.(form)).toBeUndefined();
+
+		const layout = toNeutralLayout(form, resolver);
+		expect(layout.needsFallback).toBe(true);
+		expect(layout.rows).toEqual([]);
+		// No button anywhere points at the nonexistent /forms/ route.
+		const urls = layout.rows.flatMap((r) => r.buttons ?? []).map((b) => b.url);
+		expect(urls).not.toContain("https://app.test/forms/form_7");
+
+		// A block type that DOES have a hosted page still resolves normally.
+		const task: TaskInteraction = {
+			kind: "task",
+			threadId: "abc-123",
+			title: "Build it",
+		};
+		expect(resolver.resolveUrl?.(task)).toBe(
+			"https://app.test/orchestrator?taskId=abc-123",
+		);
+		expect(toNeutralLayout(task, resolver).rows[0]?.buttons?.[0]?.url).toBe(
+			"https://app.test/orchestrator?taskId=abc-123",
+		);
 	});
 
 	it("resolves navigate payloads (path + viewId) against the base url", () => {

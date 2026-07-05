@@ -6,8 +6,8 @@
  * per-connector glue thin.
  *
  * Buttons round-trip via `callbackData` (the user's answer, re-injected as a
- * message) or open a `url` (link-out for forms, secret entry, and task views).
- * A button always carries exactly one of the two.
+ * message) or open a `url` (link-out for secret entry and task views). A button
+ * always carries exactly one of the two.
  */
 
 import type {
@@ -50,9 +50,10 @@ export interface NeutralLayout {
 
 export interface LayoutOptions {
 	/**
-	 * Resolve an external entry URL for blocks that link out: complex forms,
-	 * secret/OAuth entry, and the task view. Returning undefined marks the block
-	 * as needing a free-text fallback.
+	 * Resolve an external entry URL for blocks that link out: secret/OAuth entry
+	 * and the task view. Returning undefined marks the block as needing a
+	 * free-text fallback (this is the designed path for `form` blocks, which have
+	 * no hosted page — see {@link buildInteractionUrlResolver}).
 	 */
 	resolveUrl?: (block: InteractionBlock) => string | undefined;
 	/**
@@ -177,10 +178,15 @@ export function toNeutralLayout(
 
 /**
  * Build the canonical link-out resolvers connectors pass to {@link toNeutralLayout}
- * so Telegram, Discord, and any other surface produce identical URLs for task,
- * form, and navigate blocks. `appBaseUrl` is the deployment's app/dashboard
- * origin (`ELIZA_APP_URL`, falling back to the cloud URL). Returns `undefined`
+ * so Telegram, Discord, and any other surface produce identical URLs for task
+ * and navigate blocks. `appBaseUrl` is the deployment's app/dashboard origin
+ * (`ELIZA_APP_URL`, falling back to the cloud URL). Returns `undefined`
  * resolvers when no base URL is configured, which keeps the free-text fallback.
+ *
+ * `form` blocks are intentionally NOT resolved: there is no hosted `/forms/:id`
+ * page and form specs are never persisted, so any link-out would be a dead
+ * route. Leaving them unresolved routes them to the layout's free-text reply
+ * fallback instead of fabricating a healthy-looking dead control (#14321).
  */
 export function buildInteractionUrlResolver(
 	appBaseUrl: string | undefined | null,
@@ -192,10 +198,10 @@ export function buildInteractionUrlResolver(
 			switch (block.kind) {
 				case "task":
 					return `${base}/orchestrator?taskId=${encodeURIComponent(block.threadId)}`;
-				case "form":
-					return `${base}/forms/${encodeURIComponent(block.id)}`;
-				// Secret/OAuth blocks carry their own out-of-band entry URL
-				// (the hosted secure page); defer to it via the layout fallback.
+				// `form` and secret/OAuth blocks fall through to undefined: a form
+				// has no hosted `/forms/:id` page (degrade to free-text reply), and
+				// secret/OAuth blocks carry their own out-of-band entry URL that the
+				// layout defers to.
 				default:
 					return undefined;
 			}
