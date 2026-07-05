@@ -207,7 +207,9 @@ describe("#13422 P3 — alias-aware boot-critical env reads", () => {
     });
 
     it("reports export disabled when neither the branded nor canonical token is set", () => {
-      const rejection = resolveWalletExportRejection(asReq(), { confirm: true });
+      const rejection = resolveWalletExportRejection(asReq(), {
+        confirm: true,
+      });
       expect(rejection?.status).toBe(403);
       expect(rejection?.reason).toContain("Wallet export is disabled");
     });
