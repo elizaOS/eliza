@@ -2,14 +2,21 @@
 /**
  * Full evidence matrix runner for end-of-work verification. It executes the
  * repo's real test, recording, audit, and device-capture lanes in sequence,
- * writes one run manifest, then opens the local evidence reviewer so the
- * generated artifacts are inspected as part of the same workflow.
+ * streams each lane's status through the human-speed reporter (reporter.mjs) so
+ * an operator watches the run advance, writes one run manifest, opens the local
+ * evidence reviewer, and prints a single admin-readable summary of what passed,
+ * failed, or was skipped and where the artifacts landed.
+ *
+ * Device lanes whose simulator/emulator is unreachable are reported `skipped`
+ * with a reason (probeRequirement) — never dropped silently and never faked
+ * green — so the manifest is an honest record of what actually ran.
  */
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createMatrixReporter, renderMatrixSummary } from "./reporter.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,14 +47,62 @@ export const MATRIX_STEPS = [
     label: "iOS simulator capture",
     command: ["bun", "run", "--cwd", "packages/app", "capture:ios-sim"],
     tags: ["device", "ios"],
+    // Requires a booted iOS Simulator; probed via `xcrun simctl` so the lane is
+    // honestly skipped (not silently dropped) on a host without one.
+    requires: "ios-simulator",
   },
   {
     id: "android-emu-capture",
     label: "Android emulator capture",
     command: ["bun", "run", "--cwd", "packages/app", "capture:android-emu"],
     tags: ["device", "android"],
+    requires: "android-emulator",
   },
 ];
+
+/**
+ * Report whether a lane's external dependency (a device fleet member) is
+ * reachable. Returns `{ reachable, reason }`; `reason` is the operator-facing
+ * skip explanation when a device is absent. Kept side-effect-free apart from the
+ * cheap probe command so device lanes degrade to an honest SKIP rather than a
+ * fake pass or a silent drop.
+ */
+export function probeRequirement(requirement, { runProbe = spawnSync } = {}) {
+  if (!requirement) return { reachable: true, reason: null };
+  if (requirement === "ios-simulator") {
+    const result = runProbe("xcrun", ["simctl", "list", "devices", "booted"], {
+      encoding: "utf8",
+    });
+    const out = `${result.stdout ?? ""}`;
+    if (result.status === 0 && /\(Booted\)/.test(out)) {
+      return { reachable: true, reason: null };
+    }
+    return {
+      reachable: false,
+      reason: "no booted iOS Simulator (run `xcrun simctl boot <udid>`)",
+    };
+  }
+  if (requirement === "android-emulator") {
+    const result = runProbe("adb", ["devices"], { encoding: "utf8" });
+    const out = `${result.stdout ?? ""}`;
+    const hasDevice = out
+      .split("\n")
+      .slice(1)
+      .some((line) => /\tdevice$/.test(line.trim()));
+    if (result.status === 0 && hasDevice) {
+      return { reachable: true, reason: null };
+    }
+    return {
+      reachable: false,
+      reason:
+        "no attached Android device/emulator (run `emulator -avd <name>`)",
+    };
+  }
+  return {
+    reachable: false,
+    reason: `unknown requirement '${requirement}'`,
+  };
+}
 
 function printHelp() {
   console.log(`Usage: node scripts/evidence-review/run-matrix.mjs [options]
@@ -166,6 +221,19 @@ function plannedStep(step) {
   };
 }
 
+function skippedStep(step, reason) {
+  return {
+    ...step,
+    command: formatCommand(step.command),
+    startedAt: null,
+    finishedAt: null,
+    durationMs: 0,
+    exitCode: null,
+    status: "skipped",
+    skipReason: reason,
+  };
+}
+
 function writeManifest(options, steps, reviewer) {
   fs.mkdirSync(options.outputDir, { recursive: true });
   const manifest = {
@@ -222,9 +290,39 @@ function runReviewer(options) {
   };
 }
 
-function banner(text) {
-  const line = "-".repeat(72);
-  console.log(`\n${line}\n${text}\n${line}`);
+/**
+ * Execute the selected lanes, driving the streaming reporter through each
+ * lane's lifecycle. Device lanes whose requirement is unreachable are recorded
+ * as `skipped` with the probe reason rather than run. Extracted from main() so
+ * the ordering of reporter transitions and lane records is unit-testable with
+ * injected reporter and probe.
+ */
+export function executeSteps(
+  steps,
+  options,
+  { reporter, probe = probeRequirement } = {},
+) {
+  const results = [];
+  for (const step of steps) {
+    if (options.dryRun) {
+      results.push(plannedStep(step));
+      continue;
+    }
+
+    const requirement = probe(step.requires);
+    if (!requirement.reachable) {
+      reporter?.laneSkip(step, requirement.reason);
+      results.push(skippedStep(step, requirement.reason));
+      continue;
+    }
+
+    reporter?.laneStart(step);
+    const result = runStep(step);
+    reporter?.laneEnd(step, result.status);
+    results.push(result);
+    if (result.status === "failed" && options.stopOnFailure) break;
+  }
+  return results;
 }
 
 async function main() {
@@ -235,26 +333,27 @@ async function main() {
   }
 
   const steps = selectMatrixSteps(MATRIX_STEPS, options);
-  const results = [];
 
-  if (options.dryRun) {
-    for (const step of steps) results.push(plannedStep(step));
-  } else {
-    for (const step of steps) {
-      banner(`${step.id}: ${step.label}`);
-      const result = runStep(step);
-      results.push(result);
-      if (result.status === "failed" && options.stopOnFailure) break;
-    }
+  let reporter = null;
+  if (!options.dryRun) {
+    reporter = createMatrixReporter({
+      write: (line) => console.log(line),
+      total: steps.length,
+    });
+    reporter.header();
   }
+
+  const results = executeSteps(steps, options, { reporter });
 
   writeManifest(options, results, null);
   const reviewer = runReviewer(options);
   const { manifest, manifestPath } = writeManifest(options, results, reviewer);
-  console.log(`\nMatrix manifest: ${manifestPath}`);
-  if (reviewer?.dashboardPath) {
-    console.log(`Evidence review: ${reviewer.dashboardPath}`);
-  }
+
+  const summary = renderMatrixSummary(results, {
+    manifestPath,
+    dashboardPath: reviewer?.dashboardPath ?? null,
+  });
+  console.log(summary.text);
 
   if (
     manifest.status === "failed" ||
