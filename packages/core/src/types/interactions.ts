@@ -36,7 +36,14 @@ export type InteractionFieldType =
 	| "checkbox"
 	| "secret"
 	| "image"
-	| "file";
+	| "file"
+	// Native temporal pickers. Submitted values are the HTML input's own string
+	// value — `date` → `YYYY-MM-DD`, `time` → `HH:mm`, `datetime` →
+	// `YYYY-MM-DDTHH:mm` (local, no timezone). Consuming actions parse these
+	// deterministically; there is no custom picker or extra dependency.
+	| "date"
+	| "time"
+	| "datetime";
 
 /** A single field in a form or secret request. */
 export interface InteractionField {

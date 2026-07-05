@@ -61,6 +61,29 @@ describe("parseFormBody", () => {
     expect(form?.fields[0].type).toBe("text");
   });
 
+  it("preserves the temporal field types (date, time, datetime)", () => {
+    const form = parseFormBody(
+      JSON.stringify({
+        fields: [
+          { name: "day", type: "date", label: "Day", required: true },
+          { name: "at", type: "time", label: "At" },
+          { name: "when", type: "datetime", label: "When" },
+        ],
+      }),
+    );
+    expect(form?.fields.map((f) => f.type)).toEqual([
+      "date",
+      "time",
+      "datetime",
+    ]);
+    expect(form?.fields[0]).toEqual({
+      name: "day",
+      type: "date",
+      label: "Day",
+      required: true,
+    });
+  });
+
   it("drops fields with unsafe or missing names and dedupes by name", () => {
     const form = parseFormBody(
       JSON.stringify({

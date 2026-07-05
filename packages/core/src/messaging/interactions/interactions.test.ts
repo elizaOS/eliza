@@ -104,6 +104,40 @@ describe("parse", () => {
 		);
 	});
 
+	it("parses temporal field types and round-trips them (#14323)", () => {
+		const text = `[FORM]\n${JSON.stringify({
+			title: "Schedule reminder",
+			fields: [
+				{ name: "day", type: "date", label: "Day", required: true },
+				{ name: "at", type: "time", label: "At" },
+				{ name: "when", type: "datetime", label: "When" },
+			],
+		})}\n[/FORM]`;
+		const { blocks } = parseInteractionBlocks(text);
+		const form = blocks[0] as FormInteraction;
+		expect(form.fields.map((f) => f.type)).toEqual(["date", "time", "datetime"]);
+		// parse ↔ serialize parity: the temporal types survive a round trip.
+		const rt = parseInteractionBlocks(serializeInteractionBlock(form));
+		expect((rt.blocks[0] as FormInteraction).fields.map((f) => f.type)).toEqual([
+			"date",
+			"time",
+			"datetime",
+		]);
+	});
+
+	it("drops a field with an unknown type (core parser is strict)", () => {
+		const text = `[FORM]\n${JSON.stringify({
+			fields: [
+				{ name: "ok", type: "date" },
+				{ name: "bad", type: "color" },
+			],
+		})}\n[/FORM]`;
+		const { blocks } = parseInteractionBlocks(text);
+		const form = blocks[0] as FormInteraction;
+		// unknown "color" is rejected; the valid "date" field survives.
+		expect(form.fields.map((f) => f.name)).toEqual(["ok"]);
+	});
+
 	it("rejects malformed form JSON (left as text)", () => {
 		const text = "[FORM]\n{not json}\n[/FORM]";
 		const { blocks, cleanedText } = parseInteractionBlocks(text);

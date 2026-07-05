@@ -32,6 +32,29 @@ export type { FormFieldSpec, FormRequestSpec };
 /** Value emitted per field: string for text/number/select, boolean for checkbox. */
 export type FormResultValue = string | boolean;
 
+/**
+ * Map a form field type to the `<input type>` used for the text-like branch
+ * (checkbox and select render their own controls). The temporal types delegate
+ * to the browser's native pickers — `date` → `YYYY-MM-DD`, `time` → `HH:mm`,
+ * `datetime` → `<input type="datetime-local">` yielding `YYYY-MM-DDTHH:mm` —
+ * so no custom picker or dependency is added. Any other type is a plain text
+ * box. Exported for the field-type unit test.
+ */
+export function htmlInputTypeForField(fieldType: FormFieldSpec["type"]): string {
+  switch (fieldType) {
+    case "number":
+      return "number";
+    case "date":
+      return "date";
+    case "time":
+      return "time";
+    case "datetime":
+      return "datetime-local";
+    default:
+      return "text";
+  }
+}
+
 export type FormRequestProps = {
   form: FormRequestSpec;
   /** Receives the structured result keyed by field name. */
@@ -182,7 +205,7 @@ export function FormRequest({ form, onSubmit }: FormRequestProps) {
             </div>
           );
         }
-        // text / number
+        // text / number / date / time / datetime (native inputs)
         return (
           <div key={field.name} className="flex flex-col gap-1 text-xs">
             <span className="font-semibold">{label}</span>
@@ -192,7 +215,7 @@ export function FormRequest({ form, onSubmit }: FormRequestProps) {
                 density: "compact",
                 hasError: !!fieldErrors?.length,
               })}
-              type={field.type === "number" ? "number" : "text"}
+              type={htmlInputTypeForField(field.type)}
               name={field.name}
               placeholder={field.placeholder ?? ""}
               value={String(values[field.name] ?? "")}

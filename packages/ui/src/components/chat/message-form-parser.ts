@@ -31,7 +31,18 @@
  * the structured result back as a message via the existing action callback.
  */
 
-export type FormFieldType = "text" | "number" | "select" | "checkbox";
+// Temporal types render native `<input type="date|time|datetime-local">`, which
+// submit an ISO-ish string (`YYYY-MM-DD` / `HH:mm` / `YYYY-MM-DDTHH:mm`). Kept
+// in sync with the core `InteractionFieldType` union; both parsers coerce any
+// unknown type to `text` so a client on an older type set degrades safely.
+export type FormFieldType =
+  | "text"
+  | "number"
+  | "select"
+  | "checkbox"
+  | "date"
+  | "time"
+  | "datetime";
 
 export interface FormFieldSpec {
   name: string;
@@ -58,6 +69,9 @@ const FORM_FIELD_TYPES = new Set<FormFieldType>([
   "number",
   "select",
   "checkbox",
+  "date",
+  "time",
+  "datetime",
 ]);
 
 /** Field names become state-path segments + result keys; keep them safe. */

@@ -152,6 +152,40 @@ export const SelectAndCheckboxOnly: Story = {
   },
 };
 
+export const SchedulingWithTemporalFields: Story = {
+  args: {
+    form: {
+      id: "schedule-reminder",
+      title: "Schedule reminder",
+      description: "Native date/time/datetime pickers (#14323).",
+      submitLabel: "Create",
+      fields: [
+        {
+          name: "title",
+          type: "text",
+          label: "Reminder",
+          placeholder: "Call the pharmacy",
+          required: true,
+        },
+        { name: "day", type: "date", label: "Day", required: true },
+        { name: "at", type: "time", label: "Time" },
+        { name: "when", type: "datetime", label: "Exact date + time" },
+        {
+          name: "channel",
+          type: "select",
+          label: "Notify via",
+          placeholder: "Pick one",
+          options: [
+            { label: "Push", value: "push" },
+            { label: "Email", value: "email" },
+          ],
+        },
+      ],
+    },
+    onSubmit: () => {},
+  },
+};
+
 export const Minimal: Story = {
   args: {
     form: {
