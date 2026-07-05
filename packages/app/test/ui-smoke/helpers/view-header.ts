@@ -1,11 +1,11 @@
-// Real-browser assertion of the shared ViewHeader contract (#13586 / #13451),
-// the e2e counterpart to the DOM `assertSharedViewHeader` audit primitive in
-// `@elizaos/ui` (packages/ui/src/components/shared/view-header-audit.ts). That
-// primitive runs in unit tests over a jsdom subtree; this drives the SAME
-// contract against the real rendered app so a `normal` view that drops its
-// shared header — or reintroduces a chromed/labelled back button — fails a
-// Playwright sweep, not just the unit primitive. Consumed by
-// all-pages-clicksafe.spec.ts per route.
+// Real-browser assertion of the shared ViewHeader contract (#13586 / #13451).
+// The `headerPolicy` field on the view registry (ViewHeaderPolicy in
+// packages/ui/src/app-shell-registry.ts) declares which views must render the
+// shared header, and ViewHeader.test.tsx guards the header's structure over a
+// jsdom subtree. This drives the SAME contract against the real rendered app so
+// a header-requiring view that drops its shared header — or reintroduces a
+// chromed/labelled back button — fails a Playwright sweep, not just the unit
+// test. Consumed by all-pages-clicksafe.spec.ts per route.
 
 import { expect, type Page } from "@playwright/test";
 
