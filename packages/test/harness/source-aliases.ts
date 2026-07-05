@@ -9,7 +9,7 @@
  * does every per-plugin harness config that imports `@elizaos/test-harness`.
  * Both consume this one builder so the alias set never drifts.
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -64,6 +64,59 @@ function getWorkspaceSourceEntry(
 }
 
 /**
+ * Directory names that never contain workspace packages — pruned from the
+ * recursive descent so we don't walk into installed deps or build output.
+ */
+const PRUNE_DIRS = new Set([
+  "node_modules",
+  "dist",
+  ".turbo",
+  ".git",
+  "coverage",
+]);
+
+/**
+ * Collect every workspace package dir under `root`, descending through
+ * grouping directories that are not themselves packages.
+ *
+ * The eliza monorepo nests published `@elizaos/*` packages several levels deep
+ * (e.g. `@elizaos/cloud-routing` at `packages/cloud/routing`, gateways at
+ * `packages/cloud/services/*`). A flat `readdirSync(packages)` misses those, so
+ * their harness source alias is never emitted and Vite falls back to the
+ * package `exports` -> `dist/index.js`, which does not exist under the keyless
+ * `--ignore-scripts` install. That surfaces as
+ * `Failed to resolve entry for package "@elizaos/cloud-routing"` in every
+ * per-plugin harness proof (core re-exports the cloud routing surface).
+ *
+ * Descend recursively but stop at the first directory that IS a package (a
+ * package's own subdirs are not separate workspace packages), and prune known
+ * non-source dirs. `maxDepth` bounds the walk defensively.
+ */
+function collectWorkspacePackageDirs(root: string, maxDepth = 4): string[] {
+  if (!existsSync(root) || maxDepth < 0) return [];
+  const out: string[] = [];
+  for (const name of readdirSync(root)) {
+    if (PRUNE_DIRS.has(name)) continue;
+    const child = path.join(root, name);
+    let isDir = false;
+    try {
+      isDir = statSync(child).isDirectory();
+    } catch {
+      isDir = false;
+    }
+    if (!isDir) continue;
+    if (existsSync(path.join(child, "package.json"))) {
+      // A package dir: record it and do not descend (its subdirs belong to it).
+      out.push(child);
+    } else {
+      // A grouping dir: keep descending to find nested packages.
+      out.push(...collectWorkspacePackageDirs(child, maxDepth - 1));
+    }
+  }
+  return out;
+}
+
+/**
  * Build the full alias list for a harness consumer. Explicit entries
  * (`@elizaos/core/testing`, `@elizaos/core/node`, `@elizaos/plugin-sql`) are
  * placed first so they win over the generic per-package rules (Vite is
@@ -79,8 +132,8 @@ export function buildHarnessSourceAliases(
 
   const workspaceSourceAliases = workspaceDirs.flatMap((dir) =>
     existsSync(dir)
-      ? readdirSync(dir)
-          .map((name) => getWorkspaceSourceEntry(path.join(dir, name)))
+      ? collectWorkspacePackageDirs(dir)
+          .map((packageDir) => getWorkspaceSourceEntry(packageDir))
           .filter((entry): entry is WorkspaceSourceEntry => entry !== undefined)
           .flatMap(({ packageName, indexPath, sourceDir }) => [
             { find: new RegExp(`^${packageName}$`), replacement: indexPath },
