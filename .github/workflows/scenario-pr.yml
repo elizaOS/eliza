@@ -11,7 +11,7 @@ on:
   # the `ci:full` label (job-level gate on `changes` below). Unlabeled PRs
   # skip every job instantly and consume zero runners.
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
   push:
     branches: [develop]

@@ -20,7 +20,7 @@ name: Cache-key Stability
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "packages/core/**"
       - "plugins/plugin-personal-assistant/**"

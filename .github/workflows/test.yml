@@ -6,12 +6,9 @@ name: Tests
 # build+core-test gate; this workflow adds the broader integration surface.
 
 on:
-  pull_request:
-    branches: [develop]
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
-  merge_group:
-    branches: [develop]
-    types: [checks_requested]
+  # Post-merge integration surface. PRs to `develop` run the lightweight
+  # lint/typecheck/build gate (develop-pr.yml); the full suite runs here once
+  # changes land on `develop`, plus nightly and on demand.
   push:
     branches: [develop]
   workflow_dispatch:

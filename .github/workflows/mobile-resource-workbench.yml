@@ -25,6 +25,7 @@ on:
     # 05:30 UTC — after the nightly publish window, like local-inference-bench.
     - cron: "30 5 * * *"
   pull_request:
+    branches: [main]
     paths:
       - "packages/benchmarks/mobile-resource/**"
       - ".github/workflows/mobile-resource-workbench.yml"

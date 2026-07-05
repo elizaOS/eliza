@@ -22,6 +22,7 @@ name: lifeops-quality-bench
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - "packages/benchmarks/lifeops-quality/**"
       - "plugins/plugin-inbox/src/inbox/**"

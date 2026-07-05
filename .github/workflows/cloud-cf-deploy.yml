@@ -46,7 +46,7 @@ on:
       - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "packages/cloud/api/**"
       - "packages/cloud/shared/**"

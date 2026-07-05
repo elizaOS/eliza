@@ -32,7 +32,7 @@ on:
       - "packages/app-core/src/hooks/useSecretsManagerShortcut.ts"
       - ".github/workflows/vault-ci.yaml"
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "packages/vault/**"
       - "packages/app-core/src/api/plugins-compat-routes.ts"

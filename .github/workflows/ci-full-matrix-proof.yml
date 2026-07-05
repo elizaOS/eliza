@@ -20,16 +20,6 @@ on:
     - cron: "13 3 * * *"
     - cron: "13 15 * * *"
   workflow_dispatch:
-  pull_request:
-    branches: [develop]
-    # Only re-validate the proof when its own inputs move, so this stays off the
-    # PR hot path for the other ~200 daily PRs.
-    paths:
-      - "packages/scripts/ci-full-matrix-proof.mjs"
-      - "packages/scripts/ci-lane-manifest.json"
-      - "packages/scripts/run-all-tests.mjs"
-      - ".github/workflows/test.yml"
-      - ".github/workflows/ci-full-matrix-proof.yml"
 
 # Never cancel an in-flight proof run. Push/PR traffic must not be able to
 # abort the scheduled exhaustive-lane signal (#12337/#12342).

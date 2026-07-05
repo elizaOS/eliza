@@ -24,11 +24,6 @@ on:
     paths:
       - "packages/training/**"
       - ".github/workflows/training-stack.yml"
-  pull_request:
-    branches: [develop]
-    paths:
-      - "packages/training/**"
-      - ".github/workflows/training-stack.yml"
   workflow_dispatch:
 
 # CI fan-out fix: the PR-scoped concurrency from #14069 fell back to

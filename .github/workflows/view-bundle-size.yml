@@ -16,6 +16,7 @@ name: view-bundle-size
 
 on:
   pull_request:
+    branches: [main]
     paths:
       # Plugin source (where view components live) + the view-bundle build/config
       # + the gate itself. Scheduled runs below are the catch-all for drift.

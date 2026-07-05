@@ -1,0 +1,109 @@
+name: Develop PR
+
+# Lightweight gate for pull requests targeting `develop`: lint, typecheck, and
+# build only. The full test/e2e/scenario/benchmark surface runs post-merge on
+# push to `develop` (and nightly/on-demand), not on every PR — so PR feedback
+# stays fast and hosted-runner capacity is spent on the ~200 daily PRs' fast
+# signal rather than the whole integration matrix. `main` PRs keep the heavy
+# gates via `ci.yaml`, `test.yml`'s peers, and `quality.yml`. Steps mirror
+# `ci.yaml` so PR and post-merge lanes stay in agreement.
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: develop-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454)
+          install-command: bun install
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Run lint
+        run: bun run lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          # Full history so `turbo run typecheck --affected` can resolve the PR
+          # merge base (#12341); a shallow clone degrades to typechecking all.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454)
+          install-command: bun install
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      # Typecheck resolves `@elizaos/core` types from its built dist, so build
+      # core before running tsc across the affected cone.
+      - name: Build core
+        run: bun run build:core
+
+      - name: Run typecheck (affected)
+        run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=8 --affected
+        env:
+          TURBO_SCM_BASE: ${{ github.event.pull_request.base.sha }}
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454)
+          install-command: bun install
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Build packages
+        run: bun run build:core

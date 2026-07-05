@@ -27,6 +27,7 @@ name: Terraform — Apps Shared (Hetzner)
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - "packages/cloud/infra/cloud/terraform/hetzner/apps-shared/**"
       - ".github/workflows/terraform-apps-shared.yml"

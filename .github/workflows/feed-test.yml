@@ -27,7 +27,7 @@ name: feed-test
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [main]
     paths:
       - "packages/feed/**"
       - ".github/workflows/feed-test.yml"

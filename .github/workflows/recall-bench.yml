@@ -18,6 +18,7 @@ name: recall-bench
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - "packages/benchmarks/recall-bench/**"
       - "packages/benchmarks/registry/**"

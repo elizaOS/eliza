@@ -6,6 +6,7 @@ on:
       - 'packages/app-core/packaging/snap/**'
       - '.github/workflows/snap-build-test.yml'
   pull_request:
+    branches: [main]
     paths:
       - 'packages/app-core/packaging/snap/**'
       - '.github/workflows/snap-build-test.yml'

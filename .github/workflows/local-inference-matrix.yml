@@ -35,6 +35,7 @@ on:
         type: boolean
         default: false
   pull_request:
+    branches: [main]
     paths:
       - "packages/app-core/src/services/local-inference/**"
       - "packages/scripts/local-inference-ablation.mjs"

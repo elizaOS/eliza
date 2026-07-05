@@ -6,7 +6,7 @@ name: Cloud Tests
 on:
   workflow_dispatch:
   pull_request:
-    branches: [develop, main]
+    branches: [main]
     paths:
       - "packages/cloud/api/**"
       - "packages/cloud/shared/**"

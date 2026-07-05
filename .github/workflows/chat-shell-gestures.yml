@@ -27,7 +27,7 @@ name: Chat shell gestures
 # imports the real @elizaos/core, so the shared i18n data is generated first.
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - ".github/workflows/chat-shell-gestures.yml"
       - "package.json"

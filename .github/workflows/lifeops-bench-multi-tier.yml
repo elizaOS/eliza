@@ -20,7 +20,7 @@ name: LifeOps Benchmark — Multi-Tier
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "packages/benchmarks/**"
       - "plugins/plugin-training/**"

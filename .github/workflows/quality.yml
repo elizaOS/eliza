@@ -7,8 +7,11 @@ name: Quality (Extended)
 # typecheck/biome format gate.
 
 on:
+  # PRs to `develop` use the lightweight lint/typecheck/build gate
+  # (develop-pr.yml); these extended quality gates run on `main` PRs and
+  # post-merge on push to both branches.
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths-ignore:
       - "docs/**"
       - "packages/docs/**"

@@ -2,6 +2,7 @@ name: Test Packaging
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - 'packages/app-core/packaging/**'
       - 'packages/core/**'

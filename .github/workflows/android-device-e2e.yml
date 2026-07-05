@@ -37,7 +37,7 @@ on:
   # runs a MINIMAL slice (build + install + WebView attach + onboarding→home +
   # one host-backed chat turn); the full dispatch matrix above is unchanged.
   pull_request:
-    branches: [develop, main]
+    branches: [main]
     types: [opened, synchronize, reopened, labeled]
 
 concurrency:

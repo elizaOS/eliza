@@ -18,7 +18,7 @@ on:
         type: boolean
         default: false
   pull_request:
-    branches: [develop, main]
+    branches: [main]
     paths:
       - ".github/workflows/sandbox-live-smoke.yml"
       - ".env.example"

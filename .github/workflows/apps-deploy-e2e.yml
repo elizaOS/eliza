@@ -15,6 +15,7 @@ name: Apps Deploy E2E (Product 2)
 on:
   workflow_dispatch:
   pull_request:
+    branches: [main]
     paths:
       - "packages/cloud/shared/src/lib/services/app-deploy-runner.ts"
       - "packages/cloud/shared/src/lib/services/app-container-provider.ts"

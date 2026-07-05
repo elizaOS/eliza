@@ -15,6 +15,7 @@ name: Orchestrator multi-account
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - "plugins/plugin-agent-orchestrator/**"
       - "packages/app-core/src/services/coding-account-bridge.ts"

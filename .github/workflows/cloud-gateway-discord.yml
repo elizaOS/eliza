@@ -25,7 +25,7 @@ on:
       - "packages/cloud/shared/src/db/**/discord-connections.ts"
       - ".github/workflows/cloud-gateway-discord.yml"
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "packages/cloud/services/gateway-discord/**"
       - "packages/cloud/shared/src/lib/services/gateway-discord/**"

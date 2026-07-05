@@ -14,7 +14,7 @@ on:
       - "packages/cloud/shared/scripts/messaging-gateway-preflight.mjs"
       - ".github/workflows/cloud-gateway-webhook.yml"
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "packages/cloud/services/gateway-webhook/**"
       - "packages/cloud/shared/src/lib/services/**"

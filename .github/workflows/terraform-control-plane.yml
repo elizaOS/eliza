@@ -29,6 +29,7 @@ name: Terraform — Control Plane (Hetzner)
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - "packages/cloud/infra/cloud/terraform/hetzner/control-plane/**"
       - ".github/workflows/terraform-control-plane.yml"

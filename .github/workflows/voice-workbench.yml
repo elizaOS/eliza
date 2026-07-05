@@ -39,6 +39,7 @@ on:
       - "packages/shared/src/voice/owner-inference.ts"
       - ".github/workflows/voice-workbench.yml"
   pull_request:
+    branches: [main]
     paths:
       - "plugins/plugin-local-inference/src/services/voice/voice-scenario.ts"
       - "plugins/plugin-local-inference/src/services/voice/e2e-harness.ts"

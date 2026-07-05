@@ -27,7 +27,7 @@ name: LifeOpsBench (Python)
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "packages/benchmarks/lifeops-bench/**"
       - "packages/benchmarks/eliza-adapter/eliza_adapter/lifeops_bench.py"

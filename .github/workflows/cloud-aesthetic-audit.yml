@@ -19,7 +19,7 @@ name: Cloud Aesthetic Audit
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "packages/app/**"
       - "packages/ui/**"

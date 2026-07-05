@@ -5,6 +5,7 @@ on:
     # Daily at 09:17 UTC, after the normal nightly lanes have had time to settle.
     - cron: "17 9 * * *"
   pull_request:
+    branches: [main]
     paths:
       - ".github/workflows/loadperf.yml"
       - "packages/benchmarks/loadperf/**"

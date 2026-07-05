@@ -2,6 +2,7 @@ name: Test Flatpak Build
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - 'packages/app-core/packaging/flatpak/**'
       - '.github/workflows/test-flatpak.yml'

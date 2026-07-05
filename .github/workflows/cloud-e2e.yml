@@ -6,7 +6,7 @@ name: cloud-e2e
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [main]
     paths:
       - "packages/cloud/api/**"
       - "packages/cloud/shared/**"

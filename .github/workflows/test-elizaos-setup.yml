@@ -2,6 +2,7 @@ name: Test AOSP flasher
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - "packages/os/setup/**"
       - ".github/workflows/test-elizaos-setup.yml"

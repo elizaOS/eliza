@@ -16,7 +16,7 @@ on:
   # Reusable entry for the scheduled exhaustive develop lane (#12342).
   workflow_call:
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       # The fixture runners esbuild-bundle from the full packages/ui/src tree,
       # so any source change there can reach a bundled runner.

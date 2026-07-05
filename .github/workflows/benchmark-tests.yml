@@ -19,7 +19,7 @@ on:
       - "packages/lifeops-bench/**"
       - ".github/workflows/benchmark-tests.yml"
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "packages/lifeops-bench/**"
       - ".github/workflows/benchmark-tests.yml"

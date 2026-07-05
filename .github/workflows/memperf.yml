@@ -13,6 +13,7 @@ name: memperf
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - "packages/benchmarks/memperf/**"
       - "plugins/plugin-local-inference/src/services/memory-arbiter.ts"

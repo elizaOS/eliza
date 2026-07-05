@@ -21,7 +21,7 @@ name: LifeOps Action Manifest Gate
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "plugins/plugin-personal-assistant/**"
       - "plugins/plugin-contacts/**"

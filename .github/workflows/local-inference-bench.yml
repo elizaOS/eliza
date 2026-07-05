@@ -26,6 +26,7 @@ on:
     # 04:30 UTC Sunday — weekly eliza-1 model publish window.
     - cron: "30 4 * * 0"
   pull_request:
+    branches: [main]
     paths:
       - "packages/scripts/benchmark/**"
       - ".github/workflows/local-inference-bench.yml"

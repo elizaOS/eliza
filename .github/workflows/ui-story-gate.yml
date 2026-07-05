@@ -12,7 +12,7 @@ on:
   # Reusable entry for the scheduled exhaustive develop lane (#12342).
   workflow_call:
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "packages/ui/**"
       - "packages/shared/**"

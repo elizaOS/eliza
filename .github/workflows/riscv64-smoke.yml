@@ -11,6 +11,7 @@ name: riscv64 cross-build smoke
 on:
   workflow_dispatch:
   pull_request:
+    branches: [main]
     types: [labeled, synchronize, reopened]
 
 # cancel superseded in-flight runs for the same PR to free hosted-runner

@@ -1,9 +1,6 @@
 name: Windows Dev Smoke
 
 on:
-  pull_request:
-    branches: [develop]
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
   schedule:
     # Weekly Windows smoke check (Mondays 06:00 UTC).
     - cron: "0 6 * * 1"
