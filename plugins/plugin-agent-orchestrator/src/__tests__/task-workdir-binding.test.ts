@@ -207,6 +207,41 @@ describe("durable task→workdir binding (#13776)", () => {
     }
   });
 
+  it("updates a stale repo binding when the explicit workdir stays the same", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const acp = makeWorkdirCapturingAcp();
+    const service = new OrchestratorTaskService(makeRuntime(acp.service), {
+      store,
+    });
+    await service.start();
+    try {
+      const taskId = await seedTask(store);
+
+      await service.spawnAgentForTask(taskId, {
+        workdir: firstDir,
+        repo: "https://example.com/repo-a.git",
+      });
+      expect((await service.getTask(taskId))?.latestRepo).toBe(
+        "https://example.com/repo-a.git",
+      );
+
+      const detail = await service.spawnAgentForTask(taskId, {
+        workdir: firstDir,
+        repo: "https://example.com/repo-b.git",
+      });
+
+      expect(acp.spawns.at(1)?.workdir).toBe(firstDir);
+      expect(detail?.latestWorkdir).toBe(firstDir);
+      expect(detail?.latestRepo).toBe("https://example.com/repo-b.git");
+
+      const record = await store.getTask(taskId);
+      expect(record?.task.boundWorkdir).toBe(firstDir);
+      expect(record?.task.boundRepo).toBe("https://example.com/repo-b.git");
+    } finally {
+      await service.stop().catch(() => undefined);
+    }
+  });
+
   it("clears the old repo binding when an explicit workdir override omits repo", async () => {
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const acp = makeWorkdirCapturingAcp();

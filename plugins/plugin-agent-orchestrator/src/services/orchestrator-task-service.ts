@@ -3419,15 +3419,23 @@ export class OrchestratorTaskService extends Service {
   ): Promise<void> {
     if (!workdir) return;
     const previous =
-      this.taskWorkdirBindQueues.get(taskId)?.catch(() => undefined) ??
-      Promise.resolve();
+      this.taskWorkdirBindQueues.get(taskId)?.catch(
+        // error-policy:J5 bind queue promises are awaited by the originating
+        // bind call; the continuation must still run so one failed bind does
+        // not permanently block later corrections.
+        () => undefined,
+      ) ?? Promise.resolve();
+    const canSetRepo = (latest: OrchestratorTaskRecord) =>
+      !latest.boundWorkdir ||
+      latest.boundWorkdir === workdir ||
+      opts.allowRebind === true;
     const next = previous.then(async () => {
       const latest = (await this.store.getTask(taskId))?.task ?? current;
       const canSetWorkdir = !latest.boundWorkdir || opts.allowRebind === true;
       const patch: Partial<OrchestratorTaskRecord> = {};
       const workdirChanged = latest.boundWorkdir !== workdir;
       if (canSetWorkdir && workdirChanged) patch.boundWorkdir = workdir;
-      if (canSetWorkdir && repo && latest.boundRepo !== repo) {
+      if (canSetRepo(latest) && repo && latest.boundRepo !== repo) {
         patch.boundRepo = repo;
       } else if (canSetWorkdir && workdirChanged && latest.boundRepo) {
         patch.boundRepo = null;
