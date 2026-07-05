@@ -14,7 +14,6 @@ import {
 import type {
   ApiKeyDisplay,
   ApiKeyStatus,
-  ApiKeysSummaryData,
 } from "../../cloud-ui/components/data-list";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
@@ -35,24 +34,10 @@ function toDisplayKey(key: ApiKeyRecord): ApiKeyDisplay {
   return {
     id: key.id,
     name: key.name,
-    description: key.description,
     keyPrefix: key.key_prefix,
     status: getApiKeyStatus(key.is_active, key.expires_at),
-    lastUsedAt: key.last_used_at,
     createdAt: key.created_at,
-    usageCount: key.usage_count,
-    rateLimit: key.rate_limit,
-    expiresAt: key.expires_at,
-  };
-}
-
-function deriveSummary(keys: ApiKeyDisplay[]): ApiKeysSummaryData {
-  return {
-    totalKeys: keys.length,
-    activeKeys: keys.filter((k) => k.status === "active").length,
-    monthlyUsage: keys.reduce((acc, k) => acc + k.usageCount, 0),
-    rateLimit: 1000,
-    lastGeneratedAt: keys[0]?.createdAt ?? null,
+    lastUsedAt: key.last_used_at,
   };
 }
 
@@ -106,8 +91,5 @@ export function ApiKeysSurface() {
     );
   }
 
-  const displayKeys = (keys ?? []).map(toDisplayKey);
-  return (
-    <ApiKeysView keys={displayKeys} summary={deriveSummary(displayKeys)} />
-  );
+  return <ApiKeysView keys={(keys ?? []).map(toDisplayKey)} />;
 }

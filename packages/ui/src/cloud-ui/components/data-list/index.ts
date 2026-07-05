@@ -2,15 +2,11 @@
  * Barrel for the cloud data-list components.
  */
 export {
-  ApiKeysSummary,
-  type ApiKeysSummaryData,
-  type ApiKeysSummaryProps,
-} from "./api-keys-summary";
-export {
   type ApiKeyDisplay,
   type ApiKeyStatus,
   ApiKeysTable,
   type ApiKeysTableProps,
+  formatApiKeyDate,
 } from "./api-keys-table";
 export {
   type AppsListItem,
