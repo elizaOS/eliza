@@ -169,6 +169,21 @@ describe("preflightImport — malformed input fails fast", () => {
     );
   });
 
+  it("throws on malformed optional estimate dimensions", () => {
+    expect(() =>
+      preflightImport({ uploadBytes: 1, storageBytes: Number.NaN }),
+    ).toThrow(/storageBytes/);
+    expect(() =>
+      preflightImport({ uploadBytes: 1, embeddingUnits: -1 }),
+    ).toThrow(/embeddingUnits/);
+    expect(() =>
+      preflightImport({
+        uploadBytes: 1,
+        conversationCount: Number.POSITIVE_INFINITY,
+      }),
+    ).toThrow(/conversationCount/);
+  });
+
   it("never mutates the caller's estimate", () => {
     const estimate = { uploadBytes: 1 * MiB, conversationCount: 2 };
     const snapshot = { ...estimate };
@@ -228,6 +243,20 @@ describe("estimateBundleUsage", () => {
     const estimate = estimateBundleUsage(b, 0);
     // 2 bytes for "é" + 2 bytes for the attachment "ab".
     expect(estimate.storageBytes).toBe(4);
+  });
+
+  it("matches platform UTF-8 encoding for malformed surrogate text", () => {
+    const text = "\ud800";
+    const b = bundle([
+      conv({
+        sourceConversationId: "c1",
+        title: undefined,
+        messages: [{ role: "user", text }],
+      }),
+    ]);
+    expect(estimateBundleUsage(b, 0).storageBytes).toBe(
+      new TextEncoder().encode(text).byteLength,
+    );
   });
 
   it("feeds directly into preflightImport for a post-parse quota gate", () => {

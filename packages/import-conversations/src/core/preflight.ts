@@ -21,6 +21,7 @@ import type { ConversationBundle } from "./types.ts";
 
 /** Bytes in one mebibyte — ceilings below read in MiB for legibility. */
 const MiB = 1024 * 1024;
+const UTF8_ENCODER = new TextEncoder();
 
 /** Configurable size ceilings for an import upload. */
 export interface ImportLimits {
@@ -126,6 +127,18 @@ function reject(
   return { ok: false, code, message, limit, observed };
 }
 
+function assertNonNegativeFinite(
+  value: number | undefined,
+  field: keyof ImportUsageEstimate,
+): void {
+  if (value === undefined) return;
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(
+      `preflightImport: ${field} must be a non-negative finite number, got ${value}`,
+    );
+  }
+}
+
 /**
  * Decide whether an import may proceed. Checks the size ceilings first (a
  * too-large upload is refused before any quota math), then each supplied tenant
@@ -143,11 +156,10 @@ export function preflightImport(
   const limits = options.limits ?? DEFAULT_IMPORT_LIMITS;
   const quota = options.quota;
 
-  if (!Number.isFinite(estimate.uploadBytes) || estimate.uploadBytes < 0) {
-    throw new Error(
-      `preflightImport: uploadBytes must be a non-negative finite number, got ${estimate.uploadBytes}`,
-    );
-  }
+  assertNonNegativeFinite(estimate.uploadBytes, "uploadBytes");
+  assertNonNegativeFinite(estimate.storageBytes, "storageBytes");
+  assertNonNegativeFinite(estimate.embeddingUnits, "embeddingUnits");
+  assertNonNegativeFinite(estimate.conversationCount, "conversationCount");
 
   if (estimate.uploadBytes > limits.maxResumableUploadBytes) {
     return reject(
@@ -242,22 +254,6 @@ export function estimateBundleUsage(
   };
 }
 
-/** UTF-8 byte length of a string without allocating a Buffer/encoder per call. */
 function byteLength(text: string): number {
-  let bytes = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    const code = text.charCodeAt(i);
-    if (code < 0x80) {
-      bytes += 1;
-    } else if (code < 0x800) {
-      bytes += 2;
-    } else if (code >= 0xd800 && code <= 0xdbff) {
-      // High surrogate: a surrogate pair encodes one 4-byte code point.
-      bytes += 4;
-      i += 1;
-    } else {
-      bytes += 3;
-    }
-  }
-  return bytes;
+  return UTF8_ENCODER.encode(text).byteLength;
 }
