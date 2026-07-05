@@ -170,6 +170,19 @@ describe("POST /api/my-agents/characters — non-array documents/knowledge", () 
     // Non-arrays contribute no document sources.
     expect(body.documents ?? []).toEqual([]);
   });
+
+  test("create with a non-string username is rejected as 400 (was: 500 TypeError on toLowerCase)", async () => {
+    expect(pgliteReady).toBe(true);
+
+    const res = await createCharacter({
+      name: "Bad Create Username",
+      bio: "valid",
+      username: 42,
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code?: string };
+    expect(body.code).toBe("validation_error");
+  });
 });
 
 describe("PUT /api/my-agents/characters/:id — malformed body fields", () => {

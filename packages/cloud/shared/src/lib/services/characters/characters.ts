@@ -209,6 +209,12 @@ export class CharactersService {
     if (!username) {
       username = await this.generateUniqueUsername(data.name);
       logger.info(`[Characters] Generated username: @${username} for "${data.name}"`);
+    } else if (typeof username !== "string") {
+      // Character creation receives request bodies before route-level shape
+      // validation, so username can be any JSON value. Rejecting here keeps
+      // create/update behavior aligned and prevents validateUsername from
+      // turning malformed input into a TypeError 500 (#13637 class).
+      throw ValidationError("Invalid username: must be a string");
     } else {
       // Validate provided username
       const validation = validateUsername(username);
