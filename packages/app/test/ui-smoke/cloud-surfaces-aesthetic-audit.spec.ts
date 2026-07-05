@@ -7,6 +7,10 @@ import path from "node:path";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { expect, type Page, test } from "@playwright/test";
 import {
+  type AestheticVerdictDebt,
+  evaluateStrictGate,
+} from "./aesthetic-audit-rules";
+import {
   collectBlueColors,
   collectHoverViolations,
 } from "./helpers/brand-color-scans";
@@ -54,6 +58,26 @@ import {
 const TEST_AUTH_ENABLED =
   process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
   process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true";
+
+// Strict gate (#13624), mirroring the app audit (#9304/#10710). Without this the
+// cloud audit was a pure reporter — a `broken`/`needs-work` cloud page failed
+// nothing, and a turbo-cached renderer built WITHOUT the test-auth shell made
+// the whole suite skip green with ZERO pages walked. Under strict the audit is a
+// GATE: an undebted `broken` view fails; with the opt-in needs-work extension an
+// undebted `needs-work` fails too; a missing auth-shell or an empty walk is a
+// HARD FAILURE, not a skip.
+const AUDIT_CLOUD_STRICT = process.env.ELIZA_AUDIT_CLOUD_STRICT === "1";
+const AUDIT_CLOUD_STRICT_NEEDS_WORK =
+  process.env.ELIZA_AUDIT_CLOUD_STRICT_NEEDS_WORK === "1";
+// When true, the audit must not silently no-op: a dist without the baked
+// test-auth shell, or a run that walks zero pages, reddens instead of skipping.
+// Auto-on under CI so no lane can go green with nothing.
+const REQUIRE_CLOUD_EVIDENCE =
+  AUDIT_CLOUD_STRICT || process.env.CI === "true" || process.env.CI === "1";
+// The (currently empty) allowlist for tolerated cloud aesthetic debt: a
+// `slug-viewport` key set to `broken`/`needs-work` exempts that view. Shrink it
+// over time; a NEW regression on an undebted view fails the run.
+const CLOUD_AESTHETIC_VERDICT_DEBT: AestheticVerdictDebt = {};
 
 const VIEWPORTS = [
   { name: "desktop", width: 1440, height: 900 },
@@ -941,10 +965,41 @@ const findings: CloudPageFinding[] = [];
 const findingsBySlug = new Map<string, CloudPageFinding[]>();
 
 test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
+  // Locally, a renderer without the baked test-auth shell is a skip (dev
+  // convenience). Under strict/CI it is NOT — see the guard test below, which
+  // reddens so the audit can never go green having walked nothing (#13624).
   test.skip(
-    !TEST_AUTH_ENABLED,
+    !TEST_AUTH_ENABLED && !REQUIRE_CLOUD_EVIDENCE,
     "set VITE_PLAYWRIGHT_TEST_AUTH=true (bake it into the renderer build) so StewardProvider renders the local test-auth shell",
   );
+
+  // Hard gate (#13624): under strict/CI the running renderer bundle MUST contain
+  // the test-auth shell. A stale turbo-cached `build:web` (built without
+  // VITE_PLAYWRIGHT_TEST_AUTH) leaves the runtime env set but the shell absent —
+  // every authed route bounces to /login and the audit used to skip green. This
+  // test seeds a Steward token, visits an authed route, and reddens if we were
+  // bounced to the login wall (dist lacks the shell) or the runtime flag is off.
+  test("renderer dist was built with the test-auth shell", async ({ page }) => {
+    test.skip(
+      !REQUIRE_CLOUD_EVIDENCE,
+      "auth-shell hard gate only enforced under ELIZA_AUDIT_CLOUD_STRICT / CI",
+    );
+    expect(
+      TEST_AUTH_ENABLED,
+      "audit:cloud (strict/CI) requires VITE_PLAYWRIGHT_TEST_AUTH=true baked into the renderer build",
+    ).toBe(true);
+    await seedStewardToken(page);
+    await installCloudApiStubs(page);
+    await page.goto("/dashboard/agents", { waitUntil: "domcontentloaded" });
+    // Give StewardProvider a beat to resolve the seeded session (or bounce).
+    await page.waitForTimeout(1_500);
+    expect(
+      page.url(),
+      "authed route bounced to /login — the renderer dist lacks the test-auth " +
+        "shell (stale turbo cache built without VITE_PLAYWRIGHT_TEST_AUTH). " +
+        "Force a clean `build:web` with the flag set.",
+    ).not.toMatch(/\/login(\?|#|$)/);
+  });
 
   const outputDir =
     process.env.ELIZA_AUDIT_CLOUD_DIR ??
@@ -1129,7 +1184,21 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
   }
 
   test.afterAll(async () => {
-    if (findings.length === 0) return;
+    if (findings.length === 0) {
+      // Green-with-nothing guard (#13624): under strict/CI a walk that produced
+      // zero findings means the audit no-opped (skipped auth shell, cached dist,
+      // etc.) — that must redden, not pass silently.
+      if (REQUIRE_CLOUD_EVIDENCE) {
+        throw new Error(
+          "[cloud-aesthetic-audit] STRICT/CI run walked ZERO cloud pages — the " +
+            "audit produced no findings. This is the green-with-nothing hole: the " +
+            "renderer likely lacks the test-auth shell (stale turbo-cached " +
+            "build:web without VITE_PLAYWRIGHT_TEST_AUTH). Rebuild the renderer " +
+            "with the flag set and re-run.",
+        );
+      }
+      return;
+    }
     await mkdir(outputDir, { recursive: true });
     await writeFile(
       path.join(outputDir, "report.json"),
@@ -1156,11 +1225,25 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
     );
     const broken = findings.filter((f) => f.verdict === "broken");
     const needsWork = findings.filter((f) => f.verdict === "needs-work");
+    // Strict gate (#13624): fail on any undebted `broken` (a real crash / blank
+    // render / console error) and, with the opt-in needs-work extension, any
+    // undebted `needs-work` (blue / orange-hover design regression). The pure
+    // evaluateStrictGate is unit-tested; here we just thread the flags + throw.
+    const gate = evaluateStrictGate(findings, CLOUD_AESTHETIC_VERDICT_DEBT, {
+      strict: AUDIT_CLOUD_STRICT,
+      needsWorkStrict: AUDIT_CLOUD_STRICT_NEEDS_WORK,
+    });
     console.log(
       `[cloud-aesthetic-audit] ${findings.length} findings — ` +
         `broken=${broken.length} needs-work=${needsWork.length} ` +
         `needs-eyeball=${findings.filter((f) => f.verdict === "needs-eyeball").length} ` +
-        `good=${findings.filter((f) => f.verdict === "good").length}`,
+        `good=${findings.filter((f) => f.verdict === "good").length} ` +
+        `(strict=${AUDIT_CLOUD_STRICT}, needs-work-strict=${AUDIT_CLOUD_STRICT_NEEDS_WORK}, ` +
+        `undebted-broken=${gate.undebtedBroken.length}, ` +
+        `undebted-needs-work=${gate.undebtedNeedsWork.length})`,
     );
+    if (gate.failed) {
+      throw new Error(gate.message);
+    }
   });
 });
