@@ -127,12 +127,12 @@ describe("WalletSectionNav", () => {
     render(<WalletSectionNav activePath="/wallet" />);
     // Header present, but no switchable strip with a single member.
     expect(screen.getByTestId("view-header")).toBeTruthy();
-    expect(screen.queryByTestId("wallet-section-tabs")).toBeNull();
+    expect(screen.queryByTestId("section-nav-wallet")).toBeNull();
   });
 
   it("marks the active sub-view (aliases resolve to Wallet)", () => {
     render(<WalletSectionNav activePath="/inventory" />);
-    const strip = screen.getByTestId("wallet-section-tabs");
+    const strip = screen.getByTestId("section-nav-wallet");
     expect(
       within(strip)
         .getByRole("button", { name: "Wallet" })
@@ -147,7 +147,7 @@ describe("WalletSectionNav", () => {
 
   it("marks Perps active on its registered route", () => {
     render(<WalletSectionNav activePath="/perps" />);
-    const strip = screen.getByTestId("wallet-section-tabs");
+    const strip = screen.getByTestId("section-nav-wallet");
     expect(
       within(strip)
         .getByRole("button", { name: "Perps" })
@@ -157,7 +157,7 @@ describe("WalletSectionNav", () => {
 
   it("navigates to the sub-view route on click", () => {
     render(<WalletSectionNav activePath="/wallet" />);
-    const strip = screen.getByTestId("wallet-section-tabs");
+    const strip = screen.getByTestId("section-nav-wallet");
     fireEvent.click(within(strip).getByRole("button", { name: "Predictions" }));
     expect(window.location.pathname).toBe("/predictions");
   });
@@ -165,7 +165,7 @@ describe("WalletSectionNav", () => {
   it("does not renavigate when the active tab is clicked", () => {
     window.history.replaceState(null, "", "/wallet");
     render(<WalletSectionNav activePath="/wallet" />);
-    const strip = screen.getByTestId("wallet-section-tabs");
+    const strip = screen.getByTestId("section-nav-wallet");
     fireEvent.click(within(strip).getByRole("button", { name: "Wallet" }));
     expect(window.location.pathname).toBe("/wallet");
   });
