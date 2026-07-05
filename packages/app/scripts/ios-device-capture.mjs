@@ -42,12 +42,12 @@ import {
   readDevicectlDeviceLockState,
 } from "./ios-device-devicectl.mjs";
 import {
-  buildIosXcuitestShardPlan,
   assertDeviceUnlocked,
+  buildIosXcuitestShardPlan,
   buildPlistXml,
-  classifyXcresultSummaryForGate,
   classifyCodesignPreflight,
   classifyIsolatedReruns,
+  classifyXcresultSummaryForGate,
   DEFAULT_APP_BUNDLE_ID,
   evaluateRunnerStaleness,
   extractSwiftXcuitestEntries,
@@ -927,7 +927,9 @@ async function main() {
   };
 
   const agentProbeTarget = resolveAgentProbeTarget(process.env, args);
-  log(`agent availability preflight (${agentProbeTarget.source}): ${agentProbeTarget.url}`);
+  log(
+    `agent availability preflight (${agentProbeTarget.source}): ${agentProbeTarget.url}`,
+  );
   const agentProbe = await probeAgentAvailability({ target: agentProbeTarget });
   log(`agent availability preflight verdict: ${agentProbe.verdict}`);
 
