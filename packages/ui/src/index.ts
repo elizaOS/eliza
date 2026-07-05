@@ -289,13 +289,6 @@ export {
   ViewHeader,
 } from "./components/shared/ViewHeader";
 export {
-  assertSharedViewHeader,
-  DEFAULT_VIEW_HEADER_POLICY,
-  hasSharedViewHeader,
-  VIEW_HEADER_TESTID,
-  viewRequiresSharedHeader,
-} from "./components/shared/view-header-audit";
-export {
   AssistantOverlay,
   type AssistantOverlayProps,
 } from "./components/shell/AssistantOverlay";
