@@ -15,46 +15,33 @@
  * active-view awareness block injected into planner prompts.
  */
 import { getView, listViews } from "../api/views-registry.ts";
+import type {
+  ActiveViewContext,
+  ActiveViewElement,
+} from "./active-view-state.ts";
+import {
+  clearActiveViewContext,
+  getActiveViewContext,
+  setActiveViewContext,
+  setActiveViewElements,
+} from "./active-view-state.ts";
+import { viewScopedActionRegistryNames } from "./view-scoped-actions.ts";
+
+// The active-view state (get/set/clear/elements) and its types live in
+// active-view-state.ts so the scoped-action gate can read them without a cycle;
+// re-exported here for the existing import surface (views-routes, tests).
+export type { ActiveViewContext, ActiveViewElement };
+export {
+  clearActiveViewContext,
+  getActiveViewContext,
+  setActiveViewContext,
+  setActiveViewElements,
+};
 
 const VIEW_TYPES = ["gui", "xr", "tui"] as const;
 
-/**
- * One addressable element in the active view, as reported by the shell's
- * agent-surface registry (POST /api/views/:id/elements). Mirrors the
- * list-elements snapshot shape so the planner can act on an element by id
- * (agent-click / agent-fill / agent-focus) without a list-elements round-trip.
- */
-export interface ActiveViewElement {
-  id: string;
-  role: string;
-  label: string;
-  value?: string;
-  focused?: boolean;
-}
-
 /** Cap on elements rendered into the awareness block to bound prompt growth. */
 export const ACTIVE_VIEW_ELEMENT_RENDER_CAP = 40;
-
-/** Minimal description of the view the shell is currently showing. */
-export interface ActiveViewContext {
-  viewId: string;
-  viewLabel: string;
-  viewType: "gui" | "tui" | "xr";
-  viewPath: string | null;
-  /**
-   * Live snapshot of the view's addressable elements, when the shell has
-   * reported one. Absent until a report arrives (and re-cleared on navigation),
-   * so the awareness block degrades gracefully to "use list-elements".
-   */
-  elements?: readonly ActiveViewElement[];
-  /**
-   * ISO timestamp of the most recent switch INTO this view, and who drove it.
-   * Carried from the navigate route so Stage-1 can acknowledge a just-happened
-   * switch (#8788). Absent when the view was not freshly switched.
-   */
-  switchedAt?: string;
-  source?: "agent" | "user";
-}
 
 /**
  * A view switch is "fresh" (worth acknowledging on the immediately-following
@@ -68,35 +55,6 @@ function isActiveViewSwitchFresh(view: ActiveViewContext): boolean {
   const at = Date.parse(view.switchedAt);
   if (Number.isNaN(at)) return false;
   return Date.now() - at <= ACTIVE_VIEW_SWITCH_FRESH_MS;
-}
-
-let activeView: ActiveViewContext | null = null;
-
-export function setActiveViewContext(view: ActiveViewContext | null): void {
-  activeView = view;
-}
-
-export function getActiveViewContext(): ActiveViewContext | null {
-  return activeView;
-}
-
-export function clearActiveViewContext(): void {
-  activeView = null;
-}
-
-/**
- * Update the element snapshot for the active view. Gated on `viewId` matching
- * the current active view so a stale or background view's report (the shell may
- * have several mounted surfaces) can never overwrite the foreground view's
- * elements. Returns false when no view is active or the id differs.
- */
-export function setActiveViewElements(
-  viewId: string,
-  elements: readonly ActiveViewElement[],
-): boolean {
-  if (!activeView || activeView.viewId !== viewId) return false;
-  activeView = { ...activeView, elements };
-  return true;
 }
 
 /**
@@ -149,16 +107,24 @@ function getViewRelatedActions(viewId: string): string[] {
 
 /**
  * Resolve the set of action names to keep at full param detail for the active
- * view. Returns an empty set when no view is active or the view has no mapped
- * actions (control still works through agent-surface capabilities).
+ * view: the view's declared/host affinity actions (global actions worth
+ * upweighting) unioned with any actions registered as *scoped* to this view via
+ * {@link defineViewScopedAction}, which are only available while the view is
+ * active. Returns an empty set when no view is active or nothing applies
+ * (control still works through agent-surface capabilities).
  */
 export function viewScopedActionNames(
   viewId: string | null | undefined,
 ): Set<string> {
   if (!viewId) return new Set();
+  const names = new Set<string>(viewScopedActionRegistryNames(viewId));
   const declared = getViewRelatedActions(viewId);
-  if (declared.length > 0) return new Set(declared);
-  return new Set(HOST_VIEW_ACTION_AFFINITY[viewId] ?? []);
+  if (declared.length > 0) {
+    for (const a of declared) names.add(a);
+    return names;
+  }
+  for (const a of HOST_VIEW_ACTION_AFFINITY[viewId] ?? []) names.add(a);
+  return names;
 }
 
 /**
