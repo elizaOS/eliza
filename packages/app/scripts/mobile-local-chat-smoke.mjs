@@ -46,6 +46,8 @@ const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_FULL_BUN_PREWARM_RESULT_KEY = "eliza:ios-full-bun-prewarm:result";
 const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
 const ANDROID_LOCAL_AGENT_IPC_BASE = IOS_LOCAL_AGENT_IPC_BASE;
+const DEFAULT_ANDROID_SMOKE_MODEL_FILE = "eliza-1-2b-128k.gguf";
+const DEFAULT_ANDROID_SMOKE_MODEL_SIZE_BYTES = 4_967_494_592;
 const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-2b";
 const IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH =
   "models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf";
@@ -123,11 +125,16 @@ const ANDROID_SMOKE_MODEL_RELATIVE_PATH =
   process.env.ANDROID_SMOKE_MODEL_RELATIVE_PATH?.trim() ||
   "bundles/2b/text/eliza-1-2b-128k.gguf";
 const ANDROID_SMOKE_MODEL_FILE =
-  process.env.ANDROID_SMOKE_MODEL_FILE?.trim() || "eliza-1-2b-128k.gguf";
-// Size/sha defaults are unset for the 2B entry tier — set them via env to
-// re-enable the exact-match download verification against a known artifact.
+  process.env.ANDROID_SMOKE_MODEL_FILE?.trim() ||
+  DEFAULT_ANDROID_SMOKE_MODEL_FILE;
+// The default Android smoke artifact is the 4.97GB 128k-context GGUF. Custom
+// model overrides can set ANDROID_SMOKE_MODEL_SIZE_BYTES to keep exact-match
+// download and staged-file verification enabled.
 const ANDROID_SMOKE_MODEL_SIZE_BYTES = Number.parseInt(
-  process.env.ANDROID_SMOKE_MODEL_SIZE_BYTES?.trim() || "",
+  process.env.ANDROID_SMOKE_MODEL_SIZE_BYTES?.trim() ||
+    (ANDROID_SMOKE_MODEL_FILE === DEFAULT_ANDROID_SMOKE_MODEL_FILE
+      ? String(DEFAULT_ANDROID_SMOKE_MODEL_SIZE_BYTES)
+      : ""),
   10,
 );
 const ANDROID_SMOKE_MODEL_SHA256 =
@@ -170,7 +177,7 @@ Options:
   --ios-select-local               Pre-seed iOS first-run/runtime state for Local mode before launch
   --ios-full-bun-smoke             Run a WebView-executed full Bun backend smoke in the iOS app
   --android-select-local           Tap through Android first-run Local runtime selection
-  --android-stage-smoke-model      Stage the smallest active Eliza-1 GGUF into Android app data
+  --android-stage-smoke-model      Stage the default active Eliza-1 GGUF into Android app data
   --android-background             Background Android, force-fire the WorkManager job, and poll /api/health
   --ios-background                 Background iOS, fire a BGTaskScheduler task via LLDB, and poll /api/health
   --ios-background-task-id ID      iOS BGTask identifier to simulate (default: ai.eliza.tasks.refresh)
@@ -835,8 +842,13 @@ async function stageAndroidSmokeModel(context) {
     "Failed to inspect Android smoke model.",
     { allowFailure: true },
   );
-  const expectedSize = String(ANDROID_SMOKE_MODEL_SIZE_BYTES);
-  if (existingBytes?.trim() === expectedSize) {
+  const existingSize = existingBytes?.trim();
+  const hasExpectedSize = Number.isFinite(ANDROID_SMOKE_MODEL_SIZE_BYTES);
+  if (
+    hasExpectedSize
+      ? existingSize === String(ANDROID_SMOKE_MODEL_SIZE_BYTES)
+      : Boolean(existingSize)
+  ) {
     writeAndroidSmokeModelManifest(context, targetDir);
     writeAndroidLocalInferenceRegistry(context, localInferenceDir);
     console.log(

@@ -6,7 +6,7 @@ mocked `/api` (that is `playwright.ui-smoke.config.ts`). Two layers:
 
 | Layer | What it proves | Driver |
 |---|---|---|
-| `mobile-local-chat-smoke.mjs` | On-device agent boots, smallest model loads, a real chat round-trips | adb + on-device agent API (`:31337`) |
+| `mobile-local-chat-smoke.mjs` | On-device agent boots, default smoke model loads, a real chat round-trips | adb + on-device agent API (`:31337`) |
 | `onboarding-to-home.android.spec.ts` | Fresh Capacitor first-run onboarding selects a real remote host agent over `adb reverse`, completes first-run, and lands on the home/chat surface with screenshot + screenrecord artifacts | Playwright Android driver + deterministic host `startApiServer` |
 | `native-plugin-view-smoke.android.spec.ts` | The installed app's WebView calls `ElizaSystem` through Capacitor and receives Android/Kotlin-only status + settings values, with JSON, screenshot, screenrecord, console, and logcat artifacts | Playwright Android driver + real Capacitor bridge |
 | `touch-gesture.android.spec.ts` | The installed Android WebView runs the full chat gesture matrix — sheet detents, home↔launcher rail + back, push-to-talk hold, keyboard avoidance, media attachment, long-press — via real OS touch (`adb input`), asserting real touch delivery (never mouse) plus each gesture's semantics, recorded as one chunked screenrecord | Playwright Android driver + `adb shell input swipe` |
@@ -81,10 +81,11 @@ bun run --cwd packages/app test:e2e:android:routes
 
 ## Hard-won environment facts
 
-- **Emulator RAM.** The on-device agent (bun + a ~556MB GGUF) needs real
-  headroom. A stock ≤2GB AVD OOM-kills the agent mid model-load. The harness
-  boots emulators with **6GB** (`-memory 6144`); if you reuse an existing AVD,
-  raise `hw.ramSize` to `6144M`.
+- **Emulator RAM.** The default on-device chat smoke stages
+  `eliza-1-2b-128k.gguf`, a 4.97GB (4,967,494,592-byte) GGUF. Bun plus this
+  model needs real headroom. A stock ≤2GB AVD OOM-kills the agent mid
+  model-load. The harness boots emulators with **6GB** (`-memory 6144`); if you
+  reuse an existing AVD, raise `hw.ramSize` to `6144M`.
 - **SELinux.** On a stock emulator the app is `untrusted_app` and SELinux
   (enforcing) blocks the bun runtime's syscalls, so the agent never goes
   healthy. The harness runs `adb root` + `setenforce 0` on emulators
@@ -98,9 +99,10 @@ bun run --cwd packages/app test:e2e:android:routes
 - **Route navigation.** Capacitor's WebView has no SPA fallback for nested
   paths, so a hard `page.goto('/apps/x')` 404s. The harness navigates
   client-side via the History API (`gotoRoute`), like a user tap.
-- **Smallest model.** `eliza-1-2b` (Q-quant, 128k ctx) — the smallest
-  catalog tier. Node `fetch` chokes on HF's Xet LFS redirect; the orchestrator
-  pre-caches via `curl`.
+- **Smoke model.** `eliza-1-2b` (Q-quant, 128k ctx) is staged from
+  `eliza-1-2b-128k.gguf` and should be 4.97GB (4,967,494,592 bytes). The smoke
+  caps runtime context at 4096 tokens. Node `fetch` chokes on HF's Xet LFS
+  redirect; the orchestrator pre-caches via `curl`.
 
 ## Useful knobs
 

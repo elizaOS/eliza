@@ -6,9 +6,9 @@
 //      none is running) and, for emulators, SELinux is permissive so the
 //      embedded on-device agent can run.
 //   2. Ensure the WebView-debuggable debug APK is installed.
-//   3. Local route: bring up the on-device agent + smallest model and assert a
-//      real chat round-trip (mobile-local-chat-smoke). Loud fail if the local
-//      runtime or model does not come up.
+//   3. Local route: bring up the on-device agent + default smoke model and
+//      assert a real chat round-trip (mobile-local-chat-smoke). Loud fail if
+//      the local runtime or model does not come up.
 //   4. Playwright route coverage: drive the real WebView across every route.
 //   5. (optional) Cloud route: real Hetzner provisioning probe.
 //
@@ -39,10 +39,11 @@ const val = (flag, fb) => {
 };
 const log = (m) => console.log(`[android-e2e] ${m}`);
 
-// Smallest local tier; same id the smoke + catalog use.
+// Default local smoke tier; same id the smoke + catalog use.
 const SMOKE_MODEL = {
   id: "eliza-1-2b",
   file: "eliza-1-2b-128k.gguf",
+  sizeBytes: 4_967_494_592,
   url: "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/text/eliza-1-2b-128k.gguf?download=true",
   cacheDir: path.join(
     process.env.HOME ?? process.env.USERPROFILE ?? ".",
@@ -174,7 +175,7 @@ function run(cmd, args, env = {}) {
 // model so the smoke reuses it offline instead of failing on the redirect.
 function ensureSmokeModelCached() {
   const dest = path.join(SMOKE_MODEL.cacheDir, SMOKE_MODEL.file);
-  if (fs.existsSync(dest) && fs.statSync(dest).size > 0) {
+  if (fs.existsSync(dest) && fs.statSync(dest).size === SMOKE_MODEL.sizeBytes) {
     log(`smoke model cached: ${dest}`);
     return dest;
   }
@@ -183,6 +184,12 @@ function ensureSmokeModelCached() {
   execFileSync("curl", ["-fsSL", "-o", dest, SMOKE_MODEL.url], {
     stdio: "inherit",
   });
+  const size = fs.statSync(dest).size;
+  if (size !== SMOKE_MODEL.sizeBytes) {
+    throw new Error(
+      `Downloaded smoke model size mismatch: expected ${SMOKE_MODEL.sizeBytes} bytes, got ${size} bytes at ${dest}`,
+    );
+  }
   return dest;
 }
 
@@ -215,7 +222,7 @@ async function main() {
 
   if (!has("--skip-local-chat")) {
     const modelPath = ensureSmokeModelCached();
-    log("local route: on-device agent + smallest model + real chat…");
+    log("local route: on-device agent + default smoke model + real chat…");
     run(
       "node",
       [
@@ -229,7 +236,11 @@ async function main() {
         "--serial",
         serial,
       ],
-      { ANDROID_SMOKE_MODEL_PATH: modelPath, ANDROID_SERIAL: serial },
+      {
+        ANDROID_SMOKE_MODEL_PATH: modelPath,
+        ANDROID_SMOKE_MODEL_SIZE_BYTES: String(SMOKE_MODEL.sizeBytes),
+        ANDROID_SERIAL: serial,
+      },
     );
   }
 
