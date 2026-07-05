@@ -7,6 +7,16 @@ file is that decision record. The runtime heuristic that implements it is
 (plus the capture-time readiness downgrade `isLocalInferenceAsrReady` →
 browser fallback in `voice-capture-factory.ts` / `local-asr-transcribe.ts`).
 
+**Two layers, chosen independently.** The `AsrProvider` this table selects is
+the *server-side transcription route* (what the settings picker seeds and what
+the server uses when it transcribes). It is distinct from the *interactive
+capture backend*, which `resolveBackendKind` in `voice-capture-factory.ts`
+picks separately: on a native-mobile platform with the TalkMode plugin present
+it unconditionally uses the OS speech recognizer (the only backend that streams
+interim transcripts, and the one whose assets are staged on phones), ahead of
+any provider preference. So the mobile `eliza-cloud` default below is the
+server-side route — it is not what runs the live on-device capture.
+
 ## Candidate backends
 
 | Backend | What it is | Where it can run |
@@ -44,7 +54,7 @@ Apple rows are real recorded / OS-synthesized speech.
 | Platform | Runtime | ASR default | Decision + rationale | Matches heuristic? |
 | --- | --- | --- | --- | --- |
 | Desktop (Linux/macOS/Windows) | local / local-only | `local-inference` | **Fused eliza-1-asr wins where provisioned**: measured WER 0.008 at 3.8× realtime on plain desktop CPU, robust to ≥ 10 dB SNR noise, fully offline. No candidate beats it on quality here, and it's the only offline option on Linux/Windows. If the bundle isn't provisioned, `isLocalInferenceAsrReady` degrades capture to the browser engine at runtime. | ✅ yes |
-| Mobile (Android/iOS) | local / local-only | `eliza-cloud` | The 1.0 GB fused model **runs** on Android (Pixel 6a WER 0 bring-up) but the only on-device measurement is 31.3 s including load, with steady-state RTF/battery unmeasured — not evidence of a good interactive default. Cloud ASR keeps latency predictable while the on-device Stage-B numbers are missing. Revisit when the Stage-B matrix (below) lands measured on-device RTF/battery. | ✅ yes |
+| Mobile (Android/iOS) | local / local-only | `eliza-cloud` | The 1.0 GB fused model **runs** on Android (Pixel 6a WER 0 bring-up) but the only on-device measurement is 31.3 s including load, with steady-state RTF/battery unmeasured — not evidence of a good interactive default. Cloud ASR keeps latency predictable while the on-device Stage-B numbers are missing. Revisit when the Stage-B matrix (below) lands measured on-device RTF/battery. **Provider layer only:** native-mobile *interactive capture* uses the OS TalkMode recognizer regardless (see the two-layers note above); this `eliza-cloud` value is the server-side transcription route. | ✅ yes (provider layer) |
 | Web shell | local | `eliza-cloud` | A browser tab hosting a local agent has no fused FFI runtime; the Web Speech API is engine-dependent and unmeasured. Cloud is the deterministic choice. | ✅ yes |
 | any | cloud / remote | `eliza-cloud` | Agent isn't on this machine; audio must go to the server anyway. | ✅ yes |
 | macOS/iOS wake-confirm (Stage-B) | — | `SFSpeechRecognizer` | Measured WER 0 quiet / RTF 0.168 on Apple silicon makes it the cheapest-correct confirm recognizer on Apple (VOICE_UX.md §7). This is a talkmode-bridge engine, not an `AsrProvider` value, so it does not change `pickDefaultVoiceProvider`. | n/a (outside the provider enum) |

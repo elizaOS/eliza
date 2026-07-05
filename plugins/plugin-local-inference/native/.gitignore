@@ -18,7 +18,3 @@ verify/reports/
 verify/android-vulkan-smoke/
 verify/asr_bench_real_recorded_*.json
 verify/vision-smoke-*-rpath-*.json
-
-# whisper.cpp build outputs from build-whisper.mjs (host + cross-compile).
-build-whisper/
-build-whisper-*/

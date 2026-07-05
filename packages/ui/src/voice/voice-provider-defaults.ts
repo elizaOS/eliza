@@ -8,9 +8,10 @@
  *     (TTS: `local-inference` / OmniVoice, ASR: `local-inference` / Gemma ASR).
  *   - Mobile running a local agent → on-device Kokoro TTS
  *     (TTS: `local-inference`; Kokoro is ~82M params and runs comfortably on
- *     phones — see `selectVoiceBackend({ mobile: true })`). ASR still routes
- *     to Eliza Cloud (`eliza-cloud`) because on-device speech recognition is
- *     heavier than TTS.
+ *     phones — see `selectVoiceBackend({ mobile: true })`). The ASR *provider*
+ *     is Eliza Cloud (`eliza-cloud`) because on-device speech recognition is
+ *     heavier than TTS — but see the layering note below: on native mobile the
+ *     live capture engine is the OS recognizer, not this provider.
  *   - Cloud agents (any device) → fast free Microsoft Edge neural TTS
  *     (`edge`) for speech, Eliza Cloud (`eliza-cloud`) for ASR. ElevenLabs is
  *     not a default (slow and key-gated); users can still opt into it from the
@@ -27,6 +28,17 @@
  * this file; #11337): fused eliza-1-asr measured at WER 0.008 / 3.8× realtime
  * on desktop CPU (hence `local-inference` on desktop), while mobile/web stay
  * on `eliza-cloud` until on-device Stage-B numbers justify a flip.
+ *
+ * Layering caveat (this function is only one of two ASR layers): the `asr`
+ * value it returns is the *provider* — the server-side transcription route the
+ * settings picker seeds and the server uses when it transcribes. It does NOT
+ * pick the interactive-capture engine. That is `resolveBackendKind` in
+ * `voice-capture-factory.ts`, which on a native-mobile platform with the
+ * TalkMode plugin present unconditionally uses the OS speech recognizer (the
+ * only backend that streams interim transcripts, and the one whose assets are
+ * actually staged on phones) ahead of any provider preference. So on native
+ * mobile the `eliza-cloud` value below governs server-side transcription, not
+ * the live on-device capture path — the two layers are chosen independently.
  */
 
 import type { AsrProvider, VoiceProvider } from "../api/client-types-config";

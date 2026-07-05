@@ -15,23 +15,6 @@
 	url = https://github.com/elizaOS/llama.cpp.git
 	branch = main
 
-[submodule "plugins/plugin-local-inference/native/whisper.cpp"]
-	# whisper.cpp — ggml-backed Whisper ASR runtime. Replaces the previous
-	# OpenVINO Whisper Python-worker path. Loaded via
-	# `libwhisper_eliza_adapter` (a thin C ABI wrapper in
-	# `plugins/plugin-local-inference/native/whisper-eliza-adapter/`) through
-	# bun:ffi by `src/services/voice/whisper-cpp-asr.ts`. Build script
-	# `build-whisper.mjs` cross-compiles the same matrix as the other native
-	# libraries (android/linux × arm64/x86_64/riscv64 + darwin-arm64-metal).
-	#
-	# When the submodule is absent, `build-whisper.mjs` falls back to a
-	# `git clone --depth 1 --branch v1.7.4` of upstream ggerganov/whisper.cpp
-	# into `~/.cache/eliza-whisper-cpp/whisper.cpp`. The submodule
-	# is the canonical pin; the fallback is the new-checkout convenience path.
-	path = plugins/plugin-local-inference/native/whisper.cpp
-	url = https://github.com/ggerganov/whisper.cpp.git
-	branch = master
-
 [submodule "plugins/plugin-agent-orchestrator/vendor/opencode"]
 	# opencode — the elizaOS fork of the opencode AI coding agent.
 	# Used by plugin-agent-orchestrator to spawn opencode sub-agents.
