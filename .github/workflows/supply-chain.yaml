@@ -9,6 +9,13 @@ on:
   schedule:
     - cron: "0 6 * * 1" # weekly Monday 06:00 UTC
 
+# #14051 Tier B: cancel superseded PR runs (SBOM + scan) on rapid pushes.
+# Only PRs cancel; push-to-main and the weekly schedule always run to
+# completion so the protected-branch supply-chain record is never dropped.
+concurrency:
+  group: supply-chain-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Default to least privilege. Override per-job where needed.
 permissions:
   contents: read

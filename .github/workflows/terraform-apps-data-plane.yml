@@ -82,8 +82,17 @@ permissions:
 # would otherwise race a concurrent per-env app_node attach. PR validation
 # stays parallel via the format() fallback.
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && 'terraform-apps-hetzner' || format('pr-{0}', github.ref) }}
-  cancel-in-progress: false
+  # PR group is workflow-scoped (data-plane) so it never collides with the
+  # sibling apps-shared workflow — concurrency groups are repo-wide, and a PR
+  # touching both modules must not have one workflow cancel the other's
+  # fmt/validate. workflow_dispatch keeps the shared 'terraform-apps-hetzner'
+  # group so an apply on either half still serializes against the other.
+  group: ${{ github.event_name == 'workflow_dispatch' && 'terraform-apps-hetzner' || format('terraform-apps-data-plane-pr-{0}', github.ref) }}
+  # #14051 Tier B: PR runs are fmt+validate only (no creds, no state) — safe to
+  # cancel a superseded PR run on the next push. workflow_dispatch (plan/apply
+  # against real state) uses the separate 'terraform-apps-hetzner' group and is
+  # NEVER cancelled, so an in-flight apply cannot be interrupted.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   TF_DIR: packages/cloud/infra/cloud/terraform/hetzner/apps-data-plane
