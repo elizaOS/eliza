@@ -470,172 +470,156 @@ export function ElizaAgentsTable({
     poller.isActive,
   ]);
 
-  async function handleProvision(id: string) {
+  /**
+   * Shared skeleton of the async agent-job actions (provision/suspend): set
+   * the optimistic row status, fire the request, then branch on the job
+   * protocol — 409 attach-to-existing-job, non-2xx throw, 202 queue-track,
+   * fallback plain success. The two callers differ only in request, optimistic
+   * status, copy, and the provision-only 202-without-job branch (#13916).
+   */
+  async function runAgentJob(
+    id: string,
+    opts: {
+      request: () => Promise<{ status: number; data?: AgentJobEnvelope }>;
+      optimisticStatus: ElizaAgentRow["status"];
+      labels: {
+        jobAction: string;
+        inProgress: string;
+        failed: string;
+        queued: string;
+        /** Provision-only: 202 with no jobId means "started, nothing to track". */
+        startedNoJob?: string;
+        alreadyDone: string;
+      };
+      onError: (err: unknown) => void;
+    },
+  ) {
+    const { request, optimisticStatus, labels, onError } = opts;
     setActionInProgress(id);
     setLocalSandboxes((prev) =>
-      prev.map((sb) => (sb.id === id ? { ...sb, status: "provisioning" } : sb)),
+      prev.map((sb) =>
+        sb.id === id ? { ...sb, status: optimisticStatus } : sb,
+      ),
     );
     try {
-      const { status, data } = await apiWithStatus<AgentJobEnvelope>(
-        `/api/v1/eliza/agents/${id}/provision`,
-        { method: "POST" },
-      );
+      const { status, data } = await request();
       const jobId = data?.data?.jobId;
 
-      // 409 — a provision is already in flight. Attach to its job when the
-      // backend returned one; either way this is informational, not an error.
+      // 409 — the job is already in flight. Attach to it when the backend
+      // returned one; either way this is informational, not an error.
       if (status === 409) {
         if (jobId) {
-          jobActionById.current.set(
-            jobId,
-            t("cloud.elizaAgentsTable.agentProvisioning", {
-              defaultValue: "Agent provisioning",
-            }),
-          );
+          jobActionById.current.set(jobId, labels.jobAction);
           poller.track(id, jobId);
         } else {
           void refreshData();
         }
-        toast.info(
-          t("cloud.elizaAgentsTable.provisioningInProgress", {
-            defaultValue: "Provisioning already in progress",
-          }),
-        );
+        toast.info(labels.inProgress);
         return;
       }
 
       if (status < 200 || status >= 300) {
         void refreshData();
-        throw new Error(
-          data?.error ??
-            t("cloud.elizaAgentsTable.provisionFailed", {
-              defaultValue: "Provision failed",
-            }),
-        );
+        throw new Error(data?.error ?? labels.failed);
       }
 
-      // 202 — accepted: the backend queued a provisioning job.
-      if (status === 202) {
-        if (jobId) {
-          jobActionById.current.set(
-            jobId,
-            t("cloud.elizaAgentsTable.agentProvisioning", {
-              defaultValue: "Agent provisioning",
-            }),
-          );
-          poller.track(id, jobId);
-          toast.success(
-            t("cloud.elizaAgentsTable.provisioningQueued", {
-              defaultValue: "Agent provisioning queued",
-            }),
-          );
-          return;
-        }
-
-        toast.success(
-          t("cloud.elizaAgentsTable.provisioningStarted", {
-            defaultValue: "Agent provisioning started",
-          }),
-        );
+      // 202 — accepted: the backend queued a job to track.
+      if (status === 202 && jobId) {
+        jobActionById.current.set(jobId, labels.jobAction);
+        poller.track(id, jobId);
+        toast.success(labels.queued);
+        return;
+      }
+      if (status === 202 && labels.startedNoJob) {
+        toast.success(labels.startedNoJob);
         void refreshData();
         return;
       }
 
-      toast.success(
-        t("cloud.elizaAgentsTable.alreadyRunning", {
-          defaultValue: "Agent is already running",
-        }),
-      );
+      toast.success(labels.alreadyDone);
       void refreshData();
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      toast.error(
-        t("cloud.elizaAgentsTable.failedToStart", {
-          message,
-          defaultValue: "Failed to start agent: {{message}}",
-        }),
-      );
+      onError(err);
     } finally {
       setActionInProgress(null);
     }
   }
 
-  async function handleSuspend(id: string) {
-    setActionInProgress(id);
-    setLocalSandboxes((prev) =>
-      prev.map((sb) => (sb.id === id ? { ...sb, status: "stopped" } : sb)),
-    );
-    try {
-      const { status, data } = await apiWithStatus<AgentJobEnvelope>(
-        `/api/v1/eliza/agents/${id}`,
-        { method: "PATCH", json: { action: "suspend" } },
-      );
-      const jobId = data?.data?.jobId;
-
-      // 409 — a suspend is already in flight. Attach to its job when the
-      // backend returned one; either way this is informational, not an error.
-      if (status === 409) {
-        if (jobId) {
-          jobActionById.current.set(
-            jobId,
-            t("cloud.elizaAgentsTable.agentSuspend", {
-              defaultValue: "Agent suspend",
-            }),
-          );
-          poller.track(id, jobId);
-        } else {
-          void refreshData();
-        }
-        toast.info(
-          t("cloud.elizaAgentsTable.suspendInProgress", {
-            defaultValue: "Suspend already in progress",
+  function handleProvision(id: string) {
+    return runAgentJob(id, {
+      request: () =>
+        apiWithStatus<AgentJobEnvelope>(
+          `/api/v1/eliza/agents/${id}/provision`,
+          {
+            method: "POST",
+          },
+        ),
+      optimisticStatus: "provisioning",
+      labels: {
+        jobAction: t("cloud.elizaAgentsTable.agentProvisioning", {
+          defaultValue: "Agent provisioning",
+        }),
+        inProgress: t("cloud.elizaAgentsTable.provisioningInProgress", {
+          defaultValue: "Provisioning already in progress",
+        }),
+        failed: t("cloud.elizaAgentsTable.provisionFailed", {
+          defaultValue: "Provision failed",
+        }),
+        queued: t("cloud.elizaAgentsTable.provisioningQueued", {
+          defaultValue: "Agent provisioning queued",
+        }),
+        startedNoJob: t("cloud.elizaAgentsTable.provisioningStarted", {
+          defaultValue: "Agent provisioning started",
+        }),
+        alreadyDone: t("cloud.elizaAgentsTable.alreadyRunning", {
+          defaultValue: "Agent is already running",
+        }),
+      },
+      onError: (err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        toast.error(
+          t("cloud.elizaAgentsTable.failedToStart", {
+            message,
+            defaultValue: "Failed to start agent: {{message}}",
           }),
         );
-        return;
-      }
+      },
+    });
+  }
 
-      if (status < 200 || status >= 300) {
-        void refreshData();
-        throw new Error(
-          data?.error ??
-            t("cloud.elizaAgentsTable.suspendFailed", {
-              defaultValue: "Suspend failed",
-            }),
-        );
-      }
-
-      // 202 — accepted: the backend queued a suspend job.
-      if (status === 202 && jobId) {
-        jobActionById.current.set(
-          jobId,
-          t("cloud.elizaAgentsTable.agentSuspend", {
-            defaultValue: "Agent suspend",
-          }),
-        );
-        poller.track(id, jobId);
-        toast.success(
-          t("cloud.elizaAgentsTable.suspendQueued", {
-            defaultValue: "Suspend queued",
-          }),
-        );
-        return;
-      }
-
-      toast.success(
-        t("cloud.elizaAgentsTable.suspended", {
+  function handleSuspend(id: string) {
+    return runAgentJob(id, {
+      request: () =>
+        apiWithStatus<AgentJobEnvelope>(`/api/v1/eliza/agents/${id}`, {
+          method: "PATCH",
+          json: { action: "suspend" },
+        }),
+      optimisticStatus: "stopped",
+      labels: {
+        jobAction: t("cloud.elizaAgentsTable.agentSuspend", {
+          defaultValue: "Agent suspend",
+        }),
+        inProgress: t("cloud.elizaAgentsTable.suspendInProgress", {
+          defaultValue: "Suspend already in progress",
+        }),
+        failed: t("cloud.elizaAgentsTable.suspendFailed", {
+          defaultValue: "Suspend failed",
+        }),
+        queued: t("cloud.elizaAgentsTable.suspendQueued", {
+          defaultValue: "Suspend queued",
+        }),
+        alreadyDone: t("cloud.elizaAgentsTable.suspended", {
           defaultValue: "Agent suspended (snapshot saved)",
         }),
-      );
-      void refreshData();
-    } catch {
-      toast.error(
-        t("cloud.elizaAgentsTable.failedToSuspend", {
-          defaultValue: "Failed to suspend agent",
-        }),
-      );
-    } finally {
-      setActionInProgress(null);
-    }
+      },
+      onError: () => {
+        toast.error(
+          t("cloud.elizaAgentsTable.failedToSuspend", {
+            defaultValue: "Failed to suspend agent",
+          }),
+        );
+      },
+    });
   }
 
   /**
