@@ -120,7 +120,15 @@ export async function handleProjectRoutes(
       "/api/projects/".length,
       pathname.length - ACTIVATE_SUFFIX.length,
     );
-    const id = decodeURIComponent(rawId);
+    let id: string;
+    try {
+      id = decodeURIComponent(rawId);
+    } catch {
+      // error-policy:J3 untrusted path segment — malformed percent-encoding is
+      // an invalid project id, not a route/server failure.
+      error(res, "Invalid project id", 400);
+      return true;
+    }
     if (!id || !PROJECT_ID_PATTERN.test(id)) {
       error(res, "Invalid project id", 400);
       return true;

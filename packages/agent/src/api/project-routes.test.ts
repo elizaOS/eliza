@@ -133,6 +133,18 @@ describe("handleProjectRoutes", () => {
     expect(helpers.error).toHaveBeenCalledWith(res, "Invalid project id", 400);
   });
 
+  it("POST activate with malformed percent-encoding returns 400", async () => {
+    const helpers = makeHelpers();
+    const activate = vi.fn();
+    const handled = await handleProjectRoutes(
+      ctx("POST", "/api/projects/%E0%A4%A/activate", helpers),
+      { activate },
+    );
+    expect(handled).toBe(true);
+    expect(activate).not.toHaveBeenCalled();
+    expect(helpers.error).toHaveBeenCalledWith(res, "Invalid project id", 400);
+  });
+
   it("surfaces a 500 when the registry read throws", async () => {
     const helpers = makeHelpers();
     const handled = await handleProjectRoutes(
