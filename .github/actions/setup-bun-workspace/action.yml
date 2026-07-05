@@ -88,8 +88,30 @@ runs:
     - name: Restore Turbo cache (GitHub-native)
       uses: ./.github/actions/turbo-cache-github
 
+    # actions/setup-python@v6 downloads a CPython build requiring the
+    # x86-64-v3 CPU baseline; some [self-hosted, hetzner-robot] runners expose
+    # a lower ISA and the download aborts with "CPU ISA level is lower than
+    # required" (exit 127), killing the whole step even though Python here is
+    # only a best-effort node-gyp fallback (#14188). GitHub-hosted runners are
+    # never affected, so this probe (and the fallback it enables) only runs on
+    # self-hosted runners via runner.environment — hosted CI takes the
+    # untouched actions/setup-python@v6 path below.
+    - name: Detect usable system Python (self-hosted ISA guard)
+      id: system-python
+      if: ${{ inputs.setup-python == 'true' && runner.environment == 'self-hosted' }}
+      shell: bash
+      run: |
+        if command -v python3 >/dev/null 2>&1 && python3 -c "import sys" >/dev/null 2>&1; then
+          echo "python-bin=$(command -v python3)" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Setup Python
-      if: ${{ inputs.setup-python == 'true' }}
+      if: ${{ inputs.setup-python == 'true' && steps.system-python.outputs.python-bin == '' }}
+      # Skipped outright when the probe above found a usable system Python.
+      # If it didn't (a self-hosted runner with no system python3 either),
+      # don't let an ISA-incompatible download turn into a hard job failure —
+      # hosted runners are never in this branch and keep fail-fast behavior.
+      continue-on-error: ${{ runner.environment == 'self-hosted' }}
       uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python-version }}
@@ -97,7 +119,16 @@ runs:
     - name: Install setuptools for distutils (Python 3.12+)
       if: ${{ inputs.setup-python == 'true' }}
       shell: bash
-      run: pip install setuptools
+      run: |
+        python_bin="${{ steps.system-python.outputs.python-bin }}"
+        if [ -z "$python_bin" ]; then
+          python_bin="python3"
+        fi
+        if ! command -v "$python_bin" >/dev/null 2>&1; then
+          echo "::warning::No usable python3 found; skipping setuptools install (node-gyp fallback unavailable)"
+          exit 0
+        fi
+        "$python_bin" -m pip install setuptools
 
     - name: Install protoc
       # protoc is required even when install-native-deps=false because Rust
@@ -278,7 +309,11 @@ runs:
           sleep 5
         done
       env:
-        npm_config_python: ${{ env.pythonLocation }}/bin/python3
+        # When the system-Python guard above found a usable interpreter,
+        # `pythonLocation` is never set (actions/setup-python@v6 was skipped),
+        # so prefer the probed binary and only fall back to the downloaded
+        # toolcache path.
+        npm_config_python: ${{ steps.system-python.outputs.python-bin || format('{0}/bin/python3', env.pythonLocation) }}
 
     - name: Materialize bun npm package binary
       if: ${{ runner.os != 'Windows' }}
