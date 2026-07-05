@@ -1,0 +1,79 @@
+# Issue #13693 — assert in-app auth end-state in the sim auth smoke
+# Captured 2026-07-05T03:38:32Z on macOS 26.2, node v24.15.0
+# Booted iOS simulator: iPhone 16 Pro (iOS 18.1) F165C3A3-5069-4174-A40C-89F0BCC4B9FB
+# Android emulator: NONE connected -> Android live leg N/A (adb present but no device)
+
+===================================================================
+1) node --test of the pure end-state contract + LIVE simulator round-trip
+   (12 tests, incl. a real xcrun simctl defaults write/read/assert/delete)
+===================================================================
+✔ expectedAuthCallbackFromUrl extracts the path/state/code the app must echo (1.099917ms)
+✔ buildCallbackUrl targets the app's own scheme (0.161542ms)
+✔ accepts a handled callback that did NOT change the session (0.139625ms)
+✔ accepts an already-authenticated simulator when the session is untouched (0.080375ms)
+✔ RED: rejects a deliver-only echo (no classification, no readback) (0.299542ms)
+✔ RED: rejects a session readback with no classification (0.101666ms)
+✔ RED: rejects a classified-but-not-explicitly-rejected callback (0.087ms)
+✔ RED: rejects a callback that authenticated/swapped the session (security regression) (0.083ms)
+✔ RED: rejects a payload with no callback-specific session comparison (0.109ms)
+✔ RED: still enforces the delivery echo (path/state/code) (0.144208ms)
+✔ Android Preferences XML round-trips the auth-callback result key (0.401042ms)
+✔ live iOS defaults store round-trips the auth end-state assertion (1631.544583ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1753.35375
+
+===================================================================
+2) Registration-only contract lane against the materialized native
+   projects (real Info.plist + AndroidManifest.xml), showing the new
+   honest 'lane' descriptor. exit 0.
+===================================================================
+[mobile-auth-smoke] Eliza (ai.elizaos.app) scheme=elizaos appDir=/Users/shawwalters/eliza-workspace/milady/eliza/packages/app (--app-dir) callback URL: elizaos://auth/callback?state=simulator-oauth-state&code=simulator-oauth-code
+{
+  "lane": "auth-callback-delivery+handler-classification (not login; #13693)",
+  "appDir": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/app",
+  "appDirSource": "--app-dir",
+  "app": {
+    "appId": "ai.elizaos.app",
+    "appName": "Eliza",
+    "urlScheme": "elizaos"
+  },
+  "registrationOnly": true,
+  "registrations": [
+    {
+      "platform": "ios",
+      "file": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/app/ios/App/App/Info.plist",
+      "scheme": "elizaos"
+    },
+    {
+      "platform": "android",
+      "file": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/app/android/app/src/main/AndroidManifest.xml",
+      "scheme": "elizaos"
+    }
+  ]
+}
+
+===================================================================
+3) CANARY: full iOS leg against the BOOTED sim with the currently-
+   installed (stale, pre-#13693) app. The lane ARMS the request key,
+   launches, fires openurl, POLLS the real Preferences store, and
+   FAILS (exit 1) because the in-app handler never wrote a handled
+   result. This is the regression the issue demanded be caught:
+   delivery alone no longer passes.
+===================================================================
+[mobile-auth-smoke] Eliza (ai.elizaos.app) scheme=elizaos appDir=/Users/shawwalters/eliza-workspace/milady/eliza/packages/app (--app-dir) callback URL: elizaos://auth/callback?state=simulator-oauth-state&code=simulator-oauth-code
+iOS auth callback smoke timed out after 3 attempts. Last result: {"ok":false,"phase":"requested","expected":{"path":"auth/callback","state":"simulator-oauth-state","code":"simulator-oauth-code"},"updatedAt":"2026-07-05T03:38:53.878Z"}
+   -> script exit code: 1  (1 = correctly failed on missing readback)
+
+===================================================================
+4) Negative proof via real sim readback: a session-swap regression
+   payload written to the real sim defaults store is REJECTED by the
+   exported assertAuthCallbackResult contract.
+===================================================================
+real sim readback: {"ok":true,"phase":"handled","classification":"synthetic_callback_rejected","accepted":false,"sessionEstablished":true,"sessionChanged":true,"path":"auth/callback","state":"simulator-oauth-state","code":"simulator-oauth-code"}
+REGRESSION CAUGHT: iOS: the OS-delivered auth callback changed the active session (sessionChanged=true). A deep link must never authenticate or swap the app session; only the trusted in-app session exchange may.

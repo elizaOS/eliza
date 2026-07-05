@@ -7,6 +7,13 @@ import { pathToFileURL } from "node:url";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
+// Stamped onto the JSON payload so a reader of the run log knows the scope up
+// front: this lane proves callback DELIVERY + in-app handler classification, not
+// login. A genuine OAuth exchange is out of scope until #13578's headless session
+// seed lands (#13693 done-when #2/#3).
+const AUTH_SMOKE_LANE =
+  "auth-callback-delivery+handler-classification (not login; #13693)";
+
 const IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY = "eliza:auth-callback-smoke:request";
 const IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY = "eliza:auth-callback-smoke:result";
 const IOS_AUTH_CALLBACK_ATTEMPTS = Number.parseInt(
@@ -104,6 +111,12 @@ export function parseArgs(argv) {
 
 function printUsageAndExit() {
   console.log(`usage: node mobile-auth-simulator-smoke.mjs [options]
+
+Fires a synthetic <scheme>://auth/callback deep link at the installed app and
+asserts the in-app handler's END STATE (callback rejected + classified +
+active session unchanged) via a Capacitor-Preferences readback. This is a
+callback-delivery + handler-classification smoke, NOT a login smoke (a real
+OAuth exchange is out of scope until the #13578 headless session seed lands).
 
 Options:
   --platform ios|android|both   Platform to exercise. Default: both
@@ -884,6 +897,7 @@ async function main() {
     console.log(
       JSON.stringify(
         {
+          lane: AUTH_SMOKE_LANE,
           appDir,
           appDirSource,
           app,
@@ -909,6 +923,7 @@ async function main() {
   console.log(
     JSON.stringify(
       {
+        lane: AUTH_SMOKE_LANE,
         appDir,
         appDirSource,
         app,

@@ -171,6 +171,7 @@ export default defineConfig({
       "scripts/aosp/compile-libllama-fused.test.mjs",
       "scripts/mas-smoke.test.mjs",
       // Uses Node.js built-in test runner (node:test), not vitest.
+      "scripts/mobile-auth-simulator-smoke-endstate.test.mjs",
       "scripts/android-sms-gateway-template.test.mjs",
       "scripts/stage-android-agent.test.mjs",
       "scripts/stage-desktop-fused-lib-staleness.test.mjs",

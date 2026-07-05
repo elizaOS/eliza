@@ -103,8 +103,8 @@ bun run --cwd packages/app test:e2e:ios              # Boot sim, build, auth smo
 bun run --cwd packages/app test:e2e:ios:cloud        # iOS e2e plus cloud provisioning probe
 bun run --cwd packages/app test:sim:local-chat        # iOS simulator local-chat smoke; requires installed app
 bun run --cwd packages/app test:sim:local-chat:android # Android emulator local-chat smoke; requires installed app
-bun run --cwd packages/app test:sim:auth:ios
-bun run --cwd packages/app test:sim:auth:android
+bun run --cwd packages/app test:sim:auth:ios         # auth/callback deep-link DELIVERY + in-app handler classification (not login)
+bun run --cwd packages/app test:sim:auth:android     # same; requires an Android emulator + installed app
 
 # Mobile release preflight
 bun run --cwd packages/app preflight:ios:sideload
@@ -180,6 +180,29 @@ The iOS app ships three runtime modes; their unattended (CI) coverage is:
 Keep this table honest: an N/A row must name what is missing, not hide it.
 
 The XCUITest cloud-onboarding path (`testCloudOnboardingChatAndVoice`) still XCTSkips at the OAuth wall without a device Cloud session; the `ios-cloud-mode` lane covers the cloud *runtime* mode programmatically (the same path `ios-e2e.mjs --cloud` calls) rather than driving the simulator UI through OAuth. A device-UI cloud-onboarding lane needs the WebView-side session seed (`steward_session_token` / `POST /api/cloud/login/persist`) and is tracked in #13578 done-when #2.
+
+### What `test:sim:auth` proves (and does not) (#13693)
+
+`test:sim:auth[:ios|:android]` (`packages/app-core/scripts/mobile-auth-simulator-smoke.mjs`)
+is a **callback-delivery + in-app-handler smoke, not a login smoke.** It fires a
+synthetic `<scheme>://auth/callback?state=…&code=…` deep link that no token
+endpoint would accept, then reads back — through the Capacitor-Preferences
+handshake the onboarding smoke pioneered — what the renderer's `auth/callback`
+handler wrote (`recordIosAuthCallbackSmoke` in `src/main.tsx`, armed by the
+smoke's `eliza:auth-callback-smoke:request`/`:result` keys). The shared
+`assertAuthCallbackResult` contract then asserts the security end state: the
+OS-delivered callback is explicitly rejected (`accepted:false`), classified
+(`classification:"synthetic_callback_rejected"`), and **left the active session
+untouched** (`sessionChanged:false`) — a deep link must never authenticate or
+swap the app session. A handler that merely echoed the URL back, dropped it, or
+authenticated off it now fails the lane instead of passing on delivery alone.
+
+It does **not** exercise a genuine OAuth exchange or a logged-in end state; that
+`--real` mode is blocked on the headless staging-Cloud session seed tracked in
+#13578 / #13693 done-when #2. The pure end-state contract is verifiable without a
+device via `node --test packages/app-core/scripts/mobile-auth-simulator-smoke-endstate.test.mjs`
+(which additionally round-trips the assertion through a booted simulator's real
+`xcrun simctl defaults` store when one is available).
 
 ## Config / env vars
 
