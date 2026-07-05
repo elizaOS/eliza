@@ -1906,48 +1906,107 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     expect(after?.status).toBe("errored");
   });
 
-  it("enforces ELIZA_ACP_MAX_SESSIONS atomically under concurrent spawns", async () => {
+  it("queues spawns beyond ELIZA_ACP_MAX_SESSIONS and admits them FIFO as slots free (#13772)", async () => {
     // Native transport: each spawn resolves to an active ("ready") session
-    // without the proc-mock dance, so we can fire many in parallel and let the
-    // check-and-reserve race. Before the fix, the limit check (list) and the
-    // insert (create) were separate awaited ops, so N concurrent spawns could
-    // all pass the check before any inserted and overshoot the cap.
+    // without the proc-mock dance, so we can fire more than the cap and observe
+    // the admission queue. The cap must never overshoot (the mutex invariant),
+    // AND spawns beyond it must QUEUE (not reject) and admit in arrival order as
+    // slots free.
     const service = new AcpService(
       runtime({
         ELIZA_ACP_TRANSPORT: undefined,
         ELIZA_ACP_MAX_SESSIONS: "2",
+        ELIZA_ACP_ADMISSION_POLL_MS: "5",
       }),
     );
     await service.start();
 
-    const results = await Promise.allSettled(
-      Array.from({ length: 6 }, (_, i) =>
-        service.spawnSession({
-          name: `concurrent-${i}`,
-          workdir: "/tmp/acp-test",
+    const isActive = (s: { status: string }) =>
+      !["stopped", "errored", "completed", "cancelled"].includes(s.status);
+    const activeSessions = async () =>
+      (await service.listSessions()).filter(isActive);
+    const poll = async (cond: () => Promise<boolean> | boolean, ms = 3000) => {
+      const start = Date.now();
+      while (Date.now() - start < ms) {
+        if (await cond()) return;
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      throw new Error("poll timed out waiting for admission-queue condition");
+    };
+
+    const settled: number[] = [];
+    const spawns = Array.from({ length: 6 }, (_, i) =>
+      service
+        .spawnSession({ name: `q-${i}`, workdir: "/tmp/acp-test" })
+        .then((r) => {
+          settled.push(i);
+          return r;
         }),
-      ),
     );
 
-    const fulfilled = results.filter((r) => r.status === "fulfilled");
-    const rejected = results.filter((r) => r.status === "rejected");
-    // The cap must hold exactly: 2 succeed, the rest reject with the limit error.
-    expect(fulfilled).toHaveLength(2);
-    expect(rejected.length).toBe(4);
-    for (const r of rejected) {
-      expect((r as PromiseRejectedResult).reason).toBeInstanceOf(Error);
-      expect(((r as PromiseRejectedResult).reason as Error).message).toContain(
-        "max session limit reached",
+    // Only the cap admits immediately; the other four QUEUE (not reject).
+    await poll(
+      async () =>
+        (await activeSessions()).length === 2 &&
+        service.getAdmissionState().queuedSpawns === 4,
+    );
+    expect((await activeSessions()).length).toBe(2);
+    expect(service.getAdmissionState()).toEqual({
+      maxSessions: 2,
+      queuedSpawns: 4,
+    });
+    // Exactly the cap admitted so far; the rest are queued, not rejected.
+    expect(settled).toHaveLength(2);
+
+    // Free slots one at a time; each freed slot admits exactly one queued spawn
+    // and the cap is never overshot.
+    for (let expectedQueued = 4; expectedQueued > 0; expectedQueued--) {
+      const active = await activeSessions();
+      expect(active.length).toBeLessThanOrEqual(2);
+      await service.cancelSession(active[0].id);
+      await poll(
+        () => service.getAdmissionState().queuedSpawns === expectedQueued - 1,
       );
+      expect((await activeSessions()).length).toBeLessThanOrEqual(2);
     }
 
-    // And the store agrees: only 2 active sessions exist.
-    const sessions = await service.listSessions();
-    const active = sessions.filter(
+    // All six eventually admit — nothing dropped, nothing rejected. (The queue
+    // is FIFO by arrival at the reservation mutex; arrival order is not the
+    // creation index, because spawnSession does async pre-work before reserving
+    // — so we assert the admitted SET, not an index order.)
+    await Promise.all(spawns);
+    expect([...settled].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(service.getAdmissionState().queuedSpawns).toBe(0);
+  });
+
+  it("falls back to the hard-cap error when the admission wait expires (#13772)", async () => {
+    // The bounded wait preserves the original fail-closed behavior: if the cap
+    // stays saturated (a wedged session that never frees its slot), a queued
+    // spawn throws the original hard-cap error rather than parking forever.
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: undefined,
+        ELIZA_ACP_MAX_SESSIONS: "1",
+        ELIZA_ACP_ADMISSION_MAX_WAIT_MS: "40",
+        ELIZA_ACP_ADMISSION_POLL_MS: "5",
+      }),
+    );
+    await service.start();
+
+    // Fill the single slot and keep it occupied (never freed).
+    await service.spawnSession({ name: "holder", workdir: "/tmp/acp-test" });
+
+    await expect(
+      service.spawnSession({ name: "overflow", workdir: "/tmp/acp-test" }),
+    ).rejects.toThrow("max session limit reached");
+
+    // The cap held: still exactly one active session, and the queue drained.
+    const active = (await service.listSessions()).filter(
       (s) =>
         !["stopped", "errored", "completed", "cancelled"].includes(s.status),
     );
-    expect(active).toHaveLength(2);
+    expect(active).toHaveLength(1);
+    expect(service.getAdmissionState().queuedSpawns).toBe(0);
   });
 
   it("rejects a concurrent prompt for the same native session (TOCTOU #11028)", async () => {

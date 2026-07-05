@@ -320,6 +320,15 @@ export class AcpService extends Service {
   // ELIZA_ACP_MAX_SESSIONS). A promise-chain mutex: each reservation awaits the
   // previous one's completion. See reserveSessionSlot.
   private spawnReservationLock: Promise<void> = Promise.resolve();
+  // Admission queue (issue #13772): spawns beyond maxSessions wait FIFO for a
+  // slot instead of hard-failing. Bounded by admissionMaxWaitMs; on expiry we
+  // throw the original hard-cap error (fail-closed backstop).
+  private readonly admissionMaxWaitMs: number;
+  private readonly admissionPollMs: number;
+  // Spawns currently waiting for a session slot (parked in the reservation
+  // mutex or polling awaitSessionSlot, not yet admitted). Surfaced via
+  // getAdmissionState() so the planner provider / status can show backpressure.
+  private admissionQueueDepth = 0;
   private readonly sessionTimeoutMs?: number;
   private readonly sessionCallbacks: SessionEventCallback[] = [];
   private readonly acpCallbacks: AcpEventCallback[] = [];
@@ -370,6 +379,11 @@ export class AcpService extends Service {
       "fixed";
     this.maxSessions =
       parsePositiveInt(this.setting("ELIZA_ACP_MAX_SESSIONS")) ?? 8;
+    this.admissionMaxWaitMs =
+      parsePositiveInt(this.setting("ELIZA_ACP_ADMISSION_MAX_WAIT_MS")) ??
+      5 * 60_000;
+    this.admissionPollMs =
+      parsePositiveInt(this.setting("ELIZA_ACP_ADMISSION_POLL_MS")) ?? 500;
     this.sessionTimeoutMs = parsePositiveInt(
       this.setting("ACPX_DEFAULT_TIMEOUT_MS") ??
         this.setting("ELIZA_ACP_PROMPT_TIMEOUT_MS"),
@@ -943,9 +957,10 @@ export class AcpService extends Service {
       lastActivityAt: now,
       metadata: hasMergedMetadata ? mergedMetadata : opts.metadata,
     };
-    // Atomic check-and-reserve: enforces the session limit and inserts under a
-    // single mutex so concurrent spawns can't overshoot maxSessions (the old
-    // separate enforceSessionLimit()/store.create() left a read-then-act race).
+    // Atomic admit-and-reserve: waits (FIFO, bounded) for a session slot and
+    // inserts under a single mutex, so concurrent spawns can't overshoot
+    // maxSessions and spawns beyond the cap queue instead of hard-failing
+    // (issue #13772). See reserveSessionSlot / awaitSessionSlot.
     await this.reserveSessionSlot(session);
 
     // Mint the per-spawn model lease BEFORE the transport branch, so the leased
@@ -2591,45 +2606,88 @@ export class AcpService extends Service {
     return session;
   }
 
-  private async enforceSessionLimit(): Promise<void> {
+  private async countActiveSessions(): Promise<number> {
     const sessions = await this.store.list();
-    const active = sessions.filter(
+    return sessions.filter(
       (s) =>
         !["stopped", "errored", "completed", "cancelled"].includes(s.status),
-    );
-    if (active.length >= this.maxSessions)
-      throw new Error(`acpx max session limit reached (${this.maxSessions})`);
+    ).length;
   }
 
   /**
-   * Atomically enforce the session limit and reserve the slot by inserting the
-   * session. Wrapping the check (`enforceSessionLimit`) and the insert
-   * (`store.create`) in a single mutex-guarded critical section makes them one
-   * indivisible operation, so N concurrent spawns can't all pass the limit
-   * check before any has inserted and overshoot `maxSessions`.
+   * Admission snapshot (issue #13772) for the planner provider / orchestrator
+   * status: the session cap and how many spawns are currently queued waiting
+   * for a slot (0 when the cap has spare capacity).
+   */
+  getAdmissionState(): { maxSessions: number; queuedSpawns: number } {
+    return {
+      maxSessions: this.maxSessions,
+      queuedSpawns: this.admissionQueueDepth,
+    };
+  }
+
+  /**
+   * Admission gate (issue #13772). Waits — FIFO, bounded — for a free session
+   * slot. Called inside the reservation mutex, so the head-of-line spawn holds
+   * the lock until it is admitted and every later spawn queues behind it
+   * deterministically; the cap can never be overshot (the same invariant the
+   * mutex gave the old atomic check-and-insert). If the cap stays saturated
+   * past `admissionMaxWaitMs` (e.g. wedged sessions) we throw the original
+   * hard-cap error so a spawn can never park forever.
+   */
+  private async awaitSessionSlot(): Promise<void> {
+    const deadline = Date.now() + this.admissionMaxWaitMs;
+    for (;;) {
+      if ((await this.countActiveSessions()) < this.maxSessions) return;
+      if (Date.now() >= deadline)
+        throw new Error(`acpx max session limit reached (${this.maxSessions})`);
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, this.admissionPollMs),
+      );
+    }
+  }
+
+  /**
+   * Reserve a session slot, queueing (FIFO) when the cap is full instead of
+   * hard-failing. The check (`awaitSessionSlot`) and the insert
+   * (`store.create`) run in one mutex-guarded critical section so N concurrent
+   * spawns can't all pass the check before any has inserted and overshoot
+   * `maxSessions`.
    *
    * The mutex is a promise chain: each call awaits the previous reservation's
-   * settlement (success OR failure) before running its own check+insert, so
-   * the count observed by `enforceSessionLimit` always includes every
-   * already-reserved session. Errors propagate to the caller; the chain itself
-   * never rejects (we swallow on the tail) so one failed reservation doesn't
-   * wedge the lock for later spawns.
+   * settlement (success OR failure) before observing the count, so the head of
+   * the queue holds the lock — polling for a slot — while later spawns block
+   * on it in arrival order. Errors (only the bounded-wait backstop) propagate
+   * to the caller; the chain itself never rejects (we swallow on the tail) so
+   * one failed reservation doesn't wedge the lock for later spawns.
    */
   private async reserveSessionSlot(session: SessionInfo): Promise<void> {
-    const previous = this.spawnReservationLock;
-    let release!: () => void;
-    this.spawnReservationLock = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    // Wait for the prior reservation to finish before observing the count.
-    // error-policy:J5 the prior reservation's rejection is observed by its own
-    // awaiter; here we only serialize on its settle before counting slots.
-    await previous.catch(() => {});
+    // Counted as queued for the whole time it waits for a slot, so
+    // getAdmissionState() reflects real backpressure (mutex waiters + the
+    // head-of-line spawn in awaitSessionSlot). Decremented the instant a slot
+    // is secured; failed/aborted waits decrement in the outer finally.
+    this.admissionQueueDepth++;
+    let admitted = false;
     try {
-      await this.enforceSessionLimit();
-      await this.store.create(session);
+      const previous = this.spawnReservationLock;
+      let release!: () => void;
+      this.spawnReservationLock = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      // Wait for the prior reservation to finish before observing the count.
+      // error-policy:J5 the prior reservation's rejection is observed by its
+      // own awaiter; here we only serialize on its settle before counting.
+      await previous.catch(() => {});
+      try {
+        await this.awaitSessionSlot();
+        admitted = true;
+        this.admissionQueueDepth--;
+        await this.store.create(session);
+      } finally {
+        release();
+      }
     } finally {
-      release();
+      if (!admitted) this.admissionQueueDepth--;
     }
   }
 
