@@ -1079,8 +1079,13 @@ function buildElizaCloudTextRoute(args: {
   };
 }
 
+// `cloud.enabled` is deliberately NOT in this list: it is the live cloud
+// opt-in/out flag, not a legacy routing field. `enabled === false` is the only
+// persisted representation of the local-only opt-out — the runtime-mode
+// resolver, the plugin collector, and settings-debug all read it after
+// migration, and the agent boot path still writes `enabled: true`. Pruning it
+// here would destroy the opt-out before any of those consumers run.
 const LEGACY_CLOUD_ROUTING_KEYS = [
-  "enabled",
   "provider",
   "remoteApiBase",
   "remoteAccessToken",
