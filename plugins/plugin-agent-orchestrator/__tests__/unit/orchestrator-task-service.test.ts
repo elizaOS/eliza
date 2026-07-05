@@ -22,7 +22,11 @@ import {
   type OrchestratorTaskSession,
   TERMINAL_TASK_STATUSES,
 } from "../../src/services/orchestrator-task-types.js";
-import { SessionCapError, type SessionInfo } from "../../src/services/types.js";
+import {
+  type AcpCapacity,
+  SessionCapError,
+  type SessionInfo,
+} from "../../src/services/types.js";
 
 // This suite pins the status state machine and the ACP→task event bridge — NOT
 // the #8896 default-criteria feature. createTask now auto-populates acceptance
@@ -62,7 +66,7 @@ class FakeAcp {
   readonly sent: { sessionId: string; message: string }[] = [];
   readonly stopped: string[] = [];
   readonly sessions: SessionInfo[] = [];
-  capacity = {
+  capacity: AcpCapacity = {
     maxSessions: 1,
     systemHeadroom: 1,
     activeWorkers: 1,
@@ -114,7 +118,7 @@ class FakeAcp {
     return Promise.resolve(result);
   }
 
-  getCapacity(): Promise<typeof this.capacity> {
+  getCapacity(): Promise<AcpCapacity> {
     return Promise.resolve(this.capacity);
   }
 
