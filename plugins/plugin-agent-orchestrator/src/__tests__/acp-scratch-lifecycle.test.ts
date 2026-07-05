@@ -130,17 +130,25 @@ describe("ACP scratch workspace lifecycle", () => {
     });
     const shim = service as unknown as ScratchLifecycleShim;
     const humanRepo = join(root, "task-master");
+    const untrackedUuidNamedRepo = join(
+      root,
+      "task-dddddddd-5555-4666-8777-eeeeeeeeeeee",
+    );
     const nonIsolatedId = "aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb";
     const nonIsolatedRepo = join(root, `task-${nonIsolatedId}`);
     const ownedId = "cccccccc-4444-4555-8666-dddddddddddd";
     const ownedScratch = join(root, `task-${ownedId}`);
     await Promise.all([
       mkdir(humanRepo, { recursive: true }),
+      mkdir(untrackedUuidNamedRepo, { recursive: true }),
       mkdir(nonIsolatedRepo, { recursive: true }),
       mkdir(ownedScratch, { recursive: true }),
     ]);
     const oldDate = new Date(Date.now() - 48 * 60 * 60_000);
-    await utimes(humanRepo, oldDate, oldDate);
+    await Promise.all([
+      utimes(humanRepo, oldDate, oldDate),
+      utimes(untrackedUuidNamedRepo, oldDate, oldDate),
+    ]);
     const nonIsolated = makeSession(nonIsolatedId, nonIsolatedRepo, {
       isolatedWorkdir: false,
     });
@@ -157,6 +165,8 @@ describe("ACP scratch workspace lifecycle", () => {
 
     // Human-named repo: filtered out by the UUID-shape match despite age.
     expect(existsSync(humanRepo)).toBe(true);
+    // UUID-shaped but untracked under a user root: name alone is not ownership.
+    expect(existsSync(untrackedUuidNamedRepo)).toBe(true);
     // Terminal but NOT isolation-owned: the ownership gate keeps it.
     expect(existsSync(nonIsolatedRepo)).toBe(true);
     // Terminal AND isolation-owned: reclaimed regardless of age.

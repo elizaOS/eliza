@@ -747,7 +747,16 @@ export class AcpService extends Service {
     const now = Date.now();
     let reclaimed = 0;
     let kept = 0;
+    const configuredAcpRoot = this.setting("ELIZA_ACP_WORKSPACE_ROOT")?.trim();
     for (const root of this.configuredScratchRoots()) {
+      // Only ACP-exclusive scratch roots are wholly owned by this service.
+      // Coding/workspace roots can contain user projects, so an untracked
+      // directory there is never orphaned ACP work by name alone.
+      const isAcpOwnedRoot =
+        resolve(root) === resolve(DEFAULT_WORKDIR_ROOT) ||
+        (configuredAcpRoot
+          ? resolve(root) === resolve(configuredAcpRoot)
+          : false);
       let entries: string[];
       try {
         entries = await readdir(root);
@@ -776,9 +785,13 @@ export class AcpService extends Service {
             return;
           }
           // No owning session in THIS store: the dir may belong to a co-tenant
-          // AcpService sharing this tmp root, so gate removal on age. A dir whose
-          // session is terminal here is unambiguously ours → reclaim regardless.
+          // AcpService sharing the ACP-owned tmp root, so gate removal on age.
+          // Under user-configured roots, UUID shape is still not ownership.
           if (!session) {
+            if (!isAcpOwnedRoot) {
+              kept++;
+              return;
+            }
             try {
               const st = await stat(path);
               if (now - st.mtimeMs <= maxAgeMs) {
