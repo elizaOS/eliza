@@ -190,6 +190,15 @@ export interface OrchestratorTaskSession {
   cacheTokens: number;
   costUsd: number;
   usageState: UsageState;
+  // Trace correlation (#13775). `traceId` and `parentTrajectoryStepId` are
+  // stamped at spawn from the parent turn's trajectory context and forwarded to
+  // the sub-agent via env; `childTrajectoryIds` accumulates the sub-agent's own
+  // trajectory ids ingested on task_complete. Optional — a session spawned
+  // before rollout, or by a non-eliza backend that self-records no traces, has
+  // none.
+  traceId?: string;
+  parentTrajectoryStepId?: string;
+  childTrajectoryIds?: string[];
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;

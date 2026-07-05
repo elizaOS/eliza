@@ -18,10 +18,17 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import { basename, dirname, join } from "node:path";
+import {
+  getTrajectoryContext,
+  type IAgentRuntime,
+  resolveStateDir,
+  resolveTrajectoryGate,
+  Service,
+  TRACE_ENV,
+} from "@elizaos/core";
 import {
   detectTaskType,
   generateDefaultAcceptanceCriteria,
@@ -204,6 +211,10 @@ function configuredDefaultAgentType(runtime: {
  *  read-only execution verifier (#8898), distinct from the text judge's
  *  `llm-goal-verifier`, so the validation event's origin is unambiguous. */
 const INDEPENDENT_ACP_VERIFIER_NAME = "independent-acp-verifier";
+
+/** Cap on child trajectories ingested per task_complete (#13775) so a runaway
+ *  sub-agent can't flood the task doc; the store's MAX_ARTIFACTS also clamps. */
+const MAX_CHILD_TRAJECTORY_ARTIFACTS = 20;
 
 /** Default upper bound on how long the independent verifier session may run
  *  before its await is abandoned (treated as inconclusive). Overridable via
@@ -950,6 +961,19 @@ export class OrchestratorTaskService extends Service {
           stoppedAt: Date.now(),
         });
         await this.mirrorChangeSetToStore(sessionId);
+        // Attach the sub-agent's own recorded trajectories (its inner model
+        // prompts/responses) as task artifacts under the shared traceId (#13775).
+        // error-policy:J7 diagnostics-must-not-kill-the-loop — trace ingest is
+        // observability; a failure is reported but must not block task validation.
+        try {
+          await this.ingestChildTrajectories(taskId, sessionId);
+        } catch (err) {
+          this.runtime.reportError?.(
+            "OrchestratorTaskService.ingestChildTrajectories",
+            err,
+            { taskId, sessionId },
+          );
+        }
         await this.advanceTaskStatus(taskId, "completion_reported");
         // Issue #8124: the orchestrator should always behave like `/goal` —
         // confirm the sub-agent met every acceptance criterion before marking
@@ -1097,6 +1121,124 @@ export class OrchestratorTaskService extends Service {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /**
+   * Per-task directory a spawned sub-agent's file recorder writes its own
+   * trajectories into (#13775), scanned on task_complete. Under the shared state
+   * dir so #13773's workspace-GC registry can reclaim it with the task.
+   */
+  private childTrajectoryDir(taskId: string): string {
+    return join(
+      resolveStateDir(),
+      "orchestrator",
+      "child-trajectories",
+      taskId,
+    );
+  }
+
+  /**
+   * The trace-correlation env stamped onto a spawned sub-agent (#13775). Carries
+   * the parent turn's traceId + parent step so the child's self-recorded
+   * trajectories join the parent's trace, and — only when the shared gate is on
+   * — points the child recorder at {@link childTrajectoryDir}. The trajectory
+   * flag is ALWAYS set explicitly ("1"/"0") so the broad ELIZA_ env forwarding
+   * in AcpService never leaks the parent's value ambiguously.
+   */
+  private buildChildTraceEnv(taskId: string): Record<string, string> {
+    const ctx = getTrajectoryContext();
+    const env: Record<string, string> = {
+      [TRACE_ENV.TRACE_ID]: ctx?.traceId ?? randomUUID(),
+      [TRACE_ENV.TASK_ID]: taskId,
+    };
+    if (ctx?.trajectoryStepId) {
+      env[TRACE_ENV.PARENT_STEP_ID] = ctx.trajectoryStepId;
+    }
+    if (resolveTrajectoryGate().enabled) {
+      env.ELIZA_TRAJECTORY_LOGGING = "1";
+      env.ELIZA_TRAJECTORY_DIR = this.childTrajectoryDir(taskId);
+    } else {
+      env.ELIZA_TRAJECTORY_LOGGING = "0";
+    }
+    return env;
+  }
+
+  /**
+   * On task_complete, attach the sub-agent's own recorded trajectories (elizaos
+   * / pi-agent children self-record their inner model prompts/responses under
+   * {@link childTrajectoryDir}) to the task as `trajectory` artifacts and record
+   * their ids on the session (#13775). Attach-by-reference: the file stays where
+   * the child wrote it; no normalize-and-copy. A missing or empty dir is a
+   * legitimate empty result — a non-eliza backend self-records nothing, and a
+   * gate-off run writes nothing — never an error. Returns the ingested
+   * trajectory ids so the caller can append them to the session record.
+   */
+  private async ingestChildTrajectories(
+    taskId: string,
+    sessionId: string,
+  ): Promise<string[]> {
+    const dir = this.childTrajectoryDir(taskId);
+    let files: string[];
+    try {
+      // Recursive string listing (the recorder nests trajectories under an
+      // <agentId>/ subdir); resolve each to an absolute path.
+      const relPaths = await readdir(dir, { recursive: true });
+      files = relPaths
+        .filter((p) => p.endsWith(".json"))
+        .map((p) => join(dir, p));
+    } catch (err) {
+      // error-policy:J4 a missing child-trajectory dir is the designed empty
+      // result (non-eliza backend or gate off); only ENOENT degrades silently.
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw err;
+    }
+    if (files.length === 0) return [];
+
+    // Newest first, capped so a runaway child can't flood the task doc; the
+    // store's MAX_ARTIFACTS also clamps.
+    const withMtime = await Promise.all(
+      files.map(async (path) => ({
+        path,
+        mtimeMs: (await stat(path)).mtimeMs,
+      })),
+    );
+    withMtime.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    const capped = withMtime.slice(0, MAX_CHILD_TRAJECTORY_ARTIFACTS);
+
+    const session = (await this.store.findSession(sessionId))?.session;
+    const ingested: string[] = [];
+    for (const { path } of capped) {
+      // The recorder names files `<trajectoryId>.json`.
+      const trajectoryId = basename(path, ".json");
+      await this.store.addArtifact({
+        id: randomUUID(),
+        taskId,
+        sessionId,
+        artifactType: "trajectory",
+        title: `Sub-agent trajectory ${trajectoryId}`,
+        path,
+        verificationStatus: "unverified",
+        metadata: {
+          correlation: {
+            traceId: session?.traceId,
+            taskId,
+            sessionId,
+            parentStepId: session?.parentTrajectoryStepId,
+            childTrajectoryId: trajectoryId,
+          },
+        },
+        createdAt: nowIso(),
+      });
+      ingested.push(trajectoryId);
+    }
+
+    if (ingested.length > 0) {
+      const existing = session?.childTrajectoryIds ?? [];
+      await this.store.updateSession(sessionId, {
+        childTrajectoryIds: [...existing, ...ingested],
+      });
+    }
+    return ingested;
   }
 
   /**
@@ -3022,6 +3164,15 @@ export class OrchestratorTaskService extends Service {
       }
     }
 
+    // Trace correlation (#13775): stamp the parent turn's traceId +
+    // parent-step onto the sub-agent env so its self-recorded trajectories join
+    // the parent's trace, and point ELIZA_TRAJECTORY_DIR at a per-task child dir
+    // this service scans on task_complete. When the gate is off we forward an
+    // explicit ELIZA_TRAJECTORY_LOGGING="0": the broad ELIZA_ env forwarding
+    // (acp-service.forwardableSubAgentEnv) would otherwise leak the parent's
+    // ambiguous value to the child.
+    const traceEnv = this.buildChildTraceEnv(taskId);
+
     const framework =
       opts.framework ??
       policy.preferredFramework ??
@@ -3030,6 +3181,7 @@ export class OrchestratorTaskService extends Service {
     let result: SpawnResult;
     try {
       result = await acp.spawnSession({
+        env: traceEnv,
         // Coding-agent selection: explicit request → routing policy → the
         // deployment's configured default (ELIZA_ACP_DEFAULT_AGENT /
         // ELIZA_DEFAULT_AGENT_TYPE — e.g. "elizaos" for the eliza-code coding
@@ -3140,6 +3292,14 @@ export class OrchestratorTaskService extends Service {
       cacheTokens: 0,
       costUsd: 0,
       usageState: "unavailable",
+      // Trace correlation (#13775): persisted so task_complete can ingest child
+      // trajectories under the same header the sub-agent was spawned with.
+      ...(traceEnv[TRACE_ENV.TRACE_ID]
+        ? { traceId: traceEnv[TRACE_ENV.TRACE_ID] }
+        : {}),
+      ...(traceEnv[TRACE_ENV.PARENT_STEP_ID]
+        ? { parentTrajectoryStepId: traceEnv[TRACE_ENV.PARENT_STEP_ID] }
+        : {}),
       metadata: {},
       createdAt: ts,
       updatedAt: ts,

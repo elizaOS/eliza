@@ -94,7 +94,12 @@ describe("trajectories trace_id join key (real PGLite)", () => {
 
 		const id = await logger.startTrajectory(
 			"00000000-0000-4000-8000-000000000001",
-			{ source: "chat", traceId, scenarioId: "run-xyz", metadata: { roomId: "room-1" } },
+			{
+				source: "chat",
+				traceId,
+				scenarioId: "run-xyz",
+				metadata: { roomId: "room-1" },
+			},
 		);
 		expect(typeof id).toBe("string");
 

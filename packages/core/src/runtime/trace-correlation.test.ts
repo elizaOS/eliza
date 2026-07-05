@@ -5,10 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import {
-	resolveTraceCorrelationFromEnv,
-	TRACE_ENV,
-} from "./trace-correlation";
+import { resolveTraceCorrelationFromEnv, TRACE_ENV } from "./trace-correlation";
 
 describe("resolveTraceCorrelationFromEnv", () => {
 	it("returns an empty envelope for a root turn (no trace env)", () => {

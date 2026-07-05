@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { isTrajectoryRecordingEnabled } from "./trajectory-recorder";
 import { resolveTrajectoryGate } from "./trajectory-gate";
+import { isTrajectoryRecordingEnabled } from "./trajectory-recorder";
 
 function gate(env: Record<string, string | undefined>): boolean {
 	return resolveTrajectoryGate(env as NodeJS.ProcessEnv).enabled;
@@ -25,12 +25,12 @@ describe("resolveTrajectoryGate precedence", () => {
 	});
 
 	it("explicit ELIZA_TRAJECTORY_LOGGING overrides NODE_ENV and the legacy alias", () => {
-		expect(gate({ ELIZA_TRAJECTORY_LOGGING: "1", NODE_ENV: "production" })).toBe(
-			true,
-		);
-		expect(gate({ ELIZA_TRAJECTORY_LOGGING: "0", NODE_ENV: "development" })).toBe(
-			false,
-		);
+		expect(
+			gate({ ELIZA_TRAJECTORY_LOGGING: "1", NODE_ENV: "production" }),
+		).toBe(true);
+		expect(
+			gate({ ELIZA_TRAJECTORY_LOGGING: "0", NODE_ENV: "development" }),
+		).toBe(false);
 		expect(
 			gate({
 				ELIZA_TRAJECTORY_LOGGING: "1",
