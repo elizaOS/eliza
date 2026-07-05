@@ -6,7 +6,8 @@
  * per-connector glue thin.
  *
  * Buttons round-trip via `callbackData` (the user's answer, re-injected as a
- * message) or open a `url` (link-out for forms, secret entry, and task views).
+ * message) or open a `url` (link-out for task views and secure secret entry).
+ * Forms without persisted hosted pages deliberately fall back to free text.
  * A button always carries exactly one of the two.
  */
 
@@ -50,9 +51,9 @@ export interface NeutralLayout {
 
 export interface LayoutOptions {
 	/**
-	 * Resolve an external entry URL for blocks that link out: complex forms,
-	 * secret/OAuth entry, and the task view. Returning undefined marks the block
-	 * as needing a free-text fallback.
+	 * Resolve an external entry URL for blocks that link out: secret/OAuth entry
+	 * and the task view. Returning undefined marks the block as needing a
+	 * free-text fallback.
 	 */
 	resolveUrl?: (block: InteractionBlock) => string | undefined;
 	/**
@@ -177,8 +178,8 @@ export function toNeutralLayout(
 
 /**
  * Build the canonical link-out resolvers connectors pass to {@link toNeutralLayout}
- * so Telegram, Discord, and any other surface produce identical URLs for task,
- * form, and navigate blocks. `appBaseUrl` is the deployment's app/dashboard
+ * so Telegram, Discord, and any other surface produce identical URLs for task
+ * and navigate blocks. `appBaseUrl` is the deployment's app/dashboard
  * origin (`ELIZA_APP_URL`, falling back to the cloud URL). Returns `undefined`
  * resolvers when no base URL is configured, which keeps the free-text fallback.
  */
@@ -192,10 +193,9 @@ export function buildInteractionUrlResolver(
 			switch (block.kind) {
 				case "task":
 					return `${base}/orchestrator?taskId=${encodeURIComponent(block.threadId)}`;
-				case "form":
-					return `${base}/forms/${encodeURIComponent(block.id)}`;
 				// Secret/OAuth blocks carry their own out-of-band entry URL
-				// (the hosted secure page); defer to it via the layout fallback.
+				// (the hosted secure page). Forms have no persisted hosted page, so
+				// they also fall through to the connector free-text fallback.
 				default:
 					return undefined;
 			}

@@ -75,11 +75,11 @@ FollowupsInteraction | TaskInteraction | SecretInteraction`) in
 |---|---|---|---|
 | choice | `ChoiceWidget` ✅ | inline-keyboard callback buttons ✅ | button action row ✅ |
 | followups | `FollowupsWidget` ✅ | callback buttons ✅ | button action row ✅ |
-| form | `FormRequest` ✅ | link-out (multi-field is awkward as a keyboard) ⏳ | link-out ⏳ |
+| form | `FormRequest` ✅ | free-text fallback ✅ | free-text fallback ✅ |
 | task | `TaskWidget` (live poll) ✅ | link button + title ✅ (live status ⏳) | link button + title ✅ |
 | secret/oauth | `SensitiveRequestBlock` ✅ | DM link via `sensitive-request-adapter` ✅ | DM link via `sensitive-request-adapter` ✅ |
 
-✅ implemented · ⏳ remaining (seams below). Choice/followups round-trip works on
+✅ implemented. Choice/followups round-trip works on
 **both** connectors:
 - **Telegram**: `handleCallbackQuery` decodes the tap and replays it through
   `handleMessage` as a user turn (`plugin-telegram/src/messageManager.ts`).
@@ -133,6 +133,9 @@ mounts `SensitiveRequestBlock` itself for the secret/OAuth card.
   users never see raw `[CHOICE …]`.
 - **Pick-one-or-your-own.** `ChoiceInteraction.allowCustom` renders the options as
   buttons *and* invites a free-text reply (`needsFallback` on the layout).
+- **Connector forms fall back to text.** Form specs are not persisted to a
+  hosted page, so Telegram and Discord show the form prompt and ask the user to
+  answer in chat instead of linking to a dead `/forms/:id` route.
 - **Secrets never in the transport.** Inline secure form in the app; a single
   link-out button on connectors → authenticated cloud/local entry page.
 - **Task = thread.** Each task owns a Discord thread / Telegram forum topic; its

@@ -4,7 +4,7 @@
  * Pure-function assertions.
  */
 import type { Content } from "@elizaos/core";
-import { decodeCallback } from "@elizaos/core";
+import { buildInteractionUrlResolver, decodeCallback } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { renderDiscordInteractions } from "../interactions";
 
@@ -51,6 +51,18 @@ describe("renderDiscordInteractions", () => {
 		expect(button?.style).toBe(5); // Link
 		expect(button?.url).toContain(id);
 		expect(button?.custom_id).toBe("");
+	});
+
+	it("falls back to free-text for forms instead of linking to a dead hosted route", () => {
+		const out = renderDiscordInteractions(
+			{
+				text: 'Set this up.\n[FORM]\n{"id":"form_7","title":"Reminder time","fields":[{"name":"when","type":"text"}]}\n[/FORM]',
+			} as Content,
+			buildInteractionUrlResolver("https://app.test/"),
+		);
+		expect(out.text).toBe("Set this up.\n\nReminder time");
+		expect(out.components).toHaveLength(0);
+		expect(out.needsFreeTextReply).toBe(true);
 	});
 
 	it("caps action rows at the Discord limit of 5", () => {

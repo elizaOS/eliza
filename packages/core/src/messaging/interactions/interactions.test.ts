@@ -349,13 +349,16 @@ describe("buildInteractionUrlResolver (#8908)", () => {
 		);
 	});
 
-	it("resolves a form block to the hosted form route", () => {
+	it("does not resolve forms to a fabricated hosted route", () => {
 		const block: FormInteraction = {
 			kind: "form",
 			id: "form_7",
 			fields: [{ name: "k", type: "text" }],
 		};
-		expect(resolver.resolveUrl?.(block)).toBe("https://app.test/forms/form_7");
+		expect(resolver.resolveUrl?.(block)).toBeUndefined();
+		const layout = toNeutralLayout(block, resolver);
+		expect(layout.rows).toHaveLength(0);
+		expect(layout.needsFallback).toBe(true);
 	});
 
 	it("resolves navigate payloads (path + viewId) against the base url", () => {

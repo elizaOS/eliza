@@ -5,7 +5,7 @@
  * Deterministic; no live API.
  */
 import type { Content } from "@elizaos/core";
-import { decodeCallback } from "@elizaos/core";
+import { buildInteractionUrlResolver, decodeCallback } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { renderTelegramInteractions } from "./interactions";
 
@@ -49,6 +49,18 @@ describe("renderTelegramInteractions", () => {
     const button = out.keyboardRows[0]?.[0] as { text: string; url: string };
     expect(button.text).toBe("Open task");
     expect(button.url).toContain(id);
+  });
+
+  it("falls back to free-text for forms instead of linking to a dead hosted route", () => {
+    const out = renderTelegramInteractions(
+      {
+        text: 'Set this up.\n[FORM]\n{"id":"form_7","title":"Reminder time","fields":[{"name":"when","type":"text"}]}\n[/FORM]',
+      } as Content,
+      buildInteractionUrlResolver("https://app.test/"),
+    );
+    expect(out.text).toBe("Set this up.\n\nReminder time");
+    expect(out.keyboardRows).toHaveLength(0);
+    expect(out.needsFreeTextReply).toBe(true);
   });
 
   it("keeps a task title as text when no url is available", () => {
