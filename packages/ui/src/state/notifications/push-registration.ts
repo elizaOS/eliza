@@ -38,6 +38,31 @@ import {
 } from "../../platform/platform-guards";
 import { navigateDeepLink } from "./navigate-deep-link";
 
+/**
+ * Injectable boundaries. The Capacitor push plugin, the platform detector, the
+ * HTTP client, and the deep-link navigator are the four seams to the outside
+ * world; injecting them lets the registration flow be driven end-to-end in a
+ * test without a real device, while production wires the real singletons.
+ */
+export interface PushRegistrationDeps {
+  getPlatform: () => FrontendPlatform;
+  getPlugin: () => PushNotificationsPluginLike;
+  registerToken: (
+    platform: "ios" | "android",
+    token: string,
+  ) => Promise<unknown>;
+  unregisterToken: (token: string) => Promise<unknown>;
+  navigate: (deepLink: string) => void;
+}
+
+const defaultDeps: PushRegistrationDeps = {
+  getPlatform: getFrontendPlatform,
+  getPlugin: getPushNotificationsPlugin,
+  registerToken: (platform, token) => client.registerPushToken(platform, token),
+  unregisterToken: (token) => client.unregisterPushToken(token),
+  navigate: navigateDeepLink,
+};
+
 let started = false;
 /** The most recent token we POSTed, so a re-fired `registration` is a no-op. */
 let registeredToken: string | null = null;
@@ -60,12 +85,13 @@ function deepLinkFromAction(action: PushActionPerformed): string | undefined {
 }
 
 async function onRegistration(
+  deps: PushRegistrationDeps,
   platform: "ios" | "android",
   token: PushRegistrationToken,
 ): Promise<void> {
   const value = token.value?.trim();
   if (!value || value === registeredToken) return;
-  await client.registerPushToken(platform, value);
+  await deps.registerToken(platform, value);
   registeredToken = value;
   logger.info(
     { src: "push-registration", platform },
@@ -79,13 +105,15 @@ async function onRegistration(
  * `registration` listener. Safe to call on every shell mount; re-invoking after
  * a permission grant lets a user who granted late still register.
  */
-export async function initPushRegistration(): Promise<void> {
+export async function initPushRegistration(
+  deps: PushRegistrationDeps = defaultDeps,
+): Promise<void> {
   if (started) return;
 
-  const platform = pushPlatform(getFrontendPlatform());
+  const platform = pushPlatform(deps.getPlatform());
   if (!platform) return;
 
-  const plugin: PushNotificationsPluginLike = getPushNotificationsPlugin();
+  const plugin = deps.getPlugin();
   if (
     typeof plugin.register !== "function" ||
     typeof plugin.addListener !== "function"
@@ -103,7 +131,7 @@ export async function initPushRegistration(): Promise<void> {
   started = true;
 
   await plugin.addListener("registration", (token: PushRegistrationToken) => {
-    void onRegistration(platform, token).catch((error: unknown) => {
+    void onRegistration(deps, platform, token).catch((error: unknown) => {
       // error-policy:J1 transport boundary — a failed token POST leaves
       // registeredToken null so the next `registration` retries; surface it.
       logger.error(
@@ -127,7 +155,7 @@ export async function initPushRegistration(): Promise<void> {
     "pushNotificationActionPerformed",
     (action: PushActionPerformed) => {
       const deepLink = deepLinkFromAction(action);
-      if (deepLink) navigateDeepLink(deepLink);
+      if (deepLink) deps.navigate(deepLink);
     },
   );
 
@@ -135,11 +163,13 @@ export async function initPushRegistration(): Promise<void> {
 }
 
 /** Drop this device's token server-side and locally (logout / revoke). */
-export async function unregisterPushToken(): Promise<void> {
+export async function unregisterPushToken(
+  deps: PushRegistrationDeps = defaultDeps,
+): Promise<void> {
   const token = registeredToken;
   if (!token) return;
   registeredToken = null;
-  await client.unregisterPushToken(token);
+  await deps.unregisterToken(token);
 }
 
 /** Test-only reset of the module-level registration guards. */
