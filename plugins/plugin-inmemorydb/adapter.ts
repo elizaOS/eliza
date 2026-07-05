@@ -28,10 +28,9 @@ import {
   logger,
   type Memory,
   type MemoryMetadata,
-  type MessageSearchHit,
   type MemoryTypeAlias,
+  type MessageSearchHit,
   type Metadata,
-  rankMessageSearch,
   type PairingAllowlistEntry,
   type PairingAllowlistsResult,
   type PairingChannel,
@@ -44,6 +43,7 @@ import {
   type PatchOp,
   type Relationship,
   type Room,
+  rankMessageSearch,
   type Task,
   type UUID,
   type World,
@@ -654,20 +654,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const tableName = params.tableName ?? "messages";
     const stored = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      (m) =>
-        roomSet.has(m.roomId as UUID) && m.metadata?.type === tableName,
+      (m) => roomSet.has(m.roomId as UUID) && m.metadata?.type === tableName
     );
     const candidates = stored.map(toMemory);
     const ranked = rankMessageSearch(candidates, params.query);
     const offset = typeof params.offset === "number" ? params.offset : 0;
     const limit = params.limit ?? 20;
-    return ranked
-      .slice(offset, offset + limit)
-      .map(({ item, ftsRank, trigramSimilarity }) => ({
-        memory: item,
-        ftsRank,
-        trigramSimilarity,
-      }));
+    return ranked.slice(offset, offset + limit).map(({ item, ftsRank, trigramSimilarity }) => ({
+      memory: item,
+      ftsRank,
+      trigramSimilarity,
+    }));
   }
 
   async getMemoriesByIds(memoryIds: UUID[], tableName?: string): Promise<Memory[]> {

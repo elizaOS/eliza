@@ -14,6 +14,7 @@
  * lost on restart.
  */
 import { DatabaseAdapter } from "../database";
+import { rankMessageSearch } from "../search";
 import type {
 	AccessContext,
 	Agent,
@@ -64,7 +65,6 @@ import type {
 	World,
 } from "../types";
 import { DEFAULT_UUID } from "../types/primitives";
-import { rankMessageSearch } from "../search";
 import { isPlainObject } from "../utils/type-guards";
 
 function asUuid(id: string): UUID {

@@ -13,7 +13,7 @@
  * PGlite (WASM, in-process); set `POSTGRES_URL` to run against real Postgres.
  */
 import { ChannelType, type Entity, type Room, type UUID, type World } from "@elizaos/core";
-import { and, eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { v4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";

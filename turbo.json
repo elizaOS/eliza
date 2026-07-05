@@ -12,6 +12,11 @@
     "plugins/tsconfig.build.shared.json",
     "packages/feed/packages/tsconfig.base.json"
   ],
+  "globalEnv": [
+    "BUN_PATH",
+    "SEARCHBENCH_CORPUS",
+    "SEARCHBENCH_LATENCY_REPEATS"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["@elizaos/core#build", "^build"],

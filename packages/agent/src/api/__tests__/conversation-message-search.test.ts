@@ -16,13 +16,14 @@
  * against realistic ranked input without pinning the agent test to the store's
  * cross-package module resolution.
  */
+
+import { randomUUID } from "node:crypto";
 import type {
   AgentRuntime,
   Memory,
   MessageSearchHit,
   UUID,
 } from "@elizaos/core";
-import { v4 } from "uuid";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConversationRouteContext,
@@ -31,11 +32,11 @@ import {
 } from "../conversation-routes.ts";
 import type { ConversationMeta } from "../server-types.ts";
 
-const agentId = v4() as UUID;
-const userId = v4() as UUID;
-const roomA = v4() as UUID;
-const roomB = v4() as UUID;
-const roomDeletedConv = v4() as UUID;
+const agentId = randomUUID() as UUID;
+const userId = randomUUID() as UUID;
+const roomA = randomUUID() as UUID;
+const roomB = randomUUID() as UUID;
+const roomDeletedConv = randomUUID() as UUID;
 
 interface SeedRow {
   id: UUID;
@@ -122,7 +123,7 @@ function seed(
   author: "user" | "assistant",
   attachments?: Array<{ title?: string; url?: string }>,
 ): UUID {
-  const id = v4() as UUID;
+  const id = randomUUID() as UUID;
   rows.push({
     id,
     roomId,
