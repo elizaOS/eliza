@@ -532,6 +532,15 @@ export function collectDiffScopedFailures(regressions) {
   );
 }
 
+export function collectDiffScopedGateFailures(diffScoped) {
+  if (diffScoped.skipped) {
+    return [
+      `diff-scoped ratchet could not run: ${diffScoped.reason}. Ensure CI fetches origin/develop before running --check.`,
+    ];
+  }
+  return diffScoped.failures;
+}
+
 export function buildBaseline(result) {
   return {
     version: 2,
@@ -824,7 +833,12 @@ function main() {
     ? readJson(args.baselinePath)
     : buildBaseline(result);
   const diffScoped = diffScopedCheck(result, args.repoRoot);
-  const failures = [...collectFailures(result), ...diffScoped.failures];
+  const failures = [
+    ...collectFailures(result),
+    ...(args.check
+      ? collectDiffScopedGateFailures(diffScoped)
+      : diffScoped.failures),
+  ];
 
   if (args.jsonPath) {
     writeFileEnsuringDir(

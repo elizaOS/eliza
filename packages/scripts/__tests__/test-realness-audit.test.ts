@@ -200,6 +200,28 @@ describe("test-realness-audit", () => {
     ).toEqual([]);
   });
 
+  test("--check fails closed when the diff-scoped base cannot be resolved", () => {
+    const root = makeRepo();
+    write(
+      root,
+      "packages/sample/plain.test.ts",
+      "import { test } from 'vitest';\ntest('plain', () => {});\n",
+    );
+
+    const result = Bun.spawnSync([
+      "node",
+      SCRIPT_PATH,
+      "--repo-root",
+      root,
+      "--check",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    const stderr = new TextDecoder().decode(result.stderr);
+    expect(stderr).toContain("diff-scoped ratchet could not run");
+    expect(stderr).toContain("Ensure CI fetches origin/develop");
+  });
+
   test("comments do not register as focused tests", () => {
     const root = makeRepo();
     write(
