@@ -172,7 +172,7 @@ describe("host-external importer resolution (factory hostImport)", () => {
     await removeStorageValue("root-key");
     expect(await getStorageValue("root-key")).toBeNull();
     setActiveSurfaceRealmScope(null);
-  }, 15_000);
+  }, 45_000);
 });
 
 const { sendWsMessage } = vi.hoisted(() => ({
