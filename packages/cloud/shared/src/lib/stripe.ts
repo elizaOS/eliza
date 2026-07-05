@@ -38,27 +38,44 @@ const STRIPE_API_VERSION: PinnedStripeApiVersion = "2024-11-20.acacia";
 
 let stripeInstance: Stripe | null = null;
 let stripeInitError: Error | null = null;
+let stripeCacheKey: string | null = null;
+
+function isPotentialStripeSecretKey(key: string): boolean {
+  return key.startsWith("sk_") || key.startsWith("rk_");
+}
+
+function buildStripeCacheKey(
+  env: Record<string, string | undefined>,
+  secretKey: string | undefined,
+): string {
+  return [env.ENVIRONMENT ?? "", env.NODE_ENV ?? "", secretKey ?? "missing"].join("\0");
+}
 
 /**
  * Get the Stripe client instance (lazy initialization).
  * Returns null if STRIPE_SECRET_KEY is not configured.
  */
 function initStripe(): Stripe | null {
-  if (stripeInstance) return stripeInstance;
-  if (stripeInitError) return null;
-
   const env = getCloudAwareEnv();
   const secretKey = env.STRIPE_SECRET_KEY?.trim();
+  const cacheKey = buildStripeCacheKey(env, secretKey);
+
+  if (stripeInstance && stripeCacheKey === cacheKey) return stripeInstance;
+  if (stripeInitError && stripeCacheKey === cacheKey) return null;
 
   if (!secretKey) {
     stripeInitError = new Error("STRIPE_SECRET_KEY is not set in environment variables");
+    stripeInstance = null;
+    stripeCacheKey = cacheKey;
     return null;
   }
 
-  if (!secretKey.startsWith("sk_")) {
+  if (!isPotentialStripeSecretKey(secretKey)) {
     stripeInitError = new Error(
-      `STRIPE_SECRET_KEY appears invalid (should start with 'sk_', got '${secretKey.substring(0, 3)}...'). Please verify your Stripe configuration.`,
+      `STRIPE_SECRET_KEY appears invalid (should start with 'sk_' or 'rk_', got '${secretKey.substring(0, 3)}...'). Please verify your Stripe configuration.`,
     );
+    stripeInstance = null;
+    stripeCacheKey = cacheKey;
     return null;
   }
 
@@ -70,6 +87,8 @@ function initStripe(): Stripe | null {
     stripeInitError = new Error(
       "SECURITY: STRIPE_SECRET_KEY is a LIVE-mode key (sk_live_/rk_live_) but this deployment is not production (ENVIRONMENT/NODE_ENV). Refusing to initialize Stripe: live keys outside prod let checkouts charge real money into a non-prod database (#13752). Bind a test-mode key (sk_test_) to this environment.",
     );
+    stripeInstance = null;
+    stripeCacheKey = cacheKey;
     logger.error(`[Stripe] ${stripeInitError.message}`);
     return null;
   }
@@ -86,6 +105,8 @@ function initStripe(): Stripe | null {
     typescript: true,
     apiVersion: STRIPE_API_VERSION as StripeConstructorConfig["apiVersion"],
   });
+  stripeInitError = null;
+  stripeCacheKey = cacheKey;
   return stripeInstance;
 }
 
@@ -126,7 +147,7 @@ export function requireStripe(): Stripe {
 export function isStripeConfigured(): boolean {
   const env = getCloudAwareEnv();
   const key = env.STRIPE_SECRET_KEY?.trim();
-  if (!key || !key.startsWith("sk_")) {
+  if (!key || !isPotentialStripeSecretKey(key)) {
     return false;
   }
   // A live key outside production is treated as NOT configured (#13752):
@@ -162,6 +183,7 @@ export function assertStripeConfigured(): void {
 export function __resetStripeForTests(): void {
   stripeInstance = null;
   stripeInitError = null;
+  stripeCacheKey = null;
 }
 
 /**

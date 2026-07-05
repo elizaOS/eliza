@@ -22,6 +22,7 @@ import { __resetStripeForTests, getStripe, isStripeConfigured } from "./stripe";
 // flag these obviously-fake fixtures as real Stripe keys.
 const LIVE_KEY = ["sk", "live", "FakeKeyForGuardTests000000"].join("_");
 const TEST_KEY = ["sk", "test", "FakeKeyForGuardTests000000"].join("_");
+const RESTRICTED_LIVE_KEY = ["rk", "live", "FakeKeyForGuardTests000000"].join("_");
 
 afterEach(() => {
   __resetStripeForTests();
@@ -145,6 +146,49 @@ describe("stripe client init guard (via Worker bindings)", () => {
     runWithCloudBindings({ STRIPE_SECRET_KEY: TEST_KEY, ENVIRONMENT: "production" }, () => {
       expect(isStripeConfigured()).toBe(true);
       expect(() => getStripe()).not.toThrow();
+    });
+  });
+
+  it("does not reuse a cached production live client under a later staging live binding", () => {
+    runWithCloudBindings({ STRIPE_SECRET_KEY: LIVE_KEY, ENVIRONMENT: "production" }, () => {
+      expect(isStripeConfigured()).toBe(true);
+      expect(() => getStripe()).not.toThrow();
+    });
+
+    runWithCloudBindings({ STRIPE_SECRET_KEY: LIVE_KEY, ENVIRONMENT: "staging" }, () => {
+      expect(isStripeConfigured()).toBe(false);
+      expect(() => getStripe()).toThrow(/LIVE-mode key .* not production/);
+    });
+  });
+
+  it("does not reuse a cached staging test client under a later staging live binding", () => {
+    runWithCloudBindings({ STRIPE_SECRET_KEY: TEST_KEY, ENVIRONMENT: "staging" }, () => {
+      expect(isStripeConfigured()).toBe(true);
+      expect(() => getStripe()).not.toThrow();
+    });
+
+    runWithCloudBindings({ STRIPE_SECRET_KEY: LIVE_KEY, ENVIRONMENT: "staging" }, () => {
+      expect(isStripeConfigured()).toBe(false);
+      expect(() => getStripe()).toThrow(/LIVE-mode key .* not production/);
+    });
+  });
+
+  it("recovers when a later binding is valid after an earlier binding failed closed", () => {
+    runWithCloudBindings({ STRIPE_SECRET_KEY: LIVE_KEY, ENVIRONMENT: "staging" }, () => {
+      expect(isStripeConfigured()).toBe(false);
+      expect(() => getStripe()).toThrow(/LIVE-mode key .* not production/);
+    });
+
+    runWithCloudBindings({ STRIPE_SECRET_KEY: TEST_KEY, ENVIRONMENT: "staging" }, () => {
+      expect(isStripeConfigured()).toBe(true);
+      expect(() => getStripe()).not.toThrow();
+    });
+  });
+
+  it("restricted live keys fail through the live-key guard outside production", () => {
+    runWithCloudBindings({ STRIPE_SECRET_KEY: RESTRICTED_LIVE_KEY, ENVIRONMENT: "staging" }, () => {
+      expect(isStripeConfigured()).toBe(false);
+      expect(() => getStripe()).toThrow(/LIVE-mode key .* not production/);
     });
   });
 });
