@@ -29,9 +29,17 @@ customer-data. The current ``consent_proof_uri`` points back to this
 document because the production opt-in flow is still in design (see
 "open items" below). The provisional control is:
 
-  - Local-only ``~/.eliza/training/datasets/`` writes happen ONLY when
-    ``ELIZA_DISABLE_TRAJECTORY_LOGGING`` is unset (default opt-in for
-    dogfooders, will flip to opt-out once the consent UI ships).
+  - Local-only ``~/.eliza/training/datasets/`` writes are gated by the
+    single trajectory resolver (``resolveTrajectoryGate``,
+    ``packages/core/src/runtime/trajectory-gate.ts``). Precedence, first
+    match wins: (1) ``ELIZA_DISABLE_TRAJECTORY_LOGGING=1`` — hard opt-out;
+    (2) ``ELIZA_TRAJECTORY_LOGGING`` explicit truthy/falsey — canonical
+    operator knob (blank/whitespace = unset, falls through); (3) the legacy
+    ``ELIZA_TRAJECTORY_RECORDING`` alias; then the ``NODE_ENV`` defaults —
+    **off in ``production`` (SOC2 O-5: opt-in only) and in ``test``, on in
+    dev/unset**. So in production, capture happens ONLY when an operator sets
+    ``ELIZA_TRAJECTORY_LOGGING=1`` (not merely when the disable flag is
+    absent). This will flip to a consent-UI opt-out once that ships.
   - The privacy filter runs ``--strict`` by default
     ([``scripts/privacy_filter_trajectories.py``](scripts/privacy_filter_trajectories.py)).
   - Nubilio data is internal-dogfood collected from a self-hosted bot the

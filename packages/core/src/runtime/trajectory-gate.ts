@@ -18,12 +18,18 @@ const TRUTHY = new Set(["1", "true", "yes", "on"]);
 
 /**
  * Coerce a raw env value to a boolean. Returns undefined when the var is unset
- * (so the caller can fall through to the next precedence tier); a set-but-not-
- * truthy value coerces to false (an explicit opt-out).
+ * or blank/whitespace-only — a set-but-empty entry (an empty `.env` line,
+ * `ELIZA_TRAJECTORY_LOGGING=`) is treated as unset so the caller falls through
+ * to the next precedence tier rather than reading as an explicit opt-out, per
+ * the repo's blank-is-unset env contract (`presentEnvValue`, boot-env.ts;
+ * #13802). A set, non-blank, non-truthy value ("0"/"false"/…) is an explicit
+ * opt-out and coerces to false.
  */
 function coerceFlag(raw: string | undefined): boolean | undefined {
 	if (raw === undefined) return undefined;
-	return TRUTHY.has(raw.trim().toLowerCase());
+	const trimmed = raw.trim();
+	if (trimmed === "") return undefined;
+	return TRUTHY.has(trimmed.toLowerCase());
 }
 
 export interface TrajectoryGateDecision {

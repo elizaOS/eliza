@@ -24,6 +24,7 @@ import {
   loadAllScenarios,
   validateScenarioCorpus,
 } from "./loader.ts";
+import { shouldOptInScenarioTrajectoryLogging } from "./trajectory-opt-in.ts";
 import type { ScenarioReport } from "./types.ts";
 
 const SCENARIO_LANES: readonly ScenarioLane[] = [
@@ -314,15 +315,19 @@ async function main(): Promise<number> {
           `scenario-run-${effectiveRunId}`,
         )
       : undefined);
+  // Opt the recorder in for the whole run (see the helper's rationale) — this
+  // is hoisted out of the `effectiveRunDir` branch so a bare run under
+  // NODE_ENV=test|production still captures the per-turn traces it aggregates.
+  // The recorder falls back to `${stateDir}/trajectories` when
+  // ELIZA_TRAJECTORY_DIR is unset (resolveTrajectoryDir, trajectory-recorder.ts).
+  if (shouldOptInScenarioTrajectoryLogging()) {
+    process.env.ELIZA_TRAJECTORY_LOGGING = "1";
+  }
   if (effectiveRunDir) {
     const trajectoryDir = path.join(effectiveRunDir, "trajectories");
     process.env.ELIZA_TRAJECTORY_DIR = trajectoryDir;
     process.env.ELIZA_LIFEOPS_RUN_ID = effectiveRunId;
     process.env.ELIZA_LIFEOPS_RUN_DIR = effectiveRunDir;
-    // The recorder default flipped to opt-in for prod/test (#13775); a scenario
-    // run capturing trajectories must opt in explicitly so the per-turn traces
-    // this run then aggregates/exports are actually written.
-    process.env.ELIZA_TRAJECTORY_LOGGING = "1";
     logger.info(
       `[eliza-scenarios] run-dir: ${effectiveRunDir} (trajectories → ${trajectoryDir}, runId=${effectiveRunId})`,
     );

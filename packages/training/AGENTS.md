@@ -18,6 +18,14 @@ applies to everything under `packages/training/`.
   recorder. The state dir resolves (see `packages/core/src/utils/state-dir.ts`)
   as `ELIZA_STATE_DIR` → `$XDG_STATE_HOME/eliza` → `~/.local/state/eliza` — NOT
   `~/.eliza/state`. No database dependency.
+  - **Recording gate (`resolveTrajectoryGate`,
+    `packages/core/src/runtime/trajectory-gate.ts`):** capture is **opt-in in
+    `NODE_ENV=production` and `test`, default-on in dev/unset**. Precedence,
+    first match wins: `ELIZA_DISABLE_TRAJECTORY_LOGGING=1` (hard off) →
+    `ELIZA_TRAJECTORY_LOGGING` (canonical truthy/falsey knob; blank =
+    unset) → legacy `ELIZA_TRAJECTORY_RECORDING` alias → the `NODE_ENV`
+    default. To collect RL data in prod/test you must set
+    `ELIZA_TRAJECTORY_LOGGING=1`; the scenario runner sets it automatically.
 
 Do not edit configs to point at non-Gemma base names or OpenAI judges —
 the lock above is the product contract.

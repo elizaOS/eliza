@@ -43,9 +43,37 @@ describe("resolveTrajectoryGate precedence", () => {
 		for (const v of ["1", "true", "yes", "on", "TRUE", " On "]) {
 			expect(gate({ ELIZA_TRAJECTORY_LOGGING: v })).toBe(true);
 		}
-		for (const v of ["0", "false", "no", "off", "nonsense", ""]) {
+		for (const v of ["0", "false", "no", "off", "nonsense"]) {
 			expect(gate({ ELIZA_TRAJECTORY_LOGGING: v })).toBe(false);
 		}
+	});
+
+	it("treats a blank/whitespace-only explicit knob as unset, not opt-out (#13802)", () => {
+		// An empty `.env` line (`ELIZA_TRAJECTORY_LOGGING=`) must not silently
+		// disable dev recording — it falls through to the NODE_ENV default.
+		for (const blank of ["", " ", "\t"]) {
+			const dev = resolveTrajectoryGate({
+				ELIZA_TRAJECTORY_LOGGING: blank,
+				NODE_ENV: "development",
+			} as NodeJS.ProcessEnv);
+			expect(dev.enabled).toBe(true);
+			expect(dev.reason).toBe("dev-default-on");
+
+			const prod = resolveTrajectoryGate({
+				ELIZA_TRAJECTORY_LOGGING: blank,
+				NODE_ENV: "production",
+			} as NodeJS.ProcessEnv);
+			expect(prod.enabled).toBe(false);
+			expect(prod.reason).toBe("production-opt-in");
+		}
+		// A blank canonical knob also falls through to the legacy alias.
+		expect(
+			gate({
+				ELIZA_TRAJECTORY_LOGGING: "",
+				ELIZA_TRAJECTORY_RECORDING: "1",
+				NODE_ENV: "production",
+			}),
+		).toBe(true);
 	});
 
 	it("honors the legacy ELIZA_TRAJECTORY_RECORDING alias when the canonical knob is unset", () => {
