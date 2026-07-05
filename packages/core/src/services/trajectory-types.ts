@@ -371,6 +371,7 @@ export interface TrajectoryExportOptions {
 	startDate?: string;
 	endDate?: string;
 	scenarioId?: string;
+	traceId?: string;
 	batchId?: string;
 }
 

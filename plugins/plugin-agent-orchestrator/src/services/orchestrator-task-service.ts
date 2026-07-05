@@ -1217,7 +1217,7 @@ export class OrchestratorTaskService extends Service {
         artifactType: "trajectory",
         title: `Sub-agent trajectory ${trajectoryId}`,
         path,
-        verificationStatus: "unverified",
+        verificationStatus: "pending",
         metadata: {
           correlation: {
             traceId: session?.traceId,
