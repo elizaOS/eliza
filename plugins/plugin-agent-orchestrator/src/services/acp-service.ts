@@ -264,7 +264,7 @@ const ACP_METADATA_GIT_WRAPPER_DIR = "gitWrapperDir";
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const SESSION_GIT_WRAPPER = `#!/usr/bin/env node
-const { spawnSync } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -310,16 +310,15 @@ function run(argv, opts = {}) {
 // processes with an exclusive lockfile in the worktree's own git dir (where HEAD
 // lives), so isolated worktrees — which have distinct git dirs and HEADs — never
 // contend, while shared ones can't interleave.
-const LOCK_POLL_MS = 25;
-const LOCK_WAIT_MS = 120000;
+const LOCK_POLL_MS = Number.parseInt(process.env.ACP_COMMIT_LOCK_POLL_MS || "25", 10);
+const LOCK_WAIT_MS = Number.parseInt(process.env.ACP_COMMIT_LOCK_WAIT_MS || "120000", 10);
 // A lock becomes reclaimable once its mtime is older than this. It sits below
 // LOCK_WAIT_MS so a crashed holder whose PID was recycled to an unrelated live
 // process is reclaimed by a waiter before that waiter's acquire deadline (#14202)
-// — otherwise the dead lock would wedge the worktree until the 120s timeout — and
-// well above the interval at which a live holder refreshes mtime via lock.verify()
-// (each read-tree/apply/commit boundary), so a legitimately long commit is never
-// falsely reclaimed.
-const LOCK_STALE_MS = 30000;
+// — otherwise the dead lock would wedge the worktree until the 120s timeout.
+// Live holders keep the mtime fresh through a detached heartbeat because the
+// wrapper blocks in spawnSync while git commit/pre-commit hooks run.
+const LOCK_STALE_MS = Number.parseInt(process.env.ACP_COMMIT_LOCK_STALE_MS || "30000", 10);
 function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -370,6 +369,33 @@ function lockIsStale(lockPath) {
   }
   return mtimeStale ? lock : undefined;
 }
+function startLockHeartbeat(lockPath, expected) {
+  const interval = Math.max(10, Math.min(1000, Math.floor(LOCK_STALE_MS / 4)));
+  const script = [
+    "const fs=require('node:fs');",
+    "const lockPath=process.argv[1];",
+    "const parentPid=Number(process.argv[2]);",
+    "const token=process.argv[3];",
+    "const interval=Number(process.argv[4]);",
+    "function alive(pid){try{process.kill(pid,0);return true;}catch(err){return err.code==='EPERM';}}",
+    "function tick(){",
+    " if(!alive(parentPid)) process.exit(0);",
+    " let owner;",
+    " try{owner=JSON.parse(fs.readFileSync(lockPath,'utf8'));}catch{process.exit(0);}",
+    " if(!owner||owner.pid!==parentPid||owner.token!==token) process.exit(0);",
+    " const now=new Date();",
+    " try{fs.utimesSync(lockPath,now,now);}catch{process.exit(0);}",
+    "}",
+    "tick();",
+    "setInterval(tick,interval);",
+  ].join("");
+  const child = spawn(process.execPath, ["-e", script, lockPath, String(expected.pid), expected.token, String(interval)], {
+    detached: true,
+    stdio: "ignore",
+  });
+  child.unref();
+  return child;
+}
 function stealStaleLock(lockPath, staleRaw) {
   const claimPath = lockPath + ".stale-" + process.pid + "-" + randomUUID();
   try {
@@ -406,7 +432,8 @@ function resolveGitDir(prefix) {
 function acquireCommitLock(gitDir) {
   const lockPath = path.join(gitDir, "eliza-acp-commit.lock");
   const token = process.pid + ":" + randomUUID();
-  const owner = JSON.stringify({ pid: process.pid, token, createdAt: Date.now() });
+  const ownerRecord = { pid: process.pid, token, createdAt: Date.now() };
+  const owner = JSON.stringify(ownerRecord);
   const deadline = Date.now() + LOCK_WAIT_MS;
   for (;;) {
     let fd;
@@ -423,6 +450,8 @@ function acquireCommitLock(gitDir) {
       continue;
     }
     fs.writeSync(fd, owner);
+    fs.fsyncSync(fd);
+    const heartbeat = startLockHeartbeat(lockPath, ownerRecord);
     let released = false;
     const owns = () => {
       const lock = readLock(lockPath);
@@ -435,6 +464,11 @@ function acquireCommitLock(gitDir) {
     const release = () => {
       if (released) return;
       released = true;
+      try {
+        heartbeat.kill();
+      } catch {
+        // error-policy:J6 best-effort teardown; heartbeat exits once the lock is gone.
+      }
       fs.closeSync(fd);
       if (owns()) fs.rmSync(lockPath, { force: true });
     };
