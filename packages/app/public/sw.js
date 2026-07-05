@@ -14,7 +14,12 @@
 "use strict";
 
 const VIEWS_CACHE_NAME = "elizaos-views-v1";
-const SHELL_CACHE_NAME = "elizaos-shell-v1";
+// r3.4: bump shell cache v2 -> v3 to evict any stale precached shell in an
+// installed iOS standalone PWA after the safe-area-floor transparency fix (the
+// residual home-indicator black bar under the floating composer). The
+// network-first shell still updates on reload; the version bump forces old
+// caches to be dropped in `activate` so a re-open can't serve a pre-r3.4 shell.
+const SHELL_CACHE_NAME = "elizaos-shell-v3";
 const HERO_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 h
 const KNOWN_CACHES = [VIEWS_CACHE_NAME, SHELL_CACHE_NAME];
 

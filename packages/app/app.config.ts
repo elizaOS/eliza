@@ -43,8 +43,12 @@ const config = {
     // splash never flash a different orange before the home background appears
     // (issue #9565). The brand accent (logos, buttons) stays #FF5800 / the CSS
     // --brand-orange and is intentionally separate from these launch surfaces.
-    themeColor: "#ef5a1f",
-    backgroundColor: "#ef5a1f",
+    // hybrid-r2 skin: the app home + chat floor are DARK (#160d07), so the PWA
+    // chrome / theme-color and the iOS standalone home-indicator safe-area inset
+    // must be dark too. #ef5a1f is a boot/launch flash color ONLY and must never
+    // be a visible post-paint surface (issue: bottom safe-area painted orange).
+    themeColor: "#160d07",
+    backgroundColor: "#160d07",
     shareImagePath: "/brand/ogembeds/eliza_ogembed.svg",
   },
 

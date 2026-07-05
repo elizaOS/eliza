@@ -212,7 +212,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="theme-color" content="__APP_THEME_COLOR__" />
+  <meta name="theme-color" content="#160d07" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#160d07" />
   <meta name="color-scheme" content="dark light" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' electrobun://* https://*__APP_CSP_LOCAL_HTTP__;
                script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://*__APP_CSP_LOCAL_HTTP__;
@@ -287,7 +288,7 @@
     html,
     body,
     #root {
-      background-color: var(--launch-bg, #ef5a1f);
+      background-color: var(--bg, #160d07);
     }
 
     html, body {
@@ -313,7 +314,7 @@
 
     #root {
       min-height: 100dvh;
-      background-color: var(--launch-bg, #ef5a1f);
+      background-color: var(--bg, #160d07);
     }
 
     .eliza-preboot-shell {
