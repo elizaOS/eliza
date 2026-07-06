@@ -129,14 +129,23 @@ function configuredModelString(
 	runtime: RuntimeWithModelHelpers,
 	modelType: ModelTypeName,
 ): string | undefined {
+	// Consult the WINNING (highest-priority) provider's own registration first.
+	// It declares the concrete model it will call via `metadata.displayModel`
+	// (or `displayModelSetting`), resolved from the provider's own config keys
+	// (e.g. plugin-elizacloud's ELIZAOS_CLOUD_LARGE_MODEL). This must come BEFORE
+	// resolveProviderModelString / the generic fallback walk, which only know a
+	// fixed OLLAMA_/OPENAI_/ANTHROPIC_/"" prefix list: on a multi-provider
+	// deployment those report a LOSING provider's configured model
+	// (ANTHROPIC_LARGE_MODEL) for a slot a higher-priority provider actually
+	// owns, because the winning provider's own prefix is invisible to that walk.
+	const registration = registeredModelFor(runtime, modelType);
+	const displayModel = displayModelFor(runtime, registration?.metadata);
+	if (displayModel) return displayModel;
 	const resolved =
 		typeof runtime.resolveProviderModelString === "function"
 			? runtime.resolveProviderModelString(modelType)
 			: undefined;
 	if (resolved && resolved !== String(modelType)) return resolved;
-	const registration = registeredModelFor(runtime, modelType);
-	const displayModel = displayModelFor(runtime, registration?.metadata);
-	if (displayModel) return displayModel;
 	// Otherwise resolve from the configured *_MODEL keys along the fallback chain
 	// (e.g. ANTHROPIC_LARGE_MODEL). If still unresolvable, return undefined so the
 	// caller OMITS the line rather than leaking the raw slot name to the user.

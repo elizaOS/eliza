@@ -183,6 +183,95 @@ describe("runtimeModelContextProvider", () => {
 		expect(result.data?.responseHandlerModel).toBeUndefined();
 	});
 
+	it("reports the winning provider's declared model, not a losing provider's default", async () => {
+		// Live multi-provider scenario: elizaOSCloud (priority 50) wins every slot
+		// and declares the concrete model it resolves (ELIZAOS_CLOUD_*_MODEL) via
+		// `metadata.displayModel` at registration. plugin-anthropic (a losing,
+		// lower-priority registration) also has ANTHROPIC_*_MODEL set, so the fixed
+		// OLLAMA_/OPENAI_/ANTHROPIC_/'' resolver walk (mirrored below) leaks
+		// claude-opus-4-6 for TEXT_LARGE. The provider must report the winner's
+		// declared model, never the losing resolver leak. The provider name
+		// "elizaOSCloud" deliberately does NOT map to the env prefix ELIZAOS_CLOUD_
+		// by string transform — proving the fix keys off the registration metadata,
+		// not a derived prefix.
+		const settings: Record<string, string> = {
+			ANTHROPIC_LARGE_MODEL: "claude-opus-4-6",
+			ANTHROPIC_SMALL_MODEL: "claude-sonnet-4-6",
+		};
+		const suffixOf: Record<string, string> = {
+			[ModelType.TEXT_LARGE]: "LARGE_MODEL",
+			[ModelType.TEXT_SMALL]: "SMALL_MODEL",
+			[ModelType.RESPONSE_HANDLER]: "RESPONSE_HANDLER_MODEL",
+			[ModelType.ACTION_PLANNER]: "ACTION_PLANNER_MODEL",
+		};
+		const runtime = makeRuntime(settings, {
+			// mirror the real runtime resolver: fixed OLLAMA_/OPENAI_/ANTHROPIC_/''
+			// walk that would leak ANTHROPIC_LARGE_MODEL for TEXT_LARGE.
+			resolveProviderModelString: (modelType: string) => {
+				const suffix = suffixOf[modelType];
+				if (!suffix) return modelType;
+				for (const p of ["OLLAMA_", "OPENAI_", "ANTHROPIC_", ""]) {
+					const v = settings[`${p}${suffix}`];
+					if (v) return v;
+				}
+				return modelType;
+			},
+			// elizaOSCloud wins each slot (index 0) and declares its resolved model
+			// via metadata.displayModel — exactly as registerTextInferenceModels does.
+			models: new Map([
+				[
+					ModelType.TEXT_LARGE,
+					[
+						{
+							provider: "elizaOSCloud",
+							metadata: { displayModel: "cerebras:zai-glm-4.7" },
+						},
+						{ provider: "anthropic" },
+					],
+				],
+				[
+					ModelType.TEXT_SMALL,
+					[
+						{
+							provider: "elizaOSCloud",
+							metadata: { displayModel: "gemma-4-31b" },
+						},
+						{ provider: "anthropic" },
+					],
+				],
+				[
+					ModelType.RESPONSE_HANDLER,
+					[
+						{
+							provider: "elizaOSCloud",
+							metadata: { displayModel: "cerebras:zai-glm-4.7" },
+						},
+					],
+				],
+				[
+					ModelType.ACTION_PLANNER,
+					[
+						{
+							provider: "elizaOSCloud",
+							metadata: { displayModel: "cerebras:zai-glm-4.7" },
+						},
+					],
+				],
+			]),
+		} as unknown as Partial<IAgentRuntime>);
+
+		const result = await runtimeModelContextProvider.get(
+			runtime,
+			makeMessage("what models are you using?"),
+			{} as never,
+		);
+		expect(result.data?.textLargeModel).toBe("cerebras:zai-glm-4.7");
+		expect(result.data?.textSmallModel).toBe("gemma-4-31b");
+		expect(result.text).not.toContain("claude-opus-4-6");
+		expect(result.text).not.toContain("claude-sonnet-4-6");
+		expect(result.data?.responseHandlerModel).toBe("cerebras:zai-glm-4.7");
+	});
+
 	it("stays silent for unrelated live-data questions", async () => {
 		const runtime = makeRuntime({
 			OPENAI_LARGE_MODEL: "gpt-oss-120b",
