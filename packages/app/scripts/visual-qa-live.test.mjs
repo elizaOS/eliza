@@ -13,6 +13,7 @@ import {
   buildStateMatrix,
   FIRST_RUN_COMPLETE_KEY,
   STEWARD_SESSION_TOKEN_KEY,
+  seedDriftOffenders,
 } from "./visual-qa-live.mjs";
 
 describe("buildOnboardedSeed", () => {
@@ -89,7 +90,34 @@ describe("aggregateVerdict", () => {
     expect(v.pass).toBe(false);
     expect(v.offenders.map((o) => o.id)).toEqual(["bluish"]);
   });
-  it("treats a missing color_fractions as zero blue (no false failure)", () => {
-    expect(aggregateVerdict([{ id: "x" }]).pass).toBe(true);
+  it("fails closed when a capture has no measured blue fraction", () => {
+    const v = aggregateVerdict([{ id: "x" }]);
+    expect(v.pass).toBe(false);
+    expect(v.offenders).toEqual([
+      { id: "x", blue: null, reason: "blue_fraction not measured" },
+    ]);
+  });
+});
+
+describe("seedDriftOffenders", () => {
+  it("passes when the seeded shell differs materially from the gate", () => {
+    expect(
+      seedDriftOffenders([
+        { viewport: "desktop", changedFraction: 0.41 },
+        { viewport: "mobile", changedFraction: 0.35 },
+      ]),
+    ).toEqual([]);
+  });
+  it("flags a viewport whose seeded shell re-rendered the gate", () => {
+    const offenders = seedDriftOffenders([
+      { viewport: "desktop", changedFraction: 0.41 },
+      { viewport: "mobile", changedFraction: 0.001 },
+    ]);
+    expect(offenders).toEqual([{ viewport: "mobile", changedFraction: 0.001 }]);
+  });
+  it("treats an unmeasured delta as drift, never as a pass", () => {
+    expect(seedDriftOffenders([{ viewport: "desktop" }])).toEqual([
+      { viewport: "desktop", changedFraction: undefined },
+    ]);
   });
 });

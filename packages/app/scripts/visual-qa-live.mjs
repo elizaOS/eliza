@@ -31,7 +31,7 @@ import { fileURLToPath } from "node:url";
  *   node scripts/visual-qa-live.mjs --base http://127.0.0.1:2138 [--out DIR] [--strict]
  */
 import { chromium } from "@playwright/test";
-import { analyzeScreenshot } from "./lib/visual-qa.mjs";
+import { analyzeScreenshot, changeMetric } from "./lib/visual-qa.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -126,23 +126,55 @@ export function buildCaptureUrl(base, route) {
 /**
  * Fold per-capture analyzer reports into a pass/fail. The brand invariant is
  * the only hard gate: blue must stay under the ceiling on every state (elizaOS
- * ships zero blue; orange is accent-only). Returns the failing state ids so the
+ * ships zero blue; orange is accent-only). A capture with no measured
+ * `blue_fraction` is a broken analyzer run, not a clean screen — it fails
+ * closed (never read "unmeasured" as 0). Returns the failing state ids so the
  * caller can report *which* screen broke, not just that something did.
  */
 export function aggregateVerdict(reports, { blueCeiling = 0.02 } = {}) {
-  const offenders = reports
-    .filter((r) => (r.color_fractions?.blue_fraction ?? 0) > blueCeiling)
-    .map((r) => ({
-      id: r.id,
-      blue: r.color_fractions?.blue_fraction ?? 0,
-    }));
+  const offenders = [];
+  for (const r of reports) {
+    const blue = r.color_fractions?.blue_fraction;
+    if (!Number.isFinite(blue)) {
+      offenders.push({
+        id: r.id,
+        blue: null,
+        reason: "blue_fraction not measured",
+      });
+    } else if (blue > blueCeiling) {
+      offenders.push({
+        id: r.id,
+        blue,
+        reason: `blue over ceiling ${blueCeiling}`,
+      });
+    }
+  }
   return { pass: offenders.length === 0, offenders, blueCeiling };
 }
 
+/**
+ * Seed-vacuity gate: if the onboarded-seed contract drifts (renamed key, new
+ * gate), every "seeded" capture silently re-renders the onboarding gate and
+ * the sweep passes on the wrong pixels. Requiring the gate and the seeded
+ * shell to differ materially per viewport turns that silent drift into a hard
+ * failure. `deltas` is `[{ viewport, changedFraction }]` from `changeMetric`.
+ */
+export function seedDriftOffenders(deltas, { minChangedFraction = 0.02 } = {}) {
+  return deltas
+    .filter((d) => !(d.changedFraction > minChangedFraction))
+    .map((d) => ({ viewport: d.viewport, changedFraction: d.changedFraction }));
+}
+
 async function focusAndType(page) {
-  const box = page
-    .locator('textarea, [contenteditable="true"], input[type="text"]')
-    .first();
+  // Prefer the canonical chat composer; the generic fallback keeps the capture
+  // meaningful on gates that render a plain input. No match fails the sweep —
+  // a keyboard-adjacent capture without a focused field proves nothing.
+  const composer = page.locator('[data-testid="chat-composer-textarea"]');
+  const box = (await composer.count())
+    ? composer.first()
+    : page
+        .locator('textarea, [contenteditable="true"], input[type="text"]')
+        .first();
   await box.click({ timeout: 4000 });
   await box.type("remind me to call the pharmacy before 5", { delay: 8 });
   await page.waitForTimeout(600);
@@ -210,6 +242,9 @@ async function main() {
         }
         await page
           .waitForLoadState("networkidle", { timeout: 5000 })
+          // error-policy:J6 best-effort settle — SPAs holding long-poll/WS
+          // connections never reach networkidle; the fixed wait below is the
+          // real settle gate and the screenshot still fails loudly on its own.
           .catch(() => {});
         await page.waitForTimeout(1500);
         if (state.focusComposer) await focusAndType(page);
@@ -231,7 +266,10 @@ async function main() {
             .slice(0, 240),
         };
         reports.push(entry);
-        const blue = (entry.color_fractions?.blue_fraction ?? 0).toFixed(3);
+        const measured = entry.color_fractions?.blue_fraction;
+        const blue = Number.isFinite(measured)
+          ? measured.toFixed(3)
+          : "unmeasured";
         console.log(
           `■ ${state.id.padEnd(26)} blue=${blue}  ${entry.ocr_text.slice(0, 70)}`,
         );
@@ -243,17 +281,41 @@ async function main() {
     await browser.close();
   }
 
+  const seedDeltas = [];
+  for (const vpName of Object.keys(VIEWPORTS)) {
+    const gate = reports.find((r) => r.id === `${vpName}-onboarding`);
+    const shell = reports.find((r) => r.id === `${vpName}-shell`);
+    if (!gate || !shell) continue;
+    const delta = await changeMetric(shell.image, gate.image);
+    seedDeltas.push({
+      viewport: vpName,
+      changedFraction: delta.changed_fraction,
+    });
+  }
+  const driftOffenders = seedDriftOffenders(seedDeltas);
+  if (driftOffenders.length) {
+    throw new Error(
+      `Onboarded seed did not take effect — seeded shell renders the onboarding gate's pixels: ${driftOffenders
+        .map((o) => `${o.viewport} (changed_fraction=${o.changedFraction})`)
+        .join(", ")}`,
+    );
+  }
+
   const verdict = aggregateVerdict(reports);
   writeFileSync(
     path.join(outDir, "report.json"),
-    JSON.stringify({ base, verdict, reports }, null, 2),
+    JSON.stringify({ base, verdict, seedDeltas, reports }, null, 2),
   );
   console.log(
     `\n${verdict.pass ? "PASS" : "FAIL"} — no-blue invariant (ceiling ${verdict.blueCeiling}); ${reports.length} states → ${outDir}/report.json`,
   );
   if (verdict.offenders.length)
     console.log(
-      `  offenders: ${verdict.offenders.map((o) => `${o.id}=${o.blue.toFixed(3)}`).join(", ")}`,
+      `  offenders: ${verdict.offenders
+        .map(
+          (o) => `${o.id}=${o.blue == null ? "unmeasured" : o.blue.toFixed(3)}`,
+        )
+        .join(", ")}`,
     );
 
   if (strict && !verdict.pass) process.exit(1);
