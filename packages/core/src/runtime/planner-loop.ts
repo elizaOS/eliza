@@ -3093,9 +3093,14 @@ function isToolMetaNarration(text: string): boolean {
 		normalized.startsWith("the tool executed successfully") ||
 		normalized.startsWith("tool executed successfully") ||
 		normalized.startsWith("the tool returned") ||
+		/^[a-z0-9_]+(?:\s+[a-z0-9_]+)?\s+was\s+called\b/.test(normalized) ||
 		/^[a-z0-9_]+(?:\s+[a-z0-9_]+)?\s+action\s+executed\b/.test(normalized) ||
+		/^planner\s+(?:drafted|called|routed|selected)\b/.test(normalized) ||
+		normalized.includes(" via owner_goals") ||
 		normalized.includes("tool's user-visible") ||
-		normalized.includes("planner's user-visible message")
+		normalized.includes("planner's user-visible message") ||
+		normalized.includes("surface that question") ||
+		normalized.includes("surface the draft")
 	);
 }
 

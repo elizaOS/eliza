@@ -957,6 +957,84 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
+	it("falls back to tool text when evaluator says the action was called", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "OWNER_GOALS",
+						arguments: { action: "create", title: "Learn Spanish" },
+					},
+				],
+			})),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: "What would count as success for that goal?",
+			userFacingText: "What would count as success for that goal?",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Awaiting clarification.",
+			messageToUser:
+				"OWNER_GOALS create was called and returned a deferred draft asking the owner to confirm cadence/success evidence. The tool result's user-facing text is an appropriate clarifying question. Finish and surface that question.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "OWNER_GOALS", description: "Manage owner goals." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe(
+			"What would count as success for that goal?",
+		);
+	});
+
+	it("falls back to tool text when evaluator narrates a planner draft", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "OWNER_GOALS",
+						arguments: { action: "create", title: "Save for Lisbon" },
+					},
+				],
+			})),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: "Here's the draft — not saved yet. Want me to save it?",
+			userFacingText: "Here's the draft — not saved yet. Want me to save it?",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Awaiting confirmation.",
+			messageToUser:
+				"Planner drafted the Lisbon savings goal via OWNER_GOALS and returned a confirmation prompt to the owner. This is an expected owner-approval step; surface the draft summary and the confirmation question as the final message.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "OWNER_GOALS", description: "Manage owner goals." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe(
+			"Here's the draft — not saved yet. Want me to save it?",
+		);
+	});
+
 	it("surfaces captured REPLY refusal text when required-tool cap is hit, instead of throwing", async () => {
 		// Live regression: trajectory tj-3bb6dc66be0c16.json on 2026-05-25
 		// showed that when Stage 1 set requiresTool=true but no exposed tool
