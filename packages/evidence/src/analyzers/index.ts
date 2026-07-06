@@ -50,6 +50,12 @@ export {
   type RegionDiffData,
 } from "./diff.ts";
 export {
+  type AnalyzerExecutor,
+  INLINE_EXECUTOR,
+  InlineExecutor,
+  runAnalyzerInline,
+} from "./executor.ts";
+export {
   extractKeyframes,
   ffmpegAvailable,
   type KeyframeRecord,

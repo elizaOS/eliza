@@ -21,7 +21,8 @@ import os from "node:os";
 import path from "node:path";
 import type { EvidenceBundle } from "../bundle.ts";
 import type { ArtifactEntry, Tier } from "../schema.ts";
-import { ANALYZERS, analyzersForKind, tierRunnable } from "./registry.ts";
+import { type AnalyzerExecutor, INLINE_EXECUTOR } from "./executor.ts";
+import { ANALYZERS, analyzersForKind } from "./registry.ts";
 import type {
   AnalysisDocument,
   Analyzer,
@@ -48,6 +49,12 @@ export interface AnalyzeOptions {
    * documents are written (the caller consumes the returned documents directly).
    */
   bundle?: EvidenceBundle;
+  /**
+   * How each analyzer is run. Defaults to the in-process executor; a
+   * `QueueExecutor` (`../queue/executor.ts`) routes gpu-tier analyzers to a
+   * resident GPU vision worker so the runner does not call the model inline.
+   */
+  executor?: AnalyzerExecutor;
 }
 
 /** One subject's analysis outcome. */
@@ -76,6 +83,7 @@ export async function analyzeArtifacts(
   options: AnalyzeOptions,
 ): Promise<AnalyzeResult> {
   const analyzers = options.analyzers ?? ANALYZERS;
+  const executor = options.executor ?? INLINE_EXECUTOR;
 
   const subjects: SubjectAnalysis[] = [];
 
@@ -110,7 +118,7 @@ export async function analyzeArtifacts(
 
     const results: Record<string, AnalyzerResult> = {};
     for (const analyzer of applicable) {
-      results[analyzer.name] = await runOne(analyzer, input, ctx);
+      results[analyzer.name] = await executor.execute(analyzer, input, ctx);
     }
     // Drain keyframes emitted during this subject's analysis into the queue.
     while (emittedKeyframes.length > 0) {
@@ -137,42 +145,6 @@ export async function analyzeArtifacts(
   }
 
   return { subjects };
-}
-
-/** Run one analyzer, timing it and coercing any throw into a `failed` record. */
-async function runOne(
-  analyzer: Analyzer,
-  input: AnalyzerInput,
-  ctx: AnalyzerContext,
-): Promise<AnalyzerResult> {
-  if (!tierRunnable(analyzer.tier, ctx.tier)) {
-    return {
-      status: "skipped-tier",
-      reason: `analyzer tier '${analyzer.tier}' above run tier '${ctx.tier}'`,
-      durationMs: 0,
-    };
-  }
-  const start = performance.now();
-  try {
-    const fragment = await analyzer.analyze(input, ctx);
-    const durationMs = Math.round(performance.now() - start);
-    if (fragment.status === "ran") {
-      return { status: "ran", durationMs, data: fragment.data };
-    }
-    return { status: fragment.status, reason: fragment.reason, durationMs };
-  } catch (error) {
-    // error-policy:J1 boundary translation — the runner is the boundary that
-    // turns one analyzer's failure into a per-analyzer `failed` record so a
-    // single broken analyzer cannot fail the whole matrix or hide its error.
-    return {
-      status: "failed",
-      reason: String(error instanceof Error ? error.message : error).slice(
-        0,
-        300,
-      ),
-      durationMs: Math.round(performance.now() - start),
-    };
-  }
 }
 
 /**
