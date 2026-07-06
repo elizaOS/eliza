@@ -34,8 +34,14 @@ import {
 	APPEARANCE_APPLY_EVENT,
 	type AppearanceApplyPayload,
 	AppPermissionsViewSchema,
+	buildWalletRpcUpdateRequest,
 	isPermissionId,
+	normalizeWalletRpcProviderId,
 	type PermissionId,
+	resolveInitialWalletRpcSelections,
+	type WalletConfigStatus,
+	type WalletRpcChain,
+	type WalletRpcSelections,
 } from "@elizaos/shared";
 import {
 	type SETTINGS_NON_CATALOG_SECTION_META,
@@ -521,6 +527,213 @@ const APPEARANCE_HOME_TIME_WIDGET_KEY: SettingsWritableKey = {
 			: "Home time/date widget is hidden.",
 };
 
+const WALLET_RPC_CHAIN_ALIASES: ReadonlyMap<string, WalletRpcChain> = new Map([
+	["evm", "evm"],
+	["eth", "evm"],
+	["ethereum", "evm"],
+	["base", "evm"],
+	["avalanche", "evm"],
+	["bsc", "bsc"],
+	["bnb", "bsc"],
+	["binance", "bsc"],
+	["sol", "solana"],
+	["solana", "solana"],
+]);
+
+const WALLET_RPC_NETWORKS = new Set(["mainnet", "testnet"]);
+
+function resolveWalletRpcChain(token: string | null): WalletRpcChain | null {
+	if (!token) return null;
+	return WALLET_RPC_CHAIN_ALIASES.get(token.trim().toLowerCase()) ?? null;
+}
+
+function isWalletConfigStatus(data: unknown): data is WalletConfigStatus {
+	return Boolean(data && typeof data === "object");
+}
+
+function normalizeWalletRpcNetwork(
+	value: string | null,
+): "mainnet" | "testnet" | null {
+	if (!value) return null;
+	const normalized = value.trim().toLowerCase();
+	return WALLET_RPC_NETWORKS.has(normalized)
+		? (normalized as "mainnet" | "testnet")
+		: null;
+}
+
+function readWalletRpcProviderToken(
+	request: SettingsRequest,
+	keyName: string,
+	chain: WalletRpcChain,
+): string | null {
+	const chainSpecific = request[chain];
+	if (chainSpecific) return chainSpecific;
+	if (request.provider) return request.provider;
+	return resolveWalletRpcChain(keyName) === chain ? request.value : null;
+}
+
+function applyWalletRpcProviderSelection(
+	selections: WalletRpcSelections,
+	chain: WalletRpcChain,
+	providerToken: string,
+): void {
+	if (chain === "evm") {
+		const provider = normalizeWalletRpcProviderId("evm", providerToken);
+		if (!provider) {
+			throw new Error(
+				`${providerToken} is not a supported ${chain} RPC provider`,
+			);
+		}
+		selections.evm = provider;
+		return;
+	}
+	if (chain === "bsc") {
+		const provider = normalizeWalletRpcProviderId("bsc", providerToken);
+		if (!provider) {
+			throw new Error(
+				`${providerToken} is not a supported ${chain} RPC provider`,
+			);
+		}
+		selections.bsc = provider;
+		return;
+	}
+	const provider = normalizeWalletRpcProviderId("solana", providerToken);
+	if (!provider) {
+		throw new Error(
+			`${providerToken} is not a supported ${chain} RPC provider`,
+		);
+	}
+	selections.solana = provider;
+}
+
+function buildWalletRpcSelections(args: {
+	current: WalletRpcSelections;
+	keyName: string;
+	request: SettingsRequest;
+}): { selections: WalletRpcSelections; network: "mainnet" | "testnet" | null } {
+	const { current, keyName, request } = args;
+	const selections: WalletRpcSelections = { ...current };
+	const normalizedKey = keyName.trim().toLowerCase();
+	const explicitNetwork = normalizeWalletRpcNetwork(
+		request.network ?? (normalizedKey === "network" ? request.value : null),
+	);
+
+	if (
+		normalizedKey === "cloud" ||
+		normalizedKey === "managed" ||
+		normalizedKey === "eliza-cloud"
+	) {
+		return {
+			selections: {
+				evm: "eliza-cloud",
+				bsc: "eliza-cloud",
+				solana: "eliza-cloud",
+			},
+			network: explicitNetwork,
+		};
+	}
+
+	for (const chain of ["evm", "bsc", "solana"] as const) {
+		const providerToken = readWalletRpcProviderToken(request, keyName, chain);
+		if (!providerToken) continue;
+		applyWalletRpcProviderSelection(selections, chain, providerToken);
+	}
+
+	const chain = resolveWalletRpcChain(request.chain ?? keyName);
+	if (chain) {
+		const providerToken = readWalletRpcProviderToken(request, keyName, chain);
+		if (!providerToken) {
+			throw new Error(`provide provider=<id> or value=<id> for ${chain} RPC`);
+		}
+		applyWalletRpcProviderSelection(selections, chain, providerToken);
+	}
+
+	if (
+		!chain &&
+		!request.evm &&
+		!request.bsc &&
+		!request.solana &&
+		!explicitNetwork
+	) {
+		throw new Error(
+			"provide key=evm|bsc|solana value=<provider>, key=cloud, or key=network value=mainnet|testnet",
+		);
+	}
+
+	return { selections, network: explicitNetwork };
+}
+
+function describeWalletRpcSelections(selections: WalletRpcSelections): string {
+	return `EVM=${selections.evm}, BSC=${selections.bsc}, Solana=${selections.solana}`;
+}
+
+const WALLET_RPC_CONFIG_KEY: SettingsWritableKey = {
+	description:
+		"Select wallet RPC providers without exposing API keys. Use key=evm|bsc|solana value=<provider>, key=cloud, or key=network value=mainnet|testnet.",
+	valueType: "command",
+	apply: async ({ keyName, request, routeFetch }) => {
+		const current = await routeFetch({
+			method: "GET",
+			path: "/api/wallet/config",
+		});
+		if (!current.ok) return current;
+		if (!isWalletConfigStatus(current.data)) {
+			return {
+				ok: false,
+				detail: "wallet config route returned an invalid status",
+			};
+		}
+
+		let next: {
+			selections: WalletRpcSelections;
+			network: "mainnet" | "testnet" | null;
+		};
+		try {
+			next = buildWalletRpcSelections({
+				current: resolveInitialWalletRpcSelections(current.data),
+				keyName,
+				request,
+			});
+		} catch (error) {
+			return {
+				ok: false,
+				detail: error instanceof Error ? error.message : String(error),
+			};
+		}
+
+		const body = buildWalletRpcUpdateRequest({
+			walletConfig: current.data,
+			rpcFieldValues: {},
+			selectedProviders: next.selections,
+			...(next.network ? { selectedNetwork: next.network } : {}),
+		});
+		const updated = await routeFetch({
+			method: "PUT",
+			path: "/api/wallet/config",
+			body,
+		});
+		return updated.ok
+			? {
+					...updated,
+					data: {
+						selections: body.selections,
+						walletNetwork: body.walletNetwork,
+					},
+				}
+			: updated;
+	},
+	successText: (_value, _request, outcome) => {
+		const data = outcome.data as
+			| { selections?: WalletRpcSelections; walletNetwork?: string }
+			| undefined;
+		const selections = data?.selections
+			? describeWalletRpcSelections(data.selections)
+			: "wallet RPC providers";
+		const network = data?.walletNetwork ? ` on ${data.walletNetwork}` : "";
+		return `Updated ${selections}${network}. Manage provider credentials in Secrets/Vault if a selected provider requires one.`;
+	},
+};
+
 function readBackupFileName(data: unknown): string | null {
 	if (!data || typeof data !== "object") return null;
 	const backup = (data as { backup?: unknown }).backup;
@@ -762,10 +975,22 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 			"Remote plugin registration is a developer workflow without a stable single-value setting contract.",
 	},
 	"wallet-rpc": {
-		kind: "unwired",
-		reason:
-			"RPC endpoint configuration is a structured object; wallet keys are read-only from chat.",
-		trackingIssue: 14911,
+		kind: "route",
+		summary:
+			"Wallet RPC provider selection and mainnet/testnet mode through the wallet config route. Provider credentials stay out of chat.",
+		keys: {
+			cloud: WALLET_RPC_CONFIG_KEY,
+			managed: WALLET_RPC_CONFIG_KEY,
+			"eliza-cloud": WALLET_RPC_CONFIG_KEY,
+			evm: WALLET_RPC_CONFIG_KEY,
+			eth: WALLET_RPC_CONFIG_KEY,
+			ethereum: WALLET_RPC_CONFIG_KEY,
+			bsc: WALLET_RPC_CONFIG_KEY,
+			bnb: WALLET_RPC_CONFIG_KEY,
+			solana: WALLET_RPC_CONFIG_KEY,
+			sol: WALLET_RPC_CONFIG_KEY,
+			network: WALLET_RPC_CONFIG_KEY,
+		},
 	},
 	updates: {
 		kind: "unwired",
@@ -845,6 +1070,12 @@ export interface SettingsRequest {
 	app: string | null;
 	namespace: string | null;
 	permission: string | null;
+	provider: string | null;
+	chain: string | null;
+	network: string | null;
+	evm: string | null;
+	bsc: string | null;
+	solana: string | null;
 }
 
 const VERB_TOKENS: ReadonlyMap<string, SettingsVerb> = new Map([
@@ -885,6 +1116,12 @@ export function parseSettingsRequest(
 	const namespace = readStringOption(options, "namespace");
 	const permission =
 		readStringOption(options, "permission") ?? readStringOption(options, "id");
+	const provider = readStringOption(options, "provider");
+	const chain = readStringOption(options, "chain");
+	const network = readStringOption(options, "network");
+	const evm = readStringOption(options, "evm");
+	const bsc = readStringOption(options, "bsc");
+	const solana = readStringOption(options, "solana");
 
 	if (!verb) {
 		// A bare `section` with a `value` but no verb reads as an implicit `set`;
@@ -901,6 +1138,12 @@ export function parseSettingsRequest(
 			app,
 			namespace,
 			permission,
+			provider,
+			chain,
+			network,
+			evm,
+			bsc,
+			solana,
 		};
 	}
 	return {
@@ -913,6 +1156,12 @@ export function parseSettingsRequest(
 		app,
 		namespace,
 		permission,
+		provider,
+		chain,
+		network,
+		evm,
+		bsc,
+		solana,
 	};
 }
 
@@ -1026,6 +1275,9 @@ async function handleSet(
 	const requestedKeyName =
 		request.namespace ??
 		request.key ??
+		(request.sectionId === "wallet-rpc" && request.chain
+			? request.chain
+			: null) ??
 		(request.sectionId === "permissions" && request.permission
 			? "request"
 			: Object.keys(cap.keys)[0]);
@@ -1187,13 +1439,18 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			"CHANGE_UI_LANGUAGE",
 			"SET_UI_LANGUAGE",
 			"HOME_TIME_WIDGET",
+			"WALLET_RPC",
+			"WALLET_RPC_PROVIDER",
+			"SET_WALLET_RPC",
+			"CHANGE_WALLET_RPC",
+			"ELIZA_CLOUD_RPC",
 		],
 		description:
-			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, requesting OS permissions via section=permissions key=request permission=microphone|camera|location|notifications|screen-recording, changing appearance values via section=appearance key=theme|accent|language|home-time-widget, turning automatic training on/off via section=capabilities key=auto-training, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, and creating/restoring local agent backups via section=advanced key=create-backup|restore-backup. Restore requires fileName and confirm=true. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
+			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, requesting OS permissions via section=permissions key=request permission=microphone|camera|location|notifications|screen-recording, changing appearance values via section=appearance key=theme|accent|language|home-time-widget, turning automatic training on/off via section=capabilities key=auto-training, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, selecting wallet RPC providers via section=wallet-rpc key=evm|bsc|solana value=<provider> or key=cloud, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, and creating/restoring local agent backups via section=advanced key=create-backup|restore-backup. Restore requires fileName and confirm=true. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
 		descriptionCompressed:
-			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, OS permission requests, appearance, auto-training, app permissions, and local backups",
+			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, OS permission requests, appearance, auto-training, wallet RPC providers, app permissions, and local backups",
 		routingHint:
-			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'ask for microphone permission', 'request camera access', 'enable location permission', 'turn on notifications', 'request screen recording' -> SETTINGS section=permissions key=request permission=microphone|camera|location|notifications|screen-recording. 'switch to dark mode', 'use system theme', 'set the accent to green', 'change UI language to Spanish', 'hide/show the home time widget' -> SETTINGS section=appearance key=theme|accent|language|home-time-widget value=<value>. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/wallpaper is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, requesting an OS permission, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
+			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'ask for microphone permission', 'request camera access', 'enable location permission', 'turn on notifications', 'request screen recording' -> SETTINGS section=permissions key=request permission=microphone|camera|location|notifications|screen-recording. 'switch to dark mode', 'use system theme', 'set the accent to green', 'change UI language to Spanish', 'hide/show the home time widget' -> SETTINGS section=appearance key=theme|accent|language|home-time-widget value=<value>. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'use Alchemy for EVM RPC', 'set BSC RPC to NodeReal', 'use Helius for Solana RPC' -> SETTINGS section=wallet-rpc key=evm|bsc|solana value=alchemy|infura|ankr|nodereal|quicknode|helius-birdeye|eliza-cloud. 'use Eliza Cloud RPC' -> SETTINGS section=wallet-rpc key=cloud. 'switch wallet network to testnet' -> SETTINGS section=wallet-rpc key=network value=testnet. Never put wallet API keys or RPC URLs in SETTINGS; use CREDENTIALS/Secrets for those. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/wallpaper is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, requesting an OS permission, changing an appearance value, changing wallet RPC provider selection, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -1213,7 +1470,28 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			{
 				name: "key",
 				description:
-					"The specific toggle or operation within the section (e.g. theme, accent, language, home-time-widget, shell, auto-training, fs/net, create-backup, restore-backup). Optional; defaults to the section's primary key.",
+					"The specific toggle or operation within the section (e.g. theme, accent, language, home-time-widget, shell, auto-training, wallet-rpc evm/bsc/solana/cloud/network, fs/net, create-backup, restore-backup). Optional; defaults to the section's primary key.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "provider",
+				description:
+					"Wallet RPC provider when section=wallet-rpc and chain/key names evm, bsc, or solana. Do not pass API keys here.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "chain",
+				description:
+					"Wallet RPC chain when section=wallet-rpc; accepted aliases include evm/ethereum, bsc/bnb, and solana/sol.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "network",
+				description:
+					"Wallet network when section=wallet-rpc; accepted values are mainnet or testnet.",
 				required: false,
 				schema: { type: "string" },
 			},

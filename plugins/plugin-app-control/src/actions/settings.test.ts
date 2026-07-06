@@ -111,6 +111,12 @@ describe("parseSettingsRequest", () => {
 			app: null,
 			namespace: null,
 			permission: null,
+			provider: null,
+			chain: null,
+			network: null,
+			evm: null,
+			bsc: null,
+			solana: null,
 		});
 	});
 
@@ -183,6 +189,24 @@ describe("parseSettingsRequest", () => {
 			permission: "microphone",
 		});
 	});
+
+	it("reads wallet RPC provider options", () => {
+		expect(
+			parseSettingsRequest({
+				action: "set",
+				section: "wallet-rpc",
+				chain: "evm",
+				provider: "alchemy",
+				network: "testnet",
+			}),
+		).toMatchObject({
+			verb: "set",
+			sectionId: "wallet-rpc",
+			chain: "evm",
+			provider: "alchemy",
+			network: "testnet",
+		});
+	});
 });
 
 describe("registry completeness", () => {
@@ -227,8 +251,7 @@ describe("registry completeness", () => {
 			trackingIssue: 14910,
 		});
 		expect(SETTINGS_WRITE_REGISTRY["wallet-rpc"]).toMatchObject({
-			kind: "unwired",
-			trackingIssue: 14911,
+			kind: "route",
 		});
 		expect(SETTINGS_WRITE_REGISTRY.updates).toMatchObject({
 			kind: "unwired",
@@ -266,6 +289,8 @@ describe("SETTINGS action: list", () => {
 		expect(appearance).toMatchObject({ writable: true, via: "SETTINGS" });
 		const capabilities = sections.find((s) => s.id === "capabilities");
 		expect(capabilities).toMatchObject({ writable: true, via: "SETTINGS" });
+		const walletRpc = sections.find((s) => s.id === "wallet-rpc");
+		expect(walletRpc).toMatchObject({ writable: true, via: "SETTINGS" });
 		const advanced = sections.find((s) => s.id === "advanced");
 		expect(advanced).toMatchObject({ writable: true, via: "SETTINGS" });
 		const appPermissions = sections.find((s) => s.id === "app-permissions");
@@ -627,6 +652,213 @@ describe("SETTINGS action: set on an owned route section", () => {
 			body: { ui: { capabilities: { computerUse: false } } },
 		});
 		expect(result?.success).toBe(true);
+	});
+
+	it("updates one wallet RPC provider through the wallet config route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						selectedRpcProviders: {
+							evm: "eliza-cloud",
+							bsc: "eliza-cloud",
+							solana: "eliza-cloud",
+						},
+						walletNetwork: "mainnet",
+						legacyCustomChains: [],
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				key: "evm",
+				value: "alchemy",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(1, {
+			method: "GET",
+			path: "/api/wallet/config",
+		});
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: {
+				selections: {
+					evm: "alchemy",
+					bsc: "eliza-cloud",
+					solana: "eliza-cloud",
+				},
+				walletNetwork: "mainnet",
+				credentials: {},
+			},
+		});
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "wallet-rpc",
+			key: "evm",
+		});
+		expect(texts.join(" ")).toContain("EVM=alchemy");
+		expect(texts.join(" ")).toContain("Secrets/Vault");
+	});
+
+	it("switches all wallet RPC providers to Eliza Cloud without exposing secrets", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						selectedRpcProviders: {
+							evm: "alchemy",
+							bsc: "nodereal",
+							solana: "helius-birdeye",
+						},
+						walletNetwork: "mainnet",
+						legacyCustomChains: ["evm"],
+						alchemyKeySet: true,
+						nodeRealBscRpcSet: true,
+						heliusKeySet: true,
+						birdeyeKeySet: true,
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result } = await invoke(
+			{ action: "set", section: "wallet-rpc", key: "cloud" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: expect.objectContaining({
+				selections: {
+					evm: "eliza-cloud",
+					bsc: "eliza-cloud",
+					solana: "eliza-cloud",
+				},
+				walletNetwork: "mainnet",
+				credentials: expect.objectContaining({
+					ALCHEMY_API_KEY: "",
+					NODEREAL_BSC_RPC_URL: "",
+					HELIUS_API_KEY: "",
+					BIRDEYE_API_KEY: "",
+				}),
+			}),
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("changes wallet network mode while preserving current RPC selections", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						selectedRpcProviders: {
+							evm: "infura",
+							bsc: "ankr",
+							solana: "eliza-cloud",
+						},
+						walletNetwork: "mainnet",
+						legacyCustomChains: [],
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				key: "network",
+				value: "testnet",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: {
+				selections: {
+					evm: "infura",
+					bsc: "ankr",
+					solana: "eliza-cloud",
+				},
+				walletNetwork: "testnet",
+				credentials: {},
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("rejects invalid wallet RPC providers before writing", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						selectedRpcProviders: {
+							evm: "eliza-cloud",
+							bsc: "eliza-cloud",
+							solana: "eliza-cloud",
+						},
+						walletNetwork: "mainnet",
+						legacyCustomChains: [],
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				key: "evm",
+				value: "nodereal",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledTimes(1);
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("not a supported evm RPC provider");
+	});
+
+	it("surfaces wallet RPC backend failures instead of fabricating success", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						selectedRpcProviders: {
+							evm: "eliza-cloud",
+							bsc: "eliza-cloud",
+							solana: "eliza-cloud",
+						},
+						walletNetwork: "mainnet",
+						legacyCustomChains: [],
+					},
+				};
+			}
+			return { ok: false, detail: "wallet config save failed" };
+		});
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				key: "solana",
+				value: "helius",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledTimes(2);
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("wallet config save failed");
 	});
 
 	it("surfaces a backend failure instead of fabricating success", async () => {
