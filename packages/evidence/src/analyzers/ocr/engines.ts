@@ -47,6 +47,20 @@ export interface OcrEngine {
   recognize(imagePath: string): Promise<OcrRecognition>;
 }
 
+type FetchLike = (
+  input: URL,
+  init: {
+    method: string;
+    headers?: Record<string, string>;
+    body?: string;
+    signal?: AbortSignal;
+  },
+) => Promise<{
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+}>;
+
 /**
  * Tesseract CLI engine — the exact invocation ported from visual-qa.mjs
  * (`tesseract <img> - --psm 6`). `ELIZA_TESSERACT_BIN` overrides the binary,
@@ -198,19 +212,19 @@ export class UnlimitedOcrEngine implements OcrEngine {
   readonly id = "unlimited";
   private readonly baseUrl: string | undefined;
   private readonly model: string;
-  private readonly fetchImpl: typeof fetch;
+  private readonly fetchImpl: FetchLike;
 
   constructor(
     options: {
       baseUrl?: string;
       model?: string;
-      fetchImpl?: typeof fetch;
+      fetchImpl?: FetchLike;
     } = {},
   ) {
     this.baseUrl = options.baseUrl ?? process.env.ELIZA_GPU_VISION_URL;
     this.model =
       options.model ?? process.env.ELIZA_GPU_VISION_MODEL ?? "unlimited-ocr";
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl = options.fetchImpl ?? (fetch as unknown as FetchLike);
   }
 
   async available(): Promise<OcrAvailable | OcrUnavailable> {
