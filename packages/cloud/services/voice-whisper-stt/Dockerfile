@@ -18,8 +18,11 @@
 # Pin: Speaches publishes CPU/CUDA variants under ghcr.io/speaches-ai/speaches.
 # CPU is the Railway default (free tier has no GPU); override WHISPER_IMAGE at
 # build time for a CUDA variant on a GPU-backed plan. Bump the tag deliberately —
-# an unpinned :latest is exactly the drift this issue removes.
-ARG WHISPER_IMAGE=ghcr.io/speaches-ai/speaches:0.6.5-cpu
+# an unpinned :latest is exactly the drift this issue removes. The tag must be a
+# real published manifest AND still expose the contract below (0.8.x keeps
+# POST /v1/audio/transcriptions with multipart field `file` and GET /health);
+# verify the ghcr manifest exists before bumping.
+ARG WHISPER_IMAGE=ghcr.io/speaches-ai/speaches:0.8.2-cpu
 
 FROM ${WHISPER_IMAGE}
 

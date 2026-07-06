@@ -36,7 +36,7 @@ CUDA variant on a GPU-backed plan:
 
 ```bash
 railway up --service whisper-stt \
-  --build-arg WHISPER_IMAGE=ghcr.io/speaches-ai/speaches:0.6.5-cuda
+  --build-arg WHISPER_IMAGE=ghcr.io/speaches-ai/speaches:0.8.2-cuda
 ```
 
 ## Scheduled live contract lane

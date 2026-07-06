@@ -36,12 +36,19 @@ const SERVICES = [
     contractPath: "/api/tts",
     deployCmd: "railway up --service kokoro-tts",
     urlVar: "ELIZA_VOICE_KOKORO_TTS_URL",
+    // Exact `FROM` tag the Dockerfile ARG defaults to. Pinned to a manifest that
+    // is verified to exist on ghcr — a bad tag (`railway up` fails at FROM) is
+    // caught here instead of only at deploy. Re-verify the manifest before bumping.
+    imageTag: "ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.2",
   },
   {
     dir: "packages/cloud/services/voice-whisper-stt",
     contractPath: "/v1/audio/transcriptions",
     deployCmd: "railway up --service whisper-stt",
     urlVar: "ELIZA_VOICE_WHISPER_STT_URL",
+    // 0.8.2-cpu is a real ghcr manifest that still serves the transcription +
+    // /health contract; the prior 0.6.5-cpu was a 404 (`railway up` died at FROM).
+    imageTag: "ghcr.io/speaches-ai/speaches:0.8.2-cpu",
   },
 ] as const;
 
@@ -65,6 +72,10 @@ describe("Railway voice service definitions (#14374)", () => {
         const argImage = dockerfile.match(/^ARG\s+\w*IMAGE=(\S+)/m)?.[1] ?? "";
         expect(argImage).toMatch(/:[^:@\s]+$/);
         expect(argImage).not.toMatch(/:latest$/);
+        // Pin the exact tag: a version that is present-but-nonexistent-on-ghcr
+        // (the 0.6.5-cpu 404 that made `railway up` fail at FROM) passes the
+        // generic "has a tag" checks above, so assert the manifest-verified tag.
+        expect(argImage).toBe(svc.imageTag);
       });
 
       test("ships a valid railway.toml (Dockerfile builder + /health)", () => {
