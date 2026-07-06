@@ -73,6 +73,15 @@ export {
 	parsePiiSwapList,
 } from "./pii-pseudonymizer.js";
 export {
+	assertValidScrubResult,
+	PiiScrubFabricationError,
+	type ScrubEscalationRequest,
+	type ScrubEscalationResult,
+	type ScrubResultAssertionOptions,
+	scrubWithEscalation,
+	type Tier0Span,
+} from "./pii-scrub-seam.js";
+export {
 	createSecretsRedactor,
 	// Pattern-based redaction
 	getDefaultRedactPatterns,

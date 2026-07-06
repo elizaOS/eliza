@@ -78,6 +78,18 @@ export const ModelType = {
 	 * {@link ModelType.TEXT_EMBEDDING} when a provider does not register it.
 	 */
 	TEXT_EMBEDDING_BATCH: "TEXT_EMBEDDING_BATCH",
+	/**
+	 * Context-aware PII classification + rewrite for the corpus scrub pipeline
+	 * (`[pii] PII_SCRUB model-type seam`). One call-site, two interchangeable
+	 * lanes: an on-device privacy-filter GGUF (default — data never leaves the
+	 * device) and Eliza Cloud (bulk/Cerebras), selected by registration priority
+	 * exactly like {@link ModelType.TEXT_EMBEDDING}. This is the ESCALATION tier
+	 * above the free deterministic detectors ({@link ModelParamsMap} entry
+	 * documents the contract) — never a replacement for them. The typed result
+	 * ({@link PiiScrubResult}) structurally bans fake-clean fabrication: a handler
+	 * that cannot decide MUST throw, never emit a "clean" verdict.
+	 */
+	PII_SCRUB: "PII_SCRUB",
 	TEXT_TOKENIZER_ENCODE: "TEXT_TOKENIZER_ENCODE",
 	TEXT_TOKENIZER_DECODE: "TEXT_TOKENIZER_DECODE",
 	TEXT_REASONING_SMALL: "REASONING_SMALL",
@@ -903,6 +915,107 @@ export interface BatchTextEmbeddingParams {
 }
 
 /**
+ * A single pseudonym assignment slice handed to a {@link ModelType.PII_SCRUB}
+ * call: one real-entity cluster mapped to its stable session surrogate. The
+ * scrub call-site passes ONLY the assignments relevant to the current chunk
+ * (`the cluster→pseudonym slice relevant to this chunk`), never the whole secret
+ * map — a model must never receive the full mapping table (it is a secret
+ * artifact). The `value` is the real value; it is present because the LLM-pass
+ * needs it to reason coherently over the chunk, but it is scoped to what this
+ * chunk already contains.
+ */
+export interface PiiPseudonymAssignment {
+	/** Stable id of the entity cluster this assignment covers. */
+	readonly entityClusterId: string;
+	/** The realistic surrogate the model should use in its rewrite. */
+	readonly surrogate: string;
+	/** Entity class (`person`, `org`, `location`, …). */
+	readonly kind: string;
+}
+
+/**
+ * Parameters for the {@link ModelType.PII_SCRUB} escalation call — context-aware
+ * PII classification + rewrite for candidates the deterministic tier-0 detectors
+ * could not decide. This is the ESCALATION tier, not a replacement for tier-0:
+ * the pipeline always runs the free deterministic detectors first and only calls
+ * this seam for the residue.
+ */
+export interface PiiScrubParams {
+	/** The chunk of text to classify / rewrite. */
+	text: string;
+	/**
+	 * Optional retrieval context that helps the model disambiguate borderline
+	 * candidates (surrounding messages, thread summary). Never the secret
+	 * mapping table.
+	 */
+	contextPack?: string;
+	/**
+	 * The cluster→surrogate slice relevant to THIS chunk only — never the whole
+	 * corpus secret map. Lets the model rewrite consistently with the corpus-wide
+	 * pseudonym assignment without ever seeing the full vault.
+	 */
+	pseudonymAssignments?: readonly PiiPseudonymAssignment[];
+	/**
+	 * The active ruleset version. Threaded through so the result is
+	 * content-addressable (`pii:<sha256(content)>:v<rulesetVersion>`) and a
+	 * ruleset bump re-scrubs deterministically.
+	 */
+	rulesetVersion: string;
+	/**
+	 * Scheduling priority on single-lane local backends. The scrub is deferred
+	 * autonomous work, so this is `"background"` — it must never queue ahead of
+	 * an interactive turn. Cloud adapters ignore it.
+	 */
+	priority?: LocalInferencePriority;
+	/** Per-request cancellation, forwarded to the underlying transport. */
+	signal?: AbortSignal;
+}
+
+/**
+ * The kind of decision a {@link PiiScrubVerdict} carries for one span.
+ * - `pii`: the span is sensitive and must be replaced with `replacement`.
+ * - `safe`: the model positively judged the span non-sensitive (an explicit,
+ *   auditable "I looked and it is clean" — NOT the absence of a verdict).
+ */
+export type PiiScrubVerdictKind = "pii" | "safe";
+
+/**
+ * One model verdict over a single candidate span. A `pii` verdict MUST carry a
+ * `replacement`; a `safe` verdict is an explicit positive judgment. There is no
+ * "unknown" verdict kind on purpose: a model that cannot decide throws (see the
+ * error doctrine on {@link ModelResultMap}), it never fabricates a `safe`.
+ */
+export interface PiiScrubVerdict {
+	/** The exact candidate substring this verdict is about. */
+	readonly span: string;
+	/** Whether the span is PII (replace) or positively judged safe (keep). */
+	readonly kind: PiiScrubVerdictKind;
+	/** Optional link back to the pseudonym cluster this span belongs to. */
+	readonly entityClusterId?: string;
+	/**
+	 * The surrogate to substitute when `kind === "pii"`. Required for `pii`
+	 * verdicts, absent for `safe`. Enforced structurally by
+	 * {@link assertValidScrubResult}.
+	 */
+	readonly replacement?: string;
+}
+
+/**
+ * Typed result of a {@link ModelType.PII_SCRUB} call. The shape structurally
+ * bans fake-clean fabrication: a handler NEVER returns an empty/absent result
+ * to mean "clean" — it either returns explicit per-span verdicts or throws.
+ * `modelId` + `rulesetVersion` make the verdict auditable and content-addressable.
+ */
+export interface PiiScrubResult {
+	/** One verdict per candidate span the model was asked to judge. */
+	readonly verdicts: readonly PiiScrubVerdict[];
+	/** Provider model id that produced these verdicts (audit trail). */
+	readonly modelId: string;
+	/** The ruleset version this scrub was performed under. */
+	readonly rulesetVersion: string;
+}
+
+/**
  * Parameters for image generation models
  */
 export interface ImageGenerationParams {
@@ -1298,6 +1411,7 @@ export interface ModelParamsMap {
 	[ModelType.TEXT_REASONING_LARGE]: GenerateTextParams;
 	[ModelType.TEXT_EMBEDDING]: TextEmbeddingParams | string | null;
 	[ModelType.TEXT_EMBEDDING_BATCH]: BatchTextEmbeddingParams;
+	[ModelType.PII_SCRUB]: PiiScrubParams;
 	[ModelType.TEXT_TOKENIZER_ENCODE]: TokenizeTextParams;
 	[ModelType.TEXT_TOKENIZER_DECODE]: DetokenizeTextParams;
 	[ModelType.IMAGE]: ImageGenerationParams;
@@ -1333,6 +1447,7 @@ export interface ModelResultMap {
 	[ModelType.TEXT_REASONING_LARGE]: string;
 	[ModelType.TEXT_EMBEDDING]: number[];
 	[ModelType.TEXT_EMBEDDING_BATCH]: number[][];
+	[ModelType.PII_SCRUB]: PiiScrubResult;
 	[ModelType.TEXT_TOKENIZER_ENCODE]: number[];
 	[ModelType.TEXT_TOKENIZER_DECODE]: string;
 	[ModelType.IMAGE]: ImageGenerationResult[];
