@@ -385,6 +385,63 @@ describe("voice-session WAV GC protection (data-loss regression)", () => {
   });
 });
 
+describe("MEDIA_GC task end-to-end (real runtime sweep)", () => {
+  function mediaPath(fileName: string): string {
+    return path.join(stateDir, "media", fileName);
+  }
+
+  it("retains transcripts-partition audio through the registered worker and the real getAllMemories sweep", async () => {
+    // Drives the actual production pipe — registered MEDIA_GC worker →
+    // AgentRuntime.getAllMemories partition sweep → collector → store GC —
+    // with only the DB adapter stubbed. This is the path #14751 broke: the
+    // sweep did not include the "transcripts" partition, so the collector
+    // never saw the row and the WAV was deleted after the grace window.
+    const { AgentRuntime } = await import("@elizaos/core");
+    const { registerMediaGcTask } = await import("./media-runtime.ts");
+    type Character = import("@elizaos/core").Character;
+    type IDatabaseAdapter = import("@elizaos/core").IDatabaseAdapter;
+    type Task = import("@elizaos/core").Task;
+
+    const audio = persistMediaBytes(
+      Buffer.from("real-task-path-transcript-audio"),
+      "audio/wav",
+    );
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    fs.utimesSync(mediaPath(audio.fileName), old, old);
+
+    let transcriptRows: Memory[] = [
+      {
+        content: {
+          transcript: JSON.stringify({ id: "t-real", audioUrl: audio.url }),
+        },
+        metadata: { type: "custom", source: "transcript" },
+      } as unknown as Memory,
+    ];
+
+    const runtime = new AgentRuntime({
+      character: { name: "media-gc-task-test" } as Character,
+    });
+    runtime.registerDatabaseAdapter({
+      getMemories: async (params: { tableName: string }) =>
+        params.tableName === "transcripts" ? transcriptRows : [],
+    } as unknown as IDatabaseAdapter);
+
+    registerMediaGcTask(runtime);
+    const worker = runtime.getTaskWorker("MEDIA_GC");
+    expect(worker).toBeDefined();
+
+    await worker?.execute(runtime, {}, undefined as unknown as Task);
+    expect(fs.existsSync(mediaPath(audio.fileName))).toBe(true);
+
+    // Row deleted → next sweep must collect the orphan. If the sweep had
+    // silently failed above (worker catches + warns), this removal assertion
+    // would fail, so the pair cannot pass vacuously.
+    transcriptRows = [];
+    await worker?.execute(runtime, {}, undefined as unknown as Task);
+    expect(fs.existsSync(mediaPath(audio.fileName))).toBe(false);
+  });
+});
+
 describe("transcript audio GC protection (data-loss regression)", () => {
   function mediaPath(fileName: string): string {
     return path.join(stateDir, "media", fileName);

@@ -8991,7 +8991,20 @@ ${section_end}`;
 		});
 	}
 	async getAllMemories(): Promise<Memory[]> {
-		const tables = ["memories", "messages", "facts", "documents"];
+		// Every partition the platform writes memory rows into. This list is a
+		// load-bearing contract: the media GC builds its referenced-set from it
+		// (packages/agent media-runtime), so a partition missing here makes that
+		// partition's media references invisible to the sweep and its files get
+		// deleted after the grace window — "transcripts" rows anchor retained
+		// recordings via the audioUrl inside content.transcript (#14751). It also
+		// bounds clearAllAgentMemories: an unlisted partition survives a wipe.
+		const tables = [
+			"memories",
+			"messages",
+			"facts",
+			"documents",
+			"transcripts",
+		];
 		const allMemories: Memory[] = [];
 
 		for (const tableName of tables) {
