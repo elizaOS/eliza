@@ -62,6 +62,14 @@ export interface PromotionArtifactInput {
     notes?: string;
   }>;
   fewShotExamples?: PromotionFewShotExample[];
+  frontier?: Array<{
+    prompt: string;
+    score: number;
+    promptTokenCount: number;
+    origin: string;
+    feedback?: string;
+  }>;
+  promotionDecision?: Record<string, unknown>;
 }
 
 export interface PromotionServiceLike {
@@ -212,6 +220,22 @@ export async function gatedPersistNativeResult(
     generatedAt,
     lineage: input.result.result.lineage,
     fewShotExamples: input.result.result.fewShotExamples,
+    frontier: input.result.result.frontier,
+    promotionDecision: {
+      promote: decision.promote,
+      incumbentMeanScore: decision.incumbentMeanScore,
+      incumbentStdDev: decision.incumbentStdDev,
+      candidateScore: decision.candidateScore,
+      delta: decision.delta,
+      promotionMargin: decision.promotionMargin,
+      noiseThreshold: decision.noiseThreshold,
+      incumbentReseeds: decision.incumbentReseeds,
+      examplesPerPass: decision.examplesPerPass,
+      reason: decision.reason,
+      incumbentScores: decision.incumbentScores,
+      incumbentSource,
+      gateSource,
+    },
   });
   notes.push(`artifact written to ${writePath}`);
 

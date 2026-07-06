@@ -98,6 +98,13 @@ describe("runGepa", () => {
     expect(result.baseline).toBe(0);
     expect(result.score).toBeGreaterThan(result.baseline);
     expect(result.optimizedPrompt).toContain("GOOD");
+    expect(result.frontier?.length).toBeGreaterThan(0);
+    expect(
+      result.frontier?.some((entry) => entry.prompt === result.optimizedPrompt),
+    ).toBe(true);
+    expect(result.frontier?.every((entry) => entry.promptTokenCount > 0)).toBe(
+      true,
+    );
   });
 
   it("records lineage with feedback excerpts", async () => {

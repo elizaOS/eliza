@@ -155,6 +155,14 @@ export interface OptimizedPromptLineageEntry {
 	notes?: string;
 }
 
+export interface OptimizedPromptFrontierEntry {
+	prompt: string;
+	score: number;
+	promptTokenCount: number;
+	origin: string;
+	feedback?: string;
+}
+
 export interface OptimizedPromptArtifact {
 	task: OptimizedPromptTask;
 	optimizer: OptimizerName;
@@ -167,6 +175,8 @@ export interface OptimizedPromptArtifact {
 	generatedAt: string;
 	fewShotExamples?: OptimizedPromptFewShotExample[];
 	lineage: OptimizedPromptLineageEntry[];
+	frontier?: OptimizedPromptFrontierEntry[];
+	promotionDecision?: Record<string, unknown>;
 }
 
 export interface OptimizedPromptResolved {
@@ -368,6 +378,11 @@ export function parseOptimizedPromptArtifact(
 	)
 		? coerceFewShot(raw.fewShotExamples)
 		: undefined;
+	const frontier: OptimizedPromptFrontierEntry[] | undefined = Array.isArray(
+		raw.frontier,
+	)
+		? coerceFrontier(raw.frontier)
+		: undefined;
 	return {
 		task: raw.task,
 		optimizer: raw.optimizer,
@@ -380,7 +395,36 @@ export function parseOptimizedPromptArtifact(
 		generatedAt: raw.generatedAt,
 		lineage,
 		fewShotExamples: fewShot,
+		frontier,
+		promotionDecision: isStringRecord(raw.promotionDecision)
+			? raw.promotionDecision
+			: undefined,
 	};
+}
+
+function coerceFrontier(
+	value: unknown[],
+): OptimizedPromptFrontierEntry[] | undefined {
+	const out: OptimizedPromptFrontierEntry[] = [];
+	for (const entry of value) {
+		if (!isStringRecord(entry)) continue;
+		if (
+			typeof entry.prompt !== "string" ||
+			typeof entry.score !== "number" ||
+			typeof entry.promptTokenCount !== "number" ||
+			typeof entry.origin !== "string"
+		) {
+			continue;
+		}
+		out.push({
+			prompt: entry.prompt,
+			score: entry.score,
+			promptTokenCount: entry.promptTokenCount,
+			origin: entry.origin,
+			feedback: typeof entry.feedback === "string" ? entry.feedback : undefined,
+		});
+	}
+	return out.length > 0 ? out : undefined;
 }
 
 function coerceFewShot(

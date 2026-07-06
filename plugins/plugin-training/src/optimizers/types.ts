@@ -83,12 +83,22 @@ export interface OptimizerLineageEntry {
   notes?: string;
 }
 
+export interface OptimizerFrontierEntry {
+  prompt: string;
+  score: number;
+  promptTokenCount: number;
+  origin: string;
+  feedback?: string;
+}
+
 /** Common shape returned by all native optimizers. */
 export interface OptimizerResult {
   optimizedPrompt: string;
   score: number;
   baseline: number;
   lineage: OptimizerLineageEntry[];
+  /** Final non-dominated quality-vs-token frontier, when the optimizer tracks one. */
+  frontier?: OptimizerFrontierEntry[];
   /** Demonstrations injected into the prompt (bootstrap-fewshot only). */
   fewShotExamples?: OptimizationExample[];
 }
@@ -119,4 +129,6 @@ export interface OptimizedPromptArtifact {
   generatedAt: string;
   fewShotExamples?: OptimizationExample[];
   lineage: OptimizerLineageEntry[];
+  frontier?: OptimizerFrontierEntry[];
+  promotionDecision?: Record<string, unknown>;
 }

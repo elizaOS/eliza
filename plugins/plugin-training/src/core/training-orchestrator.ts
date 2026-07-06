@@ -25,6 +25,10 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Trajectory } from "@elizaos/agent";
 import {
+  type OptimizationRunReport,
+  writeOptimizationRunReport,
+} from "./optimization-report.js";
+import {
   type AnonymizerLookup,
   applyPrivacyFilter,
   type FilterableTrajectory,
@@ -106,6 +110,9 @@ export interface TriggerTrainingResult {
   startedAt: string;
   finishedAt: string;
   artifactPath?: string;
+  reportJsonPath?: string;
+  reportHtmlPath?: string;
+  report?: Pick<OptimizationRunReport, "schema" | "version" | "headline">;
 }
 
 export interface TrainingRunRecord extends TriggerTrainingResult {
@@ -747,8 +754,19 @@ export async function loadBaselineForTask(
 export async function recordRun(record: TrainingRunRecord): Promise<string> {
   const dir = runsDir();
   await mkdir(dir, { recursive: true });
+  const reportResult = await writeOptimizationRunReport(record);
+  const enriched: TrainingRunRecord = {
+    ...record,
+    reportJsonPath: reportResult.reportJsonPath,
+    reportHtmlPath: reportResult.reportHtmlPath,
+    report: {
+      schema: reportResult.report.schema,
+      version: reportResult.report.version,
+      headline: reportResult.report.headline,
+    },
+  };
   const path = join(dir, `${record.runId}.json`);
-  await writeFile(path, `${JSON.stringify(record, null, 2)}\n`, "utf-8");
+  await writeFile(path, `${JSON.stringify(enriched, null, 2)}\n`, "utf-8");
   return path;
 }
 

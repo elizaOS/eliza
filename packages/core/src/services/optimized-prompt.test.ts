@@ -32,6 +32,7 @@ import {
 	type OptimizedPromptArtifact,
 	OptimizedPromptService,
 	parseDisabledTasksEnv,
+	parseOptimizedPromptArtifact,
 } from "./optimized-prompt";
 
 /**
@@ -109,6 +110,40 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		expect(readlinkSync(join(dir, OPTIMIZED_PROMPT_PREVIOUS2_LINK))).toBe(
 			"v1.json",
 		);
+	});
+
+	it("strict parser preserves optional optimization report metadata", () => {
+		const parsed = parseOptimizedPromptArtifact({
+			...makeArtifact(1),
+			frontier: [
+				{
+					prompt: "optimized prompt v1",
+					score: 0.7,
+					promptTokenCount: 42,
+					origin: "feedback-mut",
+					feedback: "tighten the planner contract",
+				},
+			],
+			promotionDecision: {
+				promote: true,
+				delta: 0.2,
+				incumbentScores: [0.5, 0.5, 0.5],
+			},
+		});
+
+		expect(parsed?.frontier).toEqual([
+			{
+				prompt: "optimized prompt v1",
+				score: 0.7,
+				promptTokenCount: 42,
+				origin: "feedback-mut",
+				feedback: "tighten the planner contract",
+			},
+		]);
+		expect(parsed?.promotionDecision).toMatchObject({
+			promote: true,
+			delta: 0.2,
+		});
 	});
 
 	it("retains the most recent OPTIMIZED_PROMPT_RETAIN_VERSIONS artifacts", async () => {
