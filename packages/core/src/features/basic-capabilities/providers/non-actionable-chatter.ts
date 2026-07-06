@@ -1,30 +1,14 @@
 /**
- * Text heuristics that classify an inbound user message as non-actionable
- * chatter (idle small talk, venting, open-ended advice-seeking) or as a one-off
- * relationship follow-up reminder. The PROVIDERS and ACTIONS providers consume
- * these to suppress the full provider/action catalog for such messages — only
- * GENERIC_CHAT_ACTIONS survive (plus follow-up-capable actions for reminders) —
- * so the model isn't prompted to act on pure chatter. Matching runs over
- * normalized user message text.
+ * Text heuristic for one-off relationship follow-up reminders. The ACTIONS
+ * provider uses this to keep follow-up-capable actions visible when a user gives
+ * an informal reminder-like instruction without scheduling language broad
+ * enough to warrant the whole catalog. Matching runs over normalized user text.
  */
 import type { Memory } from "../../../types/index.ts";
 import { normalizeUserMessageText } from "../../../utils/message-text.ts";
 
 export function normalizeMessageText(message: Memory): string {
 	return normalizeUserMessageText(message);
-}
-
-export function looksLikeNonActionableChatter(message: Memory): boolean {
-	const text = normalizeMessageText(message);
-	return (
-		/\bi hate\b.*\b(email|gmail|inbox|mail)\b/.test(text) ||
-		/^my calendar has been\b/.test(text) ||
-		(/\b(any )?(tips|advice|suggestions?)\b/.test(text) &&
-			/\bgoals?\b/.test(text)) ||
-		/\bi think i spend\b.*\btoo much time\b.*\b(phone|screen)\b/.test(text) ||
-		/^do you think blocking websites\b/.test(text) ||
-		/^should i call .*\bor just email\b/.test(text)
-	);
 }
 
 export function looksLikeRelationshipFollowUpReminder(

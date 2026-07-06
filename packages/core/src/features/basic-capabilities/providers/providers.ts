@@ -22,7 +22,6 @@ import {
 	shouldIncludeByContext,
 } from "../../../utils/context-routing.ts";
 import { compressPromptDescription } from "../../../utils/prompt-compression.ts";
-import { looksLikeNonActionableChatter } from "./non-actionable-chatter.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("PROVIDERS");
@@ -45,10 +44,7 @@ export const providersProvider: Provider = {
 		const activeContexts = getActiveRoutingContextsForTurn(state, message);
 		const isInContext = (provider: Provider) =>
 			shouldIncludeByContext(resolveProviderContexts(provider), activeContexts);
-		const contextFilteredProviders = allProviders.filter(isInContext);
-		const visibleProviders = looksLikeNonActionableChatter(message)
-			? []
-			: contextFilteredProviders;
+		const visibleProviders = allProviders.filter(isInContext);
 		const selectionHints = [
 			"images, attachments, or visual content -> ATTACHMENTS",
 			"uploaded files or stored documents -> DOCUMENTS",

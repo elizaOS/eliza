@@ -4,11 +4,11 @@
  *
  * For each registered action it runs the action's `validate` against the
  * message plus the connector account-policy check, then keeps only survivors
- * whose contexts match the turn's active routing contexts. Non-actionable
- * chatter and relationship follow-up reminders narrow the visible set down to
- * generic chat actions (or follow-up-capable ones); grouped actions are
- * collapsed for main chat and re-expanded — with their subactions and dynamic
- * providers — when their context is engaged.
+ * whose contexts match the turn's active routing contexts. Relationship
+ * follow-up reminders narrow the visible set down to generic chat actions plus
+ * follow-up-capable actions; grouped actions are collapsed for main chat and
+ * re-expanded — with their subactions and dynamic providers — when their
+ * context is engaged.
  *
  * The result surfaces `actionNames`, `actionsWithDescriptions`, and a
  * `# Context Capabilities` block, and stashes the capability metadata under
@@ -43,10 +43,7 @@ import {
 } from "../../../utils/context-routing.ts";
 import { buildDeterministicSeed } from "../../../utils/deterministic";
 import { compressPromptDescription } from "../../../utils/prompt-compression.ts";
-import {
-	looksLikeNonActionableChatter,
-	looksLikeRelationshipFollowUpReminder,
-} from "./non-actionable-chatter.ts";
+import { looksLikeRelationshipFollowUpReminder } from "./non-actionable-chatter.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ACTIONS");
@@ -370,7 +367,6 @@ export const actionsProvider: Provider = {
 
 		const resolvedActions = await Promise.all(actionPromises);
 
-		const nonActionableChatter = looksLikeNonActionableChatter(message);
 		const relationshipFollowUpReminder =
 			looksLikeRelationshipFollowUpReminder(message);
 		const availableActions = resolvedActions.filter(Boolean) as Action[];
@@ -378,9 +374,6 @@ export const actionsProvider: Provider = {
 			isFollowUpCapableAction,
 		);
 		const visibleActions = availableActions.filter((action) => {
-			if (nonActionableChatter && !GENERIC_CHAT_ACTIONS.has(action.name)) {
-				return false;
-			}
 			if (
 				relationshipFollowUpReminder &&
 				hasContactFollowUpAction &&
