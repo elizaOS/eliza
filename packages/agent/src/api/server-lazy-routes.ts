@@ -429,8 +429,8 @@ export async function handleMobileOptionalRoutes(
     typeof pathname !== "string" ||
     !(
       pathname.startsWith("/api/local-inference") ||
-      pathname === "/api/tts/local-inference" ||
-      pathname === "/api/asr/local-inference" ||
+      pathname.startsWith("/api/tts/local-inference") ||
+      pathname.startsWith("/api/asr/local-inference") ||
       pathname.startsWith("/api/mobile") ||
       pathname === "/api/runtime/mode" ||
       pathname.startsWith("/api/computer-use/") ||
