@@ -12,7 +12,7 @@ skip rules when credentials/devices are absent. Fill the **Result** columns in a
 copy under the local scratch dir `reports/lifeops-live-validation/<session>/`
 (gitignored — evidence is never committed to the repo) and attach the redacted
 screenshots / logs **inline in the PR/issue** per
-[`PR_EVIDENCE.md`](../../../PR_EVIDENCE.md) (MP4 video, JPG screenshots, logs in
+[`CONTRIBUTING.md`](../../../CONTRIBUTING.md) (MP4 video, JPG screenshots, logs in
 a `<details>` block).
 
 ## How to run a live session
