@@ -14,6 +14,7 @@ import {
   scrubStateRank,
 } from "../schema.ts";
 import { findCorpusShardFiles, readCorpusShard } from "../validator.ts";
+import { minePiiCandidates, writeMineArtifacts } from "./mine.ts";
 
 export const SCRUB_STAGE_NAMES = [
   "mine",
@@ -41,6 +42,7 @@ export interface ScrubStageContext {
 export interface ScrubStageResult {
   message?: CorpusMessage;
   tombstone?: boolean;
+  metadata?: Record<string, unknown>;
   cost?: {
     inputTokens?: number;
     outputTokens?: number;
@@ -102,6 +104,7 @@ export interface ScrubStageReport {
   inputTokens: number;
   outputTokens: number;
   estimatedUsd: number;
+  candidateCount?: number;
 }
 
 export interface ScrubRunReport {
@@ -126,6 +129,11 @@ export interface ScrubRunReport {
   };
   outputPath?: string;
   reportPath?: string;
+  mineArtifacts?: {
+    candidatesPath: string;
+    frequencyPath: string;
+    reviewCsvPath: string;
+  };
 }
 
 interface LedgerState {
@@ -307,15 +315,27 @@ function defaultStage(stage: ScrubStageName): ScrubStageDefinition {
     name: stage,
     version: "1",
     targetState,
-    run(message, context) {
+    async run(message, context) {
       assertScrubStateTransition(message.scrubState, targetState);
       const next = stableCloneMessage(message);
       next.scrubState = targetState;
+      const mined =
+        stage === "mine"
+          ? await minePiiCandidates([message], {
+              hashSalt: context.rulesetVersion,
+            })
+          : undefined;
       const isLlmExemplar =
         stage === "llm" &&
         (context.mode === "deep" || context.isClusterExemplar);
       return {
         message: next,
+        metadata:
+          mined === undefined
+            ? undefined
+            : {
+                candidateCount: mined.candidates.length,
+              },
         cost: isLlmExemplar
           ? {
               inputTokens: Math.ceil(message.text.length / 4),
@@ -388,6 +408,7 @@ export async function runScrubPipeline(
     outputTokens: 0,
     estimatedUsd: 0,
   }));
+  let mineArtifactPaths: ScrubRunReport["mineArtifacts"] | undefined;
 
   for (let stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
     const stage = stages[stageIndex];
@@ -458,6 +479,15 @@ export async function runScrubPipeline(
       report.inputTokens += cost.inputTokens;
       report.outputTokens += cost.outputTokens;
       report.estimatedUsd += cost.estimatedUsd;
+      if (
+        result.metadata &&
+        typeof result.metadata === "object" &&
+        "candidateCount" in result.metadata &&
+        typeof result.metadata.candidateCount === "number"
+      ) {
+        report.candidateCount =
+          (report.candidateCount ?? 0) + result.metadata.candidateCount;
+      }
       const output = result.tombstone ? undefined : result.message;
       if (!result.tombstone && !output) {
         throw new Error(
@@ -489,6 +519,13 @@ export async function runScrubPipeline(
       recordsWritten += 1;
     }
     messages = nextMessages;
+    if (!options.dryRun && stage.name === "mine") {
+      const artifacts = await minePiiCandidates(messages, {
+        hashSalt: options.rulesetVersion,
+      });
+      mineArtifactPaths = await writeMineArtifacts(stateDir, artifacts);
+      report.candidateCount = artifacts.candidates.length;
+    }
   }
 
   if (!options.dryRun) {
@@ -519,6 +556,7 @@ export async function runScrubPipeline(
     },
     outputPath: options.dryRun ? undefined : outputPath,
     reportPath,
+    mineArtifacts: mineArtifactPaths,
   };
   await writeReport(reportPath, runReport);
   return { messages, report: runReport };

@@ -28,6 +28,12 @@ the validator. `--resume` reuses content-hash + ruleset-version markers from
 `scrub-ledger.jsonl`, so rerunning unchanged input should report zero stage
 executions and a ledger hit rate of `1`.
 
+Stage `mine` also emits `candidates.jsonl`, `candidate-frequency.json`, and
+`candidate-review.csv` under `.state/`. Candidate rows carry source references
+and salted value hashes; replacement identity is intentionally deferred to the
+context/pseudonym-consistency pass so this deterministic stage never forks the
+corpus-wide mapping.
+
 ## X Mapping
 
 The canonical schema includes platform `x`. The existing LifeOps simulator
