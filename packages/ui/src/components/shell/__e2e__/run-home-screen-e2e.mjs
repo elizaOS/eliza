@@ -433,6 +433,7 @@ try {
     ["widget-goals-attention", "Ship the release"],
     ["chat-widget-calendar-upcoming", "Design review"],
     ["widget-health-sleep", "Irregular"],
+    ["chat-widget-wallet-prices", "BTC"],
   ];
   for (const [testId, text] of WIDGET_CARDS) {
     const card = homeWidgetHost.getByTestId(testId);
@@ -649,6 +650,10 @@ try {
   assert(
     (await mobile.getByTestId("launcher-dock").count()) === 0,
     "the launcher renders no dock (featured-views header removed)",
+  );
+  assert(
+    (await mobile.getByTestId("launcher-tile-chat").count()) === 0,
+    "Chat is not duplicated as a launcher tile (home rail is the chat surface)",
   );
   // ── Removed / hidden surfaces never tile: removed apps, wallet sub-views,
   // and the deduped duplicate registrations.
