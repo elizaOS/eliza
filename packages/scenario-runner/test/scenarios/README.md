@@ -90,6 +90,21 @@ requires a real provider key for live natural-language planner runs.
   stale "Help view", tutorial launcher tile, or button-below instructions. Run it with
   `eliza-scenarios run packages/scenario-runner/test/scenarios --scenario live-help-knowledge --report <out> --run-dir <dir>`
   and attach the report plus reviewed trajectories.
+- `live-lifeops-task-filter-due-window` and `live-plugin-enable-toggle-verb`
+  (issue #14368) prove that a real model routes view controls through semantic
+  verbs, not the synthetic-DOM bridge: "show me only my overdue tasks" selects
+  `SCHEDULED_TASKS action=list dueWindow=overdue` (never `VIEWS agent-fill`) and,
+  after a "list my installed plugins" priming turn, "disable the discord plugin"
+  selects `PLUGIN action=toggle enabled=false` — the same `PUT /api/plugins/:id`
+  the Plugins view's per-card toggle calls (never `VIEWS agent-click`). No
+  Tasks/Plugins view is mounted, so the synthetic-DOM path is structurally
+  unavailable and each final check asserts no `VIEWS`/`agent-*` capability was
+  used. Run both with
+  `eliza-scenarios run packages/scenario-runner/test/scenarios --lane live-only '**/live-lifeops-task-filter-due-window.scenario.ts' '**/live-plugin-enable-toggle-verb.scenario.ts' --report <out> --run-dir <dir>`.
+  These are live manual evidence assets, not CI gates; the zero-vector embedding
+  fallback occasionally drops the `PLUGIN` verb from the model's tool context for
+  a whole boot (see the plugin scenario header), so re-run if the plugin toggle
+  scenario reports only `REPLY`.
 
 ## Residual Gaps
 
