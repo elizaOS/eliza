@@ -29,6 +29,7 @@ import {
   type NewAgentSandboxBackup,
 } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
+import { imageRepo } from "../../db/utils/docker-image-ref";
 import { InsufficientCreditsError as InsufficientCreditsApiError } from "../api/errors";
 import { containersEnv } from "../config/containers-env";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
@@ -82,22 +83,6 @@ import {
   type SharedTurnMessage,
 } from "./shared-runtime/run-shared-agent-turn";
 import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
-
-/**
- * The repo portion of a docker image ref (strips the `:tag` / `@digest`).
- *
- * Used to tell a fleet-managed default image (`ghcr.io/elizaos/eliza:*`) from a
- * genuinely custom user image when deciding whether a fleet upgrade/rollback may
- * proceed (#15101). A tag is the segment after the LAST `:` only when it has no
- * `/` after it, so a registry port (`ghcr.io:443/…`) is not mistaken for a tag.
- */
-function imageRepo(image: string): string {
-  const atIdx = image.indexOf("@");
-  const base = atIdx === -1 ? image : image.slice(0, atIdx);
-  const lastColon = base.lastIndexOf(":");
-  const lastSlash = base.lastIndexOf("/");
-  return lastColon > lastSlash ? base.slice(0, lastColon) : base;
-}
 
 export interface CreateAgentParams {
   organizationId: string;
