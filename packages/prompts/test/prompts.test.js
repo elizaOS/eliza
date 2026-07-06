@@ -129,6 +129,30 @@ describe("prompt templates (src/index.ts)", () => {
     }
   });
 
+  it("factExtractionTemplate names structured fields for multilingual LifeOps projection", () => {
+    const body = prompts.factExtractionTemplate;
+    assert.match(
+      body,
+      /Use these English key names even when the\s+message is in another language/,
+      "fact extractor should preserve English structured-field keys across locales",
+    );
+    assert.match(
+      body,
+      /"mi jefe es Pat" -> \{"person":"Pat","relationshipType":"manager"\}/,
+      "relationship facts should include person + relationshipType without English regex parsing",
+    );
+    assert.match(
+      body,
+      /"Je m'appelle Camille" -> \{"preferredName":"Camille"\}/,
+      "identity facts should include preferredName for non-English self-introductions",
+    );
+    assert.match(
+      body,
+      /relationship: person or partnerName, relationshipType, relationshipStatus,\s+platform, handle/,
+      "relationship structured fields should include graph and identity-handle keys",
+    );
+  });
+
   it("templates have balanced Handlebars delimiters", () => {
     const src = readSrc();
     const opens = (src.match(/\{\{/g) || []).length;

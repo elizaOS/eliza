@@ -15,6 +15,12 @@ import {
   type OwnerFactsPatch,
 } from "../owner/fact-store.js";
 import {
+  cleanHandle,
+  cleanName,
+  normalizePlatform,
+  relationTypeForRole,
+} from "../owner/profile-hints.js";
+import {
   applyExtractedEdges,
   type ExtractedEdge,
 } from "../relationships/extraction.js";
@@ -84,44 +90,12 @@ const TRAVEL_PREFERENCE_CONTEXT =
 const TRAVEL_PREFERENCE_DETAILS =
   /\b(?:aisle|window|seat|seats|checked\s+bag|checked\s+bags|carry-?on|luggage|hotel|hotels|budget|\$\d|venue|venues|mile|miles|night|nights)\b/iu;
 
-const RELATIONSHIP_TYPES: Record<string, string> = {
-  boss: "managed_by",
-  manager: "managed_by",
-  partner: "partner_of",
-  spouse: "partner_of",
-  colleague: "colleague_of",
-  coworker: "colleague_of",
-  teammate: "colleague_of",
-  friend: "knows",
-};
-
 function messageText(value: unknown): string {
   if (!value || typeof value !== "object") return "";
   const content = (value as { content?: unknown }).content;
   if (!content || typeof content !== "object") return "";
   const text = (content as { text?: unknown }).text;
   return typeof text === "string" ? text : "";
-}
-
-function cleanName(raw: string | undefined): string | null {
-  const value = raw?.replace(/["'`]/g, "").replace(/\s+/g, " ").trim();
-  if (!value || value.length < 2 || value.length > 80) return null;
-  if (/^(?:me|my|mine|you|them|someone|somebody|at|on)$/iu.test(value)) {
-    return null;
-  }
-  return value;
-}
-
-function cleanHandle(raw: string | undefined): string | null {
-  const value = raw?.trim().replace(/[),.;!?]+$/u, "");
-  if (!value || value.length < 2 || value.length > 120) return null;
-  return value;
-}
-
-function normalizePlatform(raw: string): string {
-  const normalized = raw.trim().toLowerCase();
-  if (normalized === "twitter") return "x";
-  return normalized;
 }
 
 function collectFactHints(text: string, facts: OwnerFactsPatch): void {
@@ -218,7 +192,7 @@ function collectRelationshipHints(text: string): RelationshipHint[] {
   for (const match of text.matchAll(pattern)) {
     const name = cleanName(match[1]);
     const role = (match[2] ?? "").toLowerCase();
-    const type = RELATIONSHIP_TYPES[role];
+    const type = relationTypeForRole(role);
     if (name && type) {
       hints.push({ name, type });
     }

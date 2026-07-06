@@ -39,6 +39,16 @@ function makeRuntime(): IAgentRuntime & {
   cache: Map<string, unknown>;
 } {
   const cache = new Map<string, unknown>();
+  const agents = new Map<string, unknown>();
+  const tasks: Array<{
+    id: UUID;
+    name?: string;
+    description?: string;
+    roomId?: UUID;
+    tags?: string[];
+    metadata?: Record<string, unknown>;
+    dueAt?: number;
+  }> = [];
   const hooks: Array<{
     id: string;
     handler: (runtime: IAgentRuntime, ctx: unknown) => Promise<void>;
@@ -67,6 +77,48 @@ function makeRuntime(): IAgentRuntime & {
     registerPipelineHook: vi.fn(
       (spec: { id: string; handler: (typeof hooks)[number]["handler"] }) => {
         hooks.push(spec);
+      },
+    ),
+    getService: vi.fn(() => null),
+    getAgent: vi.fn(async (id: UUID) => agents.get(id) ?? null),
+    createAgent: vi.fn(async (agent: { id?: UUID }) => {
+      if (agent.id) agents.set(agent.id, agent);
+      return true;
+    }),
+    getTasks: vi.fn(async (query?: { agentIds?: UUID[]; tags?: string[] }) => {
+      if (!query?.tags || query.tags.length === 0) return [...tasks];
+      return tasks.filter((task) =>
+        query.tags?.every((tag) => task.tags?.includes(tag)),
+      );
+    }),
+    createTask: vi.fn(
+      async (task: {
+        name?: string;
+        description?: string;
+        roomId?: UUID;
+        tags?: string[];
+        metadata?: Record<string, unknown>;
+        dueAt?: number;
+      }) => {
+        const id =
+          `99999999-9999-4999-8999-${String(tasks.length + 1).padStart(12, "0")}` as UUID;
+        tasks.push({ ...task, id });
+        return id;
+      },
+    ),
+    updateTask: vi.fn(
+      async (
+        id: UUID,
+        patch: {
+          description?: string;
+          metadata?: Record<string, unknown>;
+        },
+      ) => {
+        const task = tasks.find((candidate) => candidate.id === id);
+        if (task) {
+          Object.assign(task, patch);
+        }
+        return true;
       },
     ),
     hooks,
@@ -217,24 +269,28 @@ beforeEach(() => {
 });
 
 describe("bridgeCoreFactMemory", () => {
-  it("projects core identity facts into the OwnerFactStore with agent provenance", async () => {
+  it("projects structured non-English identity facts into the OwnerFactStore with agent provenance", async () => {
     const runtime = makeRuntime();
     const result = await bridgeCoreFactMemory(
       runtime,
       factMemory({
         id: "44444444-4444-4444-4444-444444444444" as UUID,
-        text: "timezone is Europe/Berlin",
+        text: "Je m'appelle Camille et mon fuseau horaire est Europe/Paris",
         category: "identity",
-        structuredFields: { timezone: "Europe/Berlin" },
+        structuredFields: {
+          preferredName: "Camille",
+          timezone: "Europe/Paris",
+        },
       }),
     );
 
     expect(result).toMatchObject({
       skipped: false,
-      ownerFactKeys: ["timezone"],
+      ownerFactKeys: ["preferredName", "timezone"],
     });
     const facts = await resolveOwnerFactStore(runtime).read();
-    expect(facts.timezone?.value).toBe("Europe/Berlin");
+    expect(facts.preferredName?.value).toBe("Camille");
+    expect(facts.timezone?.value).toBe("Europe/Paris");
     expect(facts.timezone?.provenance).toMatchObject({
       source: "agent_inferred",
       note: "core fact-memory bridge from fact:44444444-4444-4444-4444-444444444444",
@@ -242,9 +298,6 @@ describe("bridgeCoreFactMemory", () => {
   });
 
   it("projects a preferred name from a language-agnostic structured field", async () => {
-    // The core extractor's `structured_fields` carry the value regardless of
-    // the claim's language ("je m'appelle" here), so a non-English identity
-    // fact still projects a preferredName the English claim regex never sees.
     const { store, patches } = captureFactStore();
     const result = await bridgeCoreFactMemory(
       makeRuntime(),
@@ -261,39 +314,23 @@ describe("bridgeCoreFactMemory", () => {
     expect(patches).toEqual([{ preferredName: "Alex" }]);
   });
 
-  it("recovers a preferred name from the English claim when structured fields are absent", async () => {
+  it("does not recover a preferred name from an English claim without structured fields", async () => {
     const { store, patches } = captureFactStore();
     const result = await bridgeCoreFactMemory(
       makeRuntime(),
       factMemory({
-        id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" as UUID,
+        id: "cccccccc-cccc-cccc-cccc-cccccccccccc" as UUID,
         text: "my name is Robin",
         category: "identity",
       }),
       { factStore: store },
     );
 
-    expect(result.ownerFactKeys).toContain("preferredName");
-    expect(patches).toEqual([{ preferredName: "Robin" }]);
+    expect(result.ownerFactKeys).toEqual([]);
+    expect(patches).toEqual([]);
   });
 
-  it("lets the structured field win over the English claim regex", async () => {
-    const { store, patches } = captureFactStore();
-    await bridgeCoreFactMemory(
-      makeRuntime(),
-      factMemory({
-        id: "cccccccc-cccc-cccc-cccc-cccccccccccc" as UUID,
-        text: "call me Bob",
-        category: "identity",
-        structuredFields: { preferredName: "Robert" },
-      }),
-      { factStore: store },
-    );
-
-    expect(patches).toEqual([{ preferredName: "Robert" }]);
-  });
-
-  it("projects relationship facts and handle claims into the entity graph", async () => {
+  it("projects structured relationship facts and handle claims into the entity graph", async () => {
     const runtime = makeRuntime();
     const { entityStore, relationshipStore } = installFakeGraph();
 
@@ -301,9 +338,14 @@ describe("bridgeCoreFactMemory", () => {
       runtime,
       factMemory({
         id: "55555555-5555-5555-5555-555555555555" as UUID,
-        text: "Pat is my manager. Pat's Telegram handle is @pat.",
+        text: "mi jefe es Pat y su Telegram es @pat",
         category: "relationship",
-        structuredFields: { name: "Pat", relationshipType: "manager" },
+        structuredFields: {
+          person: "Pat",
+          relationshipType: "manager",
+          platform: "Telegram",
+          handle: "@pat",
+        },
       }),
     );
 
@@ -332,13 +374,37 @@ describe("bridgeCoreFactMemory", () => {
     expect(facts.preferredName).toBeUndefined();
   });
 
+  it("does not reparse free-text claims when core omits structured fields", async () => {
+    const runtime = makeRuntime();
+    const { entityStore, relationshipStore } = installFakeGraph();
+
+    const result = await bridgeCoreFactMemory(
+      runtime,
+      factMemory({
+        id: "77777777-7777-7777-7777-777777777777" as UUID,
+        text: "Pat is my manager. Pat's Telegram handle is @pat.",
+        category: "relationship",
+      }),
+    );
+
+    expect(result).toMatchObject({
+      skipped: false,
+      identityCount: 0,
+      relationshipCount: 0,
+      ownerFactKeys: [],
+    });
+    expect(entityStore.identities).toEqual([]);
+    expect(relationshipStore.observations).toEqual([]);
+  });
+
   it("does not replay a bridged fact into graph stores", async () => {
     const runtime = makeRuntime();
     const { relationshipStore } = installFakeGraph();
     const memory = factMemory({
       id: "66666666-6666-6666-6666-666666666666" as UUID,
-      text: "Pat is my manager.",
+      text: "mi jefe es Pat",
       category: "relationship",
+      structuredFields: { person: "Pat", relationshipType: "manager" },
     });
 
     const first = await bridgeCoreFactMemory(runtime, memory);

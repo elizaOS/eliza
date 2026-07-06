@@ -79,13 +79,13 @@ const AddDurableOpSchema = z.object({
 	op: z.literal("add_durable"),
 	claim: z.string().min(1),
 	category: DurableCategoryEnum,
-	// `.default({})`, NOT required: the advertised wire schema (reflection-items
-	// factOpsSchema) marks structured_fields optional (only `op` is required)
-	// and the extractor prompt never even names the field, so the model omits it
-	// on most turns. A required schema here rejected those ops — and because the
-	// whole `ops` array was parsed atomically, one omission silently discarded
-	// EVERY fact op for the turn. The default keeps the inferred type a
-	// non-optional record so downstream applyAddDurable stays type-safe.
+	// `.default({})`, NOT required: the advertised wire schema
+	// (reflection-items factOpsSchema) keeps structured_fields optional so
+	// claim-only fact ops still parse. A required schema here rejected those ops
+	// — and because the whole `ops` array was parsed atomically, one omission
+	// silently discarded EVERY fact op for the turn. The default keeps the
+	// inferred type a non-optional record so downstream applyAddDurable stays
+	// type-safe.
 	structured_fields: StructuredFieldsSchema.default({}),
 	keywords: KeywordsSchema,
 	verification_status: VerificationStatusEnum.optional(),
@@ -96,7 +96,7 @@ const AddCurrentOpSchema = z.object({
 	op: z.literal("add_current"),
 	claim: z.string().min(1),
 	category: CurrentCategoryEnum,
-	// See AddDurableOpSchema: wire-optional + prompt-unnamed → default, not required.
+	// See AddDurableOpSchema: wire-optional → default, not required.
 	structured_fields: StructuredFieldsSchema.default({}),
 	keywords: KeywordsSchema,
 	/**

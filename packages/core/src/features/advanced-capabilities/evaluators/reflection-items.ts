@@ -83,6 +83,66 @@ export const NEW_FACT_CONFIDENCE = 0.7;
 export const DEDUP_SIMILARITY_THRESHOLD = 0.42;
 const IDENTITY_CONFIDENCE_THRESHOLD = 0.5;
 
+const structuredFieldProperties: Record<string, JSONSchema> = {
+	preferredName: { type: "string" },
+	orientation: { type: "string" },
+	gender: { type: "string" },
+	age: { type: "string" },
+	location: { type: "string" },
+	city: { type: "string" },
+	homeCity: { type: "string" },
+	home_location: { type: "string" },
+	timezone: { type: "string" },
+	timeZone: { type: "string" },
+	ianaTimezone: { type: "string" },
+	relationshipStatus: { type: "string" },
+	status: { type: "string" },
+	partnerName: { type: "string" },
+	partner: { type: "string" },
+	spouse: { type: "string" },
+	person: { type: "string" },
+	name: { type: "string" },
+	target: { type: "string" },
+	relatedPerson: { type: "string" },
+	relationshipType: { type: "string" },
+	relationship: { type: "string" },
+	role: { type: "string" },
+	type: { type: "string" },
+	manager: { type: "string" },
+	boss: { type: "string" },
+	platform: { type: "string" },
+	service: { type: "string" },
+	network: { type: "string" },
+	handle: { type: "string" },
+	username: { type: "string" },
+	account: { type: "string" },
+	profile: { type: "string" },
+	company: { type: "string" },
+	organization: { type: "string" },
+	employer: { type: "string" },
+	locale: { type: "string" },
+	languageLocale: { type: "string" },
+	preferredNotificationChannel: { type: "string" },
+	channel: { type: "string" },
+	travelBookingPreferences: { type: "string" },
+	travelPreference: { type: "string" },
+	bookingPreference: { type: "string" },
+	condition: { type: "string" },
+	source: { type: "string" },
+	emotion: { type: "string" },
+	window: { type: "string" },
+	event: { type: "string" },
+	to: { type: "string" },
+	goal: { type: "string" },
+	domain: { type: "string" },
+};
+
+const structuredFieldsSchema: JSONSchema = {
+	type: "object",
+	properties: structuredFieldProperties,
+	additionalProperties: false,
+};
+
 const factOpsSchema: JSONSchema = {
 	type: "object",
 	properties: {
@@ -103,19 +163,11 @@ const factOpsSchema: JSONSchema = {
 					},
 					claim: { type: "string" },
 					category: { type: "string" },
-					// Strict-mode JSON schema validators (Groq, Cerebras, OpenAI strict
-					// tools) require every nested object to carry
-					// `additionalProperties: false` AND an explicit `properties` map —
-					// an object node without `properties` is rejected outright
-					// ("Bad Request"), which kills the whole extraction call. We accept
-					// this means no extra keys land in `structured_fields` — the field
-					// stays for API contract, the model can always omit it (not in
-					// `required`).
-					structured_fields: {
-						type: "object",
-						properties: {},
-						additionalProperties: false,
-					},
+					// Strict-mode JSON schema validators require every object node to
+					// be closed. The prompt maps category-specific values into this
+					// finite key set so downstream projections can consume structured
+					// facts without reparsing language-specific claim text.
+					structured_fields: structuredFieldsSchema,
 					// No maxItems: strict structured-output validators (Cerebras, OpenAI
 					// strict) reject array length constraints outright — the whole
 					// extraction request 400s. The 16-keyword cap is enforced in code
@@ -912,6 +964,14 @@ Rules:
 - Contradiction -> contradict with factId + reason.
 - Use only fact IDs shown below for strengthen, decay, and contradict.
 - add_durable/add_current keywords: 3-8 lowercase retrieval terms from claim/category/nouns/places/dates/projects/symptoms/preferences. Omit stopwords/generic.
+- add_durable/add_current structured_fields: flat string values from the claim. Use English key names even when the message is in another language.
+  identity: preferredName, location/city, timezone, locale, orientation, gender, age.
+  relationship: person or partnerName, relationshipType, relationshipStatus, platform, handle.
+  business_role: company/organization/employer, person, relationshipType, role.
+  preference: preferredNotificationChannel, travelBookingPreferences, locale.
+  health/current state: condition, source, emotion, window.
+  life_event/goal: event, to, goal, domain.
+  Omit unknown fields; do not invent values.
 
 Recent messages:
 ${formatRecentMessages(prepared.recentMessages)}

@@ -357,6 +357,18 @@ For add_durable/add_current, include keywords: 3-8 lowercase retrieval terms.
 Use stable nouns, proper names, symptoms, places, projects, dates, and
 preferences. Omit stopwords and generic words.
 
+For add_durable/add_current, fill structured_fields with flat string values
+whenever the claim contains them. Use these English key names even when the
+message is in another language:
+- identity: preferredName, location/city, timezone, locale, orientation, gender, age.
+- relationship: person or partnerName, relationshipType, relationshipStatus,
+  platform, handle.
+- business_role: company/organization/employer, person, relationshipType, role.
+- preference: preferredNotificationChannel, travelBookingPreferences, locale.
+- health/current state: condition, source, emotion, window.
+- life_event/goal: event, to, goal, domain.
+Omit unknown fields; do not invent values. Examples: "mi jefe es Pat" -> {"person":"Pat","relationshipType":"manager"}; "Je m'appelle Camille" -> {"preferredName":"Camille"}.
+
 Examples:
 
 Message: "I have a flat cortisol curve confirmed via lab"
