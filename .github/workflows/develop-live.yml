@@ -120,11 +120,14 @@ jobs:
       - name: Post-merge live matrix
         env:
           RUNNER_TEMP_LOG: ${{ runner.temp }}/develop-live-sweep.log
+          TEST_FILTER: ${{ inputs.filter }}
         run: |
           set -o pipefail
-          FILTER_ARG=""
-          if [ -n "${{ inputs.filter }}" ]; then FILTER_ARG="--filter=${{ inputs.filter }}"; fi
-          node packages/scripts/run-all-tests.mjs --all --no-cloud $FILTER_ARG 2>&1 | tee "$RUNNER_TEMP_LOG"
+          filter_args=()
+          if [ -n "${TEST_FILTER:-}" ]; then
+            filter_args+=(--filter="$TEST_FILTER")
+          fi
+          node packages/scripts/run-all-tests.mjs --all --no-cloud "${filter_args[@]}" 2>&1 | tee "$RUNNER_TEMP_LOG"
 
       - name: Cloud unit suite
         if: always()
