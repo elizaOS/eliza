@@ -198,6 +198,62 @@ describe("PresenceSignalBridgeService relationship recency", () => {
     );
   });
 
+  it("does not dedupe same-timestamp handle-only messages for different contacts", async () => {
+    const morganId = "10000000-0000-0000-0000-000000000002" as UUID;
+    const relationshipsService = {
+      getContact: vi.fn(async () => null),
+    };
+    mockState.entityStore.observeIdentity.mockImplementation(
+      async ({ handle }: { handle: string }) => ({
+        entity: { entityId: handle === "morgan" ? morganId : CONTACT_ID },
+      }),
+    );
+    mockState.relationshipStore.get.mockResolvedValue(null);
+    const { runtime, handlers } =
+      runtimeWithRelationships(relationshipsService);
+    await PresenceSignalBridgeService.start(runtime);
+
+    await handlers.get(EventType.MESSAGE_RECEIVED)?.(
+      messagePayload({
+        message: {
+          ...messagePayload().message,
+          entityId: undefined,
+        },
+      }),
+    );
+    await handlers.get(EventType.MESSAGE_RECEIVED)?.(
+      messagePayload({
+        message: {
+          ...messagePayload().message,
+          entityId: undefined,
+          id: "30000000-0000-0000-0000-000000000002",
+          metadata: {
+            originalId: "telegram-message-2",
+            sender: { username: "morgan" },
+          },
+        },
+      }),
+    );
+
+    expect(mockState.activitySignals).toHaveLength(2);
+    expect(mockState.entityStore.observeIdentity).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ handle: "priya" }),
+    );
+    expect(mockState.entityStore.observeIdentity).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ handle: "morgan" }),
+    );
+    expect(mockState.entityStore.recordInteraction).toHaveBeenCalledWith(
+      CONTACT_ID,
+      expect.objectContaining({ direction: "inbound" }),
+    );
+    expect(mockState.entityStore.recordInteraction).toHaveBeenCalledWith(
+      morganId,
+      expect.objectContaining({ direction: "inbound" }),
+    );
+  });
+
   it("records iMessage outbound events that carry the owner entity and recipient handle", async () => {
     const relationshipsService = {
       findByHandle: vi.fn(async () => ({ entityId: CONTACT_ID })),
