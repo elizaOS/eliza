@@ -121,6 +121,12 @@ type LifeOpsCalendarEventSeedInput = {
   accountEmail?: string;
 };
 
+type LifeOpsCalendarEvent = {
+  id: string;
+  externalId: string;
+  startAt: string;
+};
+
 type LifeOpsRepositoryInstance = {
   createDefinition: (definition: LifeOpsTaskDefinition) => Promise<unknown>;
   upsertOccurrence: (occurrence: LifeOpsOccurrence) => Promise<unknown>;
@@ -148,6 +154,13 @@ type LifeOpsRepositoryInstance = {
     event: LifeOpsCalendarEventSeedInput,
     side?: LifeOpsCalendarEventSeedInput["side"],
   ) => Promise<unknown>;
+  listCalendarEvents: (
+    agentId: string,
+    provider: LifeOpsCalendarEventSeedInput["provider"],
+    timeMin?: string,
+    timeMax?: string,
+    side?: LifeOpsCalendarEventSeedInput["side"],
+  ) => Promise<LifeOpsCalendarEvent[]>;
 };
 
 type LifeOpsRepositoryConstructor = {
@@ -1559,7 +1572,10 @@ async function seedScheduledPushLadderMemory(
   if (!Array.isArray(seed.rungs) || seed.rungs.length === 0) {
     return "scheduled-push-ladder seed requires a non-empty rungs array";
   }
-  const now = readScenarioNow(ctx);
+  const eventStartAt = await resolveScenarioCalendarEventStart(ctx, eventId);
+  if (!eventStartAt) {
+    return `scheduled-push-ladder seed requires a previously seeded calendar event matching eventId "${eventId}"`;
+  }
   for (const [index, entry] of seed.rungs.entries()) {
     const rung =
       entry && typeof entry === "object" && !Array.isArray(entry)
@@ -1571,7 +1587,7 @@ async function seedScheduledPushLadderMemory(
     const offsetMin = readOptionalNumber(rung.offsetMin) ?? 0;
     const channel = normalizeReminderAttemptChannel(rung.channel);
     const status = readNonEmptyString(rung.status) ?? "pending";
-    const dueAt = new Date(now.getTime() + offsetMin * 60_000);
+    const dueAt = new Date(eventStartAt.getTime() + offsetMin * 60_000);
     const result = await upsertScenarioScheduledTask(ctx, {
       seedKind: "scheduled-push-ladder",
       title: `${eventId}:${index}:${channel}`,
@@ -1589,6 +1605,27 @@ async function seedScheduledPushLadderMemory(
     if (result) return result;
   }
   return undefined;
+}
+
+async function resolveScenarioCalendarEventStart(
+  ctx: ScenarioContext,
+  eventId: string,
+): Promise<Date | null> {
+  const runtime = requireRuntime(ctx);
+  const { LifeOpsRepository } = await loadLifeOps();
+  await LifeOpsRepository.bootstrapSchema(runtime);
+  const repository = new LifeOpsRepository(runtime);
+  const events = await repository.listCalendarEvents(
+    String(runtime.agentId),
+    "google",
+    undefined,
+    undefined,
+    "owner",
+  );
+  const event = events.find(
+    (candidate) => candidate.id === eventId || candidate.externalId === eventId,
+  );
+  return event ? readIsoDate(event.startAt) : null;
 }
 
 function normalizeCalendarProvider(

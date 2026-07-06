@@ -819,10 +819,19 @@ describe("scenario memory seeds", () => {
         primaryUserId: ownerId,
       } as ScenarioContext;
 
+      const missingEventResult = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "scheduled-push-ladder",
+          eventId: "missing-event",
+          rungs: [{ offsetMin: -10, channel: "mobile", status: "pending" }],
+        },
+      } satisfies ScenarioSeedStep);
       const appointmentResult = await applyScenarioSeedStep(ctx, {
         type: "memory",
         content: {
           kind: "appointment",
+          id: "evt-investor-sync",
           provider: "Westside Imaging",
           startAt: "2026-07-06T20:00:00.000Z",
           requiresSignature: true,
@@ -841,6 +850,9 @@ describe("scenario memory seeds", () => {
         },
       } satisfies ScenarioSeedStep);
 
+      expect(missingEventResult).toMatch(
+        /requires a previously seeded calendar event/,
+      );
       expect(appointmentResult).toBeUndefined();
       expect(ladderResult).toBeUndefined();
       const { LifeOpsRepository } = await import(
@@ -891,6 +903,20 @@ describe("scenario memory seeds", () => {
               index: 0,
             },
           }),
+          trigger: {
+            kind: "once",
+            atIso: "2026-07-06T19:00:00.000Z",
+          },
+        }),
+      );
+      expect(scheduledTasks).toContainEqual(
+        expect.objectContaining({
+          taskId:
+            "scenario-scheduled-push-ladder:push.scheduled-notification-cancel-when-event-cancelled:evt-investor-sync:1:mobile",
+          trigger: {
+            kind: "once",
+            atIso: "2026-07-06T19:50:00.000Z",
+          },
         }),
       );
     } finally {
