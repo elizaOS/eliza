@@ -129,12 +129,12 @@ export function resolveCommandPlatform(): CommandPlatform {
   return process.platform === "darwin" ? "macos" : "linux";
 }
 
-// --- POSIX (Linux) — kept byte-for-byte so the existing Linux command/parser
-// contract is unchanged. ---
+// --- POSIX (Linux) — each cleanup candidate is capped independently so a busy
+// /tmp or package cache cannot consume the whole SHELL turn budget.
 const POSIX_HEALTH_COMMAND = `PORT="\${ELIZA_API_PORT:-\${ELIZA_PORT:-\${API_PORT:-\${SERVER_PORT:-2138}}}}"; curl -sS "http://127.0.0.1:\${PORT}/api/health"`;
 const LINUX_MEMORY_COMMAND = "free -m";
 const LINUX_DISK_INSPECTION_COMMAND =
-  'df -h / /home; printf \'\\n--- cleanup candidates ---\\n\'; for p in /tmp /var/tmp "$HOME/.cache" "$HOME/.bun" "$HOME/.npm" "$HOME/.local/share/Trash"; do [ -e "$p" ] && du -sh "$p" 2>/dev/null; done | sort -hr | head -n 10';
+  'df -h / /home; printf \'\\n--- cleanup candidates ---\\n\'; for p in /tmp /var/tmp "$HOME/.cache" "$HOME/.bun" "$HOME/.npm" "$HOME/.local/share/Trash"; do [ -e "$p" ] && timeout 3s du -sh "$p" 2>/dev/null || true; done | sort -hr | head -n 10';
 
 // --- macOS — `free` is Linux-only, so synthesize a `free -m`-compatible `Mem:`
 // line from `sysctl`/`vm_stat` (page size via `hw.pagesize`, which is 16384 on
