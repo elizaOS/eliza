@@ -129,6 +129,10 @@ import {
   installForceFreshFirstRunClientPatch,
 } from "@elizaos/ui/platform/first-run-reset";
 import {
+  clearStandaloneBottomReclaim,
+  installStandaloneBottomReclaim,
+} from "@elizaos/ui/platform/standalone-bottom-reclaim";
+import {
   isChatOverlayWindowShell,
   isDetachedWindowShell,
   isStandaloneWindowShell,
@@ -2594,6 +2598,18 @@ function setupPlatformStyles(): void {
   // and desktop (electrobun) must keep its window scroll/trackpad behavior.
   if (platform === "web" && isStandalonePwa()) {
     document.body.classList.add("pwa-standalone");
+  }
+
+  // JS-MEASURED BOTTOM RECLAIM (cure for the recurring iOS home-indicator
+  // "bottom bar"): the fixed-body ICB collapses on the installed standalone
+  // PWA so `100lvh - 100dvh` resolves to 0 and every CSS-unit reclaim is a
+  // no-op. Measure the true-vs-layout viewport delta in JS and expose it as
+  // `--standalone-bottom-reclaim`; the fixed layers reclaim by the MEASURED
+  // gap. Standalone/native only; elsewhere the var is a hard 0 (no listeners).
+  if (isStandalonePwa() || isNative) {
+    installStandaloneBottomReclaim();
+  } else {
+    clearStandaloneBottomReclaim();
   }
 
   const chatOverlayShell = isChatOverlayWindowShell(windowShellRoute);

@@ -3,6 +3,7 @@
  * gentle rim pulse.
  */
 import type * as React from "react";
+import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim";
 import {
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_BACKGROUND_GLOW,
@@ -76,18 +77,19 @@ export function ShaderBackground({
       className="pointer-events-none fixed inset-0 overflow-hidden"
       style={{
         zIndex: 0,
-        // BOTTOM-BAR ROOT CAUSE (device r5): this `fixed inset-0` wallpaper's
-        // `bottom: 0` anchors to the fixed-descendant ICB, which COLLAPSES to
-        // the small/layout viewport on the installed iOS standalone PWA (~59px
-        // short of the true 100lvh bottom). Left alone the field stops above the
-        // home-indicator zone and the dimmed launch-bg (#root/body --launch-bg
-        // orange, under the scrim) shows through as the rgb(61,27,11) bar. Drop
-        // the bottom edge by the collapse delta so the field reaches the TRUE
-        // physical bottom and owns the whole screen — the SAME reclaim the chat
-        // composer applies. `max(0px, 100lvh - 100dvh)` is 0 wherever the two
-        // viewports agree (desktop/Android/non-collapsed), so this is a no-op
-        // except on the exact iOS-standalone geometry that collapses.
-        bottom: "calc(-1 * max(0px, 100lvh - 100dvh))",
+        // BOTTOM-BAR ROOT CAUSE (device r6, JS-MEASURED cure): this
+        // `fixed inset-0` wallpaper's `bottom: 0` anchors to the
+        // fixed-descendant ICB, which COLLAPSES to the small/layout viewport on
+        // the installed iOS standalone PWA (~59px short of the true bottom).
+        // Left alone the field stops above the home-indicator zone and the
+        // dimmed launch-bg shows through as the near-black bar. Drop the bottom
+        // edge by the MEASURED collapse gap (`--standalone-bottom-reclaim`, set
+        // in JS from window/visualViewport vs documentElement.clientHeight) so
+        // the field reaches the TRUE physical bottom. The prior
+        // `max(0px, 100lvh - 100dvh)` CSS-unit calc was a NO-OP on device (the
+        // collapsed fixed-body ICB resolves lvh === dvh, delta 0) — the reason
+        // the strip survived 5 CSS-only fixes. The var is a hard 0 off-standalone.
+        bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET,
         backgroundImage: `linear-gradient(to bottom, ${color} 0%, ${color} 52%, ${floor} 100%)`,
       }}
     >

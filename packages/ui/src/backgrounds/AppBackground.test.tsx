@@ -42,45 +42,42 @@ describe("AppBackground", () => {
     ).toBeNull();
   });
 
-  it("extends the shader wallpaper past the collapsed-ICB bottom to the TRUE physical bottom (standalone PWA)", () => {
-    // BOTTOM-BAR ROOT CAUSE (device r5): the wallpaper is `fixed inset-0`, so
+  it("extends the shader wallpaper past the collapsed-ICB bottom via the JS-MEASURED reclaim var (standalone PWA)", () => {
+    // BOTTOM-BAR ROOT CAUSE (device r6): the wallpaper is `fixed inset-0`, so
     // its `bottom: 0` anchors to the fixed-descendant initial containing block.
     // On the installed iOS standalone PWA that ICB COLLAPSES to the small/layout
-    // viewport (~59px short of the true 100lvh bottom), so the wallpaper stops
-    // ABOVE the home-indicator zone and the dimmed launch-bg (#root/body
-    // --launch-bg orange under the scrim) shows through as the rgb(61,27,11)
-    // strip. The composer already compensates with a `-1 * max(0px, 100lvh -
-    // 100dvh)` bottom; the wallpaper MUST do the same so it reaches the physical
-    // bottom and owns the whole screen. No-op everywhere the two viewports agree
-    // (desktop/Android/non-collapsed) where the delta is 0.
+    // viewport (~59px short of the true bottom), so the wallpaper stops ABOVE
+    // the home-indicator zone and the dimmed launch-bg shows through as the
+    // near-black strip. The OLD `-1 * max(0px, 100lvh - 100dvh)` CSS-unit calc
+    // was a NO-OP on device (the collapsed ICB resolves lvh === dvh), which is
+    // why the strip survived 5 fixes. The reclaim now references the
+    // JS-MEASURED `--standalone-bottom-reclaim` var so it reflects the ACTUAL
+    // device gap. No-op everywhere the two viewports agree (var = 0).
     seed({ mode: "shader", color: "#ef5a1f" });
     const { container } = render(<AppBackground />);
     const shader = container.querySelector<HTMLElement>(
       '[data-testid="app-background-shader"]',
     );
-    // jsdom's CSS parser mangles the lvh/dvh `calc(max(...))` on reserialize,
-    // so assert the load-bearing markers survive rather than the exact string:
-    // a negative `calc(... max(...))` reclaim that references the dynamic
-    // viewport unit. (The exact source form is pinned in the source-string
-    // test in standalone-pwa-lockdown.test.ts.)
+    // jsdom's CSS parser preserves var()/calc() literally; assert the reclaim
+    // references the MEASURED var, not the useless lvh/dvh CSS-unit delta.
     const bottom = shader?.style.bottom ?? "";
     expect(bottom).toContain("calc");
-    expect(bottom).toContain("max");
-    expect(bottom).toContain("100dvh");
+    expect(bottom).toContain("--standalone-bottom-reclaim");
+    expect(bottom).not.toContain("100dvh");
+    expect(bottom).not.toContain("100lvh");
   });
 
-  it("extends the image wallpaper past the collapsed-ICB bottom to the TRUE physical bottom (standalone PWA)", () => {
+  it("extends the image wallpaper past the collapsed-ICB bottom via the JS-MEASURED reclaim var (standalone PWA)", () => {
     seed({ mode: "image", color: "#000000", imageUrl: "/api/media/x.png" });
     const { container } = render(<AppBackground />);
     const image = container.querySelector<HTMLElement>(
       '[data-testid="app-background-image"]',
     );
-    // jsdom mangles the lvh/dvh calc; assert the surviving markers (see the
-    // shader test note + the source-string pin in standalone-pwa-lockdown).
     const bottom = image?.style.bottom ?? "";
     expect(bottom).toContain("calc");
-    expect(bottom).toContain("max");
-    expect(bottom).toContain("100dvh");
+    expect(bottom).toContain("--standalone-bottom-reclaim");
+    expect(bottom).not.toContain("100dvh");
+    expect(bottom).not.toContain("100lvh");
   });
 
   it("renders a cover image when configured for image mode", () => {
@@ -112,55 +109,28 @@ describe("AppBackground", () => {
     expect(scrim?.className).toContain("bg-bg/50");
   });
 
-  it("lifts the wallpaper's bottom edge with a warm floor so it never reads as a black band", () => {
-    // The residual "black band" on the standalone home view: the fixed inset-0
-    // wallpaper DOES paint into the iOS home-indicator safe-area, but cover-
-    // cropping a wallpaper whose bottom is dark (the stock sunset, many user
-    // uploads) left that strip near-black. A short bottom-anchored warm floor
-    // gradient lifts only the lowest strip toward the ember floor tone, so the
-    // zone under the composer reads as intentional ambience, not a dead bar.
+  it("does NOT reintroduce the cosmetic warm bottom-floor gradient (measured reclaim makes the wallpaper own the true bottom)", () => {
+    // The cosmetic warm-ember floor lift existed ONLY to disguise the launch-bg
+    // band that showed when the wallpaper stopped ~59px short under the useless
+    // CSS-unit reclaim. With the JS-MEASURED reclaim the wallpaper's own pixels
+    // reach the true physical bottom, so the cosmetic strip is dead weight and
+    // must NOT return (it re-tinted the home-indicator zone a warm brown — the
+    // recurring "bottom bar" in disguise). Only the legibility scrim remains
+    // inside the single image layer.
     seed({ mode: "image", color: "#000000", imageUrl: "/api/media/x.png" });
     const { container } = render(<AppBackground />);
-    const floor = container.querySelector<HTMLElement>(
-      '[data-testid="app-background-image-floor"]',
-    );
-    expect(floor).not.toBeNull();
-    // Lives INSIDE the single image layer (one-background invariant holds).
     expect(
-      floor?.closest('[data-testid="app-background-image"]'),
-    ).not.toBeNull();
-    // Anchored at the true bottom edge, a short strip only — never a full wash.
-    expect(floor?.className).toContain("bottom-0");
-    expect(floor?.className).toContain("inset-x-0");
-    expect(floor?.className).not.toContain("inset-0");
-    // A bottom-anchored gradient (fades UP to transparent) built on the theme
-    // --bg token so it stays warm-but-legible in both themes, not a flat fill.
-    expect(floor?.style.backgroundImage).toContain("linear-gradient");
-    expect(floor?.style.backgroundImage).toContain("to top");
-    expect(floor?.style.backgroundImage).toContain("var(--bg)");
-    expect(floor?.style.backgroundImage).toContain("transparent");
-  });
-
-  it("paints the bottom floor ABOVE the legibility scrim (so the scrim can't dim it back to black)", () => {
-    // Ordering invariant: the floor must be the LAST child of the image layer.
-    // Under the scrim it would just get re-dimmed toward --bg and the band
-    // would return; above it, it lifts the already-scrimmed bottom out of
-    // near-black. Assert DOM order rather than z-index (both are absolute).
-    seed({ mode: "image", color: "#000000", imageUrl: "/api/media/x.png" });
-    const { container } = render(<AppBackground />);
+      container.querySelector('[data-testid="app-background-image-floor"]'),
+    ).toBeNull();
     const image = container.querySelector<HTMLElement>(
       '[data-testid="app-background-image"]',
     );
+    // The image layer holds exactly ONE child: the scrim. No cosmetic strip.
     const children = Array.from(image?.children ?? []);
-    const scrimIdx = children.findIndex(
-      (c) => c.getAttribute("data-testid") === "app-background-image-scrim",
+    expect(children).toHaveLength(1);
+    expect(children[0]?.getAttribute("data-testid")).toBe(
+      "app-background-image-scrim",
     );
-    const floorIdx = children.findIndex(
-      (c) => c.getAttribute("data-testid") === "app-background-image-floor",
-    );
-    expect(scrimIdx).toBeGreaterThanOrEqual(0);
-    expect(floorIdx).toBeGreaterThanOrEqual(0);
-    expect(floorIdx).toBeGreaterThan(scrimIdx);
   });
 
   it("renders the programmable shader (or its color-field fallback) for glsl mode", () => {

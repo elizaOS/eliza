@@ -65,6 +65,7 @@ import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
+import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../../platform/standalone-bottom-reclaim";
 import { useAppSelectorShallow } from "../../state";
 import {
   clearChatDraft,
@@ -3777,22 +3778,24 @@ export function ContinuousChatOverlay({
       // chat low without touching that zone.
       style={{
         zIndex: Z_SHELL_OVERLAY,
-        // RECLAIM THE DEAD BAND UNDER THE HOME COMPOSER (device r36): at rest the
-        // overlay is anchored `bottom: 0`, but on the installed iOS Safari
-        // standalone PWA a `position: fixed` descendant of the `position: fixed`
-        // body takes the LAYOUT (small, ~873px) viewport as its containing block
-        // — ~59px short of the physical bottom (100lvh ~932px) — so `bottom: 0`
-        // floated the composer ~59px UP over a dead band down to the home
-        // indicator. Drop it by the lvh−dvh collapse delta so it seats at the
-        // TRUE physical bottom. `max(0px, 100lvh - 100dvh)` is 0 on every
-        // viewport where the two agree (desktop, Android, non-collapsed), so
-        // this is a no-op except on the exact iOS-standalone geometry that
-        // collapses. When the keyboard is up the visual viewport shrinks and
-        // `effectiveKeyboardInset` drives the lift instead — no delta applied —
-        // so the keyboard-lift math (contract-tested) is untouched.
+        // RECLAIM THE DEAD BAND UNDER THE HOME COMPOSER (device r36 → r6
+        // JS-MEASURED cure): at rest the overlay is anchored `bottom: 0`, but on
+        // the installed iOS Safari standalone PWA a `position: fixed` descendant
+        // of the `position: fixed` body takes the LAYOUT (small, ~873px)
+        // viewport as its containing block — ~59px short of the physical bottom
+        // — so `bottom: 0` floated the composer ~59px UP over a dead band down to
+        // the home indicator. Drop it by the MEASURED collapse gap
+        // (`--standalone-bottom-reclaim`, set in JS from window/visualViewport
+        // vs documentElement.clientHeight) so it seats at the TRUE physical
+        // bottom. The prior `max(0px, 100lvh - 100dvh)` CSS-unit calc was a
+        // NO-OP on device (collapsed ICB resolves lvh === dvh, delta 0). Var is
+        // a hard 0 off-standalone. When the keyboard is up the visual viewport
+        // shrinks and `effectiveKeyboardInset` drives the lift instead — no
+        // reclaim applied — so the keyboard-lift math (contract-tested) is
+        // untouched.
         bottom: keyboardLiftActive
           ? effectiveKeyboardInset
-          : "calc(-1 * max(0px, 100lvh - 100dvh))",
+          : STANDALONE_BOTTOM_RECLAIM_OFFSET,
         // Full-bleed fills the screen edge-to-edge: NO overlay bottom padding,
         // so the glass panel reaches the true bottom (no orange gap). The
         // gesture-zone clearance moves INSIDE the composer row (below) so the
