@@ -10,12 +10,25 @@ import {
   homeWidgetNotificationsResponse,
 } from "../../../widgets/__fixtures__/home-widget-mock-data";
 
+const walletBalancesResponse = () => ({ evm: null, solana: null });
+
+const walletMarketOverviewResponse = () => ({
+  prices: [
+    { symbol: "BTC", priceUsd: 64000, change24hPct: 1.2 },
+    { symbol: "SOL", priceUsd: 150, change24hPct: 2.1 },
+    { symbol: "ETH", priceUsd: 3000, change24hPct: -0.5 },
+  ],
+  movers: [],
+});
+
 export const client = {
   // Empty base → widgets fetch `/api/lifeops/...` which the window.fetch mock
   // (installed in the fixture) intercepts.
   getBaseUrl: () => "",
   getRelationshipsPeople: async () => ({ data: [], stats: {} }),
   getRelationshipsCandidates: async () => [],
+  getWalletBalances: async () => walletBalancesResponse(),
+  getWalletMarketOverview: async () => walletMarketOverviewResponse(),
   // Notification store hydrate + live subscription.
   listNotifications: async () => homeWidgetNotificationsResponse(),
   onWsEvent: () => {},

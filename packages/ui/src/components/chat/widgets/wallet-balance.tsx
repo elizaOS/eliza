@@ -1,5 +1,5 @@
 /**
- * WALLET home widget. A glanceable, chromeless tile on the orange home field
+ * WALLET home widget. A glanceable, chromeless tile on the ember home field
  * showing crypto **unit prices only** — never the amount held or the holding
  * value (#10706). Tapping opens the wallet view.
  *
@@ -126,9 +126,9 @@ export function WalletBalanceWidget(
         .join(", ")}. Open wallet.`}
       onClick={() => nav.openView("/wallet", "wallet")}
       variant="ghost"
-      className={`${spanClassName} group flex h-auto w-full flex-col items-stretch gap-1 whitespace-normal px-3 py-2.5 text-left font-normal transition-opacity hover:opacity-80`}
+      className={`${spanClassName} group flex h-auto w-full flex-col items-stretch gap-1 rounded-2xl border border-white/55 bg-black/35 px-3 py-2.5 text-left font-normal text-white backdrop-blur-xl transition-[background-color,border-color,opacity] hover:border-white/75 hover:bg-black/45 hover:opacity-90`}
     >
-      <span className="flex items-center gap-2 text-xs text-muted [&>svg]:h-3.5 [&>svg]:w-3.5">
+      <span className="flex items-center gap-2 text-xs text-white/65 [&>svg]:h-3.5 [&>svg]:w-3.5">
         <Wallet />
         Wallet
       </span>
@@ -140,19 +140,13 @@ export function WalletBalanceWidget(
             data-testid={`wallet-price-row-${h.symbol}`}
             className="flex items-baseline justify-between gap-2 text-sm"
           >
-            <span className="truncate font-medium text-txt-strong">
-              {h.symbol}
-            </span>
+            <span className="truncate font-medium text-white">{h.symbol}</span>
             <span className="flex shrink-0 items-baseline gap-1.5">
-              <span className="tabular-nums text-txt-strong">
+              <span className="tabular-nums text-white">
                 {formatPrice(h.priceUsd)}
               </span>
               {change ? (
-                <span
-                  className={`tabular-nums text-xs ${
-                    h.change24hPct >= 0 ? "text-success" : "text-danger"
-                  }`}
-                >
+                <span className="tabular-nums text-xs text-white/75">
                   {change}
                 </span>
               ) : null}

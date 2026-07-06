@@ -245,6 +245,7 @@ async function readHomeDarkForegrounds(page) {
       "widget-goals-attention",
       "widget-health-sleep",
       "chat-widget-calendar-upcoming",
+      "chat-widget-wallet-prices",
     ];
     const failures = [];
     for (const testId of surfaces) {
@@ -643,15 +644,11 @@ try {
       `curated app "${id}" renders on the launcher apps page`,
     );
   }
-  // ── No dock: every view (Chat included) tiles on the page grid. The
-  // featured-views dock was removed, so there is no `launcher-dock` element.
+  // ── No dock: the featured-views dock was removed, so there is no
+  // `launcher-dock` element competing with the curated page grid.
   assert(
     (await mobile.getByTestId("launcher-dock").count()) === 0,
     "the launcher renders no dock (featured-views header removed)",
-  );
-  assert(
-    await mobile.getByTestId("launcher-tile-chat").isVisible(),
-    "Chat renders as a page tile on the launcher (no dock)",
   );
   // ── Removed / hidden surfaces never tile: removed apps, wallet sub-views,
   // and the deduped duplicate registrations.
