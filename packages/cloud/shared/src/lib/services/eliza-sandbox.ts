@@ -83,6 +83,22 @@ import {
 } from "./shared-runtime/run-shared-agent-turn";
 import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
 
+/**
+ * The repo portion of a docker image ref (strips the `:tag` / `@digest`).
+ *
+ * Used to tell a fleet-managed default image (`ghcr.io/elizaos/eliza:*`) from a
+ * genuinely custom user image when deciding whether a fleet upgrade/rollback may
+ * proceed (#15101). A tag is the segment after the LAST `:` only when it has no
+ * `/` after it, so a registry port (`ghcr.io:443/…`) is not mistaken for a tag.
+ */
+function imageRepo(image: string): string {
+  const atIdx = image.indexOf("@");
+  const base = atIdx === -1 ? image : image.slice(0, atIdx);
+  const lastColon = base.lastIndexOf(":");
+  const lastSlash = base.lastIndexOf("/");
+  return lastColon > lastSlash ? base.slice(0, lastColon) : base;
+}
+
 export interface CreateAgentParams {
   organizationId: string;
   userId: string;
@@ -4540,7 +4556,18 @@ export class ElizaSandboxService {
         error: "Agent has no node_id or container_name to upgrade from",
       };
     }
-    if (agent.docker_image && agent.docker_image !== dockerImage) {
+    // Refuse a fleet upgrade only for a genuinely CUSTOM image (a different
+    // repo than the fleet-managed default), NOT for a stale default-family
+    // image pinned to an older tag. Comparing the full ref (`docker_image !==
+    // dockerImage`) refused every agent on an older `ghcr.io/elizaos/eliza:sha-*`
+    // tag, so sha-pinned default agents never received fleet upgrades (#15101).
+    // The reconciler already selects them by digest drift; the blue/green swap
+    // re-provisions on the target image+digest, so moving a fleet-managed agent
+    // to the current default is safe regardless of its current tag.
+    if (
+      agent.docker_image &&
+      imageRepo(agent.docker_image) !== imageRepo(dockerImage)
+    ) {
       return {
         success: false,
         error: "Agent uses a custom docker image; refusing fleet upgrade",
@@ -4836,7 +4863,13 @@ export class ElizaSandboxService {
         error: "Agent has no node_id or container_name to roll back from",
       };
     }
-    if (agent.docker_image && agent.docker_image !== dockerImage) {
+    // Same fleet-managed-vs-custom distinction as the upgrade path (#15101):
+    // a rollback of a default-family agent must not be refused just because its
+    // tag differs from the target.
+    if (
+      agent.docker_image &&
+      imageRepo(agent.docker_image) !== imageRepo(dockerImage)
+    ) {
       return {
         success: false,
         error: "Agent uses a custom docker image; refusing fleet rollback",
