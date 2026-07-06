@@ -1,10 +1,12 @@
 import {
   getSolanaBalance,
+  getSolanaOldestKnownSignature,
   getSolanaRecentSignatures,
   getSolanaTokenHoldings,
 } from "./helius";
 import { analyzeWalletActivity } from "./analyzers/activity";
 import { analyzeWalletRisk } from "./analyzers/risk";
+import { analyzeWalletAge } from "./analyzers/walletAge";
 import {
   SupportedChain,
   WalletBalance,
@@ -33,8 +35,17 @@ export async function investigateWallet(
     case "solana": {
       try {
         const balance = await getSolanaBalance(walletAddress);
-        const recentSignatures = await getSolanaRecentSignatures(walletAddress, 10);
-        const tokenHoldings = await getSolanaTokenHoldings(walletAddress);
+
+const recentSignatures = await getSolanaRecentSignatures(
+  walletAddress,
+  10,
+);
+
+const oldestKnownSignature = await getSolanaOldestKnownSignature(
+  walletAddress,
+);
+
+const tokenHoldings = await getSolanaTokenHoldings(walletAddress);
 
         const walletBalance: WalletBalance = {
           nativeAmount: balance.sol,
@@ -52,6 +63,10 @@ export async function investigateWallet(
     status: tx.err ? "failed" : "success",
   }));
        const activity = analyzeWalletActivity(recentTransactions);
+        const age = analyzeWalletAge(
+  oldestKnownSignature.signature,
+  oldestKnownSignature.blockTime,
+);
 
 const risk = analyzeWalletRisk(
   balance.sol,
@@ -67,6 +82,7 @@ tokenHoldings,
 recentTransactions,
 transactionCountSample: recentTransactions.length,
 activity,
+age,
 risk,
 summary: `Wallet found. Current balance: ${balance.sol.toFixed(
   6,
