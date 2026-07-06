@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acquireDeviceLease,
   activeLeaseStatus,
@@ -17,6 +17,7 @@ import {
   deviceLeasePath,
   deviceLeaseStateDir,
   isDeviceLeased,
+  processIsAlive,
   readDeviceLease,
 } from "./lib/device-lease.mjs";
 
@@ -139,6 +140,19 @@ describe("device leases", () => {
         },
       ),
     ).toEqual({ active: false, reason: "expired" });
+  });
+
+  it("treats EPERM from signal-0 as alive, not reclaimable", () => {
+    const error = new Error("operation not permitted");
+    error.code = "EPERM";
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+      throw error;
+    });
+    try {
+      expect(processIsAlive(12345)).toBe(true);
+    } finally {
+      kill.mockRestore();
+    }
   });
 
   it("reclaims an expired lease on the next acquire", async () => {
