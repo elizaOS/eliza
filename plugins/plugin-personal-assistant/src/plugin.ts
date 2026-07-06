@@ -126,6 +126,7 @@ import {
   createOwnerSendPolicy,
   registerOwnerSendApprovalWorker,
 } from "./lifeops/messaging/owner-send-policy.js";
+import { registerCoreFactMemoryBridge } from "./lifeops/owner/core-fact-memory-bridge.js";
 import {
   createOwnerFactStore,
   registerOwnerFactStore,
@@ -907,6 +908,7 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     const ownerFactStore = createOwnerFactStore(runtime);
     registerOwnerFactStore(runtime, ownerFactStore);
+    registerCoreFactMemoryBridge(runtime);
 
     const promptRegistry = createMultilingualPromptRegistry();
     registerDefaultPromptPack(promptRegistry);
