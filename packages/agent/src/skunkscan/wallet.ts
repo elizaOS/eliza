@@ -101,17 +101,17 @@ const portfolio = analyzeWalletPortfolio(
   tokenPrices,
 );
 
+const risk = analyzeWalletRisk(
+  balance.sol,
+  activity,
+);
+
 const whale = analyzeWalletWhaleStatus(
   portfolio,
   age,
   activity,
   funding,
   risk,
-);
-
-const risk = analyzeWalletRisk(
-  balance.sol,
-  activity,
 );
 
         return {
