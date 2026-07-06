@@ -13,11 +13,20 @@ which is ignored by the repo-wide `**/data/` rule. Only synthetic fixtures under
 
 ```bash
 bun run --cwd packages/corpus-tools validate -- fixtures/synthetic
+bun run --cwd packages/corpus-tools corpus:scrub -- --target data --stage all --mode deep --resume
+bun run --cwd packages/corpus-tools corpus:scrub -- --target data --stage llm --mode fast-track --dry-run
 ```
 
 The validator accepts either a shard file or a directory of `*.jsonl` shards and
 prints a JSON summary. It fails non-zero on schema, cutoff, duplicate-id,
 reply-reference, thread-reference, or manifest-integrity errors.
+
+The scrub driver writes its local-only ledger, output, and report under
+`<target>/.state/` by default. Keep generated outputs there or outside the input
+tree; a top-level `*.jsonl` beside platform shards is treated as corpus input by
+the validator. `--resume` reuses content-hash + ruleset-version markers from
+`scrub-ledger.jsonl`, so rerunning unchanged input should report zero stage
+executions and a ledger hit rate of `1`.
 
 ## X Mapping
 

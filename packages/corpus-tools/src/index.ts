@@ -3,5 +3,6 @@
  * loader adapters.
  */
 export * from "./mappers.ts";
+export * from "./pipeline/driver.ts";
 export * from "./schema.ts";
 export * from "./validator.ts";
