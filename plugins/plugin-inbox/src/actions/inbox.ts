@@ -49,6 +49,10 @@ import type {
   TriageClassification,
   TriageEntry,
 } from "../inbox/types.ts";
+import {
+  appendInboxDraftChoiceMarker,
+  appendInboxTriageChoiceMarkers,
+} from "./choice-markers.js";
 
 const ACTION_NAME = "INBOX";
 
@@ -601,7 +605,10 @@ async function replyToEntry(args: {
   if (!args.confirmed) {
     return {
       success: true,
-      text: `Drafted reply for ${args.entry.senderName ?? args.entry.channelName}. Confirm before sending.`,
+      text: appendInboxDraftChoiceMarker(
+        `Drafted reply for ${args.entry.senderName ?? args.entry.channelName}. Confirm before sending.`,
+        args.entry.id,
+      ),
       data: {
         subaction: "reply",
         requiresConfirmation: true,
@@ -728,7 +735,10 @@ export async function executeInboxQueueOperation(args: {
             : `Loaded ${entries.length} pending inbox triage items.`;
       return {
         success: true,
-        text: `${baseText}${degradedSuffix(degraded)}`,
+        text: appendInboxTriageChoiceMarkers(
+          `${baseText}${degradedSuffix(degraded)}`,
+          entries,
+        ),
         data: {
           subaction: "triage",
           classified: classifiedCount,

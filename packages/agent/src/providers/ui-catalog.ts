@@ -1,7 +1,7 @@
 /**
  * Dynamic prompt guides for rich UI output, split by cost and intent (#14324):
  * `uiWidgets` teaches the closed in-chat marker vocabulary ([CONFIG:pluginId],
- * [FOLLOWUPS], [FORM], [CHECKLIST], [WORKFLOW]) in a hard-budgeted ~60 lines,
+ * [CHOICE], [FOLLOWUPS], [FORM], [CHECKLIST], [WORKFLOW]) in a hard-budgeted ~60 lines,
  * while `uiGenerative` carries the expensive generative-UI method (inline RFC
  * 6902 JSONL patches + the ~156-component catalog) behind narrower
  * dashboard/table/visualization relevance keywords. Both are `dynamic: true`
@@ -81,63 +81,59 @@ function isAllowedChannel(message: Memory): boolean {
 export const UI_WIDGETS_GUIDE = `## In-chat widgets — canonical markers you can emit in replies
 
 ### [CONFIG:pluginId] — plugin configuration card
-Emit EXACTLY this marker whenever a plugin comes up in a setup, configuration,
-or status context (e.g. [CONFIG:discord], [CONFIG:openai], [CONFIG:polymarket]).
-The UI renders a full configuration form from the plugin's parameter schema.
-Use it whenever the user names a plugin, asks to show / set up / configure /
-enable / check one, or you would otherwise describe configuration steps in
-prose — emit the marker instead of the steps.
+Emit EXACTLY this marker whenever a plugin comes up in setup/config/status
+(e.g. [CONFIG:discord], [CONFIG:openai]). The UI renders a full configuration
+form from the plugin schema; emit the marker instead of prose setup steps.
 
 ### [FOLLOWUPS] — 2–4 tappable next steps (optional)
-Use ONLY when a follow-up genuinely helps — never to pad a reply. Emit the
-block INLINE (no code fences), one \`<kind>:<payload>=<label>\` per line:
+Use ONLY when a follow-up genuinely helps. Emit INLINE, one
+\`<kind>:<payload>=<label>\` per line:
 [FOLLOWUPS]
 reply:Summarize my unread messages=Summarize unread
 navigate:/apps/tasks=View tasks
 prompt:Draft a reply about =Draft a reply
 [/FOLLOWUPS]
-Kinds: reply sends <payload> as the user's next message; navigate opens a view
-(<payload> is a "/" route like /apps/tasks, /settings/voice, or a view id) —
-after creating tasks, offer navigate:/apps/tasks=View tasks; prompt prefills
-the composer for editing. Labels 1–4 words. Omit the block when no useful
-follow-up exists.
+Kinds: reply sends <payload>; navigate opens a "/" route or view id; prompt
+prefills the composer. Labels 1–4 words. Omit when no useful next step exists.
+
+### [CHOICE:<scope>] — pick one from concrete options
+Use when 2+ explicit choices remove typing or ambiguity. Emit one
+\`<value>=<label>\` per line; tapped value is sent as the user's next message:
+[CHOICE:approval id=req_123]
+Approve request req_123=Approve
+Reject request req_123=Deny
+[/CHOICE]
 
 ### [FORM] — collect several specific values at once
-Render a form instead of asking in prose. This includes relaying a tool result
-that reports missing fields or asks the user for 2+ details: re-ask with a form
-field per missing value, never as a prose checklist. Emit INLINE (no code
-fences); body is one JSON object on its own line between the markers:
+Render a form instead of asking in prose when a tool needs 2+ missing fields.
+Emit INLINE; body is one JSON object on its own line between the markers:
 [FORM]
 {"title":"Schedule reminder","submitLabel":"Create","fields":[{"name":"title","type":"text","label":"Reminder","required":true},{"name":"when","type":"datetime","label":"When","required":true},{"name":"channel","type":"select","label":"Notify via","options":[{"label":"Push","value":"push"},{"label":"Email","value":"email"}]}]}
 [/FORM]
 Field types: text | number | select (needs options) | checkbox | date | time |
-datetime. Prefer date/time/datetime over free text for anything scheduled —
-they render native pickers and submit as YYYY-MM-DD / HH:mm / YYYY-MM-DDTHH:mm.
-Each field "name" must start with a letter. Submitted values come back to you
-as a normal message. NEVER use [FORM] for secrets or API keys (the secure
-secret flow handles those); for a single free-text answer, just ask.
+datetime. Prefer date/time/datetime for schedules. Field names start with a
+letter. NEVER use [FORM] for secrets or API keys; use the secure secret flow.
+For one free-text answer, just ask.
 
 ### [CHECKLIST] — live todo list while you work through steps
 [CHECKLIST]
 {"title":"Migration","items":[{"content":"Back up the database","status":"completed"},{"content":"Run the migration","status":"in_progress"},{"content":"Verify downstream consumers","status":"pending"}]}
 [/CHECKLIST]
 Item status: pending | in_progress | completed. Re-emit the WHOLE block with
-updated statuses to advance it in place. A coding/orchestrator task surfaces
-its own plan — do not duplicate it with a [CHECKLIST].
+updated statuses. A coding/orchestrator task surfaces its own plan.
 
 ### [WORKFLOW] — ordered k/N step pipeline
 [WORKFLOW]
 {"title":"Deploy","steps":[{"label":"Build image","status":"done"},{"label":"Push to registry","status":"running"},{"label":"Roll out","status":"pending"}]}
 [/WORKFLOW]
-Step status: pending | running | done | failed. Re-emit to advance.
-[WORKFLOW] is an ordered pipeline; [CHECKLIST] is an unordered todo set.
+Step status: pending | running | done | failed. Re-emit to advance. [WORKFLOW]
+is ordered; [CHECKLIST] is unordered.
 
 ### When to use
-- Plugin named, or any setup/status context → [CONFIG:pluginId], always
-- Several specific values needed → [FORM]; helpful next steps → [FOLLOWUPS], sparingly
+- Plugin setup/status → [CONFIG:pluginId], always
+- Pick one → [CHOICE]; several values → [FORM]; next steps → [FOLLOWUPS]
 - Your own multi-step work → [CHECKLIST] (unordered) / [WORKFLOW] (ordered)
-- Custom dashboards/tables/charts → a separate generative-UI guide fires on
-  those intents; simple factual answers → plain text only`;
+- Custom dashboards/tables/charts → separate generative-UI guide; facts → text`;
 
 /**
  * Everyday marker guidance — cheap, always the first thing the model learns

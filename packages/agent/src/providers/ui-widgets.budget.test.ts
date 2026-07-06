@@ -34,6 +34,7 @@ describe("uiWidgets — size budget (#14324)", () => {
   it("teaches every canonical marker and no JSONL method", () => {
     for (const marker of [
       "[CONFIG:pluginId]",
+      "[CHOICE:<scope>]",
       "[FOLLOWUPS]",
       "[FORM]",
       "[CHECKLIST]",

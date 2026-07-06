@@ -5,7 +5,7 @@
  * the LifeOps-specific payloads and list/resolution surface.
  */
 import { randomUUID } from "node:crypto";
-import { resolveApprovalService } from "@elizaos/agent";
+import { getAgentEventService, resolveApprovalService } from "@elizaos/agent";
 import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";
 import {
   type ApprovalAction,
@@ -21,6 +21,7 @@ import {
   ApprovalStateTransitionError,
   ApprovalTransitionConflictError,
 } from "./approval-queue.types.js";
+import { buildApprovalChoiceText } from "./choice-markers.js";
 import {
   executeRawSql,
   parseJsonRecord,
@@ -548,6 +549,36 @@ function timestampLiteral(date: Date): string {
   return sqlText(date.toISOString());
 }
 
+interface AssistantEventEmitter {
+  emit?: (event: {
+    runId: string;
+    stream: string;
+    data: Record<string, unknown>;
+    agentId?: string;
+  }) => void;
+}
+
+function emitApprovalChoiceEvent(
+  runtime: IAgentRuntime,
+  input: { requestId: string; reason: string; action: ApprovalAction },
+): void {
+  const eventService = getAgentEventService(
+    runtime,
+  ) as AssistantEventEmitter | null;
+  if (!eventService?.emit) return;
+  eventService.emit({
+    runId: randomUUID(),
+    stream: "assistant",
+    agentId: String(runtime.agentId),
+    data: {
+      text: buildApprovalChoiceText(input),
+      source: "lifeops-approval",
+      requestId: input.requestId,
+      action: input.action,
+    },
+  });
+}
+
 interface NotificationEmitter {
   notify: (input: {
     title: string;
@@ -616,9 +647,22 @@ export class PgApprovalQueue implements ApprovalQueue {
     logger.info(
       `[ApprovalQueue] enqueued ${input.action} for ${input.subjectUserId} as ${id}`,
     );
-    // An outbound action now needs the owner's go-ahead. Surface it on the
-    // notification rail so the owner can act without watching the queue
-    // (fire-and-forget; a notify failure must not block the enqueue).
+    // An outbound action now needs the owner's go-ahead. Surface it directly
+    // in chat with one-tap approval chips, and also on the notification rail so
+    // the owner is interrupted even when they are not watching chat. Both
+    // side-channels are fire-and-forget; neither can block the enqueue.
+    try {
+      emitApprovalChoiceEvent(this.runtime, {
+        requestId: id,
+        reason: input.reason,
+        action: input.action,
+      });
+    } catch (err) {
+      this.runtime.reportError("ApprovalQueue.chatChoice", err, {
+        requestId: id,
+        action: input.action,
+      });
+    }
     void getNotifier(this.runtime)
       ?.notify({
         title: "Approval needed",
