@@ -275,6 +275,7 @@ const NotificationRow = memo(function NotificationRow({
   const [swipeX, setSwipeX] = useState(0);
   const [dismissing, setDismissing] = useState<"left" | "right" | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const gesture = useRef<{
     id: number;
     startX: number;
@@ -369,21 +370,28 @@ const NotificationRow = memo(function NotificationRow({
     [clearGesture, commitDismiss],
   );
 
-  // Close the contextual menu on any outside pointer / Escape while it is open.
+  // Close the contextual menu on an OUTSIDE pointer / Escape while it is open.
+  // The containment check is what lets a click LAND on a menu item: a blanket
+  // "close on any pointerdown" would unmount the menu on the item's own
+  // pointerdown, swallowing the click before it fires.
   useEffect(() => {
     if (!menuOpen) return undefined;
-    const close = () => setMenuOpen(false);
+    const onPointer = (ev: PointerEvent) => {
+      const target = ev.target as Node | null;
+      if (menuRef.current && target && menuRef.current.contains(target)) return;
+      setMenuOpen(false);
+    };
     const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape") close();
+      if (ev.key === "Escape") setMenuOpen(false);
     };
     // Defer one tick so the opening long-press/right-click isn't the "outside".
     const id = window.setTimeout(() => {
-      window.addEventListener("pointerdown", close);
+      window.addEventListener("pointerdown", onPointer);
       window.addEventListener("keydown", onKey);
     }, 0);
     return () => {
       window.clearTimeout(id);
-      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("pointerdown", onPointer);
       window.removeEventListener("keydown", onKey);
     };
   }, [menuOpen]);
@@ -401,7 +409,11 @@ const NotificationRow = memo(function NotificationRow({
   const dragging = swipeX !== 0 && !dismissing;
   return (
     <li
-      className="eliza-notif-row relative"
+      // Lifted above sibling rows while the menu is open so the menu — which
+      // overflows past this row's box — is never painted over (each row's swipe
+      // transform makes its own stacking context, so a later row would other-
+      // wise cover the menu and swallow its clicks).
+      className={cn("eliza-notif-row relative", menuOpen && "z-30")}
       data-notif-row
       onContextMenu={(e) => {
         e.preventDefault();
@@ -411,9 +423,14 @@ const NotificationRow = memo(function NotificationRow({
       <div
         data-testid="notification-row-swipe"
         style={{
+          // Only apply a transform while actually swiping/dismissing: a resting
+          // `translateX(0)` still creates a stacking context on every row, which
+          // is what buries an open menu behind the next row.
           transform: dismissing
             ? `translateX(${dismissing === "left" ? "-120%" : "120%"})`
-            : `translateX(${swipeX}px)`,
+            : swipeX
+              ? `translateX(${swipeX}px)`
+              : undefined,
           opacity: dismissing ? 0 : Math.max(0, 1 - Math.abs(swipeX) / 220),
           transition: dragging
             ? "none"
@@ -526,12 +543,13 @@ const NotificationRow = memo(function NotificationRow({
       </div>
       {menuOpen ? (
         <div
+          ref={menuRef}
           role="menu"
           aria-label="Notification actions"
           data-testid="notification-row-menu"
-          // Anchored to the trailing edge over the row; stops its own pointerdown
-          // from reaching the outside-close listener.
-          onPointerDown={(e) => e.stopPropagation()}
+          // Anchored to the trailing edge over the row. The outside-close
+          // listener skips pointerdowns inside this subtree (containment check)
+          // so a menu-item click is never swallowed.
           className="absolute right-2 top-full z-10 mt-0.5 flex min-w-40 flex-col overflow-hidden rounded-xl border border-white/12 bg-black/80 py-1 text-sm text-white shadow-lg backdrop-blur-md"
         >
           {notification.deepLink && isSafeDeepLink(notification.deepLink) ? (

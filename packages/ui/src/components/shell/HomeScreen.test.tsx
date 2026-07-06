@@ -190,24 +190,17 @@ describe("HomeScreen", () => {
     expect(screen.getByTestId("notifications-shade")).toBeTruthy();
   });
 
-  it("opens the shade on a downward drag anywhere on the home (touch), collapsing chat", () => {
+  // Item 5: opening the shade collapses the chat (the reveal and the chat
+  // dismissal are one motion). Proven here via the hint tap — the reliable
+  // pointer path; the region-wide downward TOUCH drag is a non-passive
+  // touchmove that jsdom can't model faithfully (touch-action / preventDefault),
+  // so that gesture is covered by the real-touch e2e in gesture-matrix.spec.ts.
+  it("fires eliza:chat:collapse when the shade opens", () => {
     const collapse = vi.fn();
     window.addEventListener("eliza:chat:collapse", collapse);
     __ingestNotificationForTests(makeNotification());
     render(<HomeScreen onOpenTile={vi.fn()} />);
-    const home = screen.getByTestId("home-screen");
-    // A touch drag DOWN that starts at the top of the scroller (scrollTop 0)
-    // opens the shade and fires the chat-collapse event (item 5).
-    fireEvent.pointerDown(home, {
-      clientY: 100,
-      pointerId: 2,
-      pointerType: "touch",
-    });
-    fireEvent.pointerMove(home, {
-      clientY: 140,
-      pointerId: 2,
-      pointerType: "touch",
-    });
+    fireEvent.click(screen.getByTestId("home-notifications-hint"));
     expect(screen.getByTestId("notifications-shade")).toBeTruthy();
     expect(collapse).toHaveBeenCalledTimes(1);
     window.removeEventListener("eliza:chat:collapse", collapse);

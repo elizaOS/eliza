@@ -292,43 +292,60 @@ export function HomeScreen({
       window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
   }, []);
 
-  // Region-wide pull-down: a downward drag that STARTS at the top of the home
-  // scroller (nothing to scroll up into) opens the shade, so "drag down
-  // anywhere" works, not just on the hint pill. Tracked on the scroller with a
-  // ref so a normal mid-list scroll never triggers it.
-  const pullStart = useRef<number | null>(null);
-  const onScrollerPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      pullStart.current =
-        e.currentTarget.scrollTop <= 0 && e.pointerType !== "mouse"
-          ? e.clientY
+  // Region-wide pull-down: a downward touch drag that STARTS at the top of the
+  // home scroller (nothing to scroll up into) opens the shade, so "drag down
+  // anywhere" works, not just on the hint pill. This MUST be a non-passive
+  // `touchmove` listener that preventDefaults — the scroller is `touch-action:
+  // pan-y`, so a pointer-event handler loses the vertical drag to the browser's
+  // native pan before it can cross the threshold (the pan-y pointer-gesture
+  // gotcha). The ref lets us bind the native listener directly.
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const openShadeRef = useRef(openShade);
+  openShadeRef.current = openShade;
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return undefined;
+    let startY: number | null = null;
+    let opened = false;
+    const onStart = (e: TouchEvent) => {
+      // Only arm when the scroller is at the top; a mid-list drag is a scroll.
+      startY =
+        el.scrollTop <= 0 && e.touches.length === 1
+          ? e.touches[0].clientY
           : null;
-    },
-    [],
-  );
-  const onScrollerPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (pullStart.current === null || shadeOpen) return;
-      if (e.clientY - pullStart.current >= NOTIF_PULL_THRESHOLD_PX) {
-        pullStart.current = null;
+      opened = false;
+    };
+    const onMove = (e: TouchEvent) => {
+      if (startY === null || opened) return;
+      const dy = e.touches[0].clientY - startY;
+      if (dy >= NOTIF_PULL_THRESHOLD_PX) {
+        opened = true;
+        // Claim the gesture from the native pan so it reads as a pull, not a scroll.
+        e.preventDefault();
         void haptics.light();
-        openShade();
+        openShadeRef.current();
       }
-    },
-    [openShade, shadeOpen],
-  );
-  const endScrollerPull = useCallback(() => {
-    pullStart.current = null;
+    };
+    const clear = () => {
+      startY = null;
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", clear, { passive: true });
+    el.addEventListener("touchcancel", clear, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", clear);
+      el.removeEventListener("touchcancel", clear);
+    };
   }, []);
 
   return (
     <>
       <div
         data-testid="home-screen"
-        onPointerDown={onScrollerPointerDown}
-        onPointerMove={onScrollerPointerMove}
-        onPointerUp={endScrollerPull}
-        onPointerCancel={endScrollerPull}
+        ref={scrollerRef}
         className={cn(
           // `touch-pan-y`: this scroller covers the whole home half, and a
           // scroll container's OWN touch-action governs which pans the browser
