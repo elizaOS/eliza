@@ -9,6 +9,7 @@ import { analyzeWalletActivity } from "./analyzers/activity";
 import { analyzeWalletAge } from "./analyzers/walletAge";
 import { analyzeWalletFunding } from "./analyzers/funding";
 import { analyzeWalletPortfolio } from "./analyzers/portfolio";
+import { getSolanaTokenPrices } from "./providers/priceProvider";
 import { analyzeWalletRisk } from "./analyzers/risk";
 import {
   SupportedChain,
@@ -62,6 +63,10 @@ const firstParsedTransaction =
 
 const tokenHoldings = await getSolanaTokenHoldings(walletAddress);
 
+        const tokenPrices = await getSolanaTokenPrices(
+  tokenHoldings.map((token) => token.mint),
+);
+
         const walletBalance: WalletBalance = {
           nativeAmount: balance.sol,
           nativeSymbol: "SOL",
@@ -92,6 +97,7 @@ const tokenHoldings = await getSolanaTokenHoldings(walletAddress);
 const portfolio = analyzeWalletPortfolio(
   walletBalance,
   tokenHoldings,
+  tokenPrices,
 );
 
 const risk = analyzeWalletRisk(
