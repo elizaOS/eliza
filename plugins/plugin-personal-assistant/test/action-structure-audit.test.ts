@@ -140,20 +140,33 @@ describe("LifeOps canonical action structure", () => {
       kind: "action",
       name: "RESOLVE_REQUEST_REJECT",
     });
-    expect(
-      registry.match("Don’t send it.", {
+    const matchOwner = (text: string) =>
+      registry.match(text, {
         actions: actionNames,
         allowNatural: true,
         isElevated: true,
-      })?.shortcut.id,
-    ).toBe(APPROVAL_REJECT_SHORTCUT_ID);
-    expect(
-      registry.match("hold that for now", {
-        actions: actionNames,
-        allowNatural: true,
-        isElevated: true,
-      }),
-    ).toBeNull();
+      });
+    for (const positive of [
+      "Don’t send it.",
+      "reject that for now",
+      "Decline the request.",
+      "deny the pending approval",
+    ]) {
+      expect(matchOwner(positive)?.shortcut.id, positive).toBe(
+        APPROVAL_REJECT_SHORTCUT_ID,
+      );
+    }
+    // Rejection verbs aimed at other objects stay with the planner, which can
+    // weigh conversation context; a shortcut misfire terminally rejects a
+    // queued approval with zero inference.
+    for (const negative of [
+      "hold that for now",
+      "Decline the meeting request from Bob",
+      "Reject the draft and write a new one",
+      "deny his request for access",
+    ]) {
+      expect(matchOwner(negative), negative).toBeNull();
+    }
     expect(
       registry.match("Don't send it, reject that request.", {
         actions: actionNames,
