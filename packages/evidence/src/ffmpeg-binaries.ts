@@ -9,6 +9,7 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
+import path from "node:path";
 import { promisify } from "node:util";
 
 const require = createRequire(import.meta.url);
@@ -20,6 +21,15 @@ interface ToolResolution {
   bin: string;
   source: "env" | "system" | "bundled";
 }
+
+interface BundledPathResult {
+  bin: string | null;
+  reason?: string;
+}
+
+let ffmpegStaticInstallPromise: Promise<
+  { installed: true } | { installed: false; reason: string }
+> | null = null;
 
 /** Whether a binary answers `-version`, with a reason when it does not. */
 async function binaryAvailable(
@@ -60,13 +70,73 @@ function requireFfmpegStaticPath(): string | null {
   return null;
 }
 
-function bundledFfmpegPath(): string | null {
-  const candidate = requireFfmpegStaticPath();
-  if (candidate === null) return null;
-  return fs.existsSync(candidate) ? candidate : null;
+function packageRoot(packageName: string): string | null {
+  try {
+    return path.dirname(require.resolve(packageName));
+  } catch (error) {
+    // error-policy:J3 optional packaged binary — absence is reported by caller.
+    void error;
+  }
+  return null;
 }
 
-function bundledFfprobePath(): string | null {
+function installFfmpegStaticOnce(): Promise<
+  { installed: true } | { installed: false; reason: string }
+> {
+  ffmpegStaticInstallPromise ??= (async () => {
+    const root = packageRoot("ffmpeg-static");
+    if (root === null) {
+      return {
+        installed: false,
+        reason: "ffmpeg-static package is not installed",
+      };
+    }
+
+    const installer = path.join(root, "install.js");
+    if (!fs.existsSync(installer)) {
+      return {
+        installed: false,
+        reason: "ffmpeg-static install script is missing",
+      };
+    }
+
+    try {
+      await execFileAsync(process.execPath, [installer], {
+        cwd: root,
+        timeout: 120_000,
+      });
+      return { installed: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        installed: false,
+        reason: `ffmpeg-static install failed: ${message.slice(0, 160)}`,
+      };
+    }
+  })();
+
+  return ffmpegStaticInstallPromise;
+}
+
+async function bundledFfmpegPath(): Promise<BundledPathResult> {
+  const candidate = requireFfmpegStaticPath();
+  if (candidate === null) return { bin: null };
+  if (fs.existsSync(candidate)) return { bin: candidate };
+
+  const installed = await installFfmpegStaticOnce();
+  if (!installed.installed) {
+    return { bin: null, reason: installed.reason };
+  }
+
+  return fs.existsSync(candidate)
+    ? { bin: candidate }
+    : {
+        bin: null,
+        reason: `ffmpeg-static install completed but ${candidate} is still missing`,
+      };
+}
+
+function bundledFfprobePath(): BundledPathResult {
   try {
     const mod = require("ffprobe-static") as { path?: string } | string;
     const candidate = typeof mod === "string" ? mod : mod.path;
@@ -75,13 +145,13 @@ function bundledFfprobePath(): string | null {
       candidate.length > 0 &&
       fs.existsSync(candidate)
     ) {
-      return candidate;
+      return { bin: candidate };
     }
   } catch (error) {
     // error-policy:J3 optional packaged binary — absence is reported by caller.
     void error;
   }
-  return null;
+  return { bin: null };
 }
 
 function configuredEnvPath(tool: ToolName): string | undefined {
@@ -90,7 +160,7 @@ function configuredEnvPath(tool: ToolName): string | undefined {
     : envPath(["ELIZA_FFPROBE_BIN", "ELIZA_FFPROBE_PATH", "FFPROBE_PATH"]);
 }
 
-function bundledPath(tool: ToolName): string | null {
+async function bundledPath(tool: ToolName): Promise<BundledPathResult> {
   return tool === "ffmpeg" ? bundledFfmpegPath() : bundledFfprobePath();
 }
 
@@ -123,13 +193,13 @@ async function resolveTool(
     };
   }
 
-  const bundled = bundledPath(tool);
-  if (bundled !== null) {
-    const available = await binaryAvailable(bundled);
+  const bundled = await bundledPath(tool);
+  if (bundled.bin !== null) {
+    const available = await binaryAvailable(bundled.bin);
     if (available.available) {
       return {
         available: true,
-        resolution: { bin: bundled, source: "bundled" },
+        resolution: { bin: bundled.bin, source: "bundled" },
       };
     }
     return {
@@ -140,7 +210,9 @@ async function resolveTool(
 
   return {
     available: false,
-    reason: `${tool} not found on PATH and bundled ${tool}-static package is unavailable`,
+    reason: bundled.reason
+      ? `${tool} not found on PATH and bundled ${tool}-static package is unavailable: ${bundled.reason}`
+      : `${tool} not found on PATH and bundled ${tool}-static package is unavailable`,
   };
 }
 
