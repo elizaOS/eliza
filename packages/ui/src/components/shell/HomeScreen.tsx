@@ -10,8 +10,10 @@ import {
   Phone,
 } from "lucide-react";
 import type * as React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import { haptics } from "../../bridge/capacitor-bridge";
+import { useHomeLongPress } from "../../gestures/useHomeLongPress";
 import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
@@ -19,7 +21,24 @@ import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { Button } from "../ui/button";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
+import { HomeBackgroundQuickPicker } from "./HomeBackgroundQuickPicker";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
+
+/**
+ * A press that lands on a tile, widget, or any interactive control owns its own
+ * tap/long-press — only a press on the BARE wallpaper opens the background
+ * picker. Mirrors the chat message's nested-interactive guard.
+ */
+function pressLandedOnBackground(
+  currentTarget: HTMLElement,
+  target: EventTarget | null,
+): boolean {
+  if (!(target instanceof Element)) return true;
+  const interactive = target.closest(
+    'button,a,input,textarea,select,[role="button"],[data-testid^="widget-"]',
+  );
+  return !interactive || interactive === currentTarget;
+}
 
 // A gentle staggered fade-up as the home settles in — iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
@@ -32,6 +51,26 @@ const HOME_ENTER_CSS = `
 .home-enter { animation: home-enter 460ms cubic-bezier(0.22,1,0.36,1) both; }
 @media (prefers-reduced-motion: reduce) {
   .home-enter { animation: none; }
+}
+`;
+
+// The long-press affordance: while a candidate press is held on the bare
+// wallpaper the content dims + settles back a touch, so the wallpaper reads as
+// the thing being acted on. transform/opacity only (composited); fully stilled
+// under prefers-reduced-motion so the surface never moves for users who opt out.
+const HOME_LONGPRESS_AFFORDANCE_CSS = `
+.home-longpress-target {
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms ease-out;
+  transform-origin: center;
+  will-change: transform;
+}
+.home-longpress-armed {
+  transform: scale(0.985);
+  opacity: 0.72;
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-longpress-target { transition: opacity 160ms ease-out; }
+  .home-longpress-armed { transform: none; opacity: 0.82; }
 }
 `;
 
@@ -172,39 +211,65 @@ export function HomeScreen({
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
 
+  // Long-press the bare wallpaper to open the background quick-picker (#home-
+  // longpress). A press on a tile/widget/control is ignored (canBegin), a
+  // scroll or rail swipe cancels it (move slop), and while a candidate press is
+  // held the content dims + settles back a touch so the wallpaper reads as the
+  // thing being acted on.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const openPicker = useCallback(() => {
+    void haptics.medium();
+    setPickerOpen(true);
+  }, []);
+  const closePicker = useCallback(() => setPickerOpen(false), []);
+  const { pressing, handlers: longPressHandlers } =
+    useHomeLongPress<HTMLDivElement>({
+      onLongPress: openPicker,
+      // Do not arm while the picker is already open (its own scrim owns dismiss).
+      enabled: !pickerOpen,
+      canBegin: (event) =>
+        pressLandedOnBackground(event.currentTarget, event.target),
+    });
+
   return (
-    <div
-      data-testid="home-screen"
-      className={cn(
-        // `touch-pan-y`: this scroller covers the whole home half, and a
-        // scroll container's OWN touch-action governs which pans the browser
-        // consumes at it (`overflow-y-auto` computes to overflow-x auto too,
-        // so with the default `auto` the browser ate horizontal touch drags
-        // as a scroll attempt — pointercancel — and the home → launcher rail
-        // flick never fired on real touch). Keep vertical panning native for
-        // the widget list; hand every horizontal gesture to the rail.
-        // `overscroll-y-contain`: keep the browser's own pull-to-refresh /
-        // scroll-chaining off the top overscroll so a drag past the top never
-        // yanks the whole page.
-        // `overflow-x-hidden`: `overflow-y-auto` alone coerces the cross axis to
-        // `auto`, so an over-wide child (a full-bleed widget, a long code line)
-        // would make the home dashboard pan sideways under a diagonal trackpad
-        // wheel. Pin X closed — this surface scrolls vertically only (#14328).
-        "eliza-continuous-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-x-hidden overflow-y-auto overscroll-y-contain",
-        // The shell root already reserves the status-bar safe area (its
-        // paddingTop: var(--safe-area-top)); adding it again here double-padded
-        // the content and left a large empty band above the dashboard. Just a
-        // small gutter — the notch is already cleared by the root.
-        "px-4",
-        // Clear the residual tucked band the root deliberately shaves off the
-        // safe area (capped at 1.25rem), plus a small breathing gutter.
-        "pt-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+12px)]",
-        // Clear the floating chat composer at the bottom.
-        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
-      )}
-    >
-      <style>{HOME_ENTER_CSS}</style>
-      {/* The content column owns the FULL height of the scroller (min-h-full)
+    <>
+      <div
+        data-testid="home-screen"
+        onPointerDown={longPressHandlers.onPointerDown}
+        onPointerMove={longPressHandlers.onPointerMove}
+        onPointerUp={longPressHandlers.onPointerUp}
+        onPointerCancel={longPressHandlers.onPointerCancel}
+        className={cn(
+          // `touch-pan-y`: this scroller covers the whole home half, and a
+          // scroll container's OWN touch-action governs which pans the browser
+          // consumes at it (`overflow-y-auto` computes to overflow-x auto too,
+          // so with the default `auto` the browser ate horizontal touch drags
+          // as a scroll attempt — pointercancel — and the home → launcher rail
+          // flick never fired on real touch). Keep vertical panning native for
+          // the widget list; hand every horizontal gesture to the rail.
+          // `overscroll-y-contain`: keep the browser's own pull-to-refresh /
+          // scroll-chaining off the top overscroll so a drag past the top never
+          // yanks the whole page.
+          // `overflow-x-hidden`: `overflow-y-auto` alone coerces the cross axis to
+          // `auto`, so an over-wide child (a full-bleed widget, a long code line)
+          // would make the home dashboard pan sideways under a diagonal trackpad
+          // wheel. Pin X closed — this surface scrolls vertically only (#14328).
+          "eliza-continuous-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-x-hidden overflow-y-auto overscroll-y-contain",
+          // The shell root already reserves the status-bar safe area (its
+          // paddingTop: var(--safe-area-top)); adding it again here double-padded
+          // the content and left a large empty band above the dashboard. Just a
+          // small gutter — the notch is already cleared by the root.
+          "px-4",
+          // Clear the residual tucked band the root deliberately shaves off the
+          // safe area (capped at 1.25rem), plus a small breathing gutter.
+          "pt-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+12px)]",
+          // Clear the floating chat composer at the bottom.
+          "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
+        )}
+      >
+        <style>{HOME_ENTER_CSS}</style>
+        <style>{HOME_LONGPRESS_AFFORDANCE_CSS}</style>
+        {/* The content column owns the FULL height of the scroller (min-h-full)
           and lays its blocks out as a flex column so the vertical space is
           distributed on purpose, not left as a void above the composer. The
           editorial header (greeting/clock + weather) anchors the TOP, with the
@@ -213,23 +278,32 @@ export function HomeScreen({
           the reclaimed space and centres its content within it, so an empty
           widget set reads as calm airiness rather than a broken gap; the AOSP
           tiles settle at the BOTTOM. */}
-      <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col">
-        {/* The always-on base: a naked sized grid with the time + weather as
+        <div
+          className={cn(
+            "mx-auto flex min-h-full w-full max-w-2xl flex-col",
+            // While a long-press candidate is held on the bare wallpaper, dim +
+            // settle the content back a hair so the press reads as "acting on the
+            // background". transform/opacity only; stilled under reduce-motion.
+            "home-longpress-target",
+            pressing && "home-longpress-armed",
+          )}
+        >
+          {/* The always-on base: a naked sized grid with the time + weather as
             2×2 neighbours — no card, white text on the ambient field. Anchored
             at the top of the column as the editorial header. */}
-        <div className={enterClass} style={{ animationDelay: "70ms" }}>
-          <DefaultHomeWidgets />
-        </div>
+          <div className={enterClass} style={{ animationDelay: "70ms" }}>
+            <DefaultHomeWidgets />
+          </div>
 
-        {/* The notification center: a pinned widget directly below the
+          {/* The notification center: a pinned widget directly below the
             time/weather base — THE notification surface (the pull-down sheet it
             replaced is gone). Self-hides when the inbox is empty; when present
             it height-caps and scrolls internally. */}
-        <div className={enterClass} style={{ animationDelay: "90ms" }}>
-          <NotificationsHomeCenter />
-        </div>
+          <div className={enterClass} style={{ animationDelay: "90ms" }}>
+            <NotificationsHomeCenter />
+          </div>
 
-        {/* The prioritized data widgets (#9143) live in the breathing region:
+          {/* The prioritized data widgets (#9143) live in the breathing region:
             a `flex-1` block that grows to fill the space between the header and
             the bottom tiles, so the column always spans the full height. Its
             content is vertically centred within that region — when widgets are
@@ -238,58 +312,63 @@ export function HomeScreen({
             simply reads as calm, intentional space rather than a dead gap. A
             little top padding sets the stack apart from the editorial header as
             its own section. */}
-        <div
-          className={cn(enterClass, "flex flex-1 flex-col justify-center py-6")}
-          style={{ animationDelay: "110ms" }}
-        >
-          <WidgetHost
-            slot="home"
-            layout="grid"
-            events={events}
-            clearEvents={clearEvents}
-          />
-        </div>
-
-        {tiles.length > 0 ? (
-          <nav
-            aria-label="Apps"
-            data-testid="home-tiles"
-            className={cn(enterClass, "pt-2")}
-            style={{ animationDelay: "150ms" }}
+          <div
+            className={cn(
+              enterClass,
+              "flex flex-1 flex-col justify-center py-6",
+            )}
+            style={{ animationDelay: "110ms" }}
           >
-            <div className="grid grid-cols-4 gap-3">
-              {tiles.map((tile) => {
-                const Icon = tile.icon;
-                return (
-                  <Button
-                    key={tile.id}
-                    data-testid={`home-tile-${tile.id}`}
-                    onClick={() => onOpenTile(tile.target)}
-                    variant="ghost"
-                    className={cn(
-                      // Naked tile: icon + label sit directly on the ambient
-                      // orange field — no fill, no border.
-                      "flex h-auto flex-col items-center gap-1.5 whitespace-normal rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
-                      // Tactile press: a quick scale-down on tap (stilled for
-                      // reduce-motion users), plus a faint white wash on hover.
-                      "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
-                      "hover:bg-white/8",
-                    )}
-                  >
-                    <Icon
-                      className="h-[22px] w-[22px] text-white"
-                      aria-hidden
-                    />
-                    <span className="max-w-full truncate text-[11px] font-medium text-white">
-                      {tile.label}
-                    </span>
-                  </Button>
-                );
-              })}
-            </div>
-          </nav>
-        ) : null}
+            <WidgetHost
+              slot="home"
+              layout="grid"
+              events={events}
+              clearEvents={clearEvents}
+            />
+          </div>
+
+          {tiles.length > 0 ? (
+            <nav
+              aria-label="Apps"
+              data-testid="home-tiles"
+              className={cn(enterClass, "pt-2")}
+              style={{ animationDelay: "150ms" }}
+            >
+              <div className="grid grid-cols-4 gap-3">
+                {tiles.map((tile) => {
+                  const Icon = tile.icon;
+                  return (
+                    <Button
+                      key={tile.id}
+                      data-testid={`home-tile-${tile.id}`}
+                      onClick={() => onOpenTile(tile.target)}
+                      variant="ghost"
+                      className={cn(
+                        // Naked tile: icon + label sit directly on the ambient
+                        // orange field — no fill, no border.
+                        "flex h-auto flex-col items-center gap-1.5 whitespace-normal rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
+                        // Tactile press: a quick scale-down on tap (stilled for
+                        // reduce-motion users), plus a faint white wash on hover.
+                        "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
+                        "hover:bg-white/8",
+                      )}
+                    >
+                      <Icon
+                        className="h-[22px] w-[22px] text-white"
+                        aria-hidden
+                      />
+                      <span className="max-w-full truncate text-[11px] font-medium text-white">
+                        {tile.label}
+                      </span>
+                    </Button>
+                  );
+                })}
+              </div>
+            </nav>
+          ) : null}
+        </div>
       </div>
-    </div>
+      {pickerOpen ? <HomeBackgroundQuickPicker onClose={closePicker} /> : null}
+    </>
   );
 }
