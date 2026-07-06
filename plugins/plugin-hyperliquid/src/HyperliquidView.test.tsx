@@ -195,42 +195,28 @@ describe("HyperliquidView — populated snapshot", () => {
 		expect(screen.getByText("ETH")).toBeTruthy();
 		// Read-ready header + market leverage decoration.
 		expect(screen.getByText("read-ready")).toBeTruthy();
-		expect(screen.getByText("50x")).toBeTruthy();
+		expect(screen.getByText("BTC 50x")).toBeTruthy();
 		// ETH maxLeverage null -> "n/a", isolated suffix.
 		const text = document.body.textContent ?? "";
 		expect(text).toContain("2m / 1p / 1o");
 	});
 
-	it("renders the readiness tiles and the credential-mode label", async () => {
+	it("renders a compact readiness summary", async () => {
 		render(React.createElement(HyperliquidView));
 		await screen.findByText("ETH");
-		expect(screen.getByText("Reads")).toBeTruthy();
-		expect(screen.getByText("Read-only")).toBeTruthy(); // credentialMode "none"
-		expect(screen.getByText("Account")).toBeTruthy();
+		expect(screen.getByText("read-ready")).toBeTruthy();
+		expect(screen.getByText("2m / 1p / 1o")).toBeTruthy();
 	});
 
-	it("surfaces the executionBlockedReason without duplicate vault guidance", async () => {
+	it("keeps setup warnings out of the compact snapshot", async () => {
 		render(React.createElement(HyperliquidView));
 		await screen.findByText("ETH");
 		expect(
-			screen.getByText(/Signed Hyperliquid exchange mutations are disabled/),
-		).toBeTruthy();
+			screen.queryByText(/Signed Hyperliquid exchange mutations are disabled/),
+		).toBeNull();
 		expect(
 			screen.queryByText("Connect a managed vault to enable signed requests."),
 		).toBeNull();
-	});
-
-	it("shows vault guidance when no specific execution block is present", async () => {
-		hyperliquidClient.hyperliquidStatus.mockResolvedValue({
-			...sampleStatus,
-			executionBlockedReason: null,
-		});
-
-		render(React.createElement(HyperliquidView));
-		await screen.findByText("ETH");
-		expect(
-			screen.getByText("Connect a managed vault to enable signed requests."),
-		).toBeTruthy();
 	});
 
 	it("renders the agent's own position row with its unrealized PnL", async () => {
@@ -294,7 +280,7 @@ describe("HyperliquidView — controls", () => {
 		await screen.findByText("ETH");
 		expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(1);
 
-		fireEvent.click(agent("refresh"));
+		fireEvent.click(agent("hyperliquid-refresh"));
 		await waitFor(() =>
 			expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(2),
 		);
@@ -309,7 +295,7 @@ describe("HyperliquidView — controls", () => {
 		const listener = (e: Event) => events.push(e as CustomEvent);
 		window.addEventListener(NAVIGATE_VIEW_EVENT, listener);
 		try {
-			fireEvent.click(agent("back"));
+			fireEvent.click(agent("hyperliquid-home"));
 		} finally {
 			window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);
 		}

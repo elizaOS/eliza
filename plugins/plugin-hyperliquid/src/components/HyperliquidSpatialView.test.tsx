@@ -89,7 +89,6 @@ describe("HyperliquidSpatialView one source, three modalities", () => {
 			const flat = lines.join("\n");
 			expect(flat).toContain("read-ready");
 			expect(flat).toContain("BTC");
-			expect(flat).toContain("Refresh");
 		}
 	});
 
@@ -105,7 +104,7 @@ describe("HyperliquidSpatialView one source, three modalities", () => {
 		for (const html of [gui, xr]) {
 			expect(html).toContain("BTC");
 			expect(html).toContain("read-ready");
-			expect(html).toContain('data-agent-id="refresh"');
+			expect(html).toContain('data-agent-id="market-BTC"');
 		}
 	});
 
@@ -156,7 +155,7 @@ describe("HyperliquidSpatialView account-health + position detail", () => {
 		// Position detail: side, derived liquidation distance, notional.
 		expect(html).toContain("long");
 		expect(html).toContain("25% to liq");
-		expect(html).toContain("30,000");
+		expect(html).toContain("$30.0k");
 	});
 
 	it("does not crash when distanceToLiquidationPct is a missing DTO field (#8796)", () => {

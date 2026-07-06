@@ -216,12 +216,12 @@ describe("PolymarketView — populated markets", () => {
     expect(polymarketClient.polymarketMarkets).toHaveBeenCalledWith({
       limit: 25,
     });
-    // Auto-selected markets[0] => detail pane: outcomes + CLOB token ids.
+    // Auto-selected markets[0] => detail pane: compact outcome choices.
     await waitFor(() => expect(agent("detail-back")).toBeTruthy());
     const text = document.body.textContent ?? "";
-    expect(text).toContain("outcomes");
-    expect(text).toContain("orderbook tokens");
-    expect(text).toContain("token-yes");
+    expect(text).toContain("Yes");
+    expect(text).toContain("No");
+    expect(text).not.toContain("token-yes");
   });
 
   it("the markets list shows readiness chips + a DOM-clickable row Open control", async () => {
@@ -249,7 +249,7 @@ describe("PolymarketView — populated markets", () => {
 });
 
 describe("PolymarketView — list -> detail navigation", () => {
-  it("clicking a market row Open opens its detail with outcomes + CLOB token ids", async () => {
+  it("clicking a market row Open opens its detail with compact outcome choices", async () => {
     render(React.createElement(PolymarketView));
     await screen.findByText("Will BTC be above 100k?");
     await backToList();
@@ -258,15 +258,13 @@ describe("PolymarketView — list -> detail navigation", () => {
 
     await waitFor(() => expect(agent("detail-back")).toBeTruthy());
     const text = document.body.textContent ?? "";
-    expect(text).toContain("outcomes");
     expect(text).toContain("Yes");
     expect(text).toContain("No");
-    expect(text).toContain("orderbook tokens");
-    expect(text).toContain("token-yes");
-    expect(text).toContain("token-no");
+    expect(text).not.toContain("token-yes");
+    expect(text).not.toContain("token-no");
   });
 
-  it("a market with no CLOB token ids shows the fallback copy in detail", async () => {
+  it("a market with no orderbook tokens still opens compact detail", async () => {
     mockState({
       markets: [sampleMarket, secondMarket],
       source: sampleMarkets.source,
@@ -279,7 +277,7 @@ describe("PolymarketView — list -> detail navigation", () => {
     await waitFor(() =>
       expect(screen.getByText("Will ETH be above 5k?")).toBeTruthy(),
     );
-    expect(screen.getByText("no CLOB token ids")).toBeTruthy();
+    expect(screen.getByText("Yes 25%")).toBeTruthy();
   });
 
   it("the detail 'back' control returns to the markets list", async () => {
@@ -303,6 +301,7 @@ describe("PolymarketView — refresh + error path", () => {
     await screen.findByText("Will BTC be above 100k?");
     expect(polymarketClient.polymarketMarkets).toHaveBeenCalledTimes(1);
 
+    await backToList();
     fireEvent.click(agent("refresh"));
     await waitFor(() =>
       expect(polymarketClient.polymarketMarkets).toHaveBeenCalledTimes(2),

@@ -154,6 +154,17 @@ function MessageTextBody({
   );
 }
 
+export function FormSubmitReceipt({ label }: { label: string }) {
+  return (
+    <div
+      className="inline-flex max-w-full items-center rounded-full border border-border/70 bg-bg px-2.5 py-1 text-xs font-medium text-muted-strong"
+      data-testid="form-submit-receipt"
+    >
+      Submitted {label}
+    </div>
+  );
+}
+
 // ── InlinePluginConfig ──────────────────────────────────────────────
 
 // The in-chat connector/plugin setup card for `[CONFIG:pluginId]` markers
@@ -1232,18 +1243,20 @@ export function MessageContent({
           const baseKey =
             seg.kind === "text"
               ? `text:${seg.text.slice(0, 80)}`
-              : seg.kind === "code"
-                ? `code:${seg.code.slice(0, 80)}`
-                : seg.kind === "config"
-                  ? `config:${seg.pluginId}`
-                  : seg.kind === "widget"
-                    ? (getInlineWidget(seg.widgetKind)?.keyFor?.(seg.data) ??
-                      `widget:${seg.widgetKind}`)
-                    : seg.kind === "permission"
-                      ? `permission:${seg.payload.feature}`
-                      : seg.kind === "analysis-xml"
-                        ? `analysis:${seg.tag}`
-                        : `ui:${seg.raw.slice(0, 80)}`;
+              : seg.kind === "form-submit"
+                ? `form-submit:${seg.formId}`
+                : seg.kind === "code"
+                  ? `code:${seg.code.slice(0, 80)}`
+                  : seg.kind === "config"
+                    ? `config:${seg.pluginId}`
+                    : seg.kind === "widget"
+                      ? (getInlineWidget(seg.widgetKind)?.keyFor?.(seg.data) ??
+                        `widget:${seg.widgetKind}`)
+                      : seg.kind === "permission"
+                        ? `permission:${seg.payload.feature}`
+                        : seg.kind === "analysis-xml"
+                          ? `analysis:${seg.tag}`
+                          : `ui:${seg.raw.slice(0, 80)}`;
           const segmentKey = nextKey(baseKey);
 
           switch (seg.kind) {
@@ -1255,6 +1268,8 @@ export function MessageContent({
                   boldSlashCommand={message.role === "user"}
                 />
               );
+            case "form-submit":
+              return <FormSubmitReceipt key={segmentKey} label={seg.label} />;
             case "code":
               return (
                 <CodeBlock

@@ -13,6 +13,8 @@ import {
   isUiSpec,
   looksLikePatch,
   normalizeDisplayText,
+  parseFormSubmitDisplay,
+  parseSegments,
   sanitizePatchValue,
   tryParsePatch,
 } from "./message-parser-helpers";
@@ -87,6 +89,31 @@ describe("looksLikePatch + tryParsePatch", () => {
     expect(tryParsePatch("not json")).toBeNull();
     // Looks like a patch but missing required string fields → rejected.
     expect(tryParsePatch('{"op":5,"path":"/x"}')).toBeNull();
+  });
+});
+
+describe("form submit display markers", () => {
+  it("projects a submitted inline form into a display-only receipt segment", () => {
+    const text =
+      '[form:submit reminder-details] {"title":"Draft report","when":"2026-07-08T09:00"}';
+    expect(parseFormSubmitDisplay(text)).toEqual({
+      formId: "reminder-details",
+      label: "reminder details",
+    });
+
+    expect(parseSegments(text, false)).toEqual([
+      {
+        kind: "form-submit",
+        formId: "reminder-details",
+        label: "reminder details",
+      },
+    ]);
+  });
+
+  it("leaves malformed form submits as plain text so the agent still sees the wire text", () => {
+    const text = "[form:submit reminder-details] not-json";
+    expect(parseFormSubmitDisplay(text)).toBeNull();
+    expect(parseSegments(text, false)).toEqual([{ kind: "text", text }]);
   });
 });
 

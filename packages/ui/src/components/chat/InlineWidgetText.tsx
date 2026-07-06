@@ -20,6 +20,7 @@ import { useAppSelectorShallow } from "../../state";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { CodeBlock } from "../ui/code-block";
 import {
+  FormSubmitReceipt,
   InlinePluginConfig,
   MessagePermissionCard,
   MessageUiSpecBlock,
@@ -75,6 +76,15 @@ export function InlineWidgetText({ content }: { content: string }): ReactNode {
     switch (seg.kind) {
       case "text": {
         if (seg.text) nodes.push(<span key={nextKey("t")}>{seg.text}</span>);
+        break;
+      }
+      case "form-submit": {
+        nodes.push(
+          <FormSubmitReceipt
+            key={nextKey(`form-submit-${seg.formId}`)}
+            label={seg.label}
+          />,
+        );
         break;
       }
       case "code": {

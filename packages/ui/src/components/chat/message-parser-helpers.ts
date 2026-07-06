@@ -61,6 +61,7 @@ export function isSafeNormalizedPluginId(id: string): boolean {
 
 export type Segment =
   | { kind: "text"; text: string }
+  | { kind: "form-submit"; formId: string; label: string }
   | { kind: "config"; pluginId: string }
   | { kind: "ui-spec"; spec: UiSpec; raw: string }
   // A fenced (```lang ... ```) or inline (`...`) code span lifted out of the
@@ -74,6 +75,8 @@ export type Segment =
 // ── Detection ───────────────────────────────────────────────────────
 
 export const CONFIG_RE = /\[CONFIG:([@\w][\w@./:-]*)\]/g;
+export const FORM_SUBMIT_RE =
+  /^\[form:submit\s+([A-Za-z0-9._:-]{1,120})\]\s+({[\s\S]*})$/;
 export const FENCED_JSON_RE = /```(?:json)?\s*\n([\s\S]*?)```/g;
 
 /**
@@ -129,6 +132,34 @@ export function tryParse(s: string): unknown {
     // null is the explicit "not a spec" signal
     return null;
   }
+}
+
+export interface FormSubmitDisplay {
+  formId: string;
+  label: string;
+}
+
+function humanizeFormId(formId: string): string {
+  const normalized = formId
+    .replace(/^form[:._-]?/i, "")
+    .replace(/[_:-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .trim()
+    .toLowerCase();
+  return normalized || "form";
+}
+
+export function parseFormSubmitDisplay(text: string): FormSubmitDisplay | null {
+  const match = FORM_SUBMIT_RE.exec(text.trim());
+  if (!match) return null;
+  const parsed = tryParse(match[2]);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+  return {
+    formId: match[1],
+    label: humanizeFormId(match[1]),
+  };
 }
 
 export function isUiSpec(obj: unknown): obj is UiSpec {
@@ -349,6 +380,19 @@ export function parseSegments(text: string, analysisMode: boolean): Segment[] {
   // otherwise we use the normalized text which strips them.
   const targetText = analysisMode ? text : normalizeDisplayText(text);
   if (!targetText) return [{ kind: "text", text: "" }];
+
+  if (!analysisMode) {
+    const formSubmit = parseFormSubmitDisplay(targetText);
+    if (formSubmit) {
+      return [
+        {
+          kind: "form-submit",
+          formId: formSubmit.formId,
+          label: formSubmit.label,
+        },
+      ];
+    }
+  }
 
   const permissionRequest = analysisMode
     ? null

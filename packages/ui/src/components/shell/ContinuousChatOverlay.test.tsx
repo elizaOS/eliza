@@ -1028,6 +1028,30 @@ describe("ContinuousChatOverlay", () => {
     expect(user?.className).toContain("justify-end");
   });
 
+  it("renders a user form submission as a receipt instead of raw marker JSON", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [
+            {
+              id: "form-submit",
+              role: "user",
+              content:
+                '[form:submit reminder-details] {"title":"Draft report","when":"2026-07-08T09:00"}',
+              createdAt: 1,
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    const log = document.getElementById("continuous-thread");
+    expect(log?.textContent).toContain("Submitted reminder details");
+    expect(log?.textContent).not.toContain("[form:submit");
+    expect(log?.textContent).not.toContain("Draft report");
+  });
+
   it("anchors the in-flight status row as an assistant-aligned transcript row", () => {
     render(
       <ContinuousChatOverlay
