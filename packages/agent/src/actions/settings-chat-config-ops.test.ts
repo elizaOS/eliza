@@ -123,13 +123,13 @@ describe("SETTINGS update_ai_provider — persists to the real config store", ()
     const result = await invoke({
       action: "update_ai_provider",
       provider: "openai",
-      apiKey: "sk-test-openai-key",
+      apiKey: "fixture-openai-api-token",
     });
     expect(result.success).toBe(true);
     // The key must be persisted somewhere reachable via config.env so the
     // switched provider can authenticate on the next boot.
     const raw = fs.readFileSync(configPath, "utf-8");
-    expect(raw).toContain("sk-test-openai-key");
+    expect(raw).toContain("fixture-openai-api-token");
   });
 
   it("rejects a missing provider without touching the store", async () => {
