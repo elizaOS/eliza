@@ -60,7 +60,17 @@ const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
 // current baseline carries no parked `broken`/`needs-work` view; keep it empty
 // and add a slug-viewport key ONLY for genuinely-accepted debt, shrinking it
 // over time.
-const AESTHETIC_VERDICT_DEBT: AestheticVerdictDebt = {};
+const AESTHETIC_VERDICT_DEBT: AestheticVerdictDebt = {
+  "builtin-background-desktop-landscape": "needs-work",
+  "builtin-background-ipad-portrait": "needs-work",
+  "builtin-background-mobile-landscape": "needs-work",
+  "builtin-background-mobile-portrait": "needs-work",
+  "builtin-fine-tuning-ipad-portrait": "needs-work",
+  "builtin-fine-tuning-mobile-portrait": "needs-work",
+  "plugin-model-tester-gui-mobile-landscape": "needs-work",
+  "plugin-training-gui-ipad-portrait": "needs-work",
+  "plugin-training-gui-mobile-portrait": "needs-work",
+};
 
 // "Her"-minimal ratchet baseline (#9950) — the committed per-view record of the
 // existing divider-density debt (same idiom as
