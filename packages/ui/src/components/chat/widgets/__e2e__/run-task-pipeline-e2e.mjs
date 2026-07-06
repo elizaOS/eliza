@@ -12,6 +12,7 @@
  * Run: bun run --cwd packages/ui test:task-pipeline-e2e
  */
 import { mkdir, writeFile } from "node:fs/promises";
+import { builtinModules } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -21,16 +22,39 @@ const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output");
 await mkdir(outDir, { recursive: true });
 
-// The only RUNTIME symbol the fixture pulls from @elizaos/core is `toSwarmActivity`
-// (via the store); every other core import in the graph is `import type` (erased).
-// That function lives in the pure, dependency-free swarm-coordinator module, so
-// alias core straight to it — bundling the full node/browser barrel drags
-// fs-extra/plugin-manager code esbuild can't resolve for the browser.
+// The only RUNTIME symbol the fixture itself pulls from @elizaos/core is
+// `toSwarmActivity` (via the store); it lives in the pure, dependency-free
+// swarm-coordinator module. But the store also reaches @elizaos/shared, whose
+// node-only modules import many OTHER core symbols (logger, ModelType,
+// resolveStateDir, …) — all dead in the browser here. A narrow core→
+// swarm-coordinator alias breaks those ("no matching export"); instead stub
+// @elizaos/core to a module that serves the real swarm-coordinator exports and
+// a no-op Proxy for everything else, so the whole graph resolves.
 const repoRoot = resolve(here, "../../../../../../..");
 const coreActivityEntry = join(
   repoRoot,
   "packages/core/src/types/swarm-coordinator.ts",
 );
+const stubElizaCore = {
+  name: "stub-eliza-core",
+  setup(b) {
+    b.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
+      path: "eliza-core-stub",
+      namespace: "eliza-core-stub",
+    }));
+    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
+      contents: `
+        const real = require(${JSON.stringify(coreActivityEntry)});
+        const noop = new Proxy(() => noop, { get: () => noop });
+        module.exports = new Proxy(real, {
+          get: (t, p) => (p in t ? t[p] : noop),
+        });
+      `,
+      loader: "js",
+      resolveDir: repoRoot,
+    }));
+  },
+};
 
 let failures = 0;
 function assert(cond, msg) {
@@ -39,16 +63,47 @@ function assert(cond, msg) {
   return cond;
 }
 
+// Aliasing @elizaos/core is not enough: the store also reaches @elizaos/shared /
+// @elizaos/logger, whose node-only modules (paths, cloud TTS, apps-loading
+// routes, logger os probe) import Node builtins — all dead in the browser here.
+// Stub every builtin to a no-op module so the browser bundle resolves, mirroring
+// the sibling page runners; the page-error guard would catch any that ran.
+const nodeBuiltins = new Set([
+  ...builtinModules,
+  ...builtinModules.map((m) => `node:${m}`),
+]);
+const stubNodeBuiltins = {
+  name: "stub-node-builtins",
+  setup(b) {
+    b.onResolve({ filter: /.*/ }, (args) => {
+      const bare = args.path.replace(/^node:/, "").split("/")[0];
+      if (
+        args.path.startsWith("node:") ||
+        nodeBuiltins.has(args.path) ||
+        builtinModules.includes(bare)
+      ) {
+        return { path: args.path, namespace: "node-stub" };
+      }
+      return null;
+    });
+    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
+      contents:
+        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
+      loader: "js",
+    }));
+  },
+};
+
 const result = await build({
   entryPoints: [join(here, "task-pipeline-fixture.tsx")],
   bundle: true,
   format: "iife",
   platform: "browser",
   conditions: ["browser", "import"],
-  alias: { "@elizaos/core": coreActivityEntry },
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
+  plugins: [stubElizaCore, stubNodeBuiltins],
   write: false,
 });
 const js = result.outputFiles[0].text;
@@ -73,6 +128,8 @@ body{background:#0b0b0c;color:#e8e8e8;font:13px/1.45 system-ui,sans-serif;margin
 `;
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>task pipeline e2e</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<!-- Shim node-ish globals the dead-in-browser @elizaos/shared graph touches at module init. -->
+<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
 <style>${css}</style></head><body><div id="root"></div><script>${js}</script></body></html>`;
 const htmlPath = join(outDir, "task-pipeline.html");
 await writeFile(htmlPath, html);
