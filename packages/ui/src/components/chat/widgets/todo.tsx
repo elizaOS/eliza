@@ -458,46 +458,29 @@ function TodoSidebarWidget({
   // its empty state.
   if (onHome && openTodos.length === 0 && !attentionGoal) return null;
 
-  const content = (
-    <TodoItemsContent
-      todos={todos}
-      loading={todosLoading}
-      goal={attentionGoal}
-      onOpenGoal={() => nav.openView("/goals", "goals")}
-      tone={onHome ? "home" : "default"}
-    />
-  );
-  if (onHome) {
-    return (
-      <div className={`min-w-0 ${spanClassName}`}>
-        <section
-          data-testid="chat-widget-todos"
-          className="space-y-2 text-white"
-        >
-          <div className="flex min-w-0 items-center gap-1.5 px-0.5 py-1">
-            <span className="inline-flex shrink-0 items-center justify-center text-white/70 [&>svg]:h-3.5 [&>svg]:w-3.5">
-              <ListTodo className="h-4 w-4" />
-            </span>
-            <span className="truncate text-xs-tight font-semibold leading-none text-white/75">
-              {t("taskseventspanel.Todos", { defaultValue: "Todos" })}
-            </span>
-          </div>
-          <div className="text-xs">{content}</div>
-        </section>
-      </div>
-    );
-  }
-
-  return (
+  const section = (
     <WidgetSection
       title={t("taskseventspanel.Todos", { defaultValue: "Todos" })}
       icon={<ListTodo className="h-4 w-4" />}
       testId="chat-widget-todos"
-      tone="default"
+      tone={onHome ? "home" : "default"}
     >
-      {content}
+      <TodoItemsContent
+        todos={todos}
+        loading={todosLoading}
+        goal={attentionGoal}
+        onOpenGoal={() => nav.openView("/goals", "goals")}
+        tone={onHome ? "home" : "default"}
+      />
     </WidgetSection>
   );
+  // On the home 4-col grid the widget's root element must carry its grid-span
+  // classes or it collapses to a one-column cell and its content paints over
+  // the neighboring card (#11752). The sidebar stack renders the bare section.
+  if (onHome) {
+    return <div className={`min-w-0 ${spanClassName}`}>{section}</div>;
+  }
+  return section;
 }
 
 export const TODO_PLUGIN_WIDGETS: ChatSidebarWidgetDefinition[] = [
