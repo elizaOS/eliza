@@ -4,7 +4,7 @@
 // the rendered DOM: the same component the bundle exports for the "gui", "xr",
 // and (via the spatial terminal registry) "tui" modalities. Asserts the
 // populated markets/positions/orders snapshot, the readiness tiles, the
-// executionBlockedReason + vault-guidance banners, the positions/orders
+// executionBlockedReason and vault-guidance banners, the positions/orders
 // read-blocked surfaces, the DOM-clickable Refresh / Back controls, the
 // read-blocked + error + unavailable branches — functional parity with the
 // retired HyperliquidTuiView surface. Also covers the unchanged `interact`
@@ -203,13 +203,25 @@ describe("HyperliquidView — populated snapshot", () => {
 		expect(screen.getByText("Account")).toBeTruthy();
 	});
 
-	it("surfaces the executionBlockedReason and vault guidance banners", async () => {
+	it("surfaces the executionBlockedReason without duplicate vault guidance", async () => {
 		render(React.createElement(HyperliquidView));
 		await screen.findByText("ETH");
 		expect(
 			screen.getByText(/Signed Hyperliquid exchange mutations are disabled/),
 		).toBeTruthy();
-		// vault.ready=false and credentialMode!=local_key -> vault guidance shows.
+		expect(
+			screen.queryByText("Connect a managed vault to enable signed requests."),
+		).toBeNull();
+	});
+
+	it("shows vault guidance when no specific execution block is present", async () => {
+		hyperliquidClient.hyperliquidStatus.mockResolvedValue({
+			...sampleStatus,
+			executionBlockedReason: null,
+		});
+
+		render(React.createElement(HyperliquidView));
+		await screen.findByText("ETH");
 		expect(
 			screen.getByText("Connect a managed vault to enable signed requests."),
 		).toBeTruthy();
