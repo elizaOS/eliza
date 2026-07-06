@@ -42,6 +42,11 @@ describe("feedPlugin manifest", () => {
     // Manager-visible + desktop tab metadata carries over to the single view.
     expect(view.visibleInManager).toBe(true);
     expect(view.desktopTabEnabled).toBe(true);
+    // Preview-gated: an early-stage, non-MVP operator surface, hidden from a
+    // fresh user's launcher AND manager grid until the Preview toggle is on.
+    // Declaring `system` here leaked it into the fresh-user manager grid while
+    // the launcher hid it (the divergence #14356 closed).
+    expect(view.viewKind).toBe("preview");
   });
 
   it("carries the four terminal capability descriptors on the single declaration", () => {

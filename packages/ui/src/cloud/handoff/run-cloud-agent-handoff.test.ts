@@ -15,7 +15,10 @@ import {
   dispatchCloudHandoffRetry,
 } from "../../events";
 import type { ConversationHandoffResult } from "./conversation-handoff";
-import { runCloudAgentHandoff } from "./run-cloud-agent-handoff";
+import {
+  isInsufficientCreditsError,
+  runCloudAgentHandoff,
+} from "./run-cloud-agent-handoff";
 
 function collectPhases(): {
   phases: CloudHandoffPhaseDetail[];
@@ -53,6 +56,69 @@ describe("runCloudAgentHandoff", () => {
     expect(start).toHaveBeenCalledTimes(1);
     expect(phases.map((p) => p.phase)).toEqual(["migrating", "switched"]);
     expect(phases[1]).toMatchObject({ agentId: "a1", imported: 3 });
+  });
+
+  it("maps a thrown 402 to the distinct insufficient-credits phase (not a generic failed)", async () => {
+    const { phases, stop } = collectPhases();
+    // The dedicated-agent create is refused by the credit gate; the direct-cloud
+    // client tags the rejection with status 402 (see api/client-cloud.ts).
+    const start = vi.fn(async (): Promise<ConversationHandoffResult> => {
+      throw Object.assign(new Error("insufficient credits"), { status: 402 });
+    });
+
+    runCloudAgentHandoff("a402", start);
+    await flush();
+    stop();
+
+    expect(phases.map((p) => p.phase)).toEqual([
+      "migrating",
+      "insufficient-credits",
+    ]);
+    expect(phases[1]?.error).toBe("insufficient credits");
+  });
+
+  it("still arms a retry on insufficient-credits so add-credits → retry upgrades", async () => {
+    const { phases, stop } = collectPhases();
+    const start = vi
+      .fn<() => Promise<ConversationHandoffResult>>()
+      .mockRejectedValueOnce(
+        Object.assign(new Error("insufficient credits"), { status: 402 }),
+      )
+      .mockResolvedValueOnce({ status: "switched", imported: 2 });
+
+    runCloudAgentHandoff("a402b", start);
+    await flush();
+    expect(start).toHaveBeenCalledTimes(1);
+
+    // The user adds credits, then retries: the second create succeeds and the
+    // handoff completes onto the dedicated agent.
+    dispatchCloudHandoffRetry({ agentId: "a402b" });
+    await flush();
+    stop();
+
+    expect(start).toHaveBeenCalledTimes(2);
+    expect(phases.map((p) => p.phase)).toEqual([
+      "migrating",
+      "insufficient-credits",
+      "migrating",
+      "switched",
+    ]);
+  });
+
+  it("isInsufficientCreditsError detects only a 402-tagged error", () => {
+    expect(
+      isInsufficientCreditsError(
+        Object.assign(new Error("nope"), { status: 402 }),
+      ),
+    ).toBe(true);
+    expect(
+      isInsufficientCreditsError(
+        Object.assign(new Error("server"), { status: 500 }),
+      ),
+    ).toBe(false);
+    expect(isInsufficientCreditsError(new Error("plain"))).toBe(false);
+    expect(isInsufficientCreditsError(null)).toBe(false);
+    expect(isInsufficientCreditsError("402")).toBe(false);
   });
 
   it("maps a thrown supervisor to a failed phase carrying the message", async () => {

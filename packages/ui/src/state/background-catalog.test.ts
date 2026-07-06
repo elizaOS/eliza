@@ -19,11 +19,27 @@ const resolveSource = (id: string) => getShaderPreset(id)?.source;
 
 describe("background catalog (#13538)", () => {
   it("has natural image entries + the animated GLSL presets", () => {
-    expect(CURATED_NATURAL_BACKGROUNDS.length).toBeGreaterThanOrEqual(4);
+    // 5 gradient natural entries + 5 curated photo wallpapers = 10 image tiles.
+    expect(CURATED_NATURAL_BACKGROUNDS.length).toBeGreaterThanOrEqual(10);
     expect(GLSL_CATALOG_BACKGROUNDS.length).toBe(5);
     expect(BACKGROUND_CATALOG.length).toBe(
       CURATED_NATURAL_BACKGROUNDS.length + GLSL_CATALOG_BACKGROUNDS.length,
     );
+  });
+
+  it("resolves the five curated photo wallpapers to served WebP assets", () => {
+    const photoIds = ["dusk-dunes", "reef", "slate", "ember-dunes", "canopy"];
+    for (const id of photoIds) {
+      const entry = BACKGROUND_CATALOG.find((e) => e.id === id);
+      if (!entry) throw new Error(`expected ${id} entry`);
+      expect(entry.kind).toBe("image");
+      // A served, same-origin public asset path (no bundled binary, no data URL).
+      expect(entry.source).toBe(`/wallpapers/${id}.webp`);
+      // catalogEntryToConfig maps it straight to an image config.
+      const config = catalogEntryToConfig(entry, resolveSource);
+      expect(config?.mode).toBe("image");
+      expect(config?.imageUrl).toBe(`/wallpapers/${id}.webp`);
+    }
   });
 
   it("every entry carries the required metadata", () => {
@@ -47,7 +63,9 @@ describe("background catalog (#13538)", () => {
         // classes are same-origin and carry no GLSL source / preset id, so the
         // apply-channel confinement invariants (#11088 / #13523) hold.
         const isServedAsset =
-          e.id === DEFAULT_BACKGROUND_CATALOG_ID && e.source.startsWith("/");
+          (e.id === DEFAULT_BACKGROUND_CATALOG_ID &&
+            e.source.startsWith("/")) ||
+          e.source.startsWith("/wallpapers/");
         expect(
           e.source.startsWith("data:image/svg+xml") ||
             e.source.startsWith("/api/media/") ||

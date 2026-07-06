@@ -23,9 +23,11 @@ import {
   createFamilyRegistry,
   registerBuiltinTelemetryFamilies,
 } from "../registries/family-registry.js";
+import { createSignalSourceRegistry } from "../registries/signal-source-registry.js";
 import { publishActivitySignalToBus } from "../signals/activity-signal-publisher.js";
 import type { ActivitySignalBus } from "../signals/bus.js";
 import { createActivitySignalBus } from "../signals/bus.js";
+import { registerBuiltinSignalSources } from "../telemetry-mapping.js";
 import {
   behaviouralBaselineFromProfile,
   registerActivityProfileGates,
@@ -273,7 +275,13 @@ describe("no_recent_user_message_in reader", () => {
 
   it("defers when MESSAGE_RECEIVED activity is mirrored onto the real bus", async () => {
     const bus = makeMessageActivityBus();
-    const result = publishActivitySignalToBus(bus, messageReceivedSignal());
+    const signalSourceRegistry = createSignalSourceRegistry();
+    registerBuiltinSignalSources(signalSourceRegistry);
+    const result = publishActivitySignalToBus(
+      bus,
+      messageReceivedSignal(),
+      signalSourceRegistry,
+    );
     expect(result).toEqual({ published: 1, unmapped: 0 });
     expect(
       bus.hasSignalSince({

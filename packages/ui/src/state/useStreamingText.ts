@@ -139,7 +139,10 @@ function computeNextMessage(
       return next;
     }
     case "tool": {
-      const nextEvents = mergeChatToolEvent(message.toolEvents ?? [], mod.event);
+      const nextEvents = mergeChatToolEvent(
+        message.toolEvents ?? [],
+        mod.event,
+      );
       if (nextEvents === message.toolEvents) return null;
       return { ...message, toolEvents: nextEvents };
     }

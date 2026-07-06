@@ -10,6 +10,7 @@
  * - Track promotion status
  */
 
+import type { LucideIcon } from "lucide-react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -29,7 +30,6 @@ import {
   Share2,
   Users,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {

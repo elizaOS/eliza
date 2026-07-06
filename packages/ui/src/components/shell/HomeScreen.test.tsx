@@ -7,6 +7,12 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const navigateDeepLink = vi.hoisted(() => vi.fn());
+vi.mock("../../state/notifications/navigate-deep-link", async (orig) => ({
+  ...(await orig()),
+  navigateDeepLink,
+}));
+
 // Stub the live activity stream so the home renders deterministically.
 vi.mock("../../hooks/useActivityEvents", () => ({
   useActivityEvents: () => ({
@@ -45,6 +51,7 @@ afterEach(() => {
   cleanup();
   __resetNotificationStoreForTests();
   __resetHomeDismissalsForTests();
+  navigateDeepLink.mockClear();
 });
 
 const NATIVE_OS_TILES = ["messages", "phone", "contacts", "camera"];
@@ -124,7 +131,7 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notification-sheet")).toBeNull();
   });
 
-  it("hides the notifications pull-up hint while the inbox is empty", () => {
+  it("hides the notifications pull-down hint while the inbox is empty", () => {
     render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.queryByTestId("home-notifications-hint")).toBeNull();
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
@@ -157,7 +164,7 @@ describe("HomeScreen", () => {
   it("pins the notification center widget between the base widgets and the WidgetHost once notifications exist", () => {
     __ingestNotificationForTests(makeNotification());
     render(<HomeScreen onOpenTile={vi.fn()} />);
-    // Hidden until pulled up: only the quiet hint pill is on the dashboard.
+    // Hidden until pulled down: only the quiet hint pill is on the dashboard.
     const hint = screen.getByTestId("home-notifications-hint");
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
     fireEvent.click(hint);
@@ -170,16 +177,46 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
   });
 
-  it("opens the shade on an upward pull of the hint pill", () => {
+  it("opens the shade on a downward pull of the hint pill", () => {
     __ingestNotificationForTests(makeNotification());
     render(<HomeScreen onOpenTile={vi.fn()} />);
     const hint = screen.getByTestId("home-notifications-hint");
-    fireEvent.pointerDown(hint, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerDown(hint, { clientY: 100, pointerId: 1 });
     // Under the 24px threshold: still hidden.
-    fireEvent.pointerMove(hint, { clientY: 290, pointerId: 1 });
+    fireEvent.pointerMove(hint, { clientY: 110, pointerId: 1 });
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
-    // Past the threshold: the shade opens mid-gesture.
-    fireEvent.pointerMove(hint, { clientY: 270, pointerId: 1 });
+    // Past the threshold (dragging DOWN): the shade opens mid-gesture.
+    fireEvent.pointerMove(hint, { clientY: 130, pointerId: 1 });
     expect(screen.getByTestId("notifications-shade")).toBeTruthy();
+  });
+
+  // Item 5: opening the shade collapses the chat (the reveal and the chat
+  // dismissal are one motion). Proven here via the hint tap — the reliable
+  // pointer path; the region-wide downward TOUCH drag is a non-passive
+  // touchmove that jsdom can't model faithfully (touch-action / preventDefault),
+  // so that gesture is covered by the real-touch e2e in gesture-matrix.spec.ts.
+  it("fires eliza:chat:collapse when the shade opens", () => {
+    const collapse = vi.fn();
+    window.addEventListener("eliza:chat:collapse", collapse);
+    __ingestNotificationForTests(makeNotification());
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("home-notifications-hint"));
+    expect(screen.getByTestId("notifications-shade")).toBeTruthy();
+    expect(collapse).toHaveBeenCalledTimes(1);
+    window.removeEventListener("eliza:chat:collapse", collapse);
+  });
+
+  it("closes the notification shade when a row follows a safe deep link", () => {
+    __ingestNotificationForTests(
+      makeNotification({ deepLink: "/settings", title: "Open settings" }),
+    );
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("home-notifications-hint"));
+    expect(screen.getByTestId("notifications-shade")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("notification-row"));
+
+    expect(navigateDeepLink).toHaveBeenCalledWith("/settings");
+    expect(screen.queryByTestId("notifications-shade")).toBeNull();
   });
 });

@@ -1943,6 +1943,19 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			"APP_PERMISSION",
 			"GRANT_APP_PERMISSION",
 			"REVOKE_APP_PERMISSION",
+			// Natural-language app-permission phrasings (#14622): the grant/revoke
+			// path is expressed as "<verb> <namespace> access for <app>", not as a
+			// section/key selector. These similes seed the retrieval keyword corpus
+			// (generate-action-search-keywords.mjs) so tool-search surfaces SETTINGS
+			// for "revoke network access for the weather app" instead of only VIEWS.
+			"NETWORK_ACCESS",
+			"REVOKE_NETWORK_ACCESS",
+			"GRANT_NETWORK_ACCESS",
+			"FILESYSTEM_ACCESS",
+			"REVOKE_FILESYSTEM_ACCESS",
+			"GRANT_FILESYSTEM_ACCESS",
+			"REVOKE_APP_ACCESS",
+			"GRANT_APP_ACCESS",
 			"REQUEST_PERMISSION",
 			"REQUEST_OS_PERMISSION",
 			"ASK_FOR_MICROPHONE",

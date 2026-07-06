@@ -18,6 +18,7 @@ import {
   OVERLAY_NATIVE_OR_CANVAS_SLUGS,
   parseMinimalismBaseline,
   parseNavigationTabPaths,
+  resolveAuditStrictFlags,
 } from "./aesthetic-audit-rules";
 import {
   installDefaultAppRoutes,
@@ -36,24 +37,29 @@ import {
 import { VIEW_CASES } from "./plugin-view-cases";
 import { VIEW_ROUTES } from "./view-routes";
 
-// Strict-gate config (#9304). The audit was a pure reporter — `broken` /
+// Strict-gate config (#9304, #10710). The audit was a pure reporter — `broken` /
 // `needs-work` verdicts only landed in report.json and never failed a run, so a
-// regressed view shipped green. With `ELIZA_AUDIT_APP_STRICT=1` the audit becomes
-// a GATE that fails on any `broken` verdict (a real crash / blank render /
-// console error / empty view) outside the shrinking debt allowlist below.
-// `needs-work` (design debt: blue / orange-hover / off-token radius) is logged
-// with a count but not hard-gated by default — opt in with
-// `ELIZA_AUDIT_APP_STRICT_NEEDS_WORK=1` (#10710) once the current set is captured
-// into AESTHETIC_VERDICT_DEBT from a clean CI run.
-const AUDIT_STRICT = process.env.ELIZA_AUDIT_APP_STRICT === "1";
+// regressed view shipped green. It is now a GATE, DEFAULT-ON on BOTH axes: it
+// fails on any `broken` verdict (a real crash / blank render / console error /
+// empty view) AND on any `needs-work` verdict (design debt: blue /
+// orange→black-hover / off-token radius) outside the shrinking debt allowlist
+// below. `resolveAuditStrictFlags` reads the env: each axis stays on unless its
+// var is explicitly `"0"`, so a bare `audit:app` enforces the same posture the
+// `app-aesthetic-audit.yml` CI lane already forces (both vars `"1"`) — a NEW
+// regression fails by default instead of only when someone opts in. Opt OUT with
+// `ELIZA_AUDIT_APP_STRICT=0` / `ELIZA_AUDIT_APP_STRICT_NEEDS_WORK=0` to triage.
+const { strict: AUDIT_STRICT, needsWorkStrict: AUDIT_STRICT_NEEDS_WORK } =
+  resolveAuditStrictFlags(process.env);
 // Sub-pixel slack for the document-level horizontal-overflow invariant: fractional
 // scrollWidth/innerWidth rounding can differ by ~1px on a healthy layout. A real
 // un-contained overflow (WS5) blows past this comfortably.
 const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
-const AUDIT_STRICT_NEEDS_WORK =
-  process.env.ELIZA_AUDIT_APP_STRICT_NEEDS_WORK === "1";
 // Key: `${slug}-${viewport}`. Value: the worst verdict currently tolerated for
-// that view. Empty = zero debt (the INTERACTION_DEBT={}/MAX=0 convention).
+// that view. Empty = zero debt (the INTERACTION_DEBT={}/MAX=0 convention). The
+// CI lane runs the gate default-on against an empty allowlist and passes, so the
+// current baseline carries no parked `broken`/`needs-work` view; keep it empty
+// and add a slug-viewport key ONLY for genuinely-accepted debt, shrinking it
+// over time.
 const AESTHETIC_VERDICT_DEBT: AestheticVerdictDebt = {};
 
 // "Her"-minimal ratchet baseline (#9950) — the committed per-view record of the

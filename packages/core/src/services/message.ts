@@ -53,7 +53,10 @@ import {
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
 import { actionGateFailure, canActionRun } from "../runtime/action-gate";
-import { retrieveActions } from "../runtime/action-retrieval";
+import {
+	parentAliasesForCandidateAction,
+	retrieveActions,
+} from "../runtime/action-retrieval";
 import { tierActionResults } from "../runtime/action-tiering";
 import {
 	applyAddressedTo,
@@ -2232,13 +2235,27 @@ async function collectV5PlannerCandidateActions(args: {
 	}
 
 	for (const candidateName of args.candidateActions ?? []) {
-		const action = resolveRuntimeAction(actionLookup, candidateName);
-		if (!action) continue;
-		await appendIfAllowed(
-			action,
-			undefined,
-			mergeAgentContexts(args.selectedContexts, action.contexts),
-		);
+		// Resolve the synthetic candidate name Stage-1 invents to real actions:
+		// first by exact name/simile, then by the shared parent-alias map that
+		// retrieval already uses. The alias fallback lets an explicit permission
+		// ask surface its writer (SETTINGS) even when Stage-1 mis-scoped the turn's
+		// context (e.g. classified "revoke network access for the weather app" as
+		// terminal/general): the candidate is an intent hint, so the resolved
+		// parent is admitted under ITS OWN contexts — still gated on
+		// role/private/context via appendIfAllowed (#14622).
+		const direct = resolveRuntimeAction(actionLookup, candidateName);
+		const resolved = direct
+			? [direct]
+			: parentAliasesForCandidateAction(candidateName)
+					.map((alias) => resolveRuntimeAction(actionLookup, alias))
+					.filter((action): action is Action => action !== undefined);
+		for (const action of resolved) {
+			await appendIfAllowed(
+				action,
+				undefined,
+				mergeAgentContexts(args.selectedContexts, action.contexts),
+			);
+		}
 	}
 
 	for (let index = 0; index < selectedActions.length; index += 1) {

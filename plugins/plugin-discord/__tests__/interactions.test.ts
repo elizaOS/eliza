@@ -10,7 +10,10 @@ import {
 	FORM_FREE_TEXT_INVITE,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { renderDiscordInteractions } from "../interactions";
+import {
+	buildDiscordReplyPayload,
+	renderDiscordInteractions,
+} from "../interactions";
 
 describe("renderDiscordInteractions", () => {
 	it("passes plain replies through with no components", () => {
@@ -152,5 +155,59 @@ describe("renderDiscordInteractions", () => {
 		expect(out.text).toContain("Set your reminder");
 		expect(out.text).toContain(FORM_FREE_TEXT_INVITE);
 		expect(out.text).not.toContain("/forms/");
+	});
+});
+
+// #14527 — every Discord send path must resolve link-out blocks (task cards,
+// navigate chips) identically. `buildDiscordReplyPayload` is the one place that
+// derives the app-origin resolver from settings, so both the message-manager
+// reply path and the button-tap replay path get the same "Open task" button.
+// A bare `renderDiscordInteractions(content)` without the resolver drops it.
+describe("buildDiscordReplyPayload — canonical resolver derivation (#14527)", () => {
+	const TASK_ID = "abc12345def67890abcdef1234567890";
+
+	function makeRuntime(settings: Record<string, string>) {
+		return {
+			getSetting: (key: string): string | undefined => settings[key],
+		};
+	}
+
+	it("resolves a task card to an Open task link button from ELIZA_APP_URL", () => {
+		const out = buildDiscordReplyPayload(
+			makeRuntime({ ELIZA_APP_URL: "https://app.test" }),
+			{ text: `[TASK:${TASK_ID}]Ship it[/TASK]` } as Content,
+		);
+		const button = out.components[0]?.components[0];
+		expect(button?.style).toBe(5); // Link
+		expect(button?.url).toBe(`https://app.test/orchestrator?taskId=${TASK_ID}`);
+		expect(out.needsFreeTextReply).toBe(false);
+	});
+
+	it("falls back to ELIZA_CLOUD_URL when ELIZA_APP_URL is unset", () => {
+		const out = buildDiscordReplyPayload(
+			makeRuntime({ ELIZA_CLOUD_URL: "https://cloud.test" }),
+			{ text: `[TASK:${TASK_ID}]Ship it[/TASK]` } as Content,
+		);
+		const button = out.components[0]?.components[0];
+		expect(button?.url).toBe(
+			`https://cloud.test/orchestrator?taskId=${TASK_ID}`,
+		);
+	});
+
+	it("degrades to prose (no dropped-silent button) when no app origin is set", () => {
+		const out = buildDiscordReplyPayload(makeRuntime({}), {
+			text: `[TASK:${TASK_ID}]Ship it[/TASK]`,
+		} as Content);
+		expect(out.components).toHaveLength(0);
+		expect(out.needsFreeTextReply).toBe(true);
+		expect(out.text).toContain("Ship it");
+	});
+
+	it("still renders choice buttons regardless of app-origin config", () => {
+		const out = buildDiscordReplyPayload(makeRuntime({}), {
+			text: "Approve?\n[CHOICE:approve id=c1]\nyes=Yes\nno=No\n[/CHOICE]",
+		} as Content);
+		expect(out.components).toHaveLength(1);
+		expect(out.components[0].components).toHaveLength(2);
 	});
 });

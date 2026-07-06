@@ -615,3 +615,33 @@ export function evaluateStrictGate(
 
   return { undebtedBroken, undebtedNeedsWork, failed, message };
 }
+
+/** The audit's strict-gate env inputs (a `process.env` is structurally
+ * assignable to this). */
+export interface AuditStrictEnv {
+  ELIZA_AUDIT_APP_STRICT?: string;
+  ELIZA_AUDIT_APP_STRICT_NEEDS_WORK?: string;
+}
+
+/**
+ * Resolve the strict-gate flags from the environment — DEFAULT-ON (#10710
+ * follow-up).
+ *
+ * Both the `broken` gate and the `needs-work` extension now default ON: a run
+ * gates unless the corresponding var is explicitly set to `"0"`. This makes a
+ * bare `bun run --cwd packages/app audit:app` enforce the same posture the
+ * `app-aesthetic-audit.yml` CI lane already forces (both vars `"1"`), so a NEW
+ * blue / orange→black-hover / missing-overlay regression fails by default
+ * instead of only when someone remembers to opt in. Known-parked debt is
+ * allowlisted per slug-viewport in the spec's `AESTHETIC_VERDICT_DEBT`, which
+ * must shrink over time. Set the relevant var to `"0"` only to triage locally.
+ */
+export function resolveAuditStrictFlags(env: AuditStrictEnv): {
+  strict: boolean;
+  needsWorkStrict: boolean;
+} {
+  return {
+    strict: env.ELIZA_AUDIT_APP_STRICT !== "0",
+    needsWorkStrict: env.ELIZA_AUDIT_APP_STRICT_NEEDS_WORK !== "0",
+  };
+}

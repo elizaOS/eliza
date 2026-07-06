@@ -504,30 +504,34 @@ export async function bindCloudAgent(
         ...(bio.length ? { agentConfig: { bio } } : {}),
         forceCreate: true,
       });
-      if (dedicated.success && dedicated.data.agentId) {
-        return dedicated.data.agentId;
+      if (!dedicated.success || !dedicated.data.agentId) {
+        throw new Error(
+          dedicated.success
+            ? "Dedicated agent creation returned no agent id."
+            : (dedicated.data.message ?? "Dedicated agent creation failed."),
+        );
       }
-      throw new Error(
-        dedicated.success
-          ? "Dedicated agent creation returned no agent id."
-          : (dedicated.data.message ?? "Dedicated agent creation failed."),
-      );
+      const dedicatedAgentId = dedicated.data.agentId;
+      // Reload insurance, persisted the INSTANT the dedicated target id is known
+      // — before the 30-120s container boot in startCloudAgentHandoff, with no
+      // await between learning the id and persisting it. The supervisor is
+      // in-memory, so a kill mid-boot resumes THIS exact handoff at startup
+      // (resumePendingCloudHandoff) instead of stranding the user on the shared
+      // adapter off the auto-upgrade path; silentlyRepointToDedicated clears the
+      // marker once the swap lands.
+      savePendingCloudHandoff({
+        sharedAgentId,
+        dedicatedAgentId,
+        sharedApiBase: cloudAgentApiBase,
+        cloudApiBase,
+        startedAt: Date.now(),
+      });
+      return dedicatedAgentId;
     };
     runCloudAgentHandoff(
       sharedAgentId,
       async () => {
         const dedicatedAgentId = await createDedicatedHandoffTarget();
-        // Reload insurance: the supervisor is in-memory, so persist the exact
-        // migration target. A reload mid-boot resumes THIS handoff at startup
-        // (resumePendingCloudHandoff) instead of stranding the user on the
-        // shared adapter; silentlyRepointToDedicated clears the marker.
-        savePendingCloudHandoff({
-          sharedAgentId,
-          dedicatedAgentId,
-          sharedApiBase: cloudAgentApiBase,
-          cloudApiBase,
-          startedAt: Date.now(),
-        });
         return await client.startCloudAgentHandoff({
           agentId: sharedAgentId,
           sharedApiBase: cloudAgentApiBase,

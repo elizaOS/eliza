@@ -4,6 +4,11 @@ import { Capacitor } from "@capacitor/core";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { userAgentHasElizaOSMarker } from "./aosp-user-agent";
+import {
+  clearStandaloneBottomReclaim,
+  installStandaloneBottomReclaim,
+  shouldInstallStandaloneBottomReclaim,
+} from "./standalone-bottom-reclaim";
 
 export { userAgentHasElizaOSMarker } from "./aosp-user-agent";
 
@@ -263,6 +268,26 @@ export function setupPlatformStyles(): void {
   // its window scroll/trackpad behavior.
   if (platform === "web" && isStandalonePwa()) {
     document.body.classList.add("pwa-standalone");
+  }
+
+  // JS-MEASURED BOTTOM RECLAIM (the cure for the recurring home-indicator
+  // "bottom bar"): on the installed iOS standalone PWA the fixed-body ICB
+  // collapses so `100lvh - 100dvh` resolves to 0 and every CSS-unit reclaim is
+  // a no-op. Measure the true (visual/inner) vs layout (clientHeight) viewport
+  // delta in JS and expose it as `--standalone-bottom-reclaim`; the fixed
+  // layers reclaim by that MEASURED gap. Standalone/iOS-native only: elsewhere
+  // (desktop/web/Android) the var is a hard 0 with no listeners, so the shared
+  // reclaim calc is a true no-op.
+  if (
+    shouldInstallStandaloneBottomReclaim({
+      standalonePwa: isStandalonePwa(),
+      isNative,
+      isIOS,
+    })
+  ) {
+    installStandaloneBottomReclaim();
+  } else {
+    clearStandaloneBottomReclaim();
   }
 
   root.style.setProperty("--safe-area-top", "env(safe-area-inset-top, 0px)");

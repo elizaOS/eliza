@@ -72,13 +72,13 @@ test("can skip device lanes while keeping test and visual evidence lanes", () =>
   );
 });
 
-test("validates explicit step ids and OCR mode", () => {
+test("validates explicit step ids and requires OCR", () => {
   const options = parseMatrixArgs([
     "--only=e2e-recordings,app-audit",
-    "--review-ocr=auto",
+    "--review-ocr=on",
     "--open",
   ]);
-  assert.equal(options.reviewOcr, "auto");
+  assert.equal(options.reviewOcr, "on");
   assert.equal(options.open, true);
   assert.deepEqual(
     selectMatrixSteps(MATRIX_STEPS, options).map((step) => step.id),
@@ -89,8 +89,12 @@ test("validates explicit step ids and OCR mode", () => {
     /unknown matrix step/,
   );
   assert.throws(
-    () => parseMatrixArgs(["--review-ocr=yes"]),
-    /--review-ocr must be auto, on, or off/,
+    () => parseMatrixArgs(["--review-ocr=off"]),
+    /--review-ocr must be on/,
+  );
+  assert.throws(
+    () => parseMatrixArgs(["--review-ocr=auto"]),
+    /--review-ocr must be on/,
   );
 });
 

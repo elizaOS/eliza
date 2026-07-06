@@ -44,14 +44,13 @@ describe("first-run abandon / resume e2e", () => {
     const runtime = createMinimalRuntimeStub();
     let service = newService(runtime);
 
-    // Q1
-    let res = await service.runCustomizePath({ preferredName: "Sam" });
-    expect(res.awaitingQuestion).toBe("timezoneAndWindows");
-
-    // Q2 — partial — only timezone, missing windows.
-    res = await service.runCustomizePath({ timezone: "America/Chicago" });
-    // Still on the same Q because windows missing.
-    expect(res.awaitingQuestion).toBe("timezoneAndWindows");
+    // Q1 — name, with the device timezone riding along as inferred context
+    // (never its own question).
+    let res = await service.runCustomizePath({
+      preferredName: "Sam",
+      timezone: "America/Chicago",
+    });
+    expect(res.awaitingQuestion).toBe("categories");
 
     // Simulate "abandon" — drop the service and re-create. Partial state
     // should rehydrate from the cache-backed FirstRunStateStore.
@@ -61,13 +60,6 @@ describe("first-run abandon / resume e2e", () => {
     expect(recovered.status).toBe("in_progress");
     expect(recovered.partialAnswers.preferredName).toBe("Sam");
     expect(recovered.partialAnswers.timezone).toBe("America/Chicago");
-
-    // Q2 — finish windows.
-    res = await service.runCustomizePath({
-      morningWindow: { startLocal: "06:00", endLocal: "11:00" },
-      eveningWindow: { startLocal: "18:00", endLocal: "22:00" },
-    });
-    expect(res.awaitingQuestion).toBe("categories");
 
     // Continue to completion.
     res = await service.runCustomizePath({ categories: ["reminder packs"] });

@@ -79,10 +79,8 @@
       }
     },
     "setAppPermissions": {
-      "gap": {
-        "issue": "#14622",
-        "reason": "app-permissions namespace grants have no semantic twin; SETTINGS_WRITE_REGISTRY is unwired"
-      }
+      "action": "SETTINGS",
+      "note": "app-permissions section route write (GET+PUT /api/apps/permissions/:slug) in SETTINGS_WRITE_REGISTRY; read-modify-write grant/revoke of one fs|net namespace via section=app-permissions app=<slug> key=fs|net value=on|off"
     },
     "updateExperience": {
       "action": "EXPERIENCE",

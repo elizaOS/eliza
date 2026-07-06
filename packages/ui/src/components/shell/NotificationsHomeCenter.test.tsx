@@ -34,7 +34,6 @@ import {
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
 } from "../../state/notifications/notification-store";
-import { HOME_GLASS_CLASS } from "./home-glass";
 import {
   NotificationsHomeCenter,
   orderDashboardNotifications,
@@ -131,22 +130,26 @@ describe("NotificationsHomeCenter", () => {
   });
 
   it("marks a row read on tap and follows a safe deep link", () => {
+    const onNavigate = vi.fn();
     __ingestNotificationForTests(
       makeNotification({ deepLink: "/settings", title: "Open settings" }),
     );
-    render(<NotificationsHomeCenter />);
+    render(<NotificationsHomeCenter onNavigate={onNavigate} />);
     fireEvent.click(screen.getByTestId("notification-row"));
     expect(navigateDeepLink).toHaveBeenCalledWith("/settings");
+    expect(onNavigate).toHaveBeenCalledWith("/settings");
     expect(__getStateForTests().unreadCount).toBe(0);
   });
 
   it("never navigates an unsafe deep link (tap still marks read)", () => {
+    const onNavigate = vi.fn();
     __ingestNotificationForTests(
       makeNotification({ deepLink: "javascript:alert(1)" }),
     );
-    render(<NotificationsHomeCenter />);
+    render(<NotificationsHomeCenter onNavigate={onNavigate} />);
     fireEvent.click(screen.getByTestId("notification-row"));
     expect(navigateDeepLink).not.toHaveBeenCalled();
+    expect(onNavigate).not.toHaveBeenCalled();
     expect(__getStateForTests().unreadCount).toBe(0);
   });
 
@@ -166,17 +169,40 @@ describe("NotificationsHomeCenter", () => {
     expect(screen.queryByText("Dismiss me")).toBeNull();
   });
 
-  it("marks all read and clears all from the header actions", () => {
+  it("marks all read from the header, and has no clear-all trash button", () => {
     __ingestNotificationForTests(makeNotification());
     __ingestNotificationForTests(makeNotification());
     render(<NotificationsHomeCenter />);
+    // The bulk delete/trash affordance is gone: rows are dismissed one at a
+    // time (hover X / swipe / row menu), never nuked wholesale from the header.
+    expect(screen.queryByTestId("notifications-clear-all")).toBeNull();
     fireEvent.click(screen.getByTestId("notifications-mark-all-read"));
     expect(__getStateForTests().unreadCount).toBe(0);
-    // With nothing unread, mark-all disappears; clear-all empties + hides.
+    // With nothing unread, mark-all disappears.
     expect(screen.queryByTestId("notifications-mark-all-read")).toBeNull();
-    fireEvent.click(screen.getByTestId("notifications-clear-all"));
-    expect(screen.queryByTestId("home-notification-center")).toBeNull();
-    expect(__getStateForTests().notifications).toHaveLength(0);
+  });
+
+  it("opens a contextual menu on right-click with dismiss + mark-read actions", () => {
+    __ingestNotificationForTests(
+      makeNotification({ title: "Menu me", deepLink: "/x" }),
+    );
+    render(<NotificationsHomeCenter />);
+    const li = screen.getByText("Menu me").closest("li") as HTMLElement;
+    fireEvent.contextMenu(li);
+    expect(screen.getByTestId("notification-row-menu")).toBeTruthy();
+    // Unread + safe deep link → open, mark-read, and dismiss are all present.
+    expect(screen.getByTestId("notification-menu-open")).toBeTruthy();
+    expect(screen.getByTestId("notification-menu-mark-read")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("notification-menu-dismiss"));
+    expect(screen.queryByText("Menu me")).toBeNull();
+  });
+
+  it("no longer has a border/background chrome box on the inbox card", () => {
+    __ingestNotificationForTests(makeNotification());
+    render(<NotificationsHomeCenter />);
+    const card = screen.getByTestId("home-notification-center");
+    // Item 1: the inbox floats on the shade's surface — no card fill / border.
+    expect(card.className).not.toMatch(/border|bg-black|backdrop-blur/);
   });
 
   it("keeps a tapped (now read) row in place - order ignores read state", () => {
@@ -228,13 +254,14 @@ describe("NotificationsHomeCenter", () => {
     expect(screen.getAllByTestId("notification-row-accent")).toHaveLength(2);
   });
 
-  it("uses the shared home glass recipe as the single blur budget owner", () => {
+  it("carries no glass/blur/border chrome — the shade owns the surface", () => {
     __ingestNotificationForTests(makeNotification());
     render(<NotificationsHomeCenter />);
     const card = screen.getByTestId("home-notification-center");
-    expect(card.className).toBe(HOME_GLASS_CLASS);
-    expect(card.className).toContain("backdrop-blur");
-    expect(card.className).not.toContain("border-border");
+    // Item 1: the inbox is bare — no fill, no border, no blur of its own.
+    expect(card.className).not.toContain("backdrop-blur");
+    expect(card.className).not.toContain("border");
+    expect(card.className).not.toMatch(/bg-black|bg-white/);
   });
 
   it("renders a count chip when data.count > 1 (§C.3 coalescing)", () => {

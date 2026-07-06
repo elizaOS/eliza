@@ -17,6 +17,19 @@
  *                         `skipped` record is an honest drain marker carrying the
  *                         reason the GPU never analyzed the image, NEVER fabricated
  *                         analyzer data (repo doctrine: "not loaded" ≠ "empty").
+ *
+ * Layering: a second filesystem GPU queue exists at
+ * `docker/certification/queue-lib.mjs` (#14549). It runs in the compose GPU
+ * profile as PLAIN NODE against a read-only repo mount and carries a different
+ * job shape (an OpenAI `model`+`request` proxied to the resident llama-server,
+ * not an `analyzerId` merged into `analysis.json`), so the two are NOT merged
+ * into one runtime module: a workspace-TS import is fragile in that container
+ * (it may run before the package installs/builds), and a docker-owned import
+ * would be wrong for this published package. What they DO share — the four dir
+ * names, the backpressure cap + drain window, FIFO claim order, id generation,
+ * and the unreachable→drain→reset state machine below — is held identical by a
+ * mechanical drift guard (`parity.test.ts`), so the copies can never silently
+ * diverge the way the recovery latch once did (#15006 review).
  */
 
 import type { AnalyzerResult } from "../analyzers/types.ts";

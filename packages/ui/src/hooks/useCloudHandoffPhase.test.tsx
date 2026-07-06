@@ -62,6 +62,17 @@ describe("useCloudHandoffPhase", () => {
     act(() => vi.advanceTimersByTime(60_000));
     expect(result.current?.phase).toBe("timed-out");
   });
+
+  it("keeps the insufficient-credits prompt visible until the user acts (never a silent shared fallback)", () => {
+    const { result } = renderHook(() => useCloudHandoffPhase());
+    emit({ agentId: "a1", phase: "insufficient-credits" });
+    expect(result.current?.phase).toBe("insufficient-credits");
+
+    // The credit-gate prompt must NOT self-dismiss — it stays so the user sees
+    // the add-credits path instead of being silently kept on shared.
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(result.current?.phase).toBe("insufficient-credits");
+  });
 });
 
 // The floating CloudHandoffBanner was removed: failure/timeout phases now

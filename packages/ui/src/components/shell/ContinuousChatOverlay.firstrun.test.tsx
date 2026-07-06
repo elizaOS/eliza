@@ -134,7 +134,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
 
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
-    expect(input.placeholder).toBe("Ask me anything — or pick an option");
+    expect(input.placeholder).toBe("Connect to cloud to enable chat");
 
     // Attach + mic have no agent to serve them yet — still inert (pre-runtime).
     const attach = screen.getByTestId("chat-composer-attach");
@@ -218,6 +218,21 @@ describe("ContinuousChatOverlay first-run gating", () => {
     expect(after?.getAttribute("data-first-run-opaque") ?? "false").not.toBe(
       "true",
     );
+  });
+
+  it("opens edge-to-edge full-bleed (maximized) during onboarding, keeping the inert grabber instead of the restore zone", () => {
+    render(
+      <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    // The login/first-run chat is full-screen: full-bleed edge-to-edge.
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+    expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
+    // Full-bleed normally swaps the grabber for the "drag to exit full screen"
+    // restore zone, but onboarding pins the sheet — that gesture is a no-op, so
+    // the (inert) grabber stays and the misleading restore affordance is absent.
+    expect(screen.getByTestId("chat-sheet-grabber")).toBeTruthy();
+    expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
   });
 
   it("opens pinned at FULL and ignores Escape while onboarding is active", () => {

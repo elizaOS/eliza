@@ -1,9 +1,12 @@
 /**
- * The app's notification inbox card. It is NOT pinned on the dashboard: the
- * home stays clean and the inbox stays hidden until the user pulls it up —
- * HomeScreen mounts this card inside the NotificationsShade sheet (an
- * Apple-style pull-up), so this component owns the inbox content (rows,
- * open/deep-link, dismiss, mark-all-read, clear) and self-hides when empty.
+ * The app's notification inbox. It is NOT pinned on the dashboard: the home
+ * stays clean and the inbox stays hidden until the user pulls the shade DOWN —
+ * HomeScreen mounts this inside the NotificationsShade sheet, so this component
+ * owns the inbox content (rows, open/deep-link, per-row dismiss, mark-all-read)
+ * and self-hides when empty. It has no card chrome of its own — no fill, no
+ * border — it floats on the shade's surface; rows carry no bulk clear-all, only
+ * per-row dismissal (hover X on mouse, sideways swipe on touch, or the row's
+ * long-press / right-click contextual menu).
  *
  * Rows are grouped by the VIEW they deep-link into (falling back to the
  * producer category), like a platform notification shade groups by app. The
@@ -20,8 +23,9 @@
  * inherit the position of their highest-ranked row.
  */
 import type { AgentNotification, NotificationCategory } from "@elizaos/core";
-import { CheckCheck, Trash2, X } from "lucide-react";
-import { memo, useCallback, useEffect, useRef } from "react";
+import { Check, CheckCheck, ExternalLink, X } from "lucide-react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { haptics } from "../../bridge/capacitor-bridge";
 import { cn } from "../../lib/utils";
 import { tabFromPath, titleForTab } from "../../navigation";
 import {
@@ -29,7 +33,6 @@ import {
   navigateDeepLink,
 } from "../../state/notifications/navigate-deep-link";
 import {
-  clearNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   removeNotification,
@@ -37,9 +40,18 @@ import {
 } from "../../state/notifications/notification-store";
 import { NOTIFICATION_PRIORITY_RANK } from "../../widgets/home-priority";
 import { Button } from "../ui/button";
-import { HOME_GLASS_CLASS } from "./home-glass";
 import { RelativeTime } from "./RelativeTime";
 import { WALLPAPER_TEXT } from "./wallpaper-idiom";
+
+/**
+ * Horizontal travel (px) a touch swipe must clear before the row commits to a
+ * dismiss on release; below it the row springs back. Also the distance past
+ * which the row is treated as thrown (fling out + remove).
+ */
+const SWIPE_DISMISS_PX = 88;
+
+/** Long-press duration (ms) that opens the row's contextual menu on touch. */
+const LONG_PRESS_MS = 420;
 
 /**
  * Height cap for the scrolling list (the header stays pinned above it). Sized
@@ -187,8 +199,12 @@ export function groupDashboardNotifications(
 
 /**
  * One notification row: a whole-row open button (mark read + scheme-checked
- * deep link) plus an always-visible dismiss X sized to the touch token on
- * coarse pointers.
+ * deep link). The row carries no fill or border of its own — it floats on the
+ * shade's field, spacing separates turns. Dismissal is pointer-idiomatic: a
+ * mouse reveals an X on hover; touch throws the row left or right past
+ * {@link SWIPE_DISMISS_PX} to dismiss (springs back below it). A long-press
+ * (touch) or right-click (mouse) opens a contextual menu — open / mark read /
+ * dismiss — so tap stays a single clean "open the view" action.
  *
  * Memoized (binding pattern, spec §C.4): the relative timestamp now lives in a
  * `<RelativeTime>` leaf that owns the minute tick, so the row no longer has to
@@ -215,7 +231,8 @@ export function rowPropsEqual(
     a.deepLink === b.deepLink &&
     a.data?.count === b.data?.count &&
     prev.onOpen === next.onOpen &&
-    prev.onDismiss === next.onDismiss
+    prev.onDismiss === next.onDismiss &&
+    prev.onMarkRead === next.onMarkRead
   );
 }
 
@@ -223,6 +240,7 @@ export interface NotificationRowProps {
   notification: AgentNotification;
   onOpen: (n: AgentNotification) => void;
   onDismiss: (id: string) => void;
+  onMarkRead: (id: string) => void;
 }
 
 let notificationRowRenderObserverForTests: (() => void) | null = null;
@@ -244,11 +262,140 @@ const NotificationRow = memo(function NotificationRow({
   notification,
   onOpen,
   onDismiss,
+  onMarkRead,
 }: NotificationRowProps): React.JSX.Element {
   notificationRowRenderObserverForTests?.();
   const unread = !notification.readAt;
   const urgent = notification.priority === "urgent";
   const high = notification.priority === "high";
+
+  // Touch swipe-to-dismiss + long-press menu. `swipeX` drives the live drag
+  // transform; `menuOpen` is the contextual menu. Refs hold the in-flight
+  // gesture so the memoized row never needs the parent to re-render mid-drag.
+  const [swipeX, setSwipeX] = useState(0);
+  const [dismissing, setDismissing] = useState<"left" | "right" | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const gesture = useRef<{
+    id: number;
+    startX: number;
+    startY: number;
+    axis: "none" | "x" | "y";
+    longPress: number | null;
+    moved: boolean;
+  } | null>(null);
+  // Set true by a completed swipe / long-press so the synthetic click the same
+  // gesture emits doesn't also fire "open".
+  const suppressClick = useRef(false);
+
+  const clearGesture = useCallback(() => {
+    const g = gesture.current;
+    if (g?.longPress != null) window.clearTimeout(g.longPress);
+    gesture.current = null;
+  }, []);
+
+  const commitDismiss = useCallback(
+    (dir: "left" | "right") => {
+      suppressClick.current = true;
+      setDismissing(dir);
+      // Let the fling-out transition paint before the store removes the row.
+      window.setTimeout(() => onDismiss(notification.id), 180);
+    },
+    [notification.id, onDismiss],
+  );
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (menuOpen) return;
+      suppressClick.current = false;
+      const longPress =
+        e.pointerType !== "mouse"
+          ? window.setTimeout(() => {
+              suppressClick.current = true;
+              setMenuOpen(true);
+              void haptics.light();
+            }, LONG_PRESS_MS)
+          : null;
+      gesture.current = {
+        id: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        axis: "none",
+        longPress,
+        moved: false,
+      };
+    },
+    [menuOpen],
+  );
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    const g = gesture.current;
+    if (!g || g.id !== e.pointerId) return;
+    const dx = e.clientX - g.startX;
+    const dy = e.clientY - g.startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) g.moved = true;
+    // Lock the axis on first real movement: a vertical drag belongs to the
+    // list scroller, only a horizontal one is a dismiss swipe. Touch only —
+    // a mouse drag must never hijack text selection or the scrollbar.
+    if (g.axis === "none" && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      g.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      // Any committed drag cancels the pending long-press.
+      if (g.longPress != null) {
+        window.clearTimeout(g.longPress);
+        g.longPress = null;
+      }
+    }
+    if (g.axis !== "x" || e.pointerType === "mouse") return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setSwipeX(dx);
+  }, []);
+
+  const onPointerEnd = useCallback(
+    (e: React.PointerEvent) => {
+      const g = gesture.current;
+      if (!g || g.id !== e.pointerId) {
+        clearGesture();
+        return;
+      }
+      clearGesture();
+      if (g.axis === "x") {
+        const dx = e.clientX - g.startX;
+        if (Math.abs(dx) >= SWIPE_DISMISS_PX) {
+          commitDismiss(dx < 0 ? "left" : "right");
+          return;
+        }
+      }
+      setSwipeX(0);
+    },
+    [clearGesture, commitDismiss],
+  );
+
+  // Close the contextual menu on an OUTSIDE pointer / Escape while it is open.
+  // The containment check is what lets a click LAND on a menu item: a blanket
+  // "close on any pointerdown" would unmount the menu on the item's own
+  // pointerdown, swallowing the click before it fires.
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onPointer = (ev: PointerEvent) => {
+      const target = ev.target as Node | null;
+      if (menuRef.current && target && menuRef.current.contains(target)) return;
+      setMenuOpen(false);
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") setMenuOpen(false);
+    };
+    // Defer one tick so the opening long-press/right-click isn't the "outside".
+    const id = window.setTimeout(() => {
+      window.addEventListener("pointerdown", onPointer);
+      window.addEventListener("keydown", onKey);
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener("pointerdown", onPointer);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
   // §C.3 count-aware coalescing: a superseding same-groupKey notification carries
   // data.count so the row reads "3 new files" via a small chip instead of the
   // inbox silently keeping only the last of the batch. Only surfaced for N > 1.
@@ -259,10 +406,44 @@ const NotificationRow = memo(function NotificationRow({
   // present only for urgent/high - and an unread state by a single dot, so a
   // quiet normal notification is just its line + time, like an iOS lock note.
   const accent = urgent || high ? "bg-white/75" : null;
+  const dragging = swipeX !== 0 && !dismissing;
   return (
-    <li className="eliza-notif-row" data-notif-row>
+    <li
+      // Lifted above sibling rows while the menu is open so the menu — which
+      // overflows past this row's box — is never painted over (each row's swipe
+      // transform makes its own stacking context, so a later row would other-
+      // wise cover the menu and swallow its clicks).
+      className={cn("eliza-notif-row relative", menuOpen && "z-30")}
+      data-notif-row
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setMenuOpen(true);
+      }}
+    >
       <div
+        data-testid="notification-row-swipe"
+        style={{
+          // Only apply a transform while actually swiping/dismissing: a resting
+          // `translateX(0)` still creates a stacking context on every row, which
+          // is what buries an open menu behind the next row.
+          transform: dismissing
+            ? `translateX(${dismissing === "left" ? "-120%" : "120%"})`
+            : swipeX
+              ? `translateX(${swipeX}px)`
+              : undefined,
+          opacity: dismissing ? 0 : Math.max(0, 1 - Math.abs(swipeX) / 220),
+          transition: dragging
+            ? "none"
+            : "transform 180ms cubic-bezier(0.22,1,0.36,1), opacity 180ms linear",
+          touchAction: "pan-y",
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
         className={cn(
+          // No fill, no border of its own — the row floats on the shade field;
+          // a hover wash is the only rest→hover chrome. Unread keeps a faint tint.
           "eliza-notif-row-inner group relative flex items-stretch overflow-hidden rounded-xl transition-colors duration-150 hover:bg-white/10",
           unread && "bg-white/8",
         )}
@@ -286,8 +467,17 @@ const NotificationRow = memo(function NotificationRow({
           aria-label={`${notification.title}${
             notification.body ? `. ${notification.body}` : ""
           }${unread ? ". Unread." : ""}`}
-          onClick={() => onOpen(notification)}
-          className="flex min-h-touch min-w-0 flex-1 flex-col gap-0.5 rounded-xl px-3 py-2 pr-9 text-left active:scale-[0.99] motion-reduce:active:scale-100 pointer-coarse:pr-11"
+          onClick={(e) => {
+            // A swipe / long-press synthesizes a click on release; swallow it so
+            // the gesture doesn't also open the notification.
+            if (suppressClick.current) {
+              suppressClick.current = false;
+              e.preventDefault();
+              return;
+            }
+            onOpen(notification);
+          }}
+          className="flex min-h-touch min-w-0 flex-1 flex-col gap-0.5 rounded-xl px-3 py-2 pr-9 text-left active:scale-[0.99] motion-reduce:active:scale-100 pointer-coarse:pr-3"
         >
           <span className="flex items-baseline gap-1.5">
             {unread ? (
@@ -336,19 +526,77 @@ const NotificationRow = memo(function NotificationRow({
             </span>
           ) : null}
         </button>
-        {/* Visible at rest (dimmed) - on touch there is no hover, and an
-            invisible dismiss silently ate near-edge taps in the old center. */}
+        {/* Mouse-only dismiss: hidden at rest, revealed on row hover or keyboard
+            focus. Touch has no hover — it throws the row sideways to dismiss (or
+            long-presses for the menu), so the X is `pointer-coarse:hidden` to
+            keep touch rows clean and reclaim the trailing space. */}
         <Button
           variant="ghost"
           size="icon-sm"
           aria-label="Dismiss notification"
           data-testid="notification-row-dismiss"
           onClick={() => onDismiss(notification.id)}
-          className="absolute right-1 top-1.5 h-auto w-auto shrink-0 rounded-full p-1.5 text-white/55 opacity-60 transition-opacity pointer-coarse:min-h-touch pointer-coarse:min-w-touch hover:bg-white/10 hover:text-white group-hover:opacity-100"
+          className="absolute right-1 top-1.5 h-auto w-auto shrink-0 rounded-full p-1.5 text-white/55 opacity-0 transition-opacity hover:bg-white/10 hover:text-white focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:hidden"
         >
           <X className="h-3.5 w-3.5" />
         </Button>
       </div>
+      {menuOpen ? (
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label="Notification actions"
+          data-testid="notification-row-menu"
+          // Anchored to the trailing edge over the row. The outside-close
+          // listener skips pointerdowns inside this subtree (containment check)
+          // so a menu-item click is never swallowed.
+          className="absolute right-2 top-full z-10 mt-0.5 flex min-w-40 flex-col overflow-hidden rounded-xl border border-white/12 bg-black/80 py-1 text-sm text-white shadow-lg backdrop-blur-md"
+        >
+          {notification.deepLink && isSafeDeepLink(notification.deepLink) ? (
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="notification-menu-open"
+              onClick={() => {
+                setMenuOpen(false);
+                onOpen(notification);
+              }}
+              className="flex items-center gap-2 px-3 py-2 text-left hover:bg-white/10"
+            >
+              <ExternalLink className="h-4 w-4 shrink-0 text-white/70" />
+              Open
+            </button>
+          ) : null}
+          {unread ? (
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="notification-menu-mark-read"
+              onClick={() => {
+                setMenuOpen(false);
+                onMarkRead(notification.id);
+              }}
+              className="flex items-center gap-2 px-3 py-2 text-left hover:bg-white/10"
+            >
+              <Check className="h-4 w-4 shrink-0 text-white/70" />
+              Mark as read
+            </button>
+          ) : null}
+          <button
+            type="button"
+            role="menuitem"
+            data-testid="notification-menu-dismiss"
+            onClick={() => {
+              setMenuOpen(false);
+              onDismiss(notification.id);
+            }}
+            className="flex items-center gap-2 px-3 py-2 text-left hover:bg-white/10"
+          >
+            <X className="h-4 w-4 shrink-0 text-white/70" />
+            Dismiss
+          </button>
+        </div>
+      ) : null}
     </li>
   );
 }, rowPropsEqual);
@@ -359,7 +607,14 @@ NotificationRow.displayName = "NotificationRow";
  * has at least one notification. Mounted inside NotificationsShade (the home
  * pull-up sheet), never pinned on the dashboard itself.
  */
-export function NotificationsHomeCenter(): React.JSX.Element | null {
+export interface NotificationsHomeCenterProps {
+  /** Called after a row activates a safe in-app deep link. */
+  onNavigate?: (deepLink: string) => void;
+}
+
+export function NotificationsHomeCenter({
+  onNavigate,
+}: NotificationsHomeCenterProps = {}): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
   const { notifications, unreadCount } = useNotifications();
   // No list-level clock tick here (binding pattern, spec §C.4): relative
@@ -383,16 +638,23 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
     syncEdgeFades();
   }, [syncEdgeFades, notifications.length]);
 
-  const openNotification = useCallback((n: AgentNotification) => {
-    if (!n.readAt) void markNotificationRead(n.id);
-    // deepLink is producer/LLM-influenceable - only scheme-checked links
-    // navigate; anything else the tap is just "mark read".
-    if (n.deepLink && isSafeDeepLink(n.deepLink)) {
-      navigateDeepLink(n.deepLink);
-    }
-  }, []);
+  const openNotification = useCallback(
+    (n: AgentNotification) => {
+      if (!n.readAt) void markNotificationRead(n.id);
+      // deepLink is producer/LLM-influenceable - only scheme-checked links
+      // navigate; anything else the tap is just "mark read".
+      if (n.deepLink && isSafeDeepLink(n.deepLink)) {
+        navigateDeepLink(n.deepLink);
+        onNavigate?.(n.deepLink);
+      }
+    },
+    [onNavigate],
+  );
   const dismissNotification = useCallback((id: string) => {
     void removeNotification(id);
+  }, []);
+  const markReadNotification = useCallback((id: string) => {
+    void markNotificationRead(id);
   }, []);
 
   if (notifications.length === 0) return null;
@@ -414,13 +676,11 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
           : "Notifications"
       }
       data-testid="home-notification-center"
-      // The card owns its gap from the editorial header above (mt-4) so a
-      // hidden widget (null render) leaves no dead spacer in the column.
-      //
-      // Lock-screen glass, not a chrome box: a single shared recipe owns the
-      // entire home backdrop-filter budget. Ranked widgets stay solid token
-      // tiles, so adding residents never adds more blur surfaces.
-      className={HOME_GLASS_CLASS}
+      // No card chrome: the inbox has no fill and no border of its own. It floats
+      // directly on the shade's own surface (the pull-down sheet owns the
+      // backdrop) — rows are separated by spacing and their hover wash, so the
+      // list reads as bare lock-screen notes, not a boxed panel.
+      className="flex flex-col overflow-hidden"
     >
       <style>{NOTIF_SCROLL_CSS}</style>
       {/* Pinned header: a quiet eyebrow + unread count, actions to the right.
@@ -459,20 +719,6 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
               <CheckCheck className="h-4 w-4" />
             </Button>
           ) : null}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Clear all notifications"
-            title="Clear all"
-            data-testid="notifications-clear-all"
-            className={cn(
-              WALLPAPER_TEXT.secondary,
-              "hover:bg-white/10 hover:text-white",
-            )}
-            onClick={() => void clearNotifications()}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
         </span>
       </div>
       <ul
@@ -501,6 +747,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
                   notification={notification}
                   onOpen={openNotification}
                   onDismiss={dismissNotification}
+                  onMarkRead={markReadNotification}
                 />
               ))}
             </ul>

@@ -102,15 +102,20 @@ export const CLOUD_HANDOFF_PHASE_EVENT = "eliza:cloud-handoff-phase" as const;
  * adapter. `switched` — conversation copied and the live client moved to the
  * dedicated container (`switched-empty` when there was nothing to copy yet).
  * `timed-out` / `failed` — the container never became ready (or an I/O step
- * threw); the user safely stays on the working shared adapter. Mirrors
- * `ConversationHandoffStatus` plus the `migrating` in-flight phase.
+ * threw); the user safely stays on the working shared adapter.
+ * `insufficient-credits` — the dedicated upgrade was refused by the credit gate
+ * (HTTP 402): the user keeps the free shared agent, but this is a FIRST-CLASS
+ * state (a distinct "add credits for your own dedicated agent" surface), never a
+ * silent permanent shared fallback. Mirrors `ConversationHandoffStatus` plus the
+ * `migrating` in-flight phase and the `insufficient-credits` monetization gate.
  */
 export type CloudHandoffPhase =
   | "migrating"
   | "switched"
   | "switched-empty"
   | "timed-out"
-  | "failed";
+  | "failed"
+  | "insufficient-credits";
 
 export interface CloudHandoffPhaseDetail {
   agentId: string;
@@ -141,6 +146,14 @@ export const CHAT_PREFILL_EVENT = "eliza:chat:prefill" as const;
  * mounted {@link ContinuousChatOverlay} is the one listener.
  */
 export const CHAT_OPEN_EVENT = "eliza:chat:open" as const;
+/**
+ * Collapse (close) the floating chat sheet to its resting bar. Fired when the
+ * user pulls the notification shade DOWN over the home: revealing notifications
+ * and dismissing the open chat are one gesture, so the shade asks the overlay
+ * to step down to its collapsed detent. The {@link ContinuousChatOverlay} is
+ * the one listener; it no-ops while onboarding pins the sheet full.
+ */
+export const CHAT_COLLAPSE_EVENT = "eliza:chat:collapse" as const;
 /** Open the keyword message-search panel (fired by the chat search affordance). */
 export const CHAT_MESSAGE_SEARCH_EVENT = "eliza:chat:message-search" as const;
 /**
@@ -170,6 +183,12 @@ export function dispatchChatPrefill(detail: ChatPrefillEventDetail): void {
 export function dispatchChatOpen(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(CHAT_OPEN_EVENT));
+}
+
+/** Dispatch a request to collapse the floating chat. See {@link CHAT_COLLAPSE_EVENT}. */
+export function dispatchChatCollapse(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(CHAT_COLLAPSE_EVENT));
 }
 
 /** Request the notification center to open (surface-agnostic — see

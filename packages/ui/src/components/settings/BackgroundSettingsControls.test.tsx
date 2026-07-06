@@ -120,6 +120,15 @@ describe("BackgroundSettingsControls wallpaper gallery", () => {
     expect(screen.getByLabelText("Set background to Green")).toBeTruthy();
   });
 
+  it("renders curated photo wallpaper tiles from their actual served image", () => {
+    seed();
+    render(<BackgroundSettingsControls />);
+
+    const reef = screen.getByLabelText("Set background to Reef")
+      .firstElementChild as HTMLElement | null;
+    expect(reef?.style.backgroundImage).toContain("/wallpapers/reef.webp");
+  });
+
   it("marks the active wallpaper as pressed and leaves others unpressed", () => {
     // The live config is the Green shader color, so its tile is the active one.
     seed({ backgroundConfig: { mode: "shader", color: "#059669" } });

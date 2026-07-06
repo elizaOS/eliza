@@ -11,7 +11,11 @@ import { describe, expect, it } from "vitest";
 import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import { searchMessagesAction } from "../../features/messaging/triage/actions/searchMessages";
 import { buildActionCatalog } from "../action-catalog";
-import { retrieveActions, tokenizeActionSearchText } from "../action-retrieval";
+import {
+	parentAliasesForCandidateAction,
+	retrieveActions,
+	tokenizeActionSearchText,
+} from "../action-retrieval";
 
 const actions = [
 	{
@@ -438,5 +442,35 @@ describe("action catalogue and retrieval", () => {
 			"send",
 			"email",
 		]);
+	});
+
+	// #14622: Stage-1 invents varied synthetic names for a permission grant/revoke
+	// ("revoke network access for the weather app"). They must hint the SETTINGS
+	// writer, and — because SET/APP tokens otherwise trip the view heuristic —
+	// SETTINGS must win over VIEWS so the write is not routed to navigation.
+	it("routes app/OS permission candidate names to the SETTINGS parent", () => {
+		for (const candidate of [
+			"REVOKE_NETWORK_ACCESS",
+			"GRANT_NETWORK_ACCESS",
+			"SET_APP_NETWORK_PERMISSION",
+			"REVOKE_APP_PERMISSION",
+			"UPDATE_APP_PERMISSION",
+			"GRANT_FILESYSTEM_ACCESS",
+			"REVOKE_SHELL_ACCESS",
+			"REQUEST_CAMERA_PERMISSION",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual(["SETTINGS"]);
+		}
+	});
+
+	it("leaves non-permission candidates off the SETTINGS parent", () => {
+		// A bare person-scoped access revoke is BLOCK, not a settings write; view /
+		// app surface candidates keep their existing VIEWS/APP hints untouched.
+		expect(parentAliasesForCandidateAction("REVOKE_ACCESS")).toEqual([]);
+		expect(parentAliasesForCandidateAction("OPEN_APP")).toEqual([
+			"VIEWS",
+			"APP",
+		]);
+		expect(parentAliasesForCandidateAction("LAUNCH_APP")).toEqual(["APP"]);
 	});
 });

@@ -36,12 +36,17 @@ const USAGE = `Usage:
                    [--bundle <existing-dir>] [--requirements <file>] [--base-ref <ref>]
                    [--expires-hours <n>] [--key-file <pem>] [--cert-out <path>]
                    [--out <dir>] [--repo-root <dir>]
+                   [--gpu-queue <queue-dir>] [--gpu-queue-timeout-ms <n>]
 
 create   Open a new evidence bundle, ingest every known silo, finalize.
 verify   Re-hash every artifact in an existing bundle and report integrity.
 certify  One command: matrix → ingest → analyze → vision-qa → rollup →
          reviewer merge → sign → self-verify. Writes a signed certification.json
-         and exits 0 only when it self-verifies (green), 1 when red.`;
+         and exits 0 only when it self-verifies (green), 1 when red.
+         At --tier gpu/full, --gpu-queue <dir> offloads gpu analyzers to a
+         resident worker draining that queue (evidence:gpu-queue worker --root
+         <dir>) instead of loading a model per screenshot; without a worker the
+         gpu analyzers honestly skip.`;
 
 /** Output sinks; injectable so tests capture instead of spawning. */
 export interface CliIo {
@@ -208,6 +213,8 @@ interface CertifyArgs {
   certOut?: string;
   outDir?: string;
   repoRoot?: string;
+  gpuQueueRoot?: string;
+  gpuQueueTimeoutMs?: number;
 }
 
 function parseCertifyArgs(argv: string[]): CertifyArgs {
@@ -227,6 +234,8 @@ function parseCertifyArgs(argv: string[]): CertifyArgs {
     "--cert-out",
     "--out",
     "--repo-root",
+    "--gpu-queue",
+    "--gpu-queue-timeout-ms",
   ]);
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -295,6 +304,17 @@ function parseCertifyArgs(argv: string[]): CertifyArgs {
       );
     }
   }
+  const gpuQueueTimeoutRaw = value.get("--gpu-queue-timeout-ms");
+  let gpuQueueTimeoutMs: number | undefined;
+  if (gpuQueueTimeoutRaw !== undefined) {
+    gpuQueueTimeoutMs = Number(gpuQueueTimeoutRaw);
+    if (!Number.isFinite(gpuQueueTimeoutMs) || gpuQueueTimeoutMs <= 0) {
+      throw new EvidenceError(
+        `--gpu-queue-timeout-ms must be a positive number, got: ${gpuQueueTimeoutRaw}`,
+        { code: "CLI_USAGE" },
+      );
+    }
+  }
   return {
     tier: tierRaw as Tier,
     ...(reviewerId !== undefined ? { reviewerId } : {}),
@@ -312,6 +332,8 @@ function parseCertifyArgs(argv: string[]): CertifyArgs {
     certOut: value.get("--cert-out"),
     outDir: value.get("--out"),
     repoRoot: value.get("--repo-root"),
+    gpuQueueRoot: value.get("--gpu-queue"),
+    gpuQueueTimeoutMs,
   };
 }
 
@@ -364,6 +386,12 @@ async function runCertify(argv: string[], io: CliIo): Promise<number> {
       : {}),
     ...(args.certOut !== undefined ? { certOut: args.certOut } : {}),
     ...(args.outDir !== undefined ? { outDir: args.outDir } : {}),
+    ...(args.gpuQueueRoot !== undefined
+      ? { gpuQueueRoot: args.gpuQueueRoot }
+      : {}),
+    ...(args.gpuQueueTimeoutMs !== undefined
+      ? { gpuQueueTimeoutMs: args.gpuQueueTimeoutMs }
+      : {}),
     io,
   });
 

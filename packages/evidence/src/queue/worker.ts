@@ -12,8 +12,11 @@
  * connectivity failure requeues the job (transient blips retry); once the outage
  * outlasts `drainAfterMs` the worker latches into drain mode and writes
  * `skipped` records — an image the GPU never analyzed is marked as such, and is
- * NEVER given a fabricated empty transcript. This module is library code: it
- * never touches `console`; observability is a caller-supplied `onEvent` hook.
+ * NEVER given a fabricated empty transcript. Drain mode is not terminal: every
+ * job still runs the analyzer, whose cheap availability probe re-contacts the
+ * service, so a GPU host that recovers after the latch set is detected and the
+ * latch clears. This module is library code: it never touches `console`;
+ * observability is a caller-supplied `onEvent` hook.
  */
 
 import {
@@ -33,7 +36,6 @@ import type { ClaimedJob, FileJobQueue } from "./file-queue.ts";
 import {
   createWorkerState,
   DEFAULT_LIMITS,
-  drainSkipResult,
   isConnectivityFailure,
   type JobResult,
   onServiceOk,
@@ -91,6 +93,15 @@ export interface ProcessOutcome {
  * result into `analysis.json` and finalizes the job for every terminal action;
  * on a transient connectivity failure (before the drain threshold) it requeues
  * the job instead, so a brief service blip retries rather than losing the image.
+ *
+ * A drained job is NOT short-circuited to a blind skip. Running the analyzer
+ * costs only its cheap availability probe (a `/health` GET that fails fast when
+ * the host is down) when the service is still unreachable, and that probe is
+ * exactly the recovery check: if the GPU service came back after an outage
+ * latched drain mode, this contact succeeds, the latch clears, and the job is
+ * analyzed for real. Without it a single sustained outage would wedge the
+ * resident worker into skipping every future job forever — a broken pipeline
+ * masked as honest state (#15006 review; matches `queue-worker.mjs`'s re-probe).
  */
 export async function processJob(
   claimed: ClaimedJob,
@@ -99,14 +110,6 @@ export async function processJob(
 ): Promise<ProcessOutcome> {
   const { queue, analyzers, tier, limits, now } = deps;
   const { job } = claimed;
-
-  // Already draining: skip without touching the (known-dead) service.
-  if (shouldDrain(state)) {
-    const result = drainSkipResult(
-      `gpu vision service unreachable; queue draining (job ${job.id} skipped)`,
-    );
-    return finalize(claimed, deps, state, "skipped", result);
-  }
 
   const analyzer = resolveAnalyzer(job.analyzerId, analyzers);
   if (!analyzer) {
@@ -149,7 +152,9 @@ export async function processJob(
   if (isConnectivityFailure(result)) {
     const nextState = onServiceUnreachable(state, now(), limits.drainAfterMs);
     if (shouldDrain(nextState)) {
-      // Outage outlasted the window: consume the job as an honest skip.
+      // Outage outlasted the window (or the latch is already set): consume the
+      // job as an honest skip carrying the probe's real reason. A later job
+      // re-probes here, so recovery still resets the latch above.
       return finalize(claimed, deps, nextState, "skipped", result);
     }
     // Transient: put the job back for a later retry once the service returns.
@@ -161,6 +166,9 @@ export async function processJob(
     };
   }
 
+  // A real contact (ran/failed): the service is reachable, so clear any drain
+  // latch — this is how a recovered service exits drain mode — and record the
+  // real analyzer result.
   const action: WorkerAction =
     result.status === "failed" ? "failed" : "completed";
   return finalize(claimed, deps, onServiceOk(), action, result);

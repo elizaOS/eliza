@@ -6,6 +6,8 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { AgentRuntime, UUID } from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
+import { createRealTestRuntime } from "@elizaos/core/testing";
 import type {
   ScenarioContext,
   ScenarioSeedStep,
@@ -17,6 +19,37 @@ type MockRequest = {
   method: string;
   path: string;
   body: Record<string, unknown>;
+};
+
+type LifeOpsScheduledTaskForTest = {
+  taskId: string;
+  kind: string;
+  priority: string;
+  trigger: Record<string, unknown>;
+  state: { status: string; followupCount: number };
+  metadata?: Record<string, unknown>;
+};
+
+type LifeOpsIntentForTest = {
+  id: string;
+  title: string;
+  priority: string;
+  target: string;
+  targetDeviceId?: string;
+  metadata: Record<string, unknown>;
+};
+
+type LifeOpsReminderAttemptForTest = {
+  id: string;
+  planId: string;
+  channel: string;
+  stepIndex: number;
+  attemptedAt: string | null;
+  outcome: string;
+  connectorRef: string | null;
+  deliveryMetadata: Record<string, unknown>;
+  reviewAt?: string | null;
+  reviewStatus?: string | null;
 };
 
 let activeServer: http.Server | null = null;
@@ -213,6 +246,546 @@ function baseConnector(
 }
 
 describe("scenario memory seeds", () => {
+  it("writes user-state memory seeds into proactive activity profile metadata", async () => {
+    const harness = await createRealTestRuntime({
+      withLLM: false,
+      characterName: "scenario-user-state-seed-test",
+    });
+    try {
+      const ctx = {
+        runtime: harness.runtime,
+        scenarioId: "push.urgent-bypasses-do-not-disturb",
+        now: "2026-07-06T14:00:00.000Z",
+        primaryUserId: "00000000-0000-0000-0000-0000000000bb",
+      } as ScenarioContext;
+
+      const result = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "user-state",
+          doNotDisturb: true,
+          lastSeenPlatform: "mobile",
+          isCurrentlyActive: true,
+        },
+      } satisfies ScenarioSeedStep);
+
+      expect(result).toBeUndefined();
+      const tasks = await harness.runtime.getTasks({
+        tags: ["queue", "repeat", "proactive"],
+      });
+      const proactiveTask = tasks.find(
+        (task) => task.name === "PROACTIVE_AGENT",
+      );
+      expect(proactiveTask?.metadata).toMatchObject({
+        proactiveAgent: { kind: "runtime_runner" },
+        activityProfile: {
+          ownerEntityId: "00000000-0000-0000-0000-0000000000bb",
+          analyzedAt: Date.parse("2026-07-06T14:00:00.000Z"),
+          totalMessages: 0,
+          primaryPlatform: "mobile",
+          lastSeenPlatform: "mobile",
+          isCurrentlyActive: true,
+          dndActive: true,
+          metadata: {
+            source: "scenario-seed",
+            scenarioId: "push.urgent-bypasses-do-not-disturb",
+          },
+        },
+      });
+    } finally {
+      await harness.cleanup();
+    }
+  }, 120_000);
+
+  it("maps active focus-window and queued-push memory seeds into LifeOps attention state", async () => {
+    const harness = await createRealTestRuntime({
+      withLLM: false,
+      characterName: "scenario-focus-window-seed-test",
+    });
+    try {
+      const ctx = {
+        runtime: harness.runtime,
+        scenarioId: "push.silent-during-deep-work",
+        now: "2026-07-06T14:00:00.000Z",
+        primaryUserId: "00000000-0000-0000-0000-0000000000cc",
+      } as ScenarioContext;
+
+      const result = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "focus-window-active",
+          title: "Deep work block",
+          startAt: "2026-07-06T13:30:00.000Z",
+          endAt: "2026-07-06T15:30:00.000Z",
+        },
+      } satisfies ScenarioSeedStep);
+      const queuedResult = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "queued-push",
+          title: "Send newsletter draft",
+          urgency: "low",
+        },
+      } satisfies ScenarioSeedStep);
+
+      expect(result).toBeUndefined();
+      expect(queuedResult).toBeUndefined();
+      const tasks = await harness.runtime.getTasks({
+        tags: ["queue", "repeat", "proactive"],
+      });
+      const proactiveTask = tasks.find(
+        (task) => task.name === "PROACTIVE_AGENT",
+      );
+      expect(proactiveTask?.metadata).toMatchObject({
+        proactiveAgent: { kind: "runtime_runner" },
+        activityProfile: {
+          ownerEntityId: "00000000-0000-0000-0000-0000000000cc",
+          primaryPlatform: "desktop",
+          lastSeenPlatform: "desktop",
+          isCurrentlyActive: true,
+          screenContextBusy: true,
+          screenContextAvailable: true,
+          screenContextFocus: "work",
+          dndActive: false,
+          metadata: {
+            source: "scenario-seed",
+            scenarioId: "push.silent-during-deep-work",
+            focusWindow: {
+              title: "Deep work block",
+              startAt: "2026-07-06T13:30:00.000Z",
+              endAt: "2026-07-06T15:30:00.000Z",
+            },
+          },
+        },
+      });
+
+      const { LifeOpsRepository } = (await import(
+        "../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts"
+      )) as {
+        LifeOpsRepository: new (
+          runtime: AgentRuntime,
+        ) => {
+          listScheduledTasks: (
+            agentId: string,
+            filter?: Record<string, unknown>,
+          ) => Promise<LifeOpsScheduledTaskForTest[]>;
+        };
+      };
+      const repository = new LifeOpsRepository(harness.runtime);
+      const scheduledTasks = await repository.listScheduledTasks(
+        String(harness.runtime.agentId),
+        { kind: "reminder", status: "scheduled" },
+      );
+      expect(scheduledTasks).toContainEqual(
+        expect.objectContaining({
+          taskId:
+            "scenario-queued-push:push.silent-during-deep-work:Send newsletter draft",
+          kind: "reminder",
+          priority: "low",
+          trigger: { kind: "once", atIso: "2026-07-06T14:00:00.000Z" },
+          state: { status: "scheduled", followupCount: 0 },
+          metadata: expect.objectContaining({
+            source: "scenario-seed",
+            scenarioId: "push.silent-during-deep-work",
+            push: {
+              title: "Send newsletter draft",
+              urgency: "low",
+              channel: "push",
+            },
+          }),
+        }),
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  }, 120_000);
+
+  it("maps device-intent memory seeds into pending LifeOps device intents", async () => {
+    const harness = await createRealTestRuntime({
+      withLLM: false,
+      characterName: "scenario-device-intent-seed-test",
+    });
+    try {
+      const ctx = {
+        runtime: harness.runtime,
+        scenarioId: "push.ack-from-one-device-clears-others",
+        now: "2026-07-06T14:00:00.000Z",
+      } as ScenarioContext;
+
+      const result = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "device-intent",
+          id: "di-board-call-meeting",
+          title: "Board call at 3pm",
+          priority: "high",
+          dispatchedTo: ["desktop", "mobile", "watch"],
+        },
+      } satisfies ScenarioSeedStep);
+
+      expect(result).toBeUndefined();
+      const { receivePendingIntents } = (await import(
+        "../../../plugins/plugin-personal-assistant/src/lifeops/intent-sync.ts"
+      )) as {
+        receivePendingIntents: (
+          runtime: AgentRuntime,
+          opts?: {
+            device?: "all" | "desktop" | "mobile" | "specific";
+            deviceId?: string;
+            limit?: number;
+          },
+        ) => Promise<LifeOpsIntentForTest[]>;
+      };
+      const desktop = await receivePendingIntents(harness.runtime, {
+        device: "desktop",
+      });
+      const mobile = await receivePendingIntents(harness.runtime, {
+        device: "mobile",
+      });
+      const watch = await receivePendingIntents(harness.runtime, {
+        device: "specific",
+        deviceId: "watch",
+      });
+
+      expect(desktop).toContainEqual(
+        expect.objectContaining({
+          id: "di-board-call-meeting:desktop",
+          title: "Board call at 3pm",
+          priority: "high",
+          target: "desktop",
+          metadata: expect.objectContaining({
+            source: "scenario-seed",
+            scenarioId: "push.ack-from-one-device-clears-others",
+            deviceIntentId: "di-board-call-meeting",
+            syncGroupId: "di-board-call-meeting",
+            dispatchedTo: ["desktop", "mobile", "watch"],
+            device: "desktop",
+          }),
+        }),
+      );
+      expect(mobile).toContainEqual(
+        expect.objectContaining({
+          id: "di-board-call-meeting:mobile",
+          target: "mobile",
+        }),
+      );
+      expect(watch).toContainEqual(
+        expect.objectContaining({
+          id: "di-board-call-meeting:watch",
+          target: "specific",
+          targetDeviceId: "watch",
+        }),
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  }, 120_000);
+
+  it("maps push delivery and ladder state seeds into reminder attempts", async () => {
+    const harness = await createRealTestRuntime({
+      withLLM: false,
+      characterName: "scenario-reminder-attempt-seed-test",
+    });
+    try {
+      const ctx = {
+        runtime: harness.runtime,
+        scenarioId: "push.failed-delivery-retry-on-secondary-channel",
+        now: "2026-07-06T14:00:00.000Z",
+      } as ScenarioContext;
+
+      const failedResult = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "push-delivery-attempt",
+          channel: "ntfy",
+          topic: "eliza-shaw-mobile",
+          result: "failed",
+          statusCode: 503,
+          attemptedAt: "2026-07-06T13:58:00.000Z",
+        },
+      } satisfies ScenarioSeedStep);
+      const ladderResult = await applyScenarioSeedStep(
+        {
+          ...ctx,
+          scenarioId: "push.voice-call-as-last-resort",
+        } as ScenarioContext,
+        {
+          type: "memory",
+          content: {
+            kind: "ladder-state",
+            history: [
+              {
+                channel: "desktop",
+                at: "2026-07-06T13:30:00.000Z",
+                ackedAt: null,
+              },
+              {
+                channel: "mobile",
+                at: "2026-07-06T13:38:00.000Z",
+                ackedAt: null,
+              },
+              {
+                channel: "sms",
+                at: "2026-07-06T13:48:00.000Z",
+                ackedAt: null,
+              },
+            ],
+            urgency: "critical",
+          },
+        } satisfies ScenarioSeedStep,
+      );
+
+      expect(failedResult).toBeUndefined();
+      expect(ladderResult).toBeUndefined();
+      const { LifeOpsRepository } = (await import(
+        "../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts"
+      )) as {
+        LifeOpsRepository: new (
+          runtime: AgentRuntime,
+        ) => {
+          listReminderAttempts: (
+            agentId: string,
+            filter?: Record<string, unknown>,
+          ) => Promise<LifeOpsReminderAttemptForTest[]>;
+        };
+      };
+      const repository = new LifeOpsRepository(harness.runtime);
+      const failedAttempts = await repository.listReminderAttempts(
+        String(harness.runtime.agentId),
+        {
+          planId:
+            "scenario-reminder-plan:push.failed-delivery-retry-on-secondary-channel:ntfy push",
+        },
+      );
+      expect(failedAttempts).toContainEqual(
+        expect.objectContaining({
+          channel: "ntfy",
+          outcome: "blocked_connector",
+          connectorRef: "ntfy:eliza-shaw-mobile",
+          deliveryMetadata: expect.objectContaining({
+            source: "scenario-seed",
+            scenarioId: "push.failed-delivery-retry-on-secondary-channel",
+            statusCode: 503,
+            result: "failed",
+            topic: "eliza-shaw-mobile",
+          }),
+        }),
+      );
+
+      const ladderAttempts = await repository.listReminderAttempts(
+        String(harness.runtime.agentId),
+        { planId: "scenario-ladder:push.voice-call-as-last-resort" },
+      );
+      expect(ladderAttempts.map((attempt) => attempt.channel)).toEqual([
+        "desktop",
+        "mobile",
+        "sms",
+      ]);
+      expect(ladderAttempts).toContainEqual(
+        expect.objectContaining({
+          channel: "sms",
+          stepIndex: 2,
+          outcome: "delivered_unread",
+          reviewAt: "2026-07-06T14:00:00.000Z",
+          reviewStatus: "no_response",
+          deliveryMetadata: expect.objectContaining({
+            scenarioId: "push.voice-call-as-last-resort",
+            urgency: "critical",
+          }),
+        }),
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  }, 120_000);
+
+  it("writes calendar-event memory seeds into the LifeOps calendar event store", async () => {
+    const harness = await createRealTestRuntime({
+      withLLM: false,
+      characterName: "scenario-calendar-seed-test",
+    });
+    try {
+      const ctx = {
+        runtime: harness.runtime,
+        scenarioId: "push.meeting-reminder-T-0",
+        now: "2026-07-06T14:00:00.000Z",
+      } as ScenarioContext;
+
+      const result = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "calendar-event",
+          id: "evt-eng-standup",
+          title: "Eng standup",
+          startAt: "2026-07-06T15:00:00.000Z",
+          joinLink: "https://meet.example.com/eng-standup",
+          attendees: [
+            { email: "owner@example.com", responseStatus: "accepted" },
+          ],
+        },
+      } satisfies ScenarioSeedStep);
+
+      expect(result).toBeUndefined();
+      const { LifeOpsRepository } = await import(
+        "../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts"
+      );
+      const repository = new LifeOpsRepository(harness.runtime);
+      const events = await repository.listCalendarEvents(
+        String(harness.runtime.agentId),
+        "google",
+        "2026-07-06T14:30:00.000Z",
+        "2026-07-06T16:00:00.000Z",
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        id: "evt-eng-standup",
+        externalId: "evt-eng-standup",
+        calendarId: "primary",
+        title: "Eng standup",
+        status: "confirmed",
+        startAt: "2026-07-06T15:00:00.000Z",
+        endAt: "2026-07-06T15:30:00.000Z",
+        conferenceLink: "https://meet.example.com/eng-standup",
+        metadata: expect.objectContaining({
+          source: "scenario-seed",
+          kind: "calendar-event",
+          scenarioId: "push.meeting-reminder-T-0",
+          joinLink: "https://meet.example.com/eng-standup",
+        }),
+      });
+      expect(events[0]?.attendees).toEqual([
+        { email: "owner@example.com", responseStatus: "accepted" },
+      ]);
+    } finally {
+      await harness.cleanup();
+    }
+  }, 120_000);
+
+  it("maps cancelled calendar-event shorthand into cancelled calendar rows", async () => {
+    const harness = await createRealTestRuntime({
+      withLLM: false,
+      characterName: "scenario-cancelled-calendar-seed-test",
+    });
+    try {
+      const ctx = {
+        runtime: harness.runtime,
+        scenarioId: "push.scheduled-notification-cancel-when-event-cancelled",
+        now: "2026-07-06T14:00:00.000Z",
+      } as ScenarioContext;
+
+      const result = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "calendar-event",
+          id: "evt-investor-sync",
+          title: "Investor sync",
+          startAt: "2026-07-06T16:00:00.000Z",
+          cancelled: true,
+          cancelledAt: "2026-07-06T13:50:00.000Z",
+        },
+      } satisfies ScenarioSeedStep);
+
+      expect(result).toBeUndefined();
+      const { LifeOpsRepository } = await import(
+        "../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts"
+      );
+      const repository = new LifeOpsRepository(harness.runtime);
+      const events = await repository.listCalendarEvents(
+        String(harness.runtime.agentId),
+        "google",
+        "2026-07-06T15:30:00.000Z",
+        "2026-07-06T17:00:00.000Z",
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        id: "evt-investor-sync",
+        title: "Investor sync",
+        status: "cancelled",
+        metadata: expect.objectContaining({
+          cancelledAt: "2026-07-06T13:50:00.000Z",
+        }),
+      });
+    } finally {
+      await harness.cleanup();
+    }
+  }, 120_000);
+
+  it("writes inbound-message memory seeds into the messages table", async () => {
+    const harness = await createRealTestRuntime({
+      withLLM: false,
+      characterName: "scenario-inbound-seed-test",
+    });
+    try {
+      const roomId = stringToUuid("scenario-inbound-seed-room");
+      const ownerId = stringToUuid("scenario-inbound-seed-owner");
+      await harness.runtime.ensureConnection({
+        entityId: ownerId,
+        roomId,
+        worldId: stringToUuid("scenario-inbound-seed-world"),
+        userName: "Scenario owner",
+        source: "scenario-runner",
+        channelId: roomId,
+        type: "DM",
+      });
+      const ctx = {
+        runtime: harness.runtime,
+        scenarioId: "identity.detect-impersonation-attempt",
+        now: "2026-07-06T14:00:00.000Z",
+        primaryRoomId: roomId,
+        primaryUserId: ownerId,
+      } as ScenarioContext;
+
+      const result = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "inbound-message",
+          platform: "telegram",
+          handle: "@jordan_kim_real",
+          platformUserId: "tg-99887",
+          displayName: "Jordan Kim",
+          text: "hey can you send me the deck and wallet seed quickly",
+          priority: "interrupt",
+        },
+      } satisfies ScenarioSeedStep);
+
+      expect(result).toBeUndefined();
+      const memories = await harness.runtime.getMemories({
+        roomId,
+        tableName: "messages",
+        count: 5,
+      });
+      expect(memories).toHaveLength(1);
+      expect(memories[0]?.content).toMatchObject({
+        text: "hey can you send me the deck and wallet seed quickly",
+        source: "telegram",
+        displayName: "Jordan Kim",
+        senderName: "Jordan Kim",
+        username: "@jordan_kim_real",
+        platformUserId: "tg-99887",
+        priority: "interrupt",
+      });
+      expect(memories[0]?.metadata).toMatchObject({
+        type: "message",
+        source: "scenario-seed",
+        kind: "inbound-message",
+        scenarioId: "identity.detect-impersonation-attempt",
+        entityName: "Jordan Kim",
+        sender: {
+          name: "Jordan Kim",
+          username: "@jordan_kim_real",
+          id: "tg-99887",
+        },
+        provider: "telegram",
+        telegram: {
+          userId: "tg-99887",
+          id: "tg-99887",
+        },
+      });
+    } finally {
+      await harness.cleanup();
+    }
+  }, 120_000);
+
   it("maps rolodex-entity memory seeds into relationship contacts", async () => {
     const { ctx, relationships, runtime } = createSeedHarness();
 
@@ -421,92 +994,19 @@ describe("scenario memory seeds", () => {
     });
   });
 
-  it.each([
-    [
-      "profile",
-      {
-        homeTimezone: "America/Los_Angeles",
-        loyalty: { marriott: "MR12345678" },
-      },
-    ],
-    [
-      "trip",
-      {
-        destination: "JFK",
-        flight: { carrier: "United", flightNumber: "UA245" },
-      },
-    ],
-    [
-      "booking",
-      {
-        carrier: "United",
-        flightNumber: "UA245",
-        origin: "SFO",
-        destination: "JFK",
-      },
-    ],
-    [
-      "upgrade-offer",
-      {
-        carrier: "United",
-        flightNumber: "UA245",
-        priceUSD: 480,
-      },
-    ],
-    [
-      "calendar-focus-window",
-      {
-        title: "Deep work — no travel",
-        rule: "no-travel",
-      },
-    ],
-  ])("writes %s structured travel memory seeds as durable owner facts", async (kind, fields) => {
-    const { ctx, createMemory } = createSeedHarness();
-
-    const result = await applyScenarioSeedStep(ctx, {
-      type: "memory",
-      content: {
-        kind,
-        ...fields,
-      },
-    } satisfies ScenarioSeedStep);
-
-    expect(result).toBeUndefined();
-    expect(createMemory).toHaveBeenCalledTimes(1);
-    const [memory, tableName, unique] = createMemory.mock.calls[0];
-    expect(tableName).toBe("facts");
-    expect(unique).toBe(true);
-    expect(memory.roomId).toBe(ctx.primaryRoomId);
-    expect(memory.entityId).toBe(ctx.primaryUserId);
-    const memoryContent = memory.content as { text: string };
-    expect(memoryContent.text).toContain(
-      `Scenario-seeded travel ${kind} context:`,
-    );
-    for (const [key, value] of Object.entries(fields)) {
-      expect(memoryContent.text).toContain(`"${key}"`);
-      if (typeof value === "string" || typeof value === "number") {
-        expect(memoryContent.text).toContain(String(value));
-      }
-    }
-    expect(memory.metadata).toMatchObject({
-      kind: "durable",
-      source: "scenario-seed",
-      seedKind: kind,
-    });
-  });
-
   it("fails the seed (never silently no-ops) on unsupported memory kinds", async () => {
     const { ctx, relationships, createMemory } = createSeedHarness();
 
     const result = await applyScenarioSeedStep(ctx, {
       type: "memory",
       content: {
-        kind: "inbound-message",
+        kind: "voice-call-attempt",
         text: "hello",
       },
     } satisfies ScenarioSeedStep);
 
-    expect(result).toMatch(/unsupported memory seed kind "inbound-message"/);
+    expect(result).toMatch(/unsupported memory seed kind "voice-call-attempt"/);
+    expect(result).toContain("user-state");
     expect(createMemory).not.toHaveBeenCalled();
     expect(relationships.addContact).not.toHaveBeenCalled();
   });

@@ -15,6 +15,7 @@ const {
   loadPersistedActiveServerMock,
   useCloudHandoffPhaseMock,
   navOpenTab,
+  openCloudBillingConsoleMock,
 } = vi.hoisted(() => ({
   getCloudCompatAgentMock: vi.fn(),
   isDirectCloudSharedAgentBaseMock: vi.fn(() => true),
@@ -23,6 +24,7 @@ const {
     () => null,
   ),
   navOpenTab: vi.fn(),
+  openCloudBillingConsoleMock: vi.fn(async () => {}),
 }));
 
 vi.mock("../../../api", () => ({
@@ -36,6 +38,9 @@ vi.mock("../../../state/persistence", () => ({
 }));
 vi.mock("../../../hooks/useCloudHandoffPhase", () => ({
   useCloudHandoffPhase: useCloudHandoffPhaseMock,
+}));
+vi.mock("../../../cloud/billing-console", () => ({
+  openCloudBillingConsole: openCloudBillingConsoleMock,
 }));
 // useWidgetNavigation → reportUserViewSwitch; stub it so the click test isolates
 // the navigation call.
@@ -96,6 +101,8 @@ describe("AgentProvisioningWidget", () => {
     loadPersistedActiveServerMock.mockReturnValue(SHARED_SERVER);
     useCloudHandoffPhaseMock.mockReturnValue(null);
     navOpenTab.mockReset();
+    openCloudBillingConsoleMock.mockReset();
+    openCloudBillingConsoleMock.mockResolvedValue(undefined);
   });
   afterEach(cleanup);
 
@@ -127,6 +134,17 @@ describe("AgentProvisioningWidget", () => {
     const detail = (onRetry.mock.calls[0][0] as CustomEvent).detail;
     expect(detail).toEqual({ agentId: "agent-123" });
     window.removeEventListener(CLOUD_HANDOFF_RETRY_EVENT, onRetry);
+  });
+
+  it("renders an Add credits tile on the 402 credit gate and opens billing on tap", () => {
+    useCloudHandoffPhaseMock.mockReturnValue(phase("insufficient-credits"));
+    render(<AgentProvisioningWidget />);
+    expect(screen.getByTestId("value").textContent).toBe(
+      "On free shared agent",
+    );
+    expect(screen.getByTestId("badge").textContent).toBe("Add credits");
+    fireEvent.click(screen.getByTestId("chat-widget-agent-provisioning"));
+    expect(openCloudBillingConsoleMock).toHaveBeenCalledTimes(1);
   });
 
   it("self-hides once the dedicated agent is attached (switched phase)", () => {

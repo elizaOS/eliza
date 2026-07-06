@@ -250,6 +250,25 @@ describe("brush-teeth habit-save routing contract (#9950/#10722)", () => {
     );
   });
 
+  it("claims one-off deadline reminders on OWNER_REMINDERS and de-claims them on SCHEDULED_TASKS", () => {
+    const reminders = findAction("OWNER_REMINDERS");
+    expect(reminders?.description).toContain("deadline");
+    expect(reminders?.description).toContain("by the 20th");
+    expect(reminders?.descriptionCompressed).toContain("deadlines");
+
+    const scheduledTasks = findAction("SCHEDULED_TASKS");
+    expect(scheduledTasks?.description).toContain(
+      "NOT the flow for saving a new owner reminder",
+    );
+    expect(scheduledTasks?.description).toContain("by the 20th");
+    expect(scheduledTasks?.routingHint).toContain(
+      "NEW owner reminders/deadlines",
+    );
+    expect(scheduledTasks?.routingHint).toContain(
+      "OWNER_REMINDERS action=create",
+    );
+  });
+
   it("declares the productivity context on owner-life umbrellas (Stage-1 boost parity with SCHEDULED_TASKS)", () => {
     for (const name of Object.keys(PINNED_KINDS)) {
       const action = findAction(name);

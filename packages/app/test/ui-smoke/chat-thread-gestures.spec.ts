@@ -350,6 +350,33 @@ test("a downward pull in the top restore zone exits full-bleed back to the inset
   await expectNoPageDiagnostics(page, testInfo.title);
 });
 
+test("a downward pull that STARTS over the top bar exits full-bleed (top-bar pass-through)", async ({
+  page,
+}, testInfo) => {
+  await openAppPath(page, "/chat");
+  const sheet = page.locator(SHEET);
+
+  await overPullToMaximize(page);
+  await expect(sheet).toHaveAttribute("data-maximized", "true", {
+    timeout: 10_000,
+  });
+
+  // Start the pull in the top ~4% of the maximized sheet — the TOP BAR. Its
+  // empty (non-button) space is pointer-transparent, so the pull falls through
+  // to the restore strip beneath and still exits full-bleed. Centre-x avoids the
+  // corner search/voice/home buttons, which keep their taps.
+  await cdpTouchDrag(page, SHEET, 0, 320, 18, 0.5, 0.04);
+
+  await expect(sheet).not.toHaveAttribute("data-maximized", "true", {
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+    "data-open",
+    "true",
+  );
+  await expectNoPageDiagnostics(page, testInfo.title);
+});
+
 test("ArrowDown on the restore zone exits full-bleed (keyboard-operable restore)", async ({
   page,
 }, testInfo) => {

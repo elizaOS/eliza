@@ -20,7 +20,13 @@ export const relationshipsPlugin: Plugin = {
   views: [
     {
       id: "relationships",
-      viewKind: "system",
+      // Developer-gated: the graph renders empty in the MVP (#14479), so it is
+      // hidden from a fresh user's launcher AND view manager until Developer Mode
+      // is on — kept and reachable, not deleted. `developer` here keeps the
+      // manager grid in step with the launcher's own developer-gating of this id
+      // (launcher-curation LAUNCHER_DEVELOPER_ORDER), which previously diverged
+      // because the declaration claimed `system`.
+      viewKind: "developer",
       label: "Relationships",
       description:
         "Entity and relationship knowledge-graph viewer: people, organizations, identities, and the typed edges between them.",

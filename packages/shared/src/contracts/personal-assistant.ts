@@ -1084,8 +1084,42 @@ export const LIFEOPS_ACTIVITY_SIGNAL_SOURCES = [
   "mobile_device",
   "mobile_health",
 ] as const;
+/**
+ * The closed built-in passive-signal vocabulary: the eight sources whose
+ * telemetry payload schema and reliability weight ship in-tree. It is the
+ * discriminant for the typed built-in mappers, the reliability keys, and the
+ * awake-probability model.
+ */
 export type LifeOpsActivitySignalSource =
   (typeof LIFEOPS_ACTIVITY_SIGNAL_SOURCES)[number];
+
+/**
+ * Open passive-signal source identifier — the built-in vocabulary plus any
+ * namespaced source a plugin contributes at runtime through the
+ * `SignalSourceRegistry`. Mirrors how `LifeOpsBusFamily` opens the closed
+ * `LifeOpsTelemetryFamily` union: persisted signals and ingestion requests
+ * carry this open type, while the built-in mapping/reliability tables keep the
+ * closed `LifeOpsActivitySignalSource` discriminant. `(string & {})` preserves
+ * literal autocomplete for the built-ins while admitting contributed sources.
+ */
+export type LifeOpsActivitySignalSourceName =
+  | LifeOpsActivitySignalSource
+  | (string & {});
+
+/**
+ * `true` when `source` is one of the built-in `LIFEOPS_ACTIVITY_SIGNAL_SOURCES`
+ * (carries a typed payload schema + reliability weight). Callers narrow an open
+ * `LifeOpsActivitySignalSourceName` to the closed union before reaching the
+ * built-in mapper/reliability tables; a contributed source is dispatched
+ * through its `SignalSourceRegistry` entry instead.
+ */
+export function isBuiltinActivitySignalSource(
+  source: LifeOpsActivitySignalSourceName,
+): source is LifeOpsActivitySignalSource {
+  return (LIFEOPS_ACTIVITY_SIGNAL_SOURCES as readonly string[]).includes(
+    source,
+  );
+}
 
 export const LIFEOPS_ACTIVITY_SIGNAL_STATES = [
   "active",
@@ -1345,7 +1379,7 @@ export interface SyncLifeOpsHealthConnectorRequest {
 export interface LifeOpsActivitySignal {
   id: string;
   agentId: string;
-  source: LifeOpsActivitySignalSource;
+  source: LifeOpsActivitySignalSourceName;
   platform: string;
   state: LifeOpsActivitySignalState;
   observedAt: string;
@@ -3404,7 +3438,7 @@ export interface CaptureLifeOpsPhoneConsentRequest {
 }
 
 export interface CaptureLifeOpsActivitySignalRequest {
-  source: LifeOpsActivitySignalSource;
+  source: LifeOpsActivitySignalSourceName;
   platform?: string;
   state: LifeOpsActivitySignalState;
   observedAt?: string;

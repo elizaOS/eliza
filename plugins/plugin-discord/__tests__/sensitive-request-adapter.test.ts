@@ -3,8 +3,15 @@
  * approval requests, against a mocked runtime and Discord client.
  */
 import type { IAgentRuntime, SensitiveRequest } from "@elizaos/core";
+import {
+	createSensitiveRequestDispatchRegistry,
+	type SensitiveRequestDeliveryAdapter,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createDiscordDmSensitiveRequestAdapter } from "../sensitive-request-adapter";
+import {
+	createDiscordDmSensitiveRequestAdapter,
+	discordDmSensitiveRequestAdapter,
+} from "../sensitive-request-adapter";
 
 interface MockDmChannel {
 	id: string;
@@ -242,5 +249,71 @@ describe("discordDmSensitiveRequestAdapter", () => {
 			content: string;
 		};
 		expect(sent.content).toContain("https://cloud.eliza.example/secret/req-1");
+	});
+});
+
+// The connector leg of #14326: the REAL exported adapter, wired through the REAL
+// core dispatch registry the way production loads it, proving (a) two connectors
+// sharing the "dm" target resolve per channel and (b) the secret value never
+// appears in the outbound DM the connector puts on the wire — only the link does.
+describe("discordDmSensitiveRequestAdapter — real dispatch-registry integration (#14326)", () => {
+	const HOSTED_LINK = "https://cloud.eliza.example/sensitive-requests/req-1";
+	const SECRET_SENTINEL = "sk-live-DO-NOT-LEAK-discord-1234567890";
+
+	function makeCloudRuntimeWithDiscord(client: unknown): IAgentRuntime {
+		return {
+			getSetting: vi.fn((key: string) =>
+				key === "ELIZA_CLOUD_API_KEY" ? "cloud-key-abc" : undefined,
+			),
+			getService: vi.fn((name: string) =>
+				name === "discord" ? { client } : null,
+			),
+		} as unknown as IAgentRuntime;
+	}
+
+	it("resolve('dm') picks Discord over a Telegram-like sibling when the Discord service is live", () => {
+		const registry = createSensitiveRequestDispatchRegistry();
+		// A sibling that claims the channel only when a "telegram" service exists —
+		// here it does not, so the registry must fall through to Discord.
+		const telegramLike: SensitiveRequestDeliveryAdapter = {
+			target: "dm",
+			supportsChannel: (_ch, runtime) =>
+				Boolean(
+					(runtime as { getService?: (n: string) => unknown })?.getService?.(
+						"telegram",
+					),
+				),
+			deliver: async () => ({ delivered: true, target: "dm" }),
+		};
+		registry.register(telegramLike);
+		registry.register(discordDmSensitiveRequestAdapter);
+
+		const runtime = makeCloudRuntimeWithDiscord(makeMockDiscord().client);
+		expect(registry.resolve?.("dm", "user-snowflake-1234", runtime)).toBe(
+			discordDmSensitiveRequestAdapter,
+		);
+	});
+
+	it("delivers the hosted link in the DM but never the secret value", async () => {
+		const mock = makeMockDiscord();
+		const runtime = makeCloudRuntimeWithDiscord(mock.client);
+		const registry = createSensitiveRequestDispatchRegistry();
+		registry.register(discordDmSensitiveRequestAdapter);
+
+		const request = makeRequest({
+			kind: "secret",
+			callback: { url: HOSTED_LINK },
+			// Secret-adjacent material the adapter must never serialize into the DM.
+			secretValue: SECRET_SENTINEL,
+		} as Partial<SensitiveRequest>);
+
+		const result = await registry
+			.resolve?.("dm", "user-snowflake-1234", runtime)
+			?.deliver({ request, channelId: "user-snowflake-1234", runtime });
+
+		expect(result?.delivered).toBe(true);
+		const sent = mock.dmChannel.send.mock.calls[0]?.[0] as { content: string };
+		expect(sent.content).toContain(HOSTED_LINK);
+		expect(sent.content).not.toContain(SECRET_SENTINEL);
 	});
 });

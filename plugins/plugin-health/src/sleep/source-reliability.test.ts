@@ -159,4 +159,12 @@ describe("resolveActivitySignalReliability", () => {
       }),
     ).toBe(0.88);
   });
+
+  it("throws (never fabricates) for a contributed source with no built-in weight", () => {
+    // A registry-contributed source resolves its weight through its own entry;
+    // the built-in table must fail fast rather than invent a confidence number.
+    expect(() =>
+      resolveActivitySignalReliability("browser_activity", "browser_web"),
+    ).toThrow(/no built-in reliability weight/);
+  });
 });

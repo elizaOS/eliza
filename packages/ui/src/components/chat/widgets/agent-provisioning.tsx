@@ -18,6 +18,7 @@ import { CloudCog } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../../api";
 import { isDirectCloudSharedAgentBase } from "../../../api/client-cloud";
+import { openCloudBillingConsole } from "../../../cloud/billing-console";
 import {
   type CloudHandoffPhaseDetail,
   dispatchCloudHandoffRetry,
@@ -133,6 +134,28 @@ export function AgentProvisioningWidget(
   // No live handoff phase AND the active server is no longer on the shared base
   // means the dedicated agent already attached before this widget mounted.
   if (detail == null && mountedTarget == null) return null;
+
+  // Credit gate (402): keep the user on the free shared agent but surface a
+  // first-class "add credits for a dedicated agent" tile — not a silent
+  // permanent shared fallback (nubs's 0-credit guidance).
+  if (phase === "insufficient-credits") {
+    return (
+      <div className={spanClassName}>
+        <HomeWidgetCard
+          icon={<CloudCog />}
+          label="Cloud agent"
+          value="On free shared agent"
+          tone="warn"
+          badge="Add credits"
+          testId="chat-widget-agent-provisioning"
+          ariaLabel="You're on the free shared agent. Add credits to get your own dedicated agent."
+          onActivate={() => {
+            void openCloudBillingConsole();
+          }}
+        />
+      </div>
+    );
+  }
 
   const isFailure = phase === "timed-out" || phase === "failed";
 

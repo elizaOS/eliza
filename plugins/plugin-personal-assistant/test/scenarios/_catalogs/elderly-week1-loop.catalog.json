@@ -1,0 +1,65 @@
+{
+  "catalogId": "elderly-week1-loop",
+  "title": "Elderly non-technical — week-1 loop verification catalog (#14354)",
+  "source": {
+    "parentIssue": "#14354",
+    "packId": "ELDERLY-W1",
+    "persona": "elderly non-technical (robustness axis)",
+    "targetCount": 6,
+    "notes": [
+      "Standalone verification ledger for the elderly week-1 loop (daily check-in, missed-checkin follow-up + no-reply expiry, quiet-user watcher, bill reminder). Not one of the fixed A1-K1 persona packs, so it is intentionally outside the check-lifeops-persona-catalog-coverage.mjs EXPECTED_CATALOGS gate.",
+      "Structural scenarios drive the REAL ScheduledTask spine (REST create + logical-clock ticks) and assert persisted store transitions. They are keyless-runnable under the deterministic proxy and also pass live (Cerebras gpt-oss-120b); lane is `live-only` because the pinned strict PR corpus currently cannot render scheduled dispatches under SCENARIO_LLM_PROXY_STRICT=1 (dispatch-render.ts useModel with no strict fixture — a develop-side gap independent of these proofs).",
+      "status: authored = scenario file exists; verified = a real run (keyless deterministic and/or live Cerebras) has been captured and hand-reviewed."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "elderly-week1-missed-checkin-retry-expires",
+      "pack": "ELDERLY-W1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "No-reply leg. Real scheduler ticks: an unanswered morning check-in fires (once_due) → completion timeout arms a single retry (noReplyState.retryCount 0→1, reason no_reply_retry_1, snoozed to +24h) → the retry fires (scheduled_override_due) → second timeout settles terminally expired (noReplyState.terminalOutcome='expired', never a third nag). Asserted against the persisted store. Passed keyless (TZ=UTC SCENARIO_USE_LLM_PROXY=1) and live (Cerebras gpt-oss-120b) 2026-07-06."
+    },
+    {
+      "id": "elderly-week1-acknowledged-not-completed",
+      "pack": "ELDERLY-W1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Cross-agent invariant 6. Real REST verb surface: fire → acknowledge leaves the check-in non-terminal ('acknowledged') and does NOT fire pipeline.onComplete (child absent) → complete lands 'completed' and fires onComplete (child present). Passed keyless and live (Cerebras) 2026-07-06."
+    },
+    {
+      "id": "elderly-week1-quiet-user-watcher-escalates",
+      "pack": "ELDERLY-W1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Quiet-user watcher. Three morning check-ins fire+expire unanswered through real ticks, laying down a genuine checkin/expired streak; the fourth-day check-in times out and the watcher's structural consumer softens its no-reply ladder (noReplyState.quietStreakSoftened=true, quietStreakDays>=3, appliedReminderIntensity='minimal', retries dropped) — back off, never chase harder. NOT a crisis guard. Passed keyless and live (Cerebras) 2026-07-06."
+    },
+    {
+      "id": "elderly-week1-checkin-answered-reads-naturally",
+      "pack": "ELDERLY-W1",
+      "tier": "T1",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Live tone guard on the answered check-in. Live Cerebras gpt-oss-120b passed 2/2 (2026-07-06): plain, adult-to-adult, no infantilizing, no therapy roleplay, no tech jargon, no checklist dump, no crisis framing. Finding: the default scenario agent's warmth/engagement on a neutral rambling check-in answer is inconsistent (an earlier warm-engagement-required rubric scored 0.00-0.40); this scenario grades the achievable safety/readability bar the issue names."
+    },
+    {
+      "id": "elderly-week1-missed-checkin-followup-no-guilt",
+      "pack": "ELDERLY-W1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Live tone guard on the follow-up after a missed check-in. Live Cerebras gpt-oss-120b passed 2/2 (2026-07-06): warm and guilt-free — no 'you missed/didn't answer', no streak/'you haven't' framing, no infantilizing, no therapy roleplay, no crisis framing."
+    },
+    {
+      "id": "elderly-week1-bill-due-reminder-plain-words",
+      "pack": "ELDERLY-W1",
+      "tier": "T1",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live tone judge on a bill-due reminder in plain words. FLAKY (~50%) and NOT verified — a real finding: the reminder is created, but the SCHEDULED_TASKS confirmation intermittently leaks internal jargon to the user ('ISO-8601', 'trigger type is missing', 'prompt instructions', raw task ids) when the model fumbles the action args, and sometimes fails to schedule at all. Live Cerebras gpt-oss-120b 2026-07-06: run 1 PASS (clean 'I've set a reminder for your electric bill, due on July 28'), run 2 FAIL 0.00 (jargon leak). Root cause is the SCHEDULED_TASKS action surfacing model-facing schema guidance/errors as user copy — a separate product defect, out of scope for this verification PR."
+    }
+  ]
+}

@@ -3,6 +3,7 @@
  * their hour ranges, per-platform activity records, activity signals, the
  * assembled ActivityProfile, and the proactive-action shape.
  */
+import type { LifeOpsActivitySignalSourceName } from "@elizaos/shared";
 import type { LifeOpsHealthSignal } from "../contracts/index.js";
 
 export type TimeBucket =
@@ -58,15 +59,7 @@ export interface PlatformActivity {
 }
 
 export interface ActivitySignalRecord {
-  source:
-    | "app_lifecycle"
-    | "page_visibility"
-    | "desktop_power"
-    | "desktop_interaction"
-    | "connector_activity"
-    | "imessage_outbound"
-    | "mobile_device"
-    | "mobile_health";
+  source: LifeOpsActivitySignalSourceName;
   platform: string;
   state: "active" | "idle" | "background" | "locked" | "sleeping";
   observedAt: number;

@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   },
   hasUsableStoredStewardToken: vi.fn(() => true),
   dispatchCloudHandoffRetry: vi.fn(),
+  openCloudBillingConsole: vi.fn(async () => {}),
 }));
 
 vi.mock("../state", async (importOriginal) => {
@@ -61,6 +62,10 @@ vi.mock("../events", async (importOriginal) => {
       mocks.dispatchCloudHandoffRetry(detail),
   };
 });
+
+vi.mock("../cloud/billing-console", () => ({
+  openCloudBillingConsole: () => mocks.openCloudBillingConsole(),
+}));
 
 import type { ConversationMessage } from "../api";
 import type { CloudHandoffPhaseDetail } from "../events";
@@ -228,6 +233,57 @@ describe("useBootRecoveryConductor", () => {
       handoff: { phase: "failed", agentId: "agent-2" },
     });
     expect(card()?.text).toContain("dedicated agent");
+    unmount();
+  });
+
+  it("surfaces the 402 credit gate as a first-class add-credits card, not a generic failure", () => {
+    const { card, unmount } = renderConductor({
+      booting: false,
+      noProviderConfigured: false,
+      handoff: { phase: "insufficient-credits", agentId: "agent-402" },
+    });
+    const text = card()?.text ?? "";
+    // Nubs's 0-credit guidance: explicit "on free shared agent + add credits",
+    // not a silent connect failure and not the generic setup-failed copy.
+    expect(text).toContain("free shared agent");
+    expect(text).toContain("Add credits");
+    expect(text).toContain("__boot_recovery__:add-credits=");
+    expect(text).toContain("__boot_recovery__:retry-handoff=");
+    expect(text).not.toContain("couldn't finish setting up");
+    unmount();
+  });
+
+  it("add-credits opens the billing console without healing the trouble (user stays on shared)", () => {
+    const { card, unmount } = renderConductor({
+      booting: false,
+      noProviderConfigured: false,
+      handoff: { phase: "insufficient-credits", agentId: "agent-402" },
+    });
+    act(() => {
+      expect(tryHandleBootRecoveryAction("__boot_recovery__:add-credits")).toBe(
+        true,
+      );
+    });
+    expect(mocks.openCloudBillingConsole).toHaveBeenCalledTimes(1);
+    // The card stays put (with its controls) so the user can retry after funding.
+    expect(card()?.text).toContain("__boot_recovery__:add-credits=");
+    unmount();
+  });
+
+  it("retry-handoff also re-dispatches the upgrade for the insufficient-credits trouble", () => {
+    const { unmount } = renderConductor({
+      booting: false,
+      noProviderConfigured: false,
+      handoff: { phase: "insufficient-credits", agentId: "agent-402b" },
+    });
+    act(() => {
+      expect(
+        tryHandleBootRecoveryAction("__boot_recovery__:retry-handoff"),
+      ).toBe(true);
+    });
+    expect(mocks.dispatchCloudHandoffRetry).toHaveBeenCalledWith({
+      agentId: "agent-402b",
+    });
     unmount();
   });
 

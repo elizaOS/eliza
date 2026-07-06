@@ -5,7 +5,6 @@
  */
 import { createHash } from "node:crypto";
 import {
-	buildInteractionUrlResolver,
 	ChannelType,
 	type Content,
 	ContentType,
@@ -48,7 +47,7 @@ import { createDraftStreamController } from "./draft-stream";
 import { getDiscordSettings } from "./environment";
 import { buildDiscordWorldMetadata } from "./identity";
 import { formatInboundEnvelope } from "./inbound-envelope";
-import { renderDiscordInteractions } from "./interactions";
+import { buildDiscordReplyPayload } from "./interactions";
 import {
 	appendCoalescedDiscordMetadata,
 	type DiscordMessageWithCoalescedMetadata,
@@ -1044,15 +1043,7 @@ export class MessageManager {
 
 					// Project embedded interaction blocks (choices, task cards, …) onto
 					// native Discord components, and strip their markers from the prose.
-					const rawAppUrl =
-						this.runtime.getSetting("ELIZA_APP_URL") ||
-						this.runtime.getSetting("ELIZA_CLOUD_URL");
-					const appBaseUrl =
-						typeof rawAppUrl === "string" ? rawAppUrl : undefined;
-					const rendered = renderDiscordInteractions(
-						content,
-						buildInteractionUrlResolver(appBaseUrl),
-					);
+					const rendered = buildDiscordReplyPayload(this.runtime, content);
 					const hasComponents = rendered.components.length > 0;
 					let textContent = normalizeDiscordMessageText(rendered.text);
 					if (textContent.trim().length === 0 && hasComponents) {

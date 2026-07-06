@@ -1,6 +1,6 @@
 /**
  * The wallpaper GALLERY rendered inside the Background settings subview and the
- * home long-press quick sheet. It is a creative surface, not a settings form:
+ * in-chat BACKGROUND widget. It is a creative surface, not a settings form:
  * large live-preview tiles in a responsive grid (curated presets, animated
  * shaders, uploads, and generated images all as visual tiles), a first-class
  * "generate with AI" tile, and tool chips for uploading / picking a custom
@@ -10,11 +10,16 @@
  * `ui-preferences`) that drives Home, Launcher, chat, and every view, so choices
  * apply instantly. Every control stays agent-addressable via `useAgentElement`.
  *
+ * Background changing is AGENT-DRIVEN (ask the agent, the in-chat BACKGROUND
+ * widget renders this gallery) plus the Settings gallery. There is no
+ * direct-manipulation long-press picker on the launcher/home; that shortcut was
+ * removed as anti-ethos for an agent OS.
+ *
  * Two layouts, one gallery:
  *  - `variant="gallery"` (default): a responsive tile grid for the full
  *    BackgroundView / Settings subview.
  *  - `variant="filmstrip"`: a single horizontal scroll row of tiles for the
- *    condensed home long-press sheet.
+ *    condensed in-chat BACKGROUND widget.
  */
 
 import {
@@ -46,6 +51,7 @@ import {
   addUserBackgroundEntry,
   loadUserBackgroundCatalog,
 } from "../../state/user-background-catalog";
+import { resolveApiUrl, resolveAppAssetUrl } from "../../utils/asset-url";
 import {
   BackgroundImageError,
   fileToBackgroundDataUrl,
@@ -62,8 +68,31 @@ function presetPreviewStyle(color: string) {
   };
 }
 
-/** A live thumbnail for one catalog entry, drawn from its palette (no image load). */
+function resolvePreviewImageUrl(url: string): string {
+  if (
+    url.startsWith("data:") ||
+    url.startsWith("blob:") ||
+    /^[a-z][a-z0-9+.-]*:/i.test(url) ||
+    url.startsWith("//")
+  ) {
+    return url;
+  }
+  if (url.startsWith("/api/") || url.startsWith("api/")) {
+    return resolveApiUrl(url);
+  }
+  return resolveAppAssetUrl(url);
+}
+
+/** A live thumbnail for one catalog entry. Image entries paint the real source. */
 function catalogPreviewStyle(entry: BackgroundCatalogEntry) {
+  if (entry.kind === "image") {
+    return {
+      backgroundImage: `url("${resolvePreviewImageUrl(entry.source)}")`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+    };
+  }
   const c0 = entry.palette[0] ?? DEFAULT_BACKGROUND_COLOR;
   const c1 = entry.palette[1] ?? c0;
   const c2 = entry.palette[2] ?? entry.palette[entry.palette.length - 1] ?? c1;
@@ -210,7 +239,7 @@ export interface BackgroundSettingsControlsProps {
   /**
    * `gallery` (default) lays the tiles out in a responsive grid for the full
    * view. `filmstrip` lays them in a single horizontal scroll row for the
-   * condensed home long-press sheet.
+   * condensed in-chat BACKGROUND widget.
    */
   variant?: "gallery" | "filmstrip";
 }
@@ -604,7 +633,7 @@ export function BackgroundSettingsControls({
 
   const curated = [...BACKGROUND_CATALOG];
 
-  // ── Filmstrip layout: the condensed home long-press sheet ────────────────
+  // ── Filmstrip layout: the condensed in-chat BACKGROUND widget ────────────────
   if (isFilmstrip) {
     return (
       <div

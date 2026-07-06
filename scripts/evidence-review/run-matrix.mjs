@@ -113,7 +113,7 @@ Options:
   --out=<dir>              Output directory for matrix-run.json and reviewer.
   --review / --no-review   Generate the evidence reviewer after the matrix.
   --open / --no-open       Open the reviewer after generation. Default: no-open.
-  --review-ocr=on|auto|off OCR mode passed to evidence:review. Default: on.
+  --review-ocr=on          OCR mode passed to evidence:review. Packaged OCR is required.
   --stop-on-failure        Stop after the first failed step.
   --dry-run                Write a planned manifest without executing commands.
   --help, -h               Show this help.`);
@@ -156,8 +156,10 @@ export function parseMatrixArgs(argv) {
     }
   }
 
-  if (!["auto", "on", "off"].includes(options.reviewOcr)) {
-    throw new Error("--review-ocr must be auto, on, or off");
+  if (options.reviewOcr !== "on") {
+    throw new Error(
+      "--review-ocr must be on; OCR is required for evidence review and uses the packaged tesseract.js dependency",
+    );
   }
   return options;
 }

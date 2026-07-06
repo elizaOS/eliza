@@ -46,9 +46,7 @@ function stubDisplayMode(mode: "standalone" | "fullscreen" | "browser"): void {
 afterEach(() => {
   document.body.className = "";
   // Drop any matchMedia / navigator.standalone stub so cases don't bleed.
-  // biome-ignore lint/performance/noDelete: test teardown restoring host globals
   delete (window as { matchMedia?: unknown }).matchMedia;
-  // biome-ignore lint/performance/noDelete: test teardown restoring host globals
   delete (navigator as { standalone?: unknown }).standalone;
 });
 
@@ -433,8 +431,15 @@ describe("Keyboard-lift geometry contract — reclaim does NOT shift the compose
     "utf8",
   );
 
-  it("reclaims the resting composer by the standalone lvh−dvh bottom delta", () => {
-    expect(overlaySrc).toContain('"calc(-1 * max(0px, 100lvh - 100dvh))"');
+  it("reclaims the resting composer by the JS-MEASURED standalone bottom gap var", () => {
+    // The reclaim now references the MEASURED `--standalone-bottom-reclaim` var
+    // (JS: window/visualViewport vs documentElement.clientHeight), NOT the
+    // useless `max(0px, 100lvh - 100dvh)` CSS-unit calc that resolved to 0 on
+    // the collapsed fixed-body ICB (why the strip survived 5 CSS-only fixes).
+    expect(overlaySrc).toContain("STANDALONE_BOTTOM_RECLAIM_OFFSET");
+    // The dead CSS-unit calc must not survive as an actual VALUE (quoted calc
+    // string); it may still be named in an explanatory comment.
+    expect(overlaySrc).not.toContain('"calc(-1 * max(0px, 100lvh - 100dvh))"');
     expect(overlaySrc).toContain("keyboardLiftActive");
     // Resting clearance should be the full safe-area/gesture inset plus a small
     // visual gap, so on a 34px home-indicator device the composer rests ~44px
@@ -446,7 +451,8 @@ describe("Keyboard-lift geometry contract — reclaim does NOT shift the compose
 
   it("lifts the composer by effectiveKeyboardInset (visual-viewport delta) when the keyboard is active", () => {
     expect(overlaySrc).toContain("? effectiveKeyboardInset");
-    expect(overlaySrc).toContain(': "calc(-1 * max(0px, 100lvh - 100dvh))"');
+    // At rest (keyboard down) the composer reclaims by the MEASURED gap var.
+    expect(overlaySrc).toContain(": STANDALONE_BOTTOM_RECLAIM_OFFSET");
     // effectiveKeyboardInset is derived from the visual viewport + native
     // keyboard plugin.
     expect(overlaySrc).toContain(
@@ -473,7 +479,16 @@ describe("Fixed background layers reach the TRUE physical bottom (bottom-bar roo
   // and exposes the dimmed launch-bg as a uniform bar under the composer. The
   // delta is 0 on every viewport where the two agree (desktop/Android), so this
   // is a pure iOS-standalone reclaim, no-op elsewhere.
-  const DELTA = "calc(-1 * max(0px, 100lvh - 100dvh))";
+  // The reclaim now references the JS-MEASURED `--standalone-bottom-reclaim`
+  // var (via the shared STANDALONE_BOTTOM_RECLAIM_OFFSET constant), NOT the
+  // useless `max(0px, 100lvh - 100dvh)` CSS-unit calc that resolved to 0 on the
+  // collapsed fixed-body ICB. Assert the constant is imported + used and the
+  // dead CSS-unit calc is GONE from every reclaim site.
+  const DELTA = "STANDALONE_BOTTOM_RECLAIM_OFFSET";
+  // The dead form is the CSS-unit calc used as an ACTUAL VALUE (inside a
+  // `bottom:` assignment). It may still be NAMED in explanatory comments, so
+  // match the value form (quoted calc string), not the bare phrase.
+  const DEAD_CALC = '"calc(-1 * max(0px, 100lvh - 100dvh))"';
   const appTsx = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
   const shaderSrc = readFileSync(
     resolve(process.cwd(), "src/backgrounds/ShaderBackground.tsx"),
@@ -488,22 +503,26 @@ describe("Fixed background layers reach the TRUE physical bottom (bottom-bar roo
     "utf8",
   );
 
-  it("drops the shell-owned safe-area floor to the true bottom via the lvh−dvh delta", () => {
+  it("drops the shell-owned safe-area floor to the true bottom via the MEASURED gap var", () => {
     // The `app-safe-area-floor` is the FOUC guard on opaque routes; if it stops
     // short its `bg-bg`/transparent edge leaves the launch-bg strip exposed.
     expect(appTsx).toContain(DELTA);
+    expect(appTsx).not.toContain(DEAD_CALC);
     expect(appTsx).toContain("app-safe-area-floor");
   });
 
-  it("drops the ShaderBackground wallpaper to the true bottom via the lvh−dvh delta", () => {
+  it("drops the ShaderBackground wallpaper to the true bottom via the MEASURED gap var", () => {
     expect(shaderSrc).toContain(DELTA);
+    expect(shaderSrc).not.toContain(DEAD_CALC);
   });
 
-  it("drops the ImageBackground wallpaper to the true bottom via the lvh−dvh delta", () => {
+  it("drops the ImageBackground wallpaper to the true bottom via the MEASURED gap var", () => {
     expect(imageSrc).toContain(DELTA);
+    expect(imageSrc).not.toContain(DEAD_CALC);
   });
 
-  it("drops the programmable GLSL wallpaper to the true bottom via the lvh−dvh delta", () => {
+  it("drops the programmable GLSL wallpaper to the true bottom via the MEASURED gap var", () => {
     expect(glslSrc).toContain(DELTA);
+    expect(glslSrc).not.toContain(DEAD_CALC);
   });
 });

@@ -1,17 +1,24 @@
 /**
- * Chat-sidebar (and home-grid) TODO widget: lists the agent workbench's todos,
- * seeded from the app store's `workbench.todos`, refreshed on live workbench
- * events, and backed by a visible-tab poll for missed events. Exports
- * `TODO_PLUGIN_WIDGETS`, the widget-registry entry consumed by the sidebar.
+ * The `todo.items` widget, which serves two different surfaces from one
+ * registration because the widget host renders it in both:
  *
- * On the home surface this is the "Today" card, and per spec §B/§E item 5 it
- * absorbs the goals resident: when the goals store reports an at-risk (or
- * needs-attention) goal, that goal renders as one flagged row inside this card
- * rather than as a second standalone home widget. The card then self-publishes
- * the goals escalation weight so the merged card floats up on goal urgency.
+ *  - Chat sidebar (`TodoSidebarWidget`): the agent's own workbench checklist,
+ *    seeded from the app store's `workbench.todos`, refreshed on live workbench
+ *    events and a visible-tab repair poll. This is "what the agent is working
+ *    on" and is the store's to own.
+ *  - Home grid (`TodayHomeCard`): the OWNER's "Today" resident (spec §B.3) —
+ *    their due/overdue todos, which carry a `dueDate` the workbench checklist
+ *    does not. These are a different domain read entirely, so the home card does
+ *    NOT read a store: it renders the typed DTO from the `today-todos-data` read
+ *    model (`GET /api/lifeops/todos`) and completes a row through that model's
+ *    occurrence-complete write. Per §E item 5 it also absorbs the single most
+ *    urgent goal as one flagged row and self-publishes the escalation weight so
+ *    the merged card floats up on goal urgency.
+ *
+ * Exports `TODO_PLUGIN_WIDGETS`, the widget-registry entry the host consumes.
  */
-import { ListTodo, Target } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Circle, ListTodo, Target } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import type { WorkbenchTodo } from "../../../api/client-types-config";
@@ -31,6 +38,15 @@ import {
 } from "./goals-attention-data";
 import { useWidgetNavigation } from "./home-widget-card";
 import { EmptyWidgetState, WidgetSection } from "./shared";
+import {
+  completeTodayTodo,
+  dueOrOverdueToday,
+  isOverdue,
+  loadTodayTodosForGlance,
+  TODAY_TODOS_REFRESH_INTERVAL_MS,
+  type TodayTodo,
+  todosEqual,
+} from "./today-todos-data";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
@@ -40,6 +56,8 @@ const TODO_WIDGET_KEY = "todo/todo.items";
 
 const TODO_REFRESH_INTERVAL_MS = 15_000;
 const MAX_VISIBLE_TODOS = 8;
+/** The Today glance shows at most three rows (spec §B.3). */
+const MAX_TODAY_ROWS = 3;
 
 const fallbackTranslate: TranslateFn = (key, vars) =>
   typeof vars?.defaultValue === "string" ? vars.defaultValue : key;
@@ -168,6 +186,56 @@ function TodoRow({
 }
 
 /**
+ * A single owner-todo row in the Today card. The whole row is the completion
+ * affordance (a 44px tap target holds the home hit-area rule): tapping toggles
+ * the todo done. Overdue todos carry the accent (spec §B.3 "overdue in the
+ * accent color"); an on-time due-today todo is neutral white-family.
+ */
+function TodayTodoRow({
+  todo,
+  now,
+  onComplete,
+}: {
+  todo: TodayTodo;
+  now: number;
+  onComplete: () => void;
+}) {
+  const overdue = isOverdue(todo, now);
+  return (
+    <button
+      type="button"
+      data-testid="today-todo-row"
+      aria-label={`Complete todo "${todo.title}"`}
+      onClick={onComplete}
+      className="flex min-h-11 w-full items-start gap-2 rounded-sm border border-white/15 bg-white/10 p-3 text-left text-white"
+    >
+      <Circle
+        className={`mt-0.5 h-4 w-4 shrink-0 ${overdue ? "text-accent" : "text-white/70"}`}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="min-w-0 truncate text-xs font-semibold text-white">
+            {todo.title}
+          </span>
+          {overdue ? (
+            <Badge
+              variant="secondary"
+              className={homeBadgeClassName("home", "text-accent")}
+            >
+              Overdue
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className={homeBadgeClassName("home")}>
+              Due today
+            </Badge>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+/**
  * The merged goal-attention row (§E item 5): renders the single urgent goal
  * inline in the Today card. Whole-row button so the home 44px target rule holds;
  * tapping opens the Goals view.
@@ -225,44 +293,26 @@ function GoalAttentionRow({
   );
 }
 
-function TodoItemsContent({
+/**
+ * The chat-sidebar content: the agent's workbench checklist, grouped open-first.
+ */
+function WorkbenchTodoItems({
   todos,
   loading,
-  goal,
-  onOpenGoal,
-  tone = "default",
 }: {
   todos: WorkbenchTodo[];
   loading: boolean;
-  goal: AttentionGoal | null;
-  onOpenGoal: () => void;
-  tone?: "default" | "home";
 }) {
   const openTodos = todos.filter((todo) => !todo.isCompleted);
   const hiddenCompletedCount = todos.length - openTodos.length;
   const visibleTodos = openTodos.slice(0, MAX_VISIBLE_TODOS);
   const remainingCount = openTodos.length - visibleTodos.length;
-  const goalRow = goal ? (
-    <GoalAttentionRow goal={goal} onOpen={onOpenGoal} tone={tone} />
-  ) : null;
 
-  if (loading && todos.length === 0 && !goal) {
-    return (
-      <div
-        className={`py-3 text-xs ${tone === "home" ? "text-white/70" : "text-muted"}`}
-      >
-        Refreshing todos…
-      </div>
-    );
+  if (loading && todos.length === 0) {
+    return <div className="py-3 text-xs text-muted">Refreshing todos…</div>;
   }
 
   if (openTodos.length === 0) {
-    // A flagged goal alone still gives the card a reason to render; only a fully
-    // empty Today (no open todos AND no at-risk goal) shows the empty state
-    // (which the sidebar surface uses; the home surface hides entirely).
-    if (goalRow) {
-      return <div className="flex flex-col gap-2">{goalRow}</div>;
-    }
     return (
       <EmptyWidgetState
         icon={<ListTodo className="h-8 w-8" />}
@@ -273,21 +323,16 @@ function TodoItemsContent({
 
   return (
     <div className="flex flex-col gap-2">
-      {goalRow}
       {visibleTodos.map((todo) => (
-        <TodoRow key={todo.id} todo={todo} tone={tone} />
+        <TodoRow key={todo.id} todo={todo} />
       ))}
       {remainingCount > 0 ? (
-        <p
-          className={`px-1 text-xs-tight ${tone === "home" ? "text-white/70" : "text-muted"}`}
-        >
+        <p className="px-1 text-xs-tight text-muted">
           +{remainingCount} more open todo{remainingCount === 1 ? "" : "s"}
         </p>
       ) : null}
       {hiddenCompletedCount > 0 ? (
-        <p
-          className={`px-1 text-xs-tight ${tone === "home" ? "text-white/70" : "text-muted"}`}
-        >
+        <p className="px-1 text-xs-tight text-muted">
           {hiddenCompletedCount} completed todo
           {hiddenCompletedCount === 1 ? "" : "s"} hidden
         </p>
@@ -297,13 +342,12 @@ function TodoItemsContent({
 }
 
 /**
- * Fetch the single urgent goal for the merged Today card (§E item 5). Only
- * active on the home surface; the chat-sidebar Todos widget never surfaces
- * goals. Polls at the goals cadence, visibility-gated, and keeps its last-good
- * value on a transient failure (J4). Returns `null` when there is no at-risk or
- * needs-attention goal (or off-home), so it contributes nothing to the card.
+ * Fetch the single urgent goal for the merged Today card (§E item 5). Polls at
+ * the goals cadence, visibility-gated, and keeps its last-good value on a
+ * transient failure (J4). Returns `null` when there is no at-risk or
+ * needs-attention goal, so it contributes nothing to the card.
  */
-function useAtRiskGoal(active: boolean): AttentionGoal | null {
+function useAtRiskGoal(): AttentionGoal | null {
   const authenticated = useIsAuthenticated();
   const [goals, setGoals] = useState<AttentionGoal[] | null>(null);
   const mountedRef = useRef(true);
@@ -315,40 +359,186 @@ function useAtRiskGoal(active: boolean): AttentionGoal | null {
   }, []);
 
   const load = useCallback(async () => {
-    if (!active) return;
     const next = await loadGoalsForGlance(authenticated);
     // A null return means the fetch failed (J4) - keep the last good value.
     if (next == null || !mountedRef.current) return;
     setGoals((prev) => (goalsEqual(prev, next) ? prev : next));
-  }, [active, authenticated]);
+  }, [authenticated]);
 
   useEffect(() => {
-    if (!active) {
-      setGoals(null);
-      return;
-    }
     void load();
-  }, [active, load]);
-  useIntervalWhenDocumentVisible(
-    () => void load(),
-    GOALS_REFRESH_INTERVAL_MS,
-    active,
-  );
+  }, [load]);
+  useIntervalWhenDocumentVisible(() => void load(), GOALS_REFRESH_INTERVAL_MS);
 
-  if (!active || goals == null) return null;
+  if (goals == null) return null;
   return mostUrgentGoal(goals);
 }
 
-function TodoSidebarWidget({
-  events,
-  slot,
+/**
+ * The owner's Today todos read model, driving the home card. Loads through
+ * `today-todos-data` (never a store), polls visibility-gated, keeps last-good on
+ * a transient failure (J4), and completes a row optimistically: the tapped todo
+ * disappears immediately, a successful write is confirmed by the reload, and a
+ * failed write restores the row.
+ *
+ * `now` is state sampled inside the load/poll callbacks — never `Date.now()` in
+ * render — so the due/overdue slice recomputes on each 15s tick (surfacing a
+ * todo that crosses into overdue) while keeping renders deterministic.
+ */
+function useTodayTodos(): {
+  glance: TodayTodo[] | null;
+  now: number;
+  hasOverdue: boolean;
+  complete: (id: string) => void;
+} {
+  const authenticated = useIsAuthenticated();
+  const [todos, setTodos] = useState<TodayTodo[] | null>(null);
+  const [now, setNow] = useState(0);
+  const [completingIds, setCompletingIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const load = useCallback(async () => {
+    const next = await loadTodayTodosForGlance(authenticated);
+    if (!mountedRef.current) return;
+    setNow(Date.now());
+    // A null return means the fetch failed (J4) - keep the last good value.
+    if (next == null) return;
+    setTodos((prev) => (todosEqual(prev, next) ? prev : next));
+  }, [authenticated]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+  useIntervalWhenDocumentVisible(
+    () => void load(),
+    TODAY_TODOS_REFRESH_INTERVAL_MS,
+  );
+
+  const complete = useCallback(
+    (id: string) => {
+      setCompletingIds((prev) => new Set(prev).add(id));
+      completeTodayTodo(id)
+        .then(() => load())
+        .catch(() => {
+          // error-policy:J4 optimistic write failed - restore the row so the
+          // user sees it is still open rather than a silent drop.
+          if (!mountedRef.current) return;
+          setCompletingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+        });
+    },
+    [load],
+  );
+
+  const glance = useMemo(() => {
+    if (todos == null) return null;
+    return dueOrOverdueToday(todos, now).filter(
+      (todo) => !completingIds.has(todo.id),
+    );
+  }, [todos, now, completingIds]);
+  const hasOverdue = useMemo(
+    () => (glance ?? []).some((todo) => isOverdue(todo, now)),
+    [glance, now],
+  );
+
+  return { glance, now, hasOverdue, complete };
+}
+
+/**
+ * The home "Today" resident: the owner's due/overdue todos as a pure render over
+ * the read model, plus the merged urgent-goal row. Publishes its home-attention
+ * weight from the STRONGER of its two signals (an at-risk goal outranks an
+ * overdue todo), and self-hides when it has nothing to show — the home surface
+ * must not paint empty-state placeholders (#9143).
+ */
+function TodayHomeCard({
   spanClassName = "col-span-2 row-span-1",
-}: ChatSidebarWidgetProps) {
-  const { workbench, t: appT } = useAppSelectorShallow((s) => ({
+}: {
+  spanClassName?: string;
+}) {
+  const t = useAppSelectorShallow((s) => s.t) ?? fallbackTranslate;
+  const nav = useWidgetNavigation();
+  const { glance, now, hasOverdue, complete } = useTodayTodos();
+  const attentionGoal = useAtRiskGoal();
+
+  const rows = glance ?? [];
+  const visibleTodos = rows.slice(0, MAX_TODAY_ROWS);
+  const remainingCount = rows.length - visibleTodos.length;
+
+  // Float the merged Today card up on the STRONGER of its two signals: an
+  // at-risk goal contributes the goals escalation weight (higher than the todo
+  // reminder weight), so goal urgency dominates - matching the standalone goals
+  // card this absorbed (§E item 5). Both publish under the todo key because the
+  // ranker attributes a self-published weight to the declaration whose key
+  // matches, and the merged resident IS `todo/todo.items`.
+  const homeAttentionWeight = attentionGoal
+    ? HOME_SIGNAL_WEIGHTS.escalation
+    : hasOverdue
+      ? HOME_SIGNAL_WEIGHTS.reminder
+      : null;
+  usePublishHomeAttention(TODO_WIDGET_KEY, homeAttentionWeight);
+
+  // Nothing due/overdue AND no at-risk goal: the card has no reason to render.
+  if (rows.length === 0 && !attentionGoal) return null;
+
+  const goalRow = attentionGoal ? (
+    <GoalAttentionRow
+      goal={attentionGoal}
+      onOpen={() => nav.openView("/goals", "goals")}
+      tone="home"
+    />
+  ) : null;
+
+  return (
+    <div className={`min-w-0 ${spanClassName}`}>
+      <WidgetSection
+        title={t("taskseventspanel.Today", { defaultValue: "Today" })}
+        icon={<ListTodo className="h-4 w-4" />}
+        testId="chat-widget-todos"
+        tone="home"
+        onTitleClick={() => nav.openView("/todos", "todos")}
+      >
+        <div className="flex flex-col gap-2">
+          {goalRow}
+          {visibleTodos.map((todo) => (
+            <TodayTodoRow
+              key={todo.id}
+              todo={todo}
+              now={now}
+              onComplete={() => complete(todo.id)}
+            />
+          ))}
+          {remainingCount > 0 ? (
+            <p className="px-1 text-xs-tight text-white/70">
+              +{remainingCount} more due today
+            </p>
+          ) : null}
+        </div>
+      </WidgetSection>
+    </div>
+  );
+}
+
+/**
+ * The chat-sidebar Todos widget: the agent's workbench checklist. Seeds from the
+ * app store, refreshes on live workbench events, and repairs missed events with
+ * a visible-tab poll.
+ */
+function WorkbenchTodoSidebar({ events }: ChatSidebarWidgetProps) {
+  const { workbench } = useAppSelectorShallow((s) => ({
     workbench: s.workbench,
-    t: s.t,
   }));
-  const t = appT ?? fallbackTranslate;
   // Auth gate (#11084): the widget mounts before the auth probe resolves, so
   // the 15s todo poll must stay dormant until the session is authenticated.
   const authenticated = useIsAuthenticated();
@@ -431,56 +621,30 @@ function TodoSidebarWidget({
     TODO_REFRESH_INTERVAL_MS,
   );
 
-  const openTodos = todos.filter((todo) => !todo.isCompleted);
-  const hasUrgent = openTodos.some((todo) => todo.isUrgent);
-  const onHome = slot === "home";
-  // The merged at-risk goal row (§E item 5) is home-only; the chat sidebar
-  // keeps the pure todo list.
-  const nav = useWidgetNavigation();
-  const attentionGoal = useAtRiskGoal(onHome);
-  // Float the merged Today card up on the STRONGER of its two signals: an
-  // at-risk goal contributes the goals escalation weight (higher than the todo
-  // reminder weight), so goal urgency dominates - matching the standalone goals
-  // card this absorbed (§E item 5). Both publish under the todo key because the
-  // ranker attributes a self-published weight to the declaration whose key
-  // matches, and the merged resident IS `todo/todo.items` now.
-  const homeAttentionWeight =
-    onHome && attentionGoal
-      ? HOME_SIGNAL_WEIGHTS.escalation
-      : onHome && hasUrgent
-        ? HOME_SIGNAL_WEIGHTS.reminder
-        : null;
-  usePublishHomeAttention(TODO_WIDGET_KEY, homeAttentionWeight);
+  const { t: appT } = useAppSelectorShallow((s) => ({ t: s.t }));
+  const t = appT ?? fallbackTranslate;
 
-  // On the home grid, render nothing when there are no open todos AND no at-risk
-  // goal - the home surface must not show empty-state placeholders (#9143). A
-  // flagged goal alone keeps the merged Today card alive. The chat sidebar keeps
-  // its empty state.
-  if (onHome && openTodos.length === 0 && !attentionGoal) return null;
-
-  const section = (
+  return (
     <WidgetSection
       title={t("taskseventspanel.Todos", { defaultValue: "Todos" })}
       icon={<ListTodo className="h-4 w-4" />}
       testId="chat-widget-todos"
-      tone={onHome ? "home" : "default"}
     >
-      <TodoItemsContent
-        todos={todos}
-        loading={todosLoading}
-        goal={attentionGoal}
-        onOpenGoal={() => nav.openView("/goals", "goals")}
-        tone={onHome ? "home" : "default"}
-      />
+      <WorkbenchTodoItems todos={todos} loading={todosLoading} />
     </WidgetSection>
   );
-  // On the home 4-col grid the widget's root element must carry its grid-span
-  // classes or it collapses to a one-column cell and its content paints over
-  // the neighboring card (#11752). The sidebar stack renders the bare section.
-  if (onHome) {
-    return <div className={`min-w-0 ${spanClassName}`}>{section}</div>;
+}
+
+/**
+ * Widget-host entry: dispatches to the home "Today" card (owner todos read
+ * model) or the chat-sidebar workbench checklist by slot. They are separate
+ * surfaces backed by separate reads; the host renders whichever the slot needs.
+ */
+function TodoSidebarWidget(props: ChatSidebarWidgetProps) {
+  if (props.slot === "home") {
+    return <TodayHomeCard spanClassName={props.spanClassName} />;
   }
-  return section;
+  return <WorkbenchTodoSidebar {...props} />;
 }
 
 export const TODO_PLUGIN_WIDGETS: ChatSidebarWidgetDefinition[] = [

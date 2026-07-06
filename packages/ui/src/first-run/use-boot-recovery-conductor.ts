@@ -22,6 +22,7 @@
 
 import * as React from "react";
 import type { ConversationMessage } from "../api";
+import { openCloudBillingConsole } from "../cloud/billing-console";
 import { useShellControllerContext } from "../components/shell/ShellControllerContext.hooks";
 import {
   type CloudHandoffPhaseDetail,
@@ -50,6 +51,7 @@ const RELOGIN_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}relogin=Re-log in`;
 const RETRY_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}retry=Try again`;
 const RETRY_HANDOFF_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}retry-handoff=Retry setup`;
 const RECONNECT_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}reconnect=Reconnect`;
+const ADD_CREDITS_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}add-credits=Add credits`;
 
 interface RecoveryCard {
   text: string;
@@ -76,6 +78,7 @@ function cardToTurn(card: RecoveryCard): ConversationMessage {
 /** The trouble the conductor is currently voicing, in precedence order. */
 type Trouble =
   | { kind: "connection" }
+  | { kind: "insufficient-credits"; agentId: string }
   | { kind: "handoff"; agentId: string }
   | { kind: "signed-out" }
   | { kind: "unresponsive" }
@@ -87,6 +90,14 @@ function liveCard(trouble: NonNullable<Trouble>): RecoveryCard {
       return {
         text: "I've lost my connection to the backend — I can't hear you until it's back.",
         choices: [RECONNECT_CHOICE],
+      };
+    case "insufficient-credits":
+      // Nubs's 0-credit guidance: the user keeps chatting on the free shared
+      // agent (never a silent connect failure), and gets an explicit prompt to
+      // add credits for their own dedicated agent — with a retry once they do.
+      return {
+        text: "You're on the free shared agent for now. Add credits to spin up your own dedicated agent — I'll switch you over automatically once it's ready.",
+        choices: [ADD_CREDITS_CHOICE, RETRY_HANDOFF_CHOICE],
       };
     case "handoff":
       return {
@@ -167,6 +178,11 @@ export function useBootRecoveryConductor(
   const handoffFailed =
     handoff != null &&
     (handoff.phase === "timed-out" || handoff.phase === "failed");
+  // The dedicated upgrade was refused for lack of credits (402). Distinct from a
+  // boot failure: the fix is add-credits, not retry-as-is, so it gets its own
+  // trouble kind + card copy.
+  const handoffInsufficientCredits =
+    handoff != null && handoff.phase === "insufficient-credits";
   // A dead backend connection outranks everything (nothing else can work),
   // and skips the card when another surface owns the disconnected state.
   const connectionFailed =
@@ -181,13 +197,15 @@ export function useBootRecoveryConductor(
     ? null
     : connectionFailed
       ? { kind: "connection" }
-      : handoffFailed
-        ? { kind: "handoff", agentId: handoff.agentId }
-        : stalled && !noProviderConfigured
-          ? hasUsableStoredStewardToken()
-            ? { kind: "unresponsive" }
-            : { kind: "signed-out" }
-          : null;
+      : handoffInsufficientCredits
+        ? { kind: "insufficient-credits", agentId: handoff.agentId }
+        : handoffFailed
+          ? { kind: "handoff", agentId: handoff.agentId }
+          : stalled && !noProviderConfigured
+            ? hasUsableStoredStewardToken()
+              ? { kind: "unresponsive" }
+              : { kind: "signed-out" }
+            : null;
 
   // An action pins its in-flight copy over the live card; when the action
   // settles without healing the boot, `cardVersion` bumps so the live card
@@ -318,9 +336,21 @@ export function useBootRecoveryConductor(
         return true;
       }
 
+      if (id === "add-credits") {
+        // Open the hosted billing console (add funds). Deliberately does NOT pin
+        // an in-flight card or heal the trouble: the user stays on the working
+        // shared agent with the add-credits prompt in view, and hits "Retry
+        // setup" once funded — the dedicated upgrade then proceeds.
+        void openCloudBillingConsole();
+        return true;
+      }
+
       if (id === "retry-handoff") {
         const current = troubleRef.current;
-        if (current?.kind === "handoff") {
+        if (
+          current?.kind === "handoff" ||
+          current?.kind === "insufficient-credits"
+        ) {
           pinOverride({
             text: "Retrying your dedicated agent setup…",
             choices: [],

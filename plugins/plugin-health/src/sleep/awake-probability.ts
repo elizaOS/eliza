@@ -3,11 +3,12 @@
  * from activity signals, schedule regularity, and sleep-cycle state. Gates
  * check-in timing across the sleep domain.
  */
-import type {
-  LifeOpsActivitySignal,
-  LifeOpsAwakeProbability,
-  LifeOpsScheduleRegularity,
-  LifeOpsSleepCycle,
+import {
+  isBuiltinActivitySignalSource,
+  type LifeOpsActivitySignal,
+  type LifeOpsAwakeProbability,
+  type LifeOpsScheduleRegularity,
+  type LifeOpsSleepCycle,
 } from "../contracts/health.js";
 import { getZonedDateParts } from "../util/time.js";
 import { parseIsoMs } from "../util/time-util.js";
@@ -86,7 +87,14 @@ export function computeAwakeProbability(args: {
     return false;
   });
 
-  if (latestSignal) {
+  // The built-in logistic model only scores the closed built-in sources; a
+  // plugin-contributed source (browser activity, view usage, …) is skipped
+  // here rather than fed a fabricated weight — it would need to also teach this
+  // model to participate.
+  if (
+    latestSignal &&
+    isBuiltinActivitySignalSource(latestSignal.signal.source)
+  ) {
     const ageMs = args.nowMs - latestSignal.observedAtMs;
     const state = latestSignal.signal.state;
     const reliability = resolveActivitySignalReliability(

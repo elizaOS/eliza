@@ -762,7 +762,7 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
   await expect(composer).toBeEnabled();
   await expect(composer).toHaveAttribute(
     "placeholder",
-    "Ask me anything — or pick an option",
+    "Connect to cloud to enable chat",
   );
   await expect(page.getByTestId("chat-first-run-backdrop")).toHaveAttribute(
     "data-first-run-opaque",

@@ -11,7 +11,9 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const panelProps = vi.hoisted(() => ({ value: null as Record<string, unknown> | null }));
+const panelProps = vi.hoisted(() => ({
+  value: null as Record<string, unknown> | null,
+}));
 
 vi.mock("../views/ShellViewAgentSurface", () => ({
   ShellViewAgentSurface: ({ children }: { children: ReactNode }) => (

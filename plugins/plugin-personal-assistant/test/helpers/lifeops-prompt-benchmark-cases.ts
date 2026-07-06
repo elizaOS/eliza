@@ -575,6 +575,12 @@ function buildCapabilityCoverageCases(): PromptBenchmarkCase[] {
       acceptableActions: ["LIFE"],
     },
     {
+      task: "reminder_dispatch",
+      prompt: "Remind me to renew the car registration by the 20th.",
+      expectedAction: "OWNER_REMINDERS",
+      acceptableActions: ["LIFE"],
+    },
+    {
       task: "inbox_triage",
       prompt:
         "Find the vendor renewal invoice email and tell me if it needs a reply.",

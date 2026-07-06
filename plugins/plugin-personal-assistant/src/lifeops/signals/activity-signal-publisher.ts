@@ -7,7 +7,7 @@
  */
 
 import type { LifeOpsActivitySignal } from "@elizaos/shared";
-import { mapSignalToTelemetryPayload } from "../telemetry-mapping.js";
+import type { SignalSourceRegistry } from "../registries/signal-source-registry.js";
 import type { ActivitySignalBus } from "./bus.js";
 
 export interface PublishActivitySignalResult {
@@ -18,8 +18,9 @@ export interface PublishActivitySignalResult {
 export function publishActivitySignalToBus(
   bus: ActivitySignalBus,
   signal: LifeOpsActivitySignal,
+  registry: SignalSourceRegistry,
 ): PublishActivitySignalResult {
-  const payload = mapSignalToTelemetryPayload(signal);
+  const payload = registry.get(signal.source)?.telemetryMapper(signal) ?? null;
   if (payload?.family !== "message_activity_event") {
     return { published: 0, unmapped: 1 };
   }

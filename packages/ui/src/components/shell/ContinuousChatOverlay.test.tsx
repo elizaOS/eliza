@@ -2886,6 +2886,26 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
+  it("a FULL downward pull in the restore zone drops full-bleed and collapses the sheet all the way (the un-maximize→collapse bug)", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    bigPullUp();
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+
+    // Drag the restore zone from the top all the way past the bottom: the strip
+    // must stay grabbable through the un-maximize (it un-mounts on `fullBleed`,
+    // so a naive gate would freeze the drag here) and drive the sheet to closed.
+    const zone = screen.getByTestId("chat-maximize-restore-zone");
+    fireEvent.pointerDown(zone, { clientY: 20, pointerId: 9 });
+    fireEvent.pointerMove(zone, { clientY: 400, pointerId: 9 });
+    fireEvent.pointerMove(zone, { clientY: 900, pointerId: 9 });
+    fireEvent.pointerUp(zone, { clientY: 900, pointerId: 9 });
+
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
   it("keyboard-activates the restore zone (ArrowDown exits full-bleed)", () => {
     const { controller } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
@@ -2910,6 +2930,120 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(sheet.getAttribute("data-maximized")).toBeNull();
     expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  // ---- Full state-machine round-trips (long drags + gestures) --------------
+  // Drive the sheet back and forth across every openness state with real
+  // pointer drags on the grabber and the restore strip, asserting the machine
+  // (data-chat-state / data-maximized / data-variant) never wedges in a state
+  // it can't leave. These cover the reported "can't get back down from
+  // maximized" bug from every entry angle.
+  function grabberDrag(...ys: number[]): void {
+    const g = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(g, { clientY: ys[0], pointerId: 33 });
+    for (let i = 1; i < ys.length; i += 1) {
+      fireEvent.pointerMove(g, { clientY: ys[i], pointerId: 33 });
+    }
+    fireEvent.pointerUp(g, { clientY: ys[ys.length - 1], pointerId: 33 });
+  }
+  function restoreZoneDrag(...ys: number[]): void {
+    const z = screen.getByTestId("chat-maximize-restore-zone");
+    fireEvent.pointerDown(z, { clientY: ys[0], pointerId: 34 });
+    for (let i = 1; i < ys.length; i += 1) {
+      fireEvent.pointerMove(z, { clientY: ys[i], pointerId: 34 });
+    }
+    fireEvent.pointerUp(z, { clientY: ys[ys.length - 1], pointerId: 34 });
+  }
+
+  it("round-trips INPUT → open → MAXIMIZED → open → re-MAXIMIZED → collapsed with no wedged state", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+
+    // Rest is the composer-only INPUT state; no restore strip yet.
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
+
+    // INPUT → open (pull the grabber up). The grabber owns this.
+    openSheet();
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
+
+    // open → MAXIMIZED (over-pull past the 80% threshold).
+    bigPullUp();
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+    expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
+    expect(screen.getByTestId("chat-maximize-restore-zone")).toBeTruthy();
+
+    // MAXIMIZED → open (a partial restore pull drops full-bleed, stays open).
+    restoreZoneDrag(20, 200, 300);
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    // The grabber is back and the restore strip is gone once inset.
+    expect(screen.getByTestId("chat-sheet-grabber")).toBeTruthy();
+    expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
+
+    // open → MAXIMIZED again (prove the round-trip left no stuck flag).
+    bigPullUp();
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+    expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
+
+    // MAXIMIZED → collapsed (a full restore pull to the bottom closes it).
+    restoreZoneDrag(20, 400, 900);
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("toggles MAXIMIZED ⇄ open cleanly across repeated cycles (no drift)", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    openSheet();
+
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      bigPullUp();
+      expect(sheet.getAttribute("data-maximized")).toBe("true");
+      expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
+
+      // Partial restore back to an inset open sheet.
+      restoreZoneDrag(20, 200, 300);
+      expect(sheet.getAttribute("data-maximized")).toBeNull();
+      expect(sheet.getAttribute("data-variant")).toBe("open");
+    }
+  });
+
+  it("steps INPUT → pill (CLOSED) on a grabber pull-down, then back to INPUT on tap", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+
+    // INPUT → pill: a downward pull folds the composer into the pill capsule.
+    grabberDrag(600, 700, 800);
+    expect(sheet.getAttribute("data-detent")).toBe("pill");
+    expect(sheet.getAttribute("data-chat-state")).toBe("CLOSED");
+
+    // pill → back: a tap on the pill leaves the CLOSED/pill state (it reveals the
+    // composer, or the thread when there's history to show).
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 780, pointerId: 35 });
+    fireEvent.pointerUp(grabber, { clientY: 780, pointerId: 35 });
+    expect(sheet.getAttribute("data-detent")).not.toBe("pill");
+    expect(sheet.getAttribute("data-chat-state")).not.toBe("CLOSED");
+  });
+
+  it("an upward hold in the restore zone keeps it MAXIMIZED (only a downward pull exits)", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    bigPullUp();
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+
+    // A pull that only moves UP (or holds) inside the strip must not un-maximize.
+    restoreZoneDrag(300, 200, 120);
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+    expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
   });
 });
 

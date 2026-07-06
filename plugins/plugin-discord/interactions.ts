@@ -12,7 +12,9 @@
  */
 
 import {
+	buildInteractionUrlResolver,
 	type Content,
+	type IAgentRuntime,
 	type InteractionBlock,
 	type NeutralButton,
 	parseInteractionBlocks,
@@ -135,4 +137,28 @@ export function renderDiscordInteractions(
 		.filter((s) => s.trim().length > 0)
 		.join("\n\n");
 	return { text, components: visibleRows, needsFreeTextReply };
+}
+
+/**
+ * Canonical entry point for turning an outbound `Content` into Discord text +
+ * components. Every Discord send path — the streaming/DM/channel reply in
+ * `messages.ts` and the button-tap replay in `discord-interactions.ts` — routes
+ * through here so link-out blocks (task cards, `navigate` chips) resolve their
+ * URL identically. Rendering without the resolver silently drops those buttons
+ * (a `[TASK:…]` reply degrades to bare prose), so the resolver must not be a
+ * per-call-site detail: it is derived once, here, from the deployment's app
+ * origin (`ELIZA_APP_URL`, then `ELIZA_CLOUD_URL`).
+ */
+export function buildDiscordReplyPayload(
+	runtime: Pick<IAgentRuntime, "getSetting">,
+	content: Content,
+): DiscordInteractionRender {
+	const rawAppUrl =
+		runtime.getSetting("ELIZA_APP_URL") ??
+		runtime.getSetting("ELIZA_CLOUD_URL");
+	const appBaseUrl = typeof rawAppUrl === "string" ? rawAppUrl : undefined;
+	return renderDiscordInteractions(
+		content,
+		buildInteractionUrlResolver(appBaseUrl),
+	);
 }

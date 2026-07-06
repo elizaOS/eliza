@@ -15,9 +15,8 @@
  * test fails if someone reintroduces `hidden`/`md:block` on the desktop wrapper.
  */
 
-import { render } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup } from "@testing-library/react";
 import {
   DashboardDataListDesktop,
   DashboardDataListMobile,

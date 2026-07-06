@@ -181,7 +181,8 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
     });
     const onOpen = () => {};
     const onDismiss = () => {};
-    const props = { notification: base, onOpen, onDismiss };
+    const onMarkRead = () => {};
+    const props = { notification: base, onOpen, onDismiss, onMarkRead };
 
     // createdAt-only delta → equal → memo SKIPS (no row re-render on the minute).
     expect(

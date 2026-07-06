@@ -36,6 +36,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
+import type { AnalyzerExecutor } from "../analyzers/index.ts";
 import { analyzeArtifacts } from "../analyzers/runner.ts";
 import { createBundle, type EvidenceBundle, verifyBundle } from "../bundle.ts";
 import { EvidenceError, EvidenceValidationError } from "../errors.ts";
@@ -45,6 +46,8 @@ import {
   collectGitProvenance,
   resolveRunnerKind,
 } from "../provenance.ts";
+import { QueueExecutor } from "../queue/executor.ts";
+import { FileJobQueue } from "../queue/file-queue.ts";
 import { parseMeta, type Tier } from "../schema.ts";
 import {
   askBatch,
@@ -192,6 +195,16 @@ export interface CertifyOptions {
   expiresHours?: number;
   /** Where to write the certification; default `<bundle>/certification.json`. */
   certOut?: string;
+  /**
+   * Route gpu-tier analyzers through a resident GPU worker draining this queue
+   * root (`evidence:gpu-queue worker --root <dir>`) instead of running them
+   * inline, so one model load is shared across every screenshot. Only takes
+   * effect at tier `gpu`/`full`; when no worker produces a result the executor
+   * degrades to an honest `skipped-missing-tool` record, never a fabrication.
+   */
+  gpuQueueRoot?: string;
+  /** How long the queue executor waits for a worker result before an honest skip. */
+  gpuQueueTimeoutMs?: number;
   /** Test matrix runner; default spawns `packages/scripts/run-all-tests.mjs`. */
   runMatrix?: MatrixRunner;
   /** Env for vision-QA backend resolution + provenance; default `process.env`. */
@@ -455,6 +468,27 @@ export function mergeReviewerVerdicts(
   );
 }
 
+/**
+ * Build the {@link QueueExecutor} that offloads gpu-tier analyzers to a resident
+ * worker, or `undefined` to keep the inline path. Returns an executor only when
+ * a queue root is configured AND the run tier actually has gpu-tier work — a
+ * queue at cpu tier would just be dead weight, and inline (the default) already
+ * emits the correct `skipped-tier`/`skipped-missing-tool` records there.
+ */
+export function resolveGpuQueueExecutor(
+  tier: Tier,
+  options: CertifyOptions,
+): AnalyzerExecutor | undefined {
+  if (options.gpuQueueRoot === undefined) return undefined;
+  if (tier !== "gpu" && tier !== "full") return undefined;
+  const queue = new FileJobQueue(path.resolve(options.gpuQueueRoot));
+  return new QueueExecutor(queue, {
+    ...(options.gpuQueueTimeoutMs !== undefined
+      ? { resultTimeoutMs: options.gpuQueueTimeoutMs }
+      : {}),
+  });
+}
+
 function resolveReviewer(options: CertifyOptions): CertificationReviewer {
   const reviewer = options.reviewer ?? options.reviewerVerdicts?.reviewer;
   if (reviewer === undefined) {
@@ -570,16 +604,24 @@ export async function orchestrateCertify(
     );
 
     const analyzeInputs = bundle.artifacts;
+    const executor = resolveGpuQueueExecutor(tier, options);
     const analysis = await analyzeArtifacts(bundle.dir, analyzeInputs, {
       tier,
       bundle,
+      ...(executor !== undefined ? { executor } : {}),
     });
+    const analyzeVia =
+      executor !== undefined
+        ? ` (gpu tier via queue worker at ${options.gpuQueueRoot})`
+        : "";
     steps.push({
       step: "analyze",
       status: "ran",
-      detail: `${analysis.subjects.length} subject(s) analyzed at tier ${tier}`,
+      detail: `${analysis.subjects.length} subject(s) analyzed at tier ${tier}${analyzeVia}`,
     });
-    io.out(`  analyze: ${analysis.subjects.length} subject(s) at tier ${tier}`);
+    io.out(
+      `  analyze: ${analysis.subjects.length} subject(s) at tier ${tier}${analyzeVia}`,
+    );
 
     steps.push(await runVisionQaPass(bundle, env, io));
 

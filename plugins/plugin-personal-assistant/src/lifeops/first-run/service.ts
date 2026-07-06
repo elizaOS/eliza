@@ -31,10 +31,7 @@ import {
   DEFAULT_MORNING_WINDOW,
   parseCategories,
   parsePreferredName,
-  parseRelationships,
-  parseTimeWindow,
   parseTimezone,
-  type RelationshipAnswerEntry,
   validateChannel,
 } from "./questions.js";
 import { partialAnswersFromFacts } from "./replay.js";
@@ -174,9 +171,31 @@ function flattenFacts(facts: OwnerFacts): FirstRunFlatFacts {
   return flat;
 }
 
+/**
+ * Provenance for a fact the owner explicitly stated in first-run (their name,
+ * their nudge channel). These are genuine user choices and are safe to treat
+ * as authoritative.
+ */
 function makeFirstRunProvenance(note?: string): OwnerFactProvenance {
   const provenance: OwnerFactProvenance = {
     source: "first_run",
+    recordedAt: new Date().toISOString(),
+  };
+  if (note) provenance.note = note;
+  return provenance;
+}
+
+/**
+ * Provenance for a fact first-run INFERRED rather than asked — the device
+ * timezone and the morning/evening windows. Stamping these `agent_inferred`
+ * (never `first_run`) is load-bearing: `window-learning.ts` treats
+ * `first_run`/`profile_save` windows as user-owned and refuses to refine them,
+ * so a first-run window stamped `first_run` would permanently freeze the
+ * learner. `agent_inferred` keeps the observe→learn loop live (#14691).
+ */
+function makeInferredProvenance(note?: string): OwnerFactProvenance {
+  const provenance: OwnerFactProvenance = {
+    source: "agent_inferred",
     recordedAt: new Date().toISOString(),
   };
   if (note) provenance.note = note;
@@ -406,6 +425,10 @@ export class FirstRunService {
       input.channel ?? "in_app",
       this.runtime,
     );
+    // The windows are DERIVED (wake+5h heuristic + a default evening), and the
+    // timezone is the device zone — all inferred, none typed by the owner. They
+    // are stamped `agent_inferred` so `window-learning` keeps refining them from
+    // observed activity instead of being frozen out by user-owned provenance.
     const factsPatch: OwnerFactsPatch = {
       morningWindow,
       timezone,
@@ -414,7 +437,7 @@ export class FirstRunService {
     };
     const facts = await this.factStore.update(
       factsPatch,
-      makeFirstRunProvenance("defaults path: wake-time answer"),
+      makeInferredProvenance("defaults path: inferred from wake time + device"),
     );
 
     const pack = buildDefaultsPack({
@@ -486,16 +509,9 @@ export class FirstRunService {
 
     const finalized = await finalizeCustomizeAnswers(merged, this.runtime);
 
-    const factsPatch: OwnerFactsPatch = {
-      preferredName: finalized.preferredName,
-      timezone: finalized.timezone,
-      morningWindow: finalized.morningWindow,
-      eveningWindow: finalized.eveningWindow,
-      preferredNotificationChannel: finalized.channel,
-    };
-    const facts = await this.factStore.update(
-      factsPatch,
-      makeFirstRunProvenance("customize path: completed questionnaire"),
+    const facts = await this.writeFirstRunFacts(
+      finalized,
+      "customize path: owner-stated name + channel",
     );
 
     const pack = buildDefaultsPack({
@@ -512,9 +528,10 @@ export class FirstRunService {
         await this.scheduleAndMark(runner, input, seededAtIso),
       );
     }
-    // Categories that gate followups would create per-relationship watcher
-    // tasks via the followup-starter pack. Here we just record the
-    // selection on the answers; the pack reads those facts at boot.
+    // Categories that gate followups drive per-relationship watcher tasks via
+    // the followup-starter pack, which reads the recorded selection at boot.
+    // Relationships themselves are discovered passively through the
+    // entity/relationship graph — never typed into a list here (#14691).
 
     const completed = await this.stateStore.complete();
     const warnings: string[] = [];
@@ -569,16 +586,9 @@ export class FirstRunService {
     }
 
     const finalized = await finalizeCustomizeAnswers(merged, this.runtime);
-    const factsPatch: OwnerFactsPatch = {
-      preferredName: finalized.preferredName,
-      timezone: finalized.timezone,
-      morningWindow: finalized.morningWindow,
-      eveningWindow: finalized.eveningWindow,
-      preferredNotificationChannel: finalized.channel,
-    };
-    const facts = await this.factStore.update(
-      factsPatch,
-      makeFirstRunProvenance("replay path: refreshed answers"),
+    const facts = await this.writeFirstRunFacts(
+      finalized,
+      "replay path: refreshed name + channel",
     );
 
     // Re-emit the defaults pack with the same idempotency keys so the runner
@@ -616,6 +626,30 @@ export class FirstRunService {
   async resetState(): Promise<void> {
     await this.stateStore.reset();
     await this.seededStore.reset();
+  }
+
+  /**
+   * Persist the customize/replay facts, splitting them by real provenance:
+   * the name and nudge-channel are owner-stated (`first_run`); the timezone is
+   * the device zone the agent inferred (`agent_inferred`). Windows are NOT
+   * written here — they belong to the observed-activity learner, and stamping
+   * them `first_run` would freeze it (#14691). Returns the merged facts.
+   */
+  private async writeFirstRunFacts(
+    finalized: FinalizedCustomizeAnswers,
+    note: string,
+  ): Promise<OwnerFacts> {
+    await this.factStore.update(
+      {
+        preferredName: finalized.preferredName,
+        preferredNotificationChannel: finalized.channel,
+      },
+      makeFirstRunProvenance(note),
+    );
+    return this.factStore.update(
+      { timezone: finalized.timezone },
+      makeInferredProvenance("device timezone (inferred, agent may confirm)"),
+    );
   }
 
   private resolveTimezone(): string {
@@ -677,15 +711,16 @@ async function persistCustomizePartials(
 }
 
 interface CustomizeQuestionState {
-  id:
-    | "preferredName"
-    | "timezoneAndWindows"
-    | "categories"
-    | "channel"
-    | "relationships";
+  id: "preferredName" | "categories" | "channel";
   prompt: string;
 }
 
+/**
+ * The customize flow only blocks on facts the owner must actually state:
+ * their name, which categories to enable, and their nudge channel. Timezone
+ * (device-inferred) and morning/evening windows (activity-learned) are never
+ * blocking questions — see the module header on {@link FIRST_RUN_QUESTIONS}.
+ */
 function nextCustomizeQuestion(
   answers: Record<string, unknown>,
 ): CustomizeQuestionState | null {
@@ -693,17 +728,6 @@ function nextCustomizeQuestion(
     return {
       id: "preferredName",
       prompt: "What should I call you?",
-    };
-  }
-  if (
-    !parseTimezone(answers.timezone) ||
-    !parseTimeWindow(answers.morningWindow) ||
-    !parseTimeWindow(answers.eveningWindow)
-  ) {
-    return {
-      id: "timezoneAndWindows",
-      prompt:
-        "What time zone are you in, and what counts as your morning / evening? (Defaults: morning 06:00–11:00, evening 18:00–22:00.)",
     };
   }
   if (parseCategories(answers.categories) === null) {
@@ -720,17 +744,6 @@ function nextCustomizeQuestion(
         "Where do you want me to nudge you? (in_app, push, imessage, discord, telegram)",
     };
   }
-  const categories = parseCategories(answers.categories) ?? [];
-  if (
-    categories.includes("follow-ups") &&
-    parseRelationships(answers.relationships) === null
-  ) {
-    return {
-      id: "relationships",
-      prompt:
-        "List 3–5 important relationships and a default cadence (e.g. 'Pat — 14 days; Sam — weekly').",
-    };
-  }
   return null;
 }
 
@@ -743,14 +756,16 @@ async function finalizeCustomizeAnswers(
   runtime: IAgentRuntime,
 ): Promise<FinalizedCustomizeAnswers> {
   const preferredName = parsePreferredName(answers.preferredName) ?? "";
-  const timezone = parseTimezone(answers.timezone) ?? "UTC";
-  const morningWindow =
-    parseTimeWindow(answers.morningWindow) ?? DEFAULT_MORNING_WINDOW;
-  const eveningWindow =
-    parseTimeWindow(answers.eveningWindow) ?? DEFAULT_EVENING_WINDOW;
+  // Timezone is the device zone, threaded in as the inferred `timezone` input;
+  // absent it, the host zone is the honest best-effort (never fabricated).
+  const timezone = parseTimezone(answers.timezone) ?? resolveDefaultTimeZone();
+  // Windows are learned, not asked. These effective values only seed the
+  // initial default pack's schedule; they are never persisted as owner facts by
+  // the customize path (see writeFirstRunFacts).
+  const morningWindow = DEFAULT_MORNING_WINDOW;
+  const eveningWindow = DEFAULT_EVENING_WINDOW;
   const categories = parseCategories(answers.categories) ?? [];
   const validation = await validateChannel(answers.channel, runtime);
-  const relationships = parseRelationships(answers.relationships) ?? undefined;
   const finalized: FinalizedCustomizeAnswers = {
     preferredName,
     timezone,
@@ -761,7 +776,5 @@ async function finalizeCustomizeAnswers(
     channelFallbackToInApp: validation.fallbackToInApp,
   };
   if (validation.warning) finalized.channelWarning = validation.warning;
-  if (relationships)
-    finalized.relationships = relationships as RelationshipAnswerEntry[];
   return finalized;
 }

@@ -11,6 +11,7 @@ export type {
   GetLifeOpsHealthSummaryRequest,
   LifeOpsActivitySignal,
   LifeOpsActivitySignalSource,
+  LifeOpsActivitySignalSourceName,
   LifeOpsAwakeProbability,
   LifeOpsAwakeProbabilityContributor,
   LifeOpsAwakeProbabilitySource,
@@ -89,6 +90,8 @@ export type {
 } from "./lifeops.js";
 
 export {
+  isBuiltinActivitySignalSource,
+  LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
   LIFEOPS_CIRCADIAN_STATES,
   LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
   LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,

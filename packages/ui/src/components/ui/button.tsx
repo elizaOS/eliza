@@ -5,6 +5,14 @@
  * `buttonVariants` rather than restyling their own buttons. `asChild` renders
  * the styling onto a Radix Slot child so links can adopt button appearance.
  * Accent-orange resting → darker-orange hover per the brand hover system.
+ *
+ * On coarse-pointer (touch) surfaces the compact sizes compose a 44px hit floor
+ * (`pointer-coarse:min-h/min-w-touch` = `--min-touch-target`) so the rendered
+ * tap target meets the Apple-HIG minimum the tap-target-geometry gate enforces,
+ * without enlarging the fine-pointer (mouse) resting look — the glyph keeps its
+ * declared size; only the clickable box grows. `min-*` composes with a caller's
+ * `h-*`/`w-*` override, so a shrunk icon button (e.g. the chat header's
+ * `h-9 w-9`) still reaches the floor on touch.
  */
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -31,11 +39,13 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-sm px-3 py-1.5",
+        default:
+          "h-10 px-4 py-2 pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        sm: "h-9 rounded-sm px-3 py-1.5 pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
         lg: "h-11 rounded-sm px-8 py-2.5",
-        icon: "h-10 w-10",
-        "icon-sm": "h-8 w-8",
+        icon: "h-10 w-10 pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        "icon-sm":
+          "h-8 w-8 pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
         "icon-lg": "h-11 w-11",
       },
     },

@@ -63,6 +63,7 @@ import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
+import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
@@ -113,6 +114,7 @@ import {
 } from "./navigation";
 import { applyLaunchConnection } from "./platform";
 import { isIOS, isNative } from "./platform/init";
+import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "./platform/standalone-bottom-reclaim";
 import { RetainedLazyComponent } from "./retained-lazy";
 import {
   type ActionNotice,
@@ -750,14 +752,12 @@ function DynamicPluginPage({ resolved }: { resolved: ResolvedDynamicPage }) {
   if (resolved.registration) {
     return <RegisteredAppShellPage registration={resolved.registration} />;
   }
-  // No bundled registration — display a lightweight loading fallback
-  // so the shell stays responsive. Plugins that ship bundled components
-  // should call `registerAppShellPage` at boot to avoid this path.
-  return (
-    <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
-      Loading {resolved.id}…
-    </div>
-  );
+  // No bundled registration yet: the tab declared a `componentExport` but no
+  // plugin has called `registerAppShellPage`. Registration may still arrive on
+  // the boot idle path (a `registryVersion` bump re-resolves this page and the
+  // branch above takes over); if it never does, the fallback degrades from
+  // loading to a designed error state instead of an unbounded spinner.
+  return <DynamicPluginFallback id={resolved.id} />;
 }
 
 function WalletInventoryPage() {
@@ -2725,16 +2725,19 @@ export function App() {
               // very bottom edge; opaque dark elsewhere as the FOUC guard.
               renderSharedAppBackground ? "bg-transparent" : "bg-bg",
             )}
-            // BOTTOM-BAR ROOT CAUSE (device r5): this `fixed inset-0` floor is a
-            // fixed descendant of the fixed body, so its `bottom: 0` anchors to
-            // the ICB that COLLAPSES to the small/layout viewport on the
-            // installed iOS standalone PWA (~59px short of the true 100lvh
-            // bottom). On OPAQUE routes it then stops short and the launch-bg
-            // strip shows below it; on wallpaper routes it is transparent so the
-            // (now-reclaimed) wallpaper owns the edge. Drop it by the same
-            // collapse delta the composer + wallpaper use so the FOUC guard
-            // reaches the physical bottom too. No-op wherever 100lvh === 100dvh.
-            style={{ bottom: "calc(-1 * max(0px, 100lvh - 100dvh))" }}
+            // BOTTOM-BAR ROOT CAUSE (device r6, JS-MEASURED cure): this
+            // `fixed inset-0` floor is a fixed descendant of the fixed body, so
+            // its `bottom: 0` anchors to the ICB that COLLAPSES to the
+            // small/layout viewport on the installed iOS standalone PWA (~59px
+            // short of the true bottom). On OPAQUE routes it then stops short
+            // and the launch-bg strip shows below it; on wallpaper routes it is
+            // transparent so the (now-reclaimed) wallpaper owns the edge. Drop
+            // it by the MEASURED collapse gap (`--standalone-bottom-reclaim`,
+            // set in JS) the composer + wallpaper use so the FOUC guard reaches
+            // the physical bottom too. The prior `max(0px, 100lvh - 100dvh)`
+            // CSS-unit calc was a NO-OP on device (collapsed ICB resolves
+            // lvh === dvh). Var is a hard 0 off-standalone.
+            style={{ bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET }}
           />
           {/* The unified app background, mounted once here so it persists
               seamlessly across shared-background routes. It keeps the

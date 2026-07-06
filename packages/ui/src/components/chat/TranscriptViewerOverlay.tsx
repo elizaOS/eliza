@@ -507,7 +507,11 @@ export function TranscriptViewerOverlay({
                 <track kind="captions" />
               </audio>
               <div className="flex items-center gap-1 text-xs text-muted">
-                <FileAudio className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} aria-hidden />
+                <FileAudio
+                  className="h-3.5 w-3.5 shrink-0"
+                  strokeWidth={1.5}
+                  aria-hidden
+                />
                 <span className="mr-1">Recording</span>
                 <Button
                   onClick={handleDownloadAudio}
@@ -603,7 +607,10 @@ export function TranscriptViewerOverlay({
             className={cn(copyStatus === "failed" && "text-danger")}
           >
             {copyStatus === "copied" ? (
-              <Check className="mr-1.5 h-4 w-4 text-status-success" strokeWidth={1.5} />
+              <Check
+                className="mr-1.5 h-4 w-4 text-status-success"
+                strokeWidth={1.5}
+              />
             ) : (
               <Copy className="mr-1.5 h-4 w-4" strokeWidth={1.5} />
             )}
@@ -632,7 +639,8 @@ export function TranscriptViewerOverlay({
               onClick={handleOpenInTranscripts}
               data-testid="transcript-open-in-transcripts"
             >
-              <Headphones className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Open in Transcripts
+              <Headphones className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Open
+              in Transcripts
             </Button>
           ) : null}
           {resolvedId ? (
