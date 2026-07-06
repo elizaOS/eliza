@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for link docker local app packages mjs. */
+/** Links workspace packages into the prebuilt agent Docker image. */
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -53,7 +53,6 @@ const localPackages = [
   "eliza/packages/auth",
   "eliza/packages/logger",
   "eliza/packages/security",
-  "eliza/packages/elizaos",
   "eliza/packages/app-core",
   "eliza/packages/cloud/sdk",
   "eliza/packages/shared",
