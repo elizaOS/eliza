@@ -2,10 +2,11 @@
 #
 # Executes the executive-assistant, connector certification, plugin-health, and
 # app-control scenarios against a live LLM runtime with real connector
-# credentials and uploads the JSON report. Scheduled/default dispatch runs are
-# report-only while this catalog is still being hardened; manual dispatch can opt
-# into failing when any scenario fails or the aggregate LLM-judge score falls below
-# LIFEOPS_JUDGE_THRESHOLD. Missing setup prerequisites still fail loudly.
+# credentials and uploads the JSON report. Scheduled runs are enforcing: once the
+# runner reaches scenario execution, any scenario failure or aggregate LLM-judge
+# score below LIFEOPS_JUDGE_THRESHOLD fails the lane. Manual dispatch can still opt
+# into report-only mode while debugging by leaving `enforce_gate` false. Missing
+# setup prerequisites fail loudly and still upload a placeholder report artifact.
 #
 # Required repo secrets (self-documented):
 #   LLM provider (at least one):
@@ -35,7 +36,7 @@
 # Optional:
 #   LIFEOPS_JUDGE_THRESHOLD (workflow input, default 0.8)
 #   SCENARIO_FILTER        (comma-separated scenario ids, default all)
-#   SCENARIO_ENFORCE_GATE  (workflow input, default false)
+#   SCENARIO_ENFORCE_GATE  (schedule: enforced; manual input default false)
 #   SKIP_REASON            (required if SCENARIO_SKIP is set)
 #
 # 1Password vault: this workflow's plain `*_API_KEY` secrets are sourced from the
@@ -113,6 +114,28 @@ jobs:
         run: |
           test -f packages/scenario-runner/src/cli.ts || \
             { echo "scenario-runner CLI missing"; exit 1; }
+
+      - name: Prepare live scenario report placeholder
+        run: |
+          mkdir -p artifacts/scenario-runs/live
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const report = {
+            schema: "eliza_live_scenario_setup_v1",
+            status: "setup_not_completed",
+            generatedAt: new Date().toISOString(),
+            note:
+              "Placeholder written before build/setup. If this file is uploaded unchanged, the workflow failed before scenario execution and no live model trajectory was produced.",
+            scenarios: [],
+            totalCount: 0,
+            passedCount: 0,
+            failedCount: 0
+          };
+          fs.writeFileSync(
+            "artifacts/lifeops-scenario-report.json",
+            `${JSON.stringify(report, null, 2)}\n`,
+          );
+          NODE
 
       - name: Build live scenario runtime packages
         id: build
@@ -246,7 +269,7 @@ jobs:
           # Run controls
           SCENARIO_FILTER: ${{ inputs.scenario_filter }}
           LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
-          SCENARIO_ENFORCE_GATE: ${{ inputs.enforce_gate && '1' || '0' }}
+          SCENARIO_ENFORCE_GATE: ${{ github.event_name == 'schedule' && '1' || (inputs.enforce_gate && '1' || '0') }}
           SKIP_REASON: ${{ inputs.skip_reason }}
           REPORT_PATH: artifacts/lifeops-scenario-report.json
           RUN_DIR: artifacts/scenario-runs/live
@@ -270,7 +293,7 @@ jobs:
           SCENARIO_ROOT: plugins/plugin-health/test/scenarios
           SCENARIO_FILTER: ${{ inputs.scenario_filter }}
           LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
-          SCENARIO_ENFORCE_GATE: ${{ inputs.enforce_gate && '1' || '0' }}
+          SCENARIO_ENFORCE_GATE: ${{ github.event_name == 'schedule' && '1' || (inputs.enforce_gate && '1' || '0') }}
           SKIP_REASON: ${{ inputs.skip_reason }}
           REPORT_PATH: artifacts/plugin-health-scenario-report.json
           RUN_DIR: artifacts/scenario-runs/plugin-health
@@ -296,7 +319,7 @@ jobs:
           SCENARIO_ROOT: plugins/plugin-app-control/test/scenarios
           SCENARIO_FILTER: ${{ inputs.scenario_filter }}
           LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
-          SCENARIO_ENFORCE_GATE: ${{ inputs.enforce_gate && '1' || '0' }}
+          SCENARIO_ENFORCE_GATE: ${{ github.event_name == 'schedule' && '1' || (inputs.enforce_gate && '1' || '0') }}
           SKIP_REASON: ${{ inputs.skip_reason }}
           REPORT_PATH: artifacts/app-control-scenario-report.json
           RUN_DIR: artifacts/scenario-runs/app-control
