@@ -143,6 +143,7 @@ export const DEFAULT_SCENARIO_LANE = "live-only";
 
 const SCENARIO_LANES = new Set(["pr-deterministic", "live-only"]);
 const SCENARIO_TIERS = new Set(["T1", "T2", "T3", "T4"]);
+const SCENARIO_STATUSES = new Set(["active", "pending"]);
 
 /** Resolve a scenario's effective lane, applying {@link DEFAULT_SCENARIO_LANE}. */
 export function scenarioLane(value) {
@@ -170,6 +171,19 @@ export function scenarioTier(value) {
     );
   }
   return tier;
+}
+
+function validateScenarioStatus(value) {
+  const status = value?.status;
+  if (status === undefined) {
+    return undefined;
+  }
+  if (!SCENARIO_STATUSES.has(status)) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has invalid status "${status}"; expected one of ${[...SCENARIO_STATUSES].join(", ")}`,
+    );
+  }
+  return status;
 }
 
 /**
@@ -217,6 +231,8 @@ export function scenario(value) {
     scenarioLane(value);
     // Validate optional LifeOps/persona tier metadata when authored.
     scenarioTier(value);
+    // Validate pending/active inventory status before loader filtering relies on it.
+    validateScenarioStatus(value);
     // Validate the deferral shape (and lane compatibility) eagerly too.
     scenarioDeferral(value);
   }
