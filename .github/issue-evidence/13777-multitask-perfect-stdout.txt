@@ -1,7 +1,0 @@
-[multitask] harness=perfect isolation=shared_runtime
-[multitask] N=1   completed=10/10 mean_score=1.000 starved=0 jain=1.000
-[multitask] N=5   completed=10/10 mean_score=1.000 starved=0 jain=1.000
-[multitask] N=10  completed=10/10 mean_score=1.000 starved=0 jain=1.000
-[multitask] interference n5_minus_n1=+0.000
-[multitask] interference n10_minus_n1=+0.000
-[multitask] wrote /tmp/mtb_evidence/multitask_20260705T022814Z.json

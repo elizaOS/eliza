@@ -21,19 +21,19 @@ packages/ui/src/components/chat/widgets/__e2e__/output-wallet/
 packages/ui/src/components/permissions/__e2e__/output-permission-priming/
 # View-lifecycle e2e output (screenshots + webm + telemetry — regenerate via test:view-lifecycle-e2e)
 packages/ui/src/components/views/__e2e__/output-view-lifecycle/
-# Desktop bottom-bar e2e output (screenshots + webm — regenerate via test:bottombar-e2e; committed evidence lives in .github/issue-evidence/9953-windows-bottom-bar/)
+# Desktop bottom-bar e2e output (screenshots + webm — regenerate via test:bottombar-e2e)
 packages/ui/src/components/shell/__e2e__/output-bottombar/
-# Connector card e2e output (screenshots + bundles — regenerate via test:connectors-e2e; committed evidence lives in .github/issue-evidence/10705-connector-config-co-render/)
+# Connector card e2e output (screenshots + bundles — regenerate via test:connectors-e2e)
 packages/ui/src/components/pages/__e2e__/output-connectors/
 # Chat infinite-scroll e2e output (screenshots + request/assertion logs)
 packages/ui/src/components/pages/__e2e__/output-infinite-scroll/
-# Resize-handles e2e output (screenshots + html bundle — regenerate via the composites __e2e__ runner; committed evidence lives in .github/issue-evidence/11144-spatial-chrome-gestures/)
+# Resize-handles e2e output (screenshots + html bundle — regenerate via the composites __e2e__ runner)
 packages/ui/src/components/composites/__e2e__/output-resize-handles/
-# Launcher gesture-loop e2e output (webm videos + html bundle + traces — regenerate via test:launcher-loop-e2e; committed evidence lives in .github/issue-evidence/12179-web-loop/)
+# Launcher gesture-loop e2e output (webm videos + html bundle + traces — regenerate via test:launcher-loop-e2e)
 packages/ui/src/components/shell/__e2e__/output-launcher-loop/
-# Activity-feedback e2e output (screenshots + esbuild html bundle — regenerate via test:activity-feedback-e2e; committed evidence lives in .github/issue-evidence/13535-agent-activity-feedback/)
+# Activity-feedback e2e output (screenshots + esbuild html bundle — regenerate via test:activity-feedback-e2e)
 packages/ui/src/components/chat/__e2e__/output-activity-feedback/
-# Chat-widget e2e output (task-pipeline / orchestrator-accounts esbuild html bundles + screenshots — regenerate via test:task-pipeline-e2e / test:orchestrator-accounts-e2e; committed evidence lives in .github/issue-evidence/13536-pipeline-activity-inline/)
+# Chat-widget e2e output (task-pipeline / orchestrator-accounts esbuild html bundles + screenshots — regenerate via test:task-pipeline-e2e / test:orchestrator-accounts-e2e)
 packages/ui/src/components/chat/widgets/__e2e__/output/
 
 .next/

@@ -1,3 +1,0 @@
-BEFORE (node:test import) — vitest collects zero:
- Test Files  1 passed (1)
-      Tests  no tests
