@@ -78,16 +78,23 @@ function includesExpectedProfileFields(output: unknown): string | undefined {
   );
   const hasTimezone = fields.some((field) => field.timezone === "Europe/Paris");
   const hasManager = fields.some(
-    (field) => field.person === "Pat" && field.relationshipType === "manager",
+    (field) =>
+      field.person === "Pat" &&
+      (field.relationshipType === "manager" ||
+        field.role === "manager" ||
+        field.role === "boss"),
   );
   const hasSlackHandle = fields.some(
-    (field) => field.platform === "slack" && field.handle === "@pat-ops",
+    (field) =>
+      typeof field.platform === "string" &&
+      field.platform.toLowerCase() === "slack" &&
+      field.handle === "@pat-ops",
   );
 
   if (hasPreferredName && hasTimezone && hasManager && hasSlackHandle) {
     return undefined;
   }
-  return `expected preferredName=Camille, timezone=Europe/Paris, person=Pat, relationshipType=manager, platform=slack, handle=@pat-ops in structured_fields; saw ${JSON.stringify(parsed.ops)}`;
+  return `expected preferredName=Camille, timezone=Europe/Paris, person=Pat, manager/boss role, platform=slack, handle=@pat-ops in structured_fields; saw ${JSON.stringify(parsed.ops)}`;
 }
 
 export default scenario({

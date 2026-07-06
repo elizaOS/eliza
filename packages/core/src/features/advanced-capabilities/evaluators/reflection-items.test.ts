@@ -282,6 +282,36 @@ describe("factExtractor tolerant parsing (#11235)", () => {
 		});
 	});
 
+	it("accepts fenced JSON text that uses type as the op discriminator", () => {
+		const parsed = parseExtractorOutputTolerant(`\`\`\`json
+{
+  "ops": [
+    {
+      "type": "add_durable",
+      "claim": "User's preferred name is Camille and timezone is Europe/Paris.",
+      "category": "identity",
+      "keywords": ["name", "camille", "timezone", "europe/paris"],
+      "structured_fields": {
+        "preferredName": "Camille",
+        "timezone": "Europe/Paris"
+      }
+    }
+  ]
+}
+\`\`\``);
+
+		expect(parsed?.ops).toEqual([
+			expect.objectContaining({
+				op: "add_durable",
+				category: "identity",
+				structured_fields: {
+					preferredName: "Camille",
+					timezone: "Europe/Paris",
+				},
+			}),
+		]);
+	});
+
 	it("keeps valid ops when one op is malformed, and warns about the drop", () => {
 		// The evaluator parse contract (`parse?(output): TOutput | null`) has no
 		// runtime/logger, so the drop MUST be logged where it is computed —

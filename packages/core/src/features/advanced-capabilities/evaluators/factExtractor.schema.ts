@@ -159,6 +159,35 @@ export const ExtractorOutputSchema = z.object({
 
 export type ExtractorOutput = z.infer<typeof ExtractorOutputSchema>;
 
+function unwrapJsonFence(text: string): string {
+	const trimmed = text.trim();
+	if (!trimmed.startsWith("```")) return trimmed;
+	const firstLineEnd = trimmed.indexOf("\n");
+	if (firstLineEnd < 0) return "";
+	const closingFence = trimmed.lastIndexOf("```");
+	if (closingFence <= firstLineEnd) return "";
+	return trimmed.slice(firstLineEnd + 1, closingFence).trim();
+}
+
+function coerceExtractorOutput(output: unknown): unknown {
+	if (typeof output !== "string") return output;
+	const candidate = unwrapJsonFence(output);
+	if (!candidate) return output;
+	try {
+		return JSON.parse(candidate);
+	} catch {
+		// error-policy:J3 Model output may be plain text; invalid JSON falls through to the typed invalid parse result.
+		return output;
+	}
+}
+
+function normalizeExtractorOp(raw: unknown): unknown {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+	const record = raw as Record<string, unknown>;
+	if (record.op !== undefined || typeof record.type !== "string") return raw;
+	return { ...record, op: record.type };
+}
+
 /**
  * Parse the extractor envelope tolerantly, op-by-op.
  *
@@ -180,12 +209,14 @@ export type ExtractorOutput = z.infer<typeof ExtractorOutputSchema>;
 export function parseExtractorOutputTolerant(
 	output: unknown,
 ): ExtractorOutput | null {
-	const envelope = z.object({ ops: z.array(z.unknown()) }).safeParse(output);
+	const envelope = z
+		.object({ ops: z.array(z.unknown()) })
+		.safeParse(coerceExtractorOutput(output));
 	if (!envelope.success) return null;
 	const ops: ExtractorOp[] = [];
 	const issues: string[] = [];
 	for (const raw of envelope.data.ops) {
-		const parsed = OpSchema.safeParse(raw);
+		const parsed = OpSchema.safeParse(normalizeExtractorOp(raw));
 		if (parsed.success) {
 			ops.push(parsed.data);
 		} else {
