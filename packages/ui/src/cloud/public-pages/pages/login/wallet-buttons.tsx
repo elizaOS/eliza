@@ -118,8 +118,10 @@ async function isPhantomConnector(connector: Connector): Promise<boolean> {
       if (Reflect.get(provider, "isPhantom") === true) return true;
     }
   } catch {
-    // If a connector can't surface its provider yet, treat it as non-Phantom
-    // and let downstream connect() surface any real failure.
+    // error-policy:J6 best-effort provider probe. A connector that can't
+    // surface its provider yet is treated as non-Phantom; the real failure (if
+    // any) surfaces at the downstream connect() the caller runs regardless.
+    return false;
   }
   return false;
 }
