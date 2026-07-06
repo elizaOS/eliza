@@ -2633,6 +2633,7 @@
       "dependencies": {
         "@capacitor/core": "8.4.0",
         "@elizaos/core": "workspace:*",
+        "@elizaos/corpus-tools": "workspace:*",
         "telegraf": "^4.16.3",
       },
       "devDependencies": {

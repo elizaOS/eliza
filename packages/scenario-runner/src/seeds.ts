@@ -2383,6 +2383,10 @@ const GMAIL_FIXTURE_MESSAGE_IDS: Readonly<Record<string, readonly string[]>> = {
   "injection-fake-wire-instruction": ["msg-injection-wire"],
 };
 
+interface GmailFixtureManifestResponse {
+  fixtures?: Record<string, readonly string[]>;
+}
+
 function gmailSeedFixtureNames(seed: GmailInboxSeed): string[] {
   const explicit = readNonEmptyString(seed.fixture);
   const multiple = readStringArray(seed.fixtures);
@@ -2505,6 +2509,17 @@ async function requireMockGmailMessage(
   return `Gmail mock fixture message ${messageId} unavailable (HTTP ${response.status})`;
 }
 
+async function gmailFixtureMessageIds(
+  baseUrl: string,
+): Promise<Record<string, readonly string[]>> {
+  const response = await fetch(`${baseUrl}/__mock/google/gmail/fixtures`);
+  if (!response.ok) {
+    return GMAIL_FIXTURE_MESSAGE_IDS;
+  }
+  const manifest = (await response.json()) as GmailFixtureManifestResponse;
+  return manifest.fixtures ?? GMAIL_FIXTURE_MESSAGE_IDS;
+}
+
 async function seedGmailInbox(
   seed: GmailInboxSeed,
 ): Promise<string | undefined> {
@@ -2520,9 +2535,10 @@ async function seedGmailInbox(
 
   await clearGmailMockFault(mockBaseUrl);
 
+  const fixtureMessageIds = await gmailFixtureMessageIds(mockBaseUrl);
   const requiredIds = new Set(readStringArray(seed.requiredMessageIds));
   for (const fixture of gmailSeedFixtureNames(seed)) {
-    const fixtureIds = GMAIL_FIXTURE_MESSAGE_IDS[fixture];
+    const fixtureIds = fixtureMessageIds[fixture];
     if (!fixtureIds) {
       return `unsupported gmailInbox fixture "${fixture}"`;
     }
