@@ -520,11 +520,16 @@ export async function runCli(
   return aggregate.totals.failed > 0 ? 1 : 0;
 }
 
-if (
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
-  runCli()
+/**
+ * Process boundary shared by direct `src/cli.ts` execution and the published
+ * `bin/eliza-scenarios` shim: runs the CLI and translates the result (or any
+ * thrown failure) into an exit code. Kept separate from `runCli` so tests can
+ * drive the CLI in-process without process.exit.
+ */
+export function runCliAndExit(
+  argv: readonly string[] = process.argv.slice(2),
+): void {
+  runCli(argv)
     .then((code) => {
       process.exit(code);
     })
@@ -539,4 +544,11 @@ if (
       );
       process.exit(1);
     });
+}
+
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  runCliAndExit();
 }
