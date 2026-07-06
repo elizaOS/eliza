@@ -12,6 +12,9 @@ import {
 // Cross-plugin gate coverage must exercise sibling source, not stale dist.
 const aliases = {
   ...providerSdkAliases,
+  "@elizaos/shared": fileURLToPath(
+    new URL("../../packages/shared/src/index.ts", import.meta.url),
+  ),
   "@elizaos/tui": fileURLToPath(
     new URL("../../packages/tui/src/index.ts", import.meta.url),
   ),
