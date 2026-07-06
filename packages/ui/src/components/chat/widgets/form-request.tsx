@@ -11,7 +11,7 @@
  * message), matching the existing message-action callback wiring.
  */
 
-import { type FormEvent, useCallback, useMemo, useState } from "react";
+import { type FormEvent, memo, useCallback, useMemo, useState } from "react";
 import { ConfigFieldErrors } from "../../config-ui/config-control-primitives";
 import { getConfigInputClassName } from "../../config-ui/config-control-primitives.helpers";
 import { runValidation } from "../../config-ui/ui-renderer.helpers";
@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "../../ui/select";
 import type { FormFieldSpec, FormRequestSpec } from "../message-form-parser";
+import { formRequestPropsEqual } from "./widget-equality";
 
 export type { FormFieldSpec, FormRequestSpec };
 
@@ -89,7 +90,15 @@ function toSubmitPayload(values: FormValueRecord): FormValueRecord {
   return copyFormRecord(values);
 }
 
-export function FormRequest({ form, onSubmit }: FormRequestProps) {
+// Memoized on the form spec by value (see `formRequestPropsEqual`). This widget
+// holds user-entered field state internally, so it MUST survive the per-token
+// re-parse of the surrounding message: a referential-only memo would see a
+// fresh `form` object each streamed token and remount, wiping half-filled
+// inputs mid-conversation.
+export const FormRequest = memo(function FormRequest({
+  form,
+  onSubmit,
+}: FormRequestProps) {
   const [values, setValues] = useState<FormValueRecord>(() => {
     const initial = createFormRecord<FormResultValue>();
     for (const field of form.fields) {
@@ -271,4 +280,4 @@ export function FormRequest({ form, onSubmit }: FormRequestProps) {
       </Button>
     </form>
   );
-}
+}, formRequestPropsEqual);
