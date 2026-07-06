@@ -21,6 +21,7 @@ import {
   isIosNativeAgentBootInProgress,
   isTerminalIosNativeAgentBootErrorMessage,
 } from "../api/ios-local-agent-transport";
+import { getAndroidLocalAgentBootStateForUrl } from "../api/android-native-agent-transport";
 import { getBackendStartupTimeoutMs } from "../bridge";
 import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
 import {
@@ -1049,30 +1050,38 @@ export async function runPollingBackend(
       }
       lastErr = err;
       if (isCapacitorNative()) {
-        // Android detached local agent has no in-process engine-phase signal
-        // (unlike the iOS in-process runtime), so a probe hang / connect
-        // failure against the local-agent IPC base means the abstract socket
-        // is not listening YET — i.e. the detached agent is still cold-booting
-        // (a 4 GB device takes ~60s; a first-run-triggered restart doubles
-        // that). Treat that as boot-progress and do NOT burn the consecutive-
-        // failure budget, mirroring the iOS boot-in-progress branch — the
-        // overall `deadline` still bounds the whole phase, and once the socket
-        // comes up the next fast-retry probe (issue #13737) connects. An
-        // actual HTTP error from a LIVE server (a real `status`) is a genuine
-        // failure and still burns the budget below.
-        const androidLocalAgentBooting =
-          isAndroid &&
+        // Android detached local agent now exposes the service-owned boot
+        // state over the Capacitor plugin. That distinguishes a cold boot
+        // from a launcher or child process death before the renderer's HTTP
+        // probe can connect. Older plugins lack that method, so keep the
+        // legacy hang/connect-failure heuristic only when the native state is
+        // unknown. The overall `deadline` still bounds the whole phase.
+        const androidLocalAgentIpc =
           isMobileLocalAgentIpcBase(client.getBaseUrl()) &&
+          (isAndroid || isCapacitorNative());
+        const androidBootState = androidLocalAgentIpc
+          ? await getAndroidLocalAgentBootStateForUrl(client.getBaseUrl())
+          : { state: "unknown" as const };
+        const androidNativeBootProgress =
+          androidBootState.state === "booting" ||
+          androidBootState.state === "restarting" ||
+          androidBootState.state === "listening";
+        const legacyAndroidLocalAgentBooting =
+          androidBootState.state === "unknown" &&
+          androidLocalAgentIpc &&
           (err instanceof ApiHangTimeoutError ||
             (err as { status?: number } | undefined)?.status === undefined);
-        if (isIosNativeAgentBootInProgress() || androidLocalAgentBooting) {
-          // PROGRESS-AWARE budget: the in-process native agent is provably
-          // booting (engine start pending within its own timeout) or alive
-          // (fresh structured-response heartbeat). Boot-time 503s/timeouts
-          // are agent progress, not transport failures — they must not burn
-          // the consecutive-failure budget. Only a terminal engine error or
-          // heartbeat silence lets the streak resume; the overall `deadline`
-          // still bounds the whole phase.
+        if (
+          isIosNativeAgentBootInProgress() ||
+          androidNativeBootProgress ||
+          legacyAndroidLocalAgentBooting
+        ) {
+          // PROGRESS-AWARE budget: native evidence says the local agent is
+          // booting, restarting, or accepting connections. Older Android
+          // plugins that lack the boot-state method keep the legacy HTTP
+          // heuristic so existing builds remain bounded by the overall
+          // deadline. A native `dead` state falls through and burns the
+          // consecutive-failure budget.
           nativeFailureStreakStartedAt = null;
         } else {
           nativeFailureStreakStartedAt ??= Date.now();

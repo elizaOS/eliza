@@ -211,6 +211,7 @@ public class ElizaAgentService extends Service {
     // token via ELIZA_REQUIRE_LOCAL_AUTH=1.
     private static volatile String currentLocalAgentToken;
     private static volatile String currentTerminalRunToken;
+    private static volatile ElizaAgentService activeInstance;
 
     /** Called by the Capacitor agent plugin Android binding. */
     public static String localAgentToken() {
@@ -225,6 +226,70 @@ public class ElizaAgentService extends Service {
      * the dashboard at the pairing screen. Fall back to the recovery file that
      * {@link #writeLocalAgentTokenFile} persists, and cache it for this process.
      */
+    public static JSONObject getLocalAgentBootState(Context context) throws JSONException {
+        ElizaAgentService instance = activeInstance;
+        boolean socketListening = isLocalAgentSocketListening();
+        long launchStartedAtMs = 0L;
+        String status = "unknown";
+        int attempts = 0;
+        boolean hasStartWorker = false;
+        boolean detached = false;
+        if (instance != null) {
+            synchronized (instance.processLock) {
+                status = instance.currentStatus;
+                attempts = instance.restartAttempts;
+                detached = instance.detachedAgentMode;
+                launchStartedAtMs = instance.detachedLaunchStartedAtMs;
+                hasStartWorker = instance.startWorker != null && instance.startWorker.isAlive();
+            }
+        }
+        if (launchStartedAtMs <= 0L && context != null) {
+            launchStartedAtMs = context.getSharedPreferences(EXIT_INFO_PREFS, Context.MODE_PRIVATE)
+                .getLong(DETACHED_LAUNCH_STAMP_KEY, 0L);
+        }
+        long ageMs = launchStartedAtMs > 0L
+            ? Math.max(0L, System.currentTimeMillis() - launchStartedAtMs)
+            : -1L;
+
+        JSONObject result = new JSONObject();
+        if (socketListening) {
+            result.put("state", "listening");
+            result.put("reason", "request socket is accepting connections");
+        } else if ("restarting".equals(status)) {
+            result.put("state", "restarting");
+            result.put("reason", status);
+        } else if (isTerminalBootStatus(status)) {
+            result.put("state", "dead");
+            result.put("reason", status);
+        } else if (hasStartWorker
+                || "starting".equals(status)
+                || (detached && ageMs >= 0L && ageMs < AGENT_BOOT_GRACE_MS)
+                || (ageMs >= 0L && ageMs < AGENT_BOOT_GRACE_MS)) {
+            result.put("state", "booting");
+            result.put("reason", status);
+        } else {
+            result.put("state", "dead");
+            result.put("reason", "local agent service is not booting and the request socket is closed");
+        }
+        if (attempts > 0) {
+            result.put("attempt", attempts);
+        }
+        if (ageMs >= 0L) {
+            result.put("ageMs", ageMs);
+        }
+        result.put("socketListening", socketListening);
+        result.put("serviceActive", instance != null);
+        return result;
+    }
+
+    private static boolean isTerminalBootStatus(String status) {
+        if (status == null) return false;
+        return status.startsWith("agent exited:")
+            || "fatal".equals(status)
+            || status.endsWith("-failed")
+            || status.startsWith("missing-");
+    }
+
     public static String localAgentToken(Context context) {
         String token = currentLocalAgentToken;
         if (token != null && !token.trim().isEmpty()) {
@@ -634,6 +699,7 @@ public class ElizaAgentService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        activeInstance = this;
         ensureNotificationChannel();
 
         Notification notification = buildNotification("Eliza agent", "Starting…");
@@ -775,6 +841,9 @@ public class ElizaAgentService extends Service {
         NotificationManager mgr = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (mgr != null) {
             mgr.cancel(NOTIFICATION_ID);
+        }
+        if (activeInstance == this) {
+            activeInstance = null;
         }
         super.onDestroy();
     }
@@ -2992,7 +3061,7 @@ public class ElizaAgentService extends Service {
      * #startAgentProcess()} to adopt a surviving detached agent instead of
      * killing + restarting it when the service/Activity is recreated.
      */
-    private boolean isLocalAgentSocketListening() {
+    private static boolean isLocalAgentSocketListening() {
         LocalSocket socket = new LocalSocket();
         try {
             socket.connect(new LocalSocketAddress(
