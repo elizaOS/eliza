@@ -201,9 +201,14 @@ function shouldUseSectionSettingsAction(
   const op = typeof rawOp === "string" ? rawOp.trim().toLowerCase() : "";
   if (SECTION_SETTINGS_OPS.has(op)) return true;
   if (op !== "set") return false;
+  // A `set` belongs to the section registry only when it addresses a resolvable
+  // built-in section. A legacy no-section set ({ action:"set", key, value })
+  // parses non-null too (sectionId:null), and routing it to the section handler
+  // would fail with "which section?" — it must stay on the worldSettings
+  // registry branch below.
   return (
-    parseSettingsRequest(options as Record<string, unknown> | undefined) !==
-    null
+    parseSettingsRequest(options as Record<string, unknown> | undefined)
+      ?.sectionId != null
   );
 }
 

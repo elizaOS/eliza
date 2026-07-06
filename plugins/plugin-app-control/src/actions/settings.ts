@@ -152,6 +152,39 @@ const AUTO_TRAINING_KEY: SettingsWritableKey = {
 			: "Auto-training is off. Trajectory counters can still collect data, but automatic training will not start.",
 };
 
+/**
+ * Wallet / browser / computer-use toggles persist as `ui.capabilities.<name>`
+ * in the agent config store — the same field the on-screen Capabilities
+ * switches sync (`client.updateConfig`) and the legacy TOGGLE_CAPABILITY op
+ * writes. Routed through the deep-merging `PUT /api/config` loopback route so
+ * the chat action and the view control are twins on one write path.
+ */
+function makeCapabilityConfigKey(
+	name: "wallet" | "browser" | "computerUse",
+	label: string,
+): SettingsWritableKey {
+	return {
+		description: `Whether the agent's ${label} capability is enabled.`,
+		valueType: "boolean",
+		buildRequest: (enabled) => ({
+			method: "PUT",
+			path: "/api/config",
+			body: { ui: { capabilities: { [name]: enabled } } },
+		}),
+		successText: (enabled) =>
+			enabled
+				? `The ${label} capability is on.`
+				: `The ${label} capability is off.`,
+	};
+}
+
+const WALLET_CAPABILITY_KEY = makeCapabilityConfigKey("wallet", "wallet");
+const BROWSER_CAPABILITY_KEY = makeCapabilityConfigKey("browser", "browser");
+const COMPUTER_USE_CAPABILITY_KEY = makeCapabilityConfigKey(
+	"computerUse",
+	"computer-use",
+);
+
 function readBackupFileName(data: unknown): string | null {
 	if (!data || typeof data !== "object") return null;
 	const backup = (data as { backup?: unknown }).backup;
@@ -353,8 +386,14 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 	capabilities: {
 		kind: "route",
 		summary:
-			"Capability toggles that already have backend settings routes, including automatic training.",
-		keys: { "auto-training": AUTO_TRAINING_KEY },
+			"Capability toggles that already have backend settings routes: wallet, browser, computer use, and automatic training.",
+		keys: {
+			"auto-training": AUTO_TRAINING_KEY,
+			wallet: WALLET_CAPABILITY_KEY,
+			browser: BROWSER_CAPABILITY_KEY,
+			computerUse: COMPUTER_USE_CAPABILITY_KEY,
+			"computer-use": COMPUTER_USE_CAPABILITY_KEY,
+		},
 	},
 	apps: {
 		kind: "unwired",
@@ -760,11 +799,11 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			"REVOKE_APP_PERMISSION",
 		],
 		description:
-			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, turning automatic training on/off via section=capabilities key=auto-training, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, and creating/restoring local agent backups via section=advanced key=create-backup|restore-backup. Restore requires fileName and confirm=true. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
+			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, turning automatic training on/off via section=capabilities key=auto-training, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, and creating/restoring local agent backups via section=advanced key=create-backup|restore-backup. Restore requires fileName and confirm=true. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
 		descriptionCompressed:
 			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, auto-training, app permissions, and local backups",
 		routingHint:
-			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
+			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
 		suppressPostActionContinuation: true,
 
 		parameters: [

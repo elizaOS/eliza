@@ -282,6 +282,57 @@ describe("SETTINGS action: set on an owned route section", () => {
 		});
 	});
 
+	it("dispatches capabilities wallet through the config route (#14703 residual)", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "capabilities", key: "wallet", value: "false" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "PUT",
+			path: "/api/config",
+			body: { ui: { capabilities: { wallet: false } } },
+		});
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "capabilities",
+			key: "wallet",
+			value: false,
+		});
+		expect(texts.join(" ")).toContain("wallet capability is off");
+	});
+
+	it("dispatches capabilities browser on through the config route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result } = await invoke(
+			{ action: "set", section: "capabilities", key: "browser", value: "on" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "PUT",
+			path: "/api/config",
+			body: { ui: { capabilities: { browser: true } } },
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it.each([
+		"computerUse",
+		"computer-use",
+	])("accepts %s as the computer-use capability key", async (key) => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result } = await invoke(
+			{ action: "set", section: "capabilities", key, value: "off" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "PUT",
+			path: "/api/config",
+			body: { ui: { capabilities: { computerUse: false } } },
+		});
+		expect(result?.success).toBe(true);
+	});
+
 	it("surfaces a backend failure instead of fabricating success", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
 			ok: false,

@@ -13,16 +13,29 @@
  * covered by the `live-only` scenarios in
  * `plugins/plugin-app-control/test/scenarios/settings-in-chat-*.scenario.ts`.
  *
+ * Also pins the two `set` branches (#14703): a legacy no-section set
+ * ({ action:"set", key, value }) stays on the worldSettings-registry handler,
+ * while a section-addressed set routes into plugin-app-control's section
+ * registry — asserted against a loopback HTTP stub standing in for the
+ * agent server the section routes call.
+ *
  * Deterministic: real config store on a temp dir, stub runtime, no live model.
  */
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import type {
-  ActionResult,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
+import {
+  type ActionResult,
+  getSalt,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+  type Setting,
+  saltWorldSettings,
+  unsaltWorldSettings,
+  type World,
+  type WorldSettings,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { settingsAction } from "./settings-actions.ts";
@@ -230,6 +243,183 @@ describe("SETTINGS toggle_capability — persists to the real config store", () 
     });
     expect(result.success).toBe(false);
     expect(result.data?.error).toBe("MISSING_ENABLED");
+  });
+});
+
+describe("SETTINGS set — legacy no-section branch (worldSettings registry)", () => {
+  // Seed a real salted registry the way production writes it, so the handler
+  // exercises the genuine unsalt → mutate → salt → updateWorld path.
+  const GREETING_SETTING: Setting = {
+    name: "Greeting",
+    description: "Greeting the agent uses",
+    usageDescription: "Greeting the agent uses",
+    required: false,
+    value: "hi",
+    dependsOn: [],
+  };
+
+  function makeOwnerWorldRuntime(): {
+    runtime: IAgentRuntime;
+    updatedWorlds: World[];
+  } {
+    const salt = getSalt();
+    const world = {
+      id: "world-1",
+      name: "Owner World",
+      agentId: "agent-1",
+      serverId: "server-1",
+      metadata: {
+        ownership: { ownerId: "owner" },
+        settings: saltWorldSettings(
+          { settings: { greeting: GREETING_SETTING } },
+          salt,
+        ),
+      },
+    } as unknown as World;
+    const updatedWorlds: World[] = [];
+    const runtime = {
+      character: {},
+      agentId: "agent-1",
+      getAllWorlds: async () => [world],
+      updateWorld: async (w: World) => {
+        updatedWorlds.push(w);
+      },
+    } as unknown as IAgentRuntime;
+    return { runtime, updatedWorlds };
+  }
+
+  it("routes { action:'set', key, value } to the worldSettings handler and persists (#14703 regression)", async () => {
+    const { runtime, updatedWorlds } = makeOwnerWorldRuntime();
+    const result = (await settingsAction.handler(
+      runtime,
+      OWNER_MESSAGE,
+      undefined,
+      {
+        parameters: { action: "set", key: "greeting", value: "hello" },
+      } as HandlerOptions,
+    )) as ActionResult;
+
+    // The regression routed this to the section handler, which failed with
+    // "Tell me which settings section to change". The legacy branch succeeds
+    // and reports the applied registry write.
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      actionName: "SETTINGS",
+      op: "set",
+      applied: [{ key: "greeting", value: "hello" }],
+    });
+
+    expect(updatedWorlds).toHaveLength(1);
+    const persisted = updatedWorlds[0].metadata?.settings as WorldSettings;
+    const unsalted = unsaltWorldSettings(persisted, getSalt());
+    expect(unsalted.settings?.greeting?.value).toBe("hello");
+  });
+
+  it("still fails with the legacy error shape for an unknown registry key", async () => {
+    const { runtime, updatedWorlds } = makeOwnerWorldRuntime();
+    const result = (await settingsAction.handler(
+      runtime,
+      OWNER_MESSAGE,
+      undefined,
+      {
+        parameters: { action: "set", key: "bogus", value: "x" },
+      } as HandlerOptions,
+    )) as ActionResult;
+    expect(result.success).toBe(false);
+    expect(result.data?.error).toBe("NO_VALID_UPDATES");
+    expect(updatedWorlds).toHaveLength(0);
+  });
+});
+
+describe("SETTINGS set — section-addressed branch (app-control registry)", () => {
+  interface RecordedRequest {
+    method: string | undefined;
+    url: string | undefined;
+    body: unknown;
+  }
+
+  let server: http.Server;
+  let recorded: RecordedRequest[];
+  let priorElizaPort: string | undefined;
+
+  beforeEach(async () => {
+    recorded = [];
+    server = http.createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf-8");
+        recorded.push({
+          method: req.method,
+          url: req.url,
+          body: raw ? JSON.parse(raw) : undefined,
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end("{}");
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("stub server has no port");
+    priorElizaPort = process.env.ELIZA_PORT;
+    process.env.ELIZA_PORT = String(address.port);
+  });
+
+  afterEach(async () => {
+    if (priorElizaPort === undefined) delete process.env.ELIZA_PORT;
+    else process.env.ELIZA_PORT = priorElizaPort;
+    await new Promise<void>((resolve, reject) =>
+      server.close((err) => (err ? reject(err) : resolve())),
+    );
+  });
+
+  it("routes a section-addressed set to app-control's permissions route", async () => {
+    const result = (await invoke({
+      action: "set",
+      section: "permissions",
+      key: "shell",
+      value: "off",
+    })) as ActionResult;
+
+    expect(result.success).toBe(true);
+    expect(recorded).toEqual([
+      {
+        method: "PUT",
+        url: "/api/permissions/shell",
+        body: { enabled: false },
+      },
+    ]);
+    expect(result.values).toMatchObject({
+      section: "permissions",
+      key: "shell",
+      value: false,
+    });
+  });
+
+  it("set section=capabilities key=wallet value=false resolves through the registry (#14703 residual)", async () => {
+    const result = (await invoke({
+      action: "set",
+      section: "capabilities",
+      key: "wallet",
+      value: "false",
+    })) as ActionResult;
+
+    expect(result.success).toBe(true);
+    expect(recorded).toEqual([
+      {
+        method: "PUT",
+        url: "/api/config",
+        body: { ui: { capabilities: { wallet: false } } },
+      },
+    ]);
+    expect(result.values).toMatchObject({
+      section: "capabilities",
+      key: "wallet",
+      value: false,
+    });
   });
 });
 
