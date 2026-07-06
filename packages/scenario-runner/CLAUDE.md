@@ -33,7 +33,7 @@ packages/scenario-runner/
       index.ts               # runFinalCheck — dispatches named final-check type handlers
     types/                   # Supporting internal type files
   test/
-    scenarios/               # 17 deterministic scenario files (*.scenario.ts)
+    scenarios/               # Runner-owned scenarios: deterministic-* PR fixtures plus live-* / live-only coverage
     fixtures/                # Misc test fixtures (e.g. mcp-stdio-fixture.mjs)
 ```
 
