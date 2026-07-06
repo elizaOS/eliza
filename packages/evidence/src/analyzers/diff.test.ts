@@ -12,17 +12,16 @@ import {
   diffChangeAnalyzer,
   diffRegionAnalyzer,
 } from "./diff.ts";
-import {
-  makeTmpDir,
-  rectPng,
-  solidPng,
-} from "./test-fixtures.ts";
+import { makeTmpDir, rectPng, solidPng } from "./test-fixtures.ts";
 import type { AnalyzerContext, AnalyzerInput } from "./types.ts";
 
 const dir = makeTmpDir();
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-const inputFor = (absolutePath: string, path = "visual/x/after.png"): AnalyzerInput => ({
+const inputFor = (
+  absolutePath: string,
+  path = "visual/x/after.png",
+): AnalyzerInput => ({
   entry: {
     path,
     sha256: "0".repeat(64),
@@ -134,7 +133,9 @@ describe("diffRegionAnalyzer", () => {
     const data = result.data as {
       assertions: { label: string; ok: boolean }[];
     };
-    const byLabel = Object.fromEntries(data.assertions.map((a) => [a.label, a.ok]));
+    const byLabel = Object.fromEntries(
+      data.assertions.map((a) => [a.label, a.ok]),
+    );
     expect(byLabel.banner).toBe(true);
     expect(byLabel.header).toBe(true);
   });

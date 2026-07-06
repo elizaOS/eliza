@@ -5,18 +5,16 @@
 // against a local stub HTTP server that asserts the OpenAI-compatible request
 // shape (model, temperature 0, image data URL) and returns a canned completion
 // the client must parse; the real-model path is the gpu lane's live test.
-import { createServer, type Server } from "node:http";
+
 import { rmSync } from "node:fs";
-import { type AddressInfo } from "node:net";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { makeTmpDir, solidPng, textPng } from "../test-fixtures.ts";
-import {
-  TesseractOcrEngine,
-  UnlimitedOcrEngine,
-} from "./engines.ts";
-import { makeOcrAnalyzer, ocrTesseractAnalyzer } from "./ocr.ts";
 import type { AnalyzerContext, AnalyzerInput } from "../types.ts";
+import { TesseractOcrEngine, UnlimitedOcrEngine } from "./engines.ts";
+import { makeOcrAnalyzer, ocrTesseractAnalyzer } from "./ocr.ts";
 
 const dir = makeTmpDir();
 const ctx: AnalyzerContext = { tier: "cpu" };
@@ -76,7 +74,9 @@ describe("ocr.unlimited (GPU client against a stub server)", () => {
             lastBody = JSON.parse(raw);
             res.writeHead(200, { "content-type": "application/json" }).end(
               JSON.stringify({
-                choices: [{ message: { content: "# Screen\nSign in to Eliza" } }],
+                choices: [
+                  { message: { content: "# Screen\nSign in to Eliza" } },
+                ],
               }),
             );
           });

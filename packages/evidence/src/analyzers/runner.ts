@@ -23,13 +23,14 @@ import type { EvidenceBundle } from "../bundle.ts";
 import type { ArtifactEntry, Tier } from "../schema.ts";
 import { ANALYZERS, analyzersForKind, tierRunnable } from "./registry.ts";
 import type {
-  Analyzer,
   AnalysisDocument,
+  Analyzer,
   AnalyzerContext,
   AnalyzerExpectations,
   AnalyzerInput,
   AnalyzerResult,
   BaselineResolver,
+  EmitArtifact,
 } from "./types.ts";
 
 /** Options for {@link analyzeArtifacts}. */
@@ -77,14 +78,6 @@ export async function analyzeArtifacts(
   const analyzers = options.analyzers ?? ANALYZERS;
 
   const subjects: SubjectAnalysis[] = [];
-  const ctx: AnalyzerContext = {
-    tier: options.tier,
-    baselineResolver: options.baselineResolver,
-    expectations: options.expectations,
-    emitArtifact: options.bundle
-      ? makeEmitArtifact(options.bundle, bundleDir)
-      : undefined,
-  };
 
   // A work queue so keyframes emitted while analyzing a video are themselves
   // analyzed in the same pass. Video analyzers run first per subject, so any
@@ -94,7 +87,17 @@ export async function analyzeArtifacts(
     absolutePath: path.join(bundleDir, ...entry.path.split("/")),
   }));
   const emittedKeyframes: AnalyzerInput[] = [];
-  ctx.emitArtifact = wrapEmit(ctx.emitArtifact, emittedKeyframes);
+
+  // The bundle-backed emit both adds the artifact and tees it into the queue's
+  // drain buffer so the runner picks it up. Absent when there is no bundle.
+  const ctx: AnalyzerContext = {
+    tier: options.tier,
+    baselineResolver: options.baselineResolver,
+    expectations: options.expectations,
+    emitArtifact: options.bundle
+      ? wrapEmit(makeEmitArtifact(options.bundle, bundleDir), emittedKeyframes)
+      : undefined,
+  };
 
   const seen = new Set<string>();
   while (queue.length > 0) {
@@ -180,7 +183,7 @@ async function runOne(
 function makeEmitArtifact(
   bundle: EvidenceBundle,
   bundleDir: string,
-): AnalyzerContext["emitArtifact"] {
+): EmitArtifact {
   return async (filePath, emitOptions) => {
     const entry = await bundle.addArtifact(filePath, {
       kind: emitOptions.kind,
@@ -196,11 +199,7 @@ function makeEmitArtifact(
 }
 
 /** Tee emitted artifacts into a queue the runner drains, preserving the emit. */
-function wrapEmit(
-  emit: AnalyzerContext["emitArtifact"],
-  sink: AnalyzerInput[],
-): AnalyzerContext["emitArtifact"] {
-  if (!emit) return undefined;
+function wrapEmit(emit: EmitArtifact, sink: AnalyzerInput[]): EmitArtifact {
   return async (filePath, options) => {
     const input = await emit(filePath, options);
     sink.push(input);

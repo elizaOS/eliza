@@ -55,7 +55,7 @@ export async function perceptualHash(imagePath: string): Promise<string> {
     bits <<= 1n;
     if (block[i] > median) bits |= 1n;
   }
-  return bits.toString(16).padStart(HASH_SIZE * HASH_SIZE / 4, "0");
+  return bits.toString(16).padStart((HASH_SIZE * HASH_SIZE) / 4, "0");
 }
 
 /** Hamming distance between two hex pHashes (count of differing bits). */

@@ -7,6 +7,7 @@
  * runner.
  */
 
+import type { ArtifactKind, Tier } from "../schema.ts";
 import { ariaTreeAnalyzer } from "./aria.ts";
 import { brandRulesAnalyzer } from "./brand.ts";
 import { colorCornersAnalyzer, colorPaletteAnalyzer } from "./color.ts";
@@ -15,7 +16,6 @@ import { videoKeyframesAnalyzer } from "./keyframes.ts";
 import { ocrTesseractAnalyzer, ocrUnlimitedAnalyzer } from "./ocr/ocr.ts";
 import { perceptualHashAnalyzer } from "./phash.ts";
 import type { Analyzer } from "./types.ts";
-import type { ArtifactKind, Tier } from "../schema.ts";
 
 /** Every built-in analyzer. Order is the deterministic run order. */
 export const ANALYZERS: readonly Analyzer[] = [

@@ -264,7 +264,10 @@ export function evaluateRegionExpectations(
   return expectations.map((exp, index) => {
     const left = Math.round(exp.region.x * width);
     const top = Math.round(exp.region.y * height);
-    const right = Math.min(width, Math.round((exp.region.x + exp.region.w) * width));
+    const right = Math.min(
+      width,
+      Math.round((exp.region.x + exp.region.w) * width),
+    );
     const bottom = Math.min(
       height,
       Math.round((exp.region.y + exp.region.h) * height),
@@ -279,7 +282,9 @@ export function evaluateRegionExpectations(
     }
     const observed = total > 0 ? changed / total : 0;
     const ok =
-      exp.kind === "change" ? observed >= CHANGE_FLOOR : observed < CHANGE_FLOOR;
+      exp.kind === "change"
+        ? observed >= CHANGE_FLOOR
+        : observed < CHANGE_FLOOR;
     return {
       label: exp.label ?? `${exp.kind}#${index}`,
       kind: exp.kind,
@@ -307,8 +312,7 @@ export const diffRegionAnalyzer: Analyzer = {
     let changed = 0;
     for (let i = 0; i < mask.length; i++) changed += mask[i];
     const regions = clusterRegions(mask, width, height);
-    const expectedRegions =
-      ctx.expectations?.[input.entry.path]?.regions ?? [];
+    const expectedRegions = ctx.expectations?.[input.entry.path]?.regions ?? [];
     const assertions = evaluateRegionExpectations(
       mask,
       width,
@@ -329,7 +333,9 @@ export const diffRegionAnalyzer: Analyzer = {
 async function resolveBaseline(
   input: AnalyzerInput,
   ctx: AnalyzerContext,
-): Promise<{ ok: true; path: string } | { ok: false; fragment: AnalyzerFragment }> {
+): Promise<
+  { ok: true; path: string } | { ok: false; fragment: AnalyzerFragment }
+> {
   if (!ctx.baselineResolver) {
     return {
       ok: false,

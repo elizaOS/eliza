@@ -38,7 +38,12 @@ describe("perceptualHash stability", () => {
   });
 
   it("a small crop of the same content stays within the same-screen threshold", async () => {
-    const full = await textPng(join(dir, "full.png"), "Ask me anything", 640, 200);
+    const full = await textPng(
+      join(dir, "full.png"),
+      "Ask me anything",
+      640,
+      200,
+    );
     const cropped = join(dir, "cropped.png");
     // Trim ~2% off each edge — the same screen, slightly reframed. A pHash is
     // robust to small reframing, not to arbitrary crops, so the fixture is a

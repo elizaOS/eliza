@@ -5,15 +5,22 @@
 // lack of a baseline), and that video keyframes were emitted and themselves
 // analyzed. When ffmpeg is present the video path is exercised end to end; when
 // absent the video analyzer records skipped-missing-tool.
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+
+import { execFile } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { afterAll, describe, expect, it } from "vitest";
 import { createBundle } from "../bundle.ts";
 import { ffmpegAvailable } from "./keyframes.ts";
 import { analyzeArtifacts } from "./runner.ts";
 import { makeTmpDir, solidPng } from "./test-fixtures.ts";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const scratch = makeTmpDir();
@@ -107,9 +114,7 @@ describe("analyzeArtifacts (runner integration)", () => {
     expect(r["diff.region"].status).toBe("skipped-missing-tool");
 
     // analysis.json landed beside the screenshot and is valid.
-    expect(shotSubject?.documentPath).toBe(
-      `${shotEntry.path}.analysis.json`,
-    );
+    expect(shotSubject?.documentPath).toBe(`${shotEntry.path}.analysis.json`);
     const docOnDisk = join(
       bundle.dir,
       ...(shotSubject?.documentPath as string).split("/"),
@@ -135,9 +140,9 @@ describe("analyzeArtifacts (runner integration)", () => {
       );
       expect(keyframeSubjects.length).toBeGreaterThanOrEqual(2);
       // A keyframe subject gets the image heuristics too.
-      expect(
-        keyframeSubjects[0].document.results["brand.rules"].status,
-      ).toBe("ran");
+      expect(keyframeSubjects[0].document.results["brand.rules"].status).toBe(
+        "ran",
+      );
     }
 
     await bundle.finalize();

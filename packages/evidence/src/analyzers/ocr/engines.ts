@@ -217,7 +217,8 @@ export class UnlimitedOcrEngine implements OcrEngine {
     if (!this.baseUrl) {
       return {
         available: false,
-        reason: "ELIZA_GPU_VISION_URL unset (gpu vision service not configured)",
+        reason:
+          "ELIZA_GPU_VISION_URL unset (gpu vision service not configured)",
       };
     }
     try {
@@ -292,10 +293,7 @@ function resolveAppleVisionScript(): string {
   if (override) return override;
   // packages/evidence/src/analyzers/ocr/engines.ts → repo packages root.
   const here = path.dirname(new URL(import.meta.url).pathname);
-  return path.resolve(
-    here,
-    "../../../../app/scripts/ocr-vision.swift",
-  );
+  return path.resolve(here, "../../../../app/scripts/ocr-vision.swift");
 }
 
 function mimeFromExt(filePath: string): string {

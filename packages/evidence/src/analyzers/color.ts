@@ -8,7 +8,7 @@
  */
 
 import sharp from "sharp";
-import { classifyColor, type ColorBucket, round4 } from "./color-math.ts";
+import { type ColorBucket, classifyColor, round4 } from "./color-math.ts";
 import type { Analyzer, AnalyzerFragment, AnalyzerInput } from "./types.ts";
 
 /** One entry of the dominant-palette result. */
@@ -126,7 +126,9 @@ function meanRgb(
  * is a fraction of the frame so it scales with resolution; a floor keeps it
  * meaningful on tiny keyframes.
  */
-export async function cornerSwatches(imagePath: string): Promise<CornerSwatch[]> {
+export async function cornerSwatches(
+  imagePath: string,
+): Promise<CornerSwatch[]> {
   const meta = await sharp(imagePath).metadata();
   const width = meta.width ?? 0;
   const height = meta.height ?? 0;

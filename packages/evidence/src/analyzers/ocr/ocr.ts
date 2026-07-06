@@ -27,7 +27,10 @@ export interface OcrData {
 }
 
 /** Build an OCR analyzer over `engine` at `tier`, named `ocr.<engine.id>`. */
-export function makeOcrAnalyzer(engine: OcrEngine, tier: Analyzer["tier"]): Analyzer {
+export function makeOcrAnalyzer(
+  engine: OcrEngine,
+  tier: Analyzer["tier"],
+): Analyzer {
   return {
     name: `ocr.${engine.id}`,
     tier,

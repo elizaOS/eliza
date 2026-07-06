@@ -7,8 +7,8 @@ export {
   ariaTreeAnalyzer,
   diffAriaSnapshots,
   normalizeAriaSnapshot,
-  parseAriaSnapshot,
   type PruneOptions,
+  parseAriaSnapshot,
   pruneAriaSnapshot,
 } from "./aria.ts";
 export {
@@ -20,24 +20,24 @@ export {
   evaluateBrand,
 } from "./brand.ts";
 export {
-  classifyColor,
-  type ColorBucket,
-  type ColorFractions,
-  colorFractionsFromRaw,
-  round4,
-} from "./color-math.ts";
-export {
   CORNER_POSITIONS,
+  type CornerPosition,
+  type CornerSwatch,
+  type CornersData,
   colorCornersAnalyzer,
   colorPaletteAnalyzer,
-  type CornerPosition,
-  type CornersData,
-  type CornerSwatch,
   cornerSwatches,
   dominantPalette,
   type PaletteData,
   type PaletteSwatch,
 } from "./color.ts";
+export {
+  type ColorBucket,
+  type ColorFractions,
+  classifyColor,
+  colorFractionsFromRaw,
+  round4,
+} from "./color-math.ts";
 export {
   type ChangeData,
   type ChangedRegion,
@@ -102,5 +102,6 @@ export type {
   AnalyzerResult,
   AnalyzerStatus,
   BaselineResolver,
+  EmitArtifact,
   RegionExpectation,
 } from "./types.ts";

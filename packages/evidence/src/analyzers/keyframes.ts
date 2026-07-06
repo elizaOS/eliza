@@ -98,7 +98,16 @@ export async function extractKeyframes(
   const last = path.join(outDir, "last.png");
   await execFileAsync(
     FFMPEG_BIN,
-    ["-hide_banner", "-loglevel", "error", "-i", videoPath, "-frames:v", "1", first],
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-i",
+      videoPath,
+      "-frames:v",
+      "1",
+      first,
+    ],
     { timeout: 60_000 },
   );
   // Seek to the final frame: read the whole stream and keep only the last.
@@ -156,7 +165,9 @@ export const videoKeyframesAnalyzer: Analyzer = {
       return { status: "skipped-missing-tool", reason: availability.reason };
     }
     const slug = slugForVideo(input.entry.path);
-    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "evidence-keyframes-"));
+    const scratch = fs.mkdtempSync(
+      path.join(os.tmpdir(), "evidence-keyframes-"),
+    );
     try {
       const frames = await extractKeyframes(input.absolutePath, scratch);
       const keyframes: KeyframeRecord[] = [];

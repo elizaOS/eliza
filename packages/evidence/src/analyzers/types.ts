@@ -65,6 +65,19 @@ export interface AnalyzerExpectations {
   regions?: RegionExpectation[];
 }
 
+/**
+ * Emit a derived artifact (e.g. a video keyframe) back into the bundle, returning
+ * the new artifact's input so the runner can fan image analyzers over it.
+ */
+export type EmitArtifact = (
+  filePath: string,
+  options: {
+    kind: ArtifactKind;
+    bundlePath: string;
+    producedBy: string;
+  },
+) => Promise<AnalyzerInput>;
+
 /** Shared context passed to every analyzer for one run. */
 export interface AnalyzerContext {
   /** Tier the run is executing at; analyzers above it record `skipped-tier`. */
@@ -74,19 +87,10 @@ export interface AnalyzerContext {
   /** Per-subject expectations, keyed by the subject's bundle-relative path. */
   expectations?: Record<string, AnalyzerExpectations>;
   /**
-   * Emit a derived artifact (e.g. a video keyframe) back into the bundle. The
-   * runner supplies this; it returns the new artifact's input so the runner can
-   * fan image analyzers over it. Absent when the runner has no bundle handle
-   * (analyzers that need it record `skipped-missing-tool` with a reason).
+   * Emit a derived artifact back into the bundle. Absent when the runner has no
+   * bundle handle — analyzers that need it record `skipped-missing-tool`.
    */
-  emitArtifact?: (
-    filePath: string,
-    options: {
-      kind: ArtifactKind;
-      bundlePath: string;
-      producedBy: string;
-    },
-  ) => Promise<AnalyzerInput>;
+  emitArtifact?: EmitArtifact;
 }
 
 /**

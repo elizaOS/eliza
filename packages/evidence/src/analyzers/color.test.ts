@@ -7,15 +7,12 @@ import { join } from "node:path";
 import sharp from "sharp";
 import { afterAll, describe, expect, it } from "vitest";
 import {
-  classifyColor,
-  colorFractionsFromRaw,
-} from "./color-math.ts";
-import {
   colorCornersAnalyzer,
   colorPaletteAnalyzer,
   cornerSwatches,
   dominantPalette,
 } from "./color.ts";
+import { classifyColor, colorFractionsFromRaw } from "./color-math.ts";
 import { makeTmpDir, solidPng } from "./test-fixtures.ts";
 import type { AnalyzerContext } from "./types.ts";
 
