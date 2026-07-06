@@ -201,6 +201,40 @@ describe("BlueBubbles message connector registration", () => {
 		);
 	});
 
+	it("strips interaction markers before sending connector replies", async () => {
+		const registrations: MessageConnectorRegistration[] = [];
+		const runtime = {
+			...makeRuntime(registrations),
+			getSetting: vi.fn((key: string) =>
+				key === "ELIZA_APP_URL" ? "https://app.test" : undefined,
+			),
+		} as unknown as IAgentRuntime;
+		const service = {
+			getIsRunning: vi.fn(() => true),
+			listChats: vi.fn(async () => []),
+			sendMessage: vi.fn(async () => ({ guid: "bb-3", dateCreated: 789 })),
+		} as unknown as BlueBubblesService;
+
+		BlueBubblesService.registerSendHandlers(runtime, service);
+
+		const connector = registrations.find(
+			(registration) => registration.source === "bluebubbles",
+		);
+		await connector?.sendHandler(
+			runtime,
+			{ source: "bluebubbles", channelId: "+14155552671" },
+			{
+				text: "Pick:\n[CHOICE:next id=c1]\ny=Yes\nn=No\n[/CHOICE]",
+			} as ConnectorContent,
+		);
+
+		expect(service.sendMessage).toHaveBeenCalledWith(
+			"+14155552671",
+			"Pick:\n\n1. Yes\n2. No\nReply with a number.",
+			undefined,
+		);
+	});
+
 	it("rejects reaction mutations missing chat, message, or reaction values", async () => {
 		const registrations: MessageConnectorRegistration[] = [];
 		const runtime = makeRuntime(registrations);

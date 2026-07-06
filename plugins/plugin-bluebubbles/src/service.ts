@@ -32,6 +32,7 @@ import {
 import { BlueBubblesClient } from "./client";
 import { BLUEBUBBLES_SERVICE_NAME, DEFAULT_WEBHOOK_PATH } from "./constants";
 import { isHandleAllowed, normalizeHandle } from "./environment";
+import { renderBlueBubblesInteractionText } from "./interactions";
 import type {
 	BlueBubblesChat,
 	BlueBubblesChatState,
@@ -49,6 +50,15 @@ const DEFAULT_AUTOSTART_ARGS = ["-a", "BlueBubbles"];
 
 function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function resolveInteractionAppBaseUrl(
+	runtime: IAgentRuntime,
+): string | undefined {
+	const rawAppUrl =
+		runtime.getSetting?.("ELIZA_APP_URL") ||
+		runtime.getSetting?.("ELIZA_CLOUD_URL");
+	return typeof rawAppUrl === "string" ? rawAppUrl : undefined;
 }
 
 type BlueBubblesAutoStartConfig = {
@@ -714,8 +724,10 @@ export class BlueBubblesService extends Service {
 					target: ConnectorTargetInfo,
 					content: ConnectorContent,
 				) => {
-					const text =
-						typeof content.text === "string" ? content.text.trim() : "";
+					const text = renderBlueBubblesInteractionText(
+						content,
+						resolveInteractionAppBaseUrl(runtime),
+					).trim();
 					if (!text) {
 						return;
 					}
@@ -1405,8 +1417,10 @@ export class BlueBubblesService extends Service {
 		const callback: HandlerCallback = async (
 			response: Content,
 		): Promise<Memory[]> => {
-			const responseText =
-				typeof response.text === "string" ? response.text.trim() : "";
+			const responseText = renderBlueBubblesInteractionText(
+				response,
+				resolveInteractionAppBaseUrl(this.runtime),
+			).trim();
 			if (!responseText) {
 				return [];
 			}

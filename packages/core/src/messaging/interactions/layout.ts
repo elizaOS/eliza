@@ -48,6 +48,13 @@ export interface NeutralLayout {
 	needsFallback?: boolean;
 }
 
+export interface PlainTextFallbackOptions {
+	/** Resolve an external entry URL for task or navigate blocks. */
+	resolveUrl?: (block: InteractionBlock) => string | undefined;
+	/** Resolve an external URL for a `navigate` followup chip. */
+	resolveNavigateUrl?: (payload: string) => string | undefined;
+}
+
 export interface LayoutOptions {
 	/**
 	 * Resolve an external entry URL for blocks that link out: secret/OAuth entry
@@ -195,6 +202,57 @@ export function toNeutralLayout(
 				needsFallback: !url,
 			};
 		}
+		default: {
+			const _exhaustive: never = block;
+			return _exhaustive;
+		}
+	}
+}
+
+/** Project a block onto text-only transports such as SMS/iMessage. */
+export function toPlainTextFallback(
+	block: InteractionBlock,
+	opts: PlainTextFallbackOptions = {},
+): string | undefined {
+	switch (block.kind) {
+		case "choice": {
+			const prompt = firstNonBlankText(block.prompt);
+			const options = block.options.map(
+				(option, index) => `${index + 1}. ${option.label}`,
+			);
+			const invite = block.allowCustom
+				? "Reply with a number or your own answer."
+				: "Reply with a number.";
+			return [prompt, options.join("\n"), invite]
+				.filter((part): part is string => Boolean(part?.trim()))
+				.join("\n");
+		}
+		case "followups": {
+			const suggestions = block.options
+				.map((option) => {
+					const label = option.label.trim();
+					if (!label) return "";
+					if (option.kind !== "navigate") return label;
+					const url = opts.resolveNavigateUrl?.(option.payload);
+					return url ? `${label} (${url})` : label;
+				})
+				.filter((label) => label.length > 0);
+			return suggestions.length > 0
+				? `Suggestions: ${suggestions.join(" / ")}`
+				: undefined;
+		}
+		case "task": {
+			const url = opts.resolveUrl?.(block);
+			return [block.title, url].filter(Boolean).join("\n");
+		}
+		case "form": {
+			const prose = [block.title, block.description]
+				.map((part) => part?.trim())
+				.filter((part): part is string => Boolean(part));
+			return [...prose, FORM_FREE_TEXT_INVITE].join("\n\n");
+		}
+		case "secret":
+			return undefined;
 		default: {
 			const _exhaustive: never = block;
 			return _exhaustive;

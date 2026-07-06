@@ -1,9 +1,8 @@
 /**
- * Vitest setup file that mocks `@elizaos/core` so the iMessage suites run
- * without the real runtime: a stub `Service` base class, a no-op `logger`, and
- * deterministic `stringToUuid` / `createUniqueUuid` implementations (SHA1 of the
- * value) so id-mapping assertions stay stable. Referenced from
- * `vitest.config.ts` `setupFiles`.
+ * Vitest setup file that keeps iMessage suites off the real runtime while still
+ * exposing pure core helpers such as the interaction parser. Runtime-heavy
+ * pieces are replaced with a stub `Service`, no-op logger, and deterministic
+ * UUID mapping so connector id assertions stay stable.
  */
 import { createHash } from "node:crypto";
 import { vi } from "vitest";
@@ -25,7 +24,8 @@ function stringToUuid(value: string | number): string {
   )}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-vi.mock("@elizaos/core", () => {
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
   const logger = {
     debug: vi.fn(),
     error: vi.fn(),
@@ -44,6 +44,7 @@ vi.mock("@elizaos/core", () => {
   }
 
   return {
+    ...actual,
     ChannelType: {
       DM: "DM",
       GROUP: "GROUP",

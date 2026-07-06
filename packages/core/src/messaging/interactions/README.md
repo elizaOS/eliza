@@ -58,6 +58,8 @@ a malformed block is left as plain text, never a broken control.
   (rows of buttons / a select) — the shared projection each connector maps to its
   native primitive. A button carries exactly one of `callbackData` (round-trip) or
   `url` (link-out).
+- `toPlainTextFallback(block, { resolveUrl })` → concise prose for text-only
+  transports such as SMS/iMessage, where there is no native control surface.
 - `encodeReplyCallback(value)` / `decodeCallback(data)` — 64-byte-safe codec
   (Telegram's `callback_data` limit). Returns null when the answer is too big →
   caller links out or accepts a free-text reply.
@@ -71,13 +73,13 @@ FollowupsInteraction | TaskInteraction | SecretInteraction`) in
 
 ## Per-surface rendering matrix
 
-| Block | Dashboard | Telegram | Discord |
-|---|---|---|---|
-| choice | `ChoiceWidget` ✅ | inline-keyboard callback buttons ✅ | button action row ✅ |
-| followups | `FollowupsWidget` ✅ | callback buttons ✅ | button action row ✅ |
-| form | `FormRequest` ✅ | free-text fallback (by design) ✅ | free-text fallback (by design) ✅ |
-| task | `TaskWidget` (live poll) ✅ | link button + title ✅ (live status ⏳) | link button + title ✅ |
-| secret/oauth | `SensitiveRequestBlock` ✅ | DM link via `sensitive-request-adapter` ✅ | DM link via `sensitive-request-adapter` ✅ |
+| Block | Dashboard | Telegram | Discord | Text-only (SMS/iMessage) |
+|---|---|---|---|---|
+| choice | `ChoiceWidget` ✅ | inline-keyboard callback buttons ✅ | button action row ✅ | numbered reply list ✅ |
+| followups | `FollowupsWidget` ✅ | callback buttons ✅ | button action row ✅ | suggestions line ✅ |
+| form | `FormRequest` ✅ | free-text fallback (by design) ✅ | free-text fallback (by design) ✅ | title/description + free-text invite ✅ |
+| task | `TaskWidget` (live poll) ✅ | link button + title ✅ (live status ⏳) | link button + title ✅ | title + `/orchestrator?taskId=…` link ✅ |
+| secret/oauth | `SensitiveRequestBlock` ✅ | DM link via `sensitive-request-adapter` ✅ | DM link via `sensitive-request-adapter` ✅ | not inlined; requires secure adapter/failure surface |
 
 ✅ implemented · ⏳ remaining (seams below). Forms never link out on
 connectors **by design** (#14321): no hosted `/forms/:id` page exists (form

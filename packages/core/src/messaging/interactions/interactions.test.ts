@@ -23,6 +23,7 @@ import {
 	buildInteractionUrlResolver,
 	FORM_FREE_TEXT_INVITE,
 	toNeutralLayout,
+	toPlainTextFallback,
 } from "./layout";
 import {
 	normalizeContentInteractions,
@@ -419,6 +420,76 @@ describe("layout", () => {
 		const button = toNeutralLayout(block).rows[0]?.buttons?.[0];
 		expect(button?.url).toBeUndefined();
 		expect(button?.callbackData).toBeTruthy();
+	});
+});
+
+describe("plain text fallback", () => {
+	it("renders choice options as a numbered reply list", () => {
+		const block: ChoiceInteraction = {
+			kind: "choice",
+			id: "i",
+			scope: "s",
+			prompt: "Pick a lane",
+			allowCustom: true,
+			options: [
+				{ value: "ship", label: "Ship it" },
+				{ value: "hold", label: "Hold" },
+			],
+		};
+		expect(toPlainTextFallback(block)).toBe(
+			"Pick a lane\n1. Ship it\n2. Hold\nReply with a number or your own answer.",
+		);
+	});
+
+	it("renders forms as title, description, and the free-text invite", () => {
+		const block: FormInteraction = {
+			kind: "form",
+			id: "f",
+			title: "Schedule reminder",
+			description: "Tell me when to check in.",
+			fields: [{ name: "when", type: "datetime" }],
+		};
+		expect(toPlainTextFallback(block)).toBe(
+			`Schedule reminder\n\nTell me when to check in.\n\n${FORM_FREE_TEXT_INVITE}`,
+		);
+	});
+
+	it("renders task deep links and followup suggestions without markers", () => {
+		const task: TaskInteraction = {
+			kind: "task",
+			threadId: "task-1",
+			title: "Review launch checklist",
+		};
+		expect(
+			toPlainTextFallback(task, {
+				resolveUrl: () => "https://app.test/task-1",
+			}),
+		).toBe("Review launch checklist\nhttps://app.test/task-1");
+
+		const followups: FollowupsInteraction = {
+			kind: "followups",
+			id: "f1",
+			options: [
+				{ kind: "navigate", payload: "/tasks", label: "Tasks" },
+				{ kind: "reply", payload: "yes", label: "Yes" },
+				{ kind: "prompt", payload: "explain", label: "Explain" },
+			],
+		};
+		expect(
+			toPlainTextFallback(followups, {
+				resolveNavigateUrl: (payload) => `https://app.test${payload}`,
+			}),
+		).toBe("Suggestions: Tasks (https://app.test/tasks) / Yes / Explain");
+	});
+
+	it("does not inline sensitive requests on text-only transports", () => {
+		const block: SecretInteraction = {
+			kind: "secret",
+			id: "s1",
+			secretKind: "secret",
+			fields: [{ name: "apiKey", type: "secret" }],
+		};
+		expect(toPlainTextFallback(block)).toBeUndefined();
 	});
 });
 

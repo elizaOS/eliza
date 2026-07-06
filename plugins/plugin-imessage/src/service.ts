@@ -53,6 +53,7 @@ import {
   normalizeContactHandle,
   updateContact,
 } from "./contacts-reader.js";
+import { renderIMessageInteractionText } from "./interactions.js";
 import {
   DEFAULT_POLL_INTERVAL_MS,
   formatPhoneNumber,
@@ -78,6 +79,12 @@ import {
 } from "./types.js";
 
 const execFileAsync = promisify(execFile);
+
+function resolveInteractionAppBaseUrl(runtime: IAgentRuntime): string | undefined {
+  const rawAppUrl =
+    runtime.getSetting?.("ELIZA_APP_URL") || runtime.getSetting?.("ELIZA_CLOUD_URL");
+  return typeof rawAppUrl === "string" ? rawAppUrl : undefined;
+}
 
 function appleScriptStringLiteral(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
@@ -566,7 +573,7 @@ export class IMessageService extends Service implements IIMessageService {
       },
       sendHandler: async (_runtime: IAgentRuntime, target: TargetInfo, content: Content) => {
         const accountId = assertLocalIMessageAccount(readTargetAccountId(target));
-        const text = typeof content.text === "string" ? content.text : "";
+        const text = renderIMessageInteractionText(content, resolveInteractionAppBaseUrl(runtime));
         const mediaUrl = firstAttachmentUrl(content);
         if (!text.trim() && !mediaUrl) {
           return;
@@ -1660,8 +1667,14 @@ export class IMessageService extends Service implements IIMessageService {
     const replyTarget = row.chatType === "group" ? `chat_id:${row.chatId}` : row.handle;
 
     const callback: HandlerCallback = async (content) => {
-      const replyText = content.text?.trim();
-      if (!replyText || !this.runtime) {
+      if (!this.runtime) {
+        return [];
+      }
+      const replyText = renderIMessageInteractionText(
+        content,
+        resolveInteractionAppBaseUrl(this.runtime)
+      ).trim();
+      if (!replyText) {
         return [];
       }
 
@@ -1678,6 +1691,7 @@ export class IMessageService extends Service implements IIMessageService {
         roomId,
         content: {
           ...content,
+          text: replyText,
           source: "imessage",
           channelType,
           inReplyTo: messageId,
