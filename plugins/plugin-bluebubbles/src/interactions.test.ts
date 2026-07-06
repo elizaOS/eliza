@@ -42,4 +42,23 @@ describe("renderBlueBubblesInteractionText", () => {
 			"Open task\nhttps://app.test/orchestrator?taskId=def67890",
 		);
 	});
+
+	it("renders direct secret interactions as secure-link text", () => {
+		const rendered = renderBlueBubblesInteractionText({
+			text: "Connect this account.",
+			interactions: [
+				{
+					kind: "secret",
+					id: "s1",
+					secretKind: "oauth",
+					reason: "Connect GitHub to continue",
+					url: "https://oauth.test/consent",
+				},
+			],
+		});
+
+		expect(rendered).toBe(
+			"Connect this account.\n\nConnect GitHub to continue\nhttps://oauth.test/consent",
+		);
+	});
 });

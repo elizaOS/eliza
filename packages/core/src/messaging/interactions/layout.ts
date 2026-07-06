@@ -14,7 +14,9 @@ import type {
 	InteractionBlock,
 	InteractionOption,
 } from "../../types/interactions";
+import type { Content } from "../../types/primitives";
 import { encodeReplyCallback } from "./callback";
+import { parseInteractionBlocks } from "./parse";
 
 export interface NeutralButton {
 	label: string;
@@ -251,13 +253,75 @@ export function toPlainTextFallback(
 				.filter((part): part is string => Boolean(part));
 			return [...prose, FORM_FREE_TEXT_INVITE].join("\n\n");
 		}
-		case "secret":
-			return undefined;
+		case "secret": {
+			const url = opts.resolveUrl?.(block) ?? block.url;
+			const reason = firstNonBlankText(block.reason);
+			return url
+				? [reason, url].filter(Boolean).join("\n")
+				: [reason, "A secure link for this is not available here yet."]
+						.filter(Boolean)
+						.join("\n");
+		}
 		default: {
 			const _exhaustive: never = block;
 			return _exhaustive;
 		}
 	}
+}
+
+/**
+ * Render interaction-bearing text for button-less transports before their own
+ * chunking layer sees the message. This strips every marker body and appends
+ * the text fallback for each parsed block, so long form JSON cannot be split
+ * into user-visible bracket fragments.
+ */
+export function renderInteractionsAsPlainText(
+	text: string | undefined | null,
+	opts: PlainTextFallbackOptions = {},
+): { text: string; hadBlocks: boolean } {
+	const source = text ?? "";
+	const { blocks, cleanedText } = parseInteractionBlocks(source);
+	if (blocks.length === 0) {
+		return { text: source, hadBlocks: false };
+	}
+	const fallbacks = blocks
+		.map((block) => toPlainTextFallback(block, opts))
+		.filter((part): part is string => Boolean(part?.trim()));
+	return {
+		text: [cleanedText, ...fallbacks]
+			.filter((part) => part.trim().length > 0)
+			.join("\n\n"),
+		hadBlocks: true,
+	};
+}
+
+/**
+ * Render a full `Content` object for a text-only transport. When the runtime has
+ * already normalized typed `interactions`, those blocks are authoritative; this
+ * preserves out-of-band secret/OAuth requests that do not have a bracket-marker
+ * text representation.
+ */
+export function renderContentInteractionsAsPlainText(
+	content: Pick<Content, "text" | "interactions"> | undefined | null,
+	opts: PlainTextFallbackOptions = {},
+): { text: string; hadBlocks: boolean } {
+	const source = typeof content?.text === "string" ? content.text : "";
+	const interactions = Array.isArray(content?.interactions)
+		? content.interactions
+		: [];
+	if (interactions.length === 0) {
+		return renderInteractionsAsPlainText(source, opts);
+	}
+	const { cleanedText } = parseInteractionBlocks(source);
+	const fallbacks = interactions
+		.map((block) => toPlainTextFallback(block, opts))
+		.filter((part): part is string => Boolean(part?.trim()));
+	return {
+		text: [cleanedText, ...fallbacks]
+			.filter((part) => part.trim().length > 0)
+			.join("\n\n"),
+		hadBlocks: true,
+	};
 }
 
 /**

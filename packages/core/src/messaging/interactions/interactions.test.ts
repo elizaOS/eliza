@@ -22,6 +22,8 @@ import {
 import {
 	buildInteractionUrlResolver,
 	FORM_FREE_TEXT_INVITE,
+	renderContentInteractionsAsPlainText,
+	renderInteractionsAsPlainText,
 	toNeutralLayout,
 	toPlainTextFallback,
 } from "./layout";
@@ -506,13 +508,81 @@ describe("plain text fallback", () => {
 	});
 
 	it("does not inline sensitive requests on text-only transports", () => {
-		const block: SecretInteraction = {
+		const withUrl: SecretInteraction = {
 			kind: "secret",
 			id: "s1",
+			secretKind: "oauth",
+			reason: "Connect GitHub to continue",
+			url: "https://oauth.test/consent",
+		};
+		expect(toPlainTextFallback(withUrl)).toBe(
+			"Connect GitHub to continue\nhttps://oauth.test/consent",
+		);
+
+		const withoutUrl: SecretInteraction = {
+			kind: "secret",
+			id: "s2",
 			secretKind: "secret",
+			reason: "Enter your API key",
 			fields: [{ name: "apiKey", type: "secret" }],
 		};
-		expect(toPlainTextFallback(block)).toBeUndefined();
+		expect(toPlainTextFallback(withoutUrl)).toBe(
+			"Enter your API key\nA secure link for this is not available here yet.",
+		);
+	});
+});
+
+describe("renderInteractionsAsPlainText", () => {
+	it("passes plain text through unchanged", () => {
+		expect(renderInteractionsAsPlainText("just a normal reply")).toEqual({
+			text: "just a normal reply",
+			hadBlocks: false,
+		});
+		expect(renderInteractionsAsPlainText(undefined)).toEqual({
+			text: "",
+			hadBlocks: false,
+		});
+	});
+
+	it("strips a long form before downstream chunking can split marker JSON", () => {
+		const bigForm = JSON.stringify({
+			title: "Trip",
+			description: "Tell me what changed.",
+			fields: [{ name: "a", type: "text", label: "x".repeat(6000) }],
+		});
+		const { text, hadBlocks } = renderInteractionsAsPlainText(
+			`Let's set this up.\n[FORM]\n${bigForm}\n[/FORM]`,
+		);
+
+		expect(hadBlocks).toBe(true);
+		expect(text).not.toContain("[FORM]");
+		expect(text).not.toContain('"fields"');
+		expect(text).not.toContain("xxxx");
+		expect(text).toContain("Trip");
+		expect(text).toContain("Tell me what changed.");
+		expect(text).toContain(FORM_FREE_TEXT_INVITE);
+	});
+});
+
+describe("renderContentInteractionsAsPlainText", () => {
+	it("renders typed secret interactions that have no bracket-marker text form", () => {
+		const { text, hadBlocks } = renderContentInteractionsAsPlainText({
+			text: "Connect this account.",
+			interactions: [
+				{
+					kind: "secret",
+					id: "s1",
+					secretKind: "oauth",
+					reason: "Connect GitHub to continue",
+					url: "https://oauth.test/consent",
+				},
+			],
+		});
+
+		expect(hadBlocks).toBe(true);
+		expect(text).toBe(
+			"Connect this account.\n\nConnect GitHub to continue\nhttps://oauth.test/consent",
+		);
 	});
 });
 

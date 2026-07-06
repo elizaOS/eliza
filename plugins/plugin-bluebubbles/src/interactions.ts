@@ -9,26 +9,15 @@
 import {
 	buildInteractionUrlResolver,
 	type Content,
-	parseInteractionBlocks,
-	toPlainTextFallback,
+	renderContentInteractionsAsPlainText,
 } from "@elizaos/core";
 
 export function renderBlueBubblesInteractionText(
 	content: Content,
 	appBaseUrl?: string,
 ): string {
-	const text = typeof content.text === "string" ? content.text : "";
-	const { blocks, cleanedText } = parseInteractionBlocks(text);
-	if (blocks.length === 0) {
-		return text;
-	}
-
-	const resolver = buildInteractionUrlResolver(appBaseUrl);
-	const fallbackLines = blocks
-		.map((block) => toPlainTextFallback(block, resolver))
-		.filter((line): line is string => Boolean(line?.trim()));
-
-	return [cleanedText, ...fallbackLines]
-		.filter((part) => part.trim().length > 0)
-		.join("\n\n");
+	return renderContentInteractionsAsPlainText(
+		content,
+		buildInteractionUrlResolver(appBaseUrl),
+	).text;
 }
