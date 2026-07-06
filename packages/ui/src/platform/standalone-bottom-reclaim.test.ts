@@ -111,10 +111,10 @@ afterEach(() => {
 });
 
 describe("measureStandaloneBottomGap: the screen.height cure for the collapsed-ICB strip", () => {
-  it("measures the 59px gap from screen.height on the FULLY-collapsed device geometry (the exact bug)", () => {
-    // Device diagnostics: ih873 vv873 ce873 sh932. innerHeight, visualViewport,
-    // AND clientHeight all collapse to 873; only screen.height sees the true
-    // 932. gap = 932 - 873 = 59. #15036's max(vv,inner)-clientHeight = 0 here.
+  it("measures the 59px gap when innerHeight is still collapsed (pre-html-fix / any engine that collapses the fixed-layer viewport)", () => {
+    // If a shell collapses innerHeight to the layout box (873) while
+    // screen.height still sees 932, the fixed layers stop 59px short and we DO
+    // reclaim: gap = screen.height - innerHeight = 932 - 873 = 59.
     stubViewport({
       layoutHeight: 873,
       innerHeight: 873,
@@ -124,16 +124,20 @@ describe("measureStandaloneBottomGap: the screen.height cure for the collapsed-I
     expect(measureStandaloneBottomGap()).toBe(59);
   });
 
-  it("ignores a collapsed innerHeight/visualViewport and trusts screen.height alone", () => {
-    // Even if innerHeight/visualViewport report something DIFFERENT (and wrong),
-    // the gap is driven purely by screen.height vs clientHeight.
+  it("is 0 once html:100lvh un-collapses innerHeight to the true screen (the r11 over-correction fix)", () => {
+    // r11: sizing `html` to 100lvh un-collapses the viewport — the device chip
+    // flipped to ih932 vv932 dv932 while ONLY clientHeight stayed 873. Now the
+    // fixed layers already reach the true 932 bottom, so the reclaim MUST be 0
+    // (measuring vs clientHeight would give a phantom 59 and shove the composer
+    // 59px off-screen — the over-correction). We measure vs innerHeight (932),
+    // NOT clientHeight (873): 932 - 932 = 0.
     stubViewport({
-      layoutHeight: 873,
-      innerHeight: 500, // keyboard-collapsed inner, must be ignored
-      visualHeight: 500,
+      layoutHeight: 873, // documentElement.clientHeight still collapsed
+      innerHeight: 932, // html:100lvh made innerHeight truthful
+      visualHeight: 932,
       screenHeight: 932,
     });
-    expect(measureStandaloneBottomGap()).toBe(59);
+    expect(measureStandaloneBottomGap()).toBe(0);
   });
 
   it("is EXACTLY 0 on desktop/Android/web where screen.height == the layout box (no-op)", () => {

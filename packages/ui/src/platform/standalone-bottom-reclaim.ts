@@ -77,14 +77,32 @@ export function measureStandaloneBottomGap(): number {
     return 0;
   }
 
-  const docEl = document.documentElement;
-  const layoutHeight = docEl?.clientHeight ?? 0;
+  // The height the FIXED layers can actually reach — the layout viewport that a
+  // `position: fixed` box resolves its `bottom: 0` against.
+  //
+  // r11 UPDATE (the over-correction fix): once `html` is sized to `100lvh` in
+  // the installed shell (styles.css), WebKit UN-collapses the viewport — the
+  // device chip flipped from `ih873 vv873 dv873` to `ih932 vv932 dv932`, i.e.
+  // innerHeight / visualViewport / 100dvh now ALL report the true 932 screen,
+  // and every fixed layer (body/#root/app-shell at 100lvh, the wallpaper at
+  // `fixed inset-0`) genuinely reaches the physical bottom on its own. The ONLY
+  // value still stuck at the old collapsed 873 is `documentElement.clientHeight`
+  // (the scrollable *document* box, not the fixed-layer viewport). Measuring the
+  // gap against clientHeight (932 - 873 = 59) therefore OVER-corrects now: it
+  // shoves the already-bottom-reaching composer/wallpaper another 59px DOWN,
+  // below the screen. So measure against `innerHeight` (the fixed-layer
+  // viewport), which the html fix has made truthful: 932 - 932 = 0 on the fixed
+  // shell, and the reclaim self-zeroes. If a future engine still collapses
+  // innerHeight, this correctly reports the real gap again. `screen.height`
+  // stays the true-screen reference.
+  const layoutHeight =
+    typeof window.innerHeight === "number" && window.innerHeight > 0
+      ? window.innerHeight
+      : (document.documentElement?.clientHeight ?? 0);
   if (layoutHeight <= 0) return 0;
 
-  // The TRUE physical screen height. `screen.height` is the sole value that
-  // survives the fixed-body ICB collapse (innerHeight / visualViewport /
-  // clientHeight all report the collapsed 873 box; screen.height reports the
-  // real 932). Missing on SSR / ancient engines → 0 (no reclaim, no harm).
+  // The TRUE physical screen height. Missing on SSR / ancient engines → 0 (no
+  // reclaim, no harm).
   const screenHeight =
     typeof window.screen?.height === "number" && window.screen.height > 0
       ? window.screen.height
