@@ -79,7 +79,6 @@
       "@elizaos/plugin-wifi": ["../../plugins/plugin-wifi/src/index.ts"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../app-core/src/*"],
-      "@elizaos/plugin-shopify": ["../../plugins/plugin-shopify/src/index.ts"],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/import-conversations": ["../import-conversations/src/index.ts"],
