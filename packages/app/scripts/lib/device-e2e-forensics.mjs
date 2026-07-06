@@ -20,7 +20,7 @@
  * fails (device disconnected mid-run) is recorded as a warning on the step and
  * NEVER replaces or masks the original step error, which always propagates.
  */
-import { mkdirSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 /** Filesystem-safe slug for a step name, used as its failure sub-directory. */
@@ -66,7 +66,7 @@ export async function runStep(
     return value;
   } catch (error) {
     const failureDir = path.join(bundleDir, "failure", slugifyStep(name));
-    const { artifacts, warnings } = captureForensics({
+    const { artifacts, warnings } = await captureForensics({
       failureDir,
       captureScreenshot,
       captureDeviceLog,
@@ -88,7 +88,7 @@ export async function runStep(
  * artifacts that were actually written and a warning per capture that failed.
  * Never throws: the caller is on an error path and the original error must win.
  */
-export function captureForensics({
+export async function captureForensics({
   failureDir,
   captureScreenshot,
   captureDeviceLog,
@@ -105,14 +105,14 @@ export function captureForensics({
       warnings: [`failure dir unwritable: ${errMessage(error)}`],
     };
   }
-  captureInto({
+  await captureInto({
     kind: "screenshot",
     capture: captureScreenshot,
     outPath: path.join(failureDir, "screenshot.png"),
     artifacts,
     warnings,
   });
-  captureInto({
+  await captureInto({
     kind: "device-log",
     capture: captureDeviceLog,
     outPath: path.join(failureDir, "device-log.txt"),
@@ -127,12 +127,14 @@ export function captureForensics({
  * this signal), return `null` (device produced nothing), or throw (device gone)
  * — all three degrade to a warning, never an artifact and never a rethrow.
  */
-function captureInto({ kind, capture, outPath, artifacts, warnings }) {
+async function captureInto({ kind, capture, outPath, artifacts, warnings }) {
   if (typeof capture !== "function") return;
   try {
-    const written = capture(outPath);
-    if (written) {
+    const written = await capture(outPath);
+    if (written && fileExists(written)) {
       artifacts.push({ kind, path: written });
+    } else if (written) {
+      warnings.push(`${kind} capture returned missing file: ${written}`);
     } else {
       warnings.push(`${kind} capture produced no file`);
     }
@@ -140,6 +142,16 @@ function captureInto({ kind, capture, outPath, artifacts, warnings }) {
     // error-policy:J6 best-effort forensics — a device disconnected mid-capture
     // must not overwrite the step failure that triggered this path.
     warnings.push(`${kind} capture failed: ${errMessage(error)}`);
+  }
+}
+
+function fileExists(p) {
+  try {
+    return statSync(p).isFile();
+  } catch {
+    // error-policy:J6 best-effort forensics — missing/unreadable capture output
+    // becomes a warning so the triggering step failure remains the main error.
+    return false;
   }
 }
 

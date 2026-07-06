@@ -103,6 +103,44 @@ describe("runStep — failing", () => {
     expect(step.forensicsWarnings).toBeUndefined();
   });
 
+  it("awaits async capture callbacks before recording artifacts", async () => {
+    const ledger = [];
+    await expect(
+      runStep(
+        {
+          name: "async capture",
+          bundleDir,
+          fn: async () => {
+            throw new Error("step failed");
+          },
+          captureScreenshot: async (outPath) => {
+            await Promise.resolve();
+            writeFileSync(outPath, "async shot");
+            return outPath;
+          },
+          captureDeviceLog: async (outPath) => {
+            await Promise.resolve();
+            writeFileSync(outPath, "async log");
+            return outPath;
+          },
+        },
+        ledger,
+      ),
+    ).rejects.toThrow("step failed");
+
+    const failureDir = path.join(bundleDir, "failure", "async-capture");
+    expect(readFileSync(path.join(failureDir, "screenshot.png"), "utf8")).toBe(
+      "async shot",
+    );
+    expect(readFileSync(path.join(failureDir, "device-log.txt"), "utf8")).toBe(
+      "async log",
+    );
+    expect(ledger[0].artifacts).toEqual([
+      { kind: "screenshot", path: path.join(failureDir, "screenshot.png") },
+      { kind: "device-log", path: path.join(failureDir, "device-log.txt") },
+    ]);
+  });
+
   it("a capture that throws becomes a warning, never masks the step error", async () => {
     const ledger = [];
     const original = new Error("smoke failed");
@@ -187,17 +225,30 @@ describe("runStep — failing", () => {
 });
 
 describe("captureForensics", () => {
-  it("returns a warning when the failure dir cannot be created", () => {
+  it("returns a warning when the failure dir cannot be created", async () => {
     // Point failureDir at a path whose parent is a file → mkdir must fail.
     const filePath = path.join(bundleDir, "not-a-dir");
     writeFileSync(filePath, "x");
-    const { artifacts, warnings } = captureForensics({
+    const { artifacts, warnings } = await captureForensics({
       failureDir: path.join(filePath, "failure", "step"),
       captureScreenshot: writingCapture("x"),
       captureDeviceLog: writingCapture("x"),
     });
     expect(artifacts).toEqual([]);
     expect(warnings[0]).toMatch(/failure dir unwritable/);
+  });
+
+  it("warns instead of recording a returned path that was not written", async () => {
+    const missing = path.join(bundleDir, "missing.png");
+    const { artifacts, warnings } = await captureForensics({
+      failureDir: path.join(bundleDir, "failure", "missing-output"),
+      captureScreenshot: () => missing,
+      captureDeviceLog: null,
+    });
+    expect(artifacts).toEqual([]);
+    expect(warnings).toEqual([
+      `screenshot capture returned missing file: ${missing}`,
+    ]);
   });
 });
 
