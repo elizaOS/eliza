@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   _isReminderIntensity,
+  classifyReminderOwnerResponseText,
   coerceReminderIntensity,
   isReminderChannel,
   isReminderReviewClosed,
@@ -82,5 +83,35 @@ describe("review attempt reads", () => {
     expect(isReminderReviewClosed({ reviewStatus: "escalated" })).toBe(true);
     expect(isReminderReviewClosed({ reviewStatus: "pending" })).toBe(false);
     expect(isReminderReviewClosed({ reviewStatus: null })).toBe(false);
+  });
+});
+
+describe("owner reply classifier", () => {
+  it("resolves reminder chat choice payloads without semantic fallback", () => {
+    const context = {
+      title: "Take your meds.",
+      attemptedAt: "2026-07-06T12:00:00.000Z",
+      respondedAt: "2026-07-06T12:01:00.000Z",
+      channel: "in_app" as const,
+      allowStandaloneResolution: true,
+    };
+
+    expect(classifyReminderOwnerResponseText("done", context)).toMatchObject({
+      decision: "explicit_resolution",
+      resolution: "completed",
+      snoozeRequest: null,
+    });
+    expect(
+      classifyReminderOwnerResponseText("10 minutes", context),
+    ).toMatchObject({
+      decision: "explicit_resolution",
+      resolution: "snoozed",
+      snoozeRequest: { minutes: 10 },
+    });
+    expect(classifyReminderOwnerResponseText("skip", context)).toMatchObject({
+      decision: "explicit_resolution",
+      resolution: "skipped",
+      snoozeRequest: null,
+    });
   });
 });
