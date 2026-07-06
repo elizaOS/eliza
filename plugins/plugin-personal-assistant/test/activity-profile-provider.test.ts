@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(),
   getActivityReportBetween: vi.fn(),
   getLatestForegroundActivity: vi.fn(),
+  listActivitySignals: vi.fn(),
   logger: {
     debug: vi.fn(),
     warn: vi.fn(),
@@ -40,6 +41,14 @@ vi.mock("../src/activity-profile/service.js", () => ({
 vi.mock("../src/activity-profile/activity-tracker-reporting.js", () => ({
   getActivityReportBetween: mocks.getActivityReportBetween,
   getLatestForegroundActivity: mocks.getLatestForegroundActivity,
+}));
+
+vi.mock("../src/lifeops/repository.js", () => ({
+  LifeOpsRepository: class LifeOpsRepository {
+    async listActivitySignals(...args: unknown[]): Promise<unknown> {
+      return mocks.listActivitySignals(...args);
+    }
+  },
 }));
 
 import {
@@ -97,6 +106,7 @@ describe("activityProfileProvider app-usage context", () => {
       observedAtMs: Date.parse("2026-01-15T18:00:00.000Z"),
       activeMs: 1_800_000,
     });
+    mocks.listActivitySignals.mockReset().mockResolvedValue([]);
     mocks.logger.debug.mockReset();
     mocks.logger.warn.mockReset();
   });
@@ -190,6 +200,56 @@ describe("activityProfileProvider app-usage context", () => {
     expect(result).toEqual({ text: "", values: {}, data: {} });
     expect(mocks.getActivityReportBetween).not.toHaveBeenCalled();
     expect(mocks.getLatestForegroundActivity).not.toHaveBeenCalled();
+    expect(mocks.listActivitySignals).not.toHaveBeenCalled();
+  });
+
+  it("injects latest composer activity without draft text", async () => {
+    mocks.listActivitySignals.mockResolvedValueOnce([
+      {
+        id: "composer-signal-1",
+        agentId: "agent-activity",
+        source: "app_lifecycle",
+        platform: "composer",
+        state: "idle",
+        observedAt: "2026-01-15T18:29:00.000Z",
+        idleState: "idle",
+        idleTimeSeconds: 2,
+        onBattery: null,
+        health: null,
+        metadata: {
+          eventType: "USER_TYPING_PAUSED",
+          activity: "typing_paused",
+          surface: "continuous_chat_overlay",
+          conversationId: "conversation-1",
+          draftLength: 19,
+          idleForMs: 2000,
+        },
+        createdAt: "2026-01-15T18:29:00.100Z",
+      },
+    ]);
+
+    const result = await activityProfileProvider.get(
+      makeRuntime() as never,
+      makeMessage() as never,
+      {} as never,
+    );
+
+    expect(result.text).toContain("composer paused 1m ago, 19 chars");
+    expect(result.values).toMatchObject({
+      userComposerActivity: "typing_paused",
+      userComposerSurface: "continuous_chat_overlay",
+      userComposerConversationId: "conversation-1",
+      userComposerDraftLength: 19,
+      userComposerObservedAt: Date.parse("2026-01-15T18:29:00.000Z"),
+      userComposerReason: null,
+    });
+    expect(result.data?.composerActivity).toEqual(
+      expect.objectContaining({
+        activity: "typing_paused",
+        draftLength: 19,
+      }),
+    );
+    expect(JSON.stringify(result)).not.toContain("what the user typed");
   });
 
   it("keeps base context when app usage read fails", async () => {

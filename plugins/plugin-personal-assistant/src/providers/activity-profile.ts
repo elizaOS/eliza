@@ -27,7 +27,9 @@ import {
 import { resolveCurrentBucket } from "../activity-profile/analyzer.js";
 import { PROACTIVE_TASK_TAGS } from "../activity-profile/proactive-worker.js";
 import { readProfileFromMetadata } from "../activity-profile/service.js";
+import type { LifeOpsActivitySignal } from "../contracts/index.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
+import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   buildUtcDateFromLocalParts,
   getLocalDateKey,
@@ -68,6 +70,87 @@ function formatTopApps(apps: ActivityAppBreakdown[]): string {
     .slice(0, ACTIVITY_USAGE_TOP_APPS)
     .map((app) => `${app.appName} ${formatDuration(app.totalMs)}`)
     .join(", ");
+}
+
+interface LatestComposerActivity {
+  activity: string;
+  surface: string;
+  conversationId: string | null;
+  draftLength: number | null;
+  observedAtMs: number;
+  reason: string | null;
+}
+
+function readMetadataString(
+  metadata: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function readMetadataNumber(
+  metadata: Record<string, unknown>,
+  key: string,
+): number | null {
+  const value = metadata[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function mapComposerSignal(
+  signal: LifeOpsActivitySignal,
+): LatestComposerActivity | null {
+  if (signal.platform !== "composer" || !isRecord(signal.metadata)) {
+    return null;
+  }
+  const activity = readMetadataString(signal.metadata, "activity");
+  const observedAtMs = Date.parse(signal.observedAt);
+  if (!activity || !Number.isFinite(observedAtMs)) {
+    return null;
+  }
+  return {
+    activity,
+    surface: readMetadataString(signal.metadata, "surface") ?? "composer",
+    conversationId: readMetadataString(signal.metadata, "conversationId"),
+    draftLength: readMetadataNumber(signal.metadata, "draftLength"),
+    observedAtMs,
+    reason: readMetadataString(signal.metadata, "reason"),
+  };
+}
+
+function formatComposerActivityContext(
+  activity: LatestComposerActivity,
+  now: Date,
+): string {
+  const ago = formatAgo(now.getTime() - activity.observedAtMs);
+  const draftPart =
+    activity.draftLength !== null ? `, ${activity.draftLength} chars` : "";
+  if (activity.activity === "typing_started") {
+    return `composer active ${ago}${draftPart}`;
+  }
+  if (activity.activity === "typing_paused") {
+    return `composer paused ${ago}${draftPart}`;
+  }
+  return `composer draft cleared ${ago}`;
+}
+
+async function readLatestComposerActivity(args: {
+  runtime: IAgentRuntime;
+  now: Date;
+}): Promise<LatestComposerActivity | null> {
+  const repository = new LifeOpsRepository(args.runtime);
+  const sinceAt = new Date(args.now.getTime() - 30 * 60_000).toISOString();
+  const signals = await repository.listActivitySignals(
+    String(args.runtime.agentId),
+    { sinceAt, limit: 25 },
+  );
+  for (const signal of signals) {
+    const activity = mapComposerSignal(signal);
+    if (activity) return activity;
+  }
+  return null;
 }
 
 export function formatActivityUsageContext(args: {
@@ -183,6 +266,12 @@ export const activityProfileProvider: Provider = {
         sessionCount: number;
       }>,
       userTodayAppUsageTotalMs: 0,
+      userComposerActivity: null,
+      userComposerSurface: null,
+      userComposerConversationId: null,
+      userComposerDraftLength: null,
+      userComposerObservedAt: null,
+      userComposerReason: null,
     };
     let values: ActivityProviderValues = { ...baseValues };
     let data: ActivityProviderData = {};
@@ -279,6 +368,40 @@ export const activityProfileProvider: Provider = {
           err: error instanceof Error ? error : undefined,
         },
         "[activity-profile] Failed to read proactive task metadata; falling back to time-bucket-only context.",
+      );
+    }
+
+    try {
+      const composerActivity = await readLatestComposerActivity({
+        runtime,
+        now,
+      });
+      if (composerActivity) {
+        parts.push(formatComposerActivityContext(composerActivity, now));
+        values = {
+          ...values,
+          userComposerActivity: composerActivity.activity,
+          userComposerSurface: composerActivity.surface,
+          userComposerConversationId: composerActivity.conversationId,
+          userComposerDraftLength: composerActivity.draftLength,
+          userComposerObservedAt: composerActivity.observedAtMs,
+          userComposerReason: composerActivity.reason,
+        };
+        data = {
+          ...data,
+          composerActivity,
+        };
+      }
+    } catch (error) {
+      // error-policy:J4 explicit provider degrade — composer context is helpful
+      // but absence must not suppress the rest of the activity profile.
+      logger.warn(
+        {
+          boundary: "activity_profile",
+          operation: "provider_composer_activity_read",
+          err: error instanceof Error ? error : undefined,
+        },
+        "[activity-profile] Failed to read composer activity context; continuing without composer context.",
       );
     }
 

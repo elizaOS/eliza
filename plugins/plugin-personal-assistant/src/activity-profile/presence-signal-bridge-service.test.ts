@@ -4,6 +4,7 @@
  * verifies both the activity signal and relationship/contact recency writes.
  */
 import {
+  type ComposerActivityPayload,
   EventType,
   type IAgentRuntime,
   type MessagePayload,
@@ -552,6 +553,131 @@ describe("PresenceSignalBridgeService view-switch + reaction signals (#14689)", 
     );
     expect(runtime.unregisterEvent).toHaveBeenCalledWith(
       EventType.REACTION_RECEIVED,
+      expect.any(Function),
+    );
+  });
+});
+
+describe("PresenceSignalBridgeService composer activity signals (#14679)", () => {
+  beforeEach(() => {
+    mockState.activitySignals.length = 0;
+    vi.clearAllMocks();
+  });
+
+  function composerPayload(
+    overrides: Partial<ComposerActivityPayload> = {},
+  ): ComposerActivityPayload {
+    return {
+      runtime: {} as IAgentRuntime,
+      source: "composer-interaction",
+      activity: "typing_started",
+      surface: "continuous_chat_overlay",
+      conversationId: "conversation-1",
+      draftLength: 12,
+      occurredAt: "2026-06-01T12:00:00.000Z",
+      initiatedBy: "user",
+      ...overrides,
+    } as unknown as ComposerActivityPayload;
+  }
+
+  it("writes an active app_lifecycle signal for typing start", async () => {
+    const { runtime, handlers } = runtimeWithRelationships({});
+    await PresenceSignalBridgeService.start(runtime);
+
+    await handlers.get(EventType.USER_TYPING_STARTED)?.(
+      composerPayload() as unknown as MessagePayload,
+    );
+
+    expect(mockState.activitySignals).toHaveLength(1);
+    expect(mockState.activitySignals[0]).toMatchObject({
+      source: "app_lifecycle",
+      platform: "composer",
+      state: "active",
+      idleState: "active",
+      observedAt: "2026-06-01T12:00:00.000Z",
+      metadata: expect.objectContaining({
+        eventType: "USER_TYPING_STARTED",
+        activity: "typing_started",
+        surface: "continuous_chat_overlay",
+        conversationId: "conversation-1",
+        draftLength: 12,
+      }),
+    });
+  });
+
+  it("writes an idle signal for typing pause without draft contents", async () => {
+    const { runtime, handlers } = runtimeWithRelationships({});
+    await PresenceSignalBridgeService.start(runtime);
+
+    await handlers.get(EventType.USER_TYPING_PAUSED)?.(
+      composerPayload({
+        activity: "typing_paused",
+        idleForMs: 2000,
+        occurredAt: "2026-06-01T12:00:02.000Z",
+      }) as unknown as MessagePayload,
+    );
+
+    expect(mockState.activitySignals[0]).toMatchObject({
+      source: "app_lifecycle",
+      platform: "composer",
+      state: "idle",
+      idleState: "idle",
+      idleTimeSeconds: 2,
+      metadata: expect.objectContaining({
+        eventType: "USER_TYPING_PAUSED",
+        activity: "typing_paused",
+        idleForMs: 2000,
+      }),
+    });
+    expect(mockState.activitySignals[0]).not.toHaveProperty("text");
+    expect(mockState.activitySignals[0]).not.toHaveProperty("draft");
+  });
+
+  it("writes an idle signal for a user-cleared draft", async () => {
+    const { runtime, handlers } = runtimeWithRelationships({});
+    await PresenceSignalBridgeService.start(runtime);
+
+    await handlers.get(EventType.USER_DRAFT_ABANDONED)?.(
+      composerPayload({
+        activity: "draft_abandoned",
+        draftLength: 0,
+        reason: "cleared",
+        occurredAt: "2026-06-01T12:00:03.000Z",
+      }) as unknown as MessagePayload,
+    );
+
+    expect(mockState.activitySignals[0]).toMatchObject({
+      source: "app_lifecycle",
+      platform: "composer",
+      state: "idle",
+      metadata: expect.objectContaining({
+        eventType: "USER_DRAFT_ABANDONED",
+        activity: "draft_abandoned",
+        reason: "cleared",
+        draftLength: 0,
+      }),
+    });
+  });
+
+  it("registers and unregisters composer activity handlers", async () => {
+    const { runtime, handlers } = runtimeWithRelationships({});
+    const service = await PresenceSignalBridgeService.start(runtime);
+
+    expect(handlers.has(EventType.USER_TYPING_STARTED)).toBe(true);
+    expect(handlers.has(EventType.USER_TYPING_PAUSED)).toBe(true);
+    expect(handlers.has(EventType.USER_DRAFT_ABANDONED)).toBe(true);
+
+    await service.stop();
+    expect(runtime.unregisterEvent).toHaveBeenCalledWith(
+      EventType.USER_TYPING_STARTED,
+      expect.any(Function),
+    );
+    expect(runtime.unregisterEvent).toHaveBeenCalledWith(
+      EventType.USER_TYPING_PAUSED,
+      expect.any(Function),
+    );
+    expect(runtime.unregisterEvent).toHaveBeenCalledWith(
+      EventType.USER_DRAFT_ABANDONED,
       expect.any(Function),
     );
   });

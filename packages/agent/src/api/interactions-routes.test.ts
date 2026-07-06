@@ -1,11 +1,12 @@
 /**
- * POST /api/interactions/shortcut → EventType.SHORTCUT_FIRED contract (#8792).
+ * POST /api/interactions/* → runtime interaction event contract.
  *
  * The client-keyboard half of the interaction-reporting seam (the view-switch
  * half is views-routes.proactive-emit.test.ts). A user-fired shortcut must reach
  * the agent as a SHORTCUT_FIRED event (initiatedBy "user") the proactive decider
- * can react to — and a malformed/oversized report must be rejected, never emit,
- * and never throw.
+ * can react to. Composer lifecycle reports must reach the runtime as draft
+ * metadata only (#14679). Malformed/oversized reports must be rejected, never
+ * emit, and never throw.
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
@@ -14,6 +15,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   handleInteractionsRoutes,
   type InteractionsRouteContext,
+  parseComposerBody,
   parseShortcutBody,
 } from "./interactions-routes.ts";
 
@@ -54,6 +56,15 @@ function shortcutCalls(emitEvent: ReturnType<typeof vi.fn>) {
   );
 }
 
+function composerCalls(emitEvent: ReturnType<typeof vi.fn>) {
+  return emitEvent.mock.calls.filter(
+    (call) =>
+      call[0] === EventType.USER_TYPING_STARTED ||
+      call[0] === EventType.USER_TYPING_PAUSED ||
+      call[0] === EventType.USER_DRAFT_ABANDONED,
+  );
+}
+
 afterEach(() => vi.restoreAllMocks());
 
 describe("parseShortcutBody", () => {
@@ -81,6 +92,73 @@ describe("parseShortcutBody", () => {
     expect(parseShortcutBody('{"shortcutId":"UPPER"}')).toBeNull();
     expect(parseShortcutBody(`{"shortcutId":"${"a".repeat(60)}"}`)).toBeNull();
     expect(parseShortcutBody("{}")).toBeNull();
+  });
+});
+
+describe("parseComposerBody", () => {
+  it("accepts composer metadata without draft text", () => {
+    expect(
+      parseComposerBody(
+        JSON.stringify({
+          activity: "typing_paused",
+          surface: "continuous_chat_overlay",
+          conversationId: "conversation-1",
+          draftLength: 14,
+          idleForMs: 2000,
+          occurredAt: "2026-06-01T12:00:00.000Z",
+        }),
+      ),
+    ).toEqual({
+      activity: "typing_paused",
+      surface: "continuous_chat_overlay",
+      conversationId: "conversation-1",
+      draftLength: 14,
+      idleForMs: 2000,
+      occurredAt: "2026-06-01T12:00:00.000Z",
+    });
+  });
+
+  it("rejects malformed composer lifecycle reports", () => {
+    expect(parseComposerBody("")).toBeNull();
+    expect(parseComposerBody("not json")).toBeNull();
+    expect(parseComposerBody("[]")).toBeNull();
+    expect(
+      parseComposerBody(
+        JSON.stringify({
+          activity: "typing_paused",
+          surface: "continuous_chat_overlay",
+          draftLength: 4,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseComposerBody(
+        JSON.stringify({
+          activity: "typing_started",
+          surface: "Continuous Chat",
+          draftLength: 4,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseComposerBody(
+        JSON.stringify({
+          activity: "typing_started",
+          surface: "continuous_chat_overlay",
+          draftLength: -1,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseComposerBody(
+        JSON.stringify({
+          activity: "typing_started",
+          surface: "continuous_chat_overlay",
+          draftLength: 4,
+          occurredAt: "not-a-date",
+        }),
+      ),
+    ).toBeNull();
   });
 });
 
@@ -139,5 +217,109 @@ describe("handleInteractionsRoutes — SHORTCUT_FIRED (#8792)", () => {
       ctx.res,
       expect.objectContaining({ ok: true }),
     );
+  });
+});
+
+describe("handleInteractionsRoutes — composer lifecycle (#14679)", () => {
+  it("emits USER_TYPING_STARTED for a valid composer report", async () => {
+    const { ctx, emitEvent, json } = makeCtx(
+      {
+        activity: "typing_started",
+        surface: "continuous_chat_overlay",
+        conversationId: "conversation-1",
+        draftLength: 5,
+        occurredAt: "2026-06-01T12:00:00.000Z",
+      },
+      "POST",
+      "/api/interactions/composer",
+    );
+
+    await expect(handleInteractionsRoutes(ctx)).resolves.toBe(true);
+
+    const calls = composerCalls(emitEvent);
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toBe(EventType.USER_TYPING_STARTED);
+    expect(calls[0][1]).toEqual(
+      expect.objectContaining({
+        activity: "typing_started",
+        surface: "continuous_chat_overlay",
+        conversationId: "conversation-1",
+        draftLength: 5,
+        occurredAt: "2026-06-01T12:00:00.000Z",
+        initiatedBy: "user",
+        source: "composer-interaction",
+      }),
+    );
+    expect(calls[0][1]).not.toHaveProperty("text");
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({ ok: true, activity: "typing_started" }),
+    );
+  });
+
+  it("emits USER_TYPING_PAUSED with idle age", async () => {
+    const { ctx, emitEvent } = makeCtx(
+      {
+        activity: "typing_paused",
+        surface: "continuous_chat_overlay",
+        draftLength: 5,
+        idleForMs: 2000,
+        occurredAt: "2026-06-01T12:00:02.000Z",
+      },
+      "POST",
+      "/api/interactions/composer",
+    );
+
+    await expect(handleInteractionsRoutes(ctx)).resolves.toBe(true);
+
+    const calls = composerCalls(emitEvent);
+    expect(calls[0][0]).toBe(EventType.USER_TYPING_PAUSED);
+    expect(calls[0][1]).toEqual(
+      expect.objectContaining({
+        activity: "typing_paused",
+        idleForMs: 2000,
+      }),
+    );
+  });
+
+  it("emits USER_DRAFT_ABANDONED for a cleared draft", async () => {
+    const { ctx, emitEvent } = makeCtx(
+      {
+        activity: "draft_abandoned",
+        surface: "continuous_chat_overlay",
+        draftLength: 0,
+        reason: "cleared",
+        occurredAt: "2026-06-01T12:00:03.000Z",
+      },
+      "POST",
+      "/api/interactions/composer",
+    );
+
+    await expect(handleInteractionsRoutes(ctx)).resolves.toBe(true);
+
+    const calls = composerCalls(emitEvent);
+    expect(calls[0][0]).toBe(EventType.USER_DRAFT_ABANDONED);
+    expect(calls[0][1]).toEqual(
+      expect.objectContaining({
+        activity: "draft_abandoned",
+        reason: "cleared",
+      }),
+    );
+  });
+
+  it("rejects malformed composer bodies without emitting", async () => {
+    const { ctx, emitEvent, error } = makeCtx(
+      {
+        activity: "typing_paused",
+        surface: "continuous_chat_overlay",
+        draftLength: 5,
+      },
+      "POST",
+      "/api/interactions/composer",
+    );
+
+    await expect(handleInteractionsRoutes(ctx)).resolves.toBe(true);
+    expect(composerCalls(emitEvent)).toHaveLength(0);
+    expect(error).toHaveBeenCalledWith(ctx.res, expect.any(String), 400);
   });
 });

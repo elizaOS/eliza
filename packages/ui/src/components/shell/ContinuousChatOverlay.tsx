@@ -33,6 +33,7 @@ import type {
   ImageAttachment,
 } from "../../api/client-types-chat";
 import { useComposerKeydown, useComposerPaste } from "../../chat/composer-core";
+import { reportComposerActivity } from "../../chat/report-composer-activity";
 import {
   parseSlashDraft,
   resolveClientShortcutExecution,
@@ -262,6 +263,8 @@ const MAXIMIZE_RESTORE_ZONE_VH = 0.2;
 // of resting free — so near-detent releases are deterministic + clean, and only
 // the clear gaps between detents keep the free-drag rest height.
 const SHEET_DETENT_MAGNET = 64;
+const COMPOSER_TYPING_PAUSE_MS = 2_000;
+const COMPOSER_ACTIVITY_SURFACE = "continuous_chat_overlay";
 
 // A light iOS-style impact on each detent cross. Self-contained + guarded so it
 // is a no-op off-native (and in jsdom tests) without coupling the overlay to the
@@ -1106,6 +1109,8 @@ export function ContinuousChatOverlay({
   // so submitText keeps its stable identity.
   const activeConversationIdRef = React.useRef(activeConversationId);
   activeConversationIdRef.current = activeConversationId;
+  const composerHadDraftRef = React.useRef(draft.trim().length > 0);
+  const composerPauseTimerRef = React.useRef<number | null>(null);
   // The active view can take over the composer: override the placeholder and
   // receive the live draft (e.g. Help uses the chat as its search box).
   const viewChatBinding = useViewChatBinding();
@@ -1795,6 +1800,42 @@ export function ContinuousChatOverlay({
   const listening = phase === "listening";
   const hasDraft = draft.trim().length > 0;
   const hasImages = pendingImages.length > 0;
+  React.useEffect(() => {
+    const draftLength = draft.trim().length;
+    if (composerPauseTimerRef.current !== null) {
+      window.clearTimeout(composerPauseTimerRef.current);
+      composerPauseTimerRef.current = null;
+    }
+    if (draftLength === 0) {
+      composerHadDraftRef.current = false;
+      return;
+    }
+    if (!composerHadDraftRef.current) {
+      reportComposerActivity({
+        activity: "typing_started",
+        surface: COMPOSER_ACTIVITY_SURFACE,
+        conversationId: activeConversationId,
+        draftLength,
+      });
+      composerHadDraftRef.current = true;
+    }
+    composerPauseTimerRef.current = window.setTimeout(() => {
+      reportComposerActivity({
+        activity: "typing_paused",
+        surface: COMPOSER_ACTIVITY_SURFACE,
+        conversationId: activeConversationIdRef.current,
+        draftLength: draftRef.current.trim().length,
+        idleForMs: COMPOSER_TYPING_PAUSE_MS,
+      });
+      composerPauseTimerRef.current = null;
+    }, COMPOSER_TYPING_PAUSE_MS);
+    return () => {
+      if (composerPauseTimerRef.current !== null) {
+        window.clearTimeout(composerPauseTimerRef.current);
+        composerPauseTimerRef.current = null;
+      }
+    };
+  }, [activeConversationId, draft]);
 
   // Send `text` (and optional images) through the normal chat pipeline, clearing
   // the composer. Shared by the send button and the slash menu (agent commands).
@@ -4609,10 +4650,23 @@ export function ContinuousChatOverlay({
                 rows={1}
                 value={draft}
                 onChange={(e) => {
-                  setDraft(e.target.value);
+                  const nextDraft = e.target.value;
+                  if (
+                    draft.trim().length > 0 &&
+                    nextDraft.trim().length === 0
+                  ) {
+                    reportComposerActivity({
+                      activity: "draft_abandoned",
+                      surface: COMPOSER_ACTIVITY_SURFACE,
+                      conversationId: activeConversationIdRef.current,
+                      draftLength: 0,
+                      reason: "cleared",
+                    });
+                  }
+                  setDraft(nextDraft);
                   // Mirror the live draft to the active view (Help search etc.).
-                  viewChatBinding?.onQuery?.(e.target.value);
-                  if (e.target.value.trim().length > 0) expand();
+                  viewChatBinding?.onQuery?.(nextDraft);
+                  if (nextDraft.trim().length > 0) expand();
                 }}
                 onFocus={() => {
                   // Widen out of the short-landscape compact affordance (#14173)

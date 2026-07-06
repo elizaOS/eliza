@@ -249,7 +249,12 @@ export async function handleInteractionsRoutes(
   ...args: Parameters<InteractionsRoutesModule["handleInteractionsRoutes"]>
 ): ReturnType<InteractionsRoutesModule["handleInteractionsRoutes"]> {
   const ctx = routeContext(args);
-  if (ctx?.pathname !== "/api/interactions/shortcut") return false;
+  if (
+    ctx?.pathname !== "/api/interactions/shortcut" &&
+    ctx?.pathname !== "/api/interactions/composer"
+  ) {
+    return false;
+  }
   return (await import("./interactions-routes.ts")).handleInteractionsRoutes(
     ...args,
   );

@@ -99,6 +99,9 @@ export enum EventType {
 	VIEW_SWITCHED = "VIEW_SWITCHED",
 	SLASH_COMMAND_INVOKED = "SLASH_COMMAND_INVOKED",
 	SHORTCUT_FIRED = "SHORTCUT_FIRED",
+	USER_TYPING_STARTED = "USER_TYPING_STARTED",
+	USER_TYPING_PAUSED = "USER_TYPING_PAUSED",
+	USER_DRAFT_ABANDONED = "USER_DRAFT_ABANDONED",
 
 	// Hook system events - command lifecycle
 	HOOK_COMMAND_NEW = "HOOK_COMMAND_NEW",
@@ -420,6 +423,33 @@ export interface ShortcutFiredPayload extends EventPayload {
 	roomId?: UUID;
 }
 
+/** Composer activity states reported by chat surfaces without draft contents. */
+export type ComposerActivityKind =
+	| "typing_started"
+	| "typing_paused"
+	| "draft_abandoned";
+
+/**
+ * Payload for composer activity events — the user's draft lifecycle in a chat
+ * composer. Carries only metadata; the draft text never leaves the client.
+ */
+export interface ComposerActivityPayload extends EventPayload {
+	activity: ComposerActivityKind;
+	initiatedBy: "user";
+	/** Stable client surface id (e.g. "continuous_chat_overlay"). */
+	surface: string;
+	/** Conversation or room id the composer is editing, when known. */
+	conversationId?: string;
+	/** Draft character count after trimming; never the draft text. */
+	draftLength: number;
+	/** Pause debounce age for typing_paused events. */
+	idleForMs?: number;
+	/** Why a draft cleared without submission, when known. */
+	reason?: "cleared" | "blurred" | "conversation_switched" | "unknown";
+	occurredAt: string;
+	roomId?: UUID;
+}
+
 // ============================================================================
 // Hook System Event Payloads
 // ============================================================================
@@ -630,6 +660,9 @@ export interface EventPayloadMap {
 	[EventType.VIEW_SWITCHED]: ViewSwitchedPayload;
 	[EventType.SLASH_COMMAND_INVOKED]: SlashCommandInvokedPayload;
 	[EventType.SHORTCUT_FIRED]: ShortcutFiredPayload;
+	[EventType.USER_TYPING_STARTED]: ComposerActivityPayload;
+	[EventType.USER_TYPING_PAUSED]: ComposerActivityPayload;
+	[EventType.USER_DRAFT_ABANDONED]: ComposerActivityPayload;
 	// Hook system event payloads
 	[EventType.HOOK_COMMAND_NEW]: HookCommandPayload;
 	[EventType.HOOK_COMMAND_RESET]: HookCommandPayload;

@@ -54,6 +54,10 @@ vi.mock("../../utils/clipboard", () => ({
   copyTextToClipboard: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../../chat/report-composer-activity", () => ({
+  reportComposerActivity: vi.fn(),
+}));
+
 import * as React from "react";
 import { client } from "../../api/client";
 import type {
@@ -62,6 +66,7 @@ import type {
   ConversationMessageSearchResult,
   ImageAttachment,
 } from "../../api/client-types-chat";
+import { reportComposerActivity } from "../../chat/report-composer-activity";
 import { CHAT_PREFILL_EVENT, ELIZA_BACK_INTENT_EVENT } from "../../events";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
@@ -96,6 +101,7 @@ afterEach(() => {
   cleanup();
   resetShellSurfaceForTests();
   setViewChatBinding(null);
+  vi.mocked(reportComposerActivity).mockClear();
   vi.mocked(client.searchConversationMessages).mockReset();
   vi.mocked(Element.prototype.scrollIntoView).mockClear();
   document.getElementById("chat-message-m-hit")?.remove();
@@ -226,6 +232,75 @@ describe("ContinuousChatOverlay", () => {
     });
     expect(screen.getByLabelText("send")).toBeTruthy();
     expect(screen.queryByLabelText("talk")).toBeNull();
+  });
+
+  it("reports typing start and pause from the real composer draft", () => {
+    vi.useFakeTimers();
+    try {
+      render(<ContinuousChatOverlay controller={makeController()} />);
+      fireEvent.change(screen.getByLabelText("message"), {
+        target: { value: "hello" },
+      });
+
+      expect(reportComposerActivity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          activity: "typing_started",
+          surface: "continuous_chat_overlay",
+          draftLength: 5,
+        }),
+      );
+      expect(reportComposerActivity).not.toHaveBeenCalledWith(
+        expect.objectContaining({ activity: "typing_paused" }),
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(1_999);
+      });
+      expect(reportComposerActivity).not.toHaveBeenCalledWith(
+        expect.objectContaining({ activity: "typing_paused" }),
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(reportComposerActivity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          activity: "typing_paused",
+          surface: "continuous_chat_overlay",
+          draftLength: 5,
+          idleForMs: 2_000,
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports draft_abandoned only when the user clears typed text", () => {
+    const controller = makeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    const input = screen.getByLabelText("message");
+
+    fireEvent.change(input, { target: { value: "discard me" } });
+    fireEvent.change(input, { target: { value: "" } });
+
+    expect(reportComposerActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activity: "draft_abandoned",
+        surface: "continuous_chat_overlay",
+        draftLength: 0,
+        reason: "cleared",
+      }),
+    );
+
+    vi.mocked(reportComposerActivity).mockClear();
+    fireEvent.change(input, { target: { value: "send me" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(controller.send).toHaveBeenCalledWith("send me");
+    expect(reportComposerActivity).not.toHaveBeenCalledWith(
+      expect.objectContaining({ activity: "draft_abandoned" }),
+    );
   });
 
   it("shows a disabled, no-op send control when the agent can't accept input (canSend false)", () => {
