@@ -1,6 +1,6 @@
 # Live Scenario Runner (nightly)
 #
-# Executes the executive-assistant and connector certification
+# Executes the executive-assistant, connector certification, and plugin-health
 # scenarios against a live LLM runtime with real connector credentials and
 # uploads the JSON report. Scheduled/default dispatch runs are report-only
 # while this catalog is still being hardened; manual dispatch can opt into
@@ -88,7 +88,7 @@ permissions:
 
 jobs:
   live-scenarios:
-    name: Live scenarios (EA + connectors)
+    name: Live scenarios (EA + connectors + health)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 120
     steps:
@@ -171,6 +171,7 @@ jobs:
           package_dirs=(
             plugins/plugin-sql
             plugins/plugin-agent-skills
+            plugins/plugin-health
             plugins/plugin-pdf
             plugins/plugin-telegram
             plugins/plugin-whatsapp
@@ -249,6 +250,31 @@ jobs:
           RUN_DIR: artifacts/scenario-runs/live
         run: node packages/scripts/run-live-scenarios.mjs
 
+      - name: Run plugin-health live scenarios
+        id: run-health
+        env:
+          # LLM providers
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          # Independent LLM judge (#9310): judge on Cerebras, never the model
+          # under test.
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
+          # Run controls
+          SCENARIO_ROOT: plugins/plugin-health/test/scenarios
+          SCENARIO_FILTER: ${{ inputs.scenario_filter }}
+          LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
+          SCENARIO_ENFORCE_GATE: ${{ inputs.enforce_gate && '1' || '0' }}
+          SKIP_REASON: ${{ inputs.skip_reason }}
+          REPORT_PATH: artifacts/plugin-health-scenario-report.json
+          RUN_DIR: artifacts/scenario-runs/plugin-health
+          EXPORT_NATIVE_PATH: artifacts/scenario-runs/plugin-health/native.jsonl
+        run: node packages/scripts/run-live-scenarios.mjs --lane live-only
+
       - name: Upload scenario report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -256,6 +282,8 @@ jobs:
           name: lifeops-scenario-report
           path: |
             artifacts/lifeops-scenario-report.json
+            artifacts/plugin-health-scenario-report.json
             artifacts/scenario-runs/live/
+            artifacts/scenario-runs/plugin-health/
           if-no-files-found: warn
           retention-days: 30
