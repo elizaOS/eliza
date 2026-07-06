@@ -1,13 +1,30 @@
 #!/usr/bin/env node
 /**
- * Ordered live-lane driver for the LifeOps HITL validation run (issue #11632).
+ * Per-auth-path live-lane driver for the LifeOps HITL validation run (#11632).
  *
- * Loads the worktree `.env` into `process.env` with the same optional-dotenv
- * convention as packages/scripts/test-env.mjs (`override: false`, manual-parse
- * fallback when dotenv is not installed), runs the read-only collector
- * pre-pass, then executes the live lanes serially. Each lane is gated on the
- * connector groups exported by collect-11632-live-validation-status.mjs; a
- * blocked lane prints `SKIP <lane>: missing <vars>` and never fails the run.
+ * Env resolution is the layered load shared with the HITL dashboard
+ * (env-layers.mjs: process.env > repo .env > main-checkout .env >
+ * ~/.eliza/.env), hydrated into process.env once at startup so readiness
+ * checks here and the spawned suites see exactly what the dashboard rows show.
+ * Env var NAMES are printed for readiness; env var VALUES are never logged.
+ *
+ * Each lane is one connector auth path (a CONNECTOR_PATHS id, or a lifeops.*
+ * pseudo-path for the keyless/model-gated LifeOps suites) bound to the live
+ * vitest suite that proves it. Gating is per path: the path's own
+ * requiredAll/requiredAny env names plus its declarative availability spec
+ * (checkAvailability). An unsatisfied path prints `SKIP <pathId>: <reason>`
+ * and is recorded — it is never a failure. `--dry-run` extends the readiness
+ * view to every registry path, so suiteless paths (probe-only, covered by the
+ * dashboard) are visible instead of silently absent.
+ *
+ * Every lane completion (any status) upserts the committed evidence ledger
+ * docs/testing/hitl-ledger.json ({pathId, lastRunAt, lastSuccessAt, lane,
+ * commit, counts} — hitl-ledger.mjs writes atomically with stable key order)
+ * and then commits the ledger: `chore(hitl): ledger — <pathId> <status>`.
+ * `lastSuccessAt` only advances on live-proven lanes: exit 0 with zero
+ * skipped tests in the vitest summary — skipped live describes downgrade to
+ * `ran-with-skips`, a nonzero exit records `failed`. `--status` renders the
+ * ledger freshness table (green ≤7d, yellow >7d, red >30d or never).
  *
  * Lane stdout+stderr tee to the exact filenames the collector's
  * `existingEvidence` parsers grep — owner-agent-permission-matrix.txt,
@@ -15,21 +32,15 @@
  * reports/lifeops-live-validation/11632-status/ — and the remaining lanes log
  * into a datestamped session dir next to them, alongside summary.json.
  *
- * A lane is only `live-proven` when it exits 0 with zero skipped tests in its
- * vitest summary; skipped live describes downgrade it to `ran-with-skips`,
- * and a nonzero exit records `failed` (summary.json never hides a red lane
- * behind the three green-path statuses). Env var NAMES are printed for
- * readiness; env var VALUES are never logged.
- *
  * Usage:
  *   node scripts/lifeops/run-11632-live-lanes.mjs            # all ready lanes
- *   node scripts/lifeops/run-11632-live-lanes.mjs --dry-run  # readiness only
- *   node scripts/lifeops/run-11632-live-lanes.mjs --lane=3   # one lane
+ *   node scripts/lifeops/run-11632-live-lanes.mjs --dry-run  # per-path readiness only
+ *   node scripts/lifeops/run-11632-live-lanes.mjs --lane=1   # one lane
+ *   node scripts/lifeops/run-11632-live-lanes.mjs --status   # ledger freshness table
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   createWriteStream,
-  existsSync,
   mkdirSync,
   readFileSync,
   writeFileSync,
@@ -37,10 +48,15 @@ import {
 import { dirname, join, relative, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { CONNECTOR_GROUPS } from "./collect-11632-live-validation-status.mjs";
+import { CONNECTOR_PATHS, checkAvailability } from "./connector-paths.mjs";
+import { applyLayeredEnvToProcess } from "./env-layers.mjs";
 import {
-  CONNECTOR_GROUPS,
-  groupStatus,
-} from "./collect-11632-live-validation-status.mjs";
+  freshness,
+  LEDGER_PATH,
+  readLedger,
+  recordOutcome,
+} from "./hitl-ledger.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "../..");
@@ -54,23 +70,61 @@ const PA_LIVE_E2E_FILES = [
   "plugins/plugin-personal-assistant/test/lifeops-memory.live.e2e.test.ts",
 ];
 
+const MODEL_REQUIRED_ANY = CONNECTOR_GROUPS.find(
+  (group) => group.id === "model",
+).requiredAny;
+
+/**
+ * LifeOps suites are auth-path rows too, but they are not connector paths:
+ * the permission matrix is deliberately credential-free, and the two live
+ * model lanes gate on "any live model provider" rather than one key. They
+ * live in the ledger under the lifeops.* family with the same entry shape.
+ */
+const LIFEOPS_PSEUDO_PATHS = [
+  {
+    id: "lifeops.permission-matrix",
+    label: "Owner/agent permission matrix (keyless)",
+    requiredAll: [],
+    requiredAny: [],
+    availability: { type: "always" },
+  },
+  {
+    id: "lifeops.pa-background-real",
+    label: "Personal-assistant background loop (live model)",
+    requiredAll: [],
+    requiredAny: MODEL_REQUIRED_ANY,
+    availability: { type: "always" },
+  },
+  {
+    id: "lifeops.pa-live-e2e",
+    label: "Personal-assistant live e2e journeys (live model)",
+    requiredAll: [],
+    requiredAny: MODEL_REQUIRED_ANY,
+    availability: { type: "always" },
+  },
+];
+
+const PATH_SPECS = new Map(
+  [...CONNECTOR_PATHS, ...LIFEOPS_PSEUDO_PATHS].map((path) => [path.id, path]),
+);
+
 /**
  * Lane order mirrors the collector's `nextCommands`: keyless proof first, then
- * connector-scoped live suites, then the model-gated LifeOps lanes. `gates`
- * are CONNECTOR_GROUPS ids; lane 1 has none because the permission matrix is
- * deliberately credential-free (it gates itself on LIFEOPS_PERMISSION_MATRIX).
- * Lane 3's plugin-x tests call dotenv.config() against the plugin cwd with
- * override:false, so the env injected here wins over any plugin-local .env.
- * Lane 5 runs the shared live-e2e vitest lane; its include globs are derived
- * from the resolved eliza workspace root (packages/test/vitest/e2e.config.ts),
- * so the same command collects the PA live e2e files from both the flat
- * elizaOS checkout and the nested `eliza/` consumer layout.
+ * connector-scoped live suites, then the model-gated LifeOps lanes. Each lane
+ * names the auth path it proves; gates come from that path's registry entry,
+ * so telegram.bot-style additions are one suite mapping here, not a new gate
+ * system. Lane 3's plugin-x tests call dotenv.config() against the plugin cwd
+ * with override:false, so the env injected here wins over any plugin-local
+ * .env. Lane 5 runs the shared live-e2e vitest lane; its include globs are
+ * derived from the resolved eliza workspace root
+ * (packages/test/vitest/e2e.config.ts), so the same command collects the PA
+ * live e2e files from both the flat elizaOS checkout and the nested `eliza/`
+ * consumer layout.
  */
 const LANES = [
   {
     n: 1,
-    id: "permission-matrix",
-    gates: [],
+    pathId: "lifeops.permission-matrix",
     env: { LIFEOPS_PERMISSION_MATRIX: "1" },
     command: [
       "bunx",
@@ -84,24 +138,21 @@ const LANES = [
   },
   {
     n: 2,
-    id: "plugin-google-live",
-    gates: ["google"],
+    pathId: "google.oauth-owner",
     env: { TEST_LANE: "post-merge", ELIZA_LIVE_TEST: "1" },
     command: ["bun", "run", "--cwd", "plugins/plugin-google", "test"],
     logPath: () => join(STATUS_DIR, "plugin-google-live.txt"),
   },
   {
     n: 3,
-    id: "plugin-x-live",
-    gates: ["x"],
+    pathId: "x.oauth1-user",
     env: { TEST_LANE: "post-merge", ELIZA_LIVE_TEST: "1" },
     command: ["bun", "run", "--cwd", "plugins/plugin-x", "test"],
     logPath: () => join(STATUS_DIR, "plugin-x-live.txt"),
   },
   {
     n: 4,
-    id: "pa-background-real",
-    gates: ["model"],
+    pathId: "lifeops.pa-background-real",
     env: { ELIZA_LIVE_TEST: "1", LIFEOPS_PERMISSION_MATRIX: "1" },
     command: [
       "bun",
@@ -114,8 +165,7 @@ const LANES = [
   },
   {
     n: 5,
-    id: "pa-live-e2e",
-    gates: ["model"],
+    pathId: "lifeops.pa-live-e2e",
     env: { ELIZA_LIVE_TEST: "1" },
     command: [
       "bunx",
@@ -129,43 +179,29 @@ const LANES = [
   },
 ];
 
-async function loadDotenv() {
-  const file = join(ROOT, ".env");
-  if (!existsSync(file)) return;
-  try {
-    const dotenv = await import("dotenv");
-    dotenv.config({ path: file, override: false, quiet: true });
-  } catch {
-    // dotenv is an optional dep (not hoisted at the repo root); fall back to
-    // the same minimal parser test-env.mjs uses so the driver needs no deps.
-    const text = readFileSync(file, "utf8");
-    for (const line of text.split(/\r?\n/)) {
-      const match = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i.exec(line);
-      if (!match) continue;
-      const [, key, raw] = match;
-      if (process.env[key]) continue;
-      process.env[key] = raw.replace(/^['"]|['"]$/g, "");
-    }
+for (const lane of LANES) {
+  if (!PATH_SPECS.has(lane.pathId)) {
+    throw new Error(`lane ${lane.n}: unknown auth path '${lane.pathId}'`);
   }
 }
 
 function parseArgs(argv) {
-  const args = { dryRun: false, lane: null };
+  const usage =
+    "Usage: node scripts/lifeops/run-11632-live-lanes.mjs [--dry-run] [--lane=<n>] [--status]";
+  const args = { dryRun: false, lane: null, status: false };
   for (const arg of argv) {
     if (arg === "--dry-run") {
       args.dryRun = true;
+    } else if (arg === "--status") {
+      args.status = true;
     } else if (/^--lane=\d+$/.test(arg)) {
       args.lane = Number(arg.slice("--lane=".length));
     } else if (arg === "--help") {
-      console.log(
-        "Usage: node scripts/lifeops/run-11632-live-lanes.mjs [--dry-run] [--lane=<n>]",
-      );
+      console.log(usage);
       process.exit(0);
     } else {
       console.error(`Unknown argument: ${arg}`);
-      console.error(
-        "Usage: node scripts/lifeops/run-11632-live-lanes.mjs [--dry-run] [--lane=<n>]",
-      );
+      console.error(usage);
       process.exit(2);
     }
   }
@@ -176,22 +212,31 @@ function parseArgs(argv) {
   return args;
 }
 
-/** Missing env var NAMES (never values) across a lane's gate groups. */
-function laneReadiness(lane) {
-  const missing = [];
-  for (const id of lane.gates) {
-    const group = CONNECTOR_GROUPS.find((entry) => entry.id === id);
-    if (!group) {
-      throw new Error(`lane ${lane.id}: unknown connector group '${id}'`);
-    }
-    const status = groupStatus(group);
-    if (status.readyForOperatorRun) continue;
-    missing.push(...status.missingRequiredAll);
-    if (status.missingRequiredAny.length > 0) {
-      missing.push(`one of: ${status.missingRequiredAny.join("|")}`);
-    }
+function hasEnvName(name) {
+  const value = process.env[name];
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Per-path gate: availability spec first (machine state), then the path's own
+ * env names against the hydrated layered env. Reasons carry env var NAMES
+ * only, never values.
+ */
+function pathReadiness(spec) {
+  const availability = checkAvailability(spec.availability);
+  if (!availability.available) {
+    return { ready: false, reason: availability.reason };
   }
-  return { ready: missing.length === 0, missing };
+  const requiredAll = spec.requiredAll ?? [];
+  const requiredAny = spec.requiredAny ?? [];
+  const missing = requiredAll.filter((name) => !hasEnvName(name));
+  const anySatisfied = requiredAny.length === 0 || requiredAny.some(hasEnvName);
+  if (missing.length === 0 && anySatisfied)
+    return { ready: true, reason: null };
+  const parts = [];
+  if (missing.length > 0) parts.push(`missing ${missing.join(", ")}`);
+  if (!anySatisfied) parts.push(`one of: ${requiredAny.join("|")}`);
+  return { ready: false, reason: parts.join("; ") };
 }
 
 /** Spawns a command from the repo root, tee-ing stdout+stderr to `logPath`. */
@@ -257,20 +302,151 @@ function laneOutcome(result, counts) {
   return { status: "live-proven", skipReason: null };
 }
 
-await loadDotenv();
+// --- committed evidence ledger -------------------------------------------------
+
+function git(args) {
+  return spawnSync("git", args, { cwd: ROOT, encoding: "utf8" });
+}
+
+function shortHead() {
+  const result = git(["rev-parse", "--short", "HEAD"]);
+  if (result.status !== 0) {
+    throw new Error(`git rev-parse --short HEAD failed: ${result.stderr}`);
+  }
+  return result.stdout.trim();
+}
+
+/** lastSuccessAt only advances on live-proven; a skip preserves prior proof. */
+function ledgerOk(status) {
+  if (status === "live-proven") return true;
+  if (status === "skipped") return null;
+  return false;
+}
+
+/**
+ * Stage and commit only the ledger file (pathspec commit), so concurrent
+ * working-tree edits from other agents are never swept into an evidence
+ * commit. Committing evidence-of-run to the repo is the owner's explicit ask.
+ */
+function commitLedger(pathId, status) {
+  const rel = relative(ROOT, LEDGER_PATH);
+  const dirty = git(["status", "--porcelain", "--", rel]);
+  if (dirty.status !== 0) {
+    throw new Error(`git status for ${rel} failed: ${dirty.stderr}`);
+  }
+  if (dirty.stdout.trim().length === 0) return false;
+  const add = git(["add", "--", rel]);
+  if (add.status !== 0) {
+    throw new Error(`git add ${rel} failed: ${add.stderr}`);
+  }
+  const commit = git([
+    "commit",
+    "-m",
+    `chore(hitl): ledger — ${pathId} ${status}`,
+    "--",
+    rel,
+  ]);
+  if (commit.status !== 0) {
+    throw new Error(
+      `git commit of ${rel} failed: ${commit.stdout}${commit.stderr}`,
+    );
+  }
+  return true;
+}
+
+function recordLane(lane, status, counts, headShort) {
+  recordOutcome({
+    pathId: lane.pathId,
+    ok: ledgerOk(status),
+    at: new Date().toISOString(),
+    lane: `live-lane-${lane.n}`,
+    commit: headShort,
+    counts: {
+      passed: counts.passed,
+      failed: counts.failed,
+      skipped: counts.skipped,
+    },
+  });
+  const committed = commitLedger(lane.pathId, status);
+  console.log(
+    `[11632-lanes] ledger ${committed ? "committed" : "unchanged"} — ${lane.pathId} ${status}`,
+  );
+}
+
+// --- terminal freshness table ----------------------------------------------------
+
+const STATE_COLORS = { green: "\x1b[32m", yellow: "\x1b[33m", red: "\x1b[31m" };
+
+function printStatusTable() {
+  const ledger = readLedger();
+  const ids = [
+    ...new Set([
+      ...LANES.map((lane) => lane.pathId),
+      ...CONNECTOR_PATHS.map((path) => path.id),
+      ...Object.keys(ledger.entries),
+    ]),
+  ].sort();
+  const paint = (state, text) =>
+    process.stdout.isTTY ? `${STATE_COLORS[state]}${text}\x1b[0m` : text;
+  console.log(
+    "[11632-lanes] HITL freshness from ledger lastSuccessAt — green ≤7d, yellow >7d, red >30d or never",
+  );
+  console.log(
+    `[11632-lanes] ledger ${relative(ROOT, LEDGER_PATH)} (updated ${ledger.updatedAt ?? "never"})`,
+  );
+  for (const id of ids) {
+    const entry = ledger.entries[id];
+    const fresh = freshness(entry ? entry.lastSuccessAt : null);
+    const counts = entry
+      ? `${entry.counts.passed}p/${entry.counts.failed}f/${entry.counts.skipped}s`
+      : "-";
+    const detail = entry
+      ? `lastRun ${entry.lastRunAt}  ${entry.lane}@${entry.commit}  ${counts}`
+      : "no ledger entry";
+    console.log(
+      `${paint(fresh.state, fresh.state.padEnd(6))} ${id.padEnd(28)} ${fresh.label.padEnd(20)} ${detail}`,
+    );
+  }
+}
+
+// --- entrypoint --------------------------------------------------------------------
+
 const args = parseArgs(process.argv.slice(2));
+
+if (args.status) {
+  printStatusTable();
+  process.exit(0);
+}
+
+const layered = applyLayeredEnvToProcess();
+for (const layer of layered.layers) {
+  console.log(
+    `[11632-lanes] env layer ${layer.source.padEnd(8)} ${layer.path ?? "(process.env)"}${layer.exists ? "" : " (absent)"}`,
+  );
+}
 
 if (args.dryRun) {
   console.log(
-    "[11632-lanes] dry run — lane readiness from .env + ambient env (nothing executed):",
+    "[11632-lanes] dry run — per-auth-path readiness from the layered env (nothing executed):",
   );
   for (const lane of LANES) {
-    const { ready, missing } = laneReadiness(lane);
+    const { ready, reason } = pathReadiness(PATH_SPECS.get(lane.pathId));
     if (ready) {
-      console.log(`READY lane ${lane.n} ${lane.id}`);
+      console.log(`READY lane ${lane.n} ${lane.pathId}`);
     } else {
-      console.log(`SKIP ${lane.id}: missing ${missing.join(", ")}`);
+      console.log(`SKIP ${lane.pathId}: ${reason}`);
     }
+  }
+  const lanePathIds = new Set(LANES.map((lane) => lane.pathId));
+  console.log(
+    "[11632-lanes] registry paths without a wired live suite (probe via the HITL dashboard):",
+  );
+  for (const path of CONNECTOR_PATHS) {
+    if (lanePathIds.has(path.id)) continue;
+    const { ready, reason } = pathReadiness(path);
+    console.log(
+      `SKIP ${path.id}: ${ready ? "env satisfied — no live suite wired for this path" : reason}`,
+    );
   }
   process.exit(0);
 }
@@ -283,6 +459,10 @@ const sessionStamp = new Date()
   .replace(/\..+$/, "Z");
 const sessionDir = join(STATUS_DIR, `session-${sessionStamp}`);
 mkdirSync(sessionDir, { recursive: true });
+
+// Captured once, before any ledger commits advance HEAD: ledger entries must
+// point at the code the lane ran against, not at a prior lane's evidence commit.
+const headShort = shortHead();
 
 console.log("[11632-lanes] collector pre-pass");
 const collectorResult = await runCommand(
@@ -300,15 +480,20 @@ if (collectorResult.code !== 0) {
 const summary = [];
 let anyFailed = false;
 for (const lane of selected) {
-  const { ready, missing } = laneReadiness(lane);
+  const { ready, reason } = pathReadiness(PATH_SPECS.get(lane.pathId));
   if (!ready) {
-    const skipReason = `missing ${missing.join(", ")}`;
-    console.log(`SKIP ${lane.id}: ${skipReason}`);
+    console.log(`SKIP ${lane.pathId}: ${reason}`);
+    recordLane(
+      lane,
+      "skipped",
+      { passed: 0, failed: 0, skipped: 0 },
+      headShort,
+    );
     summary.push({
-      lane: lane.id,
+      pathId: lane.pathId,
       laneNumber: lane.n,
       status: "skipped",
-      skipReason,
+      skipReason: reason,
       logPath: null,
     });
     continue;
@@ -316,17 +501,18 @@ for (const lane of selected) {
 
   const logPath = lane.logPath(sessionDir);
   console.log(
-    `[11632-lanes] lane ${lane.n} ${lane.id}: ${lane.command.join(" ")} → ${relative(ROOT, logPath)}`,
+    `[11632-lanes] lane ${lane.n} ${lane.pathId}: ${lane.command.join(" ")} → ${relative(ROOT, logPath)}`,
   );
   const result = await runCommand(lane.command, lane.env, logPath);
   const counts = parseVitestCounts(readFileSync(logPath, "utf8"));
   const { status, skipReason } = laneOutcome(result, counts);
   if (status === "failed") anyFailed = true;
   console.log(
-    `[11632-lanes] lane ${lane.n} ${lane.id}: ${status}${skipReason ? ` (${skipReason})` : ""} — ${counts.passed} passed | ${counts.failed} failed | ${counts.skipped} skipped`,
+    `[11632-lanes] lane ${lane.n} ${lane.pathId}: ${status}${skipReason ? ` (${skipReason})` : ""} — ${counts.passed} passed | ${counts.failed} failed | ${counts.skipped} skipped`,
   );
+  recordLane(lane, status, counts, headShort);
   summary.push({
-    lane: lane.id,
+    pathId: lane.pathId,
     laneNumber: lane.n,
     status,
     skipReason,
@@ -349,6 +535,7 @@ writeFileSync(
       issue: 11632,
       generatedAt: new Date().toISOString(),
       sessionDir: relative(ROOT, sessionDir),
+      commit: headShort,
       lanes: summary,
     },
     null,
@@ -360,7 +547,7 @@ writeFileSync(
 console.log(`[11632-lanes] summary → ${relative(ROOT, summaryPath)}`);
 for (const entry of summary) {
   console.log(
-    `  ${entry.status.padEnd(14)} lane ${entry.laneNumber} ${entry.lane}${entry.skipReason ? ` — ${entry.skipReason}` : ""}`,
+    `  ${entry.status.padEnd(14)} lane ${entry.laneNumber} ${entry.pathId}${entry.skipReason ? ` — ${entry.skipReason}` : ""}`,
   );
 }
 process.exit(anyFailed ? 1 : 0);

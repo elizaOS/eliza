@@ -209,6 +209,24 @@ export function loadLayeredEnv(options = {}) {
 }
 
 /**
+ * Load the layered env and fill process.env with every file-layer value whose
+ * key the process does not already define. The lane driver and status
+ * collector call this once at startup so their own readiness checks AND the
+ * test suites they spawn observe exactly the resolution the dashboard
+ * displays; the dashboard itself never calls this (it keeps process.env
+ * pristine and reads the merged map instead). Returns the loadLayeredEnv
+ * result for layer display.
+ */
+export function applyLayeredEnvToProcess(options = {}) {
+  const loaded = loadLayeredEnv(options);
+  const processEnv = options.processEnv ?? process.env;
+  for (const [key, value] of Object.entries(loaded.values)) {
+    if (processEnv[key] === undefined) processEnv[key] = value;
+  }
+  return loaded;
+}
+
+/**
  * Display-safe presence report for the given env names: present means a
  * non-empty value after trimming; source is the winning layer (attributed even
  * for empty-but-defined values, null when no layer defines the key). Never

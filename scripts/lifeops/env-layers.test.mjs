@@ -19,6 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  applyLayeredEnvToProcess,
   discoverMainCheckoutRoot,
   listPresent,
   loadLayeredEnv,
@@ -263,6 +264,32 @@ test("loadLayeredEnv skips the main layer when it equals the repo root", () => {
       layers.map((layer) => layer.source),
       ["process", "repo", "home"],
     );
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("applyLayeredEnvToProcess hydrates only keys the process does not define", () => {
+  const base = tempDir("env-layers-apply-");
+  try {
+    const repoRoot = join(base, "repo");
+    mkdirSync(repoRoot, { recursive: true });
+    writeFileSync(join(repoRoot, ".env"), "FROM_REPO=repo\nKEPT=shadowed\n");
+    const homeEnvPath = join(base, "home.env");
+    writeFileSync(homeEnvPath, "FROM_HOME=home\nFROM_REPO=home-loses\n");
+    const processEnv = { KEPT: "process-wins", EMPTY: "" };
+    const loaded = applyLayeredEnvToProcess({
+      processEnv,
+      repoRoot,
+      mainRoot: null,
+      homeEnvPath,
+    });
+    assert.equal(processEnv.FROM_REPO, "repo");
+    assert.equal(processEnv.FROM_HOME, "home");
+    assert.equal(processEnv.KEPT, "process-wins");
+    assert.equal(processEnv.EMPTY, "", "empty-but-defined keys stay untouched");
+    assert.equal(loaded.sources.FROM_REPO, "repo");
+    assert.equal(loaded.sources.KEPT, "process");
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

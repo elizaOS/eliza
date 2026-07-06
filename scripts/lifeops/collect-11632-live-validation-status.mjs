@@ -6,14 +6,18 @@
  * Reports which connector groups are configured so the live
  * validation run knows what it can actually exercise.
  *
- * CONNECTOR_GROUPS and groupStatus are also imported by the lane driver
- * (run-11632-live-lanes.mjs gates lanes on group readiness), so the CLI body
- * only runs when this file is the entrypoint (import.meta.main). The HITL
+ * CONNECTOR_GROUPS is also imported by the lane driver (run-11632-live-lanes.mjs
+ * derives its model gate from the model group), so the CLI body only runs when
+ * this file is the entrypoint (import.meta.main). As an entrypoint it hydrates
+ * process.env from the layered load shared with the HITL dashboard and lane
+ * driver (env-layers.mjs: process.env > repo .env > main-checkout .env >
+ * ~/.eliza/.env), so all three surfaces report the same readiness. The HITL
  * dashboard renders per-auth-path rows from connector-paths.mjs instead.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { applyLayeredEnvToProcess } from "./env-layers.mjs";
 
 const ROOT = resolve(new URL("../..", import.meta.url).pathname);
 const DEFAULT_OUT = join(
@@ -389,6 +393,7 @@ ${status.existingEvidence.map((entry) => `- ${entry.exists ? "present" : "missin
 }
 
 if (import.meta.main) {
+  applyLayeredEnvToProcess();
   const args = parseArgs(process.argv.slice(2));
   const status = buildStatus();
   mkdirSync(dirname(args.out), { recursive: true });
