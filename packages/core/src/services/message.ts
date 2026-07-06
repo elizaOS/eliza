@@ -10159,6 +10159,8 @@ export class DefaultMessageService implements IMessageService {
 								"Generated image description",
 							);
 						} else {
+							processedAttachment.notProcessed =
+								"Image description unavailable (vision backend returned no result)";
 							runtime.logger.warn(
 								{ src: "service:message" },
 								"Image description unavailable for attachment",
@@ -10174,11 +10176,14 @@ export class DefaultMessageService implements IMessageService {
 							url,
 							isRemote,
 						);
-						// Any text/* document (plain, csv, markdown — all on the chat
-						// upload allow-list) is readable as text; PDFs are extracted via
-						// unpdf. Previously only text/plain was handled, so csv/markdown/
-						// pdf were skipped and never seen by the agent (#10714).
-						const isText = contentType.startsWith("text/");
+						// Any text/* document (plain, csv, markdown) and application/json —
+						// all on the chat upload allow-list — is readable as UTF-8 text;
+						// PDFs are extracted via unpdf. Previously only text/plain was
+						// handled, so csv/markdown/pdf were skipped and never seen by the
+						// agent (#10714).
+						const isText =
+							contentType.startsWith("text/") ||
+							contentType.startsWith("application/json");
 						const isPdf = contentType.startsWith("application/pdf");
 
 						if (isText) {
@@ -10220,6 +10225,7 @@ export class DefaultMessageService implements IMessageService {
 								"Extracted PDF text content",
 							);
 						} else {
+							processedAttachment.notProcessed = `Unsupported document type (${contentType}); stored but text not extracted`;
 							runtime.logger.warn(
 								{ src: "service:message", contentType },
 								"Skipping unsupported document type",
@@ -10266,8 +10272,12 @@ export class DefaultMessageService implements IMessageService {
 									},
 									"Transcribed audio attachment",
 								);
+							} else {
+								processedAttachment.notProcessed =
+									"Audio transcription returned no text (empty or no speech detected)";
 							}
 						} catch (err) {
+							processedAttachment.notProcessed = `Audio transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
 							runtime.logger.warn(
 								{ src: "service:message", err },
 								"Audio transcription failed, continuing without transcript",
@@ -10314,8 +10324,12 @@ export class DefaultMessageService implements IMessageService {
 									},
 									"Transcribed video attachment",
 								);
+							} else {
+								processedAttachment.notProcessed =
+									"Video transcription returned no text (empty or no speech detected)";
 							}
 						} catch (err) {
+							processedAttachment.notProcessed = `Video transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
 							runtime.logger.warn(
 								{ src: "service:message", err },
 								"Video transcription failed, continuing without transcript",

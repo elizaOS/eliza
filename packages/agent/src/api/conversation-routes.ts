@@ -1208,6 +1208,8 @@ type SerializedMessageAttachment = {
   text?: string;
   mimeType?: string;
   thumbnailUrl?: string;
+  /** Reason enrichment could not extract text/description (see Media.notProcessed). */
+  notProcessed?: string;
 };
 
 /**
@@ -1242,6 +1244,7 @@ export function serializeMessageAttachments(
       ...(str(a.text) ? { text: str(a.text) } : {}),
       ...(str(a.mimeType) ? { mimeType: str(a.mimeType) } : {}),
       ...(str(a.thumbnailUrl) ? { thumbnailUrl: str(a.thumbnailUrl) } : {}),
+      ...(str(a.notProcessed) ? { notProcessed: str(a.notProcessed) } : {}),
     });
   }
   return out.length > 0 ? out : undefined;

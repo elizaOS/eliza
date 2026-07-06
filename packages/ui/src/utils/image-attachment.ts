@@ -137,7 +137,7 @@ export function partitionAttachmentFiles(
 
 /** `accept` attribute for the chat upload <input> — images, audio, video, PDFs, text docs. */
 export const CHAT_UPLOAD_ACCEPT =
-  "image/*,audio/*,video/*,application/pdf,text/plain,text/csv,text/markdown";
+  "image/*,audio/*,video/*,application/pdf,text/plain,text/csv,text/markdown,application/json";
 
 /**
  * True when a file's MIME type is an attachment kind chat upload accepts.
