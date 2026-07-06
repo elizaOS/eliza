@@ -363,6 +363,10 @@ describe("layout", () => {
 		const layout = toNeutralLayout(block, { maxButtonsPerRow: 3 });
 		expect(layout.text).toBe("Pick");
 		expect(layout.rows).toHaveLength(2);
+		expect(layout.rows).toEqual([
+			{ buttons: expect.any(Array) },
+			{ buttons: expect.any(Array) },
+		]);
 		const first = layout.rows[0].buttons?.[0];
 		expect(decodeCallback(first?.callbackData)).toEqual({
 			kind: "reply",

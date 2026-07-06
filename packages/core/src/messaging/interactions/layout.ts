@@ -1,9 +1,8 @@
 /**
- * Project an interaction block onto a platform-neutral control layout — rows of
- * buttons and select menus — that each connector maps to its native primitive
- * (Telegram inline keyboard, Discord action row / string select). Centralizing
- * the projection here keeps every connector's rendering consistent and the
- * per-connector glue thin.
+ * Project an interaction block onto platform-neutral button rows that each
+ * connector maps to its native primitive (Telegram inline keyboard, Discord
+ * action rows). Centralizing the projection here keeps every connector's
+ * rendering consistent and the per-connector glue thin.
  *
  * Buttons round-trip via `callbackData` (the user's answer, re-injected as a
  * message) or open a `url` (link-out for secret entry and task views). A button
@@ -27,15 +26,8 @@ export interface NeutralButton {
 	style?: "primary" | "secondary" | "danger";
 }
 
-export interface NeutralSelect {
-	customId: string;
-	placeholder?: string;
-	options: InteractionOption[];
-}
-
 export interface NeutralRow {
 	buttons?: NeutralButton[];
-	select?: NeutralSelect;
 }
 
 export interface NeutralLayout {

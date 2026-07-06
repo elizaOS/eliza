@@ -58,9 +58,9 @@ a malformed block is left as plain text, never a broken control.
   markers programmatically (inverse of parse for the text-borne blocks).
 - `toNeutralLayout(block, { resolveUrl, maxButtonsPerRow, maxCallbackBytes })` →
   `NeutralLayout`
-  (rows of buttons / a select) — the shared projection each connector maps to its
-  native primitive. A button carries exactly one of `callbackData` (round-trip) or
-  `url` (link-out).
+  (rows of buttons) — the shared projection each connector maps to its native
+  primitive. A button carries exactly one of `callbackData` (round-trip) or `url`
+  (link-out).
 - `toPlainTextFallback(block, { resolveUrl })` → concise prose for text-only
   transports such as SMS/iMessage, where there is no native control surface.
 - `encodeReplyCallback(value, { maxBytes })` / `decodeCallback(data)` —
