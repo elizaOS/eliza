@@ -22,12 +22,15 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
 
       - name: Validate PR evidence rows
         run: |
           jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/pr-body.md"
           PR_LABELS=$(jq -r '.pull_request.labels | map(.name) | join(",")' "$GITHUB_EVENT_PATH")
-          node scripts/check-pr-evidence.mjs --body-file "$RUNNER_TEMP/pr-body.md" --labels "$PR_LABELS"
+          git diff --name-only --diff-filter=ACMR "${{ github.event.pull_request.base.sha }}"...HEAD > "$RUNNER_TEMP/pr-changed-files.txt"
+          node scripts/check-pr-evidence.mjs --body-file "$RUNNER_TEMP/pr-body.md" --labels "$PR_LABELS" --changed-files-file "$RUNNER_TEMP/pr-changed-files.txt"
 
   check-pr-title:
     runs-on: ubuntu-latest

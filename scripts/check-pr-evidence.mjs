@@ -36,6 +36,14 @@ const RETIRED_REPO_EVIDENCE_RE = new RegExp(
   "i",
 );
 
+function normalizeChangedPath(path) {
+  return String(path ?? "")
+    .trim()
+    .replaceAll("\\", "/")
+    .replace(/^\.?\//, "")
+    .replace(/^[ab]\//, "");
+}
+
 export function parseLabels(value) {
   if (Array.isArray(value)) {
     return value
@@ -94,6 +102,12 @@ export function isRowSatisfiedForContext(
 ) {
   if (artifactRequired) return hasArtifactReference(rowText);
   return isRowSatisfied(rowText);
+}
+
+export function findRetiredEvidenceDiffPaths(changedPaths) {
+  return [...(changedPaths ?? [])]
+    .map((path) => normalizeChangedPath(path))
+    .filter((path) => path.startsWith(`${RETIRED_REPO_EVIDENCE_PATH}/`));
 }
 
 export function boundRowBlock(block) {
@@ -191,6 +205,17 @@ function readBody(args) {
   }
 }
 
+function readChangedFiles(args) {
+  const idx = args.indexOf("--changed-files-file");
+  if (idx === -1) return [];
+  const file = args[idx + 1];
+  if (!file) {
+    console.error("--changed-files-file requires a path argument");
+    process.exit(2);
+  }
+  return readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean);
+}
+
 function usage() {
   console.log(`Usage: node scripts/check-pr-evidence.mjs [options]
 
@@ -198,6 +223,9 @@ Options:
   --body-file <path>  Read the PR body from a file (default: stdin).
   --labels <labels>   Comma-separated PR labels; ui/frontend/native require
                       concrete screenshot/video artifacts.
+  --changed-files-file <path>
+                      Newline-delimited added/modified/copied/renamed PR files;
+                      files under .github/issue-evidence/ fail the gate.
   --json              Print machine-readable findings JSON.
   --self-test         Run the planted-fixture self-check.
   --help, -h          Show this help.
@@ -310,6 +338,26 @@ function runSelfTest() {
   }
 
   {
+    const retiredPaths = findRetiredEvidenceDiffPaths([
+      "packages/app/src/index.tsx",
+      `${RETIRED_REPO_EVIDENCE_PATH}/14636-regression.md`,
+    ]);
+    if (retiredPaths.length !== 1) {
+      failures.push("retired evidence diff path should be reported");
+    }
+  }
+
+  {
+    const retiredPaths = findRetiredEvidenceDiffPaths([
+      "packages/app/src/index.tsx",
+      ".github/workflows/pr.yaml",
+    ]);
+    if (retiredPaths.length !== 0) {
+      failures.push("clean changed-file list should not report retired paths");
+    }
+  }
+
+  {
     const body = REQUIRED_EVIDENCE_ROWS.slice(1)
       .map(
         ({ id }) =>
@@ -331,7 +379,7 @@ function runSelfTest() {
     for (const failure of failures) console.error(`  - ${failure}`);
     process.exit(1);
   }
-  console.log("check-pr-evidence self-test passed (8 cases).");
+  console.log("check-pr-evidence self-test passed (10 cases).");
 }
 
 function main() {
@@ -351,9 +399,19 @@ function main() {
   const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
     labels,
   });
+  const retiredEvidencePaths = findRetiredEvidenceDiffPaths(
+    readChangedFiles(args),
+  );
+  const diffOk = retiredEvidencePaths.length === 0;
 
   if (args.includes("--json")) {
-    console.log(JSON.stringify({ ok, findings }, null, 2));
+    console.log(
+      JSON.stringify(
+        { ok: ok && diffOk, findings, retiredEvidencePaths },
+        null,
+        2,
+      ),
+    );
   } else {
     for (const finding of findings) {
       const symbol = finding.status === "ok" ? "ok  " : "FAIL";
@@ -361,15 +419,29 @@ function main() {
         `  [${symbol}] ${finding.label} (${finding.id}): ${finding.status}`,
       );
     }
+    if (retiredEvidencePaths.length > 0) {
+      console.log("  [FAIL] Retired repo-local evidence files:");
+      for (const path of retiredEvidencePaths)
+        console.log(`         - ${path}`);
+    }
   }
 
-  if (!ok) {
+  if (!ok || !diffOk) {
     const bad = findings.filter((finding) => finding.status !== "ok");
+    const reasons = [];
+    if (bad.length > 0) {
+      reasons.push(`${bad.length} row(s) blank or missing`);
+    }
+    if (retiredEvidencePaths.length > 0) {
+      reasons.push(
+        `${retiredEvidencePaths.length} committed file(s) under ${RETIRED_REPO_EVIDENCE_PATH}/`,
+      );
+    }
     console.error(
-      `\nEvidence gate FAILED: ${bad.length} row(s) blank or missing. ` +
-        "Attach the artifact inline (GitHub attachment URL) or write `N/A - <reason>` on each row. " +
+      `\nEvidence gate FAILED: ${reasons.join("; ")}. ` +
+        "Attach artifacts inline with GitHub attachment URLs, or write `N/A - <reason>` on each row. " +
         "For ui/frontend/native PRs, before/after screenshots and walkthrough video require concrete inline artifact links. " +
-        "Retired repo-local evidence paths do not count as evidence.",
+        `Do not commit evidence files under ${RETIRED_REPO_EVIDENCE_PATH}/; post them inline on the issue or PR instead.`,
     );
     process.exit(1);
   }

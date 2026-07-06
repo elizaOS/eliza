@@ -13,6 +13,7 @@ import {
   boundRowBlock,
   evaluatePrEvidence,
   extractEvidenceRows,
+  findRetiredEvidenceDiffPaths,
   hasArtifactReference,
   hasNaWithReason,
   isChecked,
@@ -230,6 +231,33 @@ describe("check-pr-evidence row primitives", () => {
     assert.equal(
       findings.find((finding) => finding.id === "backend-logs").status,
       "blank",
+    );
+  });
+
+  it("reports retired evidence paths from changed-file lists", () => {
+    assert.deepEqual(
+      findRetiredEvidenceDiffPaths([
+        "packages/app/src/index.tsx",
+        `${RETIRED_REPO_EVIDENCE_PATH}/14636-regression.md`,
+        `./${RETIRED_REPO_EVIDENCE_PATH}/14636-prefixed.txt`,
+        `b/${RETIRED_REPO_EVIDENCE_PATH}/14636-renamed.jpg`,
+      ]),
+      [
+        `${RETIRED_REPO_EVIDENCE_PATH}/14636-regression.md`,
+        `${RETIRED_REPO_EVIDENCE_PATH}/14636-prefixed.txt`,
+        `${RETIRED_REPO_EVIDENCE_PATH}/14636-renamed.jpg`,
+      ],
+    );
+  });
+
+  it("does not flag normal changed files or similarly named directories", () => {
+    assert.deepEqual(
+      findRetiredEvidenceDiffPaths([
+        "packages/app/src/index.tsx",
+        ".github/issue-evidence-old/keep.md",
+        ".github/workflows/pr.yaml",
+      ]),
+      [],
     );
   });
 
