@@ -111,7 +111,8 @@ endpoint** and never loads a model itself:
 
 ## Tests
 
-`node --test scripts/gpu-vision/*.test.mjs` — covers the pure logic (lockfile
+`bun run test:gpu-vision` (i.e. `node --test scripts/gpu-vision/*.test.mjs`,
+mirroring `test:evidence-review`) — covers the pure logic (lockfile
 reconciliation, version parsing, arg parsing, readiness poller against a real
 in-process HTTP stub). The download, process launch, and OCR request are proven
 by the real `smoke.mjs` run, not mocked in the unit suite.
