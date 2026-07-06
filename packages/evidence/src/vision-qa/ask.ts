@@ -119,7 +119,9 @@ export async function askAboutImage(
 
   const start = Date.now();
   let answers: VisionAnswer[] | null = null;
-  let usage = { inputTokens: 0, outputTokens: 0 };
+  // Usage accumulates across attempts: a corrective retry re-sends the image and
+  // is billed again, so the recorded cost must reflect every request made.
+  const usage = { inputTokens: 0, outputTokens: 0 };
   let retries = 0;
   let lastError: unknown;
   // At most two attempts: the initial ask, then one corrective retry that tells
@@ -137,7 +139,8 @@ export async function askAboutImage(
       timeoutMs,
     );
     const extracted = client.extractResponse(responseBody);
-    usage = extracted.usage;
+    usage.inputTokens += extracted.usage.inputTokens;
+    usage.outputTokens += extracted.usage.outputTokens;
     try {
       answers = parseAnswers(extracted.text, questions);
     } catch (error) {

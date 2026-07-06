@@ -136,6 +136,9 @@ describe("askAboutImage against a stub server", () => {
       );
       expect(result.provenance.retries).toBe(1);
       expect(requests).toHaveLength(2);
+      // Usage accumulates across the two billed requests (stub: 1001 + 1002 in).
+      expect(result.provenance.usage.inputTokens).toBe(1001 + 1002);
+      expect(result.provenance.usage.outputTokens).toBe(20 + 20);
     } finally {
       server.close();
     }
