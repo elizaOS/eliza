@@ -558,7 +558,7 @@ export interface GenerateTextParams {
 	 * class. Unset means `"interactive"` (user-facing turns are never
 	 * deprioritized or clamped). Cloud adapters ignore this field.
 	 *
-	 * Producers: `promptRunnerTaskWorker`, `PromptDispatcher` (prompt batcher).
+	 * Producers: `PromptDispatcher` (prompt batcher).
 	 * Consumers: the mobile/AOSP local text handlers via
 	 * `InferencePriorityGate` (`utils/inference-priority-gate.ts`).
 	 */

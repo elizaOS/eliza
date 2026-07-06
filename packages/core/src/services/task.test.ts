@@ -161,6 +161,15 @@ describe("TaskService tick re-arm", () => {
 		expect(tasks.has("t-late")).toBe(false); // one-shots delete after running
 	});
 
+	it("does not register the removed prompt.run worker", async () => {
+		const { runtime, workers } = makeTaskRuntime();
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		expect(workers.has("prompt.run")).toBe(false);
+		expect(workers.has("BATCHER_DRAIN")).toBe(true);
+	});
+
 	it("keeps seeing repeat tasks that only become due after several quiet ticks (no markDirty ever)", async () => {
 		const { runtime, tasks, workers } = makeTaskRuntime();
 		const execute = vi.fn(async () => undefined);

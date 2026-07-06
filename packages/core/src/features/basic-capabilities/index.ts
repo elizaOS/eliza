@@ -103,13 +103,6 @@ import { AutonomyService } from "../autonomy/service.ts";
 // Re-export action and provider modules
 export * from "./actions/index.ts";
 export * from "./evaluators/index.ts";
-// Generic scheduled-prompt TaskWorker (registered automatically by TaskService).
-export {
-	PROMPT_RUNNER_TASK_KIND,
-	PROMPT_RUNNER_TASK_WORKER_NAME,
-	type PromptRunnerTaskMetadata,
-	promptRunnerTaskWorker,
-} from "./prompt-runner-task.ts";
 export * from "./providers/index.ts";
 
 import { describeImageCached } from "../../media/index.ts";
