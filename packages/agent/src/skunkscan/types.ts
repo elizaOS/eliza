@@ -48,6 +48,14 @@ export type WalletPortfolioSummary = {
   notes: string[];
 };
 
+export type WalletWhaleSummary = {
+  isWhale: boolean;
+  whaleScore: number;
+  whaleLevel: "none" | "small" | "medium" | "large";
+  estimatedPortfolioUsdValue?: number | null;
+  reasons: string[];
+};
+
 export type WalletActivitySummary = {
   recentTransactionCount: number;
   failedTransactionCount: number;
@@ -110,6 +118,7 @@ export type WalletInvestigationResult = {
   balance?: WalletBalance;
   tokenHoldings?: WalletTokenHolding[];
   portfolio?: WalletPortfolioSummary;
+  whale?: WalletWhaleSummary;
   recentTransactions?: WalletRecentTransaction[];
   transactionCountSample?: number;
   activity?: WalletActivitySummary;
