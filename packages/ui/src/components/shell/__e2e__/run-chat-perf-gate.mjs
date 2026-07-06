@@ -64,6 +64,41 @@ ${LAYOUT_SHIFT_OBSERVER_INIT}
   };
   requestAnimationFrame(tick);
 })();
+// No-reflow guard observer: records every non-recent-input layout-shift and
+// whether any attributed source lies OUTSIDE the chat overlay subtree
+// ([data-testid="chat-sheet"]). Streaming into the open chat must reflow
+// nothing but the chat — a shift attributed to a node outside the overlay is a
+// cross-subtree reflow (the streaming turn pushed the surrounding page around),
+// which is exactly what the memoization + contained scroll surface prevent.
+(() => {
+  const w = window;
+  if (w.__ELIZA_REFLOW_SHIFTS__) return;
+  w.__ELIZA_REFLOW_SHIFTS__ = [];
+  try {
+    const obs = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        if (entry.hadRecentInput === true) continue;
+        if (!(entry.value > 0)) continue;
+        const sources = Array.isArray(entry.sources) ? entry.sources : [];
+        let outsideChat = false;
+        for (const source of sources) {
+          const node = source && source.node;
+          const element =
+            node instanceof Element ? node : (node && node.parentElement) || null;
+          if (!element) continue;
+          if (!element.closest('[data-testid="chat-sheet"]')) {
+            outsideChat = true;
+            break;
+          }
+        }
+        w.__ELIZA_REFLOW_SHIFTS__.push({ value: entry.value, outsideChat, sourceCount: sources.length });
+      }
+    });
+    obs.observe({ type: 'layout-shift', buffered: true });
+  } catch {
+    /* layout-shift unsupported — caller treats absence as no reflow */
+  }
+})();
 `;
 
 /** Real touch-pointer drag from an element's centre by (dx, dy). */
@@ -286,6 +321,130 @@ await runBrowserFixtureE2E(
       shifts.length > 0,
       `observer captured real layout-shift entries during the interaction (${shifts.length}) — CLS=0 is not a dead observer`,
     );
+
+    // ── STREAMING FRAME BUDGET ──────────────────────────────────────────────
+    // The gestures above cover scroll + maximize/restore; this phase covers the
+    // OTHER hot path the memoized inline widgets exist to protect: tokens
+    // landing into the OPEN chat. The fixture's tail turn carries a CHOICE
+    // widget, so streaming into it is the exact condition where an unmemoized
+    // widget would re-render on every token. We drive the fixture's token
+    // driver ~one token per animation frame, harvest the SAME real frame
+    // samples, and hold them to a frame budget — plus prove the widget stayed
+    // mounted (never remounted/torn) across the whole stream.
+    const hasStreamDriver = await page.evaluate(
+      () => typeof window.__ELIZA_PERF_STREAM__ === "function",
+    );
+    check(hasStreamDriver, "fixture exposes the streaming token driver");
+
+    // Prime one token so the tail turn's content is non-empty and its inline
+    // widget renders, then scroll the thread to the bottom so the widget (on
+    // the newest turn) is on screen for the whole streaming window.
+    await page.evaluate(() => window.__ELIZA_PERF_STREAM__?.(1));
+    await page.evaluate(() => {
+      const thread = document.querySelector("#continuous-thread");
+      if (thread) thread.scrollTop = thread.scrollHeight;
+    });
+    await page.waitForTimeout(200);
+    await page
+      .locator('[data-choice-id="perf-choice"]')
+      .first()
+      .waitFor({ state: "attached", timeout: 4000 })
+      .catch(() => {
+        // Surfaced by the assertion below, not swallowed.
+      });
+
+    const widgetBefore = await page
+      .locator('[data-choice-id="perf-choice"]')
+      .count();
+    check(widgetBefore === 1, `CHOICE widget present before streaming (${widgetBefore})`);
+
+    // Reset the sampled windows so we measure ONLY the streaming window.
+    await page.evaluate(() => {
+      window.__ELIZA_PERF_FRAMES__ = [];
+      window.__ELIZA_LAYOUT_SHIFTS__ = [];
+      window.__ELIZA_REFLOW_SHIFTS__ = [];
+    });
+
+    // Drive ~120 tokens, a few characters each, one batch per animation frame —
+    // a sustained stream, not a single burst. Runs entirely in the page so the
+    // rAF cadence is real.
+    await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          let ticks = 0;
+          const pump = () => {
+            window.__ELIZA_PERF_STREAM__?.(3);
+            ticks += 1;
+            if (ticks >= 120) {
+              resolve(undefined);
+              return;
+            }
+            requestAnimationFrame(pump);
+          };
+          requestAnimationFrame(pump);
+        }),
+    );
+    await page.waitForTimeout(120);
+
+    const {
+      frames: streamFrames,
+      shifts: streamShifts,
+      reflow,
+    } = await page.evaluate(() => ({
+      frames: window.__ELIZA_PERF_FRAMES__ ?? [],
+      shifts: window.__ELIZA_LAYOUT_SHIFTS__ ?? [],
+      reflow: window.__ELIZA_REFLOW_SHIFTS__ ?? [],
+    }));
+    const streamFrameSummary = summarizeFrameSamples(streamFrames);
+    const streamStability = summarizeStability(streamShifts, [], STABILITY_BUDGET);
+    const outsideChatShifts = reflow.filter((s) => s.outsideChat);
+
+    console.log(
+      `\nstream frames: ${streamFrameSummary.sampleCount} | fps ${streamFrameSummary.fps.toFixed(1)} | ` +
+        `p95 ${streamFrameSummary.p95FrameMs.toFixed(1)}ms | dropped ${streamFrameSummary.droppedFrames}/${streamFrameSummary.sampleCount}`,
+    );
+    console.log(
+      `stream layout: cls ${streamStability.cls.toFixed(4)} | non-intentional shifts ${streamStability.shiftCount} | ` +
+        `reflow shifts total ${reflow.length} outside-chat ${outsideChatShifts.length}\n`,
+    );
+
+    // The widget must still be mounted exactly once (never remounted/duplicated
+    // by the stream) — the memoization guarantee, verified on the live surface.
+    const widgetAfter = await page
+      .locator('[data-choice-id="perf-choice"]')
+      .count();
+    check(
+      widgetAfter === 1,
+      `CHOICE widget survives the full stream, still mounted once (${widgetAfter})`,
+    );
+
+    check(
+      streamFrameSummary.sampleCount > 20,
+      `captured a meaningful streaming frame window (${streamFrameSummary.sampleCount} frames)`,
+    );
+    const streamDroppedRatio = streamFrameSummary.sampleCount
+      ? streamFrameSummary.droppedFrames / streamFrameSummary.sampleCount
+      : 1;
+    check(
+      streamDroppedRatio <= FRAME_BUDGET_OPTIONS.droppedFrameRatio,
+      `streaming dropped-frame ratio ${(streamDroppedRatio * 100).toFixed(1)}% within ${(FRAME_BUDGET_OPTIONS.droppedFrameRatio * 100).toFixed(0)}%`,
+    );
+    check(
+      !shouldReportFrameBudget(streamFrameSummary, FRAME_BUDGET_OPTIONS),
+      "frame-budget detector does not flag the streaming window",
+    );
+
+    // NO-REFLOW GUARD: streaming into the open chat must reflow NOTHING outside
+    // the chat overlay subtree. Every layout-shift source during the stream must
+    // resolve inside [data-testid="chat-sheet"]; a shift attributed to a node
+    // outside it means the growing turn pushed the surrounding page around —
+    // exactly the cross-subtree reflow the contained scroll surface + memoized
+    // widgets prevent. Zero is the only pass.
+    check(
+      outsideChatShifts.length === 0,
+      `streaming causes ZERO layout shifts outside the chat overlay (saw ${outsideChatShifts.length} of ${reflow.length})`,
+    );
+
     check(errors.length === 0, `no page errors (saw ${errors.length})`);
     if (errors.length) console.log(errors.join("\n"));
   },
