@@ -556,6 +556,88 @@ describe("routeAutonomyTextToUser", () => {
     );
   });
 
+  it("persists reminder nudges because their notification deep-links to chat", async () => {
+    const createMemory = vi.fn();
+    const broadcastWs = vi.fn();
+    const state = {
+      runtime: {
+        agentId: "00000000-0000-0000-0000-000000000001",
+        createMemory,
+      },
+      activeConversationId: "conv-1",
+      conversations: new Map([
+        [
+          "conv-1",
+          {
+            id: "conv-1",
+            roomId: "00000000-0000-0000-0000-000000000002",
+            updatedAt: "2026-05-07T00:00:00.000Z",
+          },
+        ],
+      ]),
+      broadcastWs,
+      deliveryDedupe: createDeliveryDedupeState(),
+    } as never;
+
+    await routeAutonomyTextToUser(state, "Take your meds", "reminder");
+
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({
+          text: "Take your meds",
+          source: "reminder",
+        }),
+      }),
+      "messages",
+    );
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "proactive-message",
+        message: expect.objectContaining({
+          text: "Take your meds",
+          source: "reminder",
+        }),
+      }),
+    );
+  });
+
+  it("still suppresses activity/feed-only autonomy sources that have chat-visible siblings", async () => {
+    const createMemory = vi.fn();
+    const broadcastWs = vi.fn();
+    const state = {
+      runtime: {
+        agentId: "00000000-0000-0000-0000-000000000001",
+        createMemory,
+      },
+      activeConversationId: "conv-1",
+      conversations: new Map([
+        [
+          "conv-1",
+          {
+            id: "conv-1",
+            roomId: "00000000-0000-0000-0000-000000000002",
+            updatedAt: "2026-05-07T00:00:00.000Z",
+          },
+        ],
+      ]),
+      broadcastWs,
+      deliveryDedupe: createDeliveryDedupeState(),
+    } as never;
+
+    for (const source of [
+      "workflow",
+      "proactive-gm",
+      "proactive-gn",
+      "proactive-nudge",
+    ]) {
+      await routeAutonomyTextToUser(state, `hidden ${source}`, source);
+    }
+
+    expect(createMemory).not.toHaveBeenCalled();
+    expect(broadcastWs).not.toHaveBeenCalled();
+  });
+
   it("Bug A: a duplicate relay of an already-delivered reply is suppressed (one memory + one broadcast)", async () => {
     const createMemory = vi.fn();
     const broadcastWs = vi.fn();

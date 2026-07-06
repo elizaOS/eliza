@@ -45,8 +45,12 @@ type TaskContext = SwarmCoordinatorTaskContext;
 // ---------------------------------------------------------------------------
 
 const CHAT_SUPPRESSED_AUTONOMY_SOURCES = new Set([
-  "reminder",
+  // Workflow run nudges are mirrored in the activity/notification rail; do not
+  // also inject their raw assistant event into chat.
   "workflow",
+  // GM/GN/nudge planner events have first-class chat-visible siblings (for
+  // example LifeOps check-ins) and activity-feed plaintext artifacts. Keep the
+  // feed-only events out of the transcript so the sibling remains canonical.
   "proactive-gm",
   "proactive-gn",
   "proactive-nudge",

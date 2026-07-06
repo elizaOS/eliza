@@ -381,6 +381,39 @@ type ScheduledWorkflowRunner = {
   }): Promise<LifeOpsWorkflowRun[]>;
 };
 
+function reminderChoiceId(args: {
+  ownerType: "occurrence" | "calendar_event";
+  ownerId: string;
+  scheduledFor: string;
+}): string {
+  const digest = crypto
+    .createHash("sha1")
+    .update(`${args.ownerType}:${args.ownerId}:${args.scheduledFor}`)
+    .digest("hex")
+    .slice(0, 12);
+  return `reminder-${digest}`;
+}
+
+function appendReminderChoiceChips(
+  text: string,
+  args: {
+    ownerType: "occurrence" | "calendar_event";
+    ownerId: string;
+    scheduledFor: string;
+  },
+): string {
+  const choiceId = reminderChoiceId(args);
+  return [
+    text.trim(),
+    "",
+    `[CHOICE:lifeops-reminder id=${choiceId}]`,
+    "done=Done",
+    "10 minutes=Snooze 10m",
+    "skip=Skip",
+    "[/CHOICE]",
+  ].join("\n");
+}
+
 export interface LifeOpsReminderService {
   getReminderPreference(
     definitionId?: string | null,
@@ -1082,13 +1115,15 @@ export class RemindersDomain {
     scheduledFor: string;
     dueAt: string | null;
   }): void {
-    this.ctx.emitAssistantEvent(args.text, "reminder", {
+    const metadata = {
       ownerType: args.ownerType,
       ownerId: args.ownerId,
       subjectType: args.subjectType,
       scheduledFor: args.scheduledFor,
       dueAt: args.dueAt,
-    });
+    };
+    const chatText = appendReminderChoiceChips(args.text, args);
+    this.ctx.emitAssistantEvent(chatText, "reminder", metadata);
     // Also push onto the unified notification rail so the reminder lands in
     // the notification center and reaches desktop/mobile (focus-gated) — not
     // just the in-app assistant stream. groupKey collapses repeat nudges for
@@ -1111,13 +1146,7 @@ export class RemindersDomain {
       source: "lifeops",
       deepLink: "/chat",
       groupKey: `reminder:${args.ownerType}:${args.ownerId}`,
-      data: {
-        ownerType: args.ownerType,
-        ownerId: args.ownerId,
-        subjectType: args.subjectType,
-        scheduledFor: args.scheduledFor,
-        dueAt: args.dueAt,
-      },
+      data: metadata,
     });
   }
 
