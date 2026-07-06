@@ -5,10 +5,11 @@
  * while `uiGenerative` carries the expensive generative-UI method (inline RFC
  * 6902 JSONL patches + the ~156-component catalog) behind narrower
  * dashboard/table/visualization relevance keywords. Both are `dynamic: true`
- * (excluded from default state composition), ADMIN-gated, and DM/API-channel
- * gated. The split keeps everyday widget guidance cheap
- * and stops the JSONL method from steering the model when the user only wants
- * a plugin set up; `ui-widgets.budget.test.ts` enforces the size ceiling.
+ * (excluded from default state composition) and DM/API-channel gated; the
+ * heavier generative guide also stays ADMIN-gated. The split keeps everyday
+ * widget guidance cheap and stops the JSONL method from steering the model when
+ * the user only wants a plugin set up; `ui-widgets.budget.test.ts` enforces the
+ * size ceiling.
  *
  * Discovery: on the live v5 chat path, dynamic providers reach the planner
  * prompt when their contextGate matches the turn's Stage-1 contexts
@@ -137,13 +138,14 @@ Step status: pending | running | done | failed. Re-emit to advance.
 
 /**
  * Everyday marker guidance — cheap, always the first thing the model learns
- * about rich output. Same gates as the old combined provider.
+ * about rich output, including response turns that bypass dynamic selection.
  */
 export const uiWidgetsProvider: Provider = {
   name: "uiWidgets",
   description:
     "How to render in-chat widgets: plugin config cards, forms with native date/time pickers, follow-up chips, checklists, and step pipelines",
   dynamic: true,
+  alwaysInResponseState: true,
   relevanceKeywords: getValidationKeywordTerms("provider.uiWidgets.relevance", {
     includeAllLocales: true,
   }),
@@ -151,8 +153,6 @@ export const uiWidgetsProvider: Provider = {
   contextGate: { anyOf: ["general"] },
   cacheStable: true,
   cacheScope: "agent",
-  // ADMIN-gated: the declared roleGate is enforced by applyPluginRoleGating.
-  roleGate: { minRole: "ADMIN" },
 
   get: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
     if (!isAllowedChannel(message)) {

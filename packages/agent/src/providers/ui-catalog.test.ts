@@ -5,8 +5,7 @@
  * heavy generative guide (`uiGenerativeProvider`) is a separate provider gated
  * on its own visualisation keywords, that both keep the DM/API channel gate, and
  * that the marker path stays materially smaller than the pre-split guide via an
- * enforced size ceiling. Deterministic: the admin gate is forced open by mocking
- * security/access; no live model.
+ * enforced size ceiling. Deterministic: no live model.
  */
 import {
   ChannelType,
@@ -14,13 +13,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
-
-// The guides live behind the providers' admin gate; force it open so these
-// tests focus on content, ordering, channel gating, and relevance keywords.
-vi.mock("../security/access.ts", () => ({
-  hasAdminAccess: vi.fn(async () => true),
-}));
+import { describe, expect, it } from "vitest";
 
 import { uiGenerativeProvider, uiWidgetsProvider } from "./ui-catalog.ts";
 
@@ -28,8 +21,8 @@ function makeRuntime(): IAgentRuntime {
   return {} as unknown as IAgentRuntime;
 }
 
-function makeMessage(channelType?: ChannelType): Memory {
-  return { content: { channelType } } as unknown as Memory;
+function makeMessage(channelType?: ChannelType, text = ""): Memory {
+  return { content: { channelType, text } } as unknown as Memory;
 }
 
 async function widgetsText(
@@ -45,10 +38,11 @@ async function widgetsText(
 
 async function generativeText(
   channelType: ChannelType = ChannelType.API,
+  text = "show me a dashboard table",
 ): Promise<string> {
   const result = await uiGenerativeProvider.get(
     makeRuntime(),
-    makeMessage(channelType),
+    makeMessage(channelType, text),
     {} as State,
   );
   return result.text ?? "";
@@ -67,12 +61,9 @@ describe("uiWidgetsProvider — marker vocabulary (common path)", () => {
     expect(text).toContain("[CHECKLIST]");
     expect(text).toContain("[WORKFLOW]");
 
-    // The [CONFIG] marker leads — it appears before the generative escape-hatch
-    // mention, so the common path does not steer the model toward raw JSONL.
+    // The marker guide leads with the common path and does not teach raw JSONL.
     const configIdx = text.indexOf("[CONFIG:pluginId]");
-    const generativeMentionIdx = text.indexOf("generative UI");
     expect(configIdx).toBeGreaterThan(-1);
-    expect(configIdx).toBeLessThan(generativeMentionIdx);
 
     // The heavy GenUI method and the full catalog do NOT leak onto this path.
     expect(text).not.toMatch(/RFC 6902/);
@@ -151,8 +142,10 @@ describe("uiGenerativeProvider — generative UI escape hatch", () => {
 
   it("does not restate the marker widgets it defers to", async () => {
     const text = await generativeText();
-    expect(text).not.toContain("[CONFIG:pluginId]");
+    expect(text).toContain("For plugin setup use [CONFIG:pluginId]");
     expect(text).not.toContain("[FOLLOWUPS]");
+    expect(text).not.toContain("[CHECKLIST]");
+    expect(text).not.toContain("[WORKFLOW]");
   });
 
   it("emits nothing on connector-style group channels", async () => {
@@ -169,6 +162,13 @@ describe("relevance keyword separation", () => {
     expect(uiGenerativeProvider.relevanceKeywords).not.toContain("setup");
   });
 
+  it("fires uiWidgets on scheduling and form intent", () => {
+    for (const term of ["reminder", "schedule", "date", "time", "datetime"]) {
+      expect(uiWidgetsProvider.relevanceKeywords).toContain(term);
+      expect(uiGenerativeProvider.relevanceKeywords).not.toContain(term);
+    }
+  });
+
   it("fires uiGenerative on visualisation intent, not on plugin config", () => {
     // "show me a table of my week" → generative path reachable.
     expect(uiGenerativeProvider.relevanceKeywords).toContain("dashboard");
@@ -177,12 +177,27 @@ describe("relevance keyword separation", () => {
     expect(uiWidgetsProvider.relevanceKeywords).not.toContain("dashboard");
   });
 
-  it("both providers stay dynamic + agent-cached + ADMIN-gated", () => {
+  it("keeps the compact marker guide available to ordinary response turns", () => {
+    expect(uiWidgetsProvider.dynamic).toBe(true);
+    expect(uiWidgetsProvider.alwaysInResponseState).toBe(true);
+    expect(uiWidgetsProvider.cacheStable).toBe(true);
+    expect(uiWidgetsProvider.cacheScope).toBe("agent");
+    expect(uiWidgetsProvider.roleGate).toBeUndefined();
+    expect(uiWidgetsProvider.relevanceKeywords?.length ?? 0).toBeGreaterThan(0);
+  });
+
+  it("keeps the heavy generative guide dynamic + turn-scoped + ADMIN-gated", () => {
+    expect(uiGenerativeProvider.dynamic).toBe(true);
+    expect(uiGenerativeProvider.cacheStable).toBeUndefined();
+    expect(uiGenerativeProvider.cacheScope).toBeUndefined();
+    expect(uiGenerativeProvider.roleGate).toEqual({ minRole: "ADMIN" });
+    expect(uiGenerativeProvider.relevanceKeywords?.length ?? 0).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it("both providers keep relevance keywords", () => {
     for (const provider of [uiWidgetsProvider, uiGenerativeProvider]) {
-      expect(provider.dynamic).toBe(true);
-      expect(provider.cacheStable).toBe(true);
-      expect(provider.cacheScope).toBe("agent");
-      expect(provider.roleGate).toEqual({ minRole: "ADMIN" });
       expect(provider.relevanceKeywords?.length ?? 0).toBeGreaterThan(0);
     }
   });
