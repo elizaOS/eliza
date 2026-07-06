@@ -141,7 +141,10 @@ body.pwa-standalone {
      top + height driving the box, a leftover `bottom: 0` would re-anchor the
      fixed body to the collapsed layout-viewport bottom — the exact bug. */
   bottom: auto;
+  /* Progressive vh→dvh→lvh viewport fallback: older engines use vh, newer
+     override with dvh then lvh. The duplicate `height` is intentional. */
   height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
   height: 100dvh;
   height: 100lvh;
   /* BOTTOM-BAR FIX (r4): TRANSPARENT floor. The prior "defensive" warm-ember
@@ -174,6 +177,7 @@ body.pwa-standalone {
 body.native #root,
 body.pwa-standalone #root {
   min-height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
   min-height: 100dvh;
   min-height: 100lvh;
   max-height: 100vh;
@@ -193,6 +197,7 @@ body.pwa-standalone #root {
 body.native [data-app-shell-root],
 body.pwa-standalone [data-app-shell-root] {
   height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
   height: 100dvh;
   height: 100lvh;
 }
@@ -227,6 +232,7 @@ body.pwa-standalone textarea {
        body to the collapsed layout-viewport bottom — the #14319 bug. */
     bottom: auto;
     height: 100vh;
+    /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
     height: 100dvh;
     height: 100lvh;
     /* BOTTOM-BAR FIX (r4): TRANSPARENT floor (mirror of the class-path rule).
@@ -247,6 +253,7 @@ body.pwa-standalone textarea {
      100vh→100dvh→100lvh progressive-enhancement stack the body uses. */
   body #root {
     min-height: 100vh;
+    /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
     min-height: 100dvh;
     min-height: 100lvh;
     max-height: 100vh;
@@ -264,6 +271,7 @@ body.pwa-standalone textarea {
      column reaches the physical screen edge, full-bleed. */
   body [data-app-shell-root] {
     height: 100vh;
+    /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
     height: 100dvh;
     height: 100lvh;
   }
