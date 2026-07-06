@@ -30,7 +30,11 @@ import type {
 	State,
 } from "@elizaos/core";
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
-import { AppPermissionsViewSchema } from "@elizaos/shared";
+import {
+	AppPermissionsViewSchema,
+	isPermissionId,
+	type PermissionId,
+} from "@elizaos/shared";
 import { SETTINGS_SECTION_META } from "@elizaos/ui/components/settings/settings-section-meta";
 import { normalizeActionOptions, readStringOption } from "../params.js";
 
@@ -136,6 +140,169 @@ const PERMISSIONS_SHELL_KEY: SettingsWritableKey = {
 			? "Shell access is on. Coding and computer-use capabilities can run again."
 			: "Shell access is off. The agent can no longer run shell commands.",
 };
+
+const SYSTEM_PERMISSION_ALIASES: ReadonlyMap<string, PermissionId> = new Map([
+	["accessibility", "accessibility"],
+	["app-blocking", "app-blocking"],
+	["automation", "automation"],
+	["battery", "battery-optimization"],
+	["battery-optimization", "battery-optimization"],
+	["bluetooth", "bluetooth"],
+	["calendar", "calendar"],
+	["camera", "camera"],
+	["contacts", "contacts"],
+	["disk", "full-disk"],
+	["full-disk", "full-disk"],
+	["health", "health"],
+	["local-network", "local-network"],
+	["location", "location"],
+	["messages", "messages"],
+	["mic", "microphone"],
+	["microphone", "microphone"],
+	["network", "local-network"],
+	["notes", "notes"],
+	["notification", "notifications"],
+	["notifications", "notifications"],
+	["overlay", "overlay"],
+	["phone", "phone"],
+	["photos", "photos"],
+	["reminders", "reminders"],
+	["screen", "screen-recording"],
+	["screen-recording", "screen-recording"],
+	["screentime", "screentime"],
+	["speech", "speech-recognition"],
+	["speech-recognition", "speech-recognition"],
+	["usage-access", "usage-access"],
+	["website-blocking", "website-blocking"],
+	["wifi", "wifi"],
+	["write-settings", "write-settings"],
+]);
+
+function normalizePermissionToken(token: string): string {
+	return token.trim().toLowerCase().replaceAll("_", "-").replace(/\s+/g, "-");
+}
+
+function resolveSystemPermissionId(token: string | null): PermissionId | null {
+	if (!token) return null;
+	const normalized = normalizePermissionToken(token);
+	const aliased = SYSTEM_PERMISSION_ALIASES.get(normalized);
+	if (aliased) return aliased;
+	return isPermissionId(normalized) ? normalized : null;
+}
+
+function isPermissionStateNeedingHandoff(data: unknown): boolean {
+	if (!data || typeof data !== "object") return true;
+	const status = (data as { status?: unknown }).status;
+	return status !== "granted" && status !== "not-applicable";
+}
+
+function readPermissionFromOutcome(data: unknown): PermissionId | null {
+	if (!data || typeof data !== "object") return null;
+	const permission = (data as { permission?: unknown }).permission;
+	return typeof permission === "string" && isPermissionId(permission)
+		? permission
+		: null;
+}
+
+function readPermissionRequestState(data: unknown): unknown {
+	if (!data || typeof data !== "object") return data;
+	return (data as { request?: unknown }).request ?? data;
+}
+
+function readPermissionHandoff(data: unknown): boolean {
+	if (!data || typeof data !== "object") return false;
+	return (data as { handoff?: unknown }).handoff === true;
+}
+
+const PERMISSIONS_REQUEST_KEY: SettingsWritableKey = {
+	description:
+		"Request an OS/system permission by id or alias. Use key=request permission=<id>, or key=mic|camera|location|notifications|screen-recording.",
+	valueType: "command",
+	apply: async ({ keyName, request, routeFetch }) => {
+		const permission = resolveSystemPermissionId(
+			keyName === "request"
+				? (request.permission ?? request.value)
+				: (request.permission ?? keyName),
+		);
+		if (!permission) {
+			return {
+				ok: false,
+				detail:
+					"provide permission=<id> such as microphone, camera, location, notifications, or screen-recording",
+			};
+		}
+		if (permission === "shell") {
+			return {
+				ok: false,
+				detail:
+					"use key=shell value=on|off for shell access; OS permission request is for device permissions",
+			};
+		}
+
+		const requestOutcome = await routeFetch({
+			method: "POST",
+			path: `/api/permissions/${encodePathSegment(permission)}/request`,
+		});
+		if (!requestOutcome.ok) return requestOutcome;
+
+		let handoff = false;
+		if (isPermissionStateNeedingHandoff(requestOutcome.data)) {
+			const handoffOutcome = await routeFetch({
+				method: "POST",
+				path: "/api/views/settings/navigate",
+				body: {
+					path: "/settings",
+					subview: "permissions",
+					source: "settings-action",
+					permission,
+				},
+			});
+			handoff = handoffOutcome.ok;
+		}
+
+		return {
+			ok: true,
+			data: { permission, request: requestOutcome.data, handoff },
+		};
+	},
+	successText: (_value, request, outcome, keyName) => {
+		const permission =
+			readPermissionFromOutcome(outcome.data) ??
+			resolveSystemPermissionId(
+				keyName === "request"
+					? (request.permission ?? request.value)
+					: (request.permission ?? keyName),
+			);
+		const label = permission ?? "permission";
+		if (
+			!isPermissionStateNeedingHandoff(readPermissionRequestState(outcome.data))
+		) {
+			return `Requested ${label} permission.`;
+		}
+		return readPermissionHandoff(outcome.data)
+			? `Requested ${label} permission. I opened Settings > Permissions so you can complete the OS prompt if it needs device-side confirmation.`
+			: `Requested ${label} permission. Open Settings > Permissions to complete the OS prompt if it needs device-side confirmation.`;
+	},
+};
+
+const PERMISSIONS_REQUEST_KEYS: Readonly<Record<string, SettingsWritableKey>> =
+	{
+		request: PERMISSIONS_REQUEST_KEY,
+		mic: PERMISSIONS_REQUEST_KEY,
+		microphone: PERMISSIONS_REQUEST_KEY,
+		camera: PERMISSIONS_REQUEST_KEY,
+		location: PERMISSIONS_REQUEST_KEY,
+		notification: PERMISSIONS_REQUEST_KEY,
+		notifications: PERMISSIONS_REQUEST_KEY,
+		screen: PERMISSIONS_REQUEST_KEY,
+		"screen-recording": PERMISSIONS_REQUEST_KEY,
+		accessibility: PERMISSIONS_REQUEST_KEY,
+		photos: PERMISSIONS_REQUEST_KEY,
+		contacts: PERMISSIONS_REQUEST_KEY,
+		calendar: PERMISSIONS_REQUEST_KEY,
+		reminders: PERMISSIONS_REQUEST_KEY,
+		"speech-recognition": PERMISSIONS_REQUEST_KEY,
+	};
 
 const AUTO_TRAINING_KEY: SettingsWritableKey = {
 	description:
@@ -366,8 +533,9 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 	},
 	permissions: {
 		kind: "route",
-		summary: "OS/runtime permission toggles (e.g. shell access).",
-		keys: { shell: PERMISSIONS_SHELL_KEY },
+		summary:
+			"OS/runtime permission toggles and OS permission requests (e.g. shell access, microphone, camera, location, notifications).",
+		keys: { shell: PERMISSIONS_SHELL_KEY, ...PERMISSIONS_REQUEST_KEYS },
 	},
 	runtime: {
 		kind: "readonly",
@@ -486,6 +654,7 @@ export interface SettingsRequest {
 	confirm: string | null;
 	app: string | null;
 	namespace: string | null;
+	permission: string | null;
 }
 
 const VERB_TOKENS: ReadonlyMap<string, SettingsVerb> = new Map([
@@ -524,6 +693,8 @@ export function parseSettingsRequest(
 	const app =
 		readStringOption(options, "app") ?? readStringOption(options, "slug");
 	const namespace = readStringOption(options, "namespace");
+	const permission =
+		readStringOption(options, "permission") ?? readStringOption(options, "id");
 
 	if (!verb) {
 		// A bare `section` with a `value` but no verb reads as an implicit `set`;
@@ -539,9 +710,20 @@ export function parseSettingsRequest(
 			confirm,
 			app,
 			namespace,
+			permission,
 		};
 	}
-	return { verb, sectionId, key, value, fileName, confirm, app, namespace };
+	return {
+		verb,
+		sectionId,
+		key,
+		value,
+		fileName,
+		confirm,
+		app,
+		namespace,
+		permission,
+	};
 }
 
 async function defaultRouteFetch(
@@ -652,7 +834,11 @@ async function handleSet(
 
 	// cap.kind === "route"
 	const requestedKeyName =
-		request.namespace ?? request.key ?? Object.keys(cap.keys)[0];
+		request.namespace ??
+		request.key ??
+		(request.sectionId === "permissions" && request.permission
+			? "request"
+			: Object.keys(cap.keys)[0]);
 	const keyName =
 		request.sectionId === "app-permissions"
 			? (resolvePermissionNamespace(requestedKeyName) ?? requestedKeyName)
@@ -696,6 +882,7 @@ async function handleSet(
 	}
 	const reply = writable.successText(parsedValue, request, outcome, keyName);
 	await callback?.({ text: reply });
+	const requestedPermission = readPermissionFromOutcome(outcome.data);
 	return {
 		success: true,
 		text: reply,
@@ -705,6 +892,7 @@ async function handleSet(
 			...(parsedValue === null ? {} : { value: parsedValue }),
 			...(request.fileName ? { fileName: request.fileName } : {}),
 			...(request.app ? { app: request.app } : {}),
+			...(requestedPermission ? { permission: requestedPermission } : {}),
 		},
 		data: {
 			section: request.sectionId,
@@ -712,6 +900,7 @@ async function handleSet(
 			...(parsedValue === null ? {} : { value: parsedValue }),
 			...(request.fileName ? { fileName: request.fileName } : {}),
 			...(request.app ? { app: request.app } : {}),
+			...(requestedPermission ? { permission: requestedPermission } : {}),
 		},
 	};
 }
@@ -797,13 +986,17 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			"APP_PERMISSION",
 			"GRANT_APP_PERMISSION",
 			"REVOKE_APP_PERMISSION",
+			"REQUEST_PERMISSION",
+			"REQUEST_OS_PERMISSION",
+			"ASK_FOR_MICROPHONE",
+			"ASK_FOR_CAMERA",
 		],
 		description:
-			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, turning automatic training on/off via section=capabilities key=auto-training, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, and creating/restoring local agent backups via section=advanced key=create-backup|restore-backup. Restore requires fileName and confirm=true. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
+			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, requesting OS permissions via section=permissions key=request permission=microphone|camera|location|notifications|screen-recording, turning automatic training on/off via section=capabilities key=auto-training, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, and creating/restoring local agent backups via section=advanced key=create-backup|restore-backup. Restore requires fileName and confirm=true. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
 		descriptionCompressed:
-			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, auto-training, app permissions, and local backups",
+			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, OS permission requests, auto-training, app permissions, and local backups",
 		routingHint:
-			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
+			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'ask for microphone permission', 'request camera access', 'enable location permission', 'turn on notifications', 'request screen recording' -> SETTINGS section=permissions key=request permission=microphone|camera|location|notifications|screen-recording. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, requesting an OS permission, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -838,6 +1031,13 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 				name: "namespace",
 				description:
 					"Permission namespace when section=app-permissions; accepted values are fs/filesystem or net/network.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "permission",
+				description:
+					"OS permission id when section=permissions key=request, for example microphone, camera, location, notifications, or screen-recording.",
 				required: false,
 				schema: { type: "string" },
 			},
