@@ -214,6 +214,36 @@ describe("inferBackgroundPlan", () => {
 			catalogId: "sunset beach",
 		});
 	});
+
+	it("does not let an unknown catalog option override explicit image or generate inputs", () => {
+		expect(
+			inferBackgroundPlan("change my background", undefined, {
+				catalog: "sunset beach",
+				imageUrl: "/api/media/generated.png",
+			}),
+		).toEqual({
+			op: "set",
+			mode: "image",
+			imageUrl: "/api/media/generated.png",
+		});
+		expect(
+			inferBackgroundPlan("change my background", undefined, {
+				catalog: "sunset beach",
+				prompt: "a quiet redwood grove",
+			}),
+		).toEqual({
+			op: "set",
+			generatePrompt: "a quiet redwood grove",
+		});
+		expect(
+			inferBackgroundPlan("generate a sunset beach background", undefined, {
+				catalog: "sunset beach",
+			}),
+		).toMatchObject({
+			op: "set",
+			generatePrompt: "sunset beach",
+		});
+	});
 });
 
 describe("programmable GLSL shader plan (#10694)", () => {

@@ -396,7 +396,9 @@ export function inferBackgroundPlan(
 		};
 	}
 	if (
-		(explicitCatalog || !wantsFreshGenerate) &&
+		!wantsFreshGenerate &&
+		!explicitImage &&
+		!explicitPrompt &&
 		!hasImageAttachment &&
 		(explicitCatalog || !isUploadIntent(trimmed))
 	) {
