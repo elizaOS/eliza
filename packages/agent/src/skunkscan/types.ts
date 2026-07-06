@@ -39,7 +39,9 @@ export type WalletPortfolioToken = {
 export type WalletPortfolioSummary = {
   nativeBalance: WalletBalance;
   tokenCount: number;
-  totalTokenUnits: number;
+  largestHoldingPercentage: number | null;
+  diversityScore: number;
+  diversityLevel: "none" | "low" | "medium" | "high";
   topTokenHoldings: WalletPortfolioToken[];
   estimatedTotalUsdValue?: number | null;
   concentrationLevel: "none" | "low" | "medium" | "high";
