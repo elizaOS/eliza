@@ -16,6 +16,7 @@
  */
 
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -137,9 +138,21 @@ export async function extractKeyframes(
   return out;
 }
 
-/** Derive a filesystem-safe slug from an artifact's bundle path. */
-function slugForVideo(bundlePath: string): string {
-  return bundlePath.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+/**
+ * Derive a filesystem-safe slug from an artifact's bundle path. Squashing
+ * punctuation to `-` is lossy (`a/b.mp4` and `a-b.mp4` collapse to the same
+ * slug), so a short hash of the exact path is appended — two distinct videos
+ * can never write keyframes into each other's directory.
+ */
+export function slugForVideo(bundlePath: string): string {
+  const slug = bundlePath
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const hash = createHash("sha256")
+    .update(bundlePath)
+    .digest("hex")
+    .slice(0, 8);
+  return slug === "" ? hash : `${slug}-${hash}`;
 }
 
 export const videoKeyframesAnalyzer: Analyzer = {

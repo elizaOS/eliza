@@ -6,10 +6,19 @@
  * checked-in tree is stable across runs and structural regressions surface as a
  * concrete add/remove/change list rather than a raw-DOM noise diff.
  *
- * The snapshot format is Playwright's indentation-based YAML-ish tree: each line
- * is `- <role> "<name>"` with optional trailing attributes, nesting encoded by
- * leading spaces. We parse it into a tree of nodes, which is enough for stable
- * ordering, structural diffing, and depth/role pruning without a YAML library.
+ * The snapshot format is Playwright's indentation-based YAML-ish tree, nesting
+ * encoded by leading spaces. The per-line grammar this parser accepts:
+ *
+ *   - role "Name" [attr] [attr]     leaf with an accessible name
+ *   - role "Name":                  named container (children indented below)
+ *   - role:                         anonymous container
+ *   - text: inline content          text leaf (content is unquoted)
+ *   - role "Name": inline content   element wrapping a single text child
+ *
+ * We parse it into a tree of nodes, which is enough for stable ordering,
+ * structural diffing, and depth/role pruning without a YAML library. Inline
+ * text becomes a `text` child node so `- listitem: Chat` and a listitem with an
+ * indented `- text: Chat` child normalize identically.
  */
 
 import type { Analyzer, AnalyzerFragment, AnalyzerInput } from "./types.ts";
@@ -44,30 +53,53 @@ export function parseAriaSnapshot(yaml: string): AriaNode[] {
   return root.children;
 }
 
+// Head of a structured line: role, optional quoted name, optional `[attr]`
+// groups, then an optional `:` introducing children or inline text. The name's
+// quotes shield any `:` inside it from being read as the container marker.
+const LINE_GRAMMAR =
+  /^([A-Za-z][\w-]*)(?:\s+"([^"]*)")?((?:\s+\[[^\]]*\])*)\s*(?::\s*(.*))?$/;
+
 /** Parse one snapshot line body (`- button "Save" [disabled]`) into a node. */
 function parseLine(body: string): AriaNode | null {
   let rest = body.startsWith("- ") ? body.slice(2) : body;
   rest = rest.trim();
   if (rest === "") return null;
+  // Text leaf: the content is raw and unquoted, so it must be taken verbatim
+  // before any attr/name parsing could misread brackets or quotes inside it.
+  const textLeaf = rest.match(/^text:\s*(.*)$/);
+  if (textLeaf) {
+    return { role: "text", name: textLeaf[1], attributes: [], children: [] };
+  }
+  const structured = rest.match(LINE_GRAMMAR);
+  if (structured) {
+    const [, role, name, attrsBlob, inline] = structured;
+    const node: AriaNode = {
+      role,
+      attributes: attrsBlob.match(/\[[^\]]*\]/g) ?? [],
+      children: [],
+    };
+    if (name !== undefined) node.name = name;
+    // `role "Name": content` wraps a single text child; a bare trailing `:`
+    // (inline === "") just marks a container whose children follow indented.
+    if (inline !== undefined && inline !== "") {
+      node.children.push({
+        role: "text",
+        name: inline,
+        attributes: [],
+        children: [],
+      });
+    }
+    return node;
+  }
+  // Outside the grammar (exotic Playwright extensions): keep the raw body as
+  // the role, minus trailing attrs/colon, so nothing silently disappears.
   const attributes: string[] = [];
-  // Pull trailing `[...]` attribute groups off the end.
   let attrMatch = rest.match(/\s(\[[^\]]*\])\s*$/);
   while (attrMatch) {
     attributes.unshift(attrMatch[1]);
     rest = rest.slice(0, attrMatch.index).trimEnd();
     attrMatch = rest.match(/\s(\[[^\]]*\])\s*$/);
   }
-  // Optional accessible name in double quotes.
-  const nameMatch = rest.match(/^(\S+)\s+"([^"]*)"\s*$/);
-  if (nameMatch) {
-    return {
-      role: nameMatch[1],
-      name: nameMatch[2],
-      attributes,
-      children: [],
-    };
-  }
-  // Role, and a trailing `:` on container lines is dropped.
   const role = rest.replace(/:\s*$/, "").trim();
   return { role, attributes, children: [] };
 }
@@ -101,10 +133,15 @@ function renderTree(nodes: AriaNode[], depth: number): string[] {
   const lines: string[] = [];
   const pad = "  ".repeat(depth);
   for (const node of nodes) {
-    const parts = [`- ${node.role}`];
-    if (node.name !== undefined) parts.push(`"${node.name}"`);
-    for (const attr of node.attributes) parts.push(attr);
-    lines.push(pad + parts.join(" "));
+    if (node.role === "text") {
+      // Text leaves round-trip in Playwright's unquoted `text:` form.
+      lines.push(`${pad}- text: ${node.name ?? ""}`);
+    } else {
+      const parts = [`- ${node.role}`];
+      if (node.name !== undefined) parts.push(`"${node.name}"`);
+      for (const attr of node.attributes) parts.push(attr);
+      lines.push(pad + parts.join(" "));
+    }
     lines.push(...renderTree(node.children, depth + 1));
   }
   return lines;

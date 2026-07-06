@@ -10,6 +10,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   extractKeyframes,
   ffmpegAvailable,
+  slugForVideo,
   videoKeyframesAnalyzer,
 } from "./keyframes.ts";
 import { makeTmpDir } from "./test-fixtures.ts";
@@ -113,6 +114,27 @@ describe.skipIf(!hasFfmpeg.available)(
     });
   },
 );
+
+describe("slugForVideo", () => {
+  it("is deterministic and filesystem-safe", () => {
+    expect(slugForVideo("video/a/b.mp4")).toBe(slugForVideo("video/a/b.mp4"));
+    expect(slugForVideo("video/a/b.mp4")).toMatch(/^[A-Za-z0-9-]+$/);
+  });
+
+  it("never collides for distinct paths that squash to the same slug", () => {
+    // Punctuation-squashing alone maps both of these to `video-a-b-mp4`.
+    expect(slugForVideo("video/a/b.mp4")).not.toBe(
+      slugForVideo("video/a-b.mp4"),
+    );
+    expect(slugForVideo("video/a/b.mp4")).not.toBe(
+      slugForVideo("video/a.b.mp4"),
+    );
+  });
+
+  it("degrades to the hash alone for an all-punctuation path", () => {
+    expect(slugForVideo("///")).toMatch(/^[0-9a-f]{8}$/);
+  });
+});
 
 describe("video.keyframes degradation", () => {
   it("skips honestly without an emitArtifact handle", async () => {

@@ -12,6 +12,7 @@
 import type { Analyzer, AnalyzerFragment, AnalyzerInput } from "../types.ts";
 import {
   type OcrEngine,
+  type OcrGroundedRegion,
   TesseractOcrEngine,
   UnlimitedOcrEngine,
 } from "./engines.ts";
@@ -24,6 +25,8 @@ export interface OcrData {
   words: number;
   /** Engine mean confidence in [0,1] when reported, else null. */
   confidence: number | null;
+  /** Grounded text regions when the engine emits them, else null. */
+  regions: OcrGroundedRegion[] | null;
 }
 
 /** Build an OCR analyzer over `engine` at `tier`, named `ocr.<engine.id>`. */
@@ -40,12 +43,15 @@ export function makeOcrAnalyzer(
       if (!availability.available) {
         return { status: "skipped-missing-tool", reason: availability.reason };
       }
-      const { text, confidence } = await engine.recognize(input.absolutePath);
+      const { text, confidence, regions } = await engine.recognize(
+        input.absolutePath,
+      );
       const data: OcrData = {
         engine: engine.id,
         text,
         words: text.split(/\s+/).filter(Boolean).length,
         confidence: typeof confidence === "number" ? confidence : null,
+        regions: regions ?? null,
       };
       return { status: "ran", data };
     },

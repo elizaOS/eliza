@@ -53,6 +53,53 @@ describe("parseAriaSnapshot", () => {
     const list = tree[0].children[1];
     expect(list.children.map((c) => c.name)).toEqual(["Chat", "Settings"]);
   });
+
+  it("parses a named container line (role + name + trailing colon)", () => {
+    const tree = parseAriaSnapshot(
+      `- navigation "Main":\n  - link "Home"\n  - link "Docs"`,
+    );
+    expect(tree).toHaveLength(1);
+    expect(tree[0].role).toBe("navigation");
+    expect(tree[0].name).toBe("Main");
+    expect(tree[0].children.map((c) => c.name)).toEqual(["Home", "Docs"]);
+  });
+
+  it("parses a named container with attributes before the colon", () => {
+    const tree = parseAriaSnapshot(
+      `- list "Items" [ref=s1]:\n  - listitem "One"`,
+    );
+    expect(tree[0].role).toBe("list");
+    expect(tree[0].name).toBe("Items");
+    expect(tree[0].attributes).toEqual(["[ref=s1]"]);
+    expect(tree[0].children).toHaveLength(1);
+  });
+
+  it("parses inline text leaves verbatim", () => {
+    const tree = parseAriaSnapshot(`- text: Signed in as Ada [beta]`);
+    expect(tree).toHaveLength(1);
+    expect(tree[0].role).toBe("text");
+    // Text content is raw: brackets/quotes inside it are not attributes.
+    expect(tree[0].name).toBe("Signed in as Ada [beta]");
+    expect(tree[0].attributes).toEqual([]);
+  });
+
+  it("wraps `role: inline content` as a text child, equal to the indented form", () => {
+    const inline = parseAriaSnapshot(`- listitem: Chat`);
+    expect(inline[0].role).toBe("listitem");
+    expect(inline[0].children).toEqual([
+      { role: "text", name: "Chat", attributes: [], children: [] },
+    ]);
+    expect(normalizeAriaSnapshot(`- listitem: Chat`)).toBe(
+      normalizeAriaSnapshot(`- listitem:\n  - text: Chat`),
+    );
+  });
+
+  it("does not mistake a colon inside a quoted name for a container marker", () => {
+    const tree = parseAriaSnapshot(`- button "Save: draft"`);
+    expect(tree[0].role).toBe("button");
+    expect(tree[0].name).toBe("Save: draft");
+    expect(tree[0].children).toEqual([]);
+  });
 });
 
 describe("normalizeAriaSnapshot", () => {
@@ -65,6 +112,21 @@ describe("normalizeAriaSnapshot", () => {
     expect(normalizeAriaSnapshot(SNAPSHOT_A)).not.toBe(
       normalizeAriaSnapshot(SNAPSHOT_B),
     );
+  });
+  it("is idempotent over named containers and text leaves", () => {
+    const snapshot = `- banner:
+  - navigation "Main":
+    - link "Home"
+- main:
+  - heading "Welcome" [level=1]
+  - text: Signed in as Ada
+  - paragraph: Inline paragraph copy`;
+    const once = normalizeAriaSnapshot(snapshot);
+    expect(normalizeAriaSnapshot(once)).toBe(once);
+    // Nothing was silently dropped or mangled on the way through.
+    expect(once).toContain('- navigation "Main"');
+    expect(once).toContain("- text: Signed in as Ada");
+    expect(once).toContain("- text: Inline paragraph copy");
   });
 });
 
