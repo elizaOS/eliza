@@ -54,6 +54,17 @@ export function ImageBackground({
       className="pointer-events-none fixed inset-0"
       style={{
         zIndex: 0,
+        // BOTTOM-BAR ROOT CAUSE (device r5): this `fixed inset-0` cover image's
+        // `bottom: 0` anchors to the fixed-descendant ICB, which COLLAPSES to
+        // the small/layout viewport on the installed iOS standalone PWA (~59px
+        // short of the true 100lvh bottom). Left alone the wallpaper stops above
+        // the home-indicator zone and the dimmed launch-bg shows through as the
+        // rgb(61,27,11) bar under the composer. Drop the bottom edge by the
+        // collapse delta so the cover image reaches the TRUE physical bottom —
+        // the same reclaim the chat composer applies. `max(0px, 100lvh -
+        // 100dvh)` is 0 wherever the two viewports agree (desktop/Android), so
+        // this is a no-op except on the collapsing iOS-standalone geometry.
+        bottom: "calc(-1 * max(0px, 100lvh - 100dvh))",
         backgroundImage: `url("${imageUrl}")`,
         backgroundSize: "cover",
         backgroundPosition: "center",

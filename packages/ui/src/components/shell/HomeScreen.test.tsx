@@ -38,11 +38,13 @@ import {
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
 } from "../../state/notifications/notification-store";
+import { __resetHomeDismissalsForTests } from "../../widgets/home-dismissal-store";
 import { HomeScreen } from "./HomeScreen";
 
 afterEach(() => {
   cleanup();
   __resetNotificationStoreForTests();
+  __resetHomeDismissalsForTests();
 });
 
 const NATIVE_OS_TILES = ["messages", "phone", "contacts", "camera"];
@@ -128,7 +130,31 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
   });
 
-  it("opens the notification shade from the bottom hint once notifications exist", () => {
+  // GESTURE-HINT OVERLAP FIX (#14945 follow-up): the one-time gesture hint
+  // ("Swipe for apps. Pull chat up. Hold wallpaper to restyle.") sat as the last
+  // flow item in the scroll column, flush against the top of the reserved
+  // composer-clearance zone — on device the floating composer overlapped it and
+  // only the top few pixels of the hint peeked above the composer edge. Its
+  // wrapper must carry an explicit bottom clearance keyed to the composer
+  // footprint + safe area so it can NEVER render under the composer.
+  it("anchors the gesture hint above the floating composer (explicit bottom clearance, never overlapping)", () => {
+    // The gesture hint is a one-time widget; ensure a pristine dismissal store
+    // so it renders on this mount.
+    __resetHomeDismissalsForTests();
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const hint = screen.getByTestId("home-gesture-hint");
+    // The hint's positioning wrapper is its parent in the HomeScreen column.
+    const wrapper = hint.parentElement;
+    expect(wrapper).not.toBeNull();
+    const cls = wrapper?.className ?? "";
+    // The wrapper must reserve clearance for the floating composer footprint
+    // (the measured pill height var) plus the bottom safe area, so the hint
+    // always sits fully ABOVE the composer, not behind it.
+    expect(cls).toContain("--eliza-continuous-chat-clearance");
+    expect(cls).toMatch(/safe-area-bottom|android-gesture-inset-bottom/);
+  });
+
+  it("pins the notification center widget between the base widgets and the WidgetHost once notifications exist", () => {
     __ingestNotificationForTests(makeNotification());
     render(<HomeScreen onOpenTile={vi.fn()} />);
     // Hidden until pulled up: only the quiet hint pill is on the dashboard.

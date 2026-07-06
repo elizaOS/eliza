@@ -237,12 +237,23 @@ describe("CSS geometry contract — fixed-body ICB collapse fix (bottom black ba
     expect(block).toMatch(/right:\s*0/);
   });
 
-  it("paints a warm ember floor color on the standalone body (no --launch-bg black seam)", () => {
-    // Defensive: any sub-pixel seam at the true bottom must read as the warm
-    // ember-floor ambience, never the near-black --launch-bg band.
+  it("leaves the standalone body floor TRANSPARENT so the wallpaper owns the bottom edge (no painted floor strip)", () => {
+    // BOTTOM-BAR FIX (r4): the prior "defensive warm-ember floor" painted an
+    // OPAQUE color-mix(--launch-bg 82%, ember) === rgb(61,27,11) slab on the
+    // fixed body. Whenever the `fixed inset-0` wallpaper failed to reach the
+    // true bottom by even a hair (ICB rounding on device), that slab bled
+    // through as a UNIFORM warm-brown bar across the whole home-indicator zone
+    // under the floating composer — the recurring "bottom bar" (flagged in 3
+    // successive builds). The floor must be TRANSPARENT so the only thing
+    // visible at the bottom edge is the wallpaper (the always-mounted
+    // `fixed inset-0` AppBackground, which spans the full 100lvh body), never a
+    // painted band. Any true seam falls through to html/#root's near-black
+    // --launch-bg, which is ambient-consistent with a dark wallpaper — not a
+    // bright warm bar.
     const block = standalonePwaOwnBlock();
-    expect(block).toMatch(/background-color:\s*color-mix/);
-    expect(block).toContain("--launch-bg");
+    expect(block).toMatch(/background-color:\s*transparent/);
+    // And it must NOT paint the old warm-ember color-mix slab.
+    expect(block).not.toMatch(/background-color:\s*color-mix/);
   });
 
   it("keeps the native (Capacitor) body on `inset: 0` — the fix is PWA-scoped", () => {
@@ -368,9 +379,10 @@ describe("CSS-FIRST contract — media-query lockdown is detection-independent",
     expect(block ?? "").toContain("touch-action: pan-y");
     // Release `bottom` so top+height drive the box (the #14319 anchor fix).
     expect(block ?? "").toMatch(/bottom:\s*auto/);
-    // Warm ember floor instead of the near-black --launch-bg band.
-    expect(block ?? "").toMatch(/background-color:\s*color-mix/);
-    expect(block ?? "").toContain("--launch-bg");
+    // BOTTOM-BAR FIX (r4): transparent floor — the wallpaper owns the bottom
+    // edge; no painted warm-ember slab that bleeds through as a bar.
+    expect(block ?? "").toMatch(/background-color:\s*transparent/);
+    expect(block ?? "").not.toMatch(/background-color:\s*color-mix/);
   });
 
   it("styles.css media block reclaims #root to the LARGE viewport (100lvh)", () => {
@@ -448,5 +460,50 @@ describe("Keyboard-lift geometry contract — reclaim does NOT shift the compose
     expect(layoutSrc).toContain("viewportH -");
     expect(layoutSrc).not.toContain("100lvh");
     expect(layoutSrc).not.toContain("100dvh");
+  });
+});
+
+describe("Fixed background layers reach the TRUE physical bottom (bottom-bar root cause)", () => {
+  // BOTTOM-BAR ROOT CAUSE (device r5): every full-bleed background layer is a
+  // `fixed inset-0` descendant of the fixed body. On the installed iOS
+  // standalone PWA the fixed-descendant ICB collapses to the small/layout
+  // viewport (~59px short of the true 100lvh bottom). The composer already
+  // compensates its `bottom` by `-1 * max(0px, 100lvh - 100dvh)`; the wallpaper
+  // AND the shell-owned safe-area floor must do the same so nothing stops short
+  // and exposes the dimmed launch-bg as a uniform bar under the composer. The
+  // delta is 0 on every viewport where the two agree (desktop/Android), so this
+  // is a pure iOS-standalone reclaim, no-op elsewhere.
+  const DELTA = "calc(-1 * max(0px, 100lvh - 100dvh))";
+  const appTsx = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+  const shaderSrc = readFileSync(
+    resolve(process.cwd(), "src/backgrounds/ShaderBackground.tsx"),
+    "utf8",
+  );
+  const imageSrc = readFileSync(
+    resolve(process.cwd(), "src/backgrounds/ImageBackground.tsx"),
+    "utf8",
+  );
+  const glslSrc = readFileSync(
+    resolve(process.cwd(), "src/backgrounds/ProgrammableShaderBackground.tsx"),
+    "utf8",
+  );
+
+  it("drops the shell-owned safe-area floor to the true bottom via the lvh−dvh delta", () => {
+    // The `app-safe-area-floor` is the FOUC guard on opaque routes; if it stops
+    // short its `bg-bg`/transparent edge leaves the launch-bg strip exposed.
+    expect(appTsx).toContain(DELTA);
+    expect(appTsx).toContain("app-safe-area-floor");
+  });
+
+  it("drops the ShaderBackground wallpaper to the true bottom via the lvh−dvh delta", () => {
+    expect(shaderSrc).toContain(DELTA);
+  });
+
+  it("drops the ImageBackground wallpaper to the true bottom via the lvh−dvh delta", () => {
+    expect(imageSrc).toContain(DELTA);
+  });
+
+  it("drops the programmable GLSL wallpaper to the true bottom via the lvh−dvh delta", () => {
+    expect(glslSrc).toContain(DELTA);
   });
 });

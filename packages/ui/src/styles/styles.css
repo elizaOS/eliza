@@ -144,12 +144,19 @@ body.pwa-standalone {
   height: 100vh;
   height: 100dvh;
   height: 100lvh;
-  /* Defensive floor color: if a 1px sub-pixel seam survives at the very bottom
-     edge (rounding between 100lvh and the device screen), paint it the warm
-     ember-floor tone the ImageBackground bottom-gradient + ShaderBackground
-     fallback already pool there, so a seam reads as lock-screen ambience —
-     never the near-black --launch-bg band. Sits UNDER the fixed wallpaper. */
-  background-color: color-mix(in srgb, var(--launch-bg, #160d07) 82%, #ef5a1f);
+  /* BOTTOM-BAR FIX (r4): TRANSPARENT floor. The prior "defensive" warm-ember
+     color-mix(--launch-bg 82%, #ef5a1f) resolved to an OPAQUE rgb(61,27,11)
+     slab on the fixed body. It was meant only to hide a 1px sub-pixel seam, but
+     whenever the `fixed inset-0` wallpaper failed to reach the true bottom by
+     more than a hair (ICB rounding on device), that slab bled through as a
+     UNIFORM warm-brown BAR spanning the whole home-indicator zone under the
+     floating composer — the recurring "bottom bar" (r3.x). The wallpaper
+     (AppBackground, a `fixed inset-0` cover-fit layer that spans the full 100lvh
+     body) must be the ONLY thing visible at the bottom edge, lock-screen style.
+     Going transparent lets it own the edge; any residual seam falls through to
+     html/#root's near-black --launch-bg, which is ambient-consistent with a dark
+     wallpaper — never a bright warm bar. */
+  background-color: transparent;
 }
 
 /* RECLAIM THE BOTTOM STRIP (#14411): #root fills the LARGE viewport (100lvh),
@@ -222,9 +229,12 @@ body.pwa-standalone textarea {
     height: 100vh;
     height: 100dvh;
     height: 100lvh;
-    /* Warm ember floor: any sub-pixel seam at the true bottom reads as
-       lock-screen ambience, never the near-black --launch-bg band. */
-    background-color: color-mix(in srgb, var(--launch-bg, #160d07) 82%, #ef5a1f);
+    /* BOTTOM-BAR FIX (r4): TRANSPARENT floor (mirror of the class-path rule).
+       An opaque warm-ember slab here bled through as a uniform brown bar in the
+       home-indicator zone whenever the fixed wallpaper missed the true bottom.
+       Transparent lets the full-bleed wallpaper own the bottom edge; any seam
+       falls through to html/#root's near-black --launch-bg, not a bright bar. */
+    background-color: transparent;
   }
 
   /* biome-ignore lint/style/noDescendingSpecificity: intentional bare #root lock mirroring body.pwa-standalone #root. */

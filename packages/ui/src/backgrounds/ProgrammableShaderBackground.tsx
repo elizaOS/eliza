@@ -292,7 +292,17 @@ export function ProgrammableShaderBackground({
       data-testid="app-background-glsl"
       data-eliza-bg="glsl"
       className="pointer-events-none fixed inset-0 overflow-hidden"
-      style={{ zIndex: 0, backgroundColor: color }}
+      style={{
+        zIndex: 0,
+        // BOTTOM-BAR ROOT CAUSE (device r5): drop this `fixed inset-0` GLSL
+        // wallpaper's bottom by the fixed-descendant ICB collapse delta so it
+        // reaches the TRUE physical bottom on the installed iOS standalone PWA
+        // instead of stopping ~59px short and exposing the launch-bg bar. Same
+        // reclaim as the composer + the other background layers; no-op wherever
+        // 100lvh === 100dvh (desktop/Android).
+        bottom: "calc(-1 * max(0px, 100lvh - 100dvh))",
+        backgroundColor: color,
+      }}
     />
   );
 }

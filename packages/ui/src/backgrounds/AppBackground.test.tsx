@@ -42,6 +42,47 @@ describe("AppBackground", () => {
     ).toBeNull();
   });
 
+  it("extends the shader wallpaper past the collapsed-ICB bottom to the TRUE physical bottom (standalone PWA)", () => {
+    // BOTTOM-BAR ROOT CAUSE (device r5): the wallpaper is `fixed inset-0`, so
+    // its `bottom: 0` anchors to the fixed-descendant initial containing block.
+    // On the installed iOS standalone PWA that ICB COLLAPSES to the small/layout
+    // viewport (~59px short of the true 100lvh bottom), so the wallpaper stops
+    // ABOVE the home-indicator zone and the dimmed launch-bg (#root/body
+    // --launch-bg orange under the scrim) shows through as the rgb(61,27,11)
+    // strip. The composer already compensates with a `-1 * max(0px, 100lvh -
+    // 100dvh)` bottom; the wallpaper MUST do the same so it reaches the physical
+    // bottom and owns the whole screen. No-op everywhere the two viewports agree
+    // (desktop/Android/non-collapsed) where the delta is 0.
+    seed({ mode: "shader", color: "#ef5a1f" });
+    const { container } = render(<AppBackground />);
+    const shader = container.querySelector<HTMLElement>(
+      '[data-testid="app-background-shader"]',
+    );
+    // jsdom's CSS parser mangles the lvh/dvh `calc(max(...))` on reserialize,
+    // so assert the load-bearing markers survive rather than the exact string:
+    // a negative `calc(... max(...))` reclaim that references the dynamic
+    // viewport unit. (The exact source form is pinned in the source-string
+    // test in standalone-pwa-lockdown.test.ts.)
+    const bottom = shader?.style.bottom ?? "";
+    expect(bottom).toContain("calc");
+    expect(bottom).toContain("max");
+    expect(bottom).toContain("100dvh");
+  });
+
+  it("extends the image wallpaper past the collapsed-ICB bottom to the TRUE physical bottom (standalone PWA)", () => {
+    seed({ mode: "image", color: "#000000", imageUrl: "/api/media/x.png" });
+    const { container } = render(<AppBackground />);
+    const image = container.querySelector<HTMLElement>(
+      '[data-testid="app-background-image"]',
+    );
+    // jsdom mangles the lvh/dvh calc; assert the surviving markers (see the
+    // shader test note + the source-string pin in standalone-pwa-lockdown).
+    const bottom = image?.style.bottom ?? "";
+    expect(bottom).toContain("calc");
+    expect(bottom).toContain("max");
+    expect(bottom).toContain("100dvh");
+  });
+
   it("renders a cover image when configured for image mode", () => {
     seed({ mode: "image", color: "#000000", imageUrl: "/api/media/x.png" });
     const { container } = render(<AppBackground />);

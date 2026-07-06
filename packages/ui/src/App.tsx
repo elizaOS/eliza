@@ -2725,6 +2725,16 @@ export function App() {
               // very bottom edge; opaque dark elsewhere as the FOUC guard.
               renderSharedAppBackground ? "bg-transparent" : "bg-bg",
             )}
+            // BOTTOM-BAR ROOT CAUSE (device r5): this `fixed inset-0` floor is a
+            // fixed descendant of the fixed body, so its `bottom: 0` anchors to
+            // the ICB that COLLAPSES to the small/layout viewport on the
+            // installed iOS standalone PWA (~59px short of the true 100lvh
+            // bottom). On OPAQUE routes it then stops short and the launch-bg
+            // strip shows below it; on wallpaper routes it is transparent so the
+            // (now-reclaimed) wallpaper owns the edge. Drop it by the same
+            // collapse delta the composer + wallpaper use so the FOUC guard
+            // reaches the physical bottom too. No-op wherever 100lvh === 100dvh.
+            style={{ bottom: "calc(-1 * max(0px, 100lvh - 100dvh))" }}
           />
           {/* The unified app background, mounted once here so it persists
               seamlessly across shared-background routes. It keeps the
