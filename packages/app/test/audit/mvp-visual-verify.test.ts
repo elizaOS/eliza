@@ -27,6 +27,10 @@ import {
 } from "../../scripts/mvp-visual-verify/expectation-eval.mjs";
 import { bucket as auditBucket } from "../ui-smoke/aesthetic-audit-rules";
 
+const appPackageJson = JSON.parse(
+  readFileSync(path.resolve(__dirname, "../../package.json"), "utf8"),
+) as { scripts: Record<string, string> };
+
 describe("color-bucket", () => {
   it("parses rgb and rgba", () => {
     expect(parseRgb("rgb(255, 88, 0)")).toEqual([255, 88, 0, 1]);
@@ -467,5 +471,22 @@ describe("mvp-visual-verify CLI", () => {
     );
     expect(report.summary.newBaselines).toBe(1);
     expect(report.summary.expectationSkips).toBeGreaterThan(0);
+  });
+});
+
+describe("audit:app OCR command contract", () => {
+  it("keeps the canonical audit command wired to packaged OCR", () => {
+    expect(appPackageJson.scripts["audit:app:capture"]).toContain(
+      "--project=audit-app",
+    );
+    expect(appPackageJson.scripts["audit:app"]).toContain(
+      "bun run audit:app:capture",
+    );
+    expect(appPackageJson.scripts["audit:app"]).toContain(
+      "ELIZA_MVP_OCR_ENGINE=packaged bun run audit:ocr",
+    );
+    expect(appPackageJson.scripts["audit:app:verify"]).toContain(
+      "ELIZA_MVP_OCR_ENGINE=packaged bun run mvp:visual-verify -- --strict",
+    );
   });
 });

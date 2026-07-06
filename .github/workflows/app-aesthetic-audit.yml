@@ -70,7 +70,7 @@ jobs:
         env:
           ELIZA_AUDIT_APP_STRICT: "1"
           ELIZA_AUDIT_APP_STRICT_NEEDS_WORK: "1"
-        run: bun run --cwd packages/app audit:app
+        run: bun run --cwd packages/app audit:app:capture
 
       - name: Upload aesthetic-audit artifacts
         if: always()
