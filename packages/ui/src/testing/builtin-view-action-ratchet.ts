@@ -149,7 +149,8 @@ export function validateBuiltinViewMutationCoverage(args: {
   readSource: (path: string) => string | null | undefined;
   registeredActions: ReadonlySet<string>;
 }): BuiltinViewMutationValidationResult {
-  const baseline = args.baseline ?? BUILTIN_VIEW_MUTATION_BASELINE;
+  const baseline: readonly BuiltinViewMutationBaselineEntry[] =
+    args.baseline ?? BUILTIN_VIEW_MUTATION_BASELINE;
   const registeredActions = new Set(
     [...args.registeredActions].map((action) => action.toUpperCase()),
   );
