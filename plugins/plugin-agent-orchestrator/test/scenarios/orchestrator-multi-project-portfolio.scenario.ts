@@ -23,8 +23,8 @@
  * `orchestrator-multi-project-failure-isolation.scenario.ts`.
  */
 
-import { projectWorldId, type UUID } from "@elizaos/core";
 import type { Action, Plugin } from "@elizaos/core";
+import { projectWorldId, type UUID } from "@elizaos/core";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
@@ -32,8 +32,8 @@ import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-stor
 import {
   applyScenarioEnv,
   foreignEventSessions,
-  makeMultiProjectRuntime,
   MultiProjectAcp,
+  makeMultiProjectRuntime,
   registerScenarioProjects,
   type ScenarioProject,
   waitForTask,

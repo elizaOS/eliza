@@ -17,8 +17,8 @@ import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { upsertProject } from "@elizaos/core";
-import type { OrchestratorTaskDocument } from "../../../src/services/orchestrator-task-types.js";
 import type { OrchestratorTaskStore } from "../../../src/services/orchestrator-task-store.js";
+import type { OrchestratorTaskDocument } from "../../../src/services/orchestrator-task-types.js";
 import {
   SessionCapError,
   type SessionInfo,
