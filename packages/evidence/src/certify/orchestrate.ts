@@ -50,6 +50,7 @@ import {
   askBatch,
   buildQaRecord,
   resolveBackend,
+  VISION_QA_ENV,
   type VisionQuestion,
   writeQaRecord,
 } from "../vision-qa/index.ts";
@@ -334,7 +335,7 @@ async function runVisionQaPass(
   env: NodeJS.ProcessEnv,
   io: CertifyIo,
 ): Promise<StepOutcome> {
-  let backend: string;
+  let backend: ReturnType<typeof resolveBackend>;
   try {
     backend = resolveBackend({}, env);
   } catch (error) {
@@ -374,7 +375,23 @@ async function runVisionQaPass(
   }));
   const results = await askBatch(
     entries.map(({ imagePath, questions }) => ({ imagePath, questions })),
-    { cacheDir: bundle.dir },
+    {
+      backend,
+      cacheDir: bundle.dir,
+      ...(backend === "local" && env[VISION_QA_ENV.baseUrl] !== undefined
+        ? { baseUrl: env[VISION_QA_ENV.baseUrl] }
+        : {}),
+      ...(backend === "anthropic" &&
+      env[VISION_QA_ENV.anthropicKey] !== undefined
+        ? { apiKey: env[VISION_QA_ENV.anthropicKey] }
+        : {}),
+      ...(backend === "openai" && env[VISION_QA_ENV.openaiKey] !== undefined
+        ? { apiKey: env[VISION_QA_ENV.openaiKey] }
+        : {}),
+      ...(backend === "local" && env[VISION_QA_ENV.openaiKey] !== undefined
+        ? { apiKey: env[VISION_QA_ENV.openaiKey] }
+        : {}),
+    },
   );
   for (let index = 0; index < results.length; index += 1) {
     const entry = entries[index];

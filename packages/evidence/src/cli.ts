@@ -195,8 +195,8 @@ function readJson(filePath: string, what: string): unknown {
 
 interface CertifyArgs {
   tier: Tier;
-  reviewerId: string;
-  reviewerKind: ReviewerKind;
+  reviewerId?: string;
+  reviewerKind?: ReviewerKind;
   reviewerModel?: string;
   reviewerVerdictsPath?: string;
   requirementsPath?: string;
@@ -259,12 +259,26 @@ function parseCertifyArgs(argv: string[]): CertifyArgs {
   }
   const reviewerId = value.get("--reviewer-id");
   const reviewerKindRaw = value.get("--reviewer-kind");
-  if (reviewerId === undefined || reviewerKindRaw === undefined) {
-    throw new EvidenceError("--reviewer-id and --reviewer-kind are required", {
-      code: "CLI_USAGE",
-    });
+  if ((reviewerId === undefined) !== (reviewerKindRaw === undefined)) {
+    throw new EvidenceError(
+      "--reviewer-id and --reviewer-kind must be provided together",
+      {
+        code: "CLI_USAGE",
+      },
+    );
   }
-  if (!(REVIEWER_KINDS as readonly string[]).includes(reviewerKindRaw)) {
+  if (reviewerId === undefined && value.has("--reviewer-model")) {
+    throw new EvidenceError(
+      "--reviewer-model requires --reviewer-id and --reviewer-kind",
+      {
+        code: "CLI_USAGE",
+      },
+    );
+  }
+  if (
+    reviewerKindRaw !== undefined &&
+    !(REVIEWER_KINDS as readonly string[]).includes(reviewerKindRaw)
+  ) {
     throw new EvidenceError(
       `--reviewer-kind must be one of ${REVIEWER_KINDS.join("|")}, got: ${reviewerKindRaw}`,
       { code: "CLI_USAGE" },
@@ -283,8 +297,10 @@ function parseCertifyArgs(argv: string[]): CertifyArgs {
   }
   return {
     tier: tierRaw as Tier,
-    reviewerId,
-    reviewerKind: reviewerKindRaw as ReviewerKind,
+    ...(reviewerId !== undefined ? { reviewerId } : {}),
+    ...(reviewerKindRaw !== undefined
+      ? { reviewerKind: reviewerKindRaw as ReviewerKind }
+      : {}),
     reviewerModel: value.get("--reviewer-model"),
     reviewerVerdictsPath: value.get("--reviewer-verdicts"),
     requirementsPath: value.get("--requirements"),
@@ -325,13 +341,17 @@ async function runCertify(argv: string[], io: CliIo): Promise<number> {
     tier: args.tier,
     repoRoot,
     signingKey,
-    reviewer: {
-      kind: args.reviewerKind,
-      id: args.reviewerId,
-      ...(args.reviewerModel !== undefined
-        ? { model: args.reviewerModel }
-        : {}),
-    },
+    ...(args.reviewerId !== undefined && args.reviewerKind !== undefined
+      ? {
+          reviewer: {
+            kind: args.reviewerKind,
+            id: args.reviewerId,
+            ...(args.reviewerModel !== undefined
+              ? { model: args.reviewerModel }
+              : {}),
+          },
+        }
+      : {}),
     skipMatrix: args.skipMatrix,
     ...(reviewerVerdicts !== undefined ? { reviewerVerdicts } : {}),
     ...(requirements !== undefined ? { requirements } : {}),

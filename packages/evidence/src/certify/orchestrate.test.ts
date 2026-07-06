@@ -413,6 +413,48 @@ describe("certify CLI subcommand", () => {
     expect(reverify.ok).toBe(true);
   });
 
+  it("accepts reviewer identity from the reviewer-verdicts file", async () => {
+    const bundleDir = await fixtureBundle({
+      matrix: { passed: 3, failed: 0, skipped: 0 },
+    });
+    const keyFile = path.join(tmpDir("evidence-orch-key-"), "key.pem");
+    fs.writeFileSync(keyFile, KEYPAIR.privateKeyPem);
+    const verdictsFile = path.join(tmpDir("evidence-orch-rv-"), "rv.json");
+    fs.writeFileSync(
+      verdictsFile,
+      JSON.stringify(
+        reviewerDoc([{ subject: "view:home", verdict: "pass", notes: "ok" }]),
+      ),
+    );
+    const certOut = path.join(
+      tmpDir("evidence-orch-cert-"),
+      "certification.json",
+    );
+    const { io } = captureIo();
+    const code = await runCli(
+      [
+        "certify",
+        "--tier",
+        "cpu",
+        "--bundle",
+        bundleDir,
+        "--key-file",
+        keyFile,
+        "--reviewer-verdicts",
+        verdictsFile,
+        "--cert-out",
+        certOut,
+      ],
+      io,
+    );
+    expect(code).toBe(0);
+    const cert = JSON.parse(fs.readFileSync(certOut, "utf8"));
+    expect(cert.reviewer).toMatchObject({
+      kind: "agent",
+      id: "orch-test",
+    });
+  });
+
   it("exits 1 on a red bundle without waivers", async () => {
     const bundleDir = await fixtureBundle({
       broken: { passed: 0, failed: 1, skipped: 0 },
