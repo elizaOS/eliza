@@ -7,7 +7,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createElizaPlugin, resolveOAuthDir } from "@elizaos/agent";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, getConnectorAccountManager } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { describeIf } from "../../../packages/test/helpers/conditional-tests.ts";
@@ -156,6 +156,41 @@ async function seedLocalGmail(runtime: AgentRuntime, stateDir: string) {
       lastRefreshAt: nowIso,
     }),
     id: grantId,
+  });
+
+  // The action/status path resolves Google connectivity through the core
+  // ConnectorAccountManager (getGoogleConnectorStatus → listAccounts), not the
+  // legacy life_connector_grants row above — without a connected account the
+  // model honestly reports "your Google account isn't connected" and the
+  // search/draft flows never reach the seeded Gmail cache. Seed the account
+  // the same way a completed OAuth flow would persist it.
+  const accountManager = getConnectorAccountManager(runtime);
+  await accountManager.upsertAccount("google", {
+    id: grantId,
+    role: "OWNER",
+    purpose: ["messaging"],
+    accessGate: "open",
+    status: "connected",
+    externalId: "gmail-live-chat-google-sub",
+    displayHandle: "shawmakesmagic@gmail.com",
+    metadata: {
+      isDefault: true,
+      identity: { email: "shawmakesmagic@gmail.com", name: "Shaw" },
+      grantedCapabilities: [
+        "google.basic_identity",
+        "google.gmail.triage",
+        "google.gmail.send",
+      ],
+      grantedScopes: [
+        "openid",
+        "email",
+        "profile",
+        "https://www.googleapis.com/auth/gmail.metadata",
+        "https://www.googleapis.com/auth/gmail.send",
+      ],
+      hasRefreshToken: true,
+      tokenRef,
+    },
   });
 
   await repository.upsertGmailSyncState(

@@ -73,11 +73,14 @@ import {
 const MAX_KNOWN_PER_KIND = 15;
 const FACT_LOOKBACK_LIMIT = 60;
 const RECENT_MESSAGES_LIMIT = 10;
-const STRENGTHEN_DELTA = 0.1;
+// Exported fact-store tuning shared with the preference evaluator
+// (preference-items.ts), which writes durable `preference` facts through the
+// same dedupe/strengthen discipline — one source of truth for the thresholds.
+export const STRENGTHEN_DELTA = 0.1;
 const DECAY_DELTA = 0.15;
 const FACT_DECAY_FLOOR = 0.2;
-const NEW_FACT_CONFIDENCE = 0.7;
-const DEDUP_SIMILARITY_THRESHOLD = 0.42;
+export const NEW_FACT_CONFIDENCE = 0.7;
+export const DEDUP_SIMILARITY_THRESHOLD = 0.42;
 const IDENTITY_CONFIDENCE_THRESHOLD = 0.5;
 
 const factOpsSchema: JSONSchema = {
@@ -353,7 +356,7 @@ function formatKnownLines(memories: Memory[], kind: FactKind): string {
 	return lines.length > 0 ? lines.join("\n") : "(none)";
 }
 
-function formatRecentMessages(memories: Memory[]): string {
+export function formatRecentMessages(memories: Memory[]): string {
 	const lines: string[] = [];
 	for (const memory of memories) {
 		if (isSyntheticConversationArtifactMemory(memory)) continue;
@@ -531,7 +534,7 @@ async function insertFact(
 	return persistedId;
 }
 
-function preserveFactMetadata(fact: Memory): CustomMetadata {
+export function preserveFactMetadata(fact: Memory): CustomMetadata {
 	const meta = readFactMetadata(fact);
 	const normalizedStructured =
 		meta.structuredFields && typeof meta.structuredFields === "object"
@@ -874,7 +877,7 @@ async function storeTaskCompletionReflection(
 	}
 }
 
-function canEvaluateMessage(message: Memory): boolean {
+export function canEvaluateMessage(message: Memory): boolean {
 	return Boolean(
 		message.content.text?.trim() &&
 			message.entityId &&

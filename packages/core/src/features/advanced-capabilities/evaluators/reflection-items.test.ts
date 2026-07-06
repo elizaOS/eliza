@@ -203,7 +203,10 @@ describe("reflection evaluator schemas are strict-structured-output safe", () =>
 
 	it("every object node in every reflection schema has explicit properties + additionalProperties:false", async () => {
 		const { reflectionItems } = await import("./reflection-items.ts");
-		for (const evaluator of reflectionItems) {
+		// preferenceItems ships in the same merged post-turn call, so its wire
+		// schema must satisfy the identical strict-mode invariant.
+		const { preferenceItems } = await import("./preference-items.ts");
+		for (const evaluator of [...reflectionItems, ...preferenceItems]) {
 			const schema = (evaluator as { schema?: unknown }).schema;
 			if (!schema) continue;
 			assertStrictObjectNodes(schema, evaluator.name ?? "evaluator");

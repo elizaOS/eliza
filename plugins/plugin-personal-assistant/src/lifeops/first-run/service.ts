@@ -402,7 +402,7 @@ export class FirstRunService {
 
     const morningWindow = deriveMorningWindow(parsed);
     const timezone = parseTimezone(input.timezone) ?? this.resolveTimezone();
-    const channelValidation = validateChannel(
+    const channelValidation = await validateChannel(
       input.channel ?? "in_app",
       this.runtime,
     );
@@ -484,7 +484,7 @@ export class FirstRunService {
       };
     }
 
-    const finalized = finalizeCustomizeAnswers(merged, this.runtime);
+    const finalized = await finalizeCustomizeAnswers(merged, this.runtime);
 
     const factsPatch: OwnerFactsPatch = {
       preferredName: finalized.preferredName,
@@ -568,7 +568,7 @@ export class FirstRunService {
       };
     }
 
-    const finalized = finalizeCustomizeAnswers(merged, this.runtime);
+    const finalized = await finalizeCustomizeAnswers(merged, this.runtime);
     const factsPatch: OwnerFactsPatch = {
       preferredName: finalized.preferredName,
       timezone: finalized.timezone,
@@ -738,10 +738,10 @@ interface FinalizedCustomizeAnswers extends CustomizeAnswers {
   channelFallbackToInApp: boolean;
 }
 
-function finalizeCustomizeAnswers(
+async function finalizeCustomizeAnswers(
   answers: Record<string, unknown>,
   runtime: IAgentRuntime,
-): FinalizedCustomizeAnswers {
+): Promise<FinalizedCustomizeAnswers> {
   const preferredName = parsePreferredName(answers.preferredName) ?? "";
   const timezone = parseTimezone(answers.timezone) ?? "UTC";
   const morningWindow =
@@ -749,7 +749,7 @@ function finalizeCustomizeAnswers(
   const eveningWindow =
     parseTimeWindow(answers.eveningWindow) ?? DEFAULT_EVENING_WINDOW;
   const categories = parseCategories(answers.categories) ?? [];
-  const validation = validateChannel(answers.channel, runtime);
+  const validation = await validateChannel(answers.channel, runtime);
   const relationships = parseRelationships(answers.relationships) ?? undefined;
   const finalized: FinalizedCustomizeAnswers = {
     preferredName,

@@ -180,7 +180,51 @@ afterEach(() => {
 	cleanup();
 	vi.clearAllMocks();
 	vi.unstubAllGlobals();
+	document.documentElement.style.removeProperty(
+		"--eliza-continuous-chat-clearance",
+	);
 });
+
+function mockMobileBottomComposerClearance(): () => void {
+	const originalInnerWidth = Object.getOwnPropertyDescriptor(
+		window,
+		"innerWidth",
+	);
+	const originalMatchMedia = window.matchMedia;
+	Object.defineProperty(window, "innerWidth", {
+		configurable: true,
+		value: 390,
+	});
+	Object.defineProperty(window, "matchMedia", {
+		configurable: true,
+		value: vi.fn((query: string) => ({
+			matches: query.includes("max-width: 767px"),
+			media: query,
+			onchange: null,
+			addListener: vi.fn(),
+			removeListener: vi.fn(),
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+			dispatchEvent: vi.fn(),
+		})),
+	});
+	document.documentElement.style.setProperty(
+		"--eliza-continuous-chat-clearance",
+		"96px",
+	);
+	return () => {
+		if (originalInnerWidth) {
+			Object.defineProperty(window, "innerWidth", originalInnerWidth);
+		}
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: originalMatchMedia,
+		});
+		document.documentElement.style.removeProperty(
+			"--eliza-continuous-chat-clearance",
+		);
+	};
+}
 
 describe("HyperliquidView — populated snapshot", () => {
 	it("loads status + markets + positions + orders on mount and renders the markets", async () => {
@@ -195,42 +239,28 @@ describe("HyperliquidView — populated snapshot", () => {
 		expect(screen.getByText("ETH")).toBeTruthy();
 		// Read-ready header + market leverage decoration.
 		expect(screen.getByText("read-ready")).toBeTruthy();
-		expect(screen.getByText("50x")).toBeTruthy();
+		expect(screen.getByText("BTC 50x")).toBeTruthy();
 		// ETH maxLeverage null -> "n/a", isolated suffix.
 		const text = document.body.textContent ?? "";
 		expect(text).toContain("2m / 1p / 1o");
 	});
 
-	it("renders the readiness tiles and the credential-mode label", async () => {
+	it("renders a compact readiness summary", async () => {
 		render(React.createElement(HyperliquidView));
 		await screen.findByText("ETH");
-		expect(screen.getByText("Reads")).toBeTruthy();
-		expect(screen.getByText("Read-only")).toBeTruthy(); // credentialMode "none"
-		expect(screen.getByText("Account")).toBeTruthy();
+		expect(screen.getByText("read-ready")).toBeTruthy();
+		expect(screen.getByText("2m / 1p / 1o")).toBeTruthy();
 	});
 
-	it("surfaces the executionBlockedReason without duplicate vault guidance", async () => {
+	it("keeps setup warnings out of the compact snapshot", async () => {
 		render(React.createElement(HyperliquidView));
 		await screen.findByText("ETH");
 		expect(
-			screen.getByText(/Signed Hyperliquid exchange mutations are disabled/),
-		).toBeTruthy();
+			screen.queryByText(/Signed Hyperliquid exchange mutations are disabled/),
+		).toBeNull();
 		expect(
 			screen.queryByText("Connect a managed vault to enable signed requests."),
 		).toBeNull();
-	});
-
-	it("shows vault guidance when no specific execution block is present", async () => {
-		hyperliquidClient.hyperliquidStatus.mockResolvedValue({
-			...sampleStatus,
-			executionBlockedReason: null,
-		});
-
-		render(React.createElement(HyperliquidView));
-		await screen.findByText("ETH");
-		expect(
-			screen.getByText("Connect a managed vault to enable signed requests."),
-		).toBeTruthy();
 	});
 
 	it("renders the agent's own position row with its unrealized PnL", async () => {
@@ -298,12 +328,28 @@ describe("HyperliquidView — controls", () => {
 		).toBeNull();
 	});
 
+	it("uses the concise layout when mobile-width bottom composer clearance is active", async () => {
+		const restore = mockMobileBottomComposerClearance();
+		try {
+			render(React.createElement(HyperliquidView));
+			await screen.findByText(/Positions BTC long/);
+
+			const text = document.body.textContent ?? "";
+			expect(text).toContain("Markets BTC 50x sz5");
+			expect(text).not.toContain("orders");
+			expect(screen.queryByText("Refresh")).toBeNull();
+			expect(document.querySelector('[data-agent-id="back"]')).toBeNull();
+		} finally {
+			restore();
+		}
+	});
+
 	it("the Refresh control re-fetches status + reads", async () => {
 		render(React.createElement(HyperliquidView));
 		await screen.findByText("ETH");
 		expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(1);
 
-		fireEvent.click(agent("refresh"));
+		fireEvent.click(agent("hyperliquid-refresh"));
 		await waitFor(() =>
 			expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(2),
 		);
@@ -318,7 +364,7 @@ describe("HyperliquidView — controls", () => {
 		const listener = (e: Event) => events.push(e as CustomEvent);
 		window.addEventListener(NAVIGATE_VIEW_EVENT, listener);
 		try {
-			fireEvent.click(agent("back"));
+			fireEvent.click(agent("hyperliquid-home"));
 		} finally {
 			window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);
 		}

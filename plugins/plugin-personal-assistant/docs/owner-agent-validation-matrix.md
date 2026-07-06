@@ -144,6 +144,11 @@ UI-triggered path, for each of the nine states it can reach. The harness covers
 the role-gate and grant-resolution states deterministically; live send/read and
 native-permission states are captured manually against the §3 identities.
 
+Stage session artifacts under the local scratch dir
+`reports/lifeops-live-validation/<session>/` (gitignored — evidence is never
+committed to the repo) and attach the redacted screenshots / logs **inline in
+the PR/issue** per [`PR_EVIDENCE.md`](../../../PR_EVIDENCE.md).
+
 | Connector family | Owner evidence | Agent evidence | Status |
 |---|---|---|---|
 | Google Calendar | _attach_ | _attach_ | pending live accounts |

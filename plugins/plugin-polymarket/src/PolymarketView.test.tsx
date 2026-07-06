@@ -205,7 +205,51 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
+  document.documentElement.style.removeProperty(
+    "--eliza-continuous-chat-clearance",
+  );
 });
+
+function mockMobileBottomComposerClearance(): () => void {
+  const originalInnerWidth = Object.getOwnPropertyDescriptor(
+    window,
+    "innerWidth",
+  );
+  const originalMatchMedia = window.matchMedia;
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: 390,
+  });
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn((query: string) => ({
+      matches: query.includes("max-width: 767px"),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+  document.documentElement.style.setProperty(
+    "--eliza-continuous-chat-clearance",
+    "96px",
+  );
+  return () => {
+    if (originalInnerWidth) {
+      Object.defineProperty(window, "innerWidth", originalInnerWidth);
+    }
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: originalMatchMedia,
+    });
+    document.documentElement.style.removeProperty(
+      "--eliza-continuous-chat-clearance",
+    );
+  };
+}
 
 describe("PolymarketView — populated markets", () => {
   it("loads status + markets on mount and opens the auto-selected market detail", async () => {
@@ -216,12 +260,12 @@ describe("PolymarketView — populated markets", () => {
     expect(polymarketClient.polymarketMarkets).toHaveBeenCalledWith({
       limit: 25,
     });
-    // Auto-selected markets[0] => detail pane: outcomes + CLOB token ids.
+    // Auto-selected markets[0] => detail pane: compact outcome choices.
     await waitFor(() => expect(agent("detail-back")).toBeTruthy());
     const text = document.body.textContent ?? "";
-    expect(text).toContain("outcomes");
-    expect(text).toContain("orderbook tokens");
-    expect(text).toContain("token-yes");
+    expect(text).toContain("Yes");
+    expect(text).toContain("No");
+    expect(text).not.toContain("token-yes");
   });
 
   it("the markets list shows readiness chips + a DOM-clickable row Open control", async () => {
@@ -249,7 +293,7 @@ describe("PolymarketView — populated markets", () => {
 });
 
 describe("PolymarketView — list -> detail navigation", () => {
-  it("clicking a market row Open opens its detail with outcomes + CLOB token ids", async () => {
+  it("clicking a market row Open opens its detail with compact outcome choices", async () => {
     render(React.createElement(PolymarketView));
     await screen.findByText("Will BTC be above 100k?");
     await backToList();
@@ -258,15 +302,13 @@ describe("PolymarketView — list -> detail navigation", () => {
 
     await waitFor(() => expect(agent("detail-back")).toBeTruthy());
     const text = document.body.textContent ?? "";
-    expect(text).toContain("outcomes");
     expect(text).toContain("Yes");
     expect(text).toContain("No");
-    expect(text).toContain("orderbook tokens");
-    expect(text).toContain("token-yes");
-    expect(text).toContain("token-no");
+    expect(text).not.toContain("token-yes");
+    expect(text).not.toContain("token-no");
   });
 
-  it("a market with no CLOB token ids shows the fallback copy in detail", async () => {
+  it("a market with no orderbook tokens still opens compact detail", async () => {
     mockState({
       markets: [sampleMarket, secondMarket],
       source: sampleMarkets.source,
@@ -279,7 +321,7 @@ describe("PolymarketView — list -> detail navigation", () => {
     await waitFor(() =>
       expect(screen.getByText("Will ETH be above 5k?")).toBeTruthy(),
     );
-    expect(screen.getByText("no CLOB token ids")).toBeTruthy();
+    expect(screen.getByText("Yes 25%")).toBeTruthy();
   });
 
   it("the detail 'back' control returns to the markets list", async () => {
@@ -308,12 +350,30 @@ describe("PolymarketView — refresh + error path", () => {
     expect(screen.queryByText("All markets")).toBeNull();
   });
 
+  it("uses the concise detail layout when mobile-width bottom composer clearance is active", async () => {
+    const restore = mockMobileBottomComposerClearance();
+    try {
+      render(React.createElement(PolymarketView));
+      await screen.findByText("Will BTC be above 100k?");
+
+      const text = document.body.textContent ?? "";
+      expect(text).toContain("Yes 61% · No 39%");
+      expect(text).not.toContain("orderbook tokens");
+      expect(screen.queryByText("Refresh")).toBeNull();
+      expect(
+        document.querySelector('[data-agent-id="detail-back"]'),
+      ).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
   it("the Refresh control re-loads status + markets", async () => {
     render(React.createElement(PolymarketView));
     await screen.findByText("Will BTC be above 100k?");
     expect(polymarketClient.polymarketMarkets).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(agent("refresh"));
+    fireEvent.click(agent("polymarket-refresh"));
     await waitFor(() =>
       expect(polymarketClient.polymarketMarkets).toHaveBeenCalledTimes(2),
     );

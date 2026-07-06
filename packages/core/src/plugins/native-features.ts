@@ -14,6 +14,7 @@
 import { promoteSubactionsToActions } from "../actions/promote-subactions";
 import { messageAction } from "../features/advanced-capabilities/actions/message";
 import { postAction } from "../features/advanced-capabilities/actions/post";
+import { preferenceItems } from "../features/advanced-capabilities/evaluators/preference-items";
 import { reflectionItems } from "../features/advanced-capabilities/evaluators/reflection-items";
 import { skillItems } from "../features/advanced-capabilities/evaluators/skill-items";
 import { advancedContactsProvider } from "../features/advanced-capabilities/providers/contacts";
@@ -70,7 +71,7 @@ export const relationshipsPlugin: Plugin = {
 		...promoteSubactionsToActions(messageAction),
 		...promoteSubactionsToActions(postAction),
 	],
-	evaluators: [...reflectionItems, ...skillItems],
+	evaluators: [...reflectionItems, ...preferenceItems, ...skillItems],
 	providers: [
 		advancedContactsProvider,
 		factsProvider,

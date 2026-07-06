@@ -17,6 +17,7 @@ import {
 	Card,
 	Divider,
 	HStack,
+	isEvaluatingToIR,
 	List,
 	type SpatialTone,
 	Text,
@@ -59,38 +60,6 @@ export interface HyperliquidSnapshot {
 	error?: string | null;
 }
 
-function credentialModeLabel(mode: HyperliquidCredentialMode): string {
-	switch (mode) {
-		case "managed_vault":
-			return "Managed vault";
-		case "local_key":
-			return "Local key";
-		default:
-			return "Read-only";
-	}
-}
-
-function readinessTone(ready: boolean): SpatialTone {
-	return ready ? "success" : "muted";
-}
-
-function readinessMark(ready: boolean): string {
-	return ready ? "[ok]" : "[--]";
-}
-
-function StatusTile({ label, ready }: { label: string; ready: boolean }) {
-	return (
-		<HStack gap={1} align="center" grow={1}>
-			<Text tone={readinessTone(ready)} wrap={false}>
-				{readinessMark(ready)}
-			</Text>
-			<Text bold grow={1} wrap={false}>
-				{label}
-			</Text>
-		</HStack>
-	);
-}
-
 function shortAddress(address: string | null): string {
 	if (!address) return "not configured";
 	if (address.length <= 13) return address;
@@ -98,6 +67,9 @@ function shortAddress(address: string | null): string {
 }
 
 const EMPTY_CELL = "·";
+const MAX_MARKET_ROWS = 4;
+const MAX_POSITION_ROWS = 2;
+const MAX_ORDER_ROWS = 2;
 
 function toNumber(value: string | number | null | undefined): number | null {
 	if (value === null || value === undefined) return null;
@@ -135,16 +107,6 @@ function formatUsd(
 				})
 			: abs.toFixed(2);
 	return `${sign}$${body}`;
-}
-
-function formatPrice(value: number | null): string {
-	if (value === null) return EMPTY_CELL;
-	const abs = Math.abs(value);
-	const decimals = abs >= 1000 ? 1 : abs >= 1 ? 2 : 5;
-	return value.toLocaleString("en-US", {
-		maximumFractionDigits: decimals,
-		minimumFractionDigits: decimals,
-	});
 }
 
 function formatSize(value: string): string {
@@ -185,8 +147,8 @@ export function HyperliquidSpatialView({
 	compactChatClearance = false,
 }: HyperliquidSpatialViewProps) {
 	const dispatch = (action: string) => () => onAction?.(action);
+	const showInlineControls = isEvaluatingToIR();
 	const { status } = snapshot;
-	const accountReady = Boolean(status.accountAddress);
 	const openPositions = snapshot.positions.filter(isOpenPosition);
 
 	if (snapshot.unavailable) {
@@ -327,82 +289,29 @@ export function HyperliquidSpatialView({
 				</Text>
 			) : null}
 
-			<Text style="caption" tone="muted">
-				status
-			</Text>
-			<VStack gap={0}>
-				<StatusTile label="Reads" ready={status.publicReadReady} />
-				<StatusTile
-					label={credentialModeLabel(status.credentialMode)}
-					ready={status.signerReady}
-				/>
-				<StatusTile label="Account" ready={accountReady} />
-			</VStack>
-
-			{status.executionBlockedReason ? (
-				<Text style="caption" tone="warning">
-					{status.executionBlockedReason}
-				</Text>
-			) : null}
-
-			{!status.vaultReady &&
-			status.credentialMode !== "local_key" &&
-			!status.executionBlockedReason &&
-			status.vaultGuidance ? (
-				<Text style="caption" tone="muted">
-					{status.vaultGuidance}
-				</Text>
-			) : null}
-
-			<Text style="caption" tone="muted">
-				markets
-			</Text>
 			{snapshot.markets.length === 0 ? (
 				<Text tone="muted" align="center" style="caption">
 					None
 				</Text>
 			) : (
-				<List gap={0}>
-					{snapshot.markets.slice(0, 12).map((market) => (
-						<HStack
+				<HStack gap={2} wrap>
+					{snapshot.markets.slice(0, MAX_MARKET_ROWS).map((market) => (
+						<Text
 							key={market.name}
-							gap={1}
-							align="center"
+							bold
+							wrap={false}
+							tone={market.isDelisted ? "muted" : "default"}
 							agent={`market-${market.name}`}
 						>
-							<Text
-								bold
-								grow={1}
-								wrap={false}
-								tone={market.isDelisted ? "muted" : "default"}
-							>
-								{market.name}
-							</Text>
-							<Text style="caption" tone="primary" wrap={false}>
-								{market.maxLeverage ? `${market.maxLeverage}x` : "n/a"}
-							</Text>
-							<Text style="caption" tone="muted" wrap={false}>
-								sz{market.szDecimals}
-								{market.onlyIsolated ? " iso" : ""}
-							</Text>
-						</HStack>
+							{market.name} {market.maxLeverage ? `${market.maxLeverage}x` : ""}
+						</Text>
 					))}
-				</List>
+				</HStack>
 			)}
 
-			<Text style="caption" tone="muted">
-				account
-			</Text>
 			<HStack gap={1} align="center">
 				<Text style="caption" tone="muted" grow={1} wrap={false}>
 					{shortAddress(status.accountAddress)}
-				</Text>
-				<Text
-					style="caption"
-					tone={status.executionReady ? "success" : "muted"}
-					wrap={false}
-				>
-					{status.executionReady ? "exec-ready" : "exec-off"}
 				</Text>
 			</HStack>
 
@@ -435,9 +344,6 @@ export function HyperliquidSpatialView({
 				</HStack>
 			) : null}
 
-			<Text style="caption" tone="primary">
-				positions
-			</Text>
 			{snapshot.positionsBlockedReason ? (
 				<Text style="caption" tone="warning" agent="positions-blocked">
 					{snapshot.positionsBlockedReason}
@@ -448,11 +354,10 @@ export function HyperliquidSpatialView({
 				</Text>
 			) : (
 				<List gap={0}>
-					{openPositions.slice(0, 6).map((position) => {
+					{openPositions.slice(0, MAX_POSITION_ROWS).map((position) => {
 						const long = isLongPosition(position.size);
 						const uPnl = toNumber(position.unrealizedPnl);
 						const notional = toNumber(position.positionValue);
-						const entry = toNumber(position.entryPx);
 						const liq = position.distanceToLiquidationPct;
 						return (
 							<VStack
@@ -471,26 +376,17 @@ export function HyperliquidSpatialView({
 									>
 										{long ? "long" : "short"}
 									</Text>
-									{position.leverageValue !== null ? (
-										<Text style="caption" tone="muted" wrap={false}>
-											{position.leverageValue}x
-										</Text>
-									) : null}
+									<Text style="caption" tone="muted" grow={1} wrap={false}>
+										sz {formatSize(position.size)}
+										{notional === null ? "" : ` ${formatUsdCompact(notional)}`}
+									</Text>
 									<Text
 										style="caption"
 										tone={pnlTone(uPnl)}
-										grow={1}
 										align="end"
 										wrap={false}
 									>
 										{uPnl === null ? "" : formatUsd(uPnl, { withSign: true })}
-									</Text>
-								</HStack>
-								<HStack gap={1} align="center">
-									<Text style="caption" tone="muted" grow={1} wrap={false}>
-										sz {formatSize(position.size)}
-										{notional === null ? "" : ` · ${formatUsd(notional)}`}
-										{entry === null ? "" : ` · @${formatPrice(entry)}`}
 									</Text>
 									{liq === null || liq === undefined ? null : (
 										<Text style="caption" tone="warning" wrap={false}>
@@ -504,9 +400,6 @@ export function HyperliquidSpatialView({
 				</List>
 			)}
 
-			<Text style="caption" tone="primary">
-				orders
-			</Text>
 			{snapshot.ordersBlockedReason ? (
 				<Text style="caption" tone="warning" agent="orders-blocked">
 					{snapshot.ordersBlockedReason}
@@ -517,7 +410,7 @@ export function HyperliquidSpatialView({
 				</Text>
 			) : (
 				<List gap={0}>
-					{snapshot.orders.slice(0, 6).map((order) => (
+					{snapshot.orders.slice(0, MAX_ORDER_ROWS).map((order) => (
 						<HStack
 							key={order.oid}
 							gap={1}
@@ -551,19 +444,21 @@ export function HyperliquidSpatialView({
 				</List>
 			)}
 
-			<HStack gap={1} wrap>
-				<Button grow={1} agent="refresh" onPress={dispatch("refresh")}>
-					Refresh
-				</Button>
-				<Button
-					variant="outline"
-					tone="default"
-					agent="back"
-					onPress={dispatch("back")}
-				>
-					Back
-				</Button>
-			</HStack>
+			{showInlineControls ? (
+				<HStack gap={1} wrap>
+					<Button grow={1} agent="refresh" onPress={dispatch("refresh")}>
+						Refresh
+					</Button>
+					<Button
+						variant="outline"
+						tone="default"
+						agent="back"
+						onPress={dispatch("back")}
+					>
+						Back
+					</Button>
+				</HStack>
+			) : null}
 		</Card>
 	);
 }

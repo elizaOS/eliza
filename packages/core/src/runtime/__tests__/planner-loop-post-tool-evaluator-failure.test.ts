@@ -102,10 +102,11 @@ describe("planner-loop — post-tool evaluator failure recovery", () => {
 	});
 
 	it("does not leak log-shaped output — a tool without userFacingText is never relayed", async () => {
-		// A SHELL/fetch-style tool emits log-shaped `text` (prompts, exit codes, raw
-		// bodies) and leaves userFacingText unset. When the evaluator provider-throws
-		// after it, the relay must not dump that log into the user channel; with
-		// nothing user-facing to relay it rethrows the provider error instead.
+		// A raw SHELL/fetch-style tool result emits log-shaped `text` (prompts, exit
+		// codes, raw bodies) and leaves userFacingText unset. When the evaluator
+		// provider-throws after it, the relay must not dump that log into the user
+		// channel; with nothing user-facing to relay it rethrows the provider error
+		// instead.
 		const shellLog =
 			"$ cat secrets.txt\nexit 0\ncwd=/home/milady\nAWS_SECRET=leak-me";
 		const executeToolCall = vi.fn(async () => ({

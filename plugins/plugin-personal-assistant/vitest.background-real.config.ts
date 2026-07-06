@@ -32,6 +32,13 @@ const lifeopsTestSetup = path.join(here, "test", "setup.ts");
 const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
 const lifeopsSourceRoot = path.join(here, "src");
 const virtualAgentStubId = "\0lifeops-background-real-agent-stub";
+const optionalPluginImporterPath = path.join(
+  agentSourceRoot,
+  "runtime",
+  "optional-plugin-imports.generated.ts",
+);
+const optionalPluginStubPrefix =
+  "\0lifeops-background-real-optional-plugin-stub:";
 const lifeopsJsEntrypoints = new Map([
   [
     path.join(lifeopsSourceRoot, "actions", "scheduling.js"),
@@ -75,8 +82,20 @@ const backgroundRealResolvePlugin = {
   name: "lifeops-background-real-resolve",
   enforce: "pre" as const,
   resolveId(source: string, importer?: string) {
+    const normalizedImporter = importer ? stripFsPrefix(importer) : undefined;
+    if (
+      normalizedImporter === optionalPluginImporterPath &&
+      source.startsWith("@elizaos/plugin-")
+    ) {
+      return `${optionalPluginStubPrefix}${source}`;
+    }
+
     if (source === "@elizaos/agent") {
       return virtualAgentStubId;
+    }
+
+    if (source === "@elizaos/plugin-app-manager") {
+      return `${optionalPluginStubPrefix}${source}`;
     }
 
     return (
@@ -85,6 +104,39 @@ const backgroundRealResolvePlugin = {
     );
   },
   load(id: string) {
+    if (id.startsWith(optionalPluginStubPrefix)) {
+      const packageName = id.slice(optionalPluginStubPrefix.length);
+      if (packageName === "@elizaos/plugin-app-manager") {
+        return `
+export class AppSessionService {
+  static serviceType = "app-session";
+  static async start() {
+    return new AppSessionService();
+  }
+  async stop() {}
+  listRuns() {
+    return [];
+  }
+}
+export default { name: "plugin-app-manager-test-stub", services: [AppSessionService] };
+`;
+      }
+
+      const name = `${packageName.slice("@elizaos/".length)}-test-stub`;
+      return `
+	const plugin = ${JSON.stringify({
+    name,
+    description: `Background-real test stub for ${packageName}`,
+    actions: [],
+    providers: [],
+    evaluators: [],
+    services: [],
+  })};
+export { plugin };
+export default plugin;
+`;
+    }
+
     if (id !== virtualAgentStubId) {
       return null;
     }

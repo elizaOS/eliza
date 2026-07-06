@@ -13,7 +13,7 @@
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
-import { useContinuousChatSideClearanceActive } from "@elizaos/ui/spatial";
+import { useContinuousChatCompactClearanceActive } from "@elizaos/ui/spatial";
 import { type CSSProperties, useCallback } from "react";
 import {
 	type HyperliquidSnapshot,
@@ -110,7 +110,7 @@ export function HyperliquidView() {
 		loading,
 		error,
 	};
-	const compactChatClearance = useContinuousChatSideClearanceActive();
+	const compactChatClearance = useContinuousChatCompactClearanceActive();
 
 	return (
 		<>

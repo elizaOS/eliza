@@ -31,6 +31,27 @@ let ffmpegStaticInstallPromise: Promise<
   { installed: true } | { installed: false; reason: string }
 > | null = null;
 
+function isNodeExecutable(candidate: string): boolean {
+  return /^(node|nodejs)(\.exe)?$/i.test(candidate);
+}
+
+export function resolveNodeInstallRunner({
+  env = process.env,
+  execPath = process.execPath,
+}: {
+  env?: NodeJS.ProcessEnv;
+  execPath?: string;
+} = {}): string {
+  const configured = env.ELIZA_NODE_BIN?.trim() || env.NODE_BINARY?.trim();
+  if (configured) return configured;
+
+  const posixName = path.basename(execPath);
+  const winName = path.win32.basename(execPath);
+  return isNodeExecutable(posixName) || isNodeExecutable(winName)
+    ? execPath
+    : "node";
+}
+
 /** Whether a binary answers `-version`, with a reason when it does not. */
 async function binaryAvailable(
   bin: string,
@@ -101,7 +122,8 @@ function installFfmpegStaticOnce(): Promise<
     }
 
     try {
-      await execFileAsync(process.execPath, [installer], {
+      const nodeRunner = resolveNodeInstallRunner();
+      await execFileAsync(nodeRunner, [installer], {
         cwd: root,
         timeout: 120_000,
       });

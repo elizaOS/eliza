@@ -32,7 +32,9 @@ import {
   withTimeout,
 } from "../../../packages/test/helpers/test-utils";
 import { readLifeOpsOwnerProfile } from "../src/lifeops/owner-profile.js";
+import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
+import { personalAssistantPlugin } from "../src/plugin.js";
 import {
   applyLocalEmbeddingDefaults,
   getLifeOpsLiveSetupWarnings,
@@ -230,7 +232,12 @@ function findDefinitionByTitle(
 
 const selectedLiveProvider = await selectLifeOpsLiveProvider();
 const selectedProviderEnv = getSelectedLiveProviderEnv(selectedLiveProvider);
+// Cerebras is a first-class live provider for this suite: the harness selects
+// it as its own named provider and routes it through @elizaos/plugin-openai's
+// OpenAI-compatible mode (OPENAI_BASE_URL → api.cerebras.ai), matching the
+// runtime's own "cerebras" provider id in the first-run catalog.
 const MEMORY_SUITE_PROVIDER_NAMES = new Set([
+  "cerebras",
   "openai",
   "openrouter",
   "google",
@@ -248,7 +255,7 @@ if (!LIVE_SUITE_ENABLED) {
   const warnings = [
     ...getLifeOpsLiveSetupWarnings(selectedLiveProvider),
     selectedLiveProvider && !MEMORY_SUITE_PROVIDER_SUPPORTED
-      ? `selected provider "${selectedLiveProvider.name}" does not support the reflection/fact-extraction live suite; use OpenAI, OpenRouter, Google, or Anthropic`
+      ? `selected provider "${selectedLiveProvider.name}" does not support the reflection/fact-extraction live suite; use Cerebras, OpenAI, OpenRouter, Google, or Anthropic`
       : null,
   ].filter((entry): entry is string => Boolean(entry));
 
@@ -333,14 +340,19 @@ describeIf(LIVE_SUITE_ENABLED)(
       };
 
       const sqlPlugin = await loadPlugin("@elizaos/plugin-sql");
+      const schedulingPlugin = await loadPlugin("@elizaos/plugin-scheduling");
       const providerPlugin = selectedLiveProvider
         ? await loadPlugin(selectedLiveProvider.plugin)
         : null;
 
-      if (!sqlPlugin || !providerPlugin) {
+      if (!sqlPlugin || !schedulingPlugin || !providerPlugin) {
         throw new Error("Required live plugins were not available.");
       }
 
+      // personalAssistantPlugin supplies the LifeOps schema migration and the
+      // routine/reminder action surface the confirmation-gated flows drive;
+      // plugin-scheduling hosts the ScheduledTaskRunnerService PA's runner
+      // wiring expects (always loaded in production).
       runtime = new AgentRuntime({
         character,
         plugins: [
@@ -349,6 +361,8 @@ describeIf(LIVE_SUITE_ENABLED)(
             agentId: "main",
             workspaceDir,
           }),
+          schedulingPlugin,
+          personalAssistantPlugin as Plugin,
         ],
         conversationLength: 12,
         enableAutonomy: false,
@@ -360,6 +374,11 @@ describeIf(LIVE_SUITE_ENABLED)(
         await runtime.adapter.init();
       }
       await runtime.initialize();
+
+      // Bootstrap the LifeOps schema (plus carve-out mirrors) before any
+      // repository-backed reads/writes — listDefinitions and the routine
+      // confirmation flow 42P01 if they outrun migration.
+      await LifeOpsRepository.bootstrapSchema(runtime);
 
       lifeOpsService = new LifeOpsService(runtime, {
         ownerEntityId: ownerId,

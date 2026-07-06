@@ -25,10 +25,21 @@ vi.mock("../repository.js", () => ({
   LifeOpsRepository: class LifeOpsRepository {},
 }));
 
-vi.mock("@elizaos/agent", () => ({
-  createLocalAgentBackup: vi.fn(),
-  getAgentEventService: vi.fn(() => agentMocks.eventService),
-}));
+// Spread the shared PA agent stub so the owner-contact channel-target
+// resolution the dispatcher performs before a connector send stays real; the
+// telegram contact gives the connected-channel test a resolvable target, and
+// the event service is this file's spy.
+vi.mock("@elizaos/agent", async () => {
+  const stub = await import("../../../test/stubs/agent.ts");
+  return {
+    ...stub,
+    createLocalAgentBackup: vi.fn(),
+    getAgentEventService: vi.fn(() => agentMocks.eventService),
+    loadOwnerContactsConfig: vi.fn(() => ({
+      telegram: { channelId: "owner-telegram-channel" },
+    })),
+  };
+});
 
 const morningBriefMocks = vi.hoisted(() => ({
   assembleMorningBrief: vi.fn(),
@@ -171,7 +182,7 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
     const loggerInfo = vi.spyOn(logger, "info").mockImplementation(() => {});
     const { runtime } = makeRuntime({ reportError });
 
-    reportSuppressedSleepCycleMorningCheckin(runtime, {
+    reportSuppressedSleepCycleMorningCheckin({
       agentId: "agent-test",
       nowIso: "2026-07-06T14:00:00.000Z",
       timezone: "America/Denver",

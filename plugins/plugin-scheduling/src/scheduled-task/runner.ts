@@ -25,7 +25,11 @@ import type {
   AnchorRegistry,
   ConsolidationRegistry,
 } from "./consolidation-policy.js";
-import { isScheduledTaskDue, type ScheduledTaskDueDecision } from "./due.js";
+import {
+  isScheduledTaskDue,
+  pendingPromptRoomIdForTask,
+  type ScheduledTaskDueDecision,
+} from "./due.js";
 import {
   type EscalationLadderRegistry,
   resetLadderForSnooze,
@@ -1456,13 +1460,35 @@ export function createScheduledTaskRunner(
           fireAtIso,
         });
       }
+      const pendingPromptRoomId = claimed.completionCheck
+        ? pendingPromptRoomIdForTask(claimed, {
+            agentId: deps.agentId,
+            channelKey: dispatchResult.channelKey ?? dispatchChannelKey,
+            target: dispatchResult.target,
+          })
+        : null;
+      if (pendingPromptRoomId) {
+        claimed.metadata.pendingPromptRoomId = pendingPromptRoomId;
+      }
       clearPendingDispatch(claimed);
       await persist(claimed);
-    } else if (pending) {
+    } else {
       // Void dispatchers (e.g. notify-only event emitters) report no typed
       // result; a completed call is success, so drop the continuation.
-      clearPendingDispatch(claimed);
-      await persist(claimed);
+      const pendingPromptRoomId = claimed.completionCheck
+        ? pendingPromptRoomIdForTask(claimed, {
+            agentId: deps.agentId,
+            channelKey: dispatchChannelKey,
+          })
+        : null;
+      if (pendingPromptRoomId) {
+        claimed.metadata = {
+          ...(claimed.metadata ?? {}),
+          pendingPromptRoomId,
+        };
+      }
+      if (pending) clearPendingDispatch(claimed);
+      if (pending || pendingPromptRoomId) await persist(claimed);
     }
     return { kind: "fired", task: claimed };
   }

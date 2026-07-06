@@ -129,6 +129,36 @@ const liveSetupFile = [
 ].find((candidate) => fs.existsSync(candidate));
 
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
+const elizaCoreEntryDir = elizaCoreEntry
+  ? path.dirname(elizaCoreEntry)
+  : undefined;
+// Exact-match aliases for the `@elizaos/core/<subpath>` exports this lane's
+// module graph imports (`./node` from plugin dists, `./testing` from the test
+// harness, `./connectors` from connector plugins). A bare-string
+// "@elizaos/core" alias is prefix-matched by Vite/rollup and rewrites those
+// subpaths into "<core entry file>/<subpath>" (a path under a *file*), which
+// kills any suite whose plugin graph imports them (#11047) — mirror
+// integration.config.ts instead.
+const elizaCoreSubpathAliases: ModuleAlias[] = elizaCoreEntryDir
+  ? [
+      { subpath: "node", candidates: ["index.node.ts", "index.node.js"] },
+      {
+        subpath: "testing",
+        candidates: ["testing/index.ts", "../testing/index.js"],
+      },
+      {
+        subpath: "connectors",
+        candidates: ["connectors.ts", "../connectors.js"],
+      },
+    ].flatMap(({ subpath, candidates }) => {
+      const replacement = candidates
+        .map((candidate) => path.join(elizaCoreEntryDir, candidate))
+        .find((candidate) => fs.existsSync(candidate));
+      return replacement
+        ? [{ find: new RegExp(`^@elizaos/core/${subpath}$`), replacement }]
+        : [];
+    })
+  : [];
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
@@ -193,8 +223,12 @@ const realResolveAlias: ModuleAlias[] = [
   ...getOptionalPluginSdkAliases(repoRoot),
   ...(elizaCoreEntry
     ? [
+        // Subpath aliases must precede the bare specifier (see the note on
+        // elizaCoreSubpathAliases above). The bare specifier is exact-matched
+        // so any other subpath falls through to package-exports resolution.
+        ...elizaCoreSubpathAliases,
         {
-          find: "@elizaos/core",
+          find: /^@elizaos\/core$/,
           replacement: elizaCoreEntry,
         },
       ]
@@ -233,8 +267,37 @@ const realResolveAlias: ModuleAlias[] = [
     replacement: path.join(pluginElizaCloudRoot, "index.node.ts"),
   },
   {
+    // Same prefix-alias hazard as plugin-discord above: the installed-package
+    // string alias rewrites subpath imports (e.g. ./cloud/duffel-client) into
+    // dist paths that do not exist. Route them to source like app-core does.
+    find: /^@elizaos\/plugin-elizacloud\/(.+)$/,
+    replacement: `${pluginElizaCloudRoot.split(path.sep).join("/")}/$1`,
+  },
+  {
     find: /^@elizaos\/plugin-discord$/,
     replacement: path.join(pluginDiscordRoot, "index.ts"),
+  },
+  {
+    // The installed-package alias below is a bare string, which vite treats as
+    // a prefix — subpath imports would rewrite to `dist/index.js/<subpath>`.
+    // Pin the one subpath the PA plugin graph imports to source, mirroring
+    // integration.config.ts.
+    find: /^@elizaos\/plugin-discord\/user-account-scraper$/,
+    replacement: path.join(
+      pluginDiscordRoot,
+      "user-account-scraper",
+      "index.ts",
+    ),
+  },
+  {
+    // Subpath imports (e.g. @elizaos/plugin-wallet/diagnostic) must resolve to
+    // source before the bare string alias below rewrites the package root to
+    // src/index.ts; mirrors packages/app-core/vitest.config.ts.
+    find: /^@elizaos\/plugin-wallet\/(.+)$/,
+    replacement: `${path
+      .join(elizaWorkspaceRoot, "plugins", "plugin-wallet", "src")
+      .split(path.sep)
+      .join("/")}/$1`,
   },
   ...getWorkspaceAppAliases(repoRoot, [
     "app-task-coordinator",

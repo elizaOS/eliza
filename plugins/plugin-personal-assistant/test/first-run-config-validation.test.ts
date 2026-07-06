@@ -7,7 +7,17 @@
  * fallback path produces an in_app channel + warning.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  createChannelRegistry,
+  registerDefaultChannelPack,
+} from "../src/lifeops/channels/index.ts";
+import type { ConnectorContribution } from "../src/lifeops/connectors/contract.ts";
+import {
+  createConnectorRegistry,
+  registerConnectorRegistry,
+} from "../src/lifeops/connectors/registry.ts";
+import { installFirstRunChannelInspector } from "../src/lifeops/first-run/channel-inspector.ts";
 import { buildDefaultsPack } from "../src/lifeops/first-run/defaults.ts";
 import {
   parseCategories,
@@ -27,6 +37,8 @@ import type {
   ScheduledTaskInput,
 } from "../src/lifeops/wave1-types.ts";
 import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
+
+afterEach(() => setChannelInspector(null));
 
 const VALID_TRIGGER_KINDS = new Set([
   "once",
@@ -90,6 +102,26 @@ function asScheduledTask(input: ScheduledTaskInput): ScheduledTaskInput {
   expect(input.promptInstructions.length).toBeGreaterThan(0);
   expect(input.source).toBe("first_run");
   return input;
+}
+
+function makeConnectedTelegramConnector(): ConnectorContribution {
+  return {
+    kind: "telegram",
+    capabilities: ["telegram.send"],
+    modes: ["local"],
+    describe: { label: "Telegram" },
+    async start() {},
+    async disconnect() {},
+    async verify() {
+      return true;
+    },
+    async status() {
+      return {
+        state: "ok",
+        observedAt: "2026-07-06T00:00:00.000Z",
+      };
+    },
+  };
 }
 
 describe("first-run config validation", () => {
@@ -176,28 +208,85 @@ describe("first-run config validation", () => {
     expect(result?.length).toBe(5);
   });
 
-  it("validateChannel falls back to in_app + warning for unconnected channels", () => {
+  it("validateChannel falls back to in_app + warning for unconnected channels", async () => {
     const runtime = createMinimalRuntimeStub();
-    const result = validateChannel("telegram", runtime);
+    const result = await validateChannel("telegram", runtime);
     expect(result.fallbackToInApp).toBe(true);
     expect(result.warning).toMatch(/fall back/i);
   });
 
-  it("validateChannel passes a connected channel through cleanly", () => {
+  it("validateChannel passes a connected channel through cleanly", async () => {
     setChannelInspector({
       isRegistered: () => true,
       isConnected: () => true,
     });
     const runtime = createMinimalRuntimeStub();
-    const result = validateChannel("telegram", runtime);
+    const result = await validateChannel("telegram", runtime);
     expect(result.fallbackToInApp).toBe(false);
     expect(result.warning).toBeUndefined();
     setChannelInspector(null);
   });
 
-  it("rejects an unregistered channel with the right warning", () => {
+  it("validates a connected Telegram channel through the production registry inspector", async () => {
     const runtime = createMinimalRuntimeStub();
-    const result = validateChannel("morse_code", runtime);
+    const connectorRegistry = createConnectorRegistry();
+    connectorRegistry.register(makeConnectedTelegramConnector());
+    registerConnectorRegistry(runtime, connectorRegistry);
+
+    const channelRegistry = createChannelRegistry();
+    registerDefaultChannelPack(channelRegistry, runtime);
+    installFirstRunChannelInspector(runtime, channelRegistry);
+
+    await expect(validateChannel("telegram", runtime)).resolves.toEqual({
+      channel: "telegram",
+      registered: true,
+      connected: true,
+      fallbackToInApp: false,
+    });
+  });
+
+  it("keeps production channel inspectors isolated per runtime", async () => {
+    const connectedRuntime = createMinimalRuntimeStub();
+    const connectorRegistry = createConnectorRegistry();
+    connectorRegistry.register(makeConnectedTelegramConnector());
+    registerConnectorRegistry(connectedRuntime, connectorRegistry);
+
+    const connectedChannelRegistry = createChannelRegistry();
+    registerDefaultChannelPack(connectedChannelRegistry, connectedRuntime);
+    installFirstRunChannelInspector(connectedRuntime, connectedChannelRegistry);
+
+    const disconnectedRuntime = createMinimalRuntimeStub();
+    const disconnectedChannelRegistry = createChannelRegistry();
+    registerDefaultChannelPack(
+      disconnectedChannelRegistry,
+      disconnectedRuntime,
+    );
+    installFirstRunChannelInspector(
+      disconnectedRuntime,
+      disconnectedChannelRegistry,
+    );
+
+    await expect(
+      validateChannel("telegram", connectedRuntime),
+    ).resolves.toEqual({
+      channel: "telegram",
+      registered: true,
+      connected: true,
+      fallbackToInApp: false,
+    });
+    await expect(
+      validateChannel("telegram", disconnectedRuntime),
+    ).resolves.toMatchObject({
+      channel: "telegram",
+      registered: true,
+      connected: false,
+      fallbackToInApp: true,
+    });
+  });
+
+  it("rejects an unregistered channel with the right warning", async () => {
+    const runtime = createMinimalRuntimeStub();
+    const result = await validateChannel("morse_code", runtime);
     expect(result.channel).toBe("in_app");
     expect(result.fallbackToInApp).toBe(true);
     expect(result.warning).toMatch(/not registered/i);

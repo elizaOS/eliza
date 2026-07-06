@@ -35,6 +35,22 @@ let ensureStewardTenantImpl: (organizationId: string) => Promise<unknown> = asyn
   return { tenantId: `elizacloud-${organizationId}`, apiKey: "tenant-key", isNew: true };
 };
 
+// Branch-1 (existing user) fixture: field-for-field match with baseParams so
+// the profile-refresh `shouldUpdate` stays false and the sync goes straight to
+// the tenant self-heal + return.
+const existingUser = {
+  id: "user-existing-1",
+  organization_id: "org-existing-1",
+  name: "alice",
+  email: "alice@example.com",
+  email_verified: true,
+  wallet_address: undefined,
+  wallet_chain_type: undefined,
+  wallet_verified: false,
+};
+// Default = new-user path (no existing user); existing-user tests override.
+let getByStewardIdImpl: () => Promise<unknown> = async () => undefined;
+
 const createdOrg = { id: "org-new-1", slug: "alice-abc123", credit_balance: "0.00" };
 const createdUser = { id: "user-new-1", organization_id: "org-new-1" };
 const finalUserWithOrg = {
@@ -76,7 +92,7 @@ mock.module("./services/organizations", () => ({
 
 mock.module("./services/users", () => ({
   usersService: {
-    getByStewardId: async () => undefined,
+    getByStewardId: () => getByStewardIdImpl(),
     getByEmailWithOrganization: async () => undefined,
     getByWalletAddress: async () => undefined,
     getByWalletAddressWithOrganization: async () => undefined,
@@ -171,6 +187,7 @@ describe("syncUserFromSteward — eager Steward tenant provisioning (#14645)", (
       return { tenantId: `elizacloud-${organizationId}`, apiKey: "tenant-key", isNew: true };
     };
     process.env.INITIAL_FREE_CREDITS = "5";
+    getByStewardIdImpl = async () => undefined;
   });
 
   test("new-user signup provisions a Steward tenant for the new org", async () => {
@@ -211,5 +228,55 @@ describe("syncUserFromSteward — eager Steward tenant provisioning (#14645)", (
     expect(warn).toBeDefined();
     expect(warn!.message).toContain("org-new-1");
     expect(warn!.message).toContain("Steward unreachable");
+  });
+
+  // ── #14645 residual: existing-org self-heal on sign-in ──────────────────
+  // #14869's eager call covers NEW signups only; orgs created before it keep
+  // looping (they 403 on /me/tenants and can never reach agent-provision to
+  // self-heal). Every returning user resolves through the existing-user
+  // branch, so the heal there converts each looping account's next sign-in
+  // into the fix.
+
+  test("existing-user sign-in self-heals the org's Steward tenant", async () => {
+    getByStewardIdImpl = async () => existingUser;
+
+    const { syncUserFromSteward } = await import("./steward-sync");
+    const result = await syncUserFromSteward(baseParams);
+
+    // The heal was attempted exactly once, for the EXISTING org.
+    expect(ensureStewardTenantCalls).toEqual(["org-existing-1"]);
+    // Sign-in resolved with the existing user (no new org/user creation).
+    expect(result).toMatchObject({ id: "user-existing-1" });
+  });
+
+  test("FAIL-OPEN: existing-user sign-in still succeeds when the tenant heal rejects", async () => {
+    getByStewardIdImpl = async () => existingUser;
+    ensureStewardTenantImpl = async (organizationId) => {
+      ensureStewardTenantCalls.push(organizationId);
+      throw new Error("Steward unreachable: connect ECONNREFUSED");
+    };
+
+    const { syncUserFromSteward } = await import("./steward-sync");
+
+    // No throw: a Steward outage must not turn sign-in into an error.
+    const result = await syncUserFromSteward(baseParams);
+    expect(result).toMatchObject({ id: "user-existing-1" });
+    expect(ensureStewardTenantCalls).toEqual(["org-existing-1"]);
+
+    // Observable: a warning carrying the org id and the cause.
+    const warn = loggerWarnCalls.find((c) => c.message.includes("Sign-in tenant self-heal failed"));
+    expect(warn).toBeDefined();
+    expect(warn!.message).toContain("org-existing-1");
+    expect(warn!.message).toContain("Steward unreachable");
+  });
+
+  test("existing user without an organization_id skips the heal", async () => {
+    getByStewardIdImpl = async () => ({ ...existingUser, organization_id: null });
+
+    const { syncUserFromSteward } = await import("./steward-sync");
+    const result = await syncUserFromSteward(baseParams);
+
+    expect(ensureStewardTenantCalls).toHaveLength(0);
+    expect(result).toMatchObject({ id: "user-existing-1" });
   });
 });

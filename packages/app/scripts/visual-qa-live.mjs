@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 /**
  * Live visual-QA sweep against a running dashboard dev server. Complements the
  * heavier `audit:app` (which prebuilds every plugin-view bundle and walks the
@@ -30,10 +27,16 @@ import { fileURLToPath } from "node:url";
  * Usage:
  *   node scripts/visual-qa-live.mjs --base http://127.0.0.1:2138 [--out DIR] [--strict]
  */
+import { execFileSync } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { analyzeScreenshot, changeMetric } from "./lib/visual-qa.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(__dirname, "..", "..", "..");
+export const COMPOSER_PROBE_TEXT = "remind me to call the pharmacy before 5";
 
 // Mirrors the canonical Steward seed contract in
 // `test/ui-smoke/helpers/test-auth.ts` (STEWARD_SESSION_TOKEN_KEY + the
@@ -113,6 +116,7 @@ export function buildStateMatrix() {
         seed: "fresh",
         route: "/",
         focusComposer: true,
+        expectedComposerText: COMPOSER_PROBE_TEXT,
       });
     }
   }
@@ -165,6 +169,34 @@ export function seedDriftOffenders(deltas, { minChangedFraction = 0.02 } = {}) {
     .map((d) => ({ viewport: d.viewport, changedFraction: d.changedFraction }));
 }
 
+export function evaluateCaptureReadiness({
+  state,
+  domText = "",
+  composerText = "",
+  minDomTextLength = 12,
+}) {
+  const checks = [];
+  let pass = true;
+  const check = (name, ok, detail) => {
+    checks.push({ name, ok: Boolean(ok), detail });
+    if (!ok) pass = false;
+  };
+  const normalizedDomText = domText.replace(/\s+/g, " ").trim();
+  check(
+    "dom:not_blank",
+    normalizedDomText.length >= minDomTextLength,
+    `visible DOM text length ${normalizedDomText.length} (min ${minDomTextLength})`,
+  );
+  if (state.expectedComposerText) {
+    check(
+      "composer:typed_text_present",
+      composerText.includes(state.expectedComposerText),
+      `composer text ${composerText.includes(state.expectedComposerText) ? "contains" : "does not contain"} the probe`,
+    );
+  }
+  return { pass, checks };
+}
+
 async function focusAndType(page) {
   // Prefer the canonical chat composer; the generic fallback keeps the capture
   // meaningful on gates that render a plain input. No match fails the sweep —
@@ -176,8 +208,55 @@ async function focusAndType(page) {
         .locator('textarea, [contenteditable="true"], input[type="text"]')
         .first();
   await box.click({ timeout: 4000 });
-  await box.type("remind me to call the pharmacy before 5", { delay: 8 });
+  await box.type(COMPOSER_PROBE_TEXT, { delay: 8 });
   await page.waitForTimeout(600);
+}
+
+async function readVisibleText(page, stateId) {
+  try {
+    return (await page.locator("body").innerText({ timeout: 4000 }))
+      .replace(/\s+/g, " ")
+      .trim();
+  } catch (error) {
+    throw new Error(
+      `Failed to read visible DOM text for ${stateId}: ${error?.message ?? error}`,
+    );
+  }
+}
+
+async function readComposerText(page) {
+  const box = page
+    .locator('textarea, [contenteditable="true"], input[type="text"]')
+    .first();
+  return box.evaluate((el) =>
+    "value" in el ? String(el.value) : String(el.textContent ?? ""),
+  );
+}
+
+function gitValue(args) {
+  try {
+    return execFileSync("git", args, {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    // error-policy:J7 provenance enrichment must never kill a local visual pass;
+    // the report records null so reviewers can see metadata was unavailable.
+    return null;
+  }
+}
+
+function buildRunMeta({ base, outDir, strict, stateCount }) {
+  return {
+    createdAt: new Date().toISOString(),
+    base,
+    outDir,
+    strict,
+    stateCount,
+    commit: gitValue(["rev-parse", "HEAD"]),
+    branch: gitValue(["branch", "--show-current"]),
+  };
 }
 
 async function main() {
@@ -203,6 +282,12 @@ async function main() {
 
   const onboardedSeed = buildOnboardedSeed();
   const matrix = buildStateMatrix();
+  const meta = buildRunMeta({
+    base,
+    outDir,
+    strict,
+    stateCount: matrix.length,
+  });
   const browser = await chromium.launch();
   const reports = [];
 
@@ -240,14 +325,34 @@ async function main() {
             `Failed to load ${state.id} at ${targetUrl}: HTTP ${response?.status() ?? "unknown"}`,
           );
         }
-        await page
-          .waitForLoadState("networkidle", { timeout: 5000 })
-          // error-policy:J6 best-effort settle — SPAs holding long-poll/WS
-          // connections never reach networkidle; the fixed wait below is the
-          // real settle gate and the screenshot still fails loudly on its own.
-          .catch(() => {});
+        let networkIdle = "reached";
+        try {
+          await page.waitForLoadState("networkidle", { timeout: 5000 });
+        } catch (error) {
+          // error-policy:J4 a dev server without an API often keeps failed proxy
+          // requests noisy; screenshot validity is checked by DOM and image
+          // analysis below, so a timeout is recorded instead of hidden.
+          networkIdle = `timeout: ${String(error?.message ?? error).slice(0, 120)}`;
+        }
         await page.waitForTimeout(1500);
         if (state.focusComposer) await focusAndType(page);
+        const domText = await readVisibleText(page, state.id);
+        const composerText = state.focusComposer
+          ? await readComposerText(page)
+          : "";
+        const readiness = evaluateCaptureReadiness({
+          state,
+          domText,
+          composerText,
+        });
+        if (!readiness.pass) {
+          throw new Error(
+            `Invalid capture for ${state.id}: ${readiness.checks
+              .filter((c) => !c.ok)
+              .map((c) => `${c.name} (${c.detail})`)
+              .join(", ")}`,
+          );
+        }
 
         const file = path.join(outDir, `${state.id}.png`);
         await page.screenshot({ path: file });
@@ -260,10 +365,16 @@ async function main() {
           size: report.size,
           dominant_palette: report.dominant_palette,
           color_fractions: report.color_fractions,
+          visual_verdict: report.verdict,
+          visual_checks: report.checks,
+          network_idle: networkIdle,
+          dom_checks: readiness.checks,
+          dom_text: domText.slice(0, 240),
           ocr_text: (report.ocr_text || "")
             .replace(/\s+/g, " ")
             .trim()
             .slice(0, 240),
+          ocr_note: report.ocr_note,
         };
         reports.push(entry);
         const measured = entry.color_fractions?.blue_fraction;
@@ -304,7 +415,7 @@ async function main() {
   const verdict = aggregateVerdict(reports);
   writeFileSync(
     path.join(outDir, "report.json"),
-    JSON.stringify({ base, verdict, seedDeltas, reports }, null, 2),
+    JSON.stringify({ meta, verdict, seedDeltas, reports }, null, 2),
   );
   console.log(
     `\n${verdict.pass ? "PASS" : "FAIL"} — no-blue invariant (ceiling ${verdict.blueCeiling}); ${reports.length} states → ${outDir}/report.json`,

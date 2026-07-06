@@ -134,7 +134,12 @@ export async function completeFiredTasksOnOwnerReply(
   let acknowledgedCheckinReport = false;
   for (const task of fired) {
     if (!task.completionCheck) continue;
-    if (pendingPromptRoomIdForTask(task) !== roomId) continue;
+    if (
+      pendingPromptRoomIdForTask(task, { agentId: String(runtime.agentId) }) !==
+      roomId
+    ) {
+      continue;
+    }
     try {
       const updated = await runner.evaluateCompletion(task.taskId, {
         repliedAtIso,

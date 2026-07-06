@@ -3,9 +3,13 @@
  * unregistered, the owner-operation parent umbrellas register, and each exposes `action` as
  * its public discriminator. Pure plugin-shape asserts, no model.
  */
+import { ShortcutRegistry } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { isDarwin } from "../src/platform/host.js";
-import { personalAssistantPlugin } from "../src/plugin.js";
+import {
+  APPROVAL_REJECT_SHORTCUT_ID,
+  personalAssistantPlugin,
+} from "../src/plugin.js";
 
 // OWNER_SCREENTIME is only registered on darwin because the native activity
 // tracker is macOS-only. See `platformGatedActionUmbrellas` in src/plugin.ts
@@ -113,6 +117,63 @@ describe("LifeOps canonical action structure", () => {
         (evaluator) => evaluator.name,
       ),
     ).not.toContain("lifeops.work_thread_router");
+  });
+
+  it("routes explicit pending-approval rejection phrasing to RESOLVE_REQUEST_REJECT", () => {
+    const registry = new ShortcutRegistry();
+    registry.registerMany(personalAssistantPlugin.shortcuts ?? []);
+    const actionNames = (personalAssistantPlugin.actions ?? []).map(
+      (action) => action.name,
+    );
+
+    const match = registry.match(
+      "Wait - which Chris? There are two. Don't send it, reject that for now until I confirm the right person.",
+      {
+        actions: actionNames,
+        allowNatural: true,
+        isElevated: true,
+      },
+    );
+
+    expect(match?.shortcut.id).toBe(APPROVAL_REJECT_SHORTCUT_ID);
+    expect(match?.shortcut.target).toEqual({
+      kind: "action",
+      name: "RESOLVE_REQUEST_REJECT",
+    });
+    const matchOwner = (text: string) =>
+      registry.match(text, {
+        actions: actionNames,
+        allowNatural: true,
+        isElevated: true,
+      });
+    for (const positive of [
+      "Don’t send it.",
+      "reject that for now",
+      "Decline the request.",
+      "deny the pending approval",
+    ]) {
+      expect(matchOwner(positive)?.shortcut.id, positive).toBe(
+        APPROVAL_REJECT_SHORTCUT_ID,
+      );
+    }
+    // Rejection verbs aimed at other objects stay with the planner, which can
+    // weigh conversation context; a shortcut misfire terminally rejects a
+    // queued approval with zero inference.
+    for (const negative of [
+      "hold that for now",
+      "Decline the meeting request from Bob",
+      "Reject the draft and write a new one",
+      "deny his request for access",
+    ]) {
+      expect(matchOwner(negative), negative).toBeNull();
+    }
+    expect(
+      registry.match("Don't send it, reject that request.", {
+        actions: actionNames,
+        allowNatural: true,
+        isElevated: false,
+      }),
+    ).toBeNull();
   });
 });
 

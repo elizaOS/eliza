@@ -28,6 +28,7 @@ import type {
 // than their package barrels: the barrels re-export React views (→ @elizaos/ui),
 // which a DB repository must never drag into server or unit-test graphs.
 import { browserBridgeSchema } from "@elizaos/plugin-browser/schema";
+import { calendarSchema } from "@elizaos/plugin-calendar/service/schema";
 import type {
   LifeOpsScheduleMergedState,
   LifeOpsScheduleObservation,
@@ -42,7 +43,9 @@ import type {
   LifeOpsSubscriptionCancellation,
   LifeOpsSubscriptionCandidate,
 } from "@elizaos/plugin-finances/subscriptions-types";
+import { goalsDbSchema } from "@elizaos/plugin-goals/db/schema";
 import { inboxDbSchema } from "@elizaos/plugin-inbox/db/schema";
+import { remindersDbSchema } from "@elizaos/plugin-reminders/db/schema";
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
@@ -2359,6 +2362,31 @@ export class LifeOpsRepository {
         {
           name: "@elizaos/plugin-inbox",
           schema: inboxDbSchema,
+        },
+        // Reminder tables were carved to @elizaos/plugin-reminders
+        // (app_reminders); PA auto-registers that plugin in production and its
+        // reminder repository methods read/write those tables via raw SQL.
+        // Mirror the schema here, under the plugin's registered name, for the
+        // same test-harness reason as app_inbox above.
+        {
+          name: "@elizaos/plugin-reminders",
+          schema: remindersDbSchema,
+        },
+        // Calendar tables were carved to @elizaos/plugin-calendar
+        // (app_calendar); PA's calendar feed reads go through raw SQL against
+        // app_calendar.life_calendar_events. The plugin registers under the
+        // name "calendar" — keep that name so migration bookkeeping matches
+        // production.
+        {
+          name: "calendar",
+          schema: calendarSchema,
+        },
+        // Goal tables were carved to @elizaos/plugin-goals (app_goals); PA's
+        // overview/goal reads go through raw SQL against
+        // app_goals.life_goal_definitions. Same mirroring rationale as above.
+        {
+          name: "@elizaos/plugin-goals",
+          schema: goalsDbSchema,
         },
         // The knowledge-graph tables are runtime-owned (registered by the
         // agent "eliza" plugin in production). Migrate them under the same
