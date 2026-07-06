@@ -112,8 +112,42 @@ describe("scrubWithEscalation — tier-0 escalation", () => {
 		});
 
 		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(
+			(useModel.mock.calls[0][1] as PiiScrubParams).candidateSpans,
+		).toEqual(["Dana Whitfield"]);
 		expect(result.escalated).toBe(true);
 		expect(result.escalation?.verdicts[0].replacement).toBe("Priya Okafor");
+	});
+
+	it("escalates a wider candidate that only partially overlaps tier-0", async () => {
+		const text = "email a@b.com and Dana about the deal";
+		const handler = {
+			fn: vi.fn(
+				async (params: PiiScrubParams): Promise<PiiScrubResult> => ({
+					verdicts: [
+						{
+							span: params.candidateSpans[0] ?? "",
+							kind: "pii",
+							replacement: "[redacted]",
+						},
+					],
+					modelId: "local-gguf",
+					rulesetVersion: params.rulesetVersion,
+				}),
+			),
+		};
+		const { runtime, useModel } = makeRuntime(handler);
+
+		await scrubWithEscalation(runtime, {
+			text,
+			candidateSpans: ["a@b.com and Dana"],
+			rulesetVersion: RULESET,
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(
+			(useModel.mock.calls[0][1] as PiiScrubParams).candidateSpans,
+		).toEqual(["a@b.com and Dana"]);
 	});
 });
 
@@ -344,6 +378,23 @@ describe("assertValidScrubResult — structural fail-closed", () => {
 			assertValidScrubResult(
 				{
 					verdicts: [{ span: "Acme", kind: "safe" }],
+					modelId: "m",
+					rulesetVersion: RULESET,
+				},
+				{
+					rulesetVersion: RULESET,
+					text,
+					requiredSpans: ["Dana Whitfield"],
+				},
+			),
+		).toThrow(/no verdict/);
+	});
+
+	it("rejects when only a narrower span received a verdict for a wider required span", () => {
+		expect(() =>
+			assertValidScrubResult(
+				{
+					verdicts: [{ span: "Dana", kind: "pii", replacement: "Priya" }],
 					modelId: "m",
 					rulesetVersion: RULESET,
 				},

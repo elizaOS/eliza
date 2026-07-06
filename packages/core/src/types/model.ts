@@ -944,6 +944,12 @@ export interface PiiScrubParams {
 	/** The chunk of text to classify / rewrite. */
 	text: string;
 	/**
+	 * Exact candidate spans the deterministic tier-0 detectors did not fully
+	 * cover. The handler must return a verdict for each span or throw; absence is
+	 * never interpreted as clean.
+	 */
+	candidateSpans: readonly string[];
+	/**
 	 * Optional retrieval context that helps the model disambiguate borderline
 	 * candidates (surrounding messages, thread summary). Never the secret
 	 * mapping table.

@@ -146,7 +146,7 @@ function coveredByTier0(
 	if (needle.length === 0) return true;
 	for (const span of tier0) {
 		if (span.span === needle) return true;
-		if (span.span.includes(needle) || needle.includes(span.span)) return true;
+		if (span.span.includes(needle)) return true;
 	}
 	return false;
 }
@@ -193,6 +193,7 @@ export async function scrubWithEscalation(
 
 	const params: PiiScrubParams = {
 		text: request.text,
+		candidateSpans: residue,
 		contextPack: request.contextPack,
 		pseudonymAssignments: request.pseudonymAssignments,
 		rulesetVersion: request.rulesetVersion,
@@ -321,7 +322,7 @@ export function assertValidScrubResult(
 			// A required span is covered if some verdict span equals it or contains
 			// it (the model may return a wider span that subsumes the candidate).
 			const covered = [...seenSpans].some(
-				(s) => s === needle || s.includes(needle) || needle.includes(s),
+				(s) => s === needle || s.includes(needle),
 			);
 			if (!covered) {
 				throw new PiiScrubFabricationError(
