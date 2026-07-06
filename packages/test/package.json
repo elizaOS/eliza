@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@capacitor/core": "8.4.0",
+    "@elizaos/corpus-tools": "workspace:*",
     "@elizaos/core": "workspace:*",
     "telegraf": "^4.16.3"
   },

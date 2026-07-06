@@ -111,6 +111,20 @@ interface GmailFixtureAttachment {
   data: string;
 }
 
+interface GmailFixtureManifestMessage {
+  id: string;
+  threadId: string;
+  accountId: string;
+  labelIds: readonly string[];
+  subject: string | null;
+  snippet: string;
+}
+
+export interface GmailFixtureManifest {
+  fixtures: Record<string, readonly string[]>;
+  messages: GmailFixtureManifestMessage[];
+}
+
 const DEFAULT_GMAIL_ACCOUNT_ID = "work";
 
 const GMAIL_MOCK_ACCOUNTS: GmailMockAccount[] = [
@@ -377,6 +391,21 @@ const GMAIL_FIXTURE_MESSAGES: GmailFixtureMessage[] = [
   },
 ];
 
+const BUILTIN_GMAIL_FIXTURE_MESSAGE_IDS: Readonly<
+  Record<string, readonly string[]>
+> = {
+  default: ["msg-finance", "msg-sarah", "msg-newsletter"],
+  "unread-inbox.eml": ["msg-finance", "msg-sarah"],
+  "sarah-product-brief.eml": ["msg-sarah"],
+  "high-priority-client.eml": ["msg-sarah"],
+  "alice-recent.eml": ["msg-sarah"],
+  "followup-14-days-ago.eml": [
+    "msg-unresponded-inbound",
+    "msg-unresponded-sent",
+  ],
+  "injection-fake-wire-instruction": ["msg-injection-wire"],
+};
+
 function simulatorEmailToGmailFixture(
   email: LifeOpsSimulatorEmail,
 ): GmailFixtureMessage {
@@ -402,15 +431,16 @@ function simulatorEmailToGmailFixture(
   };
 }
 
-function gmailFixtureMessages(opts?: {
-  simulator?: boolean;
-}): GmailFixtureMessage[] {
-  return opts?.simulator
-    ? [
-        ...LIFEOPS_SIMULATOR_EMAILS.map(simulatorEmailToGmailFixture),
-        ...GMAIL_FIXTURE_MESSAGES,
-      ]
-    : GMAIL_FIXTURE_MESSAGES;
+function gmailFixtureMessages(
+  opts?: GoogleMockStateOptions,
+): GmailFixtureMessage[] {
+  return [
+    ...(opts?.corpusGmailFixtures ?? []),
+    ...(opts?.simulator
+      ? LIFEOPS_SIMULATOR_EMAILS.map(simulatorEmailToGmailFixture)
+      : []),
+    ...GMAIL_FIXTURE_MESSAGES,
+  ];
 }
 
 type GmailMockMessage = Omit<GmailFixtureMessage, "internalDateOffsetMs"> & {
@@ -479,12 +509,19 @@ export interface GmailRequestLedgerMetadata {
 export interface GoogleMockState {
   gmailAccounts: Map<string, GmailMockAccount>;
   gmailMessages: Map<string, GmailMockMessage>;
+  gmailFixtureManifest: GmailFixtureManifest;
   gmailDrafts: Map<string, GmailMockDraft>;
   gmailHistoryId: number;
   gmailHistory: GmailHistoryRecord[];
   gmailFaultInjection: GoogleGmailFaultInjection | null;
   googleTokens: Map<string, GoogleMockToken>;
   calendar: GoogleCalendarMockState;
+}
+
+export interface GoogleMockStateOptions {
+  simulator?: boolean;
+  corpusGmailFixtures?: readonly GmailFixtureMessage[];
+  corpusGmailFixtureSets?: Record<string, readonly string[]>;
 }
 
 export type GoogleGmailFaultMode =
@@ -567,9 +604,33 @@ function gmailAccountForFixture(
   return account;
 }
 
-export function createGoogleMockState(opts?: {
-  simulator?: boolean;
-}): GoogleMockState {
+function gmailFixtureSubject(message: GmailFixtureMessage): string | null {
+  return gmailHeaderValue(message, "Subject") || null;
+}
+
+function buildGmailFixtureManifest(
+  messages: readonly GmailMockMessage[],
+  corpusFixtureSets: Record<string, readonly string[]> | undefined,
+): GmailFixtureManifest {
+  return {
+    fixtures: {
+      ...BUILTIN_GMAIL_FIXTURE_MESSAGE_IDS,
+      ...(corpusFixtureSets ?? {}),
+    },
+    messages: messages.map((message) => ({
+      id: message.id,
+      threadId: message.threadId,
+      accountId: message.accountId,
+      labelIds: [...(message.labelIds ?? [])],
+      subject: gmailFixtureSubject(message),
+      snippet: message.snippet,
+    })),
+  };
+}
+
+export function createGoogleMockState(
+  opts?: GoogleMockStateOptions,
+): GoogleMockState {
   const accounts = gmailAccountsMap();
   const messages = new Map<string, GmailMockMessage>();
   for (const fixture of gmailFixtureMessages(opts)) {
@@ -608,6 +669,10 @@ export function createGoogleMockState(opts?: {
   return {
     gmailAccounts: accounts,
     gmailMessages: messages,
+    gmailFixtureManifest: buildGmailFixtureManifest(
+      [...messages.values()],
+      opts?.corpusGmailFixtureSets,
+    ),
     gmailDrafts: new Map([
       [
         "draft-mock",
@@ -1662,6 +1727,10 @@ export function googleDynamicFixture(
   headers: http.IncomingHttpHeaders,
   ledgerEntry: GoogleMockLedgerEntry,
 ): DynamicFixtureResponse | null {
+  if (method === "GET" && pathname === "/__mock/google/gmail/fixtures") {
+    return jsonFixture(state.gmailFixtureManifest);
+  }
+
   if (method === "POST" && pathname === "/token") {
     const scopeText =
       typeof requestBody.scope === "string"
