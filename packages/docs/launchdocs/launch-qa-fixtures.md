@@ -41,7 +41,7 @@ these non-secret fields:
 | State prerequisites | Yes | Required balance, scopes, tenant membership, feature flags, installed app version. |
 | Reset procedure | Yes | How to return the fixture to a reusable state without deleting real user data. |
 | Expiration / rotation | Yes | Date, credential rotation policy, or "single-use per run". |
-| Evidence path | Yes | Files under `.github/issue-evidence/` or external artifact links referenced from the PR. |
+| Evidence path | Yes | Link to the issue/PR comment carrying the inline evidence (see `PR_EVIDENCE.md`); never a committed evidence file. |
 
 ## Required launch fixtures
 
@@ -110,9 +110,11 @@ payment-adjacent checks.
 ## Evidence packet
 
 Every fixture-dependent launch run should add or link an evidence packet from
-the relevant issue or PR. Store committed artifacts under
-`.github/issue-evidence/` and follow
-[the repository evidence rules](../../../.github/issue-evidence/README.md).
+the relevant issue or PR. Evidence attaches **inline in the issue/PR itself**
+per [`PR_EVIDENCE.md`](../../../PR_EVIDENCE.md): MP4 for video (GitHub renders
+it inline), JPG over PNG for screenshots, long logs in a `<details>` block.
+Do not commit evidence files to the repo — `.github/issue-evidence/` is
+retired as a destination.
 
 Minimum packet:
 
@@ -154,7 +156,7 @@ Fixture packet for #14384, run 2026-07-05:
 - Secret location: 1Password "Launch QA / Google staging user"; no secrets in git
 - Public identifiers: q***@example.test, wallet 0x1234...beef
 - Prerequisites: Google OAuth test user allowed; wallet holds 0.02 test ETH
-- Evidence: .github/issue-evidence/14384-google-wallet-run.md
+- Evidence: inline below (screenshots + <details> logs) per PR_EVIDENCE.md
 - Result: pass; API key revoked, disposable agent deleted, wallet balance reconciled
 ```
 
