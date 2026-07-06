@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Coverage gate for the LifeOps persona scenario-pack ledgers. The eight pack
+ * Coverage gate for the LifeOps persona scenario-pack ledgers. The pack
  * catalogs are progress ledgers, not executable scenarios; this script confirms
  * their declared scenario ids resolve to the real TypeScript scenario-runner
  * corpus or the Python LifeOpsBench corpus and prints authored/verified totals.
@@ -42,6 +42,7 @@ const EXPECTED_CATALOGS = [
   ["mediation-logistics.catalog.json", "I2", 8],
   ["co-parenting.catalog.json", "J1", 10],
   ["third-party-support.catalog.json", "K1", 10],
+  ["child-student-deadlines.catalog.json", "L1", 6],
 ];
 
 const VALID_TIERS = new Set(["T1", "T2", "T3", "T4"]);
