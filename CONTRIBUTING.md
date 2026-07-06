@@ -119,8 +119,10 @@ rebasing when `develop` changes the behavior under review.
 
 ## Security Reporting
 
-Report vulnerabilities privately to `security@elizalabs.ai`. Do not open a
-public GitHub issue for a live vulnerability, credential leak, exploit path, or
+The canonical security policy — reporting channel, disclosure window, and
+remediation SLAs — is [`SECURITY.md`](SECURITY.md). In short: report
+vulnerabilities privately to `security@elizalabs.ai`; do not open a public
+GitHub issue for a live vulnerability, credential leak, exploit path, or
 embargoed dependency issue. Include affected versions or commits, reproduction
 steps, impact, and any safe proof of exploitability. Agents that encounter a
 secret or suspected vulnerability must stop exposing details publicly and route

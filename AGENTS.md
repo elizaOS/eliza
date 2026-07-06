@@ -517,4 +517,4 @@ The non-negotiables in practice:
 ## Contributing
 
 Open an issue before a non-trivial PR. License: MIT (`LICENSE`). Security
-reporting and shipping workflow: `CONTRIBUTING.md`.
+policy: `SECURITY.md`. Shipping workflow: `CONTRIBUTING.md`.

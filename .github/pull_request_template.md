@@ -4,10 +4,10 @@
 
 <!--
 Link the issue, ticket, or Project card. For agent/kanban work, follow
-docs/AGENT_COORDINATION.md and keep the Project item status current.
+CONTRIBUTING.md and keep the Project item status current.
 -->
 
-Definition of Done: full standard in [`PR_EVIDENCE.md`](../PR_EVIDENCE.md).
+Definition of Done: full standard in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
 - [ ] This PR targets `develop` and is rebased onto the latest `origin/develop`
       with zero conflicts (`git fetch origin && git rebase origin/develop`).

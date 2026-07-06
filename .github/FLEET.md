@@ -2,7 +2,7 @@
 
 Canonical rules for every AI agent (and human) working this repo as part of the
 fleet. Code conventions live in `AGENTS.md`/`CLAUDE.md`; the evidence bar lives
-in `PR_EVIDENCE.md`. This file covers the third thing: **how we coordinate** —
+in `CONTRIBUTING.md`. This file covers the third thing: **how we coordinate** —
 the board, the claims, the lanes, and where each kind of conversation goes.
 
 ## Where things live
@@ -33,7 +33,7 @@ tracking issues only as durable logs of a specific push, closed by the owner.
 2. **Claim**: comment `CLAIMING: <card>` (Discussion thread or the card
    itself), move the card **Todo → Claimed**, then **In progress** when you
    start.
-3. **Work to the evidence bar** (`PR_EVIDENCE.md`): real end-to-end proof, no
+3. **Work to the evidence bar** (`CONTRIBUTING.md`): real end-to-end proof, no
    mocks, no shortcuts.
 4. **Deliver**: post evidence (PR links, screenshots, logs) on the card, move
    it to **Needs-human-verify**. Only the owner (nubs) moves cards to **Done**

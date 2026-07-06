@@ -1,5 +1,5 @@
 /**
- * SOC2 checks for ownership, branch-protection, and security-reporting repository controls.
+ * SOC2 checks for ownership, branch-protection, and security-policy repository controls.
  */
 
 import { join } from "node:path";
@@ -82,19 +82,19 @@ export const branchProtectionScript: Check = {
 
 export const securityMd: Check = {
   id: "CC9.2-security-md",
-  title: "CONTRIBUTING.md references security@elizalabs.ai",
+  title: "SECURITY.md references security@elizalabs.ai",
   tsc: ["CC2.2", "CC9.2"],
   severity: "medium",
   async run(ctx): Promise<CheckResult> {
     const candidates = [
-      join(ctx.elizaRoot, "CONTRIBUTING.md"),
-      join(ctx.outerRoot, "CONTRIBUTING.md"),
+      join(ctx.elizaRoot, "SECURITY.md"),
+      join(ctx.outerRoot, "SECURITY.md"),
     ];
     const found = candidates.filter(fileExists);
     if (found.length === 0) {
       return {
         status: "fail",
-        evidence: "CONTRIBUTING.md missing.",
+        evidence: "SECURITY.md missing.",
         files: candidates,
       };
     }
@@ -104,12 +104,12 @@ export const securityMd: Check = {
     return refs.length > 0
       ? {
           status: "pass",
-          evidence: `CONTRIBUTING.md references security@elizalabs.ai.`,
+          evidence: `SECURITY.md references security@elizalabs.ai.`,
           files: refs,
         }
       : {
           status: "warn",
-          evidence: `CONTRIBUTING.md present but does not mention security@elizalabs.ai.`,
+          evidence: `SECURITY.md present but does not mention security@elizalabs.ai.`,
           files: found,
         };
   },

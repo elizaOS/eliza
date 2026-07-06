@@ -139,9 +139,11 @@ design docs live in
 - [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
 - [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md)
 - [Agent Work Item](.github/ISSUE_TEMPLATE/agent_work_item.md)
+- [Security Policy](SECURITY.md)
+- [Windows Setup](WINDOWS.md)
 
-To report a security vulnerability, email `security@elizalabs.ai`; do not open a
-public issue.
+To report a security vulnerability, follow [SECURITY.md](SECURITY.md); do not
+open a public issue.
 
 ## License
 
