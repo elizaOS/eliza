@@ -12,9 +12,10 @@
  * next to the assertion. On mismatch the script prints the expected-vs-got diff
  * and exits nonzero; capture latency and token counts are printed on success.
  *
- * The server base URL is taken from --url, else ELIZA_GPU_VISION_PORT, else the
- * running instance recorded in serve.json. --start is the one-shot convenience
- * path: setup (if needed) → serve → smoke → stop.
+ * The server base URL is taken from --url, else the instance recorded in
+ * serve.json (keyed per model, so --vlm finds the right one), else a validated
+ * ELIZA_GPU_VISION_PORT. --start is the one-shot convenience path: setup (if
+ * needed) → serve → smoke → stop.
  *
  * Usage:
  *   node scripts/gpu-vision/smoke.mjs [--url http://127.0.0.1:PORT] [--vlm]
@@ -31,6 +32,7 @@ import {
   MODEL_SETS,
   OCR_PROMPT,
   parseArgs,
+  parsePort,
   serveStatePath,
   waitForReady,
 } from "./lib.mjs";
@@ -61,23 +63,37 @@ async function renderFixture() {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
+async function readServeState() {
+  try {
+    return JSON.parse(await fs.readFile(serveStatePath(), "utf8"));
+  } catch (err) {
+    // No serve.json simply means nothing was launched; any other read/parse
+    // failure is a real fault and must surface, not read as "no server".
+    if (err.code === "ENOENT") return {};
+    throw err;
+  }
+}
+
+/**
+ * Discovery order: --url wins; then the per-model serve.json entry (keyed, so
+ * --vlm never hits the OCR instance a fixed env port might point at); then a
+ * validated ELIZA_GPU_VISION_PORT for servers started outside serve.mjs.
+ */
 async function resolveBaseUrl(flags, setKey) {
   if (flags.url) return String(flags.url).replace(/\/$/, "");
-  if (process.env.ELIZA_GPU_VISION_PORT) {
-    return `http://127.0.0.1:${Number(process.env.ELIZA_GPU_VISION_PORT)}`;
-  }
-  const state = JSON.parse(
-    await fs.readFile(serveStatePath(), "utf8").catch(() => "{}"),
-  );
+  const state = await readServeState();
   const entry = state[setKey];
-  if (!entry) {
-    throw new Error(
-      "[gpu-vision] no running server found. Pass --url, set ELIZA_GPU_VISION_PORT, " +
-        "or start one: node scripts/gpu-vision/serve.mjs" +
-        (setKey === "vlm" ? " --vlm" : ""),
-    );
-  }
-  return `http://127.0.0.1:${entry.port}`;
+  if (entry) return `http://127.0.0.1:${entry.port}`;
+  const envPort = parsePort(
+    process.env.ELIZA_GPU_VISION_PORT,
+    "ELIZA_GPU_VISION_PORT",
+  );
+  if (envPort !== undefined) return `http://127.0.0.1:${envPort}`;
+  throw new Error(
+    "[gpu-vision] no running server found. Pass --url, set ELIZA_GPU_VISION_PORT, " +
+      "or start one: node scripts/gpu-vision/serve.mjs" +
+      (setKey === "vlm" ? " --vlm" : ""),
+  );
 }
 
 async function runOcr(baseUrl, pngBuffer) {
@@ -96,10 +112,13 @@ async function runOcr(baseUrl, pngBuffer) {
     ],
   };
   const started = Date.now();
+  // Generous but bounded: a cold first OCR pass takes seconds, while a socket
+  // that accepts and never responds must not hang the smoke run forever.
   const res = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(120000),
   });
   const latencyMs = Date.now() - started;
   if (!res.ok) {
@@ -185,21 +204,20 @@ async function main() {
   const setKey = flags.vlm ? "vlm" : "ocr";
 
   if (flags.start) {
-    // One-shot: fetch models if needed, serve, smoke, then always stop.
+    // One-shot: fetch models if needed, serve, smoke, then always stop. serve
+    // runs inside the try so a spawn that got as far as recording an instance
+    // is always torn down; --stop no-ops harmlessly when nothing was recorded.
     runScript(
       SCRIPTS.setup,
       flags["with-vlm"] || setKey === "vlm" ? ["--with-vlm"] : [],
     );
-    const serveArgs = setKey === "vlm" ? ["--vlm"] : [];
-    runScript(SCRIPTS.serve, serveArgs);
+    const instanceArgs = setKey === "vlm" ? ["--vlm"] : [];
     try {
+      runScript(SCRIPTS.serve, instanceArgs);
       const baseUrl = await resolveBaseUrl(flags, setKey);
       await smoke(baseUrl);
     } finally {
-      runScript(SCRIPTS.serve, [
-        "--stop",
-        ...(setKey === "vlm" ? ["--vlm"] : []),
-      ]);
+      runScript(SCRIPTS.serve, ["--stop", ...instanceArgs]);
     }
     return;
   }

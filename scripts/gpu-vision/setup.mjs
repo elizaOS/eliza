@@ -21,7 +21,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { fileURLToPath } from "node:url";
 import {
+  assertPlausibleSize,
   cacheDir,
   formatBytes,
   lockKey,
@@ -91,7 +93,12 @@ async function downloadViaHttps(set, fileName, destPath) {
   return destPath;
 }
 
-async function ensureFile({ setKey, role, hfBin, lock }) {
+/**
+ * Ensure one pinned blob is present and lockfile-verified. Exported so the unit
+ * suite can prove the skip-if-present path still runs the sha256 gate — a
+ * present-but-wrong file must fail here, never be served.
+ */
+export async function ensureFile({ setKey, role, hfBin, lock }) {
   const set = MODEL_SETS[setKey];
   const file = set.files[role];
   const destPath = modelFilePath(setKey, role);
@@ -126,8 +133,11 @@ async function ensureFile({ setKey, role, hfBin, lock }) {
     }
   }
 
-  const observedSha = await sha256File(destPath);
+  // Cheap torn-download floor before the slower hash pass.
   const { size } = await fs.stat(destPath);
+  assertPlausibleSize(size, file.approxBytes, file.name);
+
+  const observedSha = await sha256File(destPath);
   const outcome = reconcileLock(lock, key, {
     sha256: observedSha,
     bytes: size,
@@ -139,7 +149,8 @@ async function ensureFile({ setKey, role, hfBin, lock }) {
   if (outcome.status === "recorded") {
     lock[key] = outcome.entry;
     process.stdout.write(
-      `  pin   ${file.name} sha256=${observedSha} (${formatBytes(size)})\n`,
+      `  WARN  recorded NEW pin for ${file.name} — review the models.lock.json diff before committing\n` +
+        `        sha256=${observedSha} (${formatBytes(size)})\n`,
     );
   } else {
     process.stdout.write(
@@ -195,7 +206,14 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  process.stderr.write(`${err.stack || err.message}\n`);
-  process.exit(1);
-});
+// Run only when invoked directly — the unit suite imports ensureFile from this
+// module and must not trigger a download.
+const isMain =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  main().catch((err) => {
+    process.stderr.write(`${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}

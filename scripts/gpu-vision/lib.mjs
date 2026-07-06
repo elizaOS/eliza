@@ -30,16 +30,17 @@ export const LOCKFILE_PATH = path.join(__dirname, "models.lock.json");
  * llama.cpp gained DeepSeek-OCR family support in PR 17400, merged 2026-03-25;
  * the first tagged release containing it is build b8525. Unlimited-OCR is a
  * DeepSeek-OCR derivative, so an older `llama-server` will refuse or mis-load
- * the mmproj. serve.mjs parses `--version` and enforces this floor.
+ * the mmproj. serve.mjs enforces this floor via assertLlamaBuildSupported.
  */
 export const MIN_LLAMA_BUILD = 8525;
 
 /**
- * Pinned model set. `ocr` is always fetched; `vlm` only under --with-vlm. Sizes
- * are the HF-reported blob sizes (used for the setup byte report and as a cheap
- * pre-download sanity floor); the authoritative integrity check is sha256 in the
- * lockfile. Revisions are the commit shas observed on the HF repos so we pin to
- * an immutable snapshot rather than a moving branch head.
+ * Pinned model set. `ocr` is always fetched; `vlm` only under --with-vlm.
+ * `approxBytes` is the exact blob size observed at pin time, used as a
+ * torn-download floor (assertPlausibleSize) before the slower sha256 pass; the
+ * authoritative integrity check is the sha256 in the lockfile. Revisions are the
+ * commit shas observed on the HF repos so we pin to an immutable snapshot rather
+ * than a moving branch head.
  */
 export const MODEL_SETS = {
   ocr: {
@@ -48,8 +49,8 @@ export const MODEL_SETS = {
     repo: "sahilchachra/Unlimited-OCR-GGUF",
     revision: "0dc781d8a23f52963918ebd5b2d1b9fe61504661",
     files: {
-      model: { name: "Unlimited-OCR-Q4_K_M.gguf", approxBytes: 2093796000 },
-      mmproj: { name: "mmproj-Unlimited-OCR-F16.gguf", approxBytes: 871900000 },
+      model: { name: "Unlimited-OCR-Q4_K_M.gguf", approxBytes: 1950326784 },
+      mmproj: { name: "mmproj-Unlimited-OCR-F16.gguf", approxBytes: 811876448 },
     },
   },
   vlm: {
@@ -60,15 +61,35 @@ export const MODEL_SETS = {
     files: {
       model: {
         name: "Qwen3VL-4B-Instruct-Q4_K_M.gguf",
-        approxBytes: 2680600000,
+        approxBytes: 2497281664,
       },
       mmproj: {
         name: "mmproj-Qwen3VL-4B-Instruct-F16.gguf",
-        approxBytes: 897700000,
+        approxBytes: 836180256,
       },
     },
   },
 };
+
+/** Maximum tolerated deviation between a blob's on-disk size and its pinned
+ * approxBytes before the download is rejected as torn/truncated. */
+export const SIZE_TOLERANCE = 0.05;
+
+/**
+ * Torn-download floor: reject a blob whose size deviates grossly from the
+ * pinned size before the (much slower) sha256 pass, so a truncated mirror
+ * response gets a friendly early error instead of a bare hash mismatch.
+ */
+export function assertPlausibleSize(bytes, approxBytes, name) {
+  const deviation = Math.abs(bytes - approxBytes) / approxBytes;
+  if (deviation > SIZE_TOLERANCE) {
+    throw new Error(
+      `[gpu-vision] ${name} is ${formatBytes(bytes)} on disk but ~${formatBytes(approxBytes)} was expected ` +
+        `(> ${SIZE_TOLERANCE * 100}% off) — the download looks truncated or the upstream blob changed. ` +
+        "Delete the file and re-run setup.",
+    );
+  }
+}
 
 /** Grounding OCR prompt sent to the server at temp 0. The analyzer registry uses
  * this exact string so its OCR output is reproducible across runs. */
@@ -79,7 +100,7 @@ export const OCR_PROMPT =
  * can redirect to a scratch volume; otherwise the conventional per-user cache. */
 export function cacheDir() {
   const override = process.env.ELIZA_GPU_VISION_CACHE;
-  if (override && override.trim()) return path.resolve(override.trim());
+  if (override?.trim()) return path.resolve(override.trim());
   return path.join(os.homedir(), ".cache", "eliza", "gpu-vision");
 }
 
@@ -169,6 +190,49 @@ export function parseLlamaBuild(versionOutput) {
   return match ? Number(match[1]) : null;
 }
 
+/**
+ * The DeepSeek-OCR version gate: throws with an actionable upgrade message when
+ * the `--version` output is unparseable or the build predates b8525, otherwise
+ * returns the build number. Pure so the boundary (b8524 rejected / b8525
+ * accepted) is unit-testable without spawning a binary.
+ */
+export function assertLlamaBuildSupported(versionOutput) {
+  const build = parseLlamaBuild(versionOutput);
+  if (build === null) {
+    throw new Error(
+      `[gpu-vision] could not parse llama-server version from:\n${versionOutput}`,
+    );
+  }
+  if (build < MIN_LLAMA_BUILD) {
+    throw new Error(
+      `[gpu-vision] llama-server build ${build} is too old for DeepSeek-OCR models.\n` +
+        `  Need build >= ${MIN_LLAMA_BUILD} (PR 17400, merged 2026-03-25).\n` +
+        "  Upgrade: `brew upgrade llama.cpp`.",
+    );
+  }
+  return build;
+}
+
+/**
+ * Validate a TCP port from a flag or env var. Returns undefined for absent or
+ * empty input; throws on anything that is not an integer in 1-65535 so a typo'd
+ * port can never silently become `http://127.0.0.1:NaN`.
+ */
+export function parsePort(value, label) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "boolean") {
+    throw new Error(`[gpu-vision] ${label} requires a port number`);
+  }
+  if (String(value).trim() === "") return undefined;
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(
+      `[gpu-vision] ${label} must be an integer port 1-65535, got ${value}`,
+    );
+  }
+  return port;
+}
+
 /** Human-readable byte formatter for the setup/serve reports. */
 export function formatBytes(bytes) {
   if (!Number.isFinite(bytes)) return "unknown";
@@ -231,18 +295,27 @@ export function findFreePort() {
 /**
  * Poll a readiness URL until it answers 200 or the deadline passes. `fetchImpl`
  * is injectable so the poller is testable against a stub server without touching
- * global fetch. Returns true on ready; throws with elapsed time on timeout so a
+ * global fetch. Each probe carries its own abort timeout so a socket that
+ * accepts but never responds cannot hang the poll (or a smoke run) forever.
+ * Returns true on ready; throws with elapsed time on timeout so a
  * hung/mis-launched server surfaces as a hard failure rather than a silent hang.
  */
 export async function waitForReady(
   url,
-  { timeoutMs = 120000, intervalMs = 500, fetchImpl = fetch } = {},
+  {
+    timeoutMs = 120000,
+    intervalMs = 500,
+    probeTimeoutMs = 3000,
+    fetchImpl = fetch,
+  } = {},
 ) {
   const start = Date.now();
   let lastError = "no response";
   while (Date.now() - start < timeoutMs) {
     try {
-      const res = await fetchImpl(url);
+      const res = await fetchImpl(url, {
+        signal: AbortSignal.timeout(probeTimeoutMs),
+      });
       if (res.ok) return true;
       lastError = `HTTP ${res.status}`;
     } catch (err) {
