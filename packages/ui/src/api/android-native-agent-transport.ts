@@ -396,9 +396,13 @@ export async function getAndroidLocalAgentBootStateForUrl(
     ) {
       return state;
     }
-  } catch {
+  } catch (err) {
     // error-policy:J4 boot-state is a progress hint. A failed hint must fall
     // back to the existing HTTP heuristic rather than make startup fatal.
+    return {
+      state: "unknown",
+      reason: `native boot-state probe failed: ${String((err as { message?: string })?.message ?? err)}`,
+    };
   }
   return { state: "unknown", reason: "native boot-state probe failed" };
 }
