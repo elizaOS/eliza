@@ -2948,7 +2948,6 @@ export class RemindersDomain {
           return {
             ok: true,
             messageId: `assistant-stream:${args.reportId}`,
-            channelKey: "in_app",
           };
         }
         lastFailure = {
@@ -2991,11 +2990,7 @@ export class RemindersDomain {
         },
       });
       if (result.ok) {
-        return {
-          ...result,
-          target: result.target ?? target,
-          channelKey: result.channelKey ?? candidate.channel,
-        };
+        return result;
       }
       lastFailure = result;
     }
