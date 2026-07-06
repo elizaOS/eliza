@@ -22,6 +22,7 @@ import {
   runWithSignupGrantIpCapDetailed,
   type SignupGrantWithheldReason,
 } from "./services/signup-grant-guard";
+import { ensureStewardTenant } from "./services/steward-tenant-config";
 import { usersService } from "./services/users";
 import { getInitialCredits } from "./signup-credits";
 import type { UserWithOrganization } from "./types";
@@ -716,6 +717,30 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   // character helper keeps its own retry-on-next-session behavior.
   await apiKeysService.provisionDefaultApiKey(userWithOrg.id, userWithOrg.organization?.id || "");
   await ensureDefaultCharacter(userWithOrg.id, userWithOrg.organization?.id || "");
+
+  // Provision the org's Steward tenant EAGERLY at signup (#14645). Previously
+  // this only happened lazily at first agent-provision, so a brand-new user
+  // had no Steward tenant and `GET /steward/user/me/tenants` 403'd -> the app
+  // read that as "not authenticated" and bounced to /login in a loop, and the
+  // user could never reach agent-provision to self-heal (chicken-and-egg;
+  // 629/630 staging orgs had a NULL steward_tenant_id). Provisioning it here
+  // makes /me/tenants resolve 200 on the first post-signup request.
+  //
+  // FAIL-OPEN: a Steward outage must NOT block signup. `ensureStewardTenant`
+  // is idempotent (409-tolerant) and the agent-provision call site still
+  // self-heals later, so on failure we log and proceed rather than roll back
+  // the just-created account -- same non-fatal posture as the welcome-credit
+  // and default-character provisioning above.
+  const eagerTenantOrgId = userWithOrg.organization?.id;
+  if (eagerTenantOrgId) {
+    try {
+      await ensureStewardTenant(eagerTenantOrgId);
+    } catch (error) {
+      logger.warn(
+        `[StewardSync] Eager Steward tenant provisioning failed for new org ${eagerTenantOrgId}; signup proceeds and agent-provision will retry: ${describeSyncError(error)}`,
+      );
+    }
+  }
 
   return {
     ...userWithOrg,
