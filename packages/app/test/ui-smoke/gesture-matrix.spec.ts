@@ -277,7 +277,7 @@ async function rowTitleOrder(center: Locator): Promise<string[]> {
   });
 }
 
-test("dashboard notification center: row tap marks read in place, dismiss removes, clear-all hides the card", async ({
+test("dashboard notification center: row tap marks read in place, hover-X dismiss removes, context menu dismisses, no clear-all", async ({
   page,
 }) => {
   await installSeededInboxRoutes(page, seedInboxNotifications());
@@ -339,13 +339,20 @@ test("dashboard notification center: row tap marks read in place, dismiss remove
   ).toHaveCount(0, { timeout: 10_000 });
   await expect(center.getByTestId("notification-row")).toHaveCount(7);
 
-  // (d) Clear-all empties the inbox and the whole card self-hides.
-  await center.getByTestId("notifications-clear-all").click();
-  await expect(page.getByTestId("home-notification-center")).toHaveCount(0, {
-    timeout: 10_000,
-  });
-  await expect(page.getByTestId("home-screen")).toBeVisible();
-  await evidenceShot(page, "notification-center-cleared");
+  // (d) There is no bulk clear-all trash button any more — rows are dismissed
+  // one at a time. The right-click contextual menu is a second per-row path:
+  // open it on a remaining row and dismiss from it.
+  await expect(center.getByTestId("notifications-clear-all")).toHaveCount(0);
+  const menuTarget = center
+    .locator("li[data-notif-row]")
+    .filter({ hasText: "Payment failed" });
+  await menuTarget.click({ button: "right" });
+  await page.getByTestId("notification-menu-dismiss").click();
+  await expect(
+    center.getByTestId("notification-row").filter({ hasText: "Payment failed" }),
+  ).toHaveCount(0, { timeout: 10_000 });
+  await expect(center.getByTestId("notification-row")).toHaveCount(6);
+  await evidenceShot(page, "notification-center-row-menu-dismiss");
 });
 
 test("chat sheet: fast flick snaps open, slow sub-threshold drag stays closed, and the drag never leaks under the sheet", async ({

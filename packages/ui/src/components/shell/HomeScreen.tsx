@@ -5,7 +5,7 @@
 import {
   Bell,
   Camera,
-  ChevronUp,
+  ChevronDown,
   Contact,
   type LucideIcon,
   MessageSquare,
@@ -15,6 +15,10 @@ import type * as React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { haptics } from "../../bridge/capacitor-bridge";
+import {
+  dispatchChatCollapse,
+  OPEN_NOTIFICATION_CENTER_EVENT,
+} from "../../events";
 import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
@@ -42,20 +46,21 @@ const HOME_ENTER_CSS = `
 `;
 
 /**
- * Minimum upward pull (px) on the notifications hint before the shade opens.
- * Small enough to feel immediate, large enough that a vertical scroll graze or
- * a sloppy tap never counts as a pull.
+ * Minimum downward pull (px) before the notification shade opens. Small enough
+ * to feel immediate, large enough that a vertical scroll graze or a sloppy tap
+ * never counts as a pull.
  */
 const NOTIF_PULL_THRESHOLD_PX = 24;
 
 /**
- * The Apple-style bottom hint the notification shade hides behind: a quiet
- * pill ("N notifications") that self-hides when the inbox is empty. Tap or an
- * upward pull ≥ {@link NOTIF_PULL_THRESHOLD_PX} opens the shade — the pull is
- * tracked with pointer capture on the pill itself so the home scroller never
- * fights it.
+ * The top hint the notification shade drops from: a quiet pill ("N
+ * notifications") that self-hides when the inbox is empty. Tap or a downward
+ * pull ≥ {@link NOTIF_PULL_THRESHOLD_PX} opens the shade — the pull is tracked
+ * with pointer capture on the pill itself so the home scroller never fights it.
+ * The chevron points DOWN: notifications come from above, the inverse of the
+ * chat sheet that rises from the bottom.
  */
-function NotificationsPullUpHint({
+function NotificationsPullDownHint({
   onOpen,
 }: {
   onOpen: () => void;
@@ -66,7 +71,7 @@ function NotificationsPullUpHint({
   if (notifications.length === 0) return null;
   const count = notifications.length;
   return (
-    <div className="flex justify-center pt-3">
+    <div className="flex justify-center pb-1">
       <button
         type="button"
         data-testid="home-notifications-hint"
@@ -91,7 +96,7 @@ function NotificationsPullUpHint({
         }}
         onPointerMove={(e) => {
           if (startY.current === null || pulled.current) return;
-          if (startY.current - e.clientY >= NOTIF_PULL_THRESHOLD_PX) {
+          if (e.clientY - startY.current >= NOTIF_PULL_THRESHOLD_PX) {
             pulled.current = true;
             void haptics.light();
             onOpen();
@@ -110,7 +115,7 @@ function NotificationsPullUpHint({
           "border border-white/30 transition-colors hover:bg-black/40 active:scale-[0.97] motion-reduce:active:scale-100",
         )}
       >
-        <ChevronUp className="h-3.5 w-3.5 text-white/70" aria-hidden />
+        <ChevronDown className="h-3.5 w-3.5 text-white/70" aria-hidden />
         <Bell className="h-3.5 w-3.5" aria-hidden />
         <span className="text-xs font-medium tabular-nums">
           {count === 1 ? "1 notification" : `${count} notifications`}
@@ -244,10 +249,10 @@ export interface HomeScreenProps {
  * recent messages, orchestrator activity, and the per-plugin attention cards
  * (calendar/goals/finances/health/relationships/inbox), each self-hiding when
  * empty and dynamically ranked so whatever needs attention floats to the top.
- * Notifications stay HIDDEN until pulled up: a bottom hint pill (self-hiding
- * when the inbox is empty) opens the NotificationsShade sheet on tap or an
- * upward pull, so the resting home is just the ambient field + clock when
- * nothing's active. The AOSP native-OS tiles render below on Android. The
+ * Notifications stay HIDDEN until pulled DOWN: a top hint pill (self-hiding
+ * when the inbox is empty) opens the NotificationsShade sheet on tap or a
+ * downward pull anywhere on the home, so the resting home is just the ambient
+ * field + clock when nothing's active. The AOSP native-OS tiles render below on Android. The
  * chat overlay floats over the bottom; this scrolls with clearance for it.
  */
 export function HomeScreen({
@@ -265,17 +270,65 @@ export function HomeScreen({
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
 
-  // The notification shade: hidden until pulled up from the bottom hint pill
-  // (Apple idiom). Background changing moved to Settings + the in-chat
-  // BACKGROUND widget — the launcher long-press picker is gone.
+  // The notification shade: hidden until pulled DOWN from the top hint pill or
+  // by a downward drag anywhere on the home. Opening it also collapses the chat
+  // (the reveal and the chat dismissal are one motion — item pull-down inverts
+  // the chat sheet that rises from the bottom).
   const [shadeOpen, setShadeOpen] = useState(false);
-  const openShade = useCallback(() => setShadeOpen(true), []);
+  const openShade = useCallback(() => {
+    setShadeOpen(true);
+    dispatchChatCollapse();
+  }, []);
   const closeShade = useCallback(() => setShadeOpen(false), []);
+
+  // "Open notifications" from anywhere (desktop tray/menu, `//notifications`
+  // deep link): NotificationsShellBoot navigates to this home half, and this
+  // opens the shade over it.
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onOpen = () => setShadeOpen(true);
+    window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
+    return () =>
+      window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
+  }, []);
+
+  // Region-wide pull-down: a downward drag that STARTS at the top of the home
+  // scroller (nothing to scroll up into) opens the shade, so "drag down
+  // anywhere" works, not just on the hint pill. Tracked on the scroller with a
+  // ref so a normal mid-list scroll never triggers it.
+  const pullStart = useRef<number | null>(null);
+  const onScrollerPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      pullStart.current =
+        e.currentTarget.scrollTop <= 0 && e.pointerType !== "mouse"
+          ? e.clientY
+          : null;
+    },
+    [],
+  );
+  const onScrollerPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (pullStart.current === null || shadeOpen) return;
+      if (e.clientY - pullStart.current >= NOTIF_PULL_THRESHOLD_PX) {
+        pullStart.current = null;
+        void haptics.light();
+        openShade();
+      }
+    },
+    [openShade, shadeOpen],
+  );
+  const endScrollerPull = useCallback(() => {
+    pullStart.current = null;
+  }, []);
 
   return (
     <>
       <div
         data-testid="home-screen"
+        onPointerDown={onScrollerPointerDown}
+        onPointerMove={onScrollerPointerMove}
+        onPointerUp={endScrollerPull}
+        onPointerCancel={endScrollerPull}
         className={cn(
           // `touch-pan-y`: this scroller covers the whole home half, and a
           // scroll container's OWN touch-action governs which pans the browser
@@ -312,8 +365,17 @@ export function HomeScreen({
           prioritized widget stack sits in a `flex-1` breathing region that
           grows to absorb the space and centres its content within it, so an
           empty widget set reads as calm airiness rather than a broken gap; the
-          AOSP tiles and the notifications pull-up hint settle at the BOTTOM. */}
+          AOSP tiles settle at the BOTTOM; the notifications hint anchors the
+          TOP (the shade drops from above). */}
         <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col">
+          {/* Notifications drop from the top: the hint pill anchors the top of
+            the column, self-hides when the inbox is empty, and opens the shade
+            on tap or a downward pull. The shade is a portal overlay, so opening
+            it never reflows this dashboard. */}
+          <div className={enterClass} style={{ animationDelay: "60ms" }}>
+            <NotificationsPullDownHint onOpen={openShade} />
+          </div>
+
           {/* The always-on base: a naked sized grid with the time + weather as
             2×2 neighbours - no card, white text on the ambient field. Anchored
             at the top of the column as the editorial header. */}
@@ -414,14 +476,6 @@ export function HomeScreen({
               </div>
             </nav>
           ) : null}
-
-          {/* Notifications stay hidden until pulled up (Apple idiom): the hint
-            pill anchors the bottom of the column, self-hides when the inbox is
-            empty, and opens the shade on tap or an upward pull. The shade is a
-            portal overlay, so opening it never reflows this dashboard. */}
-          <div className={enterClass} style={{ animationDelay: "170ms" }}>
-            <NotificationsPullUpHint onOpen={openShade} />
-          </div>
         </div>
       </div>
       {shadeOpen ? <NotificationsShade onClose={closeShade} /> : null}

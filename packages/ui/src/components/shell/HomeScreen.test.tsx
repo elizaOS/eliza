@@ -131,7 +131,7 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notification-sheet")).toBeNull();
   });
 
-  it("hides the notifications pull-up hint while the inbox is empty", () => {
+  it("hides the notifications pull-down hint while the inbox is empty", () => {
     render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.queryByTestId("home-notifications-hint")).toBeNull();
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
@@ -164,7 +164,7 @@ describe("HomeScreen", () => {
   it("pins the notification center widget between the base widgets and the WidgetHost once notifications exist", () => {
     __ingestNotificationForTests(makeNotification());
     render(<HomeScreen onOpenTile={vi.fn()} />);
-    // Hidden until pulled up: only the quiet hint pill is on the dashboard.
+    // Hidden until pulled down: only the quiet hint pill is on the dashboard.
     const hint = screen.getByTestId("home-notifications-hint");
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
     fireEvent.click(hint);
@@ -177,17 +177,40 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
   });
 
-  it("opens the shade on an upward pull of the hint pill", () => {
+  it("opens the shade on a downward pull of the hint pill", () => {
     __ingestNotificationForTests(makeNotification());
     render(<HomeScreen onOpenTile={vi.fn()} />);
     const hint = screen.getByTestId("home-notifications-hint");
-    fireEvent.pointerDown(hint, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerDown(hint, { clientY: 100, pointerId: 1 });
     // Under the 24px threshold: still hidden.
-    fireEvent.pointerMove(hint, { clientY: 290, pointerId: 1 });
+    fireEvent.pointerMove(hint, { clientY: 110, pointerId: 1 });
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
-    // Past the threshold: the shade opens mid-gesture.
-    fireEvent.pointerMove(hint, { clientY: 270, pointerId: 1 });
+    // Past the threshold (dragging DOWN): the shade opens mid-gesture.
+    fireEvent.pointerMove(hint, { clientY: 130, pointerId: 1 });
     expect(screen.getByTestId("notifications-shade")).toBeTruthy();
+  });
+
+  it("opens the shade on a downward drag anywhere on the home (touch), collapsing chat", () => {
+    const collapse = vi.fn();
+    window.addEventListener("eliza:chat:collapse", collapse);
+    __ingestNotificationForTests(makeNotification());
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const home = screen.getByTestId("home-screen");
+    // A touch drag DOWN that starts at the top of the scroller (scrollTop 0)
+    // opens the shade and fires the chat-collapse event (item 5).
+    fireEvent.pointerDown(home, {
+      clientY: 100,
+      pointerId: 2,
+      pointerType: "touch",
+    });
+    fireEvent.pointerMove(home, {
+      clientY: 140,
+      pointerId: 2,
+      pointerType: "touch",
+    });
+    expect(screen.getByTestId("notifications-shade")).toBeTruthy();
+    expect(collapse).toHaveBeenCalledTimes(1);
+    window.removeEventListener("eliza:chat:collapse", collapse);
   });
 
   it("closes the notification shade when a row follows a safe deep link", () => {

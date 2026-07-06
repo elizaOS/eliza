@@ -23,7 +23,6 @@ export {
 export * from "./cloud-preference-patch";
 export * from "./desktop-permissions-client";
 export * from "./first-run-reset";
-export * from "./onboarding-replay";
 export {
   canHostLocalAgent,
   canRunLocal,
@@ -47,6 +46,7 @@ export {
 } from "./init";
 export * from "./ios-runtime";
 export * from "./mobile-permissions-client";
+export * from "./onboarding-replay";
 export * from "./platform-guards";
 export type * from "./types";
 export type {

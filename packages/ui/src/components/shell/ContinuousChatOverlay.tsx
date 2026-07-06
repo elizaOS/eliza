@@ -44,6 +44,7 @@ import {
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import {
   type BackIntentEventDetail,
+  CHAT_COLLAPSE_EVENT,
   CHAT_OPEN_EVENT,
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
@@ -241,16 +242,6 @@ export type ChatMode = "pill" | "input" | "half" | "full";
 type MotionControls = { stop: () => void };
 
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
-// Pull-to-maximize threshold (#13531). The FULL detent already rises to just
-// under the status bar (`openH` ≈ 0.9×viewportH, an INSET sheet with side margins
-// and a top gap); "maximize" is the edge-to-edge variant. The product spec is
-// "pull up past 80% of viewport height" — since FULL already exceeds that, the
-// faithful, unambiguous trigger is an OVER-pull whose peak raw (pre-clamp) pull
-// height clears max(0.8×viewportH, FULL) by this margin. In practice a pull that
-// pushes the sheet meaningfully past the FULL detent into the rubber-band zone
-// commits to full-bleed. A plain rest AT full never trips it (the margin gates
-// it above openH).
-const MAXIMIZE_OVERPULL_PX = 56;
 // Restore-from-maximized grab zone (#13531): while full-bleed, a downward pull
 // that STARTS within this fraction of the panel height from the top animates
 // back to the inset overlay. 0.2 = the "top 20%" per the product spec.
@@ -1157,8 +1148,10 @@ export function ContinuousChatOverlay({
   // FULL-SCREEN (maximized): at the FULL detent the user can drop the inset
   // (max-width, side padding, top margin, rounding) so the chat is edge-to-edge.
   // Invariant: only true while at FULL (sheetOpen && expanded && !pilled); every
-  // leave-full transition resets it.
-  const [maximized, setMaximized] = React.useState(false);
+  // leave-full transition resets it. Onboarding (firstRunOpen) starts here — the
+  // login/first-run chat opens edge-to-edge full-screen (kept in sync by the
+  // first-run pin effect below), then the falling edge collapses it to half.
+  const [maximized, setMaximized] = React.useState(firstRunOpen);
   // Reactive composer-focus flag. Only the short-landscape compact resting
   // affordance reads it (#14173): focusing the field lifts the compact treatment
   // so the composer widens to full BEFORE the first keystroke, and blurring an
@@ -2552,7 +2545,7 @@ export function ContinuousChatOverlay({
   // so the panel goes edge-to-edge in one continuous gesture. The button-only
   // `toggleMaximize` is gone; this is the single entry into full-bleed and is
   // called from the pull-gesture release path (maybeMaximizeOnRelease) once the
-  // peak raw pull clears the maximize threshold (see MAXIMIZE_OVERPULL_PX).
+  // peak raw pull clears 80% of the viewport height.
   const maximizeFromPull = React.useCallback(() => {
     // Snap the morph fully open BEFORE flipping to full-bleed so no in-flight
     // pill-open spring can leak a sub-1 scale into the maximized frame (top gap).
@@ -2643,7 +2636,10 @@ export function ContinuousChatOverlay({
     const was = wasFirstRunOpenRef.current;
     wasFirstRunOpenRef.current = firstRunOpen;
     if (firstRunOpen) {
+      // Pin FULL + edge-to-edge full-bleed: the login/first-run chat owns the
+      // whole screen (see the `maximized` initial state above).
       setMode("full");
+      setMaximized(true);
       return;
     }
     if (was) goToDetent("half");
@@ -2829,6 +2825,19 @@ export function ContinuousChatOverlay({
     window.addEventListener(CHAT_OPEN_EVENT, onOpen);
     return () => window.removeEventListener(CHAT_OPEN_EVENT, onOpen);
   }, [firstRunOpen, expand]);
+
+  // Pulling the notification shade down over the home collapses the chat: the
+  // reveal gesture and dismissing the open sheet are one motion. No-op while
+  // onboarding pins the sheet full (every collapse path is gated the same way).
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onCollapse = () => {
+      if (firstRunOpen) return;
+      goToDetent("collapsed");
+    };
+    window.addEventListener(CHAT_COLLAPSE_EVENT, onCollapse);
+    return () => window.removeEventListener(CHAT_COLLAPSE_EVENT, onCollapse);
+  }, [firstRunOpen, goToDetent]);
 
   // OS assistant / deep-link entry (Siri, Shortcuts, App Actions, the assistant
   // entry point) routes into `#chat?text=…&source=…&voice=1`. On desktop the
@@ -3489,24 +3498,23 @@ export function ContinuousChatOverlay({
   );
 
   // Pull-to-maximize decision (#13531): a released upward pull whose PEAK raw
-  // upward travel (maxPullRawRef, pre-clamp/pre-pin) cleared the maximize
-  // threshold commits to edge-to-edge full-bleed. The threshold is the greater
-  // of "80% of viewport height" (the product spec) and the FULL detent height
-  // (openH ≈ 0.9×viewportH, already inset-full), plus an over-pull margin — so a
-  // plain release AT full never trips it, only a deliberate over-pull past full
-  // does. Returns true when it took over the release so the caller skips its
-  // normal detent settle. Onboarding never maximizes (the sheet is pinned FULL
-  // and undismissable).
+  // upward travel (maxPullRawRef, pre-clamp/pre-pin) cleared 80% of the viewport
+  // height commits to edge-to-edge full-bleed — pulling the chat above 80%
+  // animates it into full screen. This sits below the inset FULL detent
+  // (openH ≈ 0.9×viewportH), so a sustained drag past 80% maximizes while a
+  // flick-up from half (small finger travel) still rests at the inset full
+  // detent. Returns true when it took over the release so the caller skips its
+  // normal detent settle. Onboarding never re-triggers this (the sheet is pinned
+  // full-bleed and undismissable).
   const maybeMaximizeOnRelease = React.useCallback((): boolean => {
     if (firstRunOpen) return false;
-    const threshold = Math.max(viewportH * 0.8, openH) + MAXIMIZE_OVERPULL_PX;
-    if (maxPullRawRef.current >= threshold) {
+    if (maxPullRawRef.current >= viewportH * 0.8) {
       focusThreadRef.current = true;
       maximizeFromPull();
       return true;
     }
     return false;
-  }, [firstRunOpen, viewportH, openH, maximizeFromPull]);
+  }, [firstRunOpen, viewportH, maximizeFromPull]);
 
   const pullBinding: PullGestureBinding = usePullGesture({
     onDrag: onDragOffset,
@@ -3685,26 +3693,96 @@ export function ContinuousChatOverlay({
 
   // Top-20% pull-down-to-restore (#13531). While maximized (full-bleed) there is
   // no SheetGrabber; this binding drives an invisible grab strip over the top
-  // 20% of the panel. A downward pull/flick that STARTS in that zone animates
-  // back to the inset FULL-detent overlay (restoreFromMaximized) rather than
-  // collapsing the whole sheet — Escape / Android-back still fully collapse. A
-  // pull UP or a tap in the zone is a no-op (it stays maximized); only a
-  // committed downward gesture restores. Onboarding pins the sheet, so the zone
-  // is inert there (it is only rendered under `fullBleed`, never during
-  // first-run, but guard anyway for safety).
+  // 20% of the panel. A downward pull drops full-bleed on the first downward
+  // frame and LIVE-TRACKS the finger — the panel insets and shrinks 1:1 under the
+  // pointer, resting where released (free rest, with detent magnetism at
+  // half/full and a full collapse near the bottom). Keyboard (Enter/Space/
+  // ArrowDown) does the discrete restore. Onboarding pins the sheet, so the zone
+  // is never rendered during first-run (guarded anyway for safety).
   const restoreFromMaximizedGuarded = React.useCallback(() => {
     if (firstRunOpen) return;
     restoreFromMaximized();
   }, [firstRunOpen, restoreFromMaximized]);
+  // Whether the in-flight restore drag has turned downward and dropped
+  // full-bleed. A ref (not the `maximized` state) because the release handler
+  // runs in the SAME event as the drop and would otherwise read the stale,
+  // pre-re-render `maximized` and snap back instead of resting where released.
+  const restoreDidUnmaximizeRef = React.useRef(false);
+  // Keep the top grab strip mounted for the DURATION of a restore drag even after
+  // it drops full-bleed. Without this the strip's JSX (gated on `fullBleed`)
+  // unmounts on the first downward frame, DESTROYING the pointer capture and
+  // freezing the gesture — the "can't collapse the maximized chat" bug. While
+  // true, the strip stays mounted and the (inset) grabber is suppressed, so
+  // exactly one grab element owns the pointer through the whole drag.
+  const [restoreDragging, setRestoreDragging] = React.useState(false);
+  // Live drag: reuse the shared drag math (onDragOffset) so the panel tracks the
+  // finger identically to a grabber pull down from FULL. The only extra step is
+  // dropping full-bleed the moment the pull turns downward, so the inset panel is
+  // what follows the finger. An upward hold leaves `maximized` set and clamps to
+  // the full height (onDragOffset pins upward travel at the FULL detent).
+  const onRestoreDrag = React.useCallback(
+    (offset: number) => {
+      if (firstRunOpen) return;
+      // Fresh gesture (onDragOffset flips draggingRef on its first frame).
+      if (!draggingRef.current) restoreDidUnmaximizeRef.current = false;
+      if (offset < 0 && maximized) {
+        setMaximized(false);
+        setRestoreDragging(true);
+        restoreDidUnmaximizeRef.current = true;
+      }
+      onDragOffset(offset);
+    },
+    [firstRunOpen, maximized, onDragOffset],
+  );
+  // Release from a restore drag: if it never un-maximized (an upward/stationary
+  // gesture) keep it pinned full-bleed; otherwise settle at the released height —
+  // free rest, snap to a nearby detent, or collapse near the bottom (the same
+  // magnetism the grabber uses).
+  const settleRestore = React.useCallback(() => {
+    draggingRef.current = false;
+    setDragPreviewMounted(false);
+    setRestoreDragging(false);
+    if (firstRunOpen || !restoreDidUnmaximizeRef.current) return settleDrag();
+    const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
+    if (h <= SHEET_DETENT_MAGNET) {
+      closeSheet();
+      return;
+    }
+    focusThreadRef.current = true;
+    if (h >= openH - SHEET_DETENT_MAGNET) {
+      goToDetent("full");
+    } else if (Math.abs(h - halfH) <= SHEET_DETENT_MAGNET) {
+      goToDetent("half");
+    } else {
+      setFreeH(h);
+      setMode("half");
+    }
+  }, [
+    firstRunOpen,
+    settleDrag,
+    threadHeight,
+    panelMaxH,
+    openH,
+    halfH,
+    closeSheet,
+    goToDetent,
+    setDragPreviewMounted,
+  ]);
+  // Cancel/tap on the strip: drop the drag flag and spring back to the current
+  // detent (a tap keeps it maximized; a rotation-canceled drag re-settles).
+  const resetRestore = React.useCallback(() => {
+    setRestoreDragging(false);
+    settleDrag();
+  }, [settleDrag]);
   const maximizeRestoreBinding: PullGestureBinding = usePullGesture({
     // No horizontal nav on the maximize grab strip.
     swipeEnabled: false,
-    onPullDown: restoreFromMaximizedGuarded,
-    // A slow drag DOWN released past the tap slop also restores; up/stationary
-    // keeps the maximized view.
-    onSettleFree: (direction) => {
-      if (direction === "down") restoreFromMaximizedGuarded();
-    },
+    onDrag: onRestoreDrag,
+    onDragReset: resetRestore,
+    // Flick or slow-release both settle at the current finger height.
+    onPullUp: settleRestore,
+    onPullDown: settleRestore,
+    onSettleFree: settleRestore,
   });
 
   // NOTE: outside pointerdown only drops the keyboard. Outside TAP collapse is
@@ -3944,7 +4022,12 @@ export function ContinuousChatOverlay({
               : "max-w-3xl",
         )}
       >
-        {!fullBleed ? (
+        {(!fullBleed && !restoreDragging) || firstRunOpen ? (
+          // Suppressed while full-bleed (the restore strip owns the top) and
+          // while a restore drag is in flight (so the strip keeps the pointer
+          // capture through the un-maximize). Onboarding keeps the inert grabber
+          // even at full-bleed — the restore gesture is a no-op there, so the
+          // "drag to exit full screen" strip would lie.
           <SheetGrabber
             open={sheetOpen}
             onOpen={openFromGrabber}
@@ -4127,16 +4210,18 @@ export function ContinuousChatOverlay({
               className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-surface to-transparent"
             />
 
-            {/* Top-20% pull-down-to-restore grab zone (#13531). Only mounted
-                while maximized (full-bleed) — where the SheetGrabber isn't
-                rendered — so a downward pull starting in the top 20% animates
-                the edge-to-edge view back into the inset overlay. `z-10` sits
-                UNDER the header (`z-20`) but above the transcript so the
-                launcher button keeps its taps while real pulls still hit the zone;
-                this strip catches pulls on the surrounding empty header space.
-                Keyboard-operable (Enter/Space/ArrowDown restore) so the
-                gesture-only affordance stays WCAG 2.1.1 operable. */}
-            {fullBleed ? (
+            {/* Top-20% pull-down-to-restore grab zone (#13531). Mounted while
+                full-bleed AND for the duration of a restore drag (`restoreDragging`)
+                so it keeps the pointer capture after the drag drops full-bleed —
+                a downward pull starting in the top 20% insets and tracks the
+                finger down. NOT during onboarding (it pins full-bleed and keeps
+                the inert grabber). `z-[15]` sits UNDER the header (`z-20`) but
+                above the transcript so the launcher button keeps its taps while
+                real pulls still hit the zone; this strip catches pulls on the
+                surrounding empty header space. Keyboard-operable (Enter/Space/
+                ArrowDown restore) so the gesture-only affordance stays WCAG
+                2.1.1 operable. */}
+            {(fullBleed || restoreDragging) && !firstRunOpen ? (
               <button
                 {...maximizeRestoreBinding}
                 type="button"
@@ -4690,7 +4775,7 @@ export function ContinuousChatOverlay({
                 // the imageError note above.)
                 placeholder={
                   firstRunOpen
-                    ? "Ask me anything — or pick an option"
+                    ? "Connect to cloud to enable chat"
                     : noProviderConfigured
                       ? "Connect a model provider in Settings to chat"
                       : modelBlocksSend
@@ -4712,8 +4797,8 @@ export function ContinuousChatOverlay({
                 // and only when a slash catalog is wired in — a plain message
                 // box otherwise.
                 {...comboboxAria}
-                // During onboarding the placeholder is a directive hint ("Ask me
-                // anything — or pick an option"), so brighten it from the resting
+                // During onboarding the placeholder is a directive hint ("Connect
+                // to cloud to enable chat"), so brighten it from the resting
                 // 45% to 70% so it reads clearly beside the seeded choices.
                 className={`max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
                   firstRunOpen

@@ -2886,6 +2886,26 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
+  it("a FULL downward pull in the restore zone drops full-bleed and collapses the sheet all the way (the un-maximize→collapse bug)", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    bigPullUp();
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+
+    // Drag the restore zone from the top all the way past the bottom: the strip
+    // must stay grabbable through the un-maximize (it un-mounts on `fullBleed`,
+    // so a naive gate would freeze the drag here) and drive the sheet to closed.
+    const zone = screen.getByTestId("chat-maximize-restore-zone");
+    fireEvent.pointerDown(zone, { clientY: 20, pointerId: 9 });
+    fireEvent.pointerMove(zone, { clientY: 400, pointerId: 9 });
+    fireEvent.pointerMove(zone, { clientY: 900, pointerId: 9 });
+    fireEvent.pointerUp(zone, { clientY: 900, pointerId: 9 });
+
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
   it("keyboard-activates the restore zone (ArrowDown exits full-bleed)", () => {
     const { controller } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);

@@ -49,9 +49,8 @@ const HEIGHT_FLOOR = "pointer-coarse:min-h-touch";
 const WIDTH_FLOOR = "pointer-coarse:min-w-touch";
 
 function renderSpec(spec: unknown) {
-  return withApp(
-    React.createElement(UiRenderer, { spec: asSpec(spec) }),
-  ).container;
+  return withApp(React.createElement(UiRenderer, { spec: asSpec(spec) }))
+    .container;
 }
 
 describe("UiRenderer tap-target floor — standalone button-family controls", () => {
@@ -293,7 +292,9 @@ describe("UiRenderer tap-target floor — accessible names on icon-only controls
         a: { type: "Pagination", props: { statePath: "p", totalPages: 3 } },
       },
     });
-    expect(pager.querySelector('button[aria-label="Previous page"]')).toBeTruthy();
+    expect(
+      pager.querySelector('button[aria-label="Previous page"]'),
+    ).toBeTruthy();
     expect(pager.querySelector('button[aria-label="Next page"]')).toBeTruthy();
 
     const carousel = renderSpec({
@@ -313,6 +314,8 @@ describe("UiRenderer tap-target floor — accessible names on icon-only controls
     expect(
       carousel.querySelector('button[aria-label="Previous item"]'),
     ).toBeTruthy();
-    expect(carousel.querySelector('button[aria-label="Next item"]')).toBeTruthy();
+    expect(
+      carousel.querySelector('button[aria-label="Next item"]'),
+    ).toBeTruthy();
   });
 });

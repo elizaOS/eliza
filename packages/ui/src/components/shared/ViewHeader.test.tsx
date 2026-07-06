@@ -128,7 +128,9 @@ describe("ViewHeader — standardized normal-view header (#13451)", () => {
     expect(
       screen.getByRole("button", { name: "Back to Settings" }),
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Back to launcher" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Back to launcher" }),
+    ).toBeNull();
   });
 
   it("keeps the title centered even when the right action is wide", () => {

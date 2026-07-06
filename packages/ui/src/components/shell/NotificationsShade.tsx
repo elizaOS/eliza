@@ -1,29 +1,32 @@
 /**
- * The pull-up notification shade: an Apple-style sheet that keeps the inbox
- * hidden until the user pulls it up from the home. HomeScreen renders a small
- * bottom hint pill (unread-count aware, self-hides when the inbox is empty);
- * pulling up on it — or tapping it — opens this sheet over a tinted scrim.
- * The shade renders the shared {@link NotificationsHomeCenter} card, so open /
- * dismiss / mark-all-read / clear all flow through the one notification store,
- * and rows arrive grouped by view, priority-then-newest.
+ * The pull-DOWN notification shade: a sheet that drops from the top of the home
+ * to reveal the inbox — the inverse of the chat overlay, which rises from the
+ * bottom. HomeScreen reveals it with a downward drag anywhere on the home (or a
+ * tap on the top hint) and, in the same motion, collapses the chat; dragging the
+ * sheet back UP dismisses it. It renders the shared {@link NotificationsHomeCenter}
+ * card, so open / dismiss / mark-all-read all flow through the one notification
+ * store, and rows arrive grouped by view, priority-then-newest.
  *
  * Portal-mounted at the shell-overlay z-layer and only while open, so the home
  * pays zero DOM cost at rest and opening never reflows the dashboard — the
- * sheet floats over it (the continuous chat overlay lives above both).
- * Scrim tap, grabber tap, and Escape dismiss.
+ * sheet floats over it (the continuous chat overlay lives above both). Scrim
+ * tap, grabber tap, an upward drag past {@link CLOSE_DRAG_PX}, and Escape all
+ * dismiss.
  */
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { haptics } from "../../bridge/capacitor-bridge";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 
-// Slide-up + scrim fade, local to the shade; transform/opacity only and fully
-// stilled under prefers-reduced-motion (the house bottom-sheet pattern).
+// Slide-down + scrim fade, local to the shade; transform/opacity only and fully
+// stilled under prefers-reduced-motion (the house sheet pattern, inverted to
+// drop from the top).
 const SHADE_CSS = `
 @keyframes notif-shade-in {
-  from { opacity: 0; transform: translateY(24px); }
+  from { opacity: 0; transform: translateY(-24px); }
   to   { opacity: 1; transform: none; }
 }
 @keyframes notif-shade-scrim-in {
@@ -37,17 +40,23 @@ const SHADE_CSS = `
 }
 `;
 
+/** Upward drag (px) on the sheet/grabber that dismisses the shade on release. */
+const CLOSE_DRAG_PX = 56;
+
 export interface NotificationsShadeProps {
-  /** Dismiss the shade (scrim tap, grabber, or Escape). */
+  /** Dismiss the shade (scrim tap, grabber, up-drag, or Escape). */
   onClose: () => void;
 }
 
-/** The pull-up sheet wrapping the notification inbox. Mounted only while open. */
+/** The pull-down sheet wrapping the notification inbox. Mounted only while open. */
 export function NotificationsShade({
   onClose,
 }: NotificationsShadeProps): React.JSX.Element | null {
   const labelId = useId();
   const sheetRef = useRef<HTMLElement>(null);
+  // Live upward-drag offset on the grabber (negative = dragged up).
+  const [dragY, setDragY] = useState(0);
+  const drag = useRef<{ id: number; startY: number } | null>(null);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -73,7 +82,7 @@ export function NotificationsShade({
   return createPortal(
     <div
       data-testid="notifications-shade"
-      className="fixed inset-0 flex items-end justify-center"
+      className="fixed inset-0 flex items-start justify-center"
       style={{ zIndex: Z_SHELL_OVERLAY + 4 }}
     >
       <style>{SHADE_CSS}</style>
@@ -90,27 +99,58 @@ export function NotificationsShade({
         aria-modal="true"
         aria-labelledby={labelId}
         tabIndex={-1}
+        style={{
+          transform: dragY ? `translateY(${dragY}px)` : undefined,
+          transition: drag.current
+            ? "none"
+            : "transform 200ms cubic-bezier(0.22,1,0.36,1)",
+        }}
         className={cn(
           "notif-shade-sheet relative flex w-full max-w-md flex-col",
-          "px-3 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] outline-none",
+          "px-3 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] outline-none",
         )}
       >
         <span id={labelId} className="sr-only">
           Notifications
         </span>
-        {/* Grabber: the pull idiom's handle, and a real close control. */}
+        {/* The shared inbox card. Self-hides when empty, which can only happen
+            mid-session (clear-all with the shade open) — treat that as done. */}
+        <NotificationsHomeCenter onNavigate={() => onClose()} />
+        {/* Grabber BELOW the card (the shade drops from the top, so its handle
+            sits at the bottom edge): tap or drag UP past CLOSE_DRAG_PX closes. */}
         <button
           type="button"
           aria-label="Dismiss notifications"
           data-testid="notifications-shade-grabber"
           onClick={onClose}
-          className="group flex min-h-touch w-full items-center justify-center py-1.5"
+          onPointerDown={(e) => {
+            drag.current = { id: e.pointerId, startY: e.clientY };
+            e.currentTarget.setPointerCapture?.(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            if (!drag.current || drag.current.id !== e.pointerId) return;
+            // Only track upward travel; a downward drag on the handle does nothing.
+            setDragY(Math.min(0, e.clientY - drag.current.startY));
+          }}
+          onPointerUp={(e) => {
+            if (drag.current?.id !== e.pointerId) return;
+            const closed = e.clientY - drag.current.startY <= -CLOSE_DRAG_PX;
+            drag.current = null;
+            if (closed) {
+              void haptics.light();
+              onClose();
+            } else {
+              setDragY(0);
+            }
+          }}
+          onPointerCancel={() => {
+            drag.current = null;
+            setDragY(0);
+          }}
+          className="group mt-1 flex min-h-touch w-full touch-none items-center justify-center py-1.5"
         >
           <span className="h-1.5 w-10 rounded-full bg-white/45 transition-colors group-hover:bg-white/70" />
         </button>
-        {/* The shared inbox card. Self-hides when empty, which can only happen
-            mid-session (clear-all with the shade open) — treat that as done. */}
-        <NotificationsHomeCenter onNavigate={() => onClose()} />
       </section>
     </div>,
     document.body,

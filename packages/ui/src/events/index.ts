@@ -141,6 +141,14 @@ export const CHAT_PREFILL_EVENT = "eliza:chat:prefill" as const;
  * mounted {@link ContinuousChatOverlay} is the one listener.
  */
 export const CHAT_OPEN_EVENT = "eliza:chat:open" as const;
+/**
+ * Collapse (close) the floating chat sheet to its resting bar. Fired when the
+ * user pulls the notification shade DOWN over the home: revealing notifications
+ * and dismissing the open chat are one gesture, so the shade asks the overlay
+ * to step down to its collapsed detent. The {@link ContinuousChatOverlay} is
+ * the one listener; it no-ops while onboarding pins the sheet full.
+ */
+export const CHAT_COLLAPSE_EVENT = "eliza:chat:collapse" as const;
 /** Open the keyword message-search panel (fired by the chat search affordance). */
 export const CHAT_MESSAGE_SEARCH_EVENT = "eliza:chat:message-search" as const;
 /**
@@ -170,6 +178,12 @@ export function dispatchChatPrefill(detail: ChatPrefillEventDetail): void {
 export function dispatchChatOpen(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(CHAT_OPEN_EVENT));
+}
+
+/** Dispatch a request to collapse the floating chat. See {@link CHAT_COLLAPSE_EVENT}. */
+export function dispatchChatCollapse(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(CHAT_COLLAPSE_EVENT));
 }
 
 /** Request the notification center to open (surface-agnostic — see
