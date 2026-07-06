@@ -104,6 +104,15 @@ function overview(
   } as unknown as WalletMarketOverviewResponse;
 }
 
+/** Override jsdom's document visibility so the refresh gate can be exercised. */
+function setVisibility(state: "visible" | "hidden"): void {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => state,
+  });
+  document.dispatchEvent(new Event("visibilitychange"));
+}
+
 beforeEach(() => {
   authMock.authenticated = true;
   navOpenView.mockReset();
@@ -115,6 +124,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  setVisibility("visible");
 });
 
 describe("WalletBalanceWidget (price-only, #10706)", () => {
@@ -245,6 +255,54 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
       expect(
         screen.getByTestId("chat-widget-wallet-prices").textContent,
       ).toContain("$70,000.00");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not poll while the document is hidden", async () => {
+    vi.useFakeTimers();
+    try {
+      setVisibility("hidden");
+      getWalletBalances.mockResolvedValue({ evm: null, solana: null });
+      getWalletMarketOverview.mockResolvedValue(
+        overview([{ symbol: "BTC", priceUsd: 64000 }]),
+      );
+
+      render(<WalletBalanceWidget />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(180_000);
+      });
+      expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not fetch or install the refresh poll before authentication", async () => {
+    vi.useFakeTimers();
+    try {
+      authMock.authenticated = false;
+      getWalletBalances.mockResolvedValue({ evm: null, solana: null });
+      getWalletMarketOverview.mockResolvedValue(
+        overview([{ symbol: "BTC", priceUsd: 64000 }]),
+      );
+
+      render(<WalletBalanceWidget />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(180_000);
+      });
+
+      expect(getWalletBalances).not.toHaveBeenCalled();
+      expect(getWalletMarketOverview).not.toHaveBeenCalled();
+      expect(
+        screen.getByTestId("chat-widget-wallet-balance-loading"),
+      ).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
