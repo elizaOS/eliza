@@ -421,6 +421,80 @@ describe("scenario memory seeds", () => {
     });
   });
 
+  it.each([
+    [
+      "profile",
+      {
+        homeTimezone: "America/Los_Angeles",
+        loyalty: { marriott: "MR12345678" },
+      },
+    ],
+    [
+      "trip",
+      {
+        destination: "JFK",
+        flight: { carrier: "United", flightNumber: "UA245" },
+      },
+    ],
+    [
+      "booking",
+      {
+        carrier: "United",
+        flightNumber: "UA245",
+        origin: "SFO",
+        destination: "JFK",
+      },
+    ],
+    [
+      "upgrade-offer",
+      {
+        carrier: "United",
+        flightNumber: "UA245",
+        priceUSD: 480,
+      },
+    ],
+    [
+      "calendar-focus-window",
+      {
+        title: "Deep work — no travel",
+        rule: "no-travel",
+      },
+    ],
+  ])("writes %s structured travel memory seeds as durable owner facts", async (kind, fields) => {
+    const { ctx, createMemory } = createSeedHarness();
+
+    const result = await applyScenarioSeedStep(ctx, {
+      type: "memory",
+      content: {
+        kind,
+        ...fields,
+      },
+    } satisfies ScenarioSeedStep);
+
+    expect(result).toBeUndefined();
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    const [memory, tableName, unique] = createMemory.mock.calls[0];
+    expect(tableName).toBe("facts");
+    expect(unique).toBe(true);
+    expect(memory.roomId).toBe(ctx.primaryRoomId);
+    expect(memory.entityId).toBe(ctx.primaryUserId);
+    const memoryContent = memory.content as { text: string };
+    expect(memoryContent.text).toContain(
+      `Scenario-seeded travel ${kind} context:`,
+    );
+    for (const [key, value] of Object.entries(fields)) {
+      expect(memoryContent.text).toContain(`"${key}"`);
+      if (typeof value === "string" || typeof value === "number") {
+        expect(memoryContent.text).toContain(String(value));
+      }
+    }
+    expect(memory.metadata).toMatchObject({
+      kind: "durable",
+      source: "scenario-seed",
+      seedKind: kind,
+    });
+  });
+
   it("fails the seed (never silently no-ops) on unsupported memory kinds", async () => {
     const { ctx, relationships, createMemory } = createSeedHarness();
 
