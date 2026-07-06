@@ -21,6 +21,7 @@ import {
   AgentRuntime,
   ChannelType,
   createMessageMemory,
+  getConnectorAccountManager,
   logger,
   type Memory,
   type Plugin,
@@ -39,6 +40,7 @@ import {
   createLifeOpsGmailSyncState,
   LifeOpsRepository,
 } from "../src/lifeops/repository.js";
+import { personalAssistantPlugin } from "../src/plugin.js";
 import {
   getLifeOpsLiveSetupWarnings,
   getSelectedLiveProviderEnv,
@@ -285,6 +287,40 @@ async function seedGoogleConnector(
       lastRefreshAt: nowIso,
     }),
     id: grantId,
+  });
+
+  // The action/status path resolves Google connectivity through the core
+  // ConnectorAccountManager (getGoogleConnectorStatus → listAccounts), not the
+  // legacy life_connector_grants row above — without a connected account the
+  // model honestly reports "your Google account isn't connected". Seed the
+  // account the same way a completed OAuth flow would persist it.
+  const accountManager = getConnectorAccountManager(runtime);
+  await accountManager.upsertAccount("google", {
+    id: grantId,
+    role: "OWNER",
+    purpose: ["messaging", "calendar"],
+    accessGate: "open",
+    status: "connected",
+    externalId: "assistant-user-journeys-google-sub",
+    displayHandle: "shawmakesmagic@gmail.com",
+    metadata: {
+      isDefault: true,
+      identity: { email: "shawmakesmagic@gmail.com", name: "Shaw" },
+      grantedCapabilities: [
+        "google.basic_identity",
+        "google.calendar.read",
+        "google.gmail.triage",
+      ],
+      grantedScopes: [
+        "openid",
+        "email",
+        "profile",
+        "https://www.googleapis.com/auth/calendar.readonly",
+        "https://www.googleapis.com/auth/gmail.readonly",
+      ],
+      hasRefreshToken: true,
+      tokenRef,
+    },
   });
 
   return repository;
@@ -641,6 +677,9 @@ describeIf(LIVE_SUITE_ENABLED)(
         throw new Error("Required live plugins were not available.");
       }
 
+      // personalAssistantPlugin is part of the composition (as in the sibling
+      // followup-repair suite): it registers lifeOpsSchema for migration and
+      // provides the inbox/connector action surface the email journey drives.
       runtime = new AgentRuntime({
         character,
         plugins: [
@@ -649,6 +688,7 @@ describeIf(LIVE_SUITE_ENABLED)(
             agentId: "main",
             workspaceDir,
           }),
+          personalAssistantPlugin as Plugin,
         ],
         conversationLength: 20,
         enableAutonomy: false,
@@ -673,6 +713,13 @@ describeIf(LIVE_SUITE_ENABLED)(
         trajectoryService.logLlmCall = () => {};
         trajectoryService.updateLatestLlmCall = async () => {};
       }
+
+      // Bootstrap the LifeOps schema (plus the app_inbox/app_reminders/
+      // app_calendar/app_goals carve-out mirrors) BEFORE any repository seed
+      // writes — seedGoogleConnector upserts into
+      // app_lifeops.life_connector_grants, which 42P01s if seeding outruns
+      // migration.
+      await LifeOpsRepository.bootstrapSchema(runtime);
 
       await ensureRoom({
         runtime,

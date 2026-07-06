@@ -230,7 +230,12 @@ function findDefinitionByTitle(
 
 const selectedLiveProvider = await selectLifeOpsLiveProvider();
 const selectedProviderEnv = getSelectedLiveProviderEnv(selectedLiveProvider);
+// Cerebras is a first-class live provider for this suite: the harness selects
+// it as its own named provider and routes it through @elizaos/plugin-openai's
+// OpenAI-compatible mode (OPENAI_BASE_URL → api.cerebras.ai), matching the
+// runtime's own "cerebras" provider id in the first-run catalog.
 const MEMORY_SUITE_PROVIDER_NAMES = new Set([
+  "cerebras",
   "openai",
   "openrouter",
   "google",
@@ -248,7 +253,7 @@ if (!LIVE_SUITE_ENABLED) {
   const warnings = [
     ...getLifeOpsLiveSetupWarnings(selectedLiveProvider),
     selectedLiveProvider && !MEMORY_SUITE_PROVIDER_SUPPORTED
-      ? `selected provider "${selectedLiveProvider.name}" does not support the reflection/fact-extraction live suite; use OpenAI, OpenRouter, Google, or Anthropic`
+      ? `selected provider "${selectedLiveProvider.name}" does not support the reflection/fact-extraction live suite; use Cerebras, OpenAI, OpenRouter, Google, or Anthropic`
       : null,
   ].filter((entry): entry is string => Boolean(entry));
 
