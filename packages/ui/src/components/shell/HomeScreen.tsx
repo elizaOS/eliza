@@ -22,11 +22,12 @@ import { WidgetHost } from "../../widgets/WidgetHost";
 import { Button } from "../ui/button";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { HomeBackgroundQuickPicker } from "./HomeBackgroundQuickPicker";
+import { HomeGestureHint } from "./HomeGestureHint";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 
 /**
  * A press that lands on a tile, widget, or any interactive control owns its own
- * tap/long-press — only a press on the BARE wallpaper opens the background
+ * tap/long-press - only a press on the BARE wallpaper opens the background
  * picker. Mirrors the chat message's nested-interactive guard.
  */
 function pressLandedOnBackground(
@@ -40,7 +41,7 @@ function pressLandedOnBackground(
   return !interactive || interactive === currentTarget;
 }
 
-// A gentle staggered fade-up as the home settles in — iOS-style, calm, and
+// A gentle staggered fade-up as the home settles in - iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
 // animation-delay (set inline) so the cards/tiles cascade in.
 const HOME_ENTER_CSS = `
@@ -75,13 +76,13 @@ const HOME_LONGPRESS_AFFORDANCE_CSS = `
 `;
 
 /**
- * The entrance fade-up must play exactly ONCE, on first mount — not on every
+ * The entrance fade-up must play exactly ONCE, on first mount - not on every
  * re-render or resize (which would re-apply the `opacity 0→1` animation and
  * flash the cards). This hook returns the `home-enter` class only for the first
  * commit, then permanently empty: after the initial paint the cards keep their
  * settled (fully opaque) state and a parent re-render / resize can never replay
  * the fade. Pure CSS `forwards` doesn't protect against the class being
- * re-evaluated, so we drop it from the tree once it has run (#9304).
+ * re-evaluated, so we drop it from the tree once it has run (issue 9304).
  */
 function useEnterOnceClass(): string {
   // `played` is set in a layout effect after the first commit so the very first
@@ -103,8 +104,8 @@ function useEnterOnceClass(): string {
 /**
  * Dev/test-only home layout-shift observer. Installs the shared
  * `layout-shift` PerformanceObserver (the same contract the e2e + KPI specs
- * read via `window.__ELIZA_LAYOUT_SHIFTS__`) so a CLS regression on the home —
- * a card popping in and jumping the page — is observable in the real app.
+ * read via `window.__ELIZA_LAYOUT_SHIFTS__`) so a CLS regression on the home -
+ * a card popping in and jumping the page - is observable in the real app.
  * Gated behind `isRenderTelemetryEnabled()` exactly like the render telemetry,
  * so production builds install nothing.
  */
@@ -117,7 +118,7 @@ function useHomeLayoutShiftObserver(): void {
       // multiple home surfaces is safe.
       new Function(LAYOUT_SHIFT_OBSERVER_INIT)();
     } catch {
-      // layout-shift unsupported in this engine — the observer init swallows it.
+      // layout-shift unsupported in this engine - the observer init swallows it.
     }
   }, []);
 }
@@ -133,20 +134,20 @@ interface HomeTile {
   label: string;
   icon: LucideIcon;
   target: HomeTileTarget;
-  /** AOSP/native-OS only (phone, contacts, messages) — hidden on stock installs. */
+  /** AOSP/native-OS only (phone, contacts, messages) - hidden on stock installs. */
   nativeOs?: boolean;
 }
 
 // The home screen carries NO general quick-access tiles: Launcher is the
 // adjacent launcher page, with Settings in its grid, so pinning those actions
 // here too would be redundant clutter. The only tiles left are the AOSP ElizaOS
-// fork's native-OS surfaces (messages, phone, contacts, camera) — real OS apps,
+// fork's native-OS surfaces (messages, phone, contacts, camera) - real OS apps,
 // `nativeOs` so they stay hidden on every non-AOSP build (where the tile grid
 // renders nothing at all).
 const HOME_TILES: HomeTile[] = [
   {
     // The only "messages" surface is the AOSP SMS view (MessagesPageView), which
-    // falls back to the apps catalog off-Android — so gate it like phone/contacts.
+    // falls back to the apps catalog off-Android - so gate it like phone/contacts.
     id: "messages",
     label: "Messages",
     icon: MessageSquare,
@@ -186,9 +187,9 @@ export interface HomeScreenProps {
 /**
  * The /chat home: a deliberately minimal dashboard that sits behind the
  * always-present floating chat. Below the time/weather base sits the pinned
- * notification center widget (NotificationsHomeCenter — the app's one
- * notification surface), then the prioritized home widgets — the unified
- * `home`-slot WidgetHost (#9143): recent messages, orchestrator activity, and
+ * notification center widget (NotificationsHomeCenter - the app's one
+ * notification surface), then the prioritized home widgets - the unified
+ * `home`-slot WidgetHost (issue 9143): recent messages, orchestrator activity, and
  * the per-plugin attention cards (calendar/goals/finances/health/relationships/
  * inbox), each self-hiding when empty and dynamically ranked so whatever needs
  * attention floats to the top. The home stays clean (just the ambient field +
@@ -205,8 +206,8 @@ export function HomeScreen({
   const tiles = HOME_TILES.filter((t) => !t.nativeOs || showNativeOsTiles);
   // The live activity stream feeds the home ranker's attention signals.
   const { events, clearEvents } = useActivityEvents();
-  // The entrance fade plays once, on first mount only — never re-triggered by a
-  // re-render or resize (#9304).
+  // The entrance fade plays once, on first mount only - never re-triggered by a
+  // re-render or resize (issue 9304).
   const enterClass = useEnterOnceClass();
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
@@ -244,7 +245,7 @@ export function HomeScreen({
           // scroll container's OWN touch-action governs which pans the browser
           // consumes at it (`overflow-y-auto` computes to overflow-x auto too,
           // so with the default `auto` the browser ate horizontal touch drags
-          // as a scroll attempt — pointercancel — and the home → launcher rail
+          // as a scroll attempt - pointercancel - and the home → launcher rail
           // flick never fired on real touch). Keep vertical panning native for
           // the widget list; hand every horizontal gesture to the rail.
           // `overscroll-y-contain`: keep the browser's own pull-to-refresh /
@@ -253,12 +254,12 @@ export function HomeScreen({
           // `overflow-x-hidden`: `overflow-y-auto` alone coerces the cross axis to
           // `auto`, so an over-wide child (a full-bleed widget, a long code line)
           // would make the home dashboard pan sideways under a diagonal trackpad
-          // wheel. Pin X closed — this surface scrolls vertically only (#14328).
+          // wheel. Pin X closed - this surface scrolls vertically only (issue 14328).
           "eliza-continuous-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-x-hidden overflow-y-auto overscroll-y-contain",
           // The shell root already reserves the status-bar safe area (its
           // paddingTop: var(--safe-area-top)); adding it again here double-padded
           // the content and left a large empty band above the dashboard. Just a
-          // small gutter — the notch is already cleared by the root.
+          // small gutter - the notch is already cleared by the root.
           "px-4",
           // Clear the residual tucked band the root deliberately shaves off the
           // safe area (capped at 1.25rem), plus a small breathing gutter.
@@ -289,24 +290,24 @@ export function HomeScreen({
           )}
         >
           {/* The always-on base: a naked sized grid with the time + weather as
-            2×2 neighbours — no card, white text on the ambient field. Anchored
+            2×2 neighbours - no card, white text on the ambient field. Anchored
             at the top of the column as the editorial header. */}
           <div className={enterClass} style={{ animationDelay: "70ms" }}>
             <DefaultHomeWidgets />
           </div>
 
           {/* The notification center: a pinned widget directly below the
-            time/weather base — THE notification surface (the pull-down sheet it
+            time/weather base - THE notification surface (the pull-down sheet it
             replaced is gone). Self-hides when the inbox is empty; when present
             it height-caps and scrolls internally. */}
           <div className={enterClass} style={{ animationDelay: "90ms" }}>
             <NotificationsHomeCenter />
           </div>
 
-          {/* The prioritized data widgets (#9143) live in the breathing region:
+          {/* The prioritized data widgets (issue 9143) live in the breathing region:
             a `flex-1` block that grows to fill the space between the header and
             the bottom tiles, so the column always spans the full height. Its
-            content is vertically centred within that region — when widgets are
+            content is vertically centred within that region - when widgets are
             present they sit in the visual middle (no top-heavy clustering with a
             void beneath); when the host self-hides everything, the empty region
             simply reads as calm, intentional space rather than a dead gap. A
@@ -327,6 +328,13 @@ export function HomeScreen({
             />
           </div>
 
+          <div
+            className={cn(enterClass, "pb-2")}
+            style={{ animationDelay: "130ms" }}
+          >
+            <HomeGestureHint />
+          </div>
+
           {tiles.length > 0 ? (
             <nav
               aria-label="Apps"
@@ -345,7 +353,7 @@ export function HomeScreen({
                       variant="ghost"
                       className={cn(
                         // Naked tile: icon + label sit directly on the ambient
-                        // orange field — no fill, no border.
+                        // orange field - no fill, no border.
                         "flex h-auto flex-col items-center gap-1.5 whitespace-normal rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
                         // Tactile press: a quick scale-down on tap (stilled for
                         // reduce-motion users), plus a faint white wash on hover.
