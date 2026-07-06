@@ -362,7 +362,7 @@ export class PresenceSignalBridgeService extends Service {
         ? payload.viewId
         : "unknown";
     const observedAt = new Date().toISOString();
-    const fingerprint = `view:${viewId}:${observedAt}`;
+    const fingerprint = `view:${viewId}`;
     const observedMs = Date.parse(observedAt);
     const existing = this.recentFingerprints.get(fingerprint);
     if (

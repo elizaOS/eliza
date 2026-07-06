@@ -11,7 +11,7 @@ import {
   type ViewSwitchedPayload,
 } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockState = vi.hoisted(() => {
   const entityStore = {
@@ -310,6 +310,10 @@ describe("PresenceSignalBridgeService view-switch + reaction signals (#14689)", 
     vi.clearAllMocks();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   function viewSwitchPayload(
     overrides: Partial<ViewSwitchedPayload> = {},
   ): ViewSwitchedPayload {
@@ -356,12 +360,15 @@ describe("PresenceSignalBridgeService view-switch + reaction signals (#14689)", 
   });
 
   it("dedupes a rapid re-switch to the same view within the window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-01T12:00:00.000Z"));
     const { runtime, handlers } = runtimeWithRelationships({});
     await PresenceSignalBridgeService.start(runtime);
 
     await handlers.get(EventType.VIEW_SWITCHED)?.(
       viewSwitchPayload() as unknown as MessagePayload,
     );
+    vi.setSystemTime(new Date("2026-06-01T12:00:00.250Z"));
     await handlers.get(EventType.VIEW_SWITCHED)?.(
       viewSwitchPayload() as unknown as MessagePayload,
     );
