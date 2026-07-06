@@ -13,9 +13,9 @@
  *      by HTTP verb; POST/PUT/PATCH/DELETE (or a dynamic `method:`) marks the
  *      method as mutating. The typed client is the single write path for shell
  *      views, so its mutating surface IS the view-mutation vocabulary.
- *   2. Scan the builtin-view renderer trees (`components/pages`,
- *      `components/settings`, `components/character` under `packages/ui/src`)
- *      for calls to mutating client methods and for raw
+ *   2. Scan the whole first-party shell-view component tree
+ *      (`packages/ui/src/components`) for calls to mutating client methods
+ *      and for raw
  *      `fetch`/`client.fetch`/`client.rawRequest` calls with a mutating verb.
  *   3. Every discovered mutation site must resolve in the curated registry
  *      (`view-action-ratchet.registry.json`) to exactly one of:
@@ -48,11 +48,17 @@ const REGISTRY_PATH = path.join(
   "view-action-ratchet.registry.json",
 );
 const CLIENT_API_DIR = "packages/ui/src/api";
-const VIEW_ROOTS = [
-  "packages/ui/src/components/pages",
-  "packages/ui/src/components/settings",
-  "packages/ui/src/components/character",
-];
+// The entire first-party shell-view component tree, not a hand-picked subset:
+// builtin views render their entry page under `components/pages` but compose
+// mutating sections from siblings (`components/local-inference`,
+// `components/connectors`, `components/custom-actions`, `components/transcripts`
+// — the Live-meeting builtin view — etc.). Scanning only pages/settings/
+// character let those sections' mutations pass the gate uncovered, so the
+// "every builtin-view mutation has a chat twin" guarantee was silently false.
+// Pure-presentational dirs (primitives, ui, shared) carry no client mutations,
+// so scanning the whole tree adds coverage without noise. Third-party plugin
+// view bundles live outside packages/ui and stay out of scope (see header).
+const VIEW_ROOTS = ["packages/ui/src/components"];
 const CATALOG_MD = "packages/docs/action-catalog.md";
 const CANONICAL_SPEC_DIR = "packages/prompts/specs/actions";
 

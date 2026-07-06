@@ -170,6 +170,188 @@
     },
     "updateCloudCompatAgent": {
       "exempt": "Eliza Cloud account-scoped agent management, authenticated by the user's cloud session"
+    },
+    "requestMeetingBot": { "action": "JOIN_MEETING" },
+    "stopMeeting": { "action": "LEAVE_MEETING" },
+    "createTranscript": { "action": "START_TRANSCRIPTION" },
+    "updatePlugin": {
+      "action": "PLUGIN",
+      "note": "agent-rendered plugin card in chat MessageContent; PLUGIN is the enable/configure twin"
+    },
+    "authorizeDiscordLocal": {
+      "action": "CONNECTOR",
+      "note": "Discord local-connector authorize; CONNECTOR is the setup/control facade"
+    },
+    "disconnectDiscordLocal": { "action": "CONNECTOR" },
+    "saveDiscordLocalSubscriptions": { "action": "CONNECTOR" },
+    "startTelegramAccountAuth": { "action": "CONNECTOR" },
+    "submitTelegramAccountAuth": { "action": "CONNECTOR" },
+    "disconnectTelegramAccount": { "action": "CONNECTOR" },
+    "startConnectorAccountOAuth": { "action": "CONNECTOR" },
+    "attachAppRun": {
+      "exempt": "app-runtime session IPC for a running mini-app (FullscreenView), not a builtin-view content mutation — launchApp/stopApp are the APP twins"
+    },
+    "detachAppRun": {
+      "exempt": "app-runtime session IPC for a running mini-app (FullscreenView)"
+    },
+    "controlAppRun": {
+      "exempt": "app-runtime session control for a running mini-app (FullscreenView)"
+    },
+    "heartbeatAppRun": {
+      "exempt": "app-runtime session keepalive for a running mini-app (FullscreenView)"
+    },
+    "sendAppRunMessage": {
+      "exempt": "app-runtime session message IPC for a running mini-app (FullscreenView)"
+    },
+    "sendAppSessionMessage": {
+      "exempt": "app-runtime session message IPC for a running mini-app (FullscreenView)"
+    },
+    "stopAppRun": {
+      "exempt": "app-runtime session teardown for a running mini-app (FullscreenView)"
+    },
+    "startAccountOAuth": {
+      "exempt": "provider OAuth consent — user-gesture browser handshake in AddAccountDialog"
+    },
+    "cancelAccountOAuth": {
+      "exempt": "provider OAuth consent — cancels the in-progress AddAccountDialog handshake"
+    },
+    "submitAccountOAuthCode": {
+      "exempt": "provider OAuth consent — user pastes the returned code in AddAccountDialog"
+    },
+    "createApiKeyAccount": {
+      "exempt": "provider credential consent — user-entered API-key account in AddAccountDialog"
+    },
+    "tunnelCredential": {
+      "exempt": "chat plumbing — agent-rendered credential-tunnel card in MessageContent"
+    },
+    "respondToComputerUseApproval": {
+      "exempt": "user-gesture approval — computer-use consent overlay"
+    },
+    "submitBugReport": {
+      "exempt": "developer diagnostics — bug report submission"
+    },
+    "postBootstrapExchange": {
+      "exempt": "setup/onboarding — pre-agent bootstrap token exchange in BootstrapStep"
+    },
+    "setInboxChatMute": {
+      "exempt": "chat plumbing — per-conversation mute toggle in the chat sidebar"
+    },
+    "spawnShellSession": {
+      "exempt": "chat plumbing — opens a shell/terminal conversation from the sidebar"
+    },
+    "startLocalInferenceDownload": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "local-model download has no chat/voice action twin"
+      }
+    },
+    "cancelLocalInferenceDownload": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "local-model download cancel has no chat/voice action twin"
+      }
+    },
+    "setLocalInferenceActive": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "activating a local model has no chat/voice action twin"
+      }
+    },
+    "clearLocalInferenceActive": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "clearing the active local model has no chat/voice action twin"
+      }
+    },
+    "uninstallLocalInferenceModel": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "uninstalling a local model has no chat/voice action twin"
+      }
+    },
+    "verifyLocalInferenceModel": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "verifying a local model has no chat/voice action twin"
+      }
+    },
+    "setLocalInferencePolicy": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "local-inference routing policy has no chat/voice action twin"
+      }
+    },
+    "setLocalInferencePreferredProvider": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "local-inference preferred-provider has no chat/voice action twin"
+      }
+    },
+    "setLocalInferenceAssignment": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "local-inference slot assignment has no chat/voice action twin"
+      }
+    },
+    "triggerVoiceModelUpdate": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "voice-model update has no chat/voice action twin"
+      }
+    },
+    "pinVoiceModel": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "pinning a voice model has no chat/voice action twin"
+      }
+    },
+    "setVoiceModelPreferences": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "voice-model preferences have no chat/voice action twin"
+      }
+    },
+    "generateCustomAction": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "custom-action authoring has no chat/voice action twin"
+      }
+    },
+    "createCustomAction": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "custom-action authoring has no chat/voice action twin"
+      }
+    },
+    "updateCustomAction": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "custom-action authoring has no chat/voice action twin"
+      }
+    },
+    "deleteCustomAction": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "custom-action authoring has no chat/voice action twin"
+      }
+    },
+    "testCustomAction": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "custom-action testing has no chat/voice action twin"
+      }
+    },
+    "deleteTranscript": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "transcript deletion has no chat/voice action twin"
+      }
+    },
+    "updateTranscript": {
+      "gap": {
+        "issue": "#15012",
+        "reason": "transcript rename/update has no chat/voice action twin"
+      }
     }
   },
   "rawSites": {
@@ -222,6 +404,14 @@
     },
     "POST ANDROID_SMS_GATEWAY_WEBHOOK_URL": {
       "exempt": "background SMS-forwarding bridge to the cloud gateway, not an on-screen control"
+    },
+    "POST /api/setup/telegram/start": {
+      "action": "CONNECTOR",
+      "note": "Telegram bot setup entry point (TelegramBotSetupPanel); CONNECTOR is the setup/control facade"
+    },
+    "POST /api/setup/telegram/cancel": {
+      "action": "CONNECTOR",
+      "note": "cancels the Telegram bot setup flow"
     }
   }
 }
