@@ -104,6 +104,14 @@ export default defineConfig({
 					"components/settings/settings-section-meta.ts",
 				),
 			},
+			// Canonical VAD capture defaults, resolved to source so the settings
+			// drift-guard test can assert the SETTINGS voice defaults never diverge
+			// from what the running capture path uses. Load-safe: the module only
+			// imports a pure helper and touches browser globals inside functions.
+			{
+				find: "@elizaos/ui/voice/local-asr-capture",
+				replacement: path.join(uiSrc, "voice/local-asr-capture.ts"),
+			},
 			{
 				find: "@elizaos/tui",
 				replacement: path.join(tuiSrc, "index.ts"),

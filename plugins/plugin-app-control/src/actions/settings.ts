@@ -673,11 +673,22 @@ const VOICE_CONTINUOUS_ALIASES: ReadonlyMap<string, VoiceContinuousMode> =
 		["on", "always-on"],
 	]);
 
-const DEFAULT_VOICE_SETTINGS_PREFS: VoiceSettingsPrefs = {
+// These defaults fill in a partial/empty `messages.voice` config before it is
+// written back through /api/config, so they MUST equal the values the running
+// capture path uses when it has no stored override — `DEFAULT_LOCAL_ASR_AUTO_STOP`
+// in @elizaos/ui (silenceMs 900, speechRmsThreshold 0.003), which is also what
+// the Voice settings UI (`DEFAULT_VAD_AUTO_STOP`/`DEFAULT_VAD_AUTO_STOP_PREFS`)
+// seeds from. Any other value here would let a chat-issued voice SETTINGS write
+// (e.g. "set voice silence to 1200") silently persist a *different* VAD
+// sensitivity than the Voice UI applies, so the two twins diverge (#14910). The
+// literals are duplicated rather than imported because this server action must
+// not pull the browser capture graph into its bundle; the drift is caught
+// mechanically by a test that imports the canonical constant.
+export const DEFAULT_VOICE_SETTINGS_PREFS: VoiceSettingsPrefs = {
 	continuous: "off",
 	vadAutoStop: {
 		silenceMs: 900,
-		speechRmsThreshold: 0.006,
+		speechRmsThreshold: 0.003,
 	},
 };
 

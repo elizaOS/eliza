@@ -12,9 +12,11 @@ import {
 	SETTINGS_NON_CATALOG_SECTION_META,
 	SETTINGS_SECTION_META,
 } from "@elizaos/ui/components/settings/settings-section-meta";
+import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "@elizaos/ui/voice/local-asr-capture";
 import { describe, expect, it, vi } from "vitest";
 import {
 	createSettingsAction,
+	DEFAULT_VOICE_SETTINGS_PREFS,
 	parseBooleanValue,
 	parseSettingsRequest,
 	resolveSectionId,
@@ -579,6 +581,87 @@ describe("SETTINGS action: set on an owned route section", () => {
 		expect(routeFetch).toHaveBeenCalledTimes(2);
 		expect(result?.success).toBe(false);
 		expect(texts.join(" ")).toContain("config save failed");
+	});
+
+	// #14910: the SETTINGS voice write is the semantic twin of the Voice UI. Its
+	// defaults are what a partial/empty `messages.voice` config gets filled in
+	// with, so they must equal the values the running capture path uses with no
+	// stored override — otherwise a chat write persists a different VAD
+	// sensitivity than the Voice UI applies. Pin against the canonical constant so
+	// any future drift fails here instead of silently diverging.
+	it("keeps voice VAD defaults in sync with the canonical capture defaults", () => {
+		expect(DEFAULT_VOICE_SETTINGS_PREFS.vadAutoStop).toEqual({
+			silenceMs: DEFAULT_LOCAL_ASR_AUTO_STOP.silenceMs,
+			speechRmsThreshold: DEFAULT_LOCAL_ASR_AUTO_STOP.speechRmsThreshold,
+		});
+	});
+
+	it("fills a partial voice config's missing RMS with the capture default when setting silence", async () => {
+		// Stored config has a continuous mode but no vadAutoStop — the write must
+		// seed the missing speechRmsThreshold with the canonical capture default
+		// (0.003), not a value that diverges from the Voice UI.
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: { messages: { voice: { continuous: "vad-gated" } } },
+				};
+			}
+			return { ok: true };
+		});
+		const { result } = await invoke(
+			{ action: "set", section: "voice", key: "silence-ms", value: "1200" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/config",
+			body: {
+				messages: {
+					voice: {
+						continuous: "vad-gated",
+						vadAutoStop: {
+							silenceMs: 1200,
+							speechRmsThreshold:
+								DEFAULT_LOCAL_ASR_AUTO_STOP.speechRmsThreshold,
+						},
+					},
+				},
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("fills an empty voice config's missing silence with the capture default when setting RMS", async () => {
+		// Empty `messages` — setting only the RMS must seed the missing silenceMs
+		// with the canonical capture default (900ms) so the twin stays aligned.
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return { ok: true, data: { messages: {} } };
+			}
+			return { ok: true };
+		});
+		const { result, texts } = await invoke(
+			{ action: "set", section: "voice", key: "rms", value: "0.01" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/config",
+			body: {
+				messages: {
+					voice: {
+						continuous: "off",
+						vadAutoStop: {
+							silenceMs: DEFAULT_LOCAL_ASR_AUTO_STOP.silenceMs,
+							speechRmsThreshold: 0.01,
+						},
+					},
+				},
+			},
+		});
+		expect(result?.success).toBe(true);
+		expect(texts.join(" ")).toContain("speech threshold is 0.01");
 	});
 
 	it("dispatches permissions shell off through the backend route", async () => {
