@@ -55,6 +55,10 @@ import {
   STATIC_ELIZA_PLUGINS,
 } from "./plugin-types.ts";
 import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate.ts";
+import {
+  buildRuntimeSettingsProjection,
+  type RuntimeSettingsProjectionOptions,
+} from "./runtime-settings.ts";
 
 export { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
 export {
@@ -63,6 +67,7 @@ export {
   OPTIONAL_PLUGIN_MAP,
   PROVIDER_PLUGIN_MAP,
 } from "./plugin-collector.ts";
+export { isEnvKeyAllowedForForwarding } from "./runtime-settings.ts";
 
 import { PROVIDER_PLUGIN_MAP } from "./plugin-collector.ts";
 import { STATIC_ELIZA_PLUGIN_LOADERS } from "./plugin-types.ts";
@@ -208,11 +213,7 @@ import {
   type ElizaConfig,
   loadElizaConfig,
 } from "../config/config.ts";
-import {
-  CONNECTOR_ENV_MAP,
-  collectConfigEnvVars,
-  collectConnectorEnvVars,
-} from "../config/env-vars.ts";
+import { CONNECTOR_ENV_MAP } from "../config/env-vars.ts";
 import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
 import {
   createHookEvent,
@@ -1792,44 +1793,6 @@ export {
 // ---------------------------------------------------------------------------
 // Browser server pre-flight
 // ---------------------------------------------------------------------------
-
-/**
- * Returns true if the given env var key is safe to forward to runtime.settings.
- * Blocks blockchain private keys, secrets, passwords, tokens, credentials,
- * mnemonics, and seed phrases while allowing API keys that plugins need.
- */
-export function isEnvKeyAllowedForForwarding(key: string): boolean {
-  const upper = key.toUpperCase();
-  if (upper === "ALLOW_NO_DATABASE") return false;
-  // Block blockchain private keys
-  if (upper.includes("PRIVATE_KEY")) return false;
-  if (upper.startsWith("EVM_") || upper.startsWith("SOLANA_")) return false;
-  // Block secrets, passwords, tokens, and seed phrases (but not API_KEY which plugins need)
-  if (/(SECRET|PASSWORD|CREDENTIAL|MNEMONIC|SEED_PHRASE)/i.test(key))
-    return false;
-  if (/(ACCESS_TOKEN|REFRESH_TOKEN|SESSION_TOKEN|AUTH_TOKEN)$/i.test(key))
-    return false;
-  // Block elizaCloud connection keys — these must only come from config.cloud
-  // via applyCloudConfigToEnv(). Forwarding them from config.env.vars into
-  // runtime.settings would let a stale env-var shadow the live cloud key that
-  // the app sets when the user connects through the UI.
-  if (
-    upper === "ELIZAOS_CLOUD_API_KEY" ||
-    upper === "ELIZAOS_CLOUD_ENABLED" ||
-    upper === "ELIZAOS_CLOUD_BASE_URL" ||
-    upper === "ELIZAOS_CLOUD_NANO_MODEL" ||
-    upper === "ELIZAOS_CLOUD_MEDIUM_MODEL" ||
-    upper === "ELIZAOS_CLOUD_SMALL_MODEL" ||
-    upper === "ELIZAOS_CLOUD_LARGE_MODEL" ||
-    upper === "ELIZAOS_CLOUD_MEGA_MODEL" ||
-    upper === "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL" ||
-    upper === "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL" ||
-    upper === "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL" ||
-    upper === "ELIZAOS_CLOUD_PLANNER_MODEL"
-  )
-    return false;
-  return true;
-}
 
 function assertPersistentDatabaseRequired(
   runtime: Pick<AgentRuntime, "getSetting" | "agentId">,
@@ -3414,6 +3377,23 @@ export function resolveWalletRuntimeSettings(
   return settings;
 }
 
+/**
+ * Projects persisted config into `AgentRuntime.settings`, the read path plugins
+ * use after boot. Cold boot and hot reload must share this projection so a
+ * connector saved from chat keeps working after the runtime rebuilds.
+ */
+export function buildRuntimeSettings(
+  config: ElizaConfig,
+  options: RuntimeSettingsProjectionOptions = {},
+): Record<string, string> {
+  const env = options.env ?? process.env;
+  return buildRuntimeSettingsProjection(config, {
+    ...options,
+    env,
+    walletSettings: resolveWalletRuntimeSettings(config, env),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -4320,80 +4300,13 @@ export async function startEliza(
             : undefined,
         }
       : {}),
-    settings: {
-      VALIDATION_LEVEL: "fast",
-      // SecretsService uses ENCRYPTION_SALT; the app already persists SECRET_SALT
-      // for durable ciphertext, so reuse it rather than requiring a second key.
-      ...(process.env.SECRET_SALT
-        ? { ENCRYPTION_SALT: process.env.SECRET_SALT }
-        : {}),
-      // Forward non-sensitive Eliza config.env vars as runtime settings so
-      // plugins can access them via runtime.getSetting(). This fixes a bug where
-      // plugins (e.g. @elizaos/plugin-google-genai) call runtime.getSetting()
-      // which returns null for keys not in settings, but the plugin checks
-      // !== undefined causing it to use "null" as the model name.
-      //
-      // Security: Filter out blockchain private keys and secrets. API keys are
-      // allowed since plugins need them via runtime.getSetting(). Private keys
-      // should only be accessed via process.env by signing services.
-      ...Object.fromEntries(
-        Object.entries(collectConfigEnvVars(config)).filter(([key]) =>
-          isEnvKeyAllowedForForwarding(key),
-        ),
-      ),
-      // Forward connector config vars as-is. The connector env map is curated
-      // and plugins need access to secrets like passwords and tokens via
-      // runtime.getSetting() for real transports to boot.
-      ...collectConnectorEnvVars(config),
-      // Forward Eliza config env vars as runtime settings
-      ...(preferredProviderId ? { MODEL_PROVIDER: preferredProviderId } : {}),
-      ...(visionModeSetting ? { VISION_MODE: visionModeSetting } : {}),
-      ...resolveWalletRuntimeSettings(config),
-      ...(typeof config.agents?.defaults?.adminEntityId === "string" &&
-      config.agents.defaults.adminEntityId.trim().length > 0
-        ? {
-            ELIZA_ADMIN_ENTITY_ID: config.agents.defaults.adminEntityId.trim(),
-          }
-        : {}),
-      ...(config.agents?.defaults?.ownerContacts
-        ? {
-            ELIZA_OWNER_CONTACTS_JSON: JSON.stringify(
-              config.agents.defaults.ownerContacts,
-            ),
-          }
-        : {}),
-      ...(config.roles?.connectorAdmins
-        ? {
-            ELIZA_ROLES_CONNECTOR_ADMINS_JSON: JSON.stringify(
-              config.roles.connectorAdmins,
-            ),
-          }
-        : {}),
-      // Forward skills config so plugin-agent-skills can apply allow/deny filtering
-      ...(config.skills?.allowBundled
-        ? { SKILLS_ALLOWLIST: config.skills.allowBundled.join(",") }
-        : {}),
-      ...(config.skills?.denyBundled
-        ? { SKILLS_DENYLIST: config.skills.denyBundled.join(",") }
-        : {}),
-      // Managed skills are stored in the Eliza state dir.
-      SKILLS_DIR: managedSkillsDir,
-      // Tell plugin-agent-skills where to find bundled + workspace skills
-      ...(bundledSkillsDir ? { BUNDLED_SKILLS_DIRS: bundledSkillsDir } : {}),
-      ...(workspaceSkillsDir
-        ? { WORKSPACE_SKILLS_DIR: workspaceSkillsDir }
-        : {}),
-      // Also forward extra dirs from config
-      ...(config.skills?.load?.extraDirs?.length
-        ? { EXTRA_SKILLS_DIRS: config.skills.load.extraDirs.join(",") }
-        : {}),
-      // Disable image description when vision is explicitly toggled off.
-      // The cloud plugin always registers IMAGE_DESCRIPTION, so we need a
-      // runtime setting to prevent the message service from calling it.
-      ...(config.features?.vision === false
-        ? { DISABLE_IMAGE_DESCRIPTION: "true" }
-        : {}),
-    },
+    settings: buildRuntimeSettings(config, {
+      preferredProviderId,
+      visionModeSetting,
+      managedSkillsDir,
+      bundledSkillsDir,
+      workspaceSkillsDir,
+    }),
   });
   installRuntimeMethodBindings(runtime);
 
@@ -5576,10 +5489,15 @@ export async function startEliza(
           // (name, bio, style, etc.) are picked up on restart.
           const freshCharacter = buildCharacterFromConfig(freshConfig);
 
+          const freshWorkspaceDir =
+            freshConfig.agents?.defaults?.workspace ?? workspaceDir;
+          const freshWorkspaceSkillsDir = freshWorkspaceDir
+            ? `${freshWorkspaceDir}/skills`
+            : null;
+
           // Recreate Eliza plugin with fresh workspace
           const freshElizaPlugin = createElizaPlugin({
-            workspaceDir:
-              freshConfig.agents?.defaults?.workspace ?? workspaceDir,
+            workspaceDir: freshWorkspaceDir,
 
             agentId:
               freshCharacter.name?.toLowerCase().replace(/\s+/g, "-") ?? "main",
@@ -5621,26 +5539,13 @@ export async function startEliza(
               ...freshPluginsForRuntime,
             ],
             ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
-            settings: {
-              ...(process.env.SECRET_SALT
-                ? { ENCRYPTION_SALT: process.env.SECRET_SALT }
-                : {}),
-              ...Object.fromEntries(
-                Object.entries(collectConfigEnvVars(freshConfig)).filter(
-                  ([key]) => isEnvKeyAllowedForForwarding(key),
-                ),
-              ),
-              ...(freshPreferredProviderId
-                ? { MODEL_PROVIDER: freshPreferredProviderId }
-                : {}),
-              ...(freshVisionModeSetting
-                ? { VISION_MODE: freshVisionModeSetting }
-                : {}),
-              // Disable image description when vision is explicitly toggled off.
-              ...(freshConfig.features?.vision === false
-                ? { DISABLE_IMAGE_DESCRIPTION: "true" }
-                : {}),
-            },
+            settings: buildRuntimeSettings(freshConfig, {
+              preferredProviderId: freshPreferredProviderId,
+              visionModeSetting: freshVisionModeSetting,
+              managedSkillsDir,
+              bundledSkillsDir,
+              workspaceSkillsDir: freshWorkspaceSkillsDir,
+            }),
           });
           installRuntimeMethodBindings(newRuntime);
 
