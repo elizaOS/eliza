@@ -50,8 +50,8 @@ const ARTIFACT_DIR = path.join(
   process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
     path.join(
       repoRootFromCwd(),
-      ".github",
-      "issue-evidence",
+      "test-results",
+      "android-artifacts",
       ISSUE_EVIDENCE_DIR,
     ),
   "launcher-gesture-loop",

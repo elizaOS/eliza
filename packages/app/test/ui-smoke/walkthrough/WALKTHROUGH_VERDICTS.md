@@ -16,7 +16,7 @@ The original `needs-work` rows were follow-up app defects surfaced by the
 walkthrough: leaked Character editor Style Rules placeholder copy, low-contrast
 open chat chrome over the mobile dashboard, and Settings mobile back chrome
 colliding with section headings. Those are fixed and reviewed in
-`.github/issue-evidence/9298-mobile-walkthrough-fixes/`.
+the Playwright/test capture artifact tree.
 
 | Step | Viewport | Verdict | Notes |
 | --- | --- | --- | --- |

@@ -51,7 +51,7 @@ bun run --cwd packages/app test:e2e:ios:boot-gate        # strict boot/chat gate
   (`xcrun simctl boot 'iPhone 16 Pro'`) and a **fresh** simulator app build in
   DerivedData. The runner refuses to capture a stale install (per the
   rebuild-before-capture rule).
-- **Produces:** `.github/issue-evidence/10198-walkthrough-ios-sim-*.png/.mov`
+- **Produces:** simulator screenshot/video artifacts in the CI artifact tree.
   (single-shot `simctl io` capture of the running app) plus
   `reports/walkthrough/<runId>/device-matrix.json` with per-phase status for
   `ios-onboarding-smoke.mjs` (onboarding), `mobile-local-chat-smoke.mjs` (chat
@@ -106,7 +106,7 @@ bun run --cwd packages/app test:e2e:walkthrough:android  # screen capture of the
   `android-e2e.mjs` auto-boots an AVD headless and the APK must be built with
   `ELIZA_WEBVIEW_DEBUG=1` for the CDP target to exist.
 - **Produces (capture leg):**
-  `.github/issue-evidence/10198-walkthrough-android-*.png/.mp4`
+  Android screenshot/video artifacts in the CI artifact tree.
   (`adb screenrecord`). The **driven** journey + route coverage is
   `test:e2e:android`.
 - **Skip reason (recorded automatically):** "adb not found on PATH" or "no

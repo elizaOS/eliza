@@ -2,15 +2,21 @@
  * Playwright UI-smoke spec for the First Run Startup app flow using the real
  * renderer fixture.
  */
-import { copyFile, mkdir } from "node:fs/promises";
-import path from "node:path";
-import { expect, type Page, type Route, test } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
+import {
+  expect,
+  type Page,
+  type Route,
+  type TestInfo,
+  test,
+} from "@playwright/test";
 import {
   expectNoRenderTelemetryErrors,
   installDefaultAppRoutes,
   installRenderTelemetryGuard,
   seedAppStorage,
 } from "./helpers";
+import { saveBrowserVideoArtifact } from "./helpers/video-artifacts";
 
 // Every other ui-smoke spec seeds `eliza:first-run-complete = "1"`, so the
 // first-run chat transcript rarely gets render-telemetry coverage. That surface
@@ -30,25 +36,37 @@ async function fulfillJson(
   });
 }
 
-const EVIDENCE_DIR = path.resolve(
-  process.cwd(),
-  "../../.github/issue-evidence",
-);
-
-async function captureFirstRunRestoreEvidence(page: Page): Promise<void> {
+async function captureFirstRunRestoreEvidence(
+  page: Page,
+  testInfo: TestInfo,
+): Promise<void> {
   if (!process.env.E2E_RECORD) return;
-  await mkdir(EVIDENCE_DIR, { recursive: true });
+  const screenshotPath = testInfo.outputPath(
+    "9963-first-run-restore-prompt.jpg",
+  );
+  await mkdir(testInfo.outputDir, { recursive: true });
   await page.screenshot({
-    path: path.join(EVIDENCE_DIR, "9963-first-run-restore-prompt.png"),
+    path: screenshotPath,
+    type: "jpeg",
+    quality: 90,
     fullPage: false,
+  });
+  await testInfo.attach("first-run restore prompt", {
+    path: screenshotPath,
+    contentType: "image/jpeg",
   });
   const video = page.video();
   if (!video) return;
   await page.close();
-  await copyFile(
-    await video.path(),
-    path.join(EVIDENCE_DIR, "9963-first-run-restore-prompt.webm"),
-  );
+  const artifact = await saveBrowserVideoArtifact({
+    video,
+    testInfo,
+    basename: "9963-first-run-restore-prompt",
+  });
+  await testInfo.attach("first-run restore prompt video", {
+    path: artifact.path,
+    contentType: artifact.contentType,
+  });
 }
 
 // A full-capability host (real API base + Electrobun window marker) so the local
@@ -151,7 +169,7 @@ test("in-chat first-run renders without a render loop and lets the runtime be ch
 
 test("fresh first-run offers to restore an existing local backup before onboarding", async ({
   page,
-}) => {
+}, testInfo) => {
   await installRenderTelemetryGuard(page);
   await installDefaultAppRoutes(page);
   await routeFirstRunIncomplete(page);
@@ -218,5 +236,5 @@ test("fresh first-run offers to restore an existing local backup before onboardi
     page,
     "in-chat first-run local backup restore",
   );
-  await captureFirstRunRestoreEvidence(page);
+  await captureFirstRunRestoreEvidence(page, testInfo);
 });

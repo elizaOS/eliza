@@ -12,6 +12,34 @@
 import { verifyMessage } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  isStoreBuild: vi.fn(() => false),
+}));
+
+vi.mock("../build-variant", () => ({
+  isStoreBuild: mocks.isStoreBuild,
+}));
+
+vi.mock("@elizaos/logger", () => ({
+  createLogger: () => ({
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+  }),
+  logger: {
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+  },
+}));
+
+vi.mock("@elizaos/shared/steward-session-client", () => ({
+  writeStoredStewardToken: (token: string) => {
+    window.localStorage.setItem("steward_session_token", token);
+  },
+}));
+
 import {
   E2E_WALLET_AUTOLOGIN_STORAGE_KEY,
   E2E_WALLET_KEY_STORAGE_KEY,
@@ -73,6 +101,7 @@ function mockFetch(): {
 }
 
 beforeEach(() => {
+  mocks.isStoreBuild.mockReturnValue(false);
   window.localStorage.clear();
   Reflect.deleteProperty(window, "ethereum");
 });
@@ -150,6 +179,15 @@ describe("e2e wallet + SIWE login", () => {
     expect(isE2eWalletWebHostnameAllowed("127.0.0.1")).toBe(true);
     expect(isE2eWalletWebHostnameAllowed("localhost")).toBe(true);
     expect(isE2eWalletInstallAllowed()).toBe(true);
+  });
+
+  it("keeps the harness wallet inert on store builds even when localStorage is seeded", async () => {
+    mocks.isStoreBuild.mockReturnValue(true);
+    window.localStorage.setItem(E2E_WALLET_KEY_STORAGE_KEY, PRIVATE_KEY);
+
+    expect(isE2eWalletInstallAllowed()).toBe(false);
+    expect(await installE2eWalletIfRequested()).toBe(false);
+    expect(getInjectedEthereumProvider()).toBeNull();
   });
 
   it("never overwrites an already-injected wallet", async () => {

@@ -2,10 +2,8 @@
  * Playwright UI-smoke spec for the Launcher Cloud Gating app flow using the
  * real renderer fixture.
  */
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { expect, type Page, test } from "@playwright/test";
+import { mkdir, writeFile } from "node:fs/promises";
+import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -13,6 +11,7 @@ import {
   seedAppStorage,
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
+import { saveBrowserVideoArtifact } from "./helpers/video-artifacts";
 
 /**
  * Rendered launcher cloud-gating evidence (#10725 / #11342).
@@ -35,30 +34,34 @@ import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality"
  * `curateLauncherPages` ever sees them), so the gate under test is the real
  * curation path, not a mock of it.
  *
- * Evidence lands in `.github/issue-evidence/10725-launcher-gating/` (see the
- * README there for repro commands). The walkthrough test also records a video
- * of the agent-first cloud setup flow: launcher without the tile → Settings →
- * Cloud → Connect → connected → launcher with the tile.
+ * Capture artifacts are written into Playwright's per-test output directory.
+ * The walkthrough test also records a video of the agent-first cloud setup
+ * flow: launcher without the tile → Settings → Cloud → Connect → connected →
+ * launcher with the tile.
  */
-
-const EVIDENCE_DIR = fileURLToPath(
-  new URL(
-    "../../../../.github/issue-evidence/10725-launcher-gating",
-    import.meta.url,
-  ),
-);
 
 const VIEWPORTS = [
   { name: "desktop", width: 1280, height: 800 },
   { name: "mobile", width: 390, height: 844 },
 ] as const;
 
-async function screenshot(page: Page, name: string): Promise<void> {
-  await mkdir(EVIDENCE_DIR, { recursive: true });
+async function screenshot(
+  page: Page,
+  testInfo: TestInfo,
+  name: string,
+): Promise<void> {
+  const screenshotPath = testInfo.outputPath(`${name}.jpg`);
+  await mkdir(testInfo.outputDir, { recursive: true });
   await captureScreenshotWithQualityRetry(page, name, {
-    path: path.join(EVIDENCE_DIR, `${name}.png`),
+    path: screenshotPath,
+    type: "jpeg",
+    quality: 90,
     fullPage: false,
     attempts: 4,
+  });
+  await testInfo.attach(name, {
+    path: screenshotPath,
+    contentType: "image/jpeg",
   });
 }
 
@@ -185,22 +188,30 @@ test.describe("launcher cloud gating (#10725)", () => {
   for (const viewport of VIEWPORTS) {
     test(`cloud INACTIVE hides the cloud-apps tile on ${viewport.name}`, async ({
       page,
-    }) => {
+    }, testInfo) => {
       await bootLauncher(page, viewport, { connected: false });
       // The catalog HAS the cloud-apps view (injected above); the launcher must
       // still not surface it while cloud is disconnected.
       await expect(chatTile(page)).toBeVisible();
       await expect(cloudTile(page)).toHaveCount(0);
-      await screenshot(page, `${viewport.name}-cloud-inactive-launcher`);
+      await screenshot(
+        page,
+        testInfo,
+        `${viewport.name}-cloud-inactive-launcher`,
+      );
     });
 
     test(`cloud ACTIVE shows the cloud-apps tile on ${viewport.name}`, async ({
       page,
-    }) => {
+    }, testInfo) => {
       await bootLauncher(page, viewport, { connected: true });
       await expect(chatTile(page)).toBeVisible();
       await expect(cloudTile(page)).toBeVisible({ timeout: 30_000 });
-      await screenshot(page, `${viewport.name}-cloud-active-launcher`);
+      await screenshot(
+        page,
+        testInfo,
+        `${viewport.name}-cloud-active-launcher`,
+      );
     });
   }
 
@@ -222,7 +233,7 @@ test.describe("launcher cloud gating (#10725)", () => {
       const state: CloudStatusState = { connected: false };
       await bootLauncher(page, { width: 1280, height: 800 }, state);
       await expect(cloudTile(page)).toHaveCount(0);
-      await screenshot(page, "walkthrough-1-launcher-disconnected");
+      await screenshot(page, testInfo, "walkthrough-1-launcher-disconnected");
 
       // Agent-first cloud setup: Settings → Cloud → Overview → Connect Cloud.
       // (The cloud group's overview section registers with defaultLabel
@@ -233,7 +244,7 @@ test.describe("launcher cloud gating (#10725)", () => {
         name: /Connect Cloud|Connect Eliza Cloud/i,
       });
       await expect(connectButton.first()).toBeVisible({ timeout: 30_000 });
-      await screenshot(page, "walkthrough-2-settings-cloud-section");
+      await screenshot(page, testInfo, "walkthrough-2-settings-cloud-section");
 
       // Completing the (stubbed) login flips the backend status; the UI must
       // observe it through its own status poll — the same signal a real
@@ -243,27 +254,35 @@ test.describe("launcher cloud gating (#10725)", () => {
       await expect(
         page.getByRole("button", { name: /Cloud connected/i }).first(),
       ).toBeVisible({ timeout: 60_000 });
-      await screenshot(page, "walkthrough-3-settings-cloud-connected");
+      await screenshot(
+        page,
+        testInfo,
+        "walkthrough-3-settings-cloud-connected",
+      );
 
       await openAppPath(page, "/views");
       await expect(page.getByTestId("launcher")).toBeVisible({
         timeout: 60_000,
       });
       await expect(cloudTile(page)).toBeVisible({ timeout: 30_000 });
-      await screenshot(page, "walkthrough-4-launcher-connected");
+      await screenshot(page, testInfo, "walkthrough-4-launcher-connected");
 
       // Persist the recording next to the screenshots.
       const video = page.video();
       await context.close();
       if (video) {
-        await mkdir(EVIDENCE_DIR, { recursive: true });
-        const videoPath = await video.path();
-        await copyFile(
-          videoPath,
-          path.join(EVIDENCE_DIR, "cloud-setup-walkthrough.webm"),
-        );
+        const artifact = await saveBrowserVideoArtifact({
+          video,
+          testInfo,
+          basename: "cloud-setup-walkthrough",
+        });
+        await testInfo.attach("cloud setup walkthrough", {
+          path: artifact.path,
+          contentType: artifact.contentType,
+        });
+        const notePath = testInfo.outputPath("cloud-setup-walkthrough.txt");
         await writeFile(
-          path.join(EVIDENCE_DIR, "cloud-setup-walkthrough.txt"),
+          notePath,
           [
             "Recorded by launcher-cloud-gating.spec.ts (cloud setup walkthrough).",
             "Flow: launcher without cloud-apps tile → Settings → Eliza Cloud →",
@@ -272,6 +291,10 @@ test.describe("launcher cloud gating (#10725)", () => {
             "Repro: bun run --cwd packages/app test:e2e -- --project=chromium test/ui-smoke/launcher-cloud-gating.spec.ts",
           ].join("\n"),
         );
+        await testInfo.attach("cloud setup walkthrough notes", {
+          path: notePath,
+          contentType: "text/plain",
+        });
       }
     });
   });

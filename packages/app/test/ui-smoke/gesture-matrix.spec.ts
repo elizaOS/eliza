@@ -26,7 +26,7 @@
  *      — it must not flip the home↔launcher rail, scroll the home surface
  *      beneath, or ghost-tap the row under the finger.
  *
- * Evidence: .github/issue-evidence/ui-interaction-epic/l3-gestures/.
+ * Capture artifacts land in Playwright's `test-results` tree.
  */
 
 import { mkdir } from "node:fs/promises";
@@ -50,8 +50,8 @@ const REPO_ROOT = process.cwd().endsWith(path.join("packages", "app"))
   : process.cwd();
 const OUT_DIR = path.join(
   REPO_ROOT,
-  ".github",
-  "issue-evidence",
+  "test-results",
+  "ui-smoke-artifacts",
   "ui-interaction-epic",
   "l3-gestures",
 );

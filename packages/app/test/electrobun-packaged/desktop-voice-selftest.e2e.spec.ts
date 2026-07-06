@@ -59,8 +59,8 @@ async function writeEvidence(args: {
     ? path.join(matrixOut, slug(cellId || "desktop-voice-selftest"))
     : path.join(
         repoRoot,
-        ".github",
-        "issue-evidence",
+        "test-results",
+        "packaged-artifacts",
         "9958-voice-desktop-selftest",
       );
   await fs.mkdir(evidenceDir, { recursive: true });

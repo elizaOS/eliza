@@ -201,8 +201,9 @@ own semantics:
   row (skips honestly when no agent-backed bubble exists).
 
 The whole run records through `startChunkedAndroidScreenRecord` (segments concat
-with ffmpeg) so a >180s walkthrough is one file. Artifacts land under
-`.github/issue-evidence/12344-android-gesture-matrix/`:
+with ffmpeg) so a >180s walkthrough is one file. Artifacts land under the
+configured Android artifact directory, or `test-results/android-artifacts` by
+default:
 `android-gesture-matrix.mp4`, `gesture-*.png`, `android-gesture-matrix.json`,
 and `logcat.txt`.
 

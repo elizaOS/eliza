@@ -3,8 +3,13 @@
  * real renderer fixture.
  */
 import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type TestInfo,
+  test,
+} from "@playwright/test";
 // Shared REAL-touch gesture helper (#10722): genuine CDP
 // `Input.dispatchTouchEvent` through the browser's hit-test / touch-action /
 // implicit-capture pipeline — NOT a synthetic `el.dispatchEvent(new
@@ -17,25 +22,33 @@ import {
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
-const OUT_DIR = path.join(
-  process.cwd(),
-  ".github",
-  "issue-evidence",
-  "9144-launcher-page-tiles",
-);
-
-async function screenshot(page: Page, name: string): Promise<void> {
-  await mkdir(OUT_DIR, { recursive: true });
+async function screenshot(
+  page: Page,
+  testInfo: TestInfo,
+  name: string,
+): Promise<void> {
+  const screenshotPath = testInfo.outputPath(`${name}.jpg`);
+  await mkdir(testInfo.outputDir, { recursive: true });
   await captureScreenshotWithQualityRetry(page, name, {
-    path: path.join(OUT_DIR, `${name}.png`),
+    path: screenshotPath,
+    type: "jpeg",
+    quality: 90,
     fullPage: false,
     attempts: 4,
   });
+  await testInfo.attach(name, {
+    path: screenshotPath,
+    contentType: "image/jpeg",
+  });
 }
 
-async function writeEvidenceFile(name: string, body: string): Promise<void> {
-  await mkdir(OUT_DIR, { recursive: true });
-  await writeFile(path.join(OUT_DIR, name), body);
+async function writeEvidenceFile(
+  testInfo: TestInfo,
+  name: string,
+  body: string,
+): Promise<void> {
+  await mkdir(testInfo.outputDir, { recursive: true });
+  await writeFile(testInfo.outputPath(name), body);
 }
 
 async function installLauncherEvidenceRoutes(page: Page): Promise<void> {
@@ -177,7 +190,11 @@ test.describe("launcher catalog interactions", () => {
         await expect(page.getByRole("button", { name: "Done" })).toHaveCount(0);
 
         await page.waitForTimeout(300);
-        await screenshot(page, `${viewport.name}-launcher-page-tiles`);
+        await screenshot(
+          page,
+          testInfo,
+          `${viewport.name}-launcher-page-tiles`,
+        );
         const firstPageTileIds = await tileIds(firstPage);
 
         // The builtin catalog always curates multiple pages (Apps first, then
@@ -210,7 +227,11 @@ test.describe("launcher catalog interactions", () => {
         const secondPageTileIds = await tileIds(secondPage);
         expect(secondPageTileIds.length).toBeGreaterThan(0);
         await page.waitForTimeout(300);
-        await screenshot(page, `${viewport.name}-launcher-after-swipe`);
+        await screenshot(
+          page,
+          testInfo,
+          `${viewport.name}-launcher-after-swipe`,
+        );
 
         // ── Swipe PREV back to the Apps page — same real-touch path.
         await touchSwipeLauncher(page, "prev");
@@ -233,7 +254,7 @@ test.describe("launcher catalog interactions", () => {
           .toContain("/chat");
         await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
         await page.waitForTimeout(300);
-        await screenshot(page, `${viewport.name}-chat-tile-launched`);
+        await screenshot(page, testInfo, `${viewport.name}-chat-tile-launched`);
 
         const evidence = {
           viewport: viewport.name,
@@ -261,6 +282,7 @@ test.describe("launcher catalog interactions", () => {
         expect(httpErrors, "no HTTP error responses").toEqual([]);
 
         await writeEvidenceFile(
+          testInfo,
           `${viewport.name}-launcher-observations.json`,
           `${JSON.stringify(evidence, null, 2)}\n`,
         );
@@ -279,7 +301,7 @@ test.describe("launcher catalog interactions", () => {
   // instead of doubling as a silent fallback inside the swipe test.
   test("desktop pager edge buttons page next/prev (explicit affordance, not a swipe fallback)", async ({
     page,
-  }) => {
+  }, testInfo) => {
     await bootLauncher(page, { width: 1440, height: 1000 });
 
     const firstPage = page.getByTestId("launcher-page-0");
@@ -308,6 +330,6 @@ test.describe("launcher catalog interactions", () => {
     // canPrev self-hide re-engages at the first page.
     await expect(page.getByTestId("launcher-pager-edge-prev")).toHaveCount(0);
 
-    await screenshot(page, "desktop-launcher-edge-buttons");
+    await screenshot(page, testInfo, "desktop-launcher-edge-buttons");
   });
 });

@@ -30,7 +30,7 @@ import { seedStewardSession } from "./helpers/test-auth";
 
 const EVIDENCE_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  "../../../../.github/issue-evidence/8621-mobile-cloud-agent",
+  "../../../../test-results/ui-smoke-artifacts/8621-mobile-cloud-agent",
 );
 
 const APP_ID = "6e0a4f1c-9d2b-4c33-8f0e-5a7b1c2d3e4f";

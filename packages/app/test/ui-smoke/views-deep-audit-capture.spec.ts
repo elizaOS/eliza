@@ -16,8 +16,8 @@ import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality"
 
 const OUT_DIR = path.join(
   process.cwd(),
-  ".github",
-  "issue-evidence",
+  "test-results",
+  "ui-smoke-artifacts",
   "views-ux-audit-2026-07-04",
   "deep-subviews",
 );
