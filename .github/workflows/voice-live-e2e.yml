@@ -6,6 +6,9 @@ name: Voice Live E2E
 # self-hosted model-heavy nightly / workflow_dispatch lane.
 #
 # What it proves (no mocks at any stage):
+#   - Live Railway voice contract: the free-cloud Kokoro TTS + Whisper STT
+#     services (packages/cloud/services/voice-*) satisfy the exact request shapes
+#     the cloud-api voice routes send, so a dead/drifted service is a red run.
 #   - Real fused ASR: the provisioned libelizainference + ASR bundle
 #     transcribes real speech.
 #   - Real fused Kokoro TTS: the provisioned libelizainference loads the
@@ -39,6 +42,11 @@ on:
     - cron: "30 8 * * *"
   workflow_dispatch:
     inputs:
+      run_railway_contract:
+        description: "Run the Railway Kokoro/Whisper live contract lane"
+        required: false
+        default: true
+        type: boolean
       run_macos_electrobun:
         description: "Attempt the macOS Electrobun live-voice matrix lane"
         required: false
@@ -100,6 +108,40 @@ jobs:
           name: voice-platform-matrix-index
           path: ${{ runner.temp }}/voice-platform-matrix
           if-no-files-found: error
+
+  # Live contract against the two Railway voice services (Kokoro TTS + Whisper
+  # STT). It runs the in-repo round-trip test (voice-kokoro-whisper-live.test.ts,
+  # which was referenced by zero workflows) so a dead or drifted service pages as
+  # a red run instead of a silent user report. Hits public HTTPS only, so it runs
+  # on a cheap GitHub-hosted runner — no GPU/self-hosted staging. The service URLs
+  # come from repo variables set at deploy time (see the two service READMEs under
+  # packages/cloud/services/voice-*); the test falls back to its own defaults when
+  # they are unset, so the lane still exercises the provisioned instances.
+  voice-railway-contract:
+    name: Railway Kokoro/Whisper live contract
+    if: ${{ github.event_name == 'schedule' || inputs.run_railway_contract }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      ELIZA_VOICE_LIVE_RAILWAY: "1"
+      KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
+      WHISPER_STT_URL: ${{ vars.ELIZA_VOICE_WHISPER_STT_URL }}
+      WHISPER_STT_MODEL: ${{ vars.ELIZA_VOICE_WHISPER_STT_MODEL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          show-progress: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Run live Railway voice contract
+        run: |
+          set -euo pipefail
+          bun test packages/cloud/api/__tests__/voice-kokoro-whisper-live.test.ts
 
   voice-roundtrip:
     name: Real fused ASR + optional mixed round-trip (self-hosted)

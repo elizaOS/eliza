@@ -1,0 +1,19 @@
+# Railway deploy config for the free-cloud Whisper STT service.
+#
+# Consumed by the cloud-api /api/v1/voice/stt route via the WHISPER_STT_URL env
+# var; serves POST /v1/audio/transcriptions (OpenAI-compatible) -> { text }. No
+# secrets required — cloud-api owns auth/billing upstream and the model is fetched
+# from Hugging Face at boot (WHISPER__MODEL in the Dockerfile).
+#
+# healthcheckTimeout is generous: the first boot downloads the CTranslate2 model
+# weights, so early /health probes can be slow on a cold deploy.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

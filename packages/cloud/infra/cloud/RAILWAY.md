@@ -11,6 +11,8 @@ is heading.
 | `cloud-api` (REST + auth + billing) | Cloudflare Worker | `packages/cloud/api/` | `apps/api/wrangler.toml` (env vars, secrets via `wrangler secret`) |
 | `headscale` (Tailscale coordination server for agents + customer tunnels) | Hetzner control-plane VM | `packages/cloud/services/headscale/` | armed via `arm-headscale-control-plane.yml` (ACL `acl.hujson`) |
 | `tunnel-proxy` (public HTTPS -> tailnet bridge, customer-tunnel path) | Railway | `packages/cloud/services/tunnel-proxy/` | `railway.toml`, `Dockerfile` |
+| `voice-kokoro-tts` (free-cloud TTS behind `/api/v1/voice/tts`) | Railway | `packages/cloud/services/voice-kokoro-tts/` | `railway.toml`, `Dockerfile` |
+| `voice-whisper-stt` (free-cloud STT behind `/api/v1/voice/stt`) | Railway | `packages/cloud/services/voice-whisper-stt/` | `railway.toml`, `Dockerfile` |
 | `gateway-discord` | Cloudflare Worker | `packages/cloud/services/gateway-discord/` | own `wrangler.toml` |
 | `gateway-webhook` | Cloudflare Worker | `packages/cloud/services/gateway-webhook/` | own `wrangler.toml` |
 | `agent-server` (per-customer agent runtime) | Hetzner containers | `packages/cloud/services/agent-server/` | provisioned via `container-control-plane` |
