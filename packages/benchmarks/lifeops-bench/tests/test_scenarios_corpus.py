@@ -69,32 +69,33 @@ def test_corpus_size_meets_minimum() -> None:
 
 
 def test_corpus_expands_current_core_by_exactly_10x() -> None:
-    # 1407 distinct base scenarios (1260 prior + 18 issue #12279 traveler
+    # 1411 distinct base scenarios (1260 prior + 18 issue #12279 traveler
     # timezone scenarios + 18 issue #12282 neurotypical-control scenarios +
     # 18 issue #12281 comms-flood scenarios + 32 issue #12278 irregular-sleep
     # scenarios + 54 issue #12280 ADHD/low-activation scenarios + 3 issue
     # #14789 co-parenting mirrors + 6 issue #14783 overdue-communications
-    # scenarios, minus the 2 crisis-language-guard scenarios removed with
-    # #12284 item 9 — the guard is not being built), each
-    # re-emitted 10x under fixed prompt-prefix framings = 15477 robustness
+    # scenarios + 4 issue #14784 reconnect-old-friends scenarios, minus the
+    # 2 crisis-language-guard scenarios removed with #12284 item 9 — the guard
+    # is not being built), each re-emitted 10x under fixed prompt-prefix
+    # framings = 15521 robustness
     # runs. The legacy keys
     # (existing/added/total/multiplierAdded) stay pinned for back-compat; the
     # base/variantsPerBase/totalRuns/summary keys state the split.
     assert count_lifeops_scenarios() == {
         "suite": "lifeops-bench",
-        "existing": 1407,
-        "added": 14070,
-        "total": 15477,
+        "existing": 1411,
+        "added": 14110,
+        "total": 15521,
         "multiplierAdded": 10,
-        "base": 1407,
+        "base": 1411,
         "variantsPerBase": 10,
-        "totalRuns": 15477,
-        "summary": "1407 base scenarios; 10x prompt-prefix robustness variants = 15477 runs",
+        "totalRuns": 15521,
+        "summary": "1411 base scenarios; 10x prompt-prefix robustness variants = 15521 runs",
     }
     assert validate_lifeops_scenarios() == {
         "valid": True,
-        "total": 15477,
-        "uniqueIds": 15477,
+        "total": 15521,
+        "uniqueIds": 15521,
         "duplicateIds": [],
         "emptyInstructions": [],
         "expansionMatches": True,
