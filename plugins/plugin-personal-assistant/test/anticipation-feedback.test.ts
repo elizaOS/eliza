@@ -18,7 +18,7 @@ import {
   recordAnticipationFeedback,
   recordProactiveDispatch,
 } from "../src/lifeops/anticipation/store.ts";
-import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
+import { createOwnerRuntimeStub } from "./first-run-helpers.ts";
 
 const ROOM_ID = "room-anticipation-1";
 const EMPTY_STATE = { values: {}, data: {}, text: "" } as never;
@@ -50,7 +50,7 @@ async function recordMarker(
 
 describe("proactive-dispatch marker store", () => {
   it("validates inputs", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     await expect(
       recordProactiveDispatch(runtime, {
         roomId: "",
@@ -70,7 +70,7 @@ describe("proactive-dispatch marker store", () => {
   });
 
   it("lists markers oldest-first and re-recording a task replaces its marker", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     const base = Date.now();
     await recordMarker(runtime, "t2", new Date(base - 60_000).toISOString());
     await recordMarker(runtime, "t1", new Date(base - 120_000).toISOString());
@@ -85,7 +85,7 @@ describe("proactive-dispatch marker store", () => {
   });
 
   it("ages markers out after the retention window", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     const now = new Date();
     await recordMarker(
       runtime,
@@ -102,7 +102,7 @@ describe("proactive-dispatch marker store", () => {
   });
 
   it("bounds the per-room marker ring to the newest entries", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     const base = Date.now();
     for (let i = 0; i < 10; i += 1) {
       await recordMarker(
@@ -137,7 +137,7 @@ describe("anticipation_feedback output parsing", () => {
 
 describe("anticipation_feedback evaluator", () => {
   it("shouldRun is false without unprocessed markers and for the agent's own turns", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     expect(
       await anticipationFeedbackEvaluator.shouldRun({
         runtime,
@@ -168,7 +168,7 @@ describe("anticipation_feedback evaluator", () => {
   });
 
   it("prompt embeds the newest proactive snippet", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     await recordMarker(
       runtime,
       "t1",
@@ -193,7 +193,7 @@ describe("anticipation_feedback evaluator", () => {
   });
 
   it("processor records the classified outcome, marks older markers ignored, and never double-processes", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     const base = Date.now();
     await recordMarker(runtime, "old", new Date(base - 120_000).toISOString());
     await recordMarker(runtime, "new", new Date(base - 30_000).toISOString());
@@ -249,7 +249,7 @@ describe("anticipation_feedback evaluator", () => {
 
 describe("rolling anticipation stats", () => {
   it("accumulates durably and bounds the recent ring", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     const now = new Date();
     for (let i = 0; i < 25; i += 1) {
       await recordAnticipationFeedback(

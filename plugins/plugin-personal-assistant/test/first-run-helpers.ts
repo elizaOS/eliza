@@ -124,3 +124,29 @@ export function createMinimalRuntimeStub(
 }
 
 export const SCHEDULER_TASK_ID_FOR_TESTS = SCHEDULER_TASK_ID;
+
+/**
+ * The entity id owner-gated tests send messages from. A deployed app records
+ * its owner in the `ELIZA_ADMIN_ENTITY_ID` setting (the canonical-owner key
+ * `getConfiguredOwnerEntityIds` reads); {@link createOwnerRuntimeStub} wires
+ * that setting to this id so `hasOwnerAccess` resolves the sender as OWNER
+ * without standing up a full world/role graph.
+ */
+export const OWNER_ENTITY_ID_FOR_TESTS = "owner-entity-1";
+
+/**
+ * A minimal runtime stub whose sender ({@link OWNER_ENTITY_ID_FOR_TESTS}) is
+ * the configured canonical owner, so owner-gated providers/evaluators run. The
+ * caller's overrides win (none of the owner-gated tests set `getSetting`).
+ */
+export function createOwnerRuntimeStub(
+  overrides: Partial<MinimalRuntimeStub> = {},
+): IAgentRuntime {
+  return createMinimalRuntimeStub({
+    getSetting: ((key: string) =>
+      key === "ELIZA_ADMIN_ENTITY_ID"
+        ? OWNER_ENTITY_ID_FOR_TESTS
+        : undefined) as never,
+    ...overrides,
+  });
+}

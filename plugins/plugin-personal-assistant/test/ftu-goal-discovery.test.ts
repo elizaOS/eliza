@@ -16,7 +16,7 @@ import {
 import { createFtuGoalStateStore } from "../src/lifeops/ftu-goal/state.ts";
 import { createOwnerFactStore } from "../src/lifeops/owner/fact-store.ts";
 import { ftuGoalProvider } from "../src/providers/ftu-goal.ts";
-import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
+import { createOwnerRuntimeStub } from "./first-run-helpers.ts";
 
 const EMPTY_STATE = { values: {}, data: {}, text: "" } as never;
 
@@ -43,7 +43,7 @@ async function completeFirstRun(runtime: IAgentRuntime): Promise<void> {
 
 describe("ftuGoal provider gating", () => {
   it("stays quiet while first-run is still pending", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     const result = await ftuGoalProvider.get(
       runtime,
       ownerMessage(runtime, "hello"),
@@ -54,7 +54,7 @@ describe("ftuGoal provider gating", () => {
   });
 
   it("surfaces the discovery affordance once first-run is complete and no goal is known", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     await completeFirstRun(runtime);
     const result = await ftuGoalProvider.get(
       runtime,
@@ -69,7 +69,7 @@ describe("ftuGoal provider gating", () => {
   });
 
   it("stays quiet on non-private surfaces", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     await completeFirstRun(runtime);
     const result = await ftuGoalProvider.get(
       runtime,
@@ -80,7 +80,7 @@ describe("ftuGoal provider gating", () => {
   });
 
   it("goes silent once a goal has been discovered", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     await completeFirstRun(runtime);
     await createFtuGoalStateStore(runtime).complete({
       goal: "Ship the iOS app",
@@ -99,7 +99,7 @@ describe("ftuGoal provider gating", () => {
 
 describe("ftu_goal_discovery evaluator shouldRun gate", () => {
   it("is false before first-run completes", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     const active = await ftuGoalDiscoveryEvaluator.shouldRun({
       runtime,
       message: ownerMessage(runtime, "I want help staying on top of email"),
@@ -109,7 +109,7 @@ describe("ftu_goal_discovery evaluator shouldRun gate", () => {
   });
 
   it("is true once first-run is complete and the goal is undiscovered", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     await completeFirstRun(runtime);
     const active = await ftuGoalDiscoveryEvaluator.shouldRun({
       runtime,
@@ -120,7 +120,7 @@ describe("ftu_goal_discovery evaluator shouldRun gate", () => {
   });
 
   it("is false for the agent's own messages", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     await completeFirstRun(runtime);
     const message = {
       ...ownerMessage(runtime, "noted!"),
@@ -135,7 +135,7 @@ describe("ftu_goal_discovery evaluator shouldRun gate", () => {
   });
 
   it("is false once the goal is discovered — completed discovery never reprocesses", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     await completeFirstRun(runtime);
     await createFtuGoalStateStore(runtime).complete({
       goal: "Ship the iOS app",
@@ -205,7 +205,7 @@ describe("ftu_goal_discovery processor", () => {
   }
 
   it("does not persist below the confidence threshold", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     await completeFirstRun(runtime);
     const result = await persistProcessor.process(
       processorContext(runtime, {
@@ -224,7 +224,7 @@ describe("ftu_goal_discovery processor", () => {
   });
 
   it("persists the primaryGoal fact with provenance and completes the durable state", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     await completeFirstRun(runtime);
     const result = await persistProcessor.process(
       processorContext(runtime, {
@@ -255,7 +255,7 @@ describe("ftu_goal_discovery processor", () => {
   });
 
   it("never overwrites an already-discovered goal (idempotence backstop)", async () => {
-    const runtime = createMinimalRuntimeStub();
+    const runtime = createOwnerRuntimeStub();
     await completeFirstRun(runtime);
     await persistProcessor.process(
       processorContext(runtime, {

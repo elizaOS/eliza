@@ -19,7 +19,7 @@ import { createFirstRunStateStore } from "../src/lifeops/first-run/state.ts";
 import { ftuGoalDiscoveryEvaluator } from "../src/lifeops/ftu-goal/evaluator.ts";
 import { createFtuGoalStateStore } from "../src/lifeops/ftu-goal/state.ts";
 import { createOwnerFactStore } from "../src/lifeops/owner/fact-store.ts";
-import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
+import { createOwnerRuntimeStub } from "./first-run-helpers.ts";
 
 const ROOM_ID = "room-merged-call-1";
 
@@ -33,7 +33,7 @@ function createEvaluatorRuntime(modelOutput: Record<string, unknown>): {
   calls: CapturedModelCall[];
 } {
   const calls: CapturedModelCall[] = [];
-  const runtime = createMinimalRuntimeStub({
+  const runtime = createOwnerRuntimeStub({
     evaluators: [ftuGoalDiscoveryEvaluator, anticipationFeedbackEvaluator],
     useModel: (async (
       _modelType: string,
