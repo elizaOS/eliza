@@ -4,6 +4,7 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ConversationMessage } from "../../api/client-types-chat";
+import { assert } from "../../storybook/home-widget-decorator";
 import { mockApp } from "../../storybook/mock-providers.helpers";
 import { MessageContent } from "./MessageContent";
 
@@ -52,6 +53,26 @@ export const Multiline: Story = {
     message: makeMessage({
       text: "Here is the plan:\n\n1. Confirm the venue\n2. Send invites\n3. Lock the menu by Friday",
     }),
+  },
+};
+
+/** Submitted inline forms render as a receipt, never raw transport syntax. */
+export const SubmittedInlineForm: Story = {
+  args: {
+    message: makeMessage({
+      role: "user",
+      text: '[form:submit reminder] {"title":"Quarterly report","time":"5pm"}',
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const text = canvasElement.textContent ?? "";
+    assert(
+      /submitted reminder/i.test(text),
+      "submitted form receipt is visible",
+    );
+    assert(!text.includes("[form:submit"), "transport marker is hidden");
+    assert(!text.includes("Quarterly report"), "field values are hidden");
+    assert(!text.includes("5pm"), "time value is hidden");
   },
 };
 

@@ -100,6 +100,20 @@ describe("ContinuousChatOverlay ThreadLine proactive suggestion (#8792)", () => 
     ).toBeNull();
   });
 
+  it("renders user form submissions as a compact summary without protocol values", () => {
+    const raw =
+      '[form:submit reminder] {"title":"Quarterly report","time":"5pm"}';
+    const { container } = withApp(
+      __renderThreadLineForParity(makeMessage({ role: "user", content: raw })),
+    );
+    expect(screen.getByTestId("form-submit-receipt").textContent).toBe(
+      "Submitted reminder",
+    );
+    expect(container.textContent ?? "").not.toContain("[form:submit");
+    expect(container.textContent ?? "").not.toContain("Quarterly report");
+    expect(container.textContent ?? "").not.toContain("5pm");
+  });
+
   it("dismiss removes by id; accept receives the full message", () => {
     const onAcceptSuggestion = vi.fn();
     const onDismissSuggestion = vi.fn();

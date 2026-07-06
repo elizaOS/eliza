@@ -20,6 +20,8 @@ import { cn } from "../../lib/utils";
 import { useChatComposerOrLocal } from "../../state/ChatComposerContext.hooks";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
+import { FormSubmitReceipt } from "../chat/MessageContent";
+import { parseFormSubmitDisplay } from "../chat/message-parser-helpers";
 import { ChatBubble } from "../composites/chat/chat-bubble";
 import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
 import { Input } from "../ui/input";
@@ -47,6 +49,12 @@ export interface ChatSurfaceProps {
   onVision?: () => void;
   /** Reflects an in-flight vision capture (pulses the VISION button). */
   visionActive?: boolean;
+}
+
+function UserMessageContent({ content }: { content: string }) {
+  const formSubmit = parseFormSubmitDisplay(content);
+  if (formSubmit) return <FormSubmitReceipt label={formSubmit.label} />;
+  return content;
 }
 
 export function ChatSurface({
@@ -156,7 +164,7 @@ export function ChatSurface({
                         className="text-sm"
                       >
                         {isUser ? (
-                          message.content
+                          <UserMessageContent content={message.content} />
                         ) : (
                           <InlineWidgetText content={message.content} />
                         )}

@@ -90,6 +90,7 @@ export const FENCED_CODE_RE = /```([^\n`]*)\n([\s\S]*?)```/g;
  * must be non-empty so a stray pair of backticks isn't lifted out.
  */
 export const INLINE_CODE_RE = /`([^`\n]+)`/g;
+export const FORM_SUBMIT_DISPLAY_RE = /^\[form:submit\s+([^\]\s]+)\]/;
 
 export const HIDDEN_TAG_BLOCK_RE =
   /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
@@ -119,6 +120,27 @@ export function normalizeDisplayText(text: string): string {
 
   normalized = stripAssistantStageDirections(normalized);
   return normalized.trim();
+}
+
+export interface FormSubmitDisplay {
+  formId: string;
+  label: string;
+}
+
+export function humanizeFormSubmitId(formId: string): string {
+  return formId.replace(/[-_]+/g, " ").trim() || "form";
+}
+
+/**
+ * User form submissions are transport commands stored in the transcript so the
+ * agent can consume them. Display surfaces render a receipt instead of echoing
+ * the protocol marker or submitted values back to the user.
+ */
+export function parseFormSubmitDisplay(text: string): FormSubmitDisplay | null {
+  const match = FORM_SUBMIT_DISPLAY_RE.exec(text.trimStart());
+  if (!match) return null;
+  const formId = match[1];
+  return { formId, label: humanizeFormSubmitId(formId) };
 }
 
 export function tryParse(s: string): unknown {

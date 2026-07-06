@@ -13,6 +13,7 @@ import {
   isUiSpec,
   looksLikePatch,
   normalizeDisplayText,
+  parseFormSubmitDisplay,
   sanitizePatchValue,
   tryParsePatch,
 } from "./message-parser-helpers";
@@ -87,6 +88,26 @@ describe("looksLikePatch + tryParsePatch", () => {
     expect(tryParsePatch("not json")).toBeNull();
     // Looks like a patch but missing required string fields → rejected.
     expect(tryParsePatch('{"op":5,"path":"/x"}')).toBeNull();
+  });
+});
+
+describe("parseFormSubmitDisplay", () => {
+  it("humanizes submitted form commands without exposing values", () => {
+    expect(
+      parseFormSubmitDisplay(
+        '[form:submit reminder-details] {"title":"Draft report"}',
+      ),
+    ).toEqual({ formId: "reminder-details", label: "reminder details" });
+    expect(parseFormSubmitDisplay("[form:submit reminder_details] {}")).toEqual(
+      { formId: "reminder_details", label: "reminder details" },
+    );
+  });
+
+  it("ignores ordinary prose and assistant form widgets", () => {
+    expect(
+      parseFormSubmitDisplay("hello [form:submit reminder] {}"),
+    ).toBeNull();
+    expect(parseFormSubmitDisplay("[FORM]\n{}")).toBeNull();
   });
 });
 

@@ -72,4 +72,22 @@ describe("MessageContent slash-command bolding", () => {
     withApp(<MessageContent message={message("user", "just a message")} />);
     expect(screen.queryByTestId("slash-command-token")).toBeNull();
   });
+
+  it("renders a submitted form as a compact receipt instead of raw marker JSON", () => {
+    const { container } = withApp(
+      <MessageContent
+        message={message(
+          "user",
+          '[form:submit reminder-details] {"title":"Draft report","when":"2026-07-08T09:00"}',
+        )}
+      />,
+    );
+
+    expect(screen.getByTestId("form-submit-receipt").textContent).toBe(
+      "Submitted reminder details",
+    );
+    expect(container.textContent ?? "").not.toContain("[form:submit");
+    expect(container.textContent ?? "").not.toContain("Draft report");
+    expect(container.textContent ?? "").not.toContain("2026-07-08T09:00");
+  });
 });

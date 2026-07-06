@@ -57,6 +57,7 @@ import {
   buildInlinePluginConfigModel,
   isSafeNormalizedPluginId,
   normalizePluginId,
+  parseFormSubmitDisplay,
   parseSegments,
   sensitiveRequestStatusLabel,
   sensitiveRequestTitleLabel,
@@ -134,6 +135,14 @@ function MessageTextBody({
   text: string;
   boldSlashCommand: boolean;
 }) {
+  const formSubmit = boldSlashCommand ? parseFormSubmitDisplay(text) : null;
+  if (formSubmit) {
+    return (
+      <div className="whitespace-normal">
+        <FormSubmitReceipt label={formSubmit.label} />
+      </div>
+    );
+  }
   const slash = boldSlashCommand ? splitLeadingSlashCommand(text) : null;
   return (
     <div className="whitespace-pre-wrap">
@@ -150,6 +159,17 @@ function MessageTextBody({
       ) : (
         renderInlineText(text)
       )}
+    </div>
+  );
+}
+
+export function FormSubmitReceipt({ label }: { label: string }) {
+  return (
+    <div
+      className="inline-flex max-w-full items-center rounded-full border border-border/70 bg-bg px-2.5 py-1 text-xs font-medium text-muted-strong"
+      data-testid="form-submit-receipt"
+    >
+      Submitted {label}
     </div>
   );
 }

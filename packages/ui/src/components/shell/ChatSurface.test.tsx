@@ -57,6 +57,22 @@ describe("ChatSurface composer (shared core)", () => {
     expect(scroller?.className).toContain("overflow-x-hidden");
   });
 
+  it("renders user form submissions as a compact summary without protocol values", () => {
+    const raw =
+      '[form:submit reminder] {"title":"Quarterly report","time":"5pm"}';
+    const { container } = render(
+      surface({
+        messages: [{ id: "u1", role: "user", content: raw, createdAt: 1 }],
+      }),
+    );
+    expect(screen.getByTestId("form-submit-receipt").textContent).toBe(
+      "Submitted reminder",
+    );
+    expect(container.textContent ?? "").not.toContain("[form:submit");
+    expect(container.textContent ?? "").not.toContain("Quarterly report");
+    expect(container.textContent ?? "").not.toContain("5pm");
+  });
+
   it("never sends on the Enter that commits an IME composition (#9148)", () => {
     const onSend = vi.fn();
     render(surface({ onSend }));
