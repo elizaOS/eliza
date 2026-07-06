@@ -296,6 +296,12 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "f1-multiday-recurrence-control-baseline",
   "f1-timezone-boundary-edge-generic",
   "agent-orchestrator.list-agents",
+  // #14630 reject-routing: keyless proof that pending approval-queue rows are
+  // visible to the planner (pendingApprovals provider) and that RESOLVE_REQUEST
+  // reject terminally resolves them. Lives under plugin-personal-assistant per
+  // the G1 convention; live routing stays on
+  // f1-cross-persona-wrong-recipient-highstakes.
+  "approval-queue-pending-visible-to-planner",
   // LifeOps persona pack B1 (night-owl-anchored-day, #12771). Same G1
   // convention as A1: authored under the SCANNED root
   // packages/test/scenarios/lifeops.personas and added here in the same commit.
@@ -326,6 +332,9 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "local-inference.start-transcription",
   "music.routing-status",
   "nostr.search-posts",
+  // Registered here retroactively: the scenario landed (#13778) without the
+  // same-commit guard update this list requires, leaving the guard red.
+  "orchestrator-concurrency-admission",
   "orchestrator-device-modality-reach",
   "orchestrator-evidence-bundle",
   "orchestrator-grilling-happy-path",

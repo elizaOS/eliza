@@ -25,7 +25,6 @@ import {
   registerDirectMessageHook,
   registerLocalizedExamplesProvider,
   registerSendPolicy,
-  type ShortcutDefinition,
   type State,
   unregisterDirectMessageHook,
 } from "@elizaos/core";
@@ -203,32 +202,6 @@ import {
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
-
-export const APPROVAL_REJECT_SHORTCUT_ID = "lifeops:approval:reject";
-
-const APPROVAL_REJECT_REGEX =
-  /^(?=.*\b(?:reject|decline|deny)\b)(?=.*\b(?:send|sent|message|email|draft|approval|request|pending)\b).+$/u;
-const APPROVAL_DONT_SEND_REGEX =
-  /^(?=.*\b(?:don\s+t|dont|do\s+not)\s+send\b)(?=.*\b(?:that|it|approval|request|pending|message|email|draft)\b).+$/u;
-
-const lifeOpsShortcuts: ShortcutDefinition[] = [
-  {
-    id: APPROVAL_REJECT_SHORTCUT_ID,
-    kind: "natural",
-    patterns: [
-      { regex: APPROVAL_REJECT_REGEX },
-      { regex: APPROVAL_DONT_SEND_REGEX },
-    ],
-    target: {
-      kind: "action",
-      name: "RESOLVE_REQUEST_REJECT",
-    },
-    requiresAction: "RESOLVE_REQUEST_REJECT",
-    requiresElevated: true,
-    confidence: 0.97,
-    priority: 35,
-  },
-];
 
 type LifeOpsMessageActionHookArgs = {
   operation: string;
@@ -890,7 +863,6 @@ const rawPersonalAssistantPlugin: Plugin = {
   // runner host is registered before PA's init injects deps + seeds.
   dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE, "@elizaos/plugin-scheduling"],
   schema: lifeOpsSchema,
-  shortcuts: lifeOpsShortcuts,
   actions: [
     // Canonical owner-operation umbrellas. Each umbrella registers itself + its
     // per-action virtuals via

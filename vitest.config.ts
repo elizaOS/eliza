@@ -59,6 +59,12 @@ export default defineConfig({
         replacement: path.join(root, "packages/core/src/index.node.ts"),
       },
       {
+        // "./node" is an exports-map subpath (→ index.node.ts), not a real
+        // src path, so it must be pinned before the generic src/$1 rewrite.
+        find: /^@elizaos\/core\/node$/,
+        replacement: path.join(root, "packages/core/src/index.node.ts"),
+      },
+      {
         find: /^@elizaos\/core\/(.+)$/,
         replacement: path.join(root, "packages/core/src/$1"),
       },

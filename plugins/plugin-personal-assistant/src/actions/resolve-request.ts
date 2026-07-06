@@ -131,6 +131,10 @@ async function extractResolution(
   if (pending.length === 0) {
     return { requestId: null, reason: null };
   }
+  // The approve/reject intent was already decided by the planner's verb
+  // choice; extraction only picks WHICH row. With exactly one pending row
+  // there is no selection judgment left, so skip the model call — this keeps
+  // single-approval resolution deterministic (and keyless).
   const [onlyPending] = pending;
   if (pending.length === 1 && onlyPending) {
     return {
