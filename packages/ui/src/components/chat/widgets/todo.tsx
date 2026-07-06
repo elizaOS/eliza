@@ -85,13 +85,33 @@ function isWorkbenchTodoChangeEvent(
   );
 }
 
-function TodoRow({ todo }: { todo: WorkbenchTodo }) {
+function homeBadgeClassName(tone: "default" | "home", accent?: string): string {
+  if (tone !== "home") return accent ? `text-3xs ${accent}` : "text-3xs";
+  return accent
+    ? `border-white/15 bg-white/12 text-3xs ${accent}`
+    : "border-white/15 bg-white/12 text-3xs text-white/80";
+}
+
+function TodoRow({
+  todo,
+  tone = "default",
+}: {
+  todo: WorkbenchTodo;
+  tone?: "default" | "home";
+}) {
   const showDescription =
     todo.description.trim().length > 0 && todo.description !== todo.name;
   const showType = todo.type.trim().length > 0 && todo.type !== "task";
+  const isHome = tone === "home";
 
   return (
-    <div className="rounded-sm border border-border/50 bg-bg/70 p-3">
+    <div
+      className={`rounded-sm border p-3 ${
+        isHome
+          ? "border-white/15 bg-white/10 text-white"
+          : "border-border/50 bg-bg/70"
+      }`}
+    >
       <div className="flex items-start gap-2">
         <span
           className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${
@@ -104,27 +124,38 @@ function TodoRow({ todo }: { todo: WorkbenchTodo }) {
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="min-w-0 truncate text-xs font-semibold text-txt">
+            <span
+              className={`min-w-0 truncate text-xs font-semibold ${
+                isHome ? "text-white" : "text-txt"
+              }`}
+            >
               {todo.name}
             </span>
             {todo.isUrgent ? (
-              <Badge variant="secondary" className="text-3xs text-danger">
+              <Badge
+                variant="secondary"
+                className={homeBadgeClassName(tone, "text-danger")}
+              >
                 Urgent
               </Badge>
             ) : null}
             {todo.priority != null ? (
-              <Badge variant="secondary" className="text-3xs">
+              <Badge variant="secondary" className={homeBadgeClassName(tone)}>
                 P{todo.priority}
               </Badge>
             ) : null}
             {showType ? (
-              <Badge variant="secondary" className="text-3xs">
+              <Badge variant="secondary" className={homeBadgeClassName(tone)}>
                 {todo.type}
               </Badge>
             ) : null}
           </div>
           {showDescription ? (
-            <p className="mt-1 line-clamp-2 text-xs-tight leading-5 text-muted">
+            <p
+              className={`mt-1 line-clamp-2 text-xs-tight leading-5 ${
+                isHome ? "text-white/70" : "text-muted"
+              }`}
+            >
               {todo.description}
             </p>
           ) : null}
@@ -142,31 +173,45 @@ function TodoRow({ todo }: { todo: WorkbenchTodo }) {
 function GoalAttentionRow({
   goal,
   onOpen,
+  tone = "default",
 }: {
   goal: AttentionGoal;
   onOpen: () => void;
+  tone?: "default" | "home";
 }) {
   const atRisk = goal.reviewState === "at_risk";
   const status = atRisk ? "at risk" : "needs attention";
+  const isHome = tone === "home";
   return (
     <button
       type="button"
       data-testid="todo-goal-attention-row"
       aria-label={`Goal "${goal.title}" ${status}. Open Goals.`}
       onClick={onOpen}
-      className="flex min-h-11 w-full items-start gap-2 rounded-sm border border-border/50 bg-bg/70 p-3 text-left"
+      className={`flex min-h-11 w-full items-start gap-2 rounded-sm border p-3 text-left ${
+        isHome
+          ? "border-white/15 bg-white/10 text-white"
+          : "border-border/50 bg-bg/70"
+      }`}
     >
       <Target
         className={`mt-0.5 h-4 w-4 shrink-0 ${atRisk ? "text-danger" : "text-accent"}`}
       />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="min-w-0 truncate text-xs font-semibold text-txt">
+          <span
+            className={`min-w-0 truncate text-xs font-semibold ${
+              isHome ? "text-white" : "text-txt"
+            }`}
+          >
             {goal.title}
           </span>
           <Badge
             variant="secondary"
-            className={`text-3xs ${atRisk ? "text-danger" : "text-accent"}`}
+            className={homeBadgeClassName(
+              tone,
+              atRisk ? "text-danger" : "text-accent",
+            )}
           >
             {atRisk ? "At risk" : "Needs attention"}
           </Badge>
@@ -181,22 +226,30 @@ function TodoItemsContent({
   loading,
   goal,
   onOpenGoal,
+  tone = "default",
 }: {
   todos: WorkbenchTodo[];
   loading: boolean;
   goal: AttentionGoal | null;
   onOpenGoal: () => void;
+  tone?: "default" | "home";
 }) {
   const openTodos = todos.filter((todo) => !todo.isCompleted);
   const hiddenCompletedCount = todos.length - openTodos.length;
   const visibleTodos = openTodos.slice(0, MAX_VISIBLE_TODOS);
   const remainingCount = openTodos.length - visibleTodos.length;
   const goalRow = goal ? (
-    <GoalAttentionRow goal={goal} onOpen={onOpenGoal} />
+    <GoalAttentionRow goal={goal} onOpen={onOpenGoal} tone={tone} />
   ) : null;
 
   if (loading && todos.length === 0 && !goal) {
-    return <div className="py-3 text-xs text-muted">Refreshing todos…</div>;
+    return (
+      <div
+        className={`py-3 text-xs ${tone === "home" ? "text-white/70" : "text-muted"}`}
+      >
+        Refreshing todos…
+      </div>
+    );
   }
 
   if (openTodos.length === 0) {
@@ -218,15 +271,19 @@ function TodoItemsContent({
     <div className="flex flex-col gap-2">
       {goalRow}
       {visibleTodos.map((todo) => (
-        <TodoRow key={todo.id} todo={todo} />
+        <TodoRow key={todo.id} todo={todo} tone={tone} />
       ))}
       {remainingCount > 0 ? (
-        <p className="px-1 text-xs-tight text-muted">
+        <p
+          className={`px-1 text-xs-tight ${tone === "home" ? "text-white/70" : "text-muted"}`}
+        >
           +{remainingCount} more open todo{remainingCount === 1 ? "" : "s"}
         </p>
       ) : null}
       {hiddenCompletedCount > 0 ? (
-        <p className="px-1 text-xs-tight text-muted">
+        <p
+          className={`px-1 text-xs-tight ${tone === "home" ? "text-white/70" : "text-muted"}`}
+        >
           {hiddenCompletedCount} completed todo
           {hiddenCompletedCount === 1 ? "" : "s"} hidden
         </p>
@@ -402,12 +459,14 @@ function TodoSidebarWidget({
       title={t("taskseventspanel.Todos", { defaultValue: "Todos" })}
       icon={<ListTodo className="h-4 w-4" />}
       testId="chat-widget-todos"
+      tone={onHome ? "home" : "default"}
     >
       <TodoItemsContent
         todos={todos}
         loading={todosLoading}
         goal={attentionGoal}
         onOpenGoal={() => nav.openView("/goals", "goals")}
+        tone={onHome ? "home" : "default"}
       />
     </WidgetSection>
   );
