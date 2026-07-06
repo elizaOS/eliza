@@ -8,7 +8,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  buildDeviceCaptureCommand,
   buildDeviceDeployCommand,
   buildDeviceLogsCommand,
   buildDeviceSmokeCommand,
@@ -23,29 +22,16 @@ const scriptsDir = "/repo/packages/app/scripts";
 const deviceId = "UDID-1";
 
 describe("planIosDeviceE2eSteps", () => {
-  it("always includes deploy + smoke as the mandatory assertion pair", () => {
+  it("includes deploy + smoke + logs in order; no separate capture boot", () => {
     const ids = planIosDeviceE2eSteps().map((s) => s.id);
-    expect(ids).toEqual(["deploy", "smoke", "capture", "logs"]);
+    expect(ids).toEqual(["deploy", "smoke", "logs"]);
     expect(ids).toEqual([...IOS_DEVICE_E2E_STEP_IDS]);
   });
-  it("--skip-capture drops only the capture step", () => {
-    expect(planIosDeviceE2eSteps({ skipCapture: true }).map((s) => s.id)).toEqual([
-      "deploy",
-      "smoke",
-      "logs",
-    ]);
-  });
-  it("--skip-logs drops only the logs step", () => {
+  it("--skip-logs drops only the logs step, keeping the deploy + smoke pair", () => {
     expect(planIosDeviceE2eSteps({ skipLogs: true }).map((s) => s.id)).toEqual([
       "deploy",
       "smoke",
-      "capture",
     ]);
-  });
-  it("keeps deploy + smoke even with both artifact steps skipped", () => {
-    expect(
-      planIosDeviceE2eSteps({ skipCapture: true, skipLogs: true }).map((s) => s.id),
-    ).toEqual(["deploy", "smoke"]);
   });
 });
 
@@ -76,7 +62,9 @@ describe("buildDeviceDeployCommand", () => {
     expect(args).toContain("ai.elizaos.app");
   });
   it("throws without a deviceId", () => {
-    expect(() => buildDeviceDeployCommand({ scriptsDir })).toThrow(/deviceId is required/);
+    expect(() => buildDeviceDeployCommand({ scriptsDir })).toThrow(
+      /deviceId is required/,
+    );
   });
 });
 
@@ -111,18 +99,6 @@ describe("buildDeviceSmokeCommand", () => {
     expect(() => buildDeviceSmokeCommand({ scriptsDir, deviceId })).toThrow(
       /outputDir is required/,
     );
-  });
-});
-
-describe("buildDeviceCaptureCommand", () => {
-  it("captures into the capture dir with --skip-build", () => {
-    const { args } = buildDeviceCaptureCommand({
-      scriptsDir,
-      deviceId,
-      outputDir: "/bundle/capture",
-    });
-    expect(args).toContain("--skip-build");
-    expect(args[args.indexOf("--output") + 1]).toBe("/bundle/capture");
   });
 });
 
@@ -174,8 +150,20 @@ describe("buildRunSummary", () => {
     const summary = buildRunSummary({
       ...base,
       steps: [
-        { id: "deploy", label: "d", status: "passed", durationMs: 10, artifacts: [] },
-        { id: "smoke", label: "s", status: "passed", durationMs: 20, artifacts: ["/a"] },
+        {
+          id: "deploy",
+          label: "d",
+          status: "passed",
+          durationMs: 10,
+          artifacts: [],
+        },
+        {
+          id: "smoke",
+          label: "s",
+          status: "passed",
+          durationMs: 20,
+          artifacts: ["/a"],
+        },
       ],
     });
     expect(summary.overallStatus).toBe("passed");
@@ -190,8 +178,20 @@ describe("buildRunSummary", () => {
     const summary = buildRunSummary({
       ...base,
       steps: [
-        { id: "deploy", label: "d", status: "passed", durationMs: 10, artifacts: [] },
-        { id: "smoke", label: "s", status: "failed", durationMs: 20, artifacts: [] },
+        {
+          id: "deploy",
+          label: "d",
+          status: "passed",
+          durationMs: 10,
+          artifacts: [],
+        },
+        {
+          id: "smoke",
+          label: "s",
+          status: "failed",
+          durationMs: 20,
+          artifacts: [],
+        },
       ],
     });
     expect(summary.overallStatus).toBe("failed");
@@ -205,6 +205,8 @@ describe("buildRunSummary", () => {
 
 describe("formatRunId", () => {
   it("produces a sortable YYYYMMDD-HHMMSS from a Date", () => {
-    expect(formatRunId(new Date("2026-07-05T13:04:09.000Z"))).toBe("20260705-130409");
+    expect(formatRunId(new Date("2026-07-05T13:04:09.000Z"))).toBe(
+      "20260705-130409",
+    );
   });
 });

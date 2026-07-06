@@ -3,26 +3,30 @@
  * physical-iPhone e2e lane (`ios-device-e2e.mjs`, issue #14337), plus the
  * run-scoped triage-bundle summary shape.
  *
- * The lane chains four already-proven scripts — deploy → on-device BootCapture
- * assertion → capture filmstrip → boot-trace logs — into one command. This
- * module owns the deterministic decisions (which steps run, exactly which
- * argv each gets, how a step's exit becomes a verdict, what the summary.json
- * looks like); the script owns the impure edges (spawning node, reading files,
- * writing the bundle). Keeping the argv construction here means the exact flags
- * the lane hands each child are unit-tested against fixtures without a device.
+ * The lane chains three already-proven scripts — deploy → on-device BootCapture
+ * assertion → boot-trace logs — into one command. This module owns the
+ * deterministic decisions (which steps run, exactly which argv each gets, how a
+ * step's exit becomes a verdict, what the summary.json looks like); the script
+ * owns the impure edges (spawning node, reading files, writing the bundle).
+ * Keeping the argv construction here means the exact flags the lane hands each
+ * child are unit-tested against fixtures without a device.
  *
  * The on-device assertion is BootCapture, NOT `mobile-local-chat-smoke`: that
  * smoke targets the iOS Simulator, so on a physical iPhone the XCUITest
  * BootCapture harness ("did the freshly deployed app boot to home or an error
  * card") is the on-device assertion of record (issue #14337, research doc 08 §4).
+ * BootCapture writes its filmstrip attachments into the smoke step's output dir,
+ * so that one on-device boot yields both the pass/fail verdict and the watchable
+ * filmstrip — there is no separate capture boot (a second identical BootCapture
+ * run would only re-boot the phone to produce bytes the smoke step already has).
  *
  * Bundle shape mirrors research doc 08 Q2/Q3: a gitignored run-scoped dir with
- * `inline/` (post-ready MP4/JPG), `logs/`, and a JSON-canonical `summary.json`
- * carrying lane, device identity, installed buildId/commit, and per-step
- * status/duration/artifact paths. The device-e2e bundle library
- * (`lib/device-e2e-bundle.mjs`) is owned by a sibling PR (#14336); this lane
- * ships a minimal local emitter matching that documented shape and is
- * reconciled onto the shared lib when it lands.
+ * `smoke/` (the BootCapture MP4/JPG the assertion produced), `logs/`, and a
+ * JSON-canonical `summary.json` carrying lane, device identity, installed
+ * buildId/commit, and per-step status/duration/artifact paths. The device-e2e
+ * bundle library (`lib/device-e2e-bundle.mjs`) is owned by a sibling PR
+ * (#14336); this lane ships a minimal local emitter matching that documented
+ * shape and is reconciled onto the shared lib when it lands.
  */
 import path from "node:path";
 
@@ -30,30 +34,37 @@ import path from "node:path";
 export const IOS_DEVICE_E2E_STEP_IDS = Object.freeze([
   "deploy",
   "smoke",
-  "capture",
   "logs",
 ]);
 
 /**
- * Plan the ordered steps for a physical-iPhone e2e run. Every step is always
- * present — this lane has no "vacuous" mode: a run that skipped the on-device
+ * Plan the ordered steps for a physical-iPhone e2e run. Deploy + smoke are
+ * mandatory — this lane has no "vacuous" mode: a run that skipped the on-device
  * assertion would print success without proving the phone booted the new build.
- * `--skip-capture` / `--skip-logs` exist only to trim the (non-assertion)
- * artifact-collection steps for tight iteration; deploy + smoke are mandatory.
+ * The smoke step's BootCapture run already emits the watchable filmstrip, so
+ * there is no separate capture step. `--skip-logs` exists only to trim the
+ * (non-assertion) boot-trace pull for tight iteration.
  *
- * @param {{ skipCapture?: boolean, skipLogs?: boolean }} [flags]
+ * @param {{ skipLogs?: boolean }} [flags]
  * @returns {Array<{ id: string, label: string }>}
  */
-export function planIosDeviceE2eSteps({ skipCapture = false, skipLogs = false } = {}) {
+export function planIosDeviceE2eSteps({ skipLogs = false } = {}) {
   const steps = [
-    { id: "deploy", label: "deploy signed App.app to the device (--skip-appexes)" },
-    { id: "smoke", label: "on-device BootCapture assertion (boots to home or error card)" },
+    {
+      id: "deploy",
+      label: "deploy signed App.app to the device (--skip-appexes)",
+    },
+    {
+      id: "smoke",
+      label:
+        "on-device BootCapture assertion + filmstrip (boots to home or error card)",
+    },
   ];
-  if (!skipCapture) {
-    steps.push({ id: "capture", label: "capture the boot filmstrip for the bundle" });
-  }
   if (!skipLogs) {
-    steps.push({ id: "logs", label: "pull the full-Bun boot-trace (--no-console)" });
+    steps.push({
+      id: "logs",
+      label: "pull the full-Bun boot-trace (--no-console)",
+    });
   }
   return steps;
 }
@@ -77,7 +88,8 @@ export function buildDeviceDeployCommand({
   noLaunch = false,
   bundleId = null,
 }) {
-  if (!deviceId) throw new Error("buildDeviceDeployCommand: deviceId is required");
+  if (!deviceId)
+    throw new Error("buildDeviceDeployCommand: deviceId is required");
   const args = [
     path.join(scriptsDir, "ios-device-deploy.mjs"),
     "--device",
@@ -108,8 +120,10 @@ export function buildDeviceSmokeCommand({
   requireChat = false,
   bundleId = null,
 }) {
-  if (!deviceId) throw new Error("buildDeviceSmokeCommand: deviceId is required");
-  if (!outputDir) throw new Error("buildDeviceSmokeCommand: outputDir is required");
+  if (!deviceId)
+    throw new Error("buildDeviceSmokeCommand: deviceId is required");
+  if (!outputDir)
+    throw new Error("buildDeviceSmokeCommand: outputDir is required");
   const args = [
     path.join(scriptsDir, "ios-device-capture.mjs"),
     "--platform",
@@ -121,38 +135,6 @@ export function buildDeviceSmokeCommand({
     outputDir,
   ];
   if (requireChat) args.push("--require-chat");
-  if (bundleId) args.push("--bundle-id", bundleId);
-  return { cmd: "node", args };
-}
-
-/**
- * Absolute node argv for the filmstrip capture step. Same BootCapture script as
- * the smoke assertion but into the bundle's `capture/` subdir — this is the
- * watchable artifact, separate from the pass/fail assertion output so a green
- * run still yields a filmstrip to eyeball.
- *
- * @param {{ scriptsDir: string, deviceId: string, outputDir: string,
- *           bundleId?: string | null }} opts
- * @returns {{ cmd: string, args: string[] }}
- */
-export function buildDeviceCaptureCommand({
-  scriptsDir,
-  deviceId,
-  outputDir,
-  bundleId = null,
-}) {
-  if (!deviceId) throw new Error("buildDeviceCaptureCommand: deviceId is required");
-  if (!outputDir) throw new Error("buildDeviceCaptureCommand: outputDir is required");
-  const args = [
-    path.join(scriptsDir, "ios-device-capture.mjs"),
-    "--platform",
-    "device",
-    "--device",
-    deviceId,
-    "--skip-build",
-    "--output",
-    outputDir,
-  ];
   if (bundleId) args.push("--bundle-id", bundleId);
   return { cmd: "node", args };
 }
@@ -173,8 +155,10 @@ export function buildDeviceLogsCommand({
   outputFile,
   bundleId = null,
 }) {
-  if (!deviceId) throw new Error("buildDeviceLogsCommand: deviceId is required");
-  if (!outputFile) throw new Error("buildDeviceLogsCommand: outputFile is required");
+  if (!deviceId)
+    throw new Error("buildDeviceLogsCommand: deviceId is required");
+  if (!outputFile)
+    throw new Error("buildDeviceLogsCommand: outputFile is required");
   const args = [
     path.join(scriptsDir, "ios-device-logs.mjs"),
     "--device",

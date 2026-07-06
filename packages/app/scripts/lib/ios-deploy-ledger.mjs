@@ -15,10 +15,13 @@
  *
  * Everything here is pure or takes the filesystem edge as the JSONL path, so the
  * append/read/latest-per-device logic is unit-tested against fixtures without a
- * device. The stamp comparison is the deploy-side renderer-freshness assert:
- * the deploy refuses a staged bundle whose buildId does not match the freshly
- * built dist (a stale UI would otherwise ship silently — issue #9309's failure
- * mode, on the device lane).
+ * device. The renderer stamp itself — path resolution and typed read — lives in
+ * `lib/ios-renderer-stamp.mjs` (the single source of truth the simulator lanes
+ * also use); this module owns only the deploy-side, non-throwing freshness
+ * *verdict* ({@link evaluateStagedRendererFreshness}) the device deploy renders
+ * before install to refuse a staged bundle whose buildId does not match the
+ * freshly built dist (a stale UI would otherwise ship silently — issue #9309's
+ * failure mode, on the device lane).
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -267,58 +270,5 @@ export function evaluateStagedRendererFreshness(staged, fresh) {
     stagedBuildId,
     freshBuildId,
     reason: `renderer buildId ${stagedBuildId.slice(0, 12)} matches freshly built dist`,
-  };
-}
-
-const RENDERER_MANIFEST_FILENAME = "eliza-renderer-build.json";
-
-/**
- * Path to the renderer stamp inside a staged `App.app` (cap sync copies the web
- * bundle under `public/`).
- * @param {string} appPath
- * @returns {string}
- */
-export function stagedRendererManifestPath(appPath) {
-  return path.join(appPath, "public", RENDERER_MANIFEST_FILENAME);
-}
-
-/**
- * Path to the freshly built renderer stamp in dist.
- * @param {string} repoRoot
- * @param {string} [rendererDist] explicit dist override
- * @returns {string}
- */
-export function freshRendererManifestPath(repoRoot, rendererDist) {
-  const base = rendererDist
-    ? path.resolve(rendererDist)
-    : path.join(repoRoot, "packages", "app", "dist");
-  return path.join(base, RENDERER_MANIFEST_FILENAME);
-}
-
-/**
- * Read + parse a renderer manifest, requiring a non-empty buildId. A manifest
- * with no buildId is not a usable stamp — throwing here keeps the deploy from
- * treating an unstamped build as fresh.
- *
- * @param {string} manifestPath
- * @param {string} label
- * @returns {{ buildId: string, commit: string | null, variant: string | null,
- *            runtimeMode: string | null, builtAt: string | null }}
- */
-export function readRendererManifest(manifestPath, label) {
-  if (!fs.existsSync(manifestPath)) {
-    throw new Error(`${label} renderer manifest is missing: ${manifestPath}`);
-  }
-  const parsed = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-  if (typeof parsed.buildId !== "string" || parsed.buildId.length === 0) {
-    throw new Error(`${label} renderer manifest has no buildId: ${manifestPath}`);
-  }
-  return {
-    buildId: parsed.buildId,
-    commit: typeof parsed.commit === "string" ? parsed.commit : null,
-    variant: typeof parsed.variant === "string" ? parsed.variant : null,
-    runtimeMode:
-      typeof parsed.runtimeMode === "string" ? parsed.runtimeMode : null,
-    builtAt: typeof parsed.builtAt === "string" ? parsed.builtAt : null,
   };
 }

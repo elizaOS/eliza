@@ -15,15 +15,17 @@ import {
   buildDeployRecord,
   deployStatusForDevice,
   evaluateStagedRendererFreshness,
-  freshRendererManifestPath,
   latestDeployByUdid,
   parseDeployLedger,
   readDeployLedger,
-  readRendererManifest,
   resolveDeployLedgerPath,
   resolveLedgerStateDir,
-  stagedRendererManifestPath,
 } from "./ios-deploy-ledger.mjs";
+import {
+  freshRendererManifestPath,
+  readRendererManifest,
+  rendererManifestPathFromAppPath,
+} from "./ios-renderer-stamp.mjs";
 
 let tmpDir;
 
@@ -46,7 +48,10 @@ describe("resolveLedgerStateDir precedence", () => {
   });
   it("falls back to ELIZA_STATE_DIR", () => {
     expect(
-      resolveLedgerStateDir({ env: { ELIZA_STATE_DIR: "/e/state" }, homedir: home }),
+      resolveLedgerStateDir({
+        env: { ELIZA_STATE_DIR: "/e/state" },
+        homedir: home,
+      }),
     ).toBe("/e/state");
   });
   it("honors XDG_STATE_HOME + namespace", () => {
@@ -64,14 +69,19 @@ describe("resolveLedgerStateDir precedence", () => {
   });
   it("resolveDeployLedgerPath appends the ledger filename", () => {
     expect(
-      resolveDeployLedgerPath({ env: { ELIZA_STATE_DIR: "/e/state" }, homedir: home }),
+      resolveDeployLedgerPath({
+        env: { ELIZA_STATE_DIR: "/e/state" },
+        homedir: home,
+      }),
     ).toBe(path.join("/e/state", "device-deploy-ledger.jsonl"));
   });
 });
 
 describe("buildDeployRecord validation", () => {
   it("throws without a udid", () => {
-    expect(() => buildDeployRecord({ buildId: "abc" })).toThrow(/udid is required/);
+    expect(() => buildDeployRecord({ buildId: "abc" })).toThrow(
+      /udid is required/,
+    );
   });
   it("throws without a buildId", () => {
     expect(() => buildDeployRecord({ udid: "UDID-1" })).toThrow(
@@ -157,8 +167,16 @@ describe("deployStatusForDevice honest unknown path", () => {
   });
   it("reports the latest record for a known device", () => {
     const records = [
-      buildDeployRecord({ udid: "UDID-A", buildId: "b1", deployedAt: "2026-01-01T00:00:00Z" }),
-      buildDeployRecord({ udid: "UDID-A", buildId: "b2", deployedAt: "2026-01-02T00:00:00Z" }),
+      buildDeployRecord({
+        udid: "UDID-A",
+        buildId: "b1",
+        deployedAt: "2026-01-01T00:00:00Z",
+      }),
+      buildDeployRecord({
+        udid: "UDID-A",
+        buildId: "b2",
+        deployedAt: "2026-01-02T00:00:00Z",
+      }),
     ];
     const status = deployStatusForDevice(records, "UDID-A");
     expect(status.known).toBe(true);
@@ -171,7 +189,8 @@ describe("deployStatusForDevice honest unknown path", () => {
 
 describe("parseDeployLedger fail-closed on corruption", () => {
   it("skips blank lines only", () => {
-    const text = '{"udid":"A","buildId":"b"}\n\n  \n{"udid":"B","buildId":"c"}\n';
+    const text =
+      '{"udid":"A","buildId":"b"}\n\n  \n{"udid":"B","buildId":"c"}\n';
     expect(parseDeployLedger(text)).toHaveLength(2);
   });
   it("throws with a line number on malformed JSONL", () => {
@@ -210,7 +229,7 @@ describe("evaluateStagedRendererFreshness", () => {
   });
 });
 
-describe("readRendererManifest against fixtures", () => {
+describe("evaluateStagedRendererFreshness against real stamp fixtures", () => {
   function writeManifest(dir, manifest) {
     const target = path.join(dir, "eliza-renderer-build.json");
     fs.mkdirSync(dir, { recursive: true });
@@ -218,7 +237,10 @@ describe("readRendererManifest against fixtures", () => {
     return target;
   }
 
-  it("reads a valid staged manifest and the fresh manifest, then compares", () => {
+  // Reads real staged + fresh stamps through the shared ios-renderer-stamp lib,
+  // then runs the ledger's freshness verdict over them — the end-to-end deploy
+  // path (read staged, read fresh, decide) without a device.
+  it("verdicts fresh when a real staged stamp matches the fresh dist stamp", () => {
     const appPublic = path.join(tmpDir, "App.app", "public");
     const dist = path.join(tmpDir, "dist");
     const stagedPath = writeManifest(appPublic, {
@@ -235,36 +257,19 @@ describe("readRendererManifest against fixtures", () => {
       runtimeMode: "local",
     });
 
-    expect(stagedRendererManifestPath(path.join(tmpDir, "App.app"))).toBe(
+    expect(rendererManifestPathFromAppPath(path.join(tmpDir, "App.app"))).toBe(
       stagedPath,
     );
     const staged = readRendererManifest(stagedPath, "staged");
     const fresh = readRendererManifest(
-      freshRendererManifestPath("/unused-repo-root", dist),
+      freshRendererManifestPath({
+        repoRoot: "/unused-repo-root",
+        rendererDist: dist,
+      }),
       "fresh",
     );
     expect(staged.buildId).toBe("build-XYZ");
     expect(staged.commit).toBe("deadbeef");
     expect(evaluateStagedRendererFreshness(staged, fresh).fresh).toBe(true);
-  });
-
-  it("throws on a missing manifest", () => {
-    expect(() => readRendererManifest(path.join(tmpDir, "nope.json"), "staged")).toThrow(
-      /is missing/,
-    );
-  });
-  it("throws on a manifest with no buildId", () => {
-    const p = path.join(tmpDir, "eliza-renderer-build.json");
-    fs.writeFileSync(p, JSON.stringify({ commit: "x" }));
-    expect(() => readRendererManifest(p, "staged")).toThrow(/has no buildId/);
-  });
-
-  it("freshRendererManifestPath honors an explicit dist override", () => {
-    expect(freshRendererManifestPath("/repo", "/custom/dist")).toBe(
-      path.join("/custom", "dist", "eliza-renderer-build.json"),
-    );
-    expect(freshRendererManifestPath("/repo")).toBe(
-      path.join("/repo", "packages", "app", "dist", "eliza-renderer-build.json"),
-    );
   });
 });

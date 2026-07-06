@@ -37,20 +37,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { appendIosDeviceDeployLedger } from "./devices-status.mjs";
 import {
   readDevicectlDeviceList,
   readDevicectlDeviceLockState,
 } from "./ios-device-devicectl.mjs";
-import {
-  appendDeployRecord,
-  buildDeployRecord,
-  evaluateStagedRendererFreshness,
-  freshRendererManifestPath,
-  readRendererManifest,
-  resolveDeployLedgerPath,
-  stagedRendererManifestPath,
-} from "./lib/ios-deploy-ledger.mjs";
 import {
   assertDeviceUnlocked,
   buildCodesignPlan,
@@ -67,6 +57,13 @@ import {
   selectSigningIdentity,
 } from "./ios-device-lib.mjs";
 import {
+  appendDeployRecord,
+  buildDeployRecord,
+  evaluateStagedRendererFreshness,
+  resolveDeployLedgerPath,
+} from "./lib/ios-deploy-ledger.mjs";
+import {
+  freshRendererManifestPath,
   readRendererManifest,
   rendererManifestPathFromAppPath,
 } from "./lib/ios-renderer-stamp.mjs";
@@ -485,14 +482,20 @@ async function main() {
   // footgun (a cached dist grafted over a fresh one). --allow-stale-renderer is
   // the explicit escape hatch for an operator staging a deliberately older
   // bundle. Read the staged stamp now (also feeds the deploy-ledger row below).
-  const stagedManifestPath = stagedRendererManifestPath(stagedApp);
-  const stagedManifest = readRendererManifest(stagedManifestPath, "staged App.app");
-  const freshManifestPath = freshRendererManifestPath(
-    repoRoot,
-    process.env.ELIZA_SMOKE_RENDERER_DIST,
+  const stagedManifestPath = rendererManifestPathFromAppPath(stagedApp);
+  const stagedManifest = readRendererManifest(
+    stagedManifestPath,
+    "staged App.app",
   );
+  const freshManifestPath = freshRendererManifestPath({
+    repoRoot,
+    rendererDist: process.env.ELIZA_SMOKE_RENDERER_DIST,
+  });
   if (!args["allow-stale-renderer"]) {
-    const freshManifest = readRendererManifest(freshManifestPath, "freshly built");
+    const freshManifest = readRendererManifest(
+      freshManifestPath,
+      "freshly built",
+    );
     const freshness = evaluateStagedRendererFreshness(
       stagedManifest,
       freshManifest,
@@ -531,22 +534,6 @@ async function main() {
     device.identifier,
     stagedApp,
   ]);
-  const rendererStamp = readRendererManifest(
-    rendererManifestPathFromAppPath(stagedApp),
-    "staged iOS device app",
-  );
-  const ledgerPath = appendIosDeviceDeployLedger({
-    identifier: device.identifier,
-    udid: device.udid,
-    name: device.name,
-    bundleId,
-    buildId: rendererStamp.buildId,
-    commit: rendererStamp.commit ?? null,
-    builtAt: rendererStamp.builtAt ?? null,
-    deployedAt: new Date().toISOString(),
-  });
-  log(`deploy ledger: ${ledgerPath}`);
-
   // Record the deploy: one JSONL row keyed by device UDID with the renderer
   // buildId/commit just installed, so `devices:status` (#14338) can report this
   // phone's build without reading its sandboxed container. Written only after a

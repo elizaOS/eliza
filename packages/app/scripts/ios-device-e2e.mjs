@@ -5,7 +5,7 @@
  * boot-trace, and collapse everything into one run-scoped triage bundle whose
  * absolute path is printed as the last line (issue #14337).
  *
- * Chains four already-proven scripts through the pure step-runner in
+ * Chains three already-proven scripts through the pure step-runner in
  * `lib/ios-device-e2e-lib.mjs`:
  *   1. ios-device-deploy.mjs  --skip-appexes  (build → sign → devicectl install;
  *      appex surfaces excluded — logged loudly by the deploy script). The deploy
@@ -13,34 +13,34 @@
  *   2. ios-device-capture.mjs --platform device  (BootCapture — the ON-DEVICE
  *      assertion: did the freshly deployed app reach home or the error card?
  *      `mobile-local-chat-smoke` is simulator-only, so BootCapture is the
- *      device assertion of record).
- *   3. ios-device-capture.mjs --platform device  again into capture/ for the
- *      watchable filmstrip artifact.
- *   4. ios-device-logs.mjs --no-console --pull-boot-trace  (full-Bun engine
+ *      device assertion of record). Its filmstrip attachments land in smoke/, so
+ *      the one on-device boot yields both the verdict and the watchable artifact.
+ *   3. ios-device-logs.mjs --no-console --pull-boot-trace  (full-Bun engine
  *      observability; attached --console SIGTRAPs the no-JIT engine, #11515).
  *
  * Every step's exit is loud: a non-zero child fails the lane non-zero. The bundle
- * (research doc 08 Q2/Q3 shape: inline/ logs/ summary.json) is written under a
+ * (research doc 08 Q2/Q3 shape: smoke/ logs/ summary.json) is written under a
  * gitignored run-scoped dir and its path is the final stdout line so an agent
- * can post inline/ to a PR.
+ * can post the smoke filmstrip + boot-trace to a PR.
  *
  * Device id: --device flag or ELIZA_IOS_DEVICE_ID.
  *
  * Usage:
  *   node scripts/ios-device-e2e.mjs [--device <id>] [--skip-appexes]
- *     [--no-skip-appexes] [--skip-capture] [--skip-logs] [--require-chat]
+ *     [--no-skip-appexes] [--skip-logs] [--require-chat]
  *     [--bundle-id <id>] [--output <dir>]
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
 import {
-  freshRendererManifestPath,
-  readRendererManifest,
-} from "./lib/ios-deploy-ledger.mjs";
+  findDeviceRecord,
+  parseCliArgs,
+  resolveDeviceId,
+} from "./ios-device-lib.mjs";
 import {
-  buildDeviceCaptureCommand,
   buildDeviceDeployCommand,
   buildDeviceLogsCommand,
   buildDeviceSmokeCommand,
@@ -50,11 +50,9 @@ import {
   planIosDeviceE2eSteps,
 } from "./lib/ios-device-e2e-lib.mjs";
 import {
-  findDeviceRecord,
-  parseCliArgs,
-  resolveDeviceId,
-} from "./ios-device-lib.mjs";
-import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
+  freshRendererManifestPath,
+  readRendererManifest,
+} from "./lib/ios-renderer-stamp.mjs";
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptsDir, "..");
@@ -81,7 +79,6 @@ async function main() {
     booleans: [
       "skip-appexes",
       "no-skip-appexes",
-      "skip-capture",
       "skip-logs",
       "require-chat",
       "help",
@@ -89,7 +86,7 @@ async function main() {
   });
   if (args.help) {
     console.log(
-      "Usage: node scripts/ios-device-e2e.mjs [--device <id>] [--no-skip-appexes] [--skip-capture] [--skip-logs] [--require-chat] [--bundle-id <id>] [--output <dir>]",
+      "Usage: node scripts/ios-device-e2e.mjs [--device <id>] [--no-skip-appexes] [--skip-logs] [--require-chat] [--bundle-id <id>] [--output <dir>]",
     );
     return;
   }
@@ -109,7 +106,9 @@ async function main() {
         "(pair the phone: Finder → device → Trust, and enable Developer Mode).",
     );
   }
-  log(`device: ${device.name} (identifier ${device.identifier}, udid ${device.udid})`);
+  log(
+    `device: ${device.name} (identifier ${device.identifier}, udid ${device.udid})`,
+  );
 
   // --skip-appexes is the default unattended posture (PR #13174); --no-skip-appexes
   // opts back in when per-appex profiles exist.
@@ -122,14 +121,12 @@ async function main() {
     args.output || path.join(appRoot, "device-e2e-output", `ios-${runId}`),
   );
   const smokeDir = path.join(bundleDir, "smoke");
-  const captureDir = path.join(bundleDir, "capture");
   const logsDir = path.join(bundleDir, "logs");
-  for (const dir of [bundleDir, smokeDir, captureDir, logsDir]) {
+  for (const dir of [bundleDir, smokeDir, logsDir]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
   const steps = planIosDeviceE2eSteps({
-    skipCapture: Boolean(args["skip-capture"]),
     skipLogs: Boolean(args["skip-logs"]),
   });
   log(`plan: ${steps.map((s) => s.id).join(" → ")}`);
@@ -157,16 +154,6 @@ async function main() {
             bundleId,
           }),
           artifacts: [smokeDir],
-        };
-      case "capture":
-        return {
-          command: buildDeviceCaptureCommand({
-            scriptsDir,
-            deviceId,
-            outputDir: captureDir,
-            bundleId,
-          }),
-          artifacts: [captureDir],
         };
       case "logs":
         return {
@@ -211,7 +198,7 @@ async function main() {
   let build = { buildId: null, commit: null };
   try {
     const fresh = readRendererManifest(
-      freshRendererManifestPath(repoRoot),
+      freshRendererManifestPath({ repoRoot }),
       "freshly built",
     );
     build = { buildId: fresh.buildId, commit: fresh.commit };
@@ -242,8 +229,11 @@ async function main() {
     process.exit(1);
   }
 
-  log(`ALL iOS DEVICE E2E PASSED ✅ (${skipAppexes ? "appexes SKIPPED — widget/keyboard/device-activity surfaces UNTESTED" : "appexes included"})`);
-  // Last line: the absolute bundle path (contract with #14337 — agents post inline/).
+  log(
+    `ALL iOS DEVICE E2E PASSED ✅ (${skipAppexes ? "appexes SKIPPED — widget/keyboard/device-activity surfaces UNTESTED" : "appexes included"})`,
+  );
+  // Last line: the absolute bundle path (contract with #14337 — agents post the
+  // smoke/ filmstrip + logs/ boot-trace inline to the PR).
   console.log(bundleDir);
 }
 

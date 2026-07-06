@@ -1,3 +1,18 @@
+/**
+ * Renderer build-stamp helpers for the iOS lanes: resolve the
+ * `eliza-renderer-build.json` stamp inside a staged/installed `App.app` and in
+ * the freshly built dist, read it as a typed manifest, and assert the two
+ * buildIds match. This is the single source of truth for the stale-UI guard
+ * (#9309): a Capacitor app bakes the web bundle into the `.app` at build time,
+ * so an install of a cached dist over a fresh one silently ships yesterday's UI
+ * unless the buildIds are compared before install.
+ *
+ * Consumed by the simulator smoke lanes (`ios-e2e`, `ios-onboarding-smoke`,
+ * `mobile-local-chat-smoke`) via the throwing `assertIosAppRendererFresh`, and
+ * by the physical-device deploy/e2e lane (`ios-device-deploy`, `ios-device-e2e`,
+ * `lib/ios-deploy-ledger`) which reuses the path/read helpers here and layers its
+ * own non-throwing freshness verdict on top.
+ */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -30,6 +45,19 @@ export function freshRendererManifestPath({ repoRoot, rendererDist }) {
   );
 }
 
+/**
+ * Read + parse a renderer stamp, requiring a non-empty buildId (an unstamped
+ * build is not a usable manifest — throwing here keeps a consumer from treating
+ * it as fresh). Returns a normalized shape so callers get typed access to the
+ * fields the stamp carries (`commit`/`variant`/`runtimeMode` drive the
+ * deploy-ledger row; `builtAt` is echoed in freshness logs) rather than reaching
+ * into a raw JSON blob.
+ *
+ * @param {string} manifestPath
+ * @param {string} label
+ * @returns {{ buildId: string, commit: string | null, variant: string | null,
+ *            runtimeMode: string | null, builtAt: string | null }}
+ */
 export function readRendererManifest(manifestPath, label) {
   if (!fs.existsSync(manifestPath)) {
     throw new Error(`${label} renderer manifest is missing: ${manifestPath}`);
@@ -40,7 +68,14 @@ export function readRendererManifest(manifestPath, label) {
       `${label} renderer manifest has no buildId: ${manifestPath}`,
     );
   }
-  return parsed;
+  return {
+    buildId: parsed.buildId,
+    commit: typeof parsed.commit === "string" ? parsed.commit : null,
+    variant: typeof parsed.variant === "string" ? parsed.variant : null,
+    runtimeMode:
+      typeof parsed.runtimeMode === "string" ? parsed.runtimeMode : null,
+    builtAt: typeof parsed.builtAt === "string" ? parsed.builtAt : null,
+  };
 }
 
 export function compareRendererBuildIds({
