@@ -20,6 +20,7 @@ import type {
   CommandSurface,
   SlashCommandCatalogItem,
 } from "../api/client-types-commands";
+import { ApiError } from "../api/client-types-core";
 
 const { listCommands, listCustomActions } = vi.hoisted(() => ({
   listCommands:
@@ -73,6 +74,15 @@ function cmd(
 }
 
 const GUI: CommandSurface = "gui";
+
+function apiError(status: number, message: string): ApiError {
+  return new ApiError({
+    kind: "http",
+    path: "/api/slash-command-catalog",
+    status,
+    message,
+  });
+}
 
 beforeEach(() => {
   listCommands.mockReset();
@@ -154,6 +164,22 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     consoleError.mockRestore();
   });
 
+  it("quietly treats unauthenticated catalog endpoints as an unavailable slash menu (#14663)", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    listCommands.mockRejectedValue(apiError(401, "Unauthorized"));
+    listCustomActions.mockRejectedValue(apiError(403, "Forbidden"));
+
+    const { result } = renderHook(() => useSlashCommandController());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.commands).toEqual([]);
+    expect(result.current.error).toBe(false);
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
   it("a failed catalog fetch degrades to an empty catalog AND surfaces the error", async () => {
     const consoleError = vi
       .spyOn(console, "error")
@@ -167,6 +193,25 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     expect(result.current.commands).toEqual([]);
     // #12784 three-state: a failed load must be distinguishable from a genuine
     // empty catalog — `error` is true, not a silent healthy-empty.
+    expect(result.current.error).toBe(true);
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("[useSlashCommandController]"),
+      failure,
+    );
+    consoleError.mockRestore();
+  });
+
+  it("still surfaces non-auth API catalog failures", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const failure = apiError(500, "Internal server error");
+    listCommands.mockRejectedValue(failure);
+
+    const { result } = renderHook(() => useSlashCommandController());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.commands).toEqual([]);
     expect(result.current.error).toBe(true);
     expect(consoleError).toHaveBeenCalledWith(
       expect.stringContaining("[useSlashCommandController]"),

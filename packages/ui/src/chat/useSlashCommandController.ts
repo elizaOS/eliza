@@ -13,6 +13,7 @@ import type {
   CommandArgSource,
   SlashCommandCatalogItem,
 } from "../api/client-types-commands";
+import { isApiError } from "../api/client-types-core";
 import {
   resolveSettingsSectionToken,
   SETTINGS_SECTION_SUGGESTIONS,
@@ -181,6 +182,10 @@ function savedCommandToCommand(name: string): SlashCommandCatalogItem {
   };
 }
 
+function isExpectedCatalogAuthError(error: unknown): boolean {
+  return isApiError(error) && (error.status === 401 || error.status === 403);
+}
+
 /** Merge catalogs, keeping the first definition for any duplicated alias. */
 function mergeByAlias(
   groups: SlashCommandCatalogItem[][],
@@ -252,6 +257,14 @@ export function useSlashCommandController(
         // error-policy:J4 degrade to an empty catalog with the failure logged
         // + flagged (not fabricated as a healthy-empty catalog).
         .catch((error: unknown) => {
+          // A 401/403 means the viewer isn't authenticated (or the agent
+          // session lapsed) — the catalog is legitimately unavailable, not a
+          // diagnosable failure. Degrade quietly rather than console.error-
+          // storming the logged-out agent app (#14663). Real failures still
+          // surface via loadFailed + the log below.
+          if (isExpectedCatalogAuthError(error)) {
+            return [];
+          }
           loadFailed = true;
           console.error(
             "[useSlashCommandController] Failed to load the slash-command catalog; slash menu will be empty",
@@ -263,6 +276,11 @@ export function useSlashCommandController(
         .listCustomActions()
         // error-policy:J4 omit custom actions with the failure logged + flagged.
         .catch((error: unknown) => {
+          // See above: an unauthenticated 401/403 is expected, not a failure —
+          // degrade quietly instead of logging (#14663).
+          if (isExpectedCatalogAuthError(error)) {
+            return [];
+          }
           loadFailed = true;
           console.error(
             "[useSlashCommandController] Failed to load custom actions; omitting them from the slash menu",
