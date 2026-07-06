@@ -87,6 +87,10 @@ import {
 	buildSpanSamplerPlan,
 	withGuidedDecodeProviderOptions,
 } from "./response-grammar";
+import {
+	buildProviderAttributionsFromState,
+	flattenTrajectoryMessages,
+} from "./trajectory-provider-attribution";
 import type {
 	RecordedStage,
 	RecordedToolCall,
@@ -316,6 +320,7 @@ export async function runPlannerLoop(
 				recorder: params.recorder,
 				trajectoryId: params.trajectoryId,
 				parentStageId: params.parentStageId,
+				providerAttributionState: params.providerAttributionState,
 				iteration,
 				onUsage: observePlannerUsage,
 			});
@@ -1301,6 +1306,7 @@ async function callPlanner(params: {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
+	providerAttributionState?: PlannerLoopParams["providerAttributionState"];
 	iteration?: number;
 	/**
 	 * Side-channel observer called once per model call with the gross
@@ -1532,6 +1538,7 @@ async function callPlanner(params: {
 		segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
 		prefixHash,
 		logger: params.runtime.logger,
+		providerAttributionState: params.providerAttributionState,
 	});
 
 	return parsed;
@@ -1830,6 +1837,7 @@ async function recordPlannerStage(args: {
 	endedAt: number;
 	segmentHashes: string[];
 	prefixHash: string;
+	providerAttributionState?: PlannerLoopParams["providerAttributionState"];
 	logger?: PlannerRuntime["logger"];
 }): Promise<void> {
 	if (!args.recorder || !args.trajectoryId) return;
@@ -1840,6 +1848,13 @@ async function recordPlannerStage(args: {
 		const usage = extractUsage(args.raw);
 		const finishReason = extractFinishReason(args.raw);
 		const modelName = extractModelName(args.raw);
+		// Flatten `messages` only to locate provider spans; the flattened form is
+		// not persisted — `messages` is the canonical record and spans index into
+		// `flattenTrajectoryMessages(messages)` reconstructed at read time.
+		const providerAttribution = buildProviderAttributionsFromState({
+			state: args.providerAttributionState,
+			prompt: flattenTrajectoryMessages(args.modelParams.messages),
+		});
 		const stage: RecordedStage = {
 			stageId: `stage-planner-iter-${args.iteration}-${args.startedAt}`,
 			kind: "planner",
@@ -1865,6 +1880,8 @@ async function recordPlannerStage(args: {
 				usage,
 				finishReason,
 				costUsd: usage ? computeCallCostUsd(modelName, usage) : undefined,
+				providerOrder: providerAttribution.providerOrder,
+				providerAttributions: providerAttribution.providerAttributions,
 			},
 			cache: {
 				segmentHashes: args.segmentHashes,
@@ -2777,6 +2794,7 @@ async function finishWithForcedSynthesis(params: {
 		recorder: loop.recorder,
 		trajectoryId: loop.trajectoryId,
 		parentStageId: loop.parentStageId,
+		providerAttributionState: loop.providerAttributionState,
 		iteration,
 		onUsage: params.onUsage,
 	});

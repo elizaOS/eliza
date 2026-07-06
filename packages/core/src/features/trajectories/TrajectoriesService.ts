@@ -535,6 +535,12 @@ function normalizeLlmCall(value: unknown): LLMCall | null {
 	}
 	const tags = stringArrayValue(value.tags);
 	if (tags) call.tags = tags;
+	const providerOrder = stringArrayValue(value.providerOrder);
+	if (providerOrder) call.providerOrder = providerOrder;
+	if (Array.isArray(value.providerAttributions)) {
+		call.providerAttributions =
+			value.providerAttributions as LLMCall["providerAttributions"];
+	}
 	if (Array.isArray(value.messages)) call.messages = value.messages;
 	if (Array.isArray(value.toolCalls)) call.toolCalls = value.toolCalls;
 	if ("tools" in value) call.tools = value.tools;
@@ -564,6 +570,19 @@ function normalizeProviderAccess(value: unknown): ProviderAccess | null {
 		purpose,
 	};
 	if (isJsonObject(value.query)) access.query = value.query;
+	const sha256 = stringValue(value.sha256);
+	if (sha256 !== null) access.sha256 = sha256;
+	for (const key of [
+		"tokenCount",
+		"position",
+		"spanStart",
+		"spanEnd",
+	] as const) {
+		const numericValue = numberValue(value[key]);
+		if (numericValue !== null) {
+			access[key] = numericValue;
+		}
+	}
 	for (const key of [
 		"runId",
 		"roomId",
@@ -1695,6 +1714,8 @@ export class TrajectoriesService extends Service {
 				roomId: params.roomId,
 				messageId: params.messageId,
 				executionTraceId: params.executionTraceId,
+				providerOrder: params.providerOrder,
+				providerAttributions: params.providerAttributions,
 			};
 			step.llmCalls.push(llmCall);
 
@@ -1764,6 +1785,11 @@ export class TrajectoriesService extends Service {
 		stepId: string;
 		providerName: string;
 		data: Record<string, unknown>;
+		sha256?: string;
+		tokenCount?: number;
+		position?: number;
+		spanStart?: number;
+		spanEnd?: number;
 		purpose: string;
 		query?: Record<string, unknown>;
 		runId?: string;
@@ -1776,6 +1802,11 @@ export class TrajectoriesService extends Service {
 		params: {
 			providerName: string;
 			data: Record<string, unknown>;
+			sha256?: string;
+			tokenCount?: number;
+			position?: number;
+			spanStart?: number;
+			spanEnd?: number;
 			purpose: string;
 			query?: Record<string, unknown>;
 			runId?: string;
@@ -1791,6 +1822,11 @@ export class TrajectoriesService extends Service {
 					stepId: string;
 					providerName: string;
 					data: Record<string, unknown>;
+					sha256?: string;
+					tokenCount?: number;
+					position?: number;
+					spanStart?: number;
+					spanEnd?: number;
 					purpose: string;
 					query?: Record<string, unknown>;
 					runId?: string;
@@ -1801,6 +1837,11 @@ export class TrajectoriesService extends Service {
 		arg2?: {
 			providerName: string;
 			data: Record<string, unknown>;
+			sha256?: string;
+			tokenCount?: number;
+			position?: number;
+			spanStart?: number;
+			spanEnd?: number;
 			purpose: string;
 			query?: Record<string, unknown>;
 		},
@@ -1812,6 +1853,11 @@ export class TrajectoriesService extends Service {
 						stepId: arg1,
 						providerName: arg2?.providerName ?? "unknown",
 						data: arg2?.data ?? {},
+						sha256: arg2?.sha256,
+						tokenCount: arg2?.tokenCount,
+						position: arg2?.position,
+						spanStart: arg2?.spanStart,
+						spanEnd: arg2?.spanEnd,
 						purpose: arg2?.purpose ?? "other",
 						query: arg2?.query,
 					}
@@ -1854,6 +1900,11 @@ export class TrajectoriesService extends Service {
 			stepId: string;
 			providerName: string;
 			data: Record<string, unknown>;
+			sha256?: string;
+			tokenCount?: number;
+			position?: number;
+			spanStart?: number;
+			spanEnd?: number;
 			purpose: string;
 			query?: Record<string, unknown>;
 			runId?: string;
@@ -1872,6 +1923,11 @@ export class TrajectoriesService extends Service {
 				providerName: params.providerName,
 				timestamp: Date.now(),
 				data: params.data as Record<string, JsonValue>,
+				sha256: params.sha256,
+				tokenCount: params.tokenCount,
+				position: params.position,
+				spanStart: params.spanStart,
+				spanEnd: params.spanEnd,
 				query: params.query as Record<string, JsonValue> | undefined,
 				purpose: params.purpose,
 				runId: params.runId,
@@ -1906,6 +1962,11 @@ export class TrajectoriesService extends Service {
 		access: {
 			providerName: string;
 			data: Record<string, unknown>;
+			sha256?: string;
+			tokenCount?: number;
+			position?: number;
+			spanStart?: number;
+			spanEnd?: number;
 			purpose: string;
 			query?: Record<string, unknown>;
 		},

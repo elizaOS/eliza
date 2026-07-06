@@ -37,6 +37,7 @@ import {
 	type TraceCorrelation,
 } from "./trace-correlation";
 import { resolveTrajectoryGate } from "./trajectory-gate";
+import type { TrajectoryProviderAttribution } from "./trajectory-provider-attribution";
 
 // ---------------------------------------------------------------------------
 // Schema (mirrors PLAN.md §18.1)
@@ -93,6 +94,16 @@ export interface RecordedModelCall {
 	 * pricing table at `features/trajectories/pricing.ts` changes.
 	 */
 	priceTableId?: string;
+	/** Provider order selected for the composeState call that fed this model input. */
+	providerOrder?: string[];
+	/**
+	 * Hash-first provider contributions. No provider text is duplicated: when
+	 * `spanStart`/`spanEnd` are present they index into the flattened form of the
+	 * persisted `messages` (`flattenTrajectoryMessages(messages)`), derived once
+	 * at read time — consumers slice that to verify exact provenance rather than a
+	 * second stored copy of the prompt.
+	 */
+	providerAttributions?: TrajectoryProviderAttribution[];
 }
 
 /**

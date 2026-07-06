@@ -151,6 +151,10 @@ import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import { resolveTraceCorrelationFromEnv } from "../runtime/trace-correlation";
 import {
+	buildProviderAttributionsFromState,
+	flattenTrajectoryMessages,
+} from "../runtime/trajectory-provider-attribution";
+import {
 	createJsonFileTrajectoryRecorder,
 	finalizeTrajectoryRecording,
 	isTrajectoryRecordingEnabled,
@@ -6222,6 +6226,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
 				prefixHash: stage1PrefixHash,
 				provider: messageHandlerProvider,
+				state: args.state,
 				logger: args.runtime.logger,
 			});
 		}
@@ -6760,6 +6765,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				evaluatorEffects,
 				recorder,
 				trajectoryId,
+				providerAttributionState: plannerState,
 				executeToolCall: (toolCall, ctx) =>
 					executeV5PlannedToolCall({
 						runtime: args.runtime,
@@ -6956,6 +6962,7 @@ async function recordMessageHandlerStage(args: {
 	 * the real provider instead of the fabricated `"default"` literal (#13623).
 	 */
 	provider?: string;
+	state?: State;
 	logger?: IAgentRuntime["logger"];
 }): Promise<void> {
 	try {
@@ -6965,6 +6972,13 @@ async function recordMessageHandlerStage(args: {
 				? undefined
 				: extractMessageHandlerUsage(args.raw);
 		const modelName = extractMessageHandlerModelName(args.raw);
+		// Flatten `messages` only to locate provider spans; the flattened form is
+		// not persisted — `messages` is the canonical record and spans index into
+		// `flattenTrajectoryMessages(messages)` reconstructed at read time.
+		const providerAttribution = buildProviderAttributionsFromState({
+			state: args.state,
+			prompt: flattenTrajectoryMessages(args.messages),
+		});
 		await args.recorder.recordStage(args.trajectoryId, {
 			stageId: `stage-msghandler-${args.startedAt}`,
 			kind: "messageHandler",
@@ -6983,6 +6997,8 @@ async function recordMessageHandlerStage(args: {
 				toolCalls: extractMessageHandlerToolCalls(args.raw),
 				usage,
 				finishReason: getStage1FinishReason(args.raw) || undefined,
+				providerOrder: providerAttribution.providerOrder,
+				providerAttributions: providerAttribution.providerAttributions,
 			},
 			cache: args.prefixHash
 				? {
