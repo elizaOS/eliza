@@ -289,6 +289,12 @@ This package mostly reads config injected by the host, not raw env vars:
 - `ConnectionStatus` exists twice (cloud-ui string union vs. the composite
   component) — the cloud-ui one is intentionally NOT re-exported from the root
   barrel to avoid the collision (see comment in `index.ts`).
+- **Builtin view mutations need semantic action twins.** First-party shell views
+  are covered by `src/testing/builtin-view-action-ratchet.ts`: every local
+  mutation site in the baseline either maps to a semantic action (`SETTINGS`,
+  `SCHEDULED_TASKS`, `BACKGROUND`, etc.) or is explicitly exempt as a diagnostic
+  view. When adding a button/filter/toggle/form handler to a builtin view, add or
+  reuse the action first, then update the ratchet baseline with the reason.
 - Type root `src/types/index.ts` re-exports from `@elizaos/shared/types`; keep
   shared transport/domain types there rather than redefining them here.
 - **Files / attachments.** The "Files" tab (`components/pages/FilesView.tsx`,

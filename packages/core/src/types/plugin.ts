@@ -8,6 +8,7 @@ import type { AppPackageRouteContext } from "../api/route-helpers";
 import type { ConnectorSourceDefinition } from "../connectors";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
+import type { AccessContext } from "./access-context";
 import type { Character } from "./agent";
 import type { ChatPreHandler } from "./chat-pre-handler";
 import type { Action, AgentContext, Provider } from "./components";
@@ -109,6 +110,12 @@ export interface RouteHandlerContext {
 	inProcess: boolean;
 	/** true when the HTTP transport has verified this request as loopback/local. */
 	isTrustedLocal?: boolean;
+	/**
+	 * Optional requester identity resolved by the authenticated boundary. Omitted
+	 * means the route is running under today's single-owner local boundary and
+	 * must preserve existing unfiltered behavior.
+	 */
+	accessContext?: AccessContext;
 }
 
 /** Return-shape result produced by a {@link RouteHandler}. */

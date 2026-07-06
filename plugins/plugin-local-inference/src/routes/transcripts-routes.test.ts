@@ -3,7 +3,12 @@
  * shaping via `buildTranscriptFromRequest` and the handler contract.
  */
 
-import type { Memory, RouteHandlerContext, UUID } from "@elizaos/core";
+import type {
+	AccessContext,
+	Memory,
+	RouteHandlerContext,
+	UUID,
+} from "@elizaos/core";
 import { buildMeetingArtifactFixtures } from "@elizaos/shared";
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import { describe, expect, it } from "vitest";
@@ -16,6 +21,7 @@ import {
 const WORLD = "00000000-0000-0000-0000-0000000000ww" as UUID;
 const ROOM = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY = "22222222-2222-2222-2222-222222222222" as UUID;
+const OTHER_ENTITY = "33333333-3333-3333-3333-333333333333" as UUID;
 
 const segments: TranscriptSegment[] = [
 	{
@@ -78,6 +84,12 @@ function handlerFor(type: string, path: string) {
 	if (!r?.routeHandler) throw new Error(`no route ${type} ${path}`);
 	return r.routeHandler;
 }
+
+const access = (requesterEntityId: UUID): AccessContext => ({
+	requesterEntityId,
+	worldId: WORLD,
+	role: "USER",
+});
 
 describe("buildTranscriptFromRequest", () => {
 	it("derives duration + speaker count + defaults", () => {
@@ -273,5 +285,87 @@ describe("transcripts routes", () => {
 			"/api/transcripts/:id",
 		)(ctx({ runtime: runtime as never, params: { id: "x" }, body: {} }));
 		expect(res.status).toBe(400);
+	});
+
+	it("filters GET list and get-by-id for a non-owner requester", async () => {
+		const { runtime } = fakeRuntime();
+		const post = handlerFor("POST", "/api/transcripts");
+		const list = handlerFor("GET", "/api/transcripts");
+		const get = handlerFor("GET", "/api/transcripts/:id");
+
+		const ownerPrivate = await post(
+			ctx({
+				runtime: runtime as never,
+				body: {
+					title: "Owner private",
+					roomId: ROOM,
+					entityId: ENTITY,
+					scope: "owner-private",
+					segments,
+				},
+			}),
+		);
+		await post(
+			ctx({
+				runtime: runtime as never,
+				body: {
+					title: "Global",
+					roomId: ROOM,
+					entityId: OTHER_ENTITY,
+					scope: "global",
+					segments,
+				},
+			}),
+		);
+		await post(
+			ctx({
+				runtime: runtime as never,
+				body: {
+					title: "User owned",
+					roomId: ROOM,
+					entityId: ENTITY,
+					scope: "user-private",
+					segments,
+				},
+			}),
+		);
+		await post(
+			ctx({
+				runtime: runtime as never,
+				body: {
+					title: "Other user",
+					roomId: ROOM,
+					entityId: OTHER_ENTITY,
+					scope: "user-private",
+					segments,
+				},
+			}),
+		);
+
+		const unfiltered = await list(ctx({ runtime: runtime as never }));
+		expect(
+			(unfiltered.body as { transcripts: Array<{ title: string }> })
+				.transcripts,
+		).toHaveLength(4);
+
+		const filtered = await list(
+			ctx({ runtime: runtime as never, accessContext: access(ENTITY) }),
+		);
+		expect(
+			(filtered.body as { transcripts: Array<{ title: string }> }).transcripts
+				.map((t) => t.title)
+				.sort(),
+		).toEqual(["Global", "User owned"]);
+
+		const id = (ownerPrivate.body as { transcript: { id: string } }).transcript
+			.id;
+		const hidden = await get(
+			ctx({
+				runtime: runtime as never,
+				params: { id },
+				accessContext: access(ENTITY),
+			}),
+		);
+		expect(hidden.status).toBe(404);
 	});
 });

@@ -785,7 +785,14 @@ export async function resolveEntityRole(
 
 	if (explicitRole !== "GUEST") {
 		if (explicitRole === "OWNER") {
-			return hasConfiguredCanonicalOwner(runtime) ? "GUEST" : "OWNER";
+			// A stored OWNER grant is honored only when it was made deliberately
+			// through the role-management gate (source "manual", writable solely by
+			// an existing OWNER via canModifyRole). Connector-written and sourceless
+			// legacy grants fold to GUEST: worlds persisted before #14845 still
+			// carry OWNER grants the old Discord code wrote for every guild owner,
+			// and honoring them whenever no canonical owner is configured made any
+			// guild owner hosting the bot the app-level OWNER (#14707).
+			return explicitSource === "manual" ? "OWNER" : "GUEST";
 		}
 
 		if (explicitSource === "connector_admin") {

@@ -9,9 +9,10 @@ import { defaultProfiles } from "../profiles/index.ts";
 import {
 	GLOBAL_PERSONALITY_SCOPE,
 	MAX_CUSTOM_DIRECTIVES,
+	PERSONALITY_SLOT_TABLE,
 	type PersonalityProfile,
 } from "../types.ts";
-import { makeFakeRuntime } from "./test-helpers.ts";
+import { initStore, makeFakeRuntime } from "./test-helpers.ts";
 
 const AGENT = "00000000-0000-4000-8000-000000000aaa" as const;
 const USER_A = "00000000-0000-4000-8000-000000000aab" as const;
@@ -37,9 +38,9 @@ describe("PersonalityStore", () => {
 		expect(slot.custom_directives).toEqual([]);
 	});
 
-	test("applyTrait writes user-scope slot and audit entry", () => {
+	test("applyTrait writes user-scope slot and audit entry", async () => {
 		const store = bareStore();
-		const { after } = store.applyTrait({
+		const { after } = await store.applyTrait({
 			scope: "user",
 			userId: USER_A as never,
 			agentId: AGENT as never,
@@ -55,9 +56,9 @@ describe("PersonalityStore", () => {
 		expect(audit[0].targetId).toBe(USER_A);
 	});
 
-	test("user scope writes do not leak into global slot", () => {
+	test("user scope writes do not leak into global slot", async () => {
 		const store = bareStore();
-		store.applyTrait({
+		await store.applyTrait({
 			scope: "user",
 			userId: USER_A as never,
 			agentId: AGENT as never,
@@ -69,9 +70,9 @@ describe("PersonalityStore", () => {
 		expect(globalSlot.tone).toBeNull();
 	});
 
-	test("two users keep independent slots", () => {
+	test("two users keep independent slots", async () => {
 		const store = bareStore();
-		store.applyTrait({
+		await store.applyTrait({
 			scope: "user",
 			userId: USER_A as never,
 			agentId: AGENT as never,
@@ -79,7 +80,7 @@ describe("PersonalityStore", () => {
 			trait: "verbosity",
 			value: "terse",
 		});
-		store.applyTrait({
+		await store.applyTrait({
 			scope: "user",
 			userId: USER_B as never,
 			agentId: AGENT as never,
@@ -95,9 +96,9 @@ describe("PersonalityStore", () => {
 		);
 	});
 
-	test("global scope write applies across users via getSlot('global')", () => {
+	test("global scope write applies across users via getSlot('global')", async () => {
 		const store = bareStore();
-		store.applyTrait({
+		await store.applyTrait({
 			scope: "global",
 			userId: USER_A as never, // ignored for global scope
 			agentId: AGENT as never,
@@ -110,10 +111,10 @@ describe("PersonalityStore", () => {
 		);
 	});
 
-	test("addDirective evicts FIFO at the cap", () => {
+	test("addDirective evicts FIFO at the cap", async () => {
 		const store = bareStore();
 		for (let i = 0; i < MAX_CUSTOM_DIRECTIVES + 3; i++) {
-			store.addDirective({
+			await store.addDirective({
 				userId: USER_A as never,
 				agentId: AGENT as never,
 				actorId: USER_A as never,
@@ -129,15 +130,15 @@ describe("PersonalityStore", () => {
 		);
 	});
 
-	test("clearDirectives wipes the list", () => {
+	test("clearDirectives wipes the list", async () => {
 		const store = bareStore();
-		store.addDirective({
+		await store.addDirective({
 			userId: USER_A as never,
 			agentId: AGENT as never,
 			actorId: USER_A as never,
 			directive: "one",
 		});
-		store.clearDirectives({
+		await store.clearDirectives({
 			scope: "user",
 			userId: USER_A as never,
 			agentId: AGENT as never,
@@ -148,7 +149,7 @@ describe("PersonalityStore", () => {
 		).toEqual([]);
 	});
 
-	test("loadProfileIntoGlobal applies all trait fields atomically", () => {
+	test("loadProfileIntoGlobal applies all trait fields atomically", async () => {
 		const store = bareStore();
 		const profile: PersonalityProfile = {
 			name: "test",
@@ -160,7 +161,7 @@ describe("PersonalityStore", () => {
 			custom_directives: ["directive a"],
 		};
 		store.saveProfile(profile);
-		store.loadProfileIntoGlobal(profile, AGENT as never, USER_A as never);
+		await store.loadProfileIntoGlobal(profile, AGENT as never, USER_A as never);
 		const slot = store.getSlot(GLOBAL_PERSONALITY_SCOPE, AGENT as never);
 		expect(slot.verbosity).toBe("terse");
 		expect(slot.tone).toBe("direct");
@@ -177,5 +178,119 @@ describe("PersonalityStore", () => {
 		expect(names).toContain("aggressive");
 		expect(names).toContain("gentle");
 		expect(names).toContain("terse");
+	});
+
+	test("hydrates persisted user and global slots into a fresh store", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT as never });
+		await initStore(fake);
+		await fake.store.applyTrait({
+			scope: "user",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			trait: "verbosity",
+			value: "terse",
+		});
+		await fake.store.applyTrait({
+			scope: "user",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			trait: "formality",
+			value: "casual",
+		});
+		await fake.store.applyTrait({
+			scope: "global",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			trait: "tone",
+			value: "direct",
+		});
+
+		expect(fake.memories.get(PERSONALITY_SLOT_TABLE)).toHaveLength(2);
+
+		const reloaded = makeFakeRuntime({ agentId: AGENT as never });
+		reloaded.memories.set(
+			PERSONALITY_SLOT_TABLE,
+			fake.memories.get(PERSONALITY_SLOT_TABLE) ?? [],
+		);
+		await initStore(reloaded);
+
+		expect(
+			reloaded.store.getSlot(USER_A as never, AGENT as never).verbosity,
+		).toBe("terse");
+		expect(
+			reloaded.store.getSlot(USER_A as never, AGENT as never).formality,
+		).toBe("casual");
+		expect(
+			reloaded.store.getSlot(GLOBAL_PERSONALITY_SCOPE, AGENT as never).tone,
+		).toBe("direct");
+	});
+
+	test("concurrent same-slot mutations serialize — no lost update across the persist await", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT as never });
+		await initStore(fake);
+		// Slow the durable upsert down so unserialized read-modify-write
+		// mutations WOULD interleave (both read the empty slot, last write
+		// wins) — the per-slot chain must prevent exactly that.
+		const runtimeWithUpsert = fake.runtime as unknown as {
+			upsertMemory(memory: unknown, table: string): Promise<void>;
+		};
+		const originalUpsert = runtimeWithUpsert.upsertMemory.bind(fake.runtime);
+		runtimeWithUpsert.upsertMemory = async (memory, table) => {
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			await originalUpsert(memory, table);
+		};
+
+		await Promise.all([
+			fake.store.applyTrait({
+				scope: "user",
+				userId: USER_A as never,
+				agentId: AGENT as never,
+				actorId: USER_A as never,
+				trait: "verbosity",
+				value: "terse",
+			}),
+			fake.store.addDirective({
+				userId: USER_A as never,
+				agentId: AGENT as never,
+				actorId: USER_A as never,
+				directive: "no emojis",
+			}),
+		]);
+
+		const slot = fake.store.getSlot(USER_A as never, AGENT as never);
+		expect(slot.verbosity).toBe("terse");
+		expect(slot.custom_directives).toEqual(["no emojis"]);
+		// The durable mirror must carry both changes too, in one row.
+		const rows = fake.memories.get(PERSONALITY_SLOT_TABLE) ?? [];
+		expect(rows).toHaveLength(1);
+		const persisted = (
+			rows[0].metadata as { slot?: Record<string, unknown> } | undefined
+		)?.slot;
+		expect(persisted?.verbosity).toBe("terse");
+		expect(persisted?.custom_directives).toEqual(["no emojis"]);
+	});
+
+	test("clear removes mirrored slot memories", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT as never });
+		await initStore(fake);
+		await fake.store.applyTrait({
+			scope: "user",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			trait: "verbosity",
+			value: "terse",
+		});
+		expect(fake.memories.get(PERSONALITY_SLOT_TABLE)).toHaveLength(1);
+
+		await fake.store.clear();
+
+		expect(
+			fake.store.getSlot(USER_A as never, AGENT as never).verbosity,
+		).toBeNull();
+		expect(fake.memories.get(PERSONALITY_SLOT_TABLE)).toEqual([]);
 	});
 });

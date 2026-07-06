@@ -1171,8 +1171,9 @@ interface BenchPersonalityStore {
     custom_directives: string[];
     updated_at: string;
     source: "user" | "admin" | "agent_inferred";
-  }): void;
-  clear(): void;
+    trait_sources: Record<string, "user" | "admin" | "agent_inferred">;
+  }): Promise<void>;
+  clear(): Promise<void>;
 }
 
 const PERSONALITY_STORE_SERVICE = "PERSONALITY_STORE";
@@ -1227,15 +1228,19 @@ export function parseRoleSeedPayload(
 }
 
 /**
- * Always-clear the in-memory PersonalityStore so stale slots do not bleed
- * across benchmark scenarios sharing one runtime process (synthesis P1-14).
- * Returns true when the store was cleared; false when the runtime did not
- * load advanced capabilities.
+ * Always-clear the PersonalityStore (durable slot memories + in-memory cache)
+ * so stale slots do not bleed across benchmark scenarios sharing one runtime
+ * process (synthesis P1-14). Returns true when the store was cleared; false
+ * when the runtime did not load advanced capabilities. The clear is awaited —
+ * reporting "cleared" before the wipe lands would reintroduce the exact
+ * cross-scenario bleed this helper exists to prevent.
  */
-export function clearPersonalityStateOnReset(runtime: AgentRuntime): boolean {
+export async function clearPersonalityStateOnReset(
+  runtime: AgentRuntime,
+): Promise<boolean> {
   const store = getBenchPersonalityStore(runtime);
   if (!store) return false;
-  store.clear();
+  await store.clear();
   return true;
 }
 
@@ -1245,14 +1250,14 @@ export function clearPersonalityStateOnReset(runtime: AgentRuntime): boolean {
  * something concrete to apply — callers should surface that as a 4xx since
  * the scenario asked for a guarantee the server can't provide.
  */
-export function applyRoleSeedPayload(
+export async function applyRoleSeedPayload(
   runtime: AgentRuntime,
   payload: RoleSeedPayload,
-): {
+): Promise<{
   appliedGlobalDirective: boolean;
   appliedUserDirective: boolean;
   scopeMode: ScopeSeedMode | null;
-} {
+}> {
   const hasDirective = Boolean(
     payload.globalDirective || payload.userDirective,
   );
@@ -1277,7 +1282,7 @@ export function applyRoleSeedPayload(
   let appliedUserDirective = false;
 
   if (payload.globalDirective) {
-    store.setSlot({
+    await store.setSlot({
       userId: PERSONALITY_GLOBAL_SCOPE,
       agentId,
       verbosity: null,
@@ -1287,12 +1292,13 @@ export function applyRoleSeedPayload(
       custom_directives: [payload.globalDirective],
       updated_at: now,
       source: "admin",
+      trait_sources: {},
     });
     appliedGlobalDirective = true;
   }
 
   if (payload.userDirective && payload.userId) {
-    store.setSlot({
+    await store.setSlot({
       userId: payload.userId,
       agentId,
       verbosity: null,
@@ -1302,6 +1308,7 @@ export function applyRoleSeedPayload(
       custom_directives: [payload.userDirective],
       updated_at: now,
       source: "user",
+      trait_sources: {},
     });
     appliedUserDirective = true;
   }

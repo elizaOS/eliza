@@ -9,6 +9,7 @@ specializes it to the five target persona axes from issue #12186:
 - high-travel / timezone              (``tao_travel``)
 - high-comms-overwhelm                (``cam_comms``)
 - overwhelmed / depressed / low-energy (``del_low``)
+- co-parenting logistics              (``jordan_coparent`` planned)
 
 Each persona pack is **30 STATIC + 18 LIVE = 48** base scenarios
 (6 static families × 5 variants + 3 live families × 6 variants), for a total
@@ -61,6 +62,7 @@ from .._personas import (
     PERSONA_ARI_ADHD,
     PERSONA_CAM_COMMS,
     PERSONA_DEL_LOW,
+    PERSONA_JORDAN_COPARENT,
     PERSONA_NOA_NIGHTOWL,
     PERSONA_TAO_TRAVEL,
 )
@@ -1223,6 +1225,11 @@ _DEL = PersonaAreaSpec(
 
 
 PERSONA_AREA_SPECS: tuple[PersonaAreaSpec, ...] = (_ARI, _NOA, _TAO, _CAM, _DEL)
+
+# Planned relationship/corpus packs (G-K) share the catalog ledger and authoring
+# contract before executable scenario builders land. Keep the persona reference
+# here so J1 authors use the same benchmark persona id from the start.
+RELATIONSHIP_EXPANSION_PERSONAS: tuple[Persona, ...] = (PERSONA_JORDAN_COPARENT,)
 
 
 # ---------------------------------------------------------------------------

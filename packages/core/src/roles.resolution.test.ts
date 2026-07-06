@@ -176,6 +176,60 @@ describe("resolveEntityRole — stored grants under a configured owner", () => {
 	});
 });
 
+describe("resolveEntityRole — stored OWNER grants and provenance (#14707 residual)", () => {
+	it("folds a sourceless legacy stored OWNER grant to GUEST even with no canonical owner configured", async () => {
+		// Worlds persisted before guild-owner grants carried provenance still
+		// hold OWNER grants the old Discord code wrote for every guild owner.
+		// Without a configured canonical owner these used to resolve to app
+		// OWNER — any guild owner hosting the bot inherited the deployment.
+		const runtime = makeRuntime();
+		const metadata: RolesWorldMetadata = {
+			roles: { [SENDER_ID]: "OWNER" },
+		};
+		expect(await resolveEntityRole(runtime, null, metadata, SENDER_ID)).toBe(
+			"GUEST",
+		);
+	});
+
+	it("folds a connector_admin-sourced stored OWNER grant to GUEST with no canonical owner configured", async () => {
+		const runtime = makeRuntime();
+		const metadata: RolesWorldMetadata = {
+			roles: { [SENDER_ID]: "OWNER" },
+			roleSources: { [SENDER_ID]: "connector_admin" },
+		};
+		expect(await resolveEntityRole(runtime, null, metadata, SENDER_ID)).toBe(
+			"GUEST",
+		);
+	});
+
+	it("honors a deliberate manual OWNER grant with no canonical owner configured", async () => {
+		const runtime = makeRuntime();
+		const metadata: RolesWorldMetadata = {
+			roles: { [SENDER_ID]: "OWNER" },
+			roleSources: { [SENDER_ID]: "manual" },
+		};
+		expect(await resolveEntityRole(runtime, null, metadata, SENDER_ID)).toBe(
+			"OWNER",
+		);
+	});
+
+	it("honors a manual OWNER grant made by the canonical owner (deliberate co-owner)", async () => {
+		// canModifyRole only lets an existing OWNER write an OWNER grant, so a
+		// manual OWNER grant is a deliberate co-owner appointment — resolution
+		// must not silently ignore what the role-management surface permits.
+		const runtime = makeRuntime({
+			settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID },
+		});
+		const metadata: RolesWorldMetadata = {
+			roles: { [SENDER_ID]: "OWNER" },
+			roleSources: { [SENDER_ID]: "manual" },
+		};
+		expect(await resolveEntityRole(runtime, null, metadata, SENDER_ID)).toBe(
+			"OWNER",
+		);
+	});
+});
+
 describe("resolveEntityRole — connector-admin whitelist ceiling", () => {
 	const whitelistSettings = {
 		ELIZA_ADMIN_ENTITY_ID: OWNER_ID,

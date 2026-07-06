@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 const agentId = "123e4567-e89b-12d3-a456-426614174000";
 const paymentIntentId = "pi_agent_topup";
 const webhookFetch = mock(async () => Response.json({ ok: true }));
-const getTransactionByStripePaymentIntent = mock(async () => null);
+const getTransactionByStripePaymentIntent = mock(
+  async (): Promise<{ id: string } | null> => null,
+);
 const addCredits = mock(async () => ({ newBalance: 8.25 }));
 const getByStripeInvoiceId = mock(async () => null);
 const createInvoice = mock(async () => undefined);

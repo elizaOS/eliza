@@ -45,8 +45,9 @@ interface FakeStore {
     custom_directives: string[];
     updated_at: string;
     source: string;
-  }): void;
-  clear(): void;
+    trait_sources: Record<string, string>;
+  }): Promise<void>;
+  clear(): Promise<void>;
   cleared: number;
   slots: RecordedSlot[];
 }
@@ -55,7 +56,7 @@ function fakeStore(): FakeStore {
   const store: FakeStore = {
     cleared: 0,
     slots: [],
-    setSlot(slot) {
+    async setSlot(slot) {
       this.slots.push({
         userId: slot.userId,
         agentId: slot.agentId,
@@ -63,7 +64,7 @@ function fakeStore(): FakeStore {
         source: slot.source,
       });
     },
-    clear() {
+    async clear() {
       this.cleared += 1;
       this.slots.length = 0;
     },
@@ -153,19 +154,19 @@ describe("isScopeSeedMode", () => {
 });
 
 describe("clearPersonalityStateOnReset", () => {
-  it("calls clear() on the runtime's PersonalityStore", () => {
+  it("calls clear() on the runtime's PersonalityStore", async () => {
     const store = fakeStore();
     const runtime = fakeRuntime(store);
-    const cleared = clearPersonalityStateOnReset(
+    const cleared = await clearPersonalityStateOnReset(
       runtime as unknown as Parameters<typeof clearPersonalityStateOnReset>[0],
     );
     expect(cleared).toBe(true);
     expect(store.cleared).toBe(1);
   });
 
-  it("returns false when the runtime has no PersonalityStore service", () => {
+  it("returns false when the runtime has no PersonalityStore service", async () => {
     const runtime = fakeRuntime(null);
-    const cleared = clearPersonalityStateOnReset(
+    const cleared = await clearPersonalityStateOnReset(
       runtime as unknown as Parameters<typeof clearPersonalityStateOnReset>[0],
     );
     expect(cleared).toBe(false);
@@ -173,10 +174,10 @@ describe("clearPersonalityStateOnReset", () => {
 });
 
 describe("applyRoleSeedPayload", () => {
-  it("seeds a global directive into the GLOBAL slot when scopeMode=global_wins", () => {
+  it("seeds a global directive into the GLOBAL slot when scopeMode=global_wins", async () => {
     const store = fakeStore();
     const runtime = fakeRuntime(store);
-    const result = applyRoleSeedPayload(
+    const result = await applyRoleSeedPayload(
       runtime as unknown as Parameters<typeof applyRoleSeedPayload>[0],
       {
         globalDirective: "always respond in metric units",
@@ -195,10 +196,10 @@ describe("applyRoleSeedPayload", () => {
     expect(store.slots[0].source).toBe("admin");
   });
 
-  it("seeds a user directive into the per-user slot when scopeMode=user_wins", () => {
+  it("seeds a user directive into the per-user slot when scopeMode=user_wins", async () => {
     const store = fakeStore();
     const runtime = fakeRuntime(store);
-    const result = applyRoleSeedPayload(
+    const result = await applyRoleSeedPayload(
       runtime as unknown as Parameters<typeof applyRoleSeedPayload>[0],
       {
         userDirective: "I prefer imperial units",
@@ -214,10 +215,10 @@ describe("applyRoleSeedPayload", () => {
     expect(store.slots[0].source).toBe("user");
   });
 
-  it("seeds BOTH slots when both directives are set", () => {
+  it("seeds BOTH slots when both directives are set", async () => {
     const store = fakeStore();
     const runtime = fakeRuntime(store);
-    const result = applyRoleSeedPayload(
+    const result = await applyRoleSeedPayload(
       runtime as unknown as Parameters<typeof applyRoleSeedPayload>[0],
       {
         globalDirective: "always respond in metric units",
@@ -236,10 +237,10 @@ describe("applyRoleSeedPayload", () => {
     expect(user?.source).toBe("user");
   });
 
-  it("does not seed a user directive when userId is missing", () => {
+  it("does not seed a user directive when userId is missing", async () => {
     const store = fakeStore();
     const runtime = fakeRuntime(store);
-    const result = applyRoleSeedPayload(
+    const result = await applyRoleSeedPayload(
       runtime as unknown as Parameters<typeof applyRoleSeedPayload>[0],
       {
         userDirective: "I prefer imperial",
@@ -250,10 +251,10 @@ describe("applyRoleSeedPayload", () => {
     expect(store.slots).toHaveLength(0);
   });
 
-  it("no-ops cleanly when payload has only a scopeMode tag", () => {
+  it("no-ops cleanly when payload has only a scopeMode tag", async () => {
     const store = fakeStore();
     const runtime = fakeRuntime(store);
-    const result = applyRoleSeedPayload(
+    const result = await applyRoleSeedPayload(
       runtime as unknown as Parameters<typeof applyRoleSeedPayload>[0],
       { scopeMode: "conflict_implicit" } as RoleSeedPayload,
     );
@@ -263,9 +264,9 @@ describe("applyRoleSeedPayload", () => {
     expect(store.slots).toHaveLength(0);
   });
 
-  it("throws when the runtime cannot serve PersonalityStore but the payload carries a directive", () => {
+  it("throws when the runtime cannot serve PersonalityStore but the payload carries a directive", async () => {
     const runtime = fakeRuntime(null);
-    expect(() =>
+    await expect(
       applyRoleSeedPayload(
         runtime as unknown as Parameters<typeof applyRoleSeedPayload>[0],
         {
@@ -273,6 +274,6 @@ describe("applyRoleSeedPayload", () => {
           scopeMode: "global_wins",
         },
       ),
-    ).toThrow(/PersonalityStore service unavailable/);
+    ).rejects.toThrow(/PersonalityStore service unavailable/);
   });
 });

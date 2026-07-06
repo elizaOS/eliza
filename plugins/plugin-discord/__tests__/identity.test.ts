@@ -22,6 +22,7 @@ import {
 
 const SNOWFLAKE_A = "123456789012345678";
 const SNOWFLAKE_B = "234567890123456789";
+const SNOWFLAKE_C = "345678901234567890";
 
 describe("extractDiscordOwnerUserIds", () => {
 	it("reads the direct application owner", () => {
@@ -83,6 +84,52 @@ describe("extractDiscordTeamAdminUserIds", () => {
 	it("returns [] for non-objects", () => {
 		expect(extractDiscordTeamAdminUserIds(null)).toEqual([]);
 		expect(extractDiscordTeamAdminUserIds("nope")).toEqual([]);
+	});
+
+	it("skips pending invitees (membership_state 1) — they have not accepted", () => {
+		expect(
+			extractDiscordTeamAdminUserIds({
+				team: {
+					members: [
+						{ user: { id: SNOWFLAKE_B }, membershipState: 1 },
+						{ user: { id: SNOWFLAKE_C }, membership_state: 1 },
+					],
+				},
+			}),
+		).toEqual([]);
+	});
+
+	it("skips read_only members — they deliberately hold no write access", () => {
+		expect(
+			extractDiscordTeamAdminUserIds({
+				team: {
+					members: [
+						{
+							user: { id: SNOWFLAKE_B },
+							membershipState: 2,
+							role: "read_only",
+						},
+					],
+				},
+			}),
+		).toEqual([]);
+	});
+
+	it("keeps accepted developers and members with absent state/role fields", () => {
+		expect(
+			extractDiscordTeamAdminUserIds({
+				team: {
+					members: [
+						{
+							user: { id: SNOWFLAKE_B },
+							membershipState: 2,
+							role: "developer",
+						},
+						{ user: { id: SNOWFLAKE_C } },
+					],
+				},
+			}),
+		).toEqual([SNOWFLAKE_B, SNOWFLAKE_C]);
 	});
 });
 

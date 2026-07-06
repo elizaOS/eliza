@@ -1,0 +1,97 @@
+{
+  "catalogId": "overdue-comms-apology",
+  "title": "Pack G1 - Overdue communications and apology drafts scenario catalog",
+  "source": {
+    "parentIssue": "#14747",
+    "foundationIssue": "#14783",
+    "packId": "G1",
+    "persona": "high-comms / owner-directed corpus",
+    "targetCount": 10,
+    "notes": [
+      "Planned ledger for overdue-reply backlog triage and batched apology drafts.",
+      "Both surfaces are represented before scenario files land; planned rows flip to authored only when the concrete scenario exists."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "g1.overdue_comms.identify_overdue_thread",
+      "pack": "G1",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "planned",
+      "notes": "SCEN-A: identify one genuinely overdue reply from message history without fabricating urgency."
+    },
+    {
+      "id": "g1.overdue_comms.apology_draft_requires_approval",
+      "pack": "G1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "planned",
+      "notes": "SCEN-B: draft a brief apology and hold for owner approval; never send automatically."
+    },
+    {
+      "id": "g1.overdue_comms.batch_apology_drafts",
+      "pack": "G1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "planned",
+      "notes": "SCEN-C: batch several overdue replies into reviewable drafts ordered by priority."
+    },
+    {
+      "id": "g1.overdue_comms.do_not_over_apologize",
+      "pack": "G1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "planned",
+      "notes": "SCEN-D: avoid guilt/over-apology language when the thread does not warrant it."
+    },
+    {
+      "id": "g1.overdue_comms.channel_appropriate_tone",
+      "pack": "G1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "planned",
+      "notes": "SCEN-E: adapt apology draft tone to email vs chat without exposing hidden policy text."
+    },
+    {
+      "id": "g1.overdue_comms.vip_overdue_first",
+      "pack": "G1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "planned",
+      "notes": "SCEN-F: prioritize the overdue VIP reply while preserving lower-priority backlog context."
+    },
+    {
+      "id": "g1.overdue_comms.no_send_without_owner",
+      "pack": "G1",
+      "tier": "T4",
+      "surface": "lifeops-bench",
+      "status": "planned",
+      "notes": "SCEN-G: fail closed on any external send until the owner explicitly approves."
+    },
+    {
+      "id": "g1.overdue_comms.followup_cadence_reset",
+      "pack": "G1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "planned",
+      "notes": "SCEN-H: once a draft is approved or sent, reset the follow-up cadence structurally."
+    },
+    {
+      "id": "g1.overdue_comms.stale_thread_archive",
+      "pack": "G1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "planned",
+      "notes": "SCEN-I: distinguish stale no-action threads from overdue obligations."
+    },
+    {
+      "id": "g1.overdue_comms.cross_channel_summary",
+      "pack": "G1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "planned",
+      "notes": "SCEN-J: summarize cross-channel context before proposing a draft."
+    }
+  ]
+}

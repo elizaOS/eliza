@@ -6,7 +6,7 @@ The MVP (GitHub project 15) is: **chat, onboarding, the current views, and centr
 
 The guiding constraint is **minimize additional scope**: turn what exists into an MVP by fixing, testing, verifying and validating the important stuff; prefer deleting/simplifying over adding.
 
-**Decision this doc lands:** the feature surface is already sufficient for the MVP. The persona *machinery* is also already built — an eight-pack, 212-scenario persona corpus with a tier rubric and a coverage gate. What is missing is (a) **verification** — 78 of 212 catalog scenarios are authored-but-unverified, concentrated exactly in the neurodivergent packs (ADHD capture 8/28 verified, ADHD follow-through 5/24, shift-rotation 4/22); (b) **two persona voices with zero coverage** — a child as the user, and a student's "report due for class" deadline; (c) **the onboarding journey itself has no live scenario at all**; and (d) goals coverage is sleep-only. The plan below is verification-first and adds only scenario tests, never features.
+**Decision this doc lands:** the feature surface is already sufficient for the MVP. The persona *machinery* is also already built — a base eight-pack, 212-scenario persona corpus with a tier rubric and a coverage gate, now extended by planned G-K relationship/corpus ledgers before those scenario files land. What is missing is (a) **verification** — the base catalog still has authored-but-unverified scenarios concentrated exactly in the neurodivergent packs (ADHD capture, ADHD follow-through, shift-rotation); (b) **two persona voices with zero coverage** — a child as the user, and a student's "report due for class" deadline; (c) **the onboarding journey itself has no live scenario at all**; and (d) goals coverage is sleep-only. The plan below is verification-first and adds only scenario tests, never features.
 
 ## Current state (verified in code)
 
@@ -16,7 +16,7 @@ The guiding constraint is **minimize additional scope**: turn what exists into a
 
 **Onboarding — real, thin, untested at journey level.** First-run runs **in the live chat** (`packages/ui/src/hooks/useAvailableViews.ts:388-391`), with two paths: fast-start (defaults) and customize — five questions (name, timezone+windows, categories multi-select, nudge channel, relationships cadence) with per-question persistence and resume (`plugins/plugin-personal-assistant/src/lifeops/first-run/questions.ts:1-75`, `first-run/service.ts:448-500`). Coverage today is jsdom component tests (`packages/ui/src/components/shell/ContinuousChatOverlay.firstrun.test.tsx`, `packages/ui/src/App.chat-overlay-first-run.test.tsx`) and first-run unit tests. **Zero scenarios in the whole corpus touch first-run/onboarding** (grep of `plugins/plugin-personal-assistant/test/scenarios/*.scenario.ts` and `packages/scenario-runner/test/scenarios/`).
 
-**Scenario corpus — large, persona-organized, partially verified.** 271 `.scenario.ts` files in `plugins/plugin-personal-assistant/test/scenarios/`, all `lane: "live-only"` (`test/scenarios/README.md:3-7`). Keyless merge-blocking coverage lives in `packages/test/scenarios/reminders/` (13 deterministic reminder-ladder scenarios driving the real `/api/lifeops/reminders/process`) and `packages/scenario-runner/test/scenarios/deterministic-lifeops-*.scenario.ts` (5 spine scenarios through the real scheduler tick). The eight persona packs are tracked in `test/scenarios/_catalogs/*.catalog.json` with a tier rubric (T1 extraction → T4 adversarial) and a mechanical gate (`node packages/scripts/check-lifeops-persona-catalog-coverage.mjs --json`). Current output: **target 212, authored 212, verified 134**. Per pack:
+**Scenario corpus — large, persona-organized, partially verified.** 271 `.scenario.ts` files in `plugins/plugin-personal-assistant/test/scenarios/`, all `lane: "live-only"` (`test/scenarios/README.md:3-7`). Keyless merge-blocking coverage lives in `packages/test/scenarios/reminders/` (13 deterministic reminder-ladder scenarios driving the real `/api/lifeops/reminders/process`) and `packages/scenario-runner/test/scenarios/deterministic-lifeops-*.scenario.ts` (5 spine scenarios through the real scheduler tick). The base eight persona packs are tracked in `test/scenarios/_catalogs/*.catalog.json` with a tier rubric (T1 extraction → T4 adversarial) and a mechanical gate (`node packages/scripts/check-lifeops-persona-catalog-coverage.mjs --json`). Base-pack output at the time of the original audit: **target 212, authored 212, verified 134**. Planned G-K ledgers add relationship/corpus coverage targets before scenario files land. Per base pack:
 
 | Pack | Persona | Verified / target |
 |---|---|---|
@@ -62,7 +62,7 @@ The guiding constraint is **minimize additional scope**: turn what exists into a
 - **Children and elderly need the same interface, gentler defaults.** The elderly persona scenario proves rambling non-technical phrasing works for one appointment; children need the same proof for their real life (homework, morning routine) in child-plain language. In-app + push are the child-safe channels (no email/finance surface needed).
 - **Verification is the scarce resource.** A live-verified scenario with a hand-read trajectory is worth more to the MVP than any new capability. The catalog `status` field + coverage gate already give us a mechanical definition of done.
 
-## Personas (7)
+## Personas (8)
 
 Each: context → journey (first-open → onboarding → first win → week 2) → loves / struggles → intuitiveness fix. Struggles are grounded in the current UX, not hypotheticals. Where a bench persona already exists, reuse its name for continuity with `packages/benchmarks/lifeops-bench/eliza_lifeops_bench/scenarios/_personas.py`.
 
@@ -121,6 +121,14 @@ Each: context → journey (first-open → onboarding → first win → week 2) �
 - *Loves:* comms-flood triage (D1 24/26 verified) and the approval queue's conservative no-reply defaults.
 - *Struggles:* nothing structural — she is the best-covered persona. Her risk is regression while the neurodivergent packs get attention, which is F1's whole job (24/32 verified).
 - *More intuitive:* keep F1 green; no changes.
+
+**P8 — Jordan, 39, separated co-parent** (iPhone + desktop; iMessage/Calendar; maps to planned pack J1 and bench persona `jordan_coparent`).
+- *First-open → onboarding:* fast-start, then connects calendar and messages once the custody cadence becomes the immediate pain.
+- *First win:* "Can you keep me from missing swap days?" → recurring exchange reminders and a neutral calendar view of the custody rhythm.
+- *Week 2:* a last-minute swap request becomes an owner-approved, civil logistics draft; kid details stay private and no legal/therapy advice appears.
+- *Loves:* factual language, neutral tone, no extra emotional interpretation, and reminders that keep both households coordinated.
+- *Struggles:* co-parenting work blends scheduling, money, messaging, and child privacy; without a dedicated scenario ledger it is too easy to test each domain separately and miss the real cross-domain handoff.
+- *More intuitive:* author J1 scenarios from the planned catalog, asserting custody rhythm, swap approvals, expense splits, and kid-privacy firebreaks as structural outcomes.
 
 ## Open questions → answers
 

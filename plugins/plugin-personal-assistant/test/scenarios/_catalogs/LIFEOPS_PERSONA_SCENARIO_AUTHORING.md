@@ -1,8 +1,11 @@
 # LifeOps Persona Scenario Authoring
 
-This guide is the shared contract for the eight LifeOps persona scenario packs
-tracked by the catalog JSON files in this directory. It covers both surfaces:
-LifeOpsBench Python scenarios and scenario-runner `.scenario.ts` trajectories.
+This guide is the shared contract for the LifeOps persona scenario packs tracked
+by the catalog JSON files in this directory. The original A-F packs cover the
+MVP persona axes; the planned G-K packs extend the same ledger and verification
+rules to owner-directed corpus, relationship, co-parenting, and third-party
+support scenarios. It covers both surfaces: LifeOpsBench Python scenarios and
+scenario-runner `.scenario.ts` trajectories.
 
 ## Tier Rubric
 
@@ -59,6 +62,21 @@ may branch on `promptInstructions` text or a persona id string.
    comment naming the code path whose regression would make the scenario fail.
 8. Every authored scenario gets exactly one entry in its pack catalog, with
    `status` moving from `planned` to `authored` to `verified` as evidence lands.
+
+## Relationship / Support Pack Rules
+
+Packs G1/G2/H1/H2/I1/I2/J1/K1 inherit every rule above and add two binding
+constraints:
+
+1. **No therapy framing.** The assistant may support logistics, drafting,
+   reminders, factual summaries, and owner-approved sends. It must not roleplay
+   as a therapist, diagnose people, adjudicate relationship disputes, or offer
+   clinical treatment plans. Scenario assertions should fail on coaching copy
+   that turns practical support into therapy language.
+2. **Never assert 988 by default (#12780).** Do not escalate sadness, low focus,
+   rupture repair, co-parenting stress, or third-party support into hotline /
+   988 / emergency language unless the user explicitly reports imminent danger.
+   K1 scenarios should include negative assertions for false crisis framing.
 
 ## Surface Decision Tree
 

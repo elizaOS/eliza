@@ -1,0 +1,87 @@
+{
+  "catalogId": "rupture-repair",
+  "title": "Pack I1 - Interpersonal rupture repair scenario catalog",
+  "source": {
+    "parentIssue": "#14747",
+    "foundationIssue": "#14787",
+    "packId": "I1",
+    "persona": "relationship repair",
+    "targetCount": 10,
+    "notes": [
+      "Planned ledger for grounded apology drafts and approval-gated repair logistics.",
+      "Scenarios must stay non-clinical: no therapy roleplay, diagnosis, or crisis framing."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "i1.rupture_repair.extract_what_happened",
+      "pack": "I1",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "i1.rupture_repair.grounded_apology_draft",
+      "pack": "I1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "i1.rupture_repair.no_coaching_or_diagnosis",
+      "pack": "I1",
+      "tier": "T4",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "i1.rupture_repair.approval_before_send",
+      "pack": "I1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "i1.rupture_repair.repair_followup_cadence",
+      "pack": "I1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "i1.rupture_repair.wrong_recipient_guard",
+      "pack": "I1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "i1.rupture_repair.private_context_minimized",
+      "pack": "I1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "i1.rupture_repair.owner_declines_no_side_effect",
+      "pack": "I1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "i1.rupture_repair.rewrite_same_themes",
+      "pack": "I1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "i1.rupture_repair.sensitive_event_defer",
+      "pack": "I1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "planned"
+    }
+  ]
+}

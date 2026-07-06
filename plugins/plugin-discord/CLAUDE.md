@@ -131,7 +131,7 @@ bun run --cwd plugins/plugin-discord clean       # rm dist + .turbo + generated 
 | `DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS` | No | `"false"` to reply without an @-mention (default: `true`) |
 | `DISCORD_DM_POLICY` | No | DM access policy: `open` / `allowlist` / `pairing` / `disabled` (default: `pairing`) |
 | `DISCORD_ALLOW_FROM` | No | Comma-separated Discord user IDs allowed under the `allowlist` DM policy |
-| `ELIZA_DISCORD_OWNER_USER_IDS_JSON` | No | JSON array of Discord user IDs that should alias to the canonical Eliza owner entity. Use only for the actual owner or deliberate owner aliases; Discord application team members are kept as separate entities and may be connector admins via `ELIZA_ROLES_CONNECTOR_ADMINS_JSON`. |
+| `ELIZA_DISCORD_OWNER_USER_IDS_JSON` | No | JSON array of Discord user IDs that should alias to the canonical Eliza owner entity. Use only for the actual owner or deliberate owner aliases; Discord application team members are kept as separate entities; accepted, non-read-only members are seeded as connector admins (pending invitees and `read_only` members get no standing), and more can be added via `ELIZA_ROLES_CONNECTOR_ADMINS_JSON`. |
 | `DISCORD_AUTO_REPLY` | No | `"true"` to auto-generate replies; default `false` (messages are ingested but not answered) |
 | `DISCORD_SYNC_PROFILE` | No | `"false"` to skip bot profile sync on startup (default: `true`) |
 | `DISCORD_IPC_DIR` | No | Override the IPC socket directory searched by `DiscordLocalService` when connecting to the Discord desktop app |

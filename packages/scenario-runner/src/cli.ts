@@ -13,6 +13,7 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 import {
   DEFAULT_SCENARIO_LANE,
@@ -47,7 +48,7 @@ type ScenarioRuntimeFactoryModule = Pick<
   "createScenarioRuntime" | "shouldUseDeterministicLlmProxy"
 >;
 
-interface ParsedArgs {
+export interface ParsedArgs {
   command: "run" | "list";
   dir: string;
   reportPath?: string;
@@ -63,6 +64,29 @@ interface ParsedArgs {
   validateScenarios?: boolean;
 }
 
+export class CliUsageError extends Error {
+  readonly exitCode: number;
+
+  constructor(message: string, exitCode: number) {
+    super(message);
+    this.name = "CliUsageError";
+    this.exitCode = exitCode;
+  }
+}
+
+export interface CliDependencies {
+  availableProviderNames: LiveProviderModule["availableProviderNames"];
+  runScenario: ExecutorModule["runScenario"];
+  buildAggregate: ReporterModule["buildAggregate"];
+  printStdoutSummary: ReporterModule["printStdoutSummary"];
+  writeReport: ReporterModule["writeReport"];
+  writeReportBundle: ReporterModule["writeReportBundle"];
+  writeScenarioRunViewer: ReporterModule["writeScenarioRunViewer"];
+  createScenarioRuntime: ScenarioRuntimeFactoryModule["createScenarioRuntime"];
+  shouldUseDeterministicLlmProxy: ScenarioRuntimeFactoryModule["shouldUseDeterministicLlmProxy"];
+  exportScenarioNativeJsonl: NativeExportModule["exportScenarioNativeJsonl"];
+}
+
 function scenarioNativeManifestPath(
   nativeJsonlPath?: string,
 ): string | undefined {
@@ -73,14 +97,17 @@ function scenarioNativeManifestPath(
 }
 
 function usageAndExit(message: string, code: number): never {
-  process.stderr.write(`[eliza-scenarios] ${message}\n`);
-  process.stderr.write(
-    "Usage:\n  eliza-scenarios run  <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [--lane pr-deterministic|live-only] [fileGlob ...]\n  eliza-scenarios list <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--lane pr-deterministic|live-only] [fileGlob ...]\n",
-  );
-  process.exit(code);
+  throw new CliUsageError(message, code);
 }
 
-function parseArgs(argv: readonly string[]): ParsedArgs {
+function formatUsageError(error: CliUsageError): string {
+  return (
+    `[eliza-scenarios] ${error.message}\n` +
+    "Usage:\n  eliza-scenarios run  <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [--lane pr-deterministic|live-only] [fileGlob ...]\n  eliza-scenarios list <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--lane pr-deterministic|live-only] [fileGlob ...]\n"
+  );
+}
+
+export function parseArgs(argv: readonly string[]): ParsedArgs {
   if (argv.length < 2) {
     usageAndExit("missing command or directory", 2);
   }
@@ -184,8 +211,53 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   };
 }
 
-async function main(): Promise<number> {
-  const argv = process.argv.slice(2);
+async function loadCliDependencies(): Promise<CliDependencies> {
+  const liveProviderSpecifier = "@elizaos/core/testing" as string;
+  const [
+    { availableProviderNames },
+    { runScenario },
+    {
+      buildAggregate,
+      printStdoutSummary,
+      writeReport,
+      writeReportBundle,
+      writeScenarioRunViewer,
+    },
+    { createScenarioRuntime, shouldUseDeterministicLlmProxy },
+    { exportScenarioNativeJsonl },
+    // Keep out-of-root imports behind widened specifiers so TypeScript does not
+    // pull those modules into this package's rootDir validation graph.
+  ]: [
+    LiveProviderModule,
+    ExecutorModule,
+    ReporterModule,
+    ScenarioRuntimeFactoryModule,
+    NativeExportModule,
+  ] = await Promise.all([
+    import(liveProviderSpecifier),
+    import("./executor.ts"),
+    import("./reporter.ts"),
+    import("./runtime-factory.ts"),
+    import("./native-export.ts"),
+  ]);
+  return {
+    availableProviderNames,
+    runScenario,
+    buildAggregate,
+    printStdoutSummary,
+    writeReport,
+    writeReportBundle,
+    writeScenarioRunViewer,
+    createScenarioRuntime,
+    shouldUseDeterministicLlmProxy,
+    exportScenarioNativeJsonl,
+  };
+}
+
+export async function runCli(
+  argv: readonly string[] = process.argv.slice(2),
+  dependencies?: CliDependencies,
+): Promise<number> {
   const parsed = parseArgs(argv);
 
   if (parsed.countScenarios) {
@@ -229,34 +301,18 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const liveProviderSpecifier = "@elizaos/core/testing" as string;
-  const [
-    { availableProviderNames },
-    { runScenario },
-    {
-      buildAggregate,
-      printStdoutSummary,
-      writeReport,
-      writeReportBundle,
-      writeScenarioRunViewer,
-    },
-    { createScenarioRuntime, shouldUseDeterministicLlmProxy },
-    { exportScenarioNativeJsonl },
-    // Keep out-of-root imports behind widened specifiers so TypeScript does not
-    // pull those modules into this package's rootDir validation graph.
-  ]: [
-    LiveProviderModule,
-    ExecutorModule,
-    ReporterModule,
-    ScenarioRuntimeFactoryModule,
-    NativeExportModule,
-  ] = await Promise.all([
-    import(liveProviderSpecifier),
-    import("./executor.ts"),
-    import("./reporter.ts"),
-    import("./runtime-factory.ts"),
-    import("./native-export.ts"),
-  ]);
+  const {
+    availableProviderNames,
+    runScenario,
+    buildAggregate,
+    printStdoutSummary,
+    writeReport,
+    writeReportBundle,
+    writeScenarioRunViewer,
+    createScenarioRuntime,
+    shouldUseDeterministicLlmProxy,
+    exportScenarioNativeJsonl,
+  } = dependencies ?? (await loadCliDependencies());
 
   if (
     availableProviderNames().length === 0 &&
@@ -464,13 +520,35 @@ async function main(): Promise<number> {
   return aggregate.totals.failed > 0 ? 1 : 0;
 }
 
-main()
-  .then((code) => {
-    process.exit(code);
-  })
-  .catch((err: unknown) => {
-    process.stderr.write(
-      `[eliza-scenarios] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
-    );
-    process.exit(1);
-  });
+/**
+ * Process boundary shared by direct `src/cli.ts` execution and the published
+ * `bin/eliza-scenarios` shim: runs the CLI and translates the result (or any
+ * thrown failure) into an exit code. Kept separate from `runCli` so tests can
+ * drive the CLI in-process without process.exit.
+ */
+export function runCliAndExit(
+  argv: readonly string[] = process.argv.slice(2),
+): void {
+  runCli(argv)
+    .then((code) => {
+      process.exit(code);
+    })
+    // error-policy:J1 CLI boundary translates thrown failures to exit codes.
+    .catch((err: unknown) => {
+      if (err instanceof CliUsageError) {
+        process.stderr.write(formatUsageError(err));
+        process.exit(err.exitCode);
+      }
+      process.stderr.write(
+        `[eliza-scenarios] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
+      );
+      process.exit(1);
+    });
+}
+
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  runCliAndExit();
+}
