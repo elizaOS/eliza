@@ -282,6 +282,23 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   // upstream fetch sets its own.
   headers.delete("host");
 
+  // Forward the real inbound origin so Steward's origin-gated auth checks pass.
+  // Steward's SIWE/SIWS `GET /auth/nonce` rejects a request that carries
+  // neither an allowed `Origin` nor `Referer` ("SIWE nonce requests require an
+  // allowed Origin or Referer"). The SDK calls Steward through THIS same-origin
+  // proxy, so on that GET the browser sends no `Origin` at all, and its
+  // `Referer` is a fetch-forbidden header that never survives the Worker
+  // subrequest — Steward saw neither and 400'd EVERY wallet sign-in, on prod as
+  // well as staging (the old cloud-frontend e2e mocked `/auth/nonce`, so this
+  // went unnoticed). This proxy is authoritative for the host the browser
+  // connected to, so stamp that host as `Origin` whenever the client didn't
+  // send one. Only fills the gap — a real browser `Origin` (cross-origin/POST
+  // legs) is preserved. `Origin` is not part of the signed canonical request
+  // (see the hashed-header set above), so this is safe for signed mutating legs.
+  if (!headers.has("origin")) {
+    headers.set("origin", url.origin);
+  }
+
   // Pin the tenant per-env. Steward's email/passkey routes resolve tenant
   // from `X-Steward-Tenant || body.tenantId || STEWARD_DEFAULT_TENANT_ID`
   // (auth.ts:2171,2200,2246), so forcing the header keeps those flows scoped
