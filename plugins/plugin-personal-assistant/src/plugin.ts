@@ -188,6 +188,7 @@ import { crossChannelContextProvider } from "./providers/cross-channel-context.j
 import { firstRunProvider } from "./providers/first-run.js";
 import { healthProvider } from "./providers/health.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
+import { pendingApprovalsProvider } from "./providers/pending-approvals.js";
 import { pendingPromptsProvider } from "./providers/pending-prompts.js";
 import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { roomPolicyProvider } from "./providers/room-policy.js";
@@ -943,6 +944,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     firstRunProvider,
     roomPolicyProvider,
     lifeOpsProvider,
+    pendingApprovalsProvider,
     pendingPromptsProvider,
     workThreadsProvider,
     recentTaskStatesProvider,
@@ -1591,6 +1593,10 @@ export { firstRunProvider } from "./providers/first-run.js";
 export { healthProvider } from "./providers/health.js";
 export { inboxTriageProvider } from "./providers/inbox-triage.js";
 export { lifeOpsProvider } from "./providers/lifeops.js";
+export {
+  pendingApprovalsProvider,
+  renderPendingApprovalsText,
+} from "./providers/pending-approvals.js";
 export type {
   PendingPrompt,
   PendingPromptsProvider,

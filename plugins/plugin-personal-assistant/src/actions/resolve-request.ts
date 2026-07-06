@@ -1,9 +1,12 @@
 /**
  * RESOLVE_REQUEST action — owner decision surface for the approval queue.
- * Approve, reject, or defer a pending request; on approval it dispatches the
- * queued payload (message send, document signature, travel booking, …) through
- * `executeApprovedRequest`. Owner-gated; the only path that runs a queued
- * external side effect.
+ * Approve or reject a pending request (reject is also the hold verb: "don't
+ * send it for now" terminally cancels the dispatch and a fresh request can be
+ * queued later); on approval it dispatches the queued payload (message send,
+ * document signature, travel booking, …) through `executeApprovedRequest`.
+ * Owner-gated; the only path that runs a queued external side effect. The
+ * planner learns about pending rows from the `pendingApprovals` provider
+ * (../providers/pending-approvals.ts), which routes decisions here (#14630).
  */
 import { hasOwnerAccess } from "@elizaos/agent";
 import type {
@@ -55,8 +58,12 @@ const SUBACTIONS: SubactionsMap<ResolveSubaction> = {
     optional: ["requestId", "reason"],
   },
   reject: {
-    description: "Reject queued action; optional reason, user language.",
-    descriptionCompressed: "reject queued action reason-optional multilingual",
+    description:
+      "Reject queued action so it never dispatches — also the verb for holds " +
+      "('don't send it', 'not yet', 'hold off until I confirm'); a fresh " +
+      "request can be queued later. Optional reason, user language.",
+    descriptionCompressed:
+      "reject/hold queued action (nothing dispatches) reason-optional multilingual",
     required: [],
     optional: ["requestId", "reason"],
   },
@@ -608,9 +615,11 @@ export const resolveRequestAction: Action & {
   ],
   description:
     "Approve/reject pending owner-confirmation action: send_email, send_message, book_travel, voice_call, etc. " +
-    "Subactions approve|reject. requestId optional; handler inspects pending queue, infers owner intent, or asks follow-up.",
+    "Subactions approve|reject. Reject also covers holds ('don't send it', 'not yet', 'wait until I confirm') — " +
+    "it terminally cancels the queued dispatch and a fresh request can be queued later. " +
+    "requestId optional; handler inspects pending queue, infers owner intent, or asks follow-up.",
   descriptionCompressed:
-    "approve|reject queue; requestId optional; send_email|send_message|book_travel|voice_call",
+    "approve|reject pending approval queue; reject=hold/don't-send-now (nothing dispatches); requestId optional",
   contexts: [
     "email",
     "messaging",
