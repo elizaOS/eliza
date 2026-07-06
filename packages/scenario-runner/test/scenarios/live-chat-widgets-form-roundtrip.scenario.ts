@@ -13,21 +13,11 @@
  * is trusted text re-entry, which is exactly what this scenario puts under
  * live test. Needs live model credentials (live-only lane).
  *
- * KNOWN-RED (#14322 finding): this scenario asserts the correct product
- * contract and fails today because [FORM] is structurally unreachable on the
- * v5 path. The chain, live-verified in evidence-14322/form-run-attempt* with
- * the uiWidgets guide confirmed present in the planner AND evaluation
- * prompts: (1) planner rules force tool-first ("matching tool exists => call
- * it, even missing details; handler owns questions"), so the model calls
- * OWNER_REMINDERS_CREATE instead of emitting a form; (2) the handler
- * clarifies in prose ("What's the report name, day, and time?"); (3) the
- * evaluator stage — the model that authors the user-visible messageToUser —
- * is bound by "messageToUser … no … JSON/tool attempts" and "One JSON object
- * only" (its own envelope), so a [FORM] block (whose body IS a JSON line) can
- * never survive, while JSON-free markers like [CONFIG:pluginId] pass. Stage 1
- * never composes the guide (CORE_RESPONSE_STATE_PROVIDERS only). Fixing this
- * needs a core evaluator/messageToUser contract carve-out for interaction
- * markers — tracked as a follow-up in #14322.
+ * Regression target: #14322 found that the v5 evaluator message-to-user path
+ * could reject JSON-bodied interaction markers, making `[FORM]` unreachable
+ * even when the guide was present. The evaluator contract fix landed
+ * separately; this live-only scenario keeps grammar-valid form emission,
+ * raw submit re-entry, and submitted-value consumption pinned end to end.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";

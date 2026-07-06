@@ -85,12 +85,8 @@ import {
 } from "../../utils/image-attachment";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
-import {
-  FormSubmitReceipt,
-  SensitiveRequestBlock,
-} from "../chat/MessageContent";
+import { SensitiveRequestBlock } from "../chat/MessageContent";
 import { findChoiceRegions } from "../chat/message-choice-parser";
-import { parseFormSubmitDisplay } from "../chat/message-parser-helpers";
 import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
@@ -670,9 +666,6 @@ function TurnStatusIndicator({
  * inline autocomplete). Plain prose renders unchanged.
  */
 function ThreadLineText({ content }: { content: string }): React.ReactNode {
-  const formSubmit = parseFormSubmitDisplay(content);
-  if (formSubmit) return <FormSubmitReceipt label={formSubmit.label} />;
-
   const slash = splitLeadingSlashCommand(content);
   if (!slash) return content;
   return (

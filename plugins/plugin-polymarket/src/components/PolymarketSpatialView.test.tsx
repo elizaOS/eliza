@@ -122,14 +122,15 @@ describe("PolymarketSpatialView one source, three modalities", () => {
     expect(wide).toContain("Refresh");
   });
 
-  it("TUI: detail honors the width contract at 54 + 32 and shows choices", () => {
+  it("TUI: detail honors the width contract at 54 + 32 and shows outcomes + CLOB ids", () => {
     for (const width of [54, 32]) {
       const lines = renderViewToLines(detailView, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
       // Short markers survive the narrow layout.
       expect(flat).toContain("Yes");
-      expect(flat).toContain("No");
+      expect(flat).toContain("outcomes");
+      expect(flat).toContain("111"); // CLOB token id
     }
     const wide = renderViewToLines(detailView, 54).join("\n");
     expect(wide).toContain("Will it rain tomorrow?");

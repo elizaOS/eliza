@@ -14,19 +14,11 @@
  * Installed apps are served by the fetch loopback so the picker branch is
  * deterministic; the model routing and the pick round trip are live.
  *
- * KNOWN-RED (#14322 finding): this scenario asserts the correct product
- * contract and fails today because the v5 planner path DROPS action handler
- * callback text. The `executeV5PlannedToolCall` call sites in
- * `packages/core/src/services/message.ts` build `executorCtx` without a
- * `callback`, so `execute-planned-tool-call.ts` hands `undefined` to
- * `action.handler(...)` and the `[CHOICE:app-create …]` block that
- * plugin-app-control emits via `callback?.({ text })` never reaches the user —
- * the reply is the Stage-1 early ack ("On it.") and the picker exists only in
- * the captured ActionResult. Turn 2 then compounds it: with no picker on
- * screen the planner answers "cancel" with a bare REPLY ("Canceled.") without
- * running APP, leaving the pending intent task alive — a fabricated
- * cancellation. Fixing the callback plumbing is core planner surgery tracked
- * as a follow-up in #14322.
+ * Regression target: #14322 found that the v5 planned-tool path could drop
+ * action handler callback text, so the `[CHOICE:app-create ...]` block emitted
+ * by plugin-app-control never reached the user. The callback plumbing fix
+ * landed separately; this live-only scenario keeps the visible picker plus
+ * bare-value re-entry contract pinned end to end.
  */
 
 import { stringToUuid } from "@elizaos/core";

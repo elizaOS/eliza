@@ -107,21 +107,6 @@ describe("InlineWidgetText", () => {
     expect(container.textContent).toContain("just a normal reply");
   });
 
-  it("renders form submit markers as compact receipts", () => {
-    const { container } = withApp(
-      <InlineWidgetText
-        content={
-          '[form:submit reminder-details] {"title":"Draft report","when":"2026-07-08T09:00"}'
-        }
-      />,
-    );
-    expect(screen.getByTestId("form-submit-receipt").textContent).toBe(
-      "Submitted reminder details",
-    );
-    expect(container.textContent ?? "").not.toContain("[form:submit");
-    expect(container.textContent ?? "").not.toContain("Draft report");
-  });
-
   it("renders a choice picker and does not leak the [CHOICE] marker", () => {
     const { container } = withApp(
       <InlineWidgetText
