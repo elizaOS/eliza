@@ -705,7 +705,7 @@ export function makeScreenshotter(
 // The WidgetSection testIds each widget renders (read from source). The
 // notification inbox is not a ranked tile: it renders in the pinned
 // NotificationsHomeCenter (`home-notification-center`), outside the WidgetHost.
-export const GOALS_TESTID = "widget-goals-attention";
+export const TODOS_TESTID = "chat-widget-todos";
 
 // First-run runtime/provider buttons live in the real chat transcript. The
 // headless conductor seeds the ChoiceWidgets and the chat action channel routes
@@ -799,6 +799,24 @@ export async function expectOnboardingSettleToHalf(page: Page): Promise<void> {
 }
 
 /**
+ * Cloud-only onboarding lands on the home surface with chat available as the
+ * collapsed input, not as the half-open first-run sheet. That keeps the first
+ * post-auth paint focused on home while still proving the composer unlocked.
+ */
+export async function expectOnboardingSettleToCollapsedInput(
+  page: Page,
+): Promise<void> {
+  await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
+    "data-detent",
+    "collapsed",
+    { timeout: 30_000 },
+  );
+  await expect(page.getByTestId("chat-composer-textarea")).toBeEnabled({
+    timeout: 15_000,
+  });
+}
+
+/**
  * Dismiss the post-onboarding permission-priming modal (#12331) if it appears.
  * It arms on the completion edge and sits over the home, so it must be skipped
  * (the real "Skip for now" path a user takes) before asserting or swiping the
@@ -846,17 +864,15 @@ async function expectPostOnboardingChat(
   });
 }
 
-/** Assert the kept sparse-home widgets render with their attention data. */
+/** Assert the kept sparse-home widgets render with their seeded data. */
 async function expectPopulatedHome(page: Page): Promise<Locator> {
   const host = page.getByTestId("widget-host-home");
   await expect(host).toBeVisible({ timeout: 30_000 });
-  for (const testId of [GOALS_TESTID]) {
-    await expect(
-      host.getByTestId(testId),
-      `home widget ${testId} should render with seeded attention data`,
-    ).toBeVisible({ timeout: 30_000 });
-  }
-  await expect(host.getByTestId(GOALS_TESTID)).toContainText(
+  await expect(
+    host.getByTestId(TODOS_TESTID),
+    "home Todos widget should render with seeded task data",
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(host.getByTestId(TODOS_TESTID)).toContainText(
     "Ship the release",
   );
   for (const testId of [
@@ -1049,17 +1065,17 @@ export async function expectCloudOnlySignInOnboarding(
 
 /** Post-completion contract shared by every cloud-only path: the real gate
  *  flipped at provisioning success (no tutorial/accent gate), the wrap-up turn
- *  is informational, the sheet settled to HALF, and first-run persisted once. */
+ *  is informational, chat is available as the collapsed input, and first-run
+ *  persisted once. */
 async function expectCloudOnlyCompletion(
   page: Page,
   state: OnboardingRouteState,
 ): Promise<{ surface: Locator }> {
-  // Completion fires at provisioning success and drops the sheet to the HALF
-  // detent in the same commit. The completion contract is asserted on the
-  // durable surfaces: the settle itself, the onboarded home, the absent
-  // tutorial gate, and the exactly-once POST. The wrap-up copy is covered by
-  // the conductor unit suite.
-  await expectOnboardingSettleToHalf(page);
+  // Completion fires at provisioning success and returns the user to the home
+  // surface with chat collapsed and ready. The durable contract is asserted on
+  // that settle, the onboarded home, the absent tutorial gate, and the
+  // exactly-once POST. The wrap-up copy is covered by the conductor unit suite.
+  await expectOnboardingSettleToCollapsedInput(page);
   await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId(TUTORIAL_CHOICE("start"))).toHaveCount(0);
   await expect(page.getByTestId(TUTORIAL_CHOICE("skip"))).toHaveCount(0);
