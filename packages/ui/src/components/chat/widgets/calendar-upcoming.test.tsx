@@ -13,7 +13,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Auth gate (#11084) — mutable so tests can flip the session state. Default
+// Auth gate (#11084), mutable so tests can flip the session state. Default
 // authenticated so the pre-gate behavior tests exercise the live poll path.
 const { authMock } = vi.hoisted(() => ({
   authMock: { authenticated: true },
@@ -56,7 +56,7 @@ import type { WidgetProps } from "../../../widgets/types";
 import { CalendarUpcomingWidget } from "./calendar-upcoming";
 
 // Minimal wire event matching LifeOpsCalendarEvent (@elizaos/shared
-// contracts/calendar.ts) — only the fields the widget reads.
+// contracts/calendar.ts), only the fields the widget reads.
 function event(
   overrides: Partial<{
     id: string;
@@ -147,7 +147,7 @@ describe("CalendarUpcomingWidget", () => {
     expect(globalThis.fetch as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
   });
 
-  it("renders NOTHING when no Google account is linked — no connect-CTA tile", async () => {
+  it("renders NOTHING when no Google account is linked, no connect-CTA tile", async () => {
     disconnectedGoogle();
     mockFeed([]);
     const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
@@ -165,9 +165,9 @@ describe("CalendarUpcomingWidget", () => {
     ).toBeNull();
   });
 
-  it("renders NOTHING when connected but no upcoming events — the row must earn its place", async () => {
+  it("renders NOTHING when connected but no upcoming events, the row must earn its place", async () => {
     connectedGoogle();
-    // A past event only — filtered out (startAt < now).
+    // A past event only, filtered out (startAt < now).
     mockFeed([
       event({
         id: "past",
@@ -185,7 +185,7 @@ describe("CalendarUpcomingWidget", () => {
     expect(screen.queryByTestId("chat-widget-calendar-upcoming")).toBeNull();
   });
 
-  it("shows ONE high-priority datum — the soonest event — with a +N more badge", async () => {
+  it("shows ONE high-priority datum, the soonest event, with a +N more badge", async () => {
     connectedGoogle();
     mockFeed([
       event({
@@ -208,7 +208,104 @@ describe("CalendarUpcomingWidget", () => {
     expect(widget.textContent).not.toContain("Lunch");
     expect(widget.textContent).toContain("+1");
     expect(widget.getAttribute("aria-label")).toMatch(/Standup/);
-    expect(widget.getAttribute("aria-label")).toMatch(/Open Calendar/);
+    // Sentence-case copy law (spec §copy): "Open calendar.", not "Open Calendar".
+    expect(widget.getAttribute("aria-label")).toMatch(/Open calendar/);
+  });
+
+  // --- 18h lookahead gate (§B "Up Next", issue #14564) -----------------------
+  // The card earns its home slot ONLY when the next event starts within 18h; a
+  // more-distant event yields the slot (renders null). "An event next Tuesday is
+  // not glanceable urgency." The feed is queried 14d wide, but the render gate
+  // is the narrower 18h window.
+
+  it("renders the card when the next event is just inside the 18h gate (17h59m)", async () => {
+    connectedGoogle();
+    mockFeed([
+      event({
+        id: "soon",
+        title: "Design sync",
+        startAt: new Date(Date.now() + (17 * 60 + 59) * 60_000).toISOString(),
+      }),
+    ]);
+    render(<CalendarUpcomingWidget {...homeProps} />);
+
+    const card = await screen.findByTestId("chat-widget-calendar-upcoming");
+    expect(card.textContent).toContain("Design sync");
+  });
+
+  it("yields its slot (renders null) when the next event is just past the 18h gate (18h01m)", async () => {
+    connectedGoogle();
+    // A real upcoming event, but beyond the 18h glance window: the feed returns
+    // it (14d query) yet the render gate holds the card null.
+    mockFeed([
+      event({
+        id: "far",
+        title: "Next Tuesday",
+        startAt: new Date(Date.now() + (18 * 60 + 1) * 60_000).toISOString(),
+      }),
+    ]);
+    const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
+
+    // The connector probe + feed both run (the event exists), but the card is
+    // gated out, no tile occupies the home grid.
+    await waitFor(() => {
+      expect(listConnectorAccountsMock).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(container.firstChild).toBeNull();
+    });
+    expect(screen.queryByTestId("chat-widget-calendar-upcoming")).toBeNull();
+  });
+
+  it("does not publish home attention for a beyond-18h event (no card = no signal)", async () => {
+    connectedGoogle();
+    mockFeed([
+      event({
+        id: "far",
+        title: "Next Tuesday",
+        startAt: new Date(Date.now() + 20 * 60 * 60_000).toISOString(),
+      }),
+    ]);
+    render(<CalendarUpcomingWidget {...homeProps} />);
+
+    await waitFor(() => {
+      expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+    });
+    // A gated-out card must never float the tile up; every publish call is null.
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalled();
+    });
+    for (const call of publishMock.mock.calls) {
+      expect(call).toEqual(["calendar/calendar.upcoming", null]);
+    }
+  });
+
+  it("holds null on the deterministic first render (now === 0), before the clock installs", async () => {
+    // useNow returns 0 on first render (no Date.now in render, determinism
+    // convention). With a real upcoming event queued, the FIRST synchronous
+    // render must still be null (the `now === 0` guard), the card only appears
+    // after the effect installs the live clock. We assert the pre-effect frame,
+    // then let the async probe/feed settle so nothing leaks past the test.
+    connectedGoogle();
+    mockFeed([
+      event({
+        id: "soon",
+        title: "Design sync",
+        startAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+      }),
+    ]);
+    const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
+    // Synchronous first paint: feed not loaded + now === 0 → null.
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByTestId("chat-widget-calendar-upcoming")).toBeNull();
+
+    // Once the clock + feed install, the card appears (proving the null above
+    // was the first-render guard, not a permanent self-hide) and the effects
+    // are flushed under act.
+    await screen.findByTestId("chat-widget-calendar-upcoming");
   });
 
   it("applies the grid span to its single root element", async () => {
@@ -255,7 +352,7 @@ describe("CalendarUpcomingWidget", () => {
     expect(navEvents).toContain("/calendar");
   });
 
-  // #11084 — the widget mounts before the auth probe resolves; the connector
+  // #11084, the widget mounts before the auth probe resolves; the connector
   // probe and the calendar feed must stay dormant while unauthenticated.
   it("does not probe the connector or fetch the feed while unauthenticated", async () => {
     authMock.authenticated = false;
