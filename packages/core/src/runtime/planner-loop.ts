@@ -2127,7 +2127,7 @@ async function executeQueuedToolCall(params: {
 		success: result.success,
 		error: isParameterValidationFailure
 			? "parameter_validation_failed"
-			: result.error,
+			: (result.error ?? diagnosticFailureReason(result)),
 		repeatKey: isParameterValidationFailure
 			? "parameter_validation"
 			: toolFailureRepeatKey(params.toolCall),
@@ -3010,6 +3010,41 @@ function splitUnavailableToolCalls(
 
 function toolFailureRepeatKey(toolCall: PlannerToolCall): string {
 	return `${toolCall.name}:${stringifyForModel(toolCall.params ?? {})}`;
+}
+
+/**
+ * Recover a diagnostic failure reason from a tool result that reported
+ * `success:false` but carried no typed `error`. The dominant action
+ * convention in this codebase puts the human-readable reason in `text` and a
+ * machine code in `data.error` — e.g. SCHEDULED_TASKS returning
+ * `{ success:false, text:"I need a trigger (once | cron | ...)", data:{ error:"MISSING_TRIGGER" } }`.
+ * The typed `error` field is reserved for thrown `Error`s, so those
+ * validation failures reach the failure tracker with `error` unset.
+ *
+ * Without this recovery, `getFailureSignature` flattens every such failure to
+ * the bare literal `"failed"`, so a repeated-failure abort surfaces the
+ * useless `SCHEDULED_TASKS:failed` instead of naming what the model got wrong
+ * (observed live: the news-heartbeat turn tripped `Repeated tool failure
+ * limit exceeded for SCHEDULED_TASKS:failed`). That violates the
+ * diagnostic-error doctrine (#14873) — a limit abort must read like a real
+ * diagnosis. Prefer the human `text`; fall back to the `data.error` code;
+ * return `undefined` only when the result carries no reason at all, which
+ * preserves the existing `"failed"` fallback for a truly empty failure.
+ *
+ * This only makes the signature MORE specific: the repeated-failure guard
+ * still discriminates by `repeatKey` (the params JSON), so identical failing
+ * calls collapse exactly as before while distinct ones stay distinct.
+ */
+function diagnosticFailureReason(
+	result: PlannerToolResult,
+): string | undefined {
+	const text = typeof result.text === "string" ? result.text.trim() : "";
+	if (text) return text;
+	const dataError = (result.data as { error?: unknown } | undefined)?.error;
+	if (typeof dataError === "string" && dataError.trim()) {
+		return dataError.trim();
+	}
+	return undefined;
 }
 
 /**
