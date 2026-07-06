@@ -28,11 +28,13 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import {
+	type ActionRowBuilder,
 	type AttachmentBuilder,
 	type Channel,
 	type Client,
 	ChannelType as DiscordChannelType,
 	type Message as DiscordMessage,
+	type MessageActionRowComponentBuilder,
 	type TextChannel,
 } from "discord.js";
 import { isDiscordUserAddressed } from "./addressing";
@@ -71,6 +73,7 @@ import {
 } from "./types";
 import { createTypingController } from "./typing";
 import {
+	buildDiscordComponents,
 	buildOutboundDiscordAttachment,
 	canSendMessage,
 	extractUrls,
@@ -276,6 +279,42 @@ export async function createDiscordMessageMemoryOnce(
 
 	await runtime.createMemory(memory, "messages");
 	return memory;
+}
+
+/** Options handed to `User.send` when delivering a Discord DM reply. */
+export interface DmSendOptions {
+	content: string;
+	files?: AttachmentBuilder[];
+	components?: ActionRowBuilder<MessageActionRowComponentBuilder>[];
+}
+
+/**
+ * Build the option bag for a DM reply so it carries the SAME widget components
+ * a guild channel reply would (#14527). The DM branch used to send
+ * `{content, files}` only, silently dropping every button/select on a
+ * components-only reply. Discord's API supports message components on DM
+ * channels, so there is no API constraint to degrade around for the button +
+ * string-select types this connector emits; we simply attach them.
+ *
+ * `components`/`files` keys are omitted entirely when empty so we never send an
+ * empty `components: []` (which Discord rejects) or an empty `files: []`.
+ *
+ * @param textContent - Prose to send (already normalized, may be the
+ *   "Choose an option:" fallback when the reply is components-only).
+ * @param files - Outbound attachments, if any.
+ * @param components - Already-built discord.js action rows (from
+ *   `buildDiscordComponents`), if any.
+ */
+export function buildDmSendOptions(
+	textContent: string,
+	files: AttachmentBuilder[],
+	components: ActionRowBuilder<MessageActionRowComponentBuilder>[] | undefined,
+): DmSendOptions {
+	return {
+		content: textContent,
+		...(files.length > 0 ? { files } : {}),
+		...(components && components.length > 0 ? { components } : {}),
+	};
 }
 
 /**
@@ -1148,11 +1187,16 @@ export class MessageManager {
 							return [];
 						}
 
+						// Widget components (choice pickers, task cards, secret/OAuth
+						// link-outs) must render in DMs too. Discord's API supports
+						// message components (buttons + string selects) on DM channels,
+						// so we build the same rows the guild path does instead of
+						// silently dropping them (#14527).
+						const dmComponents = hasComponents
+							? buildDiscordComponents(rendered.components)
+							: undefined;
 						const dmMessage = await runResponseDispatch(() =>
-							user.send({
-								content: textContent,
-								files: files.length > 0 ? files : undefined,
-							}),
+							user.send(buildDmSendOptions(textContent, files, dmComponents)),
 						);
 						messages = [dmMessage];
 					} else {
