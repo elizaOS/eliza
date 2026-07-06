@@ -11,7 +11,6 @@ import { TrayLauncher } from "./TrayLauncher";
 // no-op `onSelect` so they render deterministically without the desktop host.
 const CATALOG: DesktopLauncherEntry[] = [
   { itemId: "tray-show-window", label: "Open Eliza", icon: "home" },
-  { itemId: "tray-open-view-tutorial", label: "Tutorial", icon: "tutorial" },
   { itemId: "tray-open-view-chat", label: "Messages", icon: "chat" },
   { itemId: "tray-open-view-character", label: "Character", icon: "character" },
   { itemId: "tray-open-view-documents", label: "Knowledge", icon: "documents" },

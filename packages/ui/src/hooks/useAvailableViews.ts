@@ -267,7 +267,6 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   database: "Database",
   desktop: "Monitor",
   settings: "Settings",
-  tutorial: "Sparkles",
   logs: "ScrollText",
   background: "ImageIcon",
 };

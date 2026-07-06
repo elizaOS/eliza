@@ -48,12 +48,6 @@ export interface DesktopViewWindow {
 
 export const DESKTOP_VIEW_WINDOWS: readonly DesktopViewWindow[] = [
   {
-    id: "tutorial",
-    label: "Tutorial",
-    labelKey: "desktop.views.tutorial",
-    path: "/tutorial",
-  },
-  {
     id: "chat",
     label: "Messages",
     labelKey: "desktop.views.chat",

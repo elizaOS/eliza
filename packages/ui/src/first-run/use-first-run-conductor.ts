@@ -51,7 +51,7 @@ import type {
 } from "../api";
 import { client } from "../api";
 import { getCloudAuthToken } from "../api/client-cloud";
-import { startTutorial } from "../components/pages/tutorial/tutorial-controller";
+import { startTutorial } from "../tutorial/tutorial-service";
 import { getBootConfig } from "../config/boot-config";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";

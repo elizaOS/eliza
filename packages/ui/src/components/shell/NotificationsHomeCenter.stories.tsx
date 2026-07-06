@@ -105,7 +105,7 @@ export const OnboardingDefaults: Story = {
           body: "New here? A two-minute guided tour shows you chat, the launcher, and your home screen.",
           category: "general",
           priority: "normal",
-          deepLink: "/tutorial",
+          deepLink: "/chat",
         },
         {
           title: "Get help any time",

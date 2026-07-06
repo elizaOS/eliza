@@ -19,7 +19,6 @@ import { useSyncExternalStore } from "react";
 
 /** Semantic icon key — the presentational layer maps it to a concrete glyph. */
 export type DesktopLauncherIconId =
-  | "tutorial"
   | "chat"
   | "character"
   | "documents"

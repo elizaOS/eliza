@@ -184,16 +184,17 @@ test("the chat-native tour runs end to end in the live transcript", async ({
   expect(spoken.join(" ")).toMatch(/tour|chat|mic|settings/i);
 });
 
-test("typed stop/restart commands drive the tour; /tutorial is a thin launcher", async ({
+test("typed stop/restart commands drive the tour from chat", async ({
   page,
 }) => {
-  // The /tutorial route starts the tour immediately and points at the chat.
-  await openAppPath(page, "/tutorial");
-  await expect(page.getByTestId("tutorial-launcher")).toBeVisible({
+  // The tour is a chat-native surface — there is no dedicated view. A typed
+  // "start tutorial" command in the composer begins it.
+  await openAppPath(page, "/chat");
+  await expect(page.locator(COMPOSER).first()).toBeVisible({
     timeout: 25_000,
   });
-  await expect(page.getByTestId("tutorial-start")).toBeVisible();
   await expandToFull(page);
+  await typeAndSend(page, "start tutorial");
   await expect(choice(page, "next", "welcome")).toBeVisible({
     timeout: 15_000,
   });

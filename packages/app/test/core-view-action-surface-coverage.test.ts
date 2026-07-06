@@ -23,13 +23,6 @@ type CoreSurfaceOwner = {
 };
 
 const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
-  tutorial: {
-    viewId: "tutorial",
-    provider: "shell",
-    files: ["packages/ui/src/components/pages/tutorial/TutorialView.tsx"],
-    minAgentElements: 1,
-    requiredSnippets: ["tutorial-start"],
-  },
   knowledge: {
     viewId: "documents",
     provider: "shell",

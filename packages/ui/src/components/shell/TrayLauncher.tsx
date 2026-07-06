@@ -5,7 +5,6 @@
 import {
   BookOpen,
   Bot,
-  GraduationCap,
   Home,
   Image,
   LayoutGrid,
@@ -24,7 +23,6 @@ import {
 import { Button } from "../ui/button";
 
 const ICONS: Record<DesktopLauncherIconId, LucideIcon> = {
-  tutorial: GraduationCap,
   chat: MessageSquare,
   character: Bot,
   documents: BookOpen,

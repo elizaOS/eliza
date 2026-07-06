@@ -16,7 +16,6 @@ export type ViewSwitchPair = {
 };
 
 export const REQUIRED_CORE_VIEW_IDS = [
-  "tutorial",
   "knowledge",
   "character",
   "settings",
@@ -56,13 +55,6 @@ export const REQUIRED_SETTINGS_SECTION_IDS = [
 ] as const;
 
 export const CORE_VIEW_SWITCH_TARGETS: readonly CoreViewSwitchTarget[] = [
-  {
-    id: "tutorial",
-    label: "Tutorial",
-    path: "/tutorial",
-    kind: "core-view",
-    readySelector: '[data-testid="tutorial-launcher"]',
-  },
   {
     id: "knowledge",
     label: "Knowledge",

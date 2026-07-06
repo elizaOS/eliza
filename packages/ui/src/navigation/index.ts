@@ -7,7 +7,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   Clock3,
   LayoutGrid,
-  MessageSquare,
   Monitor,
   Phone,
   Radio,
@@ -71,7 +70,6 @@ export type BuiltinTab =
   | "database"
   | "desktop"
   | "settings"
-  | "tutorial"
   | "logs"
   | "background";
 
@@ -256,13 +254,6 @@ export function getWindowNavigationPath(
 
 export const ALL_TAB_GROUPS: TabGroup[] = [
   {
-    label: "Messages",
-    tabs: ["chat"],
-    icon: MessageSquare,
-    description:
-      "Conversations with your agent, inbound messages from every connector, and connector management",
-  },
-  {
     // AOSP ElizaOS-fork only — the native dialer/SMS/contact tiles are gated to
     // the fork in the launcher (see launcher-curation LAUNCHER_AOSP_ONLY_IDS).
     label: "Phone",
@@ -369,7 +360,6 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   database: "/apps/database",
   desktop: "/desktop",
   settings: "/settings",
-  tutorial: "/tutorial",
   logs: "/apps/logs",
   background: "/background",
 };

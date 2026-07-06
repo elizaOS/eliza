@@ -61,22 +61,6 @@ const PLUGIN_AGENT_BRIDGE_OWNER: InteractionOwner = {
 };
 
 const CORE_VIEW_INTERACTIONS: Readonly<Record<string, CoreViewInteraction>> = {
-  tutorial: {
-    owners: [
-      SHELL_AGENT_BRIDGE_OWNER,
-      {
-        spec: "packages/app/test/ui-smoke/tutorial-chat.spec.ts",
-        proves:
-          "Runs the chat-native tour end to end: seeded turns in the live transcript, Next/Stop choices, typed start/stop/restart commands, auto-advance on a real send, and narration through the voice engine.",
-        signals: [
-          "the chat-native tour runs end to end in the live transcript",
-          "tutorial-start",
-          "stop tutorial",
-          "__ttsSpoken",
-        ],
-      },
-    ],
-  },
   knowledge: {
     owners: [
       SHELL_AGENT_BRIDGE_OWNER,
@@ -432,11 +416,6 @@ const SHELL_PROVIDER_BOUNDARY_SEGMENTS: readonly {
   start: string;
   end?: string;
 }[] = [
-  {
-    file: "packages/ui/src/components/pages/tutorial/TutorialView.tsx",
-    start: "export function TutorialView(",
-    end: "function TutorialViewBody(",
-  },
   {
     file: "packages/ui/src/components/character/CharacterEditor.tsx",
     start: "export function CharacterEditor(",

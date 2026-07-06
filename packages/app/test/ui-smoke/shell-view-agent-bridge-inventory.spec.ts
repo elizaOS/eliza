@@ -95,13 +95,6 @@ const SHELL_VIEW_TARGETS: readonly {
   requiredIds: readonly string[];
 }[] = [
   {
-    label: "Tutorial",
-    path: "/tutorial",
-    viewId: "tutorial",
-    readyTestId: "tutorial-launcher",
-    requiredIds: ["tutorial-start"],
-  },
-  {
     label: "Knowledge",
     path: "/character/documents",
     viewId: "documents",

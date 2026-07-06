@@ -77,20 +77,23 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
+    // Chat is the app home surface, reached directly (default landing), not via
+    // a launcher tile — there is no "Messages" launcher group.
     tabId: "chat",
     path: "/chat",
     label: "Messages",
-    group: "Messages",
+    group: "Hidden",
     visibility: "all",
     featureFlag: null,
     requiresAuth: true,
     platformGate: null,
   },
   {
+    // /connectors redirects into Settings → Connectors.
     tabId: "connectors",
     path: "/connectors",
     label: "Connectors",
-    group: "Messages",
+    group: "Settings",
     visibility: "all",
     featureFlag: null,
     requiresAuth: true,
@@ -135,16 +138,6 @@ const ROUTES: DevRouteEntry[] = [
     featureFlag: null,
     requiresAuth: true,
     platformGate: "android",
-  },
-  {
-    tabId: "tutorial",
-    path: "/tutorial",
-    label: "Tutorial",
-    group: "Hidden",
-    visibility: "all",
-    featureFlag: null,
-    requiresAuth: true,
-    platformGate: null,
   },
   {
     tabId: "apps",

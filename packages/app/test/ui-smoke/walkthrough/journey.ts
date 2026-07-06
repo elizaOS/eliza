@@ -860,13 +860,15 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     id: "tutorial",
     title: "Chat-native tutorial (all 6 steps)",
     expectation:
-      "The /tutorial launcher starts the chat-native tour: one conversational turn per step lands in the live transcript, the send-message step auto-advances on a real composer send, and Done completes the run.",
+      "A typed 'start tutorial' command in the chat composer starts the chat-native tour: one conversational turn per step lands in the live transcript, the send-message step auto-advances on a real composer send, and Done completes the run.",
     async run({ page }) {
-      await openAppPath(page, "/tutorial");
-      await expect(page.getByTestId("tutorial-launcher")).toBeVisible({
-        timeout: 20_000,
-      });
-      await expect(page.getByTestId("tutorial-start")).toBeVisible();
+      // The tour is chat-native — no dedicated view. Start it from the composer.
+      await openAppPath(page, "/chat");
+      const box = composer(page);
+      await expect(box).toBeVisible({ timeout: 20_000 });
+      await box.click();
+      await box.fill("start tutorial");
+      await page.getByTestId("chat-composer-action").click();
       // No overlay engine: the tour is turns in the transcript, nothing dims
       // or locks the shell.
       await expect(page.getByTestId("tutorial-card")).toHaveCount(0);
@@ -879,7 +881,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
 
       return {
         assertions: [
-          "/tutorial started the chat-native tour (welcome turn in transcript)",
+          "'start tutorial' started the chat-native tour (welcome turn in transcript)",
           "no spotlight card / overlay engine present",
           `tour driven step-by-step: ${walked.join(" → ")}`,
         ],

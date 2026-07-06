@@ -11,21 +11,6 @@ import type { ViewDeclaration } from "@elizaos/core";
 
 export const BUILTIN_VIEWS: ViewDeclaration[] = [
   {
-    id: "tutorial",
-    viewKind: "system",
-    label: "Tutorial",
-    description:
-      "Conversational walkthrough of the basics — runs right in the chat",
-    icon: "GraduationCap",
-    heroImagePath: "assets/view-heroes/tutorial.png",
-    path: "/tutorial",
-    order: 0,
-    tags: ["tutorial", "onboarding", "learn", "guide", "help"],
-    visibleInManager: true,
-    desktopTabEnabled: true,
-    platforms: ["web", "desktop", "ios", "android"],
-  },
-  {
     id: "camera",
     viewKind: "preview",
     label: "Camera",

@@ -34,12 +34,12 @@ function isNotifier(value: unknown): value is NotifierLike {
 
 /**
  * The seed set. Deep links are plain root-relative paths so they pass the
- * client's `isSafeDeepLink` allowlist: `/tutorial` (the chat-native tour),
- * `/chat` (help lives in the conversation — the agent answers questions from
- * its bundled help knowledge), `/connectors` (Settings → Connectors, where
- * calendar linking lives). Stable groupKeys make re-seeding idempotent even
- * if the guard flag is ever lost — a duplicate collapses onto the existing
- * row.
+ * client's `isSafeDeepLink` allowlist: `/chat` (the tour and help both live in
+ * the conversation — the chat-native tour starts when the user asks, and the
+ * agent answers help questions from its bundled help knowledge), `/connectors`
+ * (Settings → Connectors, where calendar linking lives). Stable groupKeys make
+ * re-seeding idempotent even if the guard flag is ever lost — a duplicate
+ * collapses onto the existing row.
  */
 export const ONBOARDING_NOTIFICATIONS: readonly NotificationInput[] = [
   {
@@ -48,7 +48,7 @@ export const ONBOARDING_NOTIFICATIONS: readonly NotificationInput[] = [
     category: "general",
     priority: "normal",
     source: "system",
-    deepLink: "/tutorial",
+    deepLink: "/chat",
     groupKey: "onboarding:tutorial",
   },
   {

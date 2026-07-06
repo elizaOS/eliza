@@ -60,7 +60,6 @@ const BUILTIN_VIEW_CASES: Array<{ id: string; path: string }> = [
   { id: "database", path: "/apps/database" },
   { id: "desktop", path: "/desktop" },
   { id: "settings", path: "/settings" },
-  { id: "tutorial", path: "/tutorial" },
   { id: "logs", path: "/apps/logs" },
   { id: "background", path: "/background" },
 ];
