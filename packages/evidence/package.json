@@ -16,6 +16,8 @@
     "certify:sign": "bun src/certify/cli.ts sign",
     "certify:verify": "bun src/certify/cli.ts verify",
     "vision-qa": "bun src/vision-qa/cli.ts",
+    "video:walkthrough": "bun src/video/cli.ts walkthrough",
+    "video:ingest": "bun src/video/cli.ts ingest",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src",
@@ -29,6 +31,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.0",
     "@types/node": "^24.0.0"
   },
   "elizaos": {
