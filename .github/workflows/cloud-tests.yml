@@ -74,25 +74,11 @@ jobs:
       - name: Tenant-scope gate (no unscoped pk-only reads of apps data-plane) (#9853)
         run: bun run --cwd packages/cloud/shared check:tenant-scope
 
-  # The prod Worker bundles against a hand-maintained @elizaos/core stub
-  # (packages/cloud/api/src/stubs/elizaos-core.ts) because real core cannot
-  # load in workerd. Nothing else fails a PR when a newly-imported core export
-  # is missing from the stub — the break surfaces at DEPLOY time as esbuild
-  # "No matching export" errors (#14422). This job performs the exact
-  # deploy-time bundle in a canonical clean checkout, so stub drift fails the
-  # PR instead of the deploy. Local caveat from the #14432 postmortem: stale
-  # compiled .js next to packages/shared/src TS sources flips esbuild
-  # resolution and yields phantom results locally — CI's fresh checkout is the
-  # truth this job pins.
-  worker-bundle-dry-run:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-      - uses: ./.github/actions/cloud-setup-test-env
-      - name: Worker production bundle dry-run (stub-drift gate, #14422)
-        working-directory: packages/cloud/api
-        run: bunx wrangler deploy --env production --dry-run
+  # NOTE: the Worker bundle stub-drift gate (#14422) runs inside
+  # `lint-and-types` above — packages/cloud/api chains `check:worker-bundle`
+  # (wrangler deploy --dry-run) into its `typecheck`, so `verify:cloud` covers
+  # it. Do not re-add a standalone dry-run job: #14474 + #14504 briefly ran it
+  # twice per PR on the saturated runner fleet.
 
   unit-tests:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
