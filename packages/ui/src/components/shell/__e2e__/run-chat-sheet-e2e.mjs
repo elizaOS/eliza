@@ -165,6 +165,69 @@ const panelRadii = (p) =>
       el ? Number.parseFloat(getComputedStyle(el).borderTopLeftRadius) : -1;
     return { surface: read(surface), content: read(content) };
   });
+const chatSurfaceTone = (p) =>
+  p.evaluate(() => {
+    const panel = document.querySelector('[data-testid="chat-sheet"]');
+    const surface = panel?.firstElementChild;
+    const parseRgb = (value) => {
+      const match = value.match(/rgba?\(([^)]+)\)/);
+      if (!match) return null;
+      const [r, g, b, a = "1"] = match[1].split(",").map((part) => part.trim());
+      return {
+        r: Number.parseFloat(r),
+        g: Number.parseFloat(g),
+        b: Number.parseFloat(b),
+        a: Number.parseFloat(a),
+      };
+    };
+    const bg = surface ? getComputedStyle(surface).backgroundColor : "";
+    const vars = panel
+      ? {
+          card: getComputedStyle(panel).getPropertyValue("--card").trim(),
+          txt: getComputedStyle(panel).getPropertyValue("--txt").trim(),
+        }
+      : { card: "", txt: "" };
+    return { bg, parsed: parseRgb(bg), ...vars };
+  });
+async function assertDarkChatSurface(p, label) {
+  const tone = await chatSurfaceTone(p);
+  const rgb = tone.parsed;
+  assert(
+    Boolean(
+      rgb &&
+        rgb.a >= 0.99 &&
+        rgb.r < 60 &&
+        rgb.g < 50 &&
+        rgb.b < 45 &&
+        tone.txt !== "var(--text)" &&
+        tone.card !== "var(--brand-orange)",
+    ),
+    `${label}: chat sheet uses an opaque dark local surface, not the orange app theme (${JSON.stringify(
+      tone,
+    )})`,
+  );
+}
+async function assertNoDefaultBlueThreadFocus(p, label) {
+  const focusChrome = await p.evaluate(() => {
+    const el = document.querySelector('[data-testid="chat-thread-scroll"]');
+    if (!(el instanceof HTMLElement)) return null;
+    el.focus();
+    const styles = getComputedStyle(el);
+    return {
+      outlineColor: styles.outlineColor,
+      outlineStyle: styles.outlineStyle,
+      boxShadow: styles.boxShadow,
+    };
+  });
+  const serialized = JSON.stringify(focusChrome);
+  const hasDefaultBlue = /(0,\s*95,\s*204|0,\s*120,\s*215|59,\s*130,\s*246)/.test(
+    serialized,
+  );
+  assert(
+    Boolean(focusChrome && !hasDefaultBlue),
+    `${label}: transcript focus chrome is locally themed, not browser/default blue (${serialized})`,
+  );
+}
 const SHEET_TOP_MARGIN = 72;
 const grabberBox = (p) => p.getByTestId("chat-sheet-grabber").boundingBox();
 
@@ -1382,6 +1445,8 @@ try {
       full.panelHeight <= full.vvH - 56 + 1,
       `KEYBOARD(full): panel height capped to the visible area (h ${Math.round(full.panelHeight)} ≤ ${full.vvH - 56})`,
     );
+    await assertDarkChatSurface(p, "KEYBOARD(full)");
+    await assertNoDefaultBlueThreadFocus(p, "KEYBOARD(full)");
     await snap(p, "state-keyboard-full");
 
     // close the keyboard → the overlay drops back to the bottom

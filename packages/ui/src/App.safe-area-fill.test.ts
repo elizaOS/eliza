@@ -118,5 +118,7 @@ describe("App safe-area fill invariant", () => {
     );
     expect(cls).toContain("fixed");
     expect(cls).toContain("inset-0");
+    expect(cls).toContain("bg-black/50");
+    expect(cls).not.toContain("bg-bg/55");
   });
 });

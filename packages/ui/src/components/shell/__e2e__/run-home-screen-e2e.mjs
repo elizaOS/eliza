@@ -245,6 +245,7 @@ async function readHomeDarkForegrounds(page) {
     // health.sleep left home; goals.attention folded into Today.
     const surfaces = [
       "home-notification-center",
+      "home-gesture-hint",
       "chat-widget-todos",
       "todo-goal-attention-row",
       "chat-widget-calendar-upcoming",

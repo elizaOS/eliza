@@ -43,20 +43,18 @@ export function HomeGestureHint(): React.JSX.Element | null {
     <div
       data-testid="home-gesture-hint"
       className={cn(
-        "mx-auto w-fit max-w-full rounded-full border border-white/25 bg-card/90 px-3 py-2 text-card-foreground shadow-lg shadow-black/10",
+        "mx-auto w-fit max-w-full rounded-full border border-white/25 bg-black/35 px-3 py-2 text-white shadow-lg shadow-black/20 backdrop-blur-xl",
         "transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none",
       )}
     >
       <div className="flex items-center gap-2 text-[0.8125rem] font-medium leading-tight">
-        <span className="text-muted-foreground">
-          Swipe for apps. Pull chat up.
-        </span>
+        <span className="text-white/90">Swipe for apps. Pull chat up.</span>
         <button
           type="button"
           aria-label="Dismiss gesture hint"
           className={cn(
-            "-my-2 -mr-2 grid h-11 w-11 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            "-my-2 -mr-2 grid h-11 w-11 place-items-center rounded-full text-white/75 transition-colors hover:bg-white/10 hover:text-white",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black/40",
             "active:scale-[0.96] motion-reduce:active:scale-100",
           )}
           onClick={() => dismissHomeWidget(HOME_GESTURE_HINT_KEY)}

@@ -135,6 +135,14 @@ export function usePullGesture(
   // pipeline, OS takeover) whose event coordinates are not trustworthy, so the
   // cancel-time commit decision (#9943) reads this tracked position instead.
   const last = React.useRef<{ x: number; y: number; t: number } | null>(null);
+  // Previous sample before `last`. Release decisions still use the full
+  // gesture for distance, but flick intent should be allowed to come from the
+  // latest decisive segment too: browser automation and busy render paths can
+  // add setup delay between pointerdown and the actual flick, making whole-press
+  // velocity read slow even though the user's final motion was a flick.
+  const previous = React.useRef<{ x: number; y: number; t: number } | null>(
+    null,
+  );
 
   // Coalesce the continuous drag updates to at most one per animation frame: a
   // trackpad/touch panel emits pointermove well above the display refresh, and
@@ -167,6 +175,7 @@ export function usePullGesture(
       };
       axis.current = null;
       last.current = { x: event.clientX, y: event.clientY, t: start.current.t };
+      previous.current = null;
       // Pure horizontal swipe surfaces defer capture until axis commit so native
       // vertical scrolling still works. A vertical pull handle captures
       // immediately even when it also supports horizontal swipes; otherwise a
@@ -186,6 +195,7 @@ export function usePullGesture(
     (event: React.PointerEvent) => {
       const s = start.current;
       if (!s || s.pointerId !== event.pointerId) return;
+      previous.current = last.current;
       last.current = {
         x: event.clientX,
         y: event.clientY,
@@ -249,19 +259,38 @@ export function usePullGesture(
       // cannot replay stale motion after the settle below.
       drag.flush();
       const committedAxis = axis.current;
+      const previousSample = previous.current;
+      const lastSample = last.current;
       start.current = null;
       axis.current = null;
       last.current = null;
+      previous.current = null;
 
       const deltaUp = s.y - event.clientY; // up positive
       const deltaLeft = s.x - event.clientX; // left positive
       const elapsed = Math.max(1, performance.now() - s.t);
       const velocityUp = deltaUp / elapsed;
       const velocityLeft = deltaLeft / elapsed;
+      const recentElapsed =
+        previousSample && lastSample && lastSample.t - previousSample.t >= 8
+          ? lastSample.t - previousSample.t
+          : null;
+      const recentVelocityUp =
+        previousSample && lastSample && recentElapsed
+          ? (previousSample.y - lastSample.y) / recentElapsed
+          : velocityUp;
+      const recentVelocityLeft =
+        previousSample && lastSample && recentElapsed
+          ? (previousSample.x - lastSample.x) / recentElapsed
+          : velocityLeft;
       const movedY = Math.abs(deltaUp);
       const movedX = Math.abs(deltaLeft);
-      const isFlickY = Math.abs(velocityUp) >= velocityThreshold;
-      const isFlickX = Math.abs(velocityLeft) >= velocityThresholdX;
+      const isFlickY =
+        Math.max(Math.abs(velocityUp), Math.abs(recentVelocityUp)) >=
+        velocityThreshold;
+      const isFlickX =
+        Math.max(Math.abs(velocityLeft), Math.abs(recentVelocityLeft)) >=
+        velocityThresholdX;
 
       // A near-stationary release (both axes) is a tap, not a drag/swipe.
       if (movedX < TAP_SLOP && movedY < TAP_SLOP && !isFlickY && !isFlickX) {
@@ -347,6 +376,7 @@ export function usePullGesture(
       start.current = null;
       axis.current = null;
       last.current = null;
+      previous.current = null;
       // Commit-on-cancel (REAL touch, #9943): Android's touch pipeline can
       // revoke the pointer with `pointercancel` AFTER the finger already
       // completed the flick — the renderer-unresponsive ack timeout or an OS

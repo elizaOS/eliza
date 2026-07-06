@@ -187,6 +187,45 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     expect(onDrag).toHaveBeenCalledTimes(1);
   });
 
+  it("recognizes a decisive final flick even when the whole press elapsed slowly", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    let t = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => t);
+
+    const onDrag = vi.fn();
+    const onPullUp = vi.fn();
+    const onSettleFree = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({
+        onDrag,
+        onPullUp,
+        onSettleFree,
+        velocityThreshold: 0.5,
+      }),
+    );
+    const b = result.current;
+
+    t = 0;
+    b.onPointerDown(pointer(100, 300));
+    t = 420;
+    b.onPointerMove(pointer(100, 260)); // slow setup: whole-press velocity is low
+    t = 450;
+    b.onPointerMove(pointer(100, 170)); // decisive final segment: 90px / 30ms
+    t = 452;
+    b.onPointerUp(pointer(100, 170));
+
+    expect(onDrag).toHaveBeenLastCalledWith(130);
+    expect(onPullUp).toHaveBeenCalledTimes(1);
+    expect(onSettleFree).not.toHaveBeenCalled();
+  });
+
   it("resets instead of sending onDrag(0) for a horizontal-dominant move on a vertical-only binding", () => {
     vi.stubGlobal(
       "requestAnimationFrame",
