@@ -484,6 +484,21 @@ export function cloneWithoutBlockedObjectKeys<T>(value: T): T {
 // same numbers pre-send and the two sides cannot drift.
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 
+/**
+ * True when a syntactically-valid base64 string decodes to zero bytes. `BASE64_RE`
+ * accepts degenerate payloads like `"="`, `"=="`, or a single stray char `"A"`
+ * (each < 2 base64 chars of real data) that are non-empty strings yet carry no
+ * bytes. Persisting one would write an empty file into the content-addressed
+ * store and land a zero-byte attachment the agent can never read, so the upload
+ * is rejected up front as a corrupt payload (never fabricated into a valid one).
+ */
+function base64DecodesToZeroBytes(data: string): boolean {
+  // A base64 quantum is 4 chars → 3 bytes; the last group may be `xx==` (1 byte)
+  // or `xxx=` (2 bytes). Any run shorter than 2 non-padding chars yields nothing.
+  const withoutPadding = data.replace(/=+$/, "");
+  return withoutPadding.length < 2;
+}
+
 // Re-exported for chat-routes and for parity tests against the client side.
 export { CHAT_UPLOAD_MIME_TYPES };
 
@@ -527,6 +542,8 @@ export function validateChatImages(images: unknown): string | null {
       return `Attachment too large (max ${maxBytes / 1_048_576} MB)`;
     if (!BASE64_RE.test(data))
       return "Attachment data contains invalid base64 characters";
+    if (base64DecodesToZeroBytes(data))
+      return "Attachment data decodes to zero bytes";
     if (typeof name !== "string" || !name)
       return "Each attachment must have a name string";
     if (name.length > MAX_IMAGE_NAME_LENGTH)
