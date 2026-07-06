@@ -1714,7 +1714,8 @@ export function ContinuousChatOverlay({
       return (
         <ChatMessage
           key={m.id}
-          appearance="glass"
+          appearance={firstRunOpen ? "panel" : "glass"}
+          agentName={agentName}
           message={shellToChatMessageData(m)}
           reduceMotion={reduce}
           onCopy={handleCopyMessage}
@@ -1733,6 +1734,8 @@ export function ContinuousChatOverlay({
     },
     [
       visibleMessages.length,
+      firstRunOpen,
+      agentName,
       reduce,
       handleCopyMessage,
       handleLongPressCopy,
