@@ -75,6 +75,10 @@ export async function loadScenarioTestMocksForTests() {
 
 const DETERMINISTIC_LLM_PROXY_PROVIDER_NAME =
   "deterministic-llm-proxy" as const;
+const SCHEDULED_DISPATCH_RENDER_PROMPT_PREFIX =
+  "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.";
+const SCHEDULED_DISPATCH_RENDER_INSTRUCTION_MARKER = "\nInstruction:\n";
+const SCHEDULED_DISPATCH_RENDER_FIRED_AT_MARKER = "\n\nFired at:";
 
 async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
   const agentPackageName: string = "@elizaos/agent";
@@ -246,6 +250,104 @@ function deterministicLlmProxyProviderConfig(): RuntimeFactoryResult["providerCo
     env: {},
     pluginPackage: null,
   };
+}
+
+export function isScheduledDispatchRenderPrompt(prompt: string): boolean {
+  return (
+    prompt.startsWith(SCHEDULED_DISPATCH_RENDER_PROMPT_PREFIX) &&
+    prompt.includes(SCHEDULED_DISPATCH_RENDER_INSTRUCTION_MARKER) &&
+    prompt.includes(SCHEDULED_DISPATCH_RENDER_FIRED_AT_MARKER) &&
+    prompt.trimEnd().endsWith("Message:")
+  );
+}
+
+export function deterministicScheduledDispatchRenderText(
+  prompt: string,
+): string {
+  const instructionStart = prompt.indexOf(
+    SCHEDULED_DISPATCH_RENDER_INSTRUCTION_MARKER,
+  );
+  const firedAtStart = prompt.indexOf(
+    SCHEDULED_DISPATCH_RENDER_FIRED_AT_MARKER,
+  );
+  const instruction =
+    instructionStart >= 0 && firedAtStart > instructionStart
+      ? prompt
+          .slice(
+            instructionStart +
+              SCHEDULED_DISPATCH_RENDER_INSTRUCTION_MARKER.length,
+            firedAtStart,
+          )
+          .trim()
+      : "";
+  const ownerMessage = instruction
+    .replace(/^remind the owner to\s+/i, "")
+    .replace(/^ask the owner to\s+/i, "")
+    .replace(/^tell the owner to\s+/i, "")
+    .replace(/^gentle check-in:\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return ownerMessage
+    ? `Quick nudge: ${ownerMessage}`
+    : "Quick nudge: checking in.";
+}
+
+type ScenarioDeterministicLlmCall = {
+  modelType?: unknown;
+  latestUserText?: unknown;
+  params?: {
+    prompt?: unknown;
+    messages?: unknown;
+  };
+};
+
+function isRecordLike(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function chatContentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (isRecordLike(part) && typeof part.text === "string") return part.text;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function deterministicCallTextCandidates(
+  call: ScenarioDeterministicLlmCall,
+): string[] {
+  const candidates: string[] = [];
+  if (typeof call.params?.prompt === "string") {
+    candidates.push(call.params.prompt);
+  }
+  if (typeof call.latestUserText === "string") {
+    candidates.push(call.latestUserText);
+  }
+  if (Array.isArray(call.params?.messages)) {
+    for (const message of call.params.messages) {
+      if (!isRecordLike(message)) continue;
+      const text = chatContentText(message.content);
+      if (text) candidates.push(text);
+    }
+  }
+  return candidates;
+}
+
+export function resolveScenarioDeterministicLlmCall(
+  call: ScenarioDeterministicLlmCall,
+): string | null {
+  if (call.modelType !== ModelType.TEXT_LARGE) {
+    return null;
+  }
+  const prompt = deterministicCallTextCandidates(call).find(
+    isScheduledDispatchRenderPrompt,
+  );
+  return prompt ? deterministicScheduledDispatchRenderText(prompt) : null;
 }
 
 export function resolveScenarioProviderConfig(
@@ -462,6 +564,7 @@ export async function createScenarioRuntime(
   if (providerConfig.name === DETERMINISTIC_LLM_PROXY_PROVIDER_NAME) {
     const deterministicLlmProxyPlugin = createDeterministicLlmProxyPlugin({
       strict: shouldUseStrictDeterministicLlmProxy(),
+      resolve: resolveScenarioDeterministicLlmCall,
     });
     await runtime.registerPlugin(deterministicLlmProxyPlugin);
     const runtimeWithScenarioFixtures = runtime as AgentRuntime & {

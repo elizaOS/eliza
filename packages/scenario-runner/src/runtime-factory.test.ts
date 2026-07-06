@@ -3,7 +3,10 @@ import { ModelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   clearLlmWireMockEnvForLiveProvider,
+  deterministicScheduledDispatchRenderText,
+  isScheduledDispatchRenderPrompt,
   loadScenarioTestMocksForTests,
+  resolveScenarioDeterministicLlmCall,
   resolveScenarioProviderConfig,
   shouldUseDeterministicLlmProxy,
   shouldUseStrictDeterministicLlmProxy,
@@ -64,6 +67,75 @@ describe("scenario runtime deterministic LLM proxy mode", () => {
     await expect(
       plugin.models?.[ModelType.TEXT_EMBEDDING]?.({} as never, "hello"),
     ).resolves.toEqual([0, 0, 0]);
+  });
+
+  it("recognizes scheduled-dispatch render prompts and returns deterministic owner-facing text", () => {
+    const prompt = [
+      "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.",
+      "The instruction below tells you what to communicate. It is an instruction to you, not the message itself — never repeat or quote it verbatim.",
+      "Write only the message body, speaking directly to the owner in a natural assistant voice.",
+      "Do not mention scheduled tasks, instructions, or that this message was automated. No preamble, no markdown fences, no meta commentary.",
+      "",
+      "Instruction:",
+      "Remind the owner to stretch for five minutes.",
+      "",
+      "Fired at: 2026-07-05T09:00:00.000Z",
+      "",
+      "Message:",
+    ].join("\n");
+
+    expect(isScheduledDispatchRenderPrompt(prompt)).toBe(true);
+    expect(deterministicScheduledDispatchRenderText(prompt)).toBe(
+      "Quick nudge: stretch for five minutes.",
+    );
+    expect(deterministicScheduledDispatchRenderText(prompt)).not.toContain(
+      "Remind the owner",
+    );
+    expect(isScheduledDispatchRenderPrompt("ordinary TEXT_LARGE prompt")).toBe(
+      false,
+    );
+  });
+
+  it("resolves the scheduled-dispatch render model call outside the fixture registry", () => {
+    const prompt = [
+      "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.",
+      "The instruction below tells you what to communicate. It is an instruction to you, not the message itself — never repeat or quote it verbatim.",
+      "Write only the message body, speaking directly to the owner in a natural assistant voice.",
+      "Do not mention scheduled tasks, instructions, or that this message was automated. No preamble, no markdown fences, no meta commentary.",
+      "",
+      "Instruction:",
+      "Ask the owner to take a short walk.",
+      "",
+      "Fired at: 2026-07-05T09:00:00.000Z",
+      "",
+      "Message:",
+    ].join("\n");
+
+    expect(
+      resolveScenarioDeterministicLlmCall({
+        modelType: ModelType.TEXT_LARGE,
+        params: { prompt },
+        latestUserText: "",
+      }),
+    ).toBe("Quick nudge: take a short walk.");
+    expect(
+      resolveScenarioDeterministicLlmCall({
+        modelType: ModelType.TEXT_LARGE,
+        params: {
+          messages: [
+            { role: "user", content: [{ type: "text", text: prompt }] },
+          ],
+        },
+        latestUserText: "",
+      }),
+    ).toBe("Quick nudge: take a short walk.");
+    expect(
+      resolveScenarioDeterministicLlmCall({
+        modelType: ModelType.TEXT_SMALL,
+        params: { prompt },
+        latestUserText: "",
+      }),
+    ).toBeNull();
   });
 });
 
