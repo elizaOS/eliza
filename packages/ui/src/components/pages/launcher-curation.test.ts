@@ -92,7 +92,7 @@ describe("curateLauncherPages", () => {
     expect(ids(page)).toEqual(["settings", "wallet"]);
   });
 
-  it("drops removed apps and non-launcher shell surfaces", () => {
+  it("drops removed apps and non-launcher shell surfaces (incl. chat)", () => {
     const page = curateLauncherPages(
       [
         entry("wallet"),
@@ -110,7 +110,41 @@ describe("curateLauncherPages", () => {
       { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
 
-    expect(ids(page)).toEqual(["chat", "wallet"]);
+    // chat is the home surface — never a launcher tile (#14479).
+    expect(ids(page)).toEqual(["wallet"]);
+  });
+
+  it("never shows a chat launcher tile, even with Developer Mode on (#14479)", () => {
+    const page = curateLauncherPages(
+      [entry("chat"), entry("settings"), entry("wallet")],
+      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
+    );
+    expect(ids(page)).not.toContain("chat");
+    expect(ids(page)).toEqual(["settings", "wallet"]);
+  });
+
+  it("hides relationships by default, shows it only in Developer Mode (#14479)", () => {
+    const views = [entry("wallet"), entry("relationships"), entry("settings")];
+    // Default (no developer/preview): relationships is developer-gated → hidden.
+    expect(
+      ids(
+        curateLauncherPages(views, {
+          isAosp: false,
+          enabledKinds: APPS_ONLY,
+          cloudActive: true,
+        }),
+      ),
+    ).toEqual(["settings", "wallet"]);
+    // Developer Mode on: relationships reappears (kept, not deleted).
+    expect(
+      ids(
+        curateLauncherPages(views, {
+          isAosp: false,
+          enabledKinds: ENABLED,
+          cloudActive: true,
+        }),
+      ),
+    ).toContain("relationships");
   });
 
   it("keeps wallet-group sub-pages out of the launcher", () => {
@@ -366,18 +400,16 @@ describe("curateLauncherPages — full realistic view set", () => {
         }),
       ),
     ).toEqual([
-      "chat",
+      // chat is the home surface — no launcher tile (#14479).
       "settings",
       "wallet",
       "tasks",
       "automations",
       "browser",
       "character",
-      "relationships",
       "documents",
       "character-skills",
       "experience",
-      "transcripts",
       "memories",
       "feed",
       "stream",
@@ -388,6 +420,8 @@ describe("curateLauncherPages — full realistic view set", () => {
       "skills",
       "plugins",
       "fine-tuning",
+      // relationships is developer-gated (#14479) — shows in the dev section.
+      "relationships",
     ]);
   });
 
@@ -401,27 +435,23 @@ describe("curateLauncherPages — full realistic view set", () => {
         }),
       ),
     ).toEqual([
-      "chat",
+      // chat + relationships are not everyday grid tiles (#14479).
       "settings",
       "wallet",
       "tasks",
       "automations",
       "browser",
       "character",
-      "relationships",
       "documents",
       "character-skills",
       "experience",
-      "transcripts",
       "memories",
     ]);
   });
 
-  it("forces feed/stream to preview and fine-tuning to developer regardless of declared kind", () => {
-    // Preview on, developer off: the preview surfaces come back, the training
-    // UI stays hidden (it is developer, not preview). Relationships is now an
-    // everyday tile (promoted out of the character hub), so it is present in
-    // every profile — not gated on preview.
+  it("forces feed/stream to preview and fine-tuning + relationships to developer regardless of declared kind", () => {
+    // Preview on, developer off: the preview surfaces come back, the training UI
+    // and relationships stay hidden (they are developer-gated, not preview).
     const previewOnly = ids(
       curateLauncherPages(REAL_VIEWS, {
         isAosp: false,
@@ -429,15 +459,15 @@ describe("curateLauncherPages — full realistic view set", () => {
         cloudActive: true,
       }),
     );
-    for (const id of ["feed", "stream", "relationships"]) {
+    for (const id of ["feed", "stream"]) {
       expect(previewOnly).toContain(id);
     }
     expect(previewOnly).not.toContain("fine-tuning");
     expect(previewOnly).not.toContain("trajectories");
+    expect(previewOnly).not.toContain("relationships");
 
-    // Developer on, preview off: the training UI shows with the dev tools, the
-    // preview surfaces (feed/stream) stay hidden. Relationships still shows — it
-    // is a normal everyday tile, not preview-gated.
+    // Developer on, preview off: the training UI + relationships show with the
+    // dev tools, the preview surfaces (feed/stream) stay hidden.
     const developerOnly = ids(
       curateLauncherPages(REAL_VIEWS, {
         isAosp: false,
@@ -595,13 +625,13 @@ describe("normalizeLauncherLabel", () => {
   it("is applied to curated tile labels so a spaced registration renders normalized", () => {
     const page = curateLauncherPages(
       [
-        entry("chat", { label: "  Chat  " }),
+        entry("settings", { label: "  Settings  " }),
         entry("wallet", { label: "Wallet" }),
       ],
       { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
-    const chat = page.find((e) => e.id === "chat");
-    expect(chat?.label).toBe("Chat");
+    const settings = page.find((e) => e.id === "settings");
+    expect(settings?.label).toBe("Settings");
   });
 });
 

@@ -35,7 +35,10 @@ import { getInternalToolAppTargetTab } from "../apps/internal-tool-apps";
 /** Everyday apps, in display order. They lead the single launcher page; other
  *  loaded apps append after (alphabetically). */
 export const LAUNCHER_APPS_ORDER: readonly string[] = [
-  "chat",
+  // `chat` is intentionally NOT here — chat is the app's home/primary surface,
+  // so a launcher tile for it is pure redundancy; it lives in
+  // LAUNCHER_HIDDEN_IDS instead (#14479). The home chat + default landing are
+  // untouched.
   "settings",
   "wallet",
   "tasks",
@@ -43,7 +46,8 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "browser",
   // Character family — the old single Character hub, split into top-level tiles.
   "character",
-  "relationships",
+  // `relationships` moved to LAUNCHER_DEVELOPER_ORDER (#14479) — empty in the
+  // MVP, so hidden from the default grid but still reachable in Developer Mode.
   "documents",
   "character-skills",
   "experience",
@@ -52,9 +56,13 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "stream",
 ];
 
-/** Developer tools, in display order. Shown on the same launcher page after the
- *  apps, only when Developer Mode is on. `fine-tuning` (model training) is a
- *  developer surface, not an everyday app — it hides with the rest of the set. */
+/** Developer-gated launcher surfaces, in display order. Shown on the same
+ *  launcher page after the apps, only when Developer Mode is on. Mostly tools
+ *  (trajectory viewer, database, runtime, logs, skills, plugins) plus
+ *  `fine-tuning` (model training, a developer surface not an everyday app) and
+ *  `relationships` — a real view that renders empty in the MVP (#14479), so it
+ *  is developer-gated (hidden from the everyday grid) but kept and reachable,
+ *  not deleted. The whole set hides together under the Developer Mode toggle. */
 export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
   "trajectories",
   "database",
@@ -63,6 +71,7 @@ export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
   "skills",
   "plugins",
   "fine-tuning",
+  "relationships",
 ];
 
 /**
@@ -100,6 +109,9 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   "voice",
   "character-select",
   "desktop",
+  // `chat` is the home/primary surface, not a launcher tile — a Chat tile is
+  // pure redundancy next to the always-present home chat (#14479).
+  "chat",
   // Removed apps.
   "companion",
   "model-tester",
