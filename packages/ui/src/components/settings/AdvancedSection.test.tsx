@@ -110,7 +110,7 @@ describe("AdvancedSection agent backups", () => {
     clientMock.listLocalAgentBackups.mockResolvedValue([backup]);
     render(<AdvancedSection />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Back Up Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: /Back up agent/i }));
 
     await waitFor(() =>
       expect(clientMock.listLocalAgentBackups).toHaveBeenCalledTimes(1),
@@ -127,7 +127,7 @@ describe("AdvancedSection agent backups", () => {
     clientMock.createLocalAgentBackup.mockResolvedValue(backup);
     render(<AdvancedSection />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Back Up Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: /Back up agent/i }));
     await screen.findByText("No backups yet.");
 
     fireEvent.click(screen.getByRole("button", { name: "Create Backup" }));
@@ -147,7 +147,7 @@ describe("AdvancedSection agent backups", () => {
     clientMock.listLocalAgentBackups.mockResolvedValue([backup]);
     render(<AdvancedSection />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Restore Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: /Restore agent/i }));
     await screen.findByText("2026-06-29 12:34:56Z");
 
     fireEvent.click(screen.getByRole("button", { name: "Restore Backup" }));

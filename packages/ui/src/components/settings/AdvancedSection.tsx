@@ -273,17 +273,22 @@ export function AdvancedSection() {
   return (
     <>
       <SettingsStack>
-        <SettingsGroup>
+        <SettingsGroup
+          title="Backups"
+          description="Save a snapshot of this agent, or restore it from an earlier one."
+        >
           <SettingsRow
             icon={Download}
-            label="Back Up Agent"
+            label="Back up agent"
+            description="Create a snapshot you can restore later."
             onClick={openExportModal}
             buttonRef={exportOpenRef}
             buttonProps={exportOpenAgentProps}
           />
           <SettingsRow
             icon={Upload}
-            label="Restore Agent"
+            label="Restore agent"
+            description="Roll back to a saved snapshot."
             onClick={openImportModal}
             buttonRef={importOpenRef}
             buttonProps={importOpenAgentProps}
@@ -350,7 +355,7 @@ export function AdvancedSection() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Back Up Agent</DialogTitle>
+            <DialogTitle>Back up agent</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {backupListBusy ? (
@@ -422,7 +427,7 @@ export function AdvancedSection() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Restore Agent</DialogTitle>
+            <DialogTitle>Restore agent</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {backupListBusy ? (

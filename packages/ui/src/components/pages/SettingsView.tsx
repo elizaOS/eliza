@@ -328,7 +328,7 @@ function SettingsHubEmptyState({ t }: { t: Translate }) {
       <p className="max-w-prose text-sm text-muted">
         {t("settings.hubEmptyBody", {
           defaultValue:
-            "Pick a section from the bar above to configure your agent, system, or security.",
+            "Pick a section from the bar above to set up your agent, the app, and your privacy.",
         })}
       </p>
     </div>

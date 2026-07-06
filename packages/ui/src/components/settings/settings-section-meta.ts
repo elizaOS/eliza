@@ -37,8 +37,8 @@ export const SETTINGS_GROUP_ORDER: SettingsSectionGroup[] = [
 
 export const SETTINGS_GROUP_LABEL: Record<SettingsSectionGroup, string> = {
   agent: "Agent",
-  system: "System",
-  security: "Security",
+  system: "App",
+  security: "Privacy & Security",
 };
 
 /**
@@ -77,7 +77,9 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
     group: "agent",
     aliases: ["connections", "integrations"],
   },
-  { id: "runtime", defaultLabel: "Runtime", group: "system" },
+  // System group: most-used personalization first (appearance, background),
+  // then infrastructure (runtime, wallet, remote plugins), then maintenance
+  // (updates, backups) last so common taps are not buried behind rare ones.
   {
     id: "appearance",
     defaultLabel: "Appearance",
@@ -85,17 +87,18 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
     aliases: ["theme", "look"],
   },
   { id: "background", defaultLabel: "Background", group: "system" },
-  {
-    id: "remote-plugins",
-    defaultLabel: "Remote Plugins",
-    group: "system",
-    aliases: ["remote"],
-  },
+  { id: "runtime", defaultLabel: "Runtime", group: "system" },
   {
     id: "wallet-rpc",
     defaultLabel: "Wallet & RPC",
     group: "system",
     aliases: ["wallet", "rpc"],
+  },
+  {
+    id: "remote-plugins",
+    defaultLabel: "Remote Plugins",
+    group: "system",
+    aliases: ["remote"],
   },
   {
     id: "updates",
@@ -107,20 +110,22 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
     id: "advanced",
     defaultLabel: "Backups",
     group: "system",
-    aliases: ["fine-tuning"],
+    aliases: ["fine-tuning", "backup", "backups"],
   },
-  { id: "app-permissions", defaultLabel: "App Permissions", group: "security" },
-  {
-    id: "permissions",
-    defaultLabel: "Permissions",
-    group: "security",
-    aliases: ["perms"],
-  },
+  // Security group: the everyday key/secret store (Vault) first, then the two
+  // permission surfaces, then the host-only remote-access section last.
   {
     id: "secrets",
     defaultLabel: "Vault",
     group: "security",
     aliases: ["vault", "keys"],
   },
+  {
+    id: "permissions",
+    defaultLabel: "Permissions",
+    group: "security",
+    aliases: ["perms"],
+  },
+  { id: "app-permissions", defaultLabel: "App Permissions", group: "security" },
   { id: "security", defaultLabel: "Security", group: "security" },
 ];

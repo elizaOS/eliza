@@ -9,6 +9,7 @@ import { getAllSettingsSections } from "./settings-section-registry";
 // side effects, exactly as the lazy `SettingsView` does when it mounts.
 import {
   assertMetaCatalogParity,
+  groupSettingsSections,
   SETTINGS_SECTIONS,
 } from "./settings-sections";
 
@@ -132,5 +133,72 @@ describe("settings-sections canonical definitions (no META/VISUALS drift)", () =
     expect(registerCalls.length).toBe(1);
     // The old runtime hand-sync error string must not survive.
     expect(code).not.toMatch(/Missing settings-section visuals/);
+  });
+});
+
+/**
+ * Information-architecture guard (refactor/settings-overhaul): pins the
+ * intentional grouped display order so a future edit cannot silently bury the
+ * most-used rows. The doctrine is most-used-first within each group:
+ *   - System: personalization (appearance, background) before infrastructure
+ *     and maintenance; backups last.
+ *   - Security: the everyday key store (Vault) before the permission surfaces;
+ *     the host-only remote-access section last.
+ * The nav renders groups in `SETTINGS_GROUP_ORDER`, so this asserts the
+ * catalog subset per group, in the exact order the strip shows them.
+ */
+describe("settings information architecture (grouped display order)", () => {
+  const catalogIdsInGroup = (group: string): string[] =>
+    SETTINGS_SECTION_META.filter((m) => m.group === group).map((m) => m.id);
+
+  it("leads each group with its most-used section", () => {
+    expect(catalogIdsInGroup("agent")[0]).toBe("identity");
+    // System personalization first, appearance must not be buried.
+    expect(catalogIdsInGroup("system")[0]).toBe("appearance");
+    // Security everyday store first, Vault before permission surfaces.
+    expect(catalogIdsInGroup("security")[0]).toBe("secrets");
+  });
+
+  it("orders System personalization → infrastructure → maintenance", () => {
+    expect(catalogIdsInGroup("system")).toEqual([
+      "appearance",
+      "background",
+      "runtime",
+      "wallet-rpc",
+      "remote-plugins",
+      "updates",
+      "advanced",
+    ]);
+  });
+
+  it("places the host-only Security section last in its group", () => {
+    const securityIds = catalogIdsInGroup("security");
+    expect(securityIds).toEqual([
+      "secrets",
+      "permissions",
+      "app-permissions",
+      "security",
+    ]);
+    expect(securityIds.at(-1)).toBe("security");
+  });
+
+  it("renders the catalog groups in the doctrine order via groupSettingsSections", () => {
+    const catalogSet = new Set(SETTINGS_SECTION_META.map((m) => m.id));
+    const catalogSections = getAllSettingsSections().filter((s) =>
+      catalogSet.has(s.id),
+    );
+    const grouped = groupSettingsSections(catalogSections);
+    const groupIds = grouped.map((g) => g.group);
+    // Agent before System before Security (SETTINGS_GROUP_ORDER).
+    expect(groupIds.indexOf("agent")).toBeLessThan(groupIds.indexOf("system"));
+    expect(groupIds.indexOf("system")).toBeLessThan(
+      groupIds.indexOf("security"),
+    );
+    // Within System, appearance renders before backups.
+    const systemGroup = grouped.find((g) => g.group === "system");
+    const systemOrder = systemGroup?.items.map((i) => i.id) ?? [];
+    expect(systemOrder.indexOf("appearance")).toBeLessThan(
+      systemOrder.indexOf("advanced"),
+    );
   });
 });
