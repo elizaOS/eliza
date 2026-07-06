@@ -18,6 +18,8 @@ import type {
   Memory,
 } from "@elizaos/core";
 import {
+  appendInteractionBlock,
+  type ChoiceInteraction,
   logger,
   ModelType,
   resolveActionArgs,
@@ -88,6 +90,33 @@ function formatPending(requests: ReadonlyArray<ApprovalRequest>): string {
       return `${i + 1}. id=${r.id} action=${r.action} channel=${r.channel} reason=${r.reason}\n  payload:\n${payloadSummary}`;
     })
     .join("\n");
+}
+
+/** Chip labels stay glanceable; the full reason lives in the queue row. */
+function truncateReason(reason: string, max = 48): string {
+  const trimmed = reason.trim();
+  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 1)}…`;
+}
+
+/**
+ * One-tap request picker for an ambiguous approve/reject (#14733). Each option
+ * value is `<intent> <requestId>` — the tap round-trips it as the owner's next
+ * message, which this action's extraction resolves verbatim (the id is in the
+ * text and the `pendingApprovals` provider lists the same ids).
+ */
+export function buildResolveRequestChoice(
+  intent: ResolveSubaction,
+  pending: ReadonlyArray<ApprovalRequest>,
+): ChoiceInteraction {
+  return {
+    kind: "choice",
+    id: `approval-resolve-${Date.now().toString(36)}`,
+    scope: "approval-resolve",
+    options: pending.slice(0, 5).map((request) => ({
+      value: `${intent} ${request.id}`,
+      label: truncateReason(request.reason),
+    })),
+  };
 }
 
 function parseResolutionJson(raw: unknown): ExtractedResolution {
@@ -517,10 +546,15 @@ async function resolveApprovalRequest(
     ? { requestId: explicitRequestId, reason: explicitReason }
     : await extractResolution(runtime, userText, intent, pending);
   if (!extracted.requestId) {
+    // Ambiguous target with pending rows: ask with one-tap chips instead of
+    // demanding a typed id (#14733).
     const text =
       pending.length === 0
         ? "There are no pending approval requests."
-        : "Which request? Please reference it by id or describe it.";
+        : appendInteractionBlock(
+            "Which request?",
+            buildResolveRequestChoice(intent, pending),
+          );
     if (callback) await callback({ text });
     return {
       text,

@@ -8,12 +8,14 @@
  */
 
 import type {
+  Content,
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  MessageAdapter,
   UUID,
 } from "@elizaos/core";
-import { getDefaultTriageService } from "@elizaos/core";
+import { getDefaultTriageService, parseInteractionBlocks } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -734,6 +736,218 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
         "snoozed_until = '2026-07-02T04:00:00.000Z'",
       );
       expect(update?.sql).toContain("resolved = FALSE");
+    });
+  });
+
+  // The marker builders themselves are pinned by inbox-choice-markers.test.ts;
+  // these tests drive the REAL action handler end-to-end (repository + triage
+  // adapter + callback) and assert the chips reach the chat reply with values
+  // the next turn's handler accepts.
+  describe("one-tap [CHOICE] chips through the handler (#14733)", () => {
+    /**
+     * Minimal real adapter registered on the default triage service so the
+     * draft/send rail runs for real (create + send recorded); only the
+     * connector transport is faked.
+     */
+    function registerFakeGmailAdapter(): {
+      drafts: Array<{ body: string }>;
+      sent: string[];
+      archived: string[];
+    } {
+      const drafts: Array<{ body: string }> = [];
+      const sent: string[] = [];
+      const archived: string[] = [];
+      let seq = 0;
+      const adapter: MessageAdapter = {
+        source: "gmail",
+        isAvailable: () => true,
+        capabilities: () => ({
+          list: true,
+          search: false,
+          manage: { archive: true },
+          send: { reply: true },
+          worlds: "single",
+          channels: "none",
+        }),
+        listMessages: async () => [],
+        getMessage: async () => null,
+        manageMessage: async (_runtime, messageId) => {
+          archived.push(messageId);
+          return { ok: true };
+        },
+        createDraft: async (_runtime, draft) => {
+          drafts.push({ body: draft.body });
+          seq += 1;
+          return { draftId: `draft-${seq}`, preview: draft.body.slice(0, 40) };
+        },
+        sendDraft: async (_runtime, draftId) => {
+          sent.push(draftId);
+          return { externalId: `ext-${draftId}` };
+        },
+      };
+      getDefaultTriageService().register(adapter);
+      return { drafts, sent, archived };
+    }
+
+    function collectCallback(): {
+      texts: string[];
+      callback: (content: Content) => Promise<[]>;
+    } {
+      const texts: string[] = [];
+      return {
+        texts,
+        callback: async (content: Content) => {
+          if (typeof content.text === "string") texts.push(content.text);
+          return [];
+        },
+      };
+    }
+
+    it("appends send/discard chips to a drafted-reply confirmation and keeps the values the approve turn accepts", async () => {
+      registerFakeGmailAdapter();
+      const { runtime } = makeDbRuntime((sql) =>
+        sql.includes("WHERE id =") ? [makeTriageRow({ id: "entry-42" })] : [],
+      );
+      const { texts, callback } = collectCallback();
+
+      const result = await inboxAction.handler(
+        runtime,
+        makeMessage("reply to alice that friday works"),
+        undefined,
+        {
+          parameters: {
+            subaction: "reply",
+            entryId: "entry-42",
+            body: "Yes, Friday works.",
+          },
+        } as unknown as HandlerOptions,
+        callback as unknown as Parameters<typeof inboxAction.handler>[4],
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        subaction: "reply",
+        requiresConfirmation: true,
+        entryId: "entry-42",
+      });
+      // The chat reply (callback) and the planner-facing result text agree,
+      // and both carry the structured block appended after the prose.
+      expect(texts).toHaveLength(1);
+      expect(result.text).toBe(texts[0]);
+      expect(texts[0]).toContain("Confirm before sending");
+      const { blocks } = parseInteractionBlocks(texts[0] ?? "");
+      expect(blocks).toHaveLength(1);
+      const block = blocks[0];
+      expect(block).toMatchObject({
+        kind: "choice",
+        scope: "inbox-draft-entry-42",
+        id: "entry-42",
+      });
+      if (block?.kind !== "choice") throw new Error("expected choice block");
+      // Values carry the subaction token + entry id the next turn's handler
+      // resolves ("inbox approve entry-42" → approve, entryId=entry-42);
+      // every chip maps to an op the INBOX action actually supports.
+      expect(block.options.map((o) => o.value)).toEqual([
+        "inbox approve entry-42",
+        "inbox archive entry-42",
+      ]);
+      expect(block.options.map((o) => o.label)).toEqual(["Send", "Discard"]);
+    });
+
+    it("a confirmed approve dispatches the stored draft and emits NO chips", async () => {
+      const { sent } = registerFakeGmailAdapter();
+      const { runtime } = makeDbRuntime((sql) =>
+        sql.includes("WHERE id =")
+          ? [makeTriageRow({ id: "entry-42", draft_response: "Yes, Friday." })]
+          : [],
+      );
+      const { texts, callback } = collectCallback();
+
+      const result = await inboxAction.handler(
+        runtime,
+        makeMessage("send"),
+        undefined,
+        {
+          parameters: { subaction: "approve", entryId: "entry-42" },
+        } as unknown as HandlerOptions,
+        callback as unknown as Parameters<typeof inboxAction.handler>[4],
+      );
+
+      expect(result.success).toBe(true);
+      expect(sent).toHaveLength(1);
+      expect(texts[0]).toContain("Sent reply");
+      expect(parseInteractionBlocks(texts[0] ?? "").blocks).toHaveLength(0);
+    });
+
+    it("appends per-thread reply/snooze/archive chips to the triage queue, capped at five threads, with entry ids in the values", async () => {
+      const rows = ["e1", "e2", "e3", "e4", "e5", "e6"].map((id, index) =>
+        makeTriageRow({
+          id,
+          sender_name: `Sender ${index + 1}`,
+          snippet: `message ${index + 1}`,
+        }),
+      );
+      const { runtime } = makeDbRuntime((sql) =>
+        sql.includes("life_inbox_triage_entries") ? rows : [],
+      );
+      const { texts, callback } = collectCallback();
+
+      const result = await inboxAction.handler(
+        runtime,
+        makeMessage("triage my inbox"),
+        undefined,
+        {
+          parameters: { subaction: "triage", limit: 10 },
+        } as unknown as HandlerOptions,
+        callback as unknown as Parameters<typeof inboxAction.handler>[4],
+      );
+
+      expect(result.success).toBe(true);
+      const text = texts[0] ?? "";
+      const { blocks } = parseInteractionBlocks(text);
+      expect(blocks).toHaveLength(5);
+      blocks.forEach((block, index) => {
+        const id = `e${index + 1}`;
+        expect(block).toMatchObject({
+          kind: "choice",
+          scope: `inbox-thread-${id}`,
+          id,
+        });
+        if (block.kind !== "choice") throw new Error("expected choice block");
+        // Values embed the entry id: a tap round-trips only the value, and
+        // with several blocks in one reply a bare "reply" is unattributable.
+        expect(block.options.map((o) => o.value)).toEqual([
+          `inbox reply ${id}`,
+          `inbox snooze ${id}`,
+          `inbox archive ${id}`,
+        ]);
+        // The reply chip names the sender so each block reads attributably.
+        expect(block.options[0]?.label).toBe(`Reply to Sender ${index + 1}`);
+      });
+      expect(text).not.toContain("e6");
+    });
+
+    it("an archive chip value round-trips into a successful archive of that entry", async () => {
+      const { archived } = registerFakeGmailAdapter();
+      const { runtime } = makeDbRuntime((sql) =>
+        sql.includes("WHERE id =") ? [makeTriageRow({ id: "e2" })] : [],
+      );
+
+      // The tapped value is `inbox archive e2`; the planner maps the tokens
+      // to subaction + entryId. Drive the handler with exactly that mapping.
+      const value = "inbox archive e2";
+      const [, subaction, entryId] = value.split(" ");
+      const result = await callInbox(runtime, makeMessage(value), {
+        subaction,
+        entryId,
+      });
+
+      expect(result.success).toBe(true);
+      expect(archived).toEqual(["gmail-msg-1"]);
+      expect(result.data).toMatchObject({
+        subaction: "archive",
+        entryId: "e2",
+      });
     });
   });
 });

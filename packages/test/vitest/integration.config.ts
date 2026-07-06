@@ -74,6 +74,29 @@ const discordSubpathAliases: ModuleAlias[] = existsSync(discordScraperSource)
       },
     ]
   : [];
+// Same story for plugin-app-control's `/actions/settings` subpath: its build
+// (tsup with index + worker entries only) never emits dist/actions/*.js, so
+// the agent's settings-actions.ts import only resolves under the
+// `eliza-source` exports condition vite's SSR resolver ignores. Pin it to the
+// TS source so the PA plugin graph can boot in this lane.
+const appControlSettingsSource = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-app-control",
+  "src",
+  "actions",
+  "settings.ts",
+);
+const appControlSubpathAliases: ModuleAlias[] = existsSync(
+  appControlSettingsSource,
+)
+  ? [
+      {
+        find: /^@elizaos\/plugin-app-control\/actions\/settings$/,
+        replacement: appControlSettingsSource,
+      },
+    ]
+  : [];
 // Include/exclude globs are cwd-relative, but the eliza workspace sits at
 // `eliza/` in the nested eliza layout and at the repo root in a flat eliza
 // checkout (#11047). Derive the prefix instead of hardcoding `eliza/` so the
@@ -100,6 +123,7 @@ const uiSourceRoot = existsSync(path.join(workspaceUiSourceRoot, "index.ts"))
 const integrationResolveAlias: ModuleAlias[] = [
   ...getOptionalPluginSdkAliases(repoRoot),
   ...discordSubpathAliases,
+  ...appControlSubpathAliases,
   ...(elizaCoreEntry
     ? [
         // Subpath aliases must precede the bare specifier. A bare-string
@@ -182,7 +206,10 @@ export default defineConfig({
     testTimeout: 120_000,
     hookTimeout: 120_000,
     globalSetup: [
-      path.join(elizaWorkspaceRoot, "packages/app-core/test/e2e-global-setup.ts"),
+      path.join(
+        elizaWorkspaceRoot,
+        "packages/app-core/test/e2e-global-setup.ts",
+      ),
     ],
     // Integration files frequently replace globals and module-level mocks.
     // Shared module state causes cross-file bleed, which is more expensive to
@@ -207,7 +234,9 @@ export default defineConfig({
       // vitest.config.ts (which excludes the integration suffix from the
       // unit lane) nor this integration config picked them up. Include
       // them now so the existing coverage runs.
-      elizaGlob("plugins/plugin-personal-assistant/test/**/*.integration.test.ts"),
+      elizaGlob(
+        "plugins/plugin-personal-assistant/test/**/*.integration.test.ts",
+      ),
       elizaGlob("plugins/*/test/**/*.integration.test.ts"),
       // Src-level plugin integration tests were dead the same way: the
       // scheduler suite at plugin-personal-assistant/src/lifeops/
@@ -216,10 +245,14 @@ export default defineConfig({
       // plugin's unit lane (integration suffix excluded) nor the test/**
       // globs above — vitest reported "No test files found" even when the
       // file was passed explicitly. Include src/** so the suite runs.
-      elizaGlob("plugins/plugin-personal-assistant/src/**/*.integration.test.ts"),
+      elizaGlob(
+        "plugins/plugin-personal-assistant/src/**/*.integration.test.ts",
+      ),
       elizaGlob("plugins/*/src/**/*.integration.test.ts"),
     ],
-    setupFiles: [path.join(elizaWorkspaceRoot, "packages/app-core/test/setup.ts")],
+    setupFiles: [
+      path.join(elizaWorkspaceRoot, "packages/app-core/test/setup.ts"),
+    ],
     exclude: [
       "dist/**",
       "**/node_modules/**",

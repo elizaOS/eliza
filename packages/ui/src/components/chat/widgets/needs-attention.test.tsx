@@ -23,11 +23,13 @@ const {
   listPendingActionsMock,
   publishHomeAttentionSpy,
   dispatchChatPrefillSpy,
+  dispatchChatOpenSpy,
 } = vi.hoisted(() => ({
   getBaseUrlMock: vi.fn(() => "http://localhost"),
   listPendingActionsMock: vi.fn(),
   publishHomeAttentionSpy: vi.fn(),
   dispatchChatPrefillSpy: vi.fn(),
+  dispatchChatOpenSpy: vi.fn(),
 }));
 
 // The widget reads the canonical surface through the typed client; mock only
@@ -46,12 +48,13 @@ vi.mock("../../../widgets/home-attention-store", () => ({
     publishHomeAttentionSpy(widgetKey, weight),
 }));
 
-// The round-trip hands the user back to the agent's RESOLVE_REQUEST action via a
-// prefilled chat composer; spy on that one rail while preserving the module's
+// The round-trip hands the user back to the canonical handler via a prefilled
+// (or opened) chat composer; spy on those rails while preserving the module's
 // other exports (client-base imports NETWORK_STATUS_CHANGE_EVENT et al.).
 vi.mock("../../../events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../events")>()),
   dispatchChatPrefill: dispatchChatPrefillSpy,
+  dispatchChatOpen: dispatchChatOpenSpy,
 }));
 
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
@@ -93,6 +96,7 @@ beforeEach(() => {
   getBaseUrlMock.mockReturnValue("http://localhost");
   publishHomeAttentionSpy.mockReset();
   dispatchChatPrefillSpy.mockReset();
+  dispatchChatOpenSpy.mockReset();
   listPendingActionsMock.mockReset();
 });
 
@@ -283,5 +287,130 @@ describe("NeedsAttentionWidget (#9449)", () => {
       expect(screen.getByTestId("chat-widget-needs-attention")).toBeTruthy();
     });
     expect(container.firstElementChild?.className).toContain("col-span-2");
+  });
+});
+
+// #14737 — tap behavior derives from the pending item's kind + options; the
+// blanket "Approve: <title>" prefill only survives for approval-shaped items.
+describe("NeedsAttentionWidget kind-aware activation (#14737)", () => {
+  async function renderTop(item: PendingUserAction): Promise<HTMLElement> {
+    mockPending([item]);
+    render(<NeedsAttentionWidget {...fetchProps} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-widget-needs-attention")).toBeTruthy();
+    });
+    return screen.getByTestId("chat-widget-needs-attention");
+  }
+
+  it("an approval with options expands chips on tap instead of prefilling; Approve chip prefills the approval", async () => {
+    const card = await renderTop(
+      pending({
+        id: "a-1",
+        title: "Send the contract",
+        options: [
+          { id: "approve", label: "Approve" },
+          { id: "reject", label: "Reject", isCancel: true },
+        ],
+      }),
+    );
+
+    expect(screen.queryByTestId("needs-attention-options")).toBeNull();
+    fireEvent.click(card);
+    // First tap surfaces the choice chips — nothing is prefilled blind.
+    expect(dispatchChatPrefillSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("needs-attention-options")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("needs-attention-option-approve"));
+    expect(dispatchChatPrefillSpy).toHaveBeenCalledWith({
+      text: "Approve: Send the contract",
+      select: true,
+    });
+    // Choosing collapses the chip row.
+    expect(screen.queryByTestId("needs-attention-options")).toBeNull();
+  });
+
+  it("the Reject chip prefills a rejection, not an approval", async () => {
+    const card = await renderTop(
+      pending({
+        id: "a-1",
+        title: "Send the contract",
+        options: [
+          { id: "approve", label: "Approve" },
+          { id: "reject", label: "Reject", isCancel: true },
+        ],
+      }),
+    );
+
+    fireEvent.click(card);
+    fireEvent.click(screen.getByTestId("needs-attention-option-reject"));
+    expect(dispatchChatPrefillSpy).toHaveBeenCalledWith({
+      text: "Reject: Send the contract",
+      select: true,
+    });
+  });
+
+  it("a choice-kind item surfaces its real options and a tap prefills the option's label as the answer", async () => {
+    const card = await renderTop(
+      pending({
+        id: "c-1",
+        kind: "choice",
+        title: "Which time works?",
+        options: [
+          { id: "tue-3", label: "Tuesday 3pm" },
+          { id: "wed-10", label: "Wednesday 10am" },
+        ],
+      }),
+    );
+
+    fireEvent.click(card);
+    fireEvent.click(screen.getByTestId("needs-attention-option-wed-10"));
+    expect(dispatchChatPrefillSpy).toHaveBeenCalledWith({
+      text: "Wednesday 10am",
+      select: true,
+    });
+  });
+
+  it("a pending planner question (no options, free reply) opens the composer WITHOUT the wrong Approve prefill", async () => {
+    const card = await renderTop(
+      pending({
+        id: "p-1",
+        kind: "pending_prompt",
+        source: "pending-prompts",
+        title: "Which time works for the dentist?",
+        expectedReplyKind: "text",
+      }),
+    );
+
+    fireEvent.click(card);
+    expect(dispatchChatOpenSpy).toHaveBeenCalledTimes(1);
+    expect(dispatchChatPrefillSpy).not.toHaveBeenCalled();
+  });
+
+  it("an approval without options keeps the classic natural-language prefill", async () => {
+    const card = await renderTop(
+      pending({ id: "a-2", title: "Book the flight" }),
+    );
+
+    fireEvent.click(card);
+    expect(dispatchChatPrefillSpy).toHaveBeenCalledWith({
+      text: "Approve: Book the flight",
+      select: true,
+    });
+    expect(dispatchChatOpenSpy).not.toHaveBeenCalled();
+  });
+
+  it("second tap on the card collapses the chip row again", async () => {
+    const card = await renderTop(
+      pending({
+        id: "a-1",
+        title: "Send the contract",
+        options: [{ id: "approve", label: "Approve" }],
+      }),
+    );
+
+    fireEvent.click(card);
+    expect(screen.getByTestId("needs-attention-options")).toBeTruthy();
+    fireEvent.click(card);
+    expect(screen.queryByTestId("needs-attention-options")).toBeNull();
   });
 });

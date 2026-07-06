@@ -15,6 +15,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
+import { AgentEventService, parseInteractionBlocks } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
@@ -101,6 +102,14 @@ beforeAll(async () => {
   });
   runtime = result.runtime;
   cleanup = result.cleanup;
+  // The enqueue chat-post (#14733) resolves the agent-event service off the
+  // runtime; register the real one when the test runtime lacks it. Service
+  // registration is lazy, so force the start (the agent server does the same
+  // at boot when the WS bridge subscribes).
+  if (!runtime.getService(AgentEventService.serviceType)) {
+    await runtime.registerService(AgentEventService);
+    await runtime.getServiceLoadPromise(AgentEventService.serviceType);
+  }
   queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
 }, 180_000);
 
@@ -142,6 +151,57 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       limit: 10,
     });
     expect(pendingList.every((r) => r.id !== enqueued.id)).toBe(true);
+  }, 60_000);
+
+  it("enqueue posts the question into chat as an assistant event with approve/reject chips (#14733)", async () => {
+    const events: Array<{ stream: string; data: Record<string, unknown> }> = [];
+    const eventService = runtime.getService(
+      AgentEventService.serviceType,
+    ) as AgentEventService;
+    const unsubscribe = eventService.subscribe((event) => {
+      events.push({ stream: event.stream, data: event.data });
+    });
+    try {
+      const enqueued = await queue.enqueue(
+        messageInput({ subjectUserId: "owner-chips" }),
+      );
+
+      const assistant = events.filter(
+        (event) =>
+          event.stream === "assistant" &&
+          event.data.source === "lifeops-approval",
+      );
+      expect(assistant).toHaveLength(1);
+      const data = assistant[0]?.data ?? {};
+      expect(data.requestId).toBe(enqueued.id);
+      expect(data.action).toBe("send_message");
+      const text = String(data.text ?? "");
+      expect(text).toContain("agent wants to confirm before sending");
+      const { blocks } = parseInteractionBlocks(text);
+      expect(blocks).toHaveLength(1);
+      const block = blocks[0];
+      if (block?.kind !== "choice") throw new Error("expected choice block");
+      expect(block.scope).toBe(`approval-${enqueued.id}`);
+      expect(block.id).toBe(enqueued.id);
+      // The tapped value is the owner's next message; it must carry the id
+      // RESOLVE_REQUEST resolves verbatim.
+      expect(block.options.map((o) => o.value)).toEqual([
+        `approve ${enqueued.id}`,
+        `reject ${enqueued.id}`,
+      ]);
+
+      // Round-trip: drive the queue with the tapped approve value's id.
+      const tapped = block.options[0]?.value ?? "";
+      const requestId = tapped.replace(/^approve /, "");
+      const approved = await queue.approve(requestId, {
+        resolvedBy: "owner-chips",
+        resolutionReason: "tapped Approve",
+      });
+      expect(approved.id).toBe(enqueued.id);
+      expect(approved.state).toBe("approved");
+    } finally {
+      unsubscribe();
+    }
   }, 60_000);
 
   it("enqueue → reject records resolver", async () => {
