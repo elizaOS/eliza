@@ -793,7 +793,32 @@ export async function runPlannerLoop(
 			};
 		}
 
-		const evaluator = await evaluateTrajectory(params, trajectory, iteration);
+		let evaluator: EvaluatorOutput;
+		try {
+			evaluator = await evaluateTrajectory(params, trajectory, iteration);
+		} catch (err) {
+			// The in-loop evaluator is a MODEL call: it decides FINISH/CONTINUE and
+			// synthesizes the user-facing reply from the tool results. When it fails
+			// transiently (a provider 400/429/5xx) AFTER a non-terminal tool already
+			// executed successfully this turn, propagating the error discards the
+			// completed work and surfaces the generic "something went wrong" apology —
+			// a lie, because the tool did the work (e.g. FILE wrote the file). Relay
+			// the successful tool's own truthful output deterministically (no further
+			// model call, so the same provider failure cannot recur). With no
+			// successful non-terminal tool to relay, rethrow so a genuine failure
+			// still surfaces honestly — never mask a real failure.
+			const relay = deterministicSuccessfulToolRelay(trajectory);
+			if (!relay) throw err;
+			params.runtime.logger?.warn?.(
+				{ iteration, err: err instanceof Error ? err.message : String(err) },
+				"[planner-loop] post-tool evaluator model call failed; relaying the completed tool result instead of discarding the turn",
+			);
+			return {
+				status: "finished",
+				trajectory,
+				finalMessage: userSafeFinalMessage(relay, trajectory),
+			};
+		}
 		trajectory.evaluatorOutputs.push(evaluator);
 		appendEvaluatorContextEvent(trajectory, evaluator, iteration);
 
@@ -2727,6 +2752,30 @@ function latestToolResultText(
 		if (text) {
 			return text;
 		}
+	}
+	return undefined;
+}
+
+/**
+ * Deterministic (no model call) relay of the most recent SUCCESSFUL non-terminal
+ * tool result. Used when a model call LATER in the turn (the post-tool evaluator
+ * synthesis/decision call) fails transiently AFTER a tool already did real work:
+ * relay the tool's own truthful output — the path it wrote, the count it returned
+ * — instead of discarding the work and telling the user "something went wrong".
+ * Prefers the tool's opt-in `userFacingText`, then its `text`, then its `summary`.
+ * Returns undefined when nothing succeeded, so genuine failures still surface.
+ */
+function deterministicSuccessfulToolRelay(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	for (const step of [...trajectory.steps].reverse()) {
+		if (!step.toolCall || step.result?.success !== true) continue;
+		if (isTerminalToolCall(step.toolCall)) continue;
+		const candidate =
+			getNonEmptyString(step.result.userFacingText) ??
+			getNonEmptyString(step.result.text) ??
+			getNonEmptyString(step.result.summary);
+		if (candidate) return candidate;
 	}
 	return undefined;
 }
