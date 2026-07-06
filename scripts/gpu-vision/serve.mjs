@@ -36,6 +36,7 @@ import {
   modelFilePath,
   parseArgs,
   parsePort,
+  parsePositiveInteger,
   readLockfile,
   reconcileLock,
   serveStatePath,
@@ -291,12 +292,11 @@ async function main() {
     return;
   }
 
-  const parallel = flags.parallel ? Number(flags.parallel) : DEFAULT_PARALLEL;
-  if (!Number.isInteger(parallel) || parallel < 1) {
-    throw new Error(
-      `[gpu-vision] --parallel must be a positive integer, got ${flags.parallel}`,
-    );
-  }
+  const parallel = parsePositiveInteger(
+    flags.parallel,
+    "--parallel",
+    DEFAULT_PARALLEL,
+  );
   const requestedPort =
     flags.port !== undefined
       ? parsePort(flags.port, "--port")

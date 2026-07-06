@@ -23,6 +23,7 @@ import {
   parseArgs,
   parseLlamaBuild,
   parsePort,
+  parsePositiveInteger,
   reconcileLock,
   sha256File,
   waitForReady,
@@ -103,6 +104,25 @@ test("parsePort validates flag and env port values", () => {
   assert.throws(() => parsePort("80.5", "X"), /integer port/);
   // A bare `--port` flag parses to boolean true — a usage error, never port 1.
   assert.throws(() => parsePort(true, "X"), /requires a port number/);
+});
+
+test("parsePositiveInteger rejects bare value flags instead of coercing them", () => {
+  assert.equal(parsePositiveInteger(undefined, "--parallel", 2), 2);
+  assert.equal(parsePositiveInteger("", "--parallel", 2), 2);
+  assert.equal(parsePositiveInteger("4", "--parallel", 2), 4);
+  assert.equal(parsePositiveInteger(4, "--parallel", 2), 4);
+  assert.throws(
+    () => parsePositiveInteger(true, "--parallel", 2),
+    /requires a positive integer/,
+  );
+  assert.throws(
+    () => parsePositiveInteger("0", "--parallel", 2),
+    /positive integer/,
+  );
+  assert.throws(
+    () => parsePositiveInteger("1.5", "--parallel", 2),
+    /positive integer/,
+  );
 });
 
 test("assertPlausibleSize accepts near-pinned sizes and rejects torn downloads", () => {

@@ -233,6 +233,24 @@ export function parsePort(value, label) {
   return port;
 }
 
+/** Validate a positive integer CLI/env value. Bare value flags parse as boolean
+ * true, which must be rejected instead of becoming Number(true) === 1. */
+export function parsePositiveInteger(value, label, defaultValue) {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return defaultValue;
+  }
+  if (typeof value === "boolean") {
+    throw new Error(`[gpu-vision] ${label} requires a positive integer`);
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(
+      `[gpu-vision] ${label} must be a positive integer, got ${value}`,
+    );
+  }
+  return parsed;
+}
+
 /** Human-readable byte formatter for the setup/serve reports. */
 export function formatBytes(bytes) {
   if (!Number.isFinite(bytes)) return "unknown";
