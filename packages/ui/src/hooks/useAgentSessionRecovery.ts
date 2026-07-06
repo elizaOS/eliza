@@ -62,7 +62,7 @@ export function useAgentSessionRecovery(
       // Reset when the app leaves the unauthenticated state (e.g. a successful
       // re-pair reloaded auth), so a later genuine 401 can recover again.
       attemptedRef.current = false;
-      if (status !== "idle") setStatus("idle");
+      setStatus("idle");
       return;
     }
 
@@ -77,7 +77,7 @@ export function useAgentSessionRecovery(
 
     if (decision.action !== "re-pair") {
       // Nothing to recover, let the auth gate render the wall.
-      if (status !== "idle") setStatus("idle");
+      setStatus("idle");
       return;
     }
 
@@ -112,8 +112,8 @@ export function useAgentSessionRecovery(
     return () => {
       cancelled = true;
     };
-    // `reason`/`active` drive the effect; status is read, not a trigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // `active`/`reason`/`navigate` are the only external inputs; setStatus and
+    // attemptedRef are stable, so the dependency list is exhaustive as written.
   }, [active, reason, navigate]);
 
   return status;
