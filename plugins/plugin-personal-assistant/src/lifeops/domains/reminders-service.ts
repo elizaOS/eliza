@@ -5569,6 +5569,105 @@ export class RemindersDomain {
     }
   }
 
+  /**
+   * Deliver a sleep-cycle check-in to the owner's top-ranked connected
+   * contact route (telegram/discord/whatsapp/signal/…) when one exists.
+   *
+   * Historically `processSleepCycleCheckins` computed ranked route candidates
+   * then discarded them — the check-in was emitted app-only via
+   * `emitAssistantEvent`, so connector-primary / headless owners never saw the
+   * night (or sleep-cycle morning) summary off-app (#14702). This walks the
+   * already-veto-filtered candidate list, skips channels with no runtime
+   * target (`in_app` / `sms` / `voice` — the reminder path handles those
+   * separately), resolves the first connector-backed route, and sends the same
+   * owner-facing text (ack-choice-marker included, so #14884/#14885 ack
+   * round-trips regardless of which surface the reply lands on) through the
+   * proven `runtime.sendMessageToTarget` path the reminder escalation uses.
+   *
+   * In-app remains the guaranteed final rung: the caller always emits onto the
+   * assistant stream afterwards, so a connector miss never drops the check-in.
+   * Returns a small delivery receipt for the emitted event's diagnostics.
+   */
+  private async deliverCheckinToTopConnectorRoute(args: {
+    candidates: readonly ReminderRouteCandidate[];
+    text: string;
+    reportId: string;
+    kind: "morning" | "night";
+    urgency: LifeOpsReminderUrgency;
+    now: Date;
+  }): Promise<{
+    attempted: boolean;
+    channel: LifeOpsReminderChannel | null;
+    delivered: boolean;
+    reason?: string;
+  }> {
+    if (typeof this.ctx.runtime.sendMessageToTarget !== "function") {
+      return { attempted: false, channel: null, delivered: false };
+    }
+    for (const candidate of args.candidates) {
+      if (candidate.vetoReasons.length > 0) {
+        continue;
+      }
+      const channel = candidate.channel;
+      // `in_app` is the guaranteed final rung the caller emits; `sms` / `voice`
+      // have no `sendMessageToTarget` route (they escalate via the dedicated
+      // reminder connector path). Skip them here so we only try connectors
+      // that can carry the summary text with its ack chips.
+      if (channel === "in_app" || channel === "sms" || channel === "voice") {
+        continue;
+      }
+      if (!isReminderChannel(channel)) {
+        continue;
+      }
+      const policy = await this.resolvePrimaryChannelPolicy(channel);
+      const runtimeTarget = await this.resolveRuntimeReminderTarget(
+        channel,
+        policy,
+      );
+      if (!runtimeTarget) {
+        continue;
+      }
+      const sendPayload = {
+        text: args.text,
+        source: runtimeTarget.source,
+        metadata: {
+          channelType: channel,
+          lifeopsCheckin: true,
+          checkinKind: args.kind,
+          checkinReportId: args.reportId,
+          reportId: args.reportId,
+          urgency: args.urgency,
+          routeSource: runtimeTarget.source,
+          routeResolution: runtimeTarget.resolution,
+        },
+      };
+      try {
+        await this.ctx.runtime.sendMessageToTarget(
+          runtimeTarget.target,
+          sendPayload,
+        );
+        return {
+          attempted: true,
+          channel,
+          delivered: true,
+        };
+      } catch (error) {
+        this.ctx.logLifeOpsWarn(
+          "checkin_connector_dispatch",
+          `[lifeops] Check-in connector delivery failed for ${channel}; falling back to in-app.`,
+          { error: lifeOpsErrorMessage(error) },
+        );
+        return {
+          attempted: true,
+          channel,
+          delivered: false,
+          reason: lifeOpsErrorMessage(error),
+        };
+      }
+    }
+    return { attempted: false, channel: null, delivered: false };
+  }
+
   private async processSleepCycleCheckins(args: {
     now: Date;
     currentSchedule: LifeOpsScheduleMergedStateRecord | null;
@@ -5619,29 +5718,63 @@ export class RemindersDomain {
               timezone,
               sleepRecap,
             });
-      const routeMetadata = await this.buildOwnerContactRouteEventMetadata({
-        purpose: "checkin",
-        urgency: report.escalationLevel >= 2 ? "high" : "medium",
+      const urgency: LifeOpsReminderUrgency =
+        report.escalationLevel >= 2 ? "high" : "medium";
+      // Rank the owner's connected contact routes once (telegram/discord/…),
+      // reusing the same veto/quiet-hours machinery the reminder escalation
+      // path uses. Historically these candidates became inert event metadata
+      // and the check-in was delivered app-only (#14702). Now we attempt a
+      // real connector send to the top non-vetoed route BEFORE the in-app
+      // emit, which remains the guaranteed final rung.
+      const ownerFacingText = appendCheckinAckChoiceMarker(report.summaryText, {
+        reportId: report.reportId,
+        kind,
+      });
+      // Resolve ranked routes defensively: a policy/profile read failure must
+      // NOT drop the check-in — the in-app emit below is the guaranteed rung,
+      // so we degrade to zero candidates (in-app only) instead of throwing.
+      let candidates: ReminderRouteCandidate[] = [];
+      try {
+        const [activityProfile, policies] = await Promise.all([
+          this.readReminderActivityProfileSnapshot({ now: args.now }),
+          this.ctx.repository.listChannelPolicies(this.ctx.agentId()),
+        ]);
+        candidates = await this.resolveOwnerContactRouteCandidates({
+          purpose: "checkin",
+          activityProfile,
+          policies,
+          urgency,
+          attempts: [],
+          now: args.now,
+        });
+      } catch (error) {
+        this.ctx.logLifeOpsWarn(
+          "checkin_contact_route",
+          "[lifeops] Failed to resolve check-in contact routes; delivering in-app only.",
+          { error: lifeOpsErrorMessage(error) },
+        );
+      }
+      const connectorDelivery = await this.deliverCheckinToTopConnectorRoute({
+        candidates,
+        text: ownerFacingText,
+        reportId: report.reportId,
+        kind,
+        urgency,
         now: args.now,
       });
-      this.ctx.emitAssistantEvent(
-        appendCheckinAckChoiceMarker(report.summaryText, {
-          reportId: report.reportId,
-          kind,
-        }),
-        "lifeops-checkin",
-        {
-          checkinKind: kind,
-          reportId: report.reportId,
-          deliveryBasis: "sleep_cycle",
-          circadianState: currentSchedule.circadianState,
-          wakeAt: currentSchedule.wakeAt,
-          bedtimeTargetAt: currentSchedule.relativeTime.bedtimeTargetAt,
-          minutesUntilBedtimeTarget:
-            currentSchedule.relativeTime.minutesUntilBedtimeTarget,
-          ...routeMetadata,
-        },
-      );
+      this.ctx.emitAssistantEvent(ownerFacingText, "lifeops-checkin", {
+        checkinKind: kind,
+        reportId: report.reportId,
+        deliveryBasis: "sleep_cycle",
+        circadianState: currentSchedule.circadianState,
+        wakeAt: currentSchedule.wakeAt,
+        bedtimeTargetAt: currentSchedule.relativeTime.bedtimeTargetAt,
+        minutesUntilBedtimeTarget:
+          currentSchedule.relativeTime.minutesUntilBedtimeTarget,
+        contactRoutePurpose: "checkin",
+        contactRouteCandidates: serializeContactRouteCandidates(candidates),
+        connectorDelivery,
+      });
     };
 
     if (
