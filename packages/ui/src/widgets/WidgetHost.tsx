@@ -225,8 +225,8 @@ export function WidgetHost({
   const { notifications } = useNotifications();
   const selfAttention = useHomeAttentionSignals();
   // Persisted show-once-then-retire lifecycle (#9959): a sunset-able home widget
-  // (FTU welcome, nudges) is filtered out once the user has acted on / dismissed
-  // it, or it has been shown its allotted sessions.
+  // (for example, a connector nudge) is filtered out once the user has acted on
+  // / dismissed it, or it has been shown its allotted sessions.
   const dismissals = useHomeDismissals();
   const now = useNow();
 

@@ -35,9 +35,11 @@ relationships, feed activity, workflow activity, and orchestrator app/activity
 cards do not live on home; use their launcher/routed surfaces.
 
 ### Tier 4 - Transient guidance (show-once-then-sunset)
-FTU welcome, connector nudges, the tutorial nudge. These rank for a cold user
-but **retire permanently** once their job is done, via the sunset lifecycle -
-they are the only tier that uses it.
+Connector nudges may use this tier when they unlock real setup work, but the
+home surface no longer carries a resident FTU welcome or tutorial-launch card.
+Tutorial onboarding stays in first-run and chat-native commands, not a ranked
+home slot. Any transient guidance that remains must **retire permanently** once
+its job is done, via the sunset lifecycle.
 
 ## The sunset lifecycle (Tier 4)
 
@@ -58,10 +60,11 @@ card stays gone across reloads.
 ## The `welcome` signal kind
 
 `HOME_SIGNAL_WEIGHTS.welcome = 8` sits **below** `approval` (9) /
-`escalation` (10) / `blocked` (10) and **above** everything else. The FTU
-welcome card self-publishes it so a cold home shows it at the top, yet a real
-"act now" signal always outranks it. It is the only signal kind tied to the
-sunset lifecycle rather than to live data.
+`escalation` (10) / `blocked` (10) and **above** everything else. It remains
+available for cold-start guidance that genuinely belongs on home, but no
+bundled resident currently uses it: the FTU welcome and tutorial-launch prompts
+were removed from the home surface, and chat-native tutorial entry points live
+in first-run / chat commands instead.
 
 ## Removed resident cards
 
@@ -69,7 +72,7 @@ The following components/routes can still exist, but their `slot:"home"`
 declarations are removed: `agent-orchestrator.activity`,
 `agent-orchestrator.apps`, `feed.agent-activity`, `workflow.running`,
 `finances.alerts`, `relationships.attention`, `inbox.unread`,
-`wallet.balance`, and `health.sleep`.
+`wallet.balance`, `health.sleep`, and `tutorial.launch`.
 
 `goals.attention` is no longer a standalone resident: its at-risk goal row lives
 inside Today (`todo.items`) per the spec's merge verdict. The old

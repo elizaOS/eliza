@@ -3,8 +3,7 @@
  *
  * The data-driven home widgets bubble up by urgency and self-hide when empty,
  * but nothing could show *once* and then permanently retire after the user
- * acted — so transient guidance (the FTU welcome card, connector/tutorial
- * nudges) had no graceful fade and was ripped out wholesale. This store is that
+ * acted — so transient guidance (for example, connector nudges) had no graceful fade and was ripped out wholesale. This store is that
  * missing primitive: it persists a per-widget lifecycle (`seen` sessions,
  * `acted`, `dismissed`) keyed by `homeWidgetKey`, and {@link isHomeWidgetSunset}
  * turns a widget's declared {@link HomeWidgetSunset} policy into a retire

@@ -140,7 +140,7 @@ home because its at-risk row is rendered inside `todo.items`.
 
 | Slot | Host mounted? | Widgets registered? | Verdict |
 |---|---|---|---|
-| `home` | yes, HomeScreen | yes, curated ≤5 residents | active |
+| `home` | yes, HomeScreen | yes, curated ≤5 residents (tutorial launcher removed) | active |
 | `chat-sidebar` | yes, TasksEventsPanel | yes, 5 | active |
 | `character` | yes, CharacterHubView | yes, 1 | active |
 | `nav-page` | no WidgetHost mount | no component widgets | active app-navigation contract |
@@ -228,7 +228,7 @@ only navigation affordance).
 | Music player | yes (added #9304) | n/a | n/a |
 | Topic chips bar | yes (added #9304) | yes | n/a |
 | Topic grouped transcript | yes (added #9304) | yes | n/a |
-| Home widgets (inbox/calendar/goals/finances/health/relationships) | yes + coverage gate | n/a | n/a |
+| Home widgets (todo/calendar/needs-attention/setup progress; removed residents stay absent) | yes + coverage gate | n/a | n/a |
 | Overlay `[CONFIG]` / code / UiSpec parity (D1) | yes, `InlineWidgetText.test.tsx` (`[CONFIG:…]`, code fence, UiSpec cases) | n/a | n/a |
 | Overlay secret-request parity (D1) | yes, `render-parity.contract.test.tsx` (asserts `[data-testid="sensitive-request"]` renders in the overlay body) | n/a | n/a |
 

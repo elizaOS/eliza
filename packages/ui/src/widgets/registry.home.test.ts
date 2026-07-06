@@ -57,6 +57,14 @@ describe("home frontpage widget slot (#9143)", () => {
     ).toBeUndefined();
   });
 
+  it("keeps tutorial launch off the resident home surface", () => {
+    // The chat-native tutorial remains reachable through first-run and typed
+    // chat commands; the home grid must not reserve a ranked slot for its CTA.
+    const resolved = resolveWidgetsForSlot("home", []);
+    const ids = new Set(resolved.map((r) => r.declaration.id));
+    expect(ids).not.toContain("tutorial.launch");
+  });
+
   it("keeps the chat-sidebar Apps declaration on its own slot", () => {
     const sidebar = resolveWidgetsForSlot("chat-sidebar", [
       { id: "agent-orchestrator", enabled: true, isActive: true },

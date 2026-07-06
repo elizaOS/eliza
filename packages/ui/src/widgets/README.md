@@ -80,4 +80,5 @@ The home is **priority-ranked**, not all-or-nothing: `home-priority.ts`
 attention signals and returns the top-N, currently capped at five by
 `HOME_RENDER_CAP` in `WidgetHost.tsx`, so the most important widgets bubble up
 the way a phone home screen does. Declare your widget only if it matches the
-spec's resident bar; ranking decides placement.
+spec's resident bar; ranking decides placement. Onboarding/tutorial CTAs should
+stay in first-run or chat-native flows, not as resident home cards.

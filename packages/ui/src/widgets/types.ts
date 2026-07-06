@@ -19,8 +19,7 @@ export const WIDGET_SLOTS = [
 export type WidgetSlot = (typeof WIDGET_SLOTS)[number];
 
 /**
- * Show-once-then-retire lifecycle for a transient home-slot widget (FTU /
- * connector / tutorial nudges). A widget with `sunset` is filtered out of the
+ * Show-once-then-retire lifecycle for a transient home-slot widget (for example, connector nudges). A widget with `sunset` is filtered out of the
  * home grid once its condition is met; the per-key lifecycle state is persisted
  * by `widgets/home-dismissal-store.ts`. Absent ⇒ the widget never sunsets (the
  * data-driven cards rely on self-hiding-when-empty, not on this).

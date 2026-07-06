@@ -37,7 +37,6 @@ import { MODEL_DOWNLOAD_HOME_WIDGET } from "../components/chat/widgets/model-dow
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
 import { NEEDS_ATTENTION_HOME_WIDGET } from "../components/chat/widgets/needs-attention";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
-import { TUTORIAL_LAUNCH_HOME_WIDGET } from "../components/chat/widgets/tutorial-launch";
 
 // The wallet / goals / sleep resident components are no longer registered
 // here: their home declarations were removed (spec §E items 3-5). The components
@@ -77,14 +76,6 @@ registerWidgetComponent(
   AGENT_PROVISIONING_HOME_WIDGET.id,
   AGENT_PROVISIONING_HOME_WIDGET.Component,
 );
-// Chat-native tutorial launch card: a core FTU surface that is always-visible
-// until the user launches or dismisses it.
-registerWidgetComponent(
-  TUTORIAL_LAUNCH_HOME_WIDGET.pluginId,
-  TUTORIAL_LAUNCH_HOME_WIDGET.id,
-  TUTORIAL_LAUNCH_HOME_WIDGET.Component,
-);
-
 // Per-plugin frontpage widgets: each surfaces a compact, attention-ranked slice
 // of its plugin's own state on the home grid, self-hides when empty, and
 // self-publishes a home-attention signal so it floats up on its own data
@@ -126,24 +117,9 @@ export function registerBuiltinWidgetDeclarations(
 
 export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
   // The first-time-user welcome card (greeting + "try saying…" suggestion
-  // chips) was removed deliberately: the agent is proactive on a cold home,
-  // with no canned prompt suggestions anywhere on the dashboard.
-  // Chat-native tutorial launch remains as the durable, explicit way to rerun
-  // onboarding help from the home grid.
-  {
-    id: TUTORIAL_LAUNCH_HOME_WIDGET.id,
-    pluginId: TUTORIAL_LAUNCH_HOME_WIDGET.pluginId,
-    slot: "home",
-    label: "Take a tour",
-    icon: "GraduationCap",
-    order: TUTORIAL_LAUNCH_HOME_WIDGET.order,
-    defaultEnabled: true,
-    // Core FTU surface, not a loadable plugin - always-visible, self-retires.
-    visibility: "always",
-    signalKinds: TUTORIAL_LAUNCH_HOME_WIDGET.signalKinds,
-    size: TUTORIAL_LAUNCH_HOME_WIDGET.size,
-    sunset: TUTORIAL_LAUNCH_HOME_WIDGET.sunset,
-  },
+  // chips) and tutorial-launch card were removed deliberately: the agent is
+  // proactive on a cold home, with onboarding help living in first-run and chat
+  // commands rather than resident dashboard prompts.
   // Notifications are deliberately NOT a ranked home-slot widget: the dashboard
   // notification center (NotificationsHomeCenter) is pinned by HomeScreen
   // directly below the time/weather base, so a registry entry here would
