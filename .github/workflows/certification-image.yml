@@ -1,0 +1,108 @@
+# certification-image — builds and publishes the GPU certification image
+# (docker/certification/Dockerfile.gpu) that vast.ai certification runs boot
+# (#14548, epic #14541). The image bakes everything the 16 KB onstart script
+# cannot carry: CUDA llama-server, the sha256-pinned gpu-vision models,
+# node24/bun/playwright/tesseract/ffmpeg. Pushes
+# ghcr.io/elizaos/certification-gpu:{latest,sha-<short>} via GITHUB_TOKEN —
+# no extra registry secret. Rebuilds are rare (image inputs only), so this
+# triggers on dispatch plus pushes that touch its own inputs, never on PRs.
+
+name: certification-image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - "docker/certification/Dockerfile.gpu"
+      - "scripts/gpu-vision/setup.mjs"
+      - "scripts/gpu-vision/lib.mjs"
+      - "scripts/gpu-vision/models.lock.json"
+      - ".github/workflows/certification-image.yml"
+
+concurrency:
+  group: certification-image-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/certification-gpu
+
+jobs:
+  build-and-push:
+    name: build-and-push
+    # Same fleet fallback as build-agent-image: hetzner when online (the
+    # image is ~15 GB with baked models and CUDA layers; hosted runners need
+    # the disk-free step below to survive it).
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune -a -f || true
+          df -h /
+
+      - uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5
+        with:
+          driver-opts: |
+            env.BUILDKIT_STEP_LOG_MAX_SIZE=10485760
+            env.BUILDKIT_STEP_LOG_MAX_SPEED=10485760
+
+      # Docker tags must be lowercase; github.repository_owner is "elizaOS".
+      - id: image
+        run: echo "name=${REGISTRY}/${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
+
+      - id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9
+        with:
+          images: ${{ steps.image.outputs.name }}
+          # :latest tracks develop — it is what run-certification.mjs boots by
+          # default; :sha-<short> pins for reproducible re-runs.
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        with:
+          context: .
+          file: docker/certification/Dockerfile.gpu
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Single-manifest image: vast pulls by tag, provenance attestation
+          # manifests confuse some of its pullers.
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Image summary
+        run: |
+          {
+            echo "## certification-image"
+            echo ""
+            echo "Pushed tags:"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo ""
+            echo "Boot it on vast: \`node scripts/vast/run-certification.mjs --image ${{ steps.image.outputs.name }}:latest ...\`"
+          } >> "$GITHUB_STEP_SUMMARY"

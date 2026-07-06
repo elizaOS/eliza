@@ -1,0 +1,199 @@
+# certification-vast — dispatches an automated full-tier certification run on
+# a rented vast.ai GPU (#14548, epic #14541). Thin caller of
+# scripts/vast/run-certification.mjs: search offers → create from the
+# prebuilt certification image → onstart runs the packages/evidence chain
+# (bundle:create → certify:rollup → certify:sign) → poll → pull the signed
+# certification.json → DESTROY the instance in the script's own finally.
+#
+# Triggers: workflow_dispatch (any certifier with repo write), plus a nightly
+# cron that is a no-op unless the repo variable ELIZA_VAST_CERT_ENABLED is
+# the string 'true' — cost is real money, so nightly spend is owner-opt-in.
+# Deliberately NO pull_request trigger: this job holds VAST_API_KEY and the
+# ELIZA_CERT_SIGNING_KEY; PR-triggered code must never see either.
+#
+# Secrets discipline: both secrets are exposed only to the single step that
+# runs the script, and the script forwards the signing key solely inside the
+# create-instance env payload (never the onstart text, never logs). When vast
+# fails for ANY reason the job goes red with a "local certification required"
+# summary carrying the exact fallback command — same chain, same output; the
+# develop→main gate (certification-verify.yml) cannot tell the difference.
+
+name: certification-vast
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit sha to certify (default: the ref this workflow runs on)"
+        required: false
+        type: string
+      tier:
+        description: "Certification tier"
+        required: false
+        default: "full"
+        type: choice
+        options: [cpu, gpu, full]
+      max_dph:
+        description: "Budget cap in $/hr per offer"
+        required: false
+        default: "0.60"
+        type: string
+      max_attempts:
+        description: "Max offers tried before giving up"
+        required: false
+        default: "3"
+        type: string
+      timeout_minutes:
+        description: "Hard wall-clock cap per attempt"
+        required: false
+        default: "120"
+        type: string
+  schedule:
+    # Nightly on develop, 06:17 UTC (off the top-of-hour crunch); gated below
+    # on vars.ELIZA_VAST_CERT_ENABLED == 'true'.
+    - cron: "17 6 * * *"
+
+concurrency:
+  group: certification-vast
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  vast-certification:
+    name: vast-certification
+    if: github.event_name == 'workflow_dispatch' || vars.ELIZA_VAST_CERT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 400
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Resolve certified sha
+        id: sha
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          sha="${INPUT_SHA:-$GITHUB_SHA}"
+          if ! [[ "$sha" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+            echo "::error title=certification-vast::input sha '$sha' is not a git sha"
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      # Fail in seconds — before any vast spend — when the run cannot possibly
+      # produce a verifiable certification.
+      - name: Preflight secrets
+        env:
+          HAS_VAST_KEY: ${{ secrets.VAST_API_KEY != '' }}
+          HAS_SIGNING_KEY: ${{ secrets.ELIZA_CERT_SIGNING_KEY != '' }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ "$HAS_VAST_KEY" = "true" ] || missing="$missing VAST_API_KEY"
+          [ "$HAS_SIGNING_KEY" = "true" ] || missing="$missing ELIZA_CERT_SIGNING_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error title=certification-vast::missing repo secret(s):$missing"
+            exit 1
+          fi
+
+      # Node 24 to match the script's target runtime (plain node, zero
+      # workspace deps — no bun install on this runner).
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24"
+
+      - name: Dry-run plan (no API calls, no secrets in output)
+        env:
+          CERT_SHA: ${{ steps.sha.outputs.sha }}
+          TIER: ${{ inputs.tier || 'full' }}
+          MAX_DPH: ${{ inputs.max_dph || '0.60' }}
+          MAX_ATTEMPTS: ${{ inputs.max_attempts || '3' }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes || '120' }}
+        run: |
+          set -euo pipefail
+          node scripts/vast/run-certification.mjs \
+            --sha "$CERT_SHA" --tier "$TIER" \
+            --max-dph "$MAX_DPH" --max-attempts "$MAX_ATTEMPTS" \
+            --timeout-minutes "$TIMEOUT_MINUTES" \
+            --dry-run
+
+      # The ONLY step with secret access. The signing key travels to the
+      # instance exclusively inside the create-payload env; the vast key never
+      # leaves this runner. CERT_PUSH_CMD is optional owner-configured storage
+      # push (R2/S3) — without it the signed certification still comes back
+      # via the instance logs.
+      - name: Run certification on vast.ai
+        id: run
+        env:
+          VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
+          ELIZA_CERT_SIGNING_KEY: ${{ secrets.ELIZA_CERT_SIGNING_KEY }}
+          CERT_PUSH_CMD: ${{ secrets.ELIZA_CERT_PUSH_CMD }}
+          CERT_SHA: ${{ steps.sha.outputs.sha }}
+          TIER: ${{ inputs.tier || 'full' }}
+          MAX_DPH: ${{ inputs.max_dph || '0.60' }}
+          MAX_ATTEMPTS: ${{ inputs.max_attempts || '3' }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes || '120' }}
+        run: |
+          set -euo pipefail
+          node scripts/vast/run-certification.mjs \
+            --sha "$CERT_SHA" --tier "$TIER" \
+            --max-dph "$MAX_DPH" --max-attempts "$MAX_ATTEMPTS" \
+            --timeout-minutes "$TIMEOUT_MINUTES" \
+            --out vast-certification-output
+
+      # The signed certification + instance logs are the run's product; the
+      # promotion PR author downloads this artifact and commits
+      # certification.json (+ the pushed bundle) per the gate's runbook.
+      - name: Upload certification artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: vast-certification-${{ steps.sha.outputs.sha }}
+          path: vast-certification-output/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Success summary
+        if: success()
+        env:
+          CERT_SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          {
+            echo "## certification-vast ✅"
+            echo ""
+            echo "Signed certification for \`$CERT_SHA\` pulled from the vast instance"
+            echo "(artifact **vast-certification-$CERT_SHA**, cost logged in the run step)."
+            echo ""
+            echo "To use it on a promotion PR: download the artifact, commit"
+            echo "\`certification.json\` at the repo root and the bundle at \`evidence/bundle/\`"
+            echo "per [.github/certification/README.md](https://github.com/${GITHUB_REPOSITORY}/blob/develop/.github/certification/README.md)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The documented fallback: same chain, same output, run by a human/agent
+      # holding the signing key. Kept in lockstep with scripts/vast/README.md.
+      - name: Local certification required (vast run failed)
+        if: failure()
+        env:
+          CERT_SHA: ${{ steps.sha.outputs.sha }}
+          TIER: ${{ inputs.tier || 'full' }}
+        run: |
+          {
+            echo "## certification-vast ❌ — local certification required"
+            echo ""
+            echo "The vast.ai run for \`$CERT_SHA\` failed (dead key / no offers / stuck instance /"
+            echo "onstart failure — exit code in the run step above; every path attempts instance"
+            echo "destroy first). Certify locally on a machine holding \`ELIZA_CERT_SIGNING_KEY\`:"
+            echo ""
+            echo '```bash'
+            echo "git fetch origin $CERT_SHA && git checkout $CERT_SHA"
+            echo "node scripts/vast/local-certify.mjs --tier $TIER"
+            echo '```'
+            echo ""
+            echo "Runbook (costs, kill paths, storage push): [scripts/vast/README.md](https://github.com/${GITHUB_REPOSITORY}/blob/develop/scripts/vast/README.md)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=certification-vast::vast run failed — local certification required: node scripts/vast/local-certify.mjs --tier $TIER (see scripts/vast/README.md)"

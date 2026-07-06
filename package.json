@@ -141,6 +141,7 @@
     "test:evidence-review": "node --test scripts/evidence-review/*.test.mjs",
     "test:gpu-vision": "node --test scripts/gpu-vision/*.test.mjs",
     "test:lifeops-hitl": "node --test scripts/lifeops/*.test.mjs",
+    "test:vast": "node --test scripts/vast/*.test.mjs",
     "test:all": "node packages/scripts/run-all-tests.mjs --all",
     "test:console": "node packages/scripts/test-console/server.mjs",
     "test:release:contract": "bun run audit:apple-store-sandbox && bun run test:apple-entitlements && node packages/app-core/scripts/run-release-contract-suite.mjs",
