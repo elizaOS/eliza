@@ -30,6 +30,7 @@ import type {
 	State,
 } from "@elizaos/core";
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { AppPermissionsViewSchema } from "@elizaos/shared";
 import { SETTINGS_SECTION_META } from "@elizaos/ui/components/settings/settings-section-meta";
 import { normalizeActionOptions, readStringOption } from "../params.js";
 
@@ -41,8 +42,14 @@ export interface SettingsRouteOutcome {
 	ok: boolean;
 	/** Human-facing confirmation or failure detail. */
 	detail?: string;
-	/** Parsed JSON body for command-style settings routes. */
+	/** Parsed JSON body for command/read-modify-write settings routes. */
 	data?: unknown;
+}
+
+export interface SettingsRouteRequest {
+	method: "GET" | "PUT" | "POST";
+	path: string;
+	body?: unknown;
 }
 
 /**
@@ -50,11 +57,9 @@ export interface SettingsRouteOutcome {
  * route. Injectable so unit tests exercise routing/validation without a live
  * server; the default hits `127.0.0.1:<server port>`.
  */
-export type SettingsRouteFetch = (request: {
-	method: "PUT" | "POST";
-	path: string;
-	body: unknown;
-}) => Promise<SettingsRouteOutcome>;
+export type SettingsRouteFetch = (
+	request: SettingsRouteRequest,
+) => Promise<SettingsRouteOutcome>;
 
 /**
  * A single writable key on an owned (`route`) section: how to parse the value,
@@ -70,21 +75,20 @@ export interface SettingsWritableKey {
 	 */
 	valueType: "boolean" | "command";
 	/** Build the backend request for a parsed value. */
-	buildRequest?: (value: boolean) => {
-		method: "PUT" | "POST";
-		path: string;
-		body: unknown;
-	};
-	/** Execute a non-toggle operation through the section's backend route. */
+	buildRequest?: (value: boolean) => SettingsRouteRequest;
+	/** Execute command or multi-step route-backed writes. */
 	apply?: (args: {
+		keyName: string;
 		request: SettingsRequest;
 		routeFetch: SettingsRouteFetch;
+		value: boolean | null;
 	}) => Promise<SettingsRouteOutcome>;
 	/** Confirmation text once the route returns ok. */
 	successText: (
 		value: boolean | null,
 		request: SettingsRequest,
 		outcome: SettingsRouteOutcome,
+		keyName: string,
 	) => string;
 }
 
@@ -198,6 +202,92 @@ const RESTORE_BACKUP_KEY: SettingsWritableKey = {
 		`Restored local agent backup ${request.fileName}. Restart the agent to activate it.`,
 };
 
+function encodePathSegment(value: string): string {
+	return encodeURIComponent(value);
+}
+
+const PERMISSION_NAMESPACE_ALIASES: ReadonlyMap<string, string> = new Map([
+	["fs", "fs"],
+	["file", "fs"],
+	["files", "fs"],
+	["filesystem", "fs"],
+	["storage", "fs"],
+	["net", "net"],
+	["network", "net"],
+	["internet", "net"],
+	["web", "net"],
+]);
+
+function resolvePermissionNamespace(token: string | null): string | null {
+	if (!token) return null;
+	return PERMISSION_NAMESPACE_ALIASES.get(token.trim().toLowerCase()) ?? null;
+}
+
+const APP_PERMISSION_NAMESPACE_KEY: SettingsWritableKey = {
+	description:
+		"Grant or revoke one recognised permission namespace for a registered app. Requires app=<slug>; key/namespace is fs or net.",
+	valueType: "boolean",
+	apply: async ({ request, routeFetch, value }) => {
+		const appSlug = request.app;
+		if (!appSlug) {
+			return {
+				ok: false,
+				detail:
+					"provide the app slug with app=<slug> (for example, app=my-app)",
+			};
+		}
+		const namespace = resolvePermissionNamespace(
+			request.namespace ?? request.key,
+		);
+		if (!namespace) {
+			return {
+				ok: false,
+				detail: "provide namespace/key as fs or net",
+			};
+		}
+		if (value === null) {
+			return {
+				ok: false,
+				detail: "provide value=on or value=off for the app permission",
+			};
+		}
+
+		const path = `/api/apps/permissions/${encodePathSegment(appSlug)}`;
+		const current = await routeFetch({ method: "GET", path });
+		if (!current.ok) return current;
+
+		const parsed = AppPermissionsViewSchema.safeParse(current.data);
+		if (!parsed.success) {
+			return {
+				ok: false,
+				detail: "app permissions route returned an invalid permission view",
+			};
+		}
+		const view = parsed.data;
+		if (!view.recognisedNamespaces.includes(namespace as "fs" | "net")) {
+			return {
+				ok: false,
+				detail: `${appSlug} does not declare the ${namespace} permission namespace`,
+			};
+		}
+
+		const next = new Set(view.grantedNamespaces);
+		if (value) next.add(namespace as "fs" | "net");
+		else next.delete(namespace as "fs" | "net");
+		return routeFetch({
+			method: "PUT",
+			path,
+			body: { namespaces: [...next] },
+		});
+	},
+	successText: (enabled, request, _outcome, keyName) => {
+		const appSlug = request.app ?? "the app";
+		return enabled
+			? `${appSlug} ${keyName} permission is granted.`
+			: `${appSlug} ${keyName} permission is revoked.`;
+	},
+};
+
 /**
  * The single source of truth mapping every built-in settings section to its
  * write capability. Adding a built-in section without a matching entry fails the
@@ -298,9 +388,12 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 		},
 	},
 	"app-permissions": {
-		kind: "unwired",
-		reason:
-			"Per-app namespace grants are a multi-value structure, deferred to a dedicated flow.",
+		kind: "route",
+		summary: "Grant or revoke app permission namespaces for a registered app.",
+		keys: {
+			fs: APP_PERMISSION_NAMESPACE_KEY,
+			net: APP_PERMISSION_NAMESPACE_KEY,
+		},
 	},
 };
 
@@ -352,6 +445,8 @@ export interface SettingsRequest {
 	value: string | null;
 	fileName: string | null;
 	confirm: string | null;
+	app: string | null;
+	namespace: string | null;
 }
 
 const VERB_TOKENS: ReadonlyMap<string, SettingsVerb> = new Map([
@@ -387,6 +482,9 @@ export function parseSettingsRequest(
 	const value = readStringOption(options, "value");
 	const fileName = readStringOption(options, "fileName");
 	const confirm = readStringOption(options, "confirm");
+	const app =
+		readStringOption(options, "app") ?? readStringOption(options, "slug");
+	const namespace = readStringOption(options, "namespace");
 
 	if (!verb) {
 		// A bare `section` with a `value` but no verb reads as an implicit `set`;
@@ -400,21 +498,21 @@ export function parseSettingsRequest(
 			value,
 			fileName,
 			confirm,
+			app,
+			namespace,
 		};
 	}
-	return { verb, sectionId, key, value, fileName, confirm };
+	return { verb, sectionId, key, value, fileName, confirm, app, namespace };
 }
 
-async function defaultRouteFetch(request: {
-	method: "PUT" | "POST";
-	path: string;
-	body: unknown;
-}): Promise<SettingsRouteOutcome> {
+async function defaultRouteFetch(
+	request: SettingsRouteRequest,
+): Promise<SettingsRouteOutcome> {
 	const port = resolveServerOnlyPort(process.env);
 	const response = await fetch(`http://127.0.0.1:${port}${request.path}`, {
 		method: request.method,
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(request.body),
+		body: request.body === undefined ? undefined : JSON.stringify(request.body),
 		signal: AbortSignal.timeout(30_000),
 	});
 	// error-policy:J3 an unparseable body is treated as no detail; the caller
@@ -514,7 +612,12 @@ async function handleSet(
 	}
 
 	// cap.kind === "route"
-	const keyName = request.key ?? Object.keys(cap.keys)[0];
+	const requestedKeyName =
+		request.namespace ?? request.key ?? Object.keys(cap.keys)[0];
+	const keyName =
+		request.sectionId === "app-permissions"
+			? (resolvePermissionNamespace(requestedKeyName) ?? requestedKeyName)
+			: requestedKeyName;
 	const writable = keyName ? cap.keys[keyName] : undefined;
 	if (!writable) {
 		const known = Object.keys(cap.keys).join(", ");
@@ -535,7 +638,12 @@ async function handleSet(
 		`[SettingsAction] set section=${request.sectionId} key=${keyName} value=${parsedValue}`,
 	);
 	const outcome = writable.apply
-		? await writable.apply({ request, routeFetch })
+		? await writable.apply({
+				keyName,
+				request,
+				routeFetch,
+				value: parsedValue,
+			})
 		: writable.buildRequest && parsedValue !== null
 			? await routeFetch(writable.buildRequest(parsedValue))
 			: {
@@ -547,7 +655,7 @@ async function handleSet(
 		await callback?.({ text: reply });
 		return { success: false, text: reply };
 	}
-	const reply = writable.successText(parsedValue, request, outcome);
+	const reply = writable.successText(parsedValue, request, outcome, keyName);
 	await callback?.({ text: reply });
 	return {
 		success: true,
@@ -557,12 +665,14 @@ async function handleSet(
 			key: keyName,
 			...(parsedValue === null ? {} : { value: parsedValue }),
 			...(request.fileName ? { fileName: request.fileName } : {}),
+			...(request.app ? { app: request.app } : {}),
 		},
 		data: {
 			section: request.sectionId,
 			key: keyName,
 			...(parsedValue === null ? {} : { value: parsedValue }),
 			...(request.fileName ? { fileName: request.fileName } : {}),
+			...(request.app ? { app: request.app } : {}),
 		},
 	};
 }
@@ -644,13 +754,17 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			"BACKUP_AGENT",
 			"CREATE_AGENT_BACKUP",
 			"RESTORE_AGENT_BACKUP",
+			"APP_PERMISSIONS",
+			"APP_PERMISSION",
+			"GRANT_APP_PERMISSION",
+			"REVOKE_APP_PERMISSION",
 		],
 		description:
-			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, turning automatic training on/off via section=capabilities key=auto-training, and creating/restoring local agent backups via section=advanced key=create-backup|restore-backup. Restore requires fileName and confirm=true. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
+			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, turning automatic training on/off via section=capabilities key=auto-training, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, and creating/restoring local agent backups via section=advanced key=create-backup|restore-backup. Restore requires fileName and confirm=true. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
 		descriptionCompressed:
-			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, auto-training, and local backups (section=advanced key=create-backup|restore-backup)",
+			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, auto-training, app permissions, and local backups",
 		routingHint:
-			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
+			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -663,14 +777,28 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			{
 				name: "section",
 				description:
-					"Canonical settings section id or alias (e.g. permissions, capabilities, ai-model, background, secrets). Required for get/set.",
+					"Canonical settings section id or alias (e.g. permissions, capabilities, app-permissions, ai-model, background, secrets). Required for get/set.",
 				required: false,
 				schema: { type: "string" },
 			},
 			{
 				name: "key",
 				description:
-					"The specific toggle or operation within the section (e.g. shell, auto-training, create-backup, restore-backup). Optional; defaults to the section's primary key.",
+					"The specific toggle or operation within the section (e.g. shell, auto-training, fs/net, create-backup, restore-backup). Optional; defaults to the section's primary key.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "app",
+				description:
+					"Registered app slug when section=app-permissions (for example my-app).",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "namespace",
+				description:
+					"Permission namespace when section=app-permissions; accepted values are fs/filesystem or net/network.",
 				required: false,
 				schema: { type: "string" },
 			},

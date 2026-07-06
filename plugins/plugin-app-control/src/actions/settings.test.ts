@@ -103,6 +103,8 @@ describe("parseSettingsRequest", () => {
 			value: "off",
 			fileName: null,
 			confirm: null,
+			app: null,
+			namespace: null,
 		});
 	});
 
@@ -139,6 +141,24 @@ describe("parseSettingsRequest", () => {
 			key: "restore-backup",
 			fileName: "agent-2026.agent-backup.json",
 			confirm: "true",
+		});
+	});
+
+	it("reads app and namespace options for app-permissions writes", () => {
+		expect(
+			parseSettingsRequest({
+				action: "set",
+				section: "app-permissions",
+				app: "weather",
+				namespace: "network",
+				value: "off",
+			}),
+		).toMatchObject({
+			verb: "set",
+			sectionId: "app-permissions",
+			app: "weather",
+			namespace: "network",
+			value: "off",
 		});
 	});
 });
@@ -180,6 +200,11 @@ describe("SETTINGS action: list", () => {
 		expect(capabilities).toMatchObject({ writable: true, via: "SETTINGS" });
 		const advanced = sections.find((s) => s.id === "advanced");
 		expect(advanced).toMatchObject({ writable: true, via: "SETTINGS" });
+		const appPermissions = sections.find((s) => s.id === "app-permissions");
+		expect(appPermissions).toMatchObject({
+			writable: true,
+			via: "SETTINGS",
+		});
 		const updates = sections.find((s) => s.id === "updates");
 		expect(updates).toMatchObject({ writable: false, via: "not-yet-wired" });
 	});
@@ -348,6 +373,130 @@ describe("SETTINGS action: set on an owned route section", () => {
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
 		expect(texts.join(" ")).toContain("fileName");
+	});
+
+	it("read-modify-writes app permission namespace grants through the app route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						slug: "weather",
+						trust: "external",
+						isolation: "worker",
+						requestedPermissions: {
+							fs: { read: ["state/weather/**"] },
+							net: { outbound: ["https://api.weather.test"] },
+						},
+						recognisedNamespaces: ["fs", "net"],
+						grantedNamespaces: ["fs", "net"],
+						grantedAt: "2026-01-01T00:00:00.000Z",
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "app-permissions",
+				app: "weather",
+				key: "net",
+				value: "off",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(1, {
+			method: "GET",
+			path: "/api/apps/permissions/weather",
+		});
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/apps/permissions/weather",
+			body: { namespaces: ["fs"] },
+		});
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "app-permissions",
+			key: "net",
+			value: false,
+			app: "weather",
+		});
+		expect(texts.join(" ")).toContain("weather net permission is revoked");
+	});
+
+	it("accepts namespace aliases for app permissions", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						slug: "weather",
+						trust: "external",
+						isolation: "worker",
+						requestedPermissions: {
+							fs: { read: ["state/weather/**"] },
+							net: { outbound: ["https://api.weather.test"] },
+						},
+						recognisedNamespaces: ["fs", "net"],
+						grantedNamespaces: ["fs"],
+						grantedAt: "2026-01-01T00:00:00.000Z",
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "app-permissions",
+				app: "weather",
+				namespace: "network",
+				value: "on",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/apps/permissions/weather",
+			body: { namespaces: ["fs", "net"] },
+		});
+		expect(result?.values).toMatchObject({ key: "net", value: true });
+	});
+
+	it("refuses app permission writes without an app slug", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "app-permissions",
+				key: "net",
+				value: "off",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).not.toHaveBeenCalled();
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("app=<slug>");
+	});
+
+	it("refuses app permission writes when the route shape is invalid", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: { slug: "weather" },
+		}));
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "app-permissions",
+				app: "weather",
+				key: "net",
+				value: "off",
+			},
+			routeFetch,
+		);
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("invalid permission view");
 	});
 
 	it("rejects a non-boolean value without calling the route", async () => {
