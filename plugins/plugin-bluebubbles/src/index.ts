@@ -13,6 +13,7 @@ import {
 } from "@elizaos/core";
 import { createBlueBubblesConnectorAccountProvider } from "./connector-account-provider.js";
 import { blueBubblesDataRoutes } from "./data-routes.js";
+import { registerBlueBubblesDmSensitiveRequestAdapter } from "./sensitive-request-adapter.js";
 import { BlueBubblesService } from "./service.js";
 import {
 	blueBubblesSetupRoutes,
@@ -39,6 +40,10 @@ export {
 	createBlueBubblesConnectorAccountProvider,
 } from "./connector-account-provider.js";
 export * from "./constants.js";
+export {
+	blueBubblesDmSensitiveRequestAdapter,
+	registerBlueBubblesDmSensitiveRequestAdapter,
+} from "./sensitive-request-adapter.js";
 // Re-export types and service
 export * from "./types.js";
 export {
@@ -81,6 +86,7 @@ const blueBubblesPlugin: Plugin = {
 		runtime: IAgentRuntime,
 	): Promise<void> => {
 		logger.info("Initializing BlueBubbles plugin...");
+		registerBlueBubblesDmSensitiveRequestAdapter(runtime);
 
 		// Register the BlueBubbles provider with the ConnectorAccountManager so
 		// the HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)

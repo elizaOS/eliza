@@ -9,6 +9,7 @@ import { platform } from "node:os";
 import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { createIMessageConnectorAccountProvider } from "./connector-account-provider.js";
 import { imessageDataRoutes } from "./data-routes.js";
+import { registerIMessageDmSensitiveRequestAdapter } from "./sensitive-request-adapter.js";
 // No send action is registered here: outbound delivery is the MessageConnector
 // registered by IMessageService.registerSendHandlers, driven via MESSAGE
 // operation=send.
@@ -87,6 +88,10 @@ export {
   probeIMessageRpc,
   sendIMessageRpc,
 } from "./rpc.js";
+export {
+  imessageDmSensitiveRequestAdapter,
+  registerIMessageDmSensitiveRequestAdapter,
+} from "./sensitive-request-adapter.js";
 // Re-export types and service
 export * from "./types.js";
 export {
@@ -145,6 +150,7 @@ const imessagePlugin: Plugin = {
 
     // Register the cross-connector triage adapter for the "imessage" source.
     registerIMessageTriageAdapter();
+    registerIMessageDmSensitiveRequestAdapter(runtime);
 
     const isMacOS = platform() === "darwin";
 
