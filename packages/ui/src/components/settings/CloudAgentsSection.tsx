@@ -152,7 +152,7 @@ export function CloudAgentsSection() {
   }, []);
 
   const bindAndReload = useCallback(
-    (agentId: string, apiBase: string, label: string) => {
+    (agentId: string, apiBase: string, label: string, notice?: string) => {
       const token = currentCloudToken();
       const persisted = createPersistedActiveServer({
         kind: "cloud",
@@ -173,7 +173,11 @@ export function CloudAgentsSection() {
           : {}),
         ...(token ? { accessToken: token } : {}),
       });
-      setActionNotice(`Switched to ${label}. Reloading…`, "success", 3000);
+      setActionNotice(
+        notice ?? `Switched to ${label}. Reloading…`,
+        "success",
+        3000,
+      );
       // Re-boot the web app so startup restore re-binds the client + chat to
       // the newly-selected agent (same path a returning user takes).
       setTimeout(() => window.location.reload(), 250);
@@ -288,7 +292,22 @@ export function CloudAgentsSection() {
         forceCreate: true,
         onProgress: () => {},
       });
-      bindAndReload(result.agentId, result.apiBase, name);
+      // Honest outcome (#14487): with forceCreate the backend still reuses the
+      // org's existing agent when the org is at its per-org agent cap (#11023),
+      // returning `created: false`. Do NOT claim a fresh agent was made: bind
+      // to the (existing) agent we got back but tell the user why no new one
+      // appeared, so "Create a new agent" never silently lies.
+      const label = result.agentName || name;
+      if (result.created === false) {
+        bindAndReload(
+          result.agentId,
+          result.apiBase,
+          label,
+          `You've reached your agent limit, so we opened your existing agent “${label}” instead. Delete an agent or add credits to create another.`,
+        );
+      } else {
+        bindAndReload(result.agentId, result.apiBase, name);
+      }
     } catch (err) {
       setActionNotice(
         err instanceof Error ? err.message : "Failed to create agent.",

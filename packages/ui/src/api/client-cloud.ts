@@ -1076,6 +1076,15 @@ declare module "./client-base" {
       forceCreate?: boolean;
     }): Promise<{
       success: boolean;
+      /**
+       * Whether the backend actually MINTED a fresh agent (201/202) versus
+       * handing back an existing non-terminal one via the idempotent reuse
+       * guard (200, `created: false`), e.g. the org is at its per-org agent
+       * cap (#11023). Callers surfacing a "created" affordance must not claim a
+       * fresh agent when this is false (#14487). Undefined when the response
+       * omits the flag (older worker / non-direct path); treat as unknown.
+       */
+      created?: boolean;
       data: {
         agentId: string;
         agentName: string;
@@ -1722,6 +1731,10 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
   const tierFields = opts.preferSharedTier ? {} : { alwaysOn: true };
   const direct = await directCloudRequest<{
     success: boolean;
+    // `created: false` means the backend reused an existing non-terminal agent
+    // (idempotent 200) instead of minting a fresh one, e.g. the org hit its
+    // per-org cap (#11023). Thread it up so the UI can tell the truth (#14487).
+    created?: boolean;
     data: unknown;
     error?: string;
   }>(this, "/api/v1/eliza/agents", {
@@ -1748,6 +1761,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     const data = parseDirectCloudAgentCreateData(direct.data, opts.agentName);
     return {
       success: direct.success,
+      created: direct.created,
       data: {
         agentId: data.id,
         agentName: data.agentName,
@@ -1776,6 +1790,8 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
   if (isDirectCloudBase(this)) {
     const response = await this.fetch<{
       success: boolean;
+      // See the direct-path note: `created: false` = idempotent reuse (#14487).
+      created?: boolean;
       data: unknown;
       error?: string;
     }>("/api/v1/eliza/agents", {
@@ -1797,6 +1813,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     const data = parseDirectCloudAgentCreateData(response.data, opts.agentName);
     return {
       success: response.success,
+      created: response.created,
       data: {
         agentId: data.id,
         agentName: data.agentName,
@@ -3231,7 +3248,13 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     agentName: created.data.agentName || name,
     apiBase,
     bridgeUrl: detailAgent?.bridge_url ?? null,
-    created: true,
+    // Report what the backend ACTUALLY did, not what we asked for. When the org
+    // is at its per-org cap (#11023) the create POST returns 200 `created:
+    // false` (the reuse guard handed back the existing agent), and the caller's
+    // "created a new agent" affordance must not lie about it (#14487). Only an
+    // explicit `false` demotes to reuse; an absent flag (older worker) stays
+    // `true` so the pre-existing create UX is unchanged.
+    created: created.created !== false,
   };
 };
 

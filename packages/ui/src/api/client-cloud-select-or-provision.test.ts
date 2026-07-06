@@ -182,6 +182,78 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.agentId).toBe("agent-forced-new");
   });
 
+  it("reports created:false when the backend reused an existing agent despite forceCreate (org at per-org cap #11023) so the UI cannot claim a fresh agent (#14487)", async () => {
+    const { client, createCloudCompatAgent } = fakeClient();
+    // Backend hit the per-org cap: the reuse guard handed back the existing
+    // agent and the create route returned 200 `created: false`. The client
+    // must propagate that, not hardcode `created: true`.
+    createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      created: false,
+      data: {
+        agentId: "agent-existing",
+        agentName: "Launch Verify Dedicated",
+        jobId: "",
+        status: "running",
+        nodeId: null,
+        message: "Agent created",
+      },
+    });
+    (client.getCloudCompatAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      data: makeAgent({
+        agent_id: "agent-existing",
+        agent_name: "Launch Verify Dedicated",
+        status: "running",
+        web_ui_url: "https://agent-existing.example.test",
+        webUiUrl: "https://agent-existing.example.test",
+      }),
+    });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      name: "Demo Fresh",
+      forceCreate: true,
+    });
+
+    expect(result.created).toBe(false);
+    expect(result.agentId).toBe("agent-existing");
+  });
+
+  it("keeps created:true when the create response omits the flag (older worker / non-direct path) so the pre-existing UX is unchanged", async () => {
+    const { client, createCloudCompatAgent } = fakeClient();
+    // No `created` field at all — the client must not demote a normal create.
+    createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "agent-legacy",
+        agentName: "Eliza",
+        jobId: "",
+        status: "provisioning",
+        nodeId: null,
+        message: "",
+      },
+    });
+    (client.getCloudCompatAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      data: makeAgent({
+        agent_id: "agent-legacy",
+        status: "provisioning",
+        web_ui_url: "https://agent-legacy.example.test",
+        webUiUrl: "https://agent-legacy.example.test",
+      }),
+    });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      name: "Eliza",
+      forceCreate: true,
+    });
+
+    expect(result.created).toBe(true);
+    expect(result.agentId).toBe("agent-legacy");
+  });
+
   // First-run handoff: a freshly-created dedicated agent whose container is still
   // provisioning must start on the SHARED REST adapter base (the always-on
   // in-Worker runtime serves the first turn instantly) — NOT on the dedicated
