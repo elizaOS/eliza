@@ -16,7 +16,7 @@
  *   --skip-viewer             Skip generating the viewer index
  *   --review                  Generate evidence/index.html for manual review
  *   --open-review             Open the generated evidence review dashboard
- *   --review-ocr=auto|on|off  OCR mode for --review. Default: off
+ *   --review-ocr=on           OCR mode for --review. Packaged OCR is required.
  */
 
 import { spawnSync } from "node:child_process";
@@ -34,35 +34,61 @@ const SCRIPTS_DIR = __dirname;
 const PACKAGES = UI_E2E_SUITES;
 
 // ─── CLI argument parsing ────────────────────────────────────────────────────
-const args = process.argv.slice(2);
-const flagMap = new Map();
-for (const arg of args) {
-  const [key, val] = arg.replace(/^--/, "").split("=");
-  flagMap.set(key, val ?? true);
+export function parseRunAllArgs(argv) {
+  const flagMap = new Map();
+  for (const arg of argv) {
+    const [key, val] = arg.replace(/^--/, "").split("=");
+    flagMap.set(key, val ?? true);
+  }
+
+  const reviewOcr = flagMap.has("review-ocr")
+    ? String(flagMap.get("review-ocr"))
+    : "on";
+  if (reviewOcr !== "on") {
+    throw new Error(
+      "--review-ocr must be on; OCR is required for evidence review and uses the packaged tesseract.js dependency",
+    );
+  }
+
+  return {
+    onlyPackages: flagMap.has("packages")
+      ? String(flagMap.get("packages"))
+          .split(",")
+          .map((s) => s.trim())
+      : null,
+    skipTests:
+      flagMap.get("skip-tests") === true ||
+      flagMap.get("skip-tests") === "true",
+    skipSheets:
+      flagMap.get("skip-sheets") === true ||
+      flagMap.get("skip-sheets") === "true",
+    skipViewer:
+      flagMap.get("skip-viewer") === true ||
+      flagMap.get("skip-viewer") === "true",
+    review:
+      flagMap.get("review") === true ||
+      flagMap.get("review") === "true" ||
+      flagMap.get("open-review") === true ||
+      flagMap.get("open-review") === "true",
+    openReview:
+      flagMap.get("open-review") === true ||
+      flagMap.get("open-review") === "true",
+    reviewOcr,
+    requireEvidence: resolveRequireEvidence(argv),
+  };
 }
 
-const onlyPackages = flagMap.has("packages")
-  ? String(flagMap.get("packages"))
-      .split(",")
-      .map((s) => s.trim())
-  : null;
-
-const skipTests =
-  flagMap.get("skip-tests") === true || flagMap.get("skip-tests") === "true";
-const skipSheets =
-  flagMap.get("skip-sheets") === true || flagMap.get("skip-sheets") === "true";
-const skipViewer =
-  flagMap.get("skip-viewer") === true || flagMap.get("skip-viewer") === "true";
-const review =
-  flagMap.get("review") === true ||
-  flagMap.get("review") === "true" ||
-  flagMap.get("open-review") === true ||
-  flagMap.get("open-review") === "true";
-const openReview =
-  flagMap.get("open-review") === true || flagMap.get("open-review") === "true";
-const reviewOcr = flagMap.has("review-ocr")
-  ? String(flagMap.get("review-ocr"))
-  : "off";
+const args = process.argv.slice(2);
+const {
+  onlyPackages,
+  skipTests,
+  skipSheets,
+  skipViewer,
+  review,
+  openReview,
+  reviewOcr,
+  requireEvidence,
+} = parseRunAllArgs(args);
 
 // When evidence is required (explicit --require-evidence, or auto-on under CI),
 // a suite that soft-skips (SKIP_EXIT_CODE=77, missing dir/script/package.json,
@@ -71,8 +97,6 @@ const reviewOcr = flagMap.has("review-ocr")
 // a headless runner with nothing captured (#13624 "green-with-nothing"). We
 // hand argv explicitly (stripping the `=value` join key parsing above only
 // affects flagMap; resolveRequireEvidence re-scans raw argv).
-const requireEvidence = resolveRequireEvidence(args);
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function banner(text) {

@@ -25,6 +25,12 @@ export const SURFACE_ARTIFACT_ROW_IDS = [
   "after-screenshots",
   "walkthrough-video",
 ];
+export const SURFACE_OCR_EVIDENCE_ROW = {
+  id: "ocr-review",
+  label: "OCR visual text review",
+};
+const OCR_EVIDENCE_RE =
+  /\bOCR\b|ocr-triage|mvp:visual-verify|audit:app:verify|tesseract|text readout/i;
 
 const MARKER_RE = /<!--\s*evidence-row:([a-z0-9-]+)\s*-->/gi;
 const RETIRED_REPO_EVIDENCE_PATH = [
@@ -51,6 +57,15 @@ export function parseLabels(value) {
 export function requiresSurfaceArtifacts(labels) {
   const labelSet = new Set(parseLabels(labels));
   return SURFACE_EVIDENCE_LABELS.some((label) => labelSet.has(label));
+}
+
+export function hasOcrEvidenceReference(rows) {
+  for (const rowText of rows.values()) {
+    if (OCR_EVIDENCE_RE.test(rowText) && hasArtifactReference(rowText)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function hasNaWithReason(text) {
@@ -182,6 +197,10 @@ export function evaluatePrEvidence(
         : "blank",
     };
   });
+  if (surfaceArtifactsRequired && !hasOcrEvidenceReference(rows)) {
+    findings.push({ ...SURFACE_OCR_EVIDENCE_ROW, status: "ocr-required" });
+  }
+
   return {
     ok: findings.every((finding) => finding.status === "ok"),
     findings,
@@ -224,7 +243,7 @@ function usage() {
 Options:
   --body-file <path>  Read the PR body from a file (default: stdin).
   --labels <labels>   Comma-separated PR labels; ui/frontend/native require
-                      concrete screenshot/video artifacts.
+                      concrete screenshot/video artifacts and linked OCR proof.
   --changed-files-file <path>
                       Reject committed files under retired repo evidence paths.
   --json              Print machine-readable findings JSON.
@@ -247,7 +266,7 @@ function buildFixtureBody(overrides = {}) {
     "llm-trajectory":
       "- [ ] Real-LLM trajectory: [report](https://example.com/report.json)",
     "domain-artifacts":
-      "- [ ] Domain artifacts `N/A - no domain artifacts produced`.",
+      "- [ ] Domain artifacts: OCR report https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000007",
   };
   const merged = { ...defaults, ...overrides };
   return REQUIRED_EVIDENCE_ROWS.map(
@@ -315,6 +334,10 @@ function runSelfTest() {
       failures.push(
         "ui-labeled screenshot/video rows should require artifacts",
       );
+    }
+    const ocr = findings.find((finding) => finding.id === "ocr-review");
+    if (ocr?.status !== "ocr-required") {
+      failures.push("ui-labeled evidence should require OCR proof");
     }
   }
 
@@ -418,6 +441,7 @@ function main() {
       `\nEvidence gate FAILED: ${bad.length} row(s) blank or missing, ${retiredEvidenceFiles.length} retired repo evidence file(s) changed. ` +
         "Attach the artifact inline (GitHub attachment URL) or write `N/A - <reason>` on each row. " +
         "For ui/frontend/native PRs, before/after screenshots and walkthrough video require concrete inline artifact links. " +
+        "Surface PRs also require linked OCR evidence from the visual review/audit. " +
         "Retired repo-local evidence paths do not count as evidence and must not be committed.",
     );
     process.exit(1);

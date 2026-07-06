@@ -16,6 +16,7 @@ import {
   findRetiredRepoEvidenceFiles,
   hasArtifactReference,
   hasNaWithReason,
+  hasOcrEvidenceReference,
   isChecked,
   isRowSatisfied,
   isRowSatisfiedForContext,
@@ -46,7 +47,7 @@ function buildBody(overrides = {}) {
     "llm-trajectory":
       "- [ ] Real-LLM trajectory: [report](https://example.com/report.json)",
     "domain-artifacts":
-      "- [ ] Domain artifacts `N/A - no domain artifacts produced`.",
+      "- [ ] Domain artifacts: OCR report https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000007",
   };
   const merged = { ...defaults, ...overrides };
   return REQUIRED_EVIDENCE_ROWS.map(
@@ -127,9 +128,13 @@ describe("check-pr-evidence parser", () => {
         "artifact-required",
       );
     }
+    assert.equal(
+      findings.find((finding) => finding.id === "ocr-review").status,
+      "ocr-required",
+    );
   });
 
-  it("passes UI-labeled PRs when screenshot/video rows have concrete artifacts", () => {
+  it("passes UI-labeled PRs when screenshot/video rows and OCR proof have concrete artifacts", () => {
     const { ok, findings } = evaluatePrEvidence(
       buildBody({
         "before-screenshots":
@@ -138,12 +143,36 @@ describe("check-pr-evidence parser", () => {
           "- [ ] After screenshots: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000003",
         "walkthrough-video":
           "- [ ] Walkthrough video: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000004",
+        "domain-artifacts":
+          "- [ ] OCR text readout: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000008",
       }),
       REQUIRED_EVIDENCE_ROWS,
       { labels: "frontend" },
     );
     assert.equal(ok, true);
     assert.ok(findings.every((finding) => finding.status === "ok"));
+  });
+
+  it("fails UI-labeled PRs when screenshot/video artifacts omit OCR proof", () => {
+    const { ok, findings } = evaluatePrEvidence(
+      buildBody({
+        "before-screenshots":
+          "- [ ] Before screenshots: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000002",
+        "after-screenshots":
+          "- [ ] After screenshots: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000003",
+        "walkthrough-video":
+          "- [ ] Walkthrough video: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000004",
+        "domain-artifacts":
+          "- [ ] Domain artifacts `N/A - no domain artifacts produced`.",
+      }),
+      REQUIRED_EVIDENCE_ROWS,
+      { labels: "ui" },
+    );
+    assert.equal(ok, false);
+    assert.equal(
+      findings.find((finding) => finding.id === "ocr-review").status,
+      "ocr-required",
+    );
   });
 
   it("fails on a bare `N/A` with no reason", () => {
@@ -207,6 +236,22 @@ describe("check-pr-evidence row primitives", () => {
       true,
     );
     assert.equal(hasArtifactReference("just words, no artifact"), false);
+  });
+
+  it("detects linked OCR evidence without accepting keyword-only prose", () => {
+    const rows = new Map([
+      [
+        "domain-artifacts",
+        "- [ ] OCR report: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000009",
+      ],
+    ]);
+    assert.equal(hasOcrEvidenceReference(rows), true);
+    assert.equal(
+      hasOcrEvidenceReference(
+        new Map([["domain-artifacts", "- [ ] OCR report was reviewed"]]),
+      ),
+      false,
+    );
   });
 
   it("rejects retired repo-local evidence paths", () => {

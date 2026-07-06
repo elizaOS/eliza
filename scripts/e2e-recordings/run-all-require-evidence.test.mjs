@@ -3,7 +3,7 @@
 // --require-evidence (auto-on under CI) so a headless runner that captured zero
 // artifacts fails the run, while preserving the soft-skip behavior otherwise.
 import { describe, expect, it } from "vitest";
-import { classifyRunResults } from "./run-all.mjs";
+import { classifyRunResults, parseRunAllArgs } from "./run-all.mjs";
 
 const passedSuite = { name: "app", passed: true, skipped: false, exitCode: 0 };
 const failedSuite = {
@@ -21,6 +21,19 @@ const skippedSuite = {
 };
 
 describe("classifyRunResults require-evidence contract (#13624)", () => {
+  it("requires OCR for generated evidence review dashboards", () => {
+    expect(parseRunAllArgs(["--review"]).reviewOcr).toBe("on");
+    expect(parseRunAllArgs(["--review", "--review-ocr=on"]).reviewOcr).toBe(
+      "on",
+    );
+    expect(() => parseRunAllArgs(["--review", "--review-ocr=off"])).toThrow(
+      /--review-ocr must be on/,
+    );
+    expect(() => parseRunAllArgs(["--review", "--review-ocr=auto"])).toThrow(
+      /--review-ocr must be on/,
+    );
+  });
+
   it("without require-evidence: a skip stays a soft skip and does not fail the run", () => {
     const c = classifyRunResults([passedSuite, skippedSuite], false);
     expect(c.passed.map((r) => r.name)).toEqual(["app"]);
