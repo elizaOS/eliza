@@ -63,10 +63,7 @@ process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING ||= "1";
 import * as nodeFs from "node:fs";
 import nodePath from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-	androidAliasSibling,
-	installMobileFsShim,
-} from "../shared/fs-shim.ts";
+import { androidAliasSibling, installMobileFsShim } from "../shared/fs-shim.ts";
 import {
 	createStdioBridge,
 	type StdioBridgeResponseFrame,
