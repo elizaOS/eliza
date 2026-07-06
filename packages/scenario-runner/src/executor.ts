@@ -117,6 +117,13 @@ function isSynthesizedReplyAction(
   return action.actionName === "REPLY" && data?.source === "synthesized-reply";
 }
 
+function isGenericRuntimeFailureReply(responseText: unknown): boolean {
+  return (
+    typeof responseText === "string" &&
+    responseText.trim() === "Something went wrong on my end. Please try again."
+  );
+}
+
 function stringifyForAssertion(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -1815,6 +1822,12 @@ async function runTurnAssertions(
   const failures: string[] = [];
   let judgeScore: number | undefined;
   const kind = typeof turn.kind === "string" ? turn.kind : "message";
+
+  if (isGenericRuntimeFailureReply(execution.responseText)) {
+    failures.push(
+      "runtimeFailureReply: model/runtime failure produced the generic apology; this cannot satisfy scenario evidence",
+    );
+  }
 
   if (typeof turn.assertResponse === "function") {
     const result = turnUsesStatusResponse(kind)

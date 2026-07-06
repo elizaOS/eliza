@@ -1102,6 +1102,50 @@ describe("scenario executor action turns", () => {
     ]);
   });
 
+  it("fails turns that only receive the generic runtime failure reply", async () => {
+    const runtime = {
+      ...createRuntime([]),
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback({
+            text: "Something went wrong on my end. Please try again.",
+          });
+          return {};
+        }),
+      },
+    } as unknown as AgentRuntime;
+
+    const report = await runScenario(
+      {
+        id: "generic-failure-reply",
+        title: "Generic failure reply",
+        domain: "executor",
+        turns: [
+          {
+            kind: "message",
+            name: "model fails",
+            text: "answer the user",
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.turns[0]?.actionsCalled[0]).toMatchObject({
+      actionName: "REPLY",
+      result: { data: { source: "synthesized-reply" } },
+    });
+    expect(report.turns[0]?.failedAssertions).toEqual([
+      "runtimeFailureReply: model/runtime failure produced the generic apology; this cannot satisfy scenario evidence",
+    ]);
+  });
+
   it("matches expectedActions against the action selected during the turn", async () => {
     const runtime = createRuntime(
       [
