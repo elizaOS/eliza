@@ -3833,29 +3833,42 @@ export function ContinuousChatOverlay({
       // chat low without touching that zone.
       style={{
         zIndex: Z_SHELL_OVERLAY,
-        bottom: effectiveKeyboardInset,
+        // RECLAIM THE DEAD BAND UNDER THE HOME COMPOSER (device r36): at rest the
+        // overlay is anchored `bottom: 0`, but on the installed iOS Safari
+        // standalone PWA a `position: fixed` descendant of the `position: fixed`
+        // body takes the LAYOUT (small, ~873px) viewport as its containing block
+        // — ~59px short of the physical bottom (100lvh ~932px) — so `bottom: 0`
+        // floated the composer ~59px UP over a dead band down to the home
+        // indicator. Drop it by the lvh−dvh collapse delta so it seats at the
+        // TRUE physical bottom. `max(0px, 100lvh - 100dvh)` is 0 on every
+        // viewport where the two agree (desktop, Android, non-collapsed), so
+        // this is a no-op except on the exact iOS-standalone geometry that
+        // collapses. When the keyboard is up the visual viewport shrinks and
+        // `effectiveKeyboardInset` drives the lift instead — no delta applied —
+        // so the keyboard-lift math (contract-tested) is untouched.
+        bottom: keyboardLiftActive
+          ? effectiveKeyboardInset
+          : "calc(-1 * max(0px, 100lvh - 100dvh))",
         // Full-bleed fills the screen edge-to-edge: NO overlay bottom padding,
         // so the glass panel reaches the true bottom (no orange gap). The
         // gesture-zone clearance moves INSIDE the composer row (below) so the
         // input still sits above the home-gesture bar. Non-full-bleed anchors
-        // the composer LOW, lock-screen style. The OS reports a ~34px bottom
-        // safe-area on a home-indicator phone, but the indicator itself is a
-        // thin (~5px) bar whose TOP edge sits only ~13px off the true bottom
-        // (5px bar + ~8px own margin) — clearing the WHOLE safe-area floats
-        // the pill ~34px up over a dead band, and 60% (device round: still
-        // reads too high) leaves it hovering ~20px up. So clear exactly what
-        // the indicator occupies: 40% of the reported inset (34px * 0.4 ≈
-        // 13.6px — the pill seats right on the indicator's top edge without
-        // ever overlapping the bar or the OS gesture zone), with a 0.5rem
-        // floor so a device with NO inset still keeps a hair of breathing
-        // room. The same factor holds for Android gesture pills (their inset
-        // reports similarly padded). Everything below the composer is the
-        // full-bleed wallpaper / app floor — no cosmetic strip repaints it.
+        // the composer LOW, lock-screen style, CLEARING the home indicator: now
+        // that the overlay itself seats at the TRUE physical bottom (the `bottom`
+        // reclaim above), the resting padding must clear the WHOLE home-indicator
+        // safe area (env(safe-area-inset-bottom) ~34px) plus a small gap, so the
+        // composer rests ~42–46px off the physical edge — above the indicator,
+        // not floating in a dead band above it. (Previously this multiplied the
+        // inset by 0.4 to sit the pill ~13px up; that tuning was compensating
+        // for the collapsed-ICB float — with the overlay now correctly at the
+        // true bottom, the full inset + gap is the right, native-app clearance.)
+        // The same holds for Android gesture pills. Everything below the composer
+        // is the full-bleed wallpaper / app floor — no cosmetic strip repaints it.
         paddingBottom: fullBleed
           ? 0
           : keyboardLiftActive
             ? "0.75rem"
-            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) * 0.4, 0.5rem))",
+            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.625rem)",
       }}
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}

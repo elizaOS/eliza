@@ -403,15 +403,15 @@ describe("App shell reclaim contract — the shell column carries the reclaim ho
 });
 
 describe("Keyboard-lift geometry contract — reclaim does NOT shift the composer lift", () => {
-  // RECLAIM THE BOTTOM STRIP (#14411) regression guard: the composer overlay is
-  // a `position: fixed` element anchored to the fixed-body ICB (already pinned
-  // to 100lvh by the #14319 geometry), NOT to #root. Its keyboard lift comes
-  // from `bottom: effectiveKeyboardInset`, a VISUAL-VIEWPORT delta, and its
-  // panel height is bounded by `viewportH` (the visual viewport). None of these
-  // read #root's height, so lifting #root from 100dvh to 100lvh cannot change
-  // where the composer rests or how far it lifts above the keyboard — the
-  // lvh–dvh (~59px) delta never enters the lift math. Pin those invariants so a
-  // future refactor that couples the lift to #root/dvh trips this test.
+  // RECLAIM THE BOTTOM STRIP (#14411/#r36) regression guard: the composer overlay
+  // is a `position: fixed` descendant of the fixed body. In an installed iOS PWA,
+  // `bottom: 0` for that fixed descendant anchors to the layout/small viewport
+  // (~873px), while the true physical bottom is the large viewport (~932px). At
+  // REST the overlay must compensate by the lvh−dvh delta so the composer sits
+  // above the home indicator instead of floating over a dead band. With the
+  // KEYBOARD up, the existing `effectiveKeyboardInset` visual-viewport delta is
+  // still the sole lift path: no lvh compensation is applied during keyboard
+  // lift, and panel height remains bounded by `viewportH`.
   const overlaySrc = readFileSync(
     resolve(process.cwd(), "src/components/shell/ContinuousChatOverlay.tsx"),
     "utf8",
@@ -421,14 +421,25 @@ describe("Keyboard-lift geometry contract — reclaim does NOT shift the compose
     "utf8",
   );
 
-  it("lifts the composer by effectiveKeyboardInset (visual-viewport delta), not a #root/lvh measure", () => {
-    expect(overlaySrc).toContain("bottom: effectiveKeyboardInset");
+  it("reclaims the resting composer by the standalone lvh−dvh bottom delta", () => {
+    expect(overlaySrc).toContain('"calc(-1 * max(0px, 100lvh - 100dvh))"');
+    expect(overlaySrc).toContain("keyboardLiftActive");
+    // Resting clearance should be the full safe-area/gesture inset plus a small
+    // visual gap, so on a 34px home-indicator device the composer rests ~44px
+    // from the physical edge (34px + 0.625rem), not ~90px up.
+    expect(overlaySrc).toContain(
+      "max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.625rem",
+    );
+  });
+
+  it("lifts the composer by effectiveKeyboardInset (visual-viewport delta) when the keyboard is active", () => {
+    expect(overlaySrc).toContain("? effectiveKeyboardInset");
+    expect(overlaySrc).toContain(': "calc(-1 * max(0px, 100lvh - 100dvh))"');
     // effectiveKeyboardInset is derived from the visual viewport + native
-    // keyboard plugin, never from 100lvh / #root height.
+    // keyboard plugin.
     expect(overlaySrc).toContain(
       "effectiveKeyboardInset = Math.max(keyboardInset, nativeLift)",
     );
-    expect(overlaySrc).not.toContain("100lvh");
   });
 
   it("bounds the panel height by the visual viewport, not #root/lvh", () => {
