@@ -46,9 +46,8 @@ import { WalletBalanceWidget } from "../components/chat/widgets/wallet-balance";
 
 registerBuiltinWidgets(AGENT_ORCHESTRATOR_PLUGIN_WIDGETS);
 registerBuiltinWidgets([BROWSER_STATUS_WIDGET, MUSIC_PLAYER_WIDGET]);
-// Register the todo widget's component so it can be declared on the home slot
-// (#9143 per-plugin breadth — the todo plugin's frontpage opt-in). Idempotent
-// with the plugin's own runtime registration.
+// Register the todo widget's component so it can be declared on the curated
+// home slot. Idempotent with the plugin's own runtime registration.
 registerBuiltinWidgets(TODO_PLUGIN_WIDGETS);
 registerWidgetComponent(
   "music-library",
@@ -86,11 +85,11 @@ registerWidgetComponent(
   FTU_WELCOME_HOME_WIDGET.Component,
 );
 
-// Per-plugin frontpage widgets (#9143): each surfaces a compact, attention-
-// ranked slice of its plugin's own state on the home grid (a step up from the
-// generic default-widget sinks), self-hides when empty, and self-publishes a
-// home-attention signal so it floats up on its own data urgency. They resolve
-// only when the plugin is enabled+active in the runtime snapshot.
+// Per-plugin frontpage widgets: each surfaces a compact, attention-ranked slice
+// of its plugin's own state on the home grid, self-hides when empty, and
+// self-publishes a home-attention signal so it floats up on its own data
+// urgency. They resolve only when the plugin is enabled+active in the runtime
+// snapshot.
 for (const w of [
   CALENDAR_HOME_WIDGET,
   GOALS_HOME_WIDGET,
@@ -176,7 +175,7 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     defaultEnabled: true,
     visibility: "fallback",
   },
-  // Todos — the todo plugin's frontpage widget (#9143 per-plugin breadth).
+  // Todos — the todo plugin's curated LifeOps frontpage widget.
   {
     id: "todo.items",
     pluginId: "todo",
@@ -186,7 +185,7 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: 80,
     defaultEnabled: true,
     // Renders from the workbench store, so it shows even before the runtime
-    // plugin snapshot lists the plugin (#9143). Declaration-driven `fallback`
+    // plugin snapshot lists the plugin. Declaration-driven `fallback`
     // replaces the hardcoded `"todo"` allow-set entry that used to drift out of
     // sync with the `todos` app-manifest plugin id (#12090 item 9).
     visibility: "fallback",

@@ -63,13 +63,11 @@ scope here. Composition, top to bottom:
 | `local-inference.model-download` | `model-download.tsx` | recommended local-model download progress (LOCAL mode); hides when ready | hub stream + 400 ms debounce |
 | `cloud.agent-provisioning` | `agent-provisioning.tsx` | dedicated cloud-agent boot progress (CLOUD mode); hides once attached | status poll |
 
-**Render-nothing participation records:** 22 legacy default-sink opt-ins
-(`packages/ui/src/widgets/default-home-widget-sink-optins.ts:60-224` — birdclaw, blocker,
-contacts, hyperliquid, polymarket, shopify, training, …). The home ranking branch filters
-out every `defaultWidgetSink` entry (`WidgetHost.tsx:295-297`), so **none of these render
-on the home** — they exist solely to satisfy the per-plugin breadth gate
-`packages/ui/src/widgets/widget-coverage.test.ts:117` (#9143: every app-manifest plugin
-must be "frontpage-aware").
+**No render-nothing participation records:** the legacy default-sink opt-ins
+were deleted in #14349. Frontpage presence is now opt-in and curated: a
+declaration resolves only when this build can render a registered component or a
+`uiSpec`. `widget-coverage.test.ts` now guards those renderability and duplicate
+ID invariants instead of enforcing a per-plugin breadth mandate.
 
 **Gating that already limits the set:** widgets for LifeOps plugins only resolve on hosts
 with full app-shell routes (`FULL_APP_SHELL_WIDGET_PLUGIN_IDS`, `WidgetHost.tsx:129-139`);
@@ -93,10 +91,9 @@ plugin-snapshot enable/disable is honored per declaration `visibility`
 - **Chat is primary; the home is a glanceable field behind the floating chat.** Any widget
   is one tap from its full view; nothing on the home may be the only path to a feature
   (nothing currently is — every removal candidate has a routed view).
-- **Removals must respect the breadth gate** (`widget-coverage.test.ts`): a plugin with an
-  `elizaos.app` manifest must resolve a rendered home widget OR declare a
-  notifications/messages sink. Converting a removed bespoke card into a sink row (pure
-  data, renders nothing) keeps the gate green with a 5-line diff per plugin.
+- **Removals do not need sink rows.** `widget-coverage.test.ts` now checks that declared
+  widgets resolve to a renderable component or `uiSpec`, and that slot ids are unique. A
+  plugin with an `elizaos.app` manifest is not required to be frontpage-aware.
 - **Children/price-safety:** the wallet widget is price-only by prior decision (#10706 —
   never amounts or holding values), which is exactly right for shared/kid devices. Keep
   that invariant in the respec.
@@ -121,11 +118,9 @@ at doctrine-sparse (time/weather + notifications + wallet). Removing them would 
 product, not the clutter. The e2e issue adds proof that they actually self-hide.
 
 **Q3. Does removing home widgets break `widget-coverage.test.ts`?**
-A: Yes, for removed plugins that carry an `elizaos.app` manifest (verified: feed, finances,
-personal-assistant, goals do; health does not). Minimal fix inside the removal PR: replace
-each removed bespoke declaration with a notifications-sink opt-in row (renders nothing).
-The breadth mandate itself is a pre-MVP doctrine ("every plugin must be frontpage-aware")
-that now points the wrong way; retiring it is filed separately (P2).
+A: No, as of #14349. The pre-MVP doctrine ("every plugin must be frontpage-aware") pointed
+the wrong way for the sparse MVP home, so the gate now checks only declared-widget
+renderability and duplicate ids.
 
 **Q4. Should the notification center become a ranked widget?**
 A: No. It is the app's single notification surface and is pinned by design; a registry
@@ -165,10 +160,10 @@ wherever the component remains mounted (P1).
    "healthy quiet account" fixture asserting exactly time/weather + wallet render (+
    notification center only when notifications exist), and that each keeper appears when
    its data demands attention and disappears after.
-6. **P2 — Retire the frontpage breadth mandate (#9143)**: delete
-   `default-home-widget-sink-optins.ts` and relax `widget-coverage.test.ts` from
+6. **Done in #14349 — Retire the frontpage breadth mandate (#9143)**: deleted
+   `default-home-widget-sink-optins.ts` and relaxed `widget-coverage.test.ts` from
    "every app plugin must be frontpage-aware" to "declared widgets must resolve", removing
-   ~300 lines of participation-record machinery that renders nothing.
+   participation-record machinery that rendered nothing.
 
 ## Out of scope (explicit non-goals for MVP)
 
@@ -187,4 +182,4 @@ wherever the component remains mounted (P1).
 3. `[launcher] Weather + clock correctness: locale units, hour cycle, stale revalidation, actionable unavailable state` — P1
 4. `[launcher] Gate AppRunsWidget 5s poll on document visibility` — P1
 5. `[launcher] Home resting-state e2e: prove the sparse home and keeper self-hide behavior` — P1
-6. `[launcher] Retire the frontpage widget breadth mandate (#9143) and delete the sink participation table` — P2
+6. `[launcher] Retire the frontpage widget breadth mandate (#9143) and delete the sink participation table` — done in #14349
