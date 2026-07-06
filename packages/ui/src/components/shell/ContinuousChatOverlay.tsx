@@ -7,11 +7,11 @@ import {
   ArrowDown,
   FileText,
   Film,
+  Home,
   LayoutGrid,
   Loader2,
   Mic,
   Music,
-  RotateCcw,
   Search,
   SendHorizontal,
 } from "lucide-react";
@@ -890,7 +890,6 @@ export function ContinuousChatOverlay({
     unlockAudio,
     openSettings,
     navigateHome,
-    clearConversation,
     currentTab,
     stop,
     speak,
@@ -4087,10 +4086,9 @@ export function ContinuousChatOverlay({
             {/* Sheet header — shown at the HALF detent and up (not just FULL).
               One infinite thread (#13531): no maximize/minimize (that's a
               vertical pull now) and no clear/new-chat (the thread never resets).
-              Right: one Launcher/Home launcher. Settings lives inside the
-              Launcher grid, so the chat header stops acting like a second app
-              nav bar. The left slot is intentionally empty so the launcher
-              stays anchored right. */}
+              Left: search only. Right: one Home button back to the launcher.
+              Settings lives inside the Launcher grid, so the chat header stops
+              acting like a second app nav bar. */}
             {threadPresented ? (
               <motion.div
                 // Mounted while the sheet is open, or while an upward drag is
@@ -4122,13 +4120,11 @@ export function ContinuousChatOverlay({
                   "relative z-20 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
                 )}
               >
-                {/* Left cluster (#14279): a quiet search entry point + a
-                    non-destructive “fresh chat” control. Search opens the shared
-                    MessageSearchPanel over the transcript; clear starts a new
-                    greeted thread WITHOUT discarding the current one (it stays
-                    reachable — selecting it re-loads its history, and scroll-up
-                    pages older turns). Both are locked while onboarding pins the
-                    sheet so the chat stays front and center. */}
+                {/* Left cluster: search is the ONLY left control. The thread is
+                    one infinite conversation — there is deliberately no
+                    new-chat/refresh button (scroll-up pages older turns, search
+                    jumps anywhere). Locked while onboarding pins the sheet so
+                    the chat stays front and center. */}
                 <div className="flex items-center gap-1.5">
                   <HeaderButton
                     icon={Search}
@@ -4137,16 +4133,6 @@ export function ContinuousChatOverlay({
                     disabled={firstRunOpen}
                     onClick={() => (searchOpen ? closeSearch() : openSearch())}
                     testId="chat-full-search"
-                  />
-                  <HeaderButton
-                    icon={RotateCcw}
-                    label="new chat"
-                    disabled={firstRunOpen}
-                    onClick={() => {
-                      closeSearch();
-                      clearConversation?.();
-                    }}
-                    testId="chat-full-clear"
                   />
                 </div>
                 {transcriptionMode ? (
@@ -4159,8 +4145,8 @@ export function ContinuousChatOverlay({
                 ) : null}
                 <div className="flex items-center gap-1.5">
                   <HeaderButton
-                    icon={LayoutGrid}
-                    label="launcher"
+                    icon={Home}
+                    label="home"
                     // A close-and-navigate control — locked while onboarding
                     // pins the sheet (the chat must stay front and center).
                     disabled={firstRunOpen}

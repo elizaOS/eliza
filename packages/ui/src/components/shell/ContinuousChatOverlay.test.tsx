@@ -2590,15 +2590,15 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(screen.getByTestId("chat-full-launcher")).toBeTruthy();
   });
 
-  it("exposes search + new-chat header controls (#14279)", () => {
+  it("exposes search as the ONLY left header control (no new-chat/refresh)", () => {
     const { controller } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
     openSheet();
 
-    // Chat history UX (#14279): a quiet search entry point and a
-    // non-destructive new-chat control live in the header's left cluster.
+    // The thread is one infinite conversation: search is the sole left
+    // control; there is deliberately no new-chat/clear/refresh button.
     expect(screen.getByTestId("chat-full-search")).toBeTruthy();
-    expect(screen.getByTestId("chat-full-clear")).toBeTruthy();
+    expect(screen.queryByTestId("chat-full-clear")).toBeNull();
   });
 
   it("opens the message-search panel from the header search control (#14279)", () => {
@@ -2724,15 +2724,15 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(screen.queryByTestId("message-search-empty")).toBeNull();
   });
 
-  it("starts a fresh thread from the header new-chat control (#14279)", () => {
+  it("never invokes clearConversation from the header (no new-chat control)", () => {
     const { controller } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
     openSheet();
 
-    fireEvent.click(screen.getByTestId("chat-full-clear"));
-    // Non-destructive: delegates to the controller's clearConversation, which
-    // starts a fresh greeted thread while the prior one stays reachable.
-    expect(controller.clearConversation).toHaveBeenCalledTimes(1);
+    // The new-chat header control was removed: nothing in the header may
+    // reset the thread.
+    expect(screen.queryByTestId("chat-full-clear")).toBeNull();
+    expect(controller.clearConversation).not.toHaveBeenCalled();
   });
 
   it("renders the infinite-scroll top sentinel above a populated flat thread (#14279)", () => {

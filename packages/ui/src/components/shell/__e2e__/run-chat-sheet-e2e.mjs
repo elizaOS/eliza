@@ -319,14 +319,14 @@ async function runDragSuite(p, pointer, tag) {
     grabberBarOpacity === "1",
     `[${pointer}] grabber bar paints (inner-span opacity "${grabberBarOpacity}" === "1", not opacity-0) (#9142)`,
   );
-  // The sheet header shows at HALF and up now, not only at FULL. It carries the
-  // search + new-chat (clear) buttons and the launcher; maximize stays a
-  // gesture/state contract (over-pull), not a header button. #14300 restored the
-  // new-chat control, so chat-full-clear is present here.
+  // The sheet header shows at HALF and up now, not only at FULL. It carries
+  // search (left) + the home launcher (right); maximize stays a gesture/state
+  // contract (over-pull), not a header button, and there is no new-chat/clear
+  // control (the thread is one infinite conversation).
   assert(
     (await p.getByTestId("chat-full-launcher").count()) === 1 &&
       (await p.getByTestId("chat-full-maximize").count()) === 0 &&
-      (await p.getByTestId("chat-full-clear").count()) === 1,
+      (await p.getByTestId("chat-full-clear").count()) === 0,
     `[${pointer}] HALF detent shows the sheet header`,
   );
 
@@ -343,14 +343,15 @@ async function runDragSuite(p, pointer, tag) {
   );
   await snap(p, `${tag}-full`);
 
-  // Header (post #13531/#9450, #14300): search + new-chat (clear) + launcher.
-  // There is no maximize/minimize header button — maximize is an over-pull
-  // gesture. The old Home/Views/Settings trio collapsed into the one launcher.
+  // Header (post #13531/#9450): search + the one home launcher. There is no
+  // maximize/minimize header button — maximize is an over-pull gesture — and
+  // no new-chat/clear control. The old Home/Views/Settings trio collapsed
+  // into the one launcher.
   assert(
     (await p.getByTestId("chat-full-launcher").count()) === 1 &&
       (await p.getByTestId("chat-full-maximize").count()) === 0 &&
-      (await p.getByTestId("chat-full-clear").count()) === 1,
-    `[${pointer}] header shows launcher + new-chat without a maximize button`,
+      (await p.getByTestId("chat-full-clear").count()) === 0,
+    `[${pointer}] header shows search + home launcher without maximize or new-chat`,
   );
   // Maximize → full-bleed (edge-to-edge): a deliberate over-pull flips
   // data-maximized and the panel reaches x=0.

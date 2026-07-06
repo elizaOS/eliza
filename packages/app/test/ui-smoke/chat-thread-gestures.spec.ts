@@ -400,16 +400,18 @@ test("Escape from maximized collapses the whole sheet (not just restore)", async
   await expectNoPageDiagnostics(page, testInfo.title);
 });
 
-test("header controls: new-chat exists, maximize is removed, and open-thread swipe does not switch", async ({
+test("header controls: search only (no new-chat), maximize is removed, and open-thread swipe does not switch", async ({
   page,
 }, testInfo) => {
   await openAppPath(page, "/chat");
   await openSheetToFull(page);
   const sheet = page.locator(SHEET);
 
-  // The new-chat control was restored after #13531; only the maximize button is
-  // genuinely removed because over-pull owns full-bleed maximize.
-  await expect(page.getByTestId("chat-full-clear")).toHaveCount(1);
+  // The header keeps search as the sole left control; new-chat/clear and
+  // maximize are both removed (over-pull owns full-bleed maximize, and the
+  // thread is one infinite conversation).
+  await expect(page.getByTestId("chat-full-search")).toHaveCount(1);
+  await expect(page.getByTestId("chat-full-clear")).toHaveCount(0);
   await expect(page.getByTestId("chat-full-maximize")).toHaveCount(0);
 
   // A horizontal drag across the OPEN thread must NOT switch conversations —
