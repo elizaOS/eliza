@@ -1,9 +1,10 @@
 /**
  * Offline unit coverage for the native `/chat/completions` `response_format`
- * gate. Cerebras-served native chat models 400 on
- * `response_format: { type: "json_schema" }`, so for those models the wire body
- * must carry `{ type: "json_object" }` instead. Every other model keeps the
- * full `json_schema` payload so structured output stays schema-constrained.
+ * gate. The Cloud gateway 400s on `response_format` for its served models —
+ * both `json_schema` and `json_object` (verified live against zai-glm-4.7 and
+ * gemma-4-31b) — so the wire body must omit `response_format` entirely and
+ * rely on the schema embedded in the prompt. Only an explicit caller-supplied
+ * `responseFormat` override still reaches the wire.
  *
  * The fetch is mocked: we capture the request body and return a canned
  * chat-completions response, asserting only the outgoing `response_format`.
@@ -85,17 +86,22 @@ describe("native /chat/completions response_format gate", () => {
     `cerebras:${DEFAULT_CEREBRAS_TEXT_MODEL}`,
     "gpt-oss-120b",
     "zai-glm-4.7",
-  ])("emits json_object for cerebras-served %s", async (modelName) => {
+    "gemma-4-31b",
+    "gpt-4o-mini",
+  ])("omits response_format for %s", async (modelName) => {
     const body = await captureBody(modelName);
-    expect(body?.response_format).toEqual({ type: "json_object" });
+    expect(body).not.toBeNull();
+    expect(body?.response_format).toBeUndefined();
   });
 
-  it("keeps json_schema for non-cerebras models", async () => {
-    const body = await captureBody("gpt-4o-mini");
-    expect(body?.response_format).toMatchObject({
-      type: "json_schema",
-      json_schema: { name: "reply_envelope" },
+  it("still honors an explicit caller responseFormat override", async () => {
+    const body = await captureBody("zai-glm-4.7", {
+      responseSchema: {
+        ...RESPONSE_SCHEMA,
+        responseFormat: { type: "json_object" },
+      },
     });
+    expect(body?.response_format).toEqual({ type: "json_object" });
   });
 });
 

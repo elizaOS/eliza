@@ -350,12 +350,9 @@ function isReasoningModel(modelName: string): boolean {
 }
 
 /**
- * True when the Cloud gateway routes this model to Cerebras. Cerebras's
- * OpenAI-compatible endpoint rejects
- * `response_format: { type: "json_schema", ... }` with a 400, so structured
- * output for these models must fall back to `{ type: "json_object" }`.
- * Mirrors plugin-openai's `isCerebrasMode` json_object scrub, detected by
- * model name here because one Cloud key serves many providers.
+ * Strips provider prefixes and variant suffixes so Cerebras-served models can
+ * be recognized by bare id (one Cloud key serves many providers, and callers
+ * pass `cerebras:...` / `openai/...` / `:suffix` forms interchangeably).
  */
 function normalizeCerebrasModelId(modelName: string): string {
   return modelName
@@ -364,15 +361,6 @@ function normalizeCerebrasModelId(modelName: string): string {
     .replace(/^cerebras[:/]/, "")
     .replace(/^openai\//, "")
     .replace(/:(?!free$).+$/, "");
-}
-
-function isCerebrasServedModel(modelName: string): boolean {
-  const id = normalizeCerebrasModelId(modelName);
-  return (
-    id === DEFAULT_CEREBRAS_TEXT_MODEL ||
-    id === "gpt-oss-120b" ||
-    id === "zai-glm-4.7"
-  );
 }
 
 function resolveCerebrasThinkingOffReasoningEffort(
@@ -585,39 +573,26 @@ export function normalizeNativeToolChoice(toolChoice: unknown): unknown {
   return toolName ? { type: "function", function: { name: toolName } } : toolChoice;
 }
 
-function buildNativeResponseFormat(responseSchema: unknown, modelName: string): unknown {
+function buildNativeResponseFormat(responseSchema: unknown, _modelName: string): unknown {
   if (!responseSchema) {
     return undefined;
   }
 
-  // Cerebras-served models 400 on `response_format: json_schema`, so emit
-  // `json_object` and rely on the schema embedded in the prompt body.
-  if (isCerebrasServedModel(modelName)) {
-    return { type: "json_object" };
-  }
-
+  // An explicit caller-supplied response format still wins.
   const schemaRecord = asRecord(responseSchema);
   if (schemaRecord.responseFormat) {
     return schemaRecord.responseFormat;
   }
 
-  const schemaOptions =
-    "schema" in schemaRecord
-      ? {
-          schema: schemaRecord.schema,
-          name: firstString(schemaRecord.name) ?? "structured_response",
-          description: firstString(schemaRecord.description),
-        }
-      : { schema: responseSchema, name: "structured_response", description: undefined };
-
-  return {
-    type: "json_schema",
-    json_schema: {
-      name: schemaOptions.name,
-      ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
-      schema: schemaOptions.schema,
-    },
-  };
+  // The Cloud's native `/chat/completions` gateway 400s on `response_format`
+  // for its served models — BOTH `json_schema` AND `json_object`, verified
+  // live against zai-glm-4.7 AND gemma-4-31b (each: with either format → 400,
+  // without → 200). The structured schema is already embedded in the prompt
+  // body and the caller repairs/validates the returned JSON, so omit
+  // `response_format` entirely; otherwise every structured-output call (the
+  // trajectory evaluator, the planner) fails with `Bad Request` and breaks
+  // every tool-using turn (web search, price lookups, sub-agent spawns).
+  return undefined;
 }
 
 function resolvePromptCacheKey(providerOptions: Record<string, unknown>): string | undefined {
