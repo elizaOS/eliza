@@ -8,7 +8,9 @@ import {
 	createUniqueUuid,
 	type IAgentRuntime,
 	type Metadata,
-	Role,
+	type RolesWorldMetadata,
+	recordOwnerGrant,
+	recordRoleGrant,
 	stringToUuid,
 } from "@elizaos/core";
 
@@ -162,29 +164,21 @@ export function buildDiscordWorldMetadata(
 	guildOwnerId: string | undefined,
 ): Metadata | undefined {
 	const ownerId = resolveElizaOwnerEntityId(runtime);
-	const roles: Record<string, Role> = {
-		[ownerId]: Role.OWNER,
-	};
-	const roleSources: Record<string, "owner" | "connector_admin"> = {
-		[ownerId]: "owner",
-	};
+	const metadata: RolesWorldMetadata = { ownership: { ownerId } };
+	recordOwnerGrant(metadata, ownerId);
 
-	// Discord guild ownership is connector provenance, not app ownership. Keep
-	// the grant auditable and let core's connector-admin whitelist decide whether
-	// it can rise above GUEST at read time.
+	// Discord guild ownership is connector provenance, not app ownership. Record
+	// it through core's canonical grant helper so the role and its source stay
+	// paired, and let the connector-admin whitelist decide at read time whether
+	// the grant can rise above GUEST.
 	if (guildOwnerId && DISCORD_SNOWFLAKE_PATTERN.test(guildOwnerId)) {
 		const guildOwnerEntityId = createUniqueUuid(runtime, guildOwnerId);
 		if (guildOwnerEntityId !== ownerId) {
-			roles[guildOwnerEntityId] = Role.ADMIN;
-			roleSources[guildOwnerEntityId] = "connector_admin";
+			recordRoleGrant(metadata, guildOwnerEntityId, "ADMIN", "connector_admin");
 		}
 	}
 
-	return {
-		ownership: { ownerId },
-		roles,
-		roleSources,
-	};
+	return metadata;
 }
 
 export function buildDiscordEntityMetadata(
