@@ -15,6 +15,10 @@ import {
 } from "../message-checklist-parser";
 import { type ChoiceMatch, findChoiceRegions } from "../message-choice-parser";
 import {
+  type ConnectorMatch,
+  findConnectorRegions,
+} from "../message-connector-parser";
+import {
   type FollowupsMatch,
   findFollowupsRegions,
 } from "../message-followups-parser";
@@ -24,6 +28,7 @@ import {
   type WorkflowMatch,
 } from "../message-workflow-parser";
 import { ChoiceWidget } from "./ChoiceWidget";
+import { ConnectorSetupWidget } from "./connector-setup-widget";
 import { FollowupsWidget } from "./followups";
 import { FormRequest } from "./form-request";
 import { registerInlineWidget } from "./inline-registry";
@@ -76,6 +81,26 @@ registerInlineWidget<WorkflowMatch>({
   parse: (text) => findWorkflowRegions(text).map((m) => ({ ...m, data: m })),
   keyFor: (m) => `workflow:${m.workflow.id}`,
   render: (m, _ctx, key) => <WorkflowSteps key={key} workflow={m.workflow} />,
+});
+
+registerInlineWidget<ConnectorMatch>({
+  kind: "connector",
+  parse: (text) => findConnectorRegions(text).map((m) => ({ ...m, data: m })),
+  keyFor: (m) => `connector:${m.id}`,
+  // `sendAction` routes the setup request through the same action-message
+  // pipeline the connector's real setup / sensitive-request flow listens on, so
+  // no secret is ever typed into the transcript.
+  render: (m, ctx, key) => (
+    <ConnectorSetupWidget
+      key={key}
+      id={m.id}
+      name={m.name}
+      params={m.params}
+      onSetup={(connectorId) =>
+        ctx.sendAction(`connector:setup:${connectorId}`)
+      }
+    />
+  ),
 });
 
 registerInlineWidget<ChecklistMatch>({

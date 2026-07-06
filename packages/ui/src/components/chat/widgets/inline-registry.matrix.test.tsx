@@ -38,10 +38,11 @@ const BUILTIN_INLINE_KINDS = [
   "form",
   "workflow",
   "checklist",
+  "connector",
 ] as const;
 
 // A representative marker per built-in, in the exact wire format its parser
-// recognizes (see message-{choice,followups,form,workflow,checklist}-parser.ts).
+// recognizes (see message-{choice,followups,form,workflow,checklist,connector}-parser.ts).
 const SAMPLE: Record<(typeof BUILTIN_INLINE_KINDS)[number], string> = {
   choice: "[CHOICE:pick id=c1]\nyes=Yes\nno=No\n[/CHOICE]",
   followups:
@@ -52,6 +53,9 @@ const SAMPLE: Record<(typeof BUILTIN_INLINE_KINDS)[number], string> = {
     '[WORKFLOW]\n{"id":"w1","title":"Deploy","steps":[{"label":"build","status":"done"},{"label":"push","status":"running"}]}\n[/WORKFLOW]',
   checklist:
     '[CHECKLIST]\n{"title":"Todos","items":[{"content":"read","status":"completed"},{"content":"edit","status":"in_progress"}]}\n[/CHECKLIST]',
+  // CONNECTOR body is `KEY|required|isSet|label` per line.
+  connector:
+    '[CONNECTOR:discord name="Discord"]\nDISCORD_TOKEN|1|0|Bot Token\n[/CONNECTOR]',
 };
 
 const ctx: InlineWidgetContext = {

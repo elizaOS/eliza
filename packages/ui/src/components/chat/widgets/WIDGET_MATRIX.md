@@ -54,6 +54,7 @@ affordances.
 | **Form** | `[FORM]\n{json}\n[/FORM]` | any action emitting a form schema | `message-form-parser.ts` | `form-request.tsx` `FormRequest` | `submitForm` | both | wired + verified |
 | **Workflow** | `[WORKFLOW]\n{json}\n[/WORKFLOW]` | any agent emitting an ordered step pipeline (#13536) | `message-workflow-parser.ts` | `workflow-steps.tsx` `WorkflowSteps` | none (display-only; re-emit to advance) | both | wired + verified |
 | **Checklist** | `[CHECKLIST]\n{json}\n[/CHECKLIST]` | any agent emitting a standalone todo list (#13536) | `message-checklist-parser.ts` | `task-pipeline.tsx` `PlanChecklist` | none (display-only; re-emit to mutate in place) | both | wired + verified |
+| **Connector** | `[CONNECTOR:<id> name="..."]\nKEY\|req\|set\|label\n[/CONNECTOR]` | connector-setup flows emitting a param schema (#14412) | `message-connector-parser.ts` | `connector-setup-widget.tsx` `ConnectorSetupWidget` (wraps `chat-widget-shell.tsx` `ChatWidgetShell`) | `sendAction(`connector:setup:<id>`)` (routes to the sensitive-request setup flow) | both | wired |
 
 (1) The Task widget is registered by `plugin-task-coordinator` (`registerTaskWidget()`), **not** auto-loaded in `inline-builtins`. It renders on both surfaces only when the orchestrator UI is loaded, by design (`MessageContent` knows nothing about tasks).
 
@@ -149,6 +150,21 @@ them by intent, never by hunting a chrome button:
 its live WS-driven pipeline in place; the single "Open in workbench" link is the
 only navigation affordance).
 
+### Standardized collapsible shell (`ChatWidgetShell`, #14412)
+
+`chat-widget-shell.tsx` is the shared collapser widgets wrap to stop eating
+transcript space. One contract: **start expanded while the widget's job is
+incomplete; auto-collapse to a compact summary once complete/connected**; the
+user re-expands via a standardized chevron, and a manual toggle after that wins
+until `complete` transitions again. Collapsed summary rows carry
+`content-visibility:auto` so an off-screen collapsed widget skips layout/paint.
+The connector-setup widget is the reference adopter and pairs the shell with a
+**minimal + Advanced** disclosure: `connector-field-tiers.ts` marks
+required/unset params minimal (shown up front) and everything else advanced
+(behind a `Collapsible`). Widgets built on the shell are `memo`-wrapped so their
+internal state (expand/collapse, Advanced toggle) never repaints the transcript
+— locked by `connector-widget.render-count.test.tsx`.
+
 ---
 
 ## Documented divergences (intentional, not gaps)
@@ -177,6 +193,7 @@ only navigation affordance).
 | Choice | yes | yes | n/a |
 | Followups | yes | yes | n/a |
 | Form | yes | yes | n/a |
+| Connector (shell + minimal/Advanced + repaint) | yes, `connector-setup-widget.test.tsx` + `message-connector-parser.test.ts` + `connector-widget.render-count.test.tsx` | n/a | n/a |
 | Notification center (pinned `NotificationsHomeCenter`) | yes | yes | yes, home-screen e2e |
 | Messages | yes | yes (added #9304) | n/a |
 | Orchestrator activity | yes (e2e fixture) | yes | n/a |
