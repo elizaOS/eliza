@@ -11,8 +11,8 @@
 //   5. (optional) Cloud route: real provisioning probe.
 //
 // Flags: --device <name|udid>  --app-path <App.app>  --skip-build
-//        --skip-local-chat  --skip-auth  --cloud  --no-wait
-import { execFileSync, spawnSync } from "node:child_process";
+//        --skip-local-chat  --skip-auth  --cloud  --no-wait  --output <dir>
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,7 +22,6 @@ import {
   buildCloudProvisioningCommand,
   buildIosSimBuildCommand,
   buildLocalChatSmokeCommand,
-  classifyStepExit,
   extractAppId,
   isAppInstalled,
   parseIosE2eArgs,
@@ -30,6 +29,16 @@ import {
   resolveTargetDevice,
   selectBootedUdid,
 } from "./ios-e2e-lib.mjs";
+import {
+  createDeviceE2eBundle,
+  finalizeDeviceE2eBundle,
+  finishBundleStep,
+  recordBundleArtifact,
+  runBundledCommand,
+  setBundleBuild,
+  setBundleDevice,
+  startBundleStep,
+} from "./lib/device-e2e-bundle.mjs";
 import { acquireDeviceLease } from "./lib/device-lease.mjs";
 import {
   assertCandidateIosAppRendererFresh,
@@ -42,22 +51,15 @@ const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const repoRoot = path.resolve(appDir, "..", "..");
 const flags = parseIosE2eArgs(process.argv);
 const log = (m) => console.log(`[ios-e2e] ${m}`);
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function readAppId() {
   const configPath = path.join(appDir, "app.config.ts");
   return extractAppId(fs.readFileSync(configPath, "utf8"));
 }
 
-function run(cmd, args, env = {}) {
-  const res = spawnSync(cmd, args, {
-    cwd: appDir,
-    stdio: "inherit",
-    env: { ...process.env, ...env },
-  });
-  const outcome = classifyStepExit(res.status);
-  if (!outcome.ok) {
-    throw new Error(`${cmd} ${args.join(" ")} ${outcome.reason}`);
-  }
+function run(bundle, name, cmd, args, env = {}) {
+  runBundledCommand(bundle, name, cmd, args, { cwd: appDir, env });
 }
 
 function simctl(args) {
@@ -70,6 +72,64 @@ function trySimctl(args) {
   } catch {
     return null;
   }
+}
+
+function captureSimulatorScreenshot(bundle, udid) {
+  const outPath = path.join(bundle.rawDir, "ios-final.png");
+  simctl(["io", udid, "screenshot", "--type=png", outPath]);
+  return outPath;
+}
+
+async function recordSimulatorVideo(bundle, udid, durationSeconds = 3) {
+  const outPath = path.join(bundle.rawDir, "ios-final.mov");
+  const recorder = spawn(
+    "xcrun",
+    [
+      "simctl",
+      "io",
+      udid,
+      "recordVideo",
+      "--codec",
+      "h264",
+      "--force",
+      outPath,
+    ],
+    { stdio: "ignore" },
+  );
+  await delay(Math.max(1, durationSeconds) * 1000);
+  recorder.kill("SIGINT");
+  await Promise.race([
+    new Promise((resolve) => recorder.once("close", resolve)),
+    delay(5_000),
+  ]);
+  if (!fs.existsSync(outPath)) return null;
+  return outPath;
+}
+
+function captureSimulatorLog(bundle, udid) {
+  const outPath = path.join(bundle.logsDir, "ios-sim.log");
+  const result = spawnSync(
+    "xcrun",
+    [
+      "simctl",
+      "spawn",
+      udid,
+      "log",
+      "show",
+      "--style",
+      "compact",
+      "--last",
+      "5m",
+    ],
+    { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
+  );
+  fs.writeFileSync(
+    outPath,
+    result.status === 0
+      ? result.stdout
+      : result.stderr || `simctl log show exited with ${result.status}\n`,
+  );
+  return outPath;
 }
 
 function bootedUdid() {
@@ -124,7 +184,7 @@ function installBuiltSimulatorApp(udid, appId) {
   if (!isAppInstalled(installed)) {
     throw new Error(`${appId} was not installed after simctl install.`);
   }
-  assertInstalledIosAppRendererFresh({
+  return assertInstalledIosAppRendererFresh({
     udid,
     bundleId: appId,
     repoRoot,
@@ -132,31 +192,45 @@ function installBuiltSimulatorApp(udid, appId) {
   });
 }
 
-function runStep(step, { udid, appId }) {
+function runStep(bundle, step, { udid, appId }) {
   switch (step.id) {
     case "build": {
       log("building the iOS Simulator app…");
       const build = buildIosSimBuildCommand();
-      run(build.cmd, build.args);
-      installBuiltSimulatorApp(udid, appId);
+      run(bundle, step.label, build.cmd, build.args);
+      const installStep = startBundleStep(bundle, "install iOS Simulator app");
+      try {
+        const stamp = installBuiltSimulatorApp(udid, appId);
+        setBundleBuild(bundle, {
+          buildId: stamp?.buildId ?? null,
+          commit: stamp?.commit ?? null,
+        });
+        finishBundleStep(bundle, installStep, "passed");
+      } catch (error) {
+        finishBundleStep(bundle, installStep, "failed", error);
+        throw error;
+      }
       return;
     }
     case "auth": {
       log(`${step.label}…`);
       const auth = buildAuthSmokeCommand(udid);
-      run(auth.cmd, auth.args);
+      run(bundle, step.label, auth.cmd, auth.args);
       return;
     }
     case "local-chat": {
       log(`${step.label}…`);
       const chat = buildLocalChatSmokeCommand();
-      run(chat.cmd, chat.args);
+      run(bundle, step.label, chat.cmd, chat.args, {
+        ELIZA_DEVICE_E2E_ARTIFACT_DIR: path.join(bundle.root, "test-results"),
+        ELIZA_IOS_ARTIFACT_DIR: path.join(bundle.root, "test-results", "ios"),
+      });
       return;
     }
     case "cloud": {
       log(`${step.label}…`);
       const cloud = buildCloudProvisioningCommand();
-      run(cloud.cmd, cloud.args);
+      run(bundle, step.label, cloud.cmd, cloud.args);
       return;
     }
     default:
@@ -165,27 +239,82 @@ function runStep(step, { udid, appId }) {
 }
 
 async function main() {
-  const steps = planIosE2eSteps(flags);
-  // Refuse a run that would print success without exercising any device path.
-  assertNonVacuousPlan(steps);
-  log(`plan: ${steps.map((s) => s.id).join(" → ")}`);
-
-  const appId = readAppId();
-  const udid = ensureSimulatorBooted(flags.device);
-  log(`simulator udid=${udid}`);
-  const lease = await acquireDeviceLease(`ios:${udid}`, {
-    waitMs: flags.noWait ? 0 : undefined,
-    log,
+  const bundle = createDeviceE2eBundle({
+    appDir,
+    lane: "ios-sim",
+    outputDir: flags.output,
   });
+  let finalResult = "failed";
+  let lease = null;
+  let udid = null;
+  let appId = null;
+
   try {
+    const steps = planIosE2eSteps(flags);
+    // Refuse a run that would print success without exercising any device path.
+    assertNonVacuousPlan(steps);
+    log(`plan: ${steps.map((s) => s.id).join(" → ")}`);
+
+    appId = readAppId();
+    const bootStep = startBundleStep(bundle, "boot iOS Simulator");
+    try {
+      udid = ensureSimulatorBooted(flags.device);
+      finishBundleStep(bundle, bootStep, "passed");
+    } catch (error) {
+      finishBundleStep(bundle, bootStep, "failed", error);
+      throw error;
+    }
+    log(`simulator udid=${udid}`);
+    setBundleDevice(bundle, { udid, kind: "ios-simulator" });
+    lease = await acquireDeviceLease(`ios:${udid}`, {
+      waitMs: flags.noWait ? 0 : undefined,
+      log,
+    });
+
     clearIosSmokeDefaults({ udid, bundleId: appId, log });
     for (const step of steps) {
-      runStep(step, { udid, appId });
+      runStep(bundle, step, { udid, appId });
     }
+    finalResult = "passed";
     log("ALL iOS E2E PASSED ✅");
   } finally {
-    clearIosSmokeDefaults({ udid, bundleId: appId, log });
-    lease.release();
+    if (udid && appId) {
+      try {
+        recordBundleArtifact(
+          bundle,
+          captureSimulatorScreenshot(bundle, udid),
+          "screenshot",
+        );
+      } catch (error) {
+        // error-policy:J7 Bundle capture is diagnostic; preserve the runner result.
+        bundle.warnings.push(
+          `final iOS screenshot failed: ${error?.message ?? error}`,
+        );
+      }
+      try {
+        const video = await recordSimulatorVideo(bundle, udid);
+        if (video) recordBundleArtifact(bundle, video, "video");
+      } catch (error) {
+        // error-policy:J7 Bundle capture is diagnostic; preserve the runner result.
+        bundle.warnings.push(
+          `final iOS video failed: ${error?.message ?? error}`,
+        );
+      }
+      try {
+        recordBundleArtifact(bundle, captureSimulatorLog(bundle, udid), "log");
+      } catch (error) {
+        // error-policy:J7 Bundle capture is diagnostic; preserve the runner result.
+        bundle.warnings.push(
+          `final iOS log capture failed: ${error?.message ?? error}`,
+        );
+      }
+    }
+    if (udid && appId) {
+      clearIosSmokeDefaults({ udid, bundleId: appId, log });
+    }
+    lease?.release();
+    const bundleRoot = finalizeDeviceE2eBundle(bundle, finalResult);
+    log(`bundle: ${bundleRoot}`);
   }
 }
 main().catch((error) => {

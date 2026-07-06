@@ -47,10 +47,14 @@ function repoRootFromCwd() {
 }
 
 const ARTIFACT_DIR = path.join(
-  repoRootFromCwd(),
-  ".github",
-  "issue-evidence",
-  ISSUE_EVIDENCE_DIR,
+  process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
+    path.join(
+      repoRootFromCwd(),
+      ".github",
+      "issue-evidence",
+      ISSUE_EVIDENCE_DIR,
+    ),
+  "launcher-gesture-loop",
 );
 
 function writeJsonArtifact(filename: string, data: unknown) {

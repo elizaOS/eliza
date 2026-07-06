@@ -17,9 +17,9 @@ import {
 import { expect, test, waitForShellReady } from "./android-harness";
 
 const ARTIFACT_DIR = path.join(
-  process.cwd(),
-  "test-results",
-  "android-native-plugin-view-smoke",
+  process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
+    path.join(process.cwd(), "test-results", "android"),
+  "native-plugin-view-smoke",
 );
 
 type NativePluginSmokeResult = {

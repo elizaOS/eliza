@@ -27,12 +27,16 @@ import {
 
 const API = process.env.API ?? "http://127.0.0.1:31337";
 const ARTIFACT_DIR = path.resolve(
-  process.cwd(),
-  "..",
-  "..",
-  ".github",
-  "issue-evidence",
-  "9943-android-sleep-wake",
+  process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
+    path.join(
+      process.cwd(),
+      "..",
+      "..",
+      ".github",
+      "issue-evidence",
+      "9943-android-sleep-wake",
+    ),
+  "sleep-wake",
 );
 
 const APP_PAUSE_EVENT = "eliza:app-pause";

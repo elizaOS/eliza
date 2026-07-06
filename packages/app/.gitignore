@@ -43,3 +43,6 @@ test/ui-smoke/output/
 
 # Local platform capture output; PR evidence is attached inline from generated files.
 capture-output/
+
+# Device-e2e bundles are regenerated per run and posted inline to PRs/issues.
+device-e2e-output/

@@ -30,13 +30,17 @@ import {
 } from "../../scripts/lib/android-device.mjs";
 
 const ARTIFACT_DIR = path.resolve(
-  process.cwd(),
-  "..",
-  "..",
-  ".github",
-  "issue-evidence",
-  "12185-device-lifecycle",
-  "android",
+  process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
+    path.join(
+      process.cwd(),
+      "..",
+      "..",
+      ".github",
+      "issue-evidence",
+      "12185-device-lifecycle",
+      "android",
+    ),
+  "lifecycle-reboot",
 );
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));

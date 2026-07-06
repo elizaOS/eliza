@@ -63,10 +63,14 @@ function repoRootFromCwd() {
 }
 
 const ARTIFACT_DIR = path.join(
-  repoRootFromCwd(),
-  ".github",
-  "issue-evidence",
-  ISSUE_EVIDENCE_DIR,
+  process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
+    path.join(
+      repoRootFromCwd(),
+      ".github",
+      "issue-evidence",
+      ISSUE_EVIDENCE_DIR,
+    ),
+  "touch-gesture",
 );
 
 function writeStage(stage: string, extra: Record<string, unknown> = {}) {
