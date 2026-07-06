@@ -51,6 +51,8 @@ export interface ChatLabelSet {
   play?: string;
   releaseToSend?: string;
   rename?: string;
+  /** Reply control on a message row — sets the composer to reply to it. */
+  reply?: string;
   responseInterrupted?: string;
   saveAndResend?: string;
   searchChats?: string;

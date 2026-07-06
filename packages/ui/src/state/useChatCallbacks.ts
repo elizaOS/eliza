@@ -22,6 +22,7 @@ import {
 } from "../api";
 import type { Tab } from "../navigation";
 import { isTtsDebugEnabled } from "../utils/tts-debug";
+import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import {
   clearChatDraft,
   readChatDraft,
@@ -424,12 +425,14 @@ export interface UseChatCallbacksDeps {
   setUnreadConversations: (
     v: Set<string> | ((prev: Set<string>) => Set<string>),
   ) => void;
+  setChatReplyTarget: (v: ChatReplyTarget | null) => void;
   resetConversationDraftState: () => void;
 
   // Refs from useChatState
   activeConversationIdRef: MutableRefObject<string | null>;
   chatInputRef: MutableRefObject<string>;
   chatPendingImagesRef: MutableRefObject<ImageAttachment[]>;
+  chatReplyTargetRef: MutableRefObject<ChatReplyTarget | null>;
   conversationsRef: MutableRefObject<Conversation[]>;
   conversationMessagesRef: MutableRefObject<ConversationMessage[]>;
   conversationHydrationEpochRef: MutableRefObject<number>;
@@ -553,10 +556,12 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     setCompanionMessageCutoffTs,
     setConversationMessages,
     setUnreadConversations,
+    setChatReplyTarget,
     resetConversationDraftState,
     activeConversationIdRef,
     chatInputRef,
     chatPendingImagesRef,
+    chatReplyTargetRef,
     conversationsRef,
     conversationMessagesRef,
     conversationHydrationEpochRef,
@@ -794,10 +799,12 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     setCompanionMessageCutoffTs,
     setConversationMessages,
     setUnreadConversations,
+    setChatReplyTarget,
     setActionNotice,
     activeConversationIdRef,
     chatInputRef,
     chatPendingImagesRef,
+    chatReplyTargetRef,
     conversationsRef,
     conversationMessagesRef,
     chatAbortRef,

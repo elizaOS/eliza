@@ -31,6 +31,7 @@ import {
   type CloudHandoffPhaseDetail,
 } from "../events";
 import { getWindowNavigationPath, type Tab } from "../navigation";
+import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
@@ -426,6 +427,7 @@ export interface UseChatSendDeps {
   setUnreadConversations: (
     v: Set<string> | ((prev: Set<string>) => Set<string>),
   ) => void;
+  setChatReplyTarget: (v: ChatReplyTarget | null) => void;
   setActionNotice: (
     text: string,
     tone: "success" | "error" | "info",
@@ -438,6 +440,7 @@ export interface UseChatSendDeps {
   activeConversationIdRef: MutableRefObject<string | null>;
   chatInputRef: MutableRefObject<string>;
   chatPendingImagesRef: MutableRefObject<ImageAttachment[]>;
+  chatReplyTargetRef: MutableRefObject<ChatReplyTarget | null>;
   conversationsRef: MutableRefObject<Conversation[]>;
   conversationMessagesRef: MutableRefObject<ConversationMessage[]>;
   chatAbortRef: MutableRefObject<AbortController | null>;
@@ -476,10 +479,12 @@ export function useChatSend(deps: UseChatSendDeps) {
     setCompanionMessageCutoffTs,
     setConversationMessages,
     setUnreadConversations,
+    setChatReplyTarget,
     setActionNotice,
     activeConversationIdRef,
     chatInputRef,
     chatPendingImagesRef,
+    chatReplyTargetRef,
     conversationsRef,
     conversationMessagesRef,
     chatAbortRef,
@@ -1720,6 +1725,23 @@ export function useChatSend(deps: UseChatSendDeps) {
         return;
       }
 
+      // Claim + clear the active reply target here — the single chokepoint every
+      // real user turn (composer send + overlay/voice send()) funnels through —
+      // so one Reply affordance covers all surfaces and a second send never
+      // re-attaches a stale reply. Skip when the caller already stamped a reply
+      // (a retry replaying an earlier reply-turn's metadata). The id rides in
+      // `metadata.replyToMessageId`; the API boundary lifts it onto
+      // `content.inReplyTo`, which drives the REPLY_CONTEXT provider.
+      const replyTarget = chatReplyTargetRef.current;
+      const metadata =
+        replyTarget && !asRecord(options?.metadata)?.replyToMessageId
+          ? { ...options?.metadata, replyToMessageId: replyTarget.messageId }
+          : options?.metadata;
+      if (replyTarget) {
+        chatReplyTargetRef.current = null;
+        setChatReplyTarget(null);
+      }
+
       await new Promise<void>((resolve, reject) => {
         chatSendQueueRef.current.push({
           rawInput,
@@ -1737,7 +1759,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           conversationId:
             options?.conversationId ?? activeConversationIdRef.current ?? null,
           images: options?.images,
-          metadata: buildChatViewMetadata(tab, options?.metadata),
+          metadata: buildChatViewMetadata(tab, metadata),
           resolve,
           reject,
         });
@@ -1745,7 +1767,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         void flushQueuedChatSends();
       });
     },
-    [flushQueuedChatSends, setChatSending, tab],
+    [flushQueuedChatSends, setChatSending, setChatReplyTarget, tab],
   );
 
   const handleChatSend = useCallback(
@@ -1774,6 +1796,8 @@ export function useChatSend(deps: UseChatSendDeps) {
       // value back to storage.
       clearChatDraft(activeConversationIdRef.current);
 
+      // The reply target (if any) is attached + cleared inside sendChatText, the
+      // single chokepoint both this and the overlay's send() funnel through.
       await sendChatText(claimedInput, {
         channelType,
         conversationId: activeConversationIdRef.current,

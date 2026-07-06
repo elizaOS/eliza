@@ -95,9 +95,11 @@ import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import {
+  buildReplyTargetFromMessage,
   ChatMessage,
   getChatMessageAnchorId,
 } from "../composites/chat/chat-message";
+import { ChatReplyPill } from "../composites/chat/chat-reply-pill";
 import type {
   ChatMessageData,
   ChatMessageRenderContext,
@@ -1072,6 +1074,8 @@ export function ContinuousChatOverlay({
     setChatInput: setDraft,
     chatPendingImages: pendingImages,
     setChatPendingImages: setPendingImages,
+    chatReplyTarget,
+    setChatReplyTarget,
   } = useChatComposerOrLocal();
   const activeConversationId = conversationNav.activeId;
   // Live handle to the draft for callbacks that must read the current text
@@ -1694,6 +1698,18 @@ export function ContinuousChatOverlay({
       renderOverlayMessageBody(m, ctx, openSettings),
     [openSettings],
   );
+  // Reply arms the shared composer reply target so the next send() stamps
+  // replyToMessageId (attached at the sendChatText chokepoint → REPLY_CONTEXT)
+  // and the pill renders above the input. Opens the sheet so the reply is typed
+  // against the visible thread, not the bare collapsed bar.
+  const handleReplyMessage = React.useCallback(
+    (message: ChatMessageData) => {
+      setChatReplyTarget(buildReplyTargetFromMessage(message, agentName));
+      setMode((m) => (m === "half" || m === "full" ? m : "half"));
+      inputRef.current?.focus();
+    },
+    [setChatReplyTarget, agentName],
+  );
   // Render one transcript line as the canonical ChatMessage (glass chrome);
   // shared by the flat and topic-grouped paths so the in-flight-turn detection
   // stays identical.
@@ -1722,6 +1738,7 @@ export function ContinuousChatOverlay({
           onSpeak={handleSpeakMessage}
           onEdit={handleEditResend}
           onDelete={handleDeleteMessage}
+          onReply={handleReplyMessage}
           onRetry={handleRetry}
           playing={speaking && playingMessageId === m.id}
           renderContent={renderRowBody}
@@ -1739,6 +1756,7 @@ export function ContinuousChatOverlay({
       handleSpeakMessage,
       handleEditResend,
       handleDeleteMessage,
+      handleReplyMessage,
       handleRetry,
       speaking,
       playingMessageId,
@@ -4421,6 +4439,16 @@ export function ContinuousChatOverlay({
                   </Button>
                 ) : null}
               </motion.div>
+            ) : null}
+            {/* Reply target pill, just above the input (glass chrome). */}
+            {chatReplyTarget ? (
+              <div className="relative z-10 shrink-0 px-3 pt-2">
+                <ChatReplyPill
+                  appearance="glass"
+                  target={chatReplyTarget}
+                  onCancel={() => setChatReplyTarget(null)}
+                />
+              </div>
             ) : null}
             {/* Pending image attachments + any read error, just above the input. */}
             {hasImages || imageError ? (
