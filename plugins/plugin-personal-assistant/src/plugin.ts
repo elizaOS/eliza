@@ -9,24 +9,17 @@
  * default packs into a runnable Eliza plugin; it owns no domain logic itself.
  */
 import {
-  type ActionResult,
   EventType,
   getDefaultTriageService,
-  type HandlerCallback,
-  type HandlerOptions,
   type IAgentRuntime,
   logger,
-  type Memory,
   type MessagePayload,
   messagingTriageActions,
   type Plugin,
   promoteSubactionsToActions,
   registerCandidateActionBackstopRule,
-  registerDirectMessageHook,
   registerLocalizedExamplesProvider,
   registerSendPolicy,
-  type State,
-  unregisterDirectMessageHook,
 } from "@elizaos/core";
 import {
   getSelfControlPermissionState,
@@ -104,9 +97,6 @@ import {
   FOLLOWUP_TRACKER_TASK_NAME,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
-import { InboxTriageRepository } from "./inbox/repository.js";
-import { createApprovalQueue } from "./lifeops/approval-queue.js";
-import type { ApprovalChannel } from "./lifeops/approval-queue.types.js";
 import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
 import {
   createChannelRegistry,
@@ -202,15 +192,6 @@ const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 
-type LifeOpsMessageActionHookArgs = {
-  operation: string;
-  runtime: IAgentRuntime;
-  message: Memory;
-  state?: State;
-  options?: HandlerOptions;
-  callback?: HandlerCallback;
-};
-
 function isPermissionsRegistry(value: unknown): value is IPermissionsRegistry {
   return (
     !!value &&
@@ -269,270 +250,6 @@ export function registerLifeOpsWebsiteBlockingPermissionProber(
   }
   service.registerProber(websiteBlockingPermissionProber);
   return true;
-}
-
-function getMessageText(message: Memory): string {
-  return typeof message.content.text === "string" ? message.content.text : "";
-}
-
-function looksLikeMissedCallRepairApproval(text: string): boolean {
-  const normalized = text.toLowerCase();
-  return (
-    /\bmissed\b/.test(normalized) &&
-    /\bcall\b/.test(normalized) &&
-    /\b(?:repair|reschedul|follow\s*up|reply|respond)\b/.test(normalized) &&
-    /\b(?:approval|approve|hold|confirm)\b/.test(normalized)
-  );
-}
-
-function looksLikeDocumentSignatureRequest(text: string): boolean {
-  const normalized = text.toLowerCase();
-  return (
-    /\b(?:nda|docusign|signature|signed|signing|sign\s+(?:the|a)?\s*(?:document|doc|nda)|document\s+sign(?:ing|ature)?)\b/u.test(
-      normalized,
-    ) &&
-    /\b(?:meeting|appointment|kick-?off|deadline|before|due|in\s+\d+\s+days?|partnership)\b/u.test(
-      normalized,
-    ) &&
-    /\b(?:initiate|start|begin|draft|queue|prepare|send|get\s+(?:it|the\s+nda)\s+signed|signing\s+flow)\b/u.test(
-      normalized,
-    )
-  );
-}
-
-function looksLikePortalUploadRequest(text: string): boolean {
-  const normalized = text.toLowerCase();
-  return (
-    /\b(?:upload|submit|send|file)\b/u.test(normalized) &&
-    /\bportal\b/u.test(normalized) &&
-    /\b(?:deck|slides?|presentation|pdf|file)\b/u.test(normalized)
-  );
-}
-
-function buildPortalUploadIntakeResponse(): ActionResult {
-  return {
-    text: "I need the portal link and the deck file or file path before I can upload it. Once you provide both, I will ask for approval to confirm before signing in or submitting anything.",
-    success: true,
-    data: {
-      actionName: "COMPUTER_USE",
-      operation: "portal_upload_intake",
-      requiredInputs: ["portal_link", "deck_file"],
-      requiresConfirmation: true,
-    },
-  };
-}
-
-function defaultSignatureDeadline(text: string): string {
-  const match = /\bin\s+(\d+)\s+days?\b/iu.exec(text);
-  if (match?.[1]) {
-    return new Date(
-      Date.now() + Number(match[1]) * 24 * 60 * 60 * 1000,
-    ).toISOString();
-  }
-  return new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
-}
-
-async function queueDocumentSignatureRequest(args: {
-  runtime: IAgentRuntime;
-  message: Memory;
-  callback?: HandlerCallback;
-}): Promise<ActionResult> {
-  const text = getMessageText(args.message);
-  const documentName = /\bnda\b/iu.test(text) ? "NDA" : "Document";
-  const documentId = `signature-${String(args.message.id ?? Date.now())}`;
-  const signatureUrl =
-    text.match(/https?:\/\/\S+/u)?.[0] ?? "pending-signature-url";
-  const subjectUserId =
-    typeof args.message.entityId === "string"
-      ? args.message.entityId
-      : String(args.runtime.agentId);
-  const queue = createApprovalQueue(args.runtime, {
-    agentId: args.runtime.agentId,
-  });
-  const request = await queue.enqueue({
-    requestedBy: "PERSONAL_ASSISTANT",
-    subjectUserId,
-    action: "sign_document",
-    payload: {
-      action: "sign_document",
-      documentId,
-      documentName,
-      signatureUrl,
-      deadline: defaultSignatureDeadline(text),
-    },
-    channel: "internal",
-    reason: `Initiate signing flow for ${documentName}`,
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-  });
-  const responseText = `Queued the ${documentName} signing flow for approval before anything is sent.`;
-  await args.callback?.({
-    text: responseText,
-    source: "action",
-    action: "PERSONAL_ASSISTANT",
-  });
-  return {
-    success: true,
-    text: responseText,
-    data: {
-      actionName: "PERSONAL_ASSISTANT",
-      action: "sign_document",
-      approvalRequestId: request.id,
-    },
-  };
-}
-
-function approvalChannelFromSource(source: string | null): ApprovalChannel {
-  const normalized = (source ?? "").toLowerCase();
-  if (normalized === "discord") return "discord";
-  if (normalized === "imessage") return "imessage";
-  if (normalized === "sms" || normalized === "text") return "sms";
-  if (normalized === "x" || normalized === "twitter" || normalized === "x_dm") {
-    return "x_dm";
-  }
-  return "telegram";
-}
-
-function extractCounterpartyHint(text: string): string | null {
-  const match =
-    /\bwith\s+(?:the\s+)?(.+?)(?:\s+(?:guys|team|folks|people)\b|[,.]|$)/iu.exec(
-      text,
-    ) ?? /\b(?:to|for)\s+([A-Z][\w &'-]{2,80})(?:[,.]|$)/u.exec(text);
-  return match?.[1]?.replace(/\s+/gu, " ").trim() || null;
-}
-
-function textMatchesEntry(text: string, entryText: string): boolean {
-  const normalized = text.toLowerCase();
-  const candidate = entryText.toLowerCase();
-  return candidate
-    .split(/\s+/u)
-    .map((token) => token.replace(/[^a-z0-9]/gu, ""))
-    .filter((token) => token.length >= 4)
-    .some((token) => normalized.includes(token));
-}
-
-async function handleLifeOpsMessageAction(
-  args: LifeOpsMessageActionHookArgs,
-): Promise<ActionResult | null> {
-  if (
-    args.operation !== "triage" &&
-    args.operation !== "send_draft" &&
-    args.operation !== "draft_followup" &&
-    args.operation !== "draft_reply" &&
-    args.operation !== "respond"
-  ) {
-    return null;
-  }
-
-  const text = getMessageText(args.message);
-  if (!looksLikeMissedCallRepairApproval(text)) {
-    return null;
-  }
-
-  const triageRepo = new InboxTriageRepository(args.runtime);
-  const unresolved = await triageRepo.getUnresolved({ limit: 25 });
-  const hint = extractCounterpartyHint(text);
-  const match =
-    unresolved.find((entry) => {
-      const haystack = [
-        entry.channelName,
-        entry.senderName ?? "",
-        entry.snippet,
-        entry.suggestedResponse ?? "",
-        ...(entry.threadContext ?? []),
-      ].join(" ");
-      return (
-        (hint ? haystack.toLowerCase().includes(hint.toLowerCase()) : false) ||
-        textMatchesEntry(text, haystack)
-      );
-    }) ?? unresolved[0];
-
-  const recipient =
-    match?.sourceRoomId ?? match?.sourceEntityId ?? match?.channelName;
-  // Fail-closed: the ApprovalQueue rejects a send_message payload whose
-  // `recipient` is not a non-empty string, and that throw propagates out of
-  // the pre-LLM direct-message hook (runDirectMessageHooks has no try/catch),
-  // crashing the whole turn BEFORE any planner/model call. That happens
-  // deterministically whenever no unresolved inbox entry can be matched (empty
-  // inbox -> `match` undefined -> `recipient` undefined), which is exactly the
-  // case in a fresh benchmark/agent context with no seeded inbox. Rather than
-  // enqueue a malformed approval (or crash), defer to the normal pipeline by
-  // returning null so the planner produces a real clarifying reply. (#13561)
-  if (typeof recipient !== "string" || recipient.trim() === "") {
-    args.runtime.logger?.debug?.(
-      { src: "lifeops:missed-call-repair", unresolvedCount: unresolved.length },
-      "missed-call repair hook: no resolvable recipient; deferring to planner",
-    );
-    return null;
-  }
-  const body =
-    match?.suggestedResponse ??
-    (hint
-      ? `Sorry I missed your call earlier. I can reschedule and make the walkthrough work this week if you send a couple of windows.`
-      : `Sorry I missed your call earlier. I can reschedule this week if you send a couple of windows that work.`);
-  const channel = approvalChannelFromSource(match?.source);
-  const subjectUserId =
-    typeof args.message.entityId === "string"
-      ? args.message.entityId
-      : String(args.runtime.agentId);
-  const queue = createApprovalQueue(args.runtime, {
-    agentId: args.runtime.agentId,
-  });
-  const request = await queue.enqueue({
-    requestedBy: "MESSAGE",
-    subjectUserId,
-    action: "send_message",
-    payload: {
-      action: "send_message",
-      recipient,
-      body,
-      replyToMessageId: match?.sourceMessageId ?? null,
-    },
-    channel,
-    reason: `Repair missed call thread${match?.channelName ? ` with ${match.channelName}` : hint ? ` with ${hint}` : ""}`,
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-  });
-
-  const responseText = `Queued the repair note for your approval before sending it.`;
-  await args.callback?.({
-    text: responseText,
-    source: "action",
-    action: "MESSAGE",
-  });
-  return {
-    text: responseText,
-    success: true,
-    data: {
-      actionName: "MESSAGE",
-      operation: args.operation,
-      requestId: request.id,
-      requiresConfirmation: true,
-      channel,
-      recipient,
-    },
-  };
-}
-
-export async function handleLifeOpsDirectMessageRequest(args: {
-  runtime: IAgentRuntime;
-  message: Memory;
-  state: State;
-}): Promise<ActionResult | null> {
-  const text = getMessageText(args.message);
-  if (looksLikeMissedCallRepairApproval(text)) {
-    return handleLifeOpsMessageAction({
-      operation: "triage",
-      runtime: args.runtime,
-      message: args.message,
-      state: args.state,
-    });
-  }
-  if (looksLikeDocumentSignatureRequest(text)) {
-    return queueDocumentSignatureRequest(args);
-  }
-  if (looksLikePortalUploadRequest(text)) {
-    return buildPortalUploadIntakeResponse();
-  }
-  return null;
 }
 
 async function ensureTaskWithRetries(args: {
@@ -1149,19 +866,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     // confirms via CHOOSE_OPTION (issue #10723).
     registerOwnerSendApprovalWorker(runtime);
     registerSendPolicy(runtime, createOwnerSendPolicy());
-    (
-      runtime as IAgentRuntime & {
-        lifeOpsMessageActionHook?: {
-          handleMessageAction: typeof handleLifeOpsMessageAction;
-        };
-      }
-    ).lifeOpsMessageActionHook = {
-      handleMessageAction: handleLifeOpsMessageAction,
-    };
-    // Pre-LLM direct-message hook: core invokes this before the planner/model
-    // runs, letting LifeOps handle certain requests (missed-call repair,
-    // document-signature, portal-upload) deterministically.
-    registerDirectMessageHook(runtime, handleLifeOpsDirectMessageRequest);
     // Candidate-action backstop: protect LifeOps scheduled-task candidates from
     // the core coding-delegation backstop on genuine scheduled-task turns.
     registerCandidateActionBackstopRule(
@@ -1294,10 +998,6 @@ const rawPersonalAssistantPlugin: Plugin = {
    * to touch those here.
    */
   dispose: async (runtime: IAgentRuntime) => {
-    delete (runtime as IAgentRuntime & { lifeOpsMessageActionHook?: unknown })
-      .lifeOpsMessageActionHook;
-    unregisterDirectMessageHook(runtime, handleLifeOpsDirectMessageRequest);
-
     const taskNames: readonly string[] = [
       PROACTIVE_TASK_NAME,
       LIFEOPS_TASK_NAME,

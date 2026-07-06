@@ -27,7 +27,6 @@ import type {
 	ActionParameter,
 	ActionResult,
 	Content,
-	HandlerCallback,
 	HandlerOptions,
 	IAgentRuntime,
 	Media,
@@ -4060,34 +4059,6 @@ export const messageAction: Action = {
 		refreshDescriptions(messageAction, runtime);
 		const params = paramsFromOptions(options);
 		const op = inferOp(params);
-		const lifeOpsHook = (
-			runtime as IAgentRuntime & {
-				lifeOpsMessageActionHook?: {
-					handleMessageAction?: (args: {
-						operation: MessageOperation;
-						runtime: IAgentRuntime;
-						message: Memory;
-						state?: State;
-						options?: HandlerOptions;
-						callback?: HandlerCallback;
-						responses?: Memory[];
-					}) => Promise<ActionResult | null | undefined>;
-				};
-			}
-		).lifeOpsMessageActionHook;
-		const lifeOpsResult = await lifeOpsHook?.handleMessageAction?.({
-			operation: op,
-			runtime,
-			message,
-			state,
-			options,
-			callback,
-			responses,
-		});
-		if (lifeOpsResult) {
-			return lifeOpsResult;
-		}
-
 		switch (op) {
 			case "send":
 				return handleSend(runtime, message, state, params);

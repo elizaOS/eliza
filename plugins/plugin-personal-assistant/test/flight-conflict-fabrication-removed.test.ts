@@ -17,12 +17,10 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
-  State,
   UUID,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { calendarAction } from "../src/actions/calendar.js";
-import { handleLifeOpsDirectMessageRequest } from "../src/plugin.js";
 
 /**
  * Matches only the deleted scripted reply (both variants said "too tight" and
@@ -159,22 +157,5 @@ describe("CALENDAR — fabricated flight-conflict template removed", () => {
     for (const text of callbackTexts) {
       expect(text).not.toMatch(CANNED_TEMPLATE);
     }
-  });
-});
-
-describe("LifeOps direct-message path — fabricated flight-conflict template removed", () => {
-  it("returns null for flight-conflict questions so they flow to normal action handling", async () => {
-    const runtime = {
-      agentId: "agent-flight-test" as UUID,
-      logger: makeLogger(),
-    } as unknown as IAgentRuntime;
-
-    const result = await handleLifeOpsDirectMessageRequest({
-      runtime,
-      message: makeMessage(FLIGHT_CONFLICT_TEXT),
-      state: { values: {}, data: {}, text: "" } as State,
-    });
-
-    expect(result).toBeNull();
   });
 });

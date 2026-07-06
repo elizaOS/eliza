@@ -75,7 +75,6 @@ import {
 	getMessageHistoryCompactionHook,
 	type MessageHistoryCompactionTelemetry,
 } from "../runtime/conversation-compaction-hook";
-import { runDirectMessageHooks } from "../runtime/direct-message-hook";
 import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
@@ -9290,11 +9289,11 @@ export class DefaultMessageService implements IMessageService {
 			setTranslatedUserText,
 		});
 
-		// #8791: pre-LLM action shortcut gate runs FIRST — before any direct hook,
-		// planner, or model call. An explicit slash/`!` command (always-on) or a
+		// #8791: pre-LLM action shortcut gate runs FIRST — before the planner or
+		// model call. An explicit slash/`!` command (always-on) or a
 		// confident natural-language shortcut resolves to a deterministic action
 		// reply with zero inference. Placed here (ahead of the pre-LLM
-		// direct-message hooks and the conditional v5 stage) so a slash command can
+		// conditional v5 stage) so a slash command can
 		// never be pre-empted by another handler.
 		if (!strategyResult) {
 			const shortcutSenderRole = await resolveStage1SenderRole(
@@ -9316,29 +9315,6 @@ export class DefaultMessageService implements IMessageService {
 					"Message resolved via pre-LLM shortcut gate",
 				);
 			}
-		}
-
-		const directHookResult = strategyResult
-			? null
-			: await runDirectMessageHooks(runtime, { runtime, message, state });
-		if (directHookResult) {
-			const directText =
-				typeof directHookResult.text === "string" &&
-				directHookResult.text.trim().length > 0
-					? directHookResult.text.trim()
-					: directHookResult.success
-						? "Done."
-						: "I couldn't complete that request.";
-			strategyResult = createV5ReplyStrategyResult({
-				runtime,
-				message,
-				state,
-				responseId,
-				text: directText,
-				thought: "A pre-LLM direct-message hook handled this request.",
-				mode: "simple",
-			});
-			_usedV5Runtime = true;
 		}
 
 		if (!strategyResult && hasTextGenerationHandler(runtime)) {
