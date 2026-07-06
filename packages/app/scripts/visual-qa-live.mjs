@@ -113,8 +113,8 @@ export function buildStateMatrix() {
       states.push({
         id: `${vpName}-composer-focused`,
         viewport: vpName,
-        seed: "fresh",
-        route: "/",
+        seed: "onboarded",
+        route: "/chat",
         focusComposer: true,
         expectedComposerText: COMPOSER_PROBE_TEXT,
       });
@@ -198,15 +198,8 @@ export function evaluateCaptureReadiness({
 }
 
 async function focusAndType(page) {
-  // Prefer the canonical chat composer; the generic fallback keeps the capture
-  // meaningful on gates that render a plain input. No match fails the sweep —
-  // a keyboard-adjacent capture without a focused field proves nothing.
-  const composer = page.locator('[data-testid="chat-composer-textarea"]');
-  const box = (await composer.count())
-    ? composer.first()
-    : page
-        .locator('textarea, [contenteditable="true"], input[type="text"]')
-        .first();
+  const box = page.locator('[data-testid="chat-composer-textarea"]').first();
+  await box.waitFor({ state: "visible", timeout: 4000 });
   await box.click({ timeout: 4000 });
   await box.type(COMPOSER_PROBE_TEXT, { delay: 8 });
   await page.waitForTimeout(600);
@@ -225,9 +218,8 @@ async function readVisibleText(page, stateId) {
 }
 
 async function readComposerText(page) {
-  const box = page
-    .locator('textarea, [contenteditable="true"], input[type="text"]')
-    .first();
+  const box = page.locator('[data-testid="chat-composer-textarea"]').first();
+  await box.waitFor({ state: "visible", timeout: 4000 });
   return box.evaluate((el) =>
     "value" in el ? String(el.value) : String(el.textContent ?? ""),
   );

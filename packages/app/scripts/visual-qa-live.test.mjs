@@ -57,6 +57,8 @@ describe("buildStateMatrix", () => {
     const focused = matrix.filter((s) => s.focusComposer);
     expect(focused).toHaveLength(1);
     expect(focused[0].viewport).toBe("mobile");
+    expect(focused[0].seed).toBe("onboarded");
+    expect(focused[0].route).toBe("/chat");
   });
   it("gives every state a unique id", () => {
     const ids = matrix.map((s) => s.id);
