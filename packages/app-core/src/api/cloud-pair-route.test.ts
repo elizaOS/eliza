@@ -83,6 +83,8 @@ function fakeReq(opts: {
   ip?: string;
   host?: string;
   proto?: string;
+  accept?: string;
+  origin?: string;
 }): http.IncomingMessage {
   const req = new http.IncomingMessage(new Socket());
   req.method = "GET";
@@ -90,6 +92,8 @@ function fakeReq(opts: {
   req.headers = {
     host: opts.host ?? "203.0.113.10:21363",
     ...(opts.proto ? { "x-forwarded-proto": opts.proto } : {}),
+    ...(opts.accept ? { accept: opts.accept } : {}),
+    ...(opts.origin ? { origin: opts.origin } : {}),
   };
   Object.defineProperty(req.socket, "remoteAddress", {
     value: opts.ip ?? "203.0.113.50",
@@ -292,6 +296,188 @@ describe("handleCloudPairRoute", () => {
     // outside of the single legitimate closer.
     const bodyWithoutCloser = body.replace(/<\/script>/, "");
     expect(bodyWithoutCloser).not.toMatch(/<\/script>/);
+  });
+
+  describe("JSON mode (popup-free programmatic repair, #15132)", () => {
+    function mockExchangeOk(apiKey = "agent_fresh_key", agentName = "Nova") {
+      globalThis.fetch = vi.fn().mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ apiKey, agentName }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        ),
+      ) as unknown as typeof globalThis.fetch;
+    }
+
+    it("answers { apiKey, agentName } as application/json when Accept: application/json is sent", async () => {
+      mockExchangeOk();
+      const harness = fakeRes();
+      const req = fakeReq({
+        pathname: "/pair",
+        search: "?token=abc",
+        accept: "application/json",
+      });
+      await handleCloudPairRoute(req, harness.res);
+      expect(harness.status()).toBe(200);
+      expect(harness.headers()["content-type"]).toContain("application/json");
+      expect(harness.headers()["cache-control"]).toContain("no-store");
+      expect(JSON.parse(harness.body())).toEqual({
+        apiKey: "agent_fresh_key",
+        agentName: "Nova",
+      });
+      // No HTML handoff artifacts in the JSON body.
+      expect(harness.body()).not.toContain("<script>");
+    });
+
+    it("answers JSON via ?format=json even when Accept is a browser default", async () => {
+      mockExchangeOk("agent_k2");
+      const harness = fakeRes();
+      const req = fakeReq({
+        pathname: "/pair",
+        search: "?token=abc&format=json",
+        accept: "text/html,application/xhtml+xml",
+      });
+      await handleCloudPairRoute(req, harness.res);
+      expect(harness.status()).toBe(200);
+      expect(JSON.parse(harness.body()).apiKey).toBe("agent_k2");
+    });
+
+    it("keeps serving the HTML handoff page for plain browser navigations", async () => {
+      mockExchangeOk();
+      const harness = fakeRes();
+      const req = fakeReq({
+        pathname: "/pair",
+        search: "?token=abc",
+        accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      });
+      await handleCloudPairRoute(req, harness.res);
+      expect(harness.status()).toBe(200);
+      expect(harness.headers()["content-type"]).toContain("text/html");
+      expect(harness.body()).toContain("window.sessionStorage.setItem");
+    });
+
+    it("maps the 400 missing-token branch to a JSON error body", async () => {
+      const harness = fakeRes();
+      const req = fakeReq({ pathname: "/pair", accept: "application/json" });
+      await handleCloudPairRoute(req, harness.res);
+      expect(harness.status()).toBe(400);
+      const body = JSON.parse(harness.body());
+      expect(body.code).toBe("missing_token");
+      expect(typeof body.error).toBe("string");
+    });
+
+    it("maps a rejected token (cloud 401) to JSON 403 token_rejected", async () => {
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ error: "expired" }), { status: 401 }),
+        ) as unknown as typeof globalThis.fetch;
+      const harness = fakeRes();
+      const req = fakeReq({
+        pathname: "/pair",
+        search: "?token=abc",
+        accept: "application/json",
+      });
+      await handleCloudPairRoute(req, harness.res);
+      expect(harness.status()).toBe(403);
+      expect(JSON.parse(harness.body()).code).toBe("token_rejected");
+    });
+
+    it("maps an unreachable cloud to JSON 503 cloud_unreachable", async () => {
+      globalThis.fetch = vi
+        .fn()
+        .mockRejectedValue(
+          new Error("ECONNREFUSED"),
+        ) as unknown as typeof globalThis.fetch;
+      const harness = fakeRes();
+      const req = fakeReq({
+        pathname: "/pair",
+        search: "?token=abc",
+        accept: "application/json",
+      });
+      await handleCloudPairRoute(req, harness.res);
+      expect(harness.status()).toBe(503);
+      expect(JSON.parse(harness.body()).code).toBe("cloud_unreachable");
+    });
+
+    it("maps a keyless 2xx exchange to JSON 502 exchange_failed", async () => {
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ apiKey: null }), { status: 200 }),
+        ) as unknown as typeof globalThis.fetch;
+      const harness = fakeRes();
+      const req = fakeReq({
+        pathname: "/pair",
+        search: "?token=abc",
+        accept: "application/json",
+      });
+      await handleCloudPairRoute(req, harness.res);
+      expect(harness.status()).toBe(502);
+      expect(JSON.parse(harness.body()).code).toBe("exchange_failed");
+    });
+
+    it("keeps the per-IP rate limit and reports it as JSON 429", async () => {
+      mockExchangeOk();
+      for (let i = 0; i < 5; i++) {
+        const h = fakeRes();
+        await handleCloudPairRoute(
+          fakeReq({
+            pathname: "/pair",
+            search: "?token=abc",
+            ip: "8.8.8.8",
+            accept: "application/json",
+          }),
+          h.res,
+        );
+        expect(h.status()).toBe(200);
+      }
+      const h6 = fakeRes();
+      await handleCloudPairRoute(
+        fakeReq({
+          pathname: "/pair",
+          search: "?token=abc",
+          ip: "8.8.8.8",
+          accept: "application/json",
+        }),
+        h6.res,
+      );
+      expect(h6.status()).toBe(429);
+      expect(JSON.parse(h6.body()).code).toBe("rate_limited");
+    });
+
+    it("echoes a trusted cloud web origin (CORS) so the apex SPA can read the exchange", async () => {
+      mockExchangeOk();
+      const harness = fakeRes();
+      const req = fakeReq({
+        pathname: "/pair",
+        search: "?token=abc",
+        accept: "application/json",
+        origin: "https://app.elizacloud.ai",
+      });
+      await handleCloudPairRoute(req, harness.res);
+      expect(harness.status()).toBe(200);
+      expect(harness.headers()["access-control-allow-origin"]).toBe(
+        "https://app.elizacloud.ai",
+      );
+      expect(harness.headers().vary).toBe("Origin");
+    });
+
+    it("grants no CORS header to an untrusted origin (token stays unreadable cross-site)", async () => {
+      mockExchangeOk();
+      const harness = fakeRes();
+      const req = fakeReq({
+        pathname: "/pair",
+        search: "?token=abc",
+        accept: "application/json",
+        origin: "https://evil.example.com",
+      });
+      await handleCloudPairRoute(req, harness.res);
+      expect(harness.status()).toBe(200);
+      expect(harness.headers()["access-control-allow-origin"]).toBeUndefined();
+    });
   });
 
   it("rate-limits the same IP after the bucket fills", async () => {

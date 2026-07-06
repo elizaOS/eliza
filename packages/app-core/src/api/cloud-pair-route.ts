@@ -18,6 +18,17 @@
  * IP, which is not in cloud-api's CORS allowlist. A direct browser fetch to
  * `api.elizacloud.ai` would fail preflight. Doing the exchange from the
  * agent's Node process sidesteps CORS entirely.
+ *
+ * Popup-free JSON mode (#15132): when the request carries
+ * `Accept: application/json` or `?format=json`, the identical server-side
+ * exchange answers `{ apiKey, agentName }` as JSON (errors as
+ * `{ error, code }` with the same status mapping) instead of the HTML
+ * handoff page. This is the transport for the SPA's programmatic
+ * credential repair (`@elizaos/ui` repair-agent-credential) after a
+ * container upgrade rotates ELIZA_API_TOKEN. Trusted Eliza Cloud web
+ * origins (and the app WebView origins) get their Origin echoed so the
+ * apex-served SPA can call this agent-origin relay cross-origin; the
+ * same one-time-token + origin gate at cloud-api authorizes the exchange.
  */
 
 import type http from "node:http";
@@ -196,6 +207,85 @@ function sendHtml(
   res.end(body);
 }
 
+/**
+ * Eliza Cloud web hosts allowed to read the JSON pair exchange cross-origin.
+ * Mirrors the control-plane host set in `@elizaos/ui` (persistence.ts /
+ * cloud-agent-base.ts) plus the app SPA hosts. Authorization is NOT this
+ * allowlist — the one-time pairing token is — but only first-party SPAs have a
+ * reason to read the response, so nobody else gets a CORS grant.
+ */
+const TRUSTED_PAIR_JSON_ORIGIN_HOSTS = new Set([
+  "elizacloud.ai",
+  "www.elizacloud.ai",
+  "dev.elizacloud.ai",
+  "app.elizacloud.ai",
+  "api.elizacloud.ai",
+  "staging.elizacloud.ai",
+  "app-staging.elizacloud.ai",
+]);
+
+// Capacitor WebView / local-dev origins for the Eliza app — mirrors the
+// dedicated-agent CORS allowlist in packages/agent/src/api (the app can point
+// its client at a dedicated agent base and run the same repair).
+const APP_LOCAL_PAIR_ORIGIN_RE =
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+const APP_SCHEME_PAIR_ORIGIN_RE =
+  /^(capacitor|capacitor-electron):\/\/localhost$/i;
+
+function corsHeadersForJsonPair(
+  req: http.IncomingMessage,
+): Record<string, string> {
+  const origin = (req.headers.origin as string | undefined)?.trim();
+  // Same-origin (or non-browser) callers send no Origin — no grant needed.
+  if (!origin) return {};
+  let trusted = false;
+  try {
+    const hostname = new URL(origin).hostname.toLowerCase();
+    trusted =
+      TRUSTED_PAIR_JSON_ORIGIN_HOSTS.has(hostname) ||
+      APP_LOCAL_PAIR_ORIGIN_RE.test(origin) ||
+      APP_SCHEME_PAIR_ORIGIN_RE.test(origin);
+  } catch {
+    // error-policy:J3 a malformed Origin header is untrusted input — fail
+    // closed to "no CORS grant" (the response is still served same-origin).
+    trusted = false;
+  }
+  if (!trusted) return {};
+  return {
+    "access-control-allow-origin": origin,
+    vary: "Origin",
+  };
+}
+
+function sendJson(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  status: number,
+  body: Record<string, unknown>,
+): void {
+  res.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    pragma: "no-cache",
+    expires: "0",
+    "referrer-policy": "no-referrer",
+    "x-content-type-options": "nosniff",
+    ...corsHeadersForJsonPair(req),
+  });
+  res.end(JSON.stringify(body));
+}
+
+/**
+ * The popup navigation wants the HTML handoff page; the programmatic repair
+ * wants JSON. `Accept: application/json` is the canonical switch; `?format=json`
+ * is a belt-and-braces duplicate for intermediaries that rewrite Accept.
+ */
+function wantsJsonPairResponse(req: http.IncomingMessage, url: URL): boolean {
+  if (url.searchParams.get("format") === "json") return true;
+  const accept = req.headers.accept;
+  return typeof accept === "string" && accept.includes("application/json");
+}
+
 export async function handleCloudPairRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -206,41 +296,51 @@ export async function handleCloudPairRoute(
     return false;
   }
 
+  const json = wantsJsonPairResponse(req, url);
+  // One dispatcher per error so the two response modes can never drift on
+  // status codes — JSON carries a machine-readable `code`, HTML the page copy.
+  const fail = (
+    status: number,
+    code: string,
+    title: string,
+    message: string,
+  ): void => {
+    if (json) {
+      sendJson(req, res, status, { error: message, code });
+      return;
+    }
+    sendHtml(res, status, renderErrorHtml(title, message));
+  };
+
   const ip = req.socket.remoteAddress ?? null;
   if (!pairingRelayLimiter.consume(ip)) {
-    sendHtml(
-      res,
+    fail(
       429,
-      renderErrorHtml(
-        "Too many sign-in attempts",
-        "Wait a minute and click 'Open Web UI' again from the dashboard.",
-      ),
+      "rate_limited",
+      "Too many sign-in attempts",
+      "Wait a minute and click 'Open Web UI' again from the dashboard.",
     );
     return true;
   }
 
   const token = url.searchParams.get("token")?.trim();
   if (!token) {
-    sendHtml(
-      res,
+    fail(
       400,
-      renderErrorHtml(
-        "Missing pairing token",
-        "Open the agent from the Eliza Cloud dashboard so a fresh sign-in link is generated.",
-      ),
+      "missing_token",
+      "Missing pairing token",
+      "Open the agent from the Eliza Cloud dashboard so a fresh sign-in link is generated.",
     );
     return true;
   }
 
   const origin = resolveRequestOrigin(req);
   if (!origin) {
-    sendHtml(
-      res,
+    fail(
       400,
-      renderErrorHtml(
-        "Missing origin",
-        "Your browser did not send a Host header. Try again from a standard browser.",
-      ),
+      "missing_origin",
+      "Missing origin",
+      "Your browser did not send a Host header. Try again from a standard browser.",
     );
     return true;
   }
@@ -276,56 +376,55 @@ export async function handleCloudPairRoute(
     logger.error(
       `[cloud-pair] exchange failed url=${exchangeUrl} error=${message}`,
     );
-    sendHtml(
-      res,
+    fail(
       503,
-      renderErrorHtml(
-        "Eliza Cloud is unreachable",
-        "We couldn't reach Eliza Cloud to verify your sign-in link. Try again in a minute.",
-      ),
+      "cloud_unreachable",
+      "Eliza Cloud is unreachable",
+      "We couldn't reach Eliza Cloud to verify your sign-in link. Try again in a minute.",
     );
     return true;
   }
 
   if (status === 401 || status === 403 || status === 410) {
-    sendHtml(
-      res,
+    fail(
       403,
-      renderErrorHtml(
-        "Sign-in link expired",
-        "Pairing links are single-use and only valid for a minute. Click 'Open Web UI' again from the dashboard.",
-      ),
+      "token_rejected",
+      "Sign-in link expired",
+      "Pairing links are single-use and only valid for a minute. Click 'Open Web UI' again from the dashboard.",
     );
     return true;
   }
 
   if (status === 429) {
-    sendHtml(
-      res,
+    fail(
       429,
-      renderErrorHtml(
-        "Too many sign-in attempts",
-        "Wait a minute and click 'Open Web UI' again from the dashboard.",
-      ),
+      "rate_limited",
+      "Too many sign-in attempts",
+      "Wait a minute and click 'Open Web UI' again from the dashboard.",
     );
     return true;
   }
 
   if (!exchanged || typeof exchanged.apiKey !== "string" || !exchanged.apiKey) {
-    sendHtml(
-      res,
+    fail(
       502,
-      renderErrorHtml(
-        "Sign-in failed",
-        "Eliza Cloud accepted the link but did not return a key. Try again from the dashboard.",
-      ),
+      "exchange_failed",
+      "Sign-in failed",
+      "Eliza Cloud accepted the link but did not return a key. Try again from the dashboard.",
     );
     return true;
   }
 
   logger.info(
-    `[cloud-pair] exchange ok agent=${exchanged.agentName ?? "agent"}`,
+    `[cloud-pair] exchange ok agent=${exchanged.agentName ?? "agent"} mode=${json ? "json" : "html"}`,
   );
+  if (json) {
+    sendJson(req, res, 200, {
+      apiKey: exchanged.apiKey,
+      ...(exchanged.agentName ? { agentName: exchanged.agentName } : {}),
+    });
+    return true;
+  }
   sendHtml(res, 200, renderRedirectHtml(exchanged.apiKey));
   return true;
 }
