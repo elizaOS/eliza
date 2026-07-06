@@ -41,6 +41,16 @@ export type WalletAgeSummary = {
   classification: "unknown" | "new" | "established" | "veteran";
 };
 
+export type WalletFundingSummary = {
+  firstFundingTransaction?: string | null;
+  firstFundingAt?: number | null;
+  fundingWallet?: string | null;
+  fundingAmountSol?: number | null;
+  fundingSourceType: "unknown" | "wallet" | "exchange" | "bridge" | "program";
+  confidence: "low" | "medium" | "high";
+  notes: string[];
+};
+
 export type WalletRiskSummary = {
   score: number;
   level: "low" | "medium" | "high";
@@ -57,6 +67,7 @@ export type WalletInvestigationResult = {
   transactionCountSample?: number;
   activity?: WalletActivitySummary;
   age?: WalletAgeSummary;
+  funding?: WalletFundingSummary;
   risk?: WalletRiskSummary;
   summary: string;
   warnings: string[];
