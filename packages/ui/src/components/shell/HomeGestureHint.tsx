@@ -49,7 +49,7 @@ export function HomeGestureHint(): React.JSX.Element | null {
     >
       <div className="flex items-center gap-2 text-[0.8125rem] font-medium leading-tight">
         <span className="text-muted-foreground">
-          Swipe for apps. Pull chat up. Hold wallpaper to restyle.
+          Swipe for apps. Pull chat up.
         </span>
         <button
           type="button"

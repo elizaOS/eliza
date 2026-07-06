@@ -32,9 +32,13 @@ vi.mock("../../hooks/useAvailableViews", () => ({
 vi.mock("../../state/useViewKinds", () => ({
   useEnabledViewKinds: vi.fn(),
 }));
-vi.mock("../../platform/platform-guards", () => ({
-  getActiveViewModality: () => "gui",
-}));
+vi.mock(import("../../platform/platform-guards"), async (importOriginal) => {
+  // Partial mock: only pin the view modality. The rest stays real because the
+  // home now reaches platform guards through more paths (notification store →
+  // push registration) than just the modality read.
+  const actual = await importOriginal();
+  return { ...actual, getActiveViewModality: () => "gui" as const };
+});
 
 const useRoutableViewsMock = vi.mocked(useRoutableViews);
 const useEnabledViewKindsMock = vi.mocked(useEnabledViewKinds);

@@ -11,11 +11,11 @@
  *      launches; a long press must NOT launch on release (regression: the
  *      compat click after a long press passed the `!editing` guard and
  *      ghost-launched the tile).
- *   2. Dashboard notification center (`home-notification-center`, the widget
- *      pinned on the home dashboard) — a seeded inbox renders its rows; a row
- *      tap marks it read IN PLACE (order ignores read state, so the row never
- *      moves under the pointer); the per-row X dismisses; clear-all empties the
- *      inbox and the whole card self-hides.
+ *   2. Notification shade (`home-notification-center` inside the pull-up
+ *      NotificationsShade, opened from `home-notifications-hint`) — a seeded
+ *      inbox renders its rows; a row tap marks it read IN PLACE (order ignores
+ *      read state, so the row never moves under the pointer); the per-row X
+ *      dismisses; clear-all empties the inbox and the card self-hides.
  *   3. Chat sheet flick/drag detents — a fast upward flick on the grabber
  *      snaps the sheet open; a slow sub-threshold drag leaves it closed.
  *   4. Drag-through prevention — dragging the sheet grabber must not deliver
@@ -283,9 +283,14 @@ test("dashboard notification center: row tap marks read in place, dismiss remove
   await installSeededInboxRoutes(page, seedInboxNotifications());
   await openHome(page);
 
-  // (a) The pinned center renders on the home surface with every seeded row,
-  // in priority-bucket-then-recency order, and the unread badge counts the six
-  // unread rows.
+  // (a) Notifications stay hidden until pulled up: the home shows only the
+  // bottom hint pill; tapping it opens the shade carrying the inbox card with
+  // every seeded row, in priority-bucket-then-recency order, and the unread
+  // badge counts the six unread rows.
+  await expect(page.getByTestId("home-notification-center")).toHaveCount(0);
+  const hint = page.getByTestId("home-notifications-hint");
+  await expect(hint).toBeVisible({ timeout: 15_000 });
+  await hint.click();
   const center = page.getByTestId("home-notification-center");
   await expect(center).toBeVisible({ timeout: 15_000 });
   await expect(center.getByTestId("notification-row")).toHaveCount(8, {
@@ -450,6 +455,10 @@ test.describe("real touch (hasTouch project)", () => {
     await installSeededInboxRoutes(page, seedInboxNotifications());
     await openHome(page);
 
+    // Notifications hide behind the pull-up hint: open the shade first.
+    const hint = page.getByTestId("home-notifications-hint");
+    await expect(hint).toBeVisible({ timeout: 15_000 });
+    await hint.click();
     const center = page.getByTestId("home-notification-center");
     await expect(center).toBeVisible({ timeout: 15_000 });
     const list = page.getByTestId("home-notification-list");

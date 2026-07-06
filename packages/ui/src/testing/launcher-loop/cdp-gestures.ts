@@ -25,9 +25,9 @@ export const LAUNCHER_SELECTORS = {
   launcherPage: '[data-testid="home-launcher-launcher-page"]',
   launcherScroll: '[data-testid="launcher-page-window"]',
   homeScreen: '[data-testid="home-screen"]',
-  // The dashboard notification center card pinned on the home half — an
-  // ordinary scrolling widget, observed only to confirm it never behaves like
-  // a modal overlay.
+  // The notification inbox card — rendered inside the pull-up
+  // NotificationsShade (hidden at rest), observed only to confirm it never
+  // leaks onto the resting home.
   notificationCenter: '[data-testid="home-notification-center"]',
   railPrevButton: '[data-testid="rail-pager-edge-prev"]',
   railNextButton: '[data-testid="rail-pager-edge-next"]',

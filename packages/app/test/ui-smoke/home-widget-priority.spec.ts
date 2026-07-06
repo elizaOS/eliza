@@ -595,8 +595,8 @@ async function screenshot(page: Page, name: string): Promise<void> {
 const GOALS_TESTID = "widget-goals-attention";
 const CALENDAR_TESTID = "chat-widget-calendar-upcoming";
 const HEALTH_TESTID = "widget-health-sleep";
-// The notification inbox renders in the pinned NotificationsHomeCenter
-// (outside the ranked WidgetHost), asserted separately below.
+// The notification inbox hides behind the home pull-up hint and renders inside
+// the NotificationsShade (outside the ranked WidgetHost), asserted below.
 const NOTIFICATION_CENTER_TESTID = "home-notification-center";
 
 const URGENT_TESTIDS = [GOALS_TESTID];
@@ -681,10 +681,17 @@ test.describe("home widget priority (#9143)", () => {
       ).toHaveCount(0);
     }
 
-    // The seeded urgent notification surfaces in the PINNED center — always
-    // directly below the time/weather base, outside the ranked WidgetHost, its
-    // position independent of ranking. Assert it renders the urgent row, sits
-    // outside the host, and precedes the host in document order.
+    // The seeded urgent notification hides behind the bottom pull-up hint —
+    // NOT a ranked WidgetHost tile, NOT a pinned card. Opening the shade
+    // reveals the inbox card with the urgent row; the card lives in a portal
+    // overlay outside the ranked host. Close it again to restore the home.
+    await expect(
+      page.getByTestId(NOTIFICATION_CENTER_TESTID),
+      "no pinned notification center at rest",
+    ).toHaveCount(0);
+    const notifHint = page.getByTestId("home-notifications-hint");
+    await expect(notifHint).toBeVisible({ timeout: 30_000 });
+    await notifHint.click();
     const notificationCenter = page.getByTestId(NOTIFICATION_CENTER_TESTID);
     await expect(notificationCenter).toBeVisible({ timeout: 30_000 });
     await expect(
@@ -692,23 +699,10 @@ test.describe("home widget priority (#9143)", () => {
     ).toContainText("Payment failed");
     await expect(
       host.getByTestId(NOTIFICATION_CENTER_TESTID),
-      "the notification center is pinned outside the ranked WidgetHost",
+      "the notification inbox lives outside the ranked WidgetHost",
     ).toHaveCount(0);
-    const centerPrecedesHost = await page.evaluate(() => {
-      const center = document.querySelector(
-        '[data-testid="home-notification-center"]',
-      );
-      const hostEl = document.querySelector('[data-testid="widget-host-home"]');
-      if (!center || !hostEl) return false;
-      return Boolean(
-        center.compareDocumentPosition(hostEl) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      );
-    });
-    expect(
-      centerPrecedesHost,
-      "the pinned notification center must sit above the ranked widget host",
-    ).toBe(true);
+    await page.getByTestId("notifications-shade-scrim").click();
+    await expect(page.getByTestId("notifications-shade")).toHaveCount(0);
 
     // The ranking re-settles once useNow installs the real clock in an effect
     // (it returns 0 on the first render for determinism). Poll for the stable

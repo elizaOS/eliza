@@ -703,8 +703,8 @@ export function makeScreenshotter(
 }
 
 // The WidgetSection testIds each widget renders (read from source). The
-// notification inbox is not a ranked tile: it renders in the pinned
-// NotificationsHomeCenter (`home-notification-center`), outside the WidgetHost.
+// notification inbox is not a ranked tile: it hides behind the home pull-up
+// hint and renders inside the NotificationsShade, outside the WidgetHost.
 export const GOALS_TESTID = "widget-goals-attention";
 
 // First-run runtime/provider buttons live in the real chat transcript. The
@@ -866,16 +866,20 @@ async function expectPopulatedHome(page: Page): Promise<Locator> {
   ]) {
     await expect(host.getByTestId(testId)).toHaveCount(0);
   }
-  // The seeded urgent notification surfaces in the pinned dashboard center
-  // (below the time/weather base), not as a ranked WidgetHost tile.
-  const notificationCenter = page.getByTestId("home-notification-center");
+  // The seeded urgent notification hides behind the pull-up hint (Apple
+  // idiom), not as a ranked WidgetHost tile: open the shade to see the row,
+  // then close it so the caller gets the resting home back.
+  const hint = page.getByTestId("home-notifications-hint");
   await expect(
-    notificationCenter,
-    "the pinned notification center should render the seeded inbox",
+    hint,
+    "the notifications pull-up hint should render for the seeded inbox",
   ).toBeVisible({ timeout: 30_000 });
+  await hint.click();
   await expect(
-    notificationCenter.getByTestId("notification-row"),
+    page.getByTestId("home-notification-center").getByTestId("notification-row"),
   ).toContainText("Payment failed");
+  await page.getByTestId("notifications-shade-scrim").click();
+  await expect(page.getByTestId("notifications-shade")).toHaveCount(0);
   const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toHaveAttribute("data-page", "home");
   return surface;

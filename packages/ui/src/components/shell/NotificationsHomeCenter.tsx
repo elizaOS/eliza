@@ -1,11 +1,13 @@
 /**
- * The dashboard notification center: a home-surface widget pinned directly
- * below the time/weather base that IS the app's notification inbox. It replaced
- * the pull-down sheet/panel shells - notifications live on the dashboard, not
- * behind a gesture - so this card renders the full inbox with its actions
- * (open/deep-link, dismiss, mark-all-read, clear) and self-hides when empty.
+ * The app's notification inbox card. It is NOT pinned on the dashboard: the
+ * home stays clean and the inbox stays hidden until the user pulls it up —
+ * HomeScreen mounts this card inside the NotificationsShade sheet (an
+ * Apple-style pull-up), so this component owns the inbox content (rows,
+ * open/deep-link, dismiss, mark-all-read, clear) and self-hides when empty.
  *
- * The list is height-capped and scrolls internally: edge fades mask the
+ * Rows are grouped by the VIEW they deep-link into (falling back to the
+ * producer category), like a platform notification shade groups by app. The
+ * list is height-capped and scrolls internally: edge fades mask the
  * clipped rows, and where scroll-driven animations are supported rows gently
  * scale/fade as they slide through the viewport edges (a notification-shade
  * depth cue). Both effects are GPU-only and fully stilled under
@@ -14,12 +16,14 @@
  *
  * Ordering is deliberately NOT the unread-first inbox rank: rows sort by
  * priority bucket then recency, ignoring read state, so tapping a row (which
- * marks it read) never reshuffles the list under the user's finger.
+ * marks it read) never reshuffles the list under the user's finger. Groups
+ * inherit the position of their highest-ranked row.
  */
-import type { AgentNotification } from "@elizaos/core";
+import type { AgentNotification, NotificationCategory } from "@elizaos/core";
 import { CheckCheck, Trash2, X } from "lucide-react";
 import { memo, useCallback, useEffect, useRef } from "react";
 import { cn } from "../../lib/utils";
+import { tabFromPath, titleForTab } from "../../navigation";
 import {
   isSafeDeepLink,
   navigateDeepLink,
@@ -129,6 +133,54 @@ export function orderDashboardNotifications(
     if (b.createdAt !== a.createdAt) return b.createdAt - a.createdAt;
     return a.id.localeCompare(b.id);
   });
+}
+
+/** Human group labels for producer categories with no in-app deep link. */
+const CATEGORY_GROUP_LABELS: Record<NotificationCategory, string> = {
+  reminder: "Reminders",
+  task: "Tasks",
+  workflow: "Workflows",
+  agent: "Agents",
+  approval: "Needs response",
+  message: "Messages",
+  health: "Health",
+  system: "System",
+  general: "General",
+};
+
+/**
+ * The shade groups rows by the VIEW a notification opens (its in-app deepLink
+ * resolved through the tab model), the way a platform shade groups by app.
+ * External links and link-less rows fall back to the producer-category label.
+ */
+export function notificationGroupLabel(n: AgentNotification): string {
+  const link = n.deepLink;
+  if (link?.startsWith("/")) {
+    const tab = tabFromPath(link.split(/[?#]/)[0] ?? link);
+    if (tab) {
+      const title = titleForTab(tab);
+      if (title) return title;
+    }
+  }
+  return CATEGORY_GROUP_LABELS[n.category] ?? CATEGORY_GROUP_LABELS.general;
+}
+
+/**
+ * Dashboard rows grouped by view. Rows keep the stable priority→recency order;
+ * a group sits where its highest-ranked row would (Map insertion order), so
+ * the most urgent view stacks first — priority-sorted groups, newest inside.
+ */
+export function groupDashboardNotifications(
+  notifications: readonly AgentNotification[],
+): Array<{ label: string; rows: AgentNotification[] }> {
+  const groups = new Map<string, AgentNotification[]>();
+  for (const n of orderDashboardNotifications(notifications)) {
+    const label = notificationGroupLabel(n);
+    const rows = groups.get(label);
+    if (rows) rows.push(n);
+    else groups.set(label, [n]);
+  }
+  return [...groups.entries()].map(([label, rows]) => ({ label, rows }));
 }
 
 /**
@@ -301,9 +353,9 @@ const NotificationRow = memo(function NotificationRow({
 NotificationRow.displayName = "NotificationRow";
 
 /**
- * The dashboard notification center card. Self-hiding: renders nothing until
- * the inbox has at least one notification, so a quiet home stays just the
- * clock/weather base. Mounted once by HomeScreen below DefaultHomeWidgets.
+ * The notification inbox card. Self-hiding: renders nothing until the inbox
+ * has at least one notification. Mounted inside NotificationsShade (the home
+ * pull-up sheet), never pinned on the dashboard itself.
  */
 export function NotificationsHomeCenter(): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
@@ -343,10 +395,14 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
 
   if (notifications.length === 0) return null;
 
-  const rows = orderDashboardNotifications(notifications).slice(
+  // Cap rendered rows, then group by view: the cap keeps the always-cheap
+  // paint budget; grouping happens on the capped slice so headers never count
+  // against visible rows.
+  const capped = orderDashboardNotifications(notifications).slice(
     0,
     MAX_RENDERED_ROWS,
   );
+  const groups = groupDashboardNotifications(capped);
 
   return (
     <section
@@ -423,13 +479,27 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
           LIST_MAX_HEIGHT,
         )}
       >
-        {rows.map((notification) => (
-          <NotificationRow
-            key={notification.id}
-            notification={notification}
-            onOpen={openNotification}
-            onDismiss={dismissNotification}
-          />
+        {groups.map((group) => (
+          <li key={group.label} className="flex flex-col gap-0.5">
+            {/* View group header (Apple-shade idiom: group by destination).
+                A quiet eyebrow, not a boxed section — restraint over chrome. */}
+            <span
+              data-testid="notification-group-label"
+              className="px-2 pb-0.5 pt-2 text-2xs font-medium uppercase tracking-[0.08em] text-white/55 first:pt-1"
+            >
+              {group.label}
+            </span>
+            <ul className="flex flex-col gap-0.5">
+              {group.rows.map((notification) => (
+                <NotificationRow
+                  key={notification.id}
+                  notification={notification}
+                  onOpen={openNotification}
+                  onDismiss={dismissNotification}
+                />
+              ))}
+            </ul>
+          </li>
         ))}
       </ul>
     </section>

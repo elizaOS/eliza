@@ -318,13 +318,19 @@ test.describe("scheduled reminder create -> fire -> dashboard notification cente
     await shot(page, testInfo, "03-automations-feed-after-fire");
 
     // The "open notifications" event navigates to the home dashboard, where
-    // the pinned NotificationsHomeCenter — the app's one notification surface
-    // — must render the fired reminder as a row.
+    // notifications hide behind the pull-up hint — opening the shade must
+    // render the fired reminder as a row in the inbox card.
     await openNotificationsDashboard(page);
+    const hint = page.getByTestId("home-notifications-hint");
+    await expect(
+      hint,
+      "the open-notifications event should land on the home dashboard with the notifications pull-up hint",
+    ).toBeVisible({ timeout: 15_000 });
+    await hint.click();
     const center = page.getByTestId("home-notification-center");
     await expect(
       center,
-      "the open-notifications event should land on the home dashboard with the pinned notification center",
+      "opening the shade should reveal the notification inbox card",
     ).toBeVisible({ timeout: 15_000 });
     const reminderRow = center
       .getByTestId("notification-row")
@@ -345,13 +351,14 @@ test.describe("scheduled reminder create -> fire -> dashboard notification cente
     await page.reload({ waitUntil: "domcontentloaded" });
     await waitAppReady(page);
     await openNotificationsDashboard(page);
+    await page.getByTestId("home-notifications-hint").click();
     await expect(
       page
         .getByTestId("home-notification-center")
         .getByTestId("notification-row")
         .filter({ hasText: marker })
         .first(),
-      "the fired reminder should render in the mobile dashboard notification center",
+      "the fired reminder should render in the mobile notification shade",
     ).toBeVisible({ timeout: 15_000 });
     await shot(page, testInfo, "05-notification-center-mobile");
 

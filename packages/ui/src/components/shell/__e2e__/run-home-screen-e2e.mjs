@@ -531,24 +531,34 @@ try {
       `no home widget hit its error boundary (${errorCards.length})`,
     );
   }
-  // The dashboard notification center: HomeScreen pins NotificationsHomeCenter
-  // directly below the base widgets (it is NOT a ranked WidgetHost entry - a
-  // registry declaration would double-render the inbox). The fixture seeds one
-  // urgent unread notification, so the card must render with its populated row,
-  // the unread badge, and its inbox actions.
+  // Notifications hide behind the bottom pull-up hint (Apple idiom): the
+  // resting home shows NO inbox card, only the hint pill. Tapping the hint
+  // opens the NotificationsShade carrying the inbox card with the seeded
+  // urgent row, the unread badge, and the inbox actions.
   {
+    assert(
+      (await mobile.getByTestId("home-notification-center").count()) === 0,
+      "no pinned notification center on the resting home",
+    );
+    const hint = mobile.getByTestId("home-notifications-hint");
+    await hint.waitFor({ state: "visible", timeout: 5000 });
+    await hint.click();
     const center = mobile.getByTestId("home-notification-center");
     await center.waitFor({ state: "visible", timeout: 5000 });
     assert(
       (await mobile
-        .getByTestId("home-screen")
+        .getByTestId("notifications-shade")
         .getByTestId("home-notification-center")
         .count()) === 1,
-      "the pinned notification center renders inside the home screen",
+      "the notification inbox renders inside the pull-up shade",
     );
     assert(
       (await center.getByTestId("notification-row").count()) === 1,
       "the seeded notification renders as a row",
+    );
+    assert(
+      (await center.getByTestId("notification-group-label").count()) === 1,
+      "the row renders under its view group header",
     );
     assert(
       (await center.getByText("Payment failed", { exact: false }).count()) > 0,
@@ -568,21 +578,27 @@ try {
       "the inbox actions (dismiss / mark-all-read / clear) render on the card",
     );
     assert(
-      (await mobile.getByTestId("home-notification-center").count()) === 1 &&
-        (await mobile
-          .getByTestId("widget-host-home")
-          .getByTestId("home-notification-center")
-          .count()) === 0,
-      "the notification center is pinned once, outside the ranked WidgetHost",
+      (await mobile
+        .getByTestId("widget-host-home")
+        .getByTestId("home-notification-center")
+        .count()) === 0,
+      "the notification inbox stays outside the ranked WidgetHost",
+    );
+    // Scrim tap closes the shade and the resting home returns.
+    await mobile.getByTestId("notifications-shade-scrim").click();
+    assert(
+      (await mobile.getByTestId("notifications-shade").count()) === 0 &&
+        (await mobile.getByTestId("home-notification-center").count()) === 0,
+      "scrim tap closes the shade and the home rests without the inbox",
     );
   }
-  // The gesture-shell notification surfaces are GONE: no pull zone, no
-  // pull-down sheet, no anchored panel. Notifications live on the dashboard.
+  // The legacy gesture-shell notification surfaces are GONE: no pull zone, no
+  // pull-down sheet, no anchored panel.
   assert(
     (await mobile.getByTestId("home-notification-pull-zone").count()) === 0 &&
       (await mobile.getByTestId("notification-sheet").count()) === 0 &&
       (await mobile.getByTestId("notification-panel").count()) === 0,
-    "no notification pull-zone / sheet / panel exists (dashboard center only)",
+    "no legacy notification pull-zone / sheet / panel exists (shade only)",
   );
   // No general quick-access tiles anymore - Launcher is the adjacent
   // launcher. The only tiles left are the AOSP native-OS surfaces, shown here
@@ -949,23 +965,30 @@ try {
     (await desktop.getByTestId("home-tile-phone").count()) === 0,
     "phone tile hidden when native disabled",
   );
-  // Desktop gets the SAME pinned dashboard notification center - there is no
-  // per-surface shell (no anchored panel, no pull-down sheet) any more.
+  // Desktop gets the SAME pull-up shade — no pinned card, no per-surface shell
+  // (no anchored panel, no pull-down sheet). The hint pill is also a plain
+  // click target so mouse users are not gesture-gated.
+  assert(
+    (await desktop.getByTestId("home-notification-center").count()) === 0,
+    "desktop home rests without a pinned notification center",
+  );
   await desktop
-    .getByTestId("home-notification-center")
+    .getByTestId("home-notifications-hint")
     .waitFor({ state: "visible", timeout: 5000 });
+  await desktop.getByTestId("home-notifications-hint").click();
   assert(
     (await desktop
       .getByTestId("home-notification-center")
       .getByTestId("notification-row")
       .count()) === 1,
-    "desktop renders the pinned notification center with the seeded row",
+    "desktop shade renders the inbox card with the seeded row",
   );
+  await desktop.getByTestId("notifications-shade-scrim").click();
   assert(
     (await desktop.getByTestId("home-notification-pull-zone").count()) === 0 &&
       (await desktop.getByTestId("notification-sheet").count()) === 0 &&
       (await desktop.getByTestId("notification-panel").count()) === 0,
-    "desktop has no notification pull-zone / sheet / panel either",
+    "desktop has no legacy notification pull-zone / sheet / panel either",
   );
   await snap(desktop, "desktop-home");
   await swipeLeft(desktop.getByTestId("home-launcher-home-page"));

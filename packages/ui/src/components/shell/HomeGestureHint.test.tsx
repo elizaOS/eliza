@@ -17,7 +17,7 @@ describe("HomeGestureHint", () => {
     render(<HomeGestureHint />);
 
     expect(screen.getByTestId("home-gesture-hint").textContent).toContain(
-      "Swipe for apps. Pull chat up. Hold wallpaper to restyle.",
+      "Swipe for apps. Pull chat up.",
     );
   });
 
