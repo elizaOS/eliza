@@ -188,3 +188,45 @@ describe("LifeOps missed-call repair — empty inbox no longer crashes the turn 
     expect(enqueued.payload.recipient).toBe("Frontier Tower");
   });
 });
+
+describe("LifeOps ambiguous inbox triage guard", () => {
+  beforeEach(() => {
+    getUnresolvedMock.mockReset();
+    enqueueMock.mockReset();
+  });
+
+  it("surfaces an uncertain possible-VIP note instead of recommending that it be buried", async () => {
+    const result = await handleLifeOpsDirectMessageRequest({
+      runtime: makeRuntime(),
+      message: makeMessage(
+        "Quick triage: I got this with no subject from an address I don't recognize - 'per our call, can you confirm the number by EOD?' - is that anything or junk? Don't just bury it if you're not sure.",
+      ),
+      state: makeState(),
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        actionName: "MESSAGE",
+        operation: "ambiguous_inbox_triage_guard",
+        recommendedDisposition: "surface_for_review",
+        noSideEffect: true,
+      },
+    });
+    expect(result?.text).toMatch(/possibly important/i);
+    expect(result?.text).toMatch(/not bury/i);
+    expect(result?.text).not.toMatch(/\b(?:spam|phishing|non[- ]?urgent)\b/i);
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
+  it("defers ordinary spam-management requests to the normal planner/action path", async () => {
+    const result = await handleLifeOpsDirectMessageRequest({
+      runtime: makeRuntime(),
+      message: makeMessage("Mark that promo newsletter as spam."),
+      state: makeState(),
+    });
+
+    expect(result).toBeNull();
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+});

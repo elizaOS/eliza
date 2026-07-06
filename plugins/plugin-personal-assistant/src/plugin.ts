@@ -309,6 +309,36 @@ function looksLikePortalUploadRequest(text: string): boolean {
   );
 }
 
+function looksLikeAmbiguousInboxTriageGuard(text: string): boolean {
+  const normalized = text.toLowerCase();
+  const messageArtifact =
+    /\b(?:message|email|mail|note|inbox|sender|address|subject|thread)\b/u.test(
+      normalized,
+    );
+  const triageIntent =
+    /\b(?:triage|is\s+that\s+anything|anything\s+or\s+junk|junk|spam|phishing|bury|archive|file)\b/u.test(
+      normalized,
+    );
+  const uncertainty =
+    /\b(?:don.?t\s+(?:just\s+)?bury|do\s+not\s+(?:just\s+)?bury|if\s+(?:you.?re|you\s+are|it.?s|it\s+is)\s+not\s+sure|not\s+sure|unsure|don.?t\s+recognize|do\s+not\s+recognize|unrecognized|unknown|no\s+subject|unsigned|plain\s+(?:personal\s+)?address)\b/u.test(
+      normalized,
+    );
+  return messageArtifact && triageIntent && uncertainty;
+}
+
+function buildAmbiguousInboxTriageResponse(): ActionResult {
+  return {
+    text: "I would surface it as possibly important, not bury it. The no-subject/plain-address shape is ambiguous, especially for contacts who may use personal addresses. Verify the sender, number, or recent thread context before filing it away or replying.",
+    success: true,
+    data: {
+      actionName: "MESSAGE",
+      operation: "ambiguous_inbox_triage_guard",
+      recommendedDisposition: "surface_for_review",
+      noSideEffect: true,
+    },
+  };
+}
+
 function buildPortalUploadIntakeResponse(): ActionResult {
   return {
     text: "I need the portal link and the deck file or file path before I can upload it. Once you provide both, I will ask for approval to confirm before signing in or submitting anything.",
@@ -525,6 +555,9 @@ export async function handleLifeOpsDirectMessageRequest(args: {
       message: args.message,
       state: args.state,
     });
+  }
+  if (looksLikeAmbiguousInboxTriageGuard(text)) {
+    return buildAmbiguousInboxTriageResponse();
   }
   if (looksLikeDocumentSignatureRequest(text)) {
     return queueDocumentSignatureRequest(args);
