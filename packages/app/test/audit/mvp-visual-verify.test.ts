@@ -373,7 +373,10 @@ describe("sparse-home OCR regression guard (#14343)", () => {
     return result.checks.find((c) => c.name === "ocr-text");
   }
 
-  it("declares expected-absent removed-widget tokens on builtin-chat", () => {
+  it("declares expected-absent tokens for all seven removed widgets on builtin-chat", () => {
+    // One signature token per removed widget so a regression re-mounting any of
+    // the seven on the home slot trips the guard: orchestrator activity, apps,
+    // feed activity, finances, relationships, inbox, workflow automations.
     expect(homeSpec.ocr.absent).toEqual(
       expect.arrayContaining([
         "orchestrator",
@@ -381,6 +384,9 @@ describe("sparse-home OCR regression guard (#14343)", () => {
         "App runs",
         "Bills & Balance",
         "Overdrawn",
+        "Reach out",
+        "Inbox",
+        "Automations",
       ]),
     );
   });
@@ -403,6 +409,9 @@ describe("sparse-home OCR regression guard (#14343)", () => {
       "App runs 2 live", // agent-orchestrator.apps
       "Bills & Balance overdue", // finances.alerts
       "Overdrawn by 40", // finances.alerts
+      "Reach out to Dana", // relationships.attention
+      "Inbox 3 unread", // inbox.unread
+      "Automations 2 running", // workflow.running
     ]) {
       const check = ocrCheck(`Good evening ${regressed}`);
       expect(check?.status, regressed).toBe("fail");
