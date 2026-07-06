@@ -376,11 +376,6 @@ export class PresenceSignalBridgeService extends Service {
       EventType.ACTION_STARTED,
       service.actionStartedHandler,
     );
-    runtime.registerEvent(EventType.VIEW_SWITCHED, service.viewSwitchedHandler);
-    runtime.registerEvent(
-      EventType.REACTION_RECEIVED,
-      service.reactionReceivedHandler,
-    );
     return service;
   }
 
@@ -404,14 +399,6 @@ export class PresenceSignalBridgeService extends Service {
     this.runtime.unregisterEvent(
       EventType.ACTION_STARTED,
       this.actionStartedHandler,
-    );
-    this.runtime.unregisterEvent(
-      EventType.VIEW_SWITCHED,
-      this.viewSwitchedHandler,
-    );
-    this.runtime.unregisterEvent(
-      EventType.REACTION_RECEIVED,
-      this.reactionReceivedHandler,
     );
   }
 

@@ -530,6 +530,7 @@ describe("PresenceSignalBridgeService view-switch + reaction signals (#14689)", 
         message: {
           ...messagePayload().message,
           entityId: AGENT_ID,
+          metadata: {},
         },
       }),
     );
