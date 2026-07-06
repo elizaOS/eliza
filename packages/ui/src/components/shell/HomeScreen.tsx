@@ -53,12 +53,22 @@ const HOME_ENTER_CSS = `
 const NOTIF_PULL_THRESHOLD_PX = 24;
 
 /**
- * The top hint the notification shade drops from: a quiet pill ("N
- * notifications") that self-hides when the inbox is empty. Tap or a downward
- * pull ≥ {@link NOTIF_PULL_THRESHOLD_PX} opens the shade — the pull is tracked
- * with pointer capture on the pill itself so the home scroller never fights it.
- * The chevron points DOWN: notifications come from above, the inverse of the
- * chat sheet that rises from the bottom.
+ * The top-edge affordance the notification shade drops from: a quiet pill
+ * that hugs the very top of the home surface (directly under the status-bar
+ * safe-area inset), NOT a chip floating mid-content above the clock. This is
+ * the iOS notification-center idiom (you pull from the top edge), so the hint
+ * lives at the edge and the clock stays the visual hero. It self-hides when the
+ * inbox is empty. Tap or a downward pull ≥ {@link NOTIF_PULL_THRESHOLD_PX}
+ * opens the shade; the pull is tracked with pointer capture on the pill itself
+ * (desktop/mouse), while a region-wide top-strip touch pull (bound on the
+ * scroller) covers real-touch so the pill can stay small. The chevron points
+ * DOWN: notifications come from above, the inverse of the chat sheet that rises
+ * from the bottom.
+ *
+ * Styling is deliberately blur-free: the home compositing-blur budget is spent
+ * on the pinned notification center / shade, and a top-edge whisper doesn't
+ * earn its own compositing surface. A soft float shadow keeps the label legible
+ * over bright or busy wallpapers without a hard glass chip.
  */
 function NotificationsPullDownHint({
   onOpen,
@@ -71,65 +81,68 @@ function NotificationsPullDownHint({
   if (notifications.length === 0) return null;
   const count = notifications.length;
   return (
-    <div className="flex justify-center pb-1">
-      <button
-        type="button"
-        data-testid="home-notifications-hint"
-        aria-label={
-          unreadCount > 0
-            ? `Open notifications, ${unreadCount} unread`
-            : "Open notifications"
+    <button
+      type="button"
+      data-testid="home-notifications-hint"
+      aria-label={
+        unreadCount > 0
+          ? `Open notifications, ${unreadCount} unread`
+          : "Open notifications"
+      }
+      onClick={() => {
+        // A completed pull already opened the shade; don't double-fire on
+        // the click the same gesture synthesizes.
+        if (pulled.current) {
+          pulled.current = false;
+          return;
         }
-        onClick={() => {
-          // A completed pull already opened the shade; don't double-fire on
-          // the click the same gesture synthesizes.
-          if (pulled.current) {
-            pulled.current = false;
-            return;
-          }
+        onOpen();
+      }}
+      onPointerDown={(e) => {
+        startY.current = e.clientY;
+        pulled.current = false;
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+      }}
+      onPointerMove={(e) => {
+        if (startY.current === null || pulled.current) return;
+        if (e.clientY - startY.current >= NOTIF_PULL_THRESHOLD_PX) {
+          pulled.current = true;
+          void haptics.light();
           onOpen();
-        }}
-        onPointerDown={(e) => {
-          startY.current = e.clientY;
-          pulled.current = false;
-          e.currentTarget.setPointerCapture?.(e.pointerId);
-        }}
-        onPointerMove={(e) => {
-          if (startY.current === null || pulled.current) return;
-          if (e.clientY - startY.current >= NOTIF_PULL_THRESHOLD_PX) {
-            pulled.current = true;
-            void haptics.light();
-            onOpen();
-          }
-        }}
-        onPointerUp={() => {
-          startY.current = null;
-        }}
-        onPointerCancel={() => {
-          startY.current = null;
-          pulled.current = false;
-        }}
-        className={cn(
-          "flex min-h-touch touch-none items-center gap-1.5 rounded-full px-3.5 py-1.5",
-          "bg-black/28 text-white/85 backdrop-blur-md supports-[backdrop-filter]:bg-black/22",
-          "border border-white/30 transition-colors hover:bg-black/40 active:scale-[0.97] motion-reduce:active:scale-100",
-        )}
-      >
-        <ChevronDown className="h-3.5 w-3.5 text-white/70" aria-hidden />
-        <Bell className="h-3.5 w-3.5" aria-hidden />
-        <span className="text-xs font-medium tabular-nums">
-          {count === 1 ? "1 notification" : `${count} notifications`}
+        }
+      }}
+      onPointerUp={() => {
+        startY.current = null;
+      }}
+      onPointerCancel={() => {
+        startY.current = null;
+        pulled.current = false;
+      }}
+      className={cn(
+        // A minimum 44px (min-h-touch) hit area kept small and quiet. touch-none
+        // so the pill's own pointer-capture pull never fights the scroller's
+        // touch-pan-y. Blur-free: a faint dark wash + a soft float shadow reads
+        // over any wallpaper without another compositing surface.
+        "flex min-h-touch touch-none items-center gap-1.5 rounded-full px-3 py-1",
+        "bg-black/20 text-white/80 transition-colors hover:bg-black/30",
+        "active:scale-[0.97] motion-reduce:active:scale-100",
+        WALLPAPER_FLOAT_SHADOW,
+      )}
+    >
+      <ChevronDown className="h-3 w-3 text-white/60" aria-hidden />
+      <Bell className="h-3 w-3" aria-hidden />
+      <span className="text-2xs font-medium tabular-nums">
+        {count === 1 ? "1 notification" : `${count} notifications`}
+      </span>
+      {unreadCount > 0 ? (
+        <span
+          data-testid="home-notifications-hint-unread"
+          className="rounded-full bg-white/20 px-1.5 text-2xs font-semibold tabular-nums leading-[1.05rem] text-white"
+        >
+          {unreadCount > 99 ? "99+" : unreadCount}
         </span>
-        {unreadCount > 0 ? (
-          <span
-            data-testid="home-notifications-hint-unread"
-            className="rounded-full bg-white/20 px-1.5 text-2xs font-semibold tabular-nums leading-[1.1rem] text-white"
-          >
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        ) : null}
-      </button>
-    </div>
+      ) : null}
+    </button>
   );
 }
 
@@ -384,15 +397,36 @@ export function HomeScreen({
           empty widget set reads as calm airiness rather than a broken gap; the
           AOSP tiles settle at the BOTTOM; the notifications hint anchors the
           TOP (the shade drops from above). */}
-        <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col">
-          {/* Notifications drop from the top: the hint pill anchors the top of
-            the column, self-hides when the inbox is empty, and opens the shade
-            on tap or a downward pull. The shade is a portal overlay, so opening
-            it never reflows this dashboard. */}
-          <div className={enterClass} style={{ animationDelay: "60ms" }}>
+        {/* Notifications drop from the TOP EDGE: the hint pill is anchored to
+          the very top of the home surface (centered, under the status-bar
+          safe-area inset), NOT a chip floating mid-content above the clock.
+          This is the iOS notification-center idiom: the pull affordance hugs
+          the edge you pull from, so the clock stays the visual hero and the
+          pill never reads as a lock-screen element floating in mid-air. It's
+          absolutely positioned (outside the flow column) so it can't push the
+          clock down; the column's own top padding already clears it. The pill
+          self-hides when the inbox is empty; the shade is a portal overlay, so
+          opening it never reflows this dashboard. */}
+        <div
+          className={cn(
+            enterClass,
+            "pointer-events-none absolute inset-x-0 z-[3] flex justify-center",
+            // Sit directly under the status-bar safe area, hugging the true top
+            // edge. Mirrors the scroller's own top-padding math (the root shaves
+            // a capped band off the safe area) so the pill lands just inside the
+            // cleared notch, not over it.
+            "top-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+6px)]",
+          )}
+          style={{ animationDelay: "60ms" }}
+        >
+          {/* Re-enable pointer events on the pill only; the wrapper stays
+            transparent to taps so it never blocks the clock/widgets beneath. */}
+          <div className="pointer-events-auto">
             <NotificationsPullDownHint onOpen={openShade} />
           </div>
+        </div>
 
+        <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col">
           {/* The always-on base: a naked sized grid with the time + weather as
             2×2 neighbours - no card, white text on the ambient field. Anchored
             at the top of the column as the editorial header. */}

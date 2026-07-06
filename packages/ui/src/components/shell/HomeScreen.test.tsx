@@ -137,6 +137,47 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
   });
 
+  // DEVICE FEEDBACK (adjusting #15039's placement): the hint used to render as
+  // the FIRST flow item inside the scroll column, ABOVE the clock — on device
+  // it floated in the upper-middle mid-air like a misplaced iOS lock-screen
+  // element. It now hugs the TOP EDGE of the home surface (the iOS
+  // notification-center idiom: you pull from the edge, the affordance lives at
+  // the edge), anchored under the status-bar safe area and OUT of the flow
+  // column so it never pushes the clock down.
+  it("anchors the notifications hint at the top edge, not in the flow column above the clock", () => {
+    __ingestNotificationForTests(makeNotification());
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const hint = screen.getByTestId("home-notifications-hint");
+    // The pill's positioning wrapper (its grandparent: pill -> pointer-events
+    // re-enable div -> absolute top-edge wrapper) must be an absolute, top-edge
+    // anchored element keyed to the safe-area top inset.
+    const inner = hint.parentElement;
+    const wrapper = inner?.parentElement;
+    const cls = wrapper?.className ?? "";
+    expect(cls).toContain("absolute");
+    expect(cls).toContain("--safe-area-top");
+
+    // It must NOT sit inside the flow column that starts with the clock/widgets.
+    // The clock base (home-time / DefaultHomeWidgets) lives in the max-w-2xl
+    // flex column; the hint wrapper is a sibling of that column, not an
+    // ancestor-descendant of it.
+    const column = wrapper?.parentElement?.querySelector(".max-w-2xl");
+    expect(column).not.toBeNull();
+    expect(column?.contains(hint)).toBe(false);
+  });
+
+  // Blur budget (#9141 / #14943): the home spends its ONE backdrop-filter on the
+  // pinned notification center / shade. The top-edge hint is a quiet whisper and
+  // must stay blur-free (a soft float shadow carries legibility instead), so it
+  // adds no new compositing surface over the wallpaper.
+  it("renders the notifications hint blur-free (no backdrop-filter on the pill)", () => {
+    __ingestNotificationForTests(makeNotification());
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const hint = screen.getByTestId("home-notifications-hint");
+    expect(hint.className).not.toMatch(/backdrop-blur|backdrop-filter/);
+    expect(hint.className).not.toContain("supports-[backdrop-filter]");
+  });
+
   // GESTURE-HINT OVERLAP FIX (#14945 follow-up): the one-time gesture hint
   // ("Swipe for apps. Pull chat up. Hold wallpaper to restyle.") sat as the last
   // flow item in the scroll column, flush against the top of the reserved
