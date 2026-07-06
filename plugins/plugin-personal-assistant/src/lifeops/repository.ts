@@ -110,6 +110,13 @@ import type {
   LifeOpsCommitmentStatus,
 } from "./commitments/index.js";
 import {
+  type LifeOpsBriefEngagementEventType,
+  type LifeOpsBriefItemEngagementSummary,
+  type LifeOpsBriefItemKind,
+  type LifeOpsBriefItemSource,
+  summarizeBriefEngagementRows,
+} from "./briefing/editorial-judgment.js";
+import {
   createConnectorAccountPrivacyPolicy,
   deriveConnectorAccountId,
   deriveConnectorAccountIdFromGrant,
@@ -242,6 +249,30 @@ export interface LifeOpsCachedInboxMessage extends LifeOpsInboxMessage {
 
 type LifeOpsInboxCacheWriteMessage = LifeOpsInboxMessage & {
   priorityFlags?: readonly string[];
+};
+
+export interface LifeOpsBriefItemEngagementRecord {
+  id: string;
+  agentId: string;
+  briefingId: string;
+  itemId: string;
+  source: LifeOpsBriefItemSource;
+  kind: LifeOpsBriefItemKind;
+  sourceId: string;
+  itemClass: string;
+  eventType: LifeOpsBriefEngagementEventType;
+  eventAt: string;
+  weight: number;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export type LifeOpsBriefItemEngagementWrite = Omit<
+  LifeOpsBriefItemEngagementRecord,
+  "id" | "createdAt"
+> & {
+  id?: string;
+  createdAt?: string;
 };
 
 // Finance tables were carved out of plugin-personal-assistant into
@@ -492,6 +523,26 @@ function parseWebsiteAccessGrant(
     metadata: parseJsonRecord(row.metadata_json),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
+  };
+}
+
+function parseBriefItemEngagement(
+  row: Record<string, unknown>,
+): LifeOpsBriefItemEngagementRecord {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    briefingId: toText(row.briefing_id),
+    itemId: toText(row.item_id),
+    source: toText(row.source) as LifeOpsBriefItemSource,
+    kind: toText(row.kind) as LifeOpsBriefItemKind,
+    sourceId: toText(row.source_id),
+    itemClass: toText(row.item_class),
+    eventType: toText(row.event_type) as LifeOpsBriefEngagementEventType,
+    eventAt: toText(row.event_at),
+    weight: toNumber(row.weight),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
   };
 }
 
@@ -2647,6 +2698,145 @@ export class LifeOpsRepository {
     for (const statement of inboxCacheColumnRepairs) {
       await executeRawSql(runtime, statement);
     }
+  }
+
+  async recordBriefItemEngagement(
+    input: LifeOpsBriefItemEngagementWrite,
+  ): Promise<LifeOpsBriefItemEngagementRecord> {
+    const createdAt = input.createdAt ?? isoNow();
+    const id =
+      input.id ??
+      `brief_eng_${crypto
+        .createHash("sha256")
+        .update(
+          [
+            input.agentId,
+            input.briefingId,
+            input.itemId,
+            input.eventType,
+            input.eventAt,
+          ].join("\0"),
+        )
+        .digest("hex")
+        .slice(0, 20)}`;
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_brief_item_engagements (
+        id, agent_id, briefing_id, item_id, source, kind, source_id,
+        item_class, event_type, event_at, weight, metadata_json, created_at
+      ) VALUES (
+        ${sqlQuote(id)},
+        ${sqlQuote(input.agentId)},
+        ${sqlQuote(input.briefingId)},
+        ${sqlQuote(input.itemId)},
+        ${sqlQuote(input.source)},
+        ${sqlQuote(input.kind)},
+        ${sqlQuote(input.sourceId)},
+        ${sqlQuote(input.itemClass)},
+        ${sqlQuote(input.eventType)},
+        ${sqlQuote(input.eventAt)},
+        ${sqlNumber(input.weight)},
+        ${sqlJson(input.metadata)},
+        ${sqlQuote(createdAt)}
+      )
+      ON CONFLICT (agent_id, briefing_id, item_id, event_type, event_at)
+      DO UPDATE SET
+        source = EXCLUDED.source,
+        kind = EXCLUDED.kind,
+        source_id = EXCLUDED.source_id,
+        item_class = EXCLUDED.item_class,
+        weight = EXCLUDED.weight,
+        metadata_json = EXCLUDED.metadata_json`,
+    );
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_brief_item_engagements
+        WHERE agent_id = ${sqlQuote(input.agentId)}
+          AND briefing_id = ${sqlQuote(input.briefingId)}
+          AND item_id = ${sqlQuote(input.itemId)}
+          AND event_type = ${sqlQuote(input.eventType)}
+          AND event_at = ${sqlQuote(input.eventAt)}
+        LIMIT 1`,
+    );
+    const row = rows[0] ? parseBriefItemEngagement(rows[0]) : null;
+    if (!row) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Failed to reload brief engagement",
+        {
+          code: "LIFEOPS_BRIEF_ENGAGEMENT_RELOAD_FAILED",
+          context: {
+            agentId: input.agentId,
+            briefingId: input.briefingId,
+            itemId: input.itemId,
+            eventType: input.eventType,
+            eventAt: input.eventAt,
+          },
+          severity: "error",
+        },
+      );
+    }
+    return row;
+  }
+
+  async getBriefItemEngagement(
+    agentId: string,
+    id: string,
+  ): Promise<LifeOpsBriefItemEngagementRecord | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_brief_item_engagements
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseBriefItemEngagement(row) : null;
+  }
+
+  async listBriefItemEngagements(
+    agentId: string,
+    options: {
+      briefingId?: string;
+      itemClass?: string;
+      sinceIso?: string;
+      untilIso?: string;
+    } = {},
+  ): Promise<LifeOpsBriefItemEngagementRecord[]> {
+    const where = [`agent_id = ${sqlQuote(agentId)}`];
+    if (options.briefingId) {
+      where.push(`briefing_id = ${sqlQuote(options.briefingId)}`);
+    }
+    if (options.itemClass) {
+      where.push(`item_class = ${sqlQuote(options.itemClass)}`);
+    }
+    if (options.sinceIso) {
+      where.push(`event_at >= ${sqlQuote(options.sinceIso)}`);
+    }
+    if (options.untilIso) {
+      where.push(`event_at <= ${sqlQuote(options.untilIso)}`);
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_brief_item_engagements
+        WHERE ${where.join(" AND ")}
+        ORDER BY event_at ASC, created_at ASC`,
+    );
+    return rows.map(parseBriefItemEngagement);
+  }
+
+  async summarizeBriefItemEngagements(
+    agentId: string,
+    options: {
+      sinceIso?: string;
+      untilIso?: string;
+    } = {},
+  ): Promise<readonly LifeOpsBriefItemEngagementSummary[]> {
+    return summarizeBriefEngagementRows(
+      await this.listBriefItemEngagements(agentId, options),
+    );
   }
 
   async createDefinition(definition: LifeOpsTaskDefinition): Promise<void> {

@@ -1585,6 +1585,39 @@ export const lifeWorkThreadEvents = appLifeopsPgSchema.table(
   ],
 );
 
+export const lifeBriefItemEngagements = appLifeopsPgSchema.table(
+  "life_brief_item_engagements",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    briefingId: text("briefing_id").notNull(),
+    itemId: text("item_id").notNull(),
+    source: text("source").notNull(),
+    kind: text("kind").notNull(),
+    sourceId: text("source_id").notNull(),
+    itemClass: text("item_class").notNull(),
+    eventType: text("event_type").notNull(),
+    eventAt: text("event_at").notNull(),
+    weight: real("weight").notNull().default(0),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.briefingId, t.itemId, t.eventType, t.eventAt),
+    index("idx_life_brief_item_engagements_item").on(
+      t.agentId,
+      t.itemId,
+      t.eventAt,
+    ),
+    index("idx_life_brief_item_engagements_class").on(
+      t.agentId,
+      t.itemClass,
+      t.eventAt,
+    ),
+    index("idx_life_brief_item_engagements_brief").on(t.agentId, t.briefingId),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // Aggregate export for plugin schema property
 // ---------------------------------------------------------------------------
@@ -1647,6 +1680,7 @@ export const lifeOpsSchema = {
   lifeScheduledTaskLog,
   lifeWorkThreads,
   lifeWorkThreadEvents,
+  lifeBriefItemEngagements,
   lifeopsFeaturesTable,
 } as const;
 
