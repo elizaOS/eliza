@@ -1159,7 +1159,6 @@
   "cloud.billing.loading": "Carregando cobrança",
   "cloud.billing.metaDescription": "Adicione fundos e gerencie sua cobrança",
   "cloud.billing.metaTitle": "Cobrança",
-  "cloud.billing.noOrganization": "Sem organização associada a esta conta",
   "cloud.billing.pageTitle": "Cobrança",
   "cloud.billing.paymentCanceled": "Pagamento cancelado. Nada foi cobrado.",
   "cloud.billing.success.backToBilling": "Voltar para Cobrança",

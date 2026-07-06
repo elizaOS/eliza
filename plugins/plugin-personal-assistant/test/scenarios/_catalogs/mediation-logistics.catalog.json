@@ -18,56 +18,56 @@
       "pack": "I2",
       "tier": "T1",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i2.mediation.neutral_schedule_options",
       "pack": "I2",
       "tier": "T2",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i2.mediation.no_adjudication",
       "pack": "I2",
       "tier": "T4",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i2.mediation.consent_before_group_message",
       "pack": "I2",
       "tier": "T4",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i2.mediation.extract_action_items",
       "pack": "I2",
       "tier": "T2",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i2.mediation.private_fact_firebreak",
       "pack": "I2",
       "tier": "T4",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i2.mediation.followup_without_pressure",
       "pack": "I2",
       "tier": "T3",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i2.mediation.conflicting_claims_label_uncertain",
       "pack": "I2",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored"
     }
   ]
 }

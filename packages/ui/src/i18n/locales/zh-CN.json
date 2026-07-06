@@ -1159,7 +1159,6 @@
   "cloud.billing.loading": "加载账单中",
   "cloud.billing.metaDescription": "充值并管理你的账单",
   "cloud.billing.metaTitle": "账单",
-  "cloud.billing.noOrganization": "此账户没有关联的组织",
   "cloud.billing.pageTitle": "账单",
   "cloud.billing.paymentCanceled": "支付已取消。未产生任何费用。",
   "cloud.billing.success.backToBilling": "返回账单",

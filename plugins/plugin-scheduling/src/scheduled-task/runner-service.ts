@@ -45,6 +45,7 @@ import {
 import {
   renderFailureDispatchResult,
   renderScheduledDispatchMessage,
+  renderScheduledDispatchTitle,
 } from "./dispatch-render.js";
 import {
   createEscalationLadderRegistry,
@@ -207,8 +208,10 @@ function createDefaultScheduledTaskDispatcher(
       // failure is a typed, retryable dispatch failure — never fall back to
       // delivering the raw instruction text.
       let body: string;
+      let title: string;
       try {
         body = await renderScheduledDispatchMessage(runtime, record);
+        title = await renderScheduledDispatchTitle(runtime, record, body);
       } catch (error) {
         // error-policy:J1 boundary translation — dispatch outcomes are the
         // runner's typed contract; the failure also reaches RECENT_ERRORS and
@@ -226,7 +229,7 @@ function createDefaultScheduledTaskDispatcher(
       const isUrgent = record.intensity === "urgent";
       void getNotifier(runtime)
         ?.notify({
-          title: isUrgent ? "Approval needed" : "Reminder",
+          title,
           body,
           category: isUrgent ? "approval" : "reminder",
           priority: isUrgent ? "urgent" : "normal",
