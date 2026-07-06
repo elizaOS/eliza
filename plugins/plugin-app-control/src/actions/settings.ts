@@ -16,9 +16,9 @@
  * endpoint the on-screen control calls, so view button and action are twins),
  * `readonly` for pure diagnostics, or `unwired` for a gap section whose semantic
  * write is deliberately deferred (with a stated reason). Every built-in section
- * id has a registry entry — a completeness invariant the unit test pins so the
- * catalog can never silently drift, and which the view-mutation ratchet (#14369)
- * consumes as the action-side mapping.
+ * id has a registry entry, and every non-catalog settings section has an
+ * explicit audit disposition — completeness invariants the unit tests pin so
+ * the catalog and chat-write audit can never silently drift.
  */
 
 import type {
@@ -120,7 +120,39 @@ export type SettingsSectionCapability =
 			kind: "unwired";
 			/** Why the semantic write is deferred, not merely missing. */
 			reason: string;
+			/** Open issue that owns the missing action/view twin. */
+			trackingIssue?: number;
+			/** Durable reason this section is intentionally not chat-writable. */
+			exemptionReason?: string;
 	  };
+
+export interface SettingsNonCatalogAuditEntry {
+	reason: string;
+	coveredBy?: string;
+	trackingIssue?: number;
+}
+
+export const SETTINGS_NON_CATALOG_SECTION_AUDIT: Readonly<
+	Record<string, SettingsNonCatalogAuditEntry>
+> = {
+	"cloud-overview": {
+		reason:
+			"Cloud upsell/account overview is a late-registered non-catalog page, not a local setting value.",
+		coveredBy: "VIEWS navigation and cloud onboarding surfaces",
+	},
+	"cloud-agents": {
+		reason:
+			"Cloud agent create/switch/delete is a cloud agent-management workflow, not part of the local SETTINGS value registry.",
+		coveredBy:
+			"AGENT_SWITCH for switching; cloud agent management needs its own product action if chat-write is required.",
+	},
+	"my-runtimes": {
+		reason:
+			"Runtime registry management spans local/cloud/VPS runtimes and is outside the pinned settings catalog.",
+		coveredBy:
+			"MODEL_SWITCH for inference target changes; runtime CRUD needs a separate runtime-management action if chat-write is required.",
+	},
+};
 
 const PERMISSIONS_SHELL_KEY: SettingsWritableKey = {
 	description:
@@ -376,12 +408,14 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 	},
 	security: {
 		kind: "readonly",
-		summary: "Security posture and status; no chat-writable value.",
+		summary:
+			"Security posture and host password status; password changes are deliberately not chat-writable because secrets must not flow through the model.",
 	},
 	voice: {
 		kind: "unwired",
 		reason:
 			"Voice enable/config is not yet exposed as a semantic action; it currently lives behind the voice section controls.",
+		trackingIssue: 14910,
 	},
 	capabilities: {
 		kind: "route",
@@ -399,21 +433,27 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 		kind: "unwired",
 		reason:
 			"Installed-view management is handled by the VIEWS/APP surface, not a settings value.",
+		exemptionReason:
+			"APP and VIEWS own app installation, launch, creation, and view management; SETTINGS must not duplicate that workflow.",
 	},
 	"remote-plugins": {
 		kind: "unwired",
 		reason:
 			"Remote plugin host registration is developer-only and has no single-value chat write.",
+		exemptionReason:
+			"Remote plugin registration is a developer workflow without a stable single-value setting contract.",
 	},
 	"wallet-rpc": {
 		kind: "unwired",
 		reason:
 			"RPC endpoint configuration is a structured object; wallet keys are read-only from chat.",
+		trackingIssue: 14911,
 	},
 	updates: {
 		kind: "unwired",
 		reason:
 			"Update check/apply is an asynchronous job surface, not a settings value.",
+		trackingIssue: 14912,
 	},
 	advanced: {
 		kind: "route",

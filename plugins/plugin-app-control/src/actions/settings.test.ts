@@ -14,6 +14,7 @@ import {
 	parseBooleanValue,
 	parseSettingsRequest,
 	resolveSectionId,
+	SETTINGS_NON_CATALOG_SECTION_AUDIT,
 	SETTINGS_WRITE_REGISTRY,
 	type SettingsRouteFetch,
 } from "./settings.ts";
@@ -168,6 +169,49 @@ describe("registry completeness", () => {
 		const metaIds = SETTINGS_SECTION_META.map((m) => m.id).sort();
 		const registryIds = Object.keys(SETTINGS_WRITE_REGISTRY).sort();
 		expect(registryIds).toEqual(metaIds);
+	});
+
+	it("pins audit records for non-catalog settings sections", () => {
+		expect(Object.keys(SETTINGS_NON_CATALOG_SECTION_AUDIT).sort()).toEqual([
+			"cloud-agents",
+			"cloud-overview",
+			"my-runtimes",
+		]);
+		for (const [id, entry] of Object.entries(
+			SETTINGS_NON_CATALOG_SECTION_AUDIT,
+		)) {
+			expect(
+				entry.reason.trim().length,
+				`non-catalog section "${id}" needs a durable audit reason`,
+			).toBeGreaterThan(20);
+			expect(
+				entry.coveredBy || entry.trackingIssue,
+				`non-catalog section "${id}" needs coverage or an issue`,
+			).toBeTruthy();
+			expect(SETTINGS_WRITE_REGISTRY[id]).toBeUndefined();
+		}
+	});
+
+	it("requires every unwired catalog section to be tracked or explicitly exempt", () => {
+		for (const [id, cap] of Object.entries(SETTINGS_WRITE_REGISTRY)) {
+			if (cap.kind !== "unwired") continue;
+			expect(
+				cap.trackingIssue || cap.exemptionReason,
+				`unwired section "${id}" needs a tracking issue or exemption`,
+			).toBeTruthy();
+		}
+		expect(SETTINGS_WRITE_REGISTRY.voice).toMatchObject({
+			kind: "unwired",
+			trackingIssue: 14910,
+		});
+		expect(SETTINGS_WRITE_REGISTRY["wallet-rpc"]).toMatchObject({
+			kind: "unwired",
+			trackingIssue: 14911,
+		});
+		expect(SETTINGS_WRITE_REGISTRY.updates).toMatchObject({
+			kind: "unwired",
+			trackingIssue: 14912,
+		});
 	});
 
 	it("names only real dedicated actions for delegated sections", () => {
