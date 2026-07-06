@@ -29,6 +29,22 @@ import type {
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 
+type FetchLike = (
+  input: string,
+  init: {
+    method: "POST";
+    headers: Record<string, string>;
+    body: string;
+    signal: AbortSignal;
+  },
+) => Promise<{
+  ok: boolean;
+  status: number;
+  statusText: string;
+  text(): Promise<string>;
+  json(): Promise<unknown>;
+}>;
+
 function assertQuestions(questions: VisionQuestion[]): void {
   if (questions.length === 0) {
     throw new EvidenceError("askAboutImage requires at least one question", {
@@ -54,7 +70,7 @@ function assertQuestions(questions: VisionQuestion[]): void {
 }
 
 async function postJson(
-  fetchImpl: typeof fetch,
+  fetchImpl: FetchLike,
   url: string,
   headers: Record<string, string>,
   body: string,
@@ -62,7 +78,7 @@ async function postJson(
 ): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  let response: Response;
+  let response: Awaited<ReturnType<FetchLike>>;
   try {
     response = await fetchImpl(url, {
       method: "POST",
@@ -100,7 +116,7 @@ export async function askAboutImage(
 ): Promise<AskResult> {
   assertQuestions(questions);
   const now = options.now ?? (() => new Date());
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const fetchImpl = (options.fetchImpl ?? fetch) as unknown as FetchLike;
   const maxEdge = options.maxEdge ?? DEFAULT_MAX_EDGE;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
