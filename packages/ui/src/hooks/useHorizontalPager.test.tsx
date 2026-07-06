@@ -490,3 +490,108 @@ describe("useHorizontalPager — pointercancel abandonment", () => {
     expect(rail.style.transform).toContain("translate3d(0px");
   });
 });
+
+describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)", () => {
+  const touch = {
+    pointerId: 31,
+    pointerType: "touch",
+    isPrimary: true,
+    clientY: 300,
+  } as const;
+
+  /** Fire a transform `transitionend` on the rail, as WebKit does when a settle
+   *  transition finishes (jsdom never dispatches these itself). */
+  function endTransform(rail: HTMLElement) {
+    act(() => {
+      const ev = new Event("transitionend") as TransitionEvent;
+      Object.defineProperty(ev, "propertyName", { value: "transform" });
+      Object.defineProperty(ev, "target", { value: rail });
+      rail.dispatchEvent(ev);
+    });
+  }
+
+  it("promotes the rail to its own layer for the drag, drops it on settle end", () => {
+    const { getByTestId } = render(<Harness />);
+    const rail = getByTestId("rail");
+    act(() => {
+      clock = 1000;
+      fireEvent.pointerDown(rail, { ...touch, clientX: 800 });
+      // Axis still pending under the commit slop — no promotion yet.
+      expect(rail.style.willChange).toBe("");
+      // Cross the slop horizontally: the gesture commits to X and promotes.
+      fireEvent.pointerMove(rail, { ...touch, clientX: 770 });
+    });
+    expect(rail.style.willChange).toBe("transform");
+    // Held through the drag frames + the release settle.
+    act(() => {
+      fireEvent.pointerMove(rail, { ...touch, clientX: 400 });
+      clock = 1120;
+      fireEvent.pointerUp(rail, { ...touch, clientX: 400 });
+    });
+    expect(rail.style.willChange).toBe("transform");
+    // Dropped only once the settle transition has actually ended.
+    endTransform(rail);
+    expect(rail.style.willChange).toBe("");
+  });
+
+  it("never promotes the rail for a vertical-committed gesture", () => {
+    const { getByTestId } = render(<Harness />);
+    const rail = getByTestId("rail");
+    act(() => {
+      clock = 1000;
+      fireEvent.pointerDown(rail, { ...touch, clientX: 500 });
+      // Vertical-dominant move: axis commits to Y, the rail must stay unpromoted.
+      fireEvent.pointerMove(rail, { ...touch, clientX: 505, clientY: 400 });
+      fireEvent.pointerMove(rail, { ...touch, clientX: 505, clientY: 500 });
+      clock = 1120;
+      fireEvent.pointerUp(rail, { ...touch, clientX: 505, clientY: 500 });
+    });
+    expect(rail.style.willChange).toBe("");
+  });
+
+  it("drops the promotion when the surface unmounts mid-gesture", () => {
+    const { getByTestId, unmount } = render(<Harness />);
+    const rail = getByTestId("rail");
+    act(() => {
+      clock = 1000;
+      fireEvent.pointerDown(rail, { ...touch, clientX: 800 });
+      fireEvent.pointerMove(rail, { ...touch, clientX: 770 });
+    });
+    expect(rail.style.willChange).toBe("transform");
+    // Unmount before any settle transitionend: the cleanup effect drops the
+    // promoted layer so its GPU memory is not stranded.
+    unmount();
+    expect(rail.style.willChange).toBe("");
+  });
+
+  it("skips the promotion under prefers-reduced-motion (no layer to composite)", () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+    try {
+      const { getByTestId } = render(<Harness />);
+      const rail = getByTestId("rail");
+      act(() => {
+        clock = 1000;
+        fireEvent.pointerDown(rail, { ...touch, clientX: 800 });
+        fireEvent.pointerMove(rail, { ...touch, clientX: 770 });
+        fireEvent.pointerMove(rail, { ...touch, clientX: 400 });
+        clock = 1120;
+        fireEvent.pointerUp(rail, { ...touch, clientX: 400 });
+      });
+      // Reduced motion jumps the rail with no settle transition — there is no
+      // animated layer to composite, so the hint is never set.
+      expect(rail.style.willChange).toBe("");
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+});

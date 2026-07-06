@@ -268,6 +268,39 @@ export function useHorizontalPager<
     return Math.max(1, width);
   }, []);
 
+  // A GPU-compositing hint scoped to an ACTIVE drag/settle only, mirroring the
+  // vertical overlay's `will-change` playbook (#14501) on the horizontal axis.
+  // The rail is `w-[200%]` — two full-viewport panes, one of which carries a
+  // `backdrop-blur-xl` + `mask-image` notification stack (NotificationsHome
+  // Center). Without a promotion hint WebKit/iOS Safari rasterizes the rail into
+  // its parent layer, so every frame of a horizontal pan re-rasterizes the
+  // blurred/masked subtree as it translates (the installed-PWA left↔right
+  // micro-stutter). Hinting `will-change: transform` on the rail up front lets
+  // the compositor promote the whole surface to its own layer and translate it
+  // without a per-frame repaint. Deliberately NOT permanent — a resident hint
+  // keeps a promoted layer (and its GPU memory) alive at rest for no benefit, so
+  // it is dropped the instant the settle transition ends (see `armRailPromotion`
+  // / `dropRailPromotion` below). Written imperatively on the same element as
+  // the transform (the pager already bypasses React for the per-frame drag), so
+  // it never triggers a re-render.
+  const railPromotedRef = React.useRef(false);
+  const dropRailPromotion = React.useCallback(() => {
+    const rail = railRef.current;
+    if (!railPromotedRef.current) return;
+    railPromotedRef.current = false;
+    if (rail) rail.style.willChange = "";
+  }, []);
+  const armRailPromotion = React.useCallback(() => {
+    const rail = railRef.current;
+    if (!rail || railPromotedRef.current) return;
+    // Reduced motion has no animated settle to composite — a pan that jumps
+    // page-to-page never runs the transition, so the promotion would only ever
+    // be dropped by the next drag. Skip it entirely (matches #14501).
+    if (prefersReducedMotion()) return;
+    railPromotedRef.current = true;
+    rail.style.willChange = "transform";
+  }, []);
+
   const writeOffset = React.useCallback(
     (offset: number, transitionMs: number | null) => {
       const rail = railRef.current;
@@ -370,6 +403,39 @@ export function useHorizontalPager<
     return () => observer.disconnect();
   }, [measureWidth, writeOffset]);
 
+  // Drop the drag-scoped GPU promotion (#swipe-smoothness, horizontal twin of
+  // #14501) only once the settle transition has actually ENDED — clearing it on
+  // pointerup would strip `will-change` mid settle-transition and repaint exactly
+  // when the rail is still moving. A fresh drag re-arms it before the next
+  // transition, and a chained swipe that interrupts the settle keeps the layer
+  // resident (armRailPromotion is a no-op while already promoted). Only the
+  // transform transition on the rail itself clears it (guard against a bubbled
+  // child transition, and against a `transitionend` for some other property).
+  React.useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const onTransitionEnd = (event: TransitionEvent) => {
+      if (event.target !== rail || event.propertyName !== "transform") return;
+      if (dragRef.current) return; // a new drag is live — keep the promotion
+      dropRailPromotion();
+    };
+    rail.addEventListener("transitionend", onTransitionEnd);
+    return () => rail.removeEventListener("transitionend", onTransitionEnd);
+  }, [dropRailPromotion]);
+
+  // Release the promoted layer (and its GPU memory) if the surface unmounts
+  // mid-gesture, before any settle transition could fire its `transitionend`.
+  // Capture the rail element on mount so the cleanup can still clear the hint
+  // even though React has nulled `railRef.current` by unmount time.
+  React.useEffect(() => {
+    const rail = railRef.current;
+    return () => {
+      if (!railPromotedRef.current) return;
+      railPromotedRef.current = false;
+      if (rail) rail.style.willChange = "";
+    };
+  }, []);
+
   // (useRafCoalescer cancels its own in-flight frame on unmount.)
 
   const finish = React.useCallback(
@@ -408,11 +474,18 @@ export function useHorizontalPager<
           : state.baseOffset;
       // Velocity-aware momentum: settle duration scales with how fast the finger
       // left, not a fixed rate — a flick lands quick, a slow drag eases in.
-      const settleTo = (offset: number) =>
+      const settleTo = (offset: number) => {
         writeOffset(
           offset,
           momentumSettleMs(Math.abs(offset - lastVisual), velocity),
         );
+        // If the rail is released exactly where it rests (a horizontal-committed
+        // gesture that dragged out and back to 0), the transform doesn't change,
+        // so no settle `transitionend` fires to drop the drag-scoped GPU
+        // promotion. Drop it here for that zero-delta case; the normal path lets
+        // the transition run and clears on its `transitionend`.
+        if (Math.abs(offset - lastVisual) < 1) dropRailPromotion();
+      };
 
       // A page only advances for a committed horizontal drag that can actually
       // move in the drag direction; anything else settles back.
@@ -469,6 +542,7 @@ export function useHorizontalPager<
       canMove,
       cancelScheduledOffset,
       clickSuppression,
+      dropRailPromotion,
       measureWidth,
       releaseCapture,
       visualDragOffset,
@@ -560,6 +634,14 @@ export function useHorizontalPager<
         const ay = Math.abs(dy);
         if (Math.max(ax, ay) < AXIS_COMMIT_SLOP) return;
         state.axis = ax > ay * AXIS_DOMINANCE_RATIO ? "horizontal" : "vertical";
+        // The gesture is now known to be a horizontal pan: promote the rail to
+        // its own compositor layer for the rest of the drag + settle so the
+        // finger-tracked translate (and the blurred/masked notification stack it
+        // carries) composites instead of repainting per frame (#swipe-
+        // smoothness). Armed here (first horizontal-committed frame), not on
+        // pointerdown, so a purely vertical scroll of the home widget list never
+        // needlessly promotes the rail. Dropped on the settle `transitionend`.
+        if (state.axis === "horizontal") armRailPromotion();
       }
       if (state.axis !== "horizontal") return;
 
@@ -591,7 +673,7 @@ export function useHorizontalPager<
       }
       scheduleOffset(state.baseOffset + visualDragOffset(state, dx));
     },
-    [abandonDrag, scheduleOffset, visualDragOffset],
+    [abandonDrag, armRailPromotion, scheduleOffset, visualDragOffset],
   );
 
   const onPointerUp = React.useCallback(
