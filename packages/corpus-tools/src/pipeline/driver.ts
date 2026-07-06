@@ -15,6 +15,7 @@ import {
 } from "../schema.ts";
 import { findCorpusShardFiles, readCorpusShard } from "../validator.ts";
 import { minePiiCandidates, writeMineArtifacts } from "./mine.ts";
+import { swapPermanentSecrets } from "./secrets.ts";
 
 export const SCRUB_STAGE_NAMES = [
   "mine",
@@ -37,6 +38,7 @@ export interface ScrubStageContext {
   markerKey: string;
   clusterKey: string;
   isClusterExemplar: boolean;
+  knownSecrets?: Record<string, string | undefined>;
 }
 
 export interface ScrubStageResult {
@@ -91,6 +93,7 @@ export interface ScrubRunOptions {
   rulesetVersion: string;
   stages?: readonly ScrubStageDefinition[];
   maxStageExecutions?: number;
+  knownSecrets?: Record<string, string | undefined>;
 }
 
 export interface ScrubStageReport {
@@ -105,6 +108,7 @@ export interface ScrubStageReport {
   outputTokens: number;
   estimatedUsd: number;
   candidateCount?: number;
+  secretReplacementCount?: number;
 }
 
 export interface ScrubRunReport {
@@ -185,6 +189,10 @@ function defaultStateDir(targetPath: string): string {
   return path.join(base, ".state");
 }
 
+function targetRootDir(targetPath: string): string {
+  return path.extname(targetPath) ? path.dirname(targetPath) : targetPath;
+}
+
 function stageTargetState(stage: ScrubStageName): ScrubState {
   switch (stage) {
     case "mine":
@@ -198,6 +206,10 @@ function stageTargetState(stage: ScrubStageName): ScrubState {
     case "verify":
       return "verified";
   }
+}
+
+function isOffDeviceStage(stage: ScrubStageName): boolean {
+  return stage === "rewrite" || stage === "llm";
 }
 
 function normalizeNewsletterTemplate(text: string): string {
@@ -297,6 +309,35 @@ async function readMessages(targetPath: string): Promise<CorpusMessage[]> {
   return messages;
 }
 
+function parseEnvLine(line: string): [string, string] | undefined {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith("#")) return undefined;
+  const match = trimmed.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+  if (!match) return undefined;
+  const rawValue = match[2].trim();
+  const quoted = rawValue.match(/^(['"])(.*)\1$/);
+  return [match[1], quoted ? quoted[2] : rawValue];
+}
+
+async function readKnownSecretsFromEnvFiles(
+  targetPath: string,
+): Promise<Record<string, string | undefined>> {
+  const rootDir = targetRootDir(targetPath);
+  const entries = await fs.readdir(rootDir, { withFileTypes: true });
+  const secrets: Record<string, string | undefined> = {};
+  for (const entry of entries) {
+    if (!entry.isFile() || !/^\.env(?:\.|$)/.test(entry.name)) continue;
+    const raw = await fs.readFile(path.join(rootDir, entry.name), "utf8");
+    for (const line of raw.split(/\r?\n/)) {
+      const parsed = parseEnvLine(line);
+      if (parsed) {
+        secrets[parsed[0]] = parsed[1];
+      }
+    }
+  }
+  return secrets;
+}
+
 function selectedStages(
   selector: ScrubStageSelector,
   stages: readonly ScrubStageDefinition[],
@@ -317,6 +358,19 @@ function defaultStage(stage: ScrubStageName): ScrubStageDefinition {
     targetState,
     async run(message, context) {
       assertScrubStateTransition(message.scrubState, targetState);
+      if (stage === "secrets") {
+        const swapped = swapPermanentSecrets(message, {
+          hashSalt: context.rulesetVersion,
+          knownSecrets: context.knownSecrets,
+        });
+        return {
+          message: swapped.message,
+          metadata: {
+            secretReplacementCount: swapped.replacements.length,
+          },
+          cost: ZERO_COST,
+        };
+      }
       const next = stableCloneMessage(message);
       next.scrubState = targetState;
       const mined =
@@ -351,6 +405,45 @@ function defaultStage(stage: ScrubStageName): ScrubStageDefinition {
 
 export function defaultScrubStages(): ScrubStageDefinition[] {
   return SCRUB_STAGE_NAMES.map(defaultStage);
+}
+
+function hasGreenSecretsRecord(
+  ledger: LedgerState,
+  messageId: string,
+  rulesetVersion: string,
+): boolean {
+  for (const record of ledger.byKey.values()) {
+    if (
+      record.messageId === messageId &&
+      record.stage === "secrets" &&
+      record.rulesetVersion === rulesetVersion &&
+      !record.tombstone &&
+      record.output &&
+      scrubStateRank[record.output.scrubState] >= scrubStateRank.swapped
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function assertSecretsGate(
+  stage: ScrubStageName,
+  message: CorpusMessage,
+  ledger: LedgerState,
+  rulesetVersion: string,
+): void {
+  if (!isOffDeviceStage(stage)) return;
+  if (scrubStateRank[message.scrubState] < scrubStateRank.swapped) {
+    throw new Error(
+      `refusing ${stage} before secrets stage for message ${message.id}`,
+    );
+  }
+  if (!hasGreenSecretsRecord(ledger, message.id, rulesetVersion)) {
+    throw new Error(
+      `refusing ${stage}: message ${message.id} lacks a green secrets ledger entry`,
+    );
+  }
 }
 
 async function writeJsonl(
@@ -392,6 +485,10 @@ export async function runScrubPipeline(
     : { recordsRead: 0, byKey: new Map<string, ScrubLedgerRecord>() };
   let recordsWritten = 0;
   let stageExecutions = 0;
+  const knownSecrets = {
+    ...(await readKnownSecretsFromEnvFiles(options.targetPath)),
+    ...(options.knownSecrets ?? {}),
+  };
   let messages = await readMessages(options.targetPath);
   const inputMessages = messages.length;
   const stats = clusterStats(messages, options.mode);
@@ -463,6 +560,7 @@ export async function runScrubPipeline(
         );
       }
 
+      assertSecretsGate(stage.name, message, ledger, options.rulesetVersion);
       const result = await stage.run(message, {
         stage: stage.name,
         mode: options.mode,
@@ -471,6 +569,7 @@ export async function runScrubPipeline(
         markerKey: key,
         clusterKey,
         isClusterExemplar,
+        knownSecrets,
       });
       stageExecutions += 1;
       report.executed += 1;
@@ -487,6 +586,16 @@ export async function runScrubPipeline(
       ) {
         report.candidateCount =
           (report.candidateCount ?? 0) + result.metadata.candidateCount;
+      }
+      if (
+        result.metadata &&
+        typeof result.metadata === "object" &&
+        "secretReplacementCount" in result.metadata &&
+        typeof result.metadata.secretReplacementCount === "number"
+      ) {
+        report.secretReplacementCount =
+          (report.secretReplacementCount ?? 0) +
+          result.metadata.secretReplacementCount;
       }
       const output = result.tombstone ? undefined : result.message;
       if (!result.tombstone && !output) {

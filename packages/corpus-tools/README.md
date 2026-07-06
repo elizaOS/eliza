@@ -34,6 +34,15 @@ and salted value hashes; replacement identity is intentionally deferred to the
 context/pseudonym-consistency pass so this deterministic stage never forks the
 corpus-wide mapping.
 
+Stage `secrets` permanently replaces high-confidence credentials and
+secret-shaped tokens with typed placeholders such as
+`[[SECRET:openai-key:1a2b3c4d5e6f]]`. Placeholder ids are salted by the
+ruleset version and stable across reruns. Local `.env*` files beside the target
+are used only as known-secret seeds; their raw values are not written to reports.
+The driver refuses `rewrite` and `llm` unless the local ledger contains a green
+`secrets` record for each message, so off-device stages cannot run on raw
+credentials by accident.
+
 ## X Mapping
 
 The canonical schema includes platform `x`. The existing LifeOps simulator
