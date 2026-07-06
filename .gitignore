@@ -761,6 +761,8 @@ node_modules
 # misc
 .DS_Store
 *.pem
+# The certification trust anchor is deliberately committed (.github/certification/README.md)
+!.github/certification/certification-public-key.pem
 *.key
 *.key.*
 *.p8

@@ -9,13 +9,16 @@ specific commit. Verification logic lives in
 caller of `certify:verify` and perform no verification logic of its own
 (#14546 / #14547).
 
-**The public key PEM is not committed yet.** The key custodian (repo owner)
-generates the production keypair on a trusted machine and lands
-`certification-public-key.pem` — recording its fingerprint (first 16 hex of
-sha256 over the SPKI DER) here — in a dedicated reviewed PR; merging that PR
-is the act of trusting the key. Until it lands, the promotion gate (#14547)
-cannot be enabled. There is deliberately no default trust anchor in code:
-`certify:verify` requires an explicit `--pubkey`.
+**Trusted key fingerprint: `3ac9e3e625a9ed2f`** (first 16 hex of sha256 over
+the SPKI DER). `packages/evidence/src/certify/committed-key.test.ts` asserts
+the committed PEM matches this fingerprint, so an accidental or malicious pem
+swap fails the test suite as well as review. This key was provisioned during
+the epic #14541 bootstrap; its private half lives in the
+`ELIZA_CERT_SIGNING_KEY` repo secret. Rotation (procedure below) is cheap and
+may be performed at any time by the repo owner — merging a PR that replaces
+the pem and this fingerprint is the act of trusting a new key. There is
+deliberately no default trust anchor in code: `certify:verify` requires an
+explicit `--pubkey`.
 
 ## Trust model — binding rules for the CI gate (#14547)
 
