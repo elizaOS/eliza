@@ -31,6 +31,8 @@ import type {
 } from "@elizaos/core";
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
 import {
+	APPEARANCE_APPLY_EVENT,
+	type AppearanceApplyPayload,
 	AppPermissionsViewSchema,
 	isPermissionId,
 	type PermissionId,
@@ -390,6 +392,135 @@ const COMPUTER_USE_CAPABILITY_KEY = makeCapabilityConfigKey(
 	"computer-use",
 );
 
+const APPEARANCE_THEME_ALIASES: ReadonlyMap<
+	string,
+	AppearanceApplyPayload["themeMode"]
+> = new Map([
+	["light", "light"],
+	["day", "light"],
+	["dark", "dark"],
+	["night", "dark"],
+	["system", "system"],
+	["auto", "system"],
+	["automatic", "system"],
+]);
+
+const APPEARANCE_ACCENT_ALIASES: ReadonlyMap<string, string> = new Map([
+	["default", "default"],
+	["orange", "default"],
+	["eliza", "default"],
+	["amber", "amber"],
+	["yellow", "amber"],
+	["rose", "rose"],
+	["pink", "rose"],
+	["red", "red"],
+	["green", "green"],
+	["olive", "olive"],
+]);
+
+const APPEARANCE_LANGUAGE_ALIASES: ReadonlyMap<
+	string,
+	AppearanceApplyPayload["language"]
+> = new Map([
+	["en", "en"],
+	["english", "en"],
+	["zh-cn", "zh-CN"],
+	["zh", "zh-CN"],
+	["chinese", "zh-CN"],
+	["mandarin", "zh-CN"],
+	["ko", "ko"],
+	["korean", "ko"],
+	["es", "es"],
+	["spanish", "es"],
+	["pt", "pt"],
+	["portuguese", "pt"],
+	["vi", "vi"],
+	["vietnamese", "vi"],
+	["tl", "tl"],
+	["tagalog", "tl"],
+	["filipino", "tl"],
+	["ja", "ja"],
+	["japanese", "ja"],
+]);
+
+function normalizeAppearanceToken(value: string | null): string | null {
+	if (!value) return null;
+	const normalized = value.trim().toLowerCase();
+	return normalized.length > 0 ? normalized : null;
+}
+
+function appearanceBroadcastRequest(
+	payload: AppearanceApplyPayload,
+): SettingsRouteRequest {
+	return {
+		method: "POST",
+		path: "/api/views/events/broadcast",
+		body: { type: APPEARANCE_APPLY_EVENT, payload },
+	};
+}
+
+function makeAppearanceCommandKey(
+	field: "themeMode" | "accentId" | "language",
+	description: string,
+): SettingsWritableKey {
+	return {
+		description,
+		valueType: "command",
+		apply: ({ request, routeFetch }) => {
+			const token = normalizeAppearanceToken(request.value);
+			const value =
+				field === "themeMode"
+					? APPEARANCE_THEME_ALIASES.get(token ?? "")
+					: field === "accentId"
+						? APPEARANCE_ACCENT_ALIASES.get(token ?? "")
+						: APPEARANCE_LANGUAGE_ALIASES.get(token ?? "");
+			if (!value) {
+				return Promise.resolve({
+					ok: false,
+					detail: `provide a supported appearance value for ${field}`,
+				});
+			}
+			return routeFetch(appearanceBroadcastRequest({ [field]: value }));
+		},
+		successText: (_value, request) => {
+			const token = normalizeAppearanceToken(request.value);
+			const value =
+				field === "themeMode"
+					? APPEARANCE_THEME_ALIASES.get(token ?? "")
+					: field === "accentId"
+						? APPEARANCE_ACCENT_ALIASES.get(token ?? "")
+						: APPEARANCE_LANGUAGE_ALIASES.get(token ?? "");
+			if (field === "themeMode") return `Theme mode is ${value}.`;
+			if (field === "accentId") return `Accent is ${value}.`;
+			return `UI language is ${value}.`;
+		},
+	};
+}
+
+const APPEARANCE_THEME_KEY = makeAppearanceCommandKey(
+	"themeMode",
+	"Theme mode: light, dark, or system.",
+);
+const APPEARANCE_ACCENT_KEY = makeAppearanceCommandKey(
+	"accentId",
+	"Accent preset: default/orange, amber, rose, red, green, or olive.",
+);
+const APPEARANCE_LANGUAGE_KEY = makeAppearanceCommandKey(
+	"language",
+	"UI language: en, zh-CN, ko, es, pt, vi, tl, or ja.",
+);
+
+const APPEARANCE_HOME_TIME_WIDGET_KEY: SettingsWritableKey = {
+	description: "Whether the home time/date widget is visible.",
+	valueType: "boolean",
+	buildRequest: (visible) =>
+		appearanceBroadcastRequest({ homeTimeWidgetHidden: !visible }),
+	successText: (visible) =>
+		visible
+			? "Home time/date widget is shown."
+			: "Home time/date widget is hidden.",
+};
+
 function readBackupFileName(data: unknown): string | null {
 	if (!data || typeof data !== "object") return null;
 	const backup = (data as { backup?: unknown }).backup;
@@ -550,9 +681,22 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 		summary: "Switch inference between the on-device model and Eliza Cloud.",
 	},
 	appearance: {
-		kind: "delegate",
-		action: "BACKGROUND",
-		summary: "Change theme and appearance via the background control.",
+		kind: "route",
+		summary:
+			"Theme mode, accent preset, UI language, and the home time/date widget.",
+		keys: {
+			theme: APPEARANCE_THEME_KEY,
+			"theme-mode": APPEARANCE_THEME_KEY,
+			mode: APPEARANCE_THEME_KEY,
+			accent: APPEARANCE_ACCENT_KEY,
+			"accent-color": APPEARANCE_ACCENT_KEY,
+			language: APPEARANCE_LANGUAGE_KEY,
+			lang: APPEARANCE_LANGUAGE_KEY,
+			"ui-language": APPEARANCE_LANGUAGE_KEY,
+			"home-time-widget": APPEARANCE_HOME_TIME_WIDGET_KEY,
+			"time-widget": APPEARANCE_HOME_TIME_WIDGET_KEY,
+			clock: APPEARANCE_HOME_TIME_WIDGET_KEY,
+		},
 	},
 	background: {
 		kind: "delegate",
@@ -1036,13 +1180,20 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			"REQUEST_OS_PERMISSION",
 			"ASK_FOR_MICROPHONE",
 			"ASK_FOR_CAMERA",
+			"CHANGE_THEME_MODE",
+			"SET_THEME_MODE",
+			"CHANGE_ACCENT",
+			"SET_ACCENT",
+			"CHANGE_UI_LANGUAGE",
+			"SET_UI_LANGUAGE",
+			"HOME_TIME_WIDGET",
 		],
 		description:
-			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, requesting OS permissions via section=permissions key=request permission=microphone|camera|location|notifications|screen-recording, turning automatic training on/off via section=capabilities key=auto-training, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, and creating/restoring local agent backups via section=advanced key=create-backup|restore-backup. Restore requires fileName and confirm=true. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
+			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, requesting OS permissions via section=permissions key=request permission=microphone|camera|location|notifications|screen-recording, changing appearance values via section=appearance key=theme|accent|language|home-time-widget, turning automatic training on/off via section=capabilities key=auto-training, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, and creating/restoring local agent backups via section=advanced key=create-backup|restore-backup. Restore requires fileName and confirm=true. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
 		descriptionCompressed:
-			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, OS permission requests, auto-training, app permissions, and local backups",
+			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, OS permission requests, appearance, auto-training, app permissions, and local backups",
 		routingHint:
-			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'ask for microphone permission', 'request camera access', 'enable location permission', 'turn on notifications', 'request screen recording' -> SETTINGS section=permissions key=request permission=microphone|camera|location|notifications|screen-recording. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, requesting an OS permission, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
+			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'ask for microphone permission', 'request camera access', 'enable location permission', 'turn on notifications', 'request screen recording' -> SETTINGS section=permissions key=request permission=microphone|camera|location|notifications|screen-recording. 'switch to dark mode', 'use system theme', 'set the accent to green', 'change UI language to Spanish', 'hide/show the home time widget' -> SETTINGS section=appearance key=theme|accent|language|home-time-widget value=<value>. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/wallpaper is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, requesting an OS permission, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -1055,14 +1206,14 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			{
 				name: "section",
 				description:
-					"Canonical settings section id or alias (e.g. permissions, capabilities, app-permissions, ai-model, background, secrets). Required for get/set.",
+					"Canonical settings section id or alias (e.g. appearance, permissions, capabilities, app-permissions, ai-model, background, secrets). Required for get/set.",
 				required: false,
 				schema: { type: "string" },
 			},
 			{
 				name: "key",
 				description:
-					"The specific toggle or operation within the section (e.g. shell, auto-training, fs/net, create-backup, restore-backup). Optional; defaults to the section's primary key.",
+					"The specific toggle or operation within the section (e.g. theme, accent, language, home-time-widget, shell, auto-training, fs/net, create-backup, restore-backup). Optional; defaults to the section's primary key.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -1104,7 +1255,7 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			{
 				name: "value",
 				description:
-					"The new value for a set. Boolean toggles accept on/off, enable/disable, true/false.",
+					"The new value for a set. Boolean toggles accept on/off, enable/disable, true/false; appearance accepts theme/accent/language tokens.",
 				required: false,
 				schema: { type: "string" },
 			},

@@ -7,6 +7,7 @@
  */
 
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
+import { APPEARANCE_APPLY_EVENT } from "@elizaos/shared";
 import {
 	SETTINGS_NON_CATALOG_SECTION_META,
 	SETTINGS_SECTION_META,
@@ -261,6 +262,8 @@ describe("SETTINGS action: list", () => {
 		expect(model).toMatchObject({ writable: true, via: "MODEL_SWITCH" });
 		const permissions = sections.find((s) => s.id === "permissions");
 		expect(permissions).toMatchObject({ writable: true, via: "SETTINGS" });
+		const appearance = sections.find((s) => s.id === "appearance");
+		expect(appearance).toMatchObject({ writable: true, via: "SETTINGS" });
 		const capabilities = sections.find((s) => s.id === "capabilities");
 		expect(capabilities).toMatchObject({ writable: true, via: "SETTINGS" });
 		const advanced = sections.find((s) => s.id === "advanced");
@@ -276,6 +279,100 @@ describe("SETTINGS action: list", () => {
 });
 
 describe("SETTINGS action: set on an owned route section", () => {
+	it("dispatches appearance theme mode through the view event broadcast route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "appearance", key: "theme", value: "dark" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "POST",
+			path: "/api/views/events/broadcast",
+			body: {
+				type: APPEARANCE_APPLY_EVENT,
+				payload: { themeMode: "dark" },
+			},
+		});
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "appearance",
+			key: "theme",
+		});
+		expect(texts.join(" ")).toContain("Theme mode is dark");
+	});
+
+	it("dispatches appearance accent aliases through the view event broadcast route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result } = await invoke(
+			{ action: "set", section: "appearance", key: "accent", value: "orange" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "POST",
+			path: "/api/views/events/broadcast",
+			body: {
+				type: APPEARANCE_APPLY_EVENT,
+				payload: { accentId: "default" },
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("dispatches appearance UI language through the view event broadcast route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "theme",
+				key: "language",
+				value: "spanish",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "POST",
+			path: "/api/views/events/broadcast",
+			body: {
+				type: APPEARANCE_APPLY_EVENT,
+				payload: { language: "es" },
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("dispatches the home time/date widget visibility as the persisted hidden flag", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "appearance",
+				key: "home-time-widget",
+				value: "off",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "POST",
+			path: "/api/views/events/broadcast",
+			body: {
+				type: APPEARANCE_APPLY_EVENT,
+				payload: { homeTimeWidgetHidden: true },
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("rejects unsupported appearance values without broadcasting", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "appearance", key: "theme", value: "sepia" },
+			routeFetch,
+		);
+		expect(routeFetch).not.toHaveBeenCalled();
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("supported appearance value");
+	});
+
 	it("dispatches permissions shell off through the backend route", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
 		const { result, texts } = await invoke(
