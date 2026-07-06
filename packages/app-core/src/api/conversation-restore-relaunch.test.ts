@@ -156,11 +156,11 @@ async function callConversationRoute<TBody extends Record<string, unknown>>(
     pathname,
     state,
     readJsonBody: async () => body,
-    json: (_res, value, code) => {
+    json: (_res: http.ServerResponse, value: unknown, code?: number) => {
       status = code ?? 200;
       payload = value;
     },
-    error: (_res, message, code = 500) => {
+    error: (_res: http.ServerResponse, message: string, code = 500) => {
       status = code;
       payload = { error: message };
     },
