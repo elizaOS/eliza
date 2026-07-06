@@ -123,8 +123,8 @@ bun run test:e2e:record:sheets           # regenerate contact sheets + viewer
 bun run test:e2e:audit-ui                # coverage of which routes are recorded
 
 # Local manual evidence reviewer: scans screenshots, videos, logs, reports, and
-# trajectories, computes screenshot color heuristics/OCR when available, and
-# opens evidence/index.html for the required hand review pass.
+# trajectories, computes screenshot color heuristics, runs packaged OCR by
+# default, and opens evidence/index.html for the required hand review pass.
 bun run evidence:review
 bun run evidence:review:no-open
 

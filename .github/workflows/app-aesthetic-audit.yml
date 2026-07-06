@@ -111,6 +111,8 @@ jobs:
           path: packages/app/aesthetic-audit-output
 
       - name: Run pixel OCR content audit
+        env:
+          ELIZA_MVP_OCR_ENGINE: packaged
         run: bun run --cwd packages/app audit:ocr
 
       - name: Upload OCR audit artifacts

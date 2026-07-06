@@ -101,16 +101,7 @@ async function runPackagedOcr(paths: string[]): Promise<OcrRecord[]> {
   for (const path of paths) {
     const result = await ocrImage(path);
     if (!result.available) {
-      out.push({
-        path,
-        ok: false,
-        text: "",
-        lines: [],
-        words: 0,
-        meanConfidence: 0,
-        reason: result.reason,
-      });
-      continue;
+      throw new Error(`OCR failed for ${path}: ${result.reason}`);
     }
     out.push({
       path,

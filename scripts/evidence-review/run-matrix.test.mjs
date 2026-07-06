@@ -60,6 +60,7 @@ test("selects all real matrix lanes by default", () => {
   );
   assert.equal(options.review, true);
   assert.equal(options.open, false);
+  assert.equal(options.reviewOcr, "on");
 });
 
 test("can skip device lanes while keeping test and visual evidence lanes", () => {

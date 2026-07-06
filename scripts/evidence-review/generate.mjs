@@ -2,7 +2,7 @@
 /**
  * Local evidence reviewer for screenshots, videos, logs, trajectories, and
  * reports produced by the repo's existing verification lanes. It scans the
- * evidence silos, computes deterministic image heuristics, optionally runs OCR,
+ * evidence silos, computes deterministic image heuristics, runs packaged OCR,
  * writes `evidence/manifest.json`, and generates a single browser dashboard for
  * the manual "capturing is not reviewing" pass.
  */
@@ -12,6 +12,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
+import {
+  closeOcrEngines,
+  ocrImage,
+  resolveOcrEngine,
+} from "../../packages/app/scripts/mvp-visual-verify/ocr.mjs";
 import {
   analyzeImageFile,
   classifyArtifactPath,
@@ -56,7 +61,7 @@ function parseArgs(argv) {
   const options = {
     outputDir: DEFAULT_OUTPUT_DIR,
     open: false,
-    ocr: "auto",
+    ocr: "on",
     maxArtifacts: 900,
     maxImages: 240,
     maxFilesPerDir: 6000,
@@ -119,18 +124,10 @@ Options:
   --no-open               Do not open the dashboard.
   --out=<dir>             Output directory. Default: evidence/
   --source=<dir>          Scan a specific directory. Repeatable.
-  --ocr=auto|on|off       Run OCR when a local tesseract binary is available.
+  --ocr=on|auto|off       Run OCR with the packaged tesseract.js engine. Default: on.
   --max-artifacts=<n>     Limit total artifacts in the dashboard. Default: 900.
   --max-images=<n>        Limit image heuristic work. Default: 240.
   --max-files-per-dir=<n> Bound each scan root. Default: 6000.`);
-}
-
-function fileExists(filePath) {
-  try {
-    return fs.statSync(filePath).isFile();
-  } catch {
-    return false;
-  }
 }
 
 function dirExists(dirPath) {
@@ -149,45 +146,22 @@ function resolveScanDirs(options) {
     .filter((dir) => dirExists(dir));
 }
 
-function findExecutable(command) {
-  const pathValue = process.env.PATH ?? "";
-  for (const dir of pathValue.split(path.delimiter)) {
-    if (!dir) continue;
-    const candidate = path.join(dir, command);
-    if (fileExists(candidate)) return candidate;
-  }
-  return null;
-}
-
-function runOcr(filePath, options, tesseractPath) {
+async function runOcr(filePath, options) {
   if (options.ocr === "off") {
     return { status: "disabled", text: "" };
   }
-  if (!tesseractPath) {
-    if (options.ocr === "on") {
-      return {
-        status: "unavailable",
-        text: "",
-        error: "tesseract binary was not found on PATH",
-      };
-    }
-    return { status: "unavailable", text: "" };
-  }
-  const result = spawnSync(
-    tesseractPath,
-    [filePath, "stdout", "-l", "eng", "--psm", "6"],
-    { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
-  );
-  if (result.status !== 0) {
+  const result = await ocrImage(filePath);
+  if (!result.available) {
     return {
-      status: "failed",
+      status: options.ocr === "on" ? "failed" : "unavailable",
       text: "",
-      error: (result.stderr || result.stdout || `exit ${result.status}`).trim(),
+      error: result.reason,
     };
   }
   return {
     status: "ok",
-    text: summarizeTextPreview(result.stdout, 1800).trim(),
+    engine: result.engine,
+    text: summarizeTextPreview(result.text, 1800).trim(),
   };
 }
 
@@ -237,9 +211,19 @@ function walkFiles(scanRoot, maxFiles) {
 
 async function collectArtifacts(options) {
   const scanDirs = resolveScanDirs(options);
-  const tesseractPath = findExecutable("tesseract");
+  const ocrEngine =
+    options.ocr === "off"
+      ? { available: false, kind: "disabled", label: null, reason: null }
+      : await resolveOcrEngine();
+  if (options.ocr === "on" && !ocrEngine.available) {
+    throw new Error(
+      `OCR is required but unavailable: ${ocrEngine.reason}. Run \`bun install\` so the packaged tesseract.js dependency is available, or set ELIZA_TESSERACT_BIN to a system tesseract binary.`,
+    );
+  }
   const artifacts = [];
   let imageAnalysisCount = 0;
+  let ocrFailureCount = 0;
+  let ocrOkCount = 0;
 
   for (const scanRoot of scanDirs) {
     if (artifacts.length >= options.maxArtifacts) break;
@@ -257,11 +241,17 @@ async function collectArtifacts(options) {
         bytes: stat.size,
         mtime: stat.mtime.toISOString(),
       };
+      if (type === "image") {
+        if (options.ocr !== "off") {
+          artifact.ocr = await runOcr(full, options);
+          if (artifact.ocr.status === "ok") ocrOkCount += 1;
+          else if (options.ocr === "on") ocrFailureCount += 1;
+        }
+      }
       if (type === "image" && imageAnalysisCount < options.maxImages) {
         imageAnalysisCount += 1;
         try {
           artifact.image = await analyzeImageFile(full, sharp);
-          artifact.ocr = runOcr(full, options, tesseractPath);
         } catch (error) {
           artifact.imageError = error?.message || String(error);
         }
@@ -286,8 +276,10 @@ async function collectArtifacts(options) {
     scanDirs: scanDirs.map((dir) => toPosixPath(path.relative(REPO_ROOT, dir))),
     ocr: {
       mode: options.ocr,
-      executable: tesseractPath,
-      available: Boolean(tesseractPath),
+      engine: ocrEngine.available ? ocrEngine.label : null,
+      available: options.ocr === "off" ? false : Boolean(ocrEngine.available),
+      ok: ocrOkCount,
+      failures: ocrFailureCount,
     },
     artifacts,
   };
@@ -406,8 +398,8 @@ function buildHtml(manifest) {
   ].sort();
   const ocrLabel =
     manifest.ocr.mode === "off"
-      ? `off${manifest.ocr.available ? " (available)" : ""}`
-      : `${manifest.ocr.mode}${manifest.ocr.available ? " available" : " unavailable"}`;
+      ? "off"
+      : `${manifest.ocr.mode}${manifest.ocr.available ? ` available (${manifest.ocr.engine})` : " unavailable"}`;
 
   return `<!doctype html>
 <html lang="en">
@@ -555,13 +547,22 @@ async function main() {
   );
   if (!manifest.ocr.available && options.ocr !== "off") {
     console.log(
-      "OCR: unavailable locally. Install tesseract or rerun with --ocr=off to silence this note.",
+      "OCR: unavailable. Run `bun install` so packaged tesseract.js is installed, or set ELIZA_TESSERACT_BIN.",
     );
+  }
+  if (options.ocr === "on" && manifest.ocr.failures > 0) {
+    console.error(`OCR: ${manifest.ocr.failures} screenshot(s) failed OCR.`);
+    process.exitCode = 1;
   }
   if (options.open) openFile(indexPath);
 }
 
-main().catch((error) => {
-  console.error(error?.stack || error?.message || String(error));
-  process.exit(1);
-});
+main()
+  .catch((error) => {
+    console.error(error?.stack || error?.message || String(error));
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await closeOcrEngines();
+    if (process.exitCode) process.exit(process.exitCode);
+  });

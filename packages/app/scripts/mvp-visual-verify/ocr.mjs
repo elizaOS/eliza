@@ -13,6 +13,9 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 /** @type {{ path: string | null } | null} */
 let probe = null;
@@ -21,6 +24,7 @@ let packagedProbe = null;
 /** @type {Map<string, Promise<any>>} */
 let packagedWorkers = new Map();
 const TESSERACT_JS_PACKAGE = "tesseract.js";
+const TESSERACT_JS_CACHE_DIR = join(tmpdir(), "elizaos-tesseract-cache");
 
 /**
  * Resolve the `tesseract` binary path once per process. Uses `which` (POSIX) —
@@ -175,8 +179,9 @@ async function getPackagedWorker(lang, timeoutMs) {
     if (!tesseract?.createWorker) {
       throw new Error("tesseract.js createWorker export is unavailable");
     }
+    mkdirSync(TESSERACT_JS_CACHE_DIR, { recursive: true });
     return withTimeout(
-      tesseract.createWorker(lang),
+      tesseract.createWorker(lang, 1, { cachePath: TESSERACT_JS_CACHE_DIR }),
       timeoutMs,
       `tesseract.js worker initialization timed out after ${timeoutMs}ms`,
     );

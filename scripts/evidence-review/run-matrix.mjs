@@ -113,7 +113,7 @@ Options:
   --out=<dir>              Output directory for matrix-run.json and reviewer.
   --review / --no-review   Generate the evidence reviewer after the matrix.
   --open / --no-open       Open the reviewer after generation. Default: no-open.
-  --review-ocr=auto|on|off OCR mode passed to evidence:review. Default: off.
+  --review-ocr=on|auto|off OCR mode passed to evidence:review. Default: on.
   --stop-on-failure        Stop after the first failed step.
   --dry-run                Write a planned manifest without executing commands.
   --help, -h               Show this help.`);
@@ -126,7 +126,7 @@ export function parseMatrixArgs(argv) {
     outputDir: DEFAULT_OUTPUT_DIR,
     review: true,
     open: false,
-    reviewOcr: "off",
+    reviewOcr: "on",
     stopOnFailure: false,
     dryRun: false,
   };
