@@ -73,7 +73,7 @@ carry the deleted spotlight tutorial and `HelpView`.
   a one-time post-onboarding character-select landing can still occur
   (#13396 product decision, `packages/ui/src/state/startup-phase-hydrate.ts:264-292`).
 - Getting-started notifications are seeded once per agent — "Take the tour"
-  (`/tutorial`), "Get help any time" (`/chat`), "Connect your calendar"
+  (`/chat`), "Get help any time" (`/chat`), "Connect your calendar"
   (`/connectors`) — `packages/agent/src/runtime/onboarding-notifications.ts:44-73`.
 - Post-login permission priming soft-ask modal
   (`packages/ui/src/components/permissions/permission-priming.ts`).
@@ -85,11 +85,11 @@ Chat-native, no overlay engine: `packages/ui/src/tutorial/tutorial-service.ts`
 `tutorial-script.ts` (six conversational steps: welcome, send-message, voice,
 navigate, new-chat, done; each auto-advances on the real action with a "Next"
 fallback), `TutorialConductor.tsx` seeds turns into the live transcript, and the
-`__tutorial__:` action channel carries choices. Entry points: the launcher tile
-(`packages/ui/src/components/pages/LauncherSurface.tsx:101`), the `/tutorial`
-builtin view (`packages/agent/src/api/builtin-views.ts:14-23`), typed
-"start/stop/restart tutorial" composer commands, and the seeded notification.
-The tour never auto-launches.
+`__tutorial__:` action channel carries choices. Entry points: the home tutorial
+card (`packages/ui/src/components/chat/widgets/tutorial-launch.tsx`), typed
+"start/stop/restart tutorial" composer commands, and the seeded notification
+that deep-links to chat. Historical `/tutorial` links are redirected to chat;
+the tour is not a routable view and never auto-launches.
 
 ### Help (post-#13394)
 
@@ -178,10 +178,11 @@ first-run for developers with keys. (Owner-confirmable, but the default is
 clear from "minimize scope".)
 
 **Q2. Should the tutorial auto-launch after onboarding?**
-A: No. Today it never auto-launches (tile, notification, typed command,
-`/tutorial` view) and the wrap-up copy points at it. That matches the views
-doctrine (no suggestion chips, agent-proactive is for view switches) and the
-no-special-rails constraint. Keep as-is; test discoverability instead.
+A: No. Today it never auto-launches (home card, notification, typed command,
+and historical `/tutorial` redirect to chat) and the wrap-up copy points at
+chat-native entry points. That matches the views doctrine (no suggestion chips,
+agent-proactive is for view switches) and the no-special-rails constraint. Keep
+as-is; test discoverability instead.
 
 **Q3. Keep the one-time character-select landing after cloud-only completion?**
 A: Default answer: remove it for MVP — cloud-only completion already lands in
