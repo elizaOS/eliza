@@ -248,9 +248,11 @@ describe("SCHEDULED_TASKS create — trigger boundary", () => {
     })) as { success: boolean; text?: string; data?: Record<string, unknown> };
     expect(result.success).toBe(false);
     expect(result.data?.error).toBe("INVALID_TRIGGER");
-    expect(result.text).toContain("OWNER_REMINDERS action=create");
-    expect(result.text).toContain("by the 20th");
-    expect(result.text).toContain("do not retry here");
+    expectPlainScheduledTaskText(result.text);
+    const repair = result.data?.repair as string | undefined;
+    expect(repair).toContain("OWNER_REMINDERS action=create");
+    expect(repair).toContain("by the 20th");
+    expect(repair).toContain("do not retry here");
   });
 
   it("an invalid trigger also carries the habit-definition redirect", async () => {
