@@ -103,7 +103,7 @@ test("a filter combination selecting zero lanes fails with an actionable message
         MATRIX_STEPS,
         parseMatrixArgs(["--skip-devices", "--only=ios-sim-capture"]),
       ),
-    /no lanes selected — check --only\/--skip filters/,
+    /no lanes selected - check --only\/--skip filters/,
   );
 });
 
