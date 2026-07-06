@@ -126,6 +126,36 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
     expect(mocks.client.getConversationMessages).toHaveBeenCalledTimes(1);
   });
 
+  it("clears stale messages immediately when loading an uncached conversation", async () => {
+    let resolveConvB: ((m: ConversationMessage[]) => void) | undefined;
+    mocks.client.getConversationMessages.mockImplementation(
+      (id: string) =>
+        new Promise((resolve) => {
+          if (id === "conv-b") {
+            resolveConvB = (m) => resolve({ messages: m });
+          }
+        }),
+    );
+    const { deps, setConversationMessages, conversationMessagesRef } =
+      makeDeps();
+    conversationMessagesRef.current = [userMsg("old-thread")];
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    let loadPromise: Promise<unknown>;
+    act(() => {
+      loadPromise = result.current.loadConversationMessages("conv-b");
+    });
+
+    expect(setConversationMessages).toHaveBeenCalledWith([]);
+    expect(conversationMessagesRef.current).toEqual([]);
+
+    await act(async () => {
+      resolveConvB?.([userMsg("new-thread")]);
+      await loadPromise;
+    });
+    expect(conversationMessagesRef.current).toEqual([userMsg("new-thread")]);
+  });
+
   it("a newer load aborts the prior in-flight one so a stale fetch never wins", async () => {
     const resolvers: Record<string, (m: ConversationMessage[]) => void> = {};
     mocks.client.getConversationMessages.mockImplementation(
