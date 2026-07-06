@@ -3018,7 +3018,9 @@ export class OrchestratorTaskService extends Service {
         ? meta.nestingDepth
         : 0;
     const spawn = await acp.spawnSession({
-      agentType: configuredDefaultAgentType(this.runtime) ?? "opencode",
+      // Undefined defers to acp-service's defaultAgent (eliza-code on the
+      // native transport); opencode is opt-in via explicit settings only.
+      agentType: configuredDefaultAgentType(this.runtime),
       workdir,
       initialTask: prompt,
       approvalPreset: "verifier",
@@ -3704,21 +3706,19 @@ export class OrchestratorTaskService extends Service {
     const framework =
       opts.framework ??
       policy.preferredFramework ??
-      configuredDefaultAgentType(this.runtime) ??
-      "opencode";
+      configuredDefaultAgentType(this.runtime);
     let result: SpawnResult;
     try {
       result = await acp.spawnSession({
         env: traceEnv,
         // Coding-agent selection: explicit request → routing policy → the
         // deployment's configured default (ELIZA_ACP_DEFAULT_AGENT /
-        // ELIZA_DEFAULT_AGENT_TYPE — e.g. "elizaos" for the eliza-code coding
-        // sub-agent) → opencode as the safe fallback. Honoring the configured
-        // default here keeps this spawn path consistent with acp-service's
-        // `defaultAgent`; previously this hardcoded "opencode" because elizaos had
-        // no ACP command, but elizaos is now a supported ACP agent via
-        // ELIZA_ELIZAOS_ACP_COMMAND, so a host that selects it (local or cloud
-        // image) gets eliza-code, while unconfigured hosts still get opencode.
+        // ELIZA_DEFAULT_AGENT_TYPE). When none of those apply, `framework` is
+        // undefined and spawnSession resolves acp-service's `defaultAgent`
+        // (eliza-code under the native transport) — the single source of
+        // truth, so an unconfigured host dogfoods eliza-code rather than a
+        // vendored CLI. opencode remains available only as an explicit
+        // selection (settings/routing/request).
         agentType: framework,
         workdir,
         initialTask: goalPrompt,
