@@ -876,7 +876,9 @@ async function expectPopulatedHome(page: Page): Promise<Locator> {
   ).toBeVisible({ timeout: 30_000 });
   await hint.click();
   await expect(
-    page.getByTestId("home-notification-center").getByTestId("notification-row"),
+    page
+      .getByTestId("home-notification-center")
+      .getByTestId("notification-row"),
   ).toContainText("Payment failed");
   await page.getByTestId("notifications-shade-scrim").click();
   await expect(page.getByTestId("notifications-shade")).toHaveCount(0);
