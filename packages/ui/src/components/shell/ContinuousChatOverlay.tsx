@@ -1103,7 +1103,7 @@ export function ContinuousChatOverlay({
   const draftRef = React.useRef(draft);
   draftRef.current = draft;
   // Live handle to the active conversation id for the send path's draft clear,
-  // so submitText / pickSuggestion keep their stable identities.
+  // so submitText keeps its stable identity.
   const activeConversationIdRef = React.useRef(activeConversationId);
   activeConversationIdRef.current = activeConversationId;
   // The active view can take over the composer: override the placeholder and
@@ -1797,8 +1797,7 @@ export function ContinuousChatOverlay({
   const hasImages = pendingImages.length > 0;
 
   // Send `text` (and optional images) through the normal chat pipeline, clearing
-  // the composer. Shared by the send button, the slash menu (agent commands),
-  // and suggestion taps.
+  // the composer. Shared by the send button and the slash menu (agent commands).
   const submitText = React.useCallback(
     (text: string, images: ImageAttachment[] = []) => {
       const trimmed = text.trim();

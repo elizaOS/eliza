@@ -57,13 +57,6 @@ async function getAppRegion(locator: Locator): Promise<string> {
   });
 }
 
-async function getPaddingInlineStart(locator: Locator): Promise<number> {
-  return locator.evaluate((element) => {
-    const raw = getComputedStyle(element).paddingInlineStart;
-    return Number.parseFloat(raw);
-  });
-}
-
 async function attachVisibleScreenshot(
   page: Page,
   testInfo: TestInfo,
@@ -165,12 +158,21 @@ async function prepareApp(
   await installDefaultAppRoutes(page);
 }
 
-async function getReconnectBanner(page: Page): Promise<Locator> {
-  const banner = page.getByRole("status").filter({ hasText: "Reconnecting" });
-  await expect(banner).toHaveCount(1);
-  await expect(banner).toBeVisible();
-  await expect(banner).toContainText("Reconnecting");
-  return banner;
+/**
+ * Connection trouble speaks in the transcript (boot-recovery conductor), never
+ * as a floating overlay: the old ConnectionFailedBanner "Reconnecting…" pill
+ * was deleted (#13377). Watch the window where that pill used to appear
+ * (attempt 1 fired within ~1s of the first close) and assert nothing floats
+ * and nothing reserves titlebar space.
+ */
+async function expectNoFloatingReconnectSurface(page: Page): Promise<void> {
+  const pill = page.getByRole("status").filter({ hasText: /Reconnecting/i });
+  const deadline = Date.now() + 3_000;
+  while (Date.now() < deadline) {
+    await expect(pill).toHaveCount(0);
+    await expect(page.locator("[data-window-titlebar-banner]")).toHaveCount(0);
+    await page.waitForTimeout(250);
+  }
 }
 
 async function expectMacTitlebarClasses(page: Page): Promise<void> {
@@ -187,18 +189,6 @@ async function expectNoMacTitlebarClasses(page: Page): Promise<void> {
   await expect(html).not.toHaveClass(/eliza-electrobun-frameless/);
   await expect(html).not.toHaveClass(/eliza-electrobun-custom-titlebar/);
   await expect(html).not.toHaveClass(/eliza-electrobun-macos-titlebar/);
-}
-
-async function expectNormalBannerPadding(banner: Locator): Promise<void> {
-  const padding = await getPaddingInlineStart(banner);
-  expect(
-    padding,
-    "The reconnect pill should keep its normal px-4 left padding",
-  ).toBeGreaterThanOrEqual(15);
-  expect(
-    padding,
-    "The reconnect pill must not reserve macOS traffic-light space",
-  ).toBeLessThanOrEqual(20);
 }
 
 test.describe("macOS desktop titlebar", () => {
@@ -224,7 +214,7 @@ test.describe("macOS desktop titlebar", () => {
     });
   });
 
-  test("desktop reconnecting pill floats out of flow and keeps the window draggable", async ({
+  test("reconnect trouble floats no banner and keeps the window draggable", async ({
     page,
   }, testInfo) => {
     await prepareApp(page);
@@ -233,67 +223,50 @@ test.describe("macOS desktop titlebar", () => {
 
     await expectMacTitlebarClasses(page);
 
-    // The reconnecting state renders as a floating overlay pill (see
-    // ConnectionFailedBanner.tsx): absolutely positioned and click-through, so
-    // it consumes no layout height and carries no
-    // `data-window-titlebar-banner` — it clears the macOS traffic lights by
-    // being centered, not by reserving a padding gutter.
-    const banner = await getReconnectBanner(page);
-    await expectNormalBannerPadding(banner);
-
-    const wrapper = banner.locator("..");
-    await expect
-      .poll(() => wrapper.evaluate((el) => getComputedStyle(el).position))
-      .toBe("absolute");
-    await expect
-      .poll(() => wrapper.evaluate((el) => getComputedStyle(el).pointerEvents))
-      .toBe("none");
-
-    // With no titlebar-banner attribute in play, the headerless whole-body
-    // drag fallback stays active while the pill is visible.
+    // With no floating surface and no titlebar-banner attribute in play, the
+    // headerless whole-body drag fallback stays active throughout the trouble.
     await expect.poll(() => getAppRegion(page.locator("body"))).toBe("drag");
 
-    // The centered pill starts well right of the traffic-light zone (~78px).
-    const box = await banner.boundingBox();
-    if (!box) throw new Error("reconnect pill has no bounding box");
-    expect(box.x).toBeGreaterThan(90);
+    await expectNoFloatingReconnectSurface(page);
+    await expect.poll(() => getAppRegion(page.locator("body"))).toBe("drag");
 
-    await attachVisibleScreenshot(page, testInfo, "mac-titlebar-with-banner");
+    await attachVisibleScreenshot(
+      page,
+      testInfo,
+      "mac-titlebar-reconnect-no-banner",
+      { validateQuality: false },
+    );
   });
 });
 
 test.describe("Windows desktop titlebar", () => {
   test.use({ userAgent: WINDOWS_CHROME_USER_AGENT });
 
-  test("reconnecting banner keeps normal padding on Windows", async ({
-    page,
-  }) => {
+  test("reconnect trouble floats no banner on Windows", async ({ page }) => {
     await prepareApp(page);
     await installClosingWebSocket(page);
     await openAppPath(page, "/chat");
 
     await expectNoMacTitlebarClasses(page);
-    await expectNormalBannerPadding(await getReconnectBanner(page));
+    await expectNoFloatingReconnectSurface(page);
   });
 });
 
 test.describe("Linux desktop titlebar", () => {
   test.use({ userAgent: LINUX_CHROME_USER_AGENT });
 
-  test("reconnecting banner keeps normal padding on Linux", async ({
-    page,
-  }) => {
+  test("reconnect trouble floats no banner on Linux", async ({ page }) => {
     await prepareApp(page);
     await installClosingWebSocket(page);
     await openAppPath(page, "/chat");
 
     await expectNoMacTitlebarClasses(page);
-    await expectNormalBannerPadding(await getReconnectBanner(page));
+    await expectNoFloatingReconnectSurface(page);
   });
 });
 
 test.describe("web titlebar", () => {
-  test("reconnecting banner keeps normal padding without Electrobun runtime", async ({
+  test("reconnect trouble floats no banner without Electrobun runtime", async ({
     page,
   }) => {
     await prepareApp(page, { electrobunRuntime: false });
@@ -301,6 +274,6 @@ test.describe("web titlebar", () => {
     await openAppPath(page, "/chat");
 
     await expectNoMacTitlebarClasses(page);
-    await expectNormalBannerPadding(await getReconnectBanner(page));
+    await expectNoFloatingReconnectSurface(page);
   });
 });
