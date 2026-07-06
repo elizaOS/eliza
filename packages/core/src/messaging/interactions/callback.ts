@@ -1,9 +1,10 @@
 /**
  * Compact codec for the answer a connector round-trips when the user taps a
  * native control (a choice button, a followup chip). The encoded string becomes
- * the platform's callback payload — Telegram caps `callback_data` at 64 bytes,
- * so encoding fails (returns null) when the answer is too large and the caller
- * falls back to a link-out or a free-text reply.
+ * the platform's callback payload. Telegram caps `callback_data` at 64 bytes
+ * while Discord custom IDs allow a larger budget, so callers pass their native
+ * limit and encoding fails (returns null) only when that surface cannot carry
+ * the answer.
  *
  * The decoded answer is re-injected as an ordinary inbound user message, exactly
  * mirroring the dashboard's `sendActionMessage(value)` behavior, so downstream
@@ -15,6 +16,11 @@ const PREFIX = "ia1:";
 /** Telegram's hard limit on `callback_data`. */
 export const MAX_CALLBACK_BYTES = 64;
 
+export interface EncodeReplyCallbackOptions {
+	/** Maximum encoded callback payload length for the target platform. */
+	maxBytes?: number;
+}
+
 function byteLength(s: string): number {
 	return new TextEncoder().encode(s).length;
 }
@@ -24,9 +30,13 @@ function byteLength(s: string): number {
  * the payload would exceed the platform limit — the caller should then link out
  * or accept a free-text reply instead of rendering a tappable control.
  */
-export function encodeReplyCallback(value: string): string | null {
+export function encodeReplyCallback(
+	value: string,
+	options: EncodeReplyCallbackOptions = {},
+): string | null {
 	const data = `${PREFIX}${value}`;
-	return byteLength(data) <= MAX_CALLBACK_BYTES ? data : null;
+	const maxBytes = options.maxBytes ?? MAX_CALLBACK_BYTES;
+	return byteLength(data) <= maxBytes ? data : null;
 }
 
 export interface DecodedCallback {

@@ -1,9 +1,10 @@
 /**
- * Unit tests for the pure step-sequencing, command-argument construction, and
- * run-summary assembly behind the one-command physical-iPhone e2e lane
- * (issue #14337). Asserts the exact argv each chained script receives and the
- * summary schema, with the device calls left at the process boundary (never
- * spawned here). Runs in the packages/app vitest suite.
+ * Unit tests for the pure step-planning and command-argument construction behind
+ * the one-command physical-iPhone e2e lane (issue #14337). Asserts the exact argv
+ * each chained script receives, with the device calls left at the process
+ * boundary (never spawned here). Run assembly + summary live in the shared
+ * `device-e2e-bundle.mjs` framework (tested by its own suite). Runs in the
+ * packages/app vitest suite.
  */
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -11,9 +12,6 @@ import {
   buildDeviceDeployCommand,
   buildDeviceLogsCommand,
   buildDeviceSmokeCommand,
-  buildRunSummary,
-  classifyStepStatus,
-  formatRunId,
   IOS_DEVICE_E2E_STEP_IDS,
   planIosDeviceE2eSteps,
 } from "./ios-device-e2e-lib.mjs";
@@ -122,91 +120,6 @@ describe("buildDeviceLogsCommand", () => {
   it("throws without an output file", () => {
     expect(() => buildDeviceLogsCommand({ scriptsDir, deviceId })).toThrow(
       /outputFile is required/,
-    );
-  });
-});
-
-describe("classifyStepStatus", () => {
-  it("only exit 0 passes", () => {
-    expect(classifyStepStatus(0)).toEqual({ status: "passed", ok: true });
-    expect(classifyStepStatus(1)).toEqual({ status: "failed", ok: false });
-    // A null status (child never launched) is a failure, never a pass.
-    expect(classifyStepStatus(null)).toEqual({ status: "failed", ok: false });
-  });
-});
-
-describe("buildRunSummary", () => {
-  const base = {
-    runId: "20260101-000000",
-    startedAt: "2026-01-01T00:00:00Z",
-    finishedAt: "2026-01-01T00:05:00Z",
-    bundleDir: "/bundle/ios-20260101-000000",
-    device: { udid: "UDID-1", identifier: "ID-1", name: "iPhone 16" },
-    build: { buildId: "build-XYZ", commit: "deadbeef" },
-    skippedAppexes: true,
-  };
-
-  it("marks passed only when every step passed", () => {
-    const summary = buildRunSummary({
-      ...base,
-      steps: [
-        {
-          id: "deploy",
-          label: "d",
-          status: "passed",
-          durationMs: 10,
-          artifacts: [],
-        },
-        {
-          id: "smoke",
-          label: "s",
-          status: "passed",
-          durationMs: 20,
-          artifacts: ["/a"],
-        },
-      ],
-    });
-    expect(summary.overallStatus).toBe("passed");
-    expect(summary.schema).toBe("elizaos.device-e2e.summary/v1");
-    expect(summary.lane).toBe("ios-device-e2e");
-    expect(summary.device.udid).toBe("UDID-1");
-    expect(summary.build.buildId).toBe("build-XYZ");
-    expect(summary.skippedAppexes).toBe(true);
-    expect(summary.steps).toHaveLength(2);
-  });
-  it("marks failed when any step failed", () => {
-    const summary = buildRunSummary({
-      ...base,
-      steps: [
-        {
-          id: "deploy",
-          label: "d",
-          status: "passed",
-          durationMs: 10,
-          artifacts: [],
-        },
-        {
-          id: "smoke",
-          label: "s",
-          status: "failed",
-          durationMs: 20,
-          artifacts: [],
-        },
-      ],
-    });
-    expect(summary.overallStatus).toBe("failed");
-  });
-  it("throws without a runId", () => {
-    expect(() => buildRunSummary({ ...base, runId: "", steps: [] })).toThrow(
-      /runId is required/,
-    );
-  });
-});
-
-describe("formatRunId", () => {
-  it("produces a sortable YYYYMMDD-HHMMSS from a Date", () => {
-    expect(formatRunId(new Date("2026-07-05T13:04:09.000Z"))).toBe(
-      "20260705-130409",
     );
   });
 });

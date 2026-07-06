@@ -86,6 +86,12 @@ export const GUARDED_REAL_LIVE_SUITES = [
     probe: "local Ollama at OLLAMA_API_ENDPOINT",
   },
   {
+    file: "packages/evidence/src/vision-qa/vision-qa.live.test.ts",
+    requires: ["ANTHROPIC_API_KEY"],
+    notes:
+      "vision-qa VLM screenshot Q&A against the real Anthropic vision model; also armed by ANTHROPIC_LIVE_TEST=1",
+  },
+  {
     file: "plugins/plugin-agent-orchestrator/__tests__/live/native-acp-smoke.live.test.ts",
     optIn: "RUN_LIVE_NATIVE_ACP",
   },

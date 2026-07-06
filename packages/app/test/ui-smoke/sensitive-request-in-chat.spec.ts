@@ -40,7 +40,7 @@ const OAUTH_URL_SUBSTRING = "example.test/oauth/authorize";
 const EVIDENCE_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../../..",
-  ".github/issue-evidence/8907-credential-request",
+  "test-results/ui-smoke-artifacts/8907-credential-request",
 );
 
 type JsonRecord = Record<string, unknown>;

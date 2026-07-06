@@ -56,15 +56,18 @@ a malformed block is left as plain text, never a broken control.
 - `findInteractionRegions(text)` → regions with char bounds (for interleaved rendering).
 - `serializeInteractionBlock(block)` / `appendInteractionBlock(text, block)` — build
   markers programmatically (inverse of parse for the text-borne blocks).
-- `toNeutralLayout(block, { resolveUrl, maxButtonsPerRow })` → `NeutralLayout`
+- `toNeutralLayout(block, { resolveUrl, maxButtonsPerRow, maxCallbackBytes })` →
+  `NeutralLayout`
   (rows of buttons / a select) — the shared projection each connector maps to its
   native primitive. A button carries exactly one of `callbackData` (round-trip) or
   `url` (link-out).
 - `toPlainTextFallback(block, { resolveUrl })` → concise prose for text-only
   transports such as SMS/iMessage, where there is no native control surface.
-- `encodeReplyCallback(value)` / `decodeCallback(data)` — 64-byte-safe codec
-  (Telegram's `callback_data` limit). Returns null when the answer is too big →
-  caller links out or accepts a free-text reply.
+- `encodeReplyCallback(value, { maxBytes })` / `decodeCallback(data)` —
+  callback codec that defaults to Telegram's 64-byte `callback_data` limit.
+  Connectors with a larger native budget, such as Discord custom IDs, pass their
+  own limit. Returns null when the answer is too big → caller links out or
+  accepts a free-text reply.
 - `normalizeContentInteractions(content)` — attach parsed blocks to
   `Content.interactions` **without** mutating `text` (so the dashboard's own
   segment renderer keeps interleaving). `stripInteractionMarkers(text)` for prose.

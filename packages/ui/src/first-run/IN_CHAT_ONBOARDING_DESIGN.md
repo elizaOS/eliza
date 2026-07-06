@@ -19,8 +19,10 @@ choices and should keep negative assertions for deleted surfaces such as
 `first-run-runtime-chooser`, `first-run-chat`, and
 `startup-first-run-background`.
 
-Current end-to-end evidence for issue #10709 lives in
-`.github/issue-evidence/10709-onboarding-chat/`.
+Current end-to-end evidence is attached inline to the issue/PR from the
+Playwright artifact tree (`test-results` / per-test output): JPG screenshots,
+recordings when enabled, and the relevant console/network excerpts. Specs should
+not write repo-local evidence folders.
 
 ## The onboarding surface (#9952 → relaxed by #12178)
 

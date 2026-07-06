@@ -102,6 +102,7 @@ export async function captureScreenshotWithQualityRetry(
     minBytes?: number;
     path?: string;
     type?: "png" | "jpeg";
+    quality?: number;
   } = {},
 ): Promise<Buffer> {
   const attempts = options.attempts ?? 3;
@@ -114,6 +115,7 @@ export async function captureScreenshotWithQualityRetry(
         fullPage: options.fullPage,
         path: options.path,
         type: options.type,
+        quality: options.quality,
       });
       lastBuffer = buffer;
       const quality = await analyzeScreenshot(buffer);

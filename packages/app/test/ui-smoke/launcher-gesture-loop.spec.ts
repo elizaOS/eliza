@@ -44,8 +44,8 @@ const REPO_ROOT = process.cwd().endsWith(path.join("packages", "app"))
   : process.cwd();
 const OUT_DIR = path.join(
   REPO_ROOT,
-  ".github",
-  "issue-evidence",
+  "test-results",
+  "ui-smoke-artifacts",
   "12179-launcher-loops",
   "real-app",
 );

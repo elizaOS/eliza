@@ -44,15 +44,15 @@ import {
 } from "./helpers/dnd-gestures";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
-// Evidence lands in the REPO-ROOT .github/issue-evidence (the suite cwd is
-// packages/app, so a bare process.cwd() would nest a stray .github there).
+// Capture artifacts land under the repo-level test-results tree; the suite cwd
+// is packages/app, so a bare process.cwd() would nest a stray output tree there.
 const REPO_ROOT = process.cwd().endsWith(path.join("packages", "app"))
   ? path.resolve(process.cwd(), "..", "..")
   : process.cwd();
 const OUT_DIR = path.join(
   REPO_ROOT,
-  ".github",
-  "issue-evidence",
+  "test-results",
+  "ui-smoke-artifacts",
   "10722-dnd-harness",
 );
 

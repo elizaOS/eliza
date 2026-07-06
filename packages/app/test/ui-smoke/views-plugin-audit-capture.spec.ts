@@ -11,8 +11,8 @@ import { VIEW_CASES, type ViewCase } from "./plugin-view-cases";
 
 const OUT_DIR = path.join(
   process.cwd(),
-  ".github",
-  "issue-evidence",
+  "test-results",
+  "ui-smoke-artifacts",
   "views-ux-audit-2026-07-04",
   "plugin-view-sweep",
 );

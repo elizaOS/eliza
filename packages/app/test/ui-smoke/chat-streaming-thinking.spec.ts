@@ -20,8 +20,8 @@ const THOUGHT =
   "The mock provider emitted tokens first, then sent this compact reasoning on done.";
 const OUT_DIR = path.join(
   process.cwd(),
-  ".github",
-  "issue-evidence",
+  "test-results",
+  "ui-smoke-artifacts",
   "10712-chat-thinking-streaming",
 );
 
