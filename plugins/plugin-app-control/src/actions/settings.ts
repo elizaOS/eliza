@@ -352,17 +352,23 @@ const PERMISSIONS_REQUEST_KEYS: Readonly<Record<string, SettingsWritableKey>> =
 
 type UpdateChannel = "stable" | "beta" | "nightly";
 
+/**
+ * The slice of the /api/update/status contract the chat narration consumes.
+ * Deliberately a subset of the shared AgentUpdateStatus contract: this action
+ * never reads dist-tags, channel version maps, or install internals, so
+ * validating those would reject a payload that is perfectly adequate to narrate.
+ * The essentials (currentVersion, channel, updateAvailable) are required so a
+ * malformed status can never render as a healthy "unknown on unknown".
+ */
 interface UpdateStatusPayload {
-	currentVersion?: string;
-	channel?: string;
-	installMethod?: string;
-	updateAvailable?: boolean;
-	latestVersion?: string | null;
-	lastCheckAt?: string | null;
-	error?: string | null;
-	updateCommand?: string | null;
-	updateInstructions?: string | null;
-	canExecuteUpdate?: boolean;
+	currentVersion: string;
+	channel: string;
+	updateAvailable: boolean;
+	latestVersion: string | null;
+	error: string | null;
+	updateCommand: string | null;
+	updateInstructions: string | null;
+	canExecuteUpdate: boolean;
 }
 
 const UPDATE_CHANNELS = new Set<UpdateChannel>(["stable", "beta", "nightly"]);
@@ -371,23 +377,43 @@ function isUpdateChannel(value: string | null): value is UpdateChannel {
 	return value !== null && UPDATE_CHANNELS.has(value as UpdateChannel);
 }
 
-function readUpdateStatusPayload(data: unknown): UpdateStatusPayload {
-	if (!data || typeof data !== "object") return {};
-	return data as UpdateStatusPayload;
+function readNullableString(value: unknown): string | null {
+	return typeof value === "string" ? value : null;
 }
 
-function describeUpdateStatus(data: unknown): string {
-	const status = readUpdateStatusPayload(data);
-	if (status.error) {
-		return `Update check failed: ${status.error}`;
+/**
+ * Validate the status body, requiring the fields the narration reads. Returns
+ * null for a missing or malformed payload so a broken status route surfaces as
+ * an error instead of a fabricated version pair — the previous `data as`
+ * cast let a shapeless body render as a healthy "unknown on unknown".
+ */
+function parseUpdateStatusPayload(data: unknown): UpdateStatusPayload | null {
+	if (!data || typeof data !== "object") return null;
+	const record = data as Record<string, unknown>;
+	const { currentVersion, channel, updateAvailable } = record;
+	if (typeof currentVersion !== "string" || currentVersion.length === 0) {
+		return null;
 	}
-	const current = status.currentVersion ?? "unknown";
-	const channel = status.channel ?? "unknown";
+	if (typeof channel !== "string" || channel.length === 0) return null;
+	if (typeof updateAvailable !== "boolean") return null;
+	return {
+		currentVersion,
+		channel,
+		updateAvailable,
+		latestVersion: readNullableString(record.latestVersion),
+		error: readNullableString(record.error),
+		updateCommand: readNullableString(record.updateCommand),
+		updateInstructions: readNullableString(record.updateInstructions),
+		canExecuteUpdate: record.canExecuteUpdate === true,
+	};
+}
+
+function describeUpdateStatus(status: UpdateStatusPayload): string {
 	if (status.updateAvailable) {
 		const latest = status.latestVersion ?? "the latest release";
-		return `Update available: ${current} → ${latest} on ${channel}.`;
+		return `Update available: ${status.currentVersion} → ${latest} on ${status.channel}.`;
 	}
-	return `Current: ${current} on ${channel}.`;
+	return `Current: ${status.currentVersion} on ${status.channel}.`;
 }
 
 function fetchUpdateStatus(
@@ -400,22 +426,57 @@ function fetchUpdateStatus(
 	});
 }
 
+/**
+ * Fetch the update status and collapse it to a usable payload or an honest
+ * failure. The route answers HTTP 200 even when the underlying check failed
+ * (registry unreachable, etc.), so a successful transport is not proof of a
+ * usable status: a populated `error`, an unrecognized body, or a transport
+ * failure all yield ok:false so the SETTINGS action reports the failure instead
+ * of narrating a fabricated or partially-failed status.
+ */
+async function resolveUpdateStatus(
+	routeFetch: SettingsRouteFetch,
+	force: boolean,
+): Promise<SettingsRouteOutcome> {
+	const outcome = await fetchUpdateStatus(routeFetch, force);
+	if (!outcome.ok) return outcome;
+	const status = parseUpdateStatusPayload(outcome.data);
+	if (!status) {
+		return {
+			ok: false,
+			detail: "the update status route returned an unrecognized payload",
+		};
+	}
+	if (status.error) {
+		return { ok: false, detail: `the update check failed: ${status.error}` };
+	}
+	return { ok: true, data: status };
+}
+
 const UPDATES_STATUS_KEY: SettingsWritableKey = {
 	description:
 		"Read the connected agent update status from the same backend route the Release Center uses.",
 	valueType: "command",
-	apply: async ({ routeFetch }) => fetchUpdateStatus(routeFetch, false),
-	successText: (_value, _request, outcome) =>
-		`Release status: ${describeUpdateStatus(outcome.data)}`,
+	apply: ({ routeFetch }) => resolveUpdateStatus(routeFetch, false),
+	successText: (_value, _request, outcome) => {
+		const status = parseUpdateStatusPayload(outcome.data);
+		return status
+			? `Release status: ${describeUpdateStatus(status)}`
+			: "Release status is unavailable.";
+	},
 };
 
 const UPDATES_CHECK_KEY: SettingsWritableKey = {
 	description:
 		"Force an update check through the connected agent update-status route.",
 	valueType: "command",
-	apply: async ({ routeFetch }) => fetchUpdateStatus(routeFetch, true),
-	successText: (_value, _request, outcome) =>
-		`Update check complete. ${describeUpdateStatus(outcome.data)}`,
+	apply: ({ routeFetch }) => resolveUpdateStatus(routeFetch, true),
+	successText: (_value, _request, outcome) => {
+		const status = parseUpdateStatusPayload(outcome.data);
+		return status
+			? `Update check complete. ${describeUpdateStatus(status)}`
+			: "Update check complete, but the status was unavailable.";
+	},
 };
 
 const UPDATES_CHANNEL_KEY: SettingsWritableKey = {
@@ -435,25 +496,48 @@ const UPDATES_CHANNEL_KEY: SettingsWritableKey = {
 			body: { channel: request.value },
 		});
 		if (!channelResult.ok) return channelResult;
-		const status = await fetchUpdateStatus(routeFetch, true);
-		return status.ok ? status : channelResult;
+		// The channel switch is the primary effect and is already persisted. A
+		// forced refresh that fails must be reported as such, never masked by
+		// echoing the channel-write body as if it were a healthy status.
+		const refreshed = await resolveUpdateStatus(routeFetch, true);
+		return {
+			ok: true,
+			data: {
+				channel: request.value,
+				status: refreshed.ok ? refreshed.data : null,
+				refreshError: refreshed.ok
+					? null
+					: (refreshed.detail ?? "the update status could not be refreshed"),
+			},
+		};
 	},
-	successText: (_value, request, outcome) =>
-		`Update channel is ${request.value}. ${describeUpdateStatus(outcome.data)}`,
+	successText: (_value, request, outcome) => {
+		const data = readPlainObject(outcome.data) ?? {};
+		const channel =
+			typeof data.channel === "string" ? data.channel : (request.value ?? "");
+		const refreshError = readNullableString(data.refreshError);
+		if (refreshError) {
+			return `Update channel is ${channel}, but I couldn't refresh the release status: ${refreshError}.`;
+		}
+		const status = parseUpdateStatusPayload(data.status);
+		return status
+			? `Update channel is ${channel}. ${describeUpdateStatus(status)}`
+			: `Update channel is ${channel}.`;
+	},
 };
 
 const UPDATES_APPLY_KEY: SettingsWritableKey = {
 	description:
 		"Report the real apply plan for an available connected-agent update. Chat does not invent a remote installer.",
 	valueType: "command",
-	apply: async ({ routeFetch }) => fetchUpdateStatus(routeFetch, true),
+	apply: ({ routeFetch }) => resolveUpdateStatus(routeFetch, true),
 	successText: (_value, _request, outcome) => {
-		const status = readUpdateStatusPayload(outcome.data);
-		if (status.error) {
-			return `I checked the update plan, but the update check failed: ${status.error}`;
+		const status = parseUpdateStatusPayload(outcome.data);
+		if (!status) {
+			return "I checked for an update, but the status was unavailable.";
 		}
 		if (!status.updateAvailable) {
-			return `No update to apply. ${describeUpdateStatus(outcome.data)}`;
+			return `No update to apply. ${describeUpdateStatus(status)}`;
 		}
 		const instruction =
 			status.updateCommand ??

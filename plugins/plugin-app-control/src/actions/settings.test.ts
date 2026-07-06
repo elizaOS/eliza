@@ -1445,6 +1445,145 @@ describe("SETTINGS action: set on an owned route section", () => {
 		expect(texts.join(" ")).toContain("chat cannot apply it directly");
 		expect(texts.join(" ")).toContain("no remote execution endpoint");
 	});
+
+	it("fails the status read when the update check returned an error", async () => {
+		// The route answers HTTP 200 with `error` populated when the check itself
+		// failed; that must not read as a successful SETTINGS action.
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: {
+				currentVersion: "1.0.0",
+				channel: "stable",
+				updateAvailable: false,
+				latestVersion: null,
+				error: "registry unreachable: ETIMEDOUT",
+			},
+		}));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "status" },
+			routeFetch,
+		);
+		expect(result?.success).toBe(false);
+		const joined = texts.join(" ");
+		expect(joined).toContain("registry unreachable");
+		expect(joined).not.toContain("unknown");
+	});
+
+	it("fails rather than narrating a healthy status from a malformed payload", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			// Missing currentVersion and updateAvailable: previously rendered as
+			// the healthy-looking "Current: unknown on unknown".
+			data: { channel: "stable" },
+		}));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "status" },
+			routeFetch,
+		);
+		expect(result?.success).toBe(false);
+		const joined = texts.join(" ");
+		expect(joined).toContain("unrecognized payload");
+		expect(joined).not.toContain("unknown on unknown");
+	});
+
+	it("fails the update check when the route body is not a status object", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: "not a status object",
+		}));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "check" },
+			routeFetch,
+		);
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).not.toContain("unknown");
+	});
+
+	it("fails the apply plan when the update check errored", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: {
+				currentVersion: "1.0.0",
+				channel: "stable",
+				updateAvailable: false,
+				latestVersion: null,
+				error: "registry unreachable",
+			},
+		}));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "apply" },
+			routeFetch,
+		);
+		expect(result?.success).toBe(false);
+		const joined = texts.join(" ");
+		expect(joined).toContain("the update check failed");
+		expect(joined).not.toContain("unknown");
+	});
+
+	it("surfaces a failed forced refresh after a channel change without fabricating a status", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "PUT")
+				return { ok: true, data: { channel: "beta" } };
+			return {
+				ok: true,
+				data: {
+					currentVersion: "1.0.0",
+					channel: "beta",
+					updateAvailable: false,
+					latestVersion: null,
+					error: "registry unreachable while refreshing",
+				},
+			};
+		});
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "channel", value: "beta" },
+			routeFetch,
+		);
+		// The channel write landed, so the operation succeeded — but the failed
+		// refresh is surfaced, never masked by the channel-write echo.
+		expect(result?.success).toBe(true);
+		const joined = texts.join(" ");
+		expect(joined).toContain("Update channel is beta");
+		expect(joined).toContain("couldn't refresh the release status");
+		expect(joined).toContain("registry unreachable while refreshing");
+		expect(joined).not.toContain("unknown");
+	});
+
+	it("surfaces a transport failure on the forced refresh after a channel change", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "PUT")
+				return { ok: true, data: { channel: "nightly" } };
+			return {
+				ok: false,
+				detail: "route /api/update/status?force=true returned 503",
+			};
+		});
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "channel", value: "nightly" },
+			routeFetch,
+		);
+		expect(result?.success).toBe(true);
+		const joined = texts.join(" ");
+		expect(joined).toContain("Update channel is nightly");
+		expect(joined).toContain("couldn't refresh the release status");
+		expect(joined).toContain("503");
+		expect(joined).not.toContain("unknown");
+	});
+
+	it("does not refresh status when the channel write itself fails", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "PUT")
+				return { ok: false, detail: "channel write rejected" };
+			return { ok: true, data: {} };
+		});
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "channel", value: "beta" },
+			routeFetch,
+		);
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("channel write rejected");
+		expect(routeFetch).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
