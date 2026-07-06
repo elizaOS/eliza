@@ -41,13 +41,22 @@ const logger = {
 	error: vi.fn(),
 };
 
-function messageWithText(text: string): Memory {
+function messageWithText(
+	text: string,
+	options: { source?: string; scenarioId?: string } = {
+		source: "scenario-runner",
+		scenarioId: "shift-rotation-test",
+	},
+): Memory {
 	return {
 		id: "00000000-0000-0000-0000-000000000101" as UUID,
 		entityId: "00000000-0000-0000-0000-000000000102" as UUID,
 		roomId: "00000000-0000-0000-0000-000000000103" as UUID,
 		agentId: "00000000-0000-0000-0000-000000000104" as UUID,
-		content: { text },
+		content: { text, ...(options.source ? { source: options.source } : {}) },
+		...(options.scenarioId
+			? { metadata: { scenarioId: options.scenarioId } }
+			: {}),
 		createdAt: 0,
 	};
 }
@@ -188,6 +197,26 @@ describe("deterministic planner fallback for required-tool misses", () => {
 				subaction: "create_event",
 			},
 		});
+	});
+
+	it("does not run heuristic owner-life fallback on ordinary chat turns", () => {
+		const toolCall = __buildDeterministicPlannerFallbackToolCallForTests({
+			message: messageWithText(
+				"I'm on nights starting Monday — I clock out at 07:30. Set me a daily reminder to log my patient-handoff notes.",
+				{ source: "discord" },
+			),
+			messageHandler: {
+				processMessage: "RESPOND",
+				plan: {
+					contexts: ["tasks"],
+					requiresTool: true,
+					candidateActions: ["TASKS_CREATE_REMINDER", "SCHEDULE_REMINDER"],
+				},
+			} as never,
+			actions: [{ name: "SCHEDULED_TASKS_CREATE" }] as Action[],
+		});
+
+		expect(toolCall).toBeNull();
 	});
 });
 

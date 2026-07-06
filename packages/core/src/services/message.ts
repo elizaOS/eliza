@@ -911,6 +911,30 @@ function isBenchmarkForcingToolCall(message: Memory): boolean {
 	return false;
 }
 
+function isHarnessRoutedFallbackTurn(message: Memory): boolean {
+	const content = message.content;
+	const source =
+		typeof content?.source === "string" ? content.source.trim() : "";
+	if (source === "benchmark" || source === "scenario-runner") return true;
+	const contentMetadata = content?.metadata as
+		| Record<string, unknown>
+		| undefined;
+	if (
+		typeof contentMetadata?.benchmark === "string" &&
+		contentMetadata.benchmark.trim().length > 0
+	) {
+		return true;
+	}
+	const memoryMetadata = message.metadata as
+		| Record<string, unknown>
+		| undefined;
+	for (const key of ["scenarioId", "scenario"]) {
+		const value = memoryMetadata?.[key] ?? contentMetadata?.[key];
+		if (typeof value === "string" && value.trim().length > 0) return true;
+	}
+	return false;
+}
+
 function hasPageScopedRoutingMetadata(message: Memory): boolean {
 	const metadataCandidates = [message.content?.metadata, message.metadata];
 	for (const rawMetadata of metadataCandidates) {
@@ -5105,6 +5129,10 @@ function buildRoutedDeterministicPlannerFallbackToolCall(args: {
 				params: deterministic.params,
 			};
 		}
+	}
+
+	if (!isHarnessRoutedFallbackTurn(args.message)) {
+		return null;
 	}
 
 	const text = getUserMessageText(args.message) ?? "";
