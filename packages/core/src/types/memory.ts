@@ -257,6 +257,12 @@ export interface MessageMetadata {
 
 	telegram?: {
 		userId?: string | number;
+		/**
+		 * Stable platform id of the sender, mirroring `userId` — role
+		 * resolution's connector identity matching compares the `userId`/`id`
+		 * pair (#14711).
+		 */
+		id?: string | number;
 		chatId?: string | number;
 		messageId?: string;
 		threadId?: string | number;

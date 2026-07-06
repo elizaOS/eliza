@@ -105,6 +105,9 @@ export function extractDiscordOwnerUserIds(application: unknown): string[] {
 	return [...ownerCandidates];
 }
 
+// Discord team membership_state: 1 = invited (pending), 2 = accepted.
+const TEAM_MEMBERSHIP_ACCEPTED = 2;
+
 export function extractDiscordTeamAdminUserIds(application: unknown): string[] {
 	const applicationRecord = asRecord(application);
 	if (!applicationRecord) {
@@ -127,11 +130,34 @@ export function extractDiscordTeamAdminUserIds(application: unknown): string[] {
 	if (memberIterable) {
 		for (const entry of memberIterable) {
 			// Collection/Map yields [key, value] tuples; Array yields values directly.
-			const member = Array.isArray(entry) ? entry[1] : entry;
-			const memberId = readUserIdFromOwnerLike(member);
-			if (memberId) {
-				adminCandidates.add(memberId);
+			const member = asRecord(Array.isArray(entry) ? entry[1] : entry);
+			if (!member) {
+				continue;
 			}
+			const memberId = readUserIdFromOwnerLike(member);
+			if (!memberId) {
+				continue;
+			}
+			// Connector-admin standing is only for members who actually hold it on
+			// Discord's side: pending invitees (membership_state 1) have not
+			// accepted, and read_only members deliberately hold no write access —
+			// neither may be seeded as an admin (#14712). Members whose state/role
+			// fields are absent (older discord.js payload shapes) are treated as
+			// accepted developers.
+			const membershipStateRaw =
+				member.membershipState ?? member.membership_state;
+			const membershipState =
+				typeof membershipStateRaw === "number" ? membershipStateRaw : null;
+			if (
+				membershipState !== null &&
+				membershipState !== TEAM_MEMBERSHIP_ACCEPTED
+			) {
+				continue;
+			}
+			if (typeof member.role === "string" && member.role === "read_only") {
+				continue;
+			}
+			adminCandidates.add(memberId);
 		}
 	}
 

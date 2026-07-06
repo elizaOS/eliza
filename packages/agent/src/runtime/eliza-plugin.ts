@@ -16,6 +16,7 @@ import {
   AgentEventService,
   logger,
   NotificationService,
+  PairingService,
   promoteSubactionsToActions,
 } from "@elizaos/core";
 import { compactConversationAction } from "../actions/compact-conversation.ts";
@@ -163,6 +164,10 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // commands. Registered here (before connector plugins start) so the
       // Discord/Telegram pairing services find it and register their commands.
       OwnerBindingService as ServiceClass,
+      // DM pairing-code allowlist backing the connectors' default dmPolicy
+      // "pairing". Without it registered, checkPairingAllowed fails CLOSED
+      // (#14710) and every non-whitelisted DM sender is denied.
+      PairingService as ServiceClass,
     ],
 
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
