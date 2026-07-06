@@ -883,7 +883,10 @@ function readWalletRpcProviderToken(
 				? request.bsc
 				: request.solana;
 	if (chainSpecific) return chainSpecific;
-	if (request.provider) return request.provider;
+	const providerTargetChain = resolveWalletRpcChain(request.chain ?? keyName);
+	if (request.provider && providerTargetChain === chain) {
+		return request.provider;
+	}
 	return resolveWalletRpcChain(keyName) === chain ? request.value : null;
 }
 

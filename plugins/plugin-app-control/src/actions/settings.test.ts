@@ -857,6 +857,53 @@ describe("SETTINGS action: set on an owned route section", () => {
 		expect(texts.join(" ")).toContain("Secrets/Vault");
 	});
 
+	it("scopes chain/provider wallet RPC requests to the requested chain", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						selectedRpcProviders: {
+							evm: "eliza-cloud",
+							bsc: "ankr",
+							solana: "helius-birdeye",
+						},
+						walletNetwork: "mainnet",
+						legacyCustomChains: [],
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				chain: "evm",
+				provider: "alchemy",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: {
+				selections: {
+					evm: "alchemy",
+					bsc: "ankr",
+					solana: "helius-birdeye",
+				},
+				walletNetwork: "mainnet",
+				credentials: {},
+			},
+		});
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "wallet-rpc",
+			key: "evm",
+		});
+	});
+
 	it("switches all wallet RPC providers to Eliza Cloud without exposing secrets", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
 			if (request.method === "GET") {
@@ -1416,11 +1463,11 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 	it("refuses an unwired gap section with its stated reason", async () => {
 		const { result, texts } = await invoke({
 			action: "set",
-			section: "voice",
+			section: "apps",
 			value: "on",
 		});
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("yet");
+		expect(texts.join(" ")).toContain("VIEWS/APP");
 	});
 });
 
