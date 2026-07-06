@@ -139,15 +139,23 @@ describe("CSS lockdown contract — base.css / styles.css cover body.pwa-standal
     // physical bottom), not the old 100dvh clamp that left a ~59px ember-floor
     // strip below it. The class-path rule must carry pwa-standalone and pin the
     // large-viewport height (with 100dvh/100vh progressive fallbacks).
+    // The large-viewport height is now centralized in the
+    // `--eliza-large-viewport-height` custom property (declared 100vh with
+    // @supports upgrades to 100dvh then 100lvh), so the #root rule pins
+    // min/max-height to that var instead of a literal unit ladder.
     const rootBlock = stylesCss.match(
-      /body\.native #root,[\s\S]*?max-height: 100lvh;/,
+      /body\.native #root,[\s\S]*?max-height: var\(--eliza-large-viewport-height\);/,
     );
     expect(rootBlock).not.toBeNull();
     expect(rootBlock?.[0]).toContain("body.pwa-standalone #root");
-    // Large-viewport reclaim + progressive-enhancement fallbacks.
-    expect(rootBlock?.[0]).toContain("100lvh");
-    expect(rootBlock?.[0]).toContain("100dvh");
-    expect(rootBlock?.[0]).toContain("100vh");
+    // And the var's progressive-enhancement ladder must exist at :root.
+    expect(stylesCss).toMatch(/--eliza-large-viewport-height:\s*100vh/);
+    expect(stylesCss).toMatch(
+      /@supports \(height: 100dvh\)[\s\S]*?--eliza-large-viewport-height:\s*100dvh/,
+    );
+    expect(stylesCss).toMatch(
+      /@supports \(height: 100lvh\)[\s\S]*?--eliza-large-viewport-height:\s*100lvh/,
+    );
     // The old hard 100dvh clamp (min AND max pinned to dvh) must be gone.
     expect(rootBlock?.[0]).not.toMatch(
       /min-height:\s*100dvh;\s*max-height:\s*100dvh;/,
@@ -161,16 +169,15 @@ describe("CSS lockdown contract — base.css / styles.css cover body.pwa-standal
     // #root above and doesn't stop ~59px short (which would expose #root's
     // --launch-bg as a near-black band). Targets the stable
     // `[data-app-shell-root]` hook on the column.
+    // Same centralization: the column pins to var(--eliza-large-viewport-height)
+    // (whose @supports ladder covers 100vh -> 100dvh -> 100lvh).
     const columnBlock = stylesCss.match(
-      /body\.native \[data-app-shell-root\],[\s\S]*?height: 100lvh;/,
+      /body\.native \[data-app-shell-root\],[\s\S]*?height: var\(--eliza-large-viewport-height\);/,
     );
     expect(columnBlock).not.toBeNull();
     expect(columnBlock?.[0]).toContain(
       "body.pwa-standalone [data-app-shell-root]",
     );
-    expect(columnBlock?.[0]).toContain("100lvh");
-    expect(columnBlock?.[0]).toContain("100dvh");
-    expect(columnBlock?.[0]).toContain("100vh");
   });
 });
 
@@ -211,12 +218,12 @@ describe("CSS geometry contract — fixed-body ICB collapse fix (bottom black ba
 
   it("pins the standalone-PWA fixed body to the LARGE viewport height (100lvh)", () => {
     const block = standalonePwaOwnBlock();
-    // `100lvh` is the load-bearing declaration: it forces the fixed body's ICB
-    // to the large viewport so `fixed inset-0` children reach the true bottom.
-    expect(block).toContain("100lvh");
-    // Progressive-enhancement fallbacks for engines without lvh.
-    expect(block).toContain("100dvh");
-    expect(block).toContain("100vh");
+    // The large-viewport height is centralized in
+    // `--eliza-large-viewport-height` (100vh, @supports-upgraded to 100dvh then
+    // 100lvh at :root) — the load-bearing declaration that forces the fixed
+    // body's ICB to the large viewport so `fixed inset-0` children reach the
+    // true bottom.
+    expect(block).toContain("height: var(--eliza-large-viewport-height)");
   });
 
   it("releases `bottom` on the standalone-PWA body so top+height drive the box", () => {
@@ -252,6 +259,51 @@ describe("CSS geometry contract — fixed-body ICB collapse fix (bottom black ba
     expect(block).toMatch(/background-color:\s*transparent/);
     // And it must NOT paint the old warm-ember color-mix slab.
     expect(block).not.toMatch(/background-color:\s*color-mix/);
+  });
+
+  it("leaves #root TRANSPARENT in the installed PWA so its --launch-bg (#160d07) never paints the collapsed-ICB strip (r10)", () => {
+    // BOTTOM-BAR FIX (r10 — the definitive one, keyed to on-device geometry):
+    // the diagnostics chip reported docEl.clientHeight=873, 100lvh=932,
+    // screen.height=932, reclaim-var=59. Even though #root is max-height:100lvh,
+    // WebKit resolves that lvh box against the COLLAPSED fixed-body ICB (873),
+    // so #root renders 873px tall and paints its --launch-bg (#160d07) across
+    // that box; the 59px below (873→932) is html/body's #160d07 — together the
+    // recurring strip. Stretching a box to 932 cannot work (the box can't see
+    // past the collapsed ICB). The cure: #root must be TRANSPARENT so the fixed
+    // AppBackground wallpaper (reclaimed to the true bottom + mirrored onto the
+    // html canvas) is the ONLY thing painting the bottom edge. Assert both the
+    // class-path and that #root does NOT reintroduce an opaque launch-bg.
+    expect(stylesCss).toMatch(
+      /body\.native #root,\s*\n\s*body\.pwa-standalone #root\s*\{[\s\S]*?background:\s*transparent/,
+    );
+    // The bare body.pwa-standalone own-block must also be transparent (not the
+    // global `html, body { background: var(--launch-bg) }` near-black).
+    expect(stylesCss).toMatch(
+      /body\.native,\s*\n\s*body\.pwa-standalone\s*\{\s*\n\s*background:\s*transparent/,
+    );
+  });
+
+  it("sizes `html` to 100lvh + transparent in the installed PWA so overflow:hidden does not clip the wallpaper at clientHeight=873 (r11)", () => {
+    // BOTTOM-BAR FIX (r11 — the CLIP): on-device pixel forensics put the
+    // #160d07 cut at EXACTLY documentElement.clientHeight (873/932 = 93.7% of a
+    // 932px screen). Root cause: `html { overflow: hidden; height: 100% }`, and
+    // `height: 100%` resolves to the collapsed ICB (873). So html is an 873px
+    // clip box that CLIPS the reclaimed `fixed { bottom: -59px }` wallpaper AND
+    // its own canvas background-image at 873; the 59px below is the browser
+    // canvas showing html's #160d07 background-color. Neither rc59 nor the
+    // transparent #root can help while html clips at 873. Fix: html must be
+    // sized to the LARGE viewport (100lvh) + transparent in the installed shell.
+    // Assert BOTH paths: the class-path `html:has(body.pwa-standalone)` and the
+    // detection-independent display-mode media query bare `html`.
+    expect(stylesCss).toMatch(
+      /html:has\(body\.native\),\s*\n\s*html:has\(body\.pwa-standalone\)\s*\{[\s\S]*?height:\s*100lvh;[\s\S]*?background:\s*transparent/,
+    );
+    // The media-query path must also size html to 100lvh (the SOURCE OF TRUTH on
+    // device, since the JS pwa-standalone class is unreliable there).
+    const mq = stylesCss.match(
+      /@media[\s\S]*?display-mode:\s*standalone[\s\S]*?\{([\s\S]*?)\n\}/,
+    );
+    expect(mq?.[1] ?? "").toMatch(/html\s*\{[\s\S]*?height:\s*100lvh/);
   });
 
   it("keeps the native (Capacitor) body on `inset: 0` — the fix is PWA-scoped", () => {
@@ -390,13 +442,15 @@ describe("CSS-FIRST contract — media-query lockdown is detection-independent",
     const block = mediaBlock(
       stylesCss,
       ["display-mode: standalone", "pointer: coarse"],
-      "100lvh",
+      "--eliza-large-viewport-height",
     );
     expect(block).not.toBeNull();
-    expect(block ?? "").toMatch(/#root\s*\{[\s\S]*?max-height:\s*100lvh/);
+    expect(block ?? "").toMatch(
+      /#root\s*\{[\s\S]*?max-height:\s*var\(--eliza-large-viewport-height\)/,
+    );
     // The app shell column reclaim must ride the same media block.
     expect(block ?? "").toMatch(
-      /\[data-app-shell-root\]\s*\{[\s\S]*?height:\s*100lvh/,
+      /\[data-app-shell-root\]\s*\{[\s\S]*?height:\s*var\(--eliza-large-viewport-height\)/,
     );
   });
 });
@@ -442,10 +496,12 @@ describe("Keyboard-lift geometry contract — reclaim does NOT shift the compose
     expect(overlaySrc).not.toContain('"calc(-1 * max(0px, 100lvh - 100dvh))"');
     expect(overlaySrc).toContain("keyboardLiftActive");
     // Resting clearance should be the full safe-area/gesture inset plus a small
-    // visual gap, so on a 34px home-indicator device the composer rests ~44px
-    // from the physical edge (34px + 0.625rem), not ~90px up.
+    // visual gap, so on a 34px home-indicator device the composer rests ~42px
+    // from the physical edge (34px + 0.5rem), not ~90px up. (#15097 trimmed the
+    // extra gap 0.625rem -> 0.5rem now that the measured reclaim seats the
+    // overlay at the true bottom, so it sits snug, not floating.)
     expect(overlaySrc).toContain(
-      "max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.625rem",
+      "max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem",
     );
   });
 

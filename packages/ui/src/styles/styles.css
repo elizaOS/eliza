@@ -192,6 +192,62 @@ body.pwa-standalone #root {
   box-sizing: border-box;
 }
 
+/* BOTTOM-BAR FIX (r10 — the definitive one, keyed to on-device geometry):
+   On this device the chip reported `docEl.clientHeight = 873`, `100lvh = 932`,
+   `screen.height = 932`, `reclaim-var = 59`. So even though the fixed body is
+   `height: 100lvh` and #root is `max-height: 100lvh`, WebKit resolves those
+   `lvh` boxes against the COLLAPSED fixed-body ICB (873), not the true screen
+   (932). #root therefore renders 873px tall and paints its `--launch-bg`
+   (#160d07) across that box; the 59px below (873→932) is html/body's own
+   #160d07 canvas. THAT near-black is the recurring strip — every prior fix
+   tried to STRETCH a box to 932, but the box cannot see past the collapsed ICB.
+
+   The cure: stop painting #160d07 at the bottom AT ALL. Make #root, body, and
+   html transparent in the installed shell so the ONLY thing that reaches the
+   physical bottom — the `fixed inset-0` AppBackground wallpaper (a fixed layer
+   whose `bottom` is reclaimed to the true screen by --standalone-bottom-reclaim,
+   AND whose image is mirrored onto the html canvas by html-canvas-paint, so it
+   paints edge to edge regardless of ICB collapse) — is what shows through the
+   strip. No box needs to reach 932: the wallpaper already does, and nothing
+   dark sits on top of it. This is the same principle as the r4 transparent
+   floor, extended from body to #root (the layer that was still opaque). */
+body.native,
+body.pwa-standalone {
+  background: transparent;
+}
+
+body.native #root,
+body.pwa-standalone #root {
+  background: transparent;
+}
+
+/* BOTTOM-BAR FIX (r11 — the CLIP, keyed to on-device geometry): the strip
+   starts at EXACTLY documentElement.clientHeight (873) — pixel forensics put
+   the #160d07 cut at 93.7% of a 932px screen = 873/932. The reason nothing the
+   app paints reaches below 873 is that the ROOT element `html` is
+   `overflow: hidden; height: 100%`, and `height: 100%` resolves to the
+   collapsed ICB (873). So html is a 873px-tall clip box: it CLIPS the
+   `fixed inset-0 { bottom: -59px }` wallpaper's reclaimed extension AND its own
+   `background-image` cover paint at 873, and the 59px below (873→932) is the
+   browser CANVAS showing html's `background-color` fallback (#160d07). Neither
+   the JS reclaim (rc59, confirmed on device) nor the transparent #root can help
+   while html clips at 873.
+
+   Fix: size `html` itself to the LARGE viewport (100lvh = 932) in the installed
+   shell so its overflow clip and its canvas paint reach the true screen bottom,
+   and make it transparent so the html-canvas-paint wallpaper mirror (or, below
+   a still-loading image, the wallpaper's own bottom pixels via the now-unclipped
+   fixed layer) owns the bottom edge — never #160d07. `100vh→100dvh→100lvh`
+   progressive-enhancement stack, standalone-gated. */
+html:has(body.native),
+html:has(body.pwa-standalone) {
+  height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
+  height: 100dvh;
+  height: 100lvh;
+  background: transparent;
+}
+
 /* RECLAIM THE BOTTOM STRIP (#14411): the app shell column (App.tsx) carries a
    base `h-[100dvh]` that is correct for a desktop browser tab / popout, but in
    the installed PWA it must fill the 100lvh #root above — otherwise the column
@@ -221,6 +277,25 @@ body.pwa-standalone textarea {
    fullscreen (fine pointer) is excluded by `(pointer: coarse)`. */
 @media all and (display-mode: standalone) and (pointer: coarse),
   all and (display-mode: fullscreen) and (pointer: coarse) {
+  /* BOTTOM-BAR FIX (r11 — the CLIP): size `html` to the LARGE viewport (100lvh)
+     so its `overflow: hidden` clip box and its canvas `background-image` paint
+     reach the true screen bottom (932) instead of the collapsed ICB (873) that
+     `height: 100%` resolves to. Without this, html is an 873px clip box that
+     cuts off the reclaimed fixed wallpaper + its own canvas paint at 873, and
+     the 59px below shows html's #160d07 background-color. Transparent so the
+     canvas shows the wallpaper mirror, not #160d07. Detection-independent path
+     (matches the environment, so it applies even though the JS class does not
+     land on device). Mirrors the class-path `html:has(body.pwa-standalone)`
+     rule above. */
+  html {
+    height: 100vh;
+    /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
+    height: 100dvh;
+    height: 100lvh;
+    background: transparent;
+  }
+
+  /* biome-ignore lint/style/noDescendingSpecificity: intentional bare-body geometry that must apply regardless of the JS class landing. */
   body {
     position: fixed;
     touch-action: pan-y;
@@ -251,6 +326,15 @@ body.pwa-standalone textarea {
     max-height: var(--eliza-large-viewport-height);
     padding: 0;
     box-sizing: border-box;
+    /* BOTTOM-BAR FIX (r10): transparent #root so its #160d07 launch-bg never
+       paints the collapsed-ICB strip. On device #root renders 873px tall (the
+       collapsed fixed-body ICB), painting #160d07 across it, and the 59px below
+       (873→932) is html/body #160d07 — together the recurring strip. Going
+       transparent lets the fixed AppBackground wallpaper (reclaimed to the true
+       bottom via --standalone-bottom-reclaim + mirrored onto the html canvas)
+       be the ONLY paint at the bottom edge. Folded into this geometry rule to
+       avoid a descending-specificity split. */
+    background: transparent;
   }
 
   /* RECLAIM THE BOTTOM STRIP (#14411): the app shell column (App.tsx) carries a

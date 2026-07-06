@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * MEASURED-GAP contract for the iOS standalone-PWA bottom reclaim (device r6).
+ * MEASURED-GAP contract for the iOS standalone-PWA bottom reclaim (device r8).
  *
  * ── WHY THIS TEST EXISTS ──
  * The recurring home-indicator "bottom bar" survived FIVE CSS-only PRs
@@ -12,13 +12,20 @@
  * `100lvh - 100dvh === 0` — every reclaim a no-op, the strip untouched, the
  * tests still green. A string test can never catch that.
  *
- * These tests instead pin the MEASURED gap: they reproduce the collapsed
- * geometry (true screen height via window.innerHeight / visualViewport, the
- * collapsed layout box via documentElement.clientHeight) and assert
- * `measureStandaloneBottomGap()` / the applied `--standalone-bottom-reclaim`
- * var equals the REAL delta. The pre-fix code path (CSS-unit calc) would have
- * produced a 0 reclaim in this exact geometry — that is the failing case this
- * green test now covers.
+ * #15036 then bet that `innerHeight` / `visualViewport.height` still see the
+ * true screen while only `documentElement.clientHeight` collapses. On-device
+ * diagnostics (`ih873 vv873 ce873 sh932 rc0 lv932 dv873`) proved that ALSO
+ * dead: innerHeight, visualViewport.height, AND clientHeight ALL collapse to
+ * 873, so `max(vv,inner) - clientHeight = 0`, a SIXTH no-op. The ONLY value
+ * that still sees the true 932px screen is `window.screen.height`.
+ *
+ * These tests pin the DEFINITIVE measurement: the true physical height is
+ * `screen.height` (932), the collapsed layout box is `documentElement
+ * .clientHeight` (873), and the real gap is `screen.height - clientHeight` = 59.
+ * They stub the FULL collapsed geometry (innerHeight == vv == clientHeight ==
+ * 873, screen.height == 932) exactly as the device reports it, so the #15036
+ * code path would produce 0 here, that is the failing case this green test now
+ * covers.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -33,15 +40,20 @@ import {
 } from "./standalone-bottom-reclaim";
 
 /**
- * Reproduce the collapsed fixed-body geometry:
- *  - `documentElement.clientHeight` = the LAYOUT (small/collapsed) viewport.
- *  - `window.innerHeight` = the TRUE (large) screen height.
- *  - `window.visualViewport.height` = the TRUE visible height (optional).
- * The real bottom gap is `trueHeight - layoutHeight`.
+ * Reproduce the collapsed fixed-body geometry EXACTLY as the device reports it:
+ *  - `documentElement.clientHeight` = the LAYOUT (small/collapsed) viewport (873).
+ *  - `window.screen.height` = the TRUE physical screen height (932), the ONLY
+ *    value that survives the ICB collapse.
+ *  - `window.innerHeight` / `visualViewport.height` ALSO collapse to the layout
+ *    box on device; they default to `layoutHeight` here to mirror that (proving
+ *    the measurement no longer depends on them). Override only to model a
+ *    non-collapsed surface.
+ * The real bottom gap is `screen.height - layoutHeight`.
  */
 function stubViewport(opts: {
   layoutHeight: number;
-  innerHeight: number;
+  screenHeight?: number;
+  innerHeight?: number;
   visualHeight?: number;
   visualOffsetTop?: number;
 }): void {
@@ -49,29 +61,29 @@ function stubViewport(opts: {
     configurable: true,
     get: () => opts.layoutHeight,
   });
+  // On device innerHeight/visualViewport collapse to the layout box too; mirror
+  // that by defaulting them to layoutHeight (the measurement must NOT read them).
   Object.defineProperty(window, "innerHeight", {
     configurable: true,
     writable: true,
-    value: opts.innerHeight,
+    value: opts.innerHeight ?? opts.layoutHeight,
   });
-  if (opts.visualHeight !== undefined) {
-    Object.defineProperty(window, "visualViewport", {
-      configurable: true,
-      writable: true,
-      value: {
-        height: opts.visualHeight,
-        offsetTop: opts.visualOffsetTop ?? 0,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      },
-    });
-  } else {
-    Object.defineProperty(window, "visualViewport", {
-      configurable: true,
-      writable: true,
-      value: undefined,
-    });
-  }
+  Object.defineProperty(window, "screen", {
+    configurable: true,
+    writable: true,
+    value: { height: opts.screenHeight ?? opts.layoutHeight },
+  });
+  const visualHeight = opts.visualHeight ?? opts.layoutHeight;
+  Object.defineProperty(window, "visualViewport", {
+    configurable: true,
+    writable: true,
+    value: {
+      height: visualHeight,
+      offsetTop: opts.visualOffsetTop ?? 0,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    },
+  });
 }
 
 afterEach(() => {
@@ -86,6 +98,11 @@ afterEach(() => {
     writable: true,
     value: 0,
   });
+  Object.defineProperty(window, "screen", {
+    configurable: true,
+    writable: true,
+    value: { height: 0 },
+  });
   Object.defineProperty(window, "visualViewport", {
     configurable: true,
     writable: true,
@@ -93,54 +110,81 @@ afterEach(() => {
   });
 });
 
-describe("measureStandaloneBottomGap — the JS cure for the collapsed-ICB strip", () => {
-  it("measures the ~59px gap on the collapsed iOS-standalone geometry (the exact bug)", () => {
-    // Home-indicator iPhone standalone: layout ICB collapsed to 873, true
-    // screen 932 → the 59px strip the CSS-unit calc could NOT see.
-    stubViewport({ layoutHeight: 873, innerHeight: 932, visualHeight: 932 });
-    expect(measureStandaloneBottomGap()).toBe(59);
-  });
-
-  it("prefers the visualViewport height and adds back a scrolled offsetTop", () => {
-    // visualViewport shifted up (rubber-band / partial keyboard): height 900 +
-    // offsetTop 32 = 932 true; innerHeight smaller → we take the VV composite.
+describe("measureStandaloneBottomGap: the screen.height cure for the collapsed-ICB strip", () => {
+  it("measures the 59px gap when innerHeight is still collapsed (pre-html-fix / any engine that collapses the fixed-layer viewport)", () => {
+    // If a shell collapses innerHeight to the layout box (873) while
+    // screen.height still sees 932, the fixed layers stop 59px short and we DO
+    // reclaim: gap = screen.height - innerHeight = 932 - 873 = 59.
     stubViewport({
       layoutHeight: 873,
-      innerHeight: 900,
-      visualHeight: 900,
-      visualOffsetTop: 32,
+      innerHeight: 873,
+      visualHeight: 873,
+      screenHeight: 932,
     });
     expect(measureStandaloneBottomGap()).toBe(59);
   });
 
-  it("is EXACTLY 0 on desktop/Android/web where layout == true height (no-op)", () => {
-    // The two viewports agree → the reclaim must be a true no-op, NOT a guess.
-    // This is the regression guard against shifting web/desktop layers.
-    stubViewport({ layoutHeight: 900, innerHeight: 900, visualHeight: 900 });
+  it("is 0 once html:100lvh un-collapses innerHeight to the true screen (the r11 over-correction fix)", () => {
+    // r11: sizing `html` to 100lvh un-collapses the viewport — the device chip
+    // flipped to ih932 vv932 dv932 while ONLY clientHeight stayed 873. Now the
+    // fixed layers already reach the true 932 bottom, so the reclaim MUST be 0
+    // (measuring vs clientHeight would give a phantom 59 and shove the composer
+    // 59px off-screen — the over-correction). We measure vs innerHeight (932),
+    // NOT clientHeight (873): 932 - 932 = 0.
+    stubViewport({
+      layoutHeight: 873, // documentElement.clientHeight still collapsed
+      innerHeight: 932, // html:100lvh made innerHeight truthful
+      visualHeight: 932,
+      screenHeight: 932,
+    });
     expect(measureStandaloneBottomGap()).toBe(0);
   });
 
-  it("is 0 (never negative) when the keyboard shrinks the visual viewport below the layout box", () => {
-    // Keyboard up: visualViewport collapses well under the layout ICB. The
-    // resting reclaim must be 0 here (the composer's keyboard-lift path owns
-    // that case) — never a negative translate that would pull layers off-screen.
+  it("is EXACTLY 0 on desktop/Android/web where screen.height == the layout box (no-op)", () => {
+    // No fixed-body ICB collapse: screen.height agrees with clientHeight → the
+    // reclaim must be a true no-op, NOT a guess. Regression guard against
+    // shifting web/desktop layers.
     stubViewport({
-      layoutHeight: 873,
-      innerHeight: 500,
-      visualHeight: 500,
+      layoutHeight: 900,
+      innerHeight: 900,
+      visualHeight: 900,
+      screenHeight: 900,
     });
+    expect(measureStandaloneBottomGap()).toBe(0);
+  });
+
+  it("is 0 (never negative) when the layout box exceeds screen.height (defensive)", () => {
+    // Should not happen physically, but a layout box taller than the physical
+    // screen must reclaim nothing, never a negative translate off-screen.
+    stubViewport({
+      layoutHeight: 1000,
+      screenHeight: 900,
+    });
+    expect(measureStandaloneBottomGap()).toBe(0);
+  });
+
+  it("returns 0 when screen.height is unavailable (SSR / ancient engine)", () => {
+    // No usable screen.height → no measurement, no reclaim, no harm.
+    stubViewport({ layoutHeight: 873, screenHeight: 0 });
     expect(measureStandaloneBottomGap()).toBe(0);
   });
 
   it("clamps an absurd transient delta (mid-rotation) to a sane upper bound", () => {
-    stubViewport({ layoutHeight: 300, innerHeight: 2000, visualHeight: 2000 });
+    stubViewport({ layoutHeight: 300, screenHeight: 2000 });
     expect(measureStandaloneBottomGap()).toBe(160);
   });
 });
 
 describe("applyStandaloneBottomReclaim — writes the MEASURED gap to the CSS var", () => {
-  it("writes the measured 59px gap to --standalone-bottom-reclaim (would be 0 under the old CSS-unit calc)", () => {
-    stubViewport({ layoutHeight: 873, innerHeight: 932, visualHeight: 932 });
+  it("writes the measured 59px gap to --standalone-bottom-reclaim (would be 0 under #15036's inputs)", () => {
+    // The DEFINITIVE assertion: device inputs (ce873 sh932), var flips to 59px
+    // where #15036's max(inner,vv)-clientHeight would have written 0px.
+    stubViewport({
+      layoutHeight: 873,
+      innerHeight: 873,
+      visualHeight: 873,
+      screenHeight: 932,
+    });
     const written = applyStandaloneBottomReclaim();
     expect(written).toBe(59);
     expect(
@@ -151,7 +195,12 @@ describe("applyStandaloneBottomReclaim — writes the MEASURED gap to the CSS va
   });
 
   it("writes 0px on the non-collapsed (web/desktop/Android) geometry", () => {
-    stubViewport({ layoutHeight: 900, innerHeight: 900, visualHeight: 900 });
+    stubViewport({
+      layoutHeight: 900,
+      innerHeight: 900,
+      visualHeight: 900,
+      screenHeight: 900,
+    });
     applyStandaloneBottomReclaim();
     expect(
       document.documentElement.style.getPropertyValue(
@@ -214,7 +263,12 @@ describe("shouldInstallStandaloneBottomReclaim — platform gate", () => {
 
 describe("installStandaloneBottomReclaim — idempotent, no duplicate listeners", () => {
   it("primes the var immediately and disposes the prior install on re-install", () => {
-    stubViewport({ layoutHeight: 873, innerHeight: 932, visualHeight: 932 });
+    stubViewport({
+      layoutHeight: 873,
+      innerHeight: 873,
+      visualHeight: 873,
+      screenHeight: 932,
+    });
 
     const added: string[] = [];
     const removed: string[] = [];
@@ -261,7 +315,12 @@ describe("installStandaloneBottomReclaim — idempotent, no duplicate listeners"
   });
 
   it("clearStandaloneBottomReclaim tears down an active install and zeroes the var", () => {
-    stubViewport({ layoutHeight: 873, innerHeight: 932, visualHeight: 932 });
+    stubViewport({
+      layoutHeight: 873,
+      innerHeight: 873,
+      visualHeight: 873,
+      screenHeight: 932,
+    });
     installStandaloneBottomReclaim();
     clearStandaloneBottomReclaim();
     expect(

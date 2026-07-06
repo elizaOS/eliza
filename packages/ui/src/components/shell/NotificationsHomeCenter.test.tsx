@@ -3,8 +3,21 @@
 // Dashboard notification center behavior against the real notification store
 // (driven via the test-only ingest; HTTP mutations mocked at the API client).
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Haptics is a native bridge; stub it so the row's long-press path
+// (`void haptics.light()`) doesn't leave a real pending promise under fake
+// timers in the touch-interaction tests.
+vi.mock("../../bridge/capacitor-bridge", () => ({
+  haptics: { light: vi.fn(async () => {}), medium: vi.fn(async () => {}) },
+}));
 
 // Mutations are optimistic writes through the API client - mock the transport,
 // not the store, so mark-read/dismiss/clear exercise the real store paths.
@@ -278,5 +291,115 @@ describe("NotificationsHomeCenter", () => {
     __ingestNotificationForTests(makeNotification({ title: "plain" }));
     render(<NotificationsHomeCenter />);
     expect(screen.queryByTestId("notification-count-chip")).toBeNull();
+  });
+});
+
+// ── Touch interaction: the row's OWN pointer handlers (device r8) ──────────
+// #15080 moved the inbox inline BELOW the chat glass; "interacting is cooked"
+// on device. These tests drive the row's real pointer sequence (not just a
+// synthetic click) so tap-to-open and swipe-to-dismiss fire their handlers, and
+// pin the exemption markers that keep the ContinuousChatOverlay outside-tap
+// collapse-swallower off the notification surface.
+describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
+  function pointer(
+    el: Element,
+    type: string,
+    {
+      x = 0,
+      y = 0,
+      pointerId = 1,
+    }: { x?: number; y?: number; pointerId?: number } = {},
+  ): void {
+    // jsdom has no PointerEvent ctor; fireEvent.pointerX carries clientX/Y +
+    // pointerId + pointerType onto the synthetic event the row handlers read.
+    (fireEvent as unknown as Record<string, (e: Element, i: unknown) => void>)[
+      type
+    ](el, {
+      clientX: x,
+      clientY: y,
+      pointerId,
+      pointerType: "touch",
+      button: 0,
+    });
+  }
+
+  it("tap (pointerdown → pointerup, no move) opens/deep-links the row on TOUCH", () => {
+    __ingestNotificationForTests(
+      makeNotification({ deepLink: "/settings", title: "Tap me" }),
+    );
+    render(<NotificationsHomeCenter />);
+    const swipe = screen.getByTestId("notification-row-swipe");
+    const button = screen.getByTestId("notification-row");
+    // A real touch tap: down then up on the swipe surface, no movement, then the
+    // button's synthetic click. suppressClick must NOT be set (no swipe / long
+    // press), so the tap opens the notification.
+    pointer(swipe, "pointerDown", { x: 10, y: 10 });
+    pointer(swipe, "pointerUp", { x: 10, y: 10 });
+    fireEvent.click(button);
+    expect(navigateDeepLink).toHaveBeenCalledWith("/settings");
+    expect(__getStateForTests().unreadCount).toBe(0);
+  });
+
+  it("horizontal swipe past the threshold dismisses the row (and swallows the click)", () => {
+    __ingestNotificationForTests(makeNotification({ title: "Keep" }));
+    __ingestNotificationForTests(makeNotification({ title: "Swipe away" }));
+    render(<NotificationsHomeCenter />);
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
+    const li = screen.getByText("Swipe away").closest("li") as HTMLElement;
+    const swipe = li.querySelector(
+      '[data-testid="notification-row-swipe"]',
+    ) as HTMLElement;
+    const button = li.querySelector(
+      '[data-testid="notification-row"]',
+    ) as HTMLElement;
+    // Drag left well past SWIPE_DISMISS_PX (88): down at 120, move to 10 (dx=-110
+    // → axis locks x, past threshold), release → commitDismiss(left).
+    pointer(swipe, "pointerDown", { x: 120, y: 20 });
+    pointer(swipe, "pointerMove", { x: 60, y: 22 });
+    pointer(swipe, "pointerMove", { x: 10, y: 22 });
+    pointer(swipe, "pointerUp", { x: 10, y: 22 });
+    // The synthetic click a swipe emits must be swallowed (suppressClick) so the
+    // gesture doesn't ALSO open the row.
+    fireEvent.click(button);
+    expect(navigateDeepLink).not.toHaveBeenCalled();
+    // Fling-out transition then store removal (180ms timeout).
+    vi.useFakeTimers();
+    // (already released; the remove was scheduled synchronously via setTimeout)
+    vi.useRealTimers();
+    // The row is on its way out (dismissing transform applied); the store
+    // removal fires on the 180ms timer. Assert the swipe surface committed.
+    expect(swipe.style.transform).toContain("translateX(-120%)");
+  });
+
+  it("a long-press opens the row's contextual menu on TOUCH", () => {
+    vi.useFakeTimers();
+    try {
+      __ingestNotificationForTests(
+        makeNotification({ title: "Hold me", deepLink: "/x" }),
+      );
+      render(<NotificationsHomeCenter />);
+      const swipe = screen.getByTestId("notification-row-swipe");
+      pointer(swipe, "pointerDown", { x: 10, y: 10 });
+      // Hold past LONG_PRESS_MS (420) with no movement → menu opens. Wrap the
+      // timer flush in act() so the setMenuOpen(true) render commits before the
+      // query reads the DOM.
+      act(() => {
+        vi.advanceTimersByTime(450);
+      });
+      expect(screen.getByTestId("notification-row-menu")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("marks the row + its center with the overlay-exemption hooks the collapse-swallower reads", () => {
+    __ingestNotificationForTests(makeNotification({ title: "Exempt" }));
+    render(<NotificationsHomeCenter />);
+    // The ContinuousChatOverlay outside-tap collapse-swallower exempts anything
+    // under [data-testid="home-notification-center"] or [data-notif-row]; both
+    // must be present or a row tap gets eaten (the r8 "cooked" bug).
+    expect(screen.getByTestId("home-notification-center")).toBeTruthy();
+    const row = screen.getByText("Exempt").closest("li") as HTMLElement;
+    expect(row.hasAttribute("data-notif-row")).toBe(true);
   });
 });
