@@ -176,6 +176,16 @@ export function selectMatrixSteps(steps, options) {
       throw new Error(`unknown matrix step(s): ${unknown.join(", ")}`);
     }
   }
+
+  // A filter combination that selects nothing (e.g. `--skip-devices
+  // --only=ios-sim-capture`) is an operator mistake, not a passing run. Fail
+  // here with an actionable message instead of letting the empty set reach the
+  // reporter, which would throw the opaque "positive integer total" error.
+  if (selected.length === 0) {
+    throw new Error(
+      "no lanes selected — check --only/--skip filters (they exclude every matrix step)",
+    );
+  }
   return selected;
 }
 

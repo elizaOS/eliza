@@ -93,6 +93,20 @@ test("validates explicit step ids and OCR mode", () => {
   );
 });
 
+test("a filter combination selecting zero lanes fails with an actionable message", () => {
+  // --skip-devices drops the device lanes, --only keeps only a device lane, so
+  // the intersection is empty. This must be a clear error, not an opaque
+  // reporter-constructor throw and not a fake pass.
+  assert.throws(
+    () =>
+      selectMatrixSteps(
+        MATRIX_STEPS,
+        parseMatrixArgs(["--skip-devices", "--only=ios-sim-capture"]),
+      ),
+    /no lanes selected — check --only\/--skip filters/,
+  );
+});
+
 test("probeRequirement passes lanes with no external dependency", () => {
   assert.deepEqual(probeRequirement(null), { reachable: true, reason: null });
   assert.deepEqual(probeRequirement(undefined), {
