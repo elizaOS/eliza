@@ -110,8 +110,29 @@ export function renderDiscordInteractions(
 		if (!producedButton && layout.text) extraLines.push(layout.text);
 	}
 
+	// Discord hard-caps a message at 5 action rows. When controls overflow the
+	// cap, surface the dropped options as prose and invite a typed reply so no
+	// option is silently unreachable.
+	const visibleRows = rows.slice(0, MAX_ROWS);
+	const droppedButtons = rows.slice(MAX_ROWS).flatMap((row) => row.components);
+	if (droppedButtons.length > 0) {
+		needsFreeTextReply = true;
+		const droppedLabels = droppedButtons
+			.map((button) =>
+				button.url && button.label
+					? `${button.label} (${button.url})`
+					: (button.label ?? ""),
+			)
+			.filter((label) => label.trim().length > 0);
+		if (droppedLabels.length > 0) {
+			extraLines.push(
+				`More options (reply with one): ${droppedLabels.join(", ")}`,
+			);
+		}
+	}
+
 	const text = [cleanedText, ...extraLines]
 		.filter((s) => s.trim().length > 0)
 		.join("\n\n");
-	return { text, components: rows.slice(0, MAX_ROWS), needsFreeTextReply };
+	return { text, components: visibleRows, needsFreeTextReply };
 }

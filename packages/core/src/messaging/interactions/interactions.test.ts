@@ -329,6 +329,21 @@ describe("callback codec", () => {
 		expect(decodeCallback("discord:somethingelse")).toBeNull();
 		expect(isInteractionCallback(undefined)).toBe(false);
 	});
+
+	// #14527 — the 64-byte default is Telegram's cap, not a universal one.
+	// Discord's custom_id allows 100 chars; a value that fits the platform's
+	// own limit must encode and round-trip through the limit-agnostic decoder.
+	it("honors a per-platform limit larger than the Telegram default (#14527)", () => {
+		const value = "x".repeat(80);
+		expect(encodeReplyCallback(value)).toBeNull();
+		const data = encodeReplyCallback(value, { maxBytes: 100 });
+		expect(data).not.toBeNull();
+		expect(decodeCallback(data)).toEqual({ kind: "reply", value });
+	});
+
+	it("still rejects values past the custom limit", () => {
+		expect(encodeReplyCallback("x".repeat(120), { maxBytes: 100 })).toBeNull();
+	});
 });
 
 describe("layout", () => {
@@ -475,6 +490,46 @@ describe("layout", () => {
 		const button = toNeutralLayout(block).rows[0]?.buttons?.[0];
 		expect(button?.url).toBeUndefined();
 		expect(button?.callbackData).toBeTruthy();
+	});
+
+	// #14527 — connectors with a roomier callback budget (Discord: 100-char
+	// custom_id) pass maxCallbackBytes so long option values still render as
+	// native buttons instead of dropping to the free-text fallback.
+	it("renders long choice values as buttons under maxCallbackBytes (#14527)", () => {
+		const value = "y".repeat(80);
+		const block: ChoiceInteraction = {
+			kind: "choice",
+			id: "i",
+			scope: "s",
+			options: [{ value, label: "Long" }],
+		};
+		const capped = toNeutralLayout(block);
+		expect(capped.rows).toHaveLength(0);
+		expect(capped.needsFallback).toBe(true);
+
+		const layout = toNeutralLayout(block, { maxCallbackBytes: 100 });
+		const button = layout.rows[0]?.buttons?.[0];
+		expect(layout.needsFallback).toBeFalsy();
+		expect(decodeCallback(button?.callbackData)).toEqual({
+			kind: "reply",
+			value,
+		});
+	});
+
+	it("threads maxCallbackBytes through followup chips (#14527)", () => {
+		const payload = "z".repeat(80);
+		const block: FollowupsInteraction = {
+			kind: "followups",
+			id: "f1",
+			options: [{ kind: "reply", payload, label: "Big" }],
+		};
+		expect(toNeutralLayout(block).rows).toHaveLength(0);
+		const button = toNeutralLayout(block, { maxCallbackBytes: 100 }).rows[0]
+			?.buttons?.[0];
+		expect(decodeCallback(button?.callbackData)).toEqual({
+			kind: "reply",
+			value: payload,
+		});
 	});
 });
 
