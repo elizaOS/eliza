@@ -65,15 +65,41 @@ function initialValueFor(field: FormFieldSpec): FormResultValue {
   return field.type === "checkbox" ? false : "";
 }
 
+/**
+ * Copy a null-prototype record and set one key, keeping the result null-proto
+ * (object spread `{ ...prev }` would re-inherit `Object.prototype`, reopening
+ * the field-named-`constructor` hazard). See the state comment in `FormRequest`.
+ */
+function mergeRecord<V>(
+  prev: Record<string, V>,
+  key: string,
+  value: V,
+): Record<string, V> {
+  const next: Record<string, V> = Object.assign(Object.create(null), prev);
+  next[key] = value;
+  return next;
+}
+
 export function FormRequest({ form, onSubmit }: FormRequestProps) {
+  // `values`/`errors` are keyed by attacker-controlled field names (the agent
+  // emits the form JSON). A plain `{}` inherits `Object.prototype`, so a field
+  // named `constructor` / `hasOwnProperty` / `__proto__` would make
+  // `errors[field.name]` return an inherited function (truthy, `.length===1`)
+  // and crash the transcript when `ConfigFieldErrors` calls `.map` on it — and
+  // `obj["__proto__"] = v` would pollute the prototype. Null-prototype records,
+  // preserved through every update, make every lookup an own-property read and
+  // turn such names into ordinary working fields (#14489). `mergeRecord` keeps
+  // the map null-proto across spreads (object spread would re-inherit).
   const [values, setValues] = useState<Record<string, FormResultValue>>(() => {
-    const initial: Record<string, FormResultValue> = {};
+    const initial: Record<string, FormResultValue> = Object.create(null);
     for (const field of form.fields) {
       initial[field.name] = initialValueFor(field);
     }
     return initial;
   });
-  const [errors, setErrors] = useState<Record<string, string[]>>({});
+  const [errors, setErrors] = useState<Record<string, string[]>>(() =>
+    Object.create(null),
+  );
   const [submitted, setSubmitted] = useState(false);
 
   const requiredFields = useMemo(
@@ -82,7 +108,7 @@ export function FormRequest({ form, onSubmit }: FormRequestProps) {
   );
 
   const setValue = useCallback((name: string, value: FormResultValue) => {
-    setValues((prev) => ({ ...prev, [name]: value }));
+    setValues((prev) => mergeRecord(prev, name, value));
   }, []);
 
   const validateField = useCallback(
@@ -97,7 +123,7 @@ export function FormRequest({ form, onSubmit }: FormRequestProps) {
         ],
         value,
       );
-      setErrors((prev) => ({ ...prev, [field.name]: fieldErrors }));
+      setErrors((prev) => mergeRecord(prev, field.name, fieldErrors));
     },
     [],
   );
@@ -107,7 +133,7 @@ export function FormRequest({ form, onSubmit }: FormRequestProps) {
       event.preventDefault();
       if (submitted) return;
 
-      const nextErrors: Record<string, string[]> = {};
+      const nextErrors: Record<string, string[]> = Object.create(null);
       for (const field of requiredFields) {
         const fieldErrors = runValidation(
           [

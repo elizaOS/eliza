@@ -104,6 +104,27 @@ describe("parseFormBody", () => {
     });
   });
 
+  it("admits Object.prototype-key names (constructor/hasOwnProperty); render stays safe (#14489)", () => {
+    // `__proto__` is dropped upstream (SAFE_FIELD_NAME_RE requires a leading
+    // letter), but `constructor`/`hasOwnProperty` are structurally valid names
+    // and are ACCEPTED here — the crash hazard they pose lives in the value/error
+    // lookup, which FormRequest neutralizes with null-prototype state, so the
+    // chosen behavior is "accept + render safely" rather than parser-reject.
+    const form = parseFormBody(
+      JSON.stringify({
+        fields: [
+          { name: "constructor", type: "text" },
+          { name: "hasOwnProperty", type: "number" },
+          { name: "__proto__", type: "text" },
+        ],
+      }),
+    );
+    expect(form?.fields.map((f) => f.name)).toEqual([
+      "constructor",
+      "hasOwnProperty",
+    ]);
+  });
+
   it("returns null for malformed or empty input rather than throwing", () => {
     expect(parseFormBody("not json")).toBeNull();
     expect(parseFormBody("[]")).toBeNull();
