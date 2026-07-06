@@ -10,7 +10,6 @@
  */
 
 import type { PluginInfo } from "../api/client-types-config";
-import { buildDefaultHomeWidgetDeclarations } from "./default-home-widget-sink-optins";
 import {
   getWidgetComponent,
   markWidgetRegistryChanged,
@@ -18,10 +17,6 @@ import {
   registerWidgetComponent,
 } from "./registry-store";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
-
-type DefaultHomeWidgetSink = NonNullable<
-  PluginWidgetDeclaration["defaultWidget"]
->;
 
 export {
   getWidgetComponent,
@@ -51,9 +46,8 @@ import { WalletBalanceWidget } from "../components/chat/widgets/wallet-balance";
 
 registerBuiltinWidgets(AGENT_ORCHESTRATOR_PLUGIN_WIDGETS);
 registerBuiltinWidgets([BROWSER_STATUS_WIDGET, MUSIC_PLAYER_WIDGET]);
-// Register the todo widget's component so it can be declared on the home slot
-// (#9143 per-plugin breadth — the todo plugin's frontpage opt-in). Idempotent
-// with the plugin's own runtime registration.
+// Register the todo widget's component so it can be declared on the home slot.
+// Idempotent with the plugin's own runtime registration.
 registerBuiltinWidgets(TODO_PLUGIN_WIDGETS);
 registerWidgetComponent(
   "music-library",
@@ -91,11 +85,11 @@ registerWidgetComponent(
   FTU_WELCOME_HOME_WIDGET.Component,
 );
 
-// Per-plugin frontpage widgets (#9143): each surfaces a compact, attention-
-// ranked slice of its plugin's own state on the home grid (a step up from the
-// generic default-widget sinks), self-hides when empty, and self-publishes a
-// home-attention signal so it floats up on its own data urgency. They resolve
-// only when the plugin is enabled+active in the runtime snapshot.
+// Per-plugin frontpage widgets: each surfaces a compact, attention-ranked slice
+// of its plugin's own state on the home grid, self-hides when empty, and
+// self-publishes a home-attention signal so it floats up on its own data
+// urgency. They resolve only when the plugin is enabled+active in the runtime
+// snapshot.
 for (const w of [
   CALENDAR_HOME_WIDGET,
   GOALS_HOME_WIDGET,
@@ -104,16 +98,6 @@ for (const w of [
 ]) {
   registerWidgetComponent(w.pluginId, w.id, w.Component);
 }
-
-// App-manifest plugins that do not ship an owned home card opt into one of the
-// shared default sinks. The opt-in rows now live in the co-located, explicitly-
-// marked legacy host-owned fallback table
-// (`LEGACY_DEFAULT_HOME_WIDGET_SINK_OPTINS`) instead of a second hand-maintained
-// declaration literal in this trunk (#12089 item 35). A plugin migrating to its
-// own `Plugin.widgets` declaration drops its row there — no edit here — and a
-// plugin-owned/server declaration wins over its legacy fallback row.
-const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] =
-  buildDefaultHomeWidgetDeclarations();
 
 /**
  * Public API for plugins outside app-core to append widget declarations to the
@@ -191,7 +175,7 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     defaultEnabled: true,
     visibility: "fallback",
   },
-  // Todos — the todo plugin's frontpage widget (#9143 per-plugin breadth).
+  // Todos — the todo plugin's frontpage widget.
   {
     id: "todo.items",
     pluginId: "todo",
@@ -318,12 +302,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     defaultEnabled: true,
     signalKinds: HEALTH_HOME_WIDGET.signalKinds,
   },
-  // App-manifest plugins that do not ship an owned home card opt into one of
-  // the shared default sinks (#9143). These declarations are contract entries:
-  // they prove the plugin participates in the frontpage widget system, while
-  // the shared notifications/messages/activity cards above remain the single
-  // visible aggregate surfaces for their sink kind.
-  ...APP_HOME_DEFAULT_WIDGET_DECLARATIONS,
   // Browser workspace status — surfaces /browser state in the right rail.
   {
     id: BROWSER_STATUS_WIDGET.id,
@@ -393,7 +371,6 @@ export function widgetVisibilityClass(
 export interface ResolvedWidget {
   declaration: PluginWidgetDeclaration;
   Component: React.ComponentType<WidgetProps> | null;
-  defaultWidgetSink?: DefaultHomeWidgetSink;
 }
 
 type WidgetDeclarationSource = "builtin" | "server";
@@ -454,27 +431,10 @@ function isWidgetEnabled(
  * Resolve all enabled widgets for a slot.
  *
  * Merges built-in declarations with any server-provided declarations
- * (from PluginInfo.widgets), deduplicating by declaration ID.
+ * (from PluginInfo.widgets), deduplicating by declaration ID. A declaration
+ * renders only when it resolves to a bundled component or carries a `uiSpec`;
+ * anything else is dropped.
  */
-/**
- * Maps a declaration's `defaultWidget` opt-in (#9143) to the registered shared
- * frontpage sink component, or to `null` when the sink kind produces no home
- * tile. Sparse home treats every default sink as a participation record: routed
- * views and the pinned notification center own the actual UI, so opt-in rows do
- * not create duplicate resident cards.
- */
-export const DEFAULT_WIDGET_SINK_COMPONENT: Readonly<
-  Record<DefaultHomeWidgetSink, { pluginId: string; id: string } | null>
-> = {
-  // The dashboard notification center (NotificationsHomeCenter, pinned by
-  // HomeScreen) already renders every store notification regardless of producer,
-  // and launcher/routed views own activity detail. Default sinks therefore
-  // remain non-rendering coverage/participation declarations.
-  notifications: null,
-  messages: null,
-  activity: null,
-};
-
 export function resolveWidgetsForSlot(
   slot: WidgetSlot,
   plugins: readonly WidgetPluginState[],
@@ -509,83 +469,16 @@ export function resolveWidgetsForSlot(
     }
   }
 
-  // Home-slot plugins that resolve to their OWN renderable home card (a bundled
-  // component or a `uiSpec`) — used to suppress a plugin's generic default-sink
-  // fallback row once it ships a real card, so a plugin migrating its opt-in
-  // onto its own `Plugin.widgets` doesn't render two home tiles (the owned card
-  // AND the stale `.default-home` sink) side by side.
-  //
-  // Only a card THIS host can actually render counts: a declaration with no
-  // registered component and no `uiSpec` (e.g. a remote/componentExport-only
-  // server declaration this build can't render) is dropped downstream by the
-  // `Component || uiSpec` gate, so it must NOT suppress the shared sink — doing
-  // so would leave the plugin with no home tile at all (a regression vs. the
-  // pre-refactor behavior, where the sink still rendered).
-  const pluginsWithOwnHomeCard = new Set<string>();
-  if (slot === "home") {
-    for (const { declaration } of declarationMap.values()) {
-      if (declaration.slot !== "home") continue;
-      const rendersViaOwnCard =
-        !!declaration.uiSpec ||
-        !!getWidgetComponent(declaration.pluginId, declaration.id);
-      if (rendersViaOwnCard) {
-        pluginsWithOwnHomeCard.add(declaration.pluginId);
-      }
-    }
-  }
-
   const results: ResolvedWidget[] = [];
 
   for (const { declaration, source } of declarationMap.values()) {
     if (!isWidgetEnabled(declaration, plugins, source)) continue;
 
-    let Component = getWidgetComponent(declaration.pluginId, declaration.id);
-    let defaultWidgetSink: DefaultHomeWidgetSink | undefined;
+    const Component = getWidgetComponent(declaration.pluginId, declaration.id);
 
-    // Home-slot opt-in sink (#9143): a plugin with no own component but a
-    // `defaultWidget` renders the shared sink component for that kind. Borrows
-    // only the component — the declaration keeps its own pluginId/id/order so
-    // ranking + dedupe treat it as distinct. Fallback-only: never overrides an
-    // own component, never fires off the home slot.
-    if (
-      !Component &&
-      declaration.slot === "home" &&
-      declaration.defaultWidget
-    ) {
-      // Suppress the generic default-sink fallback for a plugin that already
-      // resolves to its own renderable home card. This is the migration guard:
-      // the legacy `.default-home` sink row stands in ONLY while the plugin
-      // ships no real card, so it must not double up with an owned card under a
-      // different id. Scope is deliberately narrow:
-      //   - `source === "builtin"`: only the built-in legacy fallback rows are
-      //     suppressible. A SERVER-provided sink declaration is an intentional
-      //     plugin choice (a plugin may ship an owned card AND a separate shared
-      //     sink widget) and must still render.
-      //   - `!declaration.uiSpec`: a `uiSpec`-carrying declaration is a real card
-      //     that renders its own spec below, never the sink-only fallback.
-      if (
-        source === "builtin" &&
-        !declaration.uiSpec &&
-        pluginsWithOwnHomeCard.has(declaration.pluginId)
-      ) {
-        continue;
-      }
-      const sink = DEFAULT_WIDGET_SINK_COMPONENT[declaration.defaultWidget];
-      if (sink) {
-        Component = getWidgetComponent(sink.pluginId, sink.id);
-        if (Component) {
-          defaultWidgetSink = declaration.defaultWidget;
-        }
-      }
-    }
-
-    // Include if we have a React component OR a uiSpec fallback
+    // Include if we have a React component OR a uiSpec fallback.
     if (Component || declaration.uiSpec) {
-      results.push({
-        declaration,
-        Component: Component ?? null,
-        ...(defaultWidgetSink ? { defaultWidgetSink } : {}),
-      });
+      results.push({ declaration, Component: Component ?? null });
     }
   }
 

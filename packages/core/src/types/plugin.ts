@@ -603,14 +603,6 @@ export interface PluginWidgetDeclaration {
 	 */
 	componentExport?: string;
 	/**
-	 * Opt-in shared "default" widget sink for the `home` slot (#9143). A plugin
-	 * that has live state but no bundled React component of its own sets this to
-	 * surface that state through one of the shared frontpage widgets instead of
-	 * shipping a component. Ignored unless `slot` is `"home"` and no own
-	 * component is registered for this declaration's `pluginId`/`id`.
-	 */
-	defaultWidget?: "notifications" | "messages" | "activity";
-	/**
 	 * Home-slot attention signals this widget responds to (#9143 priority). When
 	 * the home surface receives a live activity/notification signal of one of
 	 * these kinds, this widget's importance is boosted (decayed by recency) so it

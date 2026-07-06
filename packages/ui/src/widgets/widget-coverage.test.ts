@@ -1,11 +1,10 @@
 /**
- * Coverage gate asserting every declared widget slot keeps a bundled component +
- * declaration, so a refactor cannot silently drop one. Reads the source tree, no
- * runtime.
+ * Coverage gate asserting every declared widget resolves to something the host
+ * can render and that no slot carries a duplicate `pluginId/id`. Frontpage
+ * presence is opt-in and curated, not mandated — a plugin without a home widget
+ * is fine; a declared widget that resolves to nothing is not. Exercises the real
+ * `resolveWidgetsForSlot`, no runtime.
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   BUILTIN_WIDGET_DECLARATIONS,
@@ -14,69 +13,8 @@ import {
 } from "./registry";
 import { type PluginWidgetDeclaration, WIDGET_SLOTS } from "./types";
 
-// #9143 — per-plugin home-widget coverage gate.
-//
-// The contract: every plugin with an `elizaos.app` manifest is frontpage-aware
-// — it resolves a rendered `home`-slot widget via `resolveWidgetsForSlot`, or
-// it declares a default sink. Default-sink declarations render no tile of their
-// own on sparse home (the pinned NotificationsHomeCenter and routed views own
-// those surfaces), so for them the declaration is the participation record.
-// This enumerates the manifests directly instead of keeping a hand-written
-// short list, so a future app plugin without a frontpage presence fails CI here.
-//
-// IDs match the plugin list's normalization: strip the npm scope, then strip
-// either `plugin-` or legacy `app-` prefixes.
-
 function enabled(id: string): WidgetPluginState {
   return { id, enabled: true, isActive: true };
-}
-
-interface AppManifestPlugin {
-  id: string;
-  packageName: string;
-  packageDir: string;
-}
-
-function repoRoot(): string {
-  return path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "../../../..",
-  );
-}
-
-function pluginIdFromPackageName(packageName: string): string {
-  const withoutScope = packageName.startsWith("@")
-    ? (packageName.split("/")[1] ?? packageName)
-    : packageName;
-  if (withoutScope.startsWith("plugin-")) {
-    return withoutScope.slice("plugin-".length);
-  }
-  if (withoutScope.startsWith("app-")) {
-    return withoutScope.slice("app-".length);
-  }
-  return withoutScope;
-}
-
-function readAppManifestPlugins(): AppManifestPlugin[] {
-  const pluginsDir = path.join(repoRoot(), "plugins");
-  return readdirSync(pluginsDir)
-    .flatMap((packageDir): AppManifestPlugin[] => {
-      const packageJsonPath = path.join(pluginsDir, packageDir, "package.json");
-      if (!existsSync(packageJsonPath)) return [];
-      const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
-        name?: string;
-        elizaos?: { app?: unknown };
-      };
-      if (!pkg.name || !pkg.elizaos?.app) return [];
-      return [
-        {
-          id: pluginIdFromPackageName(pkg.name),
-          packageName: pkg.name,
-          packageDir,
-        },
-      ];
-    })
-    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 function withTempDeclaration<T>(decl: PluginWidgetDeclaration, fn: () => T): T {
@@ -89,94 +27,86 @@ function withTempDeclaration<T>(decl: PluginWidgetDeclaration, fn: () => T): T {
   }
 }
 
-describe("home-widget per-plugin coverage gate (#9143)", () => {
-  const appManifestPlugins = readAppManifestPlugins();
+describe("widget declaration resolution gate", () => {
+  it("resolves every enabled built-in declaration to a renderable component or uiSpec", () => {
+    // Every built-in declaration must be renderable when its plugin is enabled;
+    // a declaration that resolves to neither a bundled component nor a `uiSpec`
+    // is dead weight the resolver silently drops, so fail here instead.
+    const enabledPlugins = Array.from(
+      new Set(BUILTIN_WIDGET_DECLARATIONS.map((d) => d.pluginId)),
+    ).map(enabled);
 
-  it("discovers app-manifest plugins from package.json", () => {
-    // Ratcheted 28 → 25: intentional app-plugin deletions shrank the manifest
-    // set while the coverage gate still enumerates every current manifest.
-    expect(appManifestPlugins.length).toBeGreaterThanOrEqual(25);
-  });
-
-  // A default sink declaration renders no tile on sparse home, so the
-  // declaration itself is the plugin's frontpage participation record.
-  function declaresDefaultSink(pluginId: string): boolean {
-    return BUILTIN_WIDGET_DECLARATIONS.some(
-      (decl) =>
-        decl.pluginId === pluginId &&
-        decl.slot === "home" &&
-        Boolean(decl.defaultWidget),
-    );
-  }
-
-  it("keeps every app-manifest plugin frontpage-aware (rendered widget or notification-sink declaration)", () => {
-    const missing: string[] = [];
-
-    for (const plugin of appManifestPlugins) {
-      const own = resolveWidgetsForSlot("home", [enabled(plugin.id)]).filter(
-        (r) => r.declaration.pluginId === plugin.id,
+    const unresolved: string[] = [];
+    for (const slot of WIDGET_SLOTS) {
+      const declaredIds = new Set(
+        BUILTIN_WIDGET_DECLARATIONS.filter((d) => d.slot === slot).map(
+          (d) => `${d.pluginId}/${d.id}`,
+        ),
       );
-      const rendered = own.filter((entry) => entry.Component !== null);
-      if (rendered.length === 0 && !declaresDefaultSink(plugin.id)) {
-        missing.push(
-          `${plugin.id} (${plugin.packageName}, ${plugin.packageDir})`,
-        );
+      const resolved = new Set(
+        resolveWidgetsForSlot(slot, enabledPlugins).map(
+          (r) => `${r.declaration.pluginId}/${r.declaration.id}`,
+        ),
+      );
+      for (const id of declaredIds) {
+        if (!resolved.has(id)) unresolved.push(`${slot}:${id}`);
       }
     }
 
-    expect(missing).toEqual([]);
+    expect(unresolved).toEqual([]);
   });
 
-  it("reports the current own-widget/default-sink split", () => {
-    const coverage = appManifestPlugins.map((plugin) => {
-      const entries = resolveWidgetsForSlot("home", [
-        enabled(plugin.id),
-      ]).filter(
-        (r) => r.declaration.pluginId === plugin.id && r.Component !== null,
-      );
-      return {
-        id: plugin.id,
-        own: entries.some((entry) => !entry.defaultWidgetSink),
-        defaultSink: entries.some((entry) => Boolean(entry.defaultWidgetSink)),
-        defaultSinkParticipant: declaresDefaultSink(plugin.id),
-      };
-    });
+  it("has no duplicate pluginId/id within a slot", () => {
+    const seen = new Map<string, number>();
+    for (const decl of BUILTIN_WIDGET_DECLARATIONS) {
+      const key = `${decl.slot}:${decl.pluginId}/${decl.id}`;
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+    }
+    const duplicates = [...seen.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([key]) => key);
 
-    const ownWidget = coverage.filter((entry) => entry.own).length;
-    const defaultSink = coverage.filter(
-      (entry) => !entry.own && entry.defaultSink,
-    ).length;
-    const defaultSinkParticipants = coverage.filter(
-      (entry) =>
-        !entry.own && !entry.defaultSink && entry.defaultSinkParticipant,
-    ).length;
-
-    expect(ownWidget + defaultSink + defaultSinkParticipants).toBe(
-      appManifestPlugins.length,
-    );
-    expect(ownWidget).toBeGreaterThanOrEqual(2);
+    expect(duplicates).toEqual([]);
   });
 
-  it("red/green control: no declaration fails, default-sink opt-in passes", () => {
+  it("drops a declaration that resolves to neither a component nor a uiSpec (red control)", () => {
+    // A declaration for a plugin with no registered component and no `uiSpec`
+    // must not appear in the resolved set — this is the gate the first test
+    // enforces, proven here with a purpose-built unresolvable declaration.
     const pluginId = "coverage-red-control";
-    expect(
-      resolveWidgetsForSlot("home", [enabled(pluginId)]).some(
-        (r) => r.declaration.pluginId === pluginId,
-      ),
-    ).toBe(false);
-
     const decl: PluginWidgetDeclaration = {
-      id: `${pluginId}.default-home`,
+      id: `${pluginId}.home`,
       pluginId,
       slot: "home",
       label: "Coverage Red Control",
-      defaultWidget: "activity",
     };
     withTempDeclaration(decl, () => {
-      expect(declaresDefaultSink(pluginId)).toBe(true);
       const resolved = resolveWidgetsForSlot("home", [enabled(pluginId)]);
       expect(resolved.some((r) => r.declaration.pluginId === pluginId)).toBe(
         false,
+      );
+    });
+  });
+
+  it("resolves the same declaration once it carries a uiSpec (green control)", () => {
+    const pluginId = "coverage-green-control";
+    const decl: PluginWidgetDeclaration = {
+      id: `${pluginId}.home`,
+      pluginId,
+      slot: "home",
+      label: "Coverage Green Control",
+      uiSpec: {
+        root: "root",
+        state: {},
+        elements: {
+          root: { type: "Text", props: { text: "ok" }, children: [] },
+        },
+      },
+    };
+    withTempDeclaration(decl, () => {
+      const resolved = resolveWidgetsForSlot("home", [enabled(pluginId)]);
+      expect(resolved.some((r) => r.declaration.id === `${pluginId}.home`)).toBe(
+        true,
       );
     });
   });
