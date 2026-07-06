@@ -4,9 +4,9 @@
  * `priority`:
  * - `priority_low_default`    — single attempt, no ladder.
  * - `priority_medium_default` — 1 retry after 30 min.
- * - `priority_high_default`   — 3 steps across channels (in_app → push → imessage).
+ * - `priority_high_default`   — 3 steps across channels (in_app → push → owner_preferred).
  *
- * Channel keys (`in_app`, `push`, `imessage`) reference
+ * Channel keys (`in_app`, `push`, `owner_preferred`) reference
  * {@link import("./channels/contract.js").ChannelContribution.kind}; the
  * channel registry is responsible for resolving them at dispatch time.
  */
@@ -36,7 +36,7 @@ export const DEFAULT_ESCALATION_LADDERS: Readonly<{
     steps: [
       { delayMinutes: 0, channelKey: "in_app", intensity: "soft" },
       { delayMinutes: 15, channelKey: "push", intensity: "normal" },
-      { delayMinutes: 45, channelKey: "imessage", intensity: "urgent" },
+      { delayMinutes: 45, channelKey: "owner_preferred", intensity: "urgent" },
     ],
   },
 } as const;

@@ -7,11 +7,13 @@
  * §3.17, plus the priority-posture map and the default escalation ladders.
  */
 
-import { describe, expect, it } from "vitest";
+import { createMockRuntime } from "@elizaos/core/testing";
+import { describe, expect, it, vi } from "vitest";
 import {
   type ChannelContribution,
   createChannelRegistry,
   PRIORITY_TO_POSTURE,
+  registerDefaultChannelPack,
   type ScheduledTaskPriority,
 } from "../src/lifeops/channels/index.js";
 import {
@@ -19,6 +21,7 @@ import {
   createConnectorRegistry,
   type DispatchResult,
   decideDispatchPolicy,
+  registerConnectorRegistry,
 } from "../src/lifeops/connectors/index.js";
 import { DEFAULT_ESCALATION_LADDERS } from "../src/lifeops/escalation-ladders.js";
 import {
@@ -188,6 +191,62 @@ describe("ChannelRegistry", () => {
     expect(() => registry.register(makeChannel({ kind: "in_app" }))).toThrow(
       /already registered/,
     );
+  });
+
+  it("routes owner_preferred connector-qualified targets through the connected connector", async () => {
+    const runtime = createMockRuntime({
+      agentId: "agent-owner-preferred",
+    });
+    const connectorRegistry = createConnectorRegistry();
+    const telegramSend = vi.fn(
+      async (): Promise<DispatchResult> => ({
+        ok: true,
+        messageId: "telegram-dispatch-1",
+      }),
+    );
+    const imessageSend = vi.fn(
+      async (): Promise<DispatchResult> => ({
+        ok: true,
+        messageId: "imessage-dispatch-1",
+      }),
+    );
+
+    connectorRegistry.register(
+      makeConnector({
+        kind: "telegram",
+        capabilities: ["telegram.send"],
+        send: telegramSend,
+      }),
+    );
+    connectorRegistry.register(
+      makeConnector({
+        kind: "imessage",
+        capabilities: ["imessage.send"],
+        send: imessageSend,
+        status: async () => ({
+          state: "disconnected" as const,
+          observedAt: new Date(0).toISOString(),
+        }),
+      }),
+    );
+    registerConnectorRegistry(runtime, connectorRegistry);
+
+    const channelRegistry = createChannelRegistry();
+    registerDefaultChannelPack(channelRegistry, runtime);
+    const ownerPreferred = channelRegistry.get("owner_preferred");
+
+    expect(ownerPreferred).not.toBeNull();
+    await expect(
+      ownerPreferred?.send?.({
+        target: "telegram:owner-chat",
+        message: "urgent reminder",
+      }),
+    ).resolves.toEqual({ ok: true, messageId: "telegram-dispatch-1" });
+    expect(telegramSend).toHaveBeenCalledWith({
+      target: "owner-chat",
+      message: "urgent reminder",
+    });
+    expect(imessageSend).not.toHaveBeenCalled();
   });
 });
 
@@ -388,18 +447,19 @@ describe("decideDispatchPolicy (W1-F dispatch policy)", () => {
     });
   });
 
-  it("user-actionable failure on the last step → fail (terminal beats degraded)", () => {
+  it("user-actionable failure on the last step → surface_degraded before terminal handling", () => {
     const result: DispatchResult = {
       ok: false,
       reason: "auth_expired",
       userActionable: true,
+      message: "Reconnect Telegram.",
     };
     expect(
       decideDispatchPolicy(result, { currentStepIndex: 0, totalSteps: 1 }),
     ).toEqual({
-      kind: "fail",
+      kind: "surface_degraded",
       reason: "auth_expired",
-      message: undefined,
+      message: "Reconnect Telegram.",
     });
   });
 
@@ -485,7 +545,11 @@ describe("DEFAULT_ESCALATION_LADDERS", () => {
       steps: [
         { delayMinutes: 0, channelKey: "in_app", intensity: "soft" },
         { delayMinutes: 15, channelKey: "push", intensity: "normal" },
-        { delayMinutes: 45, channelKey: "imessage", intensity: "urgent" },
+        {
+          delayMinutes: 45,
+          channelKey: "owner_preferred",
+          intensity: "urgent",
+        },
       ],
     });
   });

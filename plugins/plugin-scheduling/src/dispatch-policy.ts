@@ -8,7 +8,9 @@
  *
  * Decision matrix:
  * - `ok: true`                           → `complete`
- * - `userActionable: true` failure       → `surface_degraded` (advance ladder)
+ * - `userActionable: true` failure       → `surface_degraded` (advance ladder
+ *                                          when possible; still surface on the
+ *                                          final step before terminal failure)
  *                                          and surface via the
  *                                          connector-degradation provider.
  * - `retryAfterMinutes` set              → `retry` (do NOT advance ladder).
@@ -128,15 +130,15 @@ export function decideDispatchPolicy(
     };
   }
 
-  // Permanent failure on the last available step → terminal.
-  if (isLastStep) {
-    return { kind: "fail", reason, message };
-  }
-
   // User-actionable failure (e.g. auth_expired) — advance, but flag for the
   // connector-degradation provider so the user is told what to fix.
   if (failure.userActionable) {
     return { kind: "surface_degraded", reason, message };
+  }
+
+  // Permanent non-actionable failure on the last available step → terminal.
+  if (isLastStep) {
+    return { kind: "fail", reason, message };
   }
 
   // Generic permanent failure on a non-final step → advance to next step.

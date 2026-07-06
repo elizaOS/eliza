@@ -309,7 +309,7 @@ function makeHarness(startIso: string): FuzzHarness {
         return script;
       },
     },
-    channelKeys: () => new Set(["in_app", "push", "imessage"]),
+    channelKeys: () => new Set(["in_app", "push", "owner_preferred"]),
     now: () => {
       nowMs += 1;
       return new Date(nowMs);

@@ -114,7 +114,7 @@ function makeHarness(initialIso = "2026-05-11T12:00:00.000Z"): Harness {
         return result;
       },
     },
-    channelKeys: () => new Set(["in_app", "push", "imessage"]),
+    channelKeys: () => new Set(["in_app", "push", "owner_preferred"]),
     now: () => new Date(nowIso),
   });
 
@@ -195,6 +195,28 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
       (t) => t.state.pipelineParentId === task.taskId,
     );
     expect(children).toHaveLength(1);
+  });
+
+  it("terminal user-actionable failure still records connector degradation", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(reminderInput());
+    h.queueDispatchResults({
+      ok: false,
+      reason: "disconnected",
+      userActionable: true,
+      message: "No owner messaging connector is connected.",
+    });
+
+    const result = await h.runner.fireWithResult(task.taskId);
+    expect(result.kind).toBe("dispatch_failed");
+
+    const persisted = await h.store.get(task.taskId);
+    expect(persisted?.state.status).toBe("failed");
+    expect(persisted?.metadata?.connectorDegradation).toMatchObject({
+      reason: "disconnected",
+      message: "No owner messaging connector is connected.",
+    });
+    expect(await transitions(h, task.taskId)).toContain("failed");
   });
 
   it("rate_limited retries the same step with backoff and stays out of 'fired'", async () => {
@@ -298,7 +320,7 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
     const h = makeHarness();
     const task = await h.runner.schedule(
       reminderInput({
-        priority: "high", // 3-step default ladder: in_app → push → imessage
+        priority: "high", // 3-step default ladder: in_app → push → owner_preferred
       }),
     );
     const transportError: DispatchResult = {
@@ -310,7 +332,7 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
       transportError, // initial attempt (default channel)
       transportError, // ladder step 0: in_app (+0m)
       transportError, // ladder step 1: push (+15m)
-      transportError, // ladder step 2: imessage (+45m)
+      transportError, // ladder step 2: owner_preferred (+45m)
     );
 
     let result = await h.runner.fireWithResult(task.taskId);
@@ -324,7 +346,7 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
       );
     }
 
-    expect(attempts).toEqual(["in_app", "in_app", "push", "imessage"]);
+    expect(attempts).toEqual(["in_app", "in_app", "push", "owner_preferred"]);
     expect(result.kind).toBe("dispatch_failed");
     const persisted = await h.store.get(task.taskId);
     expect(persisted?.state.status).toBe("failed");

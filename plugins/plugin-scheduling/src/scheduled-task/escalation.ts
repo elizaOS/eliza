@@ -76,7 +76,7 @@ export const DEFAULT_ESCALATION_LADDERS: Readonly<
     steps: [
       { delayMinutes: 0, channelKey: "in_app", intensity: "soft" },
       { delayMinutes: 15, channelKey: "push", intensity: "normal" },
-      { delayMinutes: 45, channelKey: "imessage", intensity: "urgent" },
+      { delayMinutes: 45, channelKey: "owner_preferred", intensity: "urgent" },
     ],
   },
 });

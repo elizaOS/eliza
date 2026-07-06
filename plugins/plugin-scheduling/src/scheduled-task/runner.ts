@@ -1544,6 +1544,16 @@ export function createScheduledTaskRunner(
         const nextLadderIndex = ladderIndex + 1;
         const nextStep = ladder.steps[nextLadderIndex];
         if (!nextStep) {
+          if (decision.kind === "surface_degraded") {
+            task.metadata = {
+              ...(task.metadata ?? {}),
+              connectorDegradation: {
+                reason: decision.reason,
+                message: decision.message,
+                atIso: fireAtIso,
+              },
+            };
+          }
           return failTerminal(task, decision.reason, decision.message);
         }
         const nextAttemptAtIso = new Date(

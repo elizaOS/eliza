@@ -360,7 +360,7 @@ describe("W1-D default escalation ladders", () => {
     expect(DEFAULT_ESCALATION_LADDERS.priority_high_default.steps).toEqual([
       { delayMinutes: 0, channelKey: "in_app", intensity: "soft" },
       { delayMinutes: 15, channelKey: "push", intensity: "normal" },
-      { delayMinutes: 45, channelKey: "imessage", intensity: "urgent" },
+      { delayMinutes: 45, channelKey: "owner_preferred", intensity: "urgent" },
     ]);
   });
 });

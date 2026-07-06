@@ -11,7 +11,10 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { DispatchResult } from "../connectors/contract.js";
+import type {
+  ConnectorContribution,
+  DispatchResult,
+} from "../connectors/contract.js";
 import { getConnectorRegistry } from "../connectors/registry.js";
 import type {
   ChannelCapabilities,
@@ -27,6 +30,8 @@ const NULL_CAPABILITIES: ChannelCapabilities = {
   attachments: false,
   quietHoursAware: false,
 };
+
+const OWNER_PREFERRED_CHANNEL_KEY = "owner_preferred";
 
 interface ChannelDescriptor {
   kind: string;
@@ -214,6 +219,156 @@ const CHANNEL_DESCRIPTORS: readonly ChannelDescriptor[] = [
   },
 ];
 
+const OWNER_CONNECTOR_PRIORITY = [
+  "telegram",
+  "discord",
+  "signal",
+  "whatsapp",
+  "imessage",
+  "twilio",
+  "google",
+  "x",
+] as const;
+
+const CHANNEL_TO_CONNECTOR_KIND: Readonly<Record<string, string>> = {
+  email: "google",
+  imessage: "imessage",
+  telegram: "telegram",
+  discord: "discord",
+  signal: "signal",
+  whatsapp: "whatsapp",
+  x: "x",
+  x_dm: "x",
+  sms: "twilio",
+  voice: "twilio",
+  twilio_voice: "twilio",
+};
+
+function readSendPayloadTarget(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const target = (payload as { target?: unknown }).target;
+  return typeof target === "string" && target.trim().length > 0
+    ? target.trim()
+    : null;
+}
+
+function withPayloadTarget(payload: unknown, target: string): unknown {
+  return payload && typeof payload === "object"
+    ? { ...(payload as Record<string, unknown>), target }
+    : payload;
+}
+
+function parseExplicitConnectorTarget(
+  target: string | null,
+): { connectorKind: string; target: string } | null {
+  if (!target) return null;
+  const separatorIndex = target.indexOf(":");
+  if (separatorIndex <= 0) return null;
+  const prefix = target.slice(0, separatorIndex);
+  const connectorKind = CHANNEL_TO_CONNECTOR_KIND[prefix] ?? prefix;
+  const connectorTarget = target.slice(separatorIndex + 1).trim();
+  return connectorTarget ? { connectorKind, target: connectorTarget } : null;
+}
+
+async function connectedConnector(
+  connectors: ConnectorContribution[],
+): Promise<ConnectorContribution | null> {
+  const byKind = new Map(
+    connectors.map((connector) => [connector.kind, connector]),
+  );
+  const priorityKinds = new Set<string>(OWNER_CONNECTOR_PRIORITY);
+  for (const kind of OWNER_CONNECTOR_PRIORITY) {
+    const connector = byKind.get(kind);
+    if (!connector?.send) continue;
+    const status = await connector.status();
+    if (status.state === "ok") return connector;
+  }
+  for (const connector of connectors) {
+    if (!connector.send || priorityKinds.has(connector.kind)) continue;
+    const status = await connector.status();
+    if (status.state === "ok") return connector;
+  }
+  return null;
+}
+
+function createOwnerPreferredChannel(
+  runtime: IAgentRuntime,
+): ChannelContribution {
+  return {
+    kind: OWNER_PREFERRED_CHANNEL_KEY,
+    describe: { label: "Owner preferred connected channel" },
+    capabilities: {
+      ...NULL_CAPABILITIES,
+      send: true,
+      reminders: true,
+      attachments: true,
+      quietHoursAware: true,
+    },
+    async send(payload: unknown): Promise<DispatchResult> {
+      const registry = getConnectorRegistry(runtime);
+      if (!registry) {
+        return {
+          ok: false,
+          reason: "transport_error",
+          userActionable: false,
+          message:
+            "ConnectorRegistry is not registered on the runtime; owner-preferred channel cannot resolve a dispatcher.",
+        };
+      }
+      const target = readSendPayloadTarget(payload);
+      const explicit = parseExplicitConnectorTarget(target);
+      const sendCapable = registry.list().filter((connector) => connector.send);
+      if (explicit) {
+        const connector = registry.get(explicit.connectorKind);
+        if (!connector?.send) {
+          return {
+            ok: false,
+            reason: "disconnected",
+            userActionable: true,
+            message: `Owner-preferred target "${target}" routes through connector "${explicit.connectorKind}", which is not registered or has no send.`,
+          };
+        }
+        const status = await connector.status();
+        if (status.state !== "ok") {
+          return {
+            ok: false,
+            reason:
+              status.state === "disconnected"
+                ? "disconnected"
+                : "transport_error",
+            userActionable: true,
+            message:
+              status.message ??
+              `Connector "${explicit.connectorKind}" is ${status.state}.`,
+          };
+        }
+        return connector.send(withPayloadTarget(payload, explicit.target));
+      }
+
+      const connector = await connectedConnector(sendCapable);
+      if (!connector?.send) {
+        return {
+          ok: false,
+          reason: "disconnected",
+          userActionable: true,
+          message:
+            "No connected owner messaging connector is available for owner-preferred escalation.",
+        };
+      }
+      if (!target || target === OWNER_PREFERRED_CHANNEL_KEY) {
+        return {
+          ok: false,
+          reason: "unknown_recipient",
+          userActionable: true,
+          message:
+            "Owner-preferred escalation needs a connector-qualified target such as telegram:<chat-id> or discord:<channel-id>.",
+        };
+      }
+      return connector.send(payload);
+    },
+  };
+}
+
 function buildChannelContribution(
   descriptor: ChannelDescriptor,
   runtime: IAgentRuntime,
@@ -282,7 +437,7 @@ export const DEFAULT_CHANNEL_PACK: readonly ChannelContribution[] = [];
  */
 export const DEFAULT_CHANNEL_KINDS: readonly string[] = CHANNEL_DESCRIPTORS.map(
   (descriptor) => descriptor.kind,
-);
+).concat(OWNER_PREFERRED_CHANNEL_KEY);
 
 export function registerDefaultChannelPack(
   registry: ChannelRegistry,
@@ -295,4 +450,5 @@ export function registerDefaultChannelPack(
   for (const descriptor of CHANNEL_DESCRIPTORS) {
     registry.register(buildChannelContribution(descriptor, runtime));
   }
+  registry.register(createOwnerPreferredChannel(runtime));
 }
