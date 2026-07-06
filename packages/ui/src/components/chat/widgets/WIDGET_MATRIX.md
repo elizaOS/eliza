@@ -4,6 +4,11 @@ The canonical map of every widget the chat surface can render: its producing
 action/marker (or data source), the surfaces it renders on, the interaction
 handlers it drives, and its wired/verified status.
 
+For home residents, the binding north-star is
+`docs/design/NOTIFICATIONS-WIDGETS-SYSTEM.md` §B / §E: ambient base + pinned
+notifications + at most five ranked cards. This matrix records the current code
+shape, but the spec owns home-resident eligibility.
+
 There are **two widget layers** and **two chat surfaces**. A widget belongs to
 exactly one layer; the layer determines how it is produced and which surfaces
 render it.
@@ -39,7 +44,7 @@ Both also render the non-registry segment kinds (`[CONFIG]`, permission / OAuth
 directly, and the overlay renders the same ones through `InlineWidgetText`
 (plus `SensitiveRequestBlock` for the secret card, mounted by the overlay body
 itself). Parity is intentional so a flow triggered on mobile is completable on
-mobile — see **Documented divergences** for the few remaining ChatView-only
+mobile - see **Documented divergences** for the few remaining ChatView-only
 affordances.
 
 ---
@@ -112,7 +117,7 @@ the shell as they are touched (#14327 tracks the matrix refresh).
 Notifications are NOT a slot widget: the dashboard notification center
 (`components/shell/NotificationsHomeCenter.tsx`, reading the notification
 store <- WS `agent_event` `stream:"notification"`) is pinned by HomeScreen
-directly below the time/weather base — a registry entry would double-render
+directly below the time/weather base - a registry entry would double-render
 the inbox.
 
 | Widget id | Slot | Data source / updates | Component | Host mount | Status |
@@ -122,26 +127,30 @@ the inbox.
 | `agent-orchestrator.accounts` | chat-sidebar | poll `listAccounts()`/`getOrchestratorAccounts()`/`getOrchestratorRooms()` 15s | `agent-orchestrator-accounts-view.tsx` | TasksEventsPanel | wired |
 | `browser.status` | chat-sidebar | browser-workspace status | `browser-status.tsx` | TasksEventsPanel | wired |
 | `music-player.stream` | chat-sidebar | music-player state | `music-player.tsx` | TasksEventsPanel | wired |
-| `todo.items` | home | todo store | `todo.tsx` | ViewCatalog | wired |
+| `todo.items` | home | todo store + goals store (one at-risk goal row) | `todo.tsx` | ViewCatalog | wired |
 | `calendar.upcoming` | home | calendar store | `calendar-upcoming.tsx` | ViewCatalog | wired |
-| `goals.attention` | home | goals store | `goals-attention.tsx` | ViewCatalog | wired |
-| `health.sleep` | home | health store | `health-sleep.tsx` | ViewCatalog | wired |
 | `music-library.playlists` | character | music-library state | n/a | CharacterHubView | wired |
+
+Demoted / merged per `docs/design/NOTIFICATIONS-WIDGETS-SYSTEM.md` §E items
+3-5: `wallet.balance` and `health.sleep` no longer declare `slot:"home"`
+(their routed surfaces stay), and `goals.attention` no longer stands alone on
+home because its at-risk row is rendered inside `todo.items`.
 
 ### Slots & host mounts
 
 | Slot | Host mounted? | Widgets registered? | Verdict |
 |---|---|---|---|
-| `home` | yes, HomeScreen | yes, many | active |
+| `home` | yes, HomeScreen | yes, curated ≤5 residents | active |
 | `chat-sidebar` | yes, TasksEventsPanel | yes, 5 | active |
 | `character` | yes, CharacterHubView | yes, 1 | active |
 | `nav-page` | no WidgetHost mount | no component widgets | active app-navigation contract |
 
 
 Retired slots pruned in #9448: `chat-inline`, `wallet`, `browser`,
-`heartbeats`, `settings`, `automations`. Browser and wallet status now render
-through active `chat-sidebar` / `home` declarations instead of their own dead
-slots.
+`heartbeats`, `settings`, `automations`. Browser status now renders through the
+active `chat-sidebar` declaration. Wallet remains a routed surface; its home
+resident was demoted by the home surface spec because balance state is not
+resting urgency.
 
 ---
 
@@ -190,7 +199,7 @@ only navigation affordance).
   surfaces: the overlay's `InlineWidgetText` handles `config` / `ui-spec` /
   `permission` / `code` and `ContinuousChatOverlay` mounts `SensitiveRequestBlock`
   for `message.secretRequest`. The old "ChatView-only, mobile flow uncompletable"
-  gap is closed and pinned by tests — see the D1-parity rows under Coverage. Kept
+  gap is closed and pinned by tests - see the D1-parity rows under Coverage. Kept
   here only as a pointer; there is no remaining segment-kind divergence.
 - **D2 - per-message rail.** ChatView owns edit/delete/speak/retry/suggest;
   the overlay exposes press-and-hold copy only (mobile-first). Intentional.

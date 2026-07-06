@@ -10,7 +10,7 @@
  *   1. No hardcoded pluginId allow/block set survives in the resolver source.
  *   2. Every non-snapshot built-in declaration declares its class explicitly.
  *   3. The `visibility` field, not a set, drives `isWidgetEnabled` for the
- *      no-snapshot (fallback) and always-visible cases — including the exact
+ *      no-snapshot (fallback) and always-visible cases - including the exact
  *      `todo`-vs-`todos` drift that motivated the audit item.
  */
 import { readFileSync } from "node:fs";
@@ -84,7 +84,7 @@ describe("widget visibility drift guard (#12090 item 9)", () => {
     // The drift bug: the hardcoded fallback set held `"todo"` while the app
     // manifest plugin id is `todos`. The declaration uses pluginId `todo` and
     // now carries `visibility: "fallback"`, so it resolves on an empty snapshot
-    // via its own field — no id set to fall out of sync.
+    // via its own field - no id set to fall out of sync.
     const todoDecl = BUILTIN_WIDGET_DECLARATIONS.find(
       (d) => d.id === "todo.items" && d.slot === "home",
     );
@@ -111,7 +111,7 @@ describe("widget visibility drift guard (#12090 item 9)", () => {
 
   it("keeps always-visible core widgets on an empty snapshot but honors explicit disable", () => {
     // Needs-attention is backed by the core ApprovalService, not a loadable
-    // plugin — the canonical `always` core surface with no snapshot entry.
+    // plugin - the canonical `always` core surface with no snapshot entry.
     const emptyResolved = resolveWidgetsForSlot("home", []);
     expect(
       emptyResolved.find((r) => r.declaration.id === "needs-attention.pending"),
@@ -134,25 +134,38 @@ describe("widget visibility drift guard (#12090 item 9)", () => {
   });
 
   it("snapshot-class builtins stay hidden until their plugin is present+active", () => {
-    // A default (snapshot) builtin — health — must NOT appear on an empty
-    // snapshot, and must appear once its plugin is active.
-    const healthDecl = BUILTIN_WIDGET_DECLARATIONS.find(
-      (d) => d.slot === "home" && d.pluginId === "health",
-    );
-    if (!healthDecl) throw new Error("missing health home widget declaration");
-    expect(widgetVisibilityClass(healthDecl, "builtin")).toBe("snapshot");
+    // A default (snapshot) builtin - one that omits the `visibility` flag - must
+    // NOT appear on an empty snapshot, and must appear once its plugin is
+    // active. The prior fixture (health.sleep) left the home slot when goals +
+    // health were demoted (spec §E items 4-5), so this exercises the class via
+    // a temporary registered declaration rather than a live home widget.
+    const decl: PluginWidgetDeclaration = {
+      id: "snapshot-drift.card",
+      pluginId: "snapshot-drift",
+      slot: "home",
+      label: "Snapshot drift",
+      // no `visibility` field → snapshot-gated by default
+    };
+    expect(widgetVisibilityClass(decl, "builtin")).toBe("snapshot");
 
-    const empty = resolveWidgetsForSlot("home", []);
-    expect(
-      empty.find((r) => r.declaration.pluginId === "health"),
-    ).toBeUndefined();
+    registerWidgetComponent(decl.pluginId, decl.id, () => null);
+    BUILTIN_WIDGET_DECLARATIONS.push(decl);
+    try {
+      const empty = resolveWidgetsForSlot("home", []);
+      expect(
+        empty.find((r) => r.declaration.pluginId === "snapshot-drift"),
+      ).toBeUndefined();
 
-    const active = resolveWidgetsForSlot("home", [
-      { id: "health", enabled: true, isActive: true },
-    ]);
-    expect(
-      active.find((r) => r.declaration.pluginId === "health"),
-    ).toBeTruthy();
+      const active = resolveWidgetsForSlot("home", [
+        { id: "snapshot-drift", enabled: true, isActive: true },
+      ]);
+      expect(
+        active.find((r) => r.declaration.pluginId === "snapshot-drift"),
+      ).toBeTruthy();
+    } finally {
+      const i = BUILTIN_WIDGET_DECLARATIONS.indexOf(decl);
+      if (i >= 0) BUILTIN_WIDGET_DECLARATIONS.splice(i, 1);
+    }
   });
 
   it("still honors third-party `fallbackPluginIds` for declarations without a `visibility` flag", () => {
@@ -209,7 +222,7 @@ describe("widget visibility drift guard (#12090 item 9)", () => {
       },
     ];
 
-    // Empty snapshot: race exemption — shown.
+    // Empty snapshot: race exemption - shown.
     expect(
       resolveWidgetsForSlot("home", [], serverDecls).find(
         (r) => r.declaration.id === "srv-omit-test.card",

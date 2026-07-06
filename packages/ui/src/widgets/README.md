@@ -13,7 +13,7 @@ grid (used by the home), or the default `"stack"`.
 
 ## Registering a widget
 
-A widget needs **two** things — a registered component and a declaration:
+A widget needs **two** things - a registered component and a declaration:
 
 ```ts
 import { registerWidgetComponent } from "@elizaos/ui/widgets";
@@ -58,6 +58,8 @@ The Home/Launcher surface mounts `<WidgetHost slot="home" layout="grid" …>`
 on the home page next to the launcher. Home is intentionally sparse: the
 ambient time/weather base and pinned notification center carry resting state,
 while only essential self-hiding cards live in the ranked widget host. The
+binding north-star is `docs/design/NOTIFICATIONS-WIDGETS-SYSTEM.md` §B: ambient
+base + pinned notifications + at most five ranked residents + chat bar. The
 notification inbox is NOT a host widget: HomeScreen pins the dashboard
 notification center
 (`components/shell/NotificationsHomeCenter.tsx`) directly below the
@@ -65,15 +67,17 @@ time/weather base, so a registry declaration would double-render it.
 
 **Frontpage presence is opt-in and curated, not mandated (#14349).** A plugin
 appears on home only by declaring a widget with `slot: "home"` that resolves to a
-bundled React component or a `uiSpec` — there is no breadth mandate that every
+bundled React component or a `uiSpec` - there is no breadth mandate that every
 app-manifest plugin be "frontpage-aware", and no shared default-sink
 participation record. Declare a home widget only when it is a keeper for the
 sparse home surface. Read your own store/API in the component; it receives
-`WidgetProps` (`pluginId`, `events?`, …). Keep it compact and self-hiding —
+`WidgetProps` (`pluginId`, `events?`, …). Keep it compact and self-hiding -
 domain dashboards belong in launcher/routed views, not resident home cards. A
 declaration with no registered component and no `uiSpec` simply does not render.
 
 The home is **priority-ranked**, not all-or-nothing: `home-priority.ts`
 (`rankHomeWidgets`) scores each home widget by base `order` plus decayed
-attention signals and returns the top-N, so the most important widgets bubble up
-the way a phone home screen does. Declare your widget; ranking decides placement.
+attention signals and returns the top-N, currently capped at five by
+`HOME_RENDER_CAP` in `WidgetHost.tsx`, so the most important widgets bubble up
+the way a phone home screen does. Declare your widget only if it matches the
+spec's resident bar; ranking decides placement.

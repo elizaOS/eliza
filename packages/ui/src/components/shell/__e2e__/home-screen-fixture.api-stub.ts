@@ -29,6 +29,21 @@ export const client = {
   getRelationshipsCandidates: async () => [],
   getWalletBalances: async () => walletBalancesResponse(),
   getWalletMarketOverview: async () => walletMarketOverviewResponse(),
+  // Today (todo) home card: seed one open todo so the merged card renders with a
+  // todo row alongside its flagged at-risk goal row (spec §E item 5).
+  listWorkbenchTodos: async () => ({
+    todos: [
+      {
+        id: "todo-groceries",
+        name: "Buy groceries",
+        description: "",
+        type: "task",
+        isCompleted: false,
+        isUrgent: false,
+        priority: 2,
+      },
+    ],
+  }),
   // Notification store hydrate + live subscription.
   listNotifications: async () => homeWidgetNotificationsResponse(),
   onWsEvent: () => {},
@@ -46,7 +61,7 @@ export const client = {
   getOrchestratorAccounts: async () => ({ accounts: [] }),
   getOrchestratorRooms: async () => ({ rooms: [] }),
   listAccounts: async () => ({ accounts: [] }),
-  // Unified-tasks home widget (useUnifiedTasks) — empty so it self-hides. These
+  // Unified-tasks home widget (useUnifiedTasks) - empty so it self-hides. These
   // prototype methods are bare side-effect patches in production, dropped from
   // this esbuild bundle, so stub them here explicitly.
   listAutomations: async () => ({ automations: [] }),

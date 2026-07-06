@@ -2,12 +2,15 @@
  * Browser-safe mock data + installers for the home-slot WidgetHost (#9143).
  *
  * One source of truth for "the home dashboard, populated with attention-worthy
- * data" — shared between the home-screen e2e fixture and the Storybook story so
- * both render the REAL kept home widgets (calendar / goals / health) plus
- * notifications/approvals, fed by injected DATA only
- * (no stubbing of WidgetHost or the widget components).
+ * data" - shared between the home-screen e2e fixture and the Storybook story so
+ * both render the REAL kept home widgets (calendar / Today-todos, with the
+ * at-risk goal folded into the Today card per spec §E item 5) plus
+ * notifications/approvals, fed by injected DATA only (no stubbing of WidgetHost
+ * or the widget components). The goals payload now feeds the Today card's
+ * flagged row rather than a standalone goals resident; the sleep payload is
+ * retained for the routed health surface but no longer renders on home.
  *
- * NO node imports — this is bundled into a browser IIFE (e2e) and into the
+ * NO node imports - this is bundled into a browser IIFE (e2e) and into the
  * Storybook renderer (vite). Times are RELATIVE to `Date.now()` so the calendar
  * card lands inside its 2h urgent window, matching the live ranking the home
  * surface performs.
@@ -26,7 +29,7 @@ import {
 import type { AppContextValue } from "../../state/types";
 
 // ---------------------------------------------------------------------------
-// Plugin snapshot — plugin-gated home widgets resolve only when the matching
+// Plugin snapshot - plugin-gated home widgets resolve only when the matching
 // plugin id is enabled+active in the app-store plugins snapshot
 // (registry.ts `isWidgetEnabled`). Notifications are pinned outside WidgetHost.
 // Mirrors the ui-smoke spec's `pluginInfo()`.
@@ -57,7 +60,7 @@ export const HOME_WIDGET_MOCK_PLUGINS: PluginInfo[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Relative time helpers — keep the seeded data inside each widget's live
+// Relative time helpers - keep the seeded data inside each widget's live
 // attention window so the cards render AND float up.
 // ---------------------------------------------------------------------------
 
@@ -200,7 +203,7 @@ export function homeWidgetNotificationsResponse() {
 }
 
 // ---------------------------------------------------------------------------
-// Fetch mock — the widgets fetch on mount, so install this BEFORE first render.
+// Fetch mock - the widgets fetch on mount, so install this BEFORE first render.
 // Matches the URL substrings each widget requests (any base) and returns a
 // 200 JSON envelope. Unmatched routes resolve to an empty 200 body so the
 // widgets degrade to null rather than throwing.
@@ -270,7 +273,7 @@ export function installHomeWidgetFetchMock(): () => void {
 }
 
 // ---------------------------------------------------------------------------
-// App-store + notification seeding — the WidgetHost reads the plugins snapshot
+// App-store + notification seeding - the WidgetHost reads the plugins snapshot
 // from the app store (resolveWidgetsForSlot), and HomeScreen's pinned
 // NotificationsHomeCenter reads the notification store. Seed both BEFORE first
 // render.
@@ -280,7 +283,7 @@ const noop = () => {};
 
 /**
  * A minimal {@link AppContextValue} carrying just the slices the home widgets
- * read (`plugins`, `conversations`, `t`) — everything else resolves to a no-op
+ * read (`plugins`, `conversations`, `t`) - everything else resolves to a no-op
  * via the Proxy, mirroring the inert proxy `useApp()` returns in tests. Built
  * inline (no mock-providers import) to keep this module dependency-light and
  * browser-safe for the esbuild e2e bundle.

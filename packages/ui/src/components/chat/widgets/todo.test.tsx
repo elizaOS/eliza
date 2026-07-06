@@ -9,7 +9,7 @@ const {
   mockState,
   publishHomeAttentionSpy,
 } = vi.hoisted(() => ({
-  // Auth gate (#11084) — mutable so tests can flip the session state.
+  // Auth gate (#11084) - mutable so tests can flip the session state.
   authMock: { authenticated: true },
   getBaseUrlMock: vi.fn(() => "http://localhost"),
   listWorkbenchTodosMock: vi.fn(async () => ({ todos: [] })),
@@ -57,6 +57,7 @@ vi.mock("../../../widgets/home-attention-store", () => ({
   usePublishHomeAttention: publishHomeAttentionSpy,
 }));
 
+import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import { TODO_PLUGIN_WIDGETS } from "./todo";
 
 const TodoWidget = TODO_PLUGIN_WIDGETS.find(
@@ -71,12 +72,25 @@ beforeEach(() => {
   getBaseUrlMock.mockReset();
   getBaseUrlMock.mockReturnValue("http://localhost");
   listWorkbenchTodosMock.mockClear();
+  listWorkbenchTodosMock.mockResolvedValue({ todos: [] });
   publishHomeAttentionSpy.mockClear();
   authMock.authenticated = true;
+  mockState.workbench.todos = [
+    {
+      id: "cached-1",
+      name: "Cached todo",
+      description: "",
+      type: "task",
+      isCompleted: false,
+      isUrgent: false,
+      priority: null,
+    },
+  ];
 });
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
 });
 
 describe("TodoSidebarWidget", () => {
@@ -92,7 +106,7 @@ describe("TodoSidebarWidget", () => {
     expect(listWorkbenchTodosMock).not.toHaveBeenCalled();
   });
 
-  // #11084 — the widget mounts before the auth probe resolves; its workbench
+  // #11084 - the widget mounts before the auth probe resolves; its workbench
   // poll must not fire a single request while the session is unauthenticated.
   it("does not poll workbench todos while unauthenticated", async () => {
     authMock.authenticated = false;
@@ -210,6 +224,80 @@ describe("TodoSidebarWidget", () => {
     );
     expect(await screen.findByText("Cached todo")).toBeTruthy();
     expect(container.firstElementChild?.className).toContain("col-span-2");
+  });
+
+  it("home slot: renders an at-risk goal as one flagged row inside Today (spec §E item 5)", async () => {
+    mockState.workbench.todos = [];
+    listWorkbenchTodosMock.mockResolvedValue({ todos: [] });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              goals: [
+                {
+                  goal: {
+                    id: "goal-at-risk",
+                    title: "Ship the release",
+                    status: "active",
+                    reviewState: "at_risk",
+                  },
+                  links: [],
+                },
+              ],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+      ),
+    );
+
+    render(<TodoWidget slot="home" events={[]} clearEvents={vi.fn()} />);
+
+    const row = await screen.findByTestId("todo-goal-attention-row");
+    expect(row.textContent).toContain("Ship the release");
+    expect(row.textContent).toContain("At risk");
+    expect(screen.queryByTestId("widget-goals-attention")).toBeNull();
+
+    await waitFor(() => {
+      expect(publishHomeAttentionSpy).toHaveBeenLastCalledWith(
+        "todo/todo.items",
+        HOME_SIGNAL_WEIGHTS.escalation,
+      );
+    });
+  });
+
+  it("home slot: preserves needs-attention goals in the merged Today row", async () => {
+    mockState.workbench.todos = [];
+    listWorkbenchTodosMock.mockResolvedValue({ todos: [] });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              goals: [
+                {
+                  goal: {
+                    id: "goal-needs-attention",
+                    title: "Reconnect with the team",
+                    status: "active",
+                    reviewState: "needs_attention",
+                  },
+                  links: [],
+                },
+              ],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+      ),
+    );
+
+    render(<TodoWidget slot="home" events={[]} clearEvents={vi.fn()} />);
+
+    const row = await screen.findByTestId("todo-goal-attention-row");
+    expect(row.textContent).toContain("Reconnect with the team");
+    expect(row.textContent).toContain("Needs attention");
   });
 
   it("chat-sidebar slot: does NOT wrap the section in a grid-span root (#11752)", async () => {

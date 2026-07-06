@@ -1,5 +1,5 @@
 /**
- * WidgetHost — renders all enabled plugin widgets for a named slot.
+ * WidgetHost - renders all enabled plugin widgets for a named slot.
  *
  * Drop this into any page view:
  *   <WidgetHost slot="chat-sidebar" />
@@ -114,12 +114,16 @@ class WidgetErrorBoundary extends Component<
 // -- WidgetHost --------------------------------------------------------------
 
 /**
- * Safety bound on home cards. The home surface ranks every declared widget by
- * importance and renders them in order; each widget self-hides (renders `null`)
- * when it has nothing attention-worthy, so the *visible* count is naturally
- * small. This cap is just a guard against a pathological all-active state.
+ * Hard cap on ranked home residents (spec §A.4 / §B). The whole home surface is
+ * wallpaper + ambient base (clock/weather) + pinned notification center + at
+ * most FIVE ranked cards + the chat bar. The home surface ranks every declared
+ * widget by importance and renders them in order; each widget self-hides
+ * (renders `null`) when it has nothing attention-worthy, so the *visible* count
+ * is naturally smaller still. This cap enforces the ceiling: a phone viewport
+ * never shows more than five cards even in a pathological all-active state.
+ * (docs/design/NOTIFICATIONS-WIDGETS-SYSTEM.md §E item 2.)
  */
-const HOME_RENDER_CAP = 12;
+const HOME_RENDER_CAP = 5;
 const WIDGET_SLOTS: ReadonlySet<string> = new Set<WidgetSlot>([
   "chat-sidebar",
   "character",
@@ -266,7 +270,7 @@ export function WidgetHost({
   ]);
 
   // Notification → signal inputs, memoized so the `now` tick (which re-runs the
-  // component) doesn't rebuild this array each minute — it changes only when the
+  // component) doesn't rebuild this array each minute - it changes only when the
   // inbox itself changes.
   const notificationSignalInputs = useMemo(
     () =>
@@ -310,7 +314,11 @@ export function WidgetHost({
     );
     return rankHomeWidgets(declarations, signals, {
       now,
-      maxVisible: HOME_RENDER_CAP,
+      // Render every ranked declaration so self-hiding widgets can mount, fetch,
+      // and publish their own attention signals. The hard HOME_RENDER_CAP is
+      // applied to actual rendered DOM children below, after null-returning
+      // widgets have self-hidden.
+      maxVisible: renderable.length,
     }).flatMap((ranked) => {
       const entry = byKey.get(homeWidgetKey(ranked.declaration));
       return entry ? [entry] : [];
@@ -329,8 +337,8 @@ export function WidgetHost({
   // but the rendered *set and order* only change at discrete thresholds. Keep
   // the array reference stable across ticks that don't reorder: derive an
   // order-key from the resolved widget keys and only swap `displayed` when that
-  // key changes. This stops the `.map` below — and therefore the widget
-  // children — from rebuilding every minute when nothing moved (#9304). Order
+  // key changes. This stops the `.map` below - and therefore the widget
+  // children - from rebuilding every minute when nothing moved (#9304). Order
   // still updates the instant a signal changes the ranking.
   const orderKey = ranked
     .map(({ declaration }) => homeWidgetKey(declaration))
@@ -343,7 +351,7 @@ export function WidgetHost({
   // Refresh the held set when the order changes OR when the resolved widgets
   // change identity (a plugin reload could keep the order but swap a
   // declaration/Component). A bare `now` tick changes neither, so the reference
-  // — and the rendered children below — stay stable.
+  // - and the rendered children below - stay stable.
   if (
     displayedRef.current.key !== orderKey ||
     displayedRef.current.resolved !== resolved
@@ -358,7 +366,7 @@ export function WidgetHost({
     return map;
   }, [plugins]);
 
-  // The fields every widget shares this render — split out so the per-item props
+  // The fields every widget shares this render - split out so the per-item props
   // object is built from one stable base rather than re-derived inline.
   const widgetPropsBase = useMemo(
     () => ({ events, clearEvents, slot }),
@@ -421,7 +429,7 @@ export function WidgetHost({
 
   // Whether the resolved widgets actually rendered any visible DOM. `children`
   // counts RESOLVED widget elements, but each data widget self-hides (renders
-  // `null`) when it has nothing to show — so the home can resolve the
+  // `null`) when it has nothing to show - so the home can resolve the
   // always-visible cards (notifications, needs-response, …) yet paint nothing.
   // We measure the real rendered child count after layout and, when a `fallback`
   // is supplied (the home's default clock/calendar), show it whenever the
@@ -429,9 +437,30 @@ export function WidgetHost({
   const containerRef = useRef<HTMLDivElement>(null);
   const [renderedEmpty, setRenderedEmpty] = useState(false);
   useLayoutEffect(() => {
-    if (fallback == null) return;
     const el = containerRef.current;
-    setRenderedEmpty(el == null || el.childElementCount === 0);
+
+    const applyDomState = () => {
+      if (slot === "home" && el) {
+        Array.from(el.children).forEach((child, index) => {
+          // Cap ACTUAL DOM children, not declarations: home widgets self-hide by
+          // returning null, and data widgets must mount at least once to fetch
+          // and publish their self-attention. This keeps the visible surface at
+          // five cards without starving lower-order populated cards behind null
+          // ones. MutationObserver below reapplies the cap when async widgets
+          // later switch from null to DOM without rerendering WidgetHost.
+          (child as HTMLElement).hidden = index >= HOME_RENDER_CAP;
+        });
+      }
+      if (fallback != null) {
+        setRenderedEmpty(el == null || el.childElementCount === 0);
+      }
+    };
+
+    applyDomState();
+    if (!el || typeof MutationObserver === "undefined") return;
+    const observer = new MutationObserver(applyDomState);
+    observer.observe(el, { childList: true });
+    return () => observer.disconnect();
   });
 
   // No widget even resolved → render the fallback directly (or hide).

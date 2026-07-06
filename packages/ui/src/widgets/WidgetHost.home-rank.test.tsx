@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { useEffect, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetHomeDismissalsForTests,
@@ -11,8 +12,9 @@ import { resolveWidgetsForSlot } from "./registry";
 import type { PluginWidgetDeclaration } from "./types";
 import { WidgetHost } from "./WidgetHost";
 
-// #9143 — the home slot must rank its declared widgets and render only the
-// top-N (HOME_MAX_VISIBLE = 6). Other slots render everything unchanged.
+// #9143 - the home slot must rank its declared widgets and render only the
+// top-N (HOME_RENDER_CAP = 5, spec §E item 2). Other slots render everything
+// unchanged.
 
 const mockAppState = {
   plugins: [{ id: "home-plugin", enabled: true, isActive: true }],
@@ -50,9 +52,9 @@ function homeDecl(id: string, order: number): PluginWidgetDeclaration {
 }
 
 // Ten home widgets with distinct base orders. Lower order = higher base score,
-// so the deterministic ranking surfaces w0..w5 (orders 0..50) and drops the
-// four with the highest orders. Declared out of order to prove the host ranks
-// rather than relying on resolver order.
+// so the deterministic ranking surfaces the top FIVE (w0..w4, orders 0..40) and
+// drops the five with the highest orders (HOME_RENDER_CAP = 5). Declared out of
+// order to prove the host ranks rather than relying on resolver order.
 const HOME_DECLS = [
   homeDecl("w7", 70),
   homeDecl("w2", 20),
@@ -95,19 +97,43 @@ afterEach(() => {
 function renderedIds(): string[] {
   return screen
     .getAllByTestId(/^widget-uispec-/)
+    .filter((el) => !el.hidden)
     .map((el) => el.getAttribute("data-testid")?.replace("widget-uispec-", ""))
     .filter((id): id is string => Boolean(id));
 }
 
+function mountedIds(): string[] {
+  return screen
+    .getAllByTestId(/^widget-uispec-/)
+    .map((el) => el.getAttribute("data-testid")?.replace("widget-uispec-", ""))
+    .filter((id): id is string => Boolean(id));
+}
+
+function visibleAsyncIds(): string[] {
+  return screen
+    .getAllByTestId(/^widget-async-/)
+    .filter((el) => !el.hidden)
+    .map((el) => el.getAttribute("data-testid")?.replace("widget-async-", ""))
+    .filter((id): id is string => Boolean(id));
+}
+
 describe("WidgetHost home-slot ranking (#9143)", () => {
-  it("renders every home widget, ranked by score (lower order first)", () => {
+  it("renders at most HOME_RENDER_CAP (5) home widgets, ranked by score", () => {
     render(<WidgetHost slot="home" />);
 
     const ids = renderedIds();
-    // The home surface renders all declared widgets ranked by importance — each
-    // widget self-hides when empty, so the cap is only a safety bound. These
-    // uiSpec widgets always render, so all 10 appear in base-order.
-    expect(ids).toEqual([
+    // The home surface ranks all declared widgets by importance and renders only
+    // the top five (spec §E item 2: wallpaper + base + notifications + ≤5 cards
+    // + chat bar is the whole surface). These uiSpec widgets always render, so
+    // the five lowest-order (highest base score) survive the cap in base-order,
+    // and the five highest-order are dropped.
+    expect(ids).toEqual(["w0", "w1", "w2", "w3", "w4"]);
+    expect(ids).not.toContain("w5");
+    expect(ids).not.toContain("w9");
+    // The lower-ranked declarations still mount so self-hiding/data widgets can
+    // fetch and publish attention; WidgetHost caps the actual DOM children after
+    // null-rendering widgets disappear.
+    expect(mountedIds()).toEqual([
       "w0",
       "w1",
       "w2",
@@ -121,7 +147,7 @@ describe("WidgetHost home-slot ranking (#9143)", () => {
     ]);
   });
 
-  it("is deterministic — the ranked order is stable across re-renders", () => {
+  it("is deterministic - the ranked order is stable across re-renders", () => {
     const { rerender } = render(<WidgetHost slot="home" />);
     const first = renderedIds();
 
@@ -165,7 +191,70 @@ describe("WidgetHost home-slot ranking (#9143)", () => {
     expect(ids[0]).toBe("w9");
   });
 
-  // #9959 — the show-once-then-sunset lifecycle: a home widget declaring a
+  it("never renders more than HOME_RENDER_CAP (5) cards under a heavy signal load", () => {
+    // Spec §A.4 / §E item 2: the home cap is a HARD ceiling, not just a base-order
+    // trim. Subscribe EVERY declared widget to `blocked` and feed a blocked
+    // event so all ten want to float to the top at once - the pathological
+    // all-active state the cap guards. At most five may render.
+    const allSubscribed = HOME_DECLS.map((d) => ({
+      ...d,
+      signalKinds: ["blocked"] as const,
+    }));
+    vi.mocked(resolveWidgetsForSlot).mockImplementation((slot: string) =>
+      (slot === "home" ? allSubscribed : []).map((declaration) => ({
+        declaration,
+        Component: null,
+      })),
+    );
+
+    render(
+      <WidgetHost
+        slot="home"
+        events={[
+          {
+            id: "e-storm",
+            eventType: "blocked",
+            timestamp: Date.now(),
+            summary: "Everything blocked",
+          },
+        ]}
+      />,
+    );
+
+    expect(renderedIds().length).toBeLessThanOrEqual(5);
+  });
+
+  it("reapplies the five-card cap when widgets render after async data arrives", async () => {
+    function AsyncWidget({ pluginId }: { pluginId: string }) {
+      const [visible, setVisible] = useState(false);
+      useEffect(() => {
+        const timer = setTimeout(() => setVisible(true), 0);
+        return () => clearTimeout(timer);
+      }, []);
+      return visible ? <div data-testid={`widget-async-${pluginId}`} /> : null;
+    }
+
+    const declarations = HOME_DECLS.slice(0, 7).map((decl, index) => ({
+      ...decl,
+      pluginId: `async-${index}`,
+      id: `async-${index}`,
+    }));
+    vi.mocked(resolveWidgetsForSlot).mockImplementation((slot: string) =>
+      (slot === "home" ? declarations : []).map((declaration) => ({
+        declaration,
+        Component: AsyncWidget,
+      })),
+    );
+
+    render(<WidgetHost slot="home" />);
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId(/^widget-async-/)).toHaveLength(7),
+    );
+    await waitFor(() => expect(visibleAsyncIds()).toHaveLength(5));
+  });
+
+  // #9959 - the show-once-then-sunset lifecycle: a home widget declaring a
   // `sunset` policy must be dropped from the ranked home set once its condition
   // is met (here: a dismissible card the user dismissed), while non-sunset
   // widgets stay. This is the WidgetHost-level filter, complementing the

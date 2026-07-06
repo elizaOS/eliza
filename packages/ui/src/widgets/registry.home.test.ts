@@ -40,7 +40,7 @@ describe("home frontpage widget slot (#9143)", () => {
 
   it("declares NO notifications widget for the home slot (the center is pinned by HomeScreen)", () => {
     // The dashboard notification center (NotificationsHomeCenter) is mounted by
-    // HomeScreen directly, not ranked through the registry — a `notifications.*`
+    // HomeScreen directly, not ranked through the registry - a `notifications.*`
     // home declaration would double-render the inbox.
     const resolved = resolveWidgetsForSlot("home", []);
     expect(
@@ -49,7 +49,7 @@ describe("home frontpage widget slot (#9143)", () => {
   });
 
   it("no longer resolves a standalone Recent conversations tile (#10697)", () => {
-    // The redundant Messages widget was removed — messages fold into the
+    // The redundant Messages widget was removed - messages fold into the
     // notification rail, so the home grid must not resurface a messages tile.
     const resolved = resolveWidgetsForSlot("home", []);
     expect(
@@ -81,5 +81,21 @@ describe("home frontpage widget slot (#9143)", () => {
     const todos = resolved.find((r) => r.declaration.id === "todo.items");
     expect(todos?.declaration.slot).toBe("home");
     expect(todos?.Component).toBeTruthy();
+  });
+
+  it("no longer resolves the demoted wallet / goals / health residents on home (spec §E items 3-5)", () => {
+    // wallet.balance + health.sleep moved to their routed dashboards, and
+    // goals.attention merged into the Today (todo) card, so none of the three
+    // holds a home declaration anymore. Their plugins are enabled here to prove
+    // the demotion is at the declaration level, not the plugin gate.
+    const resolved = resolveWidgetsForSlot("home", [
+      { id: "wallet", enabled: true, isActive: true },
+      { id: "goals", enabled: true, isActive: true },
+      { id: "health", enabled: true, isActive: true },
+    ]);
+    const ids = new Set(resolved.map((r) => r.declaration.id));
+    expect(ids).not.toContain("wallet.balance");
+    expect(ids).not.toContain("goals.attention");
+    expect(ids).not.toContain("health.sleep");
   });
 });

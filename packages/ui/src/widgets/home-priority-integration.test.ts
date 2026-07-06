@@ -12,7 +12,7 @@ import { resolveWidgetsForSlot, type WidgetPluginState } from "./registry";
 /**
  * End-to-end wiring scenario (#9143): the REAL home widget declarations (their
  * `signalKinds`) + the REAL ranker, fed realistic attention, must surface the
- * widgets that need attention FIRST — "the priority decides what shows up and
+ * widgets that need attention FIRST - "the priority decides what shows up and
  * when". This guards the declaration↔ranker contract (not individual widget
  * rendering, which the per-widget suites cover): if a future edit drops a
  * widget's `signalKinds` or mis-weights a signal, this scenario fails.
@@ -48,20 +48,24 @@ function rankedKeys(signals: HomeWidgetSignal[]): string[] {
   }).map((r) => homeWidgetKey(r.declaration));
 }
 
-describe("home priority — real declarations + ranker scenario (#9143)", () => {
+describe("home priority - real declarations + ranker scenario (#9143)", () => {
   it("registers only the kept home widgets with attention signalKinds", () => {
     const byKey = new Map(homeDeclarations().map((d) => [homeWidgetKey(d), d]));
-    // Kept cards resolve on the home slot…
+    // Kept cards resolve on the home slot (spec §B target resident set)…
     for (const key of [
       "calendar/calendar.upcoming",
-      "goals/goals.attention",
-      "health/health.sleep",
       "needs-attention/needs-attention.pending",
       "todo/todo.items",
     ]) {
       expect(byKey.has(key), `${key} should resolve on home`).toBe(true);
     }
+    // …while the demoted/merged residents no longer hold a home declaration:
+    // goals.attention merges into the Today (todo) card and health.sleep +
+    // wallet.balance move to their routed dashboards (spec §E items 3-5).
     for (const key of [
+      "goals/goals.attention",
+      "health/health.sleep",
+      "wallet/wallet.balance",
       "agent-orchestrator/agent-orchestrator.activity",
       "agent-orchestrator/agent-orchestrator.apps",
       "feed/feed.agent-activity",
@@ -72,10 +76,7 @@ describe("home priority — real declarations + ranker scenario (#9143)", () => 
     ]) {
       expect(byKey.has(key), `${key} should not resolve on home`).toBe(false);
     }
-    // Kept attention cards still subscribe to signal kinds so they can float up.
-    expect(byKey.get("goals/goals.attention")?.signalKinds).toContain(
-      "escalation",
-    );
+    // The kept calendar card still subscribes to signal kinds so it floats up.
     expect(byKey.get("calendar/calendar.upcoming")?.signalKinds).toContain(
       "reminder",
     );
@@ -83,14 +84,15 @@ describe("home priority — real declarations + ranker scenario (#9143)", () => 
 
   it("floats the widgets that need attention to the front", () => {
     // Realistic moment: an urgent notification arrived and a goal is at-risk.
-    // Both contribute high-weight signals while removed money/inbox widgets stay
-    // absent from the ranked declaration set.
+    // The at-risk goal now lives INSIDE the Today (todo) card (spec §E item 5),
+    // so the card self-publishes the goals escalation weight under its OWN key
+    // (`todo/todo.items`) - the merged resident, not a separate goals card.
     const signals: HomeWidgetSignal[] = [
       ...homeSignalsFromNotifications(
         [{ priority: "urgent", timestamp: NOW }],
         homeDeclarations(),
       ),
-      { widgetKey: "goals/goals.attention", weight: 10, timestamp: NOW },
+      { widgetKey: "todo/todo.items", weight: 10, timestamp: NOW },
     ];
 
     const order = rankedKeys(signals);
@@ -99,14 +101,17 @@ describe("home priority — real declarations + ranker scenario (#9143)", () => 
     // The two attention-worthy widgets occupy the front, ahead of every
     // quiet widget (which rank by static base order only). Needs-attention
     // floats via the urgent-notification derivation (urgent → escalation);
-    // goals rides its own self-published signal.
+    // the Today card rides its merged goal's self-published escalation signal.
     expect(top3).toContain("needs-attention/needs-attention.pending");
-    expect(top3).toContain("goals/goals.attention");
+    expect(top3).toContain("todo/todo.items");
 
     // A quiet widget (calendar with no upcoming-event signal) ranks behind them.
     const calendarRank = order.indexOf("calendar/calendar.upcoming");
-    const goalsRank = order.indexOf("goals/goals.attention");
-    expect(goalsRank).toBeLessThan(calendarRank);
+    const todoRank = order.indexOf("todo/todo.items");
+    expect(todoRank).toBeLessThan(calendarRank);
+
+    // The demoted goals card no longer appears as a standalone resident.
+    expect(order).not.toContain("goals/goals.attention");
   });
 
   it("does not route workflow lifecycle events to removed home cards", () => {
