@@ -99,15 +99,16 @@ describe("nextUnansweredQuestion", () => {
 });
 
 describe("validateChannel", () => {
-  it("defaults to in_app for empty input", () => {
-    expect(validateChannel("", runtime)).toMatchObject({
+  it("defaults to in_app for empty input", async () => {
+    expect(await validateChannel("", runtime)).toMatchObject({
       channel: "in_app",
+      connection: "connected",
       fallbackToInApp: true,
     });
   });
 
-  it("falls back when a channel is unregistered", () => {
-    const res = validateChannel("slack", runtime);
+  it("falls back when a channel is unregistered", async () => {
+    const res = await validateChannel("slack", runtime);
     expect(res).toMatchObject({
       channel: "in_app",
       registered: false,
@@ -115,25 +116,45 @@ describe("validateChannel", () => {
     });
   });
 
-  it("keeps a registered-but-disconnected channel with a fallback warning", () => {
-    const res = validateChannel("push", runtime);
+  it("keeps an unprobeable channel honestly 'unknown' — never a fabricated disconnect (#14730)", async () => {
+    // The default (unwired) inspector cannot vouch for a non-in_app channel, so
+    // it must answer "unknown", not "disconnected".
+    const res = await validateChannel("push", runtime);
     expect(res).toMatchObject({
       channel: "push",
       registered: true,
+      connection: "unknown",
+      connected: false,
+      fallbackToInApp: true,
+    });
+    expect(res.warning).toMatch(/couldn't be verified/);
+  });
+
+  it("reports a genuinely disconnected channel with a disconnect warning", async () => {
+    setChannelInspector({
+      isRegistered: (c) => c === "discord",
+      connectionState: async () => "disconnected",
+    });
+    const res = await validateChannel("discord", runtime);
+    expect(res).toMatchObject({
+      channel: "discord",
+      registered: true,
+      connection: "disconnected",
       connected: false,
       fallbackToInApp: true,
     });
     expect(res.warning).toMatch(/disconnected/);
   });
 
-  it("passes a connected channel through cleanly (injected inspector)", () => {
+  it("passes a connected channel through cleanly (injected inspector)", async () => {
     setChannelInspector({
       isRegistered: (c) => c === "discord",
-      isConnected: (c) => c === "discord",
+      connectionState: async (c) => (c === "discord" ? "connected" : "unknown"),
     });
-    expect(validateChannel("discord", runtime)).toEqual({
+    expect(await validateChannel("discord", runtime)).toEqual({
       channel: "discord",
       registered: true,
+      connection: "connected",
       connected: true,
       fallbackToInApp: false,
     });

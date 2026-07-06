@@ -176,28 +176,28 @@ describe("first-run config validation", () => {
     expect(result?.length).toBe(5);
   });
 
-  it("validateChannel falls back to in_app + warning for unconnected channels", () => {
+  it("validateChannel falls back to in_app + warning for unverifiable channels", async () => {
     const runtime = createMinimalRuntimeStub();
-    const result = validateChannel("telegram", runtime);
+    const result = await validateChannel("telegram", runtime);
     expect(result.fallbackToInApp).toBe(true);
     expect(result.warning).toMatch(/fall back/i);
   });
 
-  it("validateChannel passes a connected channel through cleanly", () => {
+  it("validateChannel passes a connected channel through cleanly", async () => {
     setChannelInspector({
       isRegistered: () => true,
-      isConnected: () => true,
+      connectionState: async () => "connected",
     });
     const runtime = createMinimalRuntimeStub();
-    const result = validateChannel("telegram", runtime);
+    const result = await validateChannel("telegram", runtime);
     expect(result.fallbackToInApp).toBe(false);
     expect(result.warning).toBeUndefined();
     setChannelInspector(null);
   });
 
-  it("rejects an unregistered channel with the right warning", () => {
+  it("rejects an unregistered channel with the right warning", async () => {
     const runtime = createMinimalRuntimeStub();
-    const result = validateChannel("morse_code", runtime);
+    const result = await validateChannel("morse_code", runtime);
     expect(result.channel).toBe("in_app");
     expect(result.fallbackToInApp).toBe(true);
     expect(result.warning).toMatch(/not registered/i);

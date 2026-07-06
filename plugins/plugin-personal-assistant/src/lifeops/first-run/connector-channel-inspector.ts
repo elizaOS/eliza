@@ -15,8 +15,11 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { channelConnectorKind } from "../channels/index.js";
-import { getConnectorRegistry } from "../connectors/index.js";
+// Leaf-module imports (not the channels/connectors barrels): the barrels
+// re-export the connector default pack, whose eager connector-contribution
+// imports pull `@elizaos/core`'s logger and bloat this module's boot graph.
+import { channelConnectorKind } from "../channels/default-pack.js";
+import { getConnectorRegistry } from "../connectors/registry.js";
 import type { ChannelConnectionState, ChannelInspector } from "./questions.js";
 import { SUPPORTED_NOTIFICATION_CHANNELS } from "./questions.js";
 
