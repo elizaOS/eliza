@@ -319,7 +319,11 @@ function cleanUserCatalogReference(value: string): string | null {
 	const cleaned = value
 		.replace(BACKGROUND_NOUN_RE, " ")
 		.replace(
-			/\b(set|make|change|use|turn|switch|give me|apply|put|choose|pick|select|to|as|a|an|the|my|mine|own|saved|generated|created|uploaded|custom|wallpaper|please|one|that|this|i|me|you|your|yours)\b/gi,
+			// Command framing + generic browse/pick filler. Stripping the
+			// PICK_INTENT verbs ("show my options", "a different one") is what lets
+			// a target-less browse phrase clean to nothing and fall through to the
+			// in-chat picker instead of fabricating a nonexistent catalog id.
+			/\b(set|make|change|use|turn|switch|give me|apply|put|choose|pick|select|show|options?|browse|different|another|customi[sz]e|customi[sz]ing|to|as|a|an|the|my|mine|own|saved|generated|created|uploaded|custom|wallpaper|please|one|that|this|i|me|you|your|yours)\b/gi,
 			" ",
 		)
 		.replace(/\s+/g, " ")
