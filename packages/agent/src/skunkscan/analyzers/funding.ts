@@ -1,7 +1,9 @@
 import { ParsedWalletTransaction } from "../parsers/transaction";
-import { WalletFundingSummary } from "../types";
+import { SupportedChain, WalletFundingSummary } from "../types";
+import { lookupWalletLabel } from "../labels/labelEngine";
 
 export function analyzeWalletFunding(
+  chain: SupportedChain,
   walletAddress: string,
   firstTransaction: ParsedWalletTransaction | null,
 ): WalletFundingSummary {
@@ -12,6 +14,7 @@ export function analyzeWalletFunding(
       fundingWallet: null,
       fundingAmountSol: null,
       fundingSourceType: "unknown",
+      fundingSourceLabel: null,
       confidence: "low",
       notes: ["No first transaction details were available."],
     };
@@ -32,6 +35,7 @@ export function analyzeWalletFunding(
       fundingWallet: null,
       fundingAmountSol: null,
       fundingSourceType: "unknown",
+      fundingSourceLabel: null,
       confidence: "low",
       notes: [
         "No incoming SOL funding transfer was detected in the first known transaction.",
@@ -39,13 +43,36 @@ export function analyzeWalletFunding(
     };
   }
 
+  const fundingSourceLabel = lookupWalletLabel(
+    chain,
+    incomingFundingTransfer.from,
+  );
+
+  const fundingSourceType =
+    fundingSourceLabel?.category === "centralized_exchange"
+      ? "exchange"
+      : fundingSourceLabel?.category === "bridge"
+        ? "bridge"
+        : fundingSourceLabel?.category === "system_program" ||
+            fundingSourceLabel?.category === "token_program"
+          ? "program"
+          : "wallet";
+
+  const confidence =
+    fundingSourceLabel?.confidence === "high"
+      ? "high"
+      : fundingSourceLabel?.confidence === "medium"
+        ? "medium"
+        : "medium";
+
   return {
     firstFundingTransaction: firstTransaction.signature,
     firstFundingAt: firstTransaction.timestamp,
     fundingWallet: incomingFundingTransfer.from,
     fundingAmountSol: incomingFundingTransfer.amountSol,
-    fundingSourceType: "wallet",
-    confidence: "medium",
+    fundingSourceType,
+    fundingSourceLabel,
+    confidence,
     notes: [
       "Initial funding source was inferred from the first known incoming SOL transfer.",
     ],
