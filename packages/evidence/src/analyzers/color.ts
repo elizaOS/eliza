@@ -98,10 +98,32 @@ export interface CornersData {
 /** Fraction of the shorter frame dimension a swatch spans (min 8px). */
 const SWATCH_FRACTION = 0.12;
 
+/** Mean RGB of a raw RGB(A) buffer. */
+function meanRgb(
+  data: Uint8Array | Buffer,
+  channels: number,
+): [number, number, number] {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (let i = 0; i < data.length; i += channels) {
+    r += data[i];
+    g += data[i + 1];
+    b += data[i + 2];
+    n++;
+  }
+  n = n || 1;
+  return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+}
+
 /**
- * Sample the four corners and centre with `sharp().extract().stats()` and
- * classify each swatch's mean colour with the shared brand math. Swatch size is
- * a fraction of the frame so it scales with resolution; a floor keeps it
+ * Sample the four corners and centre, averaging each swatch's raw pixels and
+ * classifying the mean with the shared brand math. The swatch is extracted to a
+ * raw buffer and averaged in JS rather than via `sharp().extract().stats()`:
+ * stats in that chained form reports over the whole source image, not the
+ * extracted region, so it would silently sample the entire frame. Swatch size
+ * is a fraction of the frame so it scales with resolution; a floor keeps it
  * meaningful on tiny keyframes.
  */
 export async function cornerSwatches(imagePath: string): Promise<CornerSwatch[]> {
@@ -131,12 +153,11 @@ export async function cornerSwatches(imagePath: string): Promise<CornerSwatch[]>
   for (const position of CORNER_POSITIONS) {
     const { left, top } = boxes[position];
     // Re-open the source per extract: sharp instances are single-use pipelines.
-    const stats = await sharp(imagePath)
+    const { data, info } = await sharp(imagePath)
       .extract({ left, top, width: w, height: h })
-      .stats();
-    const [r, g, b] = stats.channels
-      .slice(0, 3)
-      .map((c) => Math.round(c.mean)) as [number, number, number];
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const [r, g, b] = meanRgb(data, info.channels);
     swatches.push({
       position,
       rgb: [r, g, b],
