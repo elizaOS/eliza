@@ -31,7 +31,11 @@ import type { UiSpec } from "../../config/ui-spec";
 import { CONNECT_EVENT, dispatchAppEvent } from "../../events";
 import { normalizeRemoteAgentUrl } from "../../first-run/adopt-remote-first-run";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { isDesktopPlatform, isNative } from "../../platform";
+import {
+  isDesktopPlatform,
+  isMobileWebBrowser,
+  isNative,
+} from "../../platform";
 import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,
@@ -1133,6 +1137,26 @@ export function SensitiveRequestBlock({
               setError("Invalid authorization URL.");
               return;
             }
+            if (typeof window === "undefined") return;
+            // Mobile web cannot complete the popup handoff at all: iOS Safari
+            // blocks featured/named popups by default, so the window.open
+            // below could only ever render the "Pop-up blocked" error there
+            // (#15143). The Eliza Cloud card has a same-origin escape — the
+            // /login route runs the same Steward OAuth in THIS tab and its
+            // returnTo round-trip lands the session back on the current
+            // route, where the first-run resume machinery picks it up — so
+            // navigate instead of popping. Other providers keep the popup:
+            // their consent URLs have no same-origin return path wired.
+            if (
+              request.form?.provider === "elizacloud" &&
+              isMobileWebBrowser()
+            ) {
+              const returnTo = `${window.location.pathname}${window.location.search}`;
+              window.location.assign(
+                `/login?returnTo=${encodeURIComponent(returnTo)}`,
+              );
+              return;
+            }
             try {
               // SECURITY: we never embed the authorizationUrl in chat text.
               // It is only opened in a popup. We deliberately do NOT pass
@@ -1144,7 +1168,6 @@ export function SensitiveRequestBlock({
               // and we set `popup.opener = null` ourselves immediately after
               // open as a belt-and-suspenders measure. If `window.open`
               // returns null after this, that genuinely is a blocked popup.
-              if (typeof window === "undefined") return;
               const popup = window.open(
                 url,
                 "eliza-oauth",

@@ -56,6 +56,35 @@ export function isDynamicViewLoadingAllowed(): boolean {
   return platform !== "ios" && platform !== "android";
 }
 
+/**
+ * True when the app runs as a PLAIN mobile web page: the `web` platform (no
+ * Capacitor native bridge, no Electrobun shell) on a touch-first device.
+ *
+ * Mobile browsers — iOS Safari above all — refuse `window.open` once the
+ * user-gesture context is lost across an `await`, and block featured/named
+ * popups outright, so any login flow that pops a window there dead-ends on a
+ * "allow pop-ups" error the user cannot reasonably act on. Flows that would
+ * pop a window on desktop must branch on this guard and navigate the CURRENT
+ * tab instead (#15143).
+ *
+ * Touch-first = coarse primary pointer (`(pointer: coarse)` also catches
+ * iPadOS Safari, whose UA masquerades as macOS), with a mobile-UA fallback
+ * for engines that misreport pointer capabilities.
+ */
+export function isMobileWebBrowser(): boolean {
+  if (getFrontendPlatform() !== "web") return false;
+  if (typeof window === "undefined") return false;
+  if (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(pointer: coarse)").matches
+  ) {
+    return true;
+  }
+  const ua =
+    typeof navigator !== "undefined" ? (navigator.userAgent ?? "") : "";
+  return /android|iphone|ipad|ipod|mobile/i.test(ua);
+}
+
 /** Presentation modality of the surface the dashboard renders inside. */
 export type ViewModality = "gui" | "tui" | "xr";
 

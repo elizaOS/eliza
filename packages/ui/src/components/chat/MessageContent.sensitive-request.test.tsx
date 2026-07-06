@@ -51,6 +51,20 @@ vi.mock("../../api/client", () => ({
   client: clientMock,
 }));
 
+// Platform detection is the ONE seam the mobile-web OAuth branch turns on;
+// the real SensitiveRequestBlock runs underneath.
+const platformGuardsMocks = vi.hoisted(() => ({
+  isMobileWebBrowser: vi.fn(() => false),
+}));
+vi.mock("../../platform/platform-guards", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../platform/platform-guards")>();
+  return {
+    ...actual,
+    isMobileWebBrowser: platformGuardsMocks.isMobileWebBrowser,
+  };
+});
+
 import { MessageContent } from "./MessageContent";
 
 function baseMessage(
@@ -199,6 +213,26 @@ function pendingOAuthRequest(): ConversationMessage["secretRequest"] {
       authorizationUrl: "https://example.test/oauth/authorize?state=abc",
       submitLabel: "Connect GitHub",
       statusOnly: true,
+    },
+  };
+}
+
+// The first-run Eliza Cloud card (cloudOAuthSecretRequest in
+// use-first-run-conductor.ts): provider "elizacloud" is what unlocks the
+// same-origin /login same-tab branch on mobile web.
+function pendingCloudOAuthRequest(): ConversationMessage["secretRequest"] {
+  return {
+    key: "elizacloud",
+    reason: "Connect your Eliza Cloud account",
+    status: "pending",
+    form: {
+      type: "sensitive_request_form",
+      kind: "oauth",
+      mode: "cloud_authenticated_link",
+      fields: [],
+      submitLabel: "Connect Eliza Cloud",
+      provider: "elizacloud",
+      authorizationUrl: "https://elizacloud.ai",
     },
   };
 }
@@ -725,6 +759,80 @@ describe("MessageContent sensitive requests", () => {
     expect(updateSecretsMock).not.toHaveBeenCalled();
 
     window.open = originalOpen;
+  });
+
+  describe("mobile-web Eliza Cloud connect (#15143 — same-tab, never a popup)", () => {
+    const originalLocation = window.location;
+    let assignSpy: ReturnType<typeof vi.fn>;
+    let openMock: ReturnType<typeof vi.fn>;
+    let originalOpen: typeof window.open;
+
+    beforeEach(() => {
+      assignSpy = vi.fn();
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: { ...originalLocation, assign: assignSpy },
+      });
+      openMock = vi.fn().mockReturnValue(null);
+      originalOpen = window.open;
+      window.open = openMock as typeof window.open;
+    });
+
+    afterEach(() => {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: originalLocation,
+      });
+      window.open = originalOpen;
+      platformGuardsMocks.isMobileWebBrowser.mockReturnValue(false);
+    });
+
+    it("navigates THIS tab to the same-origin /login with a returnTo — no window.open, no 'Pop-up blocked' copy", () => {
+      platformGuardsMocks.isMobileWebBrowser.mockReturnValue(true);
+      const { container } = render(
+        <MessageContent
+          message={baseMessage({ secretRequest: pendingCloudOAuthRequest() })}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId("sensitive-request-oauth-start"));
+
+      expect(assignSpy).toHaveBeenCalledTimes(1);
+      const target = String(assignSpy.mock.calls[0]?.[0]);
+      expect(target).toBe(
+        `/login?returnTo=${encodeURIComponent(
+          `${originalLocation.pathname}${originalLocation.search}`,
+        )}`,
+      );
+      expect(openMock).not.toHaveBeenCalled();
+      expect(container.textContent).not.toContain("Pop-up blocked");
+    });
+
+    it("keeps the popup for non-cloud OAuth providers on mobile web (no same-origin return path is wired for them)", () => {
+      platformGuardsMocks.isMobileWebBrowser.mockReturnValue(true);
+      render(
+        <MessageContent
+          message={baseMessage({ secretRequest: pendingOAuthRequest() })}
+        />,
+      );
+      fireEvent.click(screen.getByTestId("sensitive-request-oauth-start"));
+      expect(openMock).toHaveBeenCalledTimes(1);
+      expect(assignSpy).not.toHaveBeenCalled();
+    });
+
+    it("keeps the popup for the cloud card on desktop web", () => {
+      platformGuardsMocks.isMobileWebBrowser.mockReturnValue(false);
+      openMock.mockReturnValue({ opener: {} } as unknown as Window);
+      render(
+        <MessageContent
+          message={baseMessage({ secretRequest: pendingCloudOAuthRequest() })}
+        />,
+      );
+      fireEvent.click(screen.getByTestId("sensitive-request-oauth-start"));
+      expect(openMock).toHaveBeenCalledTimes(1);
+      expect(openMock.mock.calls[0]?.[0]).toBe("https://elizacloud.ai");
+      expect(assignSpy).not.toHaveBeenCalled();
+    });
   });
 });
 

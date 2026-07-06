@@ -81,9 +81,21 @@ const DIRECT_ELIZA_CLOUD_API_BY_HOST = new Map([
   ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
   ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
 ]);
-const DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST = new Map([
+// Web origins for URLs a BROWSER will navigate to (the /auth/cli-login
+// handoff). Every known cloud host maps to its apex web origin — not just the
+// API hosts: the API worker answers `application/json` + nosniff for its root
+// and every unknown path, which iOS Safari downloads as `document.txt`
+// instead of rendering, and `www.` adds a redirect hop. A navigation URL must
+// therefore always be built on the apex, never passed through (#15143).
+const DIRECT_ELIZA_CLOUD_WEB_BY_HOST = new Map([
   ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["app.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
   ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
+  ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
+  ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
 ]);
 
 type DirectCloudAgent = {
@@ -264,11 +276,17 @@ function resolveBrowserCloudApiRequestUrl(url: string): string {
   }
 }
 
-function resolveDirectCloudWebBase(cloudBase: string): string {
+/**
+ * Resolve the WEB origin a browser navigation may target for a given cloud
+ * base. Exported for every place that turns a configured cloud API base into
+ * a user-visible URL (the OAuth card's authorizationUrl, cli-login) — an API
+ * host must never be opened as a top-level navigation (JSON download on iOS).
+ */
+export function resolveDirectCloudWebBase(cloudBase: string): string {
   const normalized = cloudBase.replace(/\/+$/, "");
   try {
     const host = new URL(normalized).hostname.toLowerCase();
-    return DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST.get(host) ?? normalized;
+    return DIRECT_ELIZA_CLOUD_WEB_BY_HOST.get(host) ?? normalized;
   } catch {
     // Fall back to the provided base below.
   }

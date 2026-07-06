@@ -27,6 +27,7 @@ import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
 import { getBootConfig } from "../config/boot-config";
 import type { UiLanguage } from "../i18n";
 import { isAndroid, isDesktopPlatform, isIOS } from "../platform/init";
+import { isMobileWebBrowser } from "../platform/platform-guards";
 import {
   addAgentProfile,
   createPersistedActiveServer,
@@ -336,7 +337,15 @@ async function finishLocal(
   if (firstRunNeedsCloudConnect(sourceDraft, ports.elizaCloudConnected)) {
     ports.setRuntimeState("firstRunRuntimeTarget", "elizacloud-hybrid");
     ports.setRuntimeState("firstRunProvider", "elizacloud");
-    const authWindow = ports.preOpenWindow?.() ?? null;
+    // Mobile web never gets a pre-opened auth window: by the time this runs
+    // the user-gesture context is gone (awaits above), so window.open could
+    // only return null there — and handleCloudLogin(null) then knows to lean
+    // on its popup-free paths (#15143). The conductor's mobile-web branch
+    // normally navigates before reaching here; this is the belt for resume
+    // paths that re-enter the finish flow without a fresh tap.
+    const authWindow = isMobileWebBrowser()
+      ? null
+      : (ports.preOpenWindow?.() ?? null);
     await ports.handleCloudLogin(authWindow);
     const cloudStatus = await getCloudStatusIfSupported();
     let cloudConnectedForFinish = isCloudStatusAuthenticated(
@@ -592,7 +601,11 @@ export async function listOrAutoProvisionCloudAgent(
     );
   }
   if (firstRunNeedsCloudConnect(sourceDraft, cloudConnectedForFinish)) {
-    const authWindow = ports.preOpenWindow?.() ?? null;
+    // Same mobile-web guard as finishLocal above: post-await window.open can
+    // only return null there, so skip the pre-open entirely (#15143).
+    const authWindow = isMobileWebBrowser()
+      ? null
+      : (ports.preOpenWindow?.() ?? null);
     await ports.handleCloudLogin(authWindow);
     const cloudStatus = await getCloudStatusIfSupported();
     cloudConnectedForFinish = isCloudStatusAuthenticated(

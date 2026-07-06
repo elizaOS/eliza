@@ -57,8 +57,10 @@ import { client } from "../api";
 import {
   getCloudAuthToken,
   refreshCloudStewardSession,
+  resolveDirectCloudWebBase,
 } from "../api/client-cloud";
 import { getBootConfig } from "../config/boot-config";
+import { isMobileWebBrowser } from "../platform/platform-guards";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
@@ -67,6 +69,7 @@ import { preOpenWindow } from "../utils";
 import { normalizeFirstRunName } from "./first-run";
 import {
   FIRST_RUN_ACTION_PREFIX,
+  FIRST_RUN_CLOUD_LOGIN_FALLBACK_PATH,
   setFirstRunActionHandler,
   setFirstRunTextHandler,
 } from "./first-run-action-channel";
@@ -281,7 +284,12 @@ function cloudOAuthSecretRequest(
       fields: [],
       submitLabel: "Connect Eliza Cloud",
       provider: "elizacloud",
-      authorizationUrl: getBootConfig().cloudApiBase || "https://elizacloud.ai",
+      // The card's Connect button opens this as a top-level navigation, so it
+      // must be the WEB origin: an API-host cloudApiBase serves JSON, which
+      // iOS Safari downloads as document.txt instead of rendering (#15143).
+      authorizationUrl: resolveDirectCloudWebBase(
+        getBootConfig().cloudApiBase || "https://elizacloud.ai",
+      ),
     },
   };
 }
@@ -863,6 +871,20 @@ export function useFirstRunConductor(): void {
             localInference: "cloud-inference",
             agentName: draftRef.current.agentName,
           });
+          // Mobile web: this tap is the ONLY user gesture the flow gets, and
+          // the login flow's popup path opens windows after awaits — iOS
+          // Safari silently blocks those (window.open returns null, no
+          // throw), stranding the user on a dead "Connecting…" card
+          // (#15143). Navigate THIS tab to the same-origin /login route
+          // instead: the durable marker above plus the mount-time resume
+          // machinery (readCloudLoginPending rehydrate / the 500ms
+          // steward-token poll) complete provisioning when the OAuth
+          // redirect lands back on /chat — no popup and no device-code poll
+          // (which is in-memory and would not survive this navigation).
+          if (isMobileWebBrowser()) {
+            window.location.assign(FIRST_RUN_CLOUD_LOGIN_FALLBACK_PATH);
+            return true;
+          }
           const connecting = makeTurn(
             "first-run:cloud-oauth",
             "Connecting your Eliza Cloud account…",

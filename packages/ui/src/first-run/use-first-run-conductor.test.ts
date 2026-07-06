@@ -50,6 +50,9 @@ const mocks = vi.hoisted(() => ({
     }),
   },
   autoDownloadRecommendedLocalModelInBackground: vi.fn(async () => undefined),
+  // Platform detection is the ONE seam the mobile-web branch turns on: real
+  // components run underneath; only the coarse-pointer/UA probe is faked.
+  isMobileWebBrowser: vi.fn(() => false),
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -61,6 +64,12 @@ vi.mock("./auto-download-recommended", () => ({
   autoDownloadRecommendedLocalModelInBackground:
     mocks.autoDownloadRecommendedLocalModelInBackground,
 }));
+
+vi.mock("../platform/platform-guards", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../platform/platform-guards")>();
+  return { ...actual, isMobileWebBrowser: mocks.isMobileWebBrowser };
+});
 
 import type { ConversationMessage, LocalAgentBackupMetadata } from "../api";
 import { __setAppValueForTests } from "../state/app-store";
@@ -217,6 +226,9 @@ beforeEach(() => {
     success: true,
     data: [],
   });
+  // clearAllMocks keeps mockReturnValue stubs — pin the desktop default so a
+  // mobile-web test can't leak its `true` into later suites.
+  mocks.isMobileWebBrowser.mockReturnValue(false);
   localStorage.setItem("steward_session_token", "cloud-token");
   // The runtime chooser (local / remote paths) is OFF by default (#13377);
   // these suites exercise the full chooser, so they opt in via the override.
@@ -1346,6 +1358,98 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(mocks.client.getCloudCompatAgents.mock.calls.length).toBe(listed);
     expect(listed).toBeLessThanOrEqual(3);
+    unmount();
+  });
+});
+
+describe("mobile-web cloud sign-in (#15143 — same-tab /login navigation)", () => {
+  let assignSpy: ReturnType<typeof vi.fn>;
+  const originalLocation = window.location;
+
+  beforeEach(() => {
+    // Cloud-only production default (the branch also covers chooser mode —
+    // both funnel through the same runtime:cloud pick).
+    localStorage.removeItem("eliza:enable-runtime-chooser");
+    localStorage.removeItem("steward_session_token");
+    // jsdom's location.assign hard-errors on real navigation; observe it.
+    assignSpy = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, assign: assignSpy },
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: originalLocation,
+    });
+    mocks.isMobileWebBrowser.mockReturnValue(false);
+  });
+
+  it("sign-in tap navigates THIS tab to /login?returnTo=/chat — no popup flow, no provisioning, resume marker armed", async () => {
+    mocks.isMobileWebBrowser.mockReturnValue(true);
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    expect(assignSpy).toHaveBeenCalledTimes(1);
+    expect(assignSpy).toHaveBeenCalledWith("/login?returnTo=/chat");
+    // The durable marker survives the navigation so the return trip resumes
+    // the cloud flow instead of restarting at the greeting.
+    expect(readCloudLoginPending()).toMatchObject({
+      runtime: "cloud",
+      localInference: "cloud-inference",
+    });
+    // The popup-based provision flow did NOT start: no "Connecting…" turn,
+    // no login attempt, no agent listing.
+    expect(turn("first-run:cloud-oauth")).toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(spies.handleCloudLogin).not.toHaveBeenCalled();
+    expect(mocks.client.getCloudCompatAgents).not.toHaveBeenCalled();
+    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("desktop web keeps the in-app provision flow — never a same-tab navigation", async () => {
+    mocks.isMobileWebBrowser.mockReturnValue(false);
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    // Session lands during the tap-launched login (as in the flows above).
+    localStorage.setItem("steward_session_token", "cloud-token");
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitForTurn(turn, "first-run:cloud-oauth");
+    await waitFor(() => {
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    });
+    expect(assignSpy).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("return trip: relaunching with the armed marker + a live session resumes provisioning to completion (no greeting restart)", async () => {
+    // The state the same-tab round trip leaves behind: marker armed by the
+    // pre-navigation tap, steward JWT written to same-origin localStorage by
+    // the /login page.
+    markCloudLoginPending({
+      runtime: "cloud",
+      localInference: "cloud-inference",
+      agentName: "Eliza",
+    });
+    localStorage.setItem("steward_session_token", "cloud-token");
+    mocks.isMobileWebBrowser.mockReturnValue(true);
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { turn, unmount } = renderConductor();
+
+    await waitFor(() => {
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    });
+    expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+    await waitForTurn(turn, "first-run:cloud-done");
+    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+    expect(assignSpy).not.toHaveBeenCalled();
     unmount();
   });
 });
