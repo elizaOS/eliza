@@ -1,0 +1,429 @@
+<!doctype html>
+<!--
+  Test console UI: a single self-contained page (no framework, no build step)
+  served by ../server.mjs. Renders the task registry with live statuses over
+  SSE, the connection cards with save/verify/connect flows, opt-in gates, and
+  a per-task log drawer. Self-contained so the console works in a checkout
+  where node_modules or the app build is broken — that is its whole job.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>elizaOS test console</title>
+<style>
+  :root {
+    --bg: #0d0d0f; --panel: #17171b; --panel2: #1f1f24; --line: #2a2a31;
+    --text: #e8e6e3; --dim: #9b988f; --accent: #ff7a1a; --accent-hover: #cc5f0e;
+    --pass: #3fbf5f; --fail: #e5484d; --skip: #8a8780; --warn: #e0a83c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 5; flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; font-weight: 650; }
+  header h1 span { color: var(--accent); }
+  .dirhint { color: var(--dim); font-size: 11px; }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #14100b; font-weight: 650; }
+  button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  select, input[type=text], input[type=password], textarea { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 0; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  #left { padding: 12px 16px; min-width: 0; }
+  #right { border-left: 1px solid var(--line); padding: 12px 16px; }
+  .counts { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
+  .counts .chip { padding: 3px 10px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 12px; }
+  .chip b { font-weight: 700; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
+  #filter { flex: 1; min-width: 160px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding: 6px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 53px; background: var(--bg); }
+  td { padding: 5px 8px; border-bottom: 1px solid #1c1c21; vertical-align: top; }
+  tr.task:hover { background: var(--panel); cursor: pointer; }
+  .status { display: inline-block; min-width: 74px; text-align: center; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 650; }
+  .status.idle { background: #222; color: var(--dim); }
+  .status.queued { background: #2b2b31; color: var(--dim); }
+  .status.running { background: rgba(255,122,26,.15); color: var(--accent); animation: pulse 1.2s infinite; }
+  .status.passed { background: rgba(63,191,95,.14); color: var(--pass); }
+  .status.failed { background: rgba(229,72,77,.15); color: var(--fail); }
+  .status.skipped, .status.cancelled { background: #232323; color: var(--skip); }
+  @keyframes pulse { 50% { opacity: .55; } }
+  .lbl { font-family: ui-monospace, monospace; font-size: 12.5px; word-break: break-all; }
+  .badges { margin-top: 2px; display: flex; gap: 4px; flex-wrap: wrap; }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--dim); }
+  .badge.armed { color: var(--pass); border-color: rgba(63,191,95,.4); }
+  .badge.missing { color: var(--warn); border-color: rgba(224,168,60,.4); }
+  .badge.blocked { color: var(--fail); border-color: rgba(229,72,77,.35); }
+  .dur { color: var(--dim); font-size: 12px; white-space: nowrap; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 18px 0 8px; }
+  .conn { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .conn .head { display: flex; align-items: center; gap: 8px; }
+  .conn .head .name { font-weight: 650; flex: 1; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #3a3a41; }
+  .dot.on { background: var(--pass); }
+  .dot.err { background: var(--fail); }
+  .unlocks { color: var(--dim); font-size: 11px; }
+  .conn form { display: none; margin-top: 8px; }
+  .conn.open form { display: block; }
+  .conn label { display: block; font-size: 11px; color: var(--dim); margin: 6px 0 2px; }
+  .conn input, .conn textarea { width: 100%; }
+  .conn .row { display: flex; gap: 6px; margin-top: 8px; }
+  .conn .verify-result { font-size: 11px; margin-top: 6px; word-break: break-all; }
+  .gate { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+  #drawer { position: fixed; inset: auto 0 0 0; height: 42vh; background: var(--panel); border-top: 2px solid var(--accent); display: none; flex-direction: column; z-index: 20; }
+  #drawer.open { display: flex; }
+  #drawer .bar { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--line); }
+  #drawer pre { flex: 1; overflow: auto; margin: 0; padding: 10px 14px; font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; }
+  .runhist { font-size: 12px; color: var(--dim); padding: 3px 0; }
+  a { color: var(--accent); }
+  #toast { position: fixed; top: 12px; right: 12px; background: var(--panel2); border: 1px solid var(--accent); border-radius: 8px; padding: 8px 14px; display: none; z-index: 30; }
+</style>
+</head>
+<body>
+<header>
+  <h1>eliza<span>OS</span> test console</h1>
+  <select id="lane" title="Lane">
+    <option value="pr">Deterministic (keyless)</option>
+    <option value="live">Live (real APIs)</option>
+  </select>
+  <button type="button" class="primary" id="runAll">Run all</button>
+  <button type="button" id="runSel">Run selected</button>
+  <button type="button" id="runFailed">Re-run failed</button>
+  <button type="button" id="cancel">Cancel</button>
+  <button type="button" id="clearSel">Clear</button>
+  <span class="dirhint" id="dirhint"></span>
+</header>
+<main>
+  <section id="left">
+    <div class="counts" id="counts"></div>
+    <div class="toolbar">
+      <input type="text" id="filter" placeholder="Filter tasks (name, dir, script)…" />
+      <select id="statusFilter">
+        <option value="">All statuses</option>
+        <option>passed</option><option>failed</option><option>running</option>
+        <option>queued</option><option>skipped</option><option>idle</option>
+      </select>
+      <label style="font-size:12px;color:var(--dim)"><input type="checkbox" id="liveOnly" /> live-gated only</label>
+    </div>
+    <table>
+      <thead><tr><th style="width:24px"></th><th style="width:100px">Status</th><th>Task</th><th style="width:80px">Time</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+  <aside id="right">
+    <h2>Connections</h2>
+    <div id="conns"></div>
+    <h2>Opt-in gates</h2>
+    <div id="gates"></div>
+    <h2>Recent runs</h2>
+    <div id="runs"></div>
+  </aside>
+</main>
+<div id="drawer">
+  <div class="bar">
+    <span class="status" id="drawerStatus">idle</span>
+    <span class="lbl" id="drawerLabel" style="flex:1"></span>
+    <button type="button" id="rerunOne">Re-run</button>
+    <button type="button" id="closeDrawer">Close</button>
+  </div>
+  <pre id="drawerLog"></pre>
+</div>
+<div id="toast"></div>
+<script>
+"use strict";
+const $ = (sel) => document.querySelector(sel);
+let state = null;            // /api/state payload
+let statuses = new Map();    // label -> {status, durationMs}
+const selected = new Set();
+const openConns = new Set();   // connection cards kept open across re-renders
+let drawerTask = null;
+let drawerRunId = null;
+
+function toast(msg) {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.style.display = "block";
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = "none"; }, 4000);
+}
+
+async function api(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+function fmtMs(ms) {
+  if (ms == null) return "";
+  if (ms < 1000) return ms + "ms";
+  if (ms < 120000) return (ms / 1000).toFixed(1) + "s";
+  return Math.round(ms / 60000) + "m";
+}
+
+function taskStatus(task) {
+  const live = statuses.get(task.label);
+  if (live) return live;
+  if (task.last) return { status: task.last.status, durationMs: task.last.durationMs };
+  return { status: "idle", durationMs: null };
+}
+
+function renderCounts() {
+  const counts = {};
+  for (const t of allTasks()) {
+    const s = taskStatus(t).status;
+    counts[s] = (counts[s] || 0) + 1;
+  }
+  $("#counts").innerHTML = Object.entries(counts)
+    .sort()
+    .map(([s, n]) => `<span class="chip"><b>${n}</b> ${s}</span>`)
+    .join("") + `<span class="chip">${allTasks().length} tasks total</span>`;
+}
+
+function allTasks() {
+  const tasks = [...(state?.registry.tasks ?? [])];
+  if (state?.registry.cloudStep) {
+    tasks.push({ label: state.registry.cloudStep.label, relativeDir: "packages/cloud", scriptName: "test", parallelSafe: false, liveSuites: [], last: null, cloud: true });
+  }
+  return tasks;
+}
+
+function suiteBadge(suite) {
+  const cls = suite.state === "armed" ? "armed" : suite.state === "blocked" ? "blocked" : suite.state === "missing-creds" ? "missing" : "";
+  const text = suite.state === "missing-creds"
+    ? `needs ${(suite.connections || []).join(", ") || (suite.missing || []).join(", ")}`
+    : suite.state;
+  const title = suite.file.split("/").pop() + (suite.missing ? " — missing " + suite.missing.join(", ") : suite.reason ? " — " + suite.reason : "");
+  return `<span class="badge ${cls}" title="${title.replace(/"/g, "&quot;")}">${text}</span>`;
+}
+
+function renderRows() {
+  const q = $("#filter").value.toLowerCase();
+  const sf = $("#statusFilter").value;
+  const liveOnly = $("#liveOnly").checked;
+  const rows = [];
+  for (const task of allTasks()) {
+    if (q && !task.label.toLowerCase().includes(q)) continue;
+    const st = taskStatus(task);
+    if (sf && st.status !== sf) continue;
+    if (liveOnly && !(task.liveSuites || []).length) continue;
+    const badges = (task.liveSuites || []).map(suiteBadge).join("");
+    rows.push(`<tr class="task" data-label="${encodeURIComponent(task.label)}">
+      <td><input type="checkbox" data-sel="${encodeURIComponent(task.label)}" ${selected.has(task.label) ? "checked" : ""}></td>
+      <td><span class="status ${st.status}">${st.status}</span></td>
+      <td><div class="lbl">${task.label}</div>${badges ? `<div class="badges">${badges}</div>` : ""}</td>
+      <td class="dur">${fmtMs(st.durationMs)}</td>
+    </tr>`);
+  }
+  $("#rows").innerHTML = rows.join("");
+  renderCounts();
+}
+
+function renderConnections() {
+  const groups = {};
+  for (const conn of state.registry.connections) {
+    (groups[conn.category] ??= []).push(conn);
+  }
+  const order = ["llm", "messaging", "saas", "calendar", "health", "web3", "push", "infra", "cloud"];
+  $("#conns").innerHTML = order.filter((c) => groups[c]).map((cat) =>
+    `<div style="margin-bottom:4px;color:var(--dim);font-size:11px;text-transform:uppercase">${cat}</div>` +
+    groups[cat].map((conn) => `
+    <div class="conn ${openConns.has(conn.id) ? "open" : ""}" data-conn="${conn.id}">
+      <div class="head">
+        <span class="dot ${conn.configured ? "on" : ""}" id="dot-${conn.id}"></span>
+        <span class="name">${conn.label}</span>
+        <span class="unlocks">${conn.unlocks ? conn.unlocks + (conn.unlocks === 1 ? " suite" : " suites") : ""}</span>
+        <button data-open="${conn.id}">${conn.configured ? "Edit" : "Set up"}</button>
+      </div>
+      <form data-form="${conn.id}">
+        <div style="font-size:11px;color:var(--dim);margin-top:4px">${conn.obtain}</div>
+        ${conn.fields.map((f) => `
+          <label>${f.label}${f.set ? ` <span style="color:var(--pass)">(saved ${f.hint})</span>` : ""}</label>
+          ${f.multiline
+            ? `<textarea name="${f.key}" rows="3" placeholder="${f.placeholder || (f.set ? "leave blank to keep" : "")}"></textarea>`
+            : `<input type="${f.secret ? "password" : "text"}" name="${f.key}" placeholder="${f.placeholder || (f.set ? "leave blank to keep" : "")}" autocomplete="off" />`}
+        `).join("")}
+        <div class="row">
+          <button type="submit" class="primary">Save</button>
+          <button type="button" data-verify="${conn.id}">Verify</button>
+          ${conn.oauth === "google" || conn.oauth === "google-calendar" ? `<button type="button" data-google="${conn.id}">Connect Google</button>` : ""}
+          ${conn.oauth === "eliza-cloud" ? `<button type="button" data-cloud="${conn.id}">Log in</button>` : ""}
+          <button type="button" data-remove="${conn.id}">Remove</button>
+        </div>
+        <div class="verify-result" data-vr="${conn.id}"></div>
+      </form>
+    </div>`).join("")
+  ).join("");
+}
+
+function renderGates() {
+  $("#gates").innerHTML = state.registry.optInGates.map((g) => `
+    <label class="gate"><input type="checkbox" data-gate="${g.key}" ${g.on ? "checked" : ""}/> ${g.label} <span style="color:var(--dim);font-size:11px">${g.key}</span></label>
+  `).join("");
+}
+
+function renderRuns() {
+  $("#runs").innerHTML = (state.runs || []).map((r) => {
+    const counts = Object.entries(r.counts || {}).map(([s, n]) => `${n} ${s}`).join(", ");
+    return `<div class="runhist">${r.runId} — ${counts}${r.cancelled ? " (cancelled)" : ""}</div>`;
+  }).join("") || "<div class='runhist'>none yet</div>";
+}
+
+async function refresh() {
+  state = await api("GET", "/api/state");
+  $("#dirhint").textContent = state.consoleDir;
+  if (state.run) {
+    drawerRunId = state.run.runId;
+    for (const t of state.run.tasks) statuses.set(t.label, { status: t.status, durationMs: t.durationMs });
+  }
+  renderRows();
+  renderConnections();
+  renderGates();
+  renderRuns();
+}
+
+function openDrawer(label) {
+  drawerTask = label;
+  $("#drawerLabel").textContent = label;
+  const st = statuses.get(label) || { status: "idle" };
+  $("#drawerStatus").textContent = st.status;
+  $("#drawerStatus").className = "status " + st.status;
+  $("#drawerLog").textContent = "";
+  $("#drawer").classList.add("open");
+  if (drawerRunId) {
+    fetch(`/api/runs/${encodeURIComponent(drawerRunId)}/log?task=${encodeURIComponent(label)}`)
+      .then((r) => (r.ok ? r.text() : ""))
+      .then((text) => { if (drawerTask === label && text) { $("#drawerLog").textContent = text; scrollLog(); } });
+  }
+}
+
+function scrollLog() {
+  const pre = $("#drawerLog");
+  pre.scrollTop = pre.scrollHeight;
+}
+
+// --- event wiring ----------------------------------------------------------
+document.addEventListener("click", async (event) => {
+  const el = event.target;
+  if (el.dataset.open) {
+    const id = el.dataset.open;
+    if (openConns.has(id)) openConns.delete(id); else openConns.add(id);
+    document.querySelector(`.conn[data-conn="${id}"]`).classList.toggle("open");
+    return;
+  }
+  if (el.dataset.verify) {
+    const vr = document.querySelector(`[data-vr="${el.dataset.verify}"]`);
+    vr.textContent = "verifying…";
+    try {
+      const result = await api("POST", `/api/connections/${el.dataset.verify}/verify`);
+      vr.textContent = `${result.status}: ${result.detail}`;
+      vr.style.color = result.ok ? "var(--pass)" : "var(--fail)";
+      $(`#dot-${el.dataset.verify}`).className = "dot " + (result.ok ? "on" : "err");
+    } catch (error) { vr.textContent = String(error.message); vr.style.color = "var(--fail)"; }
+    return;
+  }
+  if (el.dataset.remove) {
+    await api("DELETE", `/api/connections/${el.dataset.remove}`);
+    await refresh();
+    return;
+  }
+  if (el.dataset.google) { window.open("/oauth/google/start", "_blank"); return; }
+  if (el.dataset.cloud) {
+    try {
+      const { sessionId, browserUrl } = await api("POST", "/api/cloud/login/start");
+      window.open(browserUrl, "_blank");
+      toast("Complete the login in the opened tab…");
+      const poll = setInterval(async () => {
+        const { status } = await api("GET", `/api/cloud/login/poll?sessionId=${encodeURIComponent(sessionId)}`);
+        if (status === "authenticated") { clearInterval(poll); toast("Eliza Cloud connected"); refresh(); }
+        if (status === "expired" || status === "error") { clearInterval(poll); toast("Cloud login " + status); }
+      }, 2500);
+    } catch (error) { toast("Cloud login failed: " + error.message); }
+    return;
+  }
+  const row = el.closest("tr.task");
+  if (row && el.type !== "checkbox") openDrawer(decodeURIComponent(row.dataset.label));
+});
+
+document.addEventListener("change", async (event) => {
+  const el = event.target;
+  if (el.dataset.sel) {
+    const label = decodeURIComponent(el.dataset.sel);
+    if (el.checked) selected.add(label); else selected.delete(label);
+  }
+  if (el.dataset.gate) {
+    await api("POST", "/api/gates", { key: el.dataset.gate, on: el.checked });
+    await refresh();
+  }
+});
+
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("form[data-form]");
+  if (!form) return;
+  event.preventDefault();
+  const values = {};
+  for (const input of form.querySelectorAll("input[name],textarea[name]")) {
+    if (input.value.trim()) values[input.name] = input.value.trim();
+  }
+  // Only typed fields are sent; the server merges over saved values, so a
+  // blank field means "keep what's saved".
+  await api("POST", `/api/connections/${form.dataset.form}`, { values });
+  toast("Saved");
+  await refresh();
+});
+
+async function startRun(mode) {
+  const lane = $("#lane").value;
+  const labels = mode === "selection" ? [...selected] : undefined;
+  try {
+    const { runId, taskCount } = await api("POST", "/api/run", { mode, lane, labels });
+    statuses = new Map();
+    drawerRunId = runId;
+    toast(`Run started: ${taskCount} tasks (${lane})`);
+    await refresh();
+  } catch (error) { toast(error.message); }
+}
+
+$("#runAll").onclick = () => startRun("all");
+$("#runSel").onclick = () => (selected.size ? startRun("selection") : toast("nothing selected"));
+$("#runFailed").onclick = () => startRun("failed");
+$("#cancel").onclick = () => api("POST", "/api/run/cancel").then(() => toast("cancelling…"));
+$("#clearSel").onclick = () => { selected.clear(); statuses = new Map(); renderRows(); };
+$("#closeDrawer").onclick = () => $("#drawer").classList.remove("open");
+$("#rerunOne").onclick = () => drawerTask && api("POST", "/api/run", { mode: "selection", lane: $("#lane").value, labels: [drawerTask] }).then(refresh).catch((e) => toast(e.message));
+$("#filter").oninput = renderRows;
+$("#statusFilter").onchange = renderRows;
+$("#liveOnly").onchange = renderRows;
+
+// --- SSE -------------------------------------------------------------------
+const events = new EventSource("/api/events");
+events.onmessage = (message) => {
+  const event = JSON.parse(message.data);
+  if (event.type === "task") {
+    statuses.set(event.label, { status: event.status, durationMs: event.durationMs ?? null });
+    renderRows();
+    if (drawerTask === event.label) {
+      $("#drawerStatus").textContent = event.status;
+      $("#drawerStatus").className = "status " + event.status;
+    }
+  } else if (event.type === "log" && drawerTask === event.label) {
+    $("#drawerLog").textContent += event.chunk;
+    scrollLog();
+  } else if (event.type === "run-started") {
+    drawerRunId = event.runId;
+  } else if (event.type === "run-finished") {
+    toast(`Run finished: ${Object.entries(event.counts).map(([s, n]) => `${n} ${s}`).join(", ")}`);
+    refresh();
+  }
+};
+
+refresh().catch((error) => toast("load failed: " + error.message));
+</script>
+</body>
+</html>
