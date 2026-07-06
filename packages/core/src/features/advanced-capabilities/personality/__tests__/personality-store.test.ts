@@ -228,6 +228,51 @@ describe("PersonalityStore", () => {
 		).toBe("direct");
 	});
 
+	test("concurrent same-slot mutations serialize — no lost update across the persist await", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT as never });
+		await initStore(fake);
+		// Slow the durable upsert down so unserialized read-modify-write
+		// mutations WOULD interleave (both read the empty slot, last write
+		// wins) — the per-slot chain must prevent exactly that.
+		const runtimeWithUpsert = fake.runtime as unknown as {
+			upsertMemory(memory: unknown, table: string): Promise<void>;
+		};
+		const originalUpsert = runtimeWithUpsert.upsertMemory.bind(fake.runtime);
+		runtimeWithUpsert.upsertMemory = async (memory, table) => {
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			await originalUpsert(memory, table);
+		};
+
+		await Promise.all([
+			fake.store.applyTrait({
+				scope: "user",
+				userId: USER_A as never,
+				agentId: AGENT as never,
+				actorId: USER_A as never,
+				trait: "verbosity",
+				value: "terse",
+			}),
+			fake.store.addDirective({
+				userId: USER_A as never,
+				agentId: AGENT as never,
+				actorId: USER_A as never,
+				directive: "no emojis",
+			}),
+		]);
+
+		const slot = fake.store.getSlot(USER_A as never, AGENT as never);
+		expect(slot.verbosity).toBe("terse");
+		expect(slot.custom_directives).toEqual(["no emojis"]);
+		// The durable mirror must carry both changes too, in one row.
+		const rows = fake.memories.get(PERSONALITY_SLOT_TABLE) ?? [];
+		expect(rows).toHaveLength(1);
+		const persisted = (
+			rows[0].metadata as { slot?: Record<string, unknown> } | undefined
+		)?.slot;
+		expect(persisted?.verbosity).toBe("terse");
+		expect(persisted?.custom_directives).toEqual(["no emojis"]);
+	});
+
 	test("clear removes mirrored slot memories", async () => {
 		const fake = makeFakeRuntime({ agentId: AGENT as never });
 		await initStore(fake);

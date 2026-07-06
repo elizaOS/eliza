@@ -138,6 +138,11 @@ export class PersonalityStore extends Service {
 	private slots: Map<SlotKey, PersonalitySlot> = new Map();
 	private profiles: Map<string, PersonalityProfile> = new Map();
 	private audit: PersonalityAuditEntry[] = [];
+	// Every slot mutation is read-modify-write across the durable upsert await,
+	// so concurrent same-slot writers (PERSONALITY action, preference inference,
+	// bench seeding) could interleave and silently drop a change. This chain
+	// serializes writers per slot; readers stay synchronous on the cache.
+	private slotWriteChains: Map<SlotKey, Promise<unknown>> = new Map();
 
 	static async start(runtime: IAgentRuntime): Promise<PersonalityStore> {
 		const store = new PersonalityStore(runtime);
@@ -230,6 +235,65 @@ export class PersonalityStore extends Service {
 		);
 	}
 
+	/**
+	 * Append a write to the slot's chain so read-modify-write mutations never
+	 * interleave. The returned promise carries the write's own outcome
+	 * (including rejection) to its caller; the stored tail is settled so one
+	 * failed write cannot poison every later write to the same slot.
+	 */
+	private enqueueSlotWrite<T>(
+		key: SlotKey,
+		write: () => Promise<T>,
+	): Promise<T> {
+		const previous = this.slotWriteChains.get(key) ?? Promise.resolve();
+		const next = previous.then(write, write);
+		// error-policy:J5 the rejection is observed by this write's caller via
+		// `next`; the stored tail exists only to sequence the next writer.
+		this.slotWriteChains.set(
+			key,
+			next.catch(() => {}),
+		);
+		return next;
+	}
+
+	private async persistAndCache(slot: PersonalitySlot): Promise<void> {
+		await this.persistSlot(slot);
+		this.cacheSlot(slot);
+	}
+
+	/**
+	 * One canonical serialized mutation path: read the current slot, build the
+	 * next one, persist durably, cache, audit. All public mutators route here
+	 * so the write ordering and audit discipline cannot diverge per operation.
+	 */
+	private mutateSlot(args: {
+		scope: PersonalityScope;
+		targetId: UUID | typeof GLOBAL_PERSONALITY_SCOPE;
+		agentId: UUID;
+		actorId: UUID;
+		build: (before: PersonalitySlot) => PersonalitySlot;
+		action: (after: PersonalitySlot) => string;
+	}): Promise<{ before: PersonalitySlot; after: PersonalitySlot }> {
+		return this.enqueueSlotWrite(
+			slotKey(args.agentId, args.targetId),
+			async () => {
+				const before = this.getSlot(args.targetId, args.agentId);
+				const after = args.build(before);
+				await this.persistAndCache(after);
+				this.recordAudit({
+					actorId: args.actorId,
+					scope: args.scope,
+					targetId: args.targetId,
+					action: args.action(after),
+					before,
+					after,
+					timestamp: after.updated_at,
+				});
+				return { before, after };
+			},
+		);
+	}
+
 	getSlot(
 		userId: UUID | typeof GLOBAL_PERSONALITY_SCOPE,
 		agentId: UUID = this.runtime.agentId,
@@ -240,8 +304,9 @@ export class PersonalityStore extends Service {
 	}
 
 	async setSlot(slot: PersonalitySlot): Promise<void> {
-		await this.persistSlot(slot);
-		this.cacheSlot(slot);
+		await this.enqueueSlotWrite(slotKey(slot.agentId, slot.userId), () =>
+			this.persistAndCache(slot),
+		);
 	}
 
 	listProfiles(): PersonalityProfile[] {
@@ -269,29 +334,24 @@ export class PersonalityStore extends Service {
 		agentId: UUID = this.runtime.agentId,
 		actorId: UUID = this.runtime.agentId,
 	): Promise<{ before: PersonalitySlot; after: PersonalitySlot }> {
-		const before = this.getSlot(GLOBAL_PERSONALITY_SCOPE, agentId);
-		const after: PersonalitySlot = {
-			userId: GLOBAL_PERSONALITY_SCOPE,
-			agentId,
-			verbosity: profile.verbosity,
-			tone: profile.tone,
-			formality: profile.formality,
-			reply_gate: profile.reply_gate,
-			custom_directives: [...profile.custom_directives],
-			updated_at: new Date().toISOString(),
-			source: "admin",
-		};
-		await this.setSlot(after);
-		this.recordAudit({
-			actorId,
+		return this.mutateSlot({
 			scope: "global",
 			targetId: GLOBAL_PERSONALITY_SCOPE,
-			action: `load_profile:${profile.name}`,
-			before,
-			after,
-			timestamp: after.updated_at,
+			agentId,
+			actorId,
+			build: () => ({
+				userId: GLOBAL_PERSONALITY_SCOPE,
+				agentId,
+				verbosity: profile.verbosity,
+				tone: profile.tone,
+				formality: profile.formality,
+				reply_gate: profile.reply_gate,
+				custom_directives: [...profile.custom_directives],
+				updated_at: new Date().toISOString(),
+				source: "admin",
+			}),
+			action: () => `load_profile:${profile.name}`,
 		});
-		return { before, after };
 	}
 
 	snapshotSlotAsProfile(
@@ -334,6 +394,10 @@ export class PersonalityStore extends Service {
 	 * scenario sharing the same runtime process.
 	 */
 	async clear(): Promise<void> {
+		// Drain in-flight slot writes first so a racing mutation cannot
+		// re-persist a slot after the wipe below (stored tails never reject).
+		await Promise.all([...this.slotWriteChains.values()]);
+		this.slotWriteChains.clear();
 		const memories = await this.runtime.getMemories({
 			tableName: PERSONALITY_SLOT_TABLE,
 			roomId: this.runtime.agentId,
@@ -359,26 +423,20 @@ export class PersonalityStore extends Service {
 		value: string | null;
 		source?: PersonalitySlot["source"];
 	}): Promise<{ before: PersonalitySlot; after: PersonalitySlot }> {
-		const targetId =
-			args.scope === "global" ? GLOBAL_PERSONALITY_SCOPE : args.userId;
-		const before = this.getSlot(targetId, args.agentId);
-		const after: PersonalitySlot = {
-			...before,
-			[args.trait]: args.value,
-			updated_at: new Date().toISOString(),
-			source: args.source ?? (args.scope === "global" ? "admin" : "user"),
-		};
-		await this.setSlot(after);
-		this.recordAudit({
-			actorId: args.actorId,
+		return this.mutateSlot({
 			scope: args.scope,
-			targetId,
-			action: `set_trait:${args.trait}=${args.value ?? "null"}`,
-			before,
-			after,
-			timestamp: after.updated_at,
+			targetId:
+				args.scope === "global" ? GLOBAL_PERSONALITY_SCOPE : args.userId,
+			agentId: args.agentId,
+			actorId: args.actorId,
+			build: (before) => ({
+				...before,
+				[args.trait]: args.value,
+				updated_at: new Date().toISOString(),
+				source: args.source ?? (args.scope === "global" ? "admin" : "user"),
+			}),
+			action: () => `set_trait:${args.trait}=${args.value ?? "null"}`,
 		});
-		return { before, after };
 	}
 
 	async applyReplyGate(args: {
@@ -389,26 +447,20 @@ export class PersonalityStore extends Service {
 		mode: PersonalitySlot["reply_gate"];
 		source?: PersonalitySlot["source"];
 	}): Promise<{ before: PersonalitySlot; after: PersonalitySlot }> {
-		const targetId =
-			args.scope === "global" ? GLOBAL_PERSONALITY_SCOPE : args.userId;
-		const before = this.getSlot(targetId, args.agentId);
-		const after: PersonalitySlot = {
-			...before,
-			reply_gate: args.mode,
-			updated_at: new Date().toISOString(),
-			source: args.source ?? (args.scope === "global" ? "admin" : "user"),
-		};
-		await this.setSlot(after);
-		this.recordAudit({
-			actorId: args.actorId,
+		return this.mutateSlot({
 			scope: args.scope,
-			targetId,
-			action: `set_reply_gate:${args.mode ?? "null"}`,
-			before,
-			after,
-			timestamp: after.updated_at,
+			targetId:
+				args.scope === "global" ? GLOBAL_PERSONALITY_SCOPE : args.userId,
+			agentId: args.agentId,
+			actorId: args.actorId,
+			build: (before) => ({
+				...before,
+				reply_gate: args.mode,
+				updated_at: new Date().toISOString(),
+				source: args.source ?? (args.scope === "global" ? "admin" : "user"),
+			}),
+			action: () => `set_reply_gate:${args.mode ?? "null"}`,
 		});
-		return { before, after };
 	}
 
 	async addDirective(args: {
@@ -418,27 +470,24 @@ export class PersonalityStore extends Service {
 		directive: string;
 		source?: PersonalitySlot["source"];
 	}): Promise<{ before: PersonalitySlot; after: PersonalitySlot }> {
-		const before = this.getSlot(args.userId, args.agentId);
-		const next = [...before.custom_directives, args.directive];
-		// FIFO eviction at MAX_CUSTOM_DIRECTIVES
-		while (next.length > MAX_CUSTOM_DIRECTIVES) next.shift();
-		const after: PersonalitySlot = {
-			...before,
-			custom_directives: next,
-			updated_at: new Date().toISOString(),
-			source: args.source ?? "user",
-		};
-		await this.setSlot(after);
-		this.recordAudit({
-			actorId: args.actorId,
+		return this.mutateSlot({
 			scope: "user",
 			targetId: args.userId,
-			action: `add_directive:${args.directive}`,
-			before,
-			after,
-			timestamp: after.updated_at,
+			agentId: args.agentId,
+			actorId: args.actorId,
+			build: (before) => {
+				const next = [...before.custom_directives, args.directive];
+				// FIFO eviction at MAX_CUSTOM_DIRECTIVES
+				while (next.length > MAX_CUSTOM_DIRECTIVES) next.shift();
+				return {
+					...before,
+					custom_directives: next,
+					updated_at: new Date().toISOString(),
+					source: args.source ?? "user",
+				};
+			},
+			action: () => `add_directive:${args.directive}`,
 		});
-		return { before, after };
 	}
 
 	async clearDirectives(args: {
@@ -447,26 +496,20 @@ export class PersonalityStore extends Service {
 		agentId: UUID;
 		actorId: UUID;
 	}): Promise<{ before: PersonalitySlot; after: PersonalitySlot }> {
-		const targetId =
-			args.scope === "global" ? GLOBAL_PERSONALITY_SCOPE : args.userId;
-		const before = this.getSlot(targetId, args.agentId);
-		const after: PersonalitySlot = {
-			...before,
-			custom_directives: [],
-			updated_at: new Date().toISOString(),
-			source: args.scope === "global" ? "admin" : "user",
-		};
-		await this.setSlot(after);
-		this.recordAudit({
-			actorId: args.actorId,
+		return this.mutateSlot({
 			scope: args.scope,
-			targetId,
-			action: "clear_directives",
-			before,
-			after,
-			timestamp: after.updated_at,
+			targetId:
+				args.scope === "global" ? GLOBAL_PERSONALITY_SCOPE : args.userId,
+			agentId: args.agentId,
+			actorId: args.actorId,
+			build: (before) => ({
+				...before,
+				custom_directives: [],
+				updated_at: new Date().toISOString(),
+				source: args.scope === "global" ? "admin" : "user",
+			}),
+			action: () => "clear_directives",
 		});
-		return { before, after };
 	}
 
 	async stop(): Promise<void> {
