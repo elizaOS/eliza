@@ -46,6 +46,7 @@ import {
   type ScheduledTaskRunnerHandle,
   type ScheduledTaskStore,
 } from "@elizaos/plugin-scheduling";
+import { assembleMorningBrief } from "../../default-packs/morning-brief.js";
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
 import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
@@ -295,6 +296,87 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
   return svc && typeof svc.notify === "function" ? svc : null;
 }
 
+function reportScheduledTaskCompositionError(
+  runtime: IAgentRuntime,
+  error: unknown,
+  context: Record<string, unknown>,
+): void {
+  runtime.reportError?.("lifeops:scheduled-task:owner-facing-copy", error, {
+    agentId: runtime.agentId,
+    ...context,
+  });
+}
+
+function metadataString(
+  metadata: ScheduledTaskDispatchRecord["metadata"],
+  key: string,
+): string | null {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+async function composeOwnerFacingScheduledTaskText(
+  runtime: IAgentRuntime,
+  record: ScheduledTaskDispatchRecord,
+): Promise<string> {
+  const delegatesAssemblyTo = metadataString(
+    record.metadata,
+    "delegatesAssemblyTo",
+  );
+
+  if (delegatesAssemblyTo === "lifeops:checkin:morning") {
+    try {
+      const assembled = await assembleMorningBrief(runtime, {
+        timezone: resolveDefaultTimeZone(),
+        now: new Date(record.firedAtIso),
+      });
+      const summaryText = assembled.report.summaryText.trim();
+      if (summaryText.length > 0) return summaryText;
+      throw new Error("Morning check-in assembler returned empty summaryText");
+    } catch (error) {
+      reportScheduledTaskCompositionError(runtime, error, {
+        taskId: record.taskId,
+        firedAtIso: record.firedAtIso,
+        delegatesAssemblyTo,
+      });
+      return "Your morning check-in is ready, but I couldn't assemble the full brief right now.";
+    }
+  }
+
+  const packKey = metadataString(record.metadata, "packKey");
+  const recordKey = metadataString(record.metadata, "recordKey");
+
+  if (packKey === "daily-rhythm" && recordKey === "gm") {
+    return "Good morning. Hope the day starts gently.";
+  }
+  if (packKey === "daily-rhythm" && recordKey === "gn") {
+    return "Good night. Rest well.";
+  }
+  if (packKey === "daily-rhythm" && recordKey === "checkin-followup") {
+    return "No rush if you're busy. I'm here whenever you're ready.";
+  }
+  if (packKey === "morning-brief") {
+    return "Your morning brief is ready, but I couldn't assemble the full details right now.";
+  }
+
+  const isUrgent = record.intensity === "urgent";
+  const fallback = isUrgent ? "Approval needed." : "Reminder.";
+  reportScheduledTaskCompositionError(
+    runtime,
+    new Error("No owner-facing scheduled-task composer registered"),
+    {
+      taskId: record.taskId,
+      firedAtIso: record.firedAtIso,
+      channelKey: record.channelKey,
+      packKey,
+      recordKey,
+    },
+  );
+  return fallback;
+}
+
 const LOCAL_AGENT_BACKUP_OPERATION = "agent.localBackup";
 
 function isLocalAgentBackupDispatch(
@@ -386,6 +468,10 @@ export function createProductionScheduledTaskDispatcher(opts: {
         };
       }
 
+      const ownerFacingText = await composeOwnerFacingScheduledTaskText(
+        opts.runtime,
+        record,
+      );
       const registry = getChannelRegistry(opts.runtime);
       const channel = registry?.get(record.channelKey) ?? null;
       if (!channel?.send) {
@@ -415,7 +501,7 @@ export function createProductionScheduledTaskDispatcher(opts: {
               stream: "assistant",
               agentId: opts.runtime.agentId,
               data: {
-                text: record.promptInstructions,
+                text: ownerFacingText,
                 source: "lifeops-scheduled-task",
                 taskId: record.taskId,
                 firedAtIso: record.firedAtIso,
@@ -438,7 +524,7 @@ export function createProductionScheduledTaskDispatcher(opts: {
             try {
               await notifier.notify({
                 title: isUrgent ? "Approval needed" : "Reminder",
-                body: record.promptInstructions,
+                body: ownerFacingText,
                 category: isUrgent ? "approval" : "reminder",
                 priority: isUrgent ? "urgent" : "normal",
                 source: "lifeops",
@@ -485,7 +571,7 @@ export function createProductionScheduledTaskDispatcher(opts: {
           record.channelKey,
           record.output?.target ?? record.channelKey,
         ),
-        message: record.promptInstructions,
+        message: ownerFacingText,
         metadata: {
           taskId: record.taskId,
           firedAtIso: record.firedAtIso,
