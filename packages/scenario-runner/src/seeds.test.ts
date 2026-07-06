@@ -786,7 +786,6 @@ describe("scenario memory seeds", () => {
     }
   }, 120_000);
 
-
   it("maps rolodex-entity memory seeds into relationship contacts", async () => {
     const { ctx, relationships, runtime } = createSeedHarness();
 
