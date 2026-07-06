@@ -3,8 +3,11 @@
  * retrieval surfaces the relevant durable/current facts (including a direct-recall
  * fallback and current-fact time weighting), that rendering attributes facts by
  * provenance (speaker vs neutral room header) while room-fact recall stays
- * intact for bot/bridge senders — relays carry real human questions — and that
- * the provider never requests embeddings. Uses a hand-built deterministic
+ * intact for bot/bridge senders — relays carry real human questions — that the
+ * always-on standing-preferences lane gate is structural (extractor-assigned
+ * `category: "preference"` + sender ownership + prior) so reply/domain-shaped
+ * text under a non-preference category never leaks into the lane, and that the
+ * provider never requests embeddings. Uses a hand-built deterministic
  * runtime mock — no live model, no DB — whose `useModel` throws to enforce the
  * no-embeddings invariant.
  */
@@ -317,6 +320,98 @@ describe("factsProvider keyword retrieval", () => {
 			"fact-new",
 			"fact-old",
 		]);
+	});
+});
+
+describe("factsProvider standing-preferences lane gate", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	// The lane gate is structural: a fact enters the "Standing preferences" lane
+	// only because the extractor tagged it `category: "preference"` at write
+	// time, never because its text happens to contain reply-shape words. The
+	// prior reader-side regex (INTERACTION_PREFERENCE_PATTERN) matched broad
+	// content tokens — `short`, `long`, `direct`, `language`, `format` — and so
+	// force-injected DOMAIN-content facts ("short flights", "direct flights",
+	// "speaks Spanish as first language") into a reply-style lane under an
+	// instruction cue every turn. These cases pin the empirical false positives
+	// the PR review surfaced: reply/domain-shaped English text stored under a
+	// NON-preference category must stay out of the lane. If someone reintroduces
+	// a keyword sniff on the read path, these fail.
+	it.each([
+		["the user prefers short flights", "identity"],
+		["the user wants direct flights only", "identity"],
+		["the user speaks Spanish as first language", "identity"],
+		["the user wants a short runway to launch", "goal"],
+		["the user reports directly to the VP", "business_role"],
+	])("keeps reply/domain-shaped %s out of the lane when its category is %s, not preference", async (factText, category) => {
+		const message = memory("msg-current", "what's on my plate today?");
+		message.content.senderName = "Alice";
+		const runtime = makeRuntime({
+			facts: [
+				memory("fact-nonpref", factText, {
+					kind: "durable",
+					category,
+					confidence: 0.95,
+					keywords: ["scheduled", "context"],
+				}),
+			],
+		});
+
+		const result = await factsProvider.get(runtime, message, {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		const sections = result.text.split("\n\n");
+		const preferenceSection = sections.find((section) =>
+			section.startsWith("Standing preferences"),
+		);
+		// The fact never reaches the always-on lane: no "Standing preferences"
+		// section renders (the fact is not sender-owned `preference`), and the
+		// fact text is absent from any preference lane render.
+		expect(preferenceSection).toBeUndefined();
+	});
+
+	it("routes a genuine sender preference into the lane while a same-turn non-preference domain fact stays out", async () => {
+		const message = memory("msg-current", "book me something");
+		message.content.senderName = "Alice";
+		const runtime = makeRuntime({
+			facts: [
+				// Reply-shape words, but category is NOT preference -> excluded.
+				memory("fact-domain", "the user prefers short flights", {
+					kind: "durable",
+					category: "identity",
+					confidence: 1,
+					keywords: ["flights", "travel"],
+				}),
+				// Genuine standing preference, tagged by the extractor -> included.
+				memory("fact-pref", "the user prefers morning check-ins", {
+					kind: "durable",
+					category: "preference",
+					confidence: 0.9,
+					keywords: ["morning", "check-ins"],
+				}),
+			],
+		});
+
+		const result = await factsProvider.get(runtime, message, {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		const sections = result.text.split("\n\n");
+		const preferenceSection = sections.find((section) =>
+			section.startsWith("Standing preferences"),
+		);
+		expect(preferenceSection).toBeDefined();
+		expect(preferenceSection).toContain("the user prefers morning check-ins");
+		// The reply-shaped domain fact must not leak into the lane merely because
+		// its text reads like a reply-style preference.
+		expect(preferenceSection).not.toContain("the user prefers short flights");
 	});
 });
 
