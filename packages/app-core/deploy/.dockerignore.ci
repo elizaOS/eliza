@@ -35,29 +35,6 @@ apps/**/node_modules
 # (cross-spawn, fluent-ffmpeg, fflate, etc.) at runtime. The directories
 # are mostly symlinks into `node_modules/.bun/`, so the size cost is
 # negligible.
-eliza/**/node_modules
-!eliza/plugins/*/node_modules/
-!eliza/plugins/*/node_modules/**
-!eliza/packages/agent/node_modules/
-!eliza/packages/agent/node_modules/**
-!eliza/packages/ui/node_modules/
-!eliza/packages/ui/node_modules/**
-eliza/packages/app-core/deploy/**/node_modules
-eliza/.turbo
-eliza/packages/benchmarks
-eliza/packages/examples
-eliza/apps
-eliza/cloud
-!eliza/cloud/
-!eliza/cloud/packages/
-!eliza/cloud/packages/sdk/
-!eliza/cloud/packages/sdk/package.json
-!eliza/cloud/packages/sdk/dist/**
-eliza/plugins/*/rust
-eliza/plugins/*/python
-eliza/plugins/*/.git
-eliza/plugins/*/.eliza
-eliza/plugins/*/.elizadb-test
 packages/app/android
 packages/app/ios
 packages/app-core/platforms/electrobun
@@ -66,11 +43,6 @@ packages/app/screenshots
 packages/app/test-results
 packages/app/test
 packages/app/.eliza
-apps/homepage
-apps/home
-apps/landing
-apps/chrome-extension
-apps/ui
 docs/
 coverage/
 dev.log
@@ -83,8 +55,8 @@ artifacts/
 deploy/
 
 # Other deploy Docker recipes — CI agent build only needs Dockerfile.ci
-eliza/packages/app-core/deploy/Dockerfile.cloud
-eliza/packages/app-core/deploy/Dockerfile.cloud-agent
-eliza/packages/app-core/deploy/Dockerfile.sandbox
-eliza/packages/app-core/deploy/Dockerfile.cloud.dockerignore
-!eliza/packages/app-core/deploy/Dockerfile.ci
+packages/app-core/deploy/Dockerfile.cloud
+packages/app-core/deploy/Dockerfile.cloud-agent
+packages/app-core/deploy/Dockerfile.sandbox
+packages/app-core/deploy/Dockerfile.cloud.dockerignore
+!packages/app-core/deploy/Dockerfile.ci

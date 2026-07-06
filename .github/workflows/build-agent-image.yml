@@ -16,7 +16,6 @@ on:
       - "plugins/plugin-sql/**"
       - "plugins/plugin-elizacloud/**"
       - "packages/agent/**"
-      - "packages/server/**"
       - "packages/core/**"
       - "packages/app/**"
       - "packages/app-core/**"
