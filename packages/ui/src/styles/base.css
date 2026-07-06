@@ -524,7 +524,10 @@ body.pwa-standalone * {
 
 .theme-cloud {
   --bg: var(--brand-black);
-  --bg-accent: rgba(255, 255, 255, 0.04);
+  /* Skeleton blocks (`animate-pulse bg-bg-accent`) were near-invisible on the
+     black console at 0.04 — the pulse read as "broken/frozen". 0.08 makes the
+     loading state legibly animate. */
+  --bg-accent: rgba(255, 255, 255, 0.08);
   --bg-elevated: rgba(255, 255, 255, 0.04);
   --bg-hover: rgba(255, 255, 255, 0.08);
   --bg-muted: rgba(255, 255, 255, 0.06);

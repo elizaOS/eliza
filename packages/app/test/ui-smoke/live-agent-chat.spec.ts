@@ -47,12 +47,16 @@ const CHAT_COMPOSER_SELECTOR =
 const CHAT_SEND_SELECTOR =
   '[data-testid="chat-composer-action"], button[aria-label="Send"], button[aria-label="Send message"]';
 const OPTIONAL_LIVE_ENDPOINTS = [
+  /\/build-info\.json(?:\?|$)/,
+  /\/api\/cloud\/status(?:\?|$)/,
   /\/api\/coding-agents(?:\?|$)/,
+  /\/api\/connectors\/google\/accounts(?:\?|$)/,
   /\/api\/i18n\/locale(?:\?|$)/,
   /\/api\/lifeops\/activity-signals(?:\?|$)/,
   /\/api\/orchestrator\/status(?:\?|$)/,
   /\/api\/orchestrator\/tasks(?:\?|$)/,
   /\/api\/tts\/cloud(?:\?|$)/,
+  /\/api\/wallet\/market-overview(?:\?|$)/,
 ];
 
 type DeterministicAssistantFixture = {
@@ -129,6 +133,66 @@ function installFailureCollectors(page: Page): string[] {
     failures.push(`${response.status()} ${response.url()}`);
   });
   return failures;
+}
+
+async function installOptionalLiveChromeRoutes(page: Page): Promise<void> {
+  const orchestratorUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cacheTokens: 0,
+    totalTokens: 0,
+    costUsd: 0,
+    state: "unavailable",
+    byProvider: [],
+  };
+  await page.route("**/api/orchestrator/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        taskCount: 0,
+        activeTaskCount: 0,
+        pausedTaskCount: 0,
+        blockedTaskCount: 0,
+        validatingTaskCount: 0,
+        sessionCount: 0,
+        activeSessionCount: 0,
+        usage: orchestratorUsage,
+        byStatus: {
+          open: 0,
+          active: 0,
+          waiting_on_user: 0,
+          blocked: 0,
+          validating: 0,
+          done: 0,
+          failed: 0,
+          archived: 0,
+          interrupted: 0,
+        },
+      }),
+    });
+  });
+  await page.route("**/api/orchestrator/tasks**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (
+      request.method() === "GET" &&
+      url.pathname === "/api/orchestrator/tasks"
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ tasks: [] }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
 }
 
 function chatComposer(page: Page) {
@@ -209,34 +273,23 @@ async function createAndActivateLiveConversation(
   page: Page,
   title: string,
 ): Promise<void> {
-  await openAppPath(page, "/chat");
-  await expect(chatComposer(page)).toBeVisible({ timeout: 60_000 });
-
-  const response = await page.evaluate(async (conversationTitle) => {
-    const createResponse = await fetch("/api/conversations", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: conversationTitle }),
-    });
-    return {
-      ok: createResponse.ok,
-      status: createResponse.status,
-      text: await createResponse.text(),
-    };
-  }, title);
+  const response = await page.request.post("/api/conversations", {
+    data: { title, metadata: { scope: "general" } },
+  });
+  const responseText = await response.text();
   expect(
-    response.ok,
-    `live runtime should create an isolated chat (status=${response.status}, body=${response.text.slice(0, 500)})`,
+    response.ok(),
+    `live runtime should create an isolated chat (status=${response.status()}, body=${responseText.slice(0, 500)})`,
   ).toBe(true);
 
-  const body = JSON.parse(response.text) as ApiConversationResponse;
+  const body = JSON.parse(responseText) as ApiConversationResponse;
   const conversationId = body.conversation?.id?.trim();
   expect(conversationId, "created live conversation id").toBeTruthy();
 
-  await page.evaluate((id) => {
-    localStorage.setItem("eliza:chat:activeConversationId", id);
-  }, conversationId);
+  await seedAppStorage(page, {
+    "eliza:chat:activeConversationId": conversationId,
+  });
+  await installOptionalLiveChromeRoutes(page);
   await openAppPath(page, "/chat");
   await expect(chatComposer(page)).toBeVisible({ timeout: 60_000 });
 }
@@ -326,7 +379,6 @@ test.describe("live agent chat", () => {
     page,
   }) => {
     const failures = installFailureCollectors(page);
-    await seedAppStorage(page);
     await createAndActivateLiveConversation(page, "live-agent-marker");
 
     const prompt = `For a Playwright end-to-end smoke test, reply with exactly ${LIVE_AGENT_RESPONSE_MARKER} and no other words.`;
@@ -344,7 +396,6 @@ test.describe("live agent chat", () => {
   for (const { marker, prompt } of LIVE_GENERAL_PROMPTS) {
     test(`app chat handles live general prompt ${marker}`, async ({ page }) => {
       const failures = installFailureCollectors(page);
-      await seedAppStorage(page);
       await createAndActivateLiveConversation(page, `live-agent-${marker}`);
       reportLiveTiming(
         await sendPromptAndExpectAssistantMarker(page, prompt, marker),

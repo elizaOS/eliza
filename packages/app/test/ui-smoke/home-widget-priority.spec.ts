@@ -595,8 +595,8 @@ async function screenshot(page: Page, name: string): Promise<void> {
 const GOALS_TESTID = "widget-goals-attention";
 const CALENDAR_TESTID = "chat-widget-calendar-upcoming";
 const HEALTH_TESTID = "widget-health-sleep";
-// The notification inbox hides behind the home pull-up hint and renders inside
-// the NotificationsShade (outside the ranked WidgetHost), asserted below.
+// The notification inbox renders inline on the home column, outside the ranked
+// WidgetHost (asserted below).
 const NOTIFICATION_CENTER_TESTID = "home-notification-center";
 
 const URGENT_TESTIDS = [GOALS_TESTID];
@@ -681,17 +681,9 @@ test.describe("home widget priority (#9143)", () => {
       ).toHaveCount(0);
     }
 
-    // The seeded urgent notification hides behind the bottom pull-up hint —
-    // NOT a ranked WidgetHost tile, NOT a pinned card. Opening the shade
-    // reveals the inbox card with the urgent row; the card lives in a portal
-    // overlay outside the ranked host. Close it again to restore the home.
-    await expect(
-      page.getByTestId(NOTIFICATION_CENTER_TESTID),
-      "no pinned notification center at rest",
-    ).toHaveCount(0);
-    const notifHint = page.getByTestId("home-notifications-hint");
-    await expect(notifHint).toBeVisible({ timeout: 30_000 });
-    await notifHint.click();
+    // The seeded urgent notification renders in the INLINE notification inbox —
+    // NOT a ranked WidgetHost tile. The inbox is its own section on the home
+    // column, so it must live OUTSIDE the ranked host.
     const notificationCenter = page.getByTestId(NOTIFICATION_CENTER_TESTID);
     await expect(notificationCenter).toBeVisible({ timeout: 30_000 });
     await expect(
@@ -701,8 +693,6 @@ test.describe("home widget priority (#9143)", () => {
       host.getByTestId(NOTIFICATION_CENTER_TESTID),
       "the notification inbox lives outside the ranked WidgetHost",
     ).toHaveCount(0);
-    await page.getByTestId("notifications-shade-scrim").click();
-    await expect(page.getByTestId("notifications-shade")).toHaveCount(0);
 
     // The ranking re-settles once useNow installs the real clock in an effect
     // (it returns 0 on the first render for determinism). Poll for the stable

@@ -44,7 +44,6 @@ import {
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import {
   type BackIntentEventDetail,
-  CHAT_COLLAPSE_EVENT,
   CHAT_OPEN_EVENT,
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
@@ -2867,19 +2866,6 @@ export function ContinuousChatOverlay({
     window.addEventListener(CHAT_OPEN_EVENT, onOpen);
     return () => window.removeEventListener(CHAT_OPEN_EVENT, onOpen);
   }, [firstRunOpen, expand]);
-
-  // Pulling the notification shade down over the home collapses the chat: the
-  // reveal gesture and dismissing the open sheet are one motion. No-op while
-  // onboarding pins the sheet full (every collapse path is gated the same way).
-  React.useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const onCollapse = () => {
-      if (firstRunOpen) return;
-      goToDetent("collapsed");
-    };
-    window.addEventListener(CHAT_COLLAPSE_EVENT, onCollapse);
-    return () => window.removeEventListener(CHAT_COLLAPSE_EVENT, onCollapse);
-  }, [firstRunOpen, goToDetent]);
 
   // OS assistant / deep-link entry (Siri, Shortcuts, App Actions, the assistant
   // entry point) routes into `#chat?text=…&source=…&voice=1`. On desktop the

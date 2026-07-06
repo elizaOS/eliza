@@ -1,12 +1,12 @@
 /**
- * The app's notification inbox. It is NOT pinned on the dashboard: the home
- * stays clean and the inbox stays hidden until the user pulls the shade DOWN —
- * HomeScreen mounts this inside the NotificationsShade sheet, so this component
- * owns the inbox content (rows, open/deep-link, per-row dismiss, mark-all-read)
- * and self-hides when empty. It has no card chrome of its own — no fill, no
- * border — it floats on the shade's surface; rows carry no bulk clear-all, only
- * per-row dismissal (hover X on mouse, sideways swipe on touch, or the row's
- * long-press / right-click contextual menu).
+ * The app's notification inbox, mounted INLINE on the home column (HomeScreen)
+ * directly beneath the time/weather header — the same layer as the widgets, in
+ * the band between the header and the floating chat. It owns the inbox content
+ * (rows, open/deep-link, per-row dismiss, mark-all-read) and self-hides when
+ * empty, fading in Apple-style when the first notification arrives. It has no
+ * card chrome of its own — no fill, no border — it sits directly on the home
+ * field; rows carry no bulk clear-all, only per-row dismissal (hover X on
+ * mouse, sideways swipe on touch, or the row's long-press / right-click menu).
  *
  * Rows are grouped by the VIEW they deep-link into (falling back to the
  * producer category), like a platform notification shade groups by app. The
@@ -83,6 +83,19 @@ const MAX_RENDERED_ROWS = 100;
  * All of it is opacity/transform-only and disabled under reduced motion.
  */
 const NOTIF_SCROLL_CSS = `
+/* Apple-style entrance: the whole inbox fades + rises a touch the moment it
+   first appears in the home column (empty → first notification), so it settles
+   in rather than popping. Opacity/transform only; stilled under reduced motion. */
+@keyframes eliza-notif-center-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.eliza-notif-center-in {
+  animation: eliza-notif-center-in 320ms cubic-bezier(0.22,1,0.36,1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .eliza-notif-center-in { animation: none; }
+}
 .eliza-notif-scroll {
   scrollbar-width: none;
 }
@@ -603,18 +616,11 @@ const NotificationRow = memo(function NotificationRow({
 NotificationRow.displayName = "NotificationRow";
 
 /**
- * The notification inbox card. Self-hiding: renders nothing until the inbox
- * has at least one notification. Mounted inside NotificationsShade (the home
- * pull-up sheet), never pinned on the dashboard itself.
+ * The notification inbox. Self-hiding: renders nothing until the inbox has at
+ * least one notification. Mounted inline on the home column (HomeScreen),
+ * directly beneath the time/weather header — the same layer as the widgets.
  */
-export interface NotificationsHomeCenterProps {
-  /** Called after a row activates a safe in-app deep link. */
-  onNavigate?: (deepLink: string) => void;
-}
-
-export function NotificationsHomeCenter({
-  onNavigate,
-}: NotificationsHomeCenterProps = {}): React.JSX.Element | null {
+export function NotificationsHomeCenter(): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
   const { notifications, unreadCount } = useNotifications();
   // No list-level clock tick here (binding pattern, spec §C.4): relative
@@ -638,18 +644,14 @@ export function NotificationsHomeCenter({
     syncEdgeFades();
   }, [syncEdgeFades, notifications.length]);
 
-  const openNotification = useCallback(
-    (n: AgentNotification) => {
-      if (!n.readAt) void markNotificationRead(n.id);
-      // deepLink is producer/LLM-influenceable - only scheme-checked links
-      // navigate; anything else the tap is just "mark read".
-      if (n.deepLink && isSafeDeepLink(n.deepLink)) {
-        navigateDeepLink(n.deepLink);
-        onNavigate?.(n.deepLink);
-      }
-    },
-    [onNavigate],
-  );
+  const openNotification = useCallback((n: AgentNotification) => {
+    if (!n.readAt) void markNotificationRead(n.id);
+    // deepLink is producer/LLM-influenceable - only scheme-checked links
+    // navigate; anything else the tap is just "mark read".
+    if (n.deepLink && isSafeDeepLink(n.deepLink)) {
+      navigateDeepLink(n.deepLink);
+    }
+  }, []);
   const dismissNotification = useCallback((id: string) => {
     void removeNotification(id);
   }, []);
@@ -676,11 +678,12 @@ export function NotificationsHomeCenter({
           : "Notifications"
       }
       data-testid="home-notification-center"
-      // No card chrome: the inbox has no fill and no border of its own. It floats
-      // directly on the shade's own surface (the pull-down sheet owns the
-      // backdrop) — rows are separated by spacing and their hover wash, so the
-      // list reads as bare lock-screen notes, not a boxed panel.
-      className="flex flex-col overflow-hidden"
+      // No card chrome: the inbox has no fill and no border of its own. It sits
+      // inline on the home field directly under the time/weather header — rows
+      // are separated by spacing and their hover wash, so the list reads as bare
+      // lock-screen notes, not a boxed panel. `eliza-notif-center-in` fades the
+      // whole inbox in (Apple-style) the moment it first appears.
+      className="eliza-notif-center-in flex flex-col overflow-hidden"
     >
       <style>{NOTIF_SCROLL_CSS}</style>
       {/* Pinned header: a quiet eyebrow + unread count, actions to the right.

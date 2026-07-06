@@ -31,6 +31,8 @@ export interface InjectedEthereumProvider {
   }): Promise<unknown>;
   /** Set by the e2e test wallet so harness-only behavior can identify it. */
   isElizaE2eWallet?: boolean;
+  /** Phantom multichain-injects itself as window.ethereum; never SIWE with it. */
+  isPhantom?: boolean;
 }
 
 export function getInjectedEthereumProvider(): InjectedEthereumProvider | null {
@@ -41,6 +43,10 @@ export function getInjectedEthereumProvider(): InjectedEthereumProvider | null {
     typeof provider === "object" &&
     typeof (provider as InjectedEthereumProvider).request === "function"
   ) {
+    // Phantom injects window.ethereum (isPhantom:true) but is a Solana wallet;
+    // treating it as an EVM SIWE provider pops Phantom on a non-wallet sign-in.
+    // Mirrors the /login wallet-buttons guard (wallet-buttons.tsx).
+    if ((provider as InjectedEthereumProvider).isPhantom === true) return null;
     return provider as InjectedEthereumProvider;
   }
   return null;

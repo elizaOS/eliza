@@ -130,26 +130,22 @@ describe("NotificationsHomeCenter", () => {
   });
 
   it("marks a row read on tap and follows a safe deep link", () => {
-    const onNavigate = vi.fn();
     __ingestNotificationForTests(
       makeNotification({ deepLink: "/settings", title: "Open settings" }),
     );
-    render(<NotificationsHomeCenter onNavigate={onNavigate} />);
+    render(<NotificationsHomeCenter />);
     fireEvent.click(screen.getByTestId("notification-row"));
     expect(navigateDeepLink).toHaveBeenCalledWith("/settings");
-    expect(onNavigate).toHaveBeenCalledWith("/settings");
     expect(__getStateForTests().unreadCount).toBe(0);
   });
 
   it("never navigates an unsafe deep link (tap still marks read)", () => {
-    const onNavigate = vi.fn();
     __ingestNotificationForTests(
       makeNotification({ deepLink: "javascript:alert(1)" }),
     );
-    render(<NotificationsHomeCenter onNavigate={onNavigate} />);
+    render(<NotificationsHomeCenter />);
     fireEvent.click(screen.getByTestId("notification-row"));
     expect(navigateDeepLink).not.toHaveBeenCalled();
-    expect(onNavigate).not.toHaveBeenCalled();
     expect(__getStateForTests().unreadCount).toBe(0);
   });
 

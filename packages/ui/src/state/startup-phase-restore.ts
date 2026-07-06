@@ -8,6 +8,7 @@
 import { logger } from "@elizaos/logger";
 import {
   clearStoredStewardToken,
+  hasStewardAuthedCookie,
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
@@ -339,7 +340,40 @@ function resolveRestoreStewardRefreshEndpoint(): string | undefined {
  */
 async function resolveRestoredStewardToken(): Promise<string | null> {
   const stored = readStoredStewardToken()?.trim();
-  if (!stored) return null;
+  if (!stored) {
+    // No app-origin token, but the shared, HttpOnly .elizacloud.ai session
+    // cookie is present — the user signed in on the console (or another
+    // *.elizacloud.ai tab). Recover the access token from it (bounded, same as
+    // the /login page) instead of forcing a redundant re-sign-in; on success
+    // the top-level LoginView gate and the first-run conductor both skip.
+    if (typeof window !== "undefined" && hasStewardAuthedCookie()) {
+      let cookieTimeout: ReturnType<typeof setTimeout> | undefined;
+      const recovered = await Promise.race([
+        // error-policy:J4 a failed cookie refresh falls through to
+        // unauthenticated restore (sign-in wall), never fabricates a session.
+        refreshCloudStewardSession({
+          endpoint: resolveRestoreStewardRefreshEndpoint(),
+        }).catch(() => null),
+        new Promise<null>((resolve) => {
+          cookieTimeout = setTimeout(
+            () => resolve(null),
+            STEWARD_RESTORE_REFRESH_TIMEOUT_MS,
+          );
+        }),
+      ]);
+      if (cookieTimeout) clearTimeout(cookieTimeout);
+      if (recovered?.token) {
+        writeStoredStewardToken(recovered.token);
+        try {
+          window.dispatchEvent(new CustomEvent("steward-token-sync"));
+        } catch {
+          // error-policy:J6 best-effort nudge — listeners re-read next tick.
+        }
+        return recovered.token;
+      }
+    }
+    return null;
+  }
   const secs = cloudTokenSecsRemaining(stored);
   // Opaque/device-code token (no decodable `exp`) → nothing to refresh.
   if (secs === null) return stored;

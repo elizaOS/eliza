@@ -494,14 +494,19 @@ export function useCloudState({
       };
       elizaCloudLoginCompletionRef.current = loginCompletion;
 
-      // Wallet SIWE (#13377): an injected EIP-1193 provider (a real browser
-      // wallet, or the e2e harness wallet on devices) signs in with a genuine
-      // EIP-4361 handshake against the cloud API — no browser round trip, no
-      // human beyond the wallet's own approval. Taken only when a provider is
-      // actually injected AND no still-usable session exists; a rejection or
-      // handshake failure falls through to the other sign-in paths on the
-      // same click.
-      if (!hasUsableStoredStewardToken() && getInjectedEthereumProvider()) {
+      // Zero-interaction wallet SIWE (#13377) is the E2E HARNESS path ONLY.
+      // A real browser wallet (Phantom, MetaMask, …) injects window.ethereum
+      // too, so taking this branch for any injected provider auto-pops the
+      // user's wallet the instant they click "Sign in with Eliza Cloud" —
+      // even when they meant to pick Google — and leaves the pre-opened
+      // popup blank (the "white page"). Real wallet sign-in is an EXPLICIT
+      // choice behind the /login page's EVM/Solana buttons; only the harness
+      // wallet (isElizaE2eWallet, packages/ui/src/platform/e2e-wallet.ts, which
+      // by its own gates never installs on deployed web) may sign in headlessly.
+      if (
+        !hasUsableStoredStewardToken() &&
+        getInjectedEthereumProvider()?.isElizaE2eWallet === true
+      ) {
         const siweBase =
           getBootConfig().cloudApiBase ?? "https://elizacloud.ai";
         try {
