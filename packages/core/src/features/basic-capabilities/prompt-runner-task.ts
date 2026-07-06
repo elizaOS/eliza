@@ -64,6 +64,7 @@ function promptRunnerEntityId(runtime: IAgentRuntime, task: Task) {
 function promptRunnerMemoryMetadata(
 	task: Task,
 	role: "user" | "assistant",
+	actionName?: string,
 ): Memory["metadata"] {
 	return {
 		type: "message",
@@ -71,6 +72,7 @@ function promptRunnerMemoryMetadata(
 		taskId: task.id,
 		taskName: task.name,
 		role,
+		actionName,
 	};
 }
 
@@ -79,6 +81,7 @@ async function persistPromptRunnerResponse(
 	task: Task,
 	inputMemory: Memory,
 	response: Memory["content"],
+	actionName?: string,
 ): Promise<Memory[]> {
 	const text = typeof response.text === "string" ? response.text : "";
 	const responseMemory: Memory = {
@@ -94,10 +97,37 @@ async function persistPromptRunnerResponse(
 			inReplyTo: inputMemory.id,
 		},
 		createdAt: Date.now(),
-		metadata: promptRunnerMemoryMetadata(task, "assistant"),
+		metadata: promptRunnerMemoryMetadata(task, "assistant", actionName),
 	};
 	await runtime.createMemory(responseMemory, "messages");
 	return [responseMemory];
+}
+
+function hasVisibleResponse(response: Memory["content"]): boolean {
+	const text = typeof response.text === "string" ? response.text.trim() : "";
+	return text.length > 0 || (response.attachments?.length ?? 0) > 0;
+}
+
+function sameResponseContent(
+	left: Memory["content"],
+	right: Memory["content"],
+): boolean {
+	const leftText = typeof left.text === "string" ? left.text.trim() : "";
+	const rightText = typeof right.text === "string" ? right.text.trim() : "";
+	if (leftText !== rightText) return false;
+	const leftActions = left.actions ?? [];
+	const rightActions = right.actions ?? [];
+	if (leftActions.length !== rightActions.length) return false;
+	return leftActions.every((action, index) => action === rightActions[index]);
+}
+
+function wasPersistedByMessageService(
+	response: Memory["content"],
+	persistedMessages: Memory[],
+): boolean {
+	return persistedMessages.some((memory) =>
+		sameResponseContent(response, memory.content),
+	);
 }
 
 async function runPromptThroughMessageService(
@@ -106,6 +136,10 @@ async function runPromptThroughMessageService(
 	composedPrompt: string,
 ): Promise<boolean> {
 	if (!runtime.messageService) return false;
+	const callbackResponses: Array<{
+		response: Memory["content"];
+		actionName?: string;
+	}> = [];
 	const inputMemory: Memory = {
 		id: asUUID(crypto.randomUUID()),
 		entityId: promptRunnerEntityId(runtime, task),
@@ -120,13 +154,28 @@ async function runPromptThroughMessageService(
 		metadata: promptRunnerMemoryMetadata(task, "user"),
 	};
 
-	await runtime.messageService.handleMessage(
+	const result = await runtime.messageService.handleMessage(
 		runtime,
 		inputMemory,
-		(response) =>
-			persistPromptRunnerResponse(runtime, task, inputMemory, response),
+		async (response, actionName) => {
+			callbackResponses.push({ response, actionName });
+			return [];
+		},
 		{ keepExistingResponses: true },
 	);
+	for (const { response, actionName } of callbackResponses) {
+		if (!hasVisibleResponse(response)) continue;
+		if (wasPersistedByMessageService(response, result.responseMessages)) {
+			continue;
+		}
+		await persistPromptRunnerResponse(
+			runtime,
+			task,
+			inputMemory,
+			response,
+			actionName,
+		);
+	}
 	return true;
 }
 

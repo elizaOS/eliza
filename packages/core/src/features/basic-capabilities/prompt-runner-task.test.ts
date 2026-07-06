@@ -97,6 +97,54 @@ describe("prompt-runner TaskWorker", () => {
 		expect(assistantMemory.content.inReplyTo).toBe(capturedMessage?.id);
 	});
 
+	it("does not duplicate simple responses already persisted by the message service", async () => {
+		let capturedMessage: Memory | null = null;
+		const { runtime, useModel, createMemory } = makeRuntime();
+		const responseMemory: Memory = {
+			id: crypto.randomUUID() as UUID,
+			entityId: AGENT_ID,
+			agentId: AGENT_ID,
+			roomId: crypto.randomUUID() as UUID,
+			content: {
+				text: "I sent the morning summary.",
+				actions: ["REPLY"],
+			},
+			createdAt: Date.now(),
+		};
+		const messageService = {
+			handleMessage: vi.fn(
+				async (
+					_runtime: IAgentRuntime,
+					message: Memory,
+					callback?: HandlerCallback,
+				) => {
+					capturedMessage = message;
+					await createMemory(responseMemory, "messages");
+					await callback?.(responseMemory.content);
+					return {
+						didRespond: true,
+						responseContent: responseMemory.content,
+						responseMessages: [responseMemory],
+						mode: "simple" as const,
+					};
+				},
+			),
+		} as unknown as IMessageService;
+		runtime.messageService = messageService;
+
+		await promptRunnerTaskWorker.execute(
+			runtime,
+			{},
+			makeTask("send the morning summary"),
+		);
+
+		expect(useModel).not.toHaveBeenCalled();
+		expect(messageService.handleMessage).toHaveBeenCalledTimes(1);
+		expect(capturedMessage?.content.source).toBe("prompt-runner");
+		expect(createMemory).toHaveBeenCalledTimes(1);
+		expect(createMemory).toHaveBeenCalledWith(responseMemory, "messages");
+	});
+
 	it("falls back to TEXT_LARGE and stores the generated text when no message service is available", async () => {
 		const { runtime, useModel, createMemory } = makeRuntime();
 
