@@ -25,6 +25,11 @@
       "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
     },
     {
+      "plugin": "plugin-aosp-local-inference",
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+    },
+    {
       "plugin": "plugin-app-manager",
       "issues": ["missing-deterministic-e2e"],
       "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
@@ -55,11 +60,7 @@
     },
     {
       "plugin": "plugin-bluebubbles",
-      "issues": [
-        "missing-action-e2e",
-        "missing-action-tests",
-        "missing-deterministic-e2e"
-      ],
+      "issues": ["missing-action-e2e", "missing-deterministic-e2e"],
       "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
     },
     {
@@ -533,6 +534,11 @@
     {
       "plugin": "plugin-telegram-standalone",
       "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+    },
+    {
+      "plugin": "plugin-trajectory-logger",
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
       "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
     },
     {
