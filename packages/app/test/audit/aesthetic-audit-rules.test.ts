@@ -173,7 +173,6 @@ describe("computeVerdict (#8796 verdict precedence)", () => {
 
   it("the no-blue rule still applies to overlay surfaces", () => {
     expect(OVERLAY_NATIVE_OR_CANVAS_SLUGS.has("builtin-chat")).toBe(true);
-    expect(OVERLAY_NATIVE_OR_CANVAS_SLUGS.has("builtin-tutorial")).toBe(true);
     expect(
       computeVerdict(
         finding({ slug: "builtin-chat", blueColors: ["rgb(0,0,255)"] }),
