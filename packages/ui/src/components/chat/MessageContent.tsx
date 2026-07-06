@@ -38,6 +38,7 @@ import {
 } from "../../platform/mobile-permissions-client";
 import { useAppSelectorShallow } from "../../state";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
+import { canNavigateSameTabForBlockedPopup } from "../../state/cloud-login-launch";
 import {
   createClientPermissionsRegistry,
   type PermissionCardPayload,
@@ -1151,6 +1152,18 @@ export function SensitiveRequestBlock({
                 "width=520,height=720,noreferrer",
               );
               if (!popup) {
+                // #15143: mobile browsers block windowed popups by default,
+                // and "allow pop-ups" is a dead-end instruction in a consumer
+                // flow. On plain web degrade to same-tab navigation — `url` is
+                // https-validated above, the consent/login page returns via
+                // its own redirect, and persisted app/first-run state survives
+                // the round trip. Native/desktop keep the visible error state:
+                // their external-open affordances are not popup-blocked, so a
+                // null there is a real failure.
+                if (canNavigateSameTabForBlockedPopup()) {
+                  window.location.assign(url);
+                  return;
+                }
                 setError(
                   "Pop-up blocked. Allow pop-ups for this site to continue.",
                 );
@@ -1260,8 +1273,8 @@ function OAuthRequestPanel({
         {authorizing ? "Authorizing..." : label}
       </Button>
       <div className="text-xs text-muted">
-        Authorization happens in a separate window. The token is stored securely
-        and is never shown in chat.
+        Authorization happens on the provider's secure page. The token is stored
+        securely and is never shown in chat.
       </div>
     </div>
   );

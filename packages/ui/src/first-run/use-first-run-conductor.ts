@@ -65,9 +65,12 @@ import {
 import { getBootConfig } from "../config/boot-config";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
+import {
+  preOpenCloudLoginWindow,
+  resolveCloudSignInPageUrl,
+} from "../state/cloud-login-launch";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
 import { startTutorial } from "../tutorial/tutorial-service";
-import { preOpenWindow } from "../utils";
 import { normalizeFirstRunName } from "./first-run";
 import {
   FIRST_RUN_ACTION_PREFIX,
@@ -95,9 +98,10 @@ const GREETING =
 
 // Cloud-only greetings (#13377). The sign-in button reuses the runtime:cloud
 // action value on purpose: the tap IS the user gesture that launches the real
-// login flow (handleCloudLogin inside the provision flow, popup-blocker safe
-// via preOpenWindow) — the OAuth secretRequest block alone only opens the
-// cloud site and never completes an in-app login.
+// login flow (handleCloudLogin inside the provision flow — popup where one can
+// open, same-tab /login navigation where popups are blocked or hostile,
+// #15143) — the OAuth secretRequest block alone only opens the cloud login
+// page and never completes an in-app login by itself.
 const CLOUD_SIGN_IN_GREETING =
   "Hi — I'm Eliza. Sign in to Eliza Cloud and I'll get you set up.";
 const CLOUD_SIGN_IN_CHOICE = [
@@ -302,7 +306,9 @@ function cloudOAuthSecretRequest(
       fields: [],
       submitLabel: "Connect Eliza Cloud",
       provider: "elizacloud",
-      authorizationUrl: getBootConfig().cloudApiBase || "https://elizacloud.ai",
+      authorizationUrl: resolveCloudSignInPageUrl(
+        getBootConfig().cloudApiBase || "https://elizacloud.ai",
+      ),
     },
   };
 }
@@ -552,7 +558,7 @@ export function useFirstRunConductor(): void {
       uiLanguage,
       elizaCloudConnected,
       handleCloudLogin,
-      preOpenWindow,
+      preOpenWindow: preOpenCloudLoginWindow,
       setRuntimeState: (key, value) => {
         setState(key, value as never);
       },
