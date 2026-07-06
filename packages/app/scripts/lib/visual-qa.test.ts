@@ -1,11 +1,12 @@
 // Unit tests for the visual-QA analyzer: colour fractions, dominant palette,
 // change-metric, and the pure expectation evaluator, all on synthetic
 // sharp-generated fixtures so they run deterministically in CI without a real
-// screenshot or tesseract. OCR itself is exercised via its documented
-// degradation contract (missing tesseract → explicit note, never a fake read).
-import { mkdtempSync } from "node:fs";
+// screenshot. OCR must remain packaged: the analyzer may prefer a system
+// tesseract binary, but the repo dependency fallback is part of the contract.
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { afterAll, describe, expect, it } from "vitest";
 import {
@@ -17,6 +18,17 @@ import {
 } from "./visual-qa.mjs";
 
 const dir = mkdtempSync(join(tmpdir(), "visual-qa-"));
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const appPackageJson = JSON.parse(
+  readFileSync(resolve(__dirname, "../../package.json"), "utf8"),
+);
+const rootPackageJson = JSON.parse(
+  readFileSync(resolve(__dirname, "../../../../package.json"), "utf8"),
+);
+const rootLockfile = readFileSync(
+  resolve(__dirname, "../../../../bun.lock"),
+  "utf8",
+);
 const solid = async (name: string, r: number, g: number, b: number) => {
   const p = join(dir, name);
   await sharp({
@@ -116,6 +128,18 @@ describe("evaluateExpectation (pure gate logic)", () => {
 });
 
 describe("analyzeScreenshot end to end", () => {
+  it("keeps the packaged tesseract.js fallback available for required OCR", async () => {
+    expect(
+      appPackageJson.dependencies?.["tesseract.js"] ??
+        appPackageJson.devDependencies?.["tesseract.js"],
+    ).toBeTruthy();
+    expect(
+      rootPackageJson.dependencies?.["tesseract.js"] ??
+        rootPackageJson.devDependencies?.["tesseract.js"],
+    ).toBeTruthy();
+    expect(rootLockfile).toContain('"tesseract.js": ["tesseract.js@');
+  });
+
   it("flags a blue screen as a brand:no_blue failure with a real palette", async () => {
     const report = await analyzeScreenshot(
       await solid("bluescreen.png", 20, 40, 210),
@@ -126,9 +150,8 @@ describe("analyzeScreenshot end to end", () => {
     expect(report.verdict).toBe("fail");
     expect(report.color_fractions.blue_fraction).toBeGreaterThan(0.9);
     expect(report.dominant_palette[0].fraction).toBeGreaterThan(0.9);
-    // OCR is optional enrichment: text is always a string, and ocr_note is
-    // either null (tesseract ran) or a non-empty reason string (it could not),
-    // never a fabricated empty read presented as success.
+    // OCR must either produce text or name the engine failure; it must never
+    // fabricate an empty read as a successful "no text on screen" result.
     expect(typeof report.ocr_text).toBe("string");
     expect(
       report.ocr_note === null || typeof report.ocr_note === "string",

@@ -170,8 +170,9 @@ async function ocrText(pngPath) {
         note: "tesseract CLI unavailable; OCR succeeded with tesseract.js",
       };
     } catch (fallbackError) {
-      // error-policy:J3 OCR is optional enrichment; report absence explicitly
-      // rather than fabricate an empty transcript as "no text on screen".
+      // error-policy:J3 OCR is required evidence; when both packaged engines
+      // fail, report the failure explicitly instead of presenting "no text" as
+      // a successful read.
       const primary =
         err?.code === "ENOENT"
           ? "tesseract CLI not installed"
