@@ -12,6 +12,7 @@ import {
   type MessagePayload,
   Service,
   type UUID,
+  type ViewSwitchedPayload,
 } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { getDeviceId } from "../lifeops/device-identity.js";
@@ -41,6 +42,29 @@ function readMessageTimestamp(payload: MessagePayload): string {
   const createdAt = record?.createdAt;
   if (typeof createdAt === "number" && Number.isFinite(createdAt)) {
     return new Date(createdAt).toISOString();
+  }
+  return new Date().toISOString();
+}
+
+function readEventTimestamp(payload: unknown): string {
+  const record = isRecord(payload) ? payload : null;
+  const metadata = isRecord(record?.metadata) ? record.metadata : null;
+  const candidates = [
+    record?.observedAt,
+    record?.createdAt,
+    record?.timestamp,
+    metadata?.observedAt,
+    metadata?.createdAt,
+    metadata?.timestamp,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
+      return new Date(candidate).toISOString();
+    }
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      const parsed = Date.parse(candidate);
+      if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
+    }
   }
   return new Date().toISOString();
 }
@@ -114,6 +138,7 @@ function readNestedString(value: unknown, key: string): string | null {
 }
 
 function readMessageHandle(payload: MessagePayload): string | null {
+  const payloadRecord = isRecord(payload) ? payload : null;
   const record = isRecord(payload.message) ? payload.message : null;
   const content = isRecord(record?.content) ? record.content : {};
   const metadata = readMetadataRecord(payload);
@@ -133,6 +158,8 @@ function readMessageHandle(payload: MessagePayload): string | null {
     readNestedString(sender, "id"),
     metadata.senderHandle,
     metadata.username,
+    payloadRecord?.handle,
+    payloadRecord?.username,
   ];
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim().length > 0) {
@@ -152,6 +179,72 @@ function readExternalMessageId(payload: MessagePayload): string | undefined {
     }
   }
   return undefined;
+}
+
+function readReactionTargetId(payload: unknown): string {
+  const record = isRecord(payload) ? payload : {};
+  const metadata = isRecord(record.metadata) ? record.metadata : {};
+  const candidates = [
+    record.targetGuid,
+    record.targetMessageId,
+    record.messageId,
+    record.roomId,
+    metadata.targetGuid,
+    metadata.targetTweetId,
+    metadata.messageId,
+    metadata.originalId,
+    record.source,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  return "unknown-reaction-target";
+}
+
+function readReactionHandle(payload: unknown): string | null {
+  const record = isRecord(payload) ? payload : {};
+  const metadata = isRecord(record.metadata) ? record.metadata : {};
+  const user = isRecord(record.user) ? record.user : {};
+  const candidates = [
+    record.handle,
+    record.username,
+    metadata.username,
+    metadata.handle,
+    metadata.userId,
+    user.username,
+    user.id,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  return null;
+}
+
+function readReactionKind(payload: unknown): string | null {
+  const record = isRecord(payload) ? payload : {};
+  const metadata = isRecord(record.metadata) ? record.metadata : {};
+  const candidates = [
+    record.reactionString,
+    record.reactionKind,
+    record.emoji,
+    metadata.type,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  return null;
+}
+
+function readTopLevelEntityId(payload: unknown): string | null {
+  const record = isRecord(payload) ? payload : {};
+  const entityId = record.entityId;
+  return typeof entityId === "string" && entityId.length > 0 ? entityId : null;
 }
 
 interface RelationshipActivityContact {
@@ -240,6 +333,25 @@ export class PresenceSignalBridgeService extends Service {
     await this.captureActivityFromMessage(EventType.MESSAGE_SENT, payload);
   };
 
+  private readonly reactionReceivedHandler = async (
+    payload: MessagePayload,
+  ): Promise<void> => {
+    if (isRecord(payload.message)) {
+      await this.captureActivityFromMessage(
+        EventType.REACTION_RECEIVED,
+        payload,
+      );
+      return;
+    }
+    await this.captureActivityFromReactionMetadata(payload);
+  };
+
+  private readonly viewSwitchedHandler = async (
+    payload: ViewSwitchedPayload,
+  ): Promise<void> => {
+    await this.captureActivityFromViewSwitch(payload);
+  };
+
   private readonly actionStartedHandler = async (
     payload: ActionEventPayload,
   ): Promise<void> => {
@@ -256,6 +368,11 @@ export class PresenceSignalBridgeService extends Service {
     );
     runtime.registerEvent(EventType.MESSAGE_SENT, service.messageSentHandler);
     runtime.registerEvent(
+      EventType.REACTION_RECEIVED,
+      service.reactionReceivedHandler,
+    );
+    runtime.registerEvent(EventType.VIEW_SWITCHED, service.viewSwitchedHandler);
+    runtime.registerEvent(
       EventType.ACTION_STARTED,
       service.actionStartedHandler,
     );
@@ -270,6 +387,14 @@ export class PresenceSignalBridgeService extends Service {
     this.runtime.unregisterEvent(
       EventType.MESSAGE_SENT,
       this.messageSentHandler,
+    );
+    this.runtime.unregisterEvent(
+      EventType.REACTION_RECEIVED,
+      this.reactionReceivedHandler,
+    );
+    this.runtime.unregisterEvent(
+      EventType.VIEW_SWITCHED,
+      this.viewSwitchedHandler,
     );
     this.runtime.unregisterEvent(
       EventType.ACTION_STARTED,
@@ -323,7 +448,10 @@ export class PresenceSignalBridgeService extends Service {
   }
 
   private async captureActivityFromMessage(
-    eventType: EventType.MESSAGE_RECEIVED | EventType.MESSAGE_SENT,
+    eventType:
+      | EventType.MESSAGE_RECEIVED
+      | EventType.MESSAGE_SENT
+      | EventType.REACTION_RECEIVED,
     payload: MessagePayload,
   ): Promise<void> {
     const entityId = readMessageEntityId(payload);
@@ -394,8 +522,117 @@ export class PresenceSignalBridgeService extends Service {
     });
   }
 
+  private async captureActivityFromReactionMetadata(
+    payload: MessagePayload,
+  ): Promise<void> {
+    const observedAt = readEventTimestamp(payload);
+    const observedMs = Date.parse(observedAt);
+    const platform = readPlatform(payload);
+    const handle = readReactionHandle(payload);
+    const entityId = readTopLevelEntityId(payload);
+    const targetId = readReactionTargetId(payload);
+    const fingerprint = `reaction:${platform}:${handle ?? entityId ?? targetId}`;
+    const existing = this.recentFingerprints.get(fingerprint);
+    if (
+      existing !== undefined &&
+      Number.isFinite(observedMs) &&
+      observedMs - existing < DEDUPE_WINDOW_MS
+    ) {
+      return;
+    }
+    if (Number.isFinite(observedMs)) {
+      this.recentFingerprints.set(fingerprint, observedMs);
+    }
+
+    const repository = new LifeOpsRepository(this.runtime);
+    await repository.createActivitySignal(
+      createLifeOpsActivitySignal({
+        agentId: String(this.runtime.agentId),
+        source: "connector_activity",
+        platform,
+        state: "active",
+        observedAt,
+        idleState: null,
+        idleTimeSeconds: 0,
+        onBattery: null,
+        health: null,
+        metadata: {
+          eventType: EventType.REACTION_RECEIVED,
+          entityId,
+          ...(handle ? { handle } : {}),
+          direction: "inbound",
+          targetHash: hashTelemetryIdentity("reaction-target", targetId),
+          ...(readReactionKind(payload)
+            ? { reactionKind: readReactionKind(payload) }
+            : {}),
+          deviceId: getDeviceId(),
+        },
+      }),
+    );
+    await this.recordRelationshipRecency({
+      eventType: EventType.REACTION_RECEIVED,
+      entityId,
+      observedAt,
+      platform,
+      payload,
+      repository,
+    });
+  }
+
+  private async captureActivityFromViewSwitch(
+    payload: ViewSwitchedPayload,
+  ): Promise<void> {
+    if (payload.initiatedBy !== "user") {
+      return;
+    }
+    const observedAt = readEventTimestamp(payload);
+    const observedMs = Date.parse(observedAt);
+    const fingerprint = `view:${payload.viewId}:${payload.roomId ?? ""}`;
+    const existing = this.recentFingerprints.get(fingerprint);
+    if (
+      existing !== undefined &&
+      Number.isFinite(observedMs) &&
+      observedMs - existing < DEDUPE_WINDOW_MS
+    ) {
+      return;
+    }
+    if (Number.isFinite(observedMs)) {
+      this.recentFingerprints.set(fingerprint, observedMs);
+    }
+
+    const repository = new LifeOpsRepository(this.runtime);
+    await repository.createActivitySignal(
+      createLifeOpsActivitySignal({
+        agentId: String(this.runtime.agentId),
+        source: "app_lifecycle",
+        platform: "app_view",
+        state: "active",
+        observedAt,
+        idleState: "active",
+        idleTimeSeconds: 0,
+        onBattery: null,
+        health: null,
+        metadata: {
+          eventType: EventType.VIEW_SWITCHED,
+          viewId: payload.viewId,
+          ...(payload.viewLabel ? { viewLabel: payload.viewLabel } : {}),
+          ...(payload.viewPath ? { viewPath: payload.viewPath } : {}),
+          ...(payload.viewType ? { viewType: payload.viewType } : {}),
+          ...(payload.previousViewId
+            ? { previousViewId: payload.previousViewId }
+            : {}),
+          ...(payload.roomId ? { roomId: payload.roomId } : {}),
+          deviceId: getDeviceId(),
+        },
+      }),
+    );
+  }
+
   private async recordRelationshipRecency(args: {
-    eventType: EventType.MESSAGE_RECEIVED | EventType.MESSAGE_SENT;
+    eventType:
+      | EventType.MESSAGE_RECEIVED
+      | EventType.MESSAGE_SENT
+      | EventType.REACTION_RECEIVED;
     entityId: string | null;
     observedAt: string;
     platform: string;
@@ -406,7 +643,9 @@ export class PresenceSignalBridgeService extends Service {
       args.eventType === EventType.MESSAGE_SENT ? "outbound" : "inbound";
     const handle = readMessageHandle(args.payload);
     const externalRef = readExternalMessageId(args.payload);
-    const summary = `Passive ${args.platform} message activity`;
+    const isReaction = args.eventType === EventType.REACTION_RECEIVED;
+    const summary = `Passive ${args.platform} ${isReaction ? "reaction" : "message"} activity`;
+    const evidenceKind = isReaction ? "reaction_ingest" : "message_ingest";
     const service = getRelationshipActivityService(this.runtime);
 
     let contactId: UUID | null = null;
@@ -436,7 +675,7 @@ export class PresenceSignalBridgeService extends Service {
       const observed = await entityStore.observeIdentity({
         platform: args.platform,
         handle,
-        evidence: [LIFEOPS_CONTACT_TAG, "message_ingest"],
+        evidence: [LIFEOPS_CONTACT_TAG, evidenceKind],
         confidence: 0.8,
         suggestedType: "person",
       });
@@ -467,7 +706,7 @@ export class PresenceSignalBridgeService extends Service {
         lastInteractionPlatform: args.platform,
         lastInteractionDirection: direction,
       },
-      evidence: [LIFEOPS_CONTACT_TAG, "message_ingest"],
+      evidence: [LIFEOPS_CONTACT_TAG, evidenceKind],
       confidence: 0.8,
       occurredAt: args.observedAt,
       source: "extraction",

@@ -8,6 +8,7 @@ import {
   type IAgentRuntime,
   type MessagePayload,
   type UUID,
+  type ViewSwitchedPayload,
 } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -57,19 +58,16 @@ const ROOM_ID = "20000000-0000-0000-0000-000000000001" as UUID;
 
 function runtimeWithRelationships(relationshipsService: unknown): {
   runtime: IAgentRuntime;
-  handlers: Map<string, (payload: MessagePayload) => Promise<void>>;
+  handlers: Map<string, (payload: unknown) => Promise<void>>;
 } {
-  const handlers = new Map<
-    string,
-    (payload: MessagePayload) => Promise<void>
-  >();
+  const handlers = new Map<string, (payload: unknown) => Promise<void>>();
   const runtime = {
     agentId: AGENT_ID,
     getService: vi.fn((name: string) =>
       name === "relationships" ? relationshipsService : null,
     ),
     registerEvent: vi.fn(
-      (event: string, handler: (payload: MessagePayload) => Promise<void>) => {
+      (event: string, handler: (payload: unknown) => Promise<void>) => {
         handlers.set(event, handler);
       },
     ),
@@ -112,6 +110,19 @@ describe("PresenceSignalBridgeService relationship recency", () => {
       relationshipId: `lifeops-contact-${CONTACT_ID}`,
       type: "contact",
     });
+  });
+
+  it("registers message, reaction, view, and action presence handlers", async () => {
+    const { runtime, handlers } = runtimeWithRelationships(null);
+    await PresenceSignalBridgeService.start(runtime);
+
+    expect([...handlers.keys()]).toEqual([
+      EventType.MESSAGE_RECEIVED,
+      EventType.MESSAGE_SENT,
+      EventType.REACTION_RECEIVED,
+      EventType.VIEW_SWITCHED,
+      EventType.ACTION_STARTED,
+    ]);
   });
 
   it("records core contact and graph recency for owner-sent connector messages", async () => {
@@ -300,5 +311,122 @@ describe("PresenceSignalBridgeService relationship recency", () => {
         },
       }),
     );
+  });
+
+  it("records connector reactions as activity and relationship touchpoints", async () => {
+    const relationshipsService = {
+      findByHandle: vi.fn(async () => ({ entityId: CONTACT_ID })),
+      getContact: vi.fn(async () => ({ entityId: CONTACT_ID })),
+      recordInteraction: vi.fn(),
+    };
+    const { runtime, handlers } =
+      runtimeWithRelationships(relationshipsService);
+    await PresenceSignalBridgeService.start(runtime);
+
+    await handlers.get(EventType.REACTION_RECEIVED)?.(
+      messagePayload({
+        reactionString: "thumbs_up",
+      } as unknown as Partial<MessagePayload>),
+    );
+
+    expect(mockState.activitySignals[0]).toMatchObject({
+      source: "connector_activity",
+      platform: "telegram",
+      observedAt: "2026-06-01T12:00:00.000Z",
+      metadata: {
+        eventType: EventType.REACTION_RECEIVED,
+        direction: "inbound",
+        handle: "priya",
+      },
+    });
+    expect(relationshipsService.recordInteraction).toHaveBeenCalledWith({
+      contactId: CONTACT_ID,
+      platform: "telegram",
+      direction: "inbound",
+      summary: "Passive telegram reaction activity",
+      externalRef: "telegram-message-1",
+      occurredAt: "2026-06-01T12:00:00.000Z",
+    });
+    expect(mockState.relationshipStore.observe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        evidence: ["lifeops:contact", "reaction_ingest"],
+      }),
+    );
+  });
+
+  it("records metadata-only reactions as connector activity", async () => {
+    const { runtime, handlers } = runtimeWithRelationships(null);
+    await PresenceSignalBridgeService.start(runtime);
+
+    await handlers.get(EventType.REACTION_RECEIVED)?.({
+      runtime,
+      source: "imessage",
+      handle: "+15555550123",
+      targetGuid: "imessage-target-1",
+      reactionKind: "heart",
+      timestamp: Date.parse("2026-06-01T13:00:00.000Z"),
+    } as unknown as MessagePayload);
+
+    expect(mockState.activitySignals).toHaveLength(1);
+    expect(mockState.activitySignals[0]).toMatchObject({
+      source: "connector_activity",
+      platform: "imessage",
+      state: "active",
+      observedAt: "2026-06-01T13:00:00.000Z",
+      metadata: {
+        eventType: EventType.REACTION_RECEIVED,
+        handle: "+15555550123",
+        direction: "inbound",
+        reactionKind: "heart",
+      },
+    });
+  });
+
+  it("records user view switches as app lifecycle activity", async () => {
+    const { runtime, handlers } = runtimeWithRelationships(null);
+    await PresenceSignalBridgeService.start(runtime);
+
+    await handlers.get(EventType.VIEW_SWITCHED)?.({
+      runtime,
+      viewId: "inbox",
+      viewLabel: "Inbox",
+      viewPath: "/inbox",
+      viewType: "builtin",
+      previousViewId: "home",
+      initiatedBy: "user",
+      roomId: ROOM_ID,
+      observedAt: "2026-06-01T14:00:00.000Z",
+    } as unknown as ViewSwitchedPayload);
+
+    expect(mockState.activitySignals).toHaveLength(1);
+    expect(mockState.activitySignals[0]).toMatchObject({
+      source: "app_lifecycle",
+      platform: "app_view",
+      state: "active",
+      observedAt: "2026-06-01T14:00:00.000Z",
+      idleState: "active",
+      metadata: {
+        eventType: EventType.VIEW_SWITCHED,
+        viewId: "inbox",
+        viewLabel: "Inbox",
+        viewPath: "/inbox",
+        viewType: "builtin",
+        previousViewId: "home",
+        roomId: ROOM_ID,
+      },
+    });
+  });
+
+  it("ignores agent-initiated view switches for owner presence", async () => {
+    const { runtime, handlers } = runtimeWithRelationships(null);
+    await PresenceSignalBridgeService.start(runtime);
+
+    await handlers.get(EventType.VIEW_SWITCHED)?.({
+      runtime,
+      viewId: "wallet",
+      initiatedBy: "agent",
+    } as unknown as ViewSwitchedPayload);
+
+    expect(mockState.activitySignals).toHaveLength(0);
   });
 });
