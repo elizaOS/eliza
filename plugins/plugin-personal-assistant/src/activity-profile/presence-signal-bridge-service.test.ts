@@ -123,6 +123,9 @@ describe("PresenceSignalBridgeService relationship recency", () => {
       EventType.REACTION_RECEIVED,
       EventType.VIEW_SWITCHED,
       EventType.ACTION_STARTED,
+      EventType.USER_TYPING_STARTED,
+      EventType.USER_TYPING_PAUSED,
+      EventType.USER_DRAFT_ABANDONED,
     ]);
   });
 
