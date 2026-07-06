@@ -23,6 +23,7 @@ import {
 } from "../../bridge/native-plugins";
 import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
 import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
+import { useResolvedTtsDefault } from "../../hooks/useResolvedTtsDefault";
 import { useAppSelector } from "../../state";
 import {
   hasConfiguredApiKey,
@@ -1093,14 +1094,41 @@ export function VoiceConfigView() {
   const { defaults: providerDefaults } = useDefaultProviderPresets();
   const advancedEnabled = useAdvancedSettingsEnabled();
 
-  // Falls back to the device default until the user picks a provider.
-  const currentProvider = voiceConfig.provider ?? providerDefaults.tts;
-  const currentAsrProvider: AsrProvider =
-    voiceConfig.asr?.provider ?? providerDefaults.asr;
   const cloudVoiceAvailable = elizaCloudVoiceProxyAvailable;
   const hasElevenLabsApiKey = hasConfiguredApiKey(
     voiceConfig.elevenlabs?.apiKey,
   );
+  // Capability-aware default: on-device Kokoro when staged, else Eliza Cloud
+  // Kokoro when a session exists, else ElevenLabs (key), else browser TTS. This
+  // is the provider that will actually play when the user hasn't picked one, so
+  // it (not the raw platform preference) is what the picker highlights + labels.
+  const { provider: resolvedTtsDefault } = useResolvedTtsDefault({
+    cloudVoiceAvailable,
+    elevenLabsKeyConfigured: hasElevenLabsApiKey,
+  });
+
+  // Falls back to the resolved device default until the user picks a provider.
+  const currentProvider = voiceConfig.provider ?? resolvedTtsDefault;
+  const currentAsrProvider: AsrProvider =
+    voiceConfig.asr?.provider ?? providerDefaults.asr;
+
+  // Human-readable label for the resolved default. Both Kokoro transports read
+  // as "Kokoro"; the browser SpeechSynthesis fallback (`robot-voice`) reads as
+  // "browser voice" since it is not one of the listed provider cards.
+  const resolvedTtsDefaultLabel =
+    resolvedTtsDefault === "local-inference"
+      ? t("voiceconfigview.KokoroOnDevice", {
+          defaultValue: "Kokoro (on-device)",
+        })
+      : resolvedTtsDefault === "eliza-cloud"
+        ? t("voiceconfigview.KokoroCloud", {
+            defaultValue: "Kokoro (Eliza Cloud)",
+          })
+        : resolvedTtsDefault === "elevenlabs"
+          ? "ElevenLabs"
+          : t("voiceconfigview.BrowserVoice", {
+              defaultValue: "browser voice",
+            });
   const defaultVoiceMode: VoiceMode = cloudVoiceAvailable
     ? hasElevenLabsApiKey
       ? "own-key"
@@ -1263,7 +1291,9 @@ export function VoiceConfigView() {
                 ? `Eliza Cloud — ${t("voiceconfigview.ServedViaElizaCloud")}`
                 : currentProvider === "elevenlabs"
                   ? `ElevenLabs — ${currentMode === "cloud" ? t("voiceconfigview.ServedViaElizaCloud") : t("voiceconfigview.RequiresApiKey")}`
-                  : `${providerInfo ? t(providerInfo.labelKey, { defaultValue: providerInfo.label }) : ""} — ${t("voiceconfigview.NoApiKeyNeeded")}`}
+                  : providerInfo
+                    ? `${t(providerInfo.labelKey, { defaultValue: providerInfo.label })} — ${t("voiceconfigview.NoApiKeyNeeded")}`
+                    : `${t("voiceconfigview.BrowserVoice", { defaultValue: "browser voice" })} — ${t("voiceconfigview.NoApiKeyNeeded")}`}
             </span>
             <span
               className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
@@ -1279,6 +1309,12 @@ export function VoiceConfigView() {
           </span>
         }
       >
+        <p className="mb-2 text-xs text-muted">
+          {t("voiceconfigview.TtsDeviceDefault", {
+            defaultValue: "Device default: {{provider}}",
+            provider: resolvedTtsDefaultLabel,
+          })}
+        </p>
         <div className="grid gap-2 sm:grid-cols-2">
           {VOICE_PROVIDERS.map((p) => (
             <TtsProviderButton

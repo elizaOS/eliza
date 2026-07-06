@@ -130,14 +130,27 @@ export function resolveCharacterVoiceConfigFromAppConfig(args: {
   };
 }
 
+/**
+ * Seed the platform/runtime provider defaults onto a loaded voice config,
+ * leaving any explicit user choice untouched.
+ *
+ * `resolvedTtsProvider` is the capability-aware default from
+ * `resolveDefaultTtsProvider` (on-device Kokoro when staged, else Eliza Cloud
+ * Kokoro, else ElevenLabs, else browser SpeechSynthesis). When omitted the
+ * platform/mode preference in `defaults.tts` is used directly — the pre-probe
+ * fallback, still a Kokoro transport on every device. The ASR default always
+ * comes from the platform matrix; the interactive-capture engine is chosen
+ * independently in `voice-capture-factory.ts`.
+ */
 export function applyVoiceProviderDefaults(
   config: VoiceConfig | null,
   defaults: DefaultVoiceProviderResult,
+  resolvedTtsProvider?: VoiceConfig["provider"],
 ): VoiceConfig {
   const base = config ?? {};
   return {
     ...base,
-    provider: base.provider ?? defaults.tts,
+    provider: base.provider ?? resolvedTtsProvider ?? defaults.tts,
     asr: base.asr ?? { provider: defaults.asr },
   };
 }
