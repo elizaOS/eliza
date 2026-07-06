@@ -15,6 +15,7 @@ const importConversationsSrc = resolve(
   monorepoRoot,
   "packages/import-conversations/src",
 );
+const cloudRoutingSrc = resolve(monorepoRoot, "packages/cloud/routing/src");
 const cloudSharedSrc = resolve(monorepoRoot, "packages/cloud/shared/src");
 const loggerSrc = resolve(monorepoRoot, "packages/logger/src");
 const tuiSrc = resolve(monorepoRoot, "packages/tui/src");
@@ -88,6 +89,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/shared\/(.+)$/,
         replacement: resolve(sharedSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/cloud-routing$/,
+        replacement: resolve(cloudRoutingSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/cloud-routing\/(.+)$/,
+        replacement: resolve(cloudRoutingSrc, "$1"),
       },
       {
         find: /^@elizaos\/cloud-shared$/,
