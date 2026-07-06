@@ -314,6 +314,21 @@ describe("verifyCertification — tamper matrix", () => {
     expect(codes(expiredReport)).toEqual(["stale"]);
   });
 
+  it("stale: createdAt too far in the future", async () => {
+    const fixture = await fixtureBundle();
+    const keypair = generateCertificationKeypair();
+    const future = signCertification(
+      payloadFor(fixture, { createdAt: "2026-07-05T12:10:01.000Z" }),
+      keypair.privateKeyPem,
+    );
+    const report = await verifyCertification(writeCert(future), {
+      publicKeyPem: keypair.publicKeyPem,
+      now: NOW,
+    });
+    expect(codes(report)).toEqual(["stale"]);
+    expect(report.failures[0].message).toContain("future");
+  });
+
   it("commit-mismatch: certification for a different commit", async () => {
     const fixture = await fixtureBundle();
     const keypair = generateCertificationKeypair();

@@ -112,6 +112,9 @@ export interface CertificationVerifyReport {
   bundle?: VerifyReport;
 }
 
+/** Tolerate small signer/verifier clock skew without letting future-dated certs extend max-age windows. */
+const CREATED_AT_FUTURE_SKEW_MS = 5 * 60_000;
+
 function validationIssues(error: unknown): Record<string, unknown> {
   return error instanceof EvidenceValidationError
     ? { issues: error.issues }
@@ -314,9 +317,23 @@ export async function verifyCertification(
       });
     }
 
-    const nowMs = now().getTime();
+    const nowDate = now();
+    const nowMs = nowDate.getTime();
+    const createdAtMs = Date.parse(payload.createdAt);
+    if (createdAtMs - nowMs > CREATED_AT_FUTURE_SKEW_MS) {
+      failures.push({
+        code: "stale",
+        message: `certification createdAt ${payload.createdAt} is in the future`,
+        context: {
+          createdAt: payload.createdAt,
+          now: nowDate.toISOString(),
+          skewMs: createdAtMs - nowMs,
+          allowedSkewMs: CREATED_AT_FUTURE_SKEW_MS,
+        },
+      });
+    }
     if (options.maxAgeHours !== undefined) {
-      const ageMs = nowMs - Date.parse(payload.createdAt);
+      const ageMs = nowMs - createdAtMs;
       const maxMs = options.maxAgeHours * 3_600_000;
       if (ageMs > maxMs) {
         failures.push({
