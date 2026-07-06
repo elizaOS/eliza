@@ -15,7 +15,6 @@
 import {
   Button,
   Card,
-  Divider,
   HStack,
   List,
   type SpatialTone,
@@ -233,44 +232,52 @@ function MarketDetail({
         </Text>
       ) : null}
 
-      <HStack gap={2} wrap>
-        <Text style="caption" tone="muted">
+      <HStack gap={2} align="center">
+        <Text style="caption" tone="muted" wrap={false}>
           {`Volume ${shortNumber(market.volume) ?? "-"}`}
         </Text>
-        <Text style="caption" tone="muted">
+        <Text style="caption" tone="muted" wrap={false}>
           {`Liquidity ${shortNumber(market.liquidity) ?? "-"}`}
         </Text>
-        <Text style="caption" tone="muted">
+        <Text style="caption" tone="muted" wrap={false}>
           {`Last ${lastTrade != null ? `${lastTrade}%` : "-"}`}
         </Text>
       </HStack>
 
-      <Divider label="outcomes" />
-      <List gap={0}>
-        {market.outcomes.map((outcome, i) => (
-          <OutcomeLine
-            key={outcome.name}
-            name={outcome.name}
-            percent={priceToPercent(outcome.price)}
-            lead={i === 0}
-          />
-        ))}
-      </List>
-
-      <Divider label="orderbook tokens" />
-      {market.clobTokenIds.length > 0 ? (
+      <VStack gap={0}>
+        <Text style="caption" tone="muted">
+          outcomes
+        </Text>
         <List gap={0}>
-          {market.clobTokenIds.map((tokenId) => (
-            <Text key={tokenId} style="caption" tone="muted" wrap={false}>
-              {tokenId}
-            </Text>
+          {market.outcomes.map((outcome, i) => (
+            <OutcomeLine
+              key={outcome.name}
+              name={outcome.name}
+              percent={priceToPercent(outcome.price)}
+              lead={i === 0}
+            />
           ))}
         </List>
-      ) : (
+      </VStack>
+
+      <VStack gap={0}>
         <Text style="caption" tone="muted">
-          no CLOB token ids
+          orderbook tokens
         </Text>
-      )}
+        {market.clobTokenIds.length > 0 ? (
+          <List gap={0}>
+            {market.clobTokenIds.map((tokenId) => (
+              <Text key={tokenId} style="caption" tone="muted" wrap={false}>
+                {tokenId}
+              </Text>
+            ))}
+          </List>
+        ) : (
+          <Text style="caption" tone="muted">
+            no CLOB token ids
+          </Text>
+        )}
+      </VStack>
     </VStack>
   );
 }
@@ -315,7 +322,9 @@ function PositionsSection({
   const totalPnl = parseNumber(summary?.totalCashPnl ?? null);
   return (
     <>
-      <Divider label="positions" />
+      <Text style="caption" tone="muted">
+        positions
+      </Text>
       <HStack gap={2} wrap>
         <Text style="caption" tone="muted">{`value ${usd(totalValue)}`}</Text>
         <Text style="caption" tone={pnlTone(totalPnl)}>
@@ -389,7 +398,9 @@ export function PolymarketSpatialView({
               summary={snapshot.positionsSummary ?? null}
             />
           ) : null}
-          <Divider label="markets" />
+          <Text style="caption" tone="muted">
+            markets
+          </Text>
           {markets.length === 0 ? (
             <Text tone="muted" align="center" style="caption">
               {loading ? "loading markets" : "no markets loaded"}

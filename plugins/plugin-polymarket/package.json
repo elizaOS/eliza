@@ -72,6 +72,7 @@
   ],
   "devDependencies": {
     "@testing-library/react": "^16.3.2",
+    "@elizaos/tui": "workspace:*",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "jsdom": "^29.0.0",

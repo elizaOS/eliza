@@ -12,7 +12,6 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
-import { mousePointerDrag } from "./helpers/gesture-inputs";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 // #9143 — the home launcher mounts <WidgetHost slot="home"> and ranks the
@@ -226,6 +225,19 @@ function notificationsPayload() {
 async function installHomeWidgetRoutes(page: Page): Promise<void> {
   await installDefaultAppRoutes(page);
 
+  await page.route("**/build-info.json", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      commit: "ui-smoke",
+      shortCommit: "smoke",
+      branch: "home-widget-priority",
+      builtAt: new Date(0).toISOString(),
+    });
+  });
+
   await page.route("**/api/config", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -371,6 +383,33 @@ async function installHomeWidgetRoutes(page: Page): Promise<void> {
     await fulfillJson(route, { plugins: PLUGIN_SNAPSHOT });
   });
 
+  // CalendarUpcomingWidget self-hides unless the Google connector probe finds
+  // a usable connected account. Override the default zero-account smoke route
+  // so seeded calendar feed data can render the real calendar card.
+  await page.route("**/api/connectors/google/accounts", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      provider: "google",
+      connectorId: "google",
+      defaultAccountId: "acct-google-owner",
+      accounts: [
+        {
+          id: "acct-google-owner",
+          provider: "google",
+          connectorId: "google",
+          label: "Design Calendar",
+          email: "design@example.test",
+          status: "connected",
+          enabled: true,
+          role: "owner",
+        },
+      ],
+    });
+  });
+
   // Views catalog — populate the launcher so the home WidgetHost mounts.
   await page.route("**/api/views**", async (route) => {
     const url = new URL(route.request().url());
@@ -407,7 +446,17 @@ async function installHomeWidgetRoutes(page: Page): Promise<void> {
 async function seedHomeWidgetStorage(page: Page): Promise<void> {
   await seedAppStorage(page, {
     "eliza:mobile-runtime-mode": "local",
+    "eliza:permissions-primed": "1",
   });
+}
+
+async function dragHomeRailToLauncher(page: Page): Promise<void> {
+  await page.mouse.move(320, 300);
+  await page.mouse.down();
+  await page.mouse.move(260, 304);
+  await page.mouse.move(200, 304);
+  await page.mouse.move(150, 304);
+  await page.mouse.up();
 }
 
 async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
@@ -715,24 +764,21 @@ test.describe("home widget priority (#9143)", () => {
     const launcherPage = page.getByTestId("home-launcher-launcher-page");
     const homeHalf = page.getByTestId("home-launcher-home-page");
     await expect(homeHalf).toBeVisible({ timeout: 15_000 });
-    await mousePointerDrag(page, homeHalf, -220, 4, { steps: 10 });
+    await dragHomeRailToLauncher(page);
     await expect(surface).toHaveAttribute("data-page", "launcher", {
       timeout: 10_000,
     });
     await expect(launcherPage).toBeVisible();
-    // The rail slides over 300ms (translate3d) and the launcher tiles play
-    // their own entrance; wait until nothing in the rail subtree is still
-    // animating so the shot shows the settled launcher rather than a mid-slide
-    // frame straddling home + launcher.
+    // The rail slides over 300ms. Wait on the rail geometry itself; descendant
+    // launcher/icon animations can be long-lived and should not block capture.
     await page.waitForFunction(
       () => {
         const rail = document.querySelector(
           '[data-testid="home-launcher-rail"]',
         );
         if (!rail) return false;
-        return !(rail as HTMLElement)
-          .getAnimations({ subtree: true })
-          .some((a) => a.playState === "running");
+        const left = rail.getBoundingClientRect().left;
+        return Math.abs(left + window.innerWidth) <= 1;
       },
       undefined,
       { timeout: 5_000 },

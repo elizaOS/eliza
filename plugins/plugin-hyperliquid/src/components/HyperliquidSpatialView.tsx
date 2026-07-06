@@ -236,7 +236,9 @@ export function HyperliquidSpatialView({
 				</Text>
 			) : null}
 
-			<Divider label="status" />
+			<Text style="caption" tone="muted">
+				status
+			</Text>
 			<VStack gap={0}>
 				<StatusTile label="Reads" ready={status.publicReadReady} />
 				<StatusTile
@@ -260,7 +262,9 @@ export function HyperliquidSpatialView({
 				</Text>
 			) : null}
 
-			<Divider label="markets" />
+			<Text style="caption" tone="muted">
+				markets
+			</Text>
 			{snapshot.markets.length === 0 ? (
 				<Text tone="muted" align="center" style="caption">
 					None
@@ -294,7 +298,9 @@ export function HyperliquidSpatialView({
 				</List>
 			)}
 
-			<Divider label="account" />
+			<Text style="caption" tone="muted">
+				account
+			</Text>
 			<HStack gap={1} align="center">
 				<Text style="caption" tone="muted" grow={1} wrap={false}>
 					{shortAddress(status.accountAddress)}
@@ -453,7 +459,6 @@ export function HyperliquidSpatialView({
 				</List>
 			)}
 
-			<Divider />
 			<HStack gap={1} wrap>
 				<Button grow={1} agent="refresh" onPress={dispatch("refresh")}>
 					Refresh
