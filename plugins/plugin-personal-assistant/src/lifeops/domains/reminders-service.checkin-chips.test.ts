@@ -438,4 +438,61 @@ describe("sleep-cycle check-in connector delivery (#14702)", () => {
       delivered: true,
     });
   });
+
+  it("tries the next ranked connector route when target resolution fails", async () => {
+    const sendMessageToTarget = vi.fn(async () => undefined);
+    const { domain, emitAssistantEvent } = makeDomain({
+      sendMessageToTarget,
+      candidates: [
+        {
+          channel: "telegram",
+          score: 10,
+          evidence: [],
+          vetoReasons: [],
+          interruptionBudget: "normal",
+        },
+        {
+          channel: "discord",
+          score: 9,
+          evidence: [],
+          vetoReasons: [],
+          interruptionBudget: "normal",
+        },
+      ],
+    });
+    const stubbed = domain as unknown as {
+      resolvePrimaryChannelPolicy: unknown;
+      resolveRuntimeReminderTarget: unknown;
+    };
+    stubbed.resolvePrimaryChannelPolicy = vi.fn(async () => null);
+    stubbed.resolveRuntimeReminderTarget = vi.fn(async (channel: string) => {
+      if (channel === "telegram") {
+        throw new Error("telegram route unavailable");
+      }
+      return {
+        source: channel,
+        connectorRef: `runtime:${channel}:chat-1`,
+        target: { source: channel, channelId: `${channel}-chat-1` },
+        resolution: { sourceOfTruth: "config" },
+      };
+    });
+
+    await runSleepCycleCheckins(domain);
+
+    expect(sendMessageToTarget).toHaveBeenCalledTimes(1);
+    expect(sendMessageToTarget.mock.calls[0][0]).toMatchObject({
+      source: "discord",
+      channelId: "discord-chat-1",
+    });
+    const [, , data] = emitAssistantEvent.mock.calls[0] as [
+      string,
+      string,
+      Record<string, unknown>,
+    ];
+    expect(data.connectorDelivery).toMatchObject({
+      attempted: true,
+      channel: "discord",
+      delivered: true,
+    });
+  });
 });

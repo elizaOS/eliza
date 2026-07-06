@@ -5623,11 +5623,28 @@ export class RemindersDomain {
       if (!isReminderChannel(channel)) {
         continue;
       }
-      const policy = await this.resolvePrimaryChannelPolicy(channel);
-      const runtimeTarget = await this.resolveRuntimeReminderTarget(
-        channel,
-        policy,
-      );
+      let runtimeTarget: Awaited<
+        ReturnType<RemindersDomain["resolveRuntimeReminderTarget"]>
+      >;
+      try {
+        const policy = await this.resolvePrimaryChannelPolicy(channel);
+        runtimeTarget = await this.resolveRuntimeReminderTarget(
+          channel,
+          policy,
+        );
+      } catch (error) {
+        const reason = lifeOpsErrorMessage(error);
+        // error-policy:J4 Check-in connector routes are optional delivery
+        // enrichment; resolver failure tries the next ranked connector and then
+        // degrades to the guaranteed in-app emit below.
+        this.ctx.logLifeOpsWarn(
+          "checkin_connector_route",
+          `[lifeops] Check-in connector route resolution failed for ${channel}; trying the next ranked route before falling back to in-app.`,
+          { error: reason },
+        );
+        firstFailure ??= { channel, reason };
+        continue;
+      }
       if (!runtimeTarget) {
         continue;
       }
@@ -5657,6 +5674,9 @@ export class RemindersDomain {
         };
       } catch (error) {
         const reason = lifeOpsErrorMessage(error);
+        // error-policy:J4 Check-in connector dispatch is optional delivery
+        // enrichment; failed sends try the next ranked connector and then
+        // degrade to the guaranteed in-app emit below.
         this.ctx.logLifeOpsWarn(
           "checkin_connector_dispatch",
           `[lifeops] Check-in connector delivery failed for ${channel}; trying the next ranked route before falling back to in-app.`,
