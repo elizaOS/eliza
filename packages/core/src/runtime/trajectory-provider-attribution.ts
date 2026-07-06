@@ -5,9 +5,8 @@
  * provider selection without storing another copy of provider text.
  */
 import { createHash } from "node:crypto";
-import type { ChatMessage, PromptSegment } from "../types/model";
+import type { ChatMessage } from "../types/model";
 import type { State } from "../types/state";
-import { segmentBlock } from "./context-renderer";
 
 export interface TrajectoryProviderAttribution {
 	providerName: string;
@@ -52,15 +51,6 @@ export function flattenTrajectoryMessages(
 			return `${role}:\n${content}`;
 		})
 		.join("\n\n");
-}
-
-export function flattenTrajectoryPromptSegments(
-	segments: readonly PromptSegment[] | undefined,
-): string {
-	if (!Array.isArray(segments) || segments.length === 0) {
-		return "";
-	}
-	return segments.map(segmentBlock).filter(Boolean).join("\n\n");
 }
 
 function providerSnapshotsFromState(state: State | undefined): {
