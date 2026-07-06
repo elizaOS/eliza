@@ -265,10 +265,7 @@ export class CloudBootstrapMessageService implements IMessageService {
       if (existingMemory) {
         memoryToQueue = existingMemory;
       } else {
-        const createdMemoryId = await runtime.createMemory(
-          persistableMessage,
-          "messages",
-        );
+        const createdMemoryId = await runtime.createMemory(persistableMessage, "messages");
         memoryToQueue = { ...persistableMessage, id: createdMemoryId };
       }
       await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
