@@ -24,11 +24,12 @@
  * on "paragraph"/"comfortable"), OR-ed with a continuation signal — recent
  * JSONL patch output keeps the guide alive while the user iterates on a
  * rendered UI after the intent keywords scroll out of the history window.
- * `uiWidgets` deliberately keeps the old provider's ungated-on-general
- * behavior — gating it on the legacy keyword list would silence [FORM]
- * guidance on scheduling turns ("remind me tomorrow at 9" matches none of
- * those keywords). uiWidgets' constant text is cacheable per-agent;
- * uiGenerative's output varies per turn, so it must not declare cacheStable.
+ * `uiWidgets` is context-gated to the Stage-1 contexts its markers serve
+ * (general/tasks/todos/productivity/connectors/settings). Gating it on the
+ * old general-only context silenced [FORM] guidance on scheduling turns and
+ * [CONFIG] guidance on connector setup turns. uiWidgets' constant text is
+ * cacheable per-agent; uiGenerative's output varies per turn, so it must not
+ * declare cacheStable.
  */
 import {
   ChannelType,
@@ -102,8 +103,10 @@ the composer for editing. Labels 1–4 words. Omit the block when no useful
 follow-up exists.
 
 ### [FORM] — collect several specific values at once
-Render a form instead of asking in prose. Emit INLINE (no code fences); body
-is one JSON object on its own line between the markers:
+Render a form instead of asking in prose. This includes relaying a tool result
+that reports missing fields or asks the user for 2+ details: re-ask via [FORM]
+with one field per missing value, never as a prose checklist. Emit INLINE (no
+code fences); body is one JSON object on its own line between the markers:
 [FORM]
 {"title":"Schedule reminder","submitLabel":"Create","fields":[{"name":"title","type":"text","label":"Reminder","required":true},{"name":"when","type":"datetime","label":"When","required":true},{"name":"channel","type":"select","label":"Notify via","options":[{"label":"Push","value":"push"},{"label":"Email","value":"email"}]}]}
 [/FORM]
@@ -149,8 +152,28 @@ export const uiWidgetsProvider: Provider = {
   relevanceKeywords: getValidationKeywordTerms("provider.uiWidgets.relevance", {
     includeAllLocales: true,
   }),
-  contexts: ["general"],
-  contextGate: { anyOf: ["general"] },
+  // The v5 planner filters dynamic providers by exact Stage-1 contexts, with
+  // no ancestor expansion. A scheduling turn can select `tasks`, while plugin
+  // setup selects `connectors`/`settings`; `general` alone misses the guide's
+  // flagship marker use cases.
+  contexts: [
+    "general",
+    "tasks",
+    "todos",
+    "productivity",
+    "connectors",
+    "settings",
+  ],
+  contextGate: {
+    anyOf: [
+      "general",
+      "tasks",
+      "todos",
+      "productivity",
+      "connectors",
+      "settings",
+    ],
+  },
   cacheStable: true,
   cacheScope: "agent",
 
