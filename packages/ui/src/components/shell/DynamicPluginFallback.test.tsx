@@ -48,4 +48,21 @@ describe("DynamicPluginFallback", () => {
     expect(screen.getByTestId("dynamic-plugin-page-loading")).toBeTruthy();
     expect(screen.queryByTestId("dynamic-plugin-page-error")).toBeNull();
   });
+
+  it("restarts the timeout when the unresolved plugin id changes", () => {
+    const { rerender } = render(
+      <DynamicPluginFallback id="stale-plugin" timeoutMs={5_000} />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(5_001);
+    });
+    expect(screen.getByTestId("dynamic-plugin-page-error")).toBeTruthy();
+
+    rerender(<DynamicPluginFallback id="fresh-plugin" timeoutMs={5_000} />);
+
+    expect(screen.getByTestId("dynamic-plugin-page-loading")).toBeTruthy();
+    expect(screen.queryByTestId("dynamic-plugin-page-error")).toBeNull();
+    expect(screen.getByText(/Loading fresh-plugin/)).toBeTruthy();
+  });
 });

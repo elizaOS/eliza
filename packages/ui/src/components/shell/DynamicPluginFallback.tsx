@@ -24,14 +24,14 @@ export function DynamicPluginFallback({
   id: string;
   timeoutMs?: number;
 }) {
-  const [timedOut, setTimedOut] = useState(false);
+  const [timedOutForId, setTimedOutForId] = useState<string | null>(null);
   useEffect(() => {
-    setTimedOut(false);
-    const timer = setTimeout(() => setTimedOut(true), timeoutMs);
+    setTimedOutForId(null);
+    const timer = setTimeout(() => setTimedOutForId(id), timeoutMs);
     return () => clearTimeout(timer);
-  }, [timeoutMs]);
+  }, [id, timeoutMs]);
 
-  if (timedOut) {
+  if (timedOutForId === id) {
     return (
       <div
         role="alert"
