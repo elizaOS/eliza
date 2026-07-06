@@ -53,12 +53,16 @@ import type {
 import {
   FOLLOW_UP_CAPABLE_ACTION_TAG,
   findEntityByName,
+  getConfiguredOwnerEntityIds,
   logger,
   ModelType,
   parseJSONObjectFromText,
   requireConfirmation,
+  resolveWorldForMessage,
   stringToUuid,
 } from "@elizaos/core";
+import { resolveFallbackOwnerEntityId } from "../runtime/owner-entity.ts";
+import { hasOwnerAccess } from "../security/access.ts";
 import { resolveRelationshipsGraphService } from "../services/relationships-graph.ts";
 import { hasContextSignalSyncForKey } from "./context-signal.ts";
 import { extractActionParamsViaLlm } from "./extract-params.ts";
@@ -1383,6 +1387,68 @@ function linkExtractionPrompt(userText: string, peopleList: string): string {
   ].join("\n");
 }
 
+/**
+ * The entity ids that role resolution treats as "the app owner": configured
+ * canonical owners, the deterministic fallback admin entity the app/connector
+ * surfaces share, and the message world's recorded owner. Linking any of them
+ * to another entity is an OWNER grant (confirmed identity links inherit the
+ * owner role in `resolveOwnershipRole`), so it needs owner authority.
+ */
+async function collectOwnerEquivalentEntityIds(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<Set<string>> {
+  const ownerIds = new Set<string>(getConfiguredOwnerEntityIds(runtime));
+  ownerIds.add(resolveFallbackOwnerEntityId(runtime));
+  try {
+    const resolved = await resolveWorldForMessage(runtime, message);
+    const worldOwnerId = resolved?.metadata?.ownership?.ownerId;
+    if (typeof worldOwnerId === "string" && worldOwnerId.length > 0) {
+      ownerIds.add(worldOwnerId);
+    }
+  } catch (err) {
+    // error-policy:J7 diagnostics-must-not-kill-the-loop — a failed world
+    // lookup must not skip the guard entirely; the configured/fallback owner
+    // ids above still apply, and the failure is surfaced for repair.
+    runtime.reportError("CONTACT:owner-link-guard", err, {
+      messageId: message.id,
+    });
+  }
+  return ownerIds;
+}
+
+/**
+ * Deny a link/merge that touches an owner-equivalent entity unless the sender
+ * has OWNER authority. Without this, `canModifyRole`'s "ADMIN may never grant
+ * OWNER" rule is bypassable: an ADMIN links their own connector entity to the
+ * owner entity, the merge engine records a confirmed `identity_link`, and role
+ * resolution then treats them as OWNER everywhere.
+ * Returns a failure ActionResult to short-circuit with, or null when allowed.
+ */
+async function guardOwnerIdentityLink(
+  runtime: IAgentRuntime,
+  message: Memory,
+  entityIds: readonly string[],
+  op: "link" | "merge",
+): Promise<ActionResult | null> {
+  const ownerIds = await collectOwnerEquivalentEntityIds(runtime, message);
+  const touchesOwner = entityIds.some((entityId) => ownerIds.has(entityId));
+  if (!touchesOwner) {
+    return null;
+  }
+  if (await hasOwnerAccess(runtime, message)) {
+    return null;
+  }
+  logger.warn(
+    `[CONTACT:${op}] Denied owner-identity link for sender ${message.entityId}: pair touches an owner entity`,
+  );
+  return fail(
+    "Linking an identity to the app owner requires OWNER authority.",
+    "OWNER_LINK_FORBIDDEN",
+    op,
+  );
+}
+
 async function handleLink(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1473,6 +1539,16 @@ async function handleLink(
     );
   }
 
+  const linkGuard = await guardOwnerIdentityLink(
+    runtime,
+    message,
+    [entityA, entityB],
+    "link",
+  );
+  if (linkGuard) {
+    return linkGuard;
+  }
+
   try {
     const evidence: RelationshipsMergeProposalEvidence = {
       notes: reason || "user-requested manual link",
@@ -1528,6 +1604,7 @@ async function handleLink(
 
 async function handleMerge(
   runtime: IAgentRuntime,
+  message: Memory,
   params: ContactParams,
 ): Promise<ActionResult> {
   const candidateId =
@@ -1562,6 +1639,23 @@ async function handleMerge(
 
   try {
     if (action === "accept") {
+      // Accepting a merge writes a confirmed identity_link — same OWNER-grant
+      // hazard as op:link, so the same owner-authority guard applies to the
+      // candidate's pair.
+      const candidate = (await graphService.getCandidateMerges()).find(
+        (entry) => entry.id === candidateId,
+      );
+      if (candidate) {
+        const mergeGuard = await guardOwnerIdentityLink(
+          runtime,
+          message,
+          [candidate.entityA, candidate.entityB],
+          "merge",
+        );
+        if (mergeGuard) {
+          return mergeGuard;
+        }
+      }
       await graphService.acceptMerge(candidateId as UUID);
     } else {
       await graphService.rejectMerge(candidateId as UUID);
@@ -2188,7 +2282,13 @@ export const contactAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = getParams(options);
-    const op = readOp(params.action ?? params.subaction ?? params.op);
+    // Resolve each discriminator key through readOp rather than ??-chaining
+    // the raw values: `action` doubles as merge's accept/reject decision, so a
+    // raw chain short-circuits on "accept" and makes `op:merge action:accept`
+    // undispatchable (the ?? chain returns "accept", readOp rejects it, and
+    // the fallback keys are never consulted).
+    const op =
+      readOp(params.action) ?? readOp(params.subaction) ?? readOp(params.op);
     if (!op) {
       return fail(
         `action is required and must be one of ${CONTACT_OPS.join(", ")}.`,
@@ -2210,7 +2310,7 @@ export const contactAction: Action = {
       case "link":
         return handleLink(runtime, message, params);
       case "merge":
-        return handleMerge(runtime, params);
+        return handleMerge(runtime, message, params);
       case "activity":
         return handleActivity(runtime, params);
       case "followup":

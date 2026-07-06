@@ -28,6 +28,7 @@ import { logsAction } from "../actions/logs.ts";
 import { memoryAction } from "../actions/memories.ts";
 import { notifyAction } from "../actions/notify.ts";
 import { pageDelegateAction } from "../actions/page-action-groups.ts";
+import { pairOwnerAccountAction } from "../actions/pair-owner-account.ts";
 import { pluginAction } from "../actions/plugin.ts";
 import { runtimeAction } from "../actions/runtime.ts";
 import { settingsAction } from "../actions/settings-actions.ts";
@@ -78,6 +79,7 @@ import {
   knowledgeGraphSchema,
 } from "../services/knowledge-graph/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
+import { OwnerBindingService } from "../services/owner-binding.ts";
 import { PendingPromptsService } from "../services/pending-prompts/index.ts";
 import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
@@ -157,6 +159,10 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       GlobalPauseService as ServiceClass,
       HandoffService as ServiceClass,
       ApprovalService as ServiceClass,
+      // OWNER_BIND_VERIFY: backend authority for the connector /eliza-pair
+      // commands. Registered here (before connector plugins start) so the
+      // Discord/Telegram pairing services find it and register their commands.
+      OwnerBindingService as ServiceClass,
     ],
 
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
@@ -268,6 +274,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       ...promoteSubactionsToActions(databaseAction),
       compactConversationAction,
       connectAccountAction,
+      pairOwnerAccountAction,
       notifyAction,
       ...promoteSubactionsToActions(memoryAction),
       filesAction,

@@ -63,6 +63,7 @@ import {
   TelegramEventTypes,
   type TelegramWorldPayload,
 } from "./types";
+import { buildTelegramWorldOwnership } from "./world-ownership";
 
 const CANONICAL_OWNER_SETTING_KEYS = ["ELIZA_ADMIN_ENTITY_ID"] as const;
 const TELEGRAM_CONNECTOR_CONTEXTS = ["social", "connectors"];
@@ -1349,13 +1350,6 @@ export class TelegramService extends Service {
       return;
     }
 
-    const userId = ctx.from
-      ? (createUniqueUuid(
-          this.runtime,
-          this.scopedTelegramKey(ctx.from.id.toString(), accountId),
-        ) as UUID)
-      : null;
-
     // Fetch admin information for proper role assignment
     let admins: (ChatMemberOwner | ChatMemberAdministrator)[] = [];
     let owner: ChatMemberOwner | null = null;
@@ -1385,14 +1379,19 @@ export class TelegramService extends Service {
     }
 
     const canonicalOwnerId = getCanonicalOwnerId(this.runtime);
-    let ownerId = canonicalOwnerId ?? userId;
-
-    if (!canonicalOwnerId && owner) {
-      ownerId = createUniqueUuid(
-        this.runtime,
-        this.scopedTelegramKey(String(owner.user.id), accountId),
-      ) as UUID;
-    }
+    // Ownership may fall back to the chat CREATOR (groups only, mirroring
+    // Discord's guild-owner grant) but never to the arbitrary message sender —
+    // see world-ownership.ts for why that default was a privilege escalation.
+    const chatCreatorEntityId = owner
+      ? (createUniqueUuid(
+          this.runtime,
+          this.scopedTelegramKey(String(owner.user.id), accountId),
+        ) as UUID)
+      : null;
+    const worldOwnership = buildTelegramWorldOwnership(
+      canonicalOwnerId,
+      chatCreatorEntityId,
+    );
 
     // Build world representation
     const world: World = {
@@ -1403,12 +1402,7 @@ export class TelegramService extends Service {
       metadata: {
         source: "telegram",
         accountId,
-        ...(ownerId && { ownership: { ownerId } }),
-        roles: ownerId
-          ? {
-              [ownerId]: Role.OWNER,
-            }
-          : {},
+        ...worldOwnership,
         chatType: chat.type,
         isForumEnabled: chat.type === "supergroup" && chat.is_forum,
       },
