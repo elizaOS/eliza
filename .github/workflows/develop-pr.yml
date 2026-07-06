@@ -95,7 +95,10 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 35 not 20: at --concurrency=4 a near-total affected cone (~250 packages)
+    # needs headroom — the one green full-cone run spent 11 minutes in the
+    # typecheck step alone, on top of checkout/install/build:core (#15140).
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -124,8 +127,15 @@ jobs:
       - name: Build core
         run: bun run build:core
 
+      # --concurrency=4 not 8: hosted ubuntu-latest runners have 4 vCPUs and
+      # 16 GB RAM, and when the affected cone goes near-total (a base-branch
+      # commit touching turbo globalDependencies like root package.json /
+      # turbo.json makes every stale-base PR typecheck all ~250 packages) eight
+      # concurrent tsgo processes exhaust the runner — the OS SIGKILLs tasks or
+      # the runner VM itself dies (#15140). NODE_OPTIONS only bounds node-based
+      # tools, not native tsgo, so concurrency is the memory lever here.
       - name: Run typecheck (affected)
-        run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=8 --affected
+        run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=4 --affected
         env:
           TURBO_SCM_BASE: ${{ github.event.pull_request.base.sha }}
 
