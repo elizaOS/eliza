@@ -4965,6 +4965,34 @@ interface ExecuteV5PlannedToolCallParams {
 	plannerLoopConfig?: PlannerLoopParams["config"];
 }
 
+interface BuildV5ExecutorContextParams {
+	message: Memory;
+	state: State;
+	selectedContexts: AgentContext[];
+	senderRole: RoleGateRole;
+	previousResults: readonly ActionResult[];
+	callback?: HandlerCallback;
+}
+
+function buildV5ExecutorContext(
+	args: BuildV5ExecutorContextParams,
+): ExecutePlannedToolCallContext {
+	return {
+		message: args.message,
+		state: args.state,
+		activeContexts: args.selectedContexts,
+		userRoles: [args.senderRole],
+		previousResults: args.previousResults,
+		...(args.callback ? { callback: args.callback } : {}),
+	};
+}
+
+export function __buildV5ExecutorContextForTests(
+	args: BuildV5ExecutorContextParams,
+): ExecutePlannedToolCallContext {
+	return buildV5ExecutorContext(args);
+}
+
 function plannerErrorLooksTransient(error: unknown): boolean {
 	const message =
 		error instanceof Error
@@ -5050,6 +5078,7 @@ async function runDeterministicPlannerFallback(args: {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	plannerLoopConfig?: PlannerLoopParams["config"];
+	callback?: HandlerCallback;
 	plannerError: unknown;
 }): Promise<PlannerLoopResult | null> {
 	if (!plannerErrorLooksTransient(args.plannerError)) {
@@ -5118,13 +5147,14 @@ async function runDeterministicPlannerFallback(args: {
 		runtime: args.runtime,
 		toolCall,
 		plannerContext: trajectory.context,
-		executorCtx: {
+		executorCtx: buildV5ExecutorContext({
 			message: args.message,
 			state: args.plannerState,
-			activeContexts: args.selectedContexts,
-			userRoles: [args.senderRole],
+			selectedContexts: args.selectedContexts,
+			senderRole: args.senderRole,
 			previousResults: [],
-		},
+			...(args.callback ? { callback: args.callback } : {}),
+		}),
 		plannerRuntime: args.plannerRuntime,
 		executorOptions: { actions: args.actions },
 		evaluatorEffects: args.evaluatorEffects,
@@ -5743,6 +5773,7 @@ export async function runV5MessageRuntimeStage1(args: {
 	message: Memory;
 	state: State;
 	responseId: UUID;
+	callback?: HandlerCallback;
 	plannerLoopConfig?: PlannerLoopParams["config"];
 	onResponseHandlerEarlyReply?: (
 		event: ResponseHandlerEarlyReplyEvent,
@@ -6710,13 +6741,14 @@ export async function runV5MessageRuntimeStage1(args: {
 						runtime: args.runtime,
 						toolCall,
 						plannerContext: plannerContextAfterEarlyReply,
-						executorCtx: {
+						executorCtx: buildV5ExecutorContext({
 							message: args.message,
 							state: plannerState,
-							activeContexts: selectedContexts,
-							userRoles: [senderRole],
+							selectedContexts,
+							senderRole,
 							previousResults: collectPreviousActionResults(ctx.trajectory),
-						},
+							...(args.callback ? { callback: args.callback } : {}),
+						}),
 						plannerRuntime,
 						executorOptions: { actions: exposedPlannerActions },
 						evaluatorEffects,
@@ -6748,6 +6780,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				recorder,
 				trajectoryId,
 				plannerLoopConfig: args.plannerLoopConfig,
+				...(args.callback ? { callback: args.callback } : {}),
 				plannerError: error,
 			});
 			if (!fallbackResult) {
@@ -9322,6 +9355,7 @@ export class DefaultMessageService implements IMessageService {
 						message,
 						state,
 						responseId,
+						...(callback ? { callback } : {}),
 						onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
 					}),
 					runtime.applyPipelineHooks(
