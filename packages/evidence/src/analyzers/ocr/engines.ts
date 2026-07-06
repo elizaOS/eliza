@@ -15,6 +15,7 @@
 
 import { execFile } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -89,18 +90,41 @@ export class TesseractOcrEngine implements OcrEngine {
   }
 
   async recognize(imagePath: string): Promise<OcrRecognition> {
+    const staged = stageTesseractInput(imagePath);
     const { stdout } = await execFileAsync(
       this.bin,
-      [imagePath, "-", "--psm", "6"],
+      [staged.path, "-", "--psm", "6"],
       { timeout: 60_000, maxBuffer: 8 * 1024 * 1024 },
-    );
-    const text = stdout
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .join("\n");
-    return { text };
+    ).finally(staged.cleanup);
+    return { text: normalizeOcrText(stdout) };
   }
+}
+
+/**
+ * Leptonica can truncate/error on long temp artifact paths. Stage through a
+ * short filename so bundle layout depth cannot turn available OCR into a
+ * `failed` analyzer record.
+ */
+function stageTesseractInput(imagePath: string): {
+  path: string;
+  cleanup(): void;
+} {
+  const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), "evidence-ocr-"));
+  const extension = path.extname(imagePath) || ".png";
+  const stagedPath = path.join(scratchDir, `input${extension}`);
+  fs.copyFileSync(imagePath, stagedPath);
+  return {
+    path: stagedPath,
+    cleanup: () => fs.rmSync(scratchDir, { recursive: true, force: true }),
+  };
+}
+
+function normalizeOcrText(stdout: string): string {
+  return stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**

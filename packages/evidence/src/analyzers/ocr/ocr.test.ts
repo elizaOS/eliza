@@ -6,7 +6,7 @@
 // shape (model, temperature 0, image data URL) and returns a canned completion
 // the client must parse; the real-model path is the gpu lane's live test.
 
-import { rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -47,9 +47,33 @@ describe("ocr.tesseract", () => {
       expect(data.text.toUpperCase()).toContain("EVIDENCE");
     } else {
       expect(result.status).toBe("skipped-missing-tool");
-      if (result.status === "skipped-missing-tool")
+      if (result.status === "skipped-missing-tool") {
         expect(result.reason).toMatch(/tesseract/i);
+      }
     }
+  });
+
+  it("reads rendered text from a long artifact path", async () => {
+    const availability = await new TesseractOcrEngine().available();
+    if (!availability.available) {
+      expect(availability.reason).toMatch(/tesseract/i);
+      return;
+    }
+
+    const longDir = join(
+      dir,
+      "video",
+      "keyframes",
+      "video-features-send-message-mp4",
+      "nested-artifact-path-that-used-to-trip-leptonica",
+    );
+    mkdirSync(longDir, { recursive: true });
+    const png = await textPng(join(longDir, "000-first.png"), "LONGPATH");
+    const result = await ocrTesseractAnalyzer.analyze(inputFor(png), ctx);
+    expect(result.status).toBe("ran");
+    if (result.status !== "ran") return;
+    const data = result.data as { text: string };
+    expect(data.text.toUpperCase()).toContain("LONGPATH");
   });
 });
 

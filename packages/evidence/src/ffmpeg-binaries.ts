@@ -9,7 +9,6 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
-import path from "node:path";
 import { promisify } from "node:util";
 
 const require = createRequire(import.meta.url);
@@ -61,21 +60,9 @@ function requireFfmpegStaticPath(): string | null {
   return null;
 }
 
-async function bundledFfmpegPath(): Promise<string | null> {
+function bundledFfmpegPath(): string | null {
   const candidate = requireFfmpegStaticPath();
   if (candidate === null) return null;
-  if (fs.existsSync(candidate)) return candidate;
-  try {
-    const packageJson = require.resolve("ffmpeg-static/package.json");
-    await execFileAsync(process.execPath, ["install.js"], {
-      cwd: path.dirname(packageJson),
-      env: { ...process.env, CI: "1" },
-      timeout: 180_000,
-    });
-  } catch (error) {
-    // error-policy:J3 optional managed install — caller reports unavailable.
-    void error;
-  }
   return fs.existsSync(candidate) ? candidate : null;
 }
 
@@ -103,7 +90,7 @@ function configuredEnvPath(tool: ToolName): string | undefined {
     : envPath(["ELIZA_FFPROBE_BIN", "ELIZA_FFPROBE_PATH", "FFPROBE_PATH"]);
 }
 
-async function bundledPath(tool: ToolName): Promise<string | null> {
+function bundledPath(tool: ToolName): string | null {
   return tool === "ffmpeg" ? bundledFfmpegPath() : bundledFfprobePath();
 }
 
@@ -136,7 +123,7 @@ async function resolveTool(
     };
   }
 
-  const bundled = await bundledPath(tool);
+  const bundled = bundledPath(tool);
   if (bundled !== null) {
     const available = await binaryAvailable(bundled);
     if (available.available) {

@@ -10,7 +10,10 @@ import os from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, describe, expect, it } from "vitest";
-import { resolveFfmpegBinary } from "../ffmpeg-binaries.ts";
+import {
+  resolveFfmpegBinary,
+  resolveFfprobeBinary,
+} from "../ffmpeg-binaries.ts";
 import {
   normalizeVideo,
   probeVideo,
@@ -22,7 +25,6 @@ const dir = mkdtempSync(join(os.tmpdir(), "evidence-normalize-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const tools = await videoToolsAvailable();
-const ffmpeg = await resolveFfmpegBinary();
 
 /** Solid-colour clip in the requested container/codec/faststart layout. */
 async function makeClip(
@@ -49,10 +51,7 @@ async function makeClip(
   ];
   if (out.endsWith(".mp4") && faststart) args.push("-movflags", "+faststart");
   args.push(out);
-  if (!ffmpeg.available) {
-    throw new Error(ffmpeg.reason);
-  }
-  await execFileAsync(ffmpeg.bin, args, { timeout: 120_000 });
+  await execFileAsync("ffmpeg", args);
 }
 
 describe.skipIf(!tools.available)("normalizeVideo (ffmpeg present)", () => {
@@ -109,7 +108,7 @@ describe.skipIf(!tools.available)("normalizeVideo (ffmpeg present)", () => {
 });
 
 describe("normalizeVideo degradation", () => {
-  it("uses bundled static binaries when PATH does not provide ffmpeg/ffprobe", async () => {
+  it("uses installed bundled binaries when PATH does not provide system tools", async () => {
     const prevPath = process.env.PATH;
     const prevFfmpeg = process.env.ELIZA_FFMPEG_BIN;
     const prevFfprobe = process.env.ELIZA_FFPROBE_BIN;
@@ -117,14 +116,24 @@ describe("normalizeVideo degradation", () => {
     delete process.env.ELIZA_FFPROBE_BIN;
     process.env.PATH = "";
     try {
-      const result = await videoToolsAvailable();
-      expect(result.available).toBe(true);
+      const ffprobe = await resolveFfprobeBinary();
+      expect(ffprobe.available).toBe(true);
+      if (ffprobe.available) expect(ffprobe.source).toBe("bundled");
+
+      const ffmpeg = await resolveFfmpegBinary();
+      if (ffmpeg.available) {
+        expect(ffmpeg.source).toBe("bundled");
+      } else {
+        expect(ffmpeg.reason).toMatch(
+          /bundled ffmpeg-static package is unavailable/,
+        );
+      }
     } finally {
       restoreEnv("PATH", prevPath);
       restoreEnv("ELIZA_FFMPEG_BIN", prevFfmpeg);
       restoreEnv("ELIZA_FFPROBE_BIN", prevFfprobe);
     }
-  }, 30_000);
+  });
 
   it("skips honestly when ffprobe/ffmpeg are absent", async () => {
     const prevFfmpeg = process.env.ELIZA_FFMPEG_BIN;
