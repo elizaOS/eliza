@@ -24,8 +24,8 @@ import {
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
-  CloudApiKeys,
   CloudApiKeySummary,
+  CloudApiKeys,
   CloudBillingCheckoutRequest,
   CloudBillingCheckoutResponse,
   CloudBillingCryptoQuoteRequest,
@@ -3176,7 +3176,11 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // is the fix for "a new cloud agent is created on every sign-in" — the create
   // path only runs when the user has no agent yet.
   if (!forceCreate) {
-    onProgress?.("creating", "Finding your agents...");
+    // "listing", not "creating": this is the reuse LOOKUP, and downstream
+    // consumers (the first-run silent cloud entry, #15133) distinguish real
+    // provisioning phases from bookkeeping by this code. Display consumers
+    // render the detail text, so the rename is invisible to them.
+    onProgress?.("listing", "Finding your agents...");
     // A failed agent-list lookup must NOT fall through to provisioning. A
     // transient error (expired token, network blip, or a success:false body)
     // previously collapsed to an empty list and minted a brand-new billed agent
