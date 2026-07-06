@@ -161,6 +161,10 @@ import {
 } from "./lifeops/scheduled-task/runtime-wiring.js";
 import { handleScheduledTaskInboundMessage } from "./lifeops/scheduled-task/scheduler.js";
 import { getScheduledTaskRunner as getProductionScheduledTaskRunner } from "./lifeops/scheduled-task/service.js";
+import {
+  handleAgentMessageSentForQuestionFollowup,
+  handleOwnerMessageForQuestionFollowup,
+} from "./lifeops/scheduled-task/unanswered-question-followup.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
 import {
   createSendPolicyRegistry,
@@ -725,7 +729,14 @@ const rawPersonalAssistantPlugin: Plugin = {
           );
         }
       },
+      // Owner re-engaged: any still-scheduled unanswered-question follow-up
+      // for the room is stale — dismiss it (#14676).
+      handleOwnerMessageForQuestionFollowup,
     ],
+    // Agent reply ends with a question the owner never answers → seed a
+    // once-fired follow-up whose fire-time admission is the model moment
+    // judge (#14676, riding the #14677 model_moment_check seam).
+    [EventType.MESSAGE_SENT]: [handleAgentMessageSentForQuestionFollowup],
     // Fold recognized voice turns into the entity/relationship graph via
     // the merge engine, then round-trip the binding to the voice-profile
     // owner. See lifeops/entities/voice-observer-bridge.ts.

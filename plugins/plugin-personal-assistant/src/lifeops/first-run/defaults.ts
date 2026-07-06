@@ -134,6 +134,17 @@ function cronAtLocal(hhmm: string, tz: string): ScheduledTaskInput["trigger"] {
   };
 }
 
+/**
+ * Fire-time admission for the owner-facing daily pokes: the cron decides WHEN
+ * the ritual is scheduled; the `model_moment_check` judge (#14677) decides
+ * whether NOW is actually a good moment — send / defer / drop with the
+ * owner's presence, rhythm, and quiet-streak context. System records
+ * (local backup) and owner-invoked ones (weekly review) carry no judge.
+ */
+const MOMENT_JUDGED: NonNullable<ScheduledTaskInput["shouldFire"]> = {
+  gates: [{ kind: "model_moment_check" }],
+};
+
 export function buildDefaultsPack(
   context: DefaultsPackContext,
 ): ScheduledTaskInput[] {
@@ -146,6 +157,7 @@ export function buildDefaultsPack(
         "Wish the owner a warm good morning and surface anything pressing for the day.",
       trigger: cronAtLocal(morningWindow.startLocal, timezone),
       priority: "low",
+      shouldFire: MOMENT_JUDGED,
       respectsGlobalPause: true,
       source: "first_run",
       createdBy: agentId,
@@ -165,6 +177,7 @@ export function buildDefaultsPack(
       promptInstructions: "Wish the owner good night before they wind down.",
       trigger: cronAtLocal("22:00", timezone),
       priority: "low",
+      shouldFire: MOMENT_JUDGED,
       respectsGlobalPause: true,
       source: "first_run",
       createdBy: agentId,
@@ -185,6 +198,7 @@ export function buildDefaultsPack(
         "Run the daily check-in: ask the owner how they're feeling and what's on their plate today.",
       trigger: cronAtLocal("09:00", timezone),
       priority: "medium",
+      shouldFire: MOMENT_JUDGED,
       respectsGlobalPause: true,
       source: "first_run",
       createdBy: agentId,
@@ -215,6 +229,7 @@ export function buildDefaultsPack(
         offsetMinutes: 0,
       },
       priority: "medium",
+      shouldFire: MOMENT_JUDGED,
       respectsGlobalPause: true,
       source: "first_run",
       createdBy: agentId,

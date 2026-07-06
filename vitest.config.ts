@@ -51,6 +51,14 @@ export default defineConfig({
         replacement: path.join(root, "packages/agent/src/$1"),
       },
       {
+        // The agent's settings action imports the shared parser from this
+        // subpath (#14804); app-control's build bundles only the barrel, so
+        // without the eliza-source condition the subpath has no dist file to
+        // resolve to and must be pinned to source here.
+        find: /^@elizaos\/plugin-app-control\/(.+)$/,
+        replacement: path.join(root, "plugins/plugin-app-control/src/$1"),
+      },
+      {
         find: /^@elizaos\/logger$/,
         replacement: path.join(root, "packages/logger/src/index.ts"),
       },

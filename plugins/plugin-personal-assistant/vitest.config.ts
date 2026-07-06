@@ -322,6 +322,21 @@ export default defineConfig({
       // the broad `@elizaos/ui/(.+)` stub alias so they win the match.
       { find: /^@elizaos\/ui\/spatial\/tui$/, replacement: uiSpatialTuiSrc },
       { find: /^@elizaos\/ui\/spatial$/, replacement: uiSpatialSrc },
+      // Pure-data settings-section metadata consumed by app-control's settings
+      // action (#14804) — React-free by design, so anchor the real module
+      // ahead of the broad ui stub alias.
+      {
+        find: /^@elizaos\/ui\/components\/settings\/settings-section-meta$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "ui",
+          "src",
+          "components",
+          "settings",
+          "settings-section-meta.ts",
+        ),
+      },
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
@@ -378,6 +393,22 @@ export default defineConfig({
           elizaRoot,
           "plugins",
           "plugin-calendar",
+          "src",
+          "$1.ts",
+        ),
+      },
+      // The agent's settings action pulls the shared parser from the
+      // `@elizaos/plugin-app-control/actions/settings` subpath (#14804), but
+      // app-control's build bundles only the barrel — there is no per-file
+      // dist and vitest has no eliza-source condition, so the subpath must be
+      // anchored to source (the bare specifier stays stubbed via
+      // optionalCorePluginStubPackages above).
+      {
+        find: /^@elizaos\/plugin-app-control\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-app-control",
           "src",
           "$1.ts",
         ),

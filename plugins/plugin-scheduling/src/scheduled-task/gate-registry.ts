@@ -2,7 +2,7 @@
  * TaskGateRegistry. Built-in kinds: `weekend_skip`, `weekend_only`,
  * `weekday_only`, `late_evening_skip`, `quiet_hours`, `during_travel`,
  * `circadian_state_in`, `no_recent_user_message_in`,
- * `personal_baseline_sufficient`.
+ * `personal_baseline_sufficient`, `model_moment_check`.
  *
  * The runner uses these gates in `shouldFire.gates`; composition is
  * the responsibility of the runner (`compose: "all" | "any" | "first_deny"`).
@@ -340,6 +340,25 @@ const noRecentUserMessageInGate: TaskGateContribution = {
   },
 };
 
+/**
+ * `model_moment_check` — generic built-in fallback (#14677). The real reader is
+ * a model judgment ("is this a good moment to interrupt the owner?") that needs
+ * a live model surface, which the spine deliberately does not have — it is
+ * registered by `plugin-personal-assistant`'s runner wiring and, because
+ * `registerBuiltInGates` is first-wins, takes precedence over this fallback.
+ *
+ * Standalone (no judge registered) there is no judgment to consult, so the
+ * honest default is `allow`: the task's deterministic gates already ran, and
+ * this kind exists to REFINE their verdict, never to silently starve a task on
+ * hosts without a model.
+ */
+const modelMomentCheckGate: TaskGateContribution = {
+  kind: "model_moment_check",
+  evaluate(): GateDecision {
+    return { kind: "allow" };
+  },
+};
+
 interface PersonalBaselineSufficientParams {
   minSamples?: number;
 }
@@ -424,6 +443,7 @@ export function registerBuiltInGates(reg: TaskGateRegistry): void {
     circadianStateInGate,
     noRecentUserMessageInGate,
     personalBaselineSufficientGate,
+    modelMomentCheckGate,
   ];
   for (const gate of builtins) {
     if (!reg.get(gate.kind)) {
