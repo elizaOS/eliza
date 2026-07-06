@@ -176,6 +176,12 @@ describe("v5 planner loop skeleton", () => {
 		expect(plannerTemplate).toContain(
 			"attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now",
 		);
+		expect(plannerTemplate).toContain(
+			"Owner life-management side effects MUST call the matching exposed tool before any terminal answer",
+		);
+		expect(plannerTemplate).toContain(
+			"A tool-owned conflict, clarification, preview, confirmation request, or fail-closed no-op is still a tool result",
+		);
 	});
 
 	it("forbids using SHELL as a fallback for chat-message search/recall", () => {
@@ -1619,7 +1625,11 @@ describe("v5 planner loop skeleton", () => {
 			useModel: vi.fn(async () => ({
 				text: "",
 				toolCalls: [
-					{ id: "call-1", name: "SCHEDULED_TASKS", arguments: { action: "create" } },
+					{
+						id: "call-1",
+						name: "SCHEDULED_TASKS",
+						arguments: { action: "create" },
+					},
 				],
 			})),
 		};
@@ -1662,7 +1672,11 @@ describe("v5 planner loop skeleton", () => {
 			useModel: vi.fn(async () => ({
 				text: "",
 				toolCalls: [
-					{ id: "call-1", name: "SCHEDULED_TASKS", arguments: { action: "create" } },
+					{
+						id: "call-1",
+						name: "SCHEDULED_TASKS",
+						arguments: { action: "create" },
+					},
 				],
 			})),
 		};

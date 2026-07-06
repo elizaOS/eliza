@@ -1,0 +1,100 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "shiftrotation.quiet_hours_move_with_rotation",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_CREATE",
+              "kwargs": {
+                "details": {
+                  "anchor": "after_current_shift",
+                  "kind": "reminder",
+                  "listId": "list_personal",
+                  "policy": "moving_quiet_hours",
+                  "rotations": [
+                    "day",
+                    "evening",
+                    "night"
+                  ]
+                },
+                "kind": "definition",
+                "subaction": "create",
+                "title": "Rotation-aware protected sleep"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cost_usd": null,
+          "tool_results": [
+            {
+              "name": "LIFE_CREATE",
+              "tool_call_id": "call_perfect_1",
+              "content": "{\"id\": \"reminder_auto_6a07411ac65b\", \"title\": \"Rotation-aware protected sleep\"}",
+              "payload": {
+                "id": "reminder_auto_6a07411ac65b",
+                "title": "Rotation-aware protected sleep"
+              }
+            }
+          ],
+          "cache_read_input_tokens": null,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "Done. rotation sleep.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cost_usd": null,
+          "tool_results": [],
+          "cache_read_input_tokens": null,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [
+        true,
+        true
+      ],
+      "total_score": 1.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 0,
+      "error": null
+    }
+  ],
+  "pass_at_1": 1.0,
+  "pass_at_k": 1.0,
+  "mean_score_per_domain": {
+    "sleep": 1.0
+  },
+  "total_cost_usd": 0.0,
+  "total_latency_ms": 0,
+  "model_name": "gemma-4-31b",
+  "judge_model_name": "claude-opus-4-7",
+  "timestamp": "2026-07-06T13:14:05.135157+00:00",
+  "seeds": 1,
+  "agent_cost_usd": 0.0,
+  "eval_cost_usd": 0.0
+}

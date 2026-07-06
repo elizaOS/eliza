@@ -1,0 +1,186 @@
+{
+  "runId": "5b26c88b-c657-4f46-8478-b34a53c7e3b0",
+  "startedAtIso": "2026-07-06T12:59:57.056Z",
+  "completedAtIso": "2026-07-06T13:02:22.561Z",
+  "providerName": "cli",
+  "scenarios": [
+    {
+      "id": "shift-rotation-sleep-window-conflict-requires-confirm",
+      "title": "A 10am booking that lands in protected post-night-shift sleep is flagged and fails closed without an explicit override",
+      "domain": "lifeops",
+      "tags": [
+        "lifeops",
+        "shift-rotation",
+        "personas",
+        "calendar",
+        "sleep",
+        "fail-closed",
+        "adversarial",
+        "outcome",
+        "12772"
+      ],
+      "status": "passed",
+      "durationMs": 140597,
+      "turns": [
+        {
+          "name": "book-into-protected-sleep",
+          "kind": "message",
+          "text": "Can you throw a 'team sync' on my calendar for 10am tomorrow?",
+          "responseText": "That 10:00 slot falls inside your protected quiet/sleep window (05:00–13:00 UTC), so I won't book over it without an explicit override. Want me to find a time after 14:00 instead, or should I go ahead and take the 10:00 anyway?That time (10:00) is inside your protected quiet/sleep window (05:00-13:00 UTC). I won't book over it without an explicit override. I can look for a time after 14:00 instead, or you can confirm you want this slot anyway.",
+          "actionsCalled": [
+            {
+              "actionName": "CALENDAR",
+              "parameters": {
+                "parameters": {
+                  "action": "create_event",
+                  "intent": "Can you throw a 'team sync' on my calendar for 10am tomorrow?"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": false,
+                "data": {
+                  "actionName": "CALENDAR",
+                  "subaction": "create_event",
+                  "error": "PROTECTED_SLEEP_CONFLICT",
+                  "noop": true,
+                  "requestedLocalTime": "10:00",
+                  "quietHours": {
+                    "startLocal": "05:00",
+                    "endLocal": "13:00",
+                    "timezone": "UTC"
+                  }
+                },
+                "text": "That time (10:00) is inside your protected quiet/sleep window (05:00-13:00 UTC). I won't book over it without an explicit override. I can look for a time after 14:00 instead, or you can confirm you want this slot anyway.",
+                "raw": {
+                  "text": "That time (10:00) is inside your protected quiet/sleep window (05:00-13:00 UTC). I won't book over it without an explicit override. I can look for a time after 14:00 instead, or you can confirm you want this slot anyway.",
+                  "success": false,
+                  "data": {
+                    "actionName": "CALENDAR",
+                    "subaction": "create_event",
+                    "error": "PROTECTED_SLEEP_CONFLICT",
+                    "noop": true,
+                    "requestedLocalTime": "10:00",
+                    "quietHours": {
+                      "startLocal": "05:00",
+                      "endLocal": "13:00",
+                      "timezone": "UTC"
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 130305,
+          "failedAssertions": [],
+          "judgeScore": 0.9
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "fail-closed: no calendar event was created for the team sync",
+          "type": "custom",
+          "status": "passed",
+          "detail": "predicate returned undefined"
+        },
+        {
+          "label": "definitionCountDelta",
+          "type": "definitionCountDelta",
+          "status": "passed",
+          "detail": "no matching definition for \"team sync\""
+        },
+        {
+          "label": "fail-closed: nothing was dispatched to any counterparty",
+          "type": "custom",
+          "status": "passed",
+          "detail": "predicate returned undefined"
+        },
+        {
+          "label": "memoryWriteOccurred",
+          "type": "memoryWriteOccurred",
+          "status": "passed",
+          "detail": "2 write(s) to [messages]"
+        },
+        {
+          "label": "sleep-conflict-fail-closed",
+          "type": "judgeRubric",
+          "status": "passed",
+          "detail": "score 1.00 ≥ 0.75",
+          "score": 1
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "CALENDAR",
+          "parameters": {
+            "parameters": {
+              "action": "create_event",
+              "intent": "Can you throw a 'team sync' on my calendar for 10am tomorrow?"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": false,
+            "data": {
+              "actionName": "CALENDAR",
+              "subaction": "create_event",
+              "error": "PROTECTED_SLEEP_CONFLICT",
+              "noop": true,
+              "requestedLocalTime": "10:00",
+              "quietHours": {
+                "startLocal": "05:00",
+                "endLocal": "13:00",
+                "timezone": "UTC"
+              }
+            },
+            "text": "That time (10:00) is inside your protected quiet/sleep window (05:00-13:00 UTC). I won't book over it without an explicit override. I can look for a time after 14:00 instead, or you can confirm you want this slot anyway.",
+            "raw": {
+              "text": "That time (10:00) is inside your protected quiet/sleep window (05:00-13:00 UTC). I won't book over it without an explicit override. I can look for a time after 14:00 instead, or you can confirm you want this slot anyway.",
+              "success": false,
+              "data": {
+                "actionName": "CALENDAR",
+                "subaction": "create_event",
+                "error": "PROTECTED_SLEEP_CONFLICT",
+                "noop": true,
+                "requestedLocalTime": "10:00",
+                "quietHours": {
+                  "startLocal": "05:00",
+                  "endLocal": "13:00",
+                  "timezone": "UTC"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "failedAssertions": [],
+      "providerName": "cli",
+      "judgeScore": 0.9,
+      "judgeSelfGraded": true
+    }
+  ],
+  "totals": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 1,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/tmp/eliza-14351-shift-rotation-live10-conflict/run",
+    "matrixJson": "/tmp/eliza-14351-shift-rotation-live10-conflict/run/matrix.json",
+    "viewerIndex": "/tmp/eliza-14351-shift-rotation-live10-conflict/run/viewer/index.html",
+    "viewerData": "/tmp/eliza-14351-shift-rotation-live10-conflict/run/viewer/data.js",
+    "nativeJsonl": "/tmp/eliza-14351-shift-rotation-live10-conflict/native.jsonl",
+    "nativeManifest": "/tmp/eliza-14351-shift-rotation-live10-conflict/native.manifest.json"
+  }
+}

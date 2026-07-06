@@ -45,6 +45,10 @@ import {
   runLifeOpsTextModel,
 } from "../lifeops/google/format-helpers.js";
 import {
+  type OwnerQuietHours,
+  resolveOwnerFactStore,
+} from "../lifeops/owner/fact-store.js";
+import {
   buildUtcDateFromLocalParts,
   getZonedDateParts,
 } from "../lifeops/time.js";
@@ -248,6 +252,156 @@ function normalizeSubaction(value: unknown): OwnerCalendarSubaction | null {
   return (VALID_SUBACTIONS as readonly string[]).includes(normalized)
     ? (normalized as OwnerCalendarSubaction)
     : null;
+}
+
+function parseLocalTimeToMinutes(value: string): number | null {
+  const match = /^([01]?\d|2[0-3]):([0-5]\d)$/u.exec(value.trim());
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function formatLocalMinutes(minutes: number): string {
+  const normalized = ((minutes % 1440) + 1440) % 1440;
+  const hour = Math.floor(normalized / 60);
+  const minute = normalized % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function minuteFallsInWindow(args: {
+  minute: number;
+  startMinute: number;
+  endMinute: number;
+}): boolean {
+  if (args.startMinute === args.endMinute) return false;
+  if (args.startMinute < args.endMinute) {
+    return args.minute >= args.startMinute && args.minute < args.endMinute;
+  }
+  return args.minute >= args.startMinute || args.minute < args.endMinute;
+}
+
+function explicitOverrideRequested(text: string): boolean {
+  return /\b(?:override|book it anyway|schedule it anyway|put it there anyway|yes[,\s]+(?:do it|book it|schedule it)|confirm(?:ed)?|despite|even though)\b/iu.test(
+    text,
+  );
+}
+
+function readStringField(value: unknown, key: string): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = (value as Record<string, unknown>)[key];
+  return typeof candidate === "string" && candidate.trim().length > 0
+    ? candidate
+    : null;
+}
+
+function extractStartIso(params: OwnerCalendarParameters): string | null {
+  const details = params.details;
+  return (
+    readStringField(details, "start") ??
+    readStringField(details, "startAt") ??
+    readStringField(params, "startAt")
+  );
+}
+
+function extractLocalMinuteFromMessage(text: string): number | null {
+  const match =
+    /\b([1-9]|1[0-2])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/iu.exec(text);
+  if (!match) return null;
+  const hour12 = Number(match[1]);
+  const minute = match[2] ? Number(match[2]) : 0;
+  const meridiem = match[3].toLowerCase().startsWith("p") ? "pm" : "am";
+  const hour =
+    meridiem === "am" ? hour12 % 12 : hour12 === 12 ? 12 : hour12 + 12;
+  return hour * 60 + minute;
+}
+
+function extractRequestedLocalMinute(args: {
+  params: OwnerCalendarParameters;
+  text: string;
+  timeZone: string;
+}): number | null {
+  const startIso = extractStartIso(args.params);
+  if (startIso) {
+    const parsed = new Date(startIso);
+    if (Number.isFinite(parsed.getTime())) {
+      const parts = getZonedDateParts(parsed, args.timeZone);
+      return parts.hour * 60 + parts.minute;
+    }
+  }
+  return extractLocalMinuteFromMessage(args.text);
+}
+
+async function detectProtectedSleepCreateConflict(args: {
+  runtime: IAgentRuntime;
+  params: OwnerCalendarParameters;
+  text: string;
+}): Promise<{
+  quietHours: OwnerQuietHours;
+  requestedMinute: number;
+  startMinute: number;
+  endMinute: number;
+} | null> {
+  if (explicitOverrideRequested(args.text)) return null;
+  const facts = await resolveOwnerFactStore(args.runtime).read();
+  const quietHours = facts.quietHours?.value;
+  if (!quietHours) return null;
+  const startMinute = parseLocalTimeToMinutes(quietHours.startLocal);
+  const endMinute = parseLocalTimeToMinutes(quietHours.endLocal);
+  if (startMinute === null || endMinute === null) return null;
+  const requestedMinute = extractRequestedLocalMinute({
+    params: args.params,
+    text: args.text,
+    timeZone:
+      args.params.timeZone ??
+      readStringField(args.params.details, "timeZone") ??
+      quietHours.timezone ??
+      facts.timezone?.value ??
+      resolveDefaultTimeZone(),
+  });
+  if (requestedMinute === null) return null;
+  if (
+    !minuteFallsInWindow({ minute: requestedMinute, startMinute, endMinute })
+  ) {
+    return null;
+  }
+  return { quietHours, requestedMinute, startMinute, endMinute };
+}
+
+async function guardProtectedSleepCreate(args: {
+  runtime: IAgentRuntime;
+  params: OwnerCalendarParameters;
+  message: Memory;
+  callback: HandlerCallback | undefined;
+}): Promise<ActionResult | null> {
+  const text = messageText(args.message);
+  const conflict = await detectProtectedSleepCreateConflict({
+    runtime: args.runtime,
+    params: args.params,
+    text,
+  });
+  if (!conflict) return null;
+
+  const alternative = formatLocalMinutes(conflict.endMinute + 60);
+  const responseText =
+    `That time (${formatLocalMinutes(conflict.requestedMinute)}) is inside your protected quiet/sleep window ` +
+    `(${conflict.quietHours.startLocal}-${conflict.quietHours.endLocal} ${conflict.quietHours.timezone}). ` +
+    `I won't book over it without an explicit override. I can look for a time after ${alternative} instead, or you can confirm you want this slot anyway.`;
+  await args.callback?.({
+    text: responseText,
+    source: "action",
+    action: ACTION_NAME,
+  });
+  return {
+    text: responseText,
+    success: false,
+    data: {
+      actionName: ACTION_NAME,
+      subaction: "create_event",
+      error: "PROTECTED_SLEEP_CONFLICT",
+      noop: true,
+      requestedLocalTime: formatLocalMinutes(conflict.requestedMinute),
+      quietHours: conflict.quietHours,
+    },
+  };
 }
 
 const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
@@ -542,6 +696,15 @@ async function route(
 
   switch (target) {
     case "calendar":
+      if (subaction === "create_event") {
+        const guarded = await guardProtectedSleepCreate({
+          runtime,
+          params,
+          message,
+          callback: delegatedCallback,
+        });
+        if (guarded) return guarded;
+      }
       return (await googleCalendarAction.handler(
         runtime,
         message,

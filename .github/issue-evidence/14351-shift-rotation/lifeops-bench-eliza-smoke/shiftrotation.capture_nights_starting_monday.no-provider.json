@@ -1,0 +1,52 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "shiftrotation.capture_nights_starting_monday",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "This agent has no LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY in your environment, or sign in to Eliza Cloud (ELIZAOS_CLOUD_API_KEY).",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cost_usd": null,
+          "tool_results": [],
+          "cache_read_input_tokens": null,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": "gemma-4-31b"
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [
+        false,
+        false
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 0,
+      "error": null
+    }
+  ],
+  "pass_at_1": 0.0,
+  "pass_at_k": 0.0,
+  "mean_score_per_domain": {
+    "calendar": 0.0
+  },
+  "total_cost_usd": 0.0,
+  "total_latency_ms": 0,
+  "model_name": "gemma-4-31b",
+  "judge_model_name": "claude-opus-4-7",
+  "timestamp": "2026-07-06T13:23:49.198294+00:00",
+  "seeds": 1,
+  "agent_cost_usd": 0.0,
+  "eval_cost_usd": 0.0
+}

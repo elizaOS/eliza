@@ -14,6 +14,11 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { calendarAction } from "../src/actions/calendar.js";
 import { resolveRequestAction } from "../src/actions/resolve-request.js";
+import {
+  createOwnerFactStore,
+  registerOwnerFactStore,
+  resolveOwnerFactStore,
+} from "../src/lifeops/owner/fact-store.js";
 
 const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(),
@@ -33,11 +38,26 @@ vi.mock("../src/lifeops/approval-queue.js", () => ({
 }));
 
 function makeRuntime(): IAgentRuntime {
+  const cache = new Map<string, unknown>();
   return {
     agentId: "agent-native-params",
     useModel: vi.fn(() => {
       throw new Error("legacy extractor should not be called");
     }),
+    getService: vi.fn(() => {
+      throw new Error("calendar writer should not be called");
+    }),
+    async getCache<T>(key: string): Promise<T | null> {
+      const value = cache.get(key);
+      return value === undefined ? null : (value as T);
+    },
+    async setCache<T>(key: string, value: T): Promise<boolean> {
+      cache.set(key, value);
+      return true;
+    },
+    async deleteCache(key: string): Promise<boolean> {
+      return cache.delete(key);
+    },
   } as IAgentRuntime;
 }
 
@@ -190,5 +210,60 @@ describe("LifeOps native options.parameters migration", () => {
     expect(enumVerbs).toContain("propose_times");
     expect(enumVerbs).toContain("check_availability");
     expect(enumVerbs).toContain("update_preferences");
+  });
+
+  it("CALENDAR create_event fails closed inside stored protected sleep without explicit override", async () => {
+    const runtime = makeRuntime();
+    registerOwnerFactStore(runtime, createOwnerFactStore(runtime));
+    await resolveOwnerFactStore(runtime).update(
+      {
+        timezone: "UTC",
+        quietHours: {
+          startLocal: "05:00",
+          endLocal: "13:00",
+          timezone: "UTC",
+        },
+      },
+      { source: "profile_save", recordedAt: "2026-07-06T00:00:00.000Z" },
+    );
+    const callbackTexts: string[] = [];
+
+    const result = await calendarAction.handler(
+      runtime,
+      makeMessage(
+        "Can you throw a team sync on my calendar for 10am tomorrow?",
+      ),
+      {},
+      {
+        parameters: {
+          action: "create_event",
+          title: "team sync",
+          details: {
+            start: "2026-07-07T10:00:00.000Z",
+            end: "2026-07-07T10:30:00.000Z",
+          },
+        },
+      },
+      async (content) => {
+        if (typeof content.text === "string") {
+          callbackTexts.push(content.text);
+        }
+        return [];
+      },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        error: "PROTECTED_SLEEP_CONFLICT",
+        noop: true,
+        requestedLocalTime: "10:00",
+      },
+    });
+    expect(String(result.text)).toContain("protected quiet/sleep window");
+    expect(String(result.text)).toContain("explicit override");
+    expect(callbackTexts.join("\n")).toContain("after 14:00");
+    expect(runtime.useModel).not.toHaveBeenCalled();
+    expect(runtime.getService).not.toHaveBeenCalled();
   });
 });

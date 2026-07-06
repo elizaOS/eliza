@@ -1,9 +1,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
-import { COMPACT_CONVERSATION_ACTION_NAME } from "@elizaos/agent";
 import { CORE_PLUGINS } from "@elizaos/agent/runtime/core-plugins";
-import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
 import { resolveElizaPluginImportSpecifier } from "@elizaos/agent/runtime/plugin-types";
 import {
   AgentRuntime,
@@ -98,6 +96,7 @@ autoWireCerebras();
 
 const BENCH_TOKEN = process.env.ELIZA_BENCH_TOKEN?.trim() || null;
 const OPENROUTER_PLUGIN_MODULE: string = "@elizaos/plugin-openrouter";
+const COMPACT_CONVERSATION_ACTION_NAME = "COMPACT_CONVERSATION";
 
 const OPENAI_COMPAT_MAX_ATTEMPTS = envPositiveInt(
   "CEREBRAS_BENCH_MAX_ATTEMPTS",
@@ -1627,22 +1626,29 @@ export async function startBenchmarkServer() {
     );
   }
 
-  // Load Eliza plugin — provides workspace context, session keys, autonomous state,
-  // custom actions, and lifecycle actions (restart, trigger tasks)
-  try {
-    const workspaceDir = process.env.ELIZA_WORKSPACE_DIR ?? process.cwd();
-    const elizaPlugin = createElizaPlugin({
-      workspaceDir,
-      agentId: "benchmark",
-    });
-    plugins.push(toPlugin(elizaPlugin, "eliza-plugin"));
-    elizaLogger.info(
-      `[bench] Loaded eliza plugin with workspace: ${workspaceDir}`,
-    );
-  } catch (error: unknown) {
-    elizaLogger.error(
-      `[bench] Failed to load eliza plugin: ${formatUnknownError(error)}`,
-    );
+  if (process.env.ELIZA_BENCH_SKIP_ELIZA_PLUGIN === "true") {
+    elizaLogger.info("[bench] Skipping eliza plugin for benchmark smoke run");
+  } else {
+    // Load Eliza plugin — provides workspace context, session keys, autonomous state,
+    // custom actions, and lifecycle actions (restart, trigger tasks).
+    try {
+      const { createElizaPlugin } = await import(
+        "@elizaos/agent/runtime/eliza-plugin"
+      );
+      const workspaceDir = process.env.ELIZA_WORKSPACE_DIR ?? process.cwd();
+      const elizaPlugin = createElizaPlugin({
+        workspaceDir,
+        agentId: "benchmark",
+      });
+      plugins.push(toPlugin(elizaPlugin, "eliza-plugin"));
+      elizaLogger.info(
+        `[bench] Loaded eliza plugin with workspace: ${workspaceDir}`,
+      );
+    } catch (error: unknown) {
+      elizaLogger.error(
+        `[bench] Failed to load eliza plugin: ${formatUnknownError(error)}`,
+      );
+    }
   }
 
   // Load benchmark plugin — provides benchmark provider + BENCHMARK_ACTION

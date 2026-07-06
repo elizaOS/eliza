@@ -839,6 +839,7 @@ rules:
 - use only tools in current context object
 - smallest grounded useful tool queue
 - args only from user request or prior tool results
+- matching owner life-management tool exists => call it before terminal answer. Calendar creates/updates/conflict checks -> CALENDAR; reminders/alarms/todos/routines/goals/scheduled tasks -> OWNER_REMINDERS/OWNER_ALARMS/OWNER_TODOS/OWNER_ROUTINES/OWNER_GOALS/SCHEDULED_TASKS. A conflict, clarification, preview, confirmation request, or fail-closed no-op belongs in the tool result, not bare messageToUser.
 - task complete or next step is user speech => no toolCalls, set messageToUser
 - never invent tool names, connector names, providers, ids, benchmark ids
 

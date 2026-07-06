@@ -129,6 +129,17 @@ describe("prompt templates (src/index.ts)", () => {
     }
   });
 
+  it("plannerTemplate requires owner life-management tools for side effects and fail-closed questions", () => {
+    assert.match(
+      prompts.plannerTemplate,
+      /matching owner life-management tool exists => call it before terminal answer/,
+    );
+    assert.match(
+      prompts.plannerTemplate,
+      /fail-closed no-op belongs in the tool result, not bare messageToUser/,
+    );
+  });
+
   it("factExtractionTemplate names structured fields for multilingual LifeOps projection", () => {
     const body = prompts.factExtractionTemplate;
     assert.match(
