@@ -169,6 +169,22 @@ export function seedDriftOffenders(deltas, { minChangedFraction = 0.02 } = {}) {
     .map((d) => ({ viewport: d.viewport, changedFraction: d.changedFraction }));
 }
 
+export function buildOverallVerdict({
+  colorVerdict,
+  captureFailures = [],
+  driftOffenders = [],
+}) {
+  return {
+    pass:
+      Boolean(colorVerdict?.pass) &&
+      captureFailures.length === 0 &&
+      driftOffenders.length === 0,
+    colorPass: Boolean(colorVerdict?.pass),
+    captureFailures,
+    driftOffenders,
+  };
+}
+
 export function evaluateCaptureReadiness({
   state,
   domText = "",
@@ -282,6 +298,7 @@ async function main() {
   });
   const browser = await chromium.launch();
   const reports = [];
+  const captureFailures = [];
 
   try {
     for (const state of matrix) {
@@ -327,23 +344,35 @@ async function main() {
           networkIdle = `timeout: ${String(error?.message ?? error).slice(0, 120)}`;
         }
         await page.waitForTimeout(1500);
-        if (state.focusComposer) await focusAndType(page);
+        let focusError = "";
+        if (state.focusComposer) {
+          try {
+            await focusAndType(page);
+          } catch (error) {
+            focusError = String(error?.message ?? error).slice(0, 180);
+          }
+        }
         const domText = await readVisibleText(page, state.id);
-        const composerText = state.focusComposer
-          ? await readComposerText(page)
-          : "";
+        let composerText = "";
+        if (state.focusComposer && !focusError) {
+          try {
+            composerText = await readComposerText(page);
+          } catch (error) {
+            focusError = String(error?.message ?? error).slice(0, 180);
+          }
+        }
         const readiness = evaluateCaptureReadiness({
           state,
           domText,
           composerText,
         });
-        if (!readiness.pass) {
-          throw new Error(
-            `Invalid capture for ${state.id}: ${readiness.checks
-              .filter((c) => !c.ok)
-              .map((c) => `${c.name} (${c.detail})`)
-              .join(", ")}`,
-          );
+        if (focusError) {
+          readiness.pass = false;
+          readiness.checks.push({
+            name: "composer:focus_and_type",
+            ok: false,
+            detail: focusError,
+          });
         }
 
         const file = path.join(outDir, `${state.id}.png`);
@@ -369,12 +398,19 @@ async function main() {
           ocr_note: report.ocr_note,
         };
         reports.push(entry);
+        if (!readiness.pass) {
+          captureFailures.push({
+            id: state.id,
+            failedChecks: readiness.checks.filter((c) => !c.ok),
+          });
+        }
         const measured = entry.color_fractions?.blue_fraction;
         const blue = Number.isFinite(measured)
           ? measured.toFixed(3)
           : "unmeasured";
+        const invalid = readiness.pass ? "" : " INVALID_CAPTURE";
         console.log(
-          `■ ${state.id.padEnd(26)} blue=${blue}  ${entry.ocr_text.slice(0, 70)}`,
+          `■ ${state.id.padEnd(26)} blue=${blue}${invalid}  ${entry.ocr_text.slice(0, 70)}`,
         );
       } finally {
         await ctx.close();
@@ -396,21 +432,30 @@ async function main() {
     });
   }
   const driftOffenders = seedDriftOffenders(seedDeltas);
-  if (driftOffenders.length) {
-    throw new Error(
-      `Onboarded seed did not take effect — seeded shell renders the onboarding gate's pixels: ${driftOffenders
-        .map((o) => `${o.viewport} (changed_fraction=${o.changedFraction})`)
-        .join(", ")}`,
-    );
-  }
-
   const verdict = aggregateVerdict(reports);
+  const overall = buildOverallVerdict({
+    colorVerdict: verdict,
+    captureFailures,
+    driftOffenders,
+  });
   writeFileSync(
     path.join(outDir, "report.json"),
-    JSON.stringify({ meta, verdict, seedDeltas, reports }, null, 2),
+    JSON.stringify(
+      {
+        meta,
+        overall,
+        verdict,
+        seedDeltas,
+        captureFailures,
+        driftOffenders,
+        reports,
+      },
+      null,
+      2,
+    ),
   );
   console.log(
-    `\n${verdict.pass ? "PASS" : "FAIL"} — no-blue invariant (ceiling ${verdict.blueCeiling}); ${reports.length} states → ${outDir}/report.json`,
+    `\n${overall.pass ? "PASS" : "FAIL"} — live visual QA; no-blue=${verdict.pass ? "pass" : "fail"} (ceiling ${verdict.blueCeiling}); ${reports.length} states → ${outDir}/report.json`,
   );
   if (verdict.offenders.length)
     console.log(
@@ -420,8 +465,20 @@ async function main() {
         )
         .join(", ")}`,
     );
+  if (captureFailures.length)
+    console.log(
+      `  invalid captures: ${captureFailures
+        .map((f) => `${f.id} (${f.failedChecks.map((c) => c.name).join(", ")})`)
+        .join(", ")}`,
+    );
+  if (driftOffenders.length)
+    console.log(
+      `  seed drift: ${driftOffenders
+        .map((o) => `${o.viewport} changed_fraction=${o.changedFraction}`)
+        .join(", ")}`,
+    );
 
-  if (strict && !verdict.pass) process.exit(1);
+  if (strict && !overall.pass) process.exit(1);
 }
 
 // Only run when invoked directly, so the pure helpers stay importable by tests.
