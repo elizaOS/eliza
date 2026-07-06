@@ -151,6 +151,21 @@ const shaderColor = (p) =>
 const count = (p, sel) => p.locator(sel).count();
 const settle = (p) => p.waitForTimeout(350);
 
+// True once exactly one live GLSL canvas is mounted. A config change (preset
+// switch, undo) remounts the WebGL canvas, so a fixed settle can read 0 mid-
+// remount on CI's slower SwiftShader; wait for the selector, then confirm the
+// count is exactly one (never a stale duplicate).
+async function glslCanvasLive(p) {
+  const sel = '[data-testid="app-background-glsl"] canvas';
+  try {
+    await p.waitForSelector(sel, { timeout: 8000 });
+  } catch {
+    return false;
+  }
+  await settle(p);
+  return (await count(p, sel)) === 1;
+}
+
 /**
  * Pixel-probe the COMPOSITED page (screenshot → decode in-page → sample a grid
  * below the control panel). This reads what the GPU (SwiftShader) actually
@@ -393,12 +408,14 @@ try {
   await snap(p, "glsl-recolor-green");
 
   // 12. Unknown preset id → ignored; the running shader is never wedged.
+  // Wait for the canvas rather than trusting a fixed settle: on CI's slower
+  // SwiftShader a config change remounts the WebGL canvas, and a 350ms race read
+  // 0 mid-remount. glslCanvasLive polls until it settles at exactly one.
   await p.evaluate(() =>
     window.__emitBgApply?.({ op: "set", mode: "glsl", presetId: "nope" }),
   );
-  await settle(p);
   assert(
-    (await count(p, '[data-testid="app-background-glsl"] canvas')) === 1,
+    await glslCanvasLive(p),
     "an unknown GLSL preset id is ignored (canvas still live)",
   );
 
@@ -406,9 +423,8 @@ try {
   // steps green-plasma → teal-plasma (still GLSL); second undo pops the shader
   // entirely, restoring the prior plain teal field. #0891b2 = rgb(8,145,178).
   await p.evaluate(() => window.__emitBgApply?.({ op: "undo" }));
-  await settle(p);
   assert(
-    (await count(p, '[data-testid="app-background-glsl"] canvas')) === 1,
+    await glslCanvasLive(p),
     "first undo steps back to the previous GLSL config (still rendering)",
   );
   await p.evaluate(() => window.__emitBgApply?.({ op: "undo" }));
