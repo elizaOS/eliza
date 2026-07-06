@@ -13,6 +13,7 @@ import {
   boundRowBlock,
   evaluatePrEvidence,
   extractEvidenceRows,
+  findRetiredRepoEvidenceDiffViolations,
   hasArtifactReference,
   hasNaWithReason,
   isChecked,
@@ -316,6 +317,34 @@ describe("check-pr-evidence marker extraction", () => {
     const bounded = boundRowBlock(block);
     assert.ok(bounded.includes("continued indented line"));
     assert.ok(!bounded.includes("example.com"));
+  });
+});
+
+describe("check-pr-evidence retired repo path guard", () => {
+  it("flags added, copied, and renamed files under the retired evidence path", () => {
+    const violations = findRetiredRepoEvidenceDiffViolations(
+      [
+        `A\t${RETIRED_REPO_EVIDENCE_PATH}/new-proof.md`,
+        `C100\tdocs/proof.md\t${RETIRED_REPO_EVIDENCE_PATH}/copied-proof.md`,
+        `R100\tdocs/proof.md\t${RETIRED_REPO_EVIDENCE_PATH}/renamed-proof.md`,
+        "A\tdocs/real-pr-evidence.md",
+      ].join("\n"),
+    );
+    assert.deepEqual(violations, [
+      `${RETIRED_REPO_EVIDENCE_PATH}/new-proof.md`,
+      `${RETIRED_REPO_EVIDENCE_PATH}/copied-proof.md`,
+      `${RETIRED_REPO_EVIDENCE_PATH}/renamed-proof.md`,
+    ]);
+  });
+
+  it("allows deletions from the retired evidence path", () => {
+    const violations = findRetiredRepoEvidenceDiffViolations(
+      [
+        `D\t${RETIRED_REPO_EVIDENCE_PATH}/old-proof.md`,
+        "M\t.github/workflows/pr.yaml",
+      ].join("\n"),
+    );
+    assert.deepEqual(violations, []);
   });
 });
 

@@ -80,6 +80,26 @@ export function hasArtifactReference(text) {
   return false;
 }
 
+export function findRetiredRepoEvidenceDiffViolations(nameStatusText) {
+  return String(nameStatusText ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .flatMap((line) => {
+      const [status, ...paths] = line.split(/\t+/);
+      if (!status || status.startsWith("D")) return [];
+      const candidatePaths =
+        status.startsWith("R") || status.startsWith("C")
+          ? paths.slice(-1)
+          : paths;
+      return candidatePaths.filter(
+        (path) =>
+          path === RETIRED_REPO_EVIDENCE_PATH ||
+          path.startsWith(`${RETIRED_REPO_EVIDENCE_PATH}/`),
+      );
+    });
+}
+
 export function isChecked(rowText) {
   return /^\s*[-*]\s*\[\s*[xX]\s*\]/m.test(rowText);
 }
@@ -198,6 +218,9 @@ Options:
   --body-file <path>  Read the PR body from a file (default: stdin).
   --labels <labels>   Comma-separated PR labels; ui/frontend/native require
                       concrete screenshot/video artifacts.
+  --changed-files <path>
+                      Validate git name-status diff output and fail if the PR
+                      adds or moves files under .github/issue-evidence/.
   --json              Print machine-readable findings JSON.
   --self-test         Run the planted-fixture self-check.
   --help, -h          Show this help.
@@ -310,6 +333,21 @@ function runSelfTest() {
   }
 
   {
+    const violations = findRetiredRepoEvidenceDiffViolations(
+      [
+        `A\t${RETIRED_REPO_EVIDENCE_PATH}/new-proof.md`,
+        `D\t${RETIRED_REPO_EVIDENCE_PATH}/old-proof.md`,
+        `R100\tdocs/proof.md\t${RETIRED_REPO_EVIDENCE_PATH}/renamed-proof.md`,
+      ].join("\n"),
+    );
+    if (violations.length !== 2) {
+      failures.push(
+        "retired repo evidence diff guard should fail additions and rename destinations",
+      );
+    }
+  }
+
+  {
     const body = REQUIRED_EVIDENCE_ROWS.slice(1)
       .map(
         ({ id }) =>
@@ -343,6 +381,28 @@ function main() {
   if (args.includes("--self-test")) {
     runSelfTest();
     return;
+  }
+
+  const changedFilesIdx = args.indexOf("--changed-files");
+  if (changedFilesIdx !== -1) {
+    const file = args[changedFilesIdx + 1];
+    if (!file) {
+      console.error("--changed-files requires a path argument");
+      process.exit(2);
+    }
+    const violations = findRetiredRepoEvidenceDiffViolations(
+      readFileSync(file, "utf8"),
+    );
+    if (violations.length > 0) {
+      console.error(
+        "Evidence gate FAILED: retired repo-local evidence files may not be added under .github/issue-evidence/.",
+      );
+      for (const violation of violations) console.error(`  - ${violation}`);
+      console.error(
+        "Attach evidence inline to the GitHub PR or issue instead of committing it.",
+      );
+      process.exit(1);
+    }
   }
 
   const body = readBody(args);

@@ -23,11 +23,18 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
+      - name: Compute changed files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git diff --name-status "$BASE_SHA" "$GITHUB_SHA" > "$RUNNER_TEMP/pr-files.txt"
+
       - name: Validate PR evidence rows
         run: |
           jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/pr-body.md"
           PR_LABELS=$(jq -r '.pull_request.labels | map(.name) | join(",")' "$GITHUB_EVENT_PATH")
-          node scripts/check-pr-evidence.mjs --body-file "$RUNNER_TEMP/pr-body.md" --labels "$PR_LABELS"
+          node scripts/check-pr-evidence.mjs --body-file "$RUNNER_TEMP/pr-body.md" --labels "$PR_LABELS" --changed-files "$RUNNER_TEMP/pr-files.txt"
 
   check-pr-title:
     runs-on: ubuntu-latest
