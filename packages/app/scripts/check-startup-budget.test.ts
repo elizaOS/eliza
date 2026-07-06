@@ -5,6 +5,10 @@
  * deterministic (no browser, no device) so the gate's grading logic is pinned
  * independent of an actual boot capture.
  */
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 // The gate ships as a Node CLI (.mjs) so it runs without a TS toolchain on CI;
 // vitest imports its exported pure functions directly.
@@ -18,6 +22,11 @@ import {
   selectColdRun,
   shouldPassAfterBaselineUpdate,
 } from "./check-startup-budget.mjs";
+
+const SCRIPT_PATH = path.resolve(
+  process.cwd(),
+  "packages/app/scripts/check-startup-budget.mjs",
+);
 
 function traceRun(kind: string, marks: Array<[string, number]>, extra = {}) {
   return {
@@ -262,5 +271,43 @@ describe("shouldPassAfterBaselineUpdate", () => {
         0,
       ),
     ).toBe(false);
+  });
+});
+
+describe("CLI baseline recording", () => {
+  it("does not partially write baselines when one requested metric has no budget", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "startup-budget-"));
+    const budgetsPath = path.join(dir, "budgets.json");
+    writeFileSync(
+      budgetsPath,
+      `${JSON.stringify(
+        {
+          tolerancePct: 15,
+          tti: { "ci-web": { budgetMs: 4000, baselineMs: null } },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        SCRIPT_PATH,
+        "--budgets",
+        budgetsPath,
+        "--metric",
+        "tti:ci-web=2300",
+        "--metric",
+        "tti:typo=2300",
+        "--update-baseline",
+      ],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Refusing to update baselines");
+    const budgets = JSON.parse(readFileSync(budgetsPath, "utf8"));
+    expect(budgets.tti["ci-web"].baselineMs).toBeNull();
   });
 });

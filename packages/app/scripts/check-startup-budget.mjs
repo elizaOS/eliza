@@ -369,11 +369,17 @@ async function main() {
 
   let updatedBaselines = 0;
   if (args.updateBaseline) {
-    updatedBaselines = applyBaselineUpdates(budgets, rows);
-    writeFileSync(args.budgets, `${JSON.stringify(budgets, null, 2)}\n`);
-    console.log(
-      `Recorded ${updatedBaselines} baseline(s) into ${args.budgets}`,
-    );
+    if (!shouldPassAfterBaselineUpdate(rows, rows.length)) {
+      console.error(
+        "[startup-budget] Refusing to update baselines because at least one requested metric is missing or has no budget entry.",
+      );
+    } else {
+      updatedBaselines = applyBaselineUpdates(budgets, rows);
+      writeFileSync(args.budgets, `${JSON.stringify(budgets, null, 2)}\n`);
+      console.log(
+        `Recorded ${updatedBaselines} baseline(s) into ${args.budgets}`,
+      );
+    }
   }
 
   const report = {
