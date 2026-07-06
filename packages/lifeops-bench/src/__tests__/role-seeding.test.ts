@@ -45,6 +45,7 @@ interface FakeStore {
     custom_directives: string[];
     updated_at: string;
     source: string;
+    trait_sources: Record<string, string>;
   }): Promise<void>;
   clear(): Promise<void>;
   cleared: number;

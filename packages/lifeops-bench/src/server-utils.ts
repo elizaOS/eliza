@@ -1171,6 +1171,7 @@ interface BenchPersonalityStore {
     custom_directives: string[];
     updated_at: string;
     source: "user" | "admin" | "agent_inferred";
+    trait_sources: Record<string, "user" | "admin" | "agent_inferred">;
   }): Promise<void>;
   clear(): Promise<void>;
 }
@@ -1291,6 +1292,7 @@ export async function applyRoleSeedPayload(
       custom_directives: [payload.globalDirective],
       updated_at: now,
       source: "admin",
+      trait_sources: {},
     });
     appliedGlobalDirective = true;
   }
@@ -1306,6 +1308,7 @@ export async function applyRoleSeedPayload(
       custom_directives: [payload.userDirective],
       updated_at: now,
       source: "user",
+      trait_sources: {},
     });
     appliedUserDirective = true;
   }

@@ -235,7 +235,7 @@ describe("applyPreferenceOps trait policy", () => {
 
 	it("never overwrites an explicitly-set trait, even at confidence 1", async () => {
 		const fake = makeFakeRuntime({ agentId: AGENT });
-		fake.store.applyTrait({
+		await fake.store.applyTrait({
 			scope: "user",
 			userId: USER,
 			agentId: AGENT,
@@ -257,7 +257,7 @@ describe("applyPreferenceOps trait policy", () => {
 
 	it("may overwrite a previously inferred trait", async () => {
 		const fake = makeFakeRuntime({ agentId: AGENT });
-		fake.store.applyTrait({
+		await fake.store.applyTrait({
 			scope: "user",
 			userId: USER,
 			agentId: AGENT,
@@ -284,7 +284,7 @@ describe("applyPreferenceOps trait policy", () => {
 
 	it("gates every trait op against the pre-run slot: one inferred write cannot unlock overwriting an explicit trait in the same run", async () => {
 		const fake = makeFakeRuntime({ agentId: AGENT });
-		fake.store.applyTrait({
+		await fake.store.applyTrait({
 			scope: "user",
 			userId: USER,
 			agentId: AGENT,
@@ -296,14 +296,14 @@ describe("applyPreferenceOps trait policy", () => {
 			fake,
 			mustParse({
 				ops: [
-					// This null-trait fill flips slot.source to agent_inferred...
+					// This null-trait fill marks only verbosity as inferred...
 					{
 						op: "set_trait",
 						trait: "verbosity",
 						value: "terse",
 						confidence: 0.9,
 					},
-					// ...which must NOT let this op overwrite the explicit tone.
+					// ...and must NOT let this op overwrite the explicit tone.
 					{ op: "set_trait", trait: "tone", value: "cold", confidence: 0.95 },
 				],
 			}),
@@ -316,7 +316,7 @@ describe("applyPreferenceOps trait policy", () => {
 
 	it("retracts an inferred trait but never an explicit one", async () => {
 		const inferred = makeFakeRuntime({ agentId: AGENT });
-		inferred.store.applyTrait({
+		await inferred.store.applyTrait({
 			scope: "user",
 			userId: USER,
 			agentId: AGENT,
@@ -332,7 +332,7 @@ describe("applyPreferenceOps trait policy", () => {
 		expect(inferred.store.getSlot(USER, AGENT).verbosity).toBeNull();
 
 		const explicit = makeFakeRuntime({ agentId: AGENT });
-		explicit.store.applyTrait({
+		await explicit.store.applyTrait({
 			scope: "user",
 			userId: USER,
 			agentId: AGENT,
@@ -346,6 +346,75 @@ describe("applyPreferenceOps trait policy", () => {
 		);
 		expect(explicit.store.getSlot(USER, AGENT).verbosity).toBe("terse");
 		expect(result?.data).toMatchObject({ traitsRetracted: 0, skipped: 1 });
+	});
+});
+
+describe("applyPreferenceOps cross-turn provenance", () => {
+	it("a prior inferred directive write cannot unlock overwriting an explicit trait on a later turn (#14857 wave-2)", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		// Turn 0: the user explicitly sets tone.
+		await fake.store.applyTrait({
+			scope: "user",
+			userId: USER,
+			agentId: AGENT,
+			actorId: USER,
+			trait: "tone",
+			value: "warm",
+		});
+		// Turn 1: inference adds only a directive. The slot's last-writer
+		// source flips to agent_inferred, but tone's provenance must not.
+		await processOps(
+			fake,
+			mustParse({
+				ops: [{ op: "add_directive", text: "no emojis", confidence: 0.9 }],
+			}),
+		);
+		expect(fake.store.getSlot(USER, AGENT).source).toBe("agent_inferred");
+
+		// Turn 2: a high-confidence inferred set_trait against the explicit
+		// tone — the per-trait gate must refuse it.
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [{ op: "set_trait", trait: "tone", value: "cold", confidence: 1 }],
+			}),
+			{ slot: fake.store.getSlot(USER, AGENT) },
+		);
+		const slot = fake.store.getSlot(USER, AGENT);
+		expect(slot.tone).toBe("warm");
+		expect(slot.trait_sources.tone).toBe("user");
+		expect(result?.data).toMatchObject({ traitsSet: 0, skipped: 1 });
+	});
+
+	it("retracts an inferred trait even when another trait on the slot is explicit", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		await fake.store.applyTrait({
+			scope: "user",
+			userId: USER,
+			agentId: AGENT,
+			actorId: USER,
+			trait: "tone",
+			value: "warm",
+		});
+		await fake.store.applyTrait({
+			scope: "user",
+			userId: USER,
+			agentId: AGENT,
+			actorId: AGENT,
+			trait: "verbosity",
+			value: "terse",
+			source: "agent_inferred",
+		});
+		const result = await processOps(
+			fake,
+			mustParse({ ops: [{ op: "retract_trait", trait: "verbosity" }] }),
+			{ slot: fake.store.getSlot(USER, AGENT) },
+		);
+		const slot = fake.store.getSlot(USER, AGENT);
+		expect(slot.verbosity).toBeNull();
+		expect(slot.tone).toBe("warm");
+		expect(slot.trait_sources.tone).toBe("user");
+		expect(result?.data).toMatchObject({ traitsRetracted: 1 });
 	});
 });
 
@@ -371,7 +440,7 @@ describe("applyPreferenceOps directives", () => {
 
 	it("dedupes a lexically similar directive instead of appending a near-copy", async () => {
 		const fake = makeFakeRuntime({ agentId: AGENT });
-		fake.store.addDirective({
+		await fake.store.addDirective({
 			userId: USER,
 			agentId: AGENT,
 			actorId: USER,
@@ -447,6 +516,32 @@ describe("applyPreferenceOps preference facts", () => {
 		expect(
 			(rows[0].metadata as { confidence?: number }).confidence,
 		).toBeCloseTo(0.8);
+		expect(result?.data).toMatchObject({ factsAdded: 0, factsStrengthened: 1 });
+	});
+
+	it("dedupes against a preference row the fact evaluator inserted in the same turn (post-prepare)", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		const insertedAfterPrepare = preferenceFact(
+			"00000000-0000-4000-8000-0000000000b0",
+			"the user prefers morning check-ins",
+			["morning", "check", "ins"],
+		);
+		fake.memories.set("facts", [insertedAfterPrepare]);
+		// prepared snapshot predates the row — the processor must re-fetch.
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [
+					{
+						op: "add_preference_fact",
+						claim: "prefers morning check-ins",
+						keywords: ["morning", "check-ins"],
+					},
+				],
+			}),
+			{ knownPreferenceFacts: [] },
+		);
+		expect(fake.memories.get("facts") ?? []).toHaveLength(1);
 		expect(result?.data).toMatchObject({ factsAdded: 0, factsStrengthened: 1 });
 	});
 

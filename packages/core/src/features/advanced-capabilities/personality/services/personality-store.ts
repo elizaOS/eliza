@@ -22,12 +22,15 @@ import {
 	MAX_CUSTOM_DIRECTIVES,
 	PERSONALITY_SLOT_TABLE,
 	type PersonalityAuditEntry,
+	type PersonalityGatedTrait,
 	type PersonalityProfile,
 	type PersonalityScope,
 	PersonalityServiceType,
 	type PersonalitySlot,
+	type PersonalitySource,
 	REPLY_GATE_VALUES,
 	TONE_VALUES,
+	TRAIT_VALUES,
 	VERBOSITY_VALUES,
 } from "../types.ts";
 
@@ -45,12 +48,30 @@ function clone(slot: PersonalitySlot): PersonalitySlot {
 	return {
 		...slot,
 		custom_directives: [...slot.custom_directives],
+		trait_sources: { ...slot.trait_sources },
 	};
+}
+
+/**
+ * Next per-trait provenance map after writing `trait`. Setting a value stamps
+ * the writer; clearing a value (null) drops the key so an unset trait carries
+ * no provenance.
+ */
+function nextTraitSources(
+	before: PersonalitySlot,
+	trait: PersonalityGatedTrait,
+	value: unknown,
+	source: PersonalitySource,
+): PersonalitySlot["trait_sources"] {
+	const next = { ...before.trait_sources };
+	if (value === null) delete next[trait];
+	else next[trait] = source;
+	return next;
 }
 
 function serializeSlotForMemory(
 	slot: PersonalitySlot,
-): Record<string, string | string[] | null> {
+): Record<string, string | string[] | null | Record<string, string>> {
 	return {
 		userId: slot.userId,
 		agentId: slot.agentId,
@@ -61,6 +82,7 @@ function serializeSlotForMemory(
 		custom_directives: [...slot.custom_directives],
 		updated_at: slot.updated_at,
 		source: slot.source,
+		trait_sources: { ...slot.trait_sources } as Record<string, string>,
 	};
 }
 
@@ -74,6 +96,16 @@ function slotMemoryId(
 function slotMemoryEntityId(slot: PersonalitySlot): UUID {
 	return slot.userId === GLOBAL_PERSONALITY_SCOPE ? slot.agentId : slot.userId;
 }
+
+const PERSONALITY_SOURCES: readonly PersonalitySource[] = [
+	"user",
+	"admin",
+	"agent_inferred",
+] as const;
+const GATED_TRAITS: readonly PersonalityGatedTrait[] = [
+	...TRAIT_VALUES,
+	"reply_gate",
+] as const;
 
 function isOneOf<T extends string>(
 	value: unknown,
@@ -116,11 +148,20 @@ function isValidPersistedSlot(value: unknown): value is PersonalitySlot {
 		return false;
 	}
 	if (typeof slot.updated_at !== "string") return false;
-	return (
-		slot.source === "user" ||
-		slot.source === "admin" ||
-		slot.source === "agent_inferred"
-	);
+	if (!isOneOf(slot.source, PERSONALITY_SOURCES)) return false;
+	const traitSources = slot.trait_sources;
+	if (
+		traitSources === null ||
+		typeof traitSources !== "object" ||
+		Array.isArray(traitSources)
+	) {
+		return false;
+	}
+	for (const [trait, source] of Object.entries(traitSources)) {
+		if (!isOneOf(trait, GATED_TRAITS)) return false;
+		if (!isOneOf(source, PERSONALITY_SOURCES)) return false;
+	}
+	return true;
 }
 
 /**
@@ -339,17 +380,25 @@ export class PersonalityStore extends Service {
 			targetId: GLOBAL_PERSONALITY_SCOPE,
 			agentId,
 			actorId,
-			build: () => ({
-				userId: GLOBAL_PERSONALITY_SCOPE,
-				agentId,
-				verbosity: profile.verbosity,
-				tone: profile.tone,
-				formality: profile.formality,
-				reply_gate: profile.reply_gate,
-				custom_directives: [...profile.custom_directives],
-				updated_at: new Date().toISOString(),
-				source: "admin",
-			}),
+			build: () => {
+				const trait_sources: PersonalitySlot["trait_sources"] = {};
+				if (profile.verbosity !== null) trait_sources.verbosity = "admin";
+				if (profile.tone !== null) trait_sources.tone = "admin";
+				if (profile.formality !== null) trait_sources.formality = "admin";
+				if (profile.reply_gate !== null) trait_sources.reply_gate = "admin";
+				return {
+					userId: GLOBAL_PERSONALITY_SCOPE,
+					agentId,
+					verbosity: profile.verbosity,
+					tone: profile.tone,
+					formality: profile.formality,
+					reply_gate: profile.reply_gate,
+					custom_directives: [...profile.custom_directives],
+					updated_at: new Date().toISOString(),
+					source: "admin",
+					trait_sources,
+				};
+			},
 			action: () => `load_profile:${profile.name}`,
 		});
 	}
@@ -429,12 +478,22 @@ export class PersonalityStore extends Service {
 				args.scope === "global" ? GLOBAL_PERSONALITY_SCOPE : args.userId,
 			agentId: args.agentId,
 			actorId: args.actorId,
-			build: (before) => ({
-				...before,
-				[args.trait]: args.value,
-				updated_at: new Date().toISOString(),
-				source: args.source ?? (args.scope === "global" ? "admin" : "user"),
-			}),
+			build: (before) => {
+				const source =
+					args.source ?? (args.scope === "global" ? "admin" : "user");
+				return {
+					...before,
+					[args.trait]: args.value,
+					updated_at: new Date().toISOString(),
+					source,
+					trait_sources: nextTraitSources(
+						before,
+						args.trait,
+						args.value,
+						source,
+					),
+				};
+			},
 			action: () => `set_trait:${args.trait}=${args.value ?? "null"}`,
 		});
 	}
@@ -453,12 +512,22 @@ export class PersonalityStore extends Service {
 				args.scope === "global" ? GLOBAL_PERSONALITY_SCOPE : args.userId,
 			agentId: args.agentId,
 			actorId: args.actorId,
-			build: (before) => ({
-				...before,
-				reply_gate: args.mode,
-				updated_at: new Date().toISOString(),
-				source: args.source ?? (args.scope === "global" ? "admin" : "user"),
-			}),
+			build: (before) => {
+				const source =
+					args.source ?? (args.scope === "global" ? "admin" : "user");
+				return {
+					...before,
+					reply_gate: args.mode,
+					updated_at: new Date().toISOString(),
+					source,
+					trait_sources: nextTraitSources(
+						before,
+						"reply_gate",
+						args.mode,
+						source,
+					),
+				};
+			},
 			action: () => `set_reply_gate:${args.mode ?? "null"}`,
 		});
 	}
