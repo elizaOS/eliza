@@ -19,7 +19,6 @@ import type {
 	JsonValue,
 	Memory,
 	State,
-	UUID,
 } from "../../types";
 import { stringToUuid } from "../../utils";
 import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service";
@@ -45,6 +44,20 @@ function readEscalateSubaction(
 	return "admin";
 }
 
+function readEscalationMessage(
+	options: HandlerOptions | undefined,
+): string | null {
+	const params = options?.parameters as
+		| Record<string, JsonValue | undefined>
+		| undefined;
+	const value = params?.message;
+	if (typeof value !== "string") {
+		return null;
+	}
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : null;
+}
+
 function unsupportedEscalationTarget(
 	subaction: Exclude<EscalateSubaction, "admin">,
 ): ActionResult {
@@ -64,6 +77,7 @@ function unsupportedEscalationTarget(
 async function escalateToAdmin(
 	runtime: IAgentRuntime,
 	message: Memory,
+	options: HandlerOptions | undefined,
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
 	// Double-check we're in autonomous context
@@ -97,45 +111,9 @@ async function escalateToAdmin(
 		};
 	}
 
-	// Find target room
-	const adminMessages = await runtime.getMemories({
-		roomId: runtime.agentId,
-		limit: 10,
-		tableName: "memories",
-	});
-
-	let targetRoomId: UUID;
-	if (adminMessages && adminMessages.length > 0) {
-		const lastMessage = adminMessages[adminMessages.length - 1];
-		targetRoomId = lastMessage.roomId;
-	} else {
-		targetRoomId = runtime.agentId;
-	}
-
-	// Extract message content
+	const targetRoomId = runtime.agentId;
 	const autonomousThought = message.content.text || "";
-
-	// Generate message to admin
-	let messageToAdmin: string;
-	if (
-		autonomousThought.includes("completed") ||
-		autonomousThought.includes("finished")
-	) {
-		messageToAdmin = `I've completed a task and wanted to update you. My thoughts: ${autonomousThought}`;
-	} else if (
-		autonomousThought.includes("problem") ||
-		autonomousThought.includes("issue") ||
-		autonomousThought.includes("error")
-	) {
-		messageToAdmin = `I encountered something that might need your attention: ${autonomousThought}`;
-	} else if (
-		autonomousThought.includes("question") ||
-		autonomousThought.includes("unsure")
-	) {
-		messageToAdmin = `I have a question and would appreciate your guidance: ${autonomousThought}`;
-	} else {
-		messageToAdmin = `Autonomous update: ${autonomousThought}`;
-	}
+	const messageToAdmin = readEscalationMessage(options) ?? autonomousThought;
 
 	// Create and store message
 	const now = Date.now();
@@ -284,7 +262,7 @@ export const escalateAction: Action = {
 	): Promise<ActionResult> => {
 		const subaction = readEscalateSubaction(options);
 		if (subaction === "admin") {
-			return escalateToAdmin(runtime, message, callback);
+			return escalateToAdmin(runtime, message, options, callback);
 		}
 		return unsupportedEscalationTarget(subaction);
 	},
