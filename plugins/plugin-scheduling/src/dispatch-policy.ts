@@ -128,15 +128,16 @@ export function decideDispatchPolicy(
     };
   }
 
-  // Permanent failure on the last available step → terminal.
-  if (isLastStep) {
-    return { kind: "fail", reason, message };
-  }
-
-  // User-actionable failure (e.g. auth_expired) — advance, but flag for the
-  // connector-degradation provider so the user is told what to fix.
+  // User-actionable failure (e.g. auth_expired) is surfaced even on the
+  // last available step so the owner still sees what to fix instead of the
+  // degradation surface being skipped by a terminal fail.
   if (failure.userActionable) {
     return { kind: "surface_degraded", reason, message };
+  }
+
+  // Permanent non-actionable failure on the last available step → terminal.
+  if (isLastStep) {
+    return { kind: "fail", reason, message };
   }
 
   // Generic permanent failure on a non-final step → advance to next step.

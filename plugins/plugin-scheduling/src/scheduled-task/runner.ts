@@ -284,6 +284,13 @@ export interface ScheduledTaskRunnerDeps {
    */
   channelKeys?: () => ReadonlySet<string>;
   /**
+   * Optional live availability probe used while advancing a ladder after a
+   * typed dispatch failure. Hosts that know connector status can skip
+   * disconnected connector-backed channels before parking the next attempt,
+   * so escalation cannot target an unavailable transport by construction.
+   */
+  channelAvailable?: (channelKey: string) => boolean | Promise<boolean>;
+  /**
    * Returns the set of `TaskExecutionProfile` values the current host can
    * actually run. The runner consults this AFTER the atomic fire-claim but
    * BEFORE dispatch: if `task.executionProfile` is not in the set, dispatch
@@ -1541,11 +1548,14 @@ export function createScheduledTaskRunner(
       }
       case "advance":
       case "surface_degraded": {
-        const nextLadderIndex = ladderIndex + 1;
-        const nextStep = ladder.steps[nextLadderIndex];
-        if (!nextStep) {
+        const next = await findNextAvailableLadderStep(ladder, ladderIndex + 1);
+        if (!next) {
+          if (decision.kind === "surface_degraded") {
+            recordConnectorDegradation(task, decision, fireAtIso);
+          }
           return failTerminal(task, decision.reason, decision.message);
         }
+        const { nextLadderIndex, nextStep } = next;
         const nextAttemptAtIso = new Date(
           Date.parse(fireAtIso) + nextStep.delayMinutes * 60_000,
         ).toISOString();
@@ -1554,14 +1564,7 @@ export function createScheduledTaskRunner(
         task.state.lastDecisionLog = `dispatch advanced to ladder step ${nextLadderIndex} (${nextStep.channelKey}) after ${decision.reason}`;
         setPendingDispatch(task, { stepIndex: nextLadderIndex, attempt: 0 });
         if (decision.kind === "surface_degraded") {
-          task.metadata = {
-            ...(task.metadata ?? {}),
-            connectorDegradation: {
-              reason: decision.reason,
-              message: decision.message,
-              atIso: fireAtIso,
-            },
-          };
+          recordConnectorDegradation(task, decision, fireAtIso);
         }
         await persist(task);
         await logger.log(task.taskId, "escalated", {
@@ -1587,6 +1590,41 @@ export function createScheduledTaskRunner(
         throw new Error("applyDispatchPolicy: unreachable");
       }
     }
+  }
+
+  async function findNextAvailableLadderStep(
+    ladder: ReturnType<typeof resolveEffectiveLadder>,
+    startIndex: number,
+  ): Promise<{
+    nextLadderIndex: number;
+    nextStep: (typeof ladder.steps)[number];
+  } | null> {
+    for (let i = startIndex; i < ladder.steps.length; i++) {
+      const step = ladder.steps[i];
+      if (!step) continue;
+      if (
+        !deps.channelAvailable ||
+        (await deps.channelAvailable(step.channelKey))
+      ) {
+        return { nextLadderIndex: i, nextStep: step };
+      }
+    }
+    return null;
+  }
+
+  function recordConnectorDegradation(
+    task: ScheduledTask,
+    decision: { kind: "surface_degraded"; reason: string; message?: string },
+    fireAtIso: string,
+  ): void {
+    task.metadata = {
+      ...(task.metadata ?? {}),
+      connectorDegradation: {
+        reason: decision.reason,
+        message: decision.message,
+        atIso: fireAtIso,
+      },
+    };
   }
 
   async function failTerminal(

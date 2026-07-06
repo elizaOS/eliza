@@ -48,7 +48,11 @@ import {
   createInMemoryScheduledTaskLogStore,
   type ScheduledTaskLogStore,
 } from "./state-log.js";
-import type { ScheduledTask } from "./types.js";
+import {
+  DEFAULT_TASK_EXECUTION_PROFILE,
+  type ScheduledTask,
+  TASK_EXECUTION_PROFILES,
+} from "./types.js";
 
 interface ScriptedDispatch {
   record: ScheduledTaskDispatchRecord;
@@ -67,7 +71,12 @@ interface Harness {
   nowIso(): string;
 }
 
-function makeHarness(initialIso = "2026-05-11T12:00:00.000Z"): Harness {
+function makeHarness(
+  initialIso = "2026-05-11T12:00:00.000Z",
+  opts: {
+    channelAvailable?: (channelKey: string) => boolean | Promise<boolean>;
+  } = {},
+): Harness {
   let nowIso = initialIso;
   const queued: Array<DispatchResult | undefined> = [];
   const dispatches: ScriptedDispatch[] = [];
@@ -114,7 +123,27 @@ function makeHarness(initialIso = "2026-05-11T12:00:00.000Z"): Harness {
         return result;
       },
     },
-    channelKeys: () => new Set(["in_app", "push", "imessage"]),
+    channelKeys: () =>
+      new Set([
+        "in_app",
+        "push",
+        "telegram",
+        "signal",
+        "whatsapp",
+        "discord",
+        "sms",
+        "voice",
+        "imessage",
+      ]),
+    ...(opts.channelAvailable
+      ? { channelAvailable: opts.channelAvailable }
+      : {}),
+    hostCapabilities: () => {
+      const profiles = Array.isArray(TASK_EXECUTION_PROFILES)
+        ? TASK_EXECUTION_PROFILES
+        : [];
+      return new Set([DEFAULT_TASK_EXECUTION_PROFILE, ...profiles]);
+    },
     now: () => new Date(nowIso),
   });
 
@@ -298,7 +327,7 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
     const h = makeHarness();
     const task = await h.runner.schedule(
       reminderInput({
-        priority: "high", // 3-step default ladder: in_app → push → imessage
+        priority: "high", // default ladder skips unavailable connected-channel candidates
       }),
     );
     const transportError: DispatchResult = {
@@ -308,9 +337,15 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
     };
     h.queueDispatchResults(
       transportError, // initial attempt (default channel)
-      transportError, // ladder step 0: in_app (+0m)
-      transportError, // ladder step 1: push (+15m)
-      transportError, // ladder step 2: imessage (+45m)
+      transportError, // ladder step 0: push (+15m)
+      transportError, // ladder step 1: telegram (+45m)
+      transportError, // ladder step 2: signal (+45m)
+      transportError, // ladder step 3: whatsapp (+45m)
+      transportError, // ladder step 4: discord (+45m)
+      transportError, // ladder step 5: sms (+45m)
+      transportError, // ladder step 6: voice (+45m)
+      transportError, // ladder step 7: imessage (+45m)
+      transportError, // ladder step 8: in_app (+45m)
     );
 
     let result = await h.runner.fireWithResult(task.taskId);
@@ -324,7 +359,18 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
       );
     }
 
-    expect(attempts).toEqual(["in_app", "in_app", "push", "imessage"]);
+    expect(attempts).toEqual([
+      "in_app",
+      "push",
+      "telegram",
+      "signal",
+      "whatsapp",
+      "discord",
+      "sms",
+      "voice",
+      "imessage",
+      "in_app",
+    ]);
     expect(result.kind).toBe("dispatch_failed");
     const persisted = await h.store.get(task.taskId);
     expect(persisted?.state.status).toBe("failed");
@@ -337,7 +383,70 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
         taskId: task.taskId,
       })
     ).filter((r) => r.transition === "escalated");
-    expect(escalatedRows).toHaveLength(3);
+    expect(escalatedRows).toHaveLength(9);
+  });
+
+  it("skips disconnected high-priority connector candidates and parks on a connected fallback", async () => {
+    const h = makeHarness("2026-05-11T12:00:00.000Z", {
+      channelAvailable: (channelKey) =>
+        channelKey === "telegram" || channelKey === "in_app",
+    });
+    const task = await h.runner.schedule(reminderInput({ priority: "high" }));
+    h.queueDispatchResults({
+      ok: false,
+      reason: "transport_error",
+      userActionable: false,
+    });
+
+    const result = await h.runner.fireWithResult(task.taskId);
+    expect(result.kind).toBe("dispatch_deferred");
+    if (result.kind !== "dispatch_deferred") throw new Error("unreachable");
+    expect(result.reason).toBe("advance:transport_error");
+    expect(result.nextAttemptAtIso).toBe("2026-05-11T12:45:00.000Z");
+
+    const persisted = await h.store.get(task.taskId);
+    expect(persisted?.metadata?.pendingDispatch).toEqual({
+      stepIndex: 1,
+      attempt: 0,
+    });
+
+    h.setNow(result.nextAttemptAtIso);
+    h.queueDispatchResults({ ok: true, messageId: "telegram-ok" });
+    const delivered = await h.runner.fireWithResult(task.taskId);
+    expect(delivered.kind).toBe("fired");
+    expect(h.dispatches.map((d) => d.record.channelKey)).toEqual([
+      "in_app",
+      "telegram",
+    ]);
+  });
+
+  it("keeps imessage eligible when it is connected", async () => {
+    const h = makeHarness("2026-05-11T12:00:00.000Z", {
+      channelAvailable: (channelKey) =>
+        channelKey === "imessage" || channelKey === "in_app",
+    });
+    const task = await h.runner.schedule(reminderInput({ priority: "high" }));
+    h.queueDispatchResults({
+      ok: false,
+      reason: "transport_error",
+      userActionable: false,
+    });
+
+    const result = await h.runner.fireWithResult(task.taskId);
+    expect(result.kind).toBe("dispatch_deferred");
+    const persisted = await h.store.get(task.taskId);
+    expect(persisted?.metadata?.pendingDispatch).toEqual({
+      stepIndex: 7,
+      attempt: 0,
+    });
+
+    h.setNow(persisted?.state.firedAt ?? h.nowIso());
+    h.queueDispatchResults({ ok: true, messageId: "imessage-ok" });
+    await h.runner.fireWithResult(task.taskId);
+    expect(h.dispatches.map((d) => d.record.channelKey)).toEqual([
+      "in_app",
+      "imessage",
+    ]);
   });
 
   it("user-actionable failure surfaces connector degradation while advancing", async () => {

@@ -356,7 +356,7 @@ describe("W1-D default escalation ladders", () => {
     ]);
   });
 
-  it("priority_high_default has 3-step cross-channel ladder", () => {
+  it("priority_high_default has connected-channel candidates ending in in_app", () => {
     expect(DEFAULT_ESCALATION_LADDERS.priority_high_default.steps).toEqual([
       { delayMinutes: 0, channelKey: "in_app", intensity: "soft" },
       { delayMinutes: 15, channelKey: "push", intensity: "normal" },

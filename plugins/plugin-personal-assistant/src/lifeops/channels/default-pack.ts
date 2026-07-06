@@ -223,6 +223,7 @@ function buildChannelContribution(
       kind: descriptor.kind,
       describe: { label: descriptor.label },
       capabilities: descriptor.capabilities,
+      connectorKind: descriptor.connectorKind,
     };
   }
   // Voice channels rewrite the send target so Twilio knows to use TwiML.
@@ -235,6 +236,7 @@ function buildChannelContribution(
     kind: descriptor.kind,
     describe: { label: descriptor.label },
     capabilities: descriptor.capabilities,
+    connectorKind: descriptor.connectorKind,
     async send(payload: unknown): Promise<DispatchResult> {
       const registry = getConnectorRegistry(runtime);
       if (!registry) {

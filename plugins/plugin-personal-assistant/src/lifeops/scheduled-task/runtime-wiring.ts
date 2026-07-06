@@ -52,6 +52,7 @@ import { assembleMorningBrief } from "../../default-packs/morning-brief.js";
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
 import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
+import { getConnectorRegistry } from "../connectors/registry.js";
 import { resolveDefaultTimeZone } from "../defaults.js";
 import { resolveGlobalPauseStore } from "../global-pause/store.js";
 import {
@@ -704,6 +705,22 @@ function buildLifeOpsRunnerDeps(
       const registry = getChannelRegistry(opts.runtime);
       if (!registry) return new Set();
       return new Set(registry.list().map((c) => c.kind));
+    },
+    channelAvailable: async (channelKey: string) => {
+      const channelRegistry = getChannelRegistry(opts.runtime);
+      const channel = channelRegistry?.get(channelKey) ?? null;
+      if (!channel) return false;
+      if (!channel.connectorKind) return true;
+      const connector = getConnectorRegistry(opts.runtime)?.get(
+        channel.connectorKind,
+      );
+      if (!connector?.send) return false;
+      try {
+        const status = await connector.status();
+        return status.state !== "disconnected";
+      } catch {
+        return false;
+      }
     },
     hostCapabilities:
       opts.hostCapabilities ??

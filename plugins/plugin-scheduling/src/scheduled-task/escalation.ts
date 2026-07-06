@@ -63,6 +63,19 @@ export const PRIORITY_DEFAULT_LADDER_KEYS: Record<
   high: "priority_high_default",
 };
 
+export const HIGH_PRIORITY_ESCALATION_CHANNEL_ORDER: readonly EscalationStep[] =
+  Object.freeze([
+    { delayMinutes: 15, channelKey: "push", intensity: "normal" },
+    { delayMinutes: 45, channelKey: "telegram", intensity: "urgent" },
+    { delayMinutes: 45, channelKey: "signal", intensity: "urgent" },
+    { delayMinutes: 45, channelKey: "whatsapp", intensity: "urgent" },
+    { delayMinutes: 45, channelKey: "discord", intensity: "urgent" },
+    { delayMinutes: 45, channelKey: "sms", intensity: "urgent" },
+    { delayMinutes: 45, channelKey: "voice", intensity: "urgent" },
+    { delayMinutes: 45, channelKey: "imessage", intensity: "urgent" },
+    { delayMinutes: 45, channelKey: "in_app", intensity: "urgent" },
+  ]);
+
 export const DEFAULT_ESCALATION_LADDERS: Readonly<
   Record<string, EscalationLadder>
 > = Object.freeze({
@@ -73,11 +86,7 @@ export const DEFAULT_ESCALATION_LADDERS: Readonly<
   },
   priority_high_default: {
     ladderKey: "priority_high_default",
-    steps: [
-      { delayMinutes: 0, channelKey: "in_app", intensity: "soft" },
-      { delayMinutes: 15, channelKey: "push", intensity: "normal" },
-      { delayMinutes: 45, channelKey: "imessage", intensity: "urgent" },
-    ],
+    steps: [...HIGH_PRIORITY_ESCALATION_CHANNEL_ORDER],
   },
 });
 

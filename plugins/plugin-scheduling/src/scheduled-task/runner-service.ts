@@ -96,6 +96,7 @@ export interface ScheduledTaskRunnerDepsBundle {
   activity: ActivitySignalBusView;
   subjectStore: SubjectStoreView;
   channelKeys?: () => ReadonlySet<string>;
+  channelAvailable?: (channelKey: string) => boolean | Promise<boolean>;
   hostCapabilities?: () => ReadonlySet<TaskExecutionProfile>;
   gates?: TaskGateRegistry;
   completionChecks?: CompletionCheckRegistry;
@@ -362,6 +363,9 @@ function buildRunner(
     subjectStore: deps.subjectStore,
     dispatcher: deps.dispatcher,
     ...(deps.channelKeys ? { channelKeys: deps.channelKeys } : {}),
+    ...(deps.channelAvailable
+      ? { channelAvailable: deps.channelAvailable }
+      : {}),
     ...(deps.hostCapabilities
       ? { hostCapabilities: deps.hostCapabilities }
       : {}),

@@ -29,6 +29,9 @@ export interface ChannelContribution {
 
   capabilities: ChannelCapabilities;
 
+  /** Connector kind that backs this channel, when delivery leaves the app. */
+  connectorKind?: string | null;
+
   /**
    * Outbound dispatch verb. Only required when `capabilities.send` is true.
    * The payload shape is channel-specific; the registry does not validate it.
