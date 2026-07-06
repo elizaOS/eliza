@@ -124,13 +124,14 @@ async function extractResolution(
   if (pending.length === 0) {
     return { requestId: null, reason: null };
   }
+  const [onlyPending] = pending;
+  if (pending.length === 1 && onlyPending) {
+    return {
+      requestId: onlyPending.id,
+      reason: userText.trim() || `user ${intent}d`,
+    };
+  }
   if (typeof runtime.useModel !== "function") {
-    if (pending.length === 1) {
-      return {
-        requestId: pending[0].id,
-        reason: userText.trim() || `user ${intent}d`,
-      };
-    }
     return { requestId: null, reason: null };
   }
   // LLM resolution path for natural-language approval decisions.

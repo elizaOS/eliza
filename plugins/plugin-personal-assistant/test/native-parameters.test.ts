@@ -8,6 +8,7 @@ import {
   type IAgentRuntime,
   listSubactionsFromParameters,
   type Memory,
+  promoteSubactionsToActions,
   resolveActionArgs,
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -120,6 +121,44 @@ describe("LifeOps native options.parameters migration", () => {
     expect(mocks.queue.reject).toHaveBeenCalledWith("req-1", {
       resolvedBy: "owner-1",
       resolutionReason: "not now",
+    });
+    expect(runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it("promoted RESOLVE_REQUEST_REJECT resolves the only pending approval without model extraction", async () => {
+    const runtime = makeRuntime();
+    const rejectVirtual = promoteSubactionsToActions(resolveRequestAction).find(
+      (action) => action.name === "RESOLVE_REQUEST_REJECT",
+    );
+    if (!rejectVirtual) {
+      throw new Error("RESOLVE_REQUEST_REJECT virtual was not promoted");
+    }
+    mocks.queue.list.mockResolvedValue([
+      { id: "req-1", action: "send_message", channel: "sms", reason: "one" },
+    ]);
+    mocks.queue.reject.mockResolvedValue({
+      id: "req-1",
+      action: "send_message",
+      state: "rejected",
+    });
+
+    const result = await rejectVirtual.handler(
+      runtime,
+      makeMessage(
+        "Wait - which Chris? There are two. Don't send it, reject that for now.",
+      ),
+      {},
+      undefined,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: { requestId: "req-1", state: "rejected" },
+    });
+    expect(mocks.queue.reject).toHaveBeenCalledWith("req-1", {
+      resolvedBy: "owner-1",
+      resolutionReason:
+        "Wait - which Chris? There are two. Don't send it, reject that for now.",
     });
     expect(runtime.useModel).not.toHaveBeenCalled();
   });
