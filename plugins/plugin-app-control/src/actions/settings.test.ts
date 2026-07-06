@@ -247,8 +247,7 @@ describe("registry completeness", () => {
 			).toBeTruthy();
 		}
 		expect(SETTINGS_WRITE_REGISTRY.voice).toMatchObject({
-			kind: "unwired",
-			trackingIssue: 14910,
+			kind: "route",
 		});
 		expect(SETTINGS_WRITE_REGISTRY["wallet-rpc"]).toMatchObject({
 			kind: "route",
@@ -291,6 +290,8 @@ describe("SETTINGS action: list", () => {
 		expect(permissions).toMatchObject({ writable: true, via: "SETTINGS" });
 		const appearance = sections.find((s) => s.id === "appearance");
 		expect(appearance).toMatchObject({ writable: true, via: "SETTINGS" });
+		const voice = sections.find((s) => s.id === "voice");
+		expect(voice).toMatchObject({ writable: true, via: "SETTINGS" });
 		const capabilities = sections.find((s) => s.id === "capabilities");
 		expect(capabilities).toMatchObject({ writable: true, via: "SETTINGS" });
 		const walletRpc = sections.find((s) => s.id === "wallet-rpc");
@@ -400,6 +401,151 @@ describe("SETTINGS action: set on an owned route section", () => {
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
 		expect(texts.join(" ")).toContain("supported appearance value");
+	});
+
+	it("updates voice continuous-chat mode through the config route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						messages: {
+							existing: { keep: true },
+							voice: {
+								continuous: "off",
+								vadAutoStop: {
+									silenceMs: 900,
+									speechRmsThreshold: 0.006,
+								},
+							},
+						},
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "voice",
+				key: "continuous",
+				value: "always-on",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(1, {
+			method: "GET",
+			path: "/api/config",
+		});
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/config",
+			body: {
+				messages: {
+					existing: { keep: true },
+					voice: {
+						continuous: "always-on",
+						vadAutoStop: {
+							silenceMs: 900,
+							speechRmsThreshold: 0.006,
+						},
+					},
+				},
+			},
+		});
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "voice",
+			key: "continuous",
+		});
+		expect(texts.join(" ")).toContain("continuous chat is always-on");
+	});
+
+	it("updates voice VAD silence while preserving existing voice prefs", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						messages: {
+							voice: {
+								continuous: "vad-gated",
+								vadAutoStop: {
+									silenceMs: 900,
+									speechRmsThreshold: 0.006,
+								},
+							},
+						},
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "voice",
+				key: "silence-ms",
+				value: "1200",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/config",
+			body: {
+				messages: {
+					voice: {
+						continuous: "vad-gated",
+						vadAutoStop: {
+							silenceMs: 1200,
+							speechRmsThreshold: 0.006,
+						},
+					},
+				},
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("rejects out-of-range voice VAD values before writing", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: { messages: { voice: { continuous: "off" } } },
+		}));
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "voice",
+				key: "rms",
+				value: "0.2",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledTimes(1);
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("between 0.001 and 0.02");
+	});
+
+	it("surfaces voice config backend failures instead of fabricating success", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return { ok: true, data: { messages: {} } };
+			}
+			return { ok: false, detail: "config save failed" };
+		});
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "voice",
+				key: "continuous-chat",
+				value: "vad",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledTimes(2);
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("config save failed");
 	});
 
 	it("dispatches permissions shell off through the backend route", async () => {
