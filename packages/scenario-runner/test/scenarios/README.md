@@ -86,8 +86,8 @@ requires a real provider key for live natural-language planner runs.
 
 - `live-help-knowledge` covers the deleted-Help-view replacement: a real model
   must answer first-run help questions from the bundled help FAQ fragments,
-  mention the rerunnable tutorial/voice/privacy facts, and avoid stale "Help
-  view" or button-below instructions. Run it with
+  mention the chat-started rerunnable tutorial/voice/privacy facts, and avoid
+  stale "Help view", tutorial launcher tile, or button-below instructions. Run it with
   `eliza-scenarios run packages/scenario-runner/test/scenarios --scenario live-help-knowledge --report <out> --run-dir <dir>`
   and attach the report plus reviewed trajectories.
 

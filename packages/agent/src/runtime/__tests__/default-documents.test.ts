@@ -186,7 +186,9 @@ describe("bundled help documents", () => {
 
   it("stays durable: no screen-relative or widget-relative instructions", () => {
     for (const doc of HELP_DOCUMENTS) {
-      expect(doc.text).not.toMatch(/below|tap “|deepLink|start the tutorial”/i);
+      expect(doc.text).not.toMatch(
+        /below|tap “|deepLink|start the tutorial|tutorial (tile|launcher)|launcher tile/i,
+      );
     }
   });
 });

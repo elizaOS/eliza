@@ -40,7 +40,7 @@ function helpDocument(
 }
 
 export const HELP_DOCUMENTS: readonly DefaultDocumentDefinition[] = [
-  helpDocument("eliza-help-getting-started", "Eliza help: getting started", 1, [
+  helpDocument("eliza-help-getting-started", "Eliza help: getting started", 2, [
     {
       question: "What is Eliza?",
       answer:
@@ -49,7 +49,7 @@ export const HELP_DOCUMENTS: readonly DefaultDocumentDefinition[] = [
     {
       question: "I just opened Eliza — what do I do first?",
       answer:
-        'Take the interactive tutorial: type "start tutorial" in the chat (or open the Tutorial tile in the launcher). It walks you through the basics right in the conversation — sending messages, voice, navigating by asking — in about a minute, and you can stop it anytime by typing "stop tutorial".',
+        'Take the interactive tutorial: type "start tutorial" in the chat. It walks you through the basics right in the conversation — sending messages, voice, navigating by asking — in about a minute, and you can stop it anytime by typing "stop tutorial".',
     },
     {
       question: "What is the glowing pill at the bottom of the screen?",
@@ -177,7 +177,7 @@ export const HELP_DOCUMENTS: readonly DefaultDocumentDefinition[] = [
         "The Launcher is the home for every screen Eliza can show you — your tasks, documents, memories, settings, and specialized tools. Swipe right from the home dashboard to reach it, open any screen from there or by asking the chat, and Eliza can also open them for you.",
     },
   ]),
-  helpDocument("eliza-help-troubleshooting", "Eliza help: troubleshooting", 1, [
+  helpDocument("eliza-help-troubleshooting", "Eliza help: troubleshooting", 2, [
     {
       question: "Eliza isn't responding to my messages.",
       answer:
@@ -196,7 +196,7 @@ export const HELP_DOCUMENTS: readonly DefaultDocumentDefinition[] = [
     {
       question: "How do I see the tutorial again?",
       answer:
-        'Type "restart tutorial" in the chat any time, or open the Tutorial tile in the launcher. The tour runs right in the conversation and is always re-runnable — nothing is one-time-only.',
+        'Type "restart tutorial" in the chat any time. The tour runs right in the conversation and is always re-runnable — nothing is one-time-only.',
     },
   ]),
 ];

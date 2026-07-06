@@ -14,6 +14,8 @@ const FORBIDDEN_UI_REFERENCES = [
   /help screen/i,
   /spotlight tour/i,
   /full[- ]screen help/i,
+  /tutorial (launcher|tile)/i,
+  /launcher tile/i,
   /tap (the )?button below/i,
   /click (the )?button below/i,
 ];
@@ -95,7 +97,7 @@ export default scenario({
       responseJudge: {
         minimumScore: 0.8,
         rubric:
-          'The answer must ground the first step in the bundled help: take/restart the interactive tutorial from chat by typing "start tutorial" or using the Tutorial launcher tile. It must not refer to a deleted Help view, spotlight-only tour, or a button below the response.',
+          'The answer must ground the first step in the bundled help: take/restart the interactive tutorial from chat by typing "start tutorial". It must not refer to a deleted Help view, launcher tile, spotlight-only tour, or a button below the response.',
       },
     },
     {
@@ -122,13 +124,13 @@ export default scenario({
       text: "Can I see the tutorial again later? How do I restart it?",
       assertResponse: assertHelpAnswer([
         [/restart tutorial|start tutorial/i],
-        ["chat", "launcher"],
+        ["chat", "conversation"],
         [/rerunnable|again|any time|later/i],
       ]),
       responseJudge: {
         minimumScore: 0.8,
         rubric:
-          'The answer must say the tutorial is rerunnable and can be started from chat with "restart tutorial" or "start tutorial", or from the Tutorial launcher tile. It must not call it one-time-only.',
+          'The answer must say the tutorial is rerunnable and can be started from chat with "restart tutorial" or "start tutorial". It must not call it one-time-only or send the user to a launcher tile.',
       },
     },
     {
