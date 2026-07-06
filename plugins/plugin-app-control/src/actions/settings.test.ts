@@ -1460,14 +1460,29 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 		expect(texts.join(" ")).toContain("read-only");
 	});
 
-	it("refuses an unwired gap section with its stated reason", async () => {
-		const { result, texts } = await invoke({
-			action: "set",
-			section: "apps",
-			value: "on",
-		});
-		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("VIEWS/APP");
+	it("refuses every unwired gap section with its stated reason", async () => {
+		const unwiredEntries = Object.entries(SETTINGS_WRITE_REGISTRY).filter(
+			(
+				entry,
+			): entry is [
+				string,
+				Extract<
+					(typeof SETTINGS_WRITE_REGISTRY)[keyof typeof SETTINGS_WRITE_REGISTRY],
+					{ kind: "unwired" }
+				>,
+			] => entry[1].kind === "unwired",
+		);
+		expect(unwiredEntries.length).toBeGreaterThan(0);
+
+		for (const [section, cap] of unwiredEntries) {
+			const { result, texts } = await invoke({
+				action: "set",
+				section,
+				value: "on",
+			});
+			expect(result?.success).toBe(false);
+			expect(texts.join(" ")).toContain(cap.reason);
+		}
 	});
 });
 
