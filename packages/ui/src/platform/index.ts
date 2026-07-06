@@ -55,6 +55,7 @@ export {
   measureStandaloneBottomGap,
   STANDALONE_BOTTOM_RECLAIM_OFFSET,
   STANDALONE_BOTTOM_RECLAIM_VAR,
+  shouldInstallStandaloneBottomReclaim,
 } from "./standalone-bottom-reclaim";
 export type * from "./types";
 export type {

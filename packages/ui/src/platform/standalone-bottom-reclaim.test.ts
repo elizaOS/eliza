@@ -29,6 +29,7 @@ import {
   measureStandaloneBottomGap,
   STANDALONE_BOTTOM_RECLAIM_OFFSET,
   STANDALONE_BOTTOM_RECLAIM_VAR,
+  shouldInstallStandaloneBottomReclaim,
 } from "./standalone-bottom-reclaim";
 
 /**
@@ -172,6 +173,42 @@ describe("clearStandaloneBottomReclaim — hard 0 on non-standalone surfaces", (
         STANDALONE_BOTTOM_RECLAIM_VAR,
       ),
     ).toBe("0px");
+  });
+});
+
+describe("shouldInstallStandaloneBottomReclaim — platform gate", () => {
+  it("installs for standalone PWAs and iOS native WebViews only", () => {
+    expect(
+      shouldInstallStandaloneBottomReclaim({
+        standalonePwa: true,
+        isNative: false,
+        isIOS: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldInstallStandaloneBottomReclaim({
+        standalonePwa: false,
+        isNative: true,
+        isIOS: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not install listeners on Android native, desktop, or browser tabs", () => {
+    expect(
+      shouldInstallStandaloneBottomReclaim({
+        standalonePwa: false,
+        isNative: true,
+        isIOS: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldInstallStandaloneBottomReclaim({
+        standalonePwa: false,
+        isNative: false,
+        isIOS: false,
+      }),
+    ).toBe(false);
   });
 });
 

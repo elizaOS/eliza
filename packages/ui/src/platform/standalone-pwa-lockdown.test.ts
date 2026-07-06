@@ -46,9 +46,7 @@ function stubDisplayMode(mode: "standalone" | "fullscreen" | "browser"): void {
 afterEach(() => {
   document.body.className = "";
   // Drop any matchMedia / navigator.standalone stub so cases don't bleed.
-  // biome-ignore lint/performance/noDelete: test teardown restoring host globals
   delete (window as { matchMedia?: unknown }).matchMedia;
-  // biome-ignore lint/performance/noDelete: test teardown restoring host globals
   delete (navigator as { standalone?: unknown }).standalone;
 });
 

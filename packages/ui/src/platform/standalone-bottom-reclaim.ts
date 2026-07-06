@@ -115,6 +115,23 @@ export function clearStandaloneBottomReclaim(): void {
 }
 
 /**
+ * The reclaim is only needed where WebKit can collapse a fixed-body containing
+ * block: installed standalone PWAs and iOS native WebViews. Android native and
+ * desktop/web tabs must keep the var at 0 and avoid listeners.
+ */
+export function shouldInstallStandaloneBottomReclaim({
+  standalonePwa,
+  isNative,
+  isIOS,
+}: {
+  standalonePwa: boolean;
+  isNative: boolean;
+  isIOS: boolean;
+}): boolean {
+  return standalonePwa || (isNative && isIOS);
+}
+
+/**
  * The disposer for the currently-installed reclaim listeners, if any. Kept at
  * module scope so a repeated {@link installStandaloneBottomReclaim} call (e.g.
  * `setupPlatformStyles` running twice across boot paths) tears down the prior
@@ -127,9 +144,9 @@ let activeDisposer: (() => void) | null = null;
  * visual-viewport resize / scroll and orientation change. Returns a disposer
  * that removes all listeners (idempotent — a second install disposes the first).
  *
- * MUST be called ONLY when running as an installed standalone PWA. On any other
- * surface, call {@link clearStandaloneBottomReclaim} instead so the var is a
- * hard 0 with no listeners attached.
+ * MUST be called ONLY when running as an installed standalone PWA or iOS native
+ * WebView. On any other surface, call {@link clearStandaloneBottomReclaim}
+ * instead so the var is a hard 0 with no listeners attached.
  */
 export function installStandaloneBottomReclaim(): () => void {
   if (typeof window === "undefined" || typeof document === "undefined") {
