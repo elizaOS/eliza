@@ -797,6 +797,8 @@ export async function runPlannerLoop(
 		try {
 			evaluator = await evaluateTrajectory(params, trajectory, iteration);
 		} catch (err) {
+			// error-policy:J4 explicit user-facing degrade - when the tool already
+			// succeeded, return that truthful result instead of a generic failure.
 			// The in-loop evaluator is a MODEL call: it decides FINISH/CONTINUE and
 			// synthesizes the user-facing reply from the tool results. When it fails
 			// transiently (a provider 400/429/5xx) AFTER a non-terminal tool already

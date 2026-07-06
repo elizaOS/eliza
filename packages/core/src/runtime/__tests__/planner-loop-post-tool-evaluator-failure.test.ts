@@ -66,7 +66,8 @@ describe("planner-loop — post-tool evaluator failure recovery", () => {
 	});
 
 	it("does not regress the happy path — returns the evaluator's message on FINISH", async () => {
-		const evaluatorMessage = "Created hello-elizacode.txt with ELIZA CODE WORKS.";
+		const evaluatorMessage =
+			"Created hello-elizacode.txt with ELIZA CODE WORKS.";
 		const executeToolCall = vi.fn(async () => ({
 			success: true,
 			text: "Wrote 16 bytes to /home/milady/hello-elizacode.txt",
