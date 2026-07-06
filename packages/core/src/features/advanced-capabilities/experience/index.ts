@@ -2,6 +2,7 @@
  * Experience learning bundled with advanced capabilities.
  */
 
+export { manageExperienceAction } from "./actions/manage-experience.ts";
 export { searchExperiencesAction } from "./actions/search-experiences.ts";
 export { experiencePatternEvaluator } from "./evaluators/experience-items.ts";
 export { experienceProvider } from "./providers/experienceProvider.ts";
@@ -18,11 +19,13 @@ import { anchorBundleSafety } from "../../../bundle-safety.ts";
 // into an empty `init_X = () => {}`. Without this the on-device
 // mobile agent explodes with `ReferenceError: <name> is not defined`
 // when a consumer dereferences a re-exported binding at runtime.
+import { manageExperienceAction as _bs_0_manageExperienceAction } from "./actions/manage-experience.ts";
 import { searchExperiencesAction as _bs_1_searchExperiencesAction } from "./actions/search-experiences.ts";
 import { experiencePatternEvaluator as _bs_2_experiencePatternEvaluator } from "./evaluators/experience-items.ts";
 import { experienceProvider as _bs_3_experienceProvider } from "./providers/experienceProvider.ts";
 
 anchorBundleSafety("FEATURES_ADVANCED_CAPABILITIES_EXPERIENCE_INDEX", [
+	_bs_0_manageExperienceAction,
 	_bs_1_searchExperiencesAction,
 	_bs_2_experiencePatternEvaluator,
 	_bs_3_experienceProvider,

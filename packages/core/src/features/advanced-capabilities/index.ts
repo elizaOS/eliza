@@ -22,6 +22,7 @@ import type { IAgentRuntime, RegisteredEvaluator } from "../../types/index.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
 // Direct leaf-file imports — see comment lower in this file for the
 // Bun.build mis-rewrite that requires bypassing barrels.
+import { manageExperienceAction } from "./experience/actions/manage-experience.ts";
 import { searchExperiencesAction } from "./experience/actions/search-experiences.ts";
 import { experiencePatternEvaluator } from "./experience/evaluators/experience-items.ts";
 import { experienceProvider } from "./experience/providers/experienceProvider.ts";
@@ -91,6 +92,7 @@ export const advancedActions = [
 	...promoteSubactionsToActions(withCanonicalActionDocs(roomOpAction)),
 	withCanonicalActionDocs(updateRoleAction),
 	withCanonicalActionDocs(searchExperiencesAction),
+	withCanonicalActionDocs(manageExperienceAction),
 	...promoteSubactionsToActions(messageAction),
 	...promoteSubactionsToActions(postAction),
 	// Personality actions — keep CHARACTER (legacy) alongside the new
