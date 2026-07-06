@@ -20,16 +20,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         ElizaStartupTrace.bootstrap()
         ElizaHomeIndicator.install()
 
-        // Brand tint on native surfaces the WebView can't reach. elizaOS ships
-        // orange as its single accent and never blue; without an app tint iOS
-        // falls back to system blue for system-presented UIKit — the deep-link
-        // "Open in Eliza?" UIAlertController buttons (verified blue on device),
-        // share sheets, and any default-tinted control. #FF5800 mirrors shared
-        // brand `--eliza-brand-orange`. Appearance proxy covers windows created
-        // later; the direct set covers the Capacitor key window already up.
-        let elizaBrandOrange = UIColor(red: 1.0, green: 0x58 / 255.0, blue: 0.0, alpha: 1.0)
-        UIWindow.appearance().tintColor = elizaBrandOrange
-        window?.tintColor = elizaBrandOrange
+        ElizaBrandTint.install(on: window)
 
         UNUserNotificationCenter.current().delegate = self
         BackgroundRunnerPlugin.registerBackgroundTask()
@@ -199,6 +190,21 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             }
         }
         completionHandler()
+    }
+}
+
+/// Native UIKit accent policy for surfaces outside the WebView. The app uses
+/// brand orange as its single accent, so system-presented controls such as
+/// deep-link alerts and share sheets should inherit orange rather than iOS
+/// default blue. The appearance proxy covers future windows; scene delegates
+/// also pass their concrete window because scene-based apps do not reliably set
+/// `AppDelegate.window`.
+enum ElizaBrandTint {
+    private static let orange = UIColor(red: 1.0, green: 0x58 / 255.0, blue: 0.0, alpha: 1.0)
+
+    static func install(on window: UIWindow?) {
+        UIWindow.appearance().tintColor = orange
+        window?.tintColor = orange
     }
 }
 

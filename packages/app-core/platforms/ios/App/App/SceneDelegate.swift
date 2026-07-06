@@ -9,6 +9,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         willConnectTo session: UISceneSession,
         options connectionOptions: UIScene.ConnectionOptions
     ) {
+        ElizaBrandTint.install(on: window)
+
         for context in connectionOptions.urlContexts {
             forwardOpenUrl(context)
         }
@@ -26,6 +28,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
         forwardUserActivity(userActivity)
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        ElizaBrandTint.install(on: window)
     }
 
     private func forwardOpenUrl(_ context: UIOpenURLContext) {
