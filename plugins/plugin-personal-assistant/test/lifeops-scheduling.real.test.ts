@@ -29,11 +29,11 @@ import {
   type RealTestRuntimeResult,
 } from "../../../packages/test/helpers/real-runtime.ts";
 import {
-  checkAvailabilityAction,
   computeProposedSlots,
   formatProposedSlotsReply,
+  runCheckAvailabilityHandler,
   runSchedulingNegotiationHandler,
-  updateMeetingPreferencesAction,
+  runUpdateMeetingPreferencesHandler,
 } from "../src/actions/lib/scheduling-handler.js";
 import { readLifeOpsMeetingPreferences } from "../src/lifeops/owner-profile.js";
 import { ensureLifeOpsSchedulerTask } from "../src/lifeops/runtime.js";
@@ -244,7 +244,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
   });
 
   it("CALENDAR.update_preferences persists preferences to scheduler task metadata", async () => {
-    const result = await updateMeetingPreferencesAction.handler?.(
+    const result = await runUpdateMeetingPreferencesHandler(
       runtime,
       makeMessage(runtime, "set my preferences") as never,
       undefined,
@@ -279,7 +279,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
   });
 
   it("CALENDAR.update_preferences rejects an empty patch", async () => {
-    const result = await updateMeetingPreferencesAction.handler?.(
+    const result = await runUpdateMeetingPreferencesHandler(
       runtime,
       makeMessage(runtime, "set my preferences") as never,
       undefined,
@@ -293,7 +293,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
   });
 
   it("CALENDAR.check_availability rejects an invalid window (end <= start)", async () => {
-    const result = await checkAvailabilityAction.handler?.(
+    const result = await runCheckAvailabilityHandler(
       runtime,
       makeMessage(runtime, "am I free") as never,
       undefined,

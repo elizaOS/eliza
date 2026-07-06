@@ -14,6 +14,7 @@ import type {
   StreamEventEnvelope,
 } from "../api";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
+import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import {
   loadChatAvatarVisible,
   loadChatVoiceMuted,
@@ -45,6 +46,7 @@ export interface ChatState {
   ptySessions: CodingAgentSession[];
   unreadConversations: Set<string>;
   chatPendingImages: ImageAttachment[];
+  chatReplyTarget: ChatReplyTarget | null;
 }
 
 function createInitialChatState(): ChatState {
@@ -66,6 +68,7 @@ function createInitialChatState(): ChatState {
     ptySessions: [],
     unreadConversations: new Set(),
     chatPendingImages: [],
+    chatReplyTarget: null,
   };
 }
 
@@ -95,6 +98,7 @@ type ChatAction =
   | { type: "ADD_UNREAD"; conversationId: string }
   | { type: "REMOVE_UNREAD"; conversationId: string }
   | { type: "SET_PENDING_IMAGES"; value: ImageAttachment[] }
+  | { type: "SET_REPLY_TARGET"; value: ChatReplyTarget | null }
   | { type: "RESET_DRAFT" };
 
 function chatReducer(state: ChatState, action: ChatAction): ChatState {
@@ -196,11 +200,14 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     }
     case "SET_PENDING_IMAGES":
       return { ...state, chatPendingImages: action.value };
+    case "SET_REPLY_TARGET":
+      return { ...state, chatReplyTarget: action.value };
     case "RESET_DRAFT":
       return {
         ...state,
         chatInput: "",
         chatPendingImages: [],
+        chatReplyTarget: null,
         chatSending: false,
         chatFirstTokenReceived: false,
         conversationMessages: [],
@@ -246,12 +253,14 @@ export interface ChatStateHook {
   addUnread: (conversationId: string) => void;
   removeUnread: (conversationId: string) => void;
   setChatPendingImages: React.Dispatch<React.SetStateAction<ImageAttachment[]>>;
+  setChatReplyTarget: (v: ChatReplyTarget | null) => void;
   resetDraftState: () => void;
 
   // Refs (for synchronous access in callbacks)
   activeConversationIdRef: React.RefObject<string | null>;
   chatInputRef: React.RefObject<string>;
   chatPendingImagesRef: React.RefObject<ImageAttachment[]>;
+  chatReplyTargetRef: React.RefObject<ChatReplyTarget | null>;
   conversationMessagesRef: React.RefObject<ConversationMessage[]>;
   conversationsRef: React.RefObject<Conversation[]>;
   conversationHydrationEpochRef: React.MutableRefObject<number>;
@@ -280,6 +289,7 @@ export function useChatState(): ChatStateHook {
   const activeConversationIdRef = useRef<string | null>(null);
   const chatInputRef = useRef("");
   const chatPendingImagesRef = useRef<ImageAttachment[]>([]);
+  const chatReplyTargetRef = useRef<ChatReplyTarget | null>(null);
   const conversationMessagesRef = useRef<ConversationMessage[]>([]);
   const conversationsRef = useRef<Conversation[]>([]);
   const conversationHydrationEpochRef = useRef(0);
@@ -437,12 +447,18 @@ export function useChatState(): ChatStateHook {
     [],
   ) as React.Dispatch<React.SetStateAction<ImageAttachment[]>>;
 
+  const setChatReplyTarget = useCallback((v: ChatReplyTarget | null) => {
+    chatReplyTargetRef.current = v;
+    dispatch({ type: "SET_REPLY_TARGET", value: v });
+  }, []);
+
   const resetDraftState = useCallback(() => {
     conversationHydrationEpochRef.current += 1;
     greetingFiredRef.current = false;
     greetingInFlightConversationRef.current = null;
     chatInputRef.current = "";
     chatPendingImagesRef.current = [];
+    chatReplyTargetRef.current = null;
     conversationMessagesRef.current = [];
     activeConversationIdRef.current = null;
     dispatch({ type: "RESET_DRAFT" });
@@ -470,10 +486,12 @@ export function useChatState(): ChatStateHook {
     addUnread,
     removeUnread,
     setChatPendingImages,
+    setChatReplyTarget,
     resetDraftState,
     activeConversationIdRef,
     chatInputRef,
     chatPendingImagesRef,
+    chatReplyTargetRef,
     conversationMessagesRef,
     conversationsRef,
     conversationHydrationEpochRef,

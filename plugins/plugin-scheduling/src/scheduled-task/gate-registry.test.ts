@@ -326,3 +326,37 @@ describe("weekday_only honors params.weekdays", () => {
     });
   });
 });
+
+describe("registerBuiltInGates: model_moment_check fallback (#14677)", () => {
+  it("registers a resolvable model_moment_check gate", () => {
+    const reg = createTaskGateRegistry();
+    registerBuiltInGates(reg);
+    expect(reg.get("model_moment_check")).not.toBeNull();
+    expect(lookupGateDecision(reg, "model_moment_check")).toEqual({
+      kind: "allow",
+    });
+  });
+
+  it("allows by default — no judge available means no judgment, never a starved task", async () => {
+    const reg = createTaskGateRegistry();
+    registerBuiltInGates(reg);
+    const gate = reg.get("model_moment_check");
+    const task = sleepRecapTask();
+    const decision = await gate?.evaluate(task, makeContext(task));
+    expect(decision).toEqual({ kind: "allow" });
+  });
+
+  it("a pre-registered production judge wins over the fallback (first-wins)", async () => {
+    const reg = createTaskGateRegistry();
+    reg.register({
+      kind: "model_moment_check",
+      evaluate: () => ({ kind: "deny", reason: "judge says drop" }),
+    });
+    registerBuiltInGates(reg);
+    const task = sleepRecapTask();
+    const decision = await reg
+      .get("model_moment_check")
+      ?.evaluate(task, makeContext(task));
+    expect(decision).toEqual({ kind: "deny", reason: "judge says drop" });
+  });
+});

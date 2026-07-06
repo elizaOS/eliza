@@ -85,6 +85,12 @@ export const MAX_DIRECTIVE_CHARS = 200;
 /** Hard token cap for terse verbosity responses (post-generation truncation). */
 export const MAX_TERSE_TOKENS = 60;
 
+/** Who authored a personality write. Explicit (user/admin) beats inference. */
+export type PersonalitySource = "user" | "admin" | "agent_inferred";
+
+/** Slot fields that carry per-trait provenance in `trait_sources`. */
+export type PersonalityGatedTrait = PersonalityTrait | "reply_gate";
+
 /**
  * Structured per-user (or global) personality slot.
  *
@@ -100,7 +106,16 @@ export interface PersonalitySlot {
 	reply_gate: ReplyGateMode | null;
 	custom_directives: string[];
 	updated_at: string;
-	source: "user" | "admin" | "agent_inferred";
+	/** Last writer of ANY field — display/audit only, never a safety gate. */
+	source: PersonalitySource;
+	/**
+	 * Per-trait provenance: who set each currently-set trait (keys exist only
+	 * for set traits). Inference gates MUST read this, not `source`: `source`
+	 * is just the last writer, so a single inferred directive write would
+	 * otherwise relabel the whole slot and let a later inferred set_trait
+	 * overwrite an explicitly-set trait cross-turn.
+	 */
+	trait_sources: Partial<Record<PersonalityGatedTrait, PersonalitySource>>;
 }
 
 /** A named global profile (admin loadable). */
@@ -140,5 +155,6 @@ export function emptyPersonalitySlot(
 		custom_directives: [],
 		updated_at: new Date(0).toISOString(),
 		source: "user",
+		trait_sources: {},
 	};
 }

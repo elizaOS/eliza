@@ -164,6 +164,36 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     });
   });
 
+  it("carries opaque deep-link payloads to the shell frame and response", async () => {
+    const payload = { permissionRequest: { permission: "microphone" } };
+    const { ctx, json, broadcastWs } = makeNavigateCtx("settings", {
+      path: "/settings",
+      subview: "permissions",
+      payload,
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).toHaveBeenCalledWith({
+      type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+      viewId: "settings",
+      viewPath: "/settings",
+      viewLabel: "Settings",
+      viewType: "gui",
+      subview: "permissions",
+      payload,
+    });
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({
+        ok: true,
+        viewId: "settings",
+        subview: "permissions",
+        payload,
+      }),
+    );
+  });
+
   it("broadcasts close actions without requiring a navigation path consumer", async () => {
     const { ctx, broadcastWs } = makeNavigateCtx("settings", {
       action: "close",

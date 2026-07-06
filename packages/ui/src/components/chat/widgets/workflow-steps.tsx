@@ -6,10 +6,12 @@
  */
 
 import { Circle, CircleCheck, CircleX, Loader2 } from "lucide-react";
+import { memo } from "react";
 import type {
   WorkflowSpec,
   WorkflowStepStatus,
 } from "../message-workflow-parser";
+import { workflowPropsEqual } from "./widget-equality";
 
 const STEP_TONE: Record<WorkflowStepStatus, string> = {
   pending: "text-muted",
@@ -27,7 +29,14 @@ function StepIcon({ status }: { status: WorkflowStepStatus }) {
   return <Circle className="h-3.5 w-3.5 text-muted" />;
 }
 
-export function WorkflowSteps({ workflow }: { workflow: WorkflowSpec }) {
+// Memoized on the workflow spec by value (see `workflowPropsEqual`): a
+// re-emitted block that advances a step re-renders; an identical re-parse during
+// the surrounding turn's streaming does not.
+export const WorkflowSteps = memo(function WorkflowSteps({
+  workflow,
+}: {
+  workflow: WorkflowSpec;
+}) {
   const done = workflow.steps.filter((s) => s.status === "done").length;
   const failed = workflow.steps.some((s) => s.status === "failed");
   return (
@@ -76,4 +85,4 @@ export function WorkflowSteps({ workflow }: { workflow: WorkflowSpec }) {
       </ol>
     </div>
   );
-}
+}, workflowPropsEqual);

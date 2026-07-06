@@ -32,21 +32,16 @@ export const ALL_MESSAGE_SOURCES: readonly MessageSource[] = [
 	"browser_bridge",
 ] as const;
 
-export type TriagePriority = "critical" | "high" | "medium" | "low" | "spam";
-
-export type SuggestedAction =
-	| "respond-now"
-	| "respond-today"
-	| "respond-this-week"
-	| "archive"
-	| "skip";
-
+/**
+ * Structural signals attached per message. Urgency, spam, and next-action are
+ * deliberately absent — the model reading the MESSAGE action output makes
+ * those judgments from the message content plus these facts (#14716).
+ */
 export interface TriageScore {
-	priority: TriagePriority;
-	reason: string;
-	suggestedAction: SuggestedAction;
+	/** Relationship-derived sender weight; DEFAULT_CONTACT_WEIGHT when unknown. */
 	contactWeight: number;
-	urgencyKeywords: string[];
+	/** True when the user has previously replied in this message's thread. */
+	userRepliedInThread: boolean;
 	scoredAt: number;
 }
 

@@ -781,7 +781,19 @@ export const pluginAction: Action = {
     "action instead.",
   descriptionCompressed:
     "plugin/connector package install|uninstall|update|sync|eject|configure|toggle|list",
-  validate: async (runtime) => getPluginManager(runtime) !== null,
+  validate: async (runtime, _message, _state, options) => {
+    const params = ((options as HandlerOptions | undefined)?.parameters ??
+      {}) as PluginParams;
+    const op = params.action ?? params.subaction ?? params.op;
+
+    // The app runtime always has local plugin/connector config routes, but the
+    // package-lifecycle ops additionally need the optional plugin_manager
+    // service. With no params yet, expose PLUGIN so settings/connectors turns can
+    // choose it and the handler can validate the concrete operation.
+    return (
+      !op || !PLUGIN_MANAGER_OPS.has(op) || getPluginManager(runtime) !== null
+    );
+  },
   handler: async (
     runtime: IAgentRuntime,
     _message,

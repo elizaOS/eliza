@@ -1,0 +1,87 @@
+{
+  "catalogId": "relationship-type-inference",
+  "title": "Pack H1 - Relationship type inference scenario catalog",
+  "source": {
+    "parentIssue": "#14747",
+    "foundationIssue": "#14785",
+    "packId": "H1",
+    "persona": "relationship graph",
+    "targetCount": 10,
+    "notes": [
+      "Planned ledger for relationship-type inference from message history and relationship vocabulary additions.",
+      "Assertions must land in relationship primitives, not reply text."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "h1.relationship_type.parent_from_history",
+      "pack": "H1",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "h1.relationship_type.manager_vs_client",
+      "pack": "H1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "h1.relationship_type.school_contact",
+      "pack": "H1",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "h1.relationship_type.coparent_detected",
+      "pack": "H1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "h1.relationship_type.old_friend_not_vip",
+      "pack": "H1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "h1.relationship_type.ambiguous_requires_clarifier",
+      "pack": "H1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "h1.relationship_type.contradiction_reconciled",
+      "pack": "H1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "h1.relationship_type.private_label_not_shared",
+      "pack": "H1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "h1.relationship_type.bulk_history_inference",
+      "pack": "H1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "h1.relationship_type.injection_ignored",
+      "pack": "H1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "planned"
+    }
+  ]
+}

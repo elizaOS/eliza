@@ -276,6 +276,8 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		tableName?: string;
 		limit?: number;
 		offset?: number;
+		since?: number;
+		until?: number;
 		accessContext?: AccessContext;
 	}): Promise<MessageSearchHit[]>;
 

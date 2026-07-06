@@ -1,0 +1,450 @@
+{
+  "version": 1,
+  "updatedAt": "2026-07-06T04:45:39.645Z",
+  "entries": {
+    "crypto.evm": {
+      "pathId": "crypto.evm",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.384Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1
+      }
+    },
+    "crypto.solana": {
+      "pathId": "crypto.solana",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.384Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1
+      }
+    },
+    "discord.bot": {
+      "pathId": "discord.bot",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.239Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "discord.user-oauth": {
+      "pathId": "discord.user-oauth",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.239Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1
+      }
+    },
+    "discord.user-token": {
+      "pathId": "discord.user-token",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.239Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "elizacloud.api-key": {
+      "pathId": "elizacloud.api-key",
+      "lastSuccessAt": "2026-07-06T04:45:36.169Z",
+      "lastRunAt": "2026-07-06T04:45:36.169Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "elizacloud.siwe-session": {
+      "pathId": "elizacloud.siwe-session",
+      "lastSuccessAt": "2026-07-06T04:45:36.168Z",
+      "lastRunAt": "2026-07-06T04:45:36.168Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "finance.paypal": {
+      "pathId": "finance.paypal",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.384Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "finance.plaid": {
+      "pathId": "finance.plaid",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.384Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "github.gh-cli": {
+      "pathId": "github.gh-cli",
+      "lastSuccessAt": "2026-07-06T04:45:36.236Z",
+      "lastRunAt": "2026-07-06T04:45:36.236Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "github.pat": {
+      "pathId": "github.pat",
+      "lastSuccessAt": "2026-07-06T04:45:36.237Z",
+      "lastRunAt": "2026-07-06T04:45:36.237Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "github.user-oauth": {
+      "pathId": "github.user-oauth",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.238Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1
+      }
+    },
+    "google.oauth-agent": {
+      "pathId": "google.oauth-agent",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.238Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "google.oauth-owner": {
+      "pathId": "google.oauth-owner",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.238Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "health.fitbit": {
+      "pathId": "health.fitbit",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.384Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "health.google-fit": {
+      "pathId": "health.google-fit",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.384Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "health.healthkit": {
+      "pathId": "health.healthkit",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.384Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1
+      }
+    },
+    "health.oura": {
+      "pathId": "health.oura",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.384Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "health.strava": {
+      "pathId": "health.strava",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.384Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "health.withings": {
+      "pathId": "health.withings",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.384Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "imessage.bluebubbles": {
+      "pathId": "imessage.bluebubbles",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.370Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "imessage.macos": {
+      "pathId": "imessage.macos",
+      "lastSuccessAt": "2026-07-06T04:45:36.355Z",
+      "lastRunAt": "2026-07-06T04:45:36.355Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "lifeops.permission-matrix": {
+      "pathId": "lifeops.permission-matrix",
+      "lastSuccessAt": "2026-07-06T04:38:20.049Z",
+      "lastRunAt": "2026-07-06T04:38:20.049Z",
+      "lane": "live-lane-1",
+      "commit": "d961ec6c32c",
+      "counts": {
+        "passed": 20,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "model.anthropic-key": {
+      "pathId": "model.anthropic-key",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.168Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "model.cerebras-key": {
+      "pathId": "model.cerebras-key",
+      "lastSuccessAt": "2026-07-06T04:45:36.160Z",
+      "lastRunAt": "2026-07-06T04:45:36.160Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "model.openai-key": {
+      "pathId": "model.openai-key",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.160Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "signal.cli": {
+      "pathId": "signal.cli",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.355Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1
+      }
+    },
+    "signal.desktop-bridge": {
+      "pathId": "signal.desktop-bridge",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.323Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1
+      }
+    },
+    "slack.bot": {
+      "pathId": "slack.bot",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.239Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "slack.user-token": {
+      "pathId": "slack.user-token",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.239Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "telegram.bot": {
+      "pathId": "telegram.bot",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.238Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "telegram.user-client": {
+      "pathId": "telegram.user-client",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.238Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1
+      }
+    },
+    "twilio.api": {
+      "pathId": "twilio.api",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.384Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "whatsapp.cloud-api": {
+      "pathId": "whatsapp.cloud-api",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.355Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "x.agent-account": {
+      "pathId": "x.agent-account",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.384Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1
+      }
+    },
+    "x.bearer-app": {
+      "pathId": "x.bearer-app",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.383Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "x.oauth1-user": {
+      "pathId": "x.oauth1-user",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:45:36.383Z",
+      "lane": "dashboard-probe",
+      "commit": "f1a95d28503",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    }
+  }
+}

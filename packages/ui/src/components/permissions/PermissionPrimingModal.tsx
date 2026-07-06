@@ -228,10 +228,20 @@ function PrimingCard({
   const t = useAppSelector((s) => s.t);
   const copy = PRIMING_COPY[id];
   const Icon = copy ? (ICONS[copy.icon] ?? ShieldCheck) : ShieldCheck;
-  const title = copy ? t(copy.titleKey, { defaultValue: copy.title }) : id;
+  const fallbackName = id.replaceAll("-", " ");
+  const title = copy
+    ? t(copy.titleKey, { defaultValue: copy.title })
+    : t("permissionpriming.generic.title", {
+        defaultValue: "Allow {{permission}}",
+        permission: fallbackName,
+      });
   const rationale = copy
     ? t(copy.rationaleKey, { defaultValue: copy.rationale })
-    : "";
+    : t("permissionpriming.generic.rationale", {
+        defaultValue:
+          "Enable this permission so I can complete the request you just made.",
+        permission: fallbackName,
+      });
 
   const denied = status === "denied";
 

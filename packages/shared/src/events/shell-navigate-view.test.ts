@@ -44,6 +44,7 @@ describe("shell navigate view websocket event", () => {
         layout: "split",
         placement: "right",
         alwaysOnTop: true,
+        payload: { permissionRequest: { permission: "microphone" } },
       }),
     ).toEqual({
       viewId: "wallet",
@@ -56,6 +57,7 @@ describe("shell navigate view websocket event", () => {
       layout: "split",
       placement: "right",
       alwaysOnTop: true,
+      payload: { permissionRequest: { permission: "microphone" } },
     });
   });
 

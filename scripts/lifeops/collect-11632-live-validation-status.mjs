@@ -5,10 +5,20 @@
  * provider, Google, and others) and writing a status.json under reports/.
  * Reports which connector groups are configured so the live
  * validation run knows what it can actually exercise.
+ *
+ * CONNECTOR_GROUPS is also imported by the lane driver (run-11632-live-lanes.mjs
+ * derives its model gate from the model group), so the CLI body only runs when
+ * this file is the entrypoint (import.meta.main). As an entrypoint it hydrates
+ * process.env from the layered load shared with the HITL dashboard and lane
+ * driver (env-layers.mjs: process.env > repo .env > main-checkout .env >
+ * ~/.eliza/.env), so all three surfaces report the same readiness. The HITL
+ * dashboard renders per-auth-path rows from connector-paths.mjs instead.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { applyLayeredEnvToProcess } from "./env-layers.mjs";
 
 const ROOT = resolve(new URL("../..", import.meta.url).pathname);
 const DEFAULT_OUT = join(
@@ -17,7 +27,7 @@ const DEFAULT_OUT = join(
 );
 const LIFEOPS_REPORT_ROOT = "reports/lifeops-live-validation";
 
-const CONNECTOR_GROUPS = [
+export const CONNECTOR_GROUPS = [
   {
     id: "model",
     label: "Live model provider",
@@ -71,7 +81,14 @@ const CONNECTOR_GROUPS = [
   {
     id: "x",
     label: "X",
-    requiredAny: ["X_API_KEY", "TWITTER_API_KEY", "TWITTER_BEARER_TOKEN"],
+    // plugin-x live tests use env-mode OAuth 1.0a; bearer-only cannot satisfy
+    // users/me and is not enough to mark the lane ready.
+    requiredAll: [
+      "TWITTER_API_KEY",
+      "TWITTER_API_SECRET_KEY",
+      "TWITTER_ACCESS_TOKEN",
+      "TWITTER_ACCESS_TOKEN_SECRET",
+    ],
   },
   {
     id: "twilio",
@@ -166,7 +183,7 @@ function summarizeOutput(value) {
     .join("\n");
 }
 
-function groupStatus(group) {
+export function groupStatus(group) {
   const requiredAll = group.requiredAll ?? [];
   const requiredAny = group.requiredAny ?? [];
   const optional = group.optional ?? [];
@@ -376,16 +393,22 @@ ${status.existingEvidence.map((entry) => `- ${entry.exists ? "present" : "missin
 `;
 }
 
-const args = parseArgs(process.argv.slice(2));
-const status = buildStatus();
-mkdirSync(dirname(args.out), { recursive: true });
-writeFileSync(args.out, `${JSON.stringify(status, null, 2)}\n`, "utf8");
-writeFileSync(
-  join(dirname(args.out), "README.md"),
-  renderMarkdown(status),
-  "utf8",
-);
-console.log(`[11632-status] wrote ${args.out}`);
-console.log(
-  `[11632-status] closeable=${status.verdict.closeable} blocked=${status.verdict.blockedGroups.join(",")}`,
-);
+const IS_MAIN =
+  import.meta.main || process.argv[1] === fileURLToPath(import.meta.url);
+
+if (IS_MAIN) {
+  applyLayeredEnvToProcess();
+  const args = parseArgs(process.argv.slice(2));
+  const status = buildStatus();
+  mkdirSync(dirname(args.out), { recursive: true });
+  writeFileSync(args.out, `${JSON.stringify(status, null, 2)}\n`, "utf8");
+  writeFileSync(
+    join(dirname(args.out), "README.md"),
+    renderMarkdown(status),
+    "utf8",
+  );
+  console.log(`[11632-status] wrote ${args.out}`);
+  console.log(
+    `[11632-status] closeable=${status.verdict.closeable} blocked=${status.verdict.blockedGroups.join(",")}`,
+  );
+}

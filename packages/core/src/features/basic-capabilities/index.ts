@@ -149,6 +149,7 @@ import {
 } from "./providers/platformContext.ts";
 import { providersProvider } from "./providers/providers.ts";
 import { recentMessagesProvider } from "./providers/recentMessages.ts";
+import { replyContextProvider } from "./providers/replyContext.ts";
 import { runtimeModelContextProvider } from "./providers/runtimeModelContext.ts";
 import { uiContextProvider } from "./providers/uiContext.ts";
 import { userEmotionSignalProvider } from "./providers/userEmotionSignal.ts";
@@ -371,10 +372,13 @@ export async function processAttachments(
 			}
 
 			const contentType = res.headers.get("content-type") || "";
-			// Any text/* document (plain, csv, markdown — all on the chat upload
-			// allow-list) is readable as text. Previously only text/plain was
-			// handled, so csv/markdown fell through to "skipped" (#10714).
-			const isText = contentType.startsWith("text/");
+			// Any text/* document (plain, csv, markdown) and application/json — all
+			// on the chat upload allow-list — is readable as text. Previously only
+			// text/plain was handled, so csv/markdown/json fell through to
+			// "skipped" (#10714).
+			const isText =
+				contentType.startsWith("text/") ||
+				contentType.startsWith("application/json");
 			const isPdf = contentType.startsWith("application/pdf");
 
 			if (isText) {
@@ -1346,6 +1350,7 @@ export const basicProviders = [
 	providersProvider,
 	recentErrorsProvider,
 	recentMessagesProvider,
+	replyContextProvider,
 	runtimeModelContextProvider,
 	uiContextProvider,
 	userEmotionSignalProvider,

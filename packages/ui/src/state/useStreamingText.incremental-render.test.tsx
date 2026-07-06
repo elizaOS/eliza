@@ -275,6 +275,7 @@ function makeChatSendDeps() {
     setCompanionMessageCutoffTs: vi.fn(),
     setConversationMessages,
     setUnreadConversations: vi.fn(),
+    setChatReplyTarget: vi.fn(),
     setActionNotice: vi.fn(),
     activeConversationIdRef: {
       current: "conv-1",
@@ -283,6 +284,7 @@ function makeChatSendDeps() {
     chatPendingImagesRef: {
       current: [],
     } as MutableRefObject<ImageAttachment[]>,
+    chatReplyTargetRef: { current: null },
     conversationsRef,
     conversationMessagesRef,
     chatAbortRef: {

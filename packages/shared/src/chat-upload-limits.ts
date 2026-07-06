@@ -83,6 +83,7 @@ export const CHAT_UPLOAD_MIME_TYPES = [
   "text/plain",
   "text/csv",
   "text/markdown",
+  "application/json",
 ] as const;
 
 export type ChatUploadMimeType = (typeof CHAT_UPLOAD_MIME_TYPES)[number];

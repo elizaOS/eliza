@@ -13,6 +13,11 @@
  *   8. shave — weekly
  *
  * `defaultEnabled: false` — first-run customize asks; defaults path skips.
+ *
+ * Every owner-facing poke here (except high-priority `workout`, which the
+ * judge's safety rail bypasses anyway) carries a trailing `model_moment_check`
+ * gate: the structural gates decide WHETHER today/this window qualifies, the
+ * model judge decides whether NOW is a good moment to interrupt (#14677).
  */
 
 import type { DefaultPack } from "./registry-types.js";
@@ -44,7 +49,7 @@ const brushTeethDefinition: ReminderTaskDefinition = {
   contextRequest: { includeOwnerFacts: ["preferredName"] },
   trigger: { kind: "during_window", windowKey: "morning_or_night" },
   priority: "medium",
-  shouldFire: { gates: [] },
+  shouldFire: { gates: [{ kind: "model_moment_check" }] },
   respectsGlobalPause: true,
   source: "default_pack",
   createdBy: HABIT_STARTERS_PACK_KEY,
@@ -67,7 +72,10 @@ const showerDefinition: ReminderTaskDefinition = {
   trigger: { kind: "during_window", windowKey: "morning" },
   priority: "low",
   shouldFire: {
-    gates: [{ kind: "weekday_only", params: { weekdays: [1, 3, 5] } }],
+    gates: [
+      { kind: "weekday_only", params: { weekdays: [1, 3, 5] } },
+      { kind: "model_moment_check" },
+    ],
   },
   respectsGlobalPause: true,
   source: "default_pack",
@@ -91,7 +99,10 @@ const invisalignDefinition: ReminderTaskDefinition = {
   trigger: { kind: "during_window", windowKey: "afternoon" },
   priority: "medium",
   shouldFire: {
-    gates: [{ kind: "weekday_only", params: { weekdays: [1, 2, 3, 4, 5] } }],
+    gates: [
+      { kind: "weekday_only", params: { weekdays: [1, 2, 3, 4, 5] } },
+      { kind: "model_moment_check" },
+    ],
   },
   respectsGlobalPause: true,
   source: "default_pack",
@@ -120,6 +131,7 @@ const drinkWaterDefinition: ReminderTaskDefinition = {
         kind: "during_window",
         params: { windows: ["morning", "afternoon", "evening"] },
       },
+      { kind: "model_moment_check" },
     ],
   },
   respectsGlobalPause: true,
@@ -138,10 +150,14 @@ const drinkWaterDefinition: ReminderTaskDefinition = {
 
 /**
  * Stretch — interval + multi-gate composition (per IMPL §3.4):
- *   `first_deny`: [weekend_skip, late_evening_skip, stretch.walk_out_reset]
+ *   `first_deny`: [weekend_skip, stretch.walk_out_reset, model_moment_check]
  *
- * `first_deny` short-circuits on the first denying gate. The `stretch.walk_out_reset`
- * gate is registered by the scheduled-task runner's gate-registry.
+ * `first_deny` short-circuits on the first denying gate, so the model call is
+ * only paid when the structural gates already allowed. The
+ * `stretch.walk_out_reset` gate is registered by the scheduled-task runner's
+ * gate-registry. The former `late_evening_skip` gate encoded a timing
+ * JUDGMENT ("too late in the evening"); that call belongs to the moment
+ * judge, which sees the local time plus the owner's presence and rhythm.
  */
 const stretchDefinition: ReminderTaskDefinition = {
   definitionKind: "reminder",
@@ -154,8 +170,8 @@ const stretchDefinition: ReminderTaskDefinition = {
     compose: "first_deny",
     gates: [
       { kind: "weekend_skip" },
-      { kind: "late_evening_skip" },
       { kind: "stretch.walk_out_reset" },
+      { kind: "model_moment_check" },
     ],
   },
   respectsGlobalPause: true,
@@ -181,7 +197,7 @@ const vitaminsDefinition: ReminderTaskDefinition = {
   contextRequest: { includeOwnerFacts: ["preferredName"] },
   trigger: { kind: "during_window", windowKey: "morning_or_evening" },
   priority: "medium",
-  shouldFire: { gates: [] },
+  shouldFire: { gates: [{ kind: "model_moment_check" }] },
   respectsGlobalPause: true,
   source: "default_pack",
   createdBy: HABIT_STARTERS_PACK_KEY,
@@ -238,7 +254,10 @@ const shaveDefinition: ReminderTaskDefinition = {
   trigger: { kind: "during_window", windowKey: "morning" },
   priority: "low",
   shouldFire: {
-    gates: [{ kind: "weekday_only", params: { weekdays: [2, 5] } }],
+    gates: [
+      { kind: "weekday_only", params: { weekdays: [2, 5] } },
+      { kind: "model_moment_check" },
+    ],
   },
   respectsGlobalPause: true,
   source: "default_pack",

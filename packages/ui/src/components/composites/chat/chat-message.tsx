@@ -103,6 +103,12 @@ export interface ChatMessageProps {
   onDismissSuggestion?: (messageId: string) => void;
   /** Accept ("Do it") a proactive suggestion (#8792) — sends the implied action. */
   onAcceptSuggestion?: (message: ChatMessageData) => void;
+  /**
+   * Reply to this message: set the shared composer's reply target so the next
+   * turn carries `replyToMessageId` (→ REPLY_CONTEXT). Wired by the surface;
+   * the row only surfaces the affordance on a real (persisted) turn.
+   */
+  onReply?: (message: ChatMessageData) => void;
   replyTarget?: ChatMessageData | null;
   renderContent?: (
     message: ChatMessageData,
@@ -177,6 +183,38 @@ function useSupportsHover(): boolean {
  */
 export function getChatMessageAnchorId(messageId: string): string {
   return `chat-message-${messageId}`;
+}
+
+/** Single-line, length-capped preview of a message for the "Replying to" pill. */
+const REPLY_PILL_SNIPPET_MAX = 140;
+function replyPillSnippet(text: string): string {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  return collapsed.length > REPLY_PILL_SNIPPET_MAX
+    ? `${collapsed.slice(0, REPLY_PILL_SNIPPET_MAX)}…`
+    : collapsed;
+}
+
+/**
+ * Build the composer reply target from a rendered row. The surface passes its
+ * `agentName` so an assistant turn is labeled by the agent rather than the
+ * user's sender fields (which assistant rows don't carry). Display-only: the
+ * server resolves the real replied-to message from `messageId`.
+ */
+export function buildReplyTargetFromMessage(
+  message: ChatMessageData,
+  agentName: string,
+): { messageId: string; senderName: string; snippet: string } {
+  const senderName =
+    message.role === "user"
+      ? (resolveSenderDisplayName(message) ??
+        normalizeSenderHandle(message.fromUserName) ??
+        "You")
+      : agentName;
+  return {
+    messageId: message.id,
+    senderName,
+    snippet: replyPillSnippet(message.text ?? ""),
+  };
 }
 
 function normalizeSenderHandle(handle?: string): string | null {
@@ -364,6 +402,7 @@ function arePropsEqual(
     prev.onSpeak === next.onSpeak &&
     prev.onLongPressCopy === next.onLongPressCopy &&
     prev.onRetry === next.onRetry &&
+    prev.onReply === next.onReply &&
     prev.replyTarget?.id === next.replyTarget?.id &&
     prev.renderContent === next.renderContent &&
     // renderContext is rebuilt per parent render; compare its fields so only
@@ -422,6 +461,7 @@ export const ChatMessage = memo(function ChatMessage({
   onAcceptSuggestion,
   onLongPressCopy,
   onRetry,
+  onReply,
   playing = false,
   reduceMotion = false,
   replyTarget = null,
@@ -462,9 +502,16 @@ export const ChatMessage = memo(function ChatMessage({
   const canDelete =
     typeof onDelete === "function" && !message.id.startsWith("temp-");
   const normalizedSource = normalizeChatSourceKey(message.source) ?? undefined;
+  // Reply targets the persisted message by id, so an optimistic (temp-) turn —
+  // which has no server row yet — has nothing to reply to. A proactive
+  // suggestion carries its own accept/dismiss affordances, not a reply.
   // Proactive interaction comments (#8792) are agent-initiated *suggestions*, not
   // replies — render them with a distinct, one-tap-dismissible affordance.
   const isSuggestion = !isUser && normalizedSource === "proactive-interaction";
+  const canReply =
+    typeof onReply === "function" &&
+    !message.id.startsWith("temp-") &&
+    !isSuggestion;
   const senderDisplayName = isUser ? resolveSenderDisplayName(message) : null;
   const senderHandle = isUser
     ? resolveSenderHandle(message, senderDisplayName)
@@ -500,6 +547,13 @@ export const ChatMessage = memo(function ChatMessage({
     onCopy?.(message.text);
     flashCopied();
   }, [message.text, onCopy, flashCopied]);
+
+  const handleReply = useCallback(() => {
+    onReply?.(message);
+    // Collapse the tap-revealed rail (touch/glass) after arming the reply so the
+    // focus returns to the composer, not a lingering action row.
+    if (glass || !supportsHover) setShowActions(false);
+  }, [message, onReply, glass, supportsHover]);
 
   // Press-and-hold to copy an assistant answer (glass) — the only extraction
   // affordance on touch. A still hold past COPY_HOLD_MS copies + flashes
@@ -689,7 +743,8 @@ export const ChatMessage = memo(function ChatMessage({
     const canRowCopy = !!onCopy && trimmedText.length > 0;
     // Suggestions carry their own dismiss affordance, not the delete control.
     const canRowDelete = canDelete && !isSuggestion;
-    const hasActions = canRowCopy || canPlay || canEdit || canRowDelete;
+    const hasActions =
+      canRowCopy || canPlay || canEdit || canRowDelete || canReply;
     // An assistant turn carrying an inline choice/form/followups widget must
     // stay a plain container — see messageHasInteractiveWidget.
     const hasInteractiveWidget =
@@ -906,12 +961,14 @@ export const ChatMessage = memo(function ChatMessage({
                 canDelete={canRowDelete}
                 canEdit={canEdit}
                 canPlay={canPlay}
+                canReply={canReply}
                 copied={copied}
                 labels={labels}
                 onCopy={canRowCopy ? handleCopy : undefined}
                 onDelete={() => onDelete?.(message.id)}
                 onEdit={handleStartEditing}
                 onPlay={() => onSpeak?.(message.id, message.text)}
+                onReply={handleReply}
                 playing={playing}
               />
             </div>
@@ -1163,12 +1220,14 @@ export const ChatMessage = memo(function ChatMessage({
                 canDelete={canDelete}
                 canEdit={canEdit}
                 canPlay={canPlay}
+                canReply={canReply}
                 copied={copied}
                 labels={labels}
                 onCopy={handleCopy}
                 onDelete={() => onDelete?.(message.id)}
                 onEdit={handleStartEditing}
                 onPlay={() => onSpeak?.(message.id, message.text)}
+                onReply={handleReply}
               />
             </div>
           ) : null}

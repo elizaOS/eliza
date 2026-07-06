@@ -225,8 +225,6 @@ export interface FirstRunStateHook {
 
   /** Tracks whether first-run completion has been committed durably. */
   completionCommittedRef: React.RefObject<boolean>;
-  /** One-shot in-memory handoff for post-onboarding landing behavior. */
-  completionJustCommittedRef: React.RefObject<boolean>;
 }
 
 export function useFirstRunState(cloudOnly?: boolean): FirstRunStateHook {
@@ -243,13 +241,11 @@ export function useFirstRunState(cloudOnly?: boolean): FirstRunStateHook {
   // with the `hadPrior` protection the restore/poll phases read from the same
   // durable store.
   const completionCommittedRef = useRef(loadPersistedFirstRunComplete());
-  const completionJustCommittedRef = useRef(false);
 
   return {
     state,
     dispatch,
     completionCommittedRef,
-    completionJustCommittedRef,
   };
 }
 

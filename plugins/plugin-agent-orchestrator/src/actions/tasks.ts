@@ -911,9 +911,11 @@ async function runCreate(
   ) as OrchestratorTaskService | null | undefined;
   try {
     if (taskService && typeof taskService.createTask === "function") {
-      // Bind the durable task to a registered Project via the resolved spawn
-      // workdir (all sessions of this create share it). The service
-      // realpath-matches it against the project registry; unmatched = unbound.
+      // Bind the durable task to a registered Project: an explicit caller
+      // `projectId` (validated against the registry by the service) wins;
+      // otherwise the resolved spawn workdir (all sessions of this create share
+      // it) is realpath-matched against the registry. Unmatched = unbound.
+      const explicitProjectId = pickString(params, content, "projectId");
       const boundWorkdir = sessions[0]?.workdir;
       const detail = await taskService.createTask({
         title: taskTitle,
@@ -921,6 +923,7 @@ async function runCreate(
         kind: "coding",
         priority: taskPriority,
         originalRequest: messageText(message),
+        ...(explicitProjectId ? { projectId: explicitProjectId } : {}),
         ...(boundWorkdir ? { workdir: boundWorkdir } : {}),
         ...((originRoomId ?? taskRoomId)
           ? { roomId: originRoomId ?? taskRoomId }
@@ -2038,6 +2041,9 @@ async function runHistory(
   const window = historyWindowValue(params.window ?? content.window);
   const statuses = historyStatusesValue(params.statuses ?? content.statuses);
   const search = textValue(params.search) ?? textValue(content.search);
+  // Registered-project filter: restrict the thread listing to tasks bound to
+  // one project (the store filters on the indexed/structural `projectId`).
+  const projectId = textValue(params.projectId) ?? textValue(content.projectId);
   const includeArchived =
     pickBoolean(params, content, "includeArchived") ?? false;
   const windowFilters = buildWindowFilters(window);
@@ -2050,6 +2056,7 @@ async function runHistory(
         await taskService.listTasks({
           includeArchived,
           ...(search ? { search } : {}),
+          ...(projectId ? { projectId } : {}),
         })
       ).filter((task) =>
         taskMatchesHistoryFilters(task, statuses, windowFilters, search),
@@ -2060,6 +2067,7 @@ async function runHistory(
         windowFilters.label ? `window ${windowFilters.label}` : undefined,
         statuses.length > 0 ? `statuses ${statuses.join(", ")}` : undefined,
         search ? `search "${search}"` : undefined,
+        projectId ? `project ${projectId}` : undefined,
         includeArchived ? "including archived" : undefined,
       ].filter((part): part is string => Boolean(part));
       const filterSuffix =
@@ -2102,6 +2110,7 @@ async function runHistory(
             ...(window ? { window } : {}),
             ...(statuses.length > 0 ? { statuses } : {}),
             ...(search ? { search } : {}),
+            ...(projectId ? { projectId } : {}),
             includeArchived,
             limit,
           },
@@ -3528,6 +3537,13 @@ export const tasksAction: Action & {
       description: "Include archived threads in action=history.",
       required: false,
       schema: { type: "boolean" as const },
+    },
+    {
+      name: "projectId",
+      description:
+        "Registered project id: binds the new task to that project for action=create; restricts the thread listing to that project's tasks for action=history.",
+      required: false,
+      schema: { type: "string" as const },
     },
     // control
     {

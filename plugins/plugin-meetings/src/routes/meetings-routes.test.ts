@@ -3,7 +3,7 @@
  * guards), list, fetch-one, and graceful leave. Deterministic: fake runtime plus
  * scripted adapter, no browser.
  */
-import type { RouteHandlerContext } from "@elizaos/core";
+import type { AccessContext, RouteHandlerContext, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { MeetingService } from "../service.js";
 import {
@@ -15,6 +15,12 @@ import {
 import { meetingsRoutes } from "./meetings-routes.js";
 
 const MEET_URL = "https://meet.google.com/abc-defg-hij";
+const USER = "22222222-2222-2222-2222-222222222222" as UUID;
+
+const userAccess: AccessContext = {
+  requesterEntityId: USER,
+  role: "USER",
+};
 
 function route(method: string, path: string) {
   const found = meetingsRoutes.find(
@@ -153,6 +159,34 @@ describe("/api/meetings routes", () => {
     expect(
       (await del(ctx({ params: { id: crypto.randomUUID() } }))).status,
     ).toBe(404);
+  });
+
+  it("redacts transcriptId from meeting sessions when the requester cannot read the transcript", async () => {
+    const { ctx, adapter } = makeHarness();
+    const post = route("POST", "/api/meetings");
+    const list = route("GET", "/api/meetings");
+    const get = route("GET", "/api/meetings/:id");
+
+    const created = await post(ctx({ body: { meetingUrl: MEET_URL } }));
+    const session = (
+      created.body as { session: { id: string; transcriptId?: string } }
+    ).session;
+    expect(session.transcriptId).toBeTypeOf("string");
+    await adapter.started;
+
+    const filteredList = await list(ctx({ accessContext: userAccess }));
+    const filteredSession = (
+      filteredList.body as { sessions: Array<{ transcriptId?: string }> }
+    ).sessions[0];
+    expect(filteredSession.transcriptId).toBeUndefined();
+
+    const filteredGet = await get(
+      ctx({ params: { id: session.id }, accessContext: userAccess }),
+    );
+    expect(
+      (filteredGet.body as { session: { transcriptId?: string } }).session
+        .transcriptId,
+    ).toBeUndefined();
   });
 
   it("answers 503 when the meetings service is not running", async () => {

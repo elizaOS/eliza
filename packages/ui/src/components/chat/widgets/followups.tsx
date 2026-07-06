@@ -16,9 +16,10 @@
  */
 
 import { ArrowRight, Check, X } from "lucide-react";
-import { useCallback, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { Button } from "../../ui/button";
 import type { FollowupKind, FollowupOption } from "../message-followups-parser";
+import { followupsPropsEqual } from "./widget-equality";
 
 export type { FollowupKind, FollowupOption };
 
@@ -44,7 +45,11 @@ function iconForKind(kind: FollowupKind) {
   ) : null;
 }
 
-export function FollowupsWidget({
+// Memoized on its data props (see `followupsPropsEqual`): the transcript
+// re-parses per streamed token, so a value-level comparator keeps a streaming
+// turn from re-rendering (and resetting the dismissed/locked state of) every
+// FOLLOWUPS row in view.
+export const FollowupsWidget = memo(function FollowupsWidget({
   id,
   options,
   onChoose,
@@ -137,4 +142,4 @@ export function FollowupsWidget({
       )}
     </fieldset>
   );
-}
+}, followupsPropsEqual);

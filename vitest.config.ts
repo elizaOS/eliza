@@ -35,6 +35,18 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        // plugin-app-control's build (tsup, index + worker entries only)
+        // never emits dist/actions/*.js; the agent's settings-actions.ts
+        // subpath import resolves only under the `eliza-source` exports
+        // condition, which vite's resolver ignores. Pin it to source so any
+        // test whose graph loads @elizaos/agent (aliased to src below) boots.
+        find: /^@elizaos\/plugin-app-control\/actions\/settings$/,
+        replacement: path.join(
+          root,
+          "plugins/plugin-app-control/src/actions/settings.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/app-core$/,
         replacement: path.join(root, "packages/app-core/src/index.ts"),
       },
@@ -49,6 +61,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/(.+)$/,
         replacement: path.join(root, "packages/agent/src/$1"),
+      },
+      {
+        // The agent's settings action imports the shared parser from this
+        // subpath (#14804); app-control's build bundles only the barrel, so
+        // without the eliza-source condition the subpath has no dist file to
+        // resolve to and must be pinned to source here.
+        find: /^@elizaos\/plugin-app-control\/(.+)$/,
+        replacement: path.join(root, "plugins/plugin-app-control/src/$1"),
       },
       {
         find: /^@elizaos\/logger$/,

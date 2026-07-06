@@ -151,6 +151,12 @@ describe("attachmentPreviewKind", () => {
         make({ url: "https://x/notes", mimeType: "text/plain" }),
       ),
     ).toBe("code");
+    // application/json is now an uploadable document; it previews as code.
+    expect(
+      attachmentPreviewKind(
+        make({ url: "https://x/data", mimeType: "application/json" }),
+      ),
+    ).toBe("code");
     expect(
       attachmentPreviewKind(make({ url: "https://x/blob", text: "hello" })),
     ).toBe("code");
@@ -444,5 +450,74 @@ describe("MessageAttachments — optimistic paste echo (self-composed data: URLs
     expect([...hrefs, ...srcs]).not.toContain(
       "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
     );
+  });
+});
+
+describe("MessageAttachments — not-processed enrichment state", () => {
+  // When the server's enrichment pass could not extract text/description (e.g. a
+  // transcription backend being unavailable) it sets `notProcessed` with a
+  // reason. The tile still renders (the bytes are stored + downloadable) AND a
+  // "Not processed: <reason>" notice appears, so a stored-but-unreadable
+  // attachment is never silently indistinguishable from an empty one.
+
+  it("renders the media tile PLUS a not-processed notice for a failed audio transcription", () => {
+    const { container } = render(
+      <MessageAttachments
+        attachments={[
+          {
+            id: "aud",
+            url: "https://x/clip.mp3",
+            contentType: "audio",
+            title: "clip.mp3",
+            notProcessed: "Audio transcription unavailable: no provider",
+          },
+        ]}
+      />,
+    );
+    // The audio player still renders — the bytes are reachable.
+    expect(container.querySelector("audio")).not.toBeNull();
+    // ...and the failure is surfaced, not silent.
+    const notice = screen.getByTestId("attachment-not-processed");
+    expect(notice.textContent).toMatch(
+      /Not processed: Audio transcription unavailable: no provider/,
+    );
+  });
+
+  it("renders a not-processed notice under a document file card", () => {
+    render(
+      <MessageAttachments
+        attachments={[
+          {
+            id: "doc",
+            url: "https://x/archive.zip",
+            contentType: "document",
+            title: "archive.zip",
+            notProcessed:
+              "Unsupported document type (application/zip); stored but text not extracted",
+          },
+        ]}
+      />,
+    );
+    const notice = screen.getByTestId("attachment-not-processed");
+    expect(notice.textContent).toMatch(/application\/zip/);
+    // The download card is still present alongside the notice.
+    expect(screen.getByRole("link", { name: /archive\.zip/i })).not.toBeNull();
+  });
+
+  it("shows no notice when the attachment was processed normally", () => {
+    render(
+      <MessageAttachments
+        attachments={[
+          {
+            id: "img",
+            url: "https://x/cat.png",
+            contentType: "image",
+            title: "cat",
+            description: "a cat",
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId("attachment-not-processed")).toBeNull();
   });
 });

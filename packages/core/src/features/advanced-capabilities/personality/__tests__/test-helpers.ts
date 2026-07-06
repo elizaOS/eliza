@@ -23,6 +23,20 @@ function nextUuid(): UUID {
 	return `00000000-0000-4000-8000-${hex}0000000000`.slice(0, 36) as UUID;
 }
 
+function metadataMatches(
+	memory: Memory,
+	filter?: Record<string, unknown>,
+): boolean {
+	if (!filter) return true;
+	if (!memory.metadata) return false;
+	const metadata = memory.metadata as Record<string, unknown>;
+	for (const [key, value] of Object.entries(filter)) {
+		if (!(key in metadata)) return false;
+		if (JSON.stringify(metadata[key]) !== JSON.stringify(value)) return false;
+	}
+	return true;
+}
+
 export interface FakeRuntimeOptions {
 	agentId?: UUID;
 	character?: Partial<Character>;
@@ -86,16 +100,35 @@ export function makeFakeRuntime(options: FakeRuntimeOptions = {}): FakeRuntime {
 			memories.set(table, list);
 			return withId.id as UUID;
 		},
+		async upsertMemory(memory: Memory, table: string): Promise<void> {
+			const list = memories.get(table) ?? [];
+			const memoryId = memory.id ?? nextUuid();
+			const withId: Memory = { ...memory, id: memoryId };
+			const existingIndex = list.findIndex((stored) => stored.id === memoryId);
+			if (existingIndex === -1) {
+				list.push(withId);
+			} else {
+				list[existingIndex] = {
+					...list[existingIndex],
+					...withId,
+				};
+			}
+			memories.set(table, list);
+		},
 		async getMemories(opts: {
 			tableName: string;
 			entityId?: UUID;
+			agentId?: UUID;
 			roomId?: UUID;
 			count?: number;
+			metadata?: Record<string, unknown>;
 		}): Promise<Memory[]> {
 			const list = memories.get(opts.tableName) ?? [];
 			return list
 				.filter((m) => !opts.entityId || m.entityId === opts.entityId)
+				.filter((m) => !opts.agentId || m.agentId === opts.agentId)
 				.filter((m) => !opts.roomId || m.roomId === opts.roomId)
+				.filter((m) => metadataMatches(m, opts.metadata))
 				.slice(0, opts.count ?? list.length);
 		},
 		async updateMemory(patch: Partial<Memory> & { id: UUID }): Promise<void> {
@@ -139,13 +172,9 @@ export function makeFakeRuntime(options: FakeRuntimeOptions = {}): FakeRuntime {
 }
 
 export async function initStore(fake: FakeRuntime): Promise<void> {
-	// Bypass private init; we call loadProfilesFromDisk explicitly to seed
-	// default profiles (without static start which would re-construct).
-	// We treat the in-memory list as the source of truth.
-	const profiles = await import("../profiles/index.ts");
-	for (const profile of profiles.defaultProfiles) {
-		fake.store.saveProfile(profile);
-	}
+	const store = await PersonalityStore.start(fake.runtime);
+	fake.runtime.registerService(PersonalityStore.serviceType, store);
+	fake.store = store;
 }
 
 export function makeMessage(args: {

@@ -25,6 +25,11 @@ import { memo, useCallback } from "react";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import { emitViewInteraction } from "../../view-telemetry";
+import {
+  WALLPAPER_FLOAT_SHADOW,
+  WALLPAPER_GLASS,
+  WALLPAPER_TEXT,
+} from "../shell/wallpaper-idiom";
 import { Button } from "../ui/button";
 import { ViewTileImage } from "../views/ViewTileImage";
 import type { LauncherZone } from "./launcher-curation";
@@ -94,7 +99,8 @@ const IconTile = memo(function IconTile({
             // owns hover/focus chrome; the inner visual owns color/glyph. Flat —
             // no border; a subtle glass wash is the icon plate (neutral resting →
             // neutral-with-opacity hover).
-            "h-16 w-16 overflow-hidden rounded-2xl bg-white/10 text-white transition-colors hover:bg-white/20",
+            "h-16 w-16 overflow-hidden rounded-2xl transition-colors",
+            WALLPAPER_GLASS.iconPlate,
             // Neutralize Button's default-size padding (px-4 py-2 letterboxed
             // the artwork into a 32×48 inset) and its [&_svg]:size-4 descendant
             // rule (which would shrink the 28px glyph fallback): the artwork
@@ -121,12 +127,11 @@ const IconTile = memo(function IconTile({
         ) : null}
         {onToggleFavorite ? (
           // The pin lives on the tile itself (the only place a launcher-scoped
-          // favorite has meaning). Neutral, hidden until hover/focus so the grid
-          // stays calm; the filled/gold state persists once pinned so a Favorites
-          // member reads as pinned even at rest.
+          // favorite has meaning). Fine pointers keep the quiet hover/focus
+          // reveal, while coarse pointers get a visible 44px target at rest so
+          // Favorites can be managed on the phone-primary surface.
           <Button
-            variant="ghost"
-            size="icon-sm"
+            unstyled
             data-testid={`launcher-favorite-${entry.id}`}
             aria-pressed={isFavorite}
             aria-label={
@@ -139,14 +144,14 @@ const IconTile = memo(function IconTile({
               onToggleFavorite(entry);
             }}
             className={cn(
-              "absolute -right-2 -top-2 h-6 w-6 rounded-full bg-black/55 p-0 text-white transition-opacity hover:bg-black/70",
+              "absolute -right-3.5 -top-3.5 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/50 bg-card/85 p-0 text-card-foreground shadow-sm transition-[background-color,opacity,transform] active:scale-[0.98] hover:bg-card",
               isFavorite
                 ? "text-warn opacity-100"
-                : "text-white/80 opacity-0 focus-visible:opacity-100 group-hover:opacity-100",
+                : "opacity-0 focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100",
             )}
           >
             <Star
-              className="h-3.5 w-3.5"
+              className="h-4 w-4"
               fill={isFavorite ? "currentColor" : "none"}
               aria-hidden
             />
@@ -158,7 +163,13 @@ const IconTile = memo(function IconTile({
           ("Relationships", ~79px at 11px) cannot wrap at a word boundary — a
           tighter cap clipped it mid-glyph (#14427). line-clamp-2 still wraps
           multi-word labels. */}
-      <span className="line-clamp-2 max-w-[5.25rem] text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
+      <span
+        className={cn(
+          "line-clamp-2 max-w-[5.25rem] text-center text-[11px] font-medium leading-tight",
+          WALLPAPER_TEXT.base,
+          WALLPAPER_FLOAT_SHADOW,
+        )}
+      >
         {entry.label}
       </span>
     </div>
@@ -200,7 +211,13 @@ function ZoneHeader({ label }: { label: string }) {
   // card chrome (the launcher paints straight onto the wallpaper).
   return (
     <div className="flex items-center gap-3 px-1">
-      <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/85 [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
+      <h2
+        className={cn(
+          "text-[11px] font-semibold uppercase tracking-[0.14em]",
+          WALLPAPER_TEXT.primary,
+          WALLPAPER_FLOAT_SHADOW,
+        )}
+      >
         {label}
       </h2>
       <div className="h-px flex-1 bg-white/20" />

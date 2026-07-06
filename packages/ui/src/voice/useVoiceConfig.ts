@@ -9,10 +9,13 @@ import { client } from "../api/client";
 import type { VoiceConfig } from "../api/client-types-config";
 import { VOICE_CONFIG_UPDATED_EVENT } from "../events";
 import { useDefaultProviderPresets } from "../hooks/useDefaultProviderPresets";
+import { useResolvedTtsDefault } from "../hooks/useResolvedTtsDefault";
+import { useAppSelector } from "../state";
 import {
   applyVoiceProviderDefaults,
   resolveCharacterVoiceConfigFromAppConfig,
 } from "./character-voice-config";
+import { hasConfiguredApiKey } from "./types";
 
 export interface UseVoiceConfigResult {
   /** Saved voice config with platform/runtime provider defaults applied. Never null. */
@@ -35,6 +38,21 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
   const [voiceConfig, setVoiceConfig] = React.useState<VoiceConfig | null>(
     null,
   );
+  const cloudVoiceAvailable = useAppSelector(
+    (s) => s.elizaCloudVoiceProxyAvailable,
+  );
+  // ElevenLabs is a default only when the user has actually configured a key —
+  // it is never selected silently (slow + key-gated).
+  const elevenLabsKeyConfigured = hasConfiguredApiKey(
+    voiceConfig?.elevenlabs?.apiKey,
+  );
+  // Capability-aware default: on-device Kokoro when staged, else Eliza Cloud
+  // Kokoro when a session exists, else ElevenLabs (key), else browser TTS. Only
+  // seeds when the user hasn't picked a provider (see applyVoiceProviderDefaults).
+  const { provider: resolvedTtsProvider } = useResolvedTtsDefault({
+    cloudVoiceAvailable,
+    elevenLabsKeyConfigured,
+  });
   const [voiceBootstrapTick, setVoiceBootstrapTick] = React.useState(0);
   const isMountedRef = React.useRef(false);
 
@@ -100,8 +118,13 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
   }, [loadVoiceConfig]);
 
   const voiceConfigWithDefaults = React.useMemo(
-    () => applyVoiceProviderDefaults(voiceConfig, voiceProviderDefaults),
-    [voiceConfig, voiceProviderDefaults],
+    () =>
+      applyVoiceProviderDefaults(
+        voiceConfig,
+        voiceProviderDefaults,
+        resolvedTtsProvider,
+      ),
+    [voiceConfig, voiceProviderDefaults, resolvedTtsProvider],
   );
 
   const reloadVoiceConfig = React.useCallback(() => {

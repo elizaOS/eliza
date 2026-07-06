@@ -16,8 +16,16 @@ import {
   createTaskGateRegistry,
   registerBuiltInGates,
 } from "@elizaos/plugin-scheduling";
+import type { LifeOpsActivitySignal } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import type { ActivityProfile } from "../../activity-profile/types.js";
+import {
+  createFamilyRegistry,
+  registerBuiltinTelemetryFamilies,
+} from "../registries/family-registry.js";
+import { publishActivitySignalToBus } from "../signals/activity-signal-publisher.js";
+import type { ActivitySignalBus } from "../signals/bus.js";
+import { createActivitySignalBus } from "../signals/bus.js";
 import {
   behaviouralBaselineFromProfile,
   registerActivityProfileGates,
@@ -96,14 +104,54 @@ function makeRuntime(profile: ActivityProfile | null): IAgentRuntime {
 
 function makeContext(
   task: ScheduledTask,
-  opts: { nowIso?: string; busActive?: boolean } = {},
+  opts: {
+    nowIso?: string;
+    busActive?: boolean;
+    activity?: GateEvaluationContext["activity"];
+  } = {},
 ): GateEvaluationContext {
   return {
     task,
     nowIso: opts.nowIso ?? "2026-05-10T12:00:00.000Z",
     ownerFacts: { timezone: "UTC" },
-    activity: { hasSignalSince: () => opts.busActive === true },
+    activity: opts.activity ?? {
+      hasSignalSince: () => opts.busActive === true,
+    },
     subjectStore: { wasUpdatedSince: () => false },
+  };
+}
+
+function makeMessageActivityBus(): ActivitySignalBus {
+  const familyRegistry = createFamilyRegistry();
+  registerBuiltinTelemetryFamilies(familyRegistry);
+  return createActivitySignalBus({
+    familyRegistry,
+    retentionMs: Number.MAX_SAFE_INTEGER,
+  });
+}
+
+function messageReceivedSignal(
+  overrides: Partial<LifeOpsActivitySignal> = {},
+): LifeOpsActivitySignal {
+  return {
+    id: "signal-message-received",
+    agentId: "11111111-1111-1111-1111-111111111111",
+    source: "connector_activity",
+    platform: "telegram",
+    state: "active",
+    observedAt: "2026-05-10T11:55:00.000Z",
+    idleState: null,
+    idleTimeSeconds: 0,
+    onBattery: null,
+    health: null,
+    metadata: {
+      eventType: "MESSAGE_RECEIVED",
+      entityId: "owner",
+      externalMessageId: "telegram-message-1",
+      conversationHash: "telegram-chat-1",
+    },
+    createdAt: "2026-05-10T11:55:00.000Z",
+    ...overrides,
   };
 }
 
@@ -220,6 +268,32 @@ describe("no_recent_user_message_in reader", () => {
       task,
       makeContext(task, { nowIso: NOW, busActive: true }),
     );
+    expect(decision?.kind).toBe("defer");
+  });
+
+  it("defers when MESSAGE_RECEIVED activity is mirrored onto the real bus", async () => {
+    const bus = makeMessageActivityBus();
+    const result = publishActivitySignalToBus(bus, messageReceivedSignal());
+    expect(result).toEqual({ published: 1, unmapped: 0 });
+    expect(
+      bus.hasSignalSince({
+        signalKind: "message_activity_event",
+        sinceIso: "2026-05-10T11:30:00.000Z",
+      }),
+    ).toBe(true);
+
+    const reg = createTaskGateRegistry();
+    registerActivityProfileGates(
+      makeRuntime(baseProfile({ lastSeenAt: 0 })),
+      reg,
+    );
+    const gate = reg.get("no_recent_user_message_in");
+    const task = taskWithGate("no_recent_user_message_in", { minutes: 30 });
+    const decision = await gate?.evaluate(
+      task,
+      makeContext(task, { nowIso: "2026-05-10T12:00:00.000Z", activity: bus }),
+    );
+
     expect(decision?.kind).toBe("defer");
   });
 });

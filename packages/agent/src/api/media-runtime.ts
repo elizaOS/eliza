@@ -158,7 +158,55 @@ const MEDIA_GC_TASK_NAME = "MEDIA_GC";
 const MEDIA_GC_TAGS = ["queue", "repeat", "media-gc"];
 const MEDIA_GC_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily
 
-export function collectReferencedMedia(memories: Memory[]): Set<string> {
+type MediaGcDiagnostics = Pick<IAgentRuntime, "logger" | "reportError">;
+
+function transcriptContentFromMemory(memory: Memory): unknown {
+  return (memory.content as { transcript?: unknown } | undefined)?.transcript;
+}
+
+function collectTranscriptAudioReference(
+  memory: Memory,
+  addUrl: (value: unknown) => void,
+  diagnostics?: MediaGcDiagnostics,
+): void {
+  const raw = transcriptContentFromMemory(memory);
+  if (raw === undefined) return;
+  if (raw && typeof raw === "object") {
+    addUrl((raw as { audioUrl?: unknown }).audioUrl);
+    return;
+  }
+  if (typeof raw !== "string") return;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      addUrl((parsed as { audioUrl?: unknown }).audioUrl);
+    }
+  } catch (err) {
+    // error-policy:J7 diagnostics-must-not-kill-the-loop — malformed transcript
+    // rows should not abort media GC, but they must surface because an unreadable
+    // row can hide a retained audio reference.
+    const context = {
+      memoryId: memory.id,
+      roomId: memory.roomId,
+      tableName: (memory as { tableName?: unknown }).tableName,
+      field: "content.transcript",
+    };
+    const message = `[media-gc] failed to parse transcript media reference${
+      memory.id ? ` for memory ${memory.id}` : ""
+    }: ${err instanceof Error ? err.message : String(err)}`;
+    if (diagnostics) {
+      diagnostics.logger.warn(message);
+      diagnostics.reportError("media-gc.transcript-reference", err, context);
+    } else {
+      logger.warn(message);
+    }
+  }
+}
+
+export function collectReferencedMedia(
+  memories: Memory[],
+  diagnostics?: MediaGcDiagnostics,
+): Set<string> {
   const referenced = new Set<string>();
   // Validate at the jsonb boundary: `content`/`metadata` are untyped at rest,
   // so anything that hashes to a stored `<sha256>.<ext>` name is a live
@@ -199,6 +247,12 @@ export function collectReferencedMedia(memories: Memory[]): Set<string> {
       | undefined;
     addUrl(metadata?.mediaUrl);
     addUrl(metadata?.audioUrl);
+
+    // Transcript rows persist the rich record as JSON in `content.transcript`.
+    // Voice captures can retain their WAV solely through the record's `audioUrl`,
+    // so the collector has to understand that shared transcript row shape rather
+    // than depending on every writer to duplicate the URL into metadata.
+    collectTranscriptAudioReference(memory, addUrl, diagnostics);
   }
   return referenced;
 }
@@ -215,7 +269,7 @@ export function registerMediaGcTask(runtime: IAgentRuntime): void {
     execute: async (rt) => {
       try {
         const memories = await rt.getAllMemories();
-        gcUnreferencedMedia(collectReferencedMedia(memories));
+        gcUnreferencedMedia(collectReferencedMedia(memories, rt));
       } catch (err) {
         rt.logger.warn(
           `[media-gc] sweep failed: ${

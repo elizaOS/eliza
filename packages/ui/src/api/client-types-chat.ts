@@ -134,6 +134,13 @@ export interface MessageAttachment {
    * transcript — the chat tile opens it in the maximized, editable viewer.
    */
   transcriptId?: string;
+  /**
+   * Reason the enrichment pass could not extract text/description (e.g. a
+   * transcription backend being unavailable). Present only on a failed
+   * enrichment; the tile surfaces it so a stored-but-unreadable attachment is
+   * never silently indistinguishable from a genuinely empty one.
+   */
+  notProcessed?: string;
 }
 
 export interface ConversationMessageReaction {

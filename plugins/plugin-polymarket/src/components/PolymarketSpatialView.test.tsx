@@ -122,15 +122,14 @@ describe("PolymarketSpatialView one source, three modalities", () => {
     expect(wide).toContain("Refresh");
   });
 
-  it("TUI: detail honors the width contract at 54 + 32 and shows outcomes + CLOB ids", () => {
+  it("TUI: detail honors the width contract at 54 + 32 and shows choices", () => {
     for (const width of [54, 32]) {
       const lines = renderViewToLines(detailView, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
       // Short markers survive the narrow layout.
       expect(flat).toContain("Yes");
-      expect(flat).toContain("outcomes");
-      expect(flat).toContain("111"); // CLOB token id
+      expect(flat).toContain("No");
     }
     const wide = renderViewToLines(detailView, 54).join("\n");
     expect(wide).toContain("Will it rain tomorrow?");
@@ -149,8 +148,8 @@ describe("PolymarketSpatialView one source, three modalities", () => {
     for (const html of [gui, xr]) {
       expect(html).toContain("Will it rain tomorrow?");
       expect(html).toContain("reads ready");
-      expect(html).toContain('data-agent-id="refresh"');
       expect(html).toContain('data-agent-id="market-m1"');
+      expect(html).not.toContain('data-agent-id="refresh"');
     }
   });
 

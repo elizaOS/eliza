@@ -11,11 +11,15 @@
  * gate asserts on, right beside the screenshot — so "looks fine" becomes
  * "OCR shows the expected copy, palette is neutral, 0.0 blue, verdict pass".
  *
- * Pixels come from `sharp` (already a repo dep); OCR shells to the `tesseract`
- * CLI when present and degrades to an explicit note (never a fabricated empty
- * read) when it is not, so the analyzer is safe to call from any capture lane.
+ * Pixels come from `sharp` (already a repo dep); OCR uses the system
+ * `tesseract` CLI when present and falls back to the repo's `tesseract.js`
+ * dependency before reporting an explicit unavailable note. A missing OCR
+ * binary must never masquerade as "no text on screen".
  */
 import { execFile } from "node:child_process";
+import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { promisify } from "node:util";
 import sharp from "sharp";
 
@@ -86,27 +90,100 @@ async function colorFractions(image) {
   };
 }
 
-/** On-screen text via the tesseract CLI, or an explicit note when unavailable. */
+function normalizeOcrText(stdout) {
+  const lines = stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return lines.join("\n");
+}
+
+async function runTesseract(pngPath, { psm = "6", cwd } = {}) {
+  const { stdout } = await execFileAsync(
+    "tesseract",
+    [pngPath, "stdout", "--psm", psm],
+    { timeout: 60_000, maxBuffer: 8 * 1024 * 1024, cwd },
+  );
+  return normalizeOcrText(stdout);
+}
+
+/**
+ * Some macOS tesseract/leptonica builds fail to open screenshots from `/tmp`
+ * even when normal file APIs can read the PNG. Retrying from the caller's
+ * workspace keeps OCR useful for evidence bundles that live under `/tmp`.
+ */
+async function retryOcrFromWorkspaceCopy(pngPath) {
+  const cwd = process.cwd();
+  const workspaceRoot = cwd && !cwd.startsWith(tmpdir()) ? cwd : null;
+  if (!workspaceRoot) return null;
+  const tempDir = await mkdtemp(path.join(workspaceRoot, ".visual-qa-ocr-"));
+  try {
+    const copied = path.join(tempDir, "screenshot.png");
+    await copyFile(pngPath, copied);
+    return await runTesseract(path.relative(workspaceRoot, copied), {
+      psm: "11",
+      cwd: workspaceRoot,
+    });
+  } finally {
+    try {
+      await rm(tempDir, { recursive: true, force: true });
+    } catch {
+      // error-policy:J6 temporary OCR cleanup is best-effort; a failed delete
+      // should not turn a valid screenshot analysis into a false failure.
+    }
+  }
+}
+
+async function runTesseractJs(pngPath) {
+  const { createWorker } = await import("tesseract.js");
+  const cachePath = path.join(tmpdir(), "eliza-visual-qa-tesseract-cache");
+  await mkdir(cachePath, { recursive: true });
+  const worker = await createWorker("eng", undefined, { cachePath });
+  try {
+    const result = await worker.recognize(pngPath);
+    return normalizeOcrText(result?.data?.text ?? "");
+  } finally {
+    await worker.terminate();
+  }
+}
+
+/** On-screen text via tesseract OCR, or an explicit note when unavailable. */
 async function ocrText(pngPath) {
   try {
-    const { stdout } = await execFileAsync(
-      "tesseract",
-      [pngPath, "-", "--psm", "6"],
-      { timeout: 60_000, maxBuffer: 8 * 1024 * 1024 },
-    );
-    const lines = stdout
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean);
-    return { text: lines.join("\n"), note: null };
+    return { text: await runTesseract(pngPath), note: null };
   } catch (err) {
-    // J3: OCR is an optional enrichment — report its absence explicitly rather
-    // than fabricate an empty transcript that would read as "no text on screen".
-    const note =
-      err?.code === "ENOENT"
-        ? "tesseract not installed"
-        : `tesseract failed: ${String(err?.message ?? err).slice(0, 120)}`;
-    return { text: "", note };
+    try {
+      const retryText = await retryOcrFromWorkspaceCopy(pngPath);
+      if (retryText !== null) {
+        return {
+          text: retryText,
+          note: "primary tesseract read failed; OCR succeeded from a workspace-local copy",
+        };
+      }
+    } catch {
+      // error-policy:J3 the explicit note below reports the primary OCR failure;
+      // retry failure does not fabricate text or hide the unavailable signal.
+    }
+    try {
+      return {
+        text: await runTesseractJs(pngPath),
+        note: "tesseract CLI unavailable; OCR succeeded with tesseract.js",
+      };
+    } catch (fallbackError) {
+      // error-policy:J3 OCR is required evidence; when both packaged engines
+      // fail, report the failure explicitly instead of presenting "no text" as
+      // a successful read.
+      const primary =
+        err?.code === "ENOENT"
+          ? "tesseract CLI not installed"
+          : `tesseract CLI failed: ${String(err?.message ?? err).slice(0, 120)}`;
+      return {
+        text: "",
+        note: `${primary}; tesseract.js failed: ${String(
+          fallbackError?.message ?? fallbackError,
+        ).slice(0, 120)}`,
+      };
+    }
   }
 }
 

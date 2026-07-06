@@ -1722,6 +1722,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     tableName?: string;
     limit?: number;
     offset?: number;
+    since?: number;
+    until?: number;
     accessContext?: AccessContext;
   }): Promise<MessageSearchHit[]> {
     return this.withDatabase(async () => {
@@ -1729,6 +1731,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const tableName = params.tableName ?? "messages";
       const limit = params.limit ?? 20;
       const offset = params.offset ?? 0;
+      // Inclusive created_at window, applied with the match predicate BEFORE
+      // ranking and LIMIT/OFFSET so a "one year ago" window never loses hits to
+      // a recency-truncated slice. Both branches below share these conditions.
+      const timeConditions: SQL[] = [];
+      if (typeof params.since === "number") {
+        timeConditions.push(gte(memoryTable.createdAt, new Date(params.since)));
+      }
+      if (typeof params.until === "number") {
+        timeConditions.push(lte(memoryTable.createdAt, new Date(params.until)));
+      }
       const trigramAvailable = await this.isTrigramAvailable();
 
       // Fold the query in SQL with the same function the document is folded with.
@@ -1761,6 +1773,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         eq(memoryTable.type, tableName),
         eq(memoryTable.agentId, this.agentId),
         inArray(memoryTable.roomId, params.roomIds),
+        ...timeConditions,
         sql`(${tsvector} @@ ${tsquery} OR ${document} LIKE eliza_search_like_pattern(${params.query}) OR ${trigramMatch})`,
       ];
 
@@ -1836,6 +1849,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               eq(memoryTable.type, tableName),
               eq(memoryTable.agentId, this.agentId),
               inArray(memoryTable.roomId, params.roomIds),
+              ...timeConditions,
               or(
                 sql`(${memoryTable.content}->>'text') ILIKE ${`%${escapeIlikeLiteral(params.query)}%`} ESCAPE '\\'`,
                 sql`${memoryTable.content}::text ILIKE ${`%${escapeIlikeLiteral(params.query)}%`} ESCAPE '\\'`

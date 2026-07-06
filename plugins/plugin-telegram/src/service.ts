@@ -766,17 +766,11 @@ export class TelegramService extends Service {
       );
     }
 
-    await bot.launch({
-      dropPendingUpdates: true,
-      allowedUpdates: ["message", "message_reaction", "callback_query"],
-    });
-    if (botToken) {
-      ACTIVE_TELEGRAM_POLLERS.set(botToken, {
-        bot,
-        agentId: this.runtime.agentId,
-        accountId,
-      });
-    }
+    // Telegraf v4's `bot.launch()` resolves only when polling STOPS — it awaits
+    // the long-poll loop internally — so it must not be awaited for completion.
+    // launchPollerSupervised awaits just the connect signal and then supervises
+    // the loop (with bounded self-healing relaunch) in the background.
+    await this.launchPollerSupervised(bot, botToken, accountId);
 
     // Publish the slash-command menu to Telegram so commands appear in the `/`
     // menu. setMyCommands failure is logged + swallowed (network) and must not
@@ -796,9 +790,174 @@ export class TelegramService extends Service {
       "Bot info retrieved",
     );
 
-    // Handle sigint and sigterm signals to gracefully stop the bot
-    process.once("SIGINT", () => bot.stop("SIGINT"));
-    process.once("SIGTERM", () => bot.stop("SIGTERM"));
+    // Stop the poller on process shutdown so the long-poll slot is released
+    // before a replacement process starts — otherwise the new process's poller
+    // 409s against the lingering one. bot.stop() throws if already stopped, so
+    // teardown is best-effort.
+    const stopBot = (reason: string): void => {
+      try {
+        bot.stop(reason);
+      } catch {
+        // error-policy:J6 best-effort teardown — bot already stopped.
+      }
+    };
+    process.once("SIGINT", () => stopBot("SIGINT"));
+    process.once("SIGTERM", () => stopBot("SIGTERM"));
+  }
+
+  /**
+   * Launches the Telegraf long-poll loop and keeps it running for the lifetime
+   * of the process.
+   *
+   * `bot.launch()` in Telegraf v4 only settles when polling stops (it awaits the
+   * loop internally), so the returned promise resolves on the `onLaunch`
+   * callback — fired after `getMe` succeeds, just before polling begins — and
+   * the loop is supervised in the background afterwards. A failure *after*
+   * connecting (a 409 "terminated by other getUpdates request" from a transient
+   * poller overlap during a restart, or a dropped network) is relaunched with
+   * exponential backoff so the connector self-heals instead of going
+   * permanently silent. Relaunches are bounded to `maxPollRelaunches` (reset
+   * after a stable run) so a genuinely duplicated bot instance cannot thrash
+   * forever, and stop entirely once a newer runtime has taken over the token
+   * (the dedup map points at a different bot). Message/command handlers are
+   * registered once by the caller before this runs; a relaunch reuses the same
+   * bot instance, so they are never double-registered.
+   */
+  private launchPollerSupervised(
+    bot: Telegraf<Context>,
+    botToken: string | null | undefined,
+    accountId: string,
+  ): Promise<void> {
+    const maxPollRelaunches = 5;
+    // A loop that ran healthy for at least this long before failing is treated
+    // as a fresh transient (relaunch budget reset); a faster failure counts
+    // against the budget so a persistent conflict cannot relaunch forever.
+    const stableRunMs = 60_000;
+
+    const ownsToken = (): boolean => {
+      if (!botToken) {
+        return true;
+      }
+      const active = ACTIVE_TELEGRAM_POLLERS.get(botToken);
+      return active === undefined || active.bot === bot;
+    };
+    const markActive = (): void => {
+      if (botToken) {
+        ACTIVE_TELEGRAM_POLLERS.set(botToken, {
+          bot,
+          agentId: this.runtime.agentId,
+          accountId,
+        });
+      }
+    };
+    const clearActive = (): void => {
+      if (!botToken) {
+        return;
+      }
+      const active = ACTIVE_TELEGRAM_POLLERS.get(botToken);
+      if (active?.bot === bot) {
+        ACTIVE_TELEGRAM_POLLERS.delete(botToken);
+      }
+    };
+
+    let relaunches = 0;
+
+    return new Promise<void>((resolve, reject) => {
+      let connectedOnce = false;
+
+      const scheduleRelaunch = (): void => {
+        if (!ownsToken()) {
+          clearActive();
+          return;
+        }
+        if (relaunches >= maxPollRelaunches) {
+          logger.error(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              accountId,
+              maxPollRelaunches,
+            },
+            "Telegram poller gave up after repeated conflicts — verify only one instance holds this bot token",
+          );
+          clearActive();
+          return;
+        }
+        relaunches++;
+        const delayMs = Math.min(2 ** relaunches * 1000, 30_000);
+        logger.warn(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            accountId,
+            attempt: relaunches,
+            delaySeconds: delayMs / 1000,
+          },
+          "Relaunching Telegram poller after poll-loop failure",
+        );
+        setTimeout(() => {
+          if (!ownsToken()) {
+            clearActive();
+            return;
+          }
+          runLaunch();
+        }, delayMs);
+      };
+
+      const runLaunch = (): void => {
+        let connectedAt = 0;
+        bot
+          .launch(
+            {
+              dropPendingUpdates: true,
+              allowedUpdates: ["message", "message_reaction", "callback_query"],
+            },
+            () => {
+              connectedAt = Date.now();
+              markActive();
+              if (!connectedOnce) {
+                connectedOnce = true;
+                resolve();
+              }
+            },
+          )
+          .then(
+            () => {
+              // Clean stop (shutdown, or deliberate replacement by a newer
+              // runtime): release ownership and do not relaunch.
+              clearActive();
+              if (!connectedOnce) {
+                reject(
+                  new Error("Telegram poller stopped before it connected"),
+                );
+              }
+            },
+            (error: unknown) => {
+              if (connectedAt === 0 && !connectedOnce) {
+                // Pre-connect failure on the first launch (revoked/malformed
+                // token, network): reject so start()'s retry / token-rejection
+                // branch handles it.
+                clearActive();
+                reject(error);
+                return;
+              }
+              // error-policy:J7 poll-loop failure after connecting (or on a
+              // relaunch) — start() has already returned, so surface it
+              // observably, then self-heal with bounded backoff.
+              this.runtime.reportError("telegram:poll", error, {
+                accountId,
+                agentId: this.runtime.agentId,
+              });
+              if (connectedAt > 0 && Date.now() - connectedAt >= stableRunMs) {
+                relaunches = 0;
+              }
+              scheduleRelaunch();
+            },
+          );
+      };
+
+      runLaunch();
+    });
   }
 
   /**

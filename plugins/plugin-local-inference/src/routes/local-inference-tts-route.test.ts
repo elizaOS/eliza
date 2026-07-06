@@ -6,6 +6,7 @@
 
 import * as http from "node:http";
 import { Socket } from "node:net";
+import { ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "./compat-helpers";
 import {
@@ -32,6 +33,18 @@ function fakeReq(body?: unknown): http.IncomingMessage {
 	if (body !== undefined) {
 		(req as { body?: unknown }).body = body;
 	}
+	return req;
+}
+
+function fakeStatusReq(): http.IncomingMessage {
+	const req = new http.IncomingMessage(new Socket());
+	req.method = "GET";
+	req.url = "/api/tts/local-inference/status";
+	req.headers = { host: "localhost:2138" };
+	Object.defineProperty(req.socket, "remoteAddress", {
+		value: "127.0.0.1",
+		configurable: true,
+	});
 	return req;
 }
 
@@ -146,6 +159,67 @@ describe("local inference TTS route", () => {
 			speed: 1.15,
 			sampleRate: 24_000,
 			format: "wav",
+		});
+	});
+
+	it("status reports ready when a TEXT_TO_SPEECH handler is registered", async () => {
+		const getModel = vi.fn((type: string) =>
+			type === ModelType.TEXT_TO_SPEECH ? () => new Uint8Array() : undefined,
+		);
+		const state: CompatRuntimeState = {
+			current: { getModel } as unknown as CompatRuntimeState["current"],
+		};
+		const out = fakeRes();
+
+		const handled = await handleLocalInferenceTtsRoute(
+			fakeStatusReq(),
+			out.res,
+			state,
+		);
+
+		expect(handled).toBe(true);
+		expect(out.status()).toBe(200);
+		expect(JSON.parse(out.bodyBuffer().toString())).toEqual({
+			ready: true,
+			provider: "local-inference",
+		});
+	});
+
+	it("status reports not-ready when no TEXT_TO_SPEECH handler exists", async () => {
+		const getModel = vi.fn(() => undefined);
+		const state: CompatRuntimeState = {
+			current: { getModel } as unknown as CompatRuntimeState["current"],
+		};
+		const out = fakeRes();
+
+		const handled = await handleLocalInferenceTtsRoute(
+			fakeStatusReq(),
+			out.res,
+			state,
+		);
+
+		expect(handled).toBe(true);
+		expect(out.status()).toBe(200);
+		expect(JSON.parse(out.bodyBuffer().toString())).toEqual({
+			ready: false,
+			provider: null,
+		});
+	});
+
+	it("status reports not-ready when the runtime is absent", async () => {
+		const state: CompatRuntimeState = { current: null };
+		const out = fakeRes();
+
+		const handled = await handleLocalInferenceTtsRoute(
+			fakeStatusReq(),
+			out.res,
+			state,
+		);
+
+		expect(handled).toBe(true);
+		expect(JSON.parse(out.bodyBuffer().toString())).toEqual({
+			ready: false,
+			provider: null,
 		});
 	});
 

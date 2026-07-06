@@ -331,6 +331,28 @@ describe("ContinuousChatOverlay first-run gating", () => {
     expect(cloud.getAttribute("tabindex")).not.toBe("-1");
   });
 
+  it("renders onboarding transcript turns with panel chrome over the opaque light backdrop", () => {
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:greeting",
+          role: "assistant",
+          content: RUNTIME_CHOICE_MESSAGE,
+          createdAt: 1,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
+
+    const message = screen.getByTestId("chat-message");
+    expect(message.getAttribute("data-role")).toBe("assistant");
+    expect(screen.queryByTestId("thread-line")).toBeNull();
+    expect(
+      screen.getByText("Hi — I'm Eliza. First, where should your agent run?"),
+    ).toBeTruthy();
+    expect(screen.queryByText("Agent")).toBeNull();
+  });
+
   it("exposes the sr-only onboarding-state probe with the current step + choice ids while onboarding is open", () => {
     seedAppStoreWithActionSpy();
     const controller = makeController({

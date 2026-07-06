@@ -22,6 +22,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
+import { parseInteractionBlocks } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -112,6 +113,7 @@ import {
   ownerDocumentsAction,
 } from "../src/actions/document.js";
 import {
+  buildResolveRequestChoice,
   executeApprovedRequest,
   resolveRequestAction,
 } from "../src/actions/resolve-request.js";
@@ -699,6 +701,119 @@ describe("RESOLVE_REQUEST reject path", () => {
     expect(docMocks.markExecuting).not.toHaveBeenCalled();
     expect(docMocks.markDone).not.toHaveBeenCalled();
     expect(result).toMatchObject({ success: true });
+    expect(texts.join(" ")).toContain("Rejected");
+  });
+});
+
+describe("RESOLVE_REQUEST ambiguous-target chips (#14733)", () => {
+  function pendingPair(): [ApprovalRequest, ApprovalRequest] {
+    const base = {
+      state: "pending" as const,
+      resolvedAt: null,
+      resolvedBy: null,
+      resolutionReason: null,
+    };
+    return [
+      approvedRequest({
+        ...base,
+        action: "send_email",
+        reason: "Send the quarterly report to Dana",
+        payload: {
+          action: "send_email",
+          to: ["dana@example.com"],
+          cc: [],
+          bcc: [],
+          subject: "Q2 report",
+          body: "Attached.",
+          replyToMessageId: null,
+        },
+      }),
+      approvedRequest({
+        ...base,
+        action: "send_message",
+        reason: "Text JJ that the demo moved to 3pm",
+        payload: {
+          action: "send_message",
+          recipient: "+15550100",
+          body: "Demo moved to 3pm",
+          replyToMessageId: null,
+        },
+      }),
+    ];
+  }
+
+  it("asks 'Which request?' with one chip per pending row, values carrying `<intent> <requestId>`", async () => {
+    const runtime = makeRuntime();
+    const [first, second] = pendingPair();
+    docMocks.list.mockResolvedValue([first, second]);
+    const { texts, callback } = collectTexts();
+
+    // No requestId and no useModel on the runtime: extraction cannot pick a
+    // row, which is exactly the ambiguous branch under test.
+    const result = await resolveRequestAction.handler(
+      runtime,
+      {
+        id: randomUUID() as UUID,
+        entityId: "owner-1" as UUID,
+        roomId: randomUUID() as UUID,
+        content: { text: "approve it" },
+      } as Memory,
+      undefined,
+      {
+        parameters: { action: "approve" },
+      } as unknown as HandlerOptions,
+      callback,
+    );
+
+    expect(result).toMatchObject({ success: false });
+    expect(texts).toHaveLength(1);
+    const reply = texts[0] ?? "";
+    expect(reply).toContain("Which request?");
+    const { blocks } = parseInteractionBlocks(reply);
+    expect(blocks).toHaveLength(1);
+    const block = blocks[0];
+    if (block?.kind !== "choice") throw new Error("expected choice block");
+    expect(block.scope).toBe("approval-resolve");
+    expect(block.options.map((o) => o.value)).toEqual([
+      `approve ${first.id}`,
+      `approve ${second.id}`,
+    ]);
+    // Labels are the human-authored reasons, so the chips read as decisions.
+    expect(block.options[0]?.label).toContain("quarterly report");
+    expect(block.options[1]?.label).toContain("demo moved to 3pm");
+  });
+
+  it("a tapped chip value round-trips: `reject <id>` resolves exactly that row", async () => {
+    const runtime = makeRuntime();
+    const [first, second] = pendingPair();
+    docMocks.list.mockResolvedValue([first, second]);
+    docMocks.reject.mockResolvedValue({ ...second, state: "rejected" });
+
+    // Build the chips for a reject intent and simulate the tap: the value is
+    // the user's next message and the extraction reads the id verbatim.
+    const chips = buildResolveRequestChoice("reject", [first, second]);
+    const tapped = chips.options[1]?.value ?? "";
+    expect(tapped).toBe(`reject ${second.id}`);
+    const { texts, callback } = collectTexts();
+
+    const result = await resolveRequestAction.handler(
+      runtime,
+      {
+        id: randomUUID() as UUID,
+        entityId: "owner-1" as UUID,
+        roomId: randomUUID() as UUID,
+        content: { text: tapped },
+      } as Memory,
+      undefined,
+      {
+        parameters: { action: "reject", requestId: second.id },
+      } as unknown as HandlerOptions,
+      callback,
+    );
+
+    expect(result).toMatchObject({ success: true });
+    expect(docMocks.reject).toHaveBeenCalledTimes(1);
+    expect(docMocks.reject.mock.calls[0]?.[0]).toBe(second.id);
     expect(texts.join(" ")).toContain("Rejected");
   });
 });

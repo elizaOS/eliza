@@ -16,6 +16,13 @@
 // this fixture no longer needs a multi-conversation list or the ref-backed
 // conversation-nav the old swipe fixture carried — one thread, one controller.
 // Paired with run-chat-perf-gate.mjs and run-perf-gate-e2e.mjs.
+//
+// STREAMING DRIVER: the harness also exposes `window.__ELIZA_PERF_STREAM__` — a
+// function the perf gate calls once per simulated token to append a character
+// to the tail assistant message (flipping `responding` to true) and force a
+// REAL transcript re-render, so the gate can measure the frame budget of the
+// hot path the memoized widgets protect: streaming into the open chat. Driving
+// it from the fixture keeps ContinuousChatOverlay itself untouched.
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
@@ -63,14 +70,74 @@ function longThread(): ShellMessage[] {
   return messages;
 }
 
+// The tail assistant turn carries a CHOICE widget so a streaming token lands in
+// a message that already contains an inline widget — the exact condition the
+// widget memoization protects (the widget must NOT re-render as the surrounding
+// text grows). The gate scrolls to the tail before streaming so the widget is
+// on screen.
+const TAIL_WIDGET_PREFIX =
+  "Here is my answer so far, streaming in token by token. " +
+  "[CHOICE:disambiguate id=perf-choice]\nyes=Yes, proceed\nno=No, cancel\n[/CHOICE]\n";
+
+declare global {
+  interface Window {
+    __ELIZA_PERF_STREAM__?: (chars?: number) => void;
+  }
+}
+
 function Harness(): React.JSX.Element {
-  const [messages] = React.useState<ShellMessage[]>(longThread);
+  const [messages, setMessages] = React.useState<ShellMessage[]>(longThread);
+  const [responding, setResponding] = React.useState(false);
+  // The streamed tail turn is appended once, then grows character-by-character.
+  const streamedRef = React.useRef("");
+
+  // Expose a token driver the perf gate calls. Each call appends `chars` more
+  // characters of the streamed body (everything AFTER the widget prefix) and
+  // flips `responding`, producing the same reference-changing message-array
+  // update the real chat container emits per streamed token.
+  React.useEffect(() => {
+    const tailId = "a-stream";
+    const streamedBody =
+      "It is routed through the single runner, pattern-matched on structural fields. ".repeat(
+        20,
+      );
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === tailId)) return prev;
+      streamedRef.current = "";
+      return [
+        ...prev,
+        {
+          id: tailId,
+          role: "assistant",
+          content: TAIL_WIDGET_PREFIX,
+          createdAt: 10_000,
+        },
+      ];
+    });
+    window.__ELIZA_PERF_STREAM__ = (chars = 1) => {
+      streamedRef.current = streamedBody.slice(
+        0,
+        Math.min(streamedBody.length, streamedRef.current.length + chars),
+      );
+      const nextContent = TAIL_WIDGET_PREFIX + streamedRef.current;
+      setResponding(true);
+      // New array + new tail object each tick (matches the real container).
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tailId ? { ...m, content: nextContent } : m,
+        ),
+      );
+    };
+    return () => {
+      window.__ELIZA_PERF_STREAM__ = undefined;
+    };
+  }, []);
 
   const controller: ShellController = {
     phase: "summoned",
     messages,
     canSend: true,
-    responding: false,
+    responding,
     turnStatus: null,
     recording: false,
     waveformMode: "idle",

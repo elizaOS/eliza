@@ -16,6 +16,7 @@
 
 import pixelmatch from "pixelmatch";
 import sharp from "sharp";
+import { EvidenceError } from "../errors.ts";
 import { round4 } from "./color-math.ts";
 import type {
   Analyzer,
@@ -249,6 +250,31 @@ const NEIGHBOURS: ReadonlyArray<readonly [number, number]> = [
 ];
 
 /**
+ * Reject a malformed caller-supplied expectation region. Regions are declared
+ * in normalized [0,1] coordinates; an out-of-range or degenerate box would
+ * silently sample the wrong pixels (or none), turning a config typo into a
+ * confidently wrong pass/fail — so it fails the analyzer loudly instead.
+ */
+function assertValidRegion(exp: RegionExpectation, index: number): void {
+  const { x, y, w, h } = exp.region;
+  const valid =
+    [x, y, w, h].every((value) => Number.isFinite(value)) &&
+    x >= 0 &&
+    y >= 0 &&
+    w > 0 &&
+    h > 0 &&
+    x + w <= 1 &&
+    y + h <= 1;
+  if (!valid) {
+    throw new EvidenceError(
+      `region expectation '${exp.label ?? `${exp.kind}#${index}`}' has an invalid normalized box ` +
+        `{x:${x}, y:${y}, w:${w}, h:${h}} — expected 0<=x,y and w,h>0 with x+w<=1, y+h<=1`,
+      { code: "REGION_EXPECTATION_INVALID", context: { region: exp.region } },
+    );
+  }
+}
+
+/**
  * Evaluate per-region expectations against the changed mask. A `change` region
  * passes when a meaningful fraction of its pixels changed; a `static` region
  * passes when almost none did. The 1% threshold tolerates antialiasing without
@@ -262,6 +288,7 @@ export function evaluateRegionExpectations(
 ): RegionAssertion[] {
   const CHANGE_FLOOR = 0.01;
   return expectations.map((exp, index) => {
+    assertValidRegion(exp, index);
     const left = Math.round(exp.region.x * width);
     const top = Math.round(exp.region.y * height);
     const right = Math.min(

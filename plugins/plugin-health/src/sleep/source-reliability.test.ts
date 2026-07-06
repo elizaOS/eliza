@@ -133,12 +133,30 @@ describe("resolveActivitySignalReliability", () => {
       resolveActivitySignalReliability("desktop_interaction", "macos"),
     ).toBe(0.8);
     expect(resolveActivitySignalReliability("connector_activity", "web")).toBe(
-      0.8,
+      0.15,
     );
     expect(resolveActivitySignalReliability("imessage_outbound", "macos")).toBe(
       0.88,
     );
     expect(resolveActivitySignalReliability("mobile_device", "ios")).toBe(0.7);
     expect(resolveActivitySignalReliability("mobile_health", "ios")).toBe(0.95);
+  });
+
+  it("derives connector message reliability from direction and channel metadata", () => {
+    expect(
+      resolveActivitySignalReliability("connector_activity", "telegram", {
+        direction: "inbound",
+      }),
+    ).toBe(0.15);
+    expect(
+      resolveActivitySignalReliability("connector_activity", "telegram", {
+        direction: "outbound_by_owner",
+      }),
+    ).toBe(0.8);
+    expect(
+      resolveActivitySignalReliability("connector_activity", "client_chat", {
+        direction: "outbound_by_owner",
+      }),
+    ).toBe(0.88);
   });
 });

@@ -29,7 +29,7 @@ import {
   OctagonX,
   UserRound,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api/client";
 import type { CodingAgentTaskThreadDetail } from "../../../api/client-types-cloud";
 import { dispatchNavigateViewEvent } from "../../../events";
@@ -106,7 +106,14 @@ export interface TaskWidgetProps {
   fallbackTitle: string;
 }
 
-export function TaskWidget({ threadId, fallbackTitle }: TaskWidgetProps) {
+// Memoized on its two primitive props (threadId/fallbackTitle compare `===`):
+// the widget is stream-driven from `task-activity-store` internally, so the
+// per-token re-parse of the surrounding message must not re-render it. Default
+// shallow `memo` is sufficient — both props are strings, never rebuilt objects.
+export const TaskWidget = memo(function TaskWidget({
+  threadId,
+  fallbackTitle,
+}: TaskWidgetProps) {
   const [detail, setDetail] = useState<CodingAgentTaskThreadDetail | null>(
     null,
   );
@@ -272,7 +279,7 @@ export function TaskWidget({ threadId, fallbackTitle }: TaskWidgetProps) {
       ) : null}
     </div>
   );
-}
+});
 
 /**
  * Register the `[TASK:<threadId>]…[/TASK]` inline widget into the chat-reply

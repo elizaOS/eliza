@@ -10,9 +10,10 @@
  */
 
 import { Check, ChevronRight } from "lucide-react";
-import { useCallback, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
+import { choicePropsEqual } from "./widget-equality";
 
 export type ChoiceOption = {
   value: string;
@@ -51,7 +52,11 @@ function isRecommended(label: string): boolean {
   return /\(recommended\)/i.test(label);
 }
 
-export function ChoiceWidget({
+// Memoized on its data props (see `choicePropsEqual`): the transcript re-parses
+// on every streamed token, handing this widget a fresh `options` array each
+// tick, so a value-level comparator is what keeps a streaming turn from
+// re-rendering (and remounting the selection state of) every CHOICE in view.
+export const ChoiceWidget = memo(function ChoiceWidget({
   id,
   scope,
   options,
@@ -212,4 +217,4 @@ export function ChoiceWidget({
       ) : null}
     </fieldset>
   );
-}
+}, choicePropsEqual);

@@ -6,7 +6,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mutations are optimistic writes through the API client — mock the transport,
+// Mutations are optimistic writes through the API client - mock the transport,
 // not the store, so mark-read/dismiss/clear exercise the real store paths.
 vi.mock("../../api/client", () => ({
   client: {
@@ -34,6 +34,7 @@ import {
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
 } from "../../state/notifications/notification-store";
+import { HOME_GLASS_CLASS } from "./home-glass";
 import {
   NotificationsHomeCenter,
   orderDashboardNotifications,
@@ -73,7 +74,7 @@ describe("orderDashboardNotifications", () => {
     const urgentOld = makeNotification({
       priority: "urgent",
       createdAt: 1_600_000_000_000,
-      readAt: 1_600_000_500_000, // read — must NOT sink below unread lows
+      readAt: 1_600_000_500_000, // read - must NOT sink below unread lows
     });
     const normalNew = makeNotification({ priority: "normal" });
     const ordered = orderDashboardNotifications([low, urgentOld, normalNew]);
@@ -178,7 +179,7 @@ describe("NotificationsHomeCenter", () => {
     expect(__getStateForTests().notifications).toHaveLength(0);
   });
 
-  it("keeps a tapped (now read) row in place — order ignores read state", () => {
+  it("keeps a tapped (now read) row in place - order ignores read state", () => {
     const urgent = makeNotification({ priority: "urgent", title: "First" });
     __ingestNotificationForTests(makeNotification({ title: "Second" }));
     __ingestNotificationForTests(urgent);
@@ -206,7 +207,7 @@ describe("NotificationsHomeCenter", () => {
       makeNotification({ priority: "normal", title: "Quiet one" }),
     );
     render(<NotificationsHomeCenter />);
-    // A normal notification is just its line + time — no leading accent rail,
+    // A normal notification is just its line + time - no leading accent rail,
     // no per-row icon chip (the box-in-a-box slop is gone).
     expect(screen.queryByTestId("notification-row-accent")).toBeNull();
     expect(screen.queryByTestId("notification-row-icon")).toBeNull();
@@ -227,12 +228,11 @@ describe("NotificationsHomeCenter", () => {
     expect(screen.getAllByTestId("notification-row-accent")).toHaveLength(2);
   });
 
-  it("is a quiet glass surface, not a heavy filled card", () => {
+  it("uses the shared home glass recipe as the single blur budget owner", () => {
     __ingestNotificationForTests(makeNotification());
     render(<NotificationsHomeCenter />);
     const card = screen.getByTestId("home-notification-center");
-    // Hairline border + translucent surface (lock-screen glass), not the old
-    // opaque `bg-card` box with a solid `border-border`.
+    expect(card.className).toBe(HOME_GLASS_CLASS);
     expect(card.className).toContain("backdrop-blur");
     expect(card.className).not.toContain("border-border");
   });

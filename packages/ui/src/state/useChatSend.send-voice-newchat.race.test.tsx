@@ -158,12 +158,14 @@ function makeHarness(seed: {
     setCompanionMessageCutoffTs: vi.fn(),
     setConversationMessages,
     setUnreadConversations: vi.fn(),
+    setChatReplyTarget: vi.fn(),
     setActionNotice: vi.fn(),
     activeConversationIdRef,
     chatInputRef: { current: "" } as MutableRefObject<string>,
     chatPendingImagesRef: { current: [] } as MutableRefObject<
       ImageAttachment[]
     >,
+    chatReplyTargetRef: { current: null },
     conversationsRef,
     conversationMessagesRef,
     chatAbortRef: { current: null } as MutableRefObject<AbortController | null>,

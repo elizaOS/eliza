@@ -64,6 +64,7 @@ const EXPECTED_EXT_BY_MIME: Record<
   "text/plain": "txt",
   "text/csv": "csv",
   "text/markdown": "md",
+  "application/json": "json",
 };
 
 function expectedContentType(mimeType: string): string {
@@ -77,6 +78,7 @@ function expectedServedMime(mimeType: string): string {
   if (mimeType === "text/plain") return "text/plain; charset=utf-8";
   if (mimeType === "text/csv") return "text/csv; charset=utf-8";
   if (mimeType === "text/markdown") return "text/markdown; charset=utf-8";
+  if (mimeType === "application/json") return "application/json; charset=utf-8";
   if (mimeType === "image/jpeg") return "image/jpeg";
   if (mimeType === "audio/mp3") return "audio/mpeg";
   if (mimeType === "audio/x-wav" || mimeType === "audio/wave")
@@ -127,22 +129,41 @@ function bytesForMime(mimeType: string): Buffer {
   if (mimeType === "text/markdown") {
     return Buffer.from("# Lifecycle\n\n- upload\n- process", "utf8");
   }
+  if (mimeType === "application/json") {
+    return Buffer.from(
+      '{"lifecycle":true,"items":["upload","process"]}',
+      "utf8",
+    );
+  }
   return Buffer.from(`binary fixture for ${mimeType}`, "utf8");
 }
 
 function makeRes(): {
   res: ServerResponse;
   get: () => { status: number; headers: Record<string, unknown> };
+  /**
+   * Resolves once a piped read stream (the Range 206 path calls
+   * `createReadStream(...).pipe(res)`) has finished writing. Awaiting it keeps
+   * that async read from racing `afterAll`'s temp-dir cleanup, which otherwise
+   * surfaces as unhandled ENOENT for the just-served media file.
+   */
+  whenEnded: () => Promise<void>;
 } {
   let status = 0;
   let headers: Record<string, unknown> = {};
+  let resolveEnded: (() => void) | undefined;
+  const ended = new Promise<void>((resolve) => {
+    resolveEnded = resolve;
+  });
   const res = {
     writeHead(nextStatus: number, nextHeaders: Record<string, unknown>) {
       status = nextStatus;
       headers = nextHeaders;
       return this;
     },
-    end() {},
+    end() {
+      resolveEnded?.();
+    },
     write() {
       return true;
     },
@@ -156,11 +177,14 @@ function makeRes(): {
       return true;
     },
   } as unknown as ServerResponse;
-  return { res, get: () => ({ status, headers }) };
+  return { res, whenEnded: () => ended, get: () => ({ status, headers }) };
 }
 
-function serve(url: string, options: { method?: string; range?: string } = {}) {
-  const { res, get } = makeRes();
+async function serve(
+  url: string,
+  options: { method?: string; range?: string } = {},
+) {
+  const { res, get, whenEnded } = makeRes();
   const handled = serveMediaFile(
     {
       method: options.method ?? "HEAD",
@@ -170,6 +194,10 @@ function serve(url: string, options: { method?: string; range?: string } = {}) {
     url,
   );
   expect(handled).toBe(true);
+  // A GET (full or Range) pipes a read stream that resolves `end` on completion;
+  // HEAD/416 answer synchronously. Await so the stream closes before the next
+  // assertion (and before cleanup).
+  await whenEnded();
   return get();
 }
 
@@ -195,7 +223,7 @@ async function mediaStoreFetch(input: unknown): Promise<Response> {
     return new Response("not found", { status: 404, statusText: "Not Found" });
   }
   const body = fs.readFileSync(path.join(stateDir, "media", fileName));
-  const head = serve(pathName);
+  const head = await serve(pathName);
   return new Response(body, {
     status: 200,
     statusText: "OK",
@@ -282,21 +310,23 @@ describe("chat attachment upload -> store -> processing lifecycle (#10714)", () 
       expect(compact?.mimeType).toBe(mimeType);
       expect(compact?.checksum).toBe(attachment?.checksum);
 
-      const head = serve(attachment?.url ?? "");
+      const head = await serve(attachment?.url ?? "");
       expect(head.status, mimeType).toBe(200);
       expect(head.headers["Content-Type"], mimeType).toBe(
         expectedServedMime(mimeType),
       );
       expect(head.headers["X-Content-Type-Options"], mimeType).toBe("nosniff");
       const disposition = String(head.headers["Content-Disposition"]);
-      if (mimeType.startsWith("text/")) {
+      // Only image/audio/video/pdf render inline; text/* and application/json
+      // are forced to download (attachment) by the serve-path security policy.
+      if (mimeType.startsWith("text/") || mimeType === "application/json") {
         expect(disposition, mimeType).toContain("attachment");
       } else {
         expect(disposition, mimeType).toBe("inline");
       }
 
       if (mimeType.startsWith("audio/") || mimeType.startsWith("video/")) {
-        const ranged = serve(attachment?.url ?? "", {
+        const ranged = await serve(attachment?.url ?? "", {
           method: "GET",
           range: "bytes=0-2",
         });

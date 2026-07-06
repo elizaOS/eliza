@@ -363,10 +363,19 @@ declare module "./client-base" {
     /**
      * Keyword search across every conversation the user can see, ranked by
      * relevance then recency. Backs the chat message-search affordance.
+     * `since`/`until` (epoch ms, inclusive) scope the search to a time window
+     * — e.g. "messages from about a year ago" — applied in the store before
+     * ranking, so old hits are found rather than recency-truncated.
      */
     searchConversationMessages(
       query: string,
-      options?: { limit?: number; offset?: number; signal?: AbortSignal },
+      options?: {
+        limit?: number;
+        offset?: number;
+        since?: number;
+        until?: number;
+        signal?: AbortSignal;
+      },
     ): Promise<ConversationMessageSearchResponse>;
     /**
      * Fetch the cross-channel inbox. Returns the most recent
@@ -1084,6 +1093,8 @@ ElizaClient.prototype.searchConversationMessages = async function (
   if (options?.limit !== undefined) params.set("limit", String(options.limit));
   if (options?.offset !== undefined)
     params.set("offset", String(options.offset));
+  if (options?.since !== undefined) params.set("since", String(options.since));
+  if (options?.until !== undefined) params.set("until", String(options.until));
   return this.fetch<ConversationMessageSearchResponse>(
     `/api/conversations/messages/search?${params}`,
     options?.signal ? { signal: options.signal } : undefined,

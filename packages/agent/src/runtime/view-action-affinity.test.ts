@@ -471,6 +471,10 @@ describe("view related action names resolve to declared actions in source", () =
           "--",
           "plugins",
           "packages/agent/src",
+          // Core registers actions too (documents feature → DOCUMENT, the
+          // personality feature → CHARACTER/PERSONALITY), and builtin views
+          // may declare affinity to them (#14369).
+          "packages/core/src",
         ],
         {
           cwd: repoRoot,
@@ -489,10 +493,14 @@ describe("view related action names resolve to declared actions in source", () =
     for (const name of names) {
       expect(
         declaredNames.has(name),
-        `no \`name: "${name}"\` found under plugins/ or packages/agent/src`,
+        `no \`name: "${name}"\` found under plugins/, packages/agent/src, or packages/core/src`,
       ).toBe(true);
     }
-  });
+    // Spawns a `git grep` over plugins/ + packages/agent/src + packages/core/src;
+    // the added core scope (#14369) pushes the subprocess + module-load cost past
+    // the 5s default on a cold checkout. Give it room so the drift guard is not
+    // a flaky wall-clock gate.
+  }, 30000);
 });
 
 describe("compactActionsForIntent with view-scoped actions", () => {

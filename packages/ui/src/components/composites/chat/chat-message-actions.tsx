@@ -7,7 +7,15 @@
  * confirmed state; play toggles to stop on the bubble that is speaking
  * (`playing`, glass-row only). Wired by ChatMessage.
  */
-import { Check, Copy, Pencil, Square, Trash2, Volume2 } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Pencil,
+  Reply,
+  Square,
+  Trash2,
+  Volume2,
+} from "lucide-react";
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
@@ -20,12 +28,15 @@ export interface ChatMessageActionsProps {
   canDelete?: boolean;
   canEdit?: boolean;
   canPlay?: boolean;
+  /** Show the Reply control — set the composer to reply to this message. */
+  canReply?: boolean;
   copied?: boolean;
   labels?: ChatMessageLabels;
   onCopy?: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
   onPlay?: () => void;
+  onReply?: () => void;
   /** True while THIS message's audio is playing — flips play → stop (glass-row). */
   playing?: boolean;
 }
@@ -77,21 +88,32 @@ export function ChatMessageActions({
   canDelete = false,
   canEdit = false,
   canPlay = false,
+  canReply = false,
   copied = false,
   labels = {},
   onCopy,
   onDelete,
   onEdit,
   onPlay,
+  onReply,
   playing = false,
 }: ChatMessageActionsProps) {
   const copyLabel = labels.copy ?? "Copy message";
   const copiedLabel = labels.copied ?? "Copied!";
   const copiedAriaLabel = labels.copiedAria ?? "Copied to clipboard";
+  const replyLabel = labels.reply ?? "Reply";
 
   if (appearance === "glass-row") {
     return (
       <>
+        {canReply && onReply ? (
+          <GlassActionButton
+            label={replyLabel}
+            testId="thread-line-reply"
+            icon={<Reply className="h-3.5 w-3.5" />}
+            onClick={onReply}
+          />
+        ) : null}
         {onCopy ? (
           <GlassActionButton
             label={copied ? "Copied" : "Copy"}
@@ -144,6 +166,20 @@ export function ChatMessageActions({
 
   return (
     <PagePanel.ActionRail className="top-1 rounded-sm p-1">
+      {canReply && onReply ? (
+        <Button
+          variant="surface"
+          size="icon"
+          onClick={onReply}
+          className="h-8 w-8 rounded-sm"
+          title={replyLabel}
+          aria-label={replyLabel}
+          data-testid="chat-message-reply"
+        >
+          <Reply className="h-3.5 w-3.5" />
+        </Button>
+      ) : null}
+
       <Button
         variant="surface"
         size="icon"

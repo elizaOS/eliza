@@ -9,13 +9,22 @@
  */
 
 import type {
+  AccessContext,
+  Memory,
   Route,
   RouteHandlerContext,
   RouteHandlerResult,
   UUID,
 } from "@elizaos/core";
-import type { MeetingJoinRequest, MeetingPlatform } from "@elizaos/shared";
+import { actorFromAccessContext, canReadScope } from "@elizaos/core";
+import type {
+  MeetingJoinRequest,
+  MeetingPlatform,
+  MeetingSession,
+} from "@elizaos/shared";
 import { parseMeetingUrl } from "@elizaos/shared";
+import type { TranscriptScope } from "@elizaos/shared/transcripts";
+import { normalizeTranscriptScope } from "@elizaos/shared/transcripts";
 import { MeetingJoinError, type MeetingService } from "../service.js";
 
 function service(ctx: RouteHandlerContext): MeetingService | null {
@@ -26,6 +35,55 @@ const unavailable: RouteHandlerResult = {
   status: 503,
   body: { error: "meetings service is not running" },
 };
+
+function transcriptScopeFromRow(row: Memory): TranscriptScope {
+  const raw = (row.content as { transcript?: unknown } | undefined)?.transcript;
+  if (typeof raw !== "string") return "owner-private";
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return normalizeTranscriptScope(
+      parsed && typeof parsed === "object"
+        ? (parsed as { scope?: unknown }).scope
+        : undefined,
+    );
+  } catch {
+    // error-policy:J3 untrusted stored JSON — an unparseable transcript row
+    // fails CLOSED to owner-private so corruption can never widen visibility.
+    return "owner-private";
+  }
+}
+
+function canAccessTranscriptRow(
+  row: Memory,
+  accessContext: AccessContext,
+  agentId: UUID,
+): boolean {
+  if (accessContext.requesterEntityId === agentId) return true;
+  const metadata = row.metadata as Record<string, unknown> | undefined;
+  const scopedTo = metadata?.scopedToEntityId;
+  const scopedEntityId =
+    typeof scopedTo === "string" ? (scopedTo as UUID) : row.entityId;
+  const actor = actorFromAccessContext(accessContext, agentId);
+  if (actor.role === "OWNER") return true;
+  return canReadScope(transcriptScopeFromRow(row), scopedEntityId, actor);
+}
+
+async function redactSessionTranscriptDisclosure(
+  ctx: RouteHandlerContext,
+  session: MeetingSession,
+): Promise<MeetingSession> {
+  const accessContext = ctx.accessContext;
+  if (!accessContext || !session.transcriptId) return session;
+  const row = await ctx.runtime.getMemoryById(session.transcriptId as UUID);
+  if (
+    row &&
+    canAccessTranscriptRow(row, accessContext, ctx.runtime.agentId as UUID)
+  ) {
+    return session;
+  }
+  const { transcriptId: _transcriptId, ...redacted } = session;
+  return redacted;
+}
 
 /** The body POST /api/meetings accepts. */
 export interface CreateMeetingRequest {
@@ -115,7 +173,12 @@ const listRoute: Route = {
     const activeParam = ctx.query.active;
     const active =
       activeParam === "1" || activeParam === "true" ? true : undefined;
-    return { status: 200, body: { sessions: svc.listSessions({ active }) } };
+    const sessions = await Promise.all(
+      svc
+        .listSessions({ active })
+        .map((session) => redactSessionTranscriptDisclosure(ctx, session)),
+    );
+    return { status: 200, body: { sessions } };
   },
 };
 
@@ -128,7 +191,10 @@ const getRoute: Route = {
     if (!svc) return unavailable;
     const session = svc.getSession(ctx.params.id as UUID);
     if (!session) return { status: 404, body: { error: "not found" } };
-    return { status: 200, body: { session } };
+    return {
+      status: 200,
+      body: { session: await redactSessionTranscriptDisclosure(ctx, session) },
+    };
   },
 };
 

@@ -1,2 +1,6 @@
 #!/usr/bin/env node
-import "../dist/cli.js";
+// The compiled cli.js only self-executes when it IS process.argv[1]; under this
+// shim argv[1] is the shim itself, so invoke the exported boundary explicitly.
+import { runCliAndExit } from "../dist/cli.js";
+
+runCliAndExit();

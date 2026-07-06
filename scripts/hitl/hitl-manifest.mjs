@@ -20,7 +20,7 @@
 /**
  * @typedef {Object} HitlDecisionPoint
  * @property {string} id           stable id for the decision point
- * @property {string} group        onboarding | first-chat | login | wallet | notifications | visual
+ * @property {string} group        onboarding | first-chat | login | wallet | notifications | visual | lifeops-live
  * @property {string} label        human-readable
  * @property {HitlMark} mark
  * @property {string} why          why a human/device is required
@@ -151,6 +151,68 @@ export const HITL_DECISION_POINTS = [
     why: "copy + timing",
     suites: ["app"],
     scripts: ["test:permission-priming-e2e"],
+  },
+
+  // ── LifeOps live validation (#11632) ────────────────────────────────────
+  // The operator lane for the live, account/device-backed LifeOps pass.
+  // Deliberately OUTSIDE HITL_GOLDEN_GROUPS: it needs real credentials and
+  // devices, so it is selected explicitly via --groups=lifeops-live.
+  {
+    id: "lifeops-cred-intake",
+    group: "lifeops-live",
+    label: "Connector credential intake / readiness dashboard",
+    mark: "frame",
+    why: "a human confirms which connector creds are present in .env before the live lanes run",
+    suites: [],
+    scripts: ["scripts/lifeops/hitl-credential-dashboard.mjs"],
+    issues: [11632],
+  },
+  {
+    id: "lifeops-matrix-credentialed",
+    group: "lifeops-live",
+    label: "9-state OWNER/AGENT permission matrix (credentialed)",
+    mark: "auto",
+    why: "machine-decided by owner-agent-permission-matrix.integration.test.ts under LIFEOPS_PERMISSION_MATRIX=1",
+    suites: [],
+    issues: [11632],
+  },
+  {
+    id: "lifeops-live-connector-suites",
+    group: "lifeops-live",
+    label: "Live connector suites (creds present → live; absent → clean skip)",
+    mark: "auto",
+    why: "machine-decided; each suite describeIf-gates on its own credentials",
+    suites: [],
+    scripts: ["scripts/lifeops/run-11632-live-lanes.mjs"],
+    issues: [11632],
+  },
+  {
+    id: "lifeops-populated-views",
+    group: "lifeops-live",
+    label: "LifeOps split views populated with live account data",
+    mark: "frame",
+    why: "populated/empty/error render quality with real data is judged by eye",
+    suites: ["app"],
+    issues: [11632],
+  },
+  {
+    id: "lifeops-ios-native",
+    group: "lifeops-live",
+    label: "iOS/macOS native flows (HealthKit, Family Controls, SelfControl)",
+    mark: "device",
+    why: "real OS permission dialogs + native capabilities — not fakeable headless",
+    suites: [],
+    issues: [11632],
+  },
+  {
+    id: "lifeops-android-native",
+    group: "lifeops-live",
+    label:
+      "Android native flows (Health Connect, SMS default-role, Usage Access)",
+    mark: "device",
+    why: "real OS permission dialogs + SIM-backed capabilities — not fakeable headless",
+    suites: [],
+    issues: [11632],
   },
 ];
 

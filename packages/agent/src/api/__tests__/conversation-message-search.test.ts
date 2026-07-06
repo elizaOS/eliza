@@ -69,13 +69,27 @@ function docOf(row: SeedRow): string {
 /** Faithful model of IDatabaseAdapter.searchMessages: corpus-wide ranked hits. */
 function modelSearch(
   rows: SeedRow[],
-  params: { roomIds: UUID[]; query: string; limit?: number; offset?: number },
+  params: {
+    roomIds: UUID[];
+    query: string;
+    limit?: number;
+    offset?: number;
+    since?: number;
+    until?: number;
+  },
 ): MessageSearchHit[] {
   const roomSet = new Set(params.roomIds);
   const q = fold(params.query).trim();
   const terms = q.split(/\s+/).filter(Boolean);
   const hits = rows
     .filter((r) => roomSet.has(r.roomId))
+    // Inclusive [since, until] window, applied before ranking + LIMIT/OFFSET,
+    // exactly as the real adapters do.
+    .filter(
+      (r) =>
+        (params.since === undefined || r.createdAt >= params.since) &&
+        (params.until === undefined || r.createdAt <= params.until),
+    )
     .map((r) => {
       const doc = docOf(r);
       const allTerms = terms.every((t) => doc.includes(t));
@@ -178,6 +192,8 @@ const runtime = {
     query: string;
     limit?: number;
     offset?: number;
+    since?: number;
+    until?: number;
   }): Promise<MessageSearchHit[]> =>
     Promise.resolve(modelSearch(liveRows(), params)),
 } as unknown as AgentRuntime;
@@ -363,5 +379,70 @@ describe("GET /api/conversations/messages/search (route boundary)", () => {
     expect(r.body.count).toBe(0);
     expect(searchSpy).not.toHaveBeenCalled();
     searchSpy.mockRestore();
+  });
+
+  it("garbage since/until is rejected with 400, never a silently-ignored filter", async () => {
+    // Non-numeric, non-ISO, and empty strings are all invalid — the route must
+    // 400 rather than search an unbounded window the caller did not ask for.
+    expect((await runSearch("q=filler&since=notadate")).status).toBe(400);
+    expect((await runSearch("q=filler&until=abc")).status).toBe(400);
+    expect(
+      (await runSearch(`q=filler&since=${encodeURIComponent("  ")}`)).status,
+    ).toBe(400);
+    expect(
+      (await runSearch("q=filler&until=2026-13-45T99:99:99Z")).status,
+    ).toBe(400);
+  });
+
+  it("since later than until is rejected with 400", async () => {
+    const r = await runSearch("q=filler&since=5000&until=2000");
+    expect(r.status).toBe(400);
+  });
+
+  it("valid epoch-ms and ISO 8601 bounds are accepted", async () => {
+    expect((await runSearch("q=filler&since=1000&until=9999")).status).toBe(
+      200,
+    );
+    // ISO 8601 parses without error even if it excludes the (year-1970) corpus.
+    const iso = await runSearch(
+      `q=filler&since=${encodeURIComponent("2026-01-01T00:00:00Z")}`,
+    );
+    expect(iso.status).toBe(200);
+  });
+
+  it("a since/until window narrows the corpus and never leaks a row outside it", async () => {
+    // The 120 filler rows carry contiguous createdAt values (seeded 1000+seq).
+    // A window strictly inside that span must return only the in-window rows,
+    // never one outside — proving the store applies the bound the route forwards.
+    const fillerTimes = liveRows()
+      .filter((r) => r.text.includes("filler"))
+      .map((r) => r.createdAt)
+      .sort((a, b) => a - b);
+    expect(fillerTimes.length).toBe(120);
+    // Pick a 20-wide interior window well away from both ends.
+    const since = fillerTimes[40];
+    const until = fillerTimes[59];
+    const expectedInWindow = fillerTimes.filter(
+      (t) => t >= since && t <= until,
+    ).length;
+    expect(expectedInWindow).toBe(20);
+
+    const windowed = await runSearch(
+      `q=filler&limit=500&since=${since}&until=${until}`,
+    );
+    expect(windowed.status).toBe(200);
+    // Only the in-window filler rows come back (limit 500 > 20, so no clamp).
+    expect(windowed.body.count).toBe(20);
+    expect(
+      windowed.body.results.every(
+        (x) => x.createdAt >= since && x.createdAt <= until,
+      ),
+    ).toBe(true);
+    // A row just outside either bound is provably excluded.
+    expect(
+      windowed.body.results.some(
+        (x) => x.createdAt < since || x.createdAt > until,
+      ),
+    ).toBe(false);
   });
 });

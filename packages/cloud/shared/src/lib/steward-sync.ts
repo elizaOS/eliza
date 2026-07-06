@@ -300,6 +300,24 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       }
     }
 
+    // Self-heal missing Steward tenants on sign-in for orgs created before
+    // #14869's eager new-signup provisioning. `ensureStewardTenant` reads the
+    // org first and returns immediately when a tenant already exists, so the
+    // healthy-org cost is one indexed read while existing NULL-tenant orgs get
+    // repaired opportunistically without a bulk backfill.
+    if (user.organization_id) {
+      try {
+        await ensureStewardTenant(user.organization_id);
+      } catch (error) {
+        // error-policy:J4 tenant provisioning is an opportunistic repair, not
+        // an auth precondition; keep sign-in fail-open and leave an observable
+        // warning so Steward outages do not block returning users.
+        logger.warn(
+          `[StewardSync] Sign-in tenant self-heal failed for org ${user.organization_id}; sign-in proceeds and the next attempt retries: ${describeSyncError(error)}`,
+        );
+      }
+    }
+
     return user;
   }
 

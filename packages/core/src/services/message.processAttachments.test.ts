@@ -1,8 +1,11 @@
 /**
  * Covers `DefaultMessageService.processAttachments`: remote fetches route through
  * the mocked SSRF-guarded fetcher (zero real network), a failing attachment is
- * isolated as ephemeral without throwing, and local text/csv/markdown/pdf docs
- * extract real text through the un-mocked extractor.
+ * isolated as ephemeral without throwing, local text/csv/markdown/json/pdf docs
+ * extract real text through the un-mocked extractor, audio/video transcribe via
+ * the TRANSCRIPTION model, and every enrichment failure (unsupported subtype,
+ * transcription backend error, empty transcript) records an explicit
+ * `notProcessed` reason instead of leaving text/description silently unset.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ContentType, type Media } from "../types/primitives";
@@ -148,6 +151,140 @@ describe("DefaultMessageService.processAttachments", () => {
 		]);
 
 		expect(out[0].text).toBe(body);
+	});
+
+	it("extracts application/json documents as UTF-8 text", async () => {
+		// application/json is on the chat upload allow-list but is not a text/*
+		// mime, so it used to fall through to "unsupported document type". It must
+		// now extract as readable text like csv/markdown.
+		const body = '{"lifecycle":true,"items":["upload","process"]}';
+		const bytes = Buffer.from(body, "utf8");
+		const localFetch = localDocFetch(bytes, "application/json; charset=utf-8");
+		const svc = new DefaultMessageService();
+		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+
+		const out = await svc.processAttachments(runtime, [
+			{
+				id: "doc",
+				url: "/api/media/abc.json",
+				contentType: ContentType.DOCUMENT,
+			},
+		]);
+
+		expect(out[0].text).toBe(body);
+		expect(out[0].notProcessed).toBeUndefined();
+	});
+
+	it("marks notProcessed on an unsupported document subtype (never silent)", async () => {
+		// An opaque binary document (zip) is stored + served but has no text
+		// extractor. It must carry an explicit notProcessed reason so a
+		// stored-but-unreadable attachment is distinguishable from an empty one.
+		const bytes = Buffer.from([0x50, 0x4b, 0x03, 0x04]); // PK.. zip header
+		const localFetch = localDocFetch(bytes, "application/zip");
+		const svc = new DefaultMessageService();
+		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+
+		const out = await svc.processAttachments(runtime, [
+			{
+				id: "doc",
+				url: "/api/media/abc.zip",
+				contentType: ContentType.DOCUMENT,
+			},
+		]);
+
+		expect(out[0].text).toBeUndefined();
+		expect(out[0].notProcessed).toMatch(/unsupported document type/i);
+		expect(out[0].notProcessed).toContain("application/zip");
+	});
+
+	it("transcribes a local audio attachment via the TRANSCRIPTION model", async () => {
+		const bytes = Buffer.from("fake-mp3-bytes");
+		const localFetch = localDocFetch(bytes, "audio/mpeg");
+		const svc = new DefaultMessageService();
+		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+		(runtime.useModel as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"  hello from the microphone  ",
+		);
+
+		const out = await svc.processAttachments(runtime, [
+			{
+				id: "aud",
+				url: "/api/media/abc.mp3",
+				contentType: ContentType.AUDIO,
+			},
+		]);
+
+		expect(out[0].text).toBe("hello from the microphone");
+		expect(out[0].description).toBe("Transcript: hello from the microphone");
+		expect(out[0].notProcessed).toBeUndefined();
+	});
+
+	it("marks notProcessed when the audio transcription backend throws", async () => {
+		const bytes = Buffer.from("fake-mp3-bytes");
+		const localFetch = localDocFetch(bytes, "audio/mpeg");
+		const svc = new DefaultMessageService();
+		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+		(runtime.useModel as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("no transcription provider configured"),
+		);
+
+		const out = await svc.processAttachments(runtime, [
+			{
+				id: "aud",
+				url: "/api/media/abc.mp3",
+				contentType: ContentType.AUDIO,
+			},
+		]);
+
+		// Bytes stay stored + served (URL preserved); the failure is explicit, not
+		// a fabricated empty transcript.
+		expect(out[0].text).toBeUndefined();
+		expect(out[0].url).toBe("/api/media/abc.mp3");
+		expect(out[0].notProcessed).toMatch(/audio transcription unavailable/i);
+		expect(out[0].notProcessed).toContain(
+			"no transcription provider configured",
+		);
+	});
+
+	it("marks notProcessed when audio transcription returns empty text", async () => {
+		const bytes = Buffer.from("fake-mp3-bytes");
+		const localFetch = localDocFetch(bytes, "audio/mpeg");
+		const svc = new DefaultMessageService();
+		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+		(runtime.useModel as ReturnType<typeof vi.fn>).mockResolvedValue("   ");
+
+		const out = await svc.processAttachments(runtime, [
+			{
+				id: "aud",
+				url: "/api/media/abc.mp3",
+				contentType: ContentType.AUDIO,
+			},
+		]);
+
+		expect(out[0].text).toBeUndefined();
+		expect(out[0].notProcessed).toMatch(/no text|no speech/i);
+	});
+
+	it("transcribes a local video attachment via the TRANSCRIPTION model", async () => {
+		const bytes = Buffer.from("fake-mp4-bytes");
+		const localFetch = localDocFetch(bytes, "video/mp4");
+		const svc = new DefaultMessageService();
+		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+		(runtime.useModel as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"spoken words in the clip",
+		);
+
+		const out = await svc.processAttachments(runtime, [
+			{
+				id: "vid",
+				url: "/api/media/abc.mp4",
+				contentType: ContentType.VIDEO,
+			},
+		]);
+
+		expect(out[0].text).toBe("spoken words in the clip");
+		expect(out[0].description).toBe("Transcript: spoken words in the clip");
+		expect(out[0].notProcessed).toBeUndefined();
 	});
 
 	it("extracts real text from an application/pdf document (previously skipped)", async () => {

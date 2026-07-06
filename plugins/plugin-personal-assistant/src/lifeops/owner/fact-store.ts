@@ -140,6 +140,13 @@ export interface OwnerFacts {
   age?: OwnerFactEntry<string>;
   location?: OwnerFactEntry<string>;
 
+  /**
+   * What the owner primarily wants the assistant's help with — one compact
+   * sentence in the owner's own terms. Discovered conversationally after
+   * first-run by the `ftu_goal_discovery` evaluator.
+   */
+  primaryGoal?: OwnerFactEntry<string>;
+
   // Preferences
   travelBookingPreferences?: OwnerFactEntry<string>;
   activeTravel?: OwnerFactEntry<OwnerActiveTravel>;
@@ -167,6 +174,7 @@ export interface OwnerFactsPatch {
   gender?: string;
   age?: string;
   location?: string;
+  primaryGoal?: string;
   travelBookingPreferences?: string;
   morningWindow?: OwnerFactWindow;
   eveningWindow?: OwnerFactWindow;
@@ -459,6 +467,7 @@ function normalizeRecord(value: unknown): PersistedRecord {
     "gender",
     "age",
     "location",
+    "primaryGoal",
     "travelBookingPreferences",
     "preferredNotificationChannel",
     "locale",
@@ -517,6 +526,7 @@ interface NormalizedPatch {
       | "gender"
       | "age"
       | "location"
+      | "primaryGoal"
       | "travelBookingPreferences"
       | "preferredNotificationChannel"
       | "locale"
@@ -542,6 +552,7 @@ function normalizePatch(patch: OwnerFactsPatch): NormalizedPatch {
     "gender",
     "age",
     "location",
+    "primaryGoal",
     "travelBookingPreferences",
     "preferredNotificationChannel",
     "locale",
@@ -653,6 +664,7 @@ class CacheBackedOwnerFactStore implements OwnerFactStore {
       "gender",
       "age",
       "location",
+      "primaryGoal",
       "travelBookingPreferences",
       "preferredNotificationChannel",
       "locale",
@@ -817,6 +829,9 @@ function cloneFacts(facts: OwnerFacts): OwnerFacts {
   if (facts.gender) next.gender = cloneStringEntry(facts.gender);
   if (facts.age) next.age = cloneStringEntry(facts.age);
   if (facts.location) next.location = cloneStringEntry(facts.location);
+  if (facts.primaryGoal) {
+    next.primaryGoal = cloneStringEntry(facts.primaryGoal);
+  }
   if (facts.travelBookingPreferences) {
     next.travelBookingPreferences = cloneStringEntry(
       facts.travelBookingPreferences,

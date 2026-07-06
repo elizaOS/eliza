@@ -15,15 +15,15 @@
  * by the FACTS provider and downstream systems (LifeOps scheduling, view
  * actions) exactly like fact-extractor rows.
  *
- * Safety invariants: inference never overwrites an explicitly-set trait (slot
- * source "user"/"admin" — explicit beats inferred), never touches `reply_gate`
- * (silencing the agent off an inferred signal is a hazard; the op is not even
- * representable in the schema), and never writes global scope. Trait gates are
- * evaluated against the slot snapshot taken before any write this run, so one
- * inferred write cannot unlock overwriting an explicit trait in the same run.
- * Slot provenance is slot-level, not per-trait, so an inferred write marks the
- * whole slot "agent_inferred"; per-trait provenance is deferred to the slot
- * persistence work (#14674). On runtimes without the PersonalityStore service
+ * Safety invariants: inference never overwrites an explicitly-set trait —
+ * gates read the per-trait provenance in `slot.trait_sources`, so explicit
+ * beats inferred at any confidence and across turns (a lone inferred directive
+ * write cannot relabel the slot and unlock a later overwrite). `reply_gate` is
+ * never touched (silencing the agent off an inferred signal is a hazard; the
+ * op is not even representable in the schema), and global scope is never
+ * written. Trait gates read the slot snapshot taken before any write this run,
+ * so one inferred write cannot change another op's gate in the same run.
+ * On runtimes without the PersonalityStore service
  * (advanced capabilities off), the fact lane still works and slot ops are
  * dropped with a debug log — the counters in the processor result record it.
  */
@@ -230,26 +230,30 @@ type SlotOpOutcome =
 	| "skipped_explicit";
 
 /**
- * Gate reads `gateSlot` — the pre-run snapshot — never the live slot: writing
- * an inferred trait flips the whole slot's source to "agent_inferred" (slot
- * provenance is not per-trait), and gating on the live slot would let that
- * first write unlock overwriting an explicitly-set trait later in the same run.
+ * Gates read per-trait provenance (`trait_sources[trait]`), never the
+ * slot-level `source`: `source` records only the last writer, so one inferred
+ * directive write would relabel the whole slot and unlock overwriting an
+ * explicitly-set trait on a later turn. `gateSlot` is the pre-run snapshot so
+ * one run's writes cannot change another op's gate inside the same run.
  */
-function applySetTrait(
+async function applySetTrait(
 	store: PersonalityStore,
 	runtime: IAgentRuntime,
 	userId: UUID,
 	gateSlot: PersonalitySlot,
 	op: SetTraitOp,
-): SlotOpOutcome {
+): Promise<SlotOpOutcome> {
 	if (op.confidence < SLOT_CONFIDENCE_THRESHOLD)
 		return "skipped_low_confidence";
 	const current = gateSlot[op.trait];
 	if (current === op.value) return "unchanged";
-	if (current !== null && gateSlot.source !== "agent_inferred") {
+	if (
+		current !== null &&
+		gateSlot.trait_sources[op.trait] !== "agent_inferred"
+	) {
 		return "skipped_explicit";
 	}
-	store.applyTrait({
+	await store.applyTrait({
 		scope: "user",
 		userId,
 		agentId: runtime.agentId,
@@ -261,18 +265,21 @@ function applySetTrait(
 	return "applied";
 }
 
-function applyRetractTrait(
+async function applyRetractTrait(
 	store: PersonalityStore,
 	runtime: IAgentRuntime,
 	userId: UUID,
 	gateSlot: PersonalitySlot,
 	op: RetractTraitOp,
-): SlotOpOutcome {
-	// Retraction only undoes inference. An explicit trait (source user/admin)
-	// is cleared through the PERSONALITY action, never by the extractor.
-	if (gateSlot.source !== "agent_inferred") return "skipped_explicit";
+): Promise<SlotOpOutcome> {
+	// Retraction only undoes inference. An explicitly-set trait (per-trait
+	// source user/admin) is cleared through the PERSONALITY action, never by
+	// the extractor.
 	if (gateSlot[op.trait] === null) return "unchanged";
-	store.applyTrait({
+	if (gateSlot.trait_sources[op.trait] !== "agent_inferred") {
+		return "skipped_explicit";
+	}
+	await store.applyTrait({
 		scope: "user",
 		userId,
 		agentId: runtime.agentId,
@@ -284,12 +291,12 @@ function applyRetractTrait(
 	return "applied";
 }
 
-function applyAddDirective(
+async function applyAddDirective(
 	store: PersonalityStore,
 	runtime: IAgentRuntime,
 	userId: UUID,
 	op: AddDirectiveOp,
-): "added" | "deduped" | "skipped_low_confidence" {
+): Promise<"added" | "deduped" | "skipped_low_confidence"> {
 	if (op.confidence < SLOT_CONFIDENCE_THRESHOLD)
 		return "skipped_low_confidence";
 	// Dedupe against the LIVE slot (unlike trait gates) so two near-identical
@@ -301,7 +308,7 @@ function applyAddDirective(
 			DEDUP_SIMILARITY_THRESHOLD,
 	);
 	if (isDuplicate) return "deduped";
-	store.addDirective({
+	await store.addDirective({
 		userId,
 		agentId: runtime.agentId,
 		actorId: runtime.agentId,
@@ -354,7 +361,9 @@ async function applyAddPreferenceFact(
 	const metadata: MemoryMetadata = {
 		type: MemoryType.CUSTOM,
 		source: "preference_extractor",
-		confidence: NEW_FACT_CONFIDENCE,
+		// The model's own confidence when it gave one (the schema advertises
+		// it); the shared default only backfills its absence.
+		confidence: clamp01(op.confidence ?? NEW_FACT_CONFIDENCE),
 		lastConfirmedAt: nowIso(),
 		kind: "durable",
 		category: "preference",
@@ -443,9 +452,29 @@ ${formatRecentMessages(prepared.recentMessages)}`;
 				const userId = message.entityId;
 				// Pre-run snapshot for trait gates — see applySetTrait.
 				const gateSlot = store ? store.getSlot(userId) : null;
-				const candidates: FactCandidate[] = prepared.knownPreferenceFacts.map(
-					(memory) => ({ memory, searchText: buildFactSearchText(memory) }),
+				// Re-fetch dedupe candidates at process() time: the fact evaluator
+				// (priority 100) runs in the same merged post-turn call BEFORE this
+				// processor and may have just inserted `preference` rows the
+				// prepare-time snapshot cannot see — deduping against the snapshot
+				// would double-store the same preference in one turn.
+				const hasFactOps = output.ops.some(
+					(op) => op.op === "add_preference_fact",
 				);
+				const freshFacts = hasFactOps
+					? (
+							await runtime.getMemories({
+								tableName: "facts",
+								roomId: message.roomId,
+								entityId: message.entityId,
+								limit: PREFERENCE_FACT_LOOKBACK,
+								unique: false,
+							})
+						).filter(isDurablePreferenceFact)
+					: prepared.knownPreferenceFacts;
+				const candidates: FactCandidate[] = freshFacts.map((memory) => ({
+					memory,
+					searchText: buildFactSearchText(memory),
+				}));
 				let traitsSet = 0;
 				let traitsRetracted = 0;
 				let directivesAdded = 0;
@@ -470,18 +499,24 @@ ${formatRecentMessages(prepared.recentMessages)}`;
 						continue;
 					}
 					if (op.op === "set_trait") {
-						const outcome = applySetTrait(store, runtime, userId, gateSlot, op);
+						const outcome = await applySetTrait(
+							store,
+							runtime,
+							userId,
+							gateSlot,
+							op,
+						);
 						if (outcome === "applied") traitsSet += 1;
 						else skipped += 1;
 						continue;
 					}
 					if (op.op === "add_directive") {
-						const outcome = applyAddDirective(store, runtime, userId, op);
+						const outcome = await applyAddDirective(store, runtime, userId, op);
 						if (outcome === "added") directivesAdded += 1;
 						else skipped += 1;
 						continue;
 					}
-					const outcome = applyRetractTrait(
+					const outcome = await applyRetractTrait(
 						store,
 						runtime,
 						userId,

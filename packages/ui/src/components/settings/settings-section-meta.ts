@@ -29,6 +29,16 @@ export interface SettingsSectionMeta {
   aliases?: readonly string[];
 }
 
+export interface SettingsNonCatalogSectionMeta {
+  /** Stable id — also the URL hash and agent-surface address. */
+  id: string;
+  /** English display label (the i18n default value). */
+  defaultLabel: string;
+  /** Group may include host-registered groups outside the pinned catalog. */
+  group: SettingsSectionGroup | (string & {});
+  aliases?: readonly string[];
+}
+
 export const SETTINGS_GROUP_ORDER: SettingsSectionGroup[] = [
   "agent",
   "system",
@@ -129,3 +139,26 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
   { id: "app-permissions", defaultLabel: "App Permissions", group: "security" },
   { id: "security", defaultLabel: "Security", group: "security" },
 ];
+
+/**
+ * Built-in settings sections that intentionally stay out of the app-core route
+ * catalog but still register in Settings. Action-side audits consume this list
+ * so chat-write coverage for late-registered sections cannot drift silently.
+ */
+export const SETTINGS_NON_CATALOG_SECTION_META = [
+  {
+    id: "cloud-overview",
+    defaultLabel: "Overview",
+    group: "cloud",
+  },
+  {
+    id: "cloud-agents",
+    defaultLabel: "Agents",
+    group: "cloud",
+  },
+  {
+    id: "my-runtimes",
+    defaultLabel: "My Runtimes",
+    group: "system",
+  },
+] as const satisfies readonly SettingsNonCatalogSectionMeta[];

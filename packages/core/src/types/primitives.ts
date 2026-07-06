@@ -283,6 +283,17 @@ export interface Media {
 	 * device). Surfaces a retry affordance instead of a permanently broken tile.
 	 */
 	ephemeral?: boolean;
+
+	/**
+	 * Human-readable reason the enrichment pass could not extract text /
+	 * description for this attachment — e.g. a transcription backend being
+	 * unavailable, an empty transcript, or an unsupported document subtype. Set
+	 * by `MessageService.processAttachments` so a failed enrichment surfaces
+	 * observably instead of leaving `text`/`description` silently unset (which
+	 * conflates "no backend" with "genuinely empty"). Never a fabricated value —
+	 * its presence means the bytes are stored + served but not machine-readable.
+	 */
+	notProcessed?: string;
 }
 
 export const ContentType = {

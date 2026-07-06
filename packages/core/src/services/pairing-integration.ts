@@ -88,9 +88,18 @@ export async function checkPairingAllowed(
 
 	const pairingService = await getPairingService(runtime);
 	if (!pairingService) {
-		runtime.logger.warn(
-			{ src: "pairing-integration", channel },
-			"PairingService not available; denying pairing-gated sender",
+		// Fail CLOSED, and treat this as a systemic misconfiguration rather than
+		// a per-message event: callers only reach here because the channel's DM
+		// policy is "pairing", and the eliza plugin registers PairingService, so
+		// a missing service means a mis-wired host. reportError surfaces it to
+		// the agent (RECENT_ERRORS) and escalates to the owner on repetition —
+		// a logger.warn per denied DM never reaches anyone (#14710).
+		runtime.reportError(
+			"pairing-integration",
+			new Error(
+				"PairingService is not registered but the DM policy is 'pairing'; denying sender",
+			),
+			{ channel, senderId },
 		);
 		return {
 			allowed: false,

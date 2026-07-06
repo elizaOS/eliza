@@ -77,6 +77,16 @@ const dynamicViewLoaderMock = vi.hoisted(() => ({
   ),
 }));
 
+const settingsViewMock = vi.hoisted(() => ({
+  render: vi.fn(
+    (_props: {
+      initialSection?: string;
+      navigatePayload?: unknown;
+      navigateSequence?: number;
+    }) => <div data-testid="settings-view" />,
+  ),
+}));
+
 const remoteLedgerView = {
   id: "remote-ledger",
   label: "Remote Ledger",
@@ -376,6 +386,14 @@ vi.mock("./components/pages/ChatView", () => ({
   __resetCompanionSpeechMemoryForTests: vi.fn(),
 }));
 
+vi.mock("./components/pages/SettingsView", () => ({
+  SettingsView: (props: {
+    initialSection?: string;
+    navigatePayload?: unknown;
+    navigateSequence?: number;
+  }) => settingsViewMock.render(props),
+}));
+
 vi.mock("./components/character/CharacterEditor", () => ({
   CharacterEditor: ({ initialPage }: { initialPage?: string }) => (
     <div
@@ -437,6 +455,7 @@ describe("App navigate-view event wiring", () => {
     desktopBridgeMock.invokeDesktopBridgeRequest.mockClear();
     desktopBridgeMock.subscribeDesktopBridgeEvent.mockClear();
     dynamicViewLoaderMock.render.mockClear();
+    settingsViewMock.render.mockClear();
   });
 
   afterEach(() => {
@@ -473,6 +492,33 @@ describe("App navigate-view event wiring", () => {
       expect(appState.setTab).toHaveBeenCalledWith("settings");
     });
     expect(desktopTabsMock.openTab).not.toHaveBeenCalled();
+  });
+
+  it("passes settings navigate payloads into SettingsView for targeted permission priming", async () => {
+    appState.tab = "settings";
+    window.history.replaceState(null, "", "/?shellMode=full");
+    const payload = { permissionRequest: { permission: "microphone" } };
+    render(<App />);
+
+    fireEvent(
+      window,
+      createNavigateViewEvent({
+        viewId: "settings",
+        viewPath: "/settings",
+        subview: "permissions",
+        payload,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(settingsViewMock.render).toHaveBeenCalledWith(
+        expect.objectContaining({
+          initialSection: "permissions",
+          navigatePayload: payload,
+          navigateSequence: 1,
+        }),
+      );
+    });
   });
 
   it("pins remote views and opens remote view windows through App wiring", async () => {

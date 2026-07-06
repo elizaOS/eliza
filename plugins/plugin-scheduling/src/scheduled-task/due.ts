@@ -9,7 +9,7 @@
  * scheduler tick and the runner.
  */
 
-import { computeNextCronRunAtMs } from "@elizaos/core";
+import { computeNextCronRunAtMs, stringToUuid } from "@elizaos/core";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
@@ -569,14 +569,63 @@ export function expectedReplyKindForTask(
   return "free_form";
 }
 
-export function pendingPromptRoomIdForTask(task: ScheduledTask): string | null {
+function targetPrefix(target: string): string | null {
+  const separatorIndex = target.indexOf(":");
+  if (separatorIndex <= 0) return null;
+  return target.slice(0, separatorIndex);
+}
+
+function normalizedTargetForChannel(args: {
+  channelKey: string;
+  target: string;
+  explicitChannelKey: boolean;
+}): string | null {
+  const prefixKey = targetPrefix(args.target);
+  if (args.explicitChannelKey && prefixKey && prefixKey !== args.channelKey) {
+    return null;
+  }
+  const prefix = `${args.channelKey}:`;
+  const normalized = args.target.startsWith(prefix)
+    ? args.target.slice(prefix.length)
+    : args.target;
+  const trimmed = normalized.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function roomIdFromConnectorTarget(
+  channelKey: string,
+  target: string,
+  agentId: string | undefined,
+  explicitChannelKey: boolean,
+): string | null {
+  const normalized = normalizedTargetForChannel({
+    channelKey,
+    target,
+    explicitChannelKey,
+  });
+  if (!normalized) return null;
+  if (channelKey === "in_app") return normalized;
+  if (!agentId) return null;
+  return stringToUuid(`${normalized}:${agentId}`);
+}
+
+export function pendingPromptRoomIdForTask(
+  task: ScheduledTask,
+  context?: { agentId?: string; channelKey?: string; target?: string },
+): string | null {
   const metadataRoomId = task.metadata?.pendingPromptRoomId;
   if (typeof metadataRoomId === "string" && metadataRoomId.length > 0) {
     return metadataRoomId;
   }
-  const target = task.output?.target;
+  const target = context?.target ?? task.output?.target;
   if (typeof target !== "string") return null;
-  const [channelKey, roomId] = target.split(":", 2);
-  if (channelKey === "in_app" && roomId) return roomId;
-  return null;
+  const channelKey = context?.channelKey ?? targetPrefix(target) ?? "";
+  if (channelKey.length === 0) return null;
+  const hasResolvedDispatchTarget = typeof context?.target === "string";
+  return roomIdFromConnectorTarget(
+    channelKey,
+    target,
+    context?.agentId,
+    typeof context?.channelKey === "string" && !hasResolvedDispatchTarget,
+  );
 }

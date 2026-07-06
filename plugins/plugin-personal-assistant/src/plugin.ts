@@ -20,6 +20,7 @@ import {
   registerCandidateActionBackstopRule,
   registerLocalizedExamplesProvider,
   registerSendPolicy,
+  type ShortcutDefinition,
 } from "@elizaos/core";
 import {
   getSelfControlPermissionState,
@@ -97,6 +98,7 @@ import {
   FOLLOWUP_TRACKER_TASK_NAME,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
+import { anticipationFeedbackEvaluator } from "./lifeops/anticipation/evaluator.js";
 import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
 import {
   createChannelRegistry,
@@ -110,9 +112,10 @@ import {
 } from "./lifeops/connectors/index.js";
 import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
 import { handleVoiceTurnObserved } from "./lifeops/entities/voice-observer-bridge.js";
-import { ConnectorChannelInspector } from "./lifeops/first-run/connector-channel-inspector.js";
-import { setChannelInspector } from "./lifeops/first-run/questions.js";
+import { installFirstRunChannelInspector } from "./lifeops/first-run/channel-inspector.js";
+import { setRuntimeChannelInspector } from "./lifeops/first-run/questions.js";
 import { FirstRunService } from "./lifeops/first-run/service.js";
+import { ftuGoalDiscoveryEvaluator } from "./lifeops/ftu-goal/evaluator.js";
 import { createOwnerLocaleExamplesProvider } from "./lifeops/i18n/localized-examples-provider.js";
 import {
   createMultilingualPromptRegistry,
@@ -160,6 +163,10 @@ import {
 } from "./lifeops/scheduled-task/runtime-wiring.js";
 import { handleScheduledTaskInboundMessage } from "./lifeops/scheduled-task/scheduler.js";
 import { getScheduledTaskRunner as getProductionScheduledTaskRunner } from "./lifeops/scheduled-task/service.js";
+import {
+  handleAgentMessageSentForQuestionFollowup,
+  handleOwnerMessageForQuestionFollowup,
+} from "./lifeops/scheduled-task/unanswered-question-followup.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
 import {
   createSendPolicyRegistry,
@@ -177,6 +184,7 @@ import { activityProfileProvider } from "./providers/activity-profile.js";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
 // LifeOps core providers
 import { firstRunProvider } from "./providers/first-run.js";
+import { ftuGoalProvider } from "./providers/ftu-goal.js";
 import { healthProvider } from "./providers/health.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
 import { pendingApprovalsProvider } from "./providers/pending-approvals.js";
@@ -194,6 +202,41 @@ import {
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
+
+export const APPROVAL_REJECT_SHORTCUT_ID = "lifeops:approval:reject";
+
+// The deterministic tier fires only on phrasings that are near-unambiguously a
+// verdict on a queued approval: a "don't send" hold, a reject/decline/deny verb
+// directly governing "approval(s)" / "(that|the|this) request", or the
+// "<verb> that/it/this for now" hold idiom. Looser rejection language
+// ("decline the meeting request", "reject the draft and rewrite it") stays
+// with the planner, which sees queue rows via the pendingApprovals provider
+// (#14665) and can weigh conversation context before picking RESOLVE_REQUEST.
+// A shortcut misfire is terminal for the targeted approval (reject cancels the
+// dispatch), so precision beats recall here.
+const APPROVAL_REJECT_REGEX =
+  /\b(?:reject|decline|deny)\b(?:\s+[\p{L}\p{N}]+){0,3}?\s+approvals?\b|\b(?:reject|decline|deny)\s+(?:(?:that|the|this)\s+)?request\b|\b(?:reject|decline|deny)\s+(?:that|it|this)\s+for\s+now\b/iu;
+const APPROVAL_DONT_SEND_REGEX =
+  /^(?=.*\b(?:don['’]?\s*t|dont|do\s+not)\s+send\b)(?=.*\b(?:that|it|approval|request|pending|message|email|draft)\b).+$/iu;
+
+const lifeOpsShortcuts: ShortcutDefinition[] = [
+  {
+    id: APPROVAL_REJECT_SHORTCUT_ID,
+    kind: "natural",
+    patterns: [
+      { regex: APPROVAL_REJECT_REGEX },
+      { regex: APPROVAL_DONT_SEND_REGEX },
+    ],
+    target: {
+      kind: "action",
+      name: "RESOLVE_REQUEST_REJECT",
+    },
+    requiresAction: "RESOLVE_REQUEST_REJECT",
+    requiresElevated: true,
+    confidence: 0.97,
+    priority: 35,
+  },
+];
 
 function isPermissionsRegistry(value: unknown): value is IPermissionsRegistry {
   return (
@@ -582,6 +625,7 @@ const rawPersonalAssistantPlugin: Plugin = {
   // runner host is registered before PA's init injects deps + seeds.
   dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE, "@elizaos/plugin-scheduling"],
   schema: lifeOpsSchema,
+  shortcuts: lifeOpsShortcuts,
   actions: [
     // Canonical owner-operation umbrellas. Each umbrella registers itself + its
     // per-action virtuals via
@@ -633,6 +677,7 @@ const rawPersonalAssistantPlugin: Plugin = {
   providers: [
     browserBridgeProvider,
     firstRunProvider,
+    ftuGoalProvider,
     roomPolicyProvider,
     lifeOpsProvider,
     pendingApprovalsProvider,
@@ -658,6 +703,9 @@ const rawPersonalAssistantPlugin: Plugin = {
   ],
   responseHandlerEvaluators: [ownerProfileExtractionEvaluator],
   responseHandlerFieldEvaluators: [threadOpsFieldEvaluator],
+  // Post-turn evaluators join the runtime's single merged SMALL-model
+  // evaluation call (EvaluatorService) — no extra model round-trip per turn.
+  evaluators: [ftuGoalDiscoveryEvaluator, anticipationFeedbackEvaluator],
   // No views — the LifeOps overview surface was removed (owner: "no need for an
   // overview"). Domain views live in the per-domain plugins; the personal
   // assistant is the chat itself (PERSONAL_ASSISTANT action).
@@ -688,7 +736,14 @@ const rawPersonalAssistantPlugin: Plugin = {
           );
         }
       },
+      // Owner re-engaged: any still-scheduled unanswered-question follow-up
+      // for the room is stale — dismiss it (#14676).
+      handleOwnerMessageForQuestionFollowup,
     ],
+    // Agent reply ends with a question the owner never answers → seed a
+    // once-fired follow-up whose fire-time admission is the model moment
+    // judge (#14676, riding the #14677 model_moment_check seam).
+    [EventType.MESSAGE_SENT]: [handleAgentMessageSentForQuestionFollowup],
     // Fold recognized voice turns into the entity/relationship graph via
     // the merge engine, then round-trip the binding to the voice-profile
     // owner. See lifeops/entities/voice-observer-bridge.ts.
@@ -754,11 +809,6 @@ const rawPersonalAssistantPlugin: Plugin = {
       }
     ).connectorRegistry = connectorRegistry;
 
-    // First-run channel picker (Q4) reads *live* connector status through this
-    // registry instead of fabricating a verdict (#14730). Must follow the
-    // connector-registry registration above.
-    setChannelInspector(new ConnectorChannelInspector(runtime));
-
     const channelRegistry = createChannelRegistry();
     registerDefaultChannelPack(channelRegistry, runtime);
     // Meeting auto-join dispatch channel: plugin-calendar's scheduled join
@@ -780,6 +830,7 @@ const rawPersonalAssistantPlugin: Plugin = {
       send: (payload) => handleMeetingJoinDispatch(runtime, payload),
     });
     registerChannelRegistry(runtime, channelRegistry);
+    installFirstRunChannelInspector(runtime, channelRegistry);
     (
       runtime as IAgentRuntime & { channelRegistry?: typeof channelRegistry }
     ).channelRegistry = channelRegistry;
@@ -1007,6 +1058,8 @@ const rawPersonalAssistantPlugin: Plugin = {
    * to touch those here.
    */
   dispose: async (runtime: IAgentRuntime) => {
+    setRuntimeChannelInspector(runtime, null);
+
     const taskNames: readonly string[] = [
       PROACTIVE_TASK_NAME,
       LIFEOPS_TASK_NAME,
@@ -1088,6 +1141,20 @@ export {
   setFollowupThresholdAction,
   writeOverdueDigestMemory,
 } from "./followup/index.js";
+export {
+  type AnticipationFeedbackOutput,
+  anticipationFeedbackEvaluator,
+  parseAnticipationFeedbackOutput,
+} from "./lifeops/anticipation/evaluator.js";
+export {
+  type AnticipationOutcome,
+  type AnticipationStats,
+  listUnprocessedDispatches,
+  type ProactiveDispatchMarker,
+  readAnticipationStats,
+  recordAnticipationFeedback,
+  recordProactiveDispatch,
+} from "./lifeops/anticipation/store.js";
 export { CheckinService } from "./lifeops/checkin/checkin-service.js";
 export type { CheckinSchedule } from "./lifeops/checkin/schedule-resolver.js";
 export { resolveCheckinSchedule } from "./lifeops/checkin/schedule-resolver.js";
@@ -1118,6 +1185,19 @@ export {
   type SeededDefaultsMarker,
   type SeededDefaultsStore,
 } from "./lifeops/first-run/state.js";
+export {
+  FTU_GOAL_CONFIDENCE_THRESHOLD,
+  type FtuGoalDiscoveryOutput,
+  ftuGoalDiscoveryEvaluator,
+  parseFtuGoalOutput,
+} from "./lifeops/ftu-goal/evaluator.js";
+export {
+  createFtuGoalStateStore,
+  type DiscoveredFtuGoal,
+  type FtuGoalRecord,
+  type FtuGoalStateStore,
+  type FtuGoalStatus,
+} from "./lifeops/ftu-goal/state.js";
 export {
   createGlobalPauseStore,
   type GlobalPauseStatus,
@@ -1269,6 +1349,8 @@ export {
 } from "./lifeops/work-threads/index.js";
 export type { FirstRunAffordance } from "./providers/first-run.js";
 export { firstRunProvider } from "./providers/first-run.js";
+export type { FtuGoalAffordance } from "./providers/ftu-goal.js";
+export { ftuGoalProvider } from "./providers/ftu-goal.js";
 export { healthProvider } from "./providers/health.js";
 export { inboxTriageProvider } from "./providers/inbox-triage.js";
 export { lifeOpsProvider } from "./providers/lifeops.js";

@@ -15,6 +15,7 @@ import {
 	EventType,
 	type FetchedDocumentUrl as FetchedKnowledgeUrl,
 	fetchDocumentFromUrl,
+	getConnectorAdminWhitelist,
 	type HandlerCallback,
 	type IAgentRuntime,
 	isInAllowlist,
@@ -448,6 +449,16 @@ export class MessageManager {
 		if (policy === "pairing") {
 			// Check static allowlist first (if configured, allow bypass of pairing)
 			if (this.discordSettings.allowFrom?.includes(userId)) {
+				return { allowed: true };
+			}
+
+			// The resolved bot owner and explicitly whitelisted connector admins
+			// (seeded by refreshOwnerDiscordUserIds from the application owner /
+			// team / ELIZA_DISCORD_OWNER_USER_IDS_JSON) are the pairing APPROVERS —
+			// they must never be locked behind their own pairing gate (#14710).
+			const discordAdminIds =
+				getConnectorAdminWhitelist(this.runtime).discord ?? [];
+			if (discordAdminIds.includes(userId)) {
 				return { allowed: true };
 			}
 

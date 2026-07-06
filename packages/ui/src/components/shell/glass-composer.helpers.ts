@@ -1,3 +1,3 @@
-/** Class for the composer bar — translucent, edge-highlighted; no plain borders. */
+/** Class for the composer bar, aligned with the overlay composer token recipe. */
 export const GLASS_COMPOSER_CLASS =
-  "flex items-center gap-1.5 rounded-[6px] border border-txt/15 bg-txt/10 p-1.5";
+  "flex items-center gap-1.5 rounded-full bg-card/85 px-2 py-2 shadow-sm";

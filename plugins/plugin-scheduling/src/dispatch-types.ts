@@ -16,7 +16,7 @@
  * - `transport_error` — generic infrastructure failure (network, 5xx, timeout).
  */
 export type DispatchResult =
-  | { ok: true; messageId?: string }
+  | { ok: true; messageId?: string; target?: string; channelKey?: string }
   | {
       ok: false;
       reason:

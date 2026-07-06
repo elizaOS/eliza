@@ -56,16 +56,35 @@ describe("isHomeWidgetSunset", () => {
 
   it("retires an afterSeen widget only AFTER it has been seen in more than N sessions", () => {
     const sunset = { afterSeen: 1 };
-    // seen once → still shown this session
+    // seen once -> still shown this session
     expect(
       isHomeWidgetSunset(KEY, sunset, {
         [KEY]: { seen: 1, acted: false, dismissed: false },
       }),
     ).toBe(false);
-    // seen in a second session → retired
+    // seen in a second session -> retired
     expect(
       isHomeWidgetSunset(KEY, sunset, {
         [KEY]: { seen: 2, acted: false, dismissed: false },
+      }),
+    ).toBe(true);
+  });
+
+  it("supports a dismissible one-session hint lifecycle", () => {
+    const sunset = { dismissible: true, afterSeen: 1 };
+    expect(
+      isHomeWidgetSunset(KEY, sunset, {
+        [KEY]: { seen: 1, acted: false, dismissed: false },
+      }),
+    ).toBe(false);
+    expect(
+      isHomeWidgetSunset(KEY, sunset, {
+        [KEY]: { seen: 2, acted: false, dismissed: false },
+      }),
+    ).toBe(true);
+    expect(
+      isHomeWidgetSunset(KEY, sunset, {
+        [KEY]: { seen: 1, acted: false, dismissed: true },
       }),
     ).toBe(true);
   });

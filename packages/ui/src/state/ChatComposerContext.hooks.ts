@@ -24,20 +24,38 @@ import {
 } from "react";
 import type { ImageAttachment } from "../api";
 
+/**
+ * The message the composer is currently replying to. Set by the per-row Reply
+ * affordance, rendered as the "Replying to …" pill above the composer, and read
+ * on send to stamp `metadata.replyToMessageId` on the outgoing turn (the API
+ * boundary lifts that onto `content.inReplyTo`, which the REPLY_CONTEXT provider
+ * reads to pull the surrounding exchange into model context). `senderName` and
+ * `snippet` are display-only — the server resolves the real target from the id.
+ */
+export interface ChatReplyTarget {
+  messageId: string;
+  senderName: string;
+  snippet: string;
+}
+
 export interface ChatComposerValue {
   chatInput: string;
   chatSending: boolean;
   chatPendingImages: ImageAttachment[];
+  chatReplyTarget: ChatReplyTarget | null;
   setChatInput: (v: string) => void;
   setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
+  setChatReplyTarget: (target: ChatReplyTarget | null) => void;
 }
 
 const DEFAULT_COMPOSER: ChatComposerValue = {
   chatInput: "",
   chatSending: false,
   chatPendingImages: [],
+  chatReplyTarget: null,
   setChatInput: () => {},
   setChatPendingImages: () => {},
+  setChatReplyTarget: () => {},
 };
 
 export const ChatComposerCtx =
@@ -66,15 +84,19 @@ export function useChatComposerOrLocal(): ChatComposerValue {
   const ctx = useContext(ChatComposerCtx);
   const [localInput, setLocalInput] = useState("");
   const [localImages, setLocalImages] = useState<ImageAttachment[]>([]);
+  const [localReplyTarget, setLocalReplyTarget] =
+    useState<ChatReplyTarget | null>(null);
   const local = useMemo<ChatComposerValue>(
     () => ({
       chatInput: localInput,
       chatSending: false,
       chatPendingImages: localImages,
+      chatReplyTarget: localReplyTarget,
       setChatInput: setLocalInput,
       setChatPendingImages: setLocalImages,
+      setChatReplyTarget: setLocalReplyTarget,
     }),
-    [localInput, localImages],
+    [localInput, localImages, localReplyTarget],
   );
   return ctx === DEFAULT_COMPOSER ? local : ctx;
 }

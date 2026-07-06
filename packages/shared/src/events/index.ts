@@ -6,6 +6,8 @@
  * EmotePicker, ChatView, etc.).
  */
 
+import type { UiLanguage } from "../i18n/language.js";
+
 // ── App lifecycle ────────────────────────────────────────────────────────
 export const COMMAND_PALETTE_EVENT = "eliza:command-palette" as const;
 export const EMOTE_PICKER_EVENT = "eliza:emote-picker" as const;
@@ -149,6 +151,20 @@ export interface BackgroundApplyPayload extends Record<string, unknown> {
   catalogId?: string;
 }
 
+export const APPEARANCE_APPLY_EVENT = "appearance:apply" as const;
+
+/** Payload broadcast on {@link APPEARANCE_APPLY_EVENT}. */
+export interface AppearanceApplyPayload extends Record<string, unknown> {
+  /** Theme mode persisted by the Appearance settings section. */
+  themeMode?: "light" | "dark" | "system";
+  /** Accent preset id, e.g. default, amber, rose, green. */
+  accentId?: string;
+  /** Supported UI language code. */
+  language?: UiLanguage;
+  /** Whether the home time/date widget is hidden. */
+  homeTimeWidgetHidden?: boolean;
+}
+
 // ── Avatar / VRM ─────────────────────────────────────────────────────────
 export const VRM_TELEPORT_COMPLETE_EVENT =
   "eliza:vrm-teleport-complete" as const;
@@ -175,6 +191,8 @@ export interface ShellNavigateViewPayload {
   layout?: string;
   placement?: string;
   alwaysOnTop?: boolean;
+  /** Opaque target-view deep-link state, validated by the receiving view. */
+  payload?: unknown;
 }
 
 export type ShellNavigateViewWsFrame = ShellNavigateViewPayload & {
@@ -212,6 +230,7 @@ export function normalizeShellNavigateViewPayload(
     layout: readNonEmptyString(data.layout),
     placement: readNonEmptyString(data.placement),
     alwaysOnTop: data.alwaysOnTop === true,
+    ...(Object.hasOwn(data, "payload") ? { payload: data.payload } : {}),
   };
 }
 

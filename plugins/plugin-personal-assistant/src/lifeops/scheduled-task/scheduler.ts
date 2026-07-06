@@ -41,6 +41,7 @@ import {
   createRecentTaskStatesProvider,
   type RecentTaskStateEntry,
 } from "../../providers/recent-task-states.js";
+import { recordProactiveDispatch } from "../anticipation/store.js";
 import {
   ownerFactsToView,
   type ReminderIntensity,
@@ -420,10 +421,12 @@ async function recordPendingPromptIfNeeded(args: {
 }): Promise<RecordedPendingPrompt | null> {
   if (args.result.state.status !== "fired") return null;
   if (!shouldRecordPendingPrompt(args.result)) return null;
-  const roomId = pendingPromptRoomIdForTask(args.result);
+  const roomId = pendingPromptRoomIdForTask(args.result, {
+    agentId: String(args.runtime.agentId),
+  });
   if (!roomId || !args.result.state.firedAt) return null;
   const store = resolvePendingPromptsStore(args.runtime);
-  return store.record({
+  const recorded = await store.record({
     roomId,
     taskId: args.result.taskId,
     promptSnippet: args.result.promptInstructions,
@@ -437,6 +440,30 @@ async function recordPendingPromptIfNeeded(args: {
           ).toISOString()
         : undefined,
   });
+  // The anticipation-feedback marker mirrors the pending prompt but is
+  // resolved by the post-turn evaluator, not by inbound-reply completion —
+  // pending prompts are gone before evaluators run (see
+  // ../anticipation/store.ts).
+  try {
+    await recordProactiveDispatch(args.runtime, {
+      roomId,
+      taskId: args.result.taskId,
+      firedAt: args.result.state.firedAt,
+      snippet: args.result.promptInstructions,
+    });
+  } catch (error) {
+    // error-policy:J7 diagnostics-must-not-kill-the-loop — a failed learning
+    // marker must not undo the pending prompt that already committed;
+    // reportError keeps repeated failures observable.
+    logger.warn(
+      `[lifeops-scheduled-task] anticipation marker write failed for ${args.result.taskId}: ${errorMessage(error)}`,
+    );
+    args.runtime.reportError("lifeops:scheduled-task:anticipation", error, {
+      taskId: args.result.taskId,
+      roomId,
+    });
+  }
+  return recorded;
 }
 
 export async function processDueScheduledTasks(

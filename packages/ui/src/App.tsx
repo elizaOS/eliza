@@ -1284,6 +1284,8 @@ interface StaticTabRenderContext {
   nativeOsSurfaceEnabled: boolean;
   navigationPath: string;
   settingsInitialSection?: string | null;
+  settingsNavigatePayload?: unknown;
+  settingsNavigateSequence?: number;
   walletNav?: ReactNode;
   characterNav?: ReactNode;
 }
@@ -1350,11 +1352,17 @@ function buildStaticTabRenderers(): Record<
     database: wrap(<DatabasePageView />),
     logs: wrap(<LogsView />),
     desktop: wrap(<DesktopWorkspaceSection />),
-    settings: ({ settingsInitialSection }) => (
+    settings: ({
+      settingsInitialSection,
+      settingsNavigatePayload,
+      settingsNavigateSequence,
+    }) => (
       <TabContentView surface="transparent">
         <SettingsView
           key="settings-root"
           initialSection={settingsInitialSection ?? undefined}
+          navigatePayload={settingsNavigatePayload}
+          navigateSequence={settingsNavigateSequence}
         />
       </TabContentView>
     ),
@@ -1397,6 +1405,8 @@ function renderStaticViewRouterTab({
   nativeOsSurfaceEnabled,
   navigationPath,
   settingsInitialSection,
+  settingsNavigatePayload,
+  settingsNavigateSequence,
   walletNav,
   characterNav,
 }: {
@@ -1404,6 +1414,8 @@ function renderStaticViewRouterTab({
   nativeOsSurfaceEnabled: boolean;
   navigationPath: string;
   settingsInitialSection?: string | null;
+  settingsNavigatePayload?: unknown;
+  settingsNavigateSequence?: number;
   walletNav?: ReactNode;
   characterNav?: ReactNode;
 }): ReactNode {
@@ -1417,6 +1429,8 @@ function renderStaticViewRouterTab({
       nativeOsSurfaceEnabled,
       navigationPath,
       settingsInitialSection,
+      settingsNavigatePayload,
+      settingsNavigateSequence,
       walletNav,
       characterNav,
     });
@@ -1434,6 +1448,8 @@ function renderViewRouterContent({
   appSlug,
   nativeOsSurfaceEnabled,
   settingsInitialSection,
+  settingsNavigatePayload,
+  settingsNavigateSequence,
 }: {
   tab: string;
   dynamicPage: ResolvedDynamicPage | null;
@@ -1444,6 +1460,8 @@ function renderViewRouterContent({
   appSlug: string | null;
   nativeOsSurfaceEnabled: boolean;
   settingsInitialSection?: string | null;
+  settingsNavigatePayload?: unknown;
+  settingsNavigateSequence?: number;
 }): ReactNode {
   if (visibleDynamicPage(dynamicPage, enabledKinds)) {
     return (
@@ -1497,6 +1515,8 @@ function renderViewRouterContent({
     nativeOsSurfaceEnabled,
     navigationPath,
     settingsInitialSection,
+    settingsNavigatePayload,
+    settingsNavigateSequence,
     walletNav,
     characterNav,
   });
@@ -1510,9 +1530,13 @@ type ViewRouterRouteOverride = {
 function ViewRouter({
   routeOverride,
   settingsInitialSection,
+  settingsNavigatePayload,
+  settingsNavigateSequence,
 }: {
   routeOverride?: ViewRouterRouteOverride;
   settingsInitialSection?: string | null;
+  settingsNavigatePayload?: unknown;
+  settingsNavigateSequence?: number;
 }) {
   const activeTab = useAppSelector((s) => s.tab);
   const tab = routeOverride?.tab ?? activeTab;
@@ -1561,6 +1585,8 @@ function ViewRouter({
     appSlug,
     nativeOsSurfaceEnabled,
     settingsInitialSection,
+    settingsNavigatePayload,
+    settingsNavigateSequence,
   });
 
   // A distinct lifecycle identity per routed surface: builtin tab id, or
@@ -1624,6 +1650,8 @@ type ShellContentProps = {
   setCustomActionsPanelOpen: (open: boolean) => void;
   setEditingAction: (action: import("./api").CustomActionDef | null) => void;
   settingsInitialSection: string | null;
+  settingsNavigatePayload: unknown;
+  settingsNavigateSequence: number;
   tab: string;
   uiShellMode: string;
   viewLayout: ActiveViewLayout | null;
@@ -1703,7 +1731,11 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
             onClear={props.onClearViewLayout}
           />
         ) : (
-          <ViewRouter settingsInitialSection={props.settingsInitialSection} />
+          <ViewRouter
+            settingsInitialSection={props.settingsInitialSection}
+            settingsNavigatePayload={props.settingsNavigatePayload}
+            settingsNavigateSequence={props.settingsNavigateSequence}
+          />
         )}
       </main>
     </div>
@@ -2154,6 +2186,9 @@ export function App() {
   const [settingsInitialSection, setSettingsInitialSection] = useState<
     string | null
   >(null);
+  const [settingsNavigatePayload, setSettingsNavigatePayload] =
+    useState<unknown>(undefined);
+  const [settingsNavigateSequence, setSettingsNavigateSequence] = useState(0);
 
   // Desktop tab bar — persisted pinned tabs for the Electrobun shell.
   const {
@@ -2291,6 +2326,8 @@ export function App() {
           `[SettingsNavigate] routing subview "${detail.subview}" to SettingsView initialSection`,
         );
         setSettingsInitialSection(detail.subview);
+        setSettingsNavigatePayload(detail.payload);
+        setSettingsNavigateSequence((sequence) => sequence + 1);
         setTab("settings");
         return;
       }
@@ -2442,6 +2479,8 @@ export function App() {
         setCustomActionsPanelOpen={setCustomActionsPanelOpen}
         setEditingAction={setEditingAction}
         settingsInitialSection={settingsInitialSection}
+        settingsNavigatePayload={settingsNavigatePayload}
+        settingsNavigateSequence={settingsNavigateSequence}
         tab={tab}
         uiShellMode={uiShellMode}
         viewLayout={viewLayout}
@@ -2457,6 +2496,8 @@ export function App() {
       screenBackgroundPolicy,
       customActionsPanelOpen,
       settingsInitialSection,
+      settingsNavigatePayload,
+      settingsNavigateSequence,
       desktopTabBar,
       availableViewsForDesktopTabs,
       viewLayout,

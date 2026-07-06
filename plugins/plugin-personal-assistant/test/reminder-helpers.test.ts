@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   _isReminderIntensity,
-  classifyReminderOwnerResponseText,
+  classifyExactReminderReply,
   coerceReminderIntensity,
   isReminderChannel,
   isReminderReviewClosed,
@@ -96,19 +96,17 @@ describe("owner reply classifier", () => {
       allowStandaloneResolution: true,
     };
 
-    expect(classifyReminderOwnerResponseText("done", context)).toMatchObject({
+    expect(classifyExactReminderReply("done", context)).toMatchObject({
       decision: "explicit_resolution",
       resolution: "completed",
       snoozeRequest: null,
     });
-    expect(
-      classifyReminderOwnerResponseText("10 minutes", context),
-    ).toMatchObject({
+    expect(classifyExactReminderReply("10 minutes", context)).toMatchObject({
       decision: "explicit_resolution",
       resolution: "snoozed",
       snoozeRequest: { minutes: 10 },
     });
-    expect(classifyReminderOwnerResponseText("skip", context)).toMatchObject({
+    expect(classifyExactReminderReply("skip", context)).toMatchObject({
       decision: "explicit_resolution",
       resolution: "skipped",
       snoozeRequest: null,

@@ -21,6 +21,7 @@ import {
   AgentRuntime,
   ChannelType,
   createMessageMemory,
+  getConnectorAccountManager,
   logger,
   type Memory,
   type Plugin,
@@ -39,6 +40,7 @@ import {
   createLifeOpsGmailSyncState,
   LifeOpsRepository,
 } from "../src/lifeops/repository.js";
+import { personalAssistantPlugin } from "../src/plugin.js";
 import {
   getLifeOpsLiveSetupWarnings,
   getSelectedLiveProviderEnv,
@@ -285,6 +287,40 @@ async function seedGoogleConnector(
       lastRefreshAt: nowIso,
     }),
     id: grantId,
+  });
+
+  // The action/status path resolves Google connectivity through the core
+  // ConnectorAccountManager (getGoogleConnectorStatus → listAccounts), not the
+  // legacy life_connector_grants row above — without a connected account the
+  // model honestly reports "your Google account isn't connected". Seed the
+  // account the same way a completed OAuth flow would persist it.
+  const accountManager = getConnectorAccountManager(runtime);
+  await accountManager.upsertAccount("google", {
+    id: grantId,
+    role: "OWNER",
+    purpose: ["messaging", "calendar"],
+    accessGate: "open",
+    status: "connected",
+    externalId: "assistant-user-journeys-google-sub",
+    displayHandle: "shawmakesmagic@gmail.com",
+    metadata: {
+      isDefault: true,
+      identity: { email: "shawmakesmagic@gmail.com", name: "Shaw" },
+      grantedCapabilities: [
+        "google.basic_identity",
+        "google.calendar.read",
+        "google.gmail.triage",
+      ],
+      grantedScopes: [
+        "openid",
+        "email",
+        "profile",
+        "https://www.googleapis.com/auth/calendar.readonly",
+        "https://www.googleapis.com/auth/gmail.readonly",
+      ],
+      hasRefreshToken: true,
+      tokenRef,
+    },
   });
 
   return repository;
@@ -554,7 +590,12 @@ function expectContainsAtLeast(
   const matches = fragments.filter((fragment) =>
     normalized.includes(normalizeText(fragment)),
   );
-  expect(matches.length).toBeGreaterThanOrEqual(minimumMatches);
+  // Carry the live response in the failure so a red lane log is reviewable
+  // evidence on its own (these suites run unattended in the HITL lanes).
+  expect(
+    matches.length,
+    `expected >=${minimumMatches} of ${JSON.stringify(fragments)} in live response:\n${text}`,
+  ).toBeGreaterThanOrEqual(minimumMatches);
 }
 
 const selectedLiveProvider = await selectLifeOpsLiveProvider();
@@ -634,13 +675,19 @@ describeIf(LIVE_SUITE_ENABLED)(
       character.secrets = selectedProviderEnv;
 
       const sqlPlugin = await loadPlugin("@elizaos/plugin-sql");
+      const schedulingPlugin = await loadPlugin("@elizaos/plugin-scheduling");
       const providerPlugin = selectedLiveProvider
         ? await loadPlugin(selectedLiveProvider.plugin)
         : null;
-      if (!sqlPlugin || !providerPlugin) {
+      if (!sqlPlugin || !schedulingPlugin || !providerPlugin) {
         throw new Error("Required live plugins were not available.");
       }
 
+      // personalAssistantPlugin is part of the composition (as in the sibling
+      // followup-repair suite): it registers lifeOpsSchema for migration and
+      // provides the inbox/connector action surface the email journey drives.
+      // plugin-scheduling hosts the ScheduledTaskRunnerService PA's runner
+      // wiring expects (always loaded in production).
       runtime = new AgentRuntime({
         character,
         plugins: [
@@ -649,6 +696,8 @@ describeIf(LIVE_SUITE_ENABLED)(
             agentId: "main",
             workspaceDir,
           }),
+          schedulingPlugin,
+          personalAssistantPlugin as Plugin,
         ],
         conversationLength: 20,
         enableAutonomy: false,
@@ -673,6 +722,13 @@ describeIf(LIVE_SUITE_ENABLED)(
         trajectoryService.logLlmCall = () => {};
         trajectoryService.updateLatestLlmCall = async () => {};
       }
+
+      // Bootstrap the LifeOps schema (plus the app_inbox/app_reminders/
+      // app_calendar/app_goals carve-out mirrors) BEFORE any repository seed
+      // writes — seedGoogleConnector upserts into
+      // app_lifeops.life_connector_grants, which 42P01s if seeding outruns
+      // migration.
+      await LifeOpsRepository.bootstrapSchema(runtime);
 
       await ensureRoom({
         runtime,
@@ -751,7 +807,9 @@ describeIf(LIVE_SUITE_ENABLED)(
         text: "Don't forget that thing I told you about this morning is STILL happening, did you forget about it already?",
       });
 
-      expectContainsAll(response, ["permit inspection", "4pm"]);
+      expectContainsAll(response, ["permit inspection"]);
+      // Live models legitimately write the time as "4pm", "4 pm", or "4:00 PM".
+      expect(normalizeText(response)).toMatch(/4(:00)?\s*pm/);
     }, 180_000);
 
     it("finds the most overdue bill from email context on the first answer", async () => {

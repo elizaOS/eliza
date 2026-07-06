@@ -92,7 +92,12 @@ function resolveKind(att: MessageAttachment): MessageAttachmentContentType {
   if (mime.startsWith("image/")) return "image";
   if (mime.startsWith("video/")) return "video";
   if (mime.startsWith("audio/")) return "audio";
-  if (mime === "application/pdf" || mime.startsWith("text/")) return "document";
+  if (
+    mime === "application/pdf" ||
+    mime === "application/json" ||
+    mime.startsWith("text/")
+  )
+    return "document";
   const u = att.url.toLowerCase();
   if (IMAGE_EXT.test(u) || u.startsWith("data:image/")) return "image";
   if (VIDEO_EXT.test(u) || u.startsWith("data:video/")) return "video";
@@ -225,10 +230,12 @@ export function attachmentPreviewKind(
     return "model3d";
   }
 
-  // Text/code: a text-* MIME, a known code/text extension, an inline
-  // text data: URL, or an attachment that already carries extracted text.
+  // Text/code: a text-* MIME, application/json (an uploadable text document), a
+  // known code/text extension, an inline text data: URL, or an attachment that
+  // already carries extracted text.
   if (
     mime.startsWith("text/") ||
+    mime === "application/json" ||
     CODE_EXT.test(path) ||
     url.trim().toLowerCase().startsWith("data:text/") ||
     (typeof att.text === "string" && att.text.trim().length > 0)
@@ -399,6 +406,24 @@ function ImageTile({
           </TileButton>
         </span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Small inline notice shown under an attachment tile when the server's
+ * enrichment pass could not extract text/description (e.g. a transcription
+ * backend being unavailable). The bytes are stored and downloadable — this only
+ * tells the user the machine-readable content is missing, so a stored-but-
+ * unreadable attachment is never silently indistinguishable from an empty one.
+ */
+function NotProcessedNotice({ reason }: { reason: string }): React.JSX.Element {
+  return (
+    <div
+      data-testid="attachment-not-processed"
+      className="max-w-[min(22rem,100%)] text-2xs text-muted"
+    >
+      Not processed: {reason}
     </div>
   );
 }
@@ -1004,16 +1029,29 @@ export function MessageAttachments({
       className={cn("mt-1.5 flex flex-col gap-2", className)}
     >
       {attachments.map((att) => {
+        // A stored-but-unreadable attachment shows its tile PLUS a "Not
+        // processed: <reason>" notice so the failed enrichment is visible on
+        // reload, never silently missing text.
+        const notProcessed = att.notProcessed?.trim();
+        const withNotice = (tile: React.ReactNode): React.ReactNode =>
+          notProcessed ? (
+            <div key={att.id} className="flex flex-col gap-1">
+              {tile}
+              <NotProcessedNotice reason={notProcessed} />
+            </div>
+          ) : (
+            tile
+          );
         const kind = resolveKind(att);
         // A transcript opens the maximized editor from the attachment record,
         // not by navigating to its URL — so it needs no URL guard.
         if (isTranscriptAttachment(att)) {
-          return (
+          return withNotice(
             <TranscriptTile
               key={att.id}
               att={att}
               onOpen={() => setTranscript(att)}
-            />
+            />,
           );
         }
         // Scheme allowlist: never hand an agent-provided URL with a dangerous
@@ -1026,7 +1064,7 @@ export function MessageAttachments({
           !isSafeAttachmentUrl(att.url) &&
           !isBenignInlineTextDataUrl(att.url)
         ) {
-          return <UnsafeAttachmentTile key={att.id} att={att} />;
+          return withNotice(<UnsafeAttachmentTile key={att.id} att={att} />);
         }
         const src = resolveAttachmentUrl(att.url);
         if (!src) return null;
@@ -1039,7 +1077,7 @@ export function MessageAttachments({
               att.thumbnailUrl && isSafeAttachmentUrl(att.thumbnailUrl)
                 ? resolveAttachmentUrl(att.thumbnailUrl)
                 : src;
-            return (
+            return withNotice(
               <ImageTile
                 key={att.id}
                 att={att}
@@ -1052,11 +1090,11 @@ export function MessageAttachments({
                     downloadAs: downloadName(att, "image"),
                   })
                 }
-              />
+              />,
             );
           }
           case "audio":
-            return (
+            return withNotice(
               <div
                 key={att.id}
                 data-testid="audio-attachment"
@@ -1076,10 +1114,10 @@ export function MessageAttachments({
                 >
                   <track kind="captions" />
                 </audio>
-              </div>
+              </div>,
             );
           case "video":
-            return (
+            return withNotice(
               <video
                 key={att.id}
                 src={src}
@@ -1090,7 +1128,7 @@ export function MessageAttachments({
                 className="aspect-video max-h-80 w-full max-w-[min(22rem,100%)] rounded-lg border border-border bg-card object-contain"
               >
                 <track kind="captions" />
-              </video>
+              </video>,
             );
           default: {
             // `document` attachments get a richer inline preview when we can
@@ -1100,16 +1138,24 @@ export function MessageAttachments({
             if (kind === "document") {
               const previewKind = attachmentPreviewKind(att);
               if (previewKind === "pdf") {
-                return <PdfTile key={att.id} att={att} src={src} t={t} />;
+                return withNotice(
+                  <PdfTile key={att.id} att={att} src={src} t={t} />,
+                );
               }
               if (previewKind === "model3d") {
-                return <Model3dTile key={att.id} att={att} src={src} t={t} />;
+                return withNotice(
+                  <Model3dTile key={att.id} att={att} src={src} t={t} />,
+                );
               }
               if (previewKind === "code") {
-                return <CodeTile key={att.id} att={att} src={src} t={t} />;
+                return withNotice(
+                  <CodeTile key={att.id} att={att} src={src} t={t} />,
+                );
               }
             }
-            return <FileTile key={att.id} att={att} src={src} kind={kind} />;
+            return withNotice(
+              <FileTile key={att.id} att={att} src={src} kind={kind} />,
+            );
           }
         }
       })}

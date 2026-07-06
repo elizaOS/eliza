@@ -862,6 +862,13 @@ jobs:
       - name: Per-plugin keyless e2e coverage gate
         run: bun run audit:e2e-coverage
 
+      # #14549: parallel-certification compose generator drift gate + GPU queue
+      # state machine + orchestrator degradation. docker/certification is
+      # outside workspace test discovery, so keep this explicit or the
+      # committed compose.yml can silently drift from the test-runner's plan.
+      - name: Parallel-certification compose + queue tests
+        run: bun test docker/certification
+
       - name: E2E coverage matrix report
         if: always()
         run: bun packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage

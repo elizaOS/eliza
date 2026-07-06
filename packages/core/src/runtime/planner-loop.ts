@@ -2749,12 +2749,12 @@ function terminalMessageFromToolCalls(
  * format into the user channel.
  *
  * Tools that produce real user-facing answers (Q&A, content generation,
- * REPLY) must opt in by setting `userFacingText`. Tools that emit logs
- * (BASH, SHELL, fetchers, file readers) leave it unset; this function
- * then returns undefined and the caller falls through to the evaluator's
- * synthesized reply instead of dumping the log into the channel. The
- * contract is structural: tools declare what is safe to show, the
- * framework never guesses by parsing wrapper text.
+ * mutation confirmations, vetted shell projections) must opt in by setting
+ * `userFacingText`. Tools that only emit logs (raw shell transcripts, fetchers,
+ * file readers) leave it unset; this function then returns undefined and the
+ * caller falls through to the evaluator's synthesized reply instead of dumping
+ * the log into the channel. The contract is structural: tools declare what is
+ * safe to show, the framework never guesses by parsing wrapper text.
  */
 function latestToolResultText(
 	trajectory: PlannerTrajectory,
@@ -2779,10 +2779,11 @@ function latestToolResultText(
  * {@link latestToolResultText}: the diagnostic `text`/`summary` fields are
  * log-shaped (shell prompts, exit codes, cwd, raw fetch bodies) and must not be
  * guessed into the user channel. A tool declares its output safe to show by
- * setting `userFacingText` — FILE write/edit do so ("Wrote N bytes to <path>");
- * SHELL, fetchers, and file readers leave it unset, so their raw logs never leak
- * here. Returns undefined when no successful non-terminal tool exposed a
- * user-facing result, so genuine failures still surface.
+ * setting `userFacingText` — FILE write/edit do so ("Wrote N bytes to <path>"),
+ * as do narrowly vetted shell projections. Raw shell transcripts, fetchers, and
+ * file readers leave it unset, so their logs never leak here. Returns undefined
+ * when no successful non-terminal tool exposed a user-facing result, so genuine
+ * failures still surface.
  */
 function deterministicSuccessfulToolRelay(
 	trajectory: PlannerTrajectory,

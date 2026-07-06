@@ -15,6 +15,8 @@
 import {
   type Action,
   type ActionResult,
+  appendInteractionBlock,
+  type ChoiceInteraction,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -48,6 +50,28 @@ function parseCheckinProgress(
 ): GoalCheckinProgress | undefined {
   if (value === undefined) return undefined;
   return GOAL_CHECKIN_PROGRESS_STATES.find((state) => state === value);
+}
+
+/**
+ * One-tap progress picker for a goal check-in (#14733). A tapped option
+ * round-trips as the user's next message carrying the bare progress token
+ * (`on_track` | `at_risk` | `needs_attention`) — exactly the values the
+ * `checkin` subaction's `progress` parameter accepts, so the follow-up turn
+ * records structured progress with no free-text classification.
+ */
+export function buildGoalCheckinProgressChoice(
+  goalId: string,
+): ChoiceInteraction {
+  return {
+    kind: "choice",
+    id: `goal-checkin-${goalId}`,
+    scope: "goal-checkin",
+    options: [
+      { value: "on_track", label: "On track" },
+      { value: "at_risk", label: "At risk" },
+      { value: "needs_attention", label: "Needs attention" },
+    ],
+  };
 }
 
 const SUBACTIONS: SubactionsMap<GoalSubaction> = {
@@ -224,7 +248,12 @@ export const ownerGoalsAction: Action = {
           }
           const progress = parseCheckinProgress(params.progress);
           if (params.progress !== undefined && progress === undefined) {
-            const text = `${GOALS_LOG_PREFIX} progress must be one of: ${GOAL_CHECKIN_PROGRESS_STATES.join(", ")}.`;
+            // Ask again with one-tap chips instead of a typed-token demand;
+            // the tapped value is a valid `progress` on the next turn.
+            const text = appendInteractionBlock(
+              "How is this goal tracking?",
+              buildGoalCheckinProgressChoice(params.id ?? ""),
+            );
             await callback?.({ text });
             return {
               success: false,
@@ -238,7 +267,16 @@ export const ownerGoalsAction: Action = {
               ...(params.note !== undefined ? { note: params.note } : {}),
               ...(progress !== undefined ? { progress } : {}),
             });
-          const text = `Logged check-in for "${goal.title}"${progress ? ` — ${progress.replace(/_/g, " ")}` : ""}.`;
+          let text = `Logged check-in for "${goal.title}"${progress ? ` — ${progress.replace(/_/g, " ")}` : ""}.`;
+          if (progress === undefined) {
+            // Note-only check-in: harvest structured progress with one tap
+            // (a second `checkin` turn with progress-only is valid — the
+            // engine updates reviewState without needing a live fired task).
+            text = appendInteractionBlock(
+              `${text} How is it tracking?`,
+              buildGoalCheckinProgressChoice(goal.id),
+            );
+          }
           await callback?.({ text });
           return {
             success: true,

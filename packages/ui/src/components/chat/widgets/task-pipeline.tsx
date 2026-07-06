@@ -21,12 +21,14 @@ import {
   Square,
   SquareCheck,
 } from "lucide-react";
+import { memo } from "react";
 import type { NativeToolCallEvent } from "../../../api/client-types-cloud";
 import type {
   SubagentActivity,
   TaskActivityStep,
 } from "../../../state/task-activity-store";
 import { ToolCallEventLog } from "../../tool-events/ToolCallEventLog";
+import { planChecklistPropsEqual } from "./widget-equality";
 
 const STATUS_ICON: Record<SwarmActivityStatus, LucideIcon> = {
   running: CirclePlay,
@@ -102,8 +104,14 @@ export function toNativeToolEvent(step: TaskActivityStep): NativeToolCallEvent {
 /**
  * Live plan/todo checklist that mutates in place. `pending` -> `in_progress` ->
  * `completed` are three distinguishable renders (issue #13536 §todos).
+ *
+ * Memoized on the entries by value (see `planChecklistPropsEqual`): the
+ * standalone `[CHECKLIST]` inline widget re-parses on every streamed token, so
+ * without a value-level comparator each token would re-render this list even
+ * when no entry status changed. Entry-status advancement is still a real change
+ * and re-renders.
  */
-export function PlanChecklist({
+export const PlanChecklist = memo(function PlanChecklist({
   entries,
   title,
 }: {
@@ -156,7 +164,7 @@ export function PlanChecklist({
       </ul>
     </div>
   );
-}
+}, planChecklistPropsEqual);
 
 /**
  * One sub-agent under a task: its status + current streamed line, its live plan

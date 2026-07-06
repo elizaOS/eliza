@@ -13,7 +13,7 @@
  */
 
 import { KNOWLEDGE_GRAPH_SERVICE, KnowledgeGraphService } from "@elizaos/agent";
-import { EventType, type Memory } from "@elizaos/core";
+import { EventType, type Memory, stringToUuid } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
@@ -29,9 +29,10 @@ type Runtime = RealTestRuntimeResult["runtime"];
 
 interface FiredTaskSeed {
   taskId?: string;
-  roomId: string;
+  roomId?: string;
   firedAtIso: string;
   completionCheck: ScheduledTaskCompletionCheck;
+  output?: ScheduledTask["output"];
   subject?: ScheduledTask["subject"];
   metadata?: ScheduledTask["metadata"];
 }
@@ -53,8 +54,16 @@ async function seedFiredTask(
     createdBy: runtime.agentId,
     ownerVisible: true,
     completionCheck: seed.completionCheck,
+    ...(seed.output ? { output: seed.output } : {}),
     ...(seed.subject ? { subject: seed.subject } : {}),
-    metadata: { pendingPromptRoomId: seed.roomId, ...(seed.metadata ?? {}) },
+    ...(seed.roomId || seed.metadata
+      ? {
+          metadata: {
+            ...(seed.roomId ? { pendingPromptRoomId: seed.roomId } : {}),
+            ...(seed.metadata ?? {}),
+          },
+        }
+      : {}),
     state: {
       status: "fired",
       firedAt: seed.firedAtIso,
@@ -65,10 +74,24 @@ async function seedFiredTask(
   return task;
 }
 
+const OWNER_ENTITY_ID = "owner-entity-1";
+
+/**
+ * `hasRoleAccess` fails CLOSED for senders whose role cannot be resolved, so
+ * the completion pass's owner gate needs the canonical-owner setting the
+ * production first-run flow records (same pattern as
+ * scheduler.integration.test.ts).
+ */
+async function createOwnerScopedRuntime(): Promise<RealTestRuntimeResult> {
+  const result = await createLifeOpsTestRuntime();
+  result.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", OWNER_ENTITY_ID, false);
+  return result;
+}
+
 function ownerReply(runtime: Runtime, roomId: string): Memory {
   return {
     id: `msg-${Math.random().toString(36).slice(2, 10)}`,
-    entityId: "owner-entity-1",
+    entityId: OWNER_ENTITY_ID,
     roomId,
     agentId: runtime.agentId,
     content: { text: "done!" },
@@ -98,7 +121,7 @@ describe("inbound-reply completion — production wiring", () => {
   });
 
   it("an owner reply in the pending-prompt room completes a fired user_replied_within task via MESSAGE_RECEIVED", async () => {
-    runtimeResult = await createLifeOpsTestRuntime();
+    runtimeResult = await createOwnerScopedRuntime();
     const { runtime } = runtimeResult;
     const roomId = "room-checkin-1";
 
@@ -140,7 +163,7 @@ describe("inbound-reply completion — production wiring", () => {
   }, 180_000);
 
   it("an owner reply to a fired check-in records the check-in report acknowledgement so escalation does not ratchet to max", async () => {
-    runtimeResult = await createLifeOpsTestRuntime();
+    runtimeResult = await createOwnerScopedRuntime();
     const { runtime } = runtimeResult;
     const checkins = new CheckinService(runtime);
     const base = Date.parse("2026-05-12T14:00:00.000Z");
@@ -173,7 +196,7 @@ describe("inbound-reply completion — production wiring", () => {
   }, 180_000);
 
   it("an owner reply after a sleep-cycle check-in acknowledges the latest unacknowledged report", async () => {
-    runtimeResult = await createLifeOpsTestRuntime();
+    runtimeResult = await createOwnerScopedRuntime();
     const { runtime } = runtimeResult;
     const checkins = new CheckinService(runtime);
     const base = Date.parse("2026-05-12T14:00:00.000Z");
@@ -201,7 +224,7 @@ describe("inbound-reply completion — production wiring", () => {
   }, 180_000);
 
   it("a reply in a different room leaves the fired task untouched", async () => {
-    runtimeResult = await createLifeOpsTestRuntime();
+    runtimeResult = await createOwnerScopedRuntime();
     const { runtime } = runtimeResult;
 
     const task = await seedFiredTask(runtime, {
@@ -217,8 +240,30 @@ describe("inbound-reply completion — production wiring", () => {
     expect(await persistedStatus(runtime, task.taskId)).toBe("fired");
   }, 180_000);
 
-  it("a plain reply does NOT complete user_acknowledged (acknowledgment stays an explicit verb)", async () => {
+  it("an owner reply in a connector room completes a connector-fired task from output.target", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const chatId = "telegram-chat-1";
+    const roomId = stringToUuid(`${chatId}:${runtime.agentId}`);
+
+    const task = await seedFiredTask(runtime, {
+      firedAtIso: FIVE_MINUTES_AGO(),
+      completionCheck: { kind: "user_replied_within" },
+      output: { destination: "channel", target: `telegram:${chatId}` },
+    });
+
+    const result = await completeFiredTasksOnOwnerReply(
+      runtime,
+      ownerReply(runtime, roomId),
+    );
+
+    expect(result.evaluated).toContain(task.taskId);
+    expect(result.completed).toContain(task.taskId);
+    expect(await persistedStatus(runtime, task.taskId)).toBe("completed");
+  }, 180_000);
+
+  it("a plain reply does NOT complete user_acknowledged (acknowledgment stays an explicit verb)", async () => {
+    runtimeResult = await createOwnerScopedRuntime();
     const { runtime } = runtimeResult;
     const roomId = "room-ack-1";
 
@@ -240,7 +285,7 @@ describe("inbound-reply completion — production wiring", () => {
   }, 180_000);
 
   it("the agent's own outbound message never evaluates completion", async () => {
-    runtimeResult = await createLifeOpsTestRuntime();
+    runtimeResult = await createOwnerScopedRuntime();
     const { runtime } = runtimeResult;
     const roomId = "room-self-1";
 
@@ -266,7 +311,7 @@ describe("inbound-reply completion — production wiring", () => {
   }, 180_000);
 
   it("subject_updated completes only after the real entity row changes", async () => {
-    runtimeResult = await createLifeOpsTestRuntime();
+    runtimeResult = await createOwnerScopedRuntime();
     const { runtime } = runtimeResult;
     const roomId = "room-subject-1";
 

@@ -156,8 +156,28 @@ describe("media-store", () => {
     expect(persistMediaBytes(Buffer.from("c"), "application/pdf").url).toMatch(
       /\.pdf$/,
     );
+    expect(
+      persistMediaBytes(Buffer.from("{}"), "application/json").url,
+    ).toMatch(/\.json$/);
     // Unknown mime falls back to .bin
     expect(persistMediaBytes(Buffer.from("d"), "x/y").url).toMatch(/\.bin$/);
+  });
+
+  it("serves a stored json file as a downloadable text payload", () => {
+    // application/json is a text document, not an inline-safe media type, so the
+    // serve path returns it with a charset content-type and an attachment
+    // disposition (never inline-rendered on the dashboard origin).
+    const { url } = persistMediaBytes(
+      Buffer.from('{"ok":true}'),
+      "application/json",
+    );
+    const { res, get } = makeRes();
+    serveMediaFile({ method: "HEAD", headers: {} } as never, res, url);
+    const { status, headers } = get();
+    expect(status).toBe(200);
+    expect(headers["Content-Type"]).toBe("application/json; charset=utf-8");
+    expect(String(headers["Content-Disposition"])).toContain("attachment");
+    expect(headers["X-Content-Type-Options"]).toBe("nosniff");
   });
 
   it("persists a base64 data URL", () => {

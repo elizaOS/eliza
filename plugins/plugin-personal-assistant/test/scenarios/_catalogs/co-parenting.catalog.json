@@ -1,0 +1,87 @@
+{
+  "catalogId": "co-parenting",
+  "title": "Pack J1 - Co-parenting obligations scenario catalog",
+  "source": {
+    "parentIssue": "#14747",
+    "foundationIssue": "#14789",
+    "packId": "J1",
+    "persona": "jordan_coparent",
+    "targetCount": 10,
+    "notes": [
+      "Planned ledger for custody rhythm, swaps, expense splits, and kid-privacy firebreaks.",
+      "Uses jordan_coparent as the benchmark persona; scenarios must stay logistics-focused and non-therapeutic."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "j1.coparenting.custody_rhythm_capture",
+      "pack": "J1",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "j1.coparenting.swap_request_approval",
+      "pack": "J1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "j1.coparenting.school_pickup_conflict",
+      "pack": "J1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "j1.coparenting.expense_split_tracking",
+      "pack": "J1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "j1.coparenting.kid_privacy_firebreak",
+      "pack": "J1",
+      "tier": "T4",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "j1.coparenting.civil_but_tense_tone",
+      "pack": "J1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "j1.coparenting.recurring_exchange_reminder",
+      "pack": "J1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "j1.coparenting.no_legal_advice",
+      "pack": "J1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "j1.coparenting.multi_household_calendar",
+      "pack": "J1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "j1.coparenting.last_minute_swap_fail_closed",
+      "pack": "J1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "planned"
+    }
+  ]
+}

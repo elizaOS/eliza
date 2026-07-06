@@ -76,6 +76,7 @@ import {
   readActivityProfile,
   registerActivityProfileGates,
 } from "./activity-gates.js";
+import { registerModelMomentCheckGate } from "./moment-judge.js";
 import { createLifeOpsSubjectStoreView } from "./subject-store.js";
 
 interface RepositoryBackedStores {
@@ -654,6 +655,10 @@ export function createProductionScheduledTaskDispatcher(opts: {
         return {
           ok: true,
           messageId: `in_app:${record.taskId}:${record.firedAtIso}`,
+          channelKey: record.channelKey,
+          target:
+            normalizeChannelTarget(record.channelKey, record.output?.target) ??
+            "in_app",
         };
       }
 
@@ -698,7 +703,15 @@ export function createProductionScheduledTaskDispatcher(opts: {
         if (denied) return applyDispatchPolicy(denied);
       }
 
-      return applyDispatchPolicy(await channel.send(payload));
+      const result = await channel.send(payload);
+      if (result.ok) {
+        return applyDispatchPolicy({
+          ...result,
+          channelKey: record.channelKey,
+          target,
+        });
+      }
+      return applyDispatchPolicy(result);
     },
   };
 }
@@ -748,12 +761,14 @@ function buildLifeOpsRunnerDeps(
   const stores = makeRepositoryBackedStores(opts.runtime, opts.agentId);
 
   const gates = createTaskGateRegistry();
-  // Register the real ActivityProfile-backed readers for circadian_state_in and
-  // no_recent_user_message_in BEFORE the built-ins. registerBuiltInGates is
+  // Register the real ActivityProfile-backed readers for circadian_state_in /
+  // no_recent_user_message_in and the model moment judge for
+  // model_moment_check BEFORE the built-ins. registerBuiltInGates is
   // first-wins, so these production readers take precedence over the generic
   // fallbacks (which stay resolvable when PA is absent, e.g. plugin-health
   // standalone tests).
   registerActivityProfileGates(opts.runtime, gates);
+  registerModelMomentCheckGate(opts.runtime, gates);
   registerBuiltInGates(gates);
 
   const completionChecks = createCompletionCheckRegistry();

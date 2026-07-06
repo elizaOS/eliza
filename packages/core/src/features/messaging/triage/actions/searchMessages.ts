@@ -147,7 +147,7 @@ export const searchMessagesAction: Action = {
 					snippet: m.snippet,
 					receivedAtMs: m.receivedAtMs,
 					tags: m.tags ?? [],
-					priority: m.triageScore?.priority ?? null,
+					contactWeight: m.triageScore?.contactWeight ?? null,
 				})),
 			},
 		};

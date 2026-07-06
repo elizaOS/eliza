@@ -1001,6 +1001,7 @@ describeIfPosix("shellAction", () => {
 
       expect(result.success).toBe(true);
       expect(result.text).toContain("df -h / /home");
+      expect(result.text).toContain("timeout 3s du -sh");
       expect(result.text).toContain("free -m");
       expect(result.userFacingText).toContain("Root disk:");
       expect(result.userFacingText).toContain("Biggest cleanup candidate:");

@@ -30,6 +30,8 @@ export interface ChatTranscriptProps {
   /** Accept ("Do it") a proactive suggestion bubble (#8792). */
   onAcceptSuggestion?: (message: ChatMessageData) => void;
   onEdit?: (messageId: string, text: string) => Promise<boolean> | boolean;
+  /** Reply to a message — sets the composer's reply target (→ REPLY_CONTEXT). */
+  onReply?: (message: ChatMessageData) => void;
   onSpeak?: (messageId: string, text: string) => void;
   renderMessageContent?: (message: ChatMessageData) => React.ReactNode;
   typingIndicator?: React.ReactNode;
@@ -143,6 +145,7 @@ export const ChatTranscript = memo(function ChatTranscript({
   onDismissSuggestion,
   onAcceptSuggestion,
   onEdit,
+  onReply,
   onSpeak,
   renderMessageContent,
   typingIndicator,
@@ -273,6 +276,7 @@ export const ChatTranscript = memo(function ChatTranscript({
             onDismissSuggestion={onDismissSuggestion}
             onAcceptSuggestion={onAcceptSuggestion}
             onEdit={onEdit}
+            onReply={onReply}
             onSpeak={onSpeak}
             replyTarget={replyTarget}
             renderContent={renderMessageContent}

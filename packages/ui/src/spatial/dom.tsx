@@ -66,33 +66,29 @@ export function detectDomModality(): SpatialModality {
 
 const CONTINUOUS_CHAT_SIDE_CLEARANCE_VAR =
   "--eliza-continuous-chat-side-clearance";
+const CONTINUOUS_CHAT_CLEARANCE_VAR = "--eliza-continuous-chat-clearance";
+const COMPACT_CHAT_MOBILE_QUERY = "(max-width: 767px)";
 
-function readContinuousChatSideClearanceActive(): boolean {
+function readRootPxVarActive(name: string): boolean {
   if (typeof window === "undefined" || typeof document === "undefined") {
     return false;
   }
   const root = document.documentElement;
   const raw =
-    getComputedStyle(root).getPropertyValue(
-      CONTINUOUS_CHAT_SIDE_CLEARANCE_VAR,
-    ) || root.style.getPropertyValue(CONTINUOUS_CHAT_SIDE_CLEARANCE_VAR);
+    getComputedStyle(root).getPropertyValue(name) ||
+    root.style.getPropertyValue(name);
   const px = Number.parseFloat(raw);
   return Number.isFinite(px) && px > 0.5;
 }
 
-/**
- * True while the app shell's continuous chat composer publishes an inline-end
- * clearance. GUI wrappers can use this to switch dense spatial views into a
- * short-landscape layout; terminal/SSR callers get `false`.
- */
-export function useContinuousChatSideClearanceActive(): boolean {
-  const [active, setActive] = useState(readContinuousChatSideClearanceActive);
+function useRootPxVarActive(name: string): boolean {
+  const [active, setActive] = useState(() => readRootPxVarActive(name));
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") {
       return;
     }
-    const publish = () => setActive(readContinuousChatSideClearanceActive());
+    const publish = () => setActive(readRootPxVarActive(name));
     publish();
     const observer = new MutationObserver(publish);
     observer.observe(document.documentElement, {
@@ -104,9 +100,59 @@ export function useContinuousChatSideClearanceActive(): boolean {
       observer.disconnect();
       window.removeEventListener("resize", publish);
     };
-  }, []);
+  }, [name]);
 
   return active;
+}
+
+/**
+ * True while the app shell's continuous chat composer publishes an inline-end
+ * clearance. GUI wrappers can use this to switch dense spatial views into a
+ * short-landscape layout; terminal/SSR callers get `false`.
+ */
+export function useContinuousChatSideClearanceActive(): boolean {
+  return useRootPxVarActive(CONTINUOUS_CHAT_SIDE_CLEARANCE_VAR);
+}
+
+/**
+ * True while the app shell's continuous chat composer publishes any resting
+ * bottom clearance. This tracks the floating composer footprint without
+ * assuming the view should collapse its content.
+ */
+export function useContinuousChatClearanceActive(): boolean {
+  return useRootPxVarActive(CONTINUOUS_CHAT_CLEARANCE_VAR);
+}
+
+function readCompactChatViewport(): boolean {
+  if (typeof window === "undefined") return false;
+  if (typeof window.matchMedia === "function") {
+    return window.matchMedia(COMPACT_CHAT_MOBILE_QUERY).matches;
+  }
+  return window.innerWidth <= 767;
+}
+
+/**
+ * True when shell-hosted GUI content should use its compact chat-aware layout:
+ * side clearance in short landscape, or bottom composer clearance on mobile
+ * width. Desktop keeps the fuller spatial layout even though it reserves bottom
+ * padding for the ambient composer.
+ */
+export function useContinuousChatCompactClearanceActive(): boolean {
+  const sideClearance = useContinuousChatSideClearanceActive();
+  const bottomClearance = useContinuousChatClearanceActive();
+  const [compactViewport, setCompactViewport] = useState(
+    readCompactChatViewport,
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const publish = () => setCompactViewport(readCompactChatViewport());
+    publish();
+    window.addEventListener("resize", publish);
+    return () => window.removeEventListener("resize", publish);
+  }, []);
+
+  return sideClearance || (bottomClearance && compactViewport);
 }
 
 export interface SpatialSurfaceProps {

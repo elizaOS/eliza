@@ -20,6 +20,7 @@ import {
 } from "../../hooks/useWeather";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
+import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 
 /**
  * The home dashboard's always-on base widgets: a deterministic 4-column grid
@@ -32,11 +33,6 @@ import { useAppSelector } from "../../state";
  * Always rendered as the base of the home surface - the data-driven WidgetHost
  * cards flow in below it, so the dashboard is never bare.
  */
-
-// White text legibility over the bright orange field, no card behind it. The
-// wallpaper is a known field (not a theme surface), so `text-white` + this
-// shadow is the intended idiom here rather than themed text tokens.
-const FLOAT_SHADOW = "[text-shadow:0_1px_3px_rgba(0,0,0,0.38)]";
 
 /** Locale hour cycle, resolved once at module load (never per render). */
 const CLOCK_24H = prefers24HourClock();
@@ -96,11 +92,11 @@ function WeatherTile(): React.JSX.Element {
       data-status={weather.status}
       className={cn(
         "col-span-2 row-span-2 flex min-w-0 flex-col items-end justify-end text-right text-white",
-        FLOAT_SHADOW,
+        WALLPAPER_FLOAT_SHADOW,
       )}
     >
       {weather.status === "loading" ? (
-        <div className="text-sm text-white/70">Loading…</div>
+        <div className={cn("text-sm", WALLPAPER_TEXT.secondary)}>Loading…</div>
       ) : weather.status === "unavailable" ? (
         // Actionable, not a dead-end: an explicit tap is the ONE place allowed
         // to trigger the OS location prompt (home load never does). (#14345)
@@ -111,11 +107,19 @@ function WeatherTile(): React.JSX.Element {
           aria-label="Enable location to show weather"
           className="flex flex-col items-end text-right transition-opacity hover:opacity-80"
         >
-          <Cloud className="h-7 w-7 text-white/70" aria-hidden />
+          <Cloud
+            className={cn("h-7 w-7", WALLPAPER_TEXT.secondary)}
+            aria-hidden
+          />
           <div className="mt-1.5 text-sm font-medium text-white/80">
             Weather
           </div>
-          <div className="mt-0.5 max-w-[11rem] text-xs-tight leading-tight text-white/60">
+          <div
+            className={cn(
+              "mt-0.5 max-w-[11rem] text-xs-tight leading-tight",
+              WALLPAPER_TEXT.muted,
+            )}
+          >
             Tap to enable location
           </div>
         </button>
@@ -125,12 +129,19 @@ function WeatherTile(): React.JSX.Element {
             <Icon className="h-7 w-7 text-accent" aria-hidden />
             <div className="text-4xl font-semibold leading-none tabular-nums tracking-tighter">
               {weather.temp}
-              <span className="align-top text-base font-medium text-white/60">
+              <span
+                className={cn(
+                  "align-top text-base font-medium",
+                  WALLPAPER_TEXT.muted,
+                )}
+              >
                 {weather.unit}
               </span>
             </div>
           </div>
-          <div className="mt-1.5 text-sm font-medium text-white/85">
+          <div
+            className={cn("mt-1.5 text-sm font-medium", WALLPAPER_TEXT.primary)}
+          >
             {weather.condition}
           </div>
         </>
@@ -174,12 +185,17 @@ const HomeClock = memo(function HomeClock(): React.JSX.Element {
           {time}
         </span>
         {ampm ? (
-          <span className="text-base font-semibold uppercase tracking-wide text-white/60">
+          <span
+            className={cn(
+              "text-base font-semibold uppercase tracking-wide",
+              WALLPAPER_TEXT.muted,
+            )}
+          >
             {ampm}
           </span>
         ) : null}
       </div>
-      <div className="mt-3 text-base font-medium text-white/85">
+      <div className={cn("mt-3 text-base font-medium", WALLPAPER_TEXT.primary)}>
         {dateLabel}
       </div>
       <div className="mt-1 text-sm font-medium text-accent/90">
@@ -221,7 +237,7 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
           data-testid="home-time-widget"
           className={cn(
             "col-span-2 row-span-2 flex min-w-0 flex-col justify-end text-left text-white",
-            FLOAT_SHADOW,
+            WALLPAPER_FLOAT_SHADOW,
           )}
         >
           <HomeClock />

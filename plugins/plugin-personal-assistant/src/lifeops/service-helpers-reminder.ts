@@ -902,8 +902,7 @@ export type ReminderOwnerResponseClassifierSource =
   | "none"
   | "deterministic"
   | "semantic"
-  | "semantic_abstain"
-  | "semantic_error";
+  | "semantic_abstain";
 
 export type ReminderOwnerResponseContext = {
   title?: string | null;
@@ -1170,81 +1169,6 @@ export function decideReminderReviewTransition(args: {
     : { kind: "escalate", observation };
 }
 
-const SNOOZE_RESPONSE_PATTERNS = [
-  /^\s*\d{1,3}\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours)\s*$/i,
-  /\b(snooze|remind me later|later|not now|in a bit)\b/i,
-  /\b(remind me|ping me|nudge me)\s+(in|at|after|tomorrow|tonight)\b/i,
-];
-
-const SKIP_RESPONSE_PATTERNS = [
-  /\b(skip|dismiss|ignore|cancel this|stop this reminder)\b/i,
-];
-
-const COMPLETE_RESPONSE_PATTERNS = [
-  /\b(done|finished|completed|complete|did it|handled|all set)\b/i,
-  /\b(i|we)\s+(did|finished|completed|handled)\b/i,
-];
-
-const ACKNOWLEDGE_RESPONSE_PATTERNS = [
-  /\b(ack|acknowledged|got it|roger|copy|seen|ok|okay|yep|yes)\b/i,
-];
-
-function matchesAnyPattern(
-  value: string,
-  patterns: readonly RegExp[],
-): boolean {
-  return patterns.some((pattern) => pattern.test(value));
-}
-
-const TITLE_STOP_WORDS = new Set([
-  "a",
-  "an",
-  "and",
-  "for",
-  "me",
-  "my",
-  "of",
-  "the",
-  "this",
-  "to",
-]);
-
-function tokenizeReminderText(value: string): string[] {
-  return value
-    .toLowerCase()
-    .split(/[^a-z0-9]+/u)
-    .map((token) => token.trim())
-    .filter((token) => token.length > 2 && !TITLE_STOP_WORDS.has(token));
-}
-
-function responseReferencesReminder(
-  text: string,
-  context?: ReminderOwnerResponseContext,
-): boolean {
-  const lower = text.toLowerCase();
-  if (/\b(this|that|the)\s+reminder\b/u.test(lower)) {
-    return true;
-  }
-  if (/\b(reminder|nudge|ping)\b/u.test(lower)) {
-    return true;
-  }
-  const titleTokens = tokenizeReminderText(context?.title ?? "");
-  if (titleTokens.length === 0) {
-    return false;
-  }
-  const responseTokens = new Set(tokenizeReminderText(text));
-  const matchingTokenCount = titleTokens.filter((token) =>
-    responseTokens.has(token),
-  ).length;
-  if (titleTokens.length === 1) {
-    return matchingTokenCount === 1 && titleTokens[0].length >= 4;
-  }
-  if (titleTokens.length === 2) {
-    return matchingTokenCount === 2;
-  }
-  return matchingTokenCount >= 2;
-}
-
 function resolveResponseTimestampMs(
   value: ReminderOwnerResponseContext["respondedAt"],
 ): number | null {
@@ -1287,67 +1211,6 @@ function normalizeStandaloneResponse(value: string): string {
     .replace(/\s+/gu, " ");
 }
 
-function isStandaloneResolutionResponse(value: string): boolean {
-  const normalized = normalizeStandaloneResponse(value);
-  if (
-    /^\d{1,3}\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours)$/iu.test(
-      normalized,
-    )
-  ) {
-    return true;
-  }
-  if (
-    /^(remind me|ping me|nudge me)\s+(at|after|tomorrow)\b/iu.test(normalized)
-  ) {
-    return true;
-  }
-  return (
-    normalized === "done" ||
-    normalized === "finished" ||
-    normalized === "completed" ||
-    normalized === "complete" ||
-    normalized === "did it" ||
-    normalized === "handled" ||
-    normalized === "all set" ||
-    normalized === "skip" ||
-    normalized === "dismiss" ||
-    normalized === "cancel this" ||
-    normalized === "ack" ||
-    normalized === "acknowledged" ||
-    normalized === "got it" ||
-    normalized === "roger" ||
-    normalized === "copy" ||
-    normalized === "seen" ||
-    normalized === "ok" ||
-    normalized === "okay" ||
-    normalized === "yep" ||
-    normalized === "yes" ||
-    normalized === "snooze" ||
-    normalized === "later" ||
-    normalized === "not now" ||
-    normalized === "in a bit" ||
-    normalized === "remind me later"
-  );
-}
-
-function isResponseBoundToReminder(
-  text: string,
-  context?: ReminderOwnerResponseContext,
-): boolean {
-  if (!context) {
-    return true;
-  }
-  if (responseReferencesReminder(text, context)) {
-    return true;
-  }
-  if (context.allowStandaloneResolution === false) {
-    return false;
-  }
-  return (
-    isPromptAdjacentResponse(context) && isStandaloneResolutionResponse(text)
-  );
-}
-
 function toSnoozeMinutes(value: string, unit: string): number | null {
   const amount = Number.parseInt(value, 10);
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -1366,185 +1229,119 @@ function toSnoozeMinutes(value: string, unit: string): number | null {
   return amount;
 }
 
-export function parseReminderSnoozeRequestFromText(text: string): {
-  request: SnoozeLifeOpsOccurrenceRequest | null;
-  needsClarification: boolean;
-  reason: string;
-} {
-  const cleaned = text.trim().toLowerCase();
-  if (/\btomorrow\s+morning\b/u.test(cleaned)) {
-    return {
-      request: { preset: "tomorrow_morning" },
-      needsClarification: false,
-      reason: "snooze_tomorrow_morning",
-    };
+/**
+ * Exact-match structural fast-path (#14717). A reply classifies here only
+ * when, after trivial normalization, the ENTIRE message is a bare resolution
+ * word ("done", "skip", "ok", ...) or a bare snooze duration ("30m",
+ * "2 hours") AND the reply is prompt-adjacent with standalone resolution
+ * allowed. Anything longer — negations, hedges, sentences that merely contain
+ * a keyword ("no, don't skip it") — is a language-understanding judgment and
+ * goes to the semantic (LLM) classifier in classifyReminderOwnerResponse.
+ */
+const EXACT_REPLY_RESOLUTIONS: ReadonlyMap<
+  string,
+  ReminderOwnerResponseResolution
+> = new Map([
+  ["done", "completed"],
+  ["finished", "completed"],
+  ["completed", "completed"],
+  ["complete", "completed"],
+  ["did it", "completed"],
+  ["handled", "completed"],
+  ["all set", "completed"],
+  ["skip", "skipped"],
+  ["dismiss", "skipped"],
+  ["cancel this", "skipped"],
+  ["ack", "acknowledged"],
+  ["acknowledged", "acknowledged"],
+  ["got it", "acknowledged"],
+  ["roger", "acknowledged"],
+  ["copy", "acknowledged"],
+  ["seen", "acknowledged"],
+  ["ok", "acknowledged"],
+  ["okay", "acknowledged"],
+  ["yep", "acknowledged"],
+  ["yes", "acknowledged"],
+]);
+
+// Snooze intent without a duration — certain about the intent, but the
+// occurrence still needs a duration, so it clarifies instead of resolving.
+const EXACT_SNOOZE_REPLIES: ReadonlySet<string> = new Set([
+  "snooze",
+  "later",
+  "not now",
+  "in a bit",
+  "remind me later",
+]);
+
+const BARE_DURATION_PATTERN =
+  /^(\d{1,3})\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours)$/iu;
+
+function bareDurationToSnoozeRequest(
+  normalized: string,
+): SnoozeLifeOpsOccurrenceRequest | null {
+  const match = normalized.match(BARE_DURATION_PATTERN);
+  if (!match) {
+    return null;
   }
-  if (/\btonight\b/u.test(cleaned)) {
-    return {
-      request: { preset: "tonight" },
-      needsClarification: false,
-      reason: "snooze_tonight",
-    };
+  const minutes = toSnoozeMinutes(match[1] ?? "", match[2] ?? "");
+  if (minutes === null) {
+    return null;
   }
-  const durationMatch = cleaned.match(
-    /\b(?:in|after|for)?\s*(\d{1,3})\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours)\b/u,
-  );
-  if (durationMatch) {
-    const minutes = toSnoozeMinutes(
-      durationMatch[1] ?? "",
-      durationMatch[2] ?? "",
-    );
-    if (minutes !== null) {
-      if (minutes === 15) {
-        return {
-          request: { preset: "15m" },
-          needsClarification: false,
-          reason: "snooze_15m",
-        };
-      }
-      if (minutes === 30) {
-        return {
-          request: { preset: "30m" },
-          needsClarification: false,
-          reason: "snooze_30m",
-        };
-      }
-      if (minutes === 60) {
-        return {
-          request: { preset: "1h" },
-          needsClarification: false,
-          reason: "snooze_1h",
-        };
-      }
-      return {
-        request: { minutes },
-        needsClarification: false,
-        reason: "snooze_duration",
-      };
-    }
-  }
-  const vagueSnooze =
-    /\b(snooze|later|not now|in a bit|some other time)\b/u.test(cleaned) ||
-    /\b(remind me|ping me|nudge me)\s+(at|after|tomorrow)\b/u.test(cleaned);
-  return {
-    request: null,
-    needsClarification: vagueSnooze,
-    reason: vagueSnooze ? "snooze_needs_duration" : "no_snooze_request",
-  };
+  if (minutes === 15) return { preset: "15m" };
+  if (minutes === 30) return { preset: "30m" };
+  if (minutes === 60) return { preset: "1h" };
+  return { minutes };
 }
 
-export function classifyReminderOwnerResponseText(
+function isExactReplyBindable(context?: ReminderOwnerResponseContext): boolean {
+  if (!context) {
+    return true;
+  }
+  return (
+    context.allowStandaloneResolution !== false &&
+    isPromptAdjacentResponse(context)
+  );
+}
+
+export function classifyExactReminderReply(
   text: string,
   context?: ReminderOwnerResponseContext,
-): ReminderOwnerResponseClassification {
-  const cleaned = text.trim();
-  if (cleaned.length === 0) {
+): ReminderOwnerResponseClassification | null {
+  const normalized = normalizeStandaloneResponse(text);
+  if (!isExactReplyBindable(context)) {
+    return null;
+  }
+  const resolution = EXACT_REPLY_RESOLUTIONS.get(normalized);
+  if (resolution) {
     return {
-      decision: "unrelated",
-      resolution: null,
+      decision: "explicit_resolution",
+      resolution,
       snoozeRequest: null,
-      confidence: 0,
-      reason: "empty_response",
+      confidence: 1,
+      reason: `exact_${resolution}_reply`,
     };
   }
-  if (matchesAnyPattern(cleaned, SNOOZE_RESPONSE_PATTERNS)) {
-    if (!isResponseBoundToReminder(cleaned, context)) {
-      return {
-        decision: "unrelated",
-        resolution: null,
-        snoozeRequest: null,
-        confidence: 0.35,
-        reason: "snooze_language_not_bound_to_reminder",
-      };
-    }
-    const snooze = parseReminderSnoozeRequestFromText(cleaned);
-    if (snooze.request) {
-      return {
-        decision: "explicit_resolution",
-        resolution: "snoozed",
-        snoozeRequest: snooze.request,
-        confidence: 0.86,
-        reason: snooze.reason,
-      };
-    }
-    if (snooze.needsClarification) {
-      return {
-        decision: "needs_clarification",
-        resolution: null,
-        snoozeRequest: null,
-        confidence: 0.68,
-        reason: snooze.reason,
-      };
-    }
+  const snoozeRequest = bareDurationToSnoozeRequest(normalized);
+  if (snoozeRequest) {
+    return {
+      decision: "explicit_resolution",
+      resolution: "snoozed",
+      snoozeRequest,
+      confidence: 1,
+      reason: "exact_snooze_duration_reply",
+    };
+  }
+  if (EXACT_SNOOZE_REPLIES.has(normalized)) {
     return {
       decision: "needs_clarification",
       resolution: null,
       snoozeRequest: null,
-      confidence: 0.62,
+      confidence: 1,
       reason: "snooze_needs_duration",
     };
   }
-  if (matchesAnyPattern(cleaned, SKIP_RESPONSE_PATTERNS)) {
-    if (!isResponseBoundToReminder(cleaned, context)) {
-      return {
-        decision: "unrelated",
-        resolution: null,
-        snoozeRequest: null,
-        confidence: 0.35,
-        reason: "skip_language_not_bound_to_reminder",
-      };
-    }
-    return {
-      decision: "explicit_resolution",
-      resolution: "skipped",
-      snoozeRequest: null,
-      confidence: 0.82,
-      reason: "skip_language",
-    };
-  }
-  if (matchesAnyPattern(cleaned, COMPLETE_RESPONSE_PATTERNS)) {
-    if (!isResponseBoundToReminder(cleaned, context)) {
-      return {
-        decision: "unrelated",
-        resolution: null,
-        snoozeRequest: null,
-        confidence: 0.35,
-        reason: "completion_language_not_bound_to_reminder",
-      };
-    }
-    return {
-      decision: "explicit_resolution",
-      resolution: "completed",
-      snoozeRequest: null,
-      confidence: 0.86,
-      reason: "completion_language",
-    };
-  }
-  if (matchesAnyPattern(cleaned, ACKNOWLEDGE_RESPONSE_PATTERNS)) {
-    if (!isResponseBoundToReminder(cleaned, context)) {
-      return {
-        decision: "unrelated",
-        resolution: null,
-        snoozeRequest: null,
-        confidence: 0.3,
-        reason: "acknowledgement_language_not_bound_to_reminder",
-      };
-    }
-    return {
-      decision: "explicit_resolution",
-      resolution: "acknowledged",
-      snoozeRequest: null,
-      confidence: 0.74,
-      reason: "acknowledgement_language",
-    };
-  }
-  return {
-    decision: "unrelated",
-    resolution: null,
-    snoozeRequest: null,
-    confidence: 0.4,
-    reason: "no_explicit_reminder_resolution",
-  };
+  return null;
 }
 
 export type ReminderOwnerResponseClassificationInput = {
@@ -1667,47 +1464,67 @@ export function parseReminderOwnerResponseSemanticClassification(
   };
 }
 
+/**
+ * Classify an owner reply against a reminder. The semantic (LLM) classifier
+ * is the primary judge (#14717); the only deterministic path left is the
+ * exact-match fast-path for replies that ARE a bare resolution word or bare
+ * duration. Without a usable model verdict the reply stays "unrelated" —
+ * degraded detection is honest; a keyword guess that flips reminder state is
+ * not. A throwing semanticClassifier propagates: the injected classifier
+ * already returns null for model/parse failures, so a throw is a bug upstream.
+ */
 export async function classifyReminderOwnerResponse(args: {
   text: string;
   context?: ReminderOwnerResponseContext;
   semanticClassifier?: ReminderOwnerResponseSemanticClassifier | null;
 }): Promise<ReminderOwnerResponseClassification> {
-  const deterministic = classifyReminderOwnerResponseText(
-    args.text,
-    args.context,
-  );
-  if (deterministic.decision !== "unrelated" || !args.semanticClassifier) {
-    return { ...deterministic, classifierSource: "deterministic" };
+  const cleaned = args.text.trim();
+  if (cleaned.length === 0) {
+    return {
+      decision: "unrelated",
+      resolution: null,
+      snoozeRequest: null,
+      confidence: 0,
+      reason: "empty_response",
+      classifierSource: "deterministic",
+    };
+  }
+  const exact = classifyExactReminderReply(cleaned, args.context);
+  if (exact) {
+    return { ...exact, classifierSource: "deterministic" };
   }
   if (args.semanticClassifier) {
-    try {
-      const semantic = await args.semanticClassifier({
-        text: args.text,
-        context: args.context,
-      });
-      if (semantic && semantic.decision !== "abstain") {
-        return {
-          ...semantic,
-          classifierSource: "semantic",
-          semanticReason: semantic.reason,
-        };
-      }
-      if (semantic?.decision === "abstain") {
-        return {
-          ...deterministic,
-          classifierSource: "semantic_abstain",
-          semanticReason: semantic.reason,
-        };
-      }
-    } catch {
+    const semantic = await args.semanticClassifier({
+      text: args.text,
+      context: args.context,
+    });
+    if (semantic && semantic.decision !== "abstain") {
       return {
-        ...deterministic,
-        classifierSource: "semantic_error",
-        semanticReason: "semantic_classifier_error",
+        ...semantic,
+        classifierSource: "semantic",
+        semanticReason: semantic.reason,
+      };
+    }
+    if (semantic?.decision === "abstain") {
+      return {
+        decision: "unrelated",
+        resolution: null,
+        snoozeRequest: null,
+        confidence: semantic.confidence,
+        reason: "semantic_abstain",
+        classifierSource: "semantic_abstain",
+        semanticReason: semantic.reason,
       };
     }
   }
-  return { ...deterministic, classifierSource: "deterministic" };
+  return {
+    decision: "unrelated",
+    resolution: null,
+    snoozeRequest: null,
+    confidence: 0,
+    reason: "no_semantic_verdict",
+    classifierSource: "none",
+  };
 }
 
 export function normalizeReminderUrgencyValue(

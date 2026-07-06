@@ -1,0 +1,87 @@
+{
+  "catalogId": "third-party-support",
+  "title": "Pack K1 - Supporting a sad or unfocused third party scenario catalog",
+  "source": {
+    "parentIssue": "#14747",
+    "foundationIssue": "#14790",
+    "packId": "K1",
+    "persona": "friend-of-owner support",
+    "targetCount": 10,
+    "notes": [
+      "Planned ledger for supportive, non-clinical help directed at a third party.",
+      "Bound by the no-therapy rule and the never-assert-988 rule unless the user explicitly reports imminent danger."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "k1.third_party_support.supportive_checkin_draft",
+      "pack": "K1",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "k1.third_party_support.no_clinical_claims",
+      "pack": "K1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "k1.third_party_support.practical_offer_options",
+      "pack": "K1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "k1.third_party_support.owner_approval_before_send",
+      "pack": "K1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "k1.third_party_support.friend_privacy_minimized",
+      "pack": "K1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "k1.third_party_support.no_988_without_danger",
+      "pack": "K1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "k1.third_party_support.followup_cadence_gentle",
+      "pack": "K1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "k1.third_party_support.summarize_context_without_gossip",
+      "pack": "K1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "k1.third_party_support.redirect_to_owner_task",
+      "pack": "K1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "k1.third_party_support.boundary_respected",
+      "pack": "K1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "planned"
+    }
+  ]
+}

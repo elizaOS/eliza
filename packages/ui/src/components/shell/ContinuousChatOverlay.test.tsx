@@ -181,8 +181,10 @@ function AppComposerHarness({
       chatInput,
       chatSending: false,
       chatPendingImages,
+      chatReplyTarget: null,
       setChatInput,
       setChatPendingImages,
+      setChatReplyTarget: () => {},
     }),
     [chatInput, chatPendingImages],
   );
@@ -974,8 +976,8 @@ describe("ContinuousChatOverlay", () => {
     }
     unmount();
 
-    // Active (recording): distinguishable via accent icon color only — never by
-    // reintroducing a background/border fill on the resting-style control.
+    // Active (recording): distinguishable via accent icon color + pulse — never
+    // by reintroducing a background/border fill on the resting-style control.
     render(
       <ContinuousChatOverlay
         controller={makeController({ recording: true })}

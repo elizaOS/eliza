@@ -107,6 +107,13 @@ const PUBLIC = false;
  * bottom fails when this table drifts from the live registry.
  */
 const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
+  // home/
+  {
+    slug: "dashboard",
+    path: "/dashboard",
+    route: "dashboard",
+    auth: AUTH,
+  },
   // instances/
   {
     slug: "dashboard-agents",
@@ -135,6 +142,12 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
   },
   // billing/
   {
+    slug: "dashboard-billing",
+    path: "/dashboard/billing",
+    route: "dashboard/billing",
+    auth: AUTH,
+  },
+  {
     slug: "dashboard-billing-success",
     path: "/dashboard/billing/success",
     route: "dashboard/billing/success",
@@ -151,6 +164,25 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     slug: "dashboard-organization",
     path: "/dashboard/organization",
     route: "dashboard/organization",
+    auth: AUTH,
+  },
+  // account-security/
+  {
+    slug: "dashboard-account",
+    path: "/dashboard/account",
+    route: "dashboard/account",
+    auth: AUTH,
+  },
+  {
+    slug: "dashboard-security",
+    path: "/dashboard/security",
+    route: "dashboard/security",
+    auth: AUTH,
+  },
+  {
+    slug: "dashboard-security-permissions",
+    path: "/dashboard/security/permissions",
+    route: "dashboard/security/permissions",
     auth: AUTH,
   },
   // join/ — signed-out /join redirects to /login (audited separately), so
@@ -263,6 +295,27 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     slug: "dashboard-api-explorer",
     path: "/dashboard/api-explorer",
     route: "dashboard/api-explorer",
+    auth: AUTH,
+  },
+  // api-keys/
+  {
+    slug: "dashboard-api-keys",
+    path: "/dashboard/api-keys",
+    route: "dashboard/api-keys",
+    auth: AUTH,
+  },
+  // monetization/
+  {
+    slug: "dashboard-monetization",
+    path: "/dashboard/monetization",
+    route: "dashboard/monetization",
+    auth: AUTH,
+  },
+  // connectors/
+  {
+    slug: "dashboard-connectors",
+    path: "/dashboard/connectors",
+    route: "dashboard/connectors",
     auth: AUTH,
   },
   // applications/

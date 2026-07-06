@@ -46,6 +46,28 @@ PERSONA_MAYA_PARENT = Persona(
     patience_turns=18,
 )
 
+PERSONA_JORDAN_COPARENT = Persona(
+    id="jordan_coparent",
+    name="Jordan Ellis",
+    traits=[
+        "separated-parent",
+        "civil-but-tense",
+        "logistics-heavy",
+        "kid-privacy-protective",
+    ],
+    background=(
+        "Separated parent sharing custody of one middle-schooler. Coordinates "
+        "school pickups, activity handoffs, expense splits, and last-minute "
+        "schedule swaps with a co-parent where the relationship is civil but "
+        "easily tense. Needs help staying factual, timely, and kid-private."
+    ),
+    communication_style=(
+        "practical and brief, careful about wording, wants neutral logistics "
+        "drafts and reminders, rejects legal advice or therapy framing"
+    ),
+    patience_turns=16,
+)
+
 PERSONA_DEV_FREELANCER = Persona(
     id="dev_freelancer",
     name="Devon Park",
@@ -320,6 +342,7 @@ ALL_PERSONAS: list[Persona] = [
     PERSONA_RIA_PM,
     PERSONA_SAM_FOUNDER,
     PERSONA_MAYA_PARENT,
+    PERSONA_JORDAN_COPARENT,
     PERSONA_DEV_FREELANCER,
     PERSONA_NORA_CONSULTANT,
     PERSONA_OWEN_RETIREE,

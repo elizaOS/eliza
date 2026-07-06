@@ -1,0 +1,73 @@
+{
+  "catalogId": "reconnect-old-friends",
+  "title": "Pack G2 - Reconnecting with old friends scenario catalog",
+  "source": {
+    "parentIssue": "#14747",
+    "foundationIssue": "#14784",
+    "packId": "G2",
+    "persona": "relationship maintenance",
+    "targetCount": 8,
+    "notes": [
+      "Planned ledger for cadence watcher and grounded reconnect drafts.",
+      "The assistant must use real relationship/history context and approval gates, never generic outreach spam."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "g2.reconnect.identify_lapsed_friend",
+      "pack": "G2",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "g2.reconnect.grounded_reconnect_draft",
+      "pack": "G2",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "g2.reconnect.no_generic_blast",
+      "pack": "G2",
+      "tier": "T4",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "g2.reconnect.cadence_watcher_due",
+      "pack": "G2",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "g2.reconnect.respect_recent_silence",
+      "pack": "G2",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "g2.reconnect.ask_before_sensitive_memory",
+      "pack": "G2",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "planned"
+    },
+    {
+      "id": "g2.reconnect.choose_best_channel",
+      "pack": "G2",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "planned"
+    },
+    {
+      "id": "g2.reconnect.post_send_followup",
+      "pack": "G2",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "planned"
+    }
+  ]
+}

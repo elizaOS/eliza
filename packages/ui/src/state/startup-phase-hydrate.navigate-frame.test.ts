@@ -162,6 +162,31 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
     teardown();
   });
 
+  it("forwards opaque deep-link payloads from raw frames into the DOM event", () => {
+    const payload = { permissionRequest: { permission: "microphone" } };
+    clientMock.deliverFrame(
+      JSON.stringify({
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+        viewId: "settings",
+        viewPath: "/settings",
+        viewLabel: "Settings",
+        viewType: "gui",
+        subview: "permissions",
+        payload,
+      }),
+    );
+
+    expect(navHandler).toHaveBeenCalledTimes(1);
+    const detail = (navHandler.mock.calls[0][0] as CustomEvent).detail;
+    expect(detail).toMatchObject({
+      viewId: "settings",
+      viewPath: "/settings",
+      subview: "permissions",
+      payload,
+    });
+    teardown();
+  });
+
   it("fills defaults when the backend omits action and alwaysOnTop", () => {
     // The backend spreads `action`/`alwaysOnTop` only when truthy
     // (views-routes.ts:794-795), so a plain `show` navigation omits both keys.

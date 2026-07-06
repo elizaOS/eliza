@@ -75,6 +75,8 @@ import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
 import { ChatComposer } from "../composites/chat/chat-composer";
 import { ChatComposerShell } from "../composites/chat/chat-composer-shell";
 import { ChatEmptyState } from "../composites/chat/chat-empty-state";
+import { buildReplyTargetFromMessage } from "../composites/chat/chat-message";
+import { ChatReplyPill } from "../composites/chat/chat-reply-pill";
 import { ChatSourceIcon } from "../composites/chat/chat-source";
 import { ChatThreadLayout } from "../composites/chat/chat-thread-layout";
 import { ChatTranscript } from "../composites/chat/chat-transcript";
@@ -232,8 +234,10 @@ export function ChatView({
     chatInput: rawChatInput,
     chatSending,
     chatPendingImages: rawChatPendingImages,
+    chatReplyTarget,
     setChatInput,
     setChatPendingImages,
+    setChatReplyTarget,
   } = useChatComposer();
   const droppedFiles = Array.isArray(rawDroppedFiles) ? rawDroppedFiles : [];
   const chatInput = typeof rawChatInput === "string" ? rawChatInput : "";
@@ -731,6 +735,16 @@ export function ChatView({
     },
     [handleChatDelete],
   );
+  // Reply arms the composer: set the shared reply target so the next turn
+  // carries replyToMessageId (→ REPLY_CONTEXT) and the pill renders above the
+  // input. Focus the composer so the user can type the reply immediately.
+  const handleReplyMessage = useCallback(
+    (message: ChatMessageData) => {
+      setChatReplyTarget(buildReplyTargetFromMessage(message, agentName));
+      textareaRef.current?.focus();
+    },
+    [setChatReplyTarget, agentName],
+  );
   const renderChatMessageContent = useCallback(
     (message: ChatMessageData) => (
       <MessageContent
@@ -769,6 +783,7 @@ export function ChatView({
           onSpeak={handleSpeakMessage}
           onCopy={handleCopyMessageText}
           onDelete={handleDeleteMessage}
+          onReply={handleReplyMessage}
           onDismissSuggestion={handleDismissSuggestion}
           onAcceptSuggestion={handleAcceptSuggestion}
           renderMessageContent={renderChatMessageContent}
@@ -907,6 +922,22 @@ export function ChatView({
               />
             </div>
           ) : null}
+          {chatReplyTarget ? (
+            <div className="px-1 pb-1">
+              <ChatReplyPill
+                target={chatReplyTarget}
+                onCancel={() => setChatReplyTarget(null)}
+                labels={{
+                  replyingTo: t("chat.replyingTo", {
+                    defaultValue: "Replying to",
+                  }),
+                  cancelReply: t("chat.cancelReply", {
+                    defaultValue: "Cancel reply",
+                  }),
+                }}
+              />
+            </div>
+          ) : null}
           <AgentActivityBox
             sessions={ptySessions}
             onSessionClick={onPtySessionClick ?? focusTerminalSession}
@@ -963,6 +994,22 @@ export function ChatView({
                 onChange={handleContinuousChatModeChange}
                 disabled={isComposerLocked}
                 data-testid="chat-view-continuous-chat-toggle"
+              />
+            </div>
+          ) : null}
+          {chatReplyTarget ? (
+            <div className="px-1 pb-1">
+              <ChatReplyPill
+                target={chatReplyTarget}
+                onCancel={() => setChatReplyTarget(null)}
+                labels={{
+                  replyingTo: t("chat.replyingTo", {
+                    defaultValue: "Replying to",
+                  }),
+                  cancelReply: t("chat.cancelReply", {
+                    defaultValue: "Cancel reply",
+                  }),
+                }}
               />
             </div>
           ) : null}

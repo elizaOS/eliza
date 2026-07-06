@@ -149,13 +149,22 @@ describe("ChatSurface", () => {
     ).toBe(true);
   });
 
-  it("renders a disabled voice toggle when no voice handler is provided", () => {
+  it("renders composer controls with the overlay icon-button touch target", () => {
     render(<ChatSurface messages={[]} onSend={() => {}} canSend={true} />);
     const voiceToggle = screen.getByRole("button", {
       name: /voice input/i,
     }) as HTMLButtonElement;
+    const send = screen.getByRole("button", {
+      name: "Send message",
+    }) as HTMLButtonElement;
+
     expect(voiceToggle.disabled).toBe(true);
+    expect(voiceToggle.className).toContain("h-11");
+    expect(voiceToggle.className).toContain("w-11");
+    expect(send.className).toContain("h-11");
+    expect(send.className).toContain("w-11");
     expect(voiceToggle.querySelector("svg")).not.toBeNull();
+    expect(voiceToggle.querySelector("path[fill]")).toBeNull();
   });
 
   it("enables the voice toggle and toggles voice capture when wired", () => {

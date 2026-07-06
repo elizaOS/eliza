@@ -15,6 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 9
 - **Canonical providers:** 23
 - **Core providers:** 23
+- **Registered runtime actions:** 185
 
 ## Actions
 
@@ -310,6 +311,204 @@ Set verbose output level
 | Parameter | Required | Type | Description |
 | --- | --- | --- | --- |
 | `level` | no | string | off, on, full |
+
+## Registered runtime actions
+
+The canonical sections above are the *curated prompt docs* — a deliberately
+small subset the model is taught up front. The list below is the **full
+registered action surface** scanned from source
+(`packages/prompts/scripts/registered-action-inventory.js`): every `Action`
+declaration under `packages/core`, `packages/agent`, and `plugins/*`, plus
+view-scoped actions. An action can be real and registered without having a
+canonical spec entry — before concluding an action "does not exist", check this
+list. CI (`node packages/scripts/view-action-ratchet.mjs`) fails when this
+section drifts from source.
+
+- `ACTIVATE_PLUGIN_IF_READY` — `packages/core/src/features/plugin-config/actions/activate-plugin-if-ready.ts`
+- `AGENT_SWITCH` — `plugins/plugin-app-control/src/actions/agent-switch.ts`
+- `ALARM` — `plugins/plugin-native-macosalarm/src/actions.ts`
+- `APP` — `plugins/plugin-app-control/src/actions/app.ts`
+- `ATTACH_TO_CHAT` — `packages/agent/src/actions/knowledge.ts`
+- `ATTACHMENT` — `packages/core/src/features/working-memory/readAttachmentAction.ts`
+- `AWAIT_CHILD_AGENT_DECISION` — `packages/core/src/features/sub-agent-credentials/actions/await-child-agent-decision.ts`
+- `AWAIT_OAUTH_CALLBACK` — `packages/core/src/features/oauth/actions/await-oauth-callback.ts`
+- `BACKGROUND` — `plugins/plugin-app-control/src/actions/background.ts`
+- `BACKUP_APP` — `plugins/plugin-cloud-apps/src/actions/backup-app.ts`
+- `BIND_OAUTH_CREDENTIAL` — `packages/core/src/features/oauth/actions/bind-oauth-credential.ts`
+- `BLOCK` — `plugins/plugin-personal-assistant/src/actions/block.ts`
+- `BOOK_INFLUENCER` — `plugins/plugin-cloud-apps/src/actions/book-influencer.ts`
+- `BRIEF` — `plugins/plugin-personal-assistant/src/actions/brief.ts`
+- `BROWSER` — `plugins/plugin-browser/src/actions/browser.ts`
+- `BUY_APP_DOMAIN` — `plugins/plugin-cloud-apps/src/actions/buy-app-domain.ts`
+- `CALENDAR` — `plugins/plugin-calendar/src/actions/calendar.ts`, `plugins/plugin-personal-assistant/src/actions/calendar.ts`
+- `CALENDLY` — `plugins/plugin-personal-assistant/src/actions/lib/calendly-handler.ts`
+- `CHARACTER` — `packages/core/src/features/advanced-capabilities/personality/actions/character.ts`
+- `CHECK_APP_DOMAIN` — `plugins/plugin-cloud-apps/src/actions/check-app-domain.ts`
+- `CLEAR_LINEAR_ACTIVITY` — `plugins/plugin-linear/src/actions/clearActivity.ts`
+- `CLIPBOARD` — `plugins/plugin-computeruse/src/actions/clipboard.ts`
+- `CLOSE_ALL_VIEWS` — `plugins/plugin-app-control/src/actions/views.ts`
+- `CLOSE_VIEW` — `plugins/plugin-app-control/src/actions/views.ts`
+- `COMPACT_CONVERSATION` — `packages/agent/src/actions/compact-conversation.ts`
+- `COMPUTER_USE` — `plugins/plugin-computeruse/src/actions/use-computer.ts`
+- `COMPUTER_USE_AGENT` — `plugins/plugin-computeruse/src/actions/use-computer-agent.ts`
+- `CONFLICT_DETECT` — `plugins/plugin-calendar/src/actions/conflict-detect.ts`, `plugins/plugin-personal-assistant/src/actions/conflict-detect.ts`
+- `CONNECT_ACCOUNT` — `packages/agent/src/actions/connect-account.ts`
+- `CONNECTOR` — `plugins/plugin-personal-assistant/src/actions/connector.ts`
+- `CONTACT` — `packages/agent/src/actions/contact.ts`
+- `CREATE_AD_SLOT` — `plugins/plugin-cloud-apps/src/actions/ad-inventory.ts`
+- `CREATE_APP` — `plugins/plugin-cloud-apps/src/actions/create-app.ts`
+- `CREATE_INFLUENCER_PROFILE` — `plugins/plugin-cloud-apps/src/actions/influencer.ts`
+- `CREATE_LINEAR_COMMENT` — `plugins/plugin-linear/src/actions/createComment.ts`
+- `CREATE_LINEAR_ISSUE` — `plugins/plugin-linear/src/actions/createIssue.ts`
+- `CREATE_OAUTH_INTENT` — `packages/core/src/features/oauth/actions/create-oauth-intent.ts`
+- `CREDENTIALS` — `plugins/plugin-personal-assistant/src/actions/credentials.ts`
+- `DATABASE` — `packages/agent/src/actions/database.ts`
+- `DECLARE_SUB_AGENT_CREDENTIAL_SCOPE` — `packages/core/src/features/sub-agent-credentials/actions/declare-sub-agent-credential-scope.ts`
+- `DELETE_APP` — `plugins/plugin-cloud-apps/src/actions/delete-app.ts`
+- `DELETE_LINEAR_COMMENT` — `plugins/plugin-linear/src/actions/deleteComment.ts`
+- `DELETE_LINEAR_ISSUE` — `plugins/plugin-linear/src/actions/deleteIssue.ts`
+- `DELIVER_OAUTH_LINK` — `packages/core/src/features/oauth/actions/deliver-oauth-link.ts`
+- `DELIVER_PLUGIN_CONFIG_FORM` — `packages/core/src/features/plugin-config/actions/deliver-plugin-config-form.ts`
+- `DEPLOY_APP` — `plugins/plugin-cloud-apps/src/actions/deploy-app.ts`
+- `DEPLOY_FRONTEND` — `plugins/plugin-cloud-apps/src/actions/deploy-frontend.ts`
+- `DISABLE_AUTONOMOUS_MODE` — `packages/core/src/features/autonomy/action.ts`
+- `DOCUMENT` — `packages/core/src/features/documents/actions.ts`
+- `DRAFT_PRESS_RELEASE` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
+- `DUPLICATE_AD_CAMPAIGN` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
+- `ELIZAOS` — `plugins/plugin-agent-orchestrator/src/actions/elizaos-capability.ts`
+- `ENABLE_AUTONOMOUS_MODE` — `packages/core/src/features/autonomy/action.ts`
+- `ENTITY` — `plugins/plugin-personal-assistant/src/actions/entity.ts`
+- `ESCALATE` — `packages/core/src/features/autonomy/action.ts`
+- `EXPERIENCE` — `packages/core/src/features/advanced-capabilities/experience/actions/manage-experience.ts`
+- `EXPORT_AD_CAMPAIGN_REPORT` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
+- `FACEWEAR_CONNECT` — `plugins/plugin-facewear/src/actions/facewear-connect.ts`
+- `FACEWEAR_DEBUG` — `plugins/plugin-facewear/src/actions/facewear-debug.ts`
+- `FILE` — `plugins/plugin-coding-tools/src/actions/file.ts`
+- `FILES` — `packages/agent/src/actions/files.ts`
+- `FORM` — `plugins/plugin-form/src/actions/form.ts`
+- `GENERATE_MEDIA` — `plugins/plugin-local-inference/src/actions/generate-media.ts`
+- `GET_AD_CAMPAIGN_ATTRIBUTION` — `plugins/plugin-cloud-apps/src/actions/ad-attribution.ts`
+- `GET_APP` — `plugins/plugin-cloud-apps/src/actions/get-app.ts`
+- `GET_APP_DEPLOY_STATUS` — `plugins/plugin-cloud-apps/src/actions/get-app-deploy-status.ts`
+- `GET_APP_EARNINGS` — `plugins/plugin-cloud-apps/src/actions/get-app-earnings.ts`
+- `GET_LINEAR_ACTIVITY` — `plugins/plugin-linear/src/actions/getActivity.ts`
+- `GET_LINEAR_ISSUE` — `plugins/plugin-linear/src/actions/getIssue.ts`
+- `GET_MEETING_TRANSCRIPT` — `plugins/plugin-meetings/src/actions/get-meeting-transcript.ts`
+- `GIT_PATHOLOGY` — `plugins/plugin-gitpathologist/src/actions/git-pathology.ts`
+- `GITHUB` — `plugins/plugin-github/src/actions/github.ts`
+- `IDENTIFY_SPEAKER` — `plugins/plugin-local-inference/src/actions/identify-speaker.ts`
+- `INBOX` — `plugins/plugin-inbox/src/actions/inbox.ts`
+- `JOIN_MEETING` — `plugins/plugin-meetings/src/actions/join-meeting.ts`
+- `LEAVE_MEETING` — `plugins/plugin-meetings/src/actions/leave-meeting.ts`
+- `LINEAR` — `plugins/plugin-linear/src/actions/linear.ts`
+- `LIQUIDITY` — `plugins/plugin-wallet/src/lp/actions/liquidity.ts`
+- `LIST_AD_SLOTS` — `plugins/plugin-cloud-apps/src/actions/ad-inventory.ts`
+- `LIST_APP_DOMAINS` — `plugins/plugin-cloud-apps/src/actions/list-app-domains.ts`
+- `LIST_CLOUD_APPS` — `plugins/plugin-cloud-apps/src/actions/list-cloud-apps.ts`
+- `LIST_FRONTEND_DEPLOYMENTS` — `plugins/plugin-cloud-apps/src/actions/rollback-frontend.ts`
+- `LIST_INFLUENCERS` — `plugins/plugin-cloud-apps/src/actions/influencer.ts`
+- `LIST_LINEAR_COMMENTS` — `plugins/plugin-linear/src/actions/listComments.ts`
+- `LIST_OVERDUE_FOLLOWUPS` — `plugins/plugin-personal-assistant/src/followup/actions/listOverdueFollowups.ts`
+- `LIST_PRESS_RELEASES` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
+- `LOGS` — `packages/agent/src/actions/logs.ts`
+- `MANAGE_BROWSER_BRIDGE` — `plugins/plugin-browser/src/actions/manage-browser-bridge.ts`
+- `MANAGE_PLUGINS` — `packages/core/src/features/plugin-manager/actions/plugin.ts`
+- `MARK_FOLLOWUP_DONE` — `plugins/plugin-personal-assistant/src/followup/actions/markFollowupDone.ts`
+- `MCP` — `plugins/plugin-mcp/src/actions/mcp.ts`
+- `MEMORY` — `packages/agent/src/actions/memories.ts`
+- `MESSAGE` — `packages/core/src/features/advanced-capabilities/actions/message.ts`, `packages/core/src/features/messaging/triage/actions/draftFollowup.ts`, `packages/core/src/features/messaging/triage/actions/draftReply.ts`, `packages/core/src/features/messaging/triage/actions/listInbox.ts`, `packages/core/src/features/messaging/triage/actions/manageMessage.ts`, `packages/core/src/features/messaging/triage/actions/respondToMessage.ts`, `packages/core/src/features/messaging/triage/actions/scheduleDraftSend.ts`, `packages/core/src/features/messaging/triage/actions/searchMessages.ts`, `packages/core/src/features/messaging/triage/actions/sendDraft.ts`, `packages/core/src/features/messaging/triage/actions/triageMessages.ts`
+- `MODEL_SWITCH` — `plugins/plugin-app-control/src/actions/model-switch.ts`
+- `MUSIC` — `plugins/plugin-music/src/actions/music.ts`
+- `MUSIC_LIBRARY` — `plugins/plugin-music/src/actions/musicLibrary.ts`
+- `NOTIFY` — `packages/agent/src/actions/notify.ts`
+- `ORCHESTRATOR_STATUS_COMMAND` — `plugins/plugin-task-coordinator/src/orchestrator-command.ts`
+- `OSWORLD` — `plugins/plugin-benchmarks/src/actions/osworld.ts`
+- `OWNER_ALARMS` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
+- `OWNER_DOCUMENTS` — `plugins/plugin-personal-assistant/src/actions/document.ts`
+- `OWNER_FINANCES` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
+- `OWNER_GOALS` — `plugins/plugin-goals/src/actions/goals.ts`, `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
+- `OWNER_HEALTH` — `plugins/plugin-health/src/actions/health.ts`
+- `OWNER_REMINDERS` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
+- `OWNER_ROUTINES` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
+- `OWNER_SCREENTIME` — `plugins/plugin-health/src/actions/screen-time.ts`
+- `OWNER_TODOS` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
+- `PAIR_OWNER_ACCOUNT` — `packages/agent/src/actions/pair-owner-account.ts`
+- `PAYMENT` — `packages/core/src/features/payments/actions/payment.ts`
+- `PERPETUAL_MARKET` — `plugins/plugin-hyperliquid/src/actions/perpetual-market.ts`
+- `PERSONAL_ASSISTANT` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
+- `PERSONALITY` — `packages/core/src/features/advanced-capabilities/personality/actions/personality.ts`
+- `PLAN` — `packages/core/src/features/advanced-planning/actions/plan.ts`
+- `PLAY_AUDIO` — `plugins/plugin-music/src/actions/playAudio.ts`
+- `PLAYBACK` — `plugins/plugin-music/src/actions/playbackOp.ts`
+- `PLUGIN` — `packages/agent/src/actions/plugin.ts`
+- `POLL_PLUGIN_CONFIG_STATUS` — `packages/core/src/features/plugin-config/actions/poll-plugin-config-status.ts`
+- `POST` — `packages/core/src/features/advanced-capabilities/actions/post.ts`
+- `PREDICTION_MARKET` — `plugins/plugin-polymarket/src/actions.ts`
+- `PRIORITIZE` — `plugins/plugin-personal-assistant/src/actions/prioritize.ts`
+- `PROBE_PLUGIN_CONFIG_REQUIREMENTS` — `packages/core/src/features/plugin-config/actions/probe-plugin-config-requirements.ts`
+- `PROXY_STATUS` — `plugins/plugin-anthropic-proxy/src/actions/proxy-status.action.ts`
+- `REGENERATE_APP_API_KEY` — `plugins/plugin-cloud-apps/src/actions/regenerate-app-api-key.ts`
+- `RESOLVE_REQUEST` — `plugins/plugin-personal-assistant/src/actions/resolve-request.ts`
+- `RETRIEVE_CHILD_AGENT_RESULTS` — `packages/core/src/features/sub-agent-credentials/actions/retrieve-child-agent-results.ts`
+- `REVOKE_OAUTH_CREDENTIAL` — `packages/core/src/features/oauth/actions/revoke-oauth-credential.ts`
+- `ROLE` — `packages/core/src/features/advanced-capabilities/actions/role.ts`
+- `ROLLBACK_FRONTEND` — `plugins/plugin-cloud-apps/src/actions/rollback-frontend.ts`
+- `ROOM` — `packages/core/src/features/advanced-capabilities/actions/room.ts`
+- `RUNTIME` — `packages/agent/src/actions/runtime.ts`
+- `SCHEDULED_TASKS` — `plugins/plugin-personal-assistant/src/actions/scheduled-task.ts`
+- `SEARCH_CHANNEL_TOPICS` — `packages/core/src/features/basic-capabilities/actions/channel-topic-search.ts`
+- `SEARCH_EXPERIENCES` — `packages/core/src/features/advanced-capabilities/experience/actions/search-experiences.ts`
+- `SEARCH_KNOWLEDGE` — `packages/agent/src/actions/knowledge.ts`
+- `SEARCH_LINEAR_ISSUES` — `plugins/plugin-linear/src/actions/searchIssues.ts`
+- `SECRETS` — `packages/core/src/features/secrets/actions/manage-secret.ts`
+- `SECRETS_UPDATE_SETTINGS` — `packages/core/src/features/secrets/setup/action.ts`
+- `SECURITY_EVALUATOR` — `packages/core/src/features/trust/evaluators/securityEvaluator.ts`
+- `SEND_MEDIA_TO` — `packages/agent/src/actions/knowledge.ts`
+- `SET_AD_CAMPAIGN_DAYPARTING` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
+- `SET_FOLLOWUP_THRESHOLD` — `plugins/plugin-personal-assistant/src/followup/actions/setFollowupThreshold.ts`
+- `SETTINGS` — `packages/agent/src/actions/settings-actions.ts`, `plugins/plugin-app-control/src/actions/settings.ts`
+- `SETUP_XR_RUNTIME` — `plugins/plugin-facewear/src/actions/xr-runtime-setup.ts`
+- `SHELL` — `plugins/plugin-coding-tools/src/actions/bash.ts`
+- `SKILL` — `plugins/plugin-agent-skills/src/actions/skill.ts`
+- `SMARTGLASSES_CONTROL` — `plugins/plugin-facewear/src/actions/facewear-control.ts`
+- `SMARTGLASSES_DISPLAY_TEXT` — `plugins/plugin-facewear/src/actions/display-text.ts`
+- `SMARTGLASSES_MICROPHONE` — `plugins/plugin-facewear/src/actions/microphone.ts`
+- `SMARTGLASSES_STATUS` — `plugins/plugin-facewear/src/actions/facewear-status.ts`
+- `START_TRANSCRIPTION` — `plugins/plugin-local-inference/src/actions/transcription-control.ts`
+- `STOP_TRANSCRIPTION` — `plugins/plugin-local-inference/src/actions/transcription-control.ts`
+- `STREAM` — `plugins/plugin-streaming/src/core.ts`
+- `SUBMIT_PRESS_RELEASE` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
+- `TASKS` — `plugins/plugin-agent-orchestrator/src/actions/tasks.ts`
+- `TAU_BENCH_TOOL` — `plugins/plugin-benchmarks/src/actions/tau-bench.ts`
+- `TERMINAL_SHELL` — `packages/agent/src/actions/terminal.ts`
+- `TODO` — `plugins/plugin-todos/src/actions/todo.ts`
+- `TRIGGER` — `packages/agent/src/actions/trigger.ts`
+- `TRUST` — `packages/core/src/features/trust/actions/trust.ts`
+- `TUNNEL_CREDENTIAL_TO_CHILD_SESSION` — `packages/core/src/features/sub-agent-credentials/actions/tunnel-credential-to-child-session.ts`
+- `UPDATE_APP` — `plugins/plugin-cloud-apps/src/actions/update-app.ts`
+- `UPDATE_LINEAR_ISSUE` — `plugins/plugin-linear/src/actions/updateIssue.ts`
+- `UPDATE_MONETIZATION` — `plugins/plugin-cloud-apps/src/actions/update-monetization.ts`
+- `USE_SKILL` — `plugins/plugin-agent-skills/src/actions/use-skill.ts`
+- `VENDING_MACHINE` — `plugins/plugin-benchmarks/src/actions/vending-machine.ts`
+- `VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE` — `packages/agent/src/api/builtin-views.ts`
+- `VIEW_CHARACTER_ADD_STYLE_RULE` — `packages/agent/src/api/builtin-views.ts`
+- `VIEW_CHARACTER_FILL_BIO` — `packages/agent/src/api/builtin-views.ts`
+- `VIEWS` — `plugins/plugin-app-control/src/actions/views.ts`
+- `VISION` — `plugins/plugin-vision/src/action.ts`
+- `VISUALWEBBENCH_TASK` — `plugins/plugin-benchmarks/src/actions/visualwebbench.ts`
+- `VOICE_CALL` — `plugins/plugin-personal-assistant/src/actions/voice-call.ts`
+- `WALLET` — `plugins/plugin-wallet/src/chains/wallet-action.ts`
+- `WEBSHOP` — `plugins/plugin-benchmarks/src/actions/webshop.ts`
+- `WINDOW` — `plugins/plugin-computeruse/src/actions/window.ts`
+- `WITHDRAW_APP_EARNINGS` — `plugins/plugin-cloud-apps/src/actions/withdraw-app-earnings.ts`
+- `WORK_THREAD` — `plugins/plugin-personal-assistant/src/actions/work-thread.ts`
+- `WORKTREE` — `plugins/plugin-coding-tools/src/actions/worktree.ts`
+- `XR_CLOSE_VIEW` — `plugins/plugin-facewear/src/actions/view-actions.ts`
+- `XR_LIST_VIEWS` — `plugins/plugin-facewear/src/actions/view-actions.ts`
+- `XR_OPEN_VIEW` — `plugins/plugin-facewear/src/actions/view-actions.ts`
+- `XR_QUERY_VISION` — `plugins/plugin-facewear/src/actions/vision-query.ts`
+- `XR_RESIZE_VIEW` — `plugins/plugin-facewear/src/actions/view-actions.ts`
+- `XR_SWITCH_VIEW` — `plugins/plugin-facewear/src/actions/view-actions.ts`
 
 ## Providers
 

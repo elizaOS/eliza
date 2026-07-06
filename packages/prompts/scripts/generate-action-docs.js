@@ -5,6 +5,15 @@
  * `compressPromptDescription`, and emits
  * `packages/core/src/generated/action-docs.ts` — the compact, model-facing
  * action/provider catalog the runtime ships. Run after editing a spec.
+ *
+ * The markdown catalog (`packages/docs/action-catalog.md`) additionally gets a
+ * "Registered runtime actions" section scanned live from source by
+ * `registered-action-inventory.js`. The canonical spec is a deliberately
+ * curated subset (prompt docs), so the doc alone once read as the full action
+ * surface and got DOCUMENT/MEMORY/FILES/SETTINGS mis-filed as missing
+ * (#14365/#14366/#14367); the inventory section makes the doc reflect what is
+ * actually registered, and the view→action ratchet
+ * (`packages/scripts/view-action-ratchet.mjs`) fails CI when it goes stale.
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -12,6 +21,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { compressPromptDescription } from "../src/prompt-compression.ts";
 import { ensureDirectory, readJson } from "./file-utils.js";
+import { collectRegisteredActionInventory } from "./registered-action-inventory.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -461,9 +471,7 @@ function markdownText(value) {
  * @returns {string}
  */
 function markdownCell(value) {
-  return markdownText(value)
-    .replace(/\|/g, "\\|")
-    .replace(/\r?\n/g, "<br />");
+  return markdownText(value).replace(/\|/g, "\\|").replace(/\r?\n/g, "<br />");
 }
 
 /**
@@ -534,7 +542,10 @@ function renderProviderMarkdown(provider) {
     markdownText(provider.description),
     "",
   ];
-  if (typeof provider.position === "number" || typeof provider.dynamic === "boolean") {
+  if (
+    typeof provider.position === "number" ||
+    typeof provider.dynamic === "boolean"
+  ) {
     lines.push(
       `- **Position:** ${typeof provider.position === "number" ? provider.position : "-"}`,
       `- **Dynamic:** ${provider.dynamic === true ? "yes" : "no"}`,
@@ -559,6 +570,12 @@ function generateMarkdownCatalog(actionsSpec, providersSpec) {
     renderProviderMarkdown(/** @type {Record<string, unknown>} */ (item)),
   );
 
+  const inventory = collectRegisteredActionInventory(REPO_ROOT);
+  const inventoryRows = inventory.map(
+    ({ name, files }) =>
+      `- \`${name}\` — ${files.map((f) => `\`${f}\``).join(", ")}`,
+  );
+
   const content = `---
 title: "Action Catalog"
 sidebarTitle: "Action Catalog"
@@ -576,10 +593,25 @@ This catalog is generated from \`packages/prompts/specs/**\` by \`bun run --cwd 
 - **Plugin overlay actions:** ${actionsSpec.all.items.length - actionsSpec.core.items.length}
 - **Canonical providers:** ${providersSpec.all.items.length}
 - **Core providers:** ${providersSpec.core.items.length}
+- **Registered runtime actions:** ${inventory.length}
 
 ## Actions
 
 ${actionRows.join("\n")}
+## Registered runtime actions
+
+The canonical sections above are the *curated prompt docs* — a deliberately
+small subset the model is taught up front. The list below is the **full
+registered action surface** scanned from source
+(\`packages/prompts/scripts/registered-action-inventory.js\`): every \`Action\`
+declaration under \`packages/core\`, \`packages/agent\`, and \`plugins/*\`, plus
+view-scoped actions. An action can be real and registered without having a
+canonical spec entry — before concluding an action "does not exist", check this
+list. CI (\`node packages/scripts/view-action-ratchet.mjs\`) fails when this
+section drifts from source.
+
+${inventoryRows.join("\n")}
+
 ## Providers
 
 ${providerRows.join("\n")}`;

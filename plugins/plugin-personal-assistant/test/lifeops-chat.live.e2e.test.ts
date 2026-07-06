@@ -23,7 +23,12 @@ import {
 import { judgeTextWithLlm } from "./helpers/lifeops-live-judge.ts";
 
 const selectedLiveProvider = await selectLifeOpsLiveProvider();
+// Cerebras is a first-class live provider for this suite: the harness selects
+// it as its own named provider and routes it through @elizaos/plugin-openai's
+// OpenAI-compatible mode (OPENAI_BASE_URL → api.cerebras.ai), matching the
+// runtime's own "cerebras" provider id in the first-run catalog.
 const SUPPORTED_PROVIDER_NAMES = new Set([
+  "cerebras",
   "openai",
   "openrouter",
   "google",
@@ -38,7 +43,7 @@ const liveSetupWarnings = [
   ...getLifeOpsLiveSetupWarnings(selectedLiveProvider),
   selectedLiveProvider &&
   !SUPPORTED_PROVIDER_NAMES.has(selectedLiveProvider.name)
-    ? `selected provider "${selectedLiveProvider.name}" does not support this suite; use OpenAI, OpenRouter, Google, or Anthropic`
+    ? `selected provider "${selectedLiveProvider.name}" does not support this suite; use Cerebras, OpenAI, OpenRouter, Google, or Anthropic`
     : null,
 ].filter((entry): entry is string => Boolean(entry));
 
