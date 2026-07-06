@@ -35,7 +35,7 @@ import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
 import { deriveKnownSecrets } from "./constants/secrets";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
-import { type ReportedError, toElizaError } from "./errors";
+import { ElizaError, type ReportedError, toElizaError } from "./errors";
 import {
 	type CapabilityConfig,
 	type CapabilitySettingFlags,
@@ -114,7 +114,10 @@ import {
 	SecretSwapSession,
 } from "./security/secret-swap";
 import { DefaultMessageService } from "./services/message";
-import { isModelProviderFallbackError } from "./services/message/fallback-reply";
+import {
+	describeModelCallError,
+	isModelProviderFallbackError,
+} from "./services/message/fallback-reply";
 import type { TaskService } from "./services/task";
 import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
@@ -4942,11 +4945,32 @@ export class AgentRuntime implements IAgentRuntime {
 		throw new Error(`No handler found for delegate type: ${requestedModelKey}`);
 	}
 
-	private rethrowModelFailoverError(error: unknown): never {
-		if (error instanceof Error) {
+	/**
+	 * Surface the failure that ends a `useModel` failover chain. A real `Error`
+	 * with a message rethrows unchanged so provider SDK stack traces and typed
+	 * subclasses (e.g. `NoModelProviderConfiguredError`, which the chat UI
+	 * narrows on) survive the boundary. Everything else — the bare
+	 * `{ status, error }` objects some providers/AI-SDK paths throw, or a
+	 * message-less `Error` — becomes an `ElizaError` whose message names the
+	 * provider, HTTP status, and underlying cause. Without this, a bare object
+	 * stringified to the diagnostically useless "[object Object]" in logs,
+	 * trajectories, and any user-surfaced failure text.
+	 */
+	private rethrowModelFailoverError(
+		error: unknown,
+		failed?: { modelKey: string; provider: string },
+	): never {
+		if (error instanceof Error && error.message.trim().length > 0) {
 			throw error;
 		}
-		throw new Error(String(error));
+		const detail = describeModelCallError(error);
+		const provider = failed?.provider ?? "unknown";
+		throw new ElizaError(`Model provider "${provider}" failed: ${detail}`, {
+			code: "MODEL_PROVIDER_FAILED",
+			cause: error,
+			context: { provider: failed?.provider, modelKey: failed?.modelKey },
+			severity: "ephemeral",
+		});
 	}
 
 	getModel(
@@ -6072,7 +6096,10 @@ export class AgentRuntime implements IAgentRuntime {
 					providerAttemptStartedOutput ||
 					!this.shouldFailOverModelProvider(error, requestedModelKey)
 				) {
-					this.rethrowModelFailoverError(error);
+					this.rethrowModelFailoverError(error, {
+						modelKey: resolvedModelKey,
+						provider: resolvedModel.provider,
+					});
 				}
 				this.logModelProviderFailover({
 					requestedModelKey,

@@ -219,4 +219,79 @@ describe("AgentRuntime.useModel provider failover", () => {
 		expect(exhaustedHandler).toHaveBeenCalledTimes(1);
 		expect(backupHandler).not.toHaveBeenCalled();
 	});
+
+	// Regression: a provider that throws a bare structured object (not an Error)
+	// used to be rethrown as `new Error(String(error))` === "Error: [object
+	// Object]", stranding provider/status/cause out of logs, trajectories, and
+	// any user-surfaced failure text. The rethrow must assemble a real message.
+	it("stringifies a non-Error provider failure diagnostically, not as [object Object]", async () => {
+		const runtime = makeRuntime();
+		const structuredFailure = {
+			status: 500,
+			error: { message: "upstream exploded" },
+		};
+		const failingHandler = vi.fn(async () => {
+			throw structuredFailure;
+		});
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			failingHandler,
+			"claude-sdk",
+			100,
+		);
+
+		const thrown = await runtime
+			.useModel(ModelType.TEXT_LARGE, { prompt: "hello" })
+			.then(
+				() => {
+					throw new Error("expected useModel to reject");
+				},
+				(error: unknown) => error,
+			);
+
+		expect(thrown).toBeInstanceOf(Error);
+		const err = thrown as Error & { code?: string; cause?: unknown };
+		expect(err.message).not.toContain("[object Object]");
+		expect(String(err)).not.toContain("[object Object]");
+		// Provider name + underlying cause + HTTP status all present.
+		expect(err.message).toContain("claude-sdk");
+		expect(err.message).toContain("upstream exploded");
+		expect(err.message).toContain("500");
+		expect(err.code).toBe("MODEL_PROVIDER_FAILED");
+		expect(err.cause).toBe(structuredFailure);
+		expect(failingHandler).toHaveBeenCalledTimes(1);
+	});
+
+	// A structured object with no status or message must still not degrade to
+	// "[object Object]" — the payload is serialized so it stays inspectable.
+	it("serializes an opaque non-Error failure payload instead of [object Object]", async () => {
+		const runtime = makeRuntime();
+		const opaqueFailure = {
+			reason: "provider melted",
+			providerHint: "claude-sdk",
+		};
+		const failingHandler = vi.fn(async () => {
+			throw opaqueFailure;
+		});
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			failingHandler,
+			"claude-sdk",
+			100,
+		);
+
+		const thrown = await runtime
+			.useModel(ModelType.TEXT_LARGE, { prompt: "hello" })
+			.then(
+				() => {
+					throw new Error("expected useModel to reject");
+				},
+				(error: unknown) => error,
+			);
+
+		const err = thrown as Error & { cause?: unknown };
+		expect(err.message).not.toContain("[object Object]");
+		expect(err.message).toContain("provider melted");
+		expect(err.cause).toBe(opaqueFailure);
+	});
 });

@@ -40,6 +40,75 @@ function hasHttpStatus(error: unknown, statuses: readonly number[]): boolean {
 	return statuses.includes(Number(candidate.statusCode ?? candidate.status));
 }
 
+function readHttpStatus(error: unknown): number | undefined {
+	const candidate = asErrorObject(error);
+	if (!candidate) return undefined;
+	const status = Number(candidate.statusCode ?? candidate.status);
+	return Number.isFinite(status) && status > 0 ? status : undefined;
+}
+
+/**
+ * Pull the most specific human-readable message off a thrown value: a real
+ * `Error.message`, a raw string, or the nested provider body a bare object
+ * carries (`{ error: { message } }`, `{ error: "..." }`, `{ message }`).
+ * Returns undefined when nothing message-shaped is present so the caller can
+ * fall back to status or a serialized payload rather than "[object Object]".
+ */
+function extractErrorMessage(error: unknown): string | undefined {
+	if (error instanceof Error) {
+		const message = error.message.trim();
+		return message.length > 0 ? message : undefined;
+	}
+	if (typeof error === "string") {
+		const message = error.trim();
+		return message.length > 0 ? message : undefined;
+	}
+	const candidate = asErrorObject(error);
+	if (!candidate) return undefined;
+	const body = candidate.error;
+	if (typeof body === "string" && body.trim().length > 0) {
+		return body.trim();
+	}
+	if (body !== null && typeof body === "object") {
+		const nested = (body as { message?: unknown }).message;
+		if (typeof nested === "string" && nested.trim().length > 0) {
+			return nested.trim();
+		}
+	}
+	const topLevel = (candidate as { message?: unknown }).message;
+	if (typeof topLevel === "string" && topLevel.trim().length > 0) {
+		return topLevel.trim();
+	}
+	return undefined;
+}
+
+/**
+ * Render any thrown model-call failure as one diagnostic line — the HTTP
+ * status (unwrapped from the AI SDK retry envelope) plus the most specific
+ * message found on the error or its structured body. Providers throw a mix of
+ * `Error` instances and bare `{ status, error }` objects; a bare object
+ * stringifies to the useless "[object Object]", so the model-failover rethrow
+ * routes non-trivial values through here to keep logs, trajectories, and any
+ * user-surfaced failure text diagnostic. Never returns "[object Object]": when
+ * no status or message is recoverable it serializes the payload instead.
+ */
+export function describeModelCallError(error: unknown): string {
+	const unwrapped = unwrapRetryError(error);
+	const status = readHttpStatus(unwrapped) ?? readHttpStatus(error);
+	const message = extractErrorMessage(unwrapped) ?? extractErrorMessage(error);
+	if (message && status) return `HTTP ${status}: ${message}`;
+	if (message) return message;
+	if (status) return `HTTP ${status}`;
+	try {
+		const serialized = JSON.stringify(error);
+		if (serialized && serialized !== "{}") return serialized;
+	} catch {
+		// error-policy:J3 a non-serializable payload (circular ref, BigInt) still
+		// must not surface as "[object Object]" — fall through to String().
+	}
+	return String(error);
+}
+
 /**
  * Detect provider rate-limit / 429 failures so the user-facing failure reply
  * can say "I'm being rate-limited, try again shortly" instead of the opaque
