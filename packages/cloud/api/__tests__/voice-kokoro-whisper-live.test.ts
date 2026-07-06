@@ -16,11 +16,14 @@ import { resolveWhisperSttModel } from "../v1/voice/stt/whisper-model";
 const LIVE = process.env.ELIZA_VOICE_LIVE_RAILWAY === "1";
 const LIVE_SPANISH =
   LIVE && Boolean(process.env.ELIZA_VOICE_LIVE_SPANISH_AUDIO_URL);
+// `||`, not `??`: the CI workflow maps these from repo *variables*, and GitHub
+// injects an unset variable as the empty string — which must still fall back
+// to the provisioned Railway instances instead of fetch()ing an empty base.
 const KOKORO_TTS_URL =
-  process.env.KOKORO_TTS_URL ??
+  process.env.KOKORO_TTS_URL ||
   "https://kokoro-tts-production-aa4b.up.railway.app";
 const WHISPER_STT_URL =
-  process.env.WHISPER_STT_URL ??
+  process.env.WHISPER_STT_URL ||
   "https://whisper-stt-production-6fc7.up.railway.app";
 const WHISPER_MODEL = resolveWhisperSttModel(process.env.WHISPER_STT_MODEL);
 
