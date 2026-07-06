@@ -92,6 +92,7 @@ export function computeAwakeProbability(args: {
     const reliability = resolveActivitySignalReliability(
       latestSignal.signal.source,
       latestSignal.signal.platform,
+      latestSignal.signal.metadata,
     );
     let scale = clamp(reliability, 0, 1);
     const isSharedDeviceRisk =

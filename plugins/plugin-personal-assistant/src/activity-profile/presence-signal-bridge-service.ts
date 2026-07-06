@@ -4,6 +4,7 @@
  * LifeOps activity signals keyed by device id, so presence observed on one
  * device contributes to the owner's activity/presence profile.
  */
+import crypto from "node:crypto";
 import {
   type ActionEventPayload,
   EventType,
@@ -38,6 +39,38 @@ function readMessageTimestamp(payload: MessagePayload): string {
   return new Date().toISOString();
 }
 
+function readMessageId(payload: MessagePayload): string {
+  const record = isRecord(payload.message) ? payload.message : null;
+  const metadata = isRecord(record?.metadata) ? record.metadata : null;
+  const candidates = [metadata?.originalId, record?.id];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.length > 0) {
+      return candidate;
+    }
+  }
+  return crypto.randomUUID();
+}
+
+function readConversationId(payload: MessagePayload): string {
+  const payloadRecord = isRecord(payload) ? payload : null;
+  const record = isRecord(payload.message) ? payload.message : null;
+  const content = isRecord(record?.content) ? record.content : null;
+  const candidates = [
+    content?.channelId,
+    content?.conversationId,
+    content?.threadId,
+    record?.roomId,
+    payloadRecord?.roomId,
+    payload.source,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.length > 0) {
+      return candidate;
+    }
+  }
+  return "unknown-conversation";
+}
+
 function readPlatform(payload: MessagePayload): string {
   const messageRecord = isRecord(payload.message) ? payload.message : null;
   const content = isRecord(messageRecord?.content)
@@ -55,6 +88,10 @@ function readPlatform(payload: MessagePayload): string {
     }
   }
   return "runtime_event";
+}
+
+function hashTelemetryIdentity(scope: string, value: string): string {
+  return `${scope}:${crypto.createHash("sha256").update(value).digest("hex").slice(0, 32)}`;
 }
 
 export class PresenceSignalBridgeService extends Service {
@@ -182,11 +219,14 @@ export class PresenceSignalBridgeService extends Service {
       this.recentFingerprints.set(fingerprint, observedMs);
     }
     const repository = new LifeOpsRepository(this.runtime);
+    const platform = readPlatform(payload);
+    const direction =
+      eventType === EventType.MESSAGE_SENT ? "outbound_by_owner" : "inbound";
     await repository.createActivitySignal(
       createLifeOpsActivitySignal({
         agentId: String(this.runtime.agentId),
         source: "connector_activity",
-        platform: readPlatform(payload),
+        platform,
         state: "active",
         observedAt,
         idleState: null,
@@ -196,6 +236,16 @@ export class PresenceSignalBridgeService extends Service {
         metadata: {
           eventType,
           entityId,
+          direction,
+          externalMessageId: readMessageId(payload),
+          senderHash:
+            direction === "outbound_by_owner"
+              ? "owner"
+              : hashTelemetryIdentity("sender", entityId),
+          conversationHash: hashTelemetryIdentity(
+            "conversation",
+            readConversationId(payload),
+          ),
           deviceId: getDeviceId(),
         },
       }),

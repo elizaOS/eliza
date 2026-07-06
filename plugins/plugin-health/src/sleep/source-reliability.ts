@@ -82,30 +82,79 @@ export function resolveSourceReliability(key: LifeOpsReliabilityKey): number {
 }
 
 /**
- * Default reliability key for each activity-signal source. The special-case
- * for `app_lifecycle` + `manual_override` platform is handled inline because
- * it's the only cross-axis override.
+ * Default reliability key for each activity-signal source. Cross-axis signal
+ * sources (`app_lifecycle`, connector messages) are handled inline because the
+ * source alone is not enough to derive confidence.
  */
 const SOURCE_RELIABILITY_KEYS: Record<
-  LifeOpsActivitySignalSource,
+  Exclude<LifeOpsActivitySignalSource, "connector_activity">,
   LifeOpsReliabilityKey
 > = {
   app_lifecycle: { kind: "device_presence", transition: true },
   page_visibility: { kind: "device_presence", transition: true },
   desktop_power: { kind: "desktop_power", transition: "system" },
   desktop_interaction: { kind: "desktop_idle", source: "iokit_hid" },
-  connector_activity: { kind: "message_outbound", channel: "gmail" },
   imessage_outbound: { kind: "message_outbound", channel: "imessage" },
   mobile_device: { kind: "mobile_device", source: "capacitor" },
   mobile_health: { kind: "mobile_health", permissionGranted: true },
 };
 
+function readMetadataString(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+): string | null {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function normalizeMessageReliabilityChannel(
+  value: string,
+): LifeOpsMessageReliabilityChannel {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("telegram")) return "telegram";
+  if (normalized.includes("discord")) return "discord";
+  if (normalized.includes("imessage")) return "imessage";
+  if (normalized.includes("whatsapp")) return "whatsapp";
+  if (normalized.includes("signal")) return "signal";
+  if (normalized.includes("sms") || normalized.includes("twilio")) {
+    return "sms";
+  }
+  if (normalized.includes("x_dm") || normalized === "x") return "x_dm";
+  if (normalized.includes("gmail") || normalized.includes("email")) {
+    return "gmail";
+  }
+  return "eliza_chat";
+}
+
+function connectorActivityReliabilityKey(
+  platform: string,
+  metadata?: Record<string, unknown>,
+): LifeOpsReliabilityKey {
+  if (metadata?.direction !== "outbound_by_owner") {
+    return { kind: "message_inbound" };
+  }
+  return {
+    kind: "message_outbound",
+    channel: normalizeMessageReliabilityChannel(
+      readMetadataString(metadata, "channel") ?? platform,
+    ),
+  };
+}
+
 export function resolveActivitySignalReliability(
   source: LifeOpsActivitySignalSource,
   platform: string,
+  metadata?: Record<string, unknown>,
 ): number {
   if (source === "app_lifecycle" && platform === "manual_override") {
     return resolveSourceReliability({ kind: "manual_override" });
+  }
+  if (source === "connector_activity") {
+    return resolveSourceReliability(
+      connectorActivityReliabilityKey(platform, metadata),
+    );
   }
   return resolveSourceReliability(SOURCE_RELIABILITY_KEYS[source]);
 }
