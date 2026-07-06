@@ -1089,8 +1089,8 @@ export {
   writeOverdueDigestMemory,
 } from "./followup/index.js";
 export {
-  anticipationFeedbackEvaluator,
   type AnticipationFeedbackOutput,
+  anticipationFeedbackEvaluator,
   parseAnticipationFeedbackOutput,
 } from "./lifeops/anticipation/evaluator.js";
 export {
@@ -1134,8 +1134,8 @@ export {
 } from "./lifeops/first-run/state.js";
 export {
   FTU_GOAL_CONFIDENCE_THRESHOLD,
-  ftuGoalDiscoveryEvaluator,
   type FtuGoalDiscoveryOutput,
+  ftuGoalDiscoveryEvaluator,
   parseFtuGoalOutput,
 } from "./lifeops/ftu-goal/evaluator.js";
 export {
