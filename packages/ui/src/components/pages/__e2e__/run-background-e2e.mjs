@@ -31,6 +31,7 @@
  * Run: bun run --cwd packages/ui test:background-e2e
  */
 import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -56,6 +57,57 @@ const uploadSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="
   <circle cx="900" cy="240" r="160" fill="#f4f4f5" opacity="0.85"/>
 </svg>`;
 
+// AppBackground pulls useVoiceSettingsApplyChannel → state/persistence, which
+// imports the @elizaos/shared barrel; that barrel transitively reaches
+// @elizaos/core (its node build) and Node builtins — including fs-extra via the
+// plugin-manager services. All of it is DEAD in the browser here: the fixture
+// drives the real background pipeline through the pure history reducer and real
+// DOM, never the node/persistence side. Stub @elizaos/core to a no-op Proxy and
+// every node builtin to a no-op module so the browser bundle resolves, mirroring
+// run-launcher-e2e / run-connectors-e2e. If any of it actually ran at module
+// load, the page-error guard below would catch it.
+const stubElizaCore = {
+  name: "stub-eliza-core",
+  setup(b) {
+    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
+      path: args.path,
+      namespace: "eliza-core-stub",
+    }));
+    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
+      contents: `
+        const noop = new Proxy(() => noop, { get: () => noop });
+        module.exports = new Proxy({}, { get: () => noop });
+      `,
+      loader: "js",
+    }));
+  },
+};
+const nodeBuiltins = new Set([
+  ...builtinModules,
+  ...builtinModules.map((m) => `node:${m}`),
+]);
+const stubNodeBuiltins = {
+  name: "stub-node-builtins",
+  setup(b) {
+    b.onResolve({ filter: /.*/ }, (args) => {
+      const bare = args.path.replace(/^node:/, "").split("/")[0];
+      if (
+        args.path.startsWith("node:") ||
+        nodeBuiltins.has(args.path) ||
+        builtinModules.includes(bare)
+      ) {
+        return { path: args.path, namespace: "node-stub" };
+      }
+      return null;
+    });
+    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
+      contents:
+        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
+      loader: "js",
+    }));
+  },
+};
+
 const result = await build({
   entryPoints: [join(here, "background-fixture.tsx")],
   bundle: true,
@@ -64,12 +116,15 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
+  plugins: [stubElizaCore, stubNodeBuiltins],
   write: false,
 });
 const js = result.outputFiles[0].text;
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>background e2e</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>html,body{margin:0;height:100%}</style>
+<!-- Shim node-ish globals the dead-in-browser @elizaos/shared graph touches at module init. -->
+<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
 </head><body><div id="root"></div><script>${js}</script></body></html>`;
 const htmlPath = join(outDir, "background.html");
 await writeFile(htmlPath, html);
@@ -83,12 +138,16 @@ async function snap(p, name) {
   console.log(`  📸 ${file}`);
 }
 
+// The "midnight ember" ShaderBackground paints the base hue as the first stop
+// of a `backgroundImage` linear-gradient (not a flat `backgroundColor`), so the
+// live field color is the first rgb(...) in that gradient string.
 const shaderColor = (p) =>
-  p.evaluate(
-    () =>
-      document.querySelector('[data-testid="app-background-shader"]')?.style
-        .backgroundColor ?? null,
-  );
+  p.evaluate(() => {
+    const el = document.querySelector('[data-testid="app-background-shader"]');
+    if (!el) return null;
+    const match = el.style.backgroundImage.match(/rgb\([^)]*\)/);
+    return match ? match[0] : null;
+  });
 const count = (p, sel) => p.locator(sel).count();
 const settle = (p) => p.waitForTimeout(350);
 

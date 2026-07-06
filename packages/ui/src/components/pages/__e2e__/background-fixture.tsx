@@ -30,13 +30,23 @@ import { __setAppValueForTests } from "../../../state/app-store";
 import {
   BACKGROUND_PRESETS,
   type BackgroundConfig,
-  DEFAULT_BACKGROUND_CONFIG,
 } from "../../../state/ui-preferences";
 import { emitViewEvent } from "../../../views/view-event-bus";
 import { fileToBackgroundDataUrl } from "../background-image";
 
 type Win = typeof window & {
   __emitBgApply?: (payload: Record<string, unknown>) => void;
+};
+
+// The e2e starts from an explicit warm-orange shader field rather than the
+// product default (`DEFAULT_BACKGROUND_CONFIG`, now the curated "Ember Night"
+// image at a served same-origin URL that 404s under file://): this fixture
+// exercises the set/undo/redo/shader/image mechanism, so it needs a
+// deterministic, network-free starting state. "orange" (#ef5a1f) is the first
+// curated preset, so the swatch/chat color assertions read a known base hue.
+const INITIAL_CONFIG: BackgroundConfig = {
+  mode: "shader",
+  color: BACKGROUND_PRESETS[0].color,
 };
 
 function seed(
@@ -60,12 +70,10 @@ function seed(
 }
 
 // Seed before first paint so store-backed selectors never read an empty store.
-seed(DEFAULT_BACKGROUND_CONFIG, [], [], () => {}, () => {}, () => {});
+seed(INITIAL_CONFIG, [], [], () => {}, () => {}, () => {});
 
 function Harness(): React.JSX.Element {
-  const [config, setConfig] = useState<BackgroundConfig>(
-    DEFAULT_BACKGROUND_CONFIG,
-  );
+  const [config, setConfig] = useState<BackgroundConfig>(INITIAL_CONFIG);
   const [history, setHistory] = useState<BackgroundConfig[]>([]);
   const [redoStack, setRedoStack] = useState<BackgroundConfig[]>([]);
 
