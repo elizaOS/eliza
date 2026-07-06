@@ -4,11 +4,12 @@
  * background:apply channel. See the backgrounds section of the package CLAUDE.md.
  */
 import type * as React from "react";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { ShaderConfig } from "../state/ui-preferences";
 import { DEFAULT_BACKGROUND_COLOR } from "../state/ui-preferences";
 import { useBackgroundConfig } from "../state/useBackgroundConfig";
 import { useVoiceSettingsApplyChannel } from "../voice/useVoiceSettingsApplyChannel";
+import { applyRootCanvasPaint } from "./html-canvas-paint";
 import { ImageBackground } from "./ImageBackground";
 import { ShaderBackground } from "./ShaderBackground";
 import { useAppearanceApplyChannel } from "./useAppearanceApplyChannel";
@@ -76,6 +77,22 @@ export function AppBackground({
   useBackgroundApplyChannel();
   useAppearanceApplyChannel();
   useVoiceSettingsApplyChannel();
+
+  // Mirror the active background onto the ROOT element so the viewport CANVAS —
+  // the surface behind every box, which ALWAYS covers the full drawable screen
+  // regardless of the collapsed fixed-body ICB on standalone iOS — paints the
+  // wallpaper (or its base color) instead of the near-black `--launch-bg`. This
+  // kills the recurring bottom "strip" (device r8) BY CONSTRUCTION: even where
+  // every box stops ~59px short of the true bottom, the canvas shows the
+  // wallpaper, not #160d07. Belt-and-suspenders with the JS-measured
+  // `--standalone-bottom-reclaim` (#15036), which independently re-seats the
+  // composer but relies on the measurement being correct; this mirror does not.
+  // App-lifetime: updated on every background change, never torn down (this
+  // layer is mounted once at the shell root for the whole session).
+  useEffect(() => {
+    applyRootCanvasPaint(backgroundConfig);
+  }, [backgroundConfig]);
+
   if (!visible) return null;
   // Defensive: the app store can return a non-object slice before the provider
   // seeds it (e.g. the test fallback proxy). Fall back to the default shader.

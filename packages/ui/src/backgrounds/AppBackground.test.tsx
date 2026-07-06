@@ -180,4 +180,33 @@ describe("AppBackground", () => {
       container.querySelector('[data-testid="app-background-image"]'),
     ).toBeNull();
   });
+
+  it("mirrors an image background onto the ROOT canvas so the strip shows the wallpaper, not #160d07", () => {
+    // The canvas-propagation cure (device r8): the ROOT element's background
+    // paints the always-full-screen viewport canvas, immune to the collapsed
+    // fixed-body ICB. Mounting AppBackground with an image config must mirror
+    // that image onto documentElement so the bottom strip paints the wallpaper.
+    document.documentElement.style.backgroundImage = "";
+    seed({ mode: "image", color: "#160d07", imageUrl: "/bg-sunset.jpg" });
+    render(<AppBackground />);
+    const bg = document.documentElement.style.backgroundImage;
+    expect(bg).toContain("bg-sunset.jpg");
+    expect(document.documentElement.style.backgroundSize).toBe("cover");
+    expect(document.documentElement.style.backgroundPosition).toBe(
+      "center bottom",
+    );
+    document.documentElement.style.backgroundImage = "";
+  });
+
+  it("mirrors a shader field's base color onto the ROOT canvas (no image) so the strip matches the field", () => {
+    document.documentElement.style.backgroundImage = "";
+    seed({ mode: "shader", color: "#3a1f0d" });
+    render(<AppBackground />);
+    // No static image for a shader field (it's a WebGL canvas in a box); the
+    // canvas gets the base color so the strip is the field's tone, not #160d07.
+    expect(document.documentElement.style.backgroundImage).toBe("");
+    expect(document.documentElement.style.backgroundColor).toBe(
+      "rgb(58, 31, 13)",
+    );
+  });
 });

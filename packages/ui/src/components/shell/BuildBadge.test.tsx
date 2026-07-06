@@ -112,6 +112,39 @@ describe("BuildBadge", () => {
     expect(screen.queryByTestId("build-badge")).not.toBeNull();
   });
 
+  it("(d) renders the live geometry probe line ON the badge (no tap needed)", async () => {
+    mockFetchOk(BUILD_INFO);
+    render(<BuildBadge />);
+    // The badge must render first (stamped build), which gates the geometry line.
+    await screen.findByTestId("build-badge");
+    const geom = await screen.findByTestId("build-badge-geom");
+    // Compact single line with every probed geometry value so the NEXT device
+    // screenshot reveals the exact viewport numbers — innerHeight (ih),
+    // visualViewport (vv), documentElement.clientHeight (ce), screen.height
+    // (sh), the measured reclaim var (rc), and the 100lvh/100dvh offsetHeight
+    // probes (lv/dv). jsdom returns 0 for these, but the KEYS must all be
+    // present and correctly formatted.
+    for (const key of ["ih", "vv", "ce", "sh", "rc", "lv", "dv"]) {
+      expect(geom.textContent).toMatch(new RegExp(`${key}[0-9?]`));
+    }
+  });
+
+  it("(d) surfaces the lvh/dvh offset probes + reclaim var in the diagnostics overlay", async () => {
+    mockFetchOk(BUILD_INFO);
+    const user = userEvent.setup();
+    render(<BuildBadge />);
+    const badge = await screen.findByTestId("build-badge");
+    await user.click(badge);
+    const diag = await screen.findByTestId("build-badge-diag");
+    // The offsetHeight-based 100lvh/100dvh probes and the live reclaim var are
+    // the numbers that test the measurement-failure hypothesis on device.
+    expect(diag.textContent).toContain("100lvh(offset)");
+    expect(diag.textContent).toContain("100dvh(offset)");
+    expect(diag.textContent).toContain("reclaim-var");
+    expect(diag.textContent).toContain("docEl.clientH");
+    expect(diag.textContent).toContain("screen.height");
+  });
+
   it("renders nothing when build info is unavailable", async () => {
     vi.stubGlobal(
       "fetch",
