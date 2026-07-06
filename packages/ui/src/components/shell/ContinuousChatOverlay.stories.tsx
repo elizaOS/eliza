@@ -6,6 +6,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import type * as React from "react";
 import type { SlashCommandCatalogItem } from "../../chat/slash-menu";
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import type { ShellMessage } from "./shell-state";
 import type { ConversationNav, ShellController } from "./useShellController";
@@ -122,10 +123,14 @@ const meta = {
   component: ContinuousChatOverlay,
   parameters: { layout: "fullscreen" },
   decorators: [
+    // The overlay reads the app store via useAppSelectorShallow; seed a mock
+    // app context so the stories render standalone (without the full runtime).
     (Story) => (
-      <Backdrop>
-        <Story />
-      </Backdrop>
+      <MockAppProvider>
+        <Backdrop>
+          <Story />
+        </Backdrop>
+      </MockAppProvider>
     ),
   ],
 } satisfies Meta<typeof ContinuousChatOverlay>;
@@ -135,6 +140,27 @@ type Story = StoryObj<typeof meta>;
 
 /** Resting ambient bar over the warm "good evening" backdrop. */
 export const Ambient: Story = { args: { controller: makeController() } };
+
+/**
+ * Login / first-run onboarding: the chat opens edge-to-edge full-bleed and the
+ * composer placeholder reads "Connect to cloud to enable chat".
+ */
+export const FirstRunOnboarding: Story = {
+  args: {
+    controller: makeController({
+      messages: [
+        {
+          id: "first-run:greeting",
+          role: "assistant",
+          content:
+            "Welcome. Connect to Eliza Cloud to enable chat, or set up a local model.",
+          createdAt: NOW - 1000,
+        },
+      ],
+    }),
+    firstRunOpen: true,
+  },
+};
 
 /** Five tailored prompt suggestions on the empty resting overlay (keyboard-strip style). */
 export const PromptSuggestions: Story = {
