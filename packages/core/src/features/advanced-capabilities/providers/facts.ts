@@ -13,9 +13,11 @@
  * Retrieval deliberately avoids vector search so relevance is computed from the
  * fact's own words and extracted keywords; a keyword-miss on durable facts
  * falls back to the highest-prior candidates so direct recall still works.
- * Sender-owned interaction preferences get a separate bounded lane because
- * reply-style constraints should shape every turn, even when the user's current
- * message has no lexical overlap with "brief replies" or "no emojis".
+ * Sender-owned `preference` facts get a separate bounded always-on lane
+ * because standing preferences should be visible on every turn even with zero
+ * lexical overlap ("brief replies" never BM25-matches "what's next?"); the
+ * lane gate is structural (extractor-assigned category + ownership + prior),
+ * and the responding model decides which surfaced preferences apply.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
@@ -187,27 +189,15 @@ function readCategory(memory: Memory): string {
 	return "uncategorized";
 }
 
-const INTERACTION_PREFERENCE_LIMIT = 3;
-const INTERACTION_PREFERENCE_PATTERN =
-	/\b(reply|replies|response|responses|respond|answer|answers|message|messages|chat|communicat(?:e|es|ing|ion)|tone|style|voice|format|verbosity|verbose|terse|brief|concise|short|long|emoji|emojis|formal|casual|direct|gentle|language|explain|explanations)\b/i;
+// Bounded always-on lane for the sender's stored `preference` facts. The gate
+// is purely structural (extractor-assigned category + sender ownership +
+// prior), never a keyword sniff of the fact text: the extractor LLM decided at
+// write time that the row is a preference, and the responding model decides at
+// read time which of the (≤3) surfaced preferences applies to this turn.
+const PREFERENCE_LANE_LIMIT = 3;
 
-function factSearchBlob(memory: Memory): string {
-	const metadata = readFactMetadata(memory);
-	const keywords = Array.isArray(metadata.keywords)
-		? metadata.keywords.join(" ")
-		: "";
-	const structured =
-		metadata.structuredFields && typeof metadata.structuredFields === "object"
-			? JSON.stringify(metadata.structuredFields)
-			: "";
-	return [memory.content.text ?? "", keywords, structured].join(" ");
-}
-
-function isInteractionPreference(memory: Memory): boolean {
-	return (
-		readCategory(memory) === "preference" &&
-		INTERACTION_PREFERENCE_PATTERN.test(factSearchBlob(memory))
-	);
+function isPreferenceFact(memory: Memory): boolean {
+	return readCategory(memory) === "preference";
 }
 
 function topByPrior(
@@ -388,18 +378,18 @@ const factsProvider: Provider = {
 					)
 					.slice(0, TOP_PER_KIND);
 			}
-			const interactionPreferences = topByPrior(
+			const preferenceLane = topByPrior(
 				durableCandidates.filter(
-					(memory) => isAboutSender(memory) && isInteractionPreference(memory),
+					(memory) => isAboutSender(memory) && isPreferenceFact(memory),
 				),
 				"durable",
 				nowMs,
-				INTERACTION_PREFERENCE_LIMIT,
+				PREFERENCE_LANE_LIMIT,
 			);
 			durableFacts = mergeAlwaysIncludedFacts(
-				interactionPreferences,
+				preferenceLane,
 				durableFacts,
-				TOP_PER_KIND + INTERACTION_PREFERENCE_LIMIT,
+				TOP_PER_KIND + PREFERENCE_LANE_LIMIT,
 			);
 			const currentFacts = rankByKeywordScore(
 				currentCandidates,
@@ -434,20 +424,24 @@ const factsProvider: Provider = {
 			// header told the model that facts about other people described
 			// whoever happened to send the current message (worst on relay/webhook
 			// turns, where every room fact got attributed to the bridge bot).
-			const senderInteractionPreferences = durableFacts.filter(
-				(memory) => isAboutSender(memory) && isInteractionPreference(memory),
+			const preferenceLaneIds = new Set(
+				preferenceLane.map((memory) => memory.id),
+			);
+			const senderPreferences = durableFacts.filter((memory) =>
+				preferenceLaneIds.has(memory.id),
 			);
 			const senderDurable = durableFacts.filter(
-				(memory) => isAboutSender(memory) && !isInteractionPreference(memory),
+				(memory) =>
+					isAboutSender(memory) && !preferenceLaneIds.has(memory.id),
 			);
 			const roomDurable = durableFacts.filter((m) => !isAboutSender(m));
 			const senderCurrent = currentFacts.filter(isAboutSender);
 			const roomCurrent = currentFacts.filter((m) => !isAboutSender(m));
 
 			const sections: string[] = [];
-			if (senderInteractionPreferences.length > 0) {
+			if (senderPreferences.length > 0) {
 				sections.push(
-					`Interaction preferences for ${senderName}:\nApply these when responding to ${senderName}:\n${formatLines(senderInteractionPreferences, "durable")}`,
+					`Standing preferences ${senderName} has expressed (apply any that are relevant to this reply):\n${formatLines(senderPreferences, "durable")}`,
 				);
 			}
 			if (senderDurable.length > 0) {

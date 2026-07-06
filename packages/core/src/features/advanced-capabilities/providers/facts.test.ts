@@ -111,8 +111,19 @@ describe("factsProvider keyword retrieval", () => {
 		expect(runtime.getMemories).toHaveBeenCalledWith(
 			expect.objectContaining({ tableName: "facts", count: 120 }),
 		);
-		expect(result.text).toContain("the user lives in Berlin");
-		expect(result.text).not.toContain("Tokyo hotels");
+		const sections = result.text.split("\n\n");
+		const knowledgeSection = sections.find((section) =>
+			section.startsWith("Things Eliza knows about"),
+		);
+		expect(knowledgeSection).toContain("the user lives in Berlin");
+		// The stored preference is NOT BM25-relevant to this turn, so it stays
+		// out of the ranked knowledge section — it surfaces only through the
+		// bounded standing-preferences lane, where the model judges relevance.
+		expect(knowledgeSection).not.toContain("Tokyo hotels");
+		const preferenceSection = sections.find((section) =>
+			section.startsWith("Standing preferences"),
+		);
+		expect(preferenceSection).toContain("Tokyo hotels");
 	});
 
 	it("uses stored keywords even when the exact query word is not in fact text", async () => {
@@ -136,7 +147,7 @@ describe("factsProvider keyword retrieval", () => {
 		expect(result.text).toContain("the user prefers aisle seats");
 	});
 
-	it("always includes sender-owned interaction preferences without including unrelated domain preferences", async () => {
+	it("always surfaces the sender's top preference facts in a bounded lane, even with zero lexical overlap", async () => {
 		const launchFacts = Array.from({ length: 6 }, (_, index) =>
 			memory(`fact-launch-${index}`, `launch planning detail ${index}`, {
 				kind: "durable",
@@ -148,6 +159,8 @@ describe("factsProvider keyword retrieval", () => {
 		const runtime = makeRuntime({
 			facts: [
 				...launchFacts,
+				// The MVP bug (#14693): a reply-style preference that lexically
+				// matches almost no turn must still reach the prompt every turn.
 				memory("fact-style", "the user hates long replies", {
 					kind: "durable",
 					category: "preference",
@@ -160,6 +173,32 @@ describe("factsProvider keyword retrieval", () => {
 					confidence: 1,
 					keywords: ["tokyo", "hotels"],
 				}),
+				memory("fact-timing", "the user prefers morning check-ins", {
+					kind: "durable",
+					category: "preference",
+					confidence: 0.7,
+					keywords: ["morning", "check-ins"],
+				}),
+				// Lowest prior — must be evicted by the lane bound of 3.
+				memory("fact-overflow", "the user prefers metric units", {
+					kind: "durable",
+					category: "preference",
+					confidence: 0.6,
+					keywords: ["metric", "units"],
+				}),
+				// Another participant's preference must never enter the sender lane.
+				memory(
+					"fact-other",
+					"Bob prefers voice notes",
+					{
+						kind: "durable",
+						category: "preference",
+						confidence: 1,
+						keywords: ["voice", "notes"],
+					},
+					Date.now(),
+					otherEntityId,
+				),
 			],
 		});
 
@@ -172,13 +211,34 @@ describe("factsProvider keyword retrieval", () => {
 		});
 
 		const durableFacts = result.data.durableFacts as Memory[];
-		expect(durableFacts.map((fact) => fact.id)).toContain("fact-style");
-		expect(durableFacts.map((fact) => fact.id)).not.toContain("fact-domain");
-		expect(durableFacts).toHaveLength(7);
-		expect(result.text).toContain("Interaction preferences for Alice:");
-		expect(result.text).toContain("Apply these when responding to Alice:");
-		expect(result.text).toContain("the user hates long replies");
-		expect(result.text).not.toContain("Tokyo hotels");
+		const durableIds = durableFacts.map((fact) => fact.id);
+		// Lane = top-3 sender preferences by prior, merged ahead of the ranked
+		// pool: 6 ranked launch facts + 3 lane rows.
+		expect(durableIds).toContain("fact-style");
+		expect(durableIds).toContain("fact-domain");
+		expect(durableIds).toContain("fact-timing");
+		expect(durableIds).not.toContain("fact-overflow");
+		expect(durableIds).not.toContain("fact-other");
+		expect(durableFacts).toHaveLength(9);
+
+		const sections = result.text.split("\n\n");
+		const preferenceSection = sections.find((section) =>
+			section.startsWith(
+				"Standing preferences Alice has expressed (apply any that are relevant to this reply):",
+			),
+		);
+		expect(preferenceSection).toBeDefined();
+		expect(preferenceSection).toContain("the user hates long replies");
+		expect(preferenceSection).toContain("the user likes Tokyo hotels");
+		expect(preferenceSection).toContain("the user prefers morning check-ins");
+		expect(preferenceSection).not.toContain("Bob prefers voice notes");
+		// Lane rows render once — in the preferences section, not duplicated
+		// under the general knowledge header.
+		const knowledgeSection = sections.find((section) =>
+			section.startsWith("Things Eliza knows about Alice:"),
+		);
+		expect(knowledgeSection).toContain("launch planning detail");
+		expect(knowledgeSection).not.toContain("hates long replies");
 	});
 
 	it("surfaces a durable fact on direct recall even when keywords do not BM25-match", async () => {
