@@ -611,20 +611,21 @@ function roomIdFromConnectorTarget(
 
 export function pendingPromptRoomIdForTask(
   task: ScheduledTask,
-  context?: { agentId?: string; channelKey?: string },
+  context?: { agentId?: string; channelKey?: string; target?: string },
 ): string | null {
   const metadataRoomId = task.metadata?.pendingPromptRoomId;
   if (typeof metadataRoomId === "string" && metadataRoomId.length > 0) {
     return metadataRoomId;
   }
-  const target = task.output?.target;
+  const target = context?.target ?? task.output?.target;
   if (typeof target !== "string") return null;
   const channelKey = context?.channelKey ?? targetPrefix(target) ?? "";
   if (channelKey.length === 0) return null;
+  const hasResolvedDispatchTarget = typeof context?.target === "string";
   return roomIdFromConnectorTarget(
     channelKey,
     target,
     context?.agentId,
-    typeof context?.channelKey === "string",
+    typeof context?.channelKey === "string" && !hasResolvedDispatchTarget,
   );
 }

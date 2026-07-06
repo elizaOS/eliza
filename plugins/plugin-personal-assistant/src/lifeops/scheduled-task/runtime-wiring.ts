@@ -654,6 +654,10 @@ export function createProductionScheduledTaskDispatcher(opts: {
         return {
           ok: true,
           messageId: `in_app:${record.taskId}:${record.firedAtIso}`,
+          channelKey: record.channelKey,
+          target:
+            normalizeChannelTarget(record.channelKey, record.output?.target) ??
+            "in_app",
         };
       }
 
@@ -698,7 +702,15 @@ export function createProductionScheduledTaskDispatcher(opts: {
         if (denied) return applyDispatchPolicy(denied);
       }
 
-      return applyDispatchPolicy(await channel.send(payload));
+      const result = await channel.send(payload);
+      if (result.ok) {
+        return applyDispatchPolicy({
+          ...result,
+          channelKey: record.channelKey,
+          target,
+        });
+      }
+      return applyDispatchPolicy(result);
     },
   };
 }

@@ -209,6 +209,35 @@ describe("ScheduledTask due evaluation", () => {
       }),
     ).toBeNull();
   });
+
+  it("derives pending-prompt room ids from the actual dispatch target when output is absent", () => {
+    const fired = task({
+      completionCheck: {
+        kind: "user_replied_within",
+        followupAfterMinutes: 30,
+      },
+      state: {
+        status: "fired",
+        followupCount: 0,
+        firedAt: "2026-05-10T09:00:00.000Z",
+      },
+    });
+
+    expect(
+      pendingPromptRoomIdForTask(fired, {
+        agentId: "agent-1",
+        channelKey: "telegram",
+        target: "account-1:chat-123",
+      }),
+    ).toBe(stringToUuid("account-1:chat-123:agent-1"));
+    expect(
+      pendingPromptRoomIdForTask(fired, {
+        agentId: "agent-1",
+        channelKey: "in_app",
+        target: "in_app",
+      }),
+    ).toBe("in_app");
+  });
 });
 
 describe("owner_local cron tz resolution", () => {

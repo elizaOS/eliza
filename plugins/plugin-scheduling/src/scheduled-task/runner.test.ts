@@ -488,6 +488,101 @@ describe("ScheduledTaskRunner — fire path + gates", () => {
     );
   });
 
+  it("persists connector pending-prompt room id from the resolved dispatch target when output is absent", async () => {
+    const dispatch = vi.fn(
+      async (): Promise<DispatchResult> => ({
+        ok: true,
+        channelKey: "telegram",
+        target: "account-1:chat-123",
+        messageId: "telegram-msg-1",
+      }),
+    );
+    const gates = createTaskGateRegistry();
+    registerBuiltInGates(gates);
+    const completionChecks = createCompletionCheckRegistry();
+    registerBuiltInCompletionChecks(completionChecks);
+    const ladders = createEscalationLadderRegistry();
+    registerDefaultEscalationLadders(ladders);
+    const runner = createScheduledTaskRunner({
+      agentId: "test-agent",
+      store: createInMemoryScheduledTaskStore(),
+      logStore: createInMemoryScheduledTaskLogStore(),
+      gates,
+      completionChecks,
+      ladders,
+      anchors: createAnchorRegistry(),
+      consolidation: createConsolidationRegistry(),
+      ownerFacts: async () => ({}),
+      globalPause: { current: async () => ({ active: false }) },
+      activity: { hasSignalSince: () => false },
+      subjectStore: { wasUpdatedSince: () => false },
+      dispatcher: { dispatch },
+      now: () => new Date("2026-05-14T08:00:00.000Z"),
+    });
+    const task = await runner.schedule(
+      baseInput({
+        completionCheck: {
+          kind: "user_replied_within",
+          followupAfterMinutes: 30,
+        },
+        escalation: {
+          steps: [
+            { delayMinutes: 0, channelKey: "telegram", intensity: "soft" },
+          ],
+        },
+      }),
+    );
+
+    const fired = await runner.fire(task.taskId);
+
+    expect(fired.metadata?.pendingPromptRoomId).toBe(
+      stringToUuid("account-1:chat-123:test-agent"),
+    );
+  });
+
+  it("persists the in-app pending-prompt room for reply-awaited fires without output", async () => {
+    const dispatch = vi.fn(
+      async (): Promise<DispatchResult> => ({
+        ok: true,
+        channelKey: "in_app",
+        target: "in_app",
+        messageId: "in-app-msg-1",
+      }),
+    );
+    const gates = createTaskGateRegistry();
+    registerBuiltInGates(gates);
+    const completionChecks = createCompletionCheckRegistry();
+    registerBuiltInCompletionChecks(completionChecks);
+    const runner = createScheduledTaskRunner({
+      agentId: "test-agent",
+      store: createInMemoryScheduledTaskStore(),
+      logStore: createInMemoryScheduledTaskLogStore(),
+      gates,
+      completionChecks,
+      ladders: createEscalationLadderRegistry(),
+      anchors: createAnchorRegistry(),
+      consolidation: createConsolidationRegistry(),
+      ownerFacts: async () => ({}),
+      globalPause: { current: async () => ({ active: false }) },
+      activity: { hasSignalSince: () => false },
+      subjectStore: { wasUpdatedSince: () => false },
+      dispatcher: { dispatch },
+      now: () => new Date("2026-05-14T08:00:00.000Z"),
+    });
+    const task = await runner.schedule(
+      baseInput({
+        completionCheck: {
+          kind: "user_replied_within",
+          followupAfterMinutes: 30,
+        },
+      }),
+    );
+
+    const fired = await runner.fire(task.taskId);
+
+    expect(fired.metadata?.pendingPromptRoomId).toBe("in_app");
+  });
+
   it("respectsGlobalPause: paused tasks are skipped with reason global_pause (cross-agent invariant §7.8)", async () => {
     const h = makeHarness();
     h.setPause({ active: true, reason: "vacation" });

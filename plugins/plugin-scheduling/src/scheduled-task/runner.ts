@@ -1463,7 +1463,8 @@ export function createScheduledTaskRunner(
       const pendingPromptRoomId = claimed.completionCheck
         ? pendingPromptRoomIdForTask(claimed, {
             agentId: deps.agentId,
-            channelKey: dispatchChannelKey,
+            channelKey: dispatchResult.channelKey ?? dispatchChannelKey,
+            target: dispatchResult.target,
           })
         : null;
       if (pendingPromptRoomId) {
