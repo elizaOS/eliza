@@ -208,21 +208,34 @@ export function parseRelationships(
 
 // --- Channel validation (Q4) ---------------------------------------------
 
+/**
+ * Tri-state connection status for a notification channel. "unknown" is an
+ * honest answer, not a soft failure: it means no inspector could actually
+ * probe the channel (no ConnectorRegistry, connector not registered, or the
+ * status probe itself failed). Fabricating "disconnected" here was bug
+ * #14730 — the validator must never claim a state it did not observe.
+ */
+export type ChannelConnectionState = "connected" | "disconnected" | "unknown";
+
 export interface ChannelValidationResult {
   channel: string;
   registered: boolean;
+  connection: ChannelConnectionState;
+  /** Derived: `connection === "connected"`. Kept for existing consumers. */
   connected: boolean;
   fallbackToInApp: boolean;
   warning?: string;
 }
 
 /**
- * Inspector contract — pluggable so the `ChannelRegistry` can replace the
- * default implementation without touching this module.
+ * Inspector contract — pluggable so plugin init can wire the real
+ * connector-backed implementation without this module depending on the
+ * connector layer. `connectionState` is async because real inspectors probe
+ * `ConnectorContribution.status()`.
  */
 export interface ChannelInspector {
   isRegistered(channel: string): boolean;
-  isConnected(channel: string): boolean;
+  connectionState(channel: string): Promise<ChannelConnectionState>;
 }
 
 class FallbackChannelInspector implements ChannelInspector {
@@ -232,13 +245,13 @@ class FallbackChannelInspector implements ChannelInspector {
     );
   }
   /**
-   * Default: treat `in_app` as always connected and other channels as
-   * "registered but unconnected" so the validator returns the right fallback
-   * warning shape. The real `ChannelRegistry` reads connector status from
-   * `ConnectorRegistry`.
+   * With nothing wired (bare unit tests, or a runtime whose plugin init never
+   * ran) the only channel whose delivery this process can vouch for is
+   * `in_app`. Everything else is honestly "unknown" — never a fabricated
+   * "disconnected".
    */
-  isConnected(channel: string): boolean {
-    return channel === "in_app";
+  async connectionState(channel: string): Promise<ChannelConnectionState> {
+    return channel === "in_app" ? "connected" : "unknown";
   }
 }
 
@@ -248,16 +261,17 @@ export function setChannelInspector(inspector: ChannelInspector | null): void {
   activeInspector = inspector ?? new FallbackChannelInspector();
 }
 
-export function validateChannel(
+export async function validateChannel(
   rawChannel: unknown,
   _runtime: IAgentRuntime,
-): ChannelValidationResult {
+): Promise<ChannelValidationResult> {
   const normalized =
     typeof rawChannel === "string" ? rawChannel.trim().toLowerCase() : "";
   if (!normalized) {
     return {
       channel: "in_app",
       registered: true,
+      connection: "connected",
       connected: true,
       fallbackToInApp: true,
       warning: "No channel was selected — defaulting to in-app notifications.",
@@ -268,24 +282,37 @@ export function validateChannel(
     return {
       channel: "in_app",
       registered: false,
+      connection: "connected",
       connected: true,
       fallbackToInApp: true,
       warning: `Channel "${normalized}" is not registered — falling back to in-app notifications.`,
     };
   }
-  const connected = activeInspector.isConnected(normalized);
-  if (!connected) {
+  const connection = await activeInspector.connectionState(normalized);
+  if (connection === "disconnected") {
     return {
       channel: normalized,
       registered: true,
+      connection,
       connected: false,
       fallbackToInApp: true,
       warning: `Channel "${normalized}" is registered but currently disconnected — your reminders will fall back to in-app until you connect it.`,
     };
   }
+  if (connection === "unknown") {
+    return {
+      channel: normalized,
+      registered: true,
+      connection,
+      connected: false,
+      fallbackToInApp: true,
+      warning: `Channel "${normalized}" is registered but its connection couldn't be verified yet — reminders will fall back to in-app until it's confirmed.`,
+    };
+  }
   return {
     channel: normalized,
     registered: true,
+    connection,
     connected: true,
     fallbackToInApp: false,
   };

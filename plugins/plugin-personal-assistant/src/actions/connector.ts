@@ -129,6 +129,26 @@ const MESSAGE_CONNECTOR_SOURCE_BY_LIFEOPS_CONNECTOR: Record<string, string> = {
   whatsapp: "whatsapp",
 };
 
+/**
+ * Appends the inline-widget marker the chat UI parses into a connector-setup
+ * card (`[CONFIG:<pluginId>]`, see packages/ui message-parser-helpers). Only
+ * replies whose intent is "configure/set up this connector plugin" carry the
+ * marker; connected-status prose stays marker-free so healthy connectors
+ * never render a setup card.
+ */
+function withConfigCard(text: string, pluginId: string): string {
+  return `${text}\n\n[CONFIG:${pluginId}]`;
+}
+
+/**
+ * Short plugin id for the setup card. Message connectors resolve through the
+ * existing source mapping; registry-backed connectors use their kind directly
+ * (the UI normalizes `@elizaos/plugin-` prefixes, but short ids are canonical).
+ */
+function connectorConfigPluginId(connector: string): string {
+  return MESSAGE_CONNECTOR_SOURCE_BY_LIFEOPS_CONNECTOR[connector] ?? connector;
+}
+
 function normalizeConnectorKind(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase().replace(/[- ]/g, "_");
@@ -195,10 +215,12 @@ function unsupportedOperation(
   connector: string,
   subaction: ConnectorSubaction,
   detail?: string,
+  configPluginId?: string,
 ): ActionResult {
-  const text =
+  const base =
     `[${ACTION_NAME}] ${connector}/${subaction} is not supported by the current LifeOps connector contract.` +
     (detail ? ` ${detail}` : "");
+  const text = configPluginId ? withConfigCard(base, configPluginId) : base;
   return {
     success: false,
     text,

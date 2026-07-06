@@ -52,6 +52,10 @@ import { CodeBlock } from "../ui/code-block";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { Input } from "../ui/input";
 import { AccountConnectBlock } from "./AccountConnectBlock";
+import {
+  connectorWidgetModes,
+  defaultConnectorWidgetModeId,
+} from "./inline-connector-modes";
 import { MessageAttachments } from "./MessageAttachments";
 import {
   buildInlinePluginConfigModel,
@@ -196,13 +200,18 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
   const [saved, setSaved] = useState(false);
   const [enabling, setEnabling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modeChoice, setModeChoice] = useState<string | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
   const mountedRef = useRef(true);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { setActionNotice, loadPlugins, t } = useAppSelectorShallow((s) => ({
-    setActionNotice: s.setActionNotice,
-    loadPlugins: s.loadPlugins,
-    t: s.t,
-  }));
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { setActionNotice, loadPlugins, t, elizaCloudConnected } =
+    useAppSelectorShallow((s) => ({
+      setActionNotice: s.setActionNotice,
+      loadPlugins: s.loadPlugins,
+      t: s.t,
+      elizaCloudConnected: s.elizaCloudConnected,
+    }));
 
   // Track mount state — reset to true on each mount (needed for StrictMode
   // which unmounts/remounts and would leave the ref false otherwise).
@@ -211,6 +220,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
     return () => {
       mountedRef.current = false;
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
   }, []);
 
@@ -244,6 +254,110 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       () => buildInlinePluginConfigModel(plugin, values),
       [plugin, values],
     );
+
+  // "Connected" is the server's own setup verdict: enabled AND configured.
+  // Hoisted above the early returns so the OAuth polling effect below can
+  // observe it; drives the shell's collapse-on-connect.
+  const connected = Boolean(plugin?.enabled && plugin?.configured);
+
+  // Auth-mode switch (OAuth / token form / local bridge), projected from the
+  // same connector-mode registry the Settings connectors page renders.
+  const modes = useMemo(
+    () =>
+      connectorWidgetModes(pluginId, {
+        elizaCloudConnected: Boolean(elizaCloudConnected),
+      }),
+    [pluginId, elizaCloudConnected],
+  );
+  const selectedModeId =
+    modeChoice ?? defaultConnectorWidgetModeId(pluginId, modes);
+  const selectedMode = modes.find((m) => m.id === selectedModeId) ?? null;
+
+  // Bounded refetch loop after a sign-in hand-off: the authorization finishes
+  // in another window/app, so the card polls the plugin status until the
+  // server reports connected (or gives up after ~1 minute). Collapse-on-connect
+  // then follows from the status flip — no fabricated success.
+  const beginConnectPolling = useCallback(() => {
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    let remaining = 20;
+    const tick = async () => {
+      remaining -= 1;
+      await fetchPlugin();
+      if (!mountedRef.current) return;
+      if (remaining <= 0) {
+        setSigningIn(false);
+        return;
+      }
+      pollTimerRef.current = setTimeout(() => void tick(), 3000);
+    };
+    pollTimerRef.current = setTimeout(() => void tick(), 3000);
+  }, [fetchPlugin]);
+
+  useEffect(() => {
+    if (!connected) return;
+    setSigningIn(false);
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+  }, [connected]);
+
+  // OAuth sign-in: start the connector's OAuth flow through the agent API and
+  // open the returned authorization URL. https-only (isHttpsAuthorizationUrl)
+  // because the URL is server-supplied data flowing into window.open.
+  const handleOAuthSignIn = useCallback(async () => {
+    setSigningIn(true);
+    setError(null);
+    try {
+      const result = await client.startConnectorAccountOAuth(pluginId);
+      const authUrl = result.authUrl;
+      if (!isHttpsAuthorizationUrl(authUrl)) {
+        throw new Error(
+          result.error ??
+            t("messagecontent.OAuthNoAuthUrl", {
+              defaultValue:
+                "The connector did not return an authorization link.",
+            }),
+        );
+      }
+      window.open(authUrl, "_blank", "noopener,noreferrer");
+      beginConnectPolling();
+    } catch (e: unknown) {
+      // error-policy:J4 sign-in failure renders the card's error state
+      if (mountedRef.current) {
+        setSigningIn(false);
+        setError(
+          e instanceof Error
+            ? e.message
+            : t("messagecontent.OAuthStartFailed", {
+                defaultValue: "Couldn't start the sign-in flow.",
+              }),
+        );
+      }
+    }
+  }, [pluginId, beginConnectPolling, t]);
+
+  // Discord desktop pairing is the one local mode with a one-click authorize
+  // (local IPC, same call the Settings panel makes); other local modes render
+  // their env form + guidance instead.
+  const localSignIn = selectedMode?.setupPluginId === "discordlocal";
+  const handleLocalSignIn = useCallback(async () => {
+    setSigningIn(true);
+    setError(null);
+    try {
+      await client.authorizeDiscordLocal();
+      beginConnectPolling();
+    } catch (e: unknown) {
+      // error-policy:J4 sign-in failure renders the card's error state
+      if (mountedRef.current) {
+        setSigningIn(false);
+        setError(
+          e instanceof Error
+            ? e.message
+            : t("messagecontent.LocalSignInFailed", {
+                defaultValue: "Couldn't authorize the desktop app.",
+              }),
+        );
+      }
+    }
+  }, [beginConnectPolling, t]);
 
   const handleChange = useCallback((key: string, value: unknown) => {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -374,10 +488,8 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
   }
 
   const isEnabled = plugin.enabled;
-  // "Connected" is the server's own setup verdict: enabled AND configured.
-  // It drives the shell's collapse-on-connect \u2014 the card mounts collapsed for
-  // an already-connected plugin and auto-collapses when the status flips.
-  const connected = isEnabled && plugin.configured;
+  const showConfigForm =
+    schema && hasConfigurableParams && selectedMode?.kind !== "oauth";
 
   return (
     <ChatWidgetShell
