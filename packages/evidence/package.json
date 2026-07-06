@@ -19,7 +19,9 @@
     "format:check": "bunx @biomejs/biome format src"
   },
   "dependencies": {
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "pixelmatch": "^7.2.0",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/node": "^24.0.0"

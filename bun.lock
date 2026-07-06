@@ -899,6 +899,8 @@
       "name": "@elizaos/evidence",
       "version": "0.0.0",
       "dependencies": {
+        "pixelmatch": "^7.2.0",
+        "sharp": "^0.34.5",
         "zod": "^4.4.3",
       },
       "devDependencies": {
