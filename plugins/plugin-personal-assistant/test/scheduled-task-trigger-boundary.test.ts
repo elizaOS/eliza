@@ -238,6 +238,21 @@ describe("SCHEDULED_TASKS create — trigger boundary", () => {
     expect(result.data?.repair).toContain("action=create");
   });
 
+  it("a missing trigger on a one-off deadline reminder redirects to OWNER_REMINDERS instead of another raw retry", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const result = (await create(runtime, {
+      kind: "reminder",
+      promptInstructions: "Renew the car registration by the 20th.",
+      trigger: {},
+    })) as { success: boolean; text?: string; data?: Record<string, unknown> };
+    expect(result.success).toBe(false);
+    expect(result.data?.error).toBe("INVALID_TRIGGER");
+    expect(result.text).toContain("OWNER_REMINDERS action=create");
+    expect(result.text).toContain("by the 20th");
+    expect(result.text).toContain("do not retry here");
+  });
+
   it("an invalid trigger also carries the habit-definition redirect", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;

@@ -72,6 +72,14 @@ describe("LifeOps prompt benchmark catalog", () => {
         true,
       );
     }
+    expect(
+      cases.some(
+        (testCase) =>
+          testCase.variantId === "direct" &&
+          testCase.expectedAction === "OWNER_REMINDERS" &&
+          testCase.prompt.includes("registration by the 20th"),
+      ),
+    ).toBe(true);
   });
 });
 

@@ -254,9 +254,9 @@ export const ownerRemindersAction: Action = {
       "RECURRING_REMINDER",
     ],
     description:
-      "Owner reminders: create/update/delete/complete/skip/snooze/review one-off/recurring.",
+      'Owner reminders: create/update/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders.',
     descriptionCompressed:
-      "owner reminders: action=create|update|delete|complete|skip|snooze|review",
+      "owner reminders/deadlines: action=create|update|delete|complete|skip|snooze|review",
     defaultKind: "definition",
   }),
   name: "OWNER_REMINDERS",
@@ -272,9 +272,9 @@ export const ownerRemindersAction: Action = {
     "RECURRING_REMINDER",
   ],
   description:
-    "Owner reminders: create/update/delete/complete/skip/snooze/review one-off/recurring.",
+    'Owner reminders: create/update/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders.',
   descriptionCompressed:
-    "owner reminders: action=create|update|delete|complete|skip|snooze|review",
+    "owner reminders/deadlines: action=create|update|delete|complete|skip|snooze|review",
 };
 
 export const ownerAlarmsAction: Action = {

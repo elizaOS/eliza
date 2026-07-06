@@ -289,7 +289,7 @@ const TRIGGER_KINDS =
  * correct surface explicitly.
  */
 const HABIT_REDIRECT_HINT =
-  "If the owner asked to start a habit/routine or a recurring personal reminder in chat, do not retry here — call OWNER_ROUTINES (or OWNER_REMINDERS) with action=create instead; that flow builds the habit definition and reminder plan without a raw trigger.";
+  'If the owner asked to create a new personal reminder in chat — one-off, dated/deadline ("by the 20th"), recurring, habit, or routine — do not retry here. Call OWNER_REMINDERS action=create for reminders or OWNER_ROUTINES action=create for habits/routines; those flows build the definition and reminder plan without a raw trigger.';
 
 const PLAIN_TIMING_MISSING_TEXT =
   "I could not save that yet because I need a clear time or recurrence. Please tell me when it should happen.";
@@ -1170,11 +1170,11 @@ export const scheduledTaskAction: Action & {
     "surface:internal",
   ],
   description:
-    "Low-level admin surface over LifeOps ScheduledTask records. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history. create schedules a raw task and requires an explicit structural trigger — it is NOT the flow for saving a habit/routine/recurring personal reminder the owner asks for in chat; OWNER_ROUTINES / OWNER_REMINDERS action=create own that (definition + reminder plan).",
+    'Low-level admin surface over LifeOps ScheduledTask records. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history. create schedules a raw task and requires an explicit structural trigger — it is NOT the flow for saving a new owner reminder the user asks for in chat, including one-off date/deadline reminders like "by the 20th"; OWNER_REMINDERS action=create owns that definition + reminder plan. OWNER_ROUTINES owns habits/routines.',
   descriptionCompressed:
-    "low-level scheduled-item admin list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history; NOT new-habit/routine creation (-> OWNER_ROUTINES/OWNER_REMINDERS create)",
+    "low-level scheduled-item admin list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history; NOT new owner reminders/deadlines/habits (-> OWNER_REMINDERS/OWNER_ROUTINES create)",
   routingHint:
-    'manage EXISTING scheduled items ("snooze that reminder", "show me only overdue tasks" -> action=list dueWindow=overdue, "what\'s due today" -> action=list dueWindow=today, "complete check-in", "scheduled-item history") -> SCHEDULED_TASKS; NEW habit/routine/recurring personal reminder ("brush my teeth at 8 am and 9 pm every day", "remind me daily at 9pm") -> OWNER_ROUTINES/OWNER_REMINDERS action=create; coding/project/agent task threads -> TASKS/plugin-task-coordinator; per-occurrence complete/skip/snooze next occurrence -> OWNER_REMINDERS/OWNER_TODOS/OWNER_ROUTINES',
+    'manage EXISTING scheduled items ("snooze that reminder", "show me only overdue tasks" -> action=list dueWindow=overdue, "what\'s due today" -> action=list dueWindow=today, "complete check-in", "scheduled-item history") -> SCHEDULED_TASKS; NEW owner reminders/deadlines ("remind me to renew registration by the 20th", "call mom tomorrow") -> OWNER_REMINDERS action=create; NEW habit/routine/recurring personal reminder ("brush my teeth at 8 am and 9 pm every day", "remind me daily at 9pm") -> OWNER_ROUTINES/OWNER_REMINDERS action=create; coding/project/agent task threads -> TASKS/plugin-task-coordinator; per-occurrence complete/skip/snooze next occurrence -> OWNER_REMINDERS/OWNER_TODOS/OWNER_ROUTINES',
   contexts: [
     "tasks",
     "automation",
