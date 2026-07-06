@@ -41,12 +41,36 @@ export type WalletAgeSummary = {
   classification: "unknown" | "new" | "established" | "veteran";
 };
 
+export type WalletLabelCategory =
+  | "unknown"
+  | "personal_wallet"
+  | "centralized_exchange"
+  | "decentralized_exchange"
+  | "bridge"
+  | "defi_protocol"
+  | "nft_marketplace"
+  | "staking"
+  | "token_program"
+  | "system_program"
+  | "suspicious"
+  | "scam"
+  | "rug_pull";
+
+export type WalletLabel = {
+  address: string;
+  label: string;
+  category: WalletLabelCategory;
+  confidence: "low" | "medium" | "high";
+  source: "static_registry" | "heuristic" | "unknown";
+};
+
 export type WalletFundingSummary = {
   firstFundingTransaction?: string | null;
   firstFundingAt?: number | null;
   fundingWallet?: string | null;
   fundingAmountSol?: number | null;
   fundingSourceType: "unknown" | "wallet" | "exchange" | "bridge" | "program";
+  fundingSourceLabel?: WalletLabel | null;
   confidence: "low" | "medium" | "high";
   notes: string[];
 };
