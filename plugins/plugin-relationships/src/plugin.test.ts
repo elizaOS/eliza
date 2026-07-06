@@ -41,4 +41,17 @@ describe("@elizaos/plugin-relationships contract", () => {
     expect(entityGraphProvider.name).toBe("ENTITY_GRAPH");
     expect(entityGraphProvider.position).toBe(-4);
   });
+
+  it("developer-gates the relationships view (empty in the MVP, #14479/#14356)", () => {
+    // The graph renders empty for a fresh user, so the view is developer-gated in
+    // BOTH the launcher and the manager grid — hidden until Developer Mode is on,
+    // kept and reachable, not deleted. Declaring `system` here would leak it into
+    // the fresh-user manager grid while the launcher hid it (the divergence #14356
+    // closed).
+    const view = relationshipsPlugin.views?.find(
+      (v) => v.id === "relationships",
+    );
+    expect(view?.viewKind).toBe("developer");
+    expect(view?.visibleInManager).toBe(true);
+  });
 });

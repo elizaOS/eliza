@@ -109,7 +109,6 @@ const BUILTIN_VIEWS_VISUAL_SPEC_REL = path.relative(
  * Human-readable table + evidence-lane notes: docs/LAUNCHER_VIEW_COVERAGE.md.
  */
 const LAUNCHER_VIEW_COVERAGE: Record<string, LauncherViewCoverage> = {
-  tutorial: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
   chat: {
     smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL,
     e2e: "packages/ui/src/components/shell/__e2e__/run-chat-sheet-e2e.mjs",
@@ -119,7 +118,6 @@ const LAUNCHER_VIEW_COVERAGE: Record<string, LauncherViewCoverage> = {
   automations: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
   "plugins-page": { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
   trajectories: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
-  transcripts: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
   memories: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
   database: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
   logs: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
@@ -239,6 +237,10 @@ describe("launcher view coverage gate", () => {
     // Guards against a bad predicate silently emptying the set (which would make
     // every other assertion trivially pass). This is the current default-launcher
     // roster; update it (and the doc) when BUILTIN_VIEWS changes intentionally.
+    // `tutorial` was removed with the tutorial/help views (#14476); `transcripts`
+    // folded into the Knowledge hub and is now `visibleInManager: false` (a
+    // deep-link live-meeting surface, #13594/#11856), so neither is a default
+    // launcher view anymore.
     expect(launcherViewIds).toEqual(
       [
         "automations",
@@ -252,8 +254,6 @@ describe("launcher view coverage gate", () => {
         "plugins-page",
         "settings",
         "trajectories",
-        "transcripts",
-        "tutorial",
       ].sort(),
     );
   });

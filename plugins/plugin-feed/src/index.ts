@@ -11,7 +11,13 @@ const feedPlugin: Plugin = {
     // register-terminal-view.tsx.
     {
       id: "feed",
-      viewKind: "system",
+      // Preview-gated: the Feed operator surface is an early-stage, non-MVP
+      // surface, hidden from a fresh user's launcher AND view manager until the
+      // Preview toggle is on. `preview` keeps the manager grid in step with the
+      // launcher's own preview-gating of this id (launcher-curation
+      // LAUNCHER_PREVIEW_IDS), which previously diverged because the declaration
+      // claimed `system`.
+      viewKind: "preview",
       label: "Feed",
       description: "Feed prediction market operator dashboard",
       icon: "Gamepad2",
