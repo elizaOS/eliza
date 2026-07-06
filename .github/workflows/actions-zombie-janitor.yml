@@ -1,7 +1,7 @@
 name: Actions Zombie Janitor
 
-# Reap zombie workflow runs (dead-runner `in_progress` + wedged `queued`) that
-# freeze org concurrency.
+# Reap zombie workflow runs (dead-runner `in_progress`, wedged `queued`,
+# stale `waiting`) that freeze org concurrency.
 #
 # WHY: when a self-hosted runner box dies, its runs stay `in_progress` until
 # the job timeout (6h default, up to 12h here) — and each one keeps holding
@@ -13,6 +13,15 @@ name: Actions Zombie Janitor
 # in-progress runs — but a WEDGED queued run is still poison: it holds its
 # concurrency group and GitHub replaces-and-cancels every newer pending run in
 # that group.
+#
+# WHY `waiting` RUNS TOO (2026-07-06 incident, #15147): a run `waiting` on an
+# environment approval that never comes holds its concurrency group until
+# GitHub's 30-day auto-expiry — with `cancel-in-progress: false` every later
+# run of that group sits `pending` with zero jobs and dies silently. Two runs
+# waiting since 2026-06-18 deadlocked the production backend + provisioning
+# worker deploy lanes for 18 days; production ran June-18 code the whole time.
+# Nobody approves a production deploy two days late — reaping the gate frees
+# the group so the next dispatch deploys tip.
 #
 # WHY THE JANITOR ITSELF MUST BE FREEZE-PROOF (2026-07-02/03 incident): the
 # previous single-lane design (one ubuntu-latest job + one shared concurrency
@@ -68,6 +77,9 @@ name: Actions Zombie Janitor
 #     freeze backlog that still executes once slots free, and cancelling a
 #     required PR check strands the PR red; tune down mid-incident if needed)
 #   ACTIONS_JANITOR_SELF_QUEUED_MINUTES    — default 60 (own stale ticks)
+#   ACTIONS_JANITOR_WAITING_MAX_AGE_HOURS  — default 48 (stale environment-gate
+#     reap; far above any sane approval latency, far below GitHub's 30-day
+#     expiry that let #15147 fester)
 #   ACTIONS_JANITOR_EXEMPT_WORKFLOWS      — comma-separated workflow names
 
 on:
@@ -99,7 +111,7 @@ jobs:
     if: github.repository == 'elizaOS/eliza' && vars.ACTIONS_JANITOR_DISABLED != 'true'
     timeout-minutes: 10
     steps:
-      - name: Cancel zombie in_progress + wedged queued runs
+      - name: Cancel zombie in_progress + wedged queued + stale waiting runs
         uses: actions/github-script@v7
         env:
           MAX_AGE_MINUTES: ${{ vars.ACTIONS_JANITOR_MAX_AGE_MINUTES || '' }}
@@ -107,6 +119,7 @@ jobs:
           IDLE_MINUTES: ${{ vars.ACTIONS_JANITOR_IDLE_MINUTES || '90' }}
           QUEUED_MAX_AGE_HOURS: ${{ vars.ACTIONS_JANITOR_QUEUED_MAX_AGE_HOURS || '24' }}
           SELF_QUEUED_MINUTES: ${{ vars.ACTIONS_JANITOR_SELF_QUEUED_MINUTES || '60' }}
+          WAITING_MAX_AGE_HOURS: ${{ vars.ACTIONS_JANITOR_WAITING_MAX_AGE_HOURS || '48' }}
           EXEMPT_WORKFLOWS: ${{ vars.ACTIONS_JANITOR_EXEMPT_WORKFLOWS || 'ElizaOS Cuttlefish,ElizaOS OpenAgent E1 (RISC-V AI SoC)' }}
           DRY_RUN: ${{ inputs.dry_run == true && 'true' || 'false' }}
           LANE: ${{ matrix.lane }}
@@ -120,6 +133,7 @@ jobs:
               idleMin: Number(process.env.IDLE_MINUTES) || 90,
               queuedMaxAgeMin: (Number(process.env.QUEUED_MAX_AGE_HOURS) || 24) * 60,
               selfQueuedMin: Number(process.env.SELF_QUEUED_MINUTES) || 60,
+              waitingMaxAgeMin: (Number(process.env.WAITING_MAX_AGE_HOURS) || 48) * 60,
               // Janitor lane jobs have timeout-minutes:10; an own-workflow run
               // in_progress far past that means its runner died mid-reap.
               selfInProgressMin: 60,
@@ -278,6 +292,28 @@ jobs:
               if (ageMin < (isSelf ? cfg.selfQueuedMin : cfg.queuedMaxAgeMin)) continue;
               if ((await liveStatus(run.id)) !== 'queued') continue;
               await reap(run, ageMin, ageMin, isSelf ? 'superseded janitor tick' : 'wedged queued');
+            }
+
+            // ---- 3. stale waiting runs (unapproved environment gates) ----
+            // A run `waiting` on an environment approval that never comes
+            // holds its concurrency group until GitHub's 30-day auto-expiry;
+            // with cancel-in-progress:false every later run of the group sits
+            // `pending` with zero jobs and dies silently (#15147: 18-day
+            // deadlock of both production deploy lanes). 48h is far above any
+            // sane approval latency — reap the gate so the group frees.
+            const staleWaiting = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              owner, repo, status: 'waiting', per_page: 100,
+              created: createdBefore(cfg.waitingMaxAgeMin),
+            });
+            core.info(`[${cfg.lane}] stale waiting listed: ${staleWaiting.length}`);
+            for (const run of staleWaiting) {
+              // Attempt age: a re-run of an old run keeps created_at (which
+              // the server-side filter uses, as a superset) but resets
+              // run_started_at — gate on the current attempt.
+              const ageMin = minutesSince(run.run_started_at || run.created_at);
+              if (ageMin < cfg.waitingMaxAgeMin) continue;
+              if ((await liveStatus(run.id)) !== 'waiting') continue;
+              await reap(run, ageMin, ageMin, 'stale waiting (unapproved environment gate)');
             }
 
             // ---- summary ----
