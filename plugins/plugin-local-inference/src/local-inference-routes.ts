@@ -1391,8 +1391,13 @@ export async function applyLocalInferenceManagementMutation(
 				const { unloadMobileDeviceBridgeModel } =
 					await getMobileDeviceBridgeApi();
 				await unloadMobileDeviceBridgeModel();
-			} catch {
+			} catch (error) {
 				// Clearing chat routing should still reset our state in headless tests.
+				logger.debug(
+					`[local-inference] clear_active ignored bridge unload failure: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
 			}
 			activeModelState = { modelId: null, loadedAt: null, status: "idle" };
 			return { op: input.op, active: activeModelState };
