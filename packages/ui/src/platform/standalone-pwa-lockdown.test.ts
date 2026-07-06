@@ -254,6 +254,28 @@ describe("CSS geometry contract — fixed-body ICB collapse fix (bottom black ba
     expect(block).not.toMatch(/background-color:\s*color-mix/);
   });
 
+  it("leaves #root TRANSPARENT in the installed PWA so its --launch-bg (#160d07) never paints the collapsed-ICB strip (r10)", () => {
+    // BOTTOM-BAR FIX (r10 — the definitive one, keyed to on-device geometry):
+    // the diagnostics chip reported docEl.clientHeight=873, 100lvh=932,
+    // screen.height=932, reclaim-var=59. Even though #root is max-height:100lvh,
+    // WebKit resolves that lvh box against the COLLAPSED fixed-body ICB (873),
+    // so #root renders 873px tall and paints its --launch-bg (#160d07) across
+    // that box; the 59px below (873→932) is html/body's #160d07 — together the
+    // recurring strip. Stretching a box to 932 cannot work (the box can't see
+    // past the collapsed ICB). The cure: #root must be TRANSPARENT so the fixed
+    // AppBackground wallpaper (reclaimed to the true bottom + mirrored onto the
+    // html canvas) is the ONLY thing painting the bottom edge. Assert both the
+    // class-path and that #root does NOT reintroduce an opaque launch-bg.
+    expect(stylesCss).toMatch(
+      /body\.native #root,\s*\n\s*body\.pwa-standalone #root\s*\{[\s\S]*?background:\s*transparent/,
+    );
+    // The bare body.pwa-standalone own-block must also be transparent (not the
+    // global `html, body { background: var(--launch-bg) }` near-black).
+    expect(stylesCss).toMatch(
+      /body\.native,\s*\n\s*body\.pwa-standalone\s*\{\s*\n\s*background:\s*transparent/,
+    );
+  });
+
   it("keeps the native (Capacitor) body on `inset: 0` — the fix is PWA-scoped", () => {
     // Native WKWebView's fixed-ICB is already the full screen, so inset:0 is
     // correct there; the lvh override must NOT bleed onto body.native. Find the
