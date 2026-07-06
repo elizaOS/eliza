@@ -1,7 +1,8 @@
 /**
  * Owner/entity id resolution and world/entity metadata for Discord. Maps
- * Discord user ids to runtime entity ids and builds the world/entity metadata
- * stored on inbound messages.
+ * Discord user ids to runtime entity ids, keeping bot-application owner
+ * aliases separate from Discord team admin grants so message attribution stays
+ * auditable.
  */
 import {
 	createUniqueUuid,
@@ -99,6 +100,16 @@ export function extractDiscordOwnerUserIds(application: unknown): string[] {
 		ownerCandidates.add(teamOwnerId);
 	}
 
+	return [...ownerCandidates];
+}
+
+export function extractDiscordTeamAdminUserIds(application: unknown): string[] {
+	const applicationRecord = asRecord(application);
+	if (!applicationRecord) {
+		return [];
+	}
+
+	const team = asRecord(applicationRecord.team);
 	const teamMembers = team?.members;
 	// Discord.js returns team.members as a Collection (Map-like), not an Array.
 	// Handle both Array and iterable (Collection/Map) shapes.
@@ -110,18 +121,19 @@ export function extractDiscordOwnerUserIds(application: unknown): string[] {
 					"function"
 			? (teamMembers as Iterable<unknown>)
 			: null;
+	const adminCandidates = new Set<string>();
 	if (memberIterable) {
 		for (const entry of memberIterable) {
 			// Collection/Map yields [key, value] tuples; Array yields values directly.
 			const member = Array.isArray(entry) ? entry[1] : entry;
 			const memberId = readUserIdFromOwnerLike(member);
 			if (memberId) {
-				ownerCandidates.add(memberId);
+				adminCandidates.add(memberId);
 			}
 		}
 	}
 
-	return [...ownerCandidates];
+	return [...adminCandidates];
 }
 
 export function parseDiscordOwnerUserIds(value: unknown): string[] {

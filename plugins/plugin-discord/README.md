@@ -60,6 +60,12 @@ DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS=true
 
 # Testing (Optional)
 DISCORD_TEST_CHANNEL_ID=123456789012345678
+
+# Owner Alias Override (Optional)
+# JSON array of Discord user IDs that intentionally alias to the canonical
+# Eliza owner entity. Do not put ordinary Discord application team members here;
+# they stay auditable as separate connector-admin identities.
+ELIZA_DISCORD_OWNER_USER_IDS_JSON='["123456789012345678"]'
 ```
 
 Settings can also be configured in your character file under `settings.discord`:

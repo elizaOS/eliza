@@ -1,21 +1,22 @@
 /**
- * Unit tests for owner-user-id extraction and parsing from settings
- * (`extractDiscordOwnerUserIds`, `parseDiscordOwnerUserIds`). Pure-function
- * assertions.
+ * Unit tests for Discord owner alias extraction, team-admin extraction, and
+ * owner-id setting parsing. These pure helpers decide whether an inbound
+ * Discord user is collapsed to the canonical owner entity or kept auditable as
+ * their own connector identity.
  */
 import { describe, expect, it } from "vitest";
 import {
 	extractDiscordOwnerUserIds,
+	extractDiscordTeamAdminUserIds,
 	parseDiscordOwnerUserIds,
 } from "../identity.ts";
 
 /**
  * Owner-id resolution decides who the Discord bot treats as its owner — a
  * security-sensitive grant. Snowflakes must match Discord's 15-20 digit shape
- * (anything else is rejected, never coerced), extraction must dedupe across the
- * direct owner / team owner / team members shapes (Array OR discord.js
- * Collection), and parse must tolerate JSON-string or array config without
- * letting a malformed id through.
+ * (anything else is rejected, never coerced). Team members are connector-admin
+ * candidates, but they must never be owner aliases because owner aliasing also
+ * rewrites message attribution to the canonical owner entity.
  */
 
 const SNOWFLAKE_A = "123456789012345678";
@@ -28,7 +29,7 @@ describe("extractDiscordOwnerUserIds", () => {
 		]);
 	});
 
-	it("collects + dedupes team owner and members", () => {
+	it("collects + dedupes direct owner and team owner only", () => {
 		const application = {
 			owner: { id: SNOWFLAKE_A },
 			team: {
@@ -37,19 +38,50 @@ describe("extractDiscordOwnerUserIds", () => {
 			},
 		};
 		const ids = extractDiscordOwnerUserIds(application);
-		expect(ids.sort()).toEqual([SNOWFLAKE_A, SNOWFLAKE_B].sort());
+		expect(ids).toEqual([SNOWFLAKE_A]);
 	});
 
-	it("handles a discord.js Collection (Map of [key, member])", () => {
+	it("reads a team-owned application's team owner as the owner alias", () => {
+		expect(
+			extractDiscordOwnerUserIds({
+				team: {
+					ownerId: SNOWFLAKE_A,
+					members: [{ user: { id: SNOWFLAKE_B } }],
+				},
+			}),
+		).toEqual([SNOWFLAKE_A]);
+	});
+
+	it("does not treat a discord.js team member Collection as owner aliases", () => {
 		const members = new Map([["k", { user: { id: SNOWFLAKE_B } }]]);
-		expect(extractDiscordOwnerUserIds({ team: { members } })).toEqual([
-			SNOWFLAKE_B,
-		]);
+		expect(extractDiscordOwnerUserIds({ team: { members } })).toEqual([]);
 	});
 
 	it("returns [] for non-objects", () => {
 		expect(extractDiscordOwnerUserIds(null)).toEqual([]);
 		expect(extractDiscordOwnerUserIds("nope")).toEqual([]);
+	});
+});
+
+describe("extractDiscordTeamAdminUserIds", () => {
+	it("collects team members from array-shaped application metadata", () => {
+		expect(
+			extractDiscordTeamAdminUserIds({
+				team: { members: [{ user: { id: SNOWFLAKE_B } }] },
+			}),
+		).toEqual([SNOWFLAKE_B]);
+	});
+
+	it("handles a discord.js Collection (Map of [key, member])", () => {
+		const members = new Map([["k", { user: { id: SNOWFLAKE_B } }]]);
+		expect(extractDiscordTeamAdminUserIds({ team: { members } })).toEqual([
+			SNOWFLAKE_B,
+		]);
+	});
+
+	it("returns [] for non-objects", () => {
+		expect(extractDiscordTeamAdminUserIds(null)).toEqual([]);
+		expect(extractDiscordTeamAdminUserIds("nope")).toEqual([]);
 	});
 });
 
