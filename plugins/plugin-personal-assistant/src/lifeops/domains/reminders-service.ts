@@ -100,10 +100,7 @@ import {
   CheckinService,
   type CheckinSourceService,
 } from "../checkin/checkin-service.js";
-import {
-  reportSuppressedSleepCycleMorningCheckin,
-  shouldSuppressSleepCycleMorningCheckin,
-} from "../checkin/morning-checkin-ownership.js";
+import { reportSuppressedSleepCycleMorningCheckin } from "../checkin/morning-checkin-ownership.js";
 import { resolveCheckinSchedule } from "../checkin/schedule-resolver.js";
 import { appendCheckinAckChoiceMarker } from "../choice-markers.js";
 import {
@@ -5596,14 +5593,14 @@ export class RemindersDomain {
         timezone,
       });
       if (alreadySent) {
-        if (kind === "morning" && shouldSuppressSleepCycleMorningCheckin()) {
+        if (kind === "morning") {
           const localDay = getLocalDateKey(
             getZonedDateParts(args.now, timezone),
           );
           const suppressionKey = `${this.ctx.agentId()}:${timezone}:${localDay}`;
           if (!this.loggedMorningCheckinSuppressionKeys.has(suppressionKey)) {
             this.loggedMorningCheckinSuppressionKeys.add(suppressionKey);
-            reportSuppressedSleepCycleMorningCheckin(this.ctx.runtime, {
+            reportSuppressedSleepCycleMorningCheckin({
               agentId: this.ctx.agentId(),
               nowIso: args.now.toISOString(),
               timezone,

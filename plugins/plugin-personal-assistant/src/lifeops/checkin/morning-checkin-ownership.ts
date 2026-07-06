@@ -1,13 +1,16 @@
 /**
- * Explicit cross-engine ownership for the owner-visible morning check-in.
+ * Log-side ownership record for the owner-visible morning check-in.
  *
- * The scheduled-task spine gets first claim because it is the one scheduler that
- * can consolidate wake.confirmed work and call the morning-brief assembler.
- * The sleep-cycle RemindersDomain remains a fallback only when no morning
- * check-in report exists for the local day; when the spine already assembled
- * one, this module makes that suppressed duplicate visible in ordinary logs.
+ * Two engines can assemble the morning check-in: the scheduled-task spine
+ * (wake.confirmed watcher delegating to the morning-brief assembler) and the
+ * sleep-cycle RemindersDomain. Both persist through
+ * `CheckinService.runMorningCheckin`, so the `life_checkin_reports` row is the
+ * dedupe arbiter — whichever engine fires second sees `hasCheckinForLocalDay`
+ * and skips. This module names the engines and makes the sleep-cycle skip
+ * observable in ordinary logs; the skip itself lives with the report check in
+ * `RemindersDomain` (and its spine-side twin in `runtime-wiring.ts`).
  */
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 
 export const MORNING_CHECKIN_OWNER_ENGINE = "scheduled-task-spine" as const;
 export const MORNING_CHECKIN_SUPPRESSED_ENGINE =
@@ -20,32 +23,16 @@ export interface SleepCycleMorningCheckinSuppressionContext {
   wakeAt?: string | null;
 }
 
-/**
- * Cross-engine ownership rule for the owner-visible morning check-in.
- *
- * The scheduled-task spine owns morning delivery because it is the single
- * scheduler that already consolidates wake.confirmed records and invokes the
- * morning-brief assembler. The sleep-cycle RemindersDomain may still own night
- * check-ins, but it must not race the spine for the morning surface.
- */
-export function shouldSuppressSleepCycleMorningCheckin(): boolean {
-  return true;
-}
-
 export function reportSuppressedSleepCycleMorningCheckin(
-  _runtime: IAgentRuntime,
   context: SleepCycleMorningCheckinSuppressionContext,
 ): void {
-  const metadata = {
-    ...context,
-    ownerEngine: MORNING_CHECKIN_OWNER_ENGINE,
-    suppressedEngine: MORNING_CHECKIN_SUPPRESSED_ENGINE,
-    deliveryBasis: "sleep_cycle",
-  };
   logger.info(
     {
       src: "lifeops:morning-checkin-ownership",
-      ...metadata,
+      ...context,
+      ownerEngine: MORNING_CHECKIN_OWNER_ENGINE,
+      suppressedEngine: MORNING_CHECKIN_SUPPRESSED_ENGINE,
+      deliveryBasis: "sleep_cycle",
     },
     "Suppressed duplicate sleep-cycle morning check-in; scheduled-task spine owns morning delivery.",
   );

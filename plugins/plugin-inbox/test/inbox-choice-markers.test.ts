@@ -1,3 +1,8 @@
+/**
+ * Deterministic coverage for the INBOX draft/triage [CHOICE] emitters: chips
+ * parse through the real core interaction parser, labels are sanitized, and
+ * every chip value survives the connector reply-callback size cap.
+ */
 import { describe, expect, it } from "vitest";
 import { encodeReplyCallback } from "../../../packages/core/src/messaging/interactions/callback";
 import { parseInteractionBlocks } from "../../../packages/core/src/messaging/interactions/parse";
@@ -53,7 +58,9 @@ function entry(overrides: Partial<TriageEntry>): TriageEntry {
 }
 
 describe("INBOX choice markers", () => {
-  it("appends send/edit/discard chips to draft confirmations", () => {
+  // Chip values must map to real INBOX ops (triage|reply|snooze|archive|approve):
+  // Send=approve, Discard=archive. There is no edit op, so no Edit chip.
+  it("appends send/discard chips to draft confirmations", () => {
     const text = appendInboxDraftChoiceMarker(
       "Drafted reply for JJ. Confirm before sending.",
       "draft-entry-1",
@@ -67,8 +74,7 @@ describe("INBOX choice markers", () => {
       id: "draft-entry-1",
       options: [
         { value: "inbox approve draft-entry-1", label: "Send" },
-        { value: "inbox edit draft-entry-1", label: "Edit" },
-        { value: "inbox discard draft-entry-1", label: "Discard" },
+        { value: "inbox archive draft-entry-1", label: "Discard" },
       ],
     });
   });
