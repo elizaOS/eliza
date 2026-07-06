@@ -32,7 +32,7 @@ import { ChoiceWidget } from "./ChoiceWidget";
 import { FollowupsWidget } from "./followups";
 import { FormRequest } from "./form-request";
 import { registerInlineWidget } from "./inline-registry";
-import { PlanChecklist } from "./task-pipeline";
+import { ChecklistWidget } from "./task-pipeline";
 import { WorkflowSteps } from "./workflow-steps";
 
 registerInlineWidget<ChoiceMatch>({
@@ -95,14 +95,10 @@ registerInlineWidget<ChecklistMatch>({
   parse: (text) => findChecklistRegions(text).map((m) => ({ ...m, data: m })),
   keyFor: (m) => `checklist:${m.checklist.items.length}`,
   render: (m, _ctx, key) => (
-    <div
+    <ChecklistWidget
       key={key}
-      className="my-2 rounded-sm border border-border bg-card px-3 py-2"
-    >
-      <PlanChecklist
-        entries={m.checklist.items}
-        title={m.checklist.title ?? "Checklist"}
-      />
-    </div>
+      entries={m.checklist.items}
+      title={m.checklist.title ?? "Checklist"}
+    />
   ),
 });

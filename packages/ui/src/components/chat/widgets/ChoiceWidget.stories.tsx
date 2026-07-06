@@ -3,6 +3,11 @@
  * and interaction-focused render states.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import {
+  assert,
+  waitForTestId,
+} from "../../../storybook/home-widget-decorator";
+import { mockApp } from "../../../storybook/mock-providers.helpers";
 import { ChoiceWidget } from "./ChoiceWidget";
 
 const meta = {
@@ -14,13 +19,11 @@ const meta = {
     scope: { control: "text" },
     onChoose: { action: "choose" },
   },
+  decorators: [mockApp()],
   args: {
     id: "choice-1",
     scope: "app-create",
-    onChoose: (value: string) => {
-      // no-op for stories
-      console.log("chose", value);
-    },
+    onChoose: () => {},
     options: [
       { value: "calendar", label: "Calendar" },
       { value: "notes", label: "Notes" },
@@ -57,6 +60,31 @@ export const ManyOptions: Story = {
       { value: "weather", label: "Weather" },
       { value: "none", label: "None of these" },
     ],
+  },
+};
+
+export const SelectedCollapsed: Story = {
+  args: {
+    id: "choice-selected",
+    scope: "app-create",
+    onChoose: () => {},
+    options: [
+      { value: "calendar", label: "Calendar" },
+      { value: "notes", label: "Notes" },
+      { value: "cancel", label: "Cancel" },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const button = await waitForTestId(canvasElement, "choice-calendar");
+    button.click();
+    const summary = await waitForTestId(
+      canvasElement,
+      "choice-shell-choice-selected-summary",
+    );
+    assert(
+      /selected:\s*calendar/i.test(summary.textContent ?? ""),
+      "selected choice summary is visible",
+    );
   },
 };
 

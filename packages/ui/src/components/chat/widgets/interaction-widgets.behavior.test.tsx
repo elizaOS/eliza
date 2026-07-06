@@ -138,7 +138,12 @@ describe("FormRequest — every input + submit", () => {
     fireEvent.click(button);
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Submitted" })).toBeTruthy();
+    expect(
+      screen.getByTestId("form-request-shell-summary").textContent,
+    ).toMatch(/submitted/i);
+    expect(screen.getByTestId("form-request-shell-body").style.display).toBe(
+      "none",
+    );
   });
 
   // #14323 — scheduling fields render native pickers and submit the input's

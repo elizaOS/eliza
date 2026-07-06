@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "../../ui/select";
 import type { FormFieldSpec, FormRequestSpec } from "../message-form-parser";
+import { ChatWidgetShell } from "./chat-widget-shell";
 import { formRequestPropsEqual } from "./widget-equality";
 
 export type { FormFieldSpec, FormRequestSpec };
@@ -173,111 +174,129 @@ export const FormRequest = memo(function FormRequest({
   );
 
   return (
-    <form
-      data-testid="form-request"
-      data-form-id={form.id}
-      className="my-2 border border-border bg-card p-3 text-sm space-y-3"
-      onSubmit={handleSubmit}
+    <ChatWidgetShell
+      title={form.title ?? "Form"}
+      status={
+        <span className="rounded-sm bg-bg px-2 py-0.5 text-[11px] font-medium text-muted">
+          {submitted ? "Submitted" : `${form.fields.length} fields`}
+        </span>
+      }
+      summary={submitted ? `${form.title ?? "Form"} submitted` : undefined}
+      complete={submitted}
+      testId="form-request-shell"
     >
-      {form.title ? <div className="font-bold">{form.title}</div> : null}
-      {form.description ? (
-        <div className="text-xs text-muted">{form.description}</div>
-      ) : null}
+      <form
+        data-testid="form-request"
+        data-form-id={form.id}
+        className="space-y-3 p-3 text-sm"
+        onSubmit={handleSubmit}
+      >
+        {form.description ? (
+          <div className="text-xs text-txt/80">{form.description}</div>
+        ) : null}
 
-      {form.fields.map((field) => {
-        const label = field.label ?? field.name;
-        const value = getOwnRecordValue(values, field.name);
-        const fieldErrors = getOwnRecordValue(errors, field.name);
-        if (field.type === "checkbox") {
-          const checkboxId = `${form.id}-${field.name}`;
-          return (
-            <label
-              key={field.name}
-              htmlFor={checkboxId}
-              className="flex items-center gap-2 text-xs cursor-pointer"
-            >
-              <Checkbox
-                id={checkboxId}
-                checked={Boolean(value)}
-                disabled={submitted}
-                onCheckedChange={(checked) => setValue(field.name, !!checked)}
-              />
-              <span className="font-semibold">{label}</span>
-            </label>
-          );
-        }
-        if (field.type === "select") {
-          const options = field.options ?? [];
-          const current = String(value ?? "");
+        {form.fields.map((field) => {
+          const label = field.label ?? field.name;
+          const value = getOwnRecordValue(values, field.name);
+          const fieldErrors = getOwnRecordValue(errors, field.name);
+          if (field.type === "checkbox") {
+            const checkboxId = `${form.id}-${field.name}`;
+            return (
+              <label
+                key={field.name}
+                htmlFor={checkboxId}
+                className="flex items-center gap-2 text-xs cursor-pointer"
+              >
+                <Checkbox
+                  id={checkboxId}
+                  checked={Boolean(value)}
+                  disabled={submitted}
+                  onCheckedChange={(checked) => setValue(field.name, !!checked)}
+                />
+                <span className="font-semibold">{label}</span>
+              </label>
+            );
+          }
+          if (field.type === "select") {
+            const options = field.options ?? [];
+            const current = String(value ?? "");
+            return (
+              <div key={field.name} className="flex flex-col gap-1 text-xs">
+                <span className="font-semibold">{label}</span>
+                <Select
+                  value={current || "__none__"}
+                  disabled={submitted}
+                  onValueChange={(v) => {
+                    const next = v === "__none__" ? "" : v;
+                    setValue(field.name, next);
+                    validateField(field, next);
+                  }}
+                >
+                  <SelectTrigger
+                    className={getConfigInputClassName({
+                      density: "compact",
+                      hasError: !!fieldErrors?.length,
+                      className: "text-txt placeholder:text-txt/70",
+                    })}
+                    aria-label={label}
+                  >
+                    <SelectValue placeholder={field.placeholder ?? undefined} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {field.placeholder ? (
+                      <SelectItem value="__none__">
+                        {field.placeholder}
+                      </SelectItem>
+                    ) : null}
+                    {options
+                      .filter((o) => o.value !== "")
+                      .map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <ConfigFieldErrors errors={fieldErrors} />
+              </div>
+            );
+          }
+          // text / number / date / time / datetime (native inputs)
           return (
             <div key={field.name} className="flex flex-col gap-1 text-xs">
               <span className="font-semibold">{label}</span>
-              <Select
-                value={current || "__none__"}
+              <Input
+                aria-label={label}
+                className={getConfigInputClassName({
+                  density: "compact",
+                  hasError: !!fieldErrors?.length,
+                  className: "text-txt placeholder:text-txt/70",
+                })}
+                type={htmlInputTypeForField(field.type)}
+                name={field.name}
+                placeholder={field.placeholder ?? ""}
+                value={String(value ?? "")}
                 disabled={submitted}
-                onValueChange={(v) => {
-                  const next = v === "__none__" ? "" : v;
-                  setValue(field.name, next);
-                  validateField(field, next);
-                }}
-              >
-                <SelectTrigger
-                  className={getConfigInputClassName({
-                    density: "compact",
-                    hasError: !!fieldErrors?.length,
-                  })}
-                  aria-label={label}
-                >
-                  <SelectValue placeholder={field.placeholder ?? undefined} />
-                </SelectTrigger>
-                <SelectContent>
-                  {field.placeholder ? (
-                    <SelectItem value="__none__">
-                      {field.placeholder}
-                    </SelectItem>
-                  ) : null}
-                  {options
-                    .filter((o) => o.value !== "")
-                    .map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                required={field.required}
+                onChange={(e) => setValue(field.name, e.currentTarget.value)}
+                onBlur={() =>
+                  validateField(field, getOwnRecordValue(values, field.name))
+                }
+              />
               <ConfigFieldErrors errors={fieldErrors} />
             </div>
           );
-        }
-        // text / number / date / time / datetime (native inputs)
-        return (
-          <div key={field.name} className="flex flex-col gap-1 text-xs">
-            <span className="font-semibold">{label}</span>
-            <Input
-              aria-label={label}
-              className={getConfigInputClassName({
-                density: "compact",
-                hasError: !!fieldErrors?.length,
-              })}
-              type={htmlInputTypeForField(field.type)}
-              name={field.name}
-              placeholder={field.placeholder ?? ""}
-              value={String(value ?? "")}
-              disabled={submitted}
-              required={field.required}
-              onChange={(e) => setValue(field.name, e.currentTarget.value)}
-              onBlur={() =>
-                validateField(field, getOwnRecordValue(values, field.name))
-              }
-            />
-            <ConfigFieldErrors errors={fieldErrors} />
-          </div>
-        );
-      })}
+        })}
 
-      <Button type="submit" size="sm" disabled={submitted}>
-        {submitted ? "Submitted" : form.submitLabel}
-      </Button>
-    </form>
+        <Button
+          type="submit"
+          size="sm"
+          disabled={submitted}
+          className="bg-[color-mix(in_srgb,var(--accent)_70%,black)] text-accent-fg hover:bg-[color-mix(in_srgb,var(--accent)_60%,black)]"
+        >
+          {submitted ? "Submitted" : form.submitLabel}
+        </Button>
+      </form>
+    </ChatWidgetShell>
   );
 }, formRequestPropsEqual);

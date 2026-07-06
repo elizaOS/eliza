@@ -44,7 +44,7 @@ import type { WorkflowSpec } from "../message-workflow-parser";
 import { ChoiceWidget } from "./ChoiceWidget";
 import { FollowupsWidget } from "./followups";
 import { FormRequest } from "./form-request";
-import { PlanChecklist } from "./task-pipeline";
+import { ChecklistWidget, PlanChecklist } from "./task-pipeline";
 import { TaskWidget } from "./task-widget";
 import {
   choicePropsEqual,
@@ -79,6 +79,7 @@ describe("inline widgets are wired to their exported comparator", () => {
     expect(memoCompareOf(FormRequest)).toBe(formRequestPropsEqual);
     expect(memoCompareOf(WorkflowSteps)).toBe(workflowPropsEqual);
     expect(memoCompareOf(PlanChecklist)).toBe(planChecklistPropsEqual);
+    expect(memoCompareOf(ChecklistWidget)).toBe(planChecklistPropsEqual);
     // TaskWidget takes only primitive props, so it uses default (shallow) memo
     // equality — assert it is still a memo (default compare is null).
     expect(memoCompareOf(TaskWidget)).toBeNull();

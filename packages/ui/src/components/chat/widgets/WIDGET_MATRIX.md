@@ -54,11 +54,11 @@ affordances.
 | Widget | Marker | Producing action | Parser | Renderer | Handlers it calls | Surfaces | Status |
 |---|---|---|---|---|---|---|---|
 | **Task** | `[TASK:<threadId>]<title>[/TASK]` | `TASKS_CREATE` -> `plugin-agent-orchestrator/src/actions/tasks.ts:725` | `message-task-parser.ts` | `task-widget.tsx` `TaskWidget` | header click expands the live WS-driven pipeline (nested sub-agents + tool steps + plan) in place; `navigate` to `/orchestrator?taskId=` via the explicit "Open in workbench" link (#13536) | both (1) | wired + verified |
-| **Choice** | `[CHOICE:<scope> ...]...[/CHOICE]` | model-taught (`uiWidgets` guide, #14861) AND code-emitted by actions (#14733: inbox draft/triage, approval enqueue, check-in acks, goal check-ins, RESOLVE_REQUEST disambiguation, app/plugin create) | `message-choice-parser.ts` | `ChoiceWidget.tsx` | `sendAction` | both | wired + verified |
+| **Choice** | `[CHOICE:<scope> ...]...[/CHOICE]` | model-taught (`uiWidgets` guide, #14861) AND code-emitted by actions (#14733: inbox draft/triage, approval enqueue, check-in acks, goal check-ins, RESOLVE_REQUEST disambiguation, app/plugin create) | `message-choice-parser.ts` | `ChoiceWidget.tsx` (`ChatWidgetShell`, collapses after pick) | `sendAction` | both | wired + verified |
 | **Followups** | `[FOLLOWUPS ...]...[/FOLLOWUPS]` | any action emitting followup chips | `message-followups-parser.ts` | `followups.tsx` `FollowupsWidget` | `sendAction` (reply), `navigate` (navigate kind), `prefillComposer` (prompt kind) | both | wired + verified |
-| **Form** | `[FORM]\n{json}\n[/FORM]` | any action emitting a form schema | `message-form-parser.ts` | `form-request.tsx` `FormRequest` | `submitForm` | both | wired + verified |
-| **Workflow** | `[WORKFLOW]\n{json}\n[/WORKFLOW]` | any agent emitting an ordered step pipeline (#13536) | `message-workflow-parser.ts` | `workflow-steps.tsx` `WorkflowSteps` | none (display-only; re-emit to advance) | both | wired + verified |
-| **Checklist** | `[CHECKLIST]\n{json}\n[/CHECKLIST]` | any agent emitting a standalone todo list (#13536) | `message-checklist-parser.ts` | `task-pipeline.tsx` `PlanChecklist` | none (display-only; re-emit to mutate in place) | both | wired + verified |
+| **Form** | `[FORM]\n{json}\n[/FORM]` | any action emitting a form schema | `message-form-parser.ts` | `form-request.tsx` `FormRequest` (`ChatWidgetShell`, collapses after submit) | `submitForm` | both | wired + verified |
+| **Workflow** | `[WORKFLOW]\n{json}\n[/WORKFLOW]` | any agent emitting an ordered step pipeline (#13536) | `message-workflow-parser.ts` | `workflow-steps.tsx` `WorkflowSteps` (`ChatWidgetShell`, collapses when terminal) | none (display-only; re-emit to advance) | both | wired + verified |
+| **Checklist** | `[CHECKLIST]\n{json}\n[/CHECKLIST]` | any agent emitting a standalone todo list (#13536) | `message-checklist-parser.ts` | `task-pipeline.tsx` `ChecklistWidget` wrapping `PlanChecklist` in `ChatWidgetShell` | none (display-only; re-emit to mutate in place) | both | wired + verified |
 | **Background** | `[BACKGROUND]` (bare marker) | `BACKGROUND` op=`pick` -> `plugin-app-control/src/actions/background.ts` | `message-background-parser.ts` | `background-widget.tsx` `BackgroundWidget` (`BackgroundSettingsControls` filmstrip in `ChatWidgetShell`) | none (picks drive the persisted `useBackgroundConfig` directly, applied globally) | both | wired + verified |
 
 (1) The Task widget is registered by `plugin-task-coordinator` (`registerTaskWidget()`), **not** auto-loaded in `inline-builtins`. It renders on both surfaces only when the orchestrator UI is loaded, by design (`MessageContent` knows nothing about tasks).
@@ -95,6 +95,12 @@ collapsed summary row. Contract:
   collapse/expand round-trip and the collapsed subtree costs no layout/paint.
   `contain:content` on the root isolates internal relayouts from the
   transcript. Contract lock: `chat-widget-shell.test.tsx`.
+
+**Shell adoption.** `[CONFIG:<pluginId>]`, `[FORM]`, `[WORKFLOW]`,
+`[CHECKLIST]`, `[CHOICE]`, and `[BACKGROUND]` render through
+`ChatWidgetShell`. The task pipeline keeps the bare `PlanChecklist` for nested
+sub-agent plans; the standalone `[CHECKLIST]` marker uses `ChecklistWidget` so
+only transcript-level cards get the extra chrome.
 
 **Connector-setup widget** = the `[CONFIG:<pluginId>]` card wrapped in the
 shell (the "`[CONFIG]` variant" of #14412; no separate `[CONNECTOR:]` marker).

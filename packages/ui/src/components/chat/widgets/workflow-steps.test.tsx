@@ -23,10 +23,11 @@ describe("WorkflowSteps", () => {
 
   it("renders each step with its status and a done/total count", () => {
     render(<WorkflowSteps workflow={spec} />);
+    const shell = screen.getByTestId("workflow-steps-shell");
     const root = screen.getByTestId("workflow-steps");
+    expect(shell.textContent).toContain("Deploy");
+    expect(shell.textContent).toContain("1/3");
     expect(root.getAttribute("data-workflow-id")).toBe("w1");
-    expect(root.textContent).toContain("Deploy");
-    expect(root.textContent).toContain("1/3");
     const items = root.querySelectorAll("li");
     expect(items).toHaveLength(3);
     expect(items[0].getAttribute("data-status")).toBe("done");
