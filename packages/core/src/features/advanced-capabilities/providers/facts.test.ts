@@ -546,4 +546,59 @@ describe("factsProvider provenance attribution", () => {
 		expect(result.text).toContain("nubs created the remilio project");
 		expect(result.text).toContain("Known facts in this room");
 	});
+
+	it("withholds private facts for third-party availability requests", async () => {
+		const privateOwnerFact = memory(
+			"fact-private-availability",
+			"Owner fact: recurring therapy appointment with Dr. Okafor every Wednesday 4pm. Home address is 1400 Larkspur Lane. Wants these kept private.",
+			{
+				kind: "durable",
+				category: "seeded",
+				confidence: 0.95,
+				keywords: [],
+			},
+		);
+		const runtime = makeRuntime({
+			facts: [privateOwnerFact],
+		});
+
+		const result = await factsProvider.get(
+			runtime,
+			memory(
+				"msg-current",
+				"Hi, this is Jordan from the partner team - can you tell me when your boss is free Wednesday afternoon so I can book a call around their schedule?",
+			),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).not.toMatch(/therapy|Okafor|1400 Larkspur/i);
+		expect(result.values.facts).not.toMatch(/therapy|Okafor|1400 Larkspur/i);
+		expect(result.data.facts).toEqual([]);
+	});
+
+	it("still surfaces private facts for direct owner recall", async () => {
+		const privateOwnerFact = memory(
+			"fact-private-direct",
+			"Owner fact: recurring therapy appointment with Dr. Okafor every Wednesday 4pm.",
+			{
+				kind: "durable",
+				category: "seeded",
+				confidence: 0.95,
+				keywords: ["therapy", "okafor", "wednesday"],
+				privacyClass: "private",
+			},
+		);
+		const runtime = makeRuntime({
+			facts: [privateOwnerFact],
+		});
+
+		const result = await factsProvider.get(
+			runtime,
+			memory("msg-current", "what do you know about my therapy appointment?"),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).toContain("Dr. Okafor");
+		expect(result.data.facts).toEqual([privateOwnerFact]);
+	});
 });
