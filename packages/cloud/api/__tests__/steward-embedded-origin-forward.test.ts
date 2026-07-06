@@ -15,19 +15,30 @@
  * a real client `Origin` when present.
  */
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import { embeddedStewardHandler } from "../src/steward/embedded";
+
+vi.mock("@/lib/utils/logger", () => ({
+  logger: {
+    debug: () => undefined,
+    error: () => undefined,
+    info: () => undefined,
+    warn: () => undefined,
+  },
+}));
+
+const { embeddedStewardHandler } = await import("../src/steward/embedded");
 
 const UPSTREAM = "https://steward.example.test";
 const ORIGINAL_FETCH = globalThis.fetch;
 
-function makeApp() {
+function makeApp(env: Partial<AppEnv["Bindings"]> = {}) {
   const app = new Hono<AppEnv>();
   app.use(async (c, next) => {
     c.env = {
       STEWARD_API_URL: UPSTREAM,
       STEWARD_TENANT_ID: "elizacloud-staging",
+      ...env,
     } as AppEnv["Bindings"];
     await next();
   });
@@ -36,16 +47,35 @@ function makeApp() {
 }
 
 let lastUpstreamOrigin: string | null = null;
+let lastUpstreamSignature: string | null = null;
+let lastUpstreamTenant: string | null = null;
+let lastUpstreamIdempotencyKey: string | null = null;
+let lastUpstreamMethod: string | null = null;
+let lastUpstreamUrl: string | null = null;
 
 beforeEach(() => {
   lastUpstreamOrigin = null;
+  lastUpstreamSignature = null;
+  lastUpstreamTenant = null;
+  lastUpstreamIdempotencyKey = null;
+  lastUpstreamMethod = null;
+  lastUpstreamUrl = null;
   globalThis.fetch = (async (
     input: RequestInfo | URL,
     init?: RequestInit,
   ): Promise<Response> => {
     const h = new Headers(init?.headers ?? {});
     lastUpstreamOrigin = h.get("origin");
-    void input;
+    lastUpstreamSignature = h.get("x-steward-signature");
+    lastUpstreamTenant = h.get("x-steward-tenant");
+    lastUpstreamIdempotencyKey = h.get("idempotency-key");
+    lastUpstreamMethod = init?.method ?? null;
+    lastUpstreamUrl =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
     return new Response(JSON.stringify({ ok: true, nonce: "n" }), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -88,5 +118,27 @@ describe("embedded Steward proxy — Origin forwarding (SIWE nonce fix)", () => 
 
     expect(res.status).toBe(200);
     expect(lastUpstreamOrigin).toBe("https://elizacloud.ai");
+  });
+
+  it("stamps Origin before signing mutating requests without dropping signature headers", async () => {
+    const app = makeApp({ STEWARD_REQUEST_SIGNING_SECRET: "test-secret" });
+    const res = await app.request(
+      "https://staging.elizacloud.ai/steward/auth/email/send",
+      {
+        method: "POST",
+        body: JSON.stringify({ email: "user@example.com" }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+
+    expect(res.status).toBe(200);
+    expect(lastUpstreamUrl).toBe(`${UPSTREAM}/auth/email/send`);
+    expect(lastUpstreamMethod).toBe("POST");
+    expect(lastUpstreamOrigin).toBe("https://staging.elizacloud.ai");
+    expect(lastUpstreamTenant).toBe("elizacloud-staging");
+    expect(lastUpstreamIdempotencyKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(lastUpstreamSignature).toMatch(/^v1=[0-9a-f]{64}$/);
   });
 });
