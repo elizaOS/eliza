@@ -117,13 +117,20 @@ function WeatherTile(): React.JSX.Element {
         </button>
       ) : (
         <>
-          <div className="flex items-center gap-2">
-            <Icon className="h-7 w-7 text-accent" aria-hidden />
-            <div className="text-4xl font-semibold leading-none tabular-nums tracking-tighter">
-              {weather.temp}
+          {/* Temperature row. The unit is a flex sibling top-aligned with a
+              fixed optical offset — NOT an inline `align-top` span, whose line
+              box collides with the `leading-none` digits — and the row never
+              wraps, so the icon can't fold onto the number at narrow tile
+              widths. No letter-space tightening on numerals: it crammed the
+              digits into the degree unit; tabular-nums already keeps the
+              width stable across minute ticks. */}
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <Icon className="h-7 w-7 shrink-0 text-accent" aria-hidden />
+            <div className="flex items-start text-4xl font-semibold leading-none tabular-nums">
+              <span>{weather.temp}</span>
               <span
                 className={cn(
-                  "align-top text-base font-medium",
+                  "ml-0.5 mt-0.5 text-base font-medium leading-none",
                   WALLPAPER_TEXT.muted,
                 )}
               >
