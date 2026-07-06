@@ -35,15 +35,37 @@ export function analyzeWalletPortfolio(
   const largestTokenAmount =
     topTokenHoldings.length > 0 ? topTokenHoldings[0].amount : 0;
 
-  const largestHoldingShare =
-    totalTokenUnits > 0 ? largestTokenAmount / totalTokenUnits : 0;
+  const largestHoldingPercentage =
+    totalTokenUnits > 0
+      ? Number(((largestTokenAmount / totalTokenUnits) * 100).toFixed(2))
+      : null;
 
   const concentrationLevel =
     tokenHoldings.length === 0
       ? "none"
-      : largestHoldingShare >= 0.8
+      : largestHoldingPercentage !== null && largestHoldingPercentage >= 80
         ? "high"
-        : largestHoldingShare >= 0.5
+        : largestHoldingPercentage !== null && largestHoldingPercentage >= 50
+          ? "medium"
+          : "low";
+
+  const diversityScore =
+    tokenHoldings.length === 0
+      ? 0
+      : tokenHoldings.length >= 10
+        ? 90
+        : tokenHoldings.length >= 5
+          ? 65
+          : tokenHoldings.length >= 2
+            ? 35
+            : 15;
+
+  const diversityLevel =
+    tokenHoldings.length === 0
+      ? "none"
+      : diversityScore >= 80
+        ? "high"
+        : diversityScore >= 50
           ? "medium"
           : "low";
 
@@ -51,14 +73,16 @@ export function analyzeWalletPortfolio(
     tokenHoldings.length === 0
       ? ["No SPL token holdings were found for this wallet."]
       : [
-          "Portfolio summary is based on SPL token unit balances.",
+          "Portfolio concentration is estimated from token unit balances.",
           "USD valuation is not enabled yet.",
         ];
 
   return {
     nativeBalance,
     tokenCount: tokenHoldings.length,
-    totalTokenUnits,
+    largestHoldingPercentage,
+    diversityScore,
+    diversityLevel,
     topTokenHoldings,
     estimatedTotalUsdValue: null,
     concentrationLevel,
