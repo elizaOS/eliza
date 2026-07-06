@@ -23,6 +23,7 @@ import {
 } from "../api/ios-local-agent-transport";
 import { getBackendStartupTimeoutMs } from "../bridge";
 import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
+import { repairDedicatedAgentCredential } from "../cloud/repair-agent-credential";
 import {
   ANDROID_LOCAL_AGENT_SERVER_ID,
   isMobileLocalAgentIpcBase,
@@ -897,6 +898,18 @@ export async function runPollingBackend(
           "saved dedicated cloud agent is in a terminal error state",
         );
         return;
+      }
+      if (
+        ae?.status === 401 &&
+        isDedicatedCloudAgentBase(client.getBaseUrl()) &&
+        (await repairDedicatedAgentCredential())
+      ) {
+        // A dedicated cloud agent 401ing during the backend poll usually means
+        // the container upgrade rotated ELIZA_API_TOKEN out from under the
+        // token adopted at pair time (#15132). The repair re-paired through
+        // the still-valid cloud session and persisted the fresh credential —
+        // keep polling instead of exiting to BACKEND_AUTH_REQUIRED/LoginView.
+        continue;
       }
       if (ae?.status === 401 && !client.hasToken()) {
         // On Capacitor native the bearer token is injected asynchronously by

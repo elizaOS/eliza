@@ -17,6 +17,7 @@ import {
   type AuthSessionInfo,
   authMe,
 } from "../api/auth-client";
+import { repairDedicatedAgentCredential } from "../cloud/repair-agent-credential";
 
 export type AuthStatusState =
   | { phase: "loading" }
@@ -81,6 +82,7 @@ async function fetchAuthStatus(): Promise<void> {
   );
 
   authStatusFetch = (async () => {
+    let repairAttempted = false;
     for (let attempt = 0; ; attempt += 1) {
       const result = await authMe();
       if (result.ok === true) {
@@ -101,6 +103,19 @@ async function fetchAuthStatus(): Promise<void> {
         }
         publishAuthStatus({ phase: "server_unavailable" });
         return;
+      }
+      // A dedicated cloud agent's 401 can be credential ROTATION, not a
+      // missing user: a container upgrade re-mints ELIZA_API_TOKEN, so the
+      // token adopted at pair time is dead while the cloud (Steward) session
+      // is still valid (#15132). Run one programmatic re-pair through the
+      // cloud session and re-probe; only when the repair declines (not a
+      // dedicated agent / no cloud session — i.e. self-hosted direct access)
+      // does the password wall render.
+      if (result.status === 401 && !repairAttempted) {
+        repairAttempted = true;
+        if (await repairDedicatedAgentCredential()) {
+          continue;
+        }
       }
       publishAuthStatus({
         phase: "unauthenticated",
