@@ -6,9 +6,10 @@ import {
   getSolanaTokenHoldings,
 } from "./helius";
 import { analyzeWalletActivity } from "./analyzers/activity";
-import { analyzeWalletRisk } from "./analyzers/risk";
 import { analyzeWalletAge } from "./analyzers/walletAge";
 import { analyzeWalletFunding } from "./analyzers/funding";
+import { analyzeWalletPortfolio } from "./analyzers/portfolio";
+import { analyzeWalletRisk } from "./analyzers/risk";
 import {
   SupportedChain,
   WalletBalance,
@@ -88,6 +89,11 @@ const tokenHoldings = await getSolanaTokenHoldings(walletAddress);
   firstParsedTransaction,
 );
 
+const portfolio = analyzeWalletPortfolio(
+  walletBalance,
+  tokenHoldings,
+);
+
 const risk = analyzeWalletRisk(
   balance.sol,
   activity,
@@ -99,6 +105,7 @@ const risk = analyzeWalletRisk(
           status: "supported",
          balance: walletBalance,
 tokenHoldings,
+portfolio,
 recentTransactions,
 transactionCountSample: recentTransactions.length,
 activity,
