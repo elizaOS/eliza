@@ -81,6 +81,7 @@
     "publish:eliza1:dry-run": "cd packages/training && node ../scripts/run-python.mjs -m scripts.publish.publish_eliza1_all --dry-run",
     "dev:agent": "bun run --cwd packages/agent dev",
     "dev:core": "bun run --cwd packages/core dev",
+    "seed:messages": "node packages/scripts/seed-message-corpus.mjs",
     "start:debug": "NODE_NO_WARNINGS=1 LOG_LEVEL=debug bun run --cwd packages/agent start",
     "build": "node packages/scripts/run-turbo.mjs run build --concurrency=8 --filter='!./packages/examples/**' --filter='!./packages/benchmarks/**' --cache=local:rw,remote:r --output-logs=errors-only && bun run check:view-bundles",
     "build:client": "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/app",

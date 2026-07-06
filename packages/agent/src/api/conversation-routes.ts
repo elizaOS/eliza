@@ -46,7 +46,6 @@ import {
   PostSeedMessagesRequestSchema,
   parsePositiveInteger,
 } from "@elizaos/shared";
-import { generateMessageCorpus, seedMessageCorpus } from "./message-corpus.ts";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import type {
@@ -79,6 +78,7 @@ import {
   sanitizeConversationMetadata,
 } from "./conversation-metadata.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
+import { generateMessageCorpus, seedMessageCorpus } from "./message-corpus.ts";
 import {
   buildUserMessages,
   getErrorMessage,
@@ -1492,7 +1492,9 @@ function normalizeMessageSearchQuery(value: string | null): string {
  * Absent → `null`; present-but-unparseable → `"invalid"` so the route can 400
  * instead of silently searching an unbounded window the caller didn't ask for.
  */
-function parseMessageSearchTime(value: string | null): number | null | "invalid" {
+function parseMessageSearchTime(
+  value: string | null,
+): number | null | "invalid" {
   if (value === null) return null;
   const trimmed = value.trim();
   if (!trimmed) return "invalid";
@@ -1651,10 +1653,9 @@ export async function handleConversationRoutes(
             messageId: memory.id,
             conversationId: conversation.id,
             roomId,
-            role:
-              memory.entityId === runtime.agentId
-                ? "assistant"
-                : ("user" as const),
+            role: (memory.entityId === runtime.agentId
+              ? "assistant"
+              : "user") as "assistant" | "user",
             text: rawText,
             snippet: buildMessageSearchSnippet(rawText, query),
             createdAt: memory.createdAt,

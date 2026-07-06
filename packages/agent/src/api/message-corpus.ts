@@ -17,9 +17,9 @@
 import { randomUUID } from "node:crypto";
 import {
   ChannelType,
-  MemoryType,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
+  MemoryType,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -86,12 +86,16 @@ interface TopicPack {
   userLines: string[];
   assistantLines: string[];
   facts: string[];
-  /** A distinctive query that should hit this topic's messages. */
+  /**
+   * A single distinctive token guaranteed to recur across this pack's lines, so
+   * it reliably lands hits. A multi-word phrase would require every term in one
+   * message — brittle against generated line variety — so keep it one word.
+   */
   sampleQuery: string;
 }
 
 // Each pack carries distinctive low-collision keywords (marathon, sourdough,
-// kubernetes, …) so demo searches land on the intended topic, and enough line
+// canary, …) so demo searches land on the intended topic, and enough line
 // variety that FTS ranking has real signal instead of near-identical rows.
 const TOPIC_PACKS: TopicPack[] = [
   {
@@ -116,11 +120,15 @@ const TOPIC_PACKS: TopicPack[] = [
       "Owner is training for the Berlin marathon and runs long on weekends",
       "Owner's easy run pace is about six minutes per kilometer",
     ],
-    sampleQuery: "marathon training",
+    sampleQuery: "marathon",
   },
   {
     topic: "baking",
-    titles: ["Sourdough starter log", "Weekend bake plans", "Crumb troubleshooting"],
+    titles: [
+      "Sourdough starter log",
+      "Weekend bake plans",
+      "Crumb troubleshooting",
+    ],
     userLines: [
       "The sourdough starter doubled in {n} hours today, smells like ripe fruit",
       "My crumb came out dense again — should I extend bulk fermentation?",
@@ -140,11 +148,15 @@ const TOPIC_PACKS: TopicPack[] = [
       "Owner keeps a sourdough starter and bakes on weekends",
       "Owner prefers high-hydration open-crumb loaves",
     ],
-    sampleQuery: "sourdough starter",
+    sampleQuery: "sourdough",
   },
   {
     topic: "infra",
-    titles: ["Kubernetes cluster upgrade", "Deploy pipeline debugging", "Incident postmortem"],
+    titles: [
+      "Kubernetes cluster upgrade",
+      "Deploy pipeline debugging",
+      "Incident postmortem",
+    ],
     userLines: [
       "The kubernetes cluster upgrade to {n}.x left two nodes NotReady",
       "Deploy rolled back automatically — the readiness probe timed out after {n} seconds",
@@ -164,11 +176,15 @@ const TOPIC_PACKS: TopicPack[] = [
       "Owner operates a kubernetes cluster and prefers canary deploys",
       "Owner's production database is Postgres behind a connection pooler",
     ],
-    sampleQuery: "kubernetes cluster",
+    sampleQuery: "canary",
   },
   {
     topic: "finance",
-    titles: ["Quarterly budget review", "Invoice follow-ups", "Subscription audit"],
+    titles: [
+      "Quarterly budget review",
+      "Invoice follow-ups",
+      "Subscription audit",
+    ],
     userLines: [
       "The quarterly budget shows {n} percent overspend on cloud infrastructure",
       "Invoice number {n} from the design contractor is still unpaid",
@@ -188,11 +204,15 @@ const TOPIC_PACKS: TopicPack[] = [
       "Owner reviews the budget quarterly and tracks cloud spend closely",
       "Owner's payroll runs monthly on a fixed date",
     ],
-    sampleQuery: "quarterly budget",
+    sampleQuery: "invoice",
   },
   {
     topic: "travel",
-    titles: ["Kyoto itinerary", "Autumn trip planning", "Flight and ryokan bookings"],
+    titles: [
+      "Kyoto itinerary",
+      "Autumn trip planning",
+      "Flight and ryokan bookings",
+    ],
     userLines: [
       "Thinking {n} days in Kyoto then the train to Osaka — too rushed?",
       "The ryokan near Arashiyama has an opening the week of the {n}th",
@@ -212,11 +232,15 @@ const TOPIC_PACKS: TopicPack[] = [
       "Owner is planning an autumn trip to Kyoto with a ryokan stay",
       "Owner prefers early-morning sightseeing before crowds",
     ],
-    sampleQuery: "kyoto itinerary",
+    sampleQuery: "kyoto",
   },
   {
     topic: "reading",
-    titles: ["Book club notes", "Reading list triage", "Sci-fi recommendations"],
+    titles: [
+      "Book club notes",
+      "Reading list triage",
+      "Sci-fi recommendations",
+    ],
     userLines: [
       "Finished reading Dune last night — the ecology subplot deserved more pages",
       "Book club picked a {n} page biography for next month, wish me luck",
@@ -236,7 +260,7 @@ const TOPIC_PACKS: TopicPack[] = [
       "Owner is in a monthly book club and favors literary sci-fi",
       "Owner reads mostly during train commutes",
     ],
-    sampleQuery: "book club",
+    sampleQuery: "abandoning",
   },
   {
     topic: "garden",
@@ -260,7 +284,7 @@ const TOPIC_PACKS: TopicPack[] = [
       "Owner grows tomatoes from seed in a raised-bed garden",
       "Owner composts and battles aphids without pesticides",
     ],
-    sampleQuery: "tomato seedlings",
+    sampleQuery: "seedlings",
   },
   {
     topic: "health",
@@ -284,7 +308,7 @@ const TOPIC_PACKS: TopicPack[] = [
       "Owner tracks migraines and skipped meals are a known trigger",
       "Owner is resetting their sleep schedule around a fixed wake time",
     ],
-    sampleQuery: "migraine tracking",
+    sampleQuery: "migraine",
   },
 ];
 
@@ -481,7 +505,8 @@ export async function seedMessageCorpus(
       await runtime.createMemory(
         {
           id: randomUUID() as UUID,
-          entityId: message.role === "assistant" ? runtime.agentId : ownerEntityId,
+          entityId:
+            message.role === "assistant" ? runtime.agentId : ownerEntityId,
           agentId: runtime.agentId,
           roomId,
           worldId,
