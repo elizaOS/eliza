@@ -34,6 +34,11 @@ const telegramPlugin: Plugin = {
       aliases: ["telegram", "telegram-account", "telegramaccount"],
       sourceKind: "passive",
       isPassive: true,
+      identityMetadataMapping: {
+        userIdField: "fromId",
+        nameField: "entityName",
+      },
+      worldIdMetadataKeys: ["telegramChatId"],
     },
   ],
   // TelegramService must come before TelegramOwnerPairingServiceImpl so the

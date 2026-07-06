@@ -133,6 +133,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function telegramIdentityMetadata(
+  telegramUserId: string,
+  name?: string,
+  username?: string,
+): Record<string, string> {
+  return {
+    userId: telegramUserId,
+    id: telegramUserId,
+    ...(name ? { name } : {}),
+    ...(username ? { username } : {}),
+  };
+}
+
 function isCompactProgressContent(
   content: Content,
 ): content is Content & { text: string } {
@@ -1411,6 +1424,11 @@ export class MessageManager {
             username: ctx.from.username,
           },
           telegram: {
+            ...telegramIdentityMetadata(
+              telegramUserId,
+              ctx.from.first_name,
+              ctx.from.username,
+            ),
             chatId: telegramChatId,
             messageId: telegramMessageId,
             threadId,
@@ -1688,6 +1706,11 @@ export class MessageManager {
           username: ctx.from.username,
         },
         telegram: {
+          ...telegramIdentityMetadata(
+            telegramUserId,
+            ctx.from.first_name,
+            ctx.from.username,
+          ),
           chatId: telegramChatId,
           messageId: callbackKey,
           threadId,
@@ -1784,6 +1807,11 @@ export class MessageManager {
           username: args.ctx.from.username,
         },
         telegram: {
+          ...telegramIdentityMetadata(
+            actorTelegramUserId,
+            args.ctx.from.first_name,
+            args.ctx.from.username,
+          ),
           chatId: args.chat.id.toString(),
           messageId: `cua-${queryId}`,
         },
@@ -1972,10 +2000,27 @@ export class MessageManager {
           source: "telegram",
           accountId: this.accountId,
           provider: "telegram",
+          entityName: ctx.from.first_name,
+          entityUserName: ctx.from.username,
+          fromBot: ctx.from.is_bot,
+          fromId: ctx.from.id.toString(),
+          sourceId: entityId,
+          sender: {
+            id: ctx.from.id.toString(),
+            name: ctx.from.first_name,
+            username: ctx.from.username,
+          },
           telegram: {
+            ...telegramIdentityMetadata(
+              ctx.from.id.toString(),
+              ctx.from.first_name,
+              ctx.from.username,
+            ),
             chatId: reaction.chat.id.toString(),
             messageId: reaction.message_id.toString(),
           },
+          telegramUserId: ctx.from.id.toString(),
+          telegramChatId: reaction.chat.id.toString(),
         } satisfies Memory["metadata"],
         createdAt: Date.now(),
       };

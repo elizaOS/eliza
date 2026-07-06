@@ -94,9 +94,20 @@ vi.mock("@elizaos/core", async () => {
     }
   }
 
+  class CommandRegistryService extends Service {
+    static readonly serviceType = "commands";
+
+    register(): void {}
+
+    list(): unknown[] {
+      return [];
+    }
+  }
+
   return {
     ...interactions,
     ChannelType,
+    CommandRegistryService,
     EventType,
     ModelType,
     Role,

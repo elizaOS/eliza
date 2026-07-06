@@ -33,6 +33,7 @@ import {
 	ROLE_RANK,
 	recordOwnerGrant,
 	recordRoleGrant,
+	resolveEntityRole,
 	resolveWorldForMessage,
 } from "./roles.ts";
 import {
@@ -484,6 +485,43 @@ describe("connector metadata is registry-driven, not Discord-special-cased (#120
 		expect(getLiveEntityMetadataFromMessage(message)).toBeUndefined();
 	});
 
+	it("falls back to declared flat mapping when nested connector metadata has no stable id", () => {
+		const owner = "test:telegram-connector";
+		try {
+			registerConnectorSourceMetadata(
+				"telegram",
+				{
+					identityMetadataMapping: {
+						userIdField: "fromId",
+						nameField: "entityName",
+					},
+				},
+				owner,
+			);
+			const message = {
+				entityId: "e-1",
+				roomId: "room-1",
+				content: { text: "hi", source: "telegram" },
+				metadata: {
+					telegram: { chatId: "chat-1", messageId: "message-1" },
+					fromId: "user-123",
+					entityName: "Ada",
+				},
+			} as unknown as Memory;
+
+			expect(getLiveEntityMetadataFromMessage(message)).toEqual({
+				telegram: {
+					userId: "user-123",
+					id: "user-123",
+					name: "Ada",
+					username: "Ada",
+				},
+			});
+		} finally {
+			unregisterConnectorSourceMetadataOwner(owner);
+		}
+	});
+
 	it("works for a NEW connector purely by registering mapping metadata (no core edit)", () => {
 		const owner = "test:matrix-connector";
 		try {
@@ -514,6 +552,35 @@ describe("connector metadata is registry-driven, not Discord-special-cased (#120
 		} finally {
 			unregisterConnectorSourceMetadataOwner(owner);
 		}
+	});
+
+	it("uses stored sender metadata when live connector metadata has no stable id", async () => {
+		const ownerEntityId = "owner-entity";
+		const senderEntityId = "sender-entity";
+		const runtime = {
+			agentId: "agent-1",
+			getSetting: () => undefined,
+			getRelationships: async () => [],
+			getEntityById: async (id: string) => {
+				if (id === ownerEntityId || id === senderEntityId) {
+					return {
+						id,
+						metadata: { telegram: { id: "telegram-owner" } },
+					};
+				}
+				return null;
+			},
+		} as unknown as IAgentRuntime;
+
+		await expect(
+			resolveEntityRole(
+				runtime,
+				null,
+				{ ownership: { ownerId: ownerEntityId } } as never,
+				senderEntityId,
+				{ liveEntityMetadata: { telegram: { chatId: "chat-1" } } },
+			),
+		).resolves.toBe("OWNER");
 	});
 
 	it("derives the world id from the declared world-id keys (first present wins)", async () => {

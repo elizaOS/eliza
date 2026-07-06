@@ -251,6 +251,30 @@ export function getUnresolvedSenderRoleFloor(message: Memory): RoleName {
 	return "GUEST";
 }
 
+function hasConnectorStableIdentity(
+	metadata: Record<string, unknown> | null | undefined,
+): boolean {
+	if (!metadata) {
+		return false;
+	}
+
+	for (const rawConnector of Object.values(metadata)) {
+		const connector = asRecord(rawConnector);
+		if (!connector) {
+			continue;
+		}
+
+		for (const field of CONNECTOR_STABLE_ID_FIELDS) {
+			const value = connector[field];
+			if (typeof value === "string" && value.trim().length > 0) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
 function getConnectorMetadataFromMemory(
 	message: Memory,
 ): Record<string, unknown> | undefined {
@@ -262,7 +286,10 @@ function getConnectorMetadataFromMemory(
 
 	const sourceMetadata = asRecord(memoryMetadata?.[source]);
 	if (sourceMetadata) {
-		return { [source]: sourceMetadata };
+		const nestedMetadata = { [source]: sourceMetadata };
+		if (hasConnectorStableIdentity(nestedMetadata)) {
+			return nestedMetadata;
+		}
 	}
 
 	// No nested `metadata[source]` object present. Fall back to the connector's
@@ -497,8 +524,10 @@ async function resolveOwnershipRole(
 		return null;
 	}
 
-	const senderMetadata =
-		options?.liveEntityMetadata ?? (await getEntityMetadata(runtime, entityId));
+	const liveEntityMetadata = options?.liveEntityMetadata;
+	const senderMetadata = hasConnectorStableIdentity(liveEntityMetadata)
+		? liveEntityMetadata
+		: await getEntityMetadata(runtime, entityId);
 
 	for (const ownerId of ownerIds) {
 		if (ownerId === entityId) {
