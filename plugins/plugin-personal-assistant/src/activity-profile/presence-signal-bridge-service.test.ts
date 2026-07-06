@@ -113,7 +113,7 @@ describe("PresenceSignalBridgeService relationship recency", () => {
     });
   });
 
-  it("registers message, reaction, view, and action presence handlers", async () => {
+  it("registers message, reaction, view, action, and composer presence handlers", async () => {
     const { runtime, handlers } = runtimeWithRelationships(null);
     await PresenceSignalBridgeService.start(runtime);
 

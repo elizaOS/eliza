@@ -26,6 +26,7 @@ function makeCtx(
 ): {
   ctx: InteractionsRouteContext;
   emitEvent: ReturnType<typeof vi.fn>;
+  reportError: ReturnType<typeof vi.fn>;
   json: ReturnType<typeof vi.fn>;
   error: ReturnType<typeof vi.fn>;
 } {
@@ -33,6 +34,7 @@ function makeCtx(
     body === undefined ? [] : [Buffer.from(JSON.stringify(body))],
   ) as unknown as http.IncomingMessage;
   const emitEvent = vi.fn(async () => {});
+  const reportError = vi.fn();
   const json = vi.fn();
   const error = vi.fn();
   const ctx: InteractionsRouteContext = {
@@ -44,10 +46,11 @@ function makeCtx(
     error,
     runtime: {
       emitEvent,
+      reportError,
       logger: { debug: vi.fn() },
     } as unknown as AgentRuntime,
   };
-  return { ctx, emitEvent, json, error };
+  return { ctx, emitEvent, reportError, json, error };
 }
 
 function shortcutCalls(emitEvent: ReturnType<typeof vi.fn>) {
@@ -218,6 +221,28 @@ describe("handleInteractionsRoutes — SHORTCUT_FIRED (#8792)", () => {
       expect.objectContaining({ ok: true }),
     );
   });
+
+  it("surfaces shortcut emit failures without failing the route", async () => {
+    const { ctx, emitEvent, reportError, json } = makeCtx({
+      shortcutId: "show-keyboard-shortcuts",
+    });
+    const failure = new Error("event bus down");
+    emitEvent.mockRejectedValueOnce(failure);
+
+    await expect(handleInteractionsRoutes(ctx)).resolves.toBe(true);
+
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({ ok: true }),
+    );
+    await vi.waitFor(() =>
+      expect(reportError).toHaveBeenCalledWith(
+        "InteractionsRoutes.shortcutFired",
+        failure,
+        { shortcutId: "show-keyboard-shortcuts" },
+      ),
+    );
+  });
 });
 
 describe("handleInteractionsRoutes — composer lifecycle (#14679)", () => {
@@ -321,5 +346,37 @@ describe("handleInteractionsRoutes — composer lifecycle (#14679)", () => {
     await expect(handleInteractionsRoutes(ctx)).resolves.toBe(true);
     expect(composerCalls(emitEvent)).toHaveLength(0);
     expect(error).toHaveBeenCalledWith(ctx.res, expect.any(String), 400);
+  });
+
+  it("surfaces composer emit failures without failing the route", async () => {
+    const { ctx, emitEvent, reportError, json } = makeCtx(
+      {
+        activity: "typing_started",
+        surface: "continuous_chat_overlay",
+        draftLength: 5,
+        occurredAt: "2026-06-01T12:00:00.000Z",
+      },
+      "POST",
+      "/api/interactions/composer",
+    );
+    const failure = new Error("event bus down");
+    emitEvent.mockRejectedValueOnce(failure);
+
+    await expect(handleInteractionsRoutes(ctx)).resolves.toBe(true);
+
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({ ok: true, activity: "typing_started" }),
+    );
+    await vi.waitFor(() =>
+      expect(reportError).toHaveBeenCalledWith(
+        "InteractionsRoutes.composerActivity",
+        failure,
+        {
+          activity: "typing_started",
+          surface: "continuous_chat_overlay",
+        },
+      ),
+    );
   });
 });

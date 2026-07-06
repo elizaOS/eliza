@@ -215,11 +215,12 @@ export async function handleInteractionsRoutes(
           initiatedBy: "user",
         })
         .catch((err) => {
-          // error-policy:J7 telemetry emission must not break the interaction route.
-          runtime.logger?.debug?.(
-            { src: "InteractionsRoutes", err },
-            "[InteractionsRoutes] composer activity emit failed",
-          );
+          // error-policy:J7 telemetry emission must not break the interaction
+          // route, but a broken event bus must reach RECENT_ERRORS.
+          runtime.reportError("InteractionsRoutes.composerActivity", err, {
+            activity: request.activity,
+            surface: request.surface,
+          });
         });
     }
 
@@ -245,11 +246,11 @@ export async function handleInteractionsRoutes(
         initiatedBy: "user",
       })
       .catch((err) => {
-        // error-policy:J7 telemetry emission must not break the interaction route.
-        runtime.logger?.debug?.(
-          { src: "InteractionsRoutes", err },
-          "[InteractionsRoutes] SHORTCUT_FIRED emit failed",
-        );
+        // error-policy:J7 telemetry emission must not break the interaction
+        // route, but a broken event bus must reach RECENT_ERRORS.
+        runtime.reportError("InteractionsRoutes.shortcutFired", err, {
+          shortcutId: request.shortcutId,
+        });
       });
   }
 
