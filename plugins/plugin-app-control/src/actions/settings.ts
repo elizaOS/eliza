@@ -350,6 +350,123 @@ const PERMISSIONS_REQUEST_KEYS: Readonly<Record<string, SettingsWritableKey>> =
 		"speech-recognition": PERMISSIONS_REQUEST_KEY,
 	};
 
+type UpdateChannel = "stable" | "beta" | "nightly";
+
+interface UpdateStatusPayload {
+	currentVersion?: string;
+	channel?: string;
+	installMethod?: string;
+	updateAvailable?: boolean;
+	latestVersion?: string | null;
+	lastCheckAt?: string | null;
+	error?: string | null;
+	updateCommand?: string | null;
+	updateInstructions?: string | null;
+	canExecuteUpdate?: boolean;
+}
+
+const UPDATE_CHANNELS = new Set<UpdateChannel>(["stable", "beta", "nightly"]);
+
+function isUpdateChannel(value: string | null): value is UpdateChannel {
+	return value !== null && UPDATE_CHANNELS.has(value as UpdateChannel);
+}
+
+function readUpdateStatusPayload(data: unknown): UpdateStatusPayload {
+	if (!data || typeof data !== "object") return {};
+	return data as UpdateStatusPayload;
+}
+
+function describeUpdateStatus(data: unknown): string {
+	const status = readUpdateStatusPayload(data);
+	if (status.error) {
+		return `Update check failed: ${status.error}`;
+	}
+	const current = status.currentVersion ?? "unknown";
+	const channel = status.channel ?? "unknown";
+	if (status.updateAvailable) {
+		const latest = status.latestVersion ?? "the latest release";
+		return `Update available: ${current} → ${latest} on ${channel}.`;
+	}
+	return `Current: ${current} on ${channel}.`;
+}
+
+function fetchUpdateStatus(
+	routeFetch: SettingsRouteFetch,
+	force: boolean,
+): Promise<SettingsRouteOutcome> {
+	return routeFetch({
+		method: "GET",
+		path: `/api/update/status${force ? "?force=true" : ""}`,
+	});
+}
+
+const UPDATES_STATUS_KEY: SettingsWritableKey = {
+	description:
+		"Read the connected agent update status from the same backend route the Release Center uses.",
+	valueType: "command",
+	apply: async ({ routeFetch }) => fetchUpdateStatus(routeFetch, false),
+	successText: (_value, _request, outcome) =>
+		`Release status: ${describeUpdateStatus(outcome.data)}`,
+};
+
+const UPDATES_CHECK_KEY: SettingsWritableKey = {
+	description:
+		"Force an update check through the connected agent update-status route.",
+	valueType: "command",
+	apply: async ({ routeFetch }) => fetchUpdateStatus(routeFetch, true),
+	successText: (_value, _request, outcome) =>
+		`Update check complete. ${describeUpdateStatus(outcome.data)}`,
+};
+
+const UPDATES_CHANNEL_KEY: SettingsWritableKey = {
+	description:
+		"Switch the connected agent update channel to stable, beta, or nightly.",
+	valueType: "command",
+	apply: async ({ request, routeFetch }) => {
+		if (!isUpdateChannel(request.value)) {
+			return {
+				ok: false,
+				detail: "choose stable, beta, or nightly",
+			};
+		}
+		const channelResult = await routeFetch({
+			method: "PUT",
+			path: "/api/update/channel",
+			body: { channel: request.value },
+		});
+		if (!channelResult.ok) return channelResult;
+		const status = await fetchUpdateStatus(routeFetch, true);
+		return status.ok ? status : channelResult;
+	},
+	successText: (_value, request, outcome) =>
+		`Update channel is ${request.value}. ${describeUpdateStatus(outcome.data)}`,
+};
+
+const UPDATES_APPLY_KEY: SettingsWritableKey = {
+	description:
+		"Report the real apply plan for an available connected-agent update. Chat does not invent a remote installer.",
+	valueType: "command",
+	apply: async ({ routeFetch }) => fetchUpdateStatus(routeFetch, true),
+	successText: (_value, _request, outcome) => {
+		const status = readUpdateStatusPayload(outcome.data);
+		if (status.error) {
+			return `I checked the update plan, but the update check failed: ${status.error}`;
+		}
+		if (!status.updateAvailable) {
+			return `No update to apply. ${describeUpdateStatus(outcome.data)}`;
+		}
+		const instruction =
+			status.updateCommand ??
+			status.updateInstructions ??
+			"review the host update plan";
+		return status.canExecuteUpdate
+			? `An update is available. Use the host updater to run: ${instruction}`
+			: `An update is available, but chat cannot apply it directly. ${
+					status.updateInstructions ?? `Run ${instruction} on the host.`
+				}`;
+	},
+};
+
 const AUTO_TRAINING_KEY: SettingsWritableKey = {
 	description:
 		"Whether trajectory thresholds may automatically start the training pipeline.",
@@ -1001,10 +1118,17 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 		},
 	},
 	updates: {
-		kind: "unwired",
-		reason:
-			"Update check/apply is an asynchronous job surface, not a settings value.",
-		trackingIssue: 14912,
+		kind: "route",
+		summary:
+			"Connected-agent update status, forced checks, channel selection, and apply-plan reporting through the Release Center backend route.",
+		keys: {
+			status: UPDATES_STATUS_KEY,
+			check: UPDATES_CHECK_KEY,
+			"check-updates": UPDATES_CHECK_KEY,
+			channel: UPDATES_CHANNEL_KEY,
+			apply: UPDATES_APPLY_KEY,
+			"apply-update": UPDATES_APPLY_KEY,
+		},
 	},
 	advanced: {
 		kind: "route",
@@ -1452,13 +1576,17 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			"SET_WALLET_RPC",
 			"CHANGE_WALLET_RPC",
 			"ELIZA_CLOUD_RPC",
+			"CHECK_FOR_UPDATES",
+			"UPDATE_STATUS",
+			"APPLY_UPDATE",
+			"CHANGE_UPDATE_CHANNEL",
 		],
 		description:
-			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, requesting OS permissions via section=permissions key=request permission=microphone|camera|location|notifications|screen-recording, changing appearance values via section=appearance key=theme|accent|language|home-time-widget, turning automatic training on/off via section=capabilities key=auto-training, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, selecting wallet RPC providers via section=wallet-rpc key=evm|bsc|solana value=<provider> or key=cloud, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, and creating/restoring local agent backups via section=advanced key=create-backup|restore-backup. Restore requires fileName and confirm=true. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→PLUGIN, secrets→SECRETS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
+			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, requesting OS permissions via section=permissions key=request permission=microphone|camera|location|notifications|screen-recording, changing appearance values via section=appearance key=theme|accent|language|home-time-widget, turning automatic training on/off via section=capabilities key=auto-training, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, selecting wallet RPC providers via section=wallet-rpc key=evm|bsc|solana value=<provider> or key=cloud, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, creating/restoring local agent backups via section=advanced key=create-backup|restore-backup, and checking/reporting connected-agent updates via section=updates key=status|check|channel|apply. Restore requires fileName and confirm=true. Update channel requires value=stable|beta|nightly. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→PLUGIN, secrets→SECRETS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
 		descriptionCompressed:
-			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, OS permission requests, appearance, auto-training, wallet RPC providers, app permissions, and local backups",
+			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, OS permission requests, appearance, auto-training, wallet RPC providers, app permissions, local backups, and updates",
 		routingHint:
-			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'ask for microphone permission', 'request camera access', 'enable location permission', 'turn on notifications', 'request screen recording' -> SETTINGS section=permissions key=request permission=microphone|camera|location|notifications|screen-recording. 'switch to dark mode', 'use system theme', 'set the accent to green', 'change UI language to Spanish', 'hide/show the home time widget' -> SETTINGS section=appearance key=theme|accent|language|home-time-widget value=<value>. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'use Alchemy for EVM RPC', 'set BSC RPC to NodeReal', 'use Helius for Solana RPC' -> SETTINGS section=wallet-rpc key=evm|bsc|solana value=alchemy|infura|ankr|nodereal|quicknode|helius-birdeye|eliza-cloud. 'use Eliza Cloud RPC' -> SETTINGS section=wallet-rpc key=cloud. 'switch wallet network to testnet' -> SETTINGS section=wallet-rpc key=network value=testnet. Never put wallet API keys or RPC URLs in SETTINGS; use SECRETS for API keys and vault material. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/wallpaper is BACKGROUND, the agent identity is CHARACTER, connector plugin lifecycle/config is PLUGIN, secret/API keys are SECRETS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, requesting an OS permission, changing an appearance value, changing wallet RPC provider selection, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
+			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'ask for microphone permission', 'request camera access', 'enable location permission', 'turn on notifications', 'request screen recording' -> SETTINGS section=permissions key=request permission=microphone|camera|location|notifications|screen-recording. 'switch to dark mode', 'use system theme', 'set the accent to green', 'change UI language to Spanish', 'hide/show the home time widget' -> SETTINGS section=appearance key=theme|accent|language|home-time-widget value=<value>. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'use Alchemy for EVM RPC', 'set BSC RPC to NodeReal', 'use Helius for Solana RPC' -> SETTINGS section=wallet-rpc key=evm|bsc|solana value=alchemy|infura|ankr|nodereal|quicknode|helius-birdeye|eliza-cloud. 'use Eliza Cloud RPC' -> SETTINGS section=wallet-rpc key=cloud. 'switch wallet network to testnet' -> SETTINGS section=wallet-rpc key=network value=testnet. Never put wallet API keys or RPC URLs in SETTINGS; use SECRETS for API keys and vault material. 'check for updates', 'refresh update status' -> SETTINGS section=updates key=check. 'what update version am I on' -> SETTINGS section=updates key=status. 'switch updates to beta/nightly/stable' -> SETTINGS section=updates key=channel value=beta|nightly|stable. 'apply the available update' -> SETTINGS section=updates key=apply. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/wallpaper is BACKGROUND, the agent identity is CHARACTER, connector plugin lifecycle/config is PLUGIN, secret/API keys are SECRETS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, requesting an OS permission, changing an appearance value, changing wallet RPC provider selection, checking update status, changing update channel, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -1478,7 +1606,7 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			{
 				name: "key",
 				description:
-					"The specific toggle or operation within the section (e.g. theme, accent, language, home-time-widget, shell, auto-training, wallet-rpc evm/bsc/solana/cloud/network, fs/net, create-backup, restore-backup). Optional; defaults to the section's primary key.",
+					"The specific toggle or operation within the section (e.g. theme, accent, language, home-time-widget, shell, auto-training, wallet-rpc evm/bsc/solana/cloud/network, fs/net, create-backup, restore-backup, status/check/channel/apply for updates). Optional; defaults to the section's primary key.",
 				required: false,
 				schema: { type: "string" },
 			},

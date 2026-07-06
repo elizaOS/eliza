@@ -253,10 +253,6 @@ describe("registry completeness", () => {
 		expect(SETTINGS_WRITE_REGISTRY["wallet-rpc"]).toMatchObject({
 			kind: "route",
 		});
-		expect(SETTINGS_WRITE_REGISTRY.updates).toMatchObject({
-			kind: "unwired",
-			trackingIssue: 14912,
-		});
 	});
 
 	it("names only real dedicated actions for delegated sections", () => {
@@ -307,7 +303,7 @@ describe("SETTINGS action: list", () => {
 			via: "SETTINGS",
 		});
 		const updates = sections.find((s) => s.id === "updates");
-		expect(updates).toMatchObject({ writable: false, via: "not-yet-wired" });
+		expect(updates).toMatchObject({ writable: true, via: "SETTINGS" });
 	});
 });
 
@@ -1111,6 +1107,118 @@ describe("SETTINGS action: set on an owned route section", () => {
 		expect(result?.success).toBe(false);
 		expect(texts.join(" ")).toContain("shell");
 	});
+
+	it("reads update status through the Release Center backend status route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: {
+				currentVersion: "1.0.0",
+				channel: "stable",
+				updateAvailable: false,
+				latestVersion: "1.0.0",
+			},
+		}));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "status" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "GET",
+			path: "/api/update/status",
+		});
+		expect(result?.success).toBe(true);
+		expect(texts.join(" ")).toContain("Current: 1.0.0 on stable");
+	});
+
+	it("forces an update check through the update status route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: {
+				currentVersion: "1.0.0",
+				channel: "beta",
+				updateAvailable: true,
+				latestVersion: "1.1.0-beta.1",
+			},
+		}));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "check" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "GET",
+			path: "/api/update/status?force=true",
+		});
+		expect(result?.success).toBe(true);
+		expect(texts.join(" ")).toContain("Update available: 1.0.0");
+	});
+
+	it("changes the update channel then refreshes status", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "PUT")
+				return { ok: true, data: { channel: "beta" } };
+			return {
+				ok: true,
+				data: {
+					currentVersion: "1.0.0",
+					channel: "beta",
+					updateAvailable: false,
+					latestVersion: "1.0.0",
+				},
+			};
+		});
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "channel", value: "beta" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(1, {
+			method: "PUT",
+			path: "/api/update/channel",
+			body: { channel: "beta" },
+		});
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "GET",
+			path: "/api/update/status?force=true",
+		});
+		expect(result?.success).toBe(true);
+		expect(texts.join(" ")).toContain("Update channel is beta");
+	});
+
+	it("rejects invalid update channels before calling the route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "channel", value: "canary" },
+			routeFetch,
+		);
+		expect(routeFetch).not.toHaveBeenCalled();
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("stable, beta, or nightly");
+	});
+
+	it("reports the update apply plan without fabricating a remote installer job", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: {
+				currentVersion: "1.0.0",
+				channel: "stable",
+				updateAvailable: true,
+				latestVersion: "1.1.0",
+				canExecuteUpdate: false,
+				updateInstructions:
+					'This is a remote status view. Run "npm install -g elizaos@latest" on the host; no remote execution endpoint is exposed.',
+			},
+		}));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "apply" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "GET",
+			path: "/api/update/status?force=true",
+		});
+		expect(result?.success).toBe(true);
+		expect(texts.join(" ")).toContain("chat cannot apply it directly");
+		expect(texts.join(" ")).toContain("no remote execution endpoint");
+	});
 });
 
 describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
@@ -1162,7 +1270,7 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 	it("refuses an unwired gap section with its stated reason", async () => {
 		const { result, texts } = await invoke({
 			action: "set",
-			section: "updates",
+			section: "voice",
 			value: "on",
 		});
 		expect(result?.success).toBe(false);
