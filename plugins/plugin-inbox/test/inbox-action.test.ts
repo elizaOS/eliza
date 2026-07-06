@@ -737,6 +737,25 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       );
       expect(update?.sql).toContain("resolved = FALSE");
     });
+
+    it("rejects an explicit malformed snooze timestamp instead of applying the default window", async () => {
+      const { runtime, calls } = makeDbRuntime((sql) => {
+        if (sql.startsWith("SELECT")) return [makeTriageRow({ id: "entry-1" })];
+        return [];
+      });
+
+      const result = await callInbox(runtime, makeMessage(), {
+        subaction: "snooze",
+        entryId: "entry-1",
+        snoozedUntil: 24 * 60 * 60 * 1000,
+      } as unknown as InboxActionParameters);
+
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({ error: "INBOX_OPERATION_FAILED" });
+      expect(
+        calls.filter((call) => call.sql.startsWith("UPDATE")),
+      ).toHaveLength(0);
+    });
   });
 
   // The marker builders themselves are pinned by inbox-choice-markers.test.ts;

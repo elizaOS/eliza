@@ -514,10 +514,13 @@ const DEFAULT_SNOOZE_MS = 24 * 60 * 60 * 1000;
  */
 function resolveSnoozeUntil(params: InboxActionParameters): string | null {
   const raw = params.snoozedUntil ?? params.until;
-  if (typeof raw !== "string" || !raw.trim()) {
+  if (raw === undefined) {
     return new Date(Date.now() + DEFAULT_SNOOZE_MS).toISOString();
   }
-  const parsed = Date.parse(raw);
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const parsed = Date.parse(trimmed);
   if (!Number.isFinite(parsed)) return null;
   return new Date(parsed).toISOString();
 }
