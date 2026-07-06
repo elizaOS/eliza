@@ -198,6 +198,23 @@ describe("e2e wallet + SIWE login", () => {
     expect((window as { ethereum?: unknown }).ethereum).toBe(sentinel);
   });
 
+  it("ignores Phantom's window.ethereum injection (never SIWE with Phantom)", () => {
+    // Phantom multichain-injects window.ethereum with isPhantom:true; treating
+    // it as an EVM SIWE provider pops Phantom on a non-wallet sign-in (the
+    // "picked Google, got Phantom" bug). It must read as no injected provider.
+    (window as { ethereum?: unknown }).ethereum = {
+      isPhantom: true,
+      request: async () => [],
+    };
+    expect(getInjectedEthereumProvider()).toBeNull();
+  });
+
+  it("returns a genuine (non-Phantom) injected EVM provider", () => {
+    const metamask = { isMetaMask: true, request: async () => [] };
+    (window as { ethereum?: unknown }).ethereum = metamask;
+    expect(getInjectedEthereumProvider()).toBe(metamask);
+  });
+
   it("completes the full SIWE handshake with a REAL recoverable signature and stores the session", async () => {
     window.localStorage.setItem(E2E_WALLET_KEY_STORAGE_KEY, PRIVATE_KEY);
     await installE2eWalletIfRequested();
