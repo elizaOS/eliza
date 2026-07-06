@@ -236,6 +236,24 @@ const realResolveAlias: ModuleAlias[] = [
     find: /^@elizaos\/plugin-discord$/,
     replacement: path.join(pluginDiscordRoot, "index.ts"),
   },
+  {
+    // The installed-package alias below is a bare string, which vite treats as
+    // a prefix — subpath imports would rewrite to `dist/index.js/<subpath>`.
+    // Pin the one subpath the PA plugin graph imports to source, mirroring
+    // integration.config.ts.
+    find: /^@elizaos\/plugin-discord\/user-account-scraper$/,
+    replacement: path.join(pluginDiscordRoot, "user-account-scraper", "index.ts"),
+  },
+  {
+    // Subpath imports (e.g. @elizaos/plugin-wallet/diagnostic) must resolve to
+    // source before the bare string alias below rewrites the package root to
+    // src/index.ts; mirrors packages/app-core/vitest.config.ts.
+    find: /^@elizaos\/plugin-wallet\/(.+)$/,
+    replacement: `${path
+      .join(elizaWorkspaceRoot, "plugins", "plugin-wallet", "src")
+      .split(path.sep)
+      .join("/")}/$1`,
+  },
   ...getWorkspaceAppAliases(repoRoot, [
     "app-task-coordinator",
     "plugin-wallet",
