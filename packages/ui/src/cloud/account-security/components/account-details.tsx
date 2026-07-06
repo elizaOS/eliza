@@ -27,7 +27,7 @@ export function AccountDetails({ user }: AccountDetailsProps) {
 
       <div className="relative z-10 space-y-6">
         <div className="flex items-center gap-2">
-          <Info className="h-5 w-5 text-[var(--brand-orange)]" />
+          <Info className="h-5 w-5 text-muted" />
           <h3 className="text-lg font-bold text-txt-strong">
             {t("cloud.accountDetails.title", {
               defaultValue: "Account details",
@@ -60,7 +60,7 @@ export function AccountDetails({ user }: AccountDetailsProps) {
                     })}
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 rounded-sm border border-orange-500/40 bg-orange-500/10 px-2 py-0.5 text-xs text-orange-300">
+                  <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-muted px-2 py-0.5 text-xs text-txt-strong">
                     <XCircle className="h-3 w-3" />
                     {t("cloud.accountDetails.notVerified", {
                       defaultValue: "Unverified",
