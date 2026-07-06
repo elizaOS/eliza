@@ -132,7 +132,7 @@ describe("runOnboardingChat", () => {
     expect(result.session.name).toBeUndefined();
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     expect(findOrCreateByPhone).not.toHaveBeenCalled();
-    expect(result.reply).toContain("What should I call you?");
+    expect(result.reply).toMatch(/what should I call you\?/i);
     expect(result.reply).toContain("$5");
   });
 
@@ -638,7 +638,7 @@ describe("runOnboardingChat", () => {
       // greets AND explicitly offers to get the new user set up, then asks the
       // name — a proactive hello, not a passive prompt.
       expect(first.reply).toMatch(/i can get you set up|get you started/i);
-      expect(first.reply).toContain("What should I call you?");
+      expect(first.reply).toMatch(/what should I call you\?/i);
       expect(first.session.history).toHaveLength(1);
       expect(first.session.history[0]?.role).toBe("assistant");
 
@@ -653,7 +653,7 @@ describe("runOnboardingChat", () => {
       const result = await runTrustedPhoneTurn("🎉🔥🚀");
       expect(result.session.name).toBeUndefined();
       expect(result.session.history[0]?.content).toBe("🎉🔥🚀");
-      expect(result.reply).toContain("What should I call you?");
+      expect(result.reply).toMatch(/what should I call you\?/i);
       expect(result.reply).not.toMatch(NON_ASCII_PATTERN);
     });
 
@@ -700,7 +700,7 @@ describe("runOnboardingChat", () => {
         sessionCache.clear();
         const result = await runTrustedPhoneTurn(message);
         expect(result.session.name).toBeUndefined();
-        expect(result.reply).toContain("What should I call you?");
+        expect(result.reply).toMatch(/what should I call you\?/i);
       }
     });
 
@@ -709,7 +709,7 @@ describe("runOnboardingChat", () => {
       expect(result.session.name).toBeUndefined();
       expect(result.reply).not.toContain("evil.example");
       expect(result.reply).not.toContain("**");
-      expect(result.reply).toContain("What should I call you?");
+      expect(result.reply).toMatch(/what should I call you\?/i);
     });
 
     test("a non-ASCII explicit name is captured in ASCII-safe form and the reply stays ASCII", async () => {
@@ -729,7 +729,7 @@ describe("runOnboardingChat", () => {
         platformDisplayName: "Жозе 🎉",
       });
       expect(result.session.name).toBeUndefined();
-      expect(result.reply).toContain("What should I call you?");
+      expect(result.reply).toMatch(/what should I call you\?/i);
       expect(result.reply).not.toMatch(NON_ASCII_PATTERN);
     });
 
@@ -746,7 +746,7 @@ describe("runOnboardingChat", () => {
           platformDisplayName: displayName,
         });
         expect(result.session.name).toBeUndefined();
-        expect(result.reply).toContain("What should I call you?");
+        expect(result.reply).toMatch(/what should I call you\?/i);
       }
     });
 
@@ -765,7 +765,7 @@ describe("runOnboardingChat", () => {
       sessionCache.set(cacheKey(PLATFORM_SESSION), legacy);
 
       const beforeName = await runTrustedPhoneTurn("hello");
-      expect(beforeName.reply).toContain("What should I call you?");
+      expect(beforeName.reply).toMatch(/what should I call you\?/i);
 
       const named = await runTrustedPhoneTurn("call me Sam");
       expect(named.session.name).toBe("Sam");
