@@ -4,6 +4,8 @@
  */
 import type {
   WalletBalancesResponse,
+  WalletMarketMover,
+  WalletMarketOverviewResponse,
   WalletMarketPriceSnapshot,
 } from "@elizaos/contracts";
 
@@ -21,15 +23,23 @@ import type {
  *      for ranking, never surfaced),
  *   4. keep only symbols that have a unit price in the market overview,
  *   5. rank by aggregated holding value (desc; ties broken by symbol), take
- *      top 5,
+ *      the top {@link MAX_PRICED_HOLDINGS},
  *   6. return price-only rows — `{ symbol, priceUsd, change24hPct }`, with NO
  *      balance, holding value, or portfolio total.
  */
 
 /** The minimum holding value (USD) a position must be worth to appear. */
 export const MIN_HOLDING_USD = 1;
-/** Max assets shown in the price-only widget. */
-export const MAX_PRICED_HOLDINGS = 5;
+/** Max assets shown in the price-only widget (held OR baseline). */
+export const MAX_PRICED_HOLDINGS = 3;
+
+/**
+ * The baseline assets shown when the user holds nothing priced, in doctrine
+ * order (#14344). The market-overview `prices` array is exactly these three
+ * fixed snapshots, upper-cased (`market-overview.ts`), so this is a
+ * zero-ambiguity default rather than an attention-grabby trending feed.
+ */
+const DEFAULT_SYMBOLS = ["BTC", "SOL", "ETH"] as const;
 
 /** A price-only row — deliberately carries no amount/holding value. */
 export interface PricedHolding {
@@ -113,4 +123,70 @@ export function selectPricedHoldings(
       change24hPct: price.change24hPct,
     };
   });
+}
+
+function toRow(
+  snap: WalletMarketPriceSnapshot | WalletMarketMover,
+): PricedHolding {
+  return {
+    symbol: snap.symbol,
+    priceUsd: snap.priceUsd,
+    change24hPct: snap.change24hPct,
+  };
+}
+
+/**
+ * The BTC/SOL/ETH baseline rows for an account that holds nothing priced
+ * (#14344). Fixed snapshots come from `overview.prices` in {@link
+ * DEFAULT_SYMBOLS} order; if a partial-source response dropped one of the
+ * three, the gap is filled from `overview.movers` (trending) so the widget
+ * still shows up to {@link MAX_PRICED_HOLDINGS} rows rather than collapsing.
+ * Pure + deterministic.
+ */
+export function selectDefaultPriceRows(
+  overview: WalletMarketOverviewResponse | null | undefined,
+): PricedHolding[] {
+  if (!overview) return [];
+
+  const bySymbol = new Map<string, WalletMarketPriceSnapshot>();
+  for (const p of overview.prices ?? []) {
+    const key = p.symbol.trim().toUpperCase();
+    if (key && !bySymbol.has(key)) bySymbol.set(key, p);
+  }
+
+  const rows: PricedHolding[] = [];
+  const seen = new Set<string>();
+  for (const symbol of DEFAULT_SYMBOLS) {
+    const snap = bySymbol.get(symbol);
+    if (!snap) continue;
+    rows.push(toRow(snap));
+    seen.add(symbol);
+  }
+
+  if (rows.length < MAX_PRICED_HOLDINGS) {
+    for (const mover of overview.movers ?? []) {
+      const key = mover.symbol.trim().toUpperCase();
+      if (!key || seen.has(key)) continue;
+      rows.push(toRow(mover));
+      seen.add(key);
+      if (rows.length >= MAX_PRICED_HOLDINGS) break;
+    }
+  }
+
+  return rows.slice(0, MAX_PRICED_HOLDINGS);
+}
+
+/**
+ * The rows the wallet home widget renders (#14344): the user's top-3 priced
+ * holdings when they hold ≥1 qualifying asset, otherwise the BTC/SOL/ETH
+ * baseline. Returns `[]` only when neither balances nor overview data is
+ * available — the widget self-hides on that, and on nothing else.
+ */
+export function selectWalletWidgetRows(
+  balances: WalletBalancesResponse | null | undefined,
+  overview: WalletMarketOverviewResponse | null | undefined,
+): PricedHolding[] {
+  const held = selectPricedHoldings(balances, overview?.prices);
+  if (held.length > 0) return held;
+  return selectDefaultPriceRows(overview);
 }

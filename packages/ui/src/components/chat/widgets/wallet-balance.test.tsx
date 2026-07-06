@@ -1,14 +1,17 @@
 // @vitest-environment jsdom
 //
-// WalletBalanceWidget (price-only): loading placeholder until data resolves,
-// price-only rows for held assets (no amounts/holding value), skipping holdings
-// under $1, self-hide on empty balances, and opening the wallet view on tap.
-// jsdom render with the wallet balances/market API mocked (no backend).
+// WalletBalanceWidget (price-only, #10706 + #14344 doctrine): loading placeholder
+// until data resolves; top-3 held rows (no amounts/holding value) when the account
+// holds priced assets; the BTC/SOL/ETH baseline when it holds nothing or balances
+// are unavailable; self-hide ONLY when both endpoints fail; a 60s visibility-gated
+// price refresh; and opening the wallet view on tap. jsdom render with the wallet
+// balances/market API mocked (no backend).
 import type {
   WalletBalancesResponse,
   WalletMarketOverviewResponse,
 } from "@elizaos/shared";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -95,6 +98,15 @@ function overview(
   } as unknown as WalletMarketOverviewResponse;
 }
 
+/** Override jsdom's document visibility so the refresh gate can be exercised. */
+function setVisibility(state: "visible" | "hidden"): void {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => state,
+  });
+  document.dispatchEvent(new Event("visibilitychange"));
+}
+
 beforeEach(() => {
   authMock.authenticated = true;
   navOpenView.mockReset();
@@ -106,6 +118,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  setVisibility("visible");
 });
 
 describe("WalletBalanceWidget (price-only, #10706)", () => {
@@ -151,20 +164,55 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     expect(text).not.toContain("2,000");
   });
 
-  it("skips holdings under $1 and renders nothing when none qualify", async () => {
+  it("shows the BTC/SOL/ETH baseline when the account holds nothing priced", async () => {
+    // Dust-only holdings + empty overview earlier rendered nothing; doctrine
+    // (#14344) now shows the fixed baseline once the overview loads it.
     getWalletBalances.mockResolvedValue(
       balances([{ symbol: "SHIB", valueUsd: "0.40" }]),
     );
     getWalletMarketOverview.mockResolvedValue(
-      overview([{ symbol: "SHIB", priceUsd: 0.00001 }]),
+      overview([
+        { symbol: "BTC", priceUsd: 64000, change24hPct: -0.5 },
+        { symbol: "SOL", priceUsd: 150, change24hPct: 2.2 },
+        { symbol: "ETH", priceUsd: 3000, change24hPct: 1.1 },
+      ]),
     );
-    const { container } = render(<WalletBalanceWidget />);
-    await waitFor(() => expect(getWalletBalances).toHaveBeenCalled());
-    await waitFor(() => expect(container.firstChild).toBeNull());
+    render(<WalletBalanceWidget />);
+    await waitFor(() =>
+      expect(screen.getByTestId("chat-widget-wallet-prices")).toBeTruthy(),
+    );
+    const rows = screen.getAllByTestId(/^wallet-price-row-/);
+    expect(rows.map((r) => r.dataset.testid)).toEqual([
+      "wallet-price-row-BTC",
+      "wallet-price-row-SOL",
+      "wallet-price-row-ETH",
+    ]);
   });
 
-  it("renders nothing when balances are empty", async () => {
-    getWalletBalances.mockResolvedValue({ evm: null, solana: null });
+  it("shows the baseline when balances fail but the overview loads", async () => {
+    getWalletBalances.mockRejectedValue(new Error("balances down"));
+    getWalletMarketOverview.mockResolvedValue(
+      overview([
+        { symbol: "BTC", priceUsd: 64000 },
+        { symbol: "SOL", priceUsd: 150 },
+        { symbol: "ETH", priceUsd: 3000 },
+      ]),
+    );
+    render(<WalletBalanceWidget />);
+    await waitFor(() =>
+      expect(screen.getByTestId("chat-widget-wallet-prices")).toBeTruthy(),
+    );
+    const rows = screen.getAllByTestId(/^wallet-price-row-/);
+    expect(rows.map((r) => r.dataset.testid)).toEqual([
+      "wallet-price-row-BTC",
+      "wallet-price-row-SOL",
+      "wallet-price-row-ETH",
+    ]);
+  });
+
+  it("renders nothing (no error chrome) when BOTH endpoints fail", async () => {
+    getWalletBalances.mockRejectedValue(new Error("balances down"));
+    getWalletMarketOverview.mockRejectedValue(new Error("overview down"));
     const { container } = render(<WalletBalanceWidget />);
     await waitFor(() => expect(getWalletBalances).toHaveBeenCalled());
     await waitFor(() => expect(container.firstChild).toBeNull());
@@ -183,5 +231,56 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     );
     fireEvent.click(screen.getByTestId("chat-widget-wallet-prices"));
     expect(navOpenView).toHaveBeenCalledWith("/wallet", "wallet");
+  });
+});
+
+describe("WalletBalanceWidget price refresh (visibility-gated 60s, #14344)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("refetches every 60s while visible and updates displayed prices", async () => {
+    getWalletBalances.mockResolvedValue({ evm: null, solana: null });
+    getWalletMarketOverview
+      .mockResolvedValueOnce(overview([{ symbol: "BTC", priceUsd: 64000 }]))
+      .mockResolvedValue(overview([{ symbol: "BTC", priceUsd: 70000 }]));
+
+    render(<WalletBalanceWidget />);
+    // Flush the initial mount load.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByTestId("chat-widget-wallet-prices").textContent,
+    ).toContain("$64,000.00");
+
+    // One interval tick → refetch + re-render with the new price.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(getWalletMarketOverview).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getByTestId("chat-widget-wallet-prices").textContent,
+    ).toContain("$70,000.00");
+  });
+
+  it("does not poll while the document is hidden", async () => {
+    setVisibility("hidden");
+    getWalletBalances.mockResolvedValue({ evm: null, solana: null });
+    getWalletMarketOverview.mockResolvedValue(
+      overview([{ symbol: "BTC", priceUsd: 64000 }]),
+    );
+
+    render(<WalletBalanceWidget />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // The initial mount load still fires once; the interval never starts.
+    expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(180_000);
+    });
+    expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
   });
 });

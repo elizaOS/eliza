@@ -1,27 +1,38 @@
 /**
  * WALLET home widget. A glanceable, chromeless tile on the orange home field
- * listing the top cryptocurrencies the user HOLDS by **unit price only** — never
- * the amount held or the holding value (#10706). Tapping opens the wallet view.
+ * listing cryptocurrencies by **unit price only** — never the amount held or
+ * the holding value (#10706). Tapping opens the wallet view.
  *
- * Holdings-gated: when there is no qualifying priced holding (nothing held worth
- * ≥ $1 that also has a market price), the widget renders nothing rather than a
- * connect affordance — an empty wallet is not actionable here.
+ * Doctrine (#14344): the widget is a resting-home keeper, so it shows the user's
+ * top-3 priced holdings when they hold ≥1 qualifying asset (≥ $1 with a market
+ * price), and otherwise the BTC/SOL/ETH baseline — it does not hide on an empty
+ * wallet. Prices are refreshed on a 60s visibility-gated interval (the
+ * market-overview route is cached server-side, so the poll is cheap). The tile
+ * self-hides ONLY when both the balances and overview endpoints are
+ * unavailable; the wallet view itself owns the visible error state (J4).
  */
 
-import type { WalletBalancesResponse } from "@elizaos/shared";
+import type {
+  WalletBalancesResponse,
+  WalletMarketOverviewResponse,
+} from "@elizaos/shared";
 import { Wallet } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
+import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import type { WidgetProps } from "../../../widgets/types";
 import { Button } from "../../ui/button";
 import { useWidgetNavigation } from "./home-widget-card";
 import {
   type PricedHolding,
-  selectPricedHoldings,
+  selectWalletWidgetRows,
 } from "./wallet-price-holdings";
 
 const DEFAULT_SPAN = "col-span-2 row-span-1";
+
+/** Price refresh cadence while the home is foregrounded (server cache = 120s). */
+const WALLET_REFRESH_INTERVAL_MS = 60_000;
 
 /** Format a unit price: more decimals for sub-dollar assets, 2 for the rest. */
 function formatPrice(priceUsd: number): string {
@@ -51,45 +62,52 @@ export function WalletBalanceWidget(
   props: Partial<WidgetProps>,
 ): React.JSX.Element | null {
   const spanClassName = props.spanClassName ?? DEFAULT_SPAN;
-  const [holdings, setHoldings] = useState<PricedHolding[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<PricedHolding[] | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const nav = useWidgetNavigation();
   // Auth gate (#11084): the widget mounts before the auth probe resolves, so
-  // the one-shot balances/prices fetch must stay dormant until the session is
+  // the balances/overview fetch must stay dormant until the session is
   // authenticated (it fires once the phase flips).
   const authenticated = useIsAuthenticated();
+  // Guards against a state write after unmount when a poll is in flight.
+  const activeRef = useRef(true);
+  useEffect(() => {
+    activeRef.current = true;
+    return () => {
+      activeRef.current = false;
+    };
+  }, []);
+
+  const load = useCallback(async () => {
+    // The two endpoints fail independently: a balances outage still leaves the
+    // BTC/SOL/ETH baseline from the overview, and vice versa. selectWalletWidgetRows
+    // returns [] only when both are null, which is the sole self-hide case.
+    // error-policy:J4 designed home-surface degrade — the wallet view owns the
+    // visible error state; the home tile never renders error chrome.
+    const [balances, overview] = await Promise.all([
+      client
+        .getWalletBalances()
+        .catch(() => null) as Promise<WalletBalancesResponse | null>,
+      client
+        .getWalletMarketOverview()
+        .catch(() => null) as Promise<WalletMarketOverviewResponse | null>,
+    ]);
+    if (!activeRef.current) return;
+    setRows(selectWalletWidgetRows(balances, overview));
+    setLoaded(true);
+  }, []);
 
   useEffect(() => {
     if (!authenticated) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        // Prices come from a separate endpoint; fetch both together. The widget
-        // shows prices only, so a balances failure means "nothing to show".
-        const [balances, overview] = await Promise.all([
-          client.getWalletBalances() as Promise<WalletBalancesResponse>,
-          // error-policy:J4 prices are the widget's optional decoration; the
-          // hide-on-failure degrade below covers a missing overview too
-          client.getWalletMarketOverview().catch(() => null),
-        ]);
-        if (cancelled) return;
-        setHoldings(selectPricedHoldings(balances, overview?.prices));
-      } catch {
-        // error-policy:J4 home-grid tiles self-hide rather than surface error
-        // chrome (designed home-surface degrade); the wallet page itself owns
-        // the visible error state for a broken balances endpoint.
-        if (!cancelled) setHoldings(null);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [authenticated]);
+    void load();
+  }, [authenticated, load]);
+
+  useIntervalWhenDocumentVisible(() => {
+    if (authenticated) void load();
+  }, WALLET_REFRESH_INTERVAL_MS);
 
   // First load pending: a quiet placeholder keeps the grid cell stable.
-  if (loading && holdings == null) {
+  if (!loaded && rows == null) {
     return (
       <div
         data-testid="chat-widget-wallet-balance-loading"
@@ -99,13 +117,13 @@ export function WalletBalanceWidget(
     );
   }
 
-  // Holdings-gated empty: no qualifying priced holding → render nothing.
-  if (!holdings || holdings.length === 0) return null;
+  // Both endpoints unavailable → nothing to show; self-hide without error chrome.
+  if (!rows || rows.length === 0) return null;
 
   return (
     <Button
       data-testid="chat-widget-wallet-prices"
-      aria-label={`Wallet prices: ${holdings
+      aria-label={`Wallet prices: ${rows
         .map((h) => `${h.symbol} ${formatPrice(h.priceUsd)}`)
         .join(", ")}. Open wallet.`}
       onClick={() => nav.openView("/wallet", "wallet")}
@@ -116,7 +134,7 @@ export function WalletBalanceWidget(
         <Wallet />
         Wallet
       </span>
-      {holdings.map((h) => {
+      {rows.map((h) => {
         const change = formatChange(h.change24hPct);
         return (
           <span
