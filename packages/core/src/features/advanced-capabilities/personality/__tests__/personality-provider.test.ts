@@ -35,7 +35,7 @@ describe("userPersonalityProvider", () => {
 
 	test("renders structured user slot when present", async () => {
 		const userId = "00000000-0000-4000-8000-0000000000fb" as UUID;
-		fake.store.applyTrait({
+		await fake.store.applyTrait({
 			scope: "user",
 			userId,
 			agentId: fake.runtime.agentId,
@@ -43,7 +43,7 @@ describe("userPersonalityProvider", () => {
 			trait: "verbosity",
 			value: "terse",
 		});
-		fake.store.applyTrait({
+		await fake.store.applyTrait({
 			scope: "user",
 			userId,
 			agentId: fake.runtime.agentId,
@@ -51,7 +51,7 @@ describe("userPersonalityProvider", () => {
 			trait: "tone",
 			value: "direct",
 		});
-		fake.store.addDirective({
+		await fake.store.addDirective({
 			userId,
 			agentId: fake.runtime.agentId,
 			actorId: userId,
@@ -75,7 +75,7 @@ describe("userPersonalityProvider", () => {
 
 	test("renders global slot too, distinct from user slot", async () => {
 		const userId = "00000000-0000-4000-8000-0000000000fc" as UUID;
-		fake.store.applyTrait({
+		await fake.store.applyTrait({
 			scope: "global",
 			userId,
 			agentId: fake.runtime.agentId,
@@ -113,7 +113,7 @@ describe("userPersonalityProvider", () => {
 
 	test("omits reply_gate=always from the rendered block", async () => {
 		const userId = "00000000-0000-4000-8000-0000000000fd" as UUID;
-		fake.store.applyReplyGate({
+		await fake.store.applyReplyGate({
 			scope: "user",
 			userId,
 			agentId: fake.runtime.agentId,
@@ -136,7 +136,7 @@ describe("userPersonalityProvider", () => {
 
 	test("renders reply_gate when non-default", async () => {
 		const userId = "00000000-0000-4000-8000-0000000000fe" as UUID;
-		fake.store.applyReplyGate({
+		await fake.store.applyReplyGate({
 			scope: "user",
 			userId,
 			agentId: fake.runtime.agentId,
@@ -176,7 +176,7 @@ describe("userPersonalityProvider — backward compatibility", () => {
 			"user_personality_preferences",
 		);
 
-		fake.store.applyTrait({
+		await fake.store.applyTrait({
 			scope: "user",
 			userId,
 			agentId: fake.runtime.agentId,

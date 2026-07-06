@@ -8,22 +8,31 @@
  * reload). `getPersonalityStore` is the runtime accessor; the store backs the
  * personality provider and the PERSONALITY action.
  */
+import { ElizaError } from "../../../../errors.ts";
 import { logger } from "../../../../logger.ts";
-import type { IAgentRuntime } from "../../../../types/index.ts";
+import type { IAgentRuntime, Memory } from "../../../../types/index.ts";
+import { MemoryType } from "../../../../types/memory.ts";
 import type { UUID } from "../../../../types/primitives.ts";
 import { Service } from "../../../../types/service.ts";
+import { stringToUuid, validateUuid } from "../../../../utils.ts";
 import {
 	emptyPersonalitySlot,
+	FORMALITY_VALUES,
 	GLOBAL_PERSONALITY_SCOPE,
 	MAX_CUSTOM_DIRECTIVES,
+	PERSONALITY_SLOT_TABLE,
 	type PersonalityAuditEntry,
 	type PersonalityProfile,
 	type PersonalityScope,
 	PersonalityServiceType,
 	type PersonalitySlot,
+	REPLY_GATE_VALUES,
+	TONE_VALUES,
+	VERBOSITY_VALUES,
 } from "../types.ts";
 
 type SlotKey = string;
+const PERSONALITY_SLOT_MEMORY_SOURCE = "personality_slot";
 
 function slotKey(
 	agentId: UUID,
@@ -37,6 +46,81 @@ function clone(slot: PersonalitySlot): PersonalitySlot {
 		...slot,
 		custom_directives: [...slot.custom_directives],
 	};
+}
+
+function serializeSlotForMemory(
+	slot: PersonalitySlot,
+): Record<string, string | string[] | null> {
+	return {
+		userId: slot.userId,
+		agentId: slot.agentId,
+		verbosity: slot.verbosity,
+		tone: slot.tone,
+		formality: slot.formality,
+		reply_gate: slot.reply_gate,
+		custom_directives: [...slot.custom_directives],
+		updated_at: slot.updated_at,
+		source: slot.source,
+	};
+}
+
+function slotMemoryId(
+	agentId: UUID,
+	userId: UUID | typeof GLOBAL_PERSONALITY_SCOPE,
+): UUID {
+	return stringToUuid(`personality-slot:${agentId}:${userId}`);
+}
+
+function slotMemoryEntityId(slot: PersonalitySlot): UUID {
+	return slot.userId === GLOBAL_PERSONALITY_SCOPE ? slot.agentId : slot.userId;
+}
+
+function isOneOf<T extends string>(
+	value: unknown,
+	values: readonly T[],
+): value is T {
+	return typeof value === "string" && values.includes(value as T);
+}
+
+function isValidPersistedSlot(value: unknown): value is PersonalitySlot {
+	if (!value || typeof value !== "object") return false;
+	const slot = value as Partial<PersonalitySlot>;
+	if (
+		slot.userId !== GLOBAL_PERSONALITY_SCOPE &&
+		(typeof slot.userId !== "string" || validateUuid(slot.userId) === null)
+	) {
+		return false;
+	}
+	if (typeof slot.agentId !== "string" || validateUuid(slot.agentId) === null) {
+		return false;
+	}
+	if (slot.verbosity !== null && !isOneOf(slot.verbosity, VERBOSITY_VALUES)) {
+		return false;
+	}
+	if (slot.tone !== null && !isOneOf(slot.tone, TONE_VALUES)) {
+		return false;
+	}
+	if (slot.formality !== null && !isOneOf(slot.formality, FORMALITY_VALUES)) {
+		return false;
+	}
+	if (
+		slot.reply_gate !== null &&
+		!isOneOf(slot.reply_gate, REPLY_GATE_VALUES)
+	) {
+		return false;
+	}
+	if (
+		!Array.isArray(slot.custom_directives) ||
+		!slot.custom_directives.every((directive) => typeof directive === "string")
+	) {
+		return false;
+	}
+	if (typeof slot.updated_at !== "string") return false;
+	return (
+		slot.source === "user" ||
+		slot.source === "admin" ||
+		slot.source === "agent_inferred"
+	);
 }
 
 /**
@@ -63,9 +147,11 @@ export class PersonalityStore extends Service {
 
 	private async initialize(): Promise<void> {
 		await this.loadProfilesFromDisk();
+		await this.hydrateSlotsFromMemory();
 		logger.debug(
 			{
 				profileCount: this.profiles.size,
+				slotCount: this.slots.size,
 			},
 			"PersonalityStore initialized",
 		);
@@ -81,6 +167,69 @@ export class PersonalityStore extends Service {
 		}
 	}
 
+	private async hydrateSlotsFromMemory(): Promise<void> {
+		const memories = await this.runtime.getMemories({
+			tableName: PERSONALITY_SLOT_TABLE,
+			roomId: this.runtime.agentId,
+			metadata: { source: PERSONALITY_SLOT_MEMORY_SOURCE },
+			count: 10_000,
+		});
+		for (const memory of memories) {
+			const slot = this.slotFromMemory(memory);
+			if (slot.agentId !== this.runtime.agentId) continue;
+			this.cacheSlot(slot);
+		}
+	}
+
+	private slotFromMemory(memory: Memory): PersonalitySlot {
+		const metadata = memory.metadata as Record<string, unknown> | undefined;
+		const slot = metadata?.slot;
+		if (!isValidPersistedSlot(slot)) {
+			throw new ElizaError("Invalid persisted personality slot memory", {
+				code: "PERSONALITY_SLOT_MEMORY_INVALID",
+				severity: "fatal",
+				context: {
+					memoryId: memory.id,
+					agentId: this.runtime.agentId,
+				},
+			});
+		}
+		return clone(slot);
+	}
+
+	private cacheSlot(slot: PersonalitySlot): void {
+		this.slots.set(slotKey(slot.agentId, slot.userId), clone(slot));
+	}
+
+	private async persistSlot(slot: PersonalitySlot): Promise<void> {
+		const persisted = clone(slot);
+		const timestamp = Date.parse(persisted.updated_at);
+		const createdAt = Number.isFinite(timestamp) ? timestamp : Date.now();
+		await this.runtime.upsertMemory(
+			{
+				id: slotMemoryId(persisted.agentId, persisted.userId),
+				entityId: slotMemoryEntityId(persisted),
+				roomId: persisted.agentId,
+				agentId: persisted.agentId,
+				content: {
+					text: `personality_slot ${persisted.userId}`,
+					source: PERSONALITY_SLOT_MEMORY_SOURCE,
+				},
+				metadata: {
+					type: MemoryType.CUSTOM,
+					source: PERSONALITY_SLOT_MEMORY_SOURCE,
+					timestamp: createdAt,
+					personalitySlotKey: slotKey(persisted.agentId, persisted.userId),
+					personalityUserId: persisted.userId,
+					personalityAgentId: persisted.agentId,
+					slot: serializeSlotForMemory(persisted),
+				},
+				createdAt,
+			},
+			PERSONALITY_SLOT_TABLE,
+		);
+	}
+
 	getSlot(
 		userId: UUID | typeof GLOBAL_PERSONALITY_SCOPE,
 		agentId: UUID = this.runtime.agentId,
@@ -90,8 +239,9 @@ export class PersonalityStore extends Service {
 		return emptyPersonalitySlot(userId, agentId);
 	}
 
-	setSlot(slot: PersonalitySlot): void {
-		this.slots.set(slotKey(slot.agentId, slot.userId), clone(slot));
+	async setSlot(slot: PersonalitySlot): Promise<void> {
+		await this.persistSlot(slot);
+		this.cacheSlot(slot);
 	}
 
 	listProfiles(): PersonalityProfile[] {
@@ -114,11 +264,11 @@ export class PersonalityStore extends Service {
 		});
 	}
 
-	loadProfileIntoGlobal(
+	async loadProfileIntoGlobal(
 		profile: PersonalityProfile,
 		agentId: UUID = this.runtime.agentId,
 		actorId: UUID = this.runtime.agentId,
-	): { before: PersonalitySlot; after: PersonalitySlot } {
+	): Promise<{ before: PersonalitySlot; after: PersonalitySlot }> {
 		const before = this.getSlot(GLOBAL_PERSONALITY_SCOPE, agentId);
 		const after: PersonalitySlot = {
 			userId: GLOBAL_PERSONALITY_SCOPE,
@@ -131,7 +281,7 @@ export class PersonalityStore extends Service {
 			updated_at: new Date().toISOString(),
 			source: "admin",
 		};
-		this.setSlot(after);
+		await this.setSlot(after);
 		this.recordAudit({
 			actorId,
 			scope: "global",
@@ -175,15 +325,24 @@ export class PersonalityStore extends Service {
 	}
 
 	/**
-	 * Drop every in-memory personality slot and audit entry. Bundled profile
-	 * defaults are preserved (they are loaded from disk on initialize and
-	 * never mutated by slot operations).
+	 * Drop every personality slot and audit entry. Bundled profile defaults are
+	 * preserved (they are loaded from disk on initialize and never mutated by
+	 * slot operations).
 	 *
 	 * Used by the benchmark harness's `/api/benchmark/reset` route so that
 	 * personality state seeded by one scenario does not leak into the next
 	 * scenario sharing the same runtime process.
 	 */
-	clear(): void {
+	async clear(): Promise<void> {
+		const memories = await this.runtime.getMemories({
+			tableName: PERSONALITY_SLOT_TABLE,
+			roomId: this.runtime.agentId,
+			metadata: { source: PERSONALITY_SLOT_MEMORY_SOURCE },
+			count: 10_000,
+		});
+		for (const memory of memories) {
+			if (memory.id) await this.runtime.deleteMemory(memory.id);
+		}
 		this.slots.clear();
 		this.audit.length = 0;
 	}
@@ -191,7 +350,7 @@ export class PersonalityStore extends Service {
 	/**
 	 * Apply a trait change with audit. Returns the slot before and after.
 	 */
-	applyTrait(args: {
+	async applyTrait(args: {
 		scope: PersonalityScope;
 		userId: UUID;
 		agentId: UUID;
@@ -199,7 +358,7 @@ export class PersonalityStore extends Service {
 		trait: "verbosity" | "tone" | "formality";
 		value: string | null;
 		source?: PersonalitySlot["source"];
-	}): { before: PersonalitySlot; after: PersonalitySlot } {
+	}): Promise<{ before: PersonalitySlot; after: PersonalitySlot }> {
 		const targetId =
 			args.scope === "global" ? GLOBAL_PERSONALITY_SCOPE : args.userId;
 		const before = this.getSlot(targetId, args.agentId);
@@ -209,7 +368,7 @@ export class PersonalityStore extends Service {
 			updated_at: new Date().toISOString(),
 			source: args.source ?? (args.scope === "global" ? "admin" : "user"),
 		};
-		this.setSlot(after);
+		await this.setSlot(after);
 		this.recordAudit({
 			actorId: args.actorId,
 			scope: args.scope,
@@ -222,14 +381,14 @@ export class PersonalityStore extends Service {
 		return { before, after };
 	}
 
-	applyReplyGate(args: {
+	async applyReplyGate(args: {
 		scope: PersonalityScope;
 		userId: UUID;
 		agentId: UUID;
 		actorId: UUID;
 		mode: PersonalitySlot["reply_gate"];
 		source?: PersonalitySlot["source"];
-	}): { before: PersonalitySlot; after: PersonalitySlot } {
+	}): Promise<{ before: PersonalitySlot; after: PersonalitySlot }> {
 		const targetId =
 			args.scope === "global" ? GLOBAL_PERSONALITY_SCOPE : args.userId;
 		const before = this.getSlot(targetId, args.agentId);
@@ -239,7 +398,7 @@ export class PersonalityStore extends Service {
 			updated_at: new Date().toISOString(),
 			source: args.source ?? (args.scope === "global" ? "admin" : "user"),
 		};
-		this.setSlot(after);
+		await this.setSlot(after);
 		this.recordAudit({
 			actorId: args.actorId,
 			scope: args.scope,
@@ -252,13 +411,13 @@ export class PersonalityStore extends Service {
 		return { before, after };
 	}
 
-	addDirective(args: {
+	async addDirective(args: {
 		userId: UUID;
 		agentId: UUID;
 		actorId: UUID;
 		directive: string;
 		source?: PersonalitySlot["source"];
-	}): { before: PersonalitySlot; after: PersonalitySlot } {
+	}): Promise<{ before: PersonalitySlot; after: PersonalitySlot }> {
 		const before = this.getSlot(args.userId, args.agentId);
 		const next = [...before.custom_directives, args.directive];
 		// FIFO eviction at MAX_CUSTOM_DIRECTIVES
@@ -269,7 +428,7 @@ export class PersonalityStore extends Service {
 			updated_at: new Date().toISOString(),
 			source: args.source ?? "user",
 		};
-		this.setSlot(after);
+		await this.setSlot(after);
 		this.recordAudit({
 			actorId: args.actorId,
 			scope: "user",
@@ -282,12 +441,12 @@ export class PersonalityStore extends Service {
 		return { before, after };
 	}
 
-	clearDirectives(args: {
+	async clearDirectives(args: {
 		scope: PersonalityScope;
 		userId: UUID;
 		agentId: UUID;
 		actorId: UUID;
-	}): { before: PersonalitySlot; after: PersonalitySlot } {
+	}): Promise<{ before: PersonalitySlot; after: PersonalitySlot }> {
 		const targetId =
 			args.scope === "global" ? GLOBAL_PERSONALITY_SCOPE : args.userId;
 		const before = this.getSlot(targetId, args.agentId);
@@ -297,7 +456,7 @@ export class PersonalityStore extends Service {
 			updated_at: new Date().toISOString(),
 			source: args.scope === "global" ? "admin" : "user",
 		};
-		this.setSlot(after);
+		await this.setSlot(after);
 		this.recordAudit({
 			actorId: args.actorId,
 			scope: args.scope,

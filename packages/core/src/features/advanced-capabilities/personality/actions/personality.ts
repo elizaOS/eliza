@@ -554,7 +554,7 @@ async function runSetTrait(
 		return paramError("set_trait", text);
 	}
 
-	const { before, after } = args.store.applyTrait({
+	const { before, after } = await args.store.applyTrait({
 		scope: args.scope,
 		userId: args.userId,
 		agentId: args.agentId,
@@ -601,7 +601,7 @@ async function runClearTrait(
 		await args.callback?.({ text, thought: "Missing trait" });
 		return paramError("clear_trait", text);
 	}
-	const { before, after } = args.store.applyTrait({
+	const { before, after } = await args.store.applyTrait({
 		scope: args.scope,
 		userId: args.userId,
 		agentId: args.agentId,
@@ -642,7 +642,7 @@ async function runSetReplyGate(
 		await args.callback?.({ text, thought: "Missing mode" });
 		return paramError("set_reply_gate", text);
 	}
-	const { before, after } = args.store.applyReplyGate({
+	const { before, after } = await args.store.applyReplyGate({
 		scope: args.scope,
 		userId: args.userId,
 		agentId: args.agentId,
@@ -690,7 +690,7 @@ async function runSetReplyGate(
 async function runLiftReplyGate(
 	args: OpArgs & { scope: PersonalityScope },
 ): Promise<ActionResult> {
-	const { before, after } = args.store.applyReplyGate({
+	const { before, after } = await args.store.applyReplyGate({
 		scope: args.scope,
 		userId: args.userId,
 		agentId: args.agentId,
@@ -740,7 +740,7 @@ async function runAddDirective(
 		await args.callback?.({ text, thought: "Directive too long" });
 		return paramError("add_directive", text);
 	}
-	const { before, after } = args.store.addDirective({
+	const { before, after } = await args.store.addDirective({
 		userId: args.userId,
 		agentId: args.agentId,
 		actorId: args.actorId,
@@ -777,7 +777,7 @@ async function runAddDirective(
 async function runClearDirectives(
 	args: OpArgs & { scope: PersonalityScope },
 ): Promise<ActionResult> {
-	const { before, after } = args.store.clearDirectives({
+	const { before, after } = await args.store.clearDirectives({
 		scope: args.scope,
 		userId: args.userId,
 		agentId: args.agentId,
@@ -825,7 +825,7 @@ async function runLoadProfile(args: {
 		await args.callback?.({ text, thought: "Unknown profile" });
 		return paramError("load_profile", text);
 	}
-	const { before, after } = args.store.loadProfileIntoGlobal(
+	const { before, after } = await args.store.loadProfileIntoGlobal(
 		profile,
 		args.agentId,
 		args.actorId,
