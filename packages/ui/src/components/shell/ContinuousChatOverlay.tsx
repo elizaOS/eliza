@@ -8,7 +8,6 @@ import {
   FileText,
   Film,
   Home,
-  LayoutGrid,
   Loader2,
   Mic,
   Music,
@@ -405,7 +404,7 @@ function HeaderButton({
   disabled,
   testId,
 }: {
-  icon: typeof LayoutGrid;
+  icon: typeof Home;
   label: string;
   onClick: () => void;
   active?: boolean;
