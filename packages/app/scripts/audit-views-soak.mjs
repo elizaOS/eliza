@@ -406,12 +406,6 @@ await page.goto(UI, { waitUntil: "domcontentloaded", timeout: 60000 });
 await page.waitForTimeout(3000);
 const firstRunSetup = await completeFirstRunIfNeeded(page);
 await page.waitForTimeout(3000);
-// Dismiss the first-time-user welcome overlay if present so it doesn't trap nav.
-await page
-  .getByTestId("ftu-welcome-dismiss")
-  .click({ timeout: 2500 })
-  .catch(() => {});
-await page.waitForTimeout(1500);
 
 const heap = async () =>
   page.evaluate(() =>
