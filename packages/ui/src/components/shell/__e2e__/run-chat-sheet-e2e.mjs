@@ -324,12 +324,14 @@ async function runDragSuite(p, pointer, tag) {
     grabberBarOpacity === "1",
     `[${pointer}] grabber bar paints (inner-span opacity "${grabberBarOpacity}" === "1", not opacity-0) (#9142)`,
   );
-  // The sheet header shows at HALF and up now, not only at FULL. Maximize and
-  // clear are gesture/state contracts, not header buttons.
+  // The sheet header shows at HALF and up now, not only at FULL. It carries the
+  // search + new-chat (clear) buttons and the launcher; maximize stays a
+  // gesture/state contract (over-pull), not a header button. #14300 restored the
+  // new-chat control, so chat-full-clear is present here.
   assert(
     (await p.getByTestId("chat-full-launcher").count()) === 1 &&
       (await p.getByTestId("chat-full-maximize").count()) === 0 &&
-      (await p.getByTestId("chat-full-clear").count()) === 0,
+      (await p.getByTestId("chat-full-clear").count()) === 1,
     `[${pointer}] HALF detent shows the sheet header`,
   );
 
@@ -346,14 +348,14 @@ async function runDragSuite(p, pointer, tag) {
   );
   await snap(p, `${tag}-full`);
 
-  // Header (post #13531/#9450): no maximize/minimize/new-chat buttons, only the
-  // launcher remains. The old Home/Views/Settings trio collapsed into that one
-  // launcher target.
+  // Header (post #13531/#9450, #14300): search + new-chat (clear) + launcher.
+  // There is no maximize/minimize header button — maximize is an over-pull
+  // gesture. The old Home/Views/Settings trio collapsed into the one launcher.
   assert(
     (await p.getByTestId("chat-full-launcher").count()) === 1 &&
       (await p.getByTestId("chat-full-maximize").count()) === 0 &&
-      (await p.getByTestId("chat-full-clear").count()) === 0,
-    `[${pointer}] header shows launcher without removed maximize/clear controls`,
+      (await p.getByTestId("chat-full-clear").count()) === 1,
+    `[${pointer}] header shows launcher + new-chat without a maximize button`,
   );
   // Maximize → full-bleed (edge-to-edge): a deliberate over-pull flips
   // data-maximized and the panel reaches x=0.
