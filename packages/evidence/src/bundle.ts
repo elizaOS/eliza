@@ -246,6 +246,17 @@ export class EvidenceBundle {
   }
 
   /**
+   * The artifacts added so far, as a snapshot copy. The certify orchestrator
+   * (#14546) reads this after silo ingest to hand the analyzer runner its work
+   * list before `finalize()` seals the manifest — the runner then adds its
+   * `analysis.json` back through `addArtifact`, so a live view (not a snapshot)
+   * would iterate over its own emissions. Callers must not mutate the result.
+   */
+  get artifacts(): readonly ArtifactEntry[] {
+    return [...this.entries];
+  }
+
+  /**
    * Copy/hardlink `filePath` into the bundle and record its manifest entry.
    * The hash is computed from the bytes as stored in the bundle, so a corrupt
    * copy is caught at add time rather than at certification time.

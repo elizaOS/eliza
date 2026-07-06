@@ -112,6 +112,22 @@ export {
   resolveSigningKey,
   SIGNING_KEY_ENV_VAR,
 } from "./certify/keys.ts";
+// One-command certify orchestrator (#14546): chains matrix → ingest →
+// analyze → vision-qa → rollup → reviewer merge → sign → self-verify.
+export {
+  type CertifyOptions,
+  type CertifyResult,
+  type MatrixLaneResult,
+  type MatrixRunner,
+  type MatrixRunResult,
+  mergeReviewerVerdicts,
+  orchestrateCertify,
+  parseReviewerVerdicts,
+  type ReviewerOverride,
+  type ReviewerVerdictsDocument,
+  type StepOutcome,
+  spawnRunAllTests,
+} from "./certify/orchestrate.ts";
 export {
   type AnalysisFinding,
   type ArtifactRequirement,

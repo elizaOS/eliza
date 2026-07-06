@@ -12,6 +12,7 @@
   "scripts": {
     "bundle:create": "bun src/cli.ts create",
     "bundle:verify": "bun src/cli.ts verify",
+    "certify": "bun src/cli.ts certify",
     "certify:keygen": "bun src/certify/cli.ts keygen",
     "certify:rollup": "bun src/certify/cli.ts rollup",
     "certify:sign": "bun src/certify/cli.ts sign",
