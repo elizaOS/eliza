@@ -42,8 +42,13 @@ export function processIsAlive(pid) {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    // error-policy:J3 signal-0 is a liveness probe: ESRCH means the holder is
+    // gone (reclaim), but EPERM means it is alive under another owner (still
+    // held). Any other code is unexpected and must surface.
+    if (error?.code === "ESRCH") return false;
+    if (error?.code === "EPERM") return true;
+    throw error;
   }
 }
 
@@ -55,8 +60,13 @@ export function readDeviceLease(
   if (!fs.existsSync(leasePath)) return null;
   try {
     return JSON.parse(fs.readFileSync(leasePath, "utf8"));
-  } catch {
-    return null;
+  } catch (error) {
+    // error-policy:J3 a lease file can be observed mid-write during a race, or
+    // left truncated by a crashed writer. Both read as "no usable lease"; the
+    // caller then treats it as reclaimable rather than trusting garbage. A
+    // vanished file between existsSync and read is the same non-condition.
+    if (error?.code === "ENOENT" || error instanceof SyntaxError) return null;
+    throw error;
   }
 }
 
@@ -139,6 +149,9 @@ export async function acquireDeviceLease(
         },
       };
     } catch (error) {
+      // error-policy:J3 EEXIST is the atomic-create contention signal (someone
+      // else holds the lease); it drives the reclaim/wait branch below. Every
+      // other failure (permissions, full disk) is real and must surface.
       if (error?.code !== "EEXIST") throw error;
       const current = readDeviceLease(deviceKey, { stateDir });
       const status = activeLeaseStatus(current, {

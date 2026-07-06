@@ -1,8 +1,11 @@
 /**
- * Unit tests for host-local device leases. They use temp directories and fake
- * process liveness so crash reclaim and contention are deterministic without
- * touching real devices.
+ * Unit tests for host-local device leases. Most cases use temp directories and
+ * fake process liveness so crash reclaim and contention are deterministic, but
+ * the pid-death case spawns and kills a real child so the `process.kill(pid, 0)`
+ * ESRCH path is exercised for real, and the race case fires parallel acquires to
+ * prove the atomic `wx` create admits exactly one winner.
  */
+import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -136,6 +139,90 @@ describe("device leases", () => {
         },
       ),
     ).toEqual({ active: false, reason: "expired" });
+  });
+
+  it("reclaims an expired lease on the next acquire", async () => {
+    const stateDir = tempDir();
+    let clock = Date.parse("2026-07-05T00:00:00.000Z");
+    await acquireDeviceLease("ios:stale", {
+      stateDir,
+      sessionId: "old",
+      pid: 401,
+      ttlMs: 1000,
+      now: () => clock,
+      isProcessAlive: () => true,
+    });
+
+    clock += 5000; // push past the 1s ttl so the prior lease is expired
+    const fresh = await acquireDeviceLease("ios:stale", {
+      stateDir,
+      sessionId: "new",
+      pid: 402,
+      now: () => clock,
+      isProcessAlive: () => true,
+    });
+
+    expect(readDeviceLease("ios:stale", { stateDir })).toMatchObject({
+      pid: 402,
+      sessionId: "new",
+    });
+    fresh.release();
+  });
+
+  it("reclaims a lease held by a real dead pid", async () => {
+    const stateDir = tempDir();
+    // A live child gives us a genuinely running pid; killing it makes
+    // process.kill(pid, 0) throw ESRCH, which is the reclaim trigger under test.
+    const child = spawn(process.execPath, [
+      "-e",
+      "setInterval(() => {}, 1000)",
+    ]);
+    await new Promise((resolve) => child.once("spawn", resolve));
+
+    const held = await acquireDeviceLease("android:crashed", {
+      stateDir,
+      sessionId: "doomed",
+      pid: child.pid,
+    });
+    expect(held.lease.pid).toBe(child.pid);
+
+    child.kill("SIGKILL");
+    await new Promise((resolve) => child.once("exit", resolve));
+
+    const reclaimed = await acquireDeviceLease("android:crashed", {
+      stateDir,
+      sessionId: "survivor",
+      waitMs: 0,
+    });
+    expect(reclaimed.lease.sessionId).toBe("survivor");
+    reclaimed.release();
+  });
+
+  it("admits exactly one winner under a parallel acquire race", async () => {
+    const stateDir = tempDir();
+    const contenders = Array.from({ length: 8 }, (_, index) =>
+      acquireDeviceLease("android:contested", {
+        stateDir,
+        sessionId: `racer-${index}`,
+        pid: 500 + index,
+        waitMs: 0,
+        isProcessAlive: () => true,
+      }).then(
+        (handle) => ({ ok: true, handle }),
+        (error) => ({ ok: false, error }),
+      ),
+    );
+
+    const results = await Promise.all(contenders);
+    const winners = results.filter((result) => result.ok);
+    expect(winners).toHaveLength(1);
+    for (const loser of results.filter((result) => !result.ok)) {
+      expect(loser.error.message).toMatch(/leased by pid 50\d/);
+    }
+
+    const persisted = readDeviceLease("android:contested", { stateDir });
+    expect(persisted.pid).toBe(winners[0].handle.lease.pid);
+    winners[0].handle.release();
   });
 
   it("reports active leases for status tooling", async () => {
