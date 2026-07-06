@@ -91,7 +91,7 @@ export default scenario({
       name: "new user asks what to do first",
       text: "What should I do first if I do not know where to start?",
       assertResponse: assertHelpAnswer([
-        [/start|restart|take/i],
+        [/start tutorial|restart tutorial/i],
         [/tutorial|tour/i],
         ["chat", "conversation"],
       ]),
@@ -155,7 +155,7 @@ export default scenario({
     {
       type: "modelCallOccurred",
       name: "trajectory includes getting-started help fragment",
-      includesAll: ["I just opened Eliza", "Take the interactive tutorial"],
+      includesAll: ["I just opened Eliza", 'type "start tutorial" in the chat'],
       minCount: 1,
     },
     {
