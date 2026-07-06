@@ -221,6 +221,33 @@ body.pwa-standalone #root {
   background: transparent;
 }
 
+/* BOTTOM-BAR FIX (r11 — the CLIP, keyed to on-device geometry): the strip
+   starts at EXACTLY documentElement.clientHeight (873) — pixel forensics put
+   the #160d07 cut at 93.7% of a 932px screen = 873/932. The reason nothing the
+   app paints reaches below 873 is that the ROOT element `html` is
+   `overflow: hidden; height: 100%`, and `height: 100%` resolves to the
+   collapsed ICB (873). So html is a 873px-tall clip box: it CLIPS the
+   `fixed inset-0 { bottom: -59px }` wallpaper's reclaimed extension AND its own
+   `background-image` cover paint at 873, and the 59px below (873→932) is the
+   browser CANVAS showing html's `background-color` fallback (#160d07). Neither
+   the JS reclaim (rc59, confirmed on device) nor the transparent #root can help
+   while html clips at 873.
+
+   Fix: size `html` itself to the LARGE viewport (100lvh = 932) in the installed
+   shell so its overflow clip and its canvas paint reach the true screen bottom,
+   and make it transparent so the html-canvas-paint wallpaper mirror (or, below
+   a still-loading image, the wallpaper's own bottom pixels via the now-unclipped
+   fixed layer) owns the bottom edge — never #160d07. `100vh→100dvh→100lvh`
+   progressive-enhancement stack, standalone-gated. */
+html:has(body.native),
+html:has(body.pwa-standalone) {
+  height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
+  height: 100dvh;
+  height: 100lvh;
+  background: transparent;
+}
+
 /* RECLAIM THE BOTTOM STRIP (#14411): the app shell column (App.tsx) carries a
    base `h-[100dvh]` that is correct for a desktop browser tab / popout, but in
    the installed PWA it must fill the 100lvh #root above — otherwise the column
@@ -250,6 +277,25 @@ body.pwa-standalone textarea {
    fullscreen (fine pointer) is excluded by `(pointer: coarse)`. */
 @media all and (display-mode: standalone) and (pointer: coarse),
   all and (display-mode: fullscreen) and (pointer: coarse) {
+  /* BOTTOM-BAR FIX (r11 — the CLIP): size `html` to the LARGE viewport (100lvh)
+     so its `overflow: hidden` clip box and its canvas `background-image` paint
+     reach the true screen bottom (932) instead of the collapsed ICB (873) that
+     `height: 100%` resolves to. Without this, html is an 873px clip box that
+     cuts off the reclaimed fixed wallpaper + its own canvas paint at 873, and
+     the 59px below shows html's #160d07 background-color. Transparent so the
+     canvas shows the wallpaper mirror, not #160d07. Detection-independent path
+     (matches the environment, so it applies even though the JS class does not
+     land on device). Mirrors the class-path `html:has(body.pwa-standalone)`
+     rule above. */
+  html {
+    height: 100vh;
+    /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
+    height: 100dvh;
+    height: 100lvh;
+    background: transparent;
+  }
+
+  /* biome-ignore lint/style/noDescendingSpecificity: intentional bare-body geometry that must apply regardless of the JS class landing. */
   body {
     position: fixed;
     touch-action: pan-y;

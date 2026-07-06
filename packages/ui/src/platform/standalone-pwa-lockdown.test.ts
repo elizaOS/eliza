@@ -276,6 +276,29 @@ describe("CSS geometry contract — fixed-body ICB collapse fix (bottom black ba
     );
   });
 
+  it("sizes `html` to 100lvh + transparent in the installed PWA so overflow:hidden does not clip the wallpaper at clientHeight=873 (r11)", () => {
+    // BOTTOM-BAR FIX (r11 — the CLIP): on-device pixel forensics put the
+    // #160d07 cut at EXACTLY documentElement.clientHeight (873/932 = 93.7% of a
+    // 932px screen). Root cause: `html { overflow: hidden; height: 100% }`, and
+    // `height: 100%` resolves to the collapsed ICB (873). So html is an 873px
+    // clip box that CLIPS the reclaimed `fixed { bottom: -59px }` wallpaper AND
+    // its own canvas background-image at 873; the 59px below is the browser
+    // canvas showing html's #160d07 background-color. Neither rc59 nor the
+    // transparent #root can help while html clips at 873. Fix: html must be
+    // sized to the LARGE viewport (100lvh) + transparent in the installed shell.
+    // Assert BOTH paths: the class-path `html:has(body.pwa-standalone)` and the
+    // detection-independent display-mode media query bare `html`.
+    expect(stylesCss).toMatch(
+      /html:has\(body\.native\),\s*\n\s*html:has\(body\.pwa-standalone\)\s*\{[\s\S]*?height:\s*100lvh;[\s\S]*?background:\s*transparent/,
+    );
+    // The media-query path must also size html to 100lvh (the SOURCE OF TRUTH on
+    // device, since the JS pwa-standalone class is unreliable there).
+    const mq = stylesCss.match(
+      /@media[\s\S]*?display-mode:\s*standalone[\s\S]*?\{([\s\S]*?)\n\}/,
+    );
+    expect(mq?.[1] ?? "").toMatch(/html\s*\{[\s\S]*?height:\s*100lvh/);
+  });
+
   it("keeps the native (Capacitor) body on `inset: 0` — the fix is PWA-scoped", () => {
     // Native WKWebView's fixed-ICB is already the full screen, so inset:0 is
     // correct there; the lvh override must NOT bleed onto body.native. Find the
@@ -464,10 +487,12 @@ describe("Keyboard-lift geometry contract — reclaim does NOT shift the compose
     expect(overlaySrc).not.toContain('"calc(-1 * max(0px, 100lvh - 100dvh))"');
     expect(overlaySrc).toContain("keyboardLiftActive");
     // Resting clearance should be the full safe-area/gesture inset plus a small
-    // visual gap, so on a 34px home-indicator device the composer rests ~44px
-    // from the physical edge (34px + 0.625rem), not ~90px up.
+    // visual gap, so on a 34px home-indicator device the composer rests ~42px
+    // from the physical edge (34px + 0.5rem), not ~90px up. (#15097 trimmed the
+    // extra gap 0.625rem -> 0.5rem now that the measured reclaim seats the
+    // overlay at the true bottom, so it sits snug, not floating.)
     expect(overlaySrc).toContain(
-      "max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.625rem",
+      "max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem",
     );
   });
 
