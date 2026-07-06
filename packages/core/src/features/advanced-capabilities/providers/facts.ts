@@ -431,8 +431,7 @@ const factsProvider: Provider = {
 				preferenceLaneIds.has(memory.id),
 			);
 			const senderDurable = durableFacts.filter(
-				(memory) =>
-					isAboutSender(memory) && !preferenceLaneIds.has(memory.id),
+				(memory) => isAboutSender(memory) && !preferenceLaneIds.has(memory.id),
 			);
 			const roomDurable = durableFacts.filter((m) => !isAboutSender(m));
 			const senderCurrent = currentFacts.filter(isAboutSender);
