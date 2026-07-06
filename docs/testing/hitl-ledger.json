@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-07-06T04:20:48.808Z",
+  "updatedAt": "2026-07-06T04:38:20.050Z",
   "entries": {
     "elizacloud.api-key": {
       "pathId": "elizacloud.api-key",
@@ -34,6 +34,18 @@
       "commit": "abe39023f60",
       "counts": {
         "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "lifeops.permission-matrix": {
+      "pathId": "lifeops.permission-matrix",
+      "lastSuccessAt": "2026-07-06T04:38:20.049Z",
+      "lastRunAt": "2026-07-06T04:38:20.049Z",
+      "lane": "live-lane-1",
+      "commit": "d961ec6c32c",
+      "counts": {
+        "passed": 20,
         "failed": 0,
         "skipped": 0
       }
