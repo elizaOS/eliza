@@ -26,6 +26,26 @@ export type WalletTokenHolding = {
   rawAmount: string;
 };
 
+export type WalletPortfolioToken = {
+  mint: string;
+  amount: number;
+  decimals: number;
+  rawAmount: string;
+  symbol?: string | null;
+  name?: string | null;
+  estimatedUsdValue?: number | null;
+};
+
+export type WalletPortfolioSummary = {
+  nativeBalance: WalletBalance;
+  tokenCount: number;
+  totalTokenUnits: number;
+  topTokenHoldings: WalletPortfolioToken[];
+  estimatedTotalUsdValue?: number | null;
+  concentrationLevel: "none" | "low" | "medium" | "high";
+  notes: string[];
+};
+
 export type WalletActivitySummary = {
   recentTransactionCount: number;
   failedTransactionCount: number;
@@ -87,6 +107,7 @@ export type WalletInvestigationResult = {
   status: WalletInvestigationStatus;
   balance?: WalletBalance;
   tokenHoldings?: WalletTokenHolding[];
+  portfolio?: WalletPortfolioSummary;
   recentTransactions?: WalletRecentTransaction[];
   transactionCountSample?: number;
   activity?: WalletActivitySummary;
