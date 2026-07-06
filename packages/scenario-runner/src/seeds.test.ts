@@ -163,6 +163,13 @@ function createSeedHarness() {
     recordInteraction: vi.fn(async () => undefined),
     setRelationshipGoal: vi.fn(async () => undefined),
   };
+  const createMemory = vi.fn(
+    async (
+      _memory: Record<string, unknown>,
+      _tableName: string,
+      _unique?: boolean,
+    ) => "fact-id" as UUID,
+  );
   const runtime = {
     agentId: "00000000-0000-0000-0000-000000000001" as UUID,
     getService: vi.fn((serviceName: string) =>
@@ -170,11 +177,18 @@ function createSeedHarness() {
     ),
     getEntityById: vi.fn(async () => null),
     createEntity: vi.fn(async () => undefined),
+    createMemory,
   } as unknown as AgentRuntime;
   return {
-    ctx: { runtime } as ScenarioContext,
+    ctx: {
+      runtime,
+      scenarioId: "seed-test",
+      primaryRoomId: "00000000-0000-0000-0000-0000000000aa",
+      primaryUserId: "00000000-0000-0000-0000-0000000000bb",
+    } as ScenarioContext,
     relationships,
     runtime,
+    createMemory,
   };
 }
 
@@ -378,8 +392,37 @@ describe("scenario memory seeds", () => {
     );
   });
 
-  it("continues to ignore unsupported memory seed kinds", async () => {
-    const { ctx, relationships, runtime } = createSeedHarness();
+  it("writes plain-text memory seeds as durable owner facts in the facts table", async () => {
+    const { ctx, createMemory } = createSeedHarness();
+
+    const result = await applyScenarioSeedStep(ctx, {
+      type: "memory",
+      content: {
+        text: "Owner fact: largest account is Halcyon Freight; their contact sometimes messages from a plain personal address with no signature.",
+      },
+    } satisfies ScenarioSeedStep);
+
+    expect(result).toBeUndefined();
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    const [memory, tableName, unique] = createMemory.mock.calls[0];
+    expect(tableName).toBe("facts");
+    expect(unique).toBe(true);
+    expect(memory.roomId).toBe(ctx.primaryRoomId);
+    expect(memory.entityId).toBe(ctx.primaryUserId);
+    expect(memory.content).toEqual({
+      text: "Owner fact: largest account is Halcyon Freight; their contact sometimes messages from a plain personal address with no signature.",
+    });
+    // Durable kind is load-bearing: the FACTS provider's keyword-miss
+    // fallback only applies to durable facts, which is what guarantees a
+    // seeded fact surfaces even without lexical overlap with the turn text.
+    expect(memory.metadata).toMatchObject({
+      kind: "durable",
+      source: "scenario-seed",
+    });
+  });
+
+  it("fails the seed (never silently no-ops) on unsupported memory kinds", async () => {
+    const { ctx, relationships, createMemory } = createSeedHarness();
 
     const result = await applyScenarioSeedStep(ctx, {
       type: "memory",
@@ -389,9 +432,34 @@ describe("scenario memory seeds", () => {
       },
     } satisfies ScenarioSeedStep);
 
-    expect(result).toBeUndefined();
-    expect(runtime.getService).not.toHaveBeenCalled();
+    expect(result).toMatch(/unsupported memory seed kind "inbound-message"/);
+    expect(createMemory).not.toHaveBeenCalled();
     expect(relationships.addContact).not.toHaveBeenCalled();
+  });
+
+  it("fails the seed when memory content has neither text nor a contact kind", async () => {
+    const { ctx, createMemory } = createSeedHarness();
+
+    const result = await applyScenarioSeedStep(ctx, {
+      type: "memory",
+      content: {},
+    } satisfies ScenarioSeedStep);
+
+    expect(result).toMatch(/non-empty text or a contact-like kind/);
+    expect(createMemory).not.toHaveBeenCalled();
+  });
+
+  it("fails the seed when the executor did not provide the primary room identity", async () => {
+    const { ctx, createMemory } = createSeedHarness();
+    delete (ctx as { primaryRoomId?: string }).primaryRoomId;
+
+    const result = await applyScenarioSeedStep(ctx, {
+      type: "memory",
+      content: { text: "Owner fact: something important." },
+    } satisfies ScenarioSeedStep);
+
+    expect(result).toMatch(/primaryRoomId/);
+    expect(createMemory).not.toHaveBeenCalled();
   });
 });
 

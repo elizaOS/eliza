@@ -122,6 +122,8 @@ export const INBOX_TRIAGE_INSTRUCTIONS = [
   "- needs_reply: someone is asking a question or expects a response from the owner",
   "- urgent: time-sensitive, critical, or from a priority contact — needs immediate attention",
   "",
+  "When you cannot tell whether a message matters — terse, unsigned, no subject, or an unrecognized address that could still be a real person or client — do NOT classify it as ignore. Choose the least-dismissive plausible category (notify or needs_reply), lower the confidence, and state the uncertainty in reasoning so the owner sees the message and decides. Misfiling a real contact as spam costs far more than surfacing one junk message.",
+  "",
   "For each message, also provide:",
   "- urgency: low / medium / high",
   "- confidence: 0.0 to 1.0 (how sure you are about this classification)",

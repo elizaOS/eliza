@@ -98,6 +98,14 @@ export type ScenarioContext = {
   scenarioId?: string;
   runId?: string;
   now?: string;
+  /**
+   * Primary (default) scenario room + simulated owner entity, set by the
+   * executor before seeds run. Seeds and custom checks use these to write
+   * and read state attributed to the owner's conversation (e.g. plain-text
+   * memory seeds land as durable facts in this room for this entity).
+   */
+  primaryRoomId?: string;
+  primaryUserId?: string;
   actionsCalled: CapturedAction[];
   turns?: ScenarioTurnExecution[];
   approvalRequests?: CapturedApprovalRequest[];

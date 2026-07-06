@@ -48,6 +48,18 @@ describe("inbox triage — OptimizedPromptService routing", () => {
     expect(prompt).toContain("Sam Rivera");
   });
 
+  it("carries the uncertain-keep affordance so ambiguous messages are never filed as ignore (#14631)", () => {
+    // The over-dismissal failure mode: a terse, unsigned note from an
+    // unrecognized address confidently labeled junk. The baseline must give
+    // the model an explicit uncertainty outcome — keep it visible, lower
+    // confidence — instead of leaving "ignore" as the only junk-shaped bucket.
+    expect(INBOX_TRIAGE_INSTRUCTIONS).toContain("do NOT classify it as ignore");
+    expect(INBOX_TRIAGE_INSTRUCTIONS).toContain(
+      "least-dismissive plausible category",
+    );
+    expect(INBOX_TRIAGE_INSTRUCTIONS).toContain("state the uncertainty");
+  });
+
   it("uses the inline baseline when the runtime has no optimized prompt", () => {
     const prompt = buildTriagePrompt(MESSAGES, {
       runtime: runtimeWithOptimizedPrompt({}),

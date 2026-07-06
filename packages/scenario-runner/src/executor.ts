@@ -2102,6 +2102,11 @@ export async function runScenario(
   let interceptor = attachInterceptor(runtime);
   const rooms = resolveScenarioRooms(scenario);
   const primaryRoom = getDefaultScenarioRoom(rooms);
+  // Expose the owner conversation identity to seeds and custom checks:
+  // plain-text memory seeds write durable facts attributed to this room +
+  // entity so the core FACTS provider can surface them during turns.
+  ctx.primaryRoomId = primaryRoom.roomId;
+  ctx.primaryUserId = primaryRoom.userId;
   const variables: ScenarioVariableState = {
     baseNow: new Date(startedAt),
     capturesByName: new Map<string, unknown>(),
