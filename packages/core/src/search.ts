@@ -1922,6 +1922,25 @@ function termTrigramSimilarity(queryTerms: string[], document: string): number {
 	return total / queryTerms.length;
 }
 
+/**
+ * Whether a message's `createdAt` falls inside an inclusive `[since, until]`
+ * epoch-ms window. The in-memory twin of the SQL adapters' `created_at`
+ * range conditions in `searchMessages`, so both store paths agree on window
+ * semantics. When a bound is set, a row without a numeric `createdAt` is
+ * excluded — an unknown timestamp cannot be proven to be inside the window.
+ */
+export function withinCreatedAtWindow(
+	createdAt: number | undefined,
+	since?: number,
+	until?: number,
+): boolean {
+	if (since === undefined && until === undefined) return true;
+	if (typeof createdAt !== "number") return false;
+	if (since !== undefined && createdAt < since) return false;
+	if (until !== undefined && createdAt > until) return false;
+	return true;
+}
+
 /** A message-shaped record the in-memory search ranker can score and order. */
 export interface SearchableMessage {
 	content: { text?: unknown; attachments?: unknown };

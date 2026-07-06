@@ -1482,6 +1482,24 @@ function normalizeMessageSearchQuery(value: string | null): string {
   return (value === null ? "" : value).trim().replace(/\s+/g, " ");
 }
 
+/**
+ * Parse an optional `since`/`until` search param into epoch ms. Accepts a
+ * non-negative epoch-ms integer or any `Date.parse`-able string (ISO 8601).
+ * Absent → `null`; present-but-unparseable → `"invalid"` so the route can 400
+ * instead of silently searching an unbounded window the caller didn't ask for.
+ */
+function parseMessageSearchTime(value: string | null): number | null | "invalid" {
+  if (value === null) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return "invalid";
+  if (/^\d+$/.test(trimmed)) {
+    const epochMs = Number(trimmed);
+    return Number.isSafeInteger(epochMs) ? epochMs : "invalid";
+  }
+  const parsed = Date.parse(trimmed);
+  return Number.isNaN(parsed) ? "invalid" : parsed;
+}
+
 /** A `…keyword…` excerpt around the first match, or a head-truncated fallback. */
 function buildMessageSearchSnippet(text: string, query: string): string {
   const normalizedText = text.replace(/\s+/g, " ").trim();
@@ -1555,6 +1573,23 @@ export async function handleConversationRoutes(
       requestUrl.searchParams.get("offset"),
       0,
     );
+    // Optional inclusive time window (epoch ms or ISO 8601): "messages from a
+    // year ago" is `until=<9 months ago>` etc. Garbage input is a 400, never a
+    // silently ignored filter.
+    const since = parseMessageSearchTime(requestUrl.searchParams.get("since"));
+    const until = parseMessageSearchTime(requestUrl.searchParams.get("until"));
+    if (since === "invalid" || until === "invalid") {
+      error(
+        res,
+        "since/until must be an epoch-ms timestamp or an ISO 8601 date",
+        400,
+      );
+      return true;
+    }
+    if (since !== null && until !== null && since > until) {
+      error(res, "since must not be later than until", 400);
+      return true;
+    }
     const runtime = state.runtime;
     const waifuAccess = resolveWaifuChatAccess(req);
     const conversationsByRoomId = new Map<UUID, ConversationMeta>();
@@ -1587,6 +1622,8 @@ export async function handleConversationRoutes(
         tableName: "messages",
         limit,
         offset,
+        ...(since !== null ? { since } : {}),
+        ...(until !== null ? { until } : {}),
       });
       const results = hits.flatMap(({ memory, ftsRank, trigramSimilarity }) => {
         const roomId = memory.roomId;
@@ -1626,6 +1663,8 @@ export async function handleConversationRoutes(
           queryLength: query.length,
           limit,
           offset,
+          ...(since !== null ? { since } : {}),
+          ...(until !== null ? { until } : {}),
           rawHits: hits.length,
           results: results.length,
         },

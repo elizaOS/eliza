@@ -9038,6 +9038,8 @@ ${section_end}`;
 		tableName?: string;
 		limit?: number;
 		offset?: number;
+		since?: number;
+		until?: number;
 		accessContext?: AccessContext;
 	}): Promise<MessageSearchHit[]> {
 		return this.adapter.searchMessages(params);
