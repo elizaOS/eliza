@@ -10,12 +10,16 @@
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createBundle } from "../bundle.ts";
 import { runCli } from "../cli.ts";
 import { EvidenceError } from "../errors.ts";
+import { FileJobQueue } from "../queue/file-queue.ts";
+import { runQueueWorker } from "../queue/worker.ts";
 import { generateCertificationKeypair } from "./keys.ts";
 import {
   type MatrixRunner,
@@ -23,6 +27,7 @@ import {
   orchestrateCertify,
   parseReviewerVerdicts,
   type ReviewerVerdictsDocument,
+  resolveGpuQueueExecutor,
 } from "./orchestrate.ts";
 import type { RollupResult } from "./rollup.ts";
 import { verifyCertification } from "./sign.ts";
@@ -286,6 +291,176 @@ describe("orchestrateCertify — red paths", () => {
     });
     expect(reverify.ok).toBe(false);
     expect(reverify.failures.map((f) => f.code)).toContain("bundle-tampered");
+  });
+});
+
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+/** A throwaway git repo with one screenshot in an ingestable silo. */
+function tmpGitRepoWithScreenshot(): string {
+  const dir = tmpDir("evidence-orch-gitshot-");
+  const git = (...args: string[]) =>
+    execFileSync("git", args, { cwd: dir, stdio: "pipe" });
+  git("init", "-q");
+  git("config", "user.email", "test@example.com");
+  git("config", "user.name", "Test");
+  git("config", "commit.gpgsign", "false");
+  const shotDir = path.join(dir, "e2e-recordings", "login", "desktop");
+  fs.mkdirSync(shotDir, { recursive: true });
+  fs.writeFileSync(path.join(shotDir, "shot.png"), PNG_1X1);
+  git("add", ".");
+  git("commit", "-qm", "init");
+  return dir;
+}
+
+/** Stub gpu-vision service: /health + OpenAI /v1/chat/completions. */
+function startVisionStub(content: string) {
+  const server = createServer((req, res) => {
+    if (req.url === "/health") return void res.writeHead(200).end("ok");
+    if (req.url === "/v1/chat/completions" && req.method === "POST") {
+      req.resume();
+      req.on("end", () =>
+        res
+          .writeHead(200, { "content-type": "application/json" })
+          .end(JSON.stringify({ choices: [{ message: { content } }] })),
+      );
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const started = new Promise<string>((resolve) =>
+    server.listen(0, "127.0.0.1", () =>
+      resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`),
+    ),
+  );
+  return { server, started };
+}
+
+/** Find the analysis.json in a bundle whose document records `analyzerId`. */
+function findAnalysisRecord(
+  bundleDir: string,
+  analyzerId: string,
+): Record<string, unknown> | undefined {
+  const walk = (dir: string): string[] =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) return walk(full);
+      return entry.isFile() && entry.name.endsWith(".analysis.json")
+        ? [full]
+        : [];
+    });
+  for (const file of walk(bundleDir)) {
+    const doc = JSON.parse(fs.readFileSync(file, "utf8"));
+    const record = doc.results?.[analyzerId];
+    if (record !== undefined) return record;
+  }
+  return undefined;
+}
+
+describe("resolveGpuQueueExecutor", () => {
+  it("returns an executor only at gpu/full tier with a queue root", () => {
+    const root = tmpDir("evidence-orch-qroot-");
+    expect(
+      resolveGpuQueueExecutor("gpu", { gpuQueueRoot: root } as never),
+    ).toBeDefined();
+    expect(
+      resolveGpuQueueExecutor("full", { gpuQueueRoot: root } as never),
+    ).toBeDefined();
+    // No root → inline (undefined); cpu tier → inline even with a root.
+    expect(resolveGpuQueueExecutor("gpu", {} as never)).toBeUndefined();
+    expect(
+      resolveGpuQueueExecutor("cpu", { gpuQueueRoot: root } as never),
+    ).toBeUndefined();
+  });
+});
+
+describe("orchestrateCertify — gpu queue wiring (#14543 acceptance)", () => {
+  // A passing lane so the rollup has a signable verdict; the screenshot is what
+  // the gpu analyzer (routed through the queue) actually analyzes.
+  const passingMatrix: MatrixRunner = async () => ({
+    command: "fake-matrix",
+    lanes: [{ lane: "matrix", passed: 1, failed: 0, skipped: 0, log: "ok\n" }],
+  });
+
+  it("routes gpu analyzers through a resident queue worker at --tier gpu", async () => {
+    const stub = startVisionStub("# Login\nSign in to Eliza");
+    const stubUrl = await stub.started;
+    const prevUrl = process.env.ELIZA_GPU_VISION_URL;
+    process.env.ELIZA_GPU_VISION_URL = stubUrl;
+    const controller = new AbortController();
+    const queueRoot = tmpDir("evidence-orch-queue-");
+    try {
+      const repoRoot = tmpGitRepoWithScreenshot();
+      const worker = runQueueWorker({
+        queue: new FileJobQueue(queueRoot),
+        tier: "gpu",
+        signal: controller.signal,
+        limits: { pollMs: 20 },
+      });
+
+      const result = await orchestrateCertify({
+        tier: "gpu",
+        repoRoot,
+        outDir: tmpDir("evidence-orch-out-"),
+        signingKey: KEYPAIR.privateKeyPem,
+        reviewer: REVIEWER,
+        runMatrix: passingMatrix,
+        gpuQueueRoot: queueRoot,
+        gpuQueueTimeoutMs: 30_000,
+        env: {},
+        now: NOW,
+      });
+      controller.abort();
+      await worker;
+
+      // The gpu analyzer's result reached analysis.json via the queue worker —
+      // a real OCR transcript, not an inline run and not a fabrication.
+      const record = findAnalysisRecord(result.bundleDir, "ocr.unlimited");
+      expect(record?.status).toBe("ran");
+      expect((record?.data as { text: string }).text).toContain(
+        "Sign in to Eliza",
+      );
+      // The run advertises the queue path in its analyze step.
+      const analyzeStep = result.steps.find((s) => s.step === "analyze");
+      expect(analyzeStep?.detail).toMatch(/via queue worker/);
+    } finally {
+      process.env.ELIZA_GPU_VISION_URL = prevUrl;
+      controller.abort();
+      stub.server.close();
+    }
+  });
+
+  it("honestly skips gpu analyzers when no worker drains the queue", async () => {
+    const prevUrl = process.env.ELIZA_GPU_VISION_URL;
+    delete process.env.ELIZA_GPU_VISION_URL;
+    try {
+      const repoRoot = tmpGitRepoWithScreenshot();
+      const result = await orchestrateCertify({
+        tier: "gpu",
+        repoRoot,
+        outDir: tmpDir("evidence-orch-out-"),
+        signingKey: KEYPAIR.privateKeyPem,
+        reviewer: REVIEWER,
+        runMatrix: passingMatrix,
+        gpuQueueRoot: tmpDir("evidence-orch-queue-"),
+        gpuQueueTimeoutMs: 300, // no worker: fail fast to an honest skip
+        env: {},
+        now: NOW,
+      });
+
+      // No worker consumed the job: an honest skip naming the missing worker,
+      // never a fabricated transcript — and the run still produces a cert.
+      const record = findAnalysisRecord(result.bundleDir, "ocr.unlimited");
+      expect(record?.status).toBe("skipped-missing-tool");
+      expect(record?.reason).toMatch(/no gpu queue worker/);
+      expect("data" in (record ?? {})).toBe(false);
+      expect(fs.existsSync(result.certPath)).toBe(true);
+    } finally {
+      if (prevUrl !== undefined) process.env.ELIZA_GPU_VISION_URL = prevUrl;
+    }
   });
 });
 
