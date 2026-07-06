@@ -2601,6 +2601,17 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(screen.queryByTestId("chat-full-clear")).toBeNull();
   });
 
+  it("toggles hands-free voice from the header voice button", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    openSheet();
+
+    // The top-bar voice control shares the composer mic's state machine: a
+    // tap enters/exits the hands-free conversation (voice on/off).
+    fireEvent.click(screen.getByTestId("chat-full-voice"));
+    expect(controller.toggleHandsFree).toHaveBeenCalledTimes(1);
+  });
+
   it("opens the message-search panel from the header search control (#14279)", () => {
     const { controller } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
