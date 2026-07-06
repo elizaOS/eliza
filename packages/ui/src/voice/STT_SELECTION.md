@@ -17,6 +17,12 @@ interim transcripts, and the one whose assets are staged on phones), ahead of
 any provider preference. So the mobile `eliza-cloud` default below is the
 server-side route — it is not what runs the live on-device capture.
 
+On web/desktop the two layers now **agree** for `eliza-cloud`: `resolveBackendKind`
+routes `eliza-cloud`/`openai` capture to the cloud STT proxy (`/api/asr/cloud`
+→ `<cloud-base>/voice/stt`) by recording a WAV and POSTing it, so interactive
+web STT is the real cloud transcriber. Browser `SpeechRecognition` is used only
+when WAV capture is unsupported (no `getUserMedia`/`AudioContext`).
+
 ## Candidate backends
 
 | Backend | What it is | Where it can run |
@@ -24,8 +30,8 @@ server-side route — it is not what runs the live on-device capture.
 | **fused local ASR** (`local-inference`) | eliza-1-asr GGUF (Qwen3-ASR family, ~1.0 GB main+mmproj) through the fused `libelizainference` FFI | Linux/macOS/Windows desktop, Android (heavy), iOS (heavy) |
 | **`SFSpeechRecognizer`** | Apple on-device recognizer (ANE/CPU, `requiresOnDeviceRecognition=true`) | macOS / iOS only (OS engine, not an `AsrProvider` — reachable via the native talkmode bridge) |
 | **Android `SpeechRecognizer`** | Android OS recognizer (NNAPI) | Android only (OS engine, not an `AsrProvider` — reachable via the native talkmode bridge) |
-| **Browser `SpeechRecognition`** | Web Speech API, engine-dependent (often server-backed) | any browser shell; capture-time fallback only |
-| **Eliza Cloud ASR** (`eliza-cloud`) | server-side transcription via the cloud API | anywhere with connectivity |
+| **Browser `SpeechRecognition`** | Web Speech API, engine-dependent (often server-backed) | any browser shell; used **only** when WAV capture is unsupported (no `getUserMedia`/`AudioContext`) |
+| **Eliza Cloud ASR** (`eliza-cloud`) | server-side transcription via the cloud API; interactive web capture reaches it through the `/api/asr/cloud` proxy | anywhere with connectivity |
 
 ## Measured numbers (committed evidence)
 
@@ -55,7 +61,7 @@ Apple rows are real recorded / OS-synthesized speech.
 | --- | --- | --- | --- | --- |
 | Desktop (Linux/macOS/Windows) | local / local-only | `local-inference` | **Fused eliza-1-asr wins where provisioned**: measured WER 0.008 at 3.8× realtime on plain desktop CPU, robust to ≥ 10 dB SNR noise, fully offline. No candidate beats it on quality here, and it's the only offline option on Linux/Windows. If the bundle isn't provisioned, `isLocalInferenceAsrReady` degrades capture to the browser engine at runtime. | ✅ yes |
 | Mobile (Android/iOS) | local / local-only | `eliza-cloud` | The 1.0 GB fused model **runs** on Android (Pixel 6a WER 0 bring-up) but the only on-device measurement is 31.3 s including load, with steady-state RTF/battery unmeasured — not evidence of a good interactive default. Cloud ASR keeps latency predictable while the on-device Stage-B numbers are missing. Revisit when the Stage-B matrix (below) lands measured on-device RTF/battery. **Provider layer only:** native-mobile *interactive capture* uses the OS TalkMode recognizer regardless (see the two-layers note above); this `eliza-cloud` value is the server-side transcription route. | ✅ yes (provider layer) |
-| Web shell | local | `eliza-cloud` | A browser tab hosting a local agent has no fused FFI runtime; the Web Speech API is engine-dependent and unmeasured. Cloud is the deterministic choice. | ✅ yes |
+| Web shell | local | `eliza-cloud` | A browser tab hosting a local agent has no fused FFI runtime; the Web Speech API is engine-dependent and unmeasured. Cloud is the deterministic choice. Interactive capture now POSTs the WAV to the cloud STT proxy (`/api/asr/cloud`) instead of the browser recognizer. | ✅ yes |
 | any | cloud / remote | `eliza-cloud` | Agent isn't on this machine; audio must go to the server anyway. | ✅ yes |
 | macOS/iOS wake-confirm (Stage-B) | — | `SFSpeechRecognizer` | Measured WER 0 quiet / RTF 0.168 on Apple silicon makes it the cheapest-correct confirm recognizer on Apple (VOICE_UX.md §7). This is a talkmode-bridge engine, not an `AsrProvider` value, so it does not change `pickDefaultVoiceProvider`. | n/a (outside the provider enum) |
 

@@ -95,6 +95,51 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+/**
+ * POST a captured WAV to the agent's cloud STT proxy (`POST /api/asr/cloud`),
+ * which forwards it to Eliza Cloud's `/voice/stt` route and returns `{ text }`.
+ *
+ * This is the cloud counterpart to {@link transcribeLocalInferenceWav}: the
+ * interactive `eliza-cloud` capture path records the same mono PCM16 WAV and
+ * routes it here so web STT is the deterministic cloud transcriber instead of
+ * the engine-dependent browser recognizer. The WAV is sent as raw bytes (the
+ * proxy reads the raw body and re-wraps it as multipart for the cloud); no
+ * per-word timings are returned by the cloud route, so this yields text only.
+ *
+ * Fails loud: a non-2xx response or an empty transcript throws, so the capture
+ * surface renders an error state rather than silently substituting browser STT.
+ */
+export async function transcribeCloudWav(
+  audio: Uint8Array,
+  options?: TranscribeWavOptions,
+): Promise<string> {
+  const res = await fetchWithCsrf(resolveApiUrl("/api/asr/cloud"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "audio/wav",
+      Accept: "application/json",
+    },
+    // A Uint8Array is a valid BufferSource body; the cast bridges the DOM lib's
+    // stricter `ArrayBuffer` generic on BodyInit (the runtime accepts it as-is).
+    body: audio as BodyInit,
+    signal: options?.signal,
+  });
+  if (!res.ok) {
+    // error-policy:J6 best-effort error detail — the throw carries the status
+    const body = await res.text().catch(() => "");
+    throw new Error(`Cloud ASR ${res.status}: ${body.slice(0, 200)}`);
+  }
+  // error-policy:J3 unparseable body falls through to the empty-transcript throw
+  const parsed = (await res.json().catch(() => null)) as {
+    text?: unknown;
+  } | null;
+  const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
+  if (!text) {
+    throw new Error("Cloud ASR returned an empty transcript");
+  }
+  return text;
+}
+
 export async function transcribeLocalInferenceWav(
   audio: Uint8Array,
   options?: TranscribeWavOptions,

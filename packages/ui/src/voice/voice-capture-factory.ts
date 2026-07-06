@@ -10,8 +10,14 @@
  *    capture mic audio via {@link startLocalAsrRecorder}, POST the WAV to
  *    `/api/asr/local-inference`, and emit the resulting transcript as one
  *    `final: true` segment on stop.
- * 2. Otherwise fall back to the browser SpeechRecognition API, emitting
- *    interim and final segments as they arrive.
+ * 2. If the resolved provider is `eliza-cloud` / `openai` and WAV capture is
+ *    supported, capture the same WAV and POST it to the cloud STT proxy
+ *    (`/api/asr/cloud`) — the cloud transcript is the final. This is the real
+ *    web STT path for the documented `eliza-cloud` ASR default.
+ * 3. Otherwise fall back to the browser SpeechRecognition API, emitting
+ *    interim and final segments as they arrive — used only when WAV capture is
+ *    unsupported (no `getUserMedia` / `AudioContext`), which is the one case
+ *    where no cloud/local WAV path exists.
  *
  * Mic permission + AudioContext + MediaStream lifecycle is owned by the
  * underlying primitives ({@link startLocalAsrRecorder} + browser
@@ -34,6 +40,7 @@ import {
 } from "./local-asr-capture";
 import {
   isLocalInferenceAsrReady,
+  transcribeCloudWav,
   transcribeLocalInferenceWav,
 } from "./local-asr-transcribe";
 import {
@@ -44,7 +51,11 @@ import {
 } from "./voice-chat-types";
 
 /** Backend the factory ended up using for the current capture. */
-export type VoiceCaptureBackend = "local-inference" | "browser" | "talkmode";
+export type VoiceCaptureBackend =
+  | "local-inference"
+  | "cloud"
+  | "browser"
+  | "talkmode";
 
 /** Single transcript chunk delivered to the caller. */
 export interface VoiceCaptureTranscriptSegment {
@@ -60,9 +71,9 @@ export interface VoiceCaptureTranscriptSegment {
   backend: VoiceCaptureBackend;
   /**
    * The recorded utterance audio as a mono PCM16 WAV (RIFF header carries the
-   * sample rate) — attached ONLY to the local-inference final segment, where
-   * the WAV already exists for ASR. Absent for browser/talkmode (no PCM is
-   * exposed). Used by the transcript recorder to retain audio for playback.
+   * sample rate) — attached to the local-inference and cloud final segments,
+   * where the WAV already exists for ASR. Absent for browser/talkmode (no PCM
+   * is exposed). Used by the transcript recorder to retain audio for playback.
    */
   audioWav?: Uint8Array;
   /**
@@ -185,9 +196,19 @@ async function resolveBackendKind(
   ) {
     return "local-inference";
   }
-  // Eliza-cloud / OpenAI providers go through the local-inference route
-  // server-side today; until that changes, browser API is the only sane
-  // client-side fallback.
+  // Eliza-cloud / OpenAI ASR: capture the same WAV as the local path and POST
+  // it to the cloud STT proxy (`/api/asr/cloud`). This is the real transcriber
+  // for the documented web/cloud `eliza-cloud` default — the browser recognizer
+  // is engine-dependent (or absent) and is NOT the cloud path.
+  if (
+    (preferred === "eliza-cloud" || preferred === "openai") &&
+    isLocalAsrCaptureSupported()
+  ) {
+    return "cloud";
+  }
+  // Browser SpeechRecognition is the fallback ONLY where no WAV path exists —
+  // a renderer without `getUserMedia`/`AudioContext` can't record a WAV to POST,
+  // so the browser recognizer is the sole remaining client-side option.
   return "browser";
 }
 
@@ -223,7 +244,10 @@ export function createVoiceCapture(
     onStateChange?.(next, error);
   }
 
-  async function startLocalInference(): Promise<void> {
+  // Shared WAV-capture start for both the local-inference and cloud backends —
+  // identical mic setup; the backends diverge only at stop() (which route the
+  // WAV is POSTed to).
+  async function startWavRecorder(): Promise<void> {
     const next = await startLocalAsrRecorder({
       ...(localAsrAutoStop ? { autoStop: localAsrAutoStop } : {}),
       onAutoStop: () => {
@@ -367,8 +391,8 @@ export function createVoiceCapture(
       backendKind = await resolveBackendKind(asrProvider);
       if (backendKind === "talkmode") {
         await startTalkMode();
-      } else if (backendKind === "local-inference") {
-        await startLocalInference();
+      } else if (backendKind === "local-inference" || backendKind === "cloud") {
+        await startWavRecorder();
       } else {
         startBrowser();
       }
@@ -407,8 +431,9 @@ export function createVoiceCapture(
       return;
     }
 
-    if (backendKind === "local-inference") {
+    if (backendKind === "local-inference" || backendKind === "cloud") {
       const current = recorder;
+      const kind = backendKind;
       recorder = null;
       active = false;
       if (!current) {
@@ -417,18 +442,31 @@ export function createVoiceCapture(
       }
       try {
         const wav = await current.stop();
-        const { text, words } = await transcribeLocalInferenceWav(wav);
-        onTranscript({
-          text,
-          final: true,
-          backend: "local-inference",
-          audioWav: wav,
-          words,
-        });
+        if (kind === "cloud") {
+          // Cloud STT returns text only (no per-word timings); the WAV is still
+          // attached so the transcript recorder can retain the audio.
+          const text = await transcribeCloudWav(wav);
+          onTranscript({
+            text,
+            final: true,
+            backend: "cloud",
+            audioWav: wav,
+          });
+        } else {
+          const { text, words } = await transcribeLocalInferenceWav(wav);
+          onTranscript({
+            text,
+            final: true,
+            backend: "local-inference",
+            audioWav: wav,
+            words,
+          });
+        }
         setState("stopped");
       } catch (err) {
         // error-policy:J1 stop/transcribe boundary — the failure renders the
-        // voice error state and still propagates to the caller
+        // voice error state and still propagates to the caller. Cloud STT
+        // failures surface here (fail-loud): no silent downgrade to browser STT.
         const error = err instanceof Error ? err : new Error(String(err));
         setState("error", error);
         throw error;

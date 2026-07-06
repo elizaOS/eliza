@@ -501,6 +501,7 @@ export {
 export {
   __resetCloudBaseUrlCache,
   ensureCloudTtsApiKeyAlias,
+  handleCloudSttRoute,
   handleCloudTtsPreviewRoute,
   mirrorCompatHeaders,
   resolveCloudTtsBaseUrl,

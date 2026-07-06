@@ -30,7 +30,10 @@ import {
   handleCloudRoute,
 } from "./routes/cloud-routes";
 import { handleCloudStatusRoutes } from "./routes/cloud-status-routes";
-import { handleCloudTtsPreviewRoute } from "./lib/server-cloud-tts";
+import {
+  handleCloudSttRoute,
+  handleCloudTtsPreviewRoute,
+} from "./lib/server-cloud-tts";
 import {
   handleXRelayRoute,
   type XRelayRouteState,
@@ -186,6 +189,13 @@ async function cloudTtsPreviewHandler(
   );
 }
 
+async function cloudSttHandler(req: unknown, res: unknown): Promise<void> {
+  await handleCloudSttRoute(
+    req as http.IncomingMessage,
+    res as http.ServerResponse,
+  );
+}
+
 const cloudRoutes: Route[] = [
   // Status surface (read-only). Note: server.ts may exempt this from auth on
   // cloud-provisioned containers BEFORE the plugin route system fires.
@@ -232,6 +242,14 @@ const cloudRoutes: Route[] = [
     modes: ["local", "cloud", "remote"],
     modeReason: "cloud TTS preview — hidden in local-only",
     handler: cloudTtsPreviewHandler,
+  },
+  {
+    type: "POST",
+    path: "/api/asr/cloud",
+    rawPath: true,
+    modes: ["local", "cloud", "remote"],
+    modeReason: "cloud STT proxy — no cloud account in local-only",
+    handler: cloudSttHandler,
   },
   ...(["GET", "POST", "PUT", "PATCH", "DELETE"] as const).map((type) => ({
     type,

@@ -66,7 +66,10 @@ export function defaultFetchTimeoutMs(
   if (pathname === "/api/tts/local-inference") {
     return LOCAL_INFERENCE_TTS_FETCH_TIMEOUT_MS;
   }
-  if (pathname === "/api/asr/local-inference") {
+  if (
+    pathname === "/api/asr/local-inference" ||
+    pathname === "/api/asr/cloud"
+  ) {
     return LOCAL_INFERENCE_ASR_FETCH_TIMEOUT_MS;
   }
   if (pathname === "/api/agent/reset") {

@@ -10,11 +10,12 @@
  * it wires together the runtime route system.
  */
 import type http from "node:http";
-import { sanitizeSpeechText } from "@elizaos/core";
+import { logger, sanitizeSpeechText } from "@elizaos/core";
 import {
   _internalResolveCloudApiKey,
   ELIZA_CLOUD_TTS_MAX_TEXT_CHARS,
   resolveCloudProxyTtsModel,
+  resolveCloudSttCandidateUrls,
   resolveCloudTtsCandidateUrls,
   resolveElizaCloudTtsVoiceId,
   shouldRetryCloudTtsUpstream,
@@ -295,6 +296,153 @@ export async function handleCloudTtsPreviewRoute(
       res,
       502,
       `Eliza Cloud TTS request failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return true;
+  }
+}
+
+/** WAV bodies larger than this are rejected before proxying (cloud caps at 25MB). */
+const ELIZA_CLOUD_STT_MAX_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Read the raw request body up to a byte cap, aborting past the limit. The STT
+ * body is opaque audio bytes (a WAV), so it is streamed straight through rather
+ * than JSON-parsed — the cap prevents an oversized upload from buffering
+ * unbounded before the cloud's own size check rejects it.
+ */
+async function readCappedRequestBody(
+  req: http.IncomingMessage,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of req) {
+    const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+    total += buf.length;
+    if (total > maxBytes) return null;
+    chunks.push(buf);
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Agent-side proxy for interactive web STT (`POST /api/asr/cloud`). Interactive
+ * capture records a mono PCM16 WAV client-side and POSTs the raw bytes here;
+ * this forwards them as a multipart `audio` field to the same upstream cloud STT
+ * route (`<cloud-base>/voice/stt`) the server-side transcription model uses, and
+ * returns `{ text }`. It mirrors {@link handleCloudTtsPreviewRoute} exactly:
+ * same base-URL / api-key resolution, same www/apex candidate fan-out, same
+ * fail-loud contract — a missing key is 401 and an unreachable upstream is 502
+ * so the capture surface renders a distinguishable error state rather than
+ * silently downgrading to the browser recognizer.
+ */
+export async function handleCloudSttRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<boolean> {
+  const cloudApiKey = _internalResolveCloudApiKey();
+  if (!cloudApiKey) {
+    sendJsonErrorResponse(
+      res,
+      401,
+      "Eliza Cloud is not connected. Connect your Eliza Cloud account first.",
+    );
+    return true;
+  }
+
+  const rawBody = await readCappedRequestBody(req, ELIZA_CLOUD_STT_MAX_BYTES);
+  if (rawBody === null) {
+    sendJsonErrorResponse(res, 413, "Audio too large");
+    return true;
+  }
+  if (rawBody.length === 0) {
+    sendJsonErrorResponse(res, 400, "Missing audio body");
+    return true;
+  }
+
+  const contentType = req.headers["content-type"];
+  const mime =
+    typeof contentType === "string" && contentType.trim()
+      ? contentType.split(";", 1)[0]?.trim() || "audio/wav"
+      : "audio/wav";
+  const filename = mime.includes("wav") ? "recording.wav" : "recording.bin";
+
+  const cloudUrls = resolveCloudSttCandidateUrls();
+  logger.debug(
+    `[Cloud STT] proxying ${rawBody.length}B ${mime} to ${cloudUrls.length} candidate(s)`,
+  );
+
+  try {
+    let lastStatus = 0;
+    let lastDetails = "unknown error";
+    let cloudResponse: Response | null = null;
+    for (let i = 0; i < cloudUrls.length; i++) {
+      const cloudUrl = cloudUrls[i];
+      if (cloudUrl === undefined) continue;
+      const form = new FormData();
+      form.append(
+        "audio",
+        new Blob([new Uint8Array(rawBody)], { type: mime }),
+        filename,
+      );
+      const attempt = await fetch(cloudUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${cloudApiKey}`,
+          "x-api-key": cloudApiKey,
+        },
+        body: form,
+      });
+      if (attempt.ok) {
+        cloudResponse = attempt;
+        break;
+      }
+      lastStatus = attempt.status;
+      lastDetails = await attempt.text().catch(() => "unknown error");
+      const hasMoreCandidates = i < cloudUrls.length - 1;
+      if (!hasMoreCandidates || !shouldRetryCloudTtsUpstream(attempt.status)) {
+        break;
+      }
+    }
+
+    if (!cloudResponse) {
+      logger.warn(`[Cloud STT] upstream failed (${lastStatus || 502})`);
+      if (
+        lastStatus === 400 ||
+        lastStatus === 401 ||
+        lastStatus === 402 ||
+        lastStatus === 403 ||
+        lastStatus === 429
+      ) {
+        forwardCloudTtsUpstreamError(res, lastStatus, lastDetails);
+        return true;
+      }
+      sendJsonErrorResponse(
+        res,
+        502,
+        `Eliza Cloud STT failed (${lastStatus || 502}): ${lastDetails}`,
+      );
+      return true;
+    }
+
+    const data = (await cloudResponse.json().catch(() => null)) as {
+      text?: unknown;
+      transcript?: unknown;
+    } | null;
+    const text =
+      typeof data?.text === "string"
+        ? data.text.trim()
+        : typeof data?.transcript === "string"
+          ? data.transcript.trim()
+          : "";
+    logger.debug(`[Cloud STT] transcript ${text.length} chars`);
+    sendJsonResponse(res, 200, { text });
+    return true;
+  } catch (err) {
+    sendJsonErrorResponse(
+      res,
+      502,
+      `Eliza Cloud STT request failed: ${err instanceof Error ? err.message : String(err)}`,
     );
     return true;
   }

@@ -22,6 +22,7 @@ export function getCloudSecret(
 export function clearCloudSecrets(): void {}
 
 export const ensureCloudTtsApiKeyAlias = unavailableBrowserExport;
+export const handleCloudSttRoute = unavailableBrowserExport;
 export const handleCloudTtsPreviewRoute = unavailableBrowserExport;
 export const mirrorCompatHeaders = unavailableBrowserExport;
 export const normalizeCloudSiteUrl = unavailableBrowserExport;

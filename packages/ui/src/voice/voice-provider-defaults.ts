@@ -39,6 +39,12 @@
  * actually staged on phones) ahead of any provider preference. So on native
  * mobile the `eliza-cloud` value below governs server-side transcription, not
  * the live on-device capture path — the two layers are chosen independently.
+ *
+ * On web/desktop the two layers now agree for `eliza-cloud`: the capture
+ * factory records a WAV and POSTs it to the cloud STT proxy (`/api/asr/cloud`),
+ * so interactive `eliza-cloud` ASR is the real cloud transcriber. Browser
+ * SpeechRecognition is used only when WAV capture is unsupported (no
+ * `getUserMedia`/`AudioContext`).
  */
 
 import type { AsrProvider, VoiceProvider } from "../api/client-types-config";
