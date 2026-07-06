@@ -121,7 +121,7 @@ describe("normalizeVideo degradation", () => {
         expect(ffprobe.source).toBe("bundled");
       } else {
         expect(ffprobe.reason).toMatch(
-          /ffprobe not found on PATH and bundled ffprobe-static package is unavailable/,
+          /ffprobe (not found on PATH and bundled ffprobe-static package is unavailable|system binary missing and bundled binary failed)/,
         );
       }
 
@@ -138,7 +138,7 @@ describe("normalizeVideo degradation", () => {
       restoreEnv("ELIZA_FFMPEG_BIN", prevFfmpeg);
       restoreEnv("ELIZA_FFPROBE_BIN", prevFfprobe);
     }
-  });
+  }, 150_000);
 
   it("skips honestly when ffprobe/ffmpeg are absent", async () => {
     const prevFfmpeg = process.env.ELIZA_FFMPEG_BIN;

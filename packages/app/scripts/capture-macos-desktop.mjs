@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // macOS desktop evidence capture: screenshot + best-effort screen recording +
-// backend log for headed Electrobun/manual voice runs. Skips cleanly on non-macOS
-// hosts; records video only when ffmpeg can access the avfoundation screen input.
+// backend log for headed Electrobun/manual voice runs. Skips cleanly on
+// non-macOS hosts; ffmpeg is resolved or installed before recording.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, statSync, writeFileSync } from "node:fs";
 import {
@@ -13,6 +13,7 @@ import {
   parseFlags,
   skip,
 } from "./lib/capture-output.mjs";
+import { resolveRequiredFfmpeg } from "./lib/ffmpeg.mjs";
 
 const PLATFORM = "macos-desktop";
 const log = logFor(PLATFORM);
@@ -26,11 +27,10 @@ function captureScreenshot(outPath) {
   return res.status === 0 && existsSync(outPath);
 }
 
-function recordVideo(outPath, durationSec) {
-  if (!hasCommand("ffmpeg")) return Promise.resolve(false);
+function recordVideo(ffmpeg, outPath, durationSec) {
   return new Promise((resolve) => {
     const proc = spawn(
-      "ffmpeg",
+      ffmpeg,
       [
         "-y",
         "-f",
@@ -64,6 +64,7 @@ async function main() {
   if (!hasCommand("screencapture")) {
     skip(PLATFORM, "screencapture not found");
   }
+  const ffmpeg = resolveRequiredFfmpeg({ log });
 
   const flags = parseFlags();
   const base = evidenceBaseName({
@@ -82,7 +83,7 @@ async function main() {
 
   const mp4Path = evidencePath(base, "mp4");
   log(`recording ${durationSec}s -> ${mp4Path}`);
-  const recorded = await recordVideo(mp4Path, durationSec);
+  const recorded = await recordVideo(ffmpeg, mp4Path, durationSec);
   log(
     recorded
       ? `recording -> ${mp4Path} (${statSync(mp4Path).size} bytes)`
@@ -94,7 +95,7 @@ async function main() {
     infoPath,
     `[capture:${PLATFORM}] host=${process.platform}\n` +
       `screencapture=${hasCommand("screencapture") ? "present" : "missing"}\n` +
-      `ffmpeg=${spawnSync("ffmpeg", ["-version"], { encoding: "utf8" }).stdout?.split("\n")[0] ?? "missing"}\n`,
+      `ffmpeg=${spawnSync(ffmpeg, ["-version"], { encoding: "utf8" }).stdout?.split("\n")[0] ?? "missing"}\n`,
     "utf8",
   );
   log(`info log -> ${infoPath}`);

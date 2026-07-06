@@ -2,8 +2,8 @@
 // Windows desktop capture (issue #9944): screenshot + screen recording + an
 // info log of the headed desktop (incl. the Electrobun window) via ffmpeg
 // `gdigrab`, written to the generated capture-output directory.
-// Skips with a reason (exit 0) when not on Windows or ffmpeg is missing — so a
-// non-Windows CI run is a clean no-op.
+// Skips with a reason (exit 0) when not on Windows; ffmpeg is a required
+// capture dependency and is resolved or installed before recording.
 //
 // Usage (from packages/app):
 //   bun run capture:windows-desktop -- --issue <n> --slug <s> [--duration <sec>]
@@ -20,27 +20,24 @@ import {
   parseFlags,
   skip,
 } from "./lib/capture-output.mjs";
+import { resolveRequiredFfmpeg } from "./lib/ffmpeg.mjs";
 
 const PLATFORM = "windows-desktop";
 const log = logFor(PLATFORM);
 
-function hasFfmpeg() {
-  return spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
-}
-
-function captureScreenshot(outPath) {
+function captureScreenshot(ffmpeg, outPath) {
   const res = spawnSync(
-    "ffmpeg",
+    ffmpeg,
     ["-y", "-f", "gdigrab", "-i", "desktop", "-frames:v", "1", outPath],
     { stdio: "ignore" },
   );
   return res.status === 0 && existsSync(outPath);
 }
 
-function recordVideo(outPath, durationSec) {
+function recordVideo(ffmpeg, outPath, durationSec) {
   return new Promise((resolve) => {
     const proc = spawn(
-      "ffmpeg",
+      ffmpeg,
       [
         "-y",
         "-f",
@@ -69,9 +66,7 @@ async function main() {
       `windows-desktop capture requires a windows host (host is ${process.platform})`,
     );
   }
-  if (!hasFfmpeg()) {
-    skip(PLATFORM, "ffmpeg not found (install ffmpeg for gdigrab capture)");
-  }
+  const ffmpeg = resolveRequiredFfmpeg({ log });
 
   const flags = parseFlags();
   const base = evidenceBaseName({
@@ -83,7 +78,7 @@ async function main() {
   log("capturing windows desktop via gdigrab");
 
   const pngPath = evidencePath(base, "png");
-  if (captureScreenshot(pngPath)) {
+  if (captureScreenshot(ffmpeg, pngPath)) {
     log(`screenshot → ${pngPath} (${statSync(pngPath).size} bytes)`);
   } else {
     log("screenshot failed (no file written)");
@@ -91,7 +86,7 @@ async function main() {
 
   const mp4Path = evidencePath(base, "mp4");
   log(`recording ${durationSec}s → ${mp4Path}`);
-  const recorded = await recordVideo(mp4Path, durationSec);
+  const recorded = await recordVideo(ffmpeg, mp4Path, durationSec);
   log(
     recorded
       ? `recording → ${mp4Path} (${statSync(mp4Path).size} bytes)`
@@ -102,7 +97,7 @@ async function main() {
   writeFileSync(
     infoPath,
     `[capture:${PLATFORM}] host=${process.platform}\n` +
-      `ffmpeg=${spawnSync("ffmpeg", ["-version"], { encoding: "utf8" }).stdout?.split("\n")[0] ?? "?"}\n`,
+      `ffmpeg=${spawnSync(ffmpeg, ["-version"], { encoding: "utf8" }).stdout?.split("\n")[0] ?? "?"}\n`,
     "utf8",
   );
   log(`info log → ${infoPath}`);

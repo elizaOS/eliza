@@ -2,8 +2,8 @@
 // Linux desktop capture (issue #9944): screenshot + screen recording + an info
 // log of the headed X11 desktop (incl. the Electrobun window), written to the
 // generated capture-output directory.
-// Skips with a reason (exit 0) when ffmpeg or an X display is missing — so a
-// headless CI run is a clean no-op.
+// Skips with a reason (exit 0) when no X display exists; ffmpeg is a required
+// capture dependency and is resolved or installed before recording.
 //
 // Usage (from packages/app):
 //   bun run capture:linux-desktop -- --issue <n> --slug <s> [--duration <sec>]
@@ -20,13 +20,10 @@ import {
   parseFlags,
   skip,
 } from "./lib/capture-output.mjs";
+import { resolveRequiredFfmpeg } from "./lib/ffmpeg.mjs";
 
 const PLATFORM = "linux-desktop";
 const log = logFor(PLATFORM);
-
-function hasFfmpeg() {
-  return spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
-}
 
 /** Screen geometry from xdpyinfo, else a safe 1920x1080 default. */
 function screenSize(display) {
@@ -38,9 +35,9 @@ function screenSize(display) {
   return m ? `${m[1]}x${m[2]}` : "1920x1080";
 }
 
-function captureScreenshot(display, size, outPath) {
+function captureScreenshot(ffmpeg, display, size, outPath) {
   const res = spawnSync(
-    "ffmpeg",
+    ffmpeg,
     [
       "-y",
       "-f",
@@ -58,10 +55,10 @@ function captureScreenshot(display, size, outPath) {
   return res.status === 0 && existsSync(outPath);
 }
 
-function recordVideo(display, size, outPath, durationSec) {
+function recordVideo(ffmpeg, display, size, outPath, durationSec) {
   return new Promise((resolve) => {
     const proc = spawn(
-      "ffmpeg",
+      ffmpeg,
       [
         "-y",
         "-f",
@@ -96,9 +93,7 @@ async function main() {
   if (!display) {
     skip(PLATFORM, "no $DISPLAY (headless host — no X11 desktop to capture)");
   }
-  if (!hasFfmpeg()) {
-    skip(PLATFORM, "ffmpeg not found (install ffmpeg for x11grab capture)");
-  }
+  const ffmpeg = resolveRequiredFfmpeg({ log });
 
   const flags = parseFlags();
   const base = evidenceBaseName({
@@ -111,7 +106,7 @@ async function main() {
   log(`capturing X11 desktop ${display} @ ${size}`);
 
   const pngPath = evidencePath(base, "png");
-  if (captureScreenshot(display, size, pngPath)) {
+  if (captureScreenshot(ffmpeg, display, size, pngPath)) {
     log(`screenshot → ${pngPath} (${statSync(pngPath).size} bytes)`);
   } else {
     log("screenshot failed (no file written)");
@@ -119,7 +114,13 @@ async function main() {
 
   const mp4Path = evidencePath(base, "mp4");
   log(`recording ${durationSec}s → ${mp4Path}`);
-  const recorded = await recordVideo(display, size, mp4Path, durationSec);
+  const recorded = await recordVideo(
+    ffmpeg,
+    display,
+    size,
+    mp4Path,
+    durationSec,
+  );
   log(
     recorded
       ? `recording → ${mp4Path} (${statSync(mp4Path).size} bytes)`
@@ -130,7 +131,7 @@ async function main() {
   writeFileSync(
     infoPath,
     `[capture:${PLATFORM}] host=${process.platform} display=${display} size=${size}\n` +
-      `ffmpeg=${spawnSync("ffmpeg", ["-version"], { encoding: "utf8" }).stdout?.split("\n")[0] ?? "?"}\n`,
+      `ffmpeg=${spawnSync(ffmpeg, ["-version"], { encoding: "utf8" }).stdout?.split("\n")[0] ?? "?"}\n`,
     "utf8",
   );
   log(`info log → ${infoPath}`);
