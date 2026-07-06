@@ -2734,13 +2734,17 @@ export function App() {
           <AppBackground visible={renderSharedAppBackground} />
           {/* Readability scrim for text-dense shared-background views. It sits
               between the wallpaper (z-0) and content (z-10) and covers safe
-              areas too. Opaque or overlay-app routes use the plain underlay
-              instead, so the wallpaper cannot leak through. */}
+              areas too. Settings deliberately shows the LIVE launcher
+              wallpaper behind a 50% dark veil (theme-independent black, not
+              bg/, so light mode never washes it out) — the user can change the
+              background from Settings and watch it apply behind the panel.
+              Opaque or overlay-app routes use the plain underlay instead, so
+              the wallpaper cannot leak through. */}
           {renderSharedAppBackground && isSettingsPage ? (
             <div
               aria-hidden="true"
               data-testid="app-background-scrim"
-              className="pointer-events-none fixed inset-0 z-[1] bg-bg/55"
+              className="pointer-events-none fixed inset-0 z-[1] bg-black/50"
             />
           ) : null}
           {renderOpaqueAppBackground ? (
