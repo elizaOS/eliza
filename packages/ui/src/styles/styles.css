@@ -96,8 +96,9 @@ html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
 /* `body.pwa-standalone` mirrors the native mobile lockdown for an INSTALLED
    PWA on the web platform (iOS home-screen app): `touch-action: pan-y` hands
    every horizontal drag to the app's rail/grabber gestures (only vertical pan
-   stays native), and the `#root` 100dvh lock keeps a stray drag from scrolling
-   the whole app off-screen — without this the home-screen swipes are eaten by
+   stays native), and the `#root` 100lvh lock (full-bleed to the true bottom,
+   #14411) keeps a stray drag from scrolling the whole app off-screen while the
+   React tree reaches the physical screen edge — without this the home-screen swipes are eaten by
    iOS WebKit's own page pan. See platform/init.ts isStandalonePwa(). */
 body.native,
 body.pwa-standalone {
@@ -151,12 +152,42 @@ body.pwa-standalone {
   background-color: color-mix(in srgb, var(--launch-bg, #160d07) 82%, #ef5a1f);
 }
 
+/* RECLAIM THE BOTTOM STRIP (#14411): #root fills the LARGE viewport (100lvh),
+   not the small/dynamic one (100dvh). Previously #root clamped to 100dvh (the
+   collapsed layout viewport, ~873px on a home-indicator phone) and the ~59px
+   strip down to 100lvh (~932px, the true screen bottom) was only the body's
+   decorative ember floor — dead space the app never reached. Now the React
+   tree paints full-bleed to the physical bottom edge, like a native app. The
+   home-indicator safe area is handled as PADDING *inside* the app (the
+   composer + bottom rows already respect `env(safe-area-inset-bottom)` via
+   --safe-area-bottom), so interactive controls still sit above the indicator
+   while background content bleeds under it. Height stack (100vh → 100dvh →
+   100lvh) is the same progressive-enhancement trick the fixed body uses: older
+   engines without `lvh` fall back to `dvh`, then `vh`. */
 body.native #root,
 body.pwa-standalone #root {
+  min-height: 100vh;
   min-height: 100dvh;
+  min-height: 100lvh;
+  max-height: 100vh;
   max-height: 100dvh;
+  max-height: 100lvh;
   padding: 0;
   box-sizing: border-box;
+}
+
+/* RECLAIM THE BOTTOM STRIP (#14411): the app shell column (App.tsx) carries a
+   base `h-[100dvh]` that is correct for a desktop browser tab / popout, but in
+   the installed PWA it must fill the 100lvh #root above — otherwise the column
+   stops ~59px short of the true bottom and #root's own --launch-bg paints a
+   near-black band there. Pin it to the LARGE viewport (100lvh) with the same
+   100vh→100dvh→100lvh progressive-enhancement stack; height governs so the
+   column reaches the physical screen edge, full-bleed. */
+body.native [data-app-shell-root],
+body.pwa-standalone [data-app-shell-root] {
+  height: 100vh;
+  height: 100dvh;
+  height: 100lvh;
 }
 
 body.native textarea,
@@ -172,7 +203,8 @@ body.pwa-standalone textarea {
    tags the body — see base.css note + issue). Same three rules the class path
    applies: `pan-y` (hand horizontal drags to the app rail/grabber), the #14319
    large-viewport (100lvh) fixed-body geometry (kills the residual bottom black
-   band + restores the swipe-up flick zone), and the #root 100dvh lock. Desktop
+   band + restores the swipe-up flick zone), and the #root 100lvh lock (#14411:
+   full-bleed to the true bottom, reclaiming the ember-floor strip). Desktop
    fullscreen (fine pointer) is excluded by `(pointer: coarse)`. */
 @media all and (display-mode: standalone) and (pointer: coarse),
   all and (display-mode: fullscreen) and (pointer: coarse) {
@@ -196,11 +228,34 @@ body.pwa-standalone textarea {
   }
 
   /* biome-ignore lint/style/noDescendingSpecificity: intentional bare #root lock mirroring body.pwa-standalone #root. */
+  /* RECLAIM THE BOTTOM STRIP (#14411): #root fills the LARGE viewport (100lvh)
+     so the app paints full-bleed to the physical bottom edge instead of
+     clamping to 100dvh and leaving the ~59px lvh–dvh strip as a dead ember
+     floor. Mirror of the class-path `body.pwa-standalone #root` rule; the
+     home-indicator safe area is padded INSIDE the app (composer/bottom rows
+     use env(safe-area-inset-bottom)), not left as void below #root. Same
+     100vh→100dvh→100lvh progressive-enhancement stack the body uses. */
   body #root {
+    min-height: 100vh;
     min-height: 100dvh;
+    min-height: 100lvh;
+    max-height: 100vh;
     max-height: 100dvh;
+    max-height: 100lvh;
     padding: 0;
     box-sizing: border-box;
+  }
+
+  /* biome-ignore lint/style/noDescendingSpecificity: intentional app-shell-column reclaim mirroring the class-path [data-app-shell-root] rule. */
+  /* RECLAIM THE BOTTOM STRIP (#14411): the app shell column (App.tsx) carries a
+     base `h-[100dvh]`; in the installed PWA it must fill the 100lvh #root or it
+     stops ~59px short and #root's --launch-bg paints a near-black band there.
+     Pin it to 100lvh (100vh→100dvh→100lvh progressive-enhancement) so the
+     column reaches the physical screen edge, full-bleed. */
+  body [data-app-shell-root] {
+    height: 100vh;
+    height: 100dvh;
+    height: 100lvh;
   }
 
   body textarea {

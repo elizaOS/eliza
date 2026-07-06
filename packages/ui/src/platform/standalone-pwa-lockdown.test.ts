@@ -74,7 +74,11 @@ describe("isStandalonePwa", () => {
       configurable: true,
       writable: true,
       value: () =>
-        ({ matches: false, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,
+        ({
+          matches: false,
+          addEventListener() {},
+          removeEventListener() {},
+        }) as unknown as MediaQueryList,
     });
     Object.defineProperty(navigator, "standalone", {
       configurable: true,
@@ -132,12 +136,43 @@ describe("CSS lockdown contract — base.css / styles.css cover body.pwa-standal
     expect(panYBlock?.[0]).toContain("body.pwa-standalone");
   });
 
-  it("locks #root to the viewport for the installed PWA too (styles.css)", () => {
+  it("reclaims #root to the LARGE viewport (100lvh) for the installed PWA too (styles.css)", () => {
+    // RECLAIM THE BOTTOM STRIP (#14411): #root now fills 100lvh (the true
+    // physical bottom), not the old 100dvh clamp that left a ~59px ember-floor
+    // strip below it. The class-path rule must carry pwa-standalone and pin the
+    // large-viewport height (with 100dvh/100vh progressive fallbacks).
     const rootBlock = stylesCss.match(
-      /body\.native #root,[\s\S]*?max-height: 100dvh;/,
+      /body\.native #root,[\s\S]*?max-height: 100lvh;/,
     );
     expect(rootBlock).not.toBeNull();
     expect(rootBlock?.[0]).toContain("body.pwa-standalone #root");
+    // Large-viewport reclaim + progressive-enhancement fallbacks.
+    expect(rootBlock?.[0]).toContain("100lvh");
+    expect(rootBlock?.[0]).toContain("100dvh");
+    expect(rootBlock?.[0]).toContain("100vh");
+    // The old hard 100dvh clamp (min AND max pinned to dvh) must be gone.
+    expect(rootBlock?.[0]).not.toMatch(
+      /min-height:\s*100dvh;\s*max-height:\s*100dvh;/,
+    );
+  });
+
+  it("reclaims the app shell column to 100lvh in the installed PWA (styles.css)", () => {
+    // RECLAIM THE BOTTOM STRIP (#14411): App.tsx's shell column carries a base
+    // `h-[100dvh]` (correct for a desktop tab / popout). In the installed PWA a
+    // CSS override must lift it to the LARGE viewport so it fills the 100lvh
+    // #root above and doesn't stop ~59px short (which would expose #root's
+    // --launch-bg as a near-black band). Targets the stable
+    // `[data-app-shell-root]` hook on the column.
+    const columnBlock = stylesCss.match(
+      /body\.native \[data-app-shell-root\],[\s\S]*?height: 100lvh;/,
+    );
+    expect(columnBlock).not.toBeNull();
+    expect(columnBlock?.[0]).toContain(
+      "body.pwa-standalone [data-app-shell-root]",
+    );
+    expect(columnBlock?.[0]).toContain("100lvh");
+    expect(columnBlock?.[0]).toContain("100dvh");
+    expect(columnBlock?.[0]).toContain("100vh");
   });
 });
 
@@ -338,13 +373,69 @@ describe("CSS-FIRST contract — media-query lockdown is detection-independent",
     expect(block ?? "").toContain("--launch-bg");
   });
 
-  it("styles.css media block locks #root to the viewport too", () => {
+  it("styles.css media block reclaims #root to the LARGE viewport (100lvh)", () => {
+    // RECLAIM THE BOTTOM STRIP (#14411): the media-query #root rule now pins the
+    // large viewport so the app fills full-bleed to the true bottom, not the old
+    // 100dvh clamp.
     const block = mediaBlock(
       stylesCss,
       ["display-mode: standalone", "pointer: coarse"],
       "100lvh",
     );
     expect(block).not.toBeNull();
-    expect(block ?? "").toMatch(/#root\s*\{[\s\S]*?max-height:\s*100dvh/);
+    expect(block ?? "").toMatch(/#root\s*\{[\s\S]*?max-height:\s*100lvh/);
+    // The app shell column reclaim must ride the same media block.
+    expect(block ?? "").toMatch(
+      /\[data-app-shell-root\]\s*\{[\s\S]*?height:\s*100lvh/,
+    );
+  });
+});
+
+describe("App shell reclaim contract — the shell column carries the reclaim hook", () => {
+  // RECLAIM THE BOTTOM STRIP (#14411): the CSS reclaim of the shell column
+  // targets `[data-app-shell-root]`; that hook must exist on the App.tsx shell
+  // column (the `position: relative` safe-area-fill root) or the CSS override
+  // matches nothing and the column stays clamped at its base h-[100dvh].
+  it("App.tsx tags the shell column with data-app-shell-root", () => {
+    const appTsx = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+    expect(appTsx).toContain("data-app-shell-root");
+  });
+});
+
+describe("Keyboard-lift geometry contract — reclaim does NOT shift the composer lift", () => {
+  // RECLAIM THE BOTTOM STRIP (#14411) regression guard: the composer overlay is
+  // a `position: fixed` element anchored to the fixed-body ICB (already pinned
+  // to 100lvh by the #14319 geometry), NOT to #root. Its keyboard lift comes
+  // from `bottom: effectiveKeyboardInset`, a VISUAL-VIEWPORT delta, and its
+  // panel height is bounded by `viewportH` (the visual viewport). None of these
+  // read #root's height, so lifting #root from 100dvh to 100lvh cannot change
+  // where the composer rests or how far it lifts above the keyboard — the
+  // lvh–dvh (~59px) delta never enters the lift math. Pin those invariants so a
+  // future refactor that couples the lift to #root/dvh trips this test.
+  const overlaySrc = readFileSync(
+    resolve(process.cwd(), "src/components/shell/ContinuousChatOverlay.tsx"),
+    "utf8",
+  );
+  const layoutSrc = readFileSync(
+    resolve(process.cwd(), "src/components/shell/chat-panel-layout.ts"),
+    "utf8",
+  );
+
+  it("lifts the composer by effectiveKeyboardInset (visual-viewport delta), not a #root/lvh measure", () => {
+    expect(overlaySrc).toContain("bottom: effectiveKeyboardInset");
+    // effectiveKeyboardInset is derived from the visual viewport + native
+    // keyboard plugin, never from 100lvh / #root height.
+    expect(overlaySrc).toContain(
+      "effectiveKeyboardInset = Math.max(keyboardInset, nativeLift)",
+    );
+    expect(overlaySrc).not.toContain("100lvh");
+  });
+
+  it("bounds the panel height by the visual viewport, not #root/lvh", () => {
+    // resolveChatPanelLayout caps panelMaxH by viewportH (the visual viewport),
+    // so a taller 100lvh #root does not let the panel top shoot off-screen.
+    expect(layoutSrc).toContain("viewportH -");
+    expect(layoutSrc).not.toContain("100lvh");
+    expect(layoutSrc).not.toContain("100dvh");
   });
 });

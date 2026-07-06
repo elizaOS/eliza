@@ -330,9 +330,12 @@ body.desktop {
    The native shell is a fixed-viewport app: no pinch zoom, no rubber-band
    bounce, no two-finger drag, no callout/long-press menu, no scrollbars.
    Safe-area padding is applied at `#root` (see `styles.css`) instead of
-   here — `#root` is locked to `100dvh` so body-level padding wouldn't
-   shrink the React tree's flex container, and inner shells would still
-   render under the status bar. */
+   here — `#root` is pinned to the LARGE viewport (`100lvh`, reclaiming the
+   bottom strip per #14411) so body-level padding wouldn't shrink the React
+   tree's flex container, and inner shells would still render under the status
+   bar. The home-indicator safe area is padded INSIDE the app (composer/bottom
+   rows respect env(safe-area-inset-bottom)), so content bleeds full-height to
+   the true bottom while interactive controls stay above the indicator. */
 /* `body.pwa-standalone` (added from platform/init.ts) covers the INSTALLED
    iOS/Android PWA running on the `web` Capacitor platform: it is NOT the
    native App Store / Play Store build (which takes the `native`/`platform-ios`

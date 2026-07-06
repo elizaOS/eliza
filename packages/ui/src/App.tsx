@@ -2609,6 +2609,17 @@ export function App() {
           // is what lets every view fill edge-to-edge under the notch while the
           // `paddingTop` below keeps CONTENT notch-aware. Locked by
           // App.safe-area-fill.test.ts.
+          //
+          // RECLAIM THE BOTTOM STRIP (#14411): the base height is `h-[100dvh]`
+          // (correct for a desktop browser tab / popout where dvh == the full
+          // window). In the INSTALLED PWA the styles.css standalone blocks pin
+          // #root to 100lvh and reclaim THIS column to 100lvh too (via the
+          // `[data-app-shell-root]` selector), so the app fills full-bleed to
+          // the physical bottom edge instead of leaving the ~59px lvh–dvh strip
+          // as #root's near-black --launch-bg band. The home-indicator safe
+          // area is padded INSIDE the app (the floating composer clears it), so
+          // background content bleeds under the indicator, native-app style.
+          data-app-shell-root=""
           className="relative flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
           // Reserve a TIGHT status-bar inset: enough to clear the notch/Dynamic
           // Island but no oversized empty band above the content (the repeated
