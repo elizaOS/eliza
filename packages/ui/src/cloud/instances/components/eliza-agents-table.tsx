@@ -160,7 +160,32 @@ function mergeSandboxRow(
  * that a delete that never took only hides the billed agent for ~a minute.
  */
 const TOMBSTONE_GRACE_MS = 60_000;
-const ELIZA_APP_AGENT_CREATE_URL = "https://app.elizacloud.ai";
+/**
+ * Browser host -> Eliza app origin for the "open the Eliza app" CTAs. The
+ * console and the app are separate deploys per env; every host must map to its
+ * OWN env's app (staging -> app-staging, never prod), else a staging user
+ * lands on the prod app with a different tenant and session. Unknown hosts
+ * (localhost, previews) fall back to prod. Same shape as
+ * ELIZA_CLOUD_DIRECT_API_BY_HOST in shell/steward-url.ts.
+ */
+const ELIZA_APP_ORIGIN_BY_HOST: Record<string, string> = {
+  "elizacloud.ai": "https://app.elizacloud.ai",
+  "www.elizacloud.ai": "https://app.elizacloud.ai",
+  "dev.elizacloud.ai": "https://app.elizacloud.ai",
+  "app.elizacloud.ai": "https://app.elizacloud.ai",
+  "staging.elizacloud.ai": "https://app-staging.elizacloud.ai",
+  "app-staging.elizacloud.ai": "https://app-staging.elizacloud.ai",
+};
+
+export function resolveElizaAppAgentCreateUrl(host?: string): string {
+  const browserHost =
+    host ??
+    (typeof window !== "undefined" ? window.location.hostname : undefined);
+  return (
+    (browserHost && ELIZA_APP_ORIGIN_BY_HOST[browserHost]) ||
+    "https://app.elizacloud.ai"
+  );
+}
 
 /**
  * Retire delete-tombstones by TIME only — the single retirement clock for both
@@ -902,7 +927,7 @@ export function ElizaAgentsTable({
         action={
           <Button asChild size="sm">
             <a
-              href={ELIZA_APP_AGENT_CREATE_URL}
+              href={resolveElizaAppAgentCreateUrl()}
               target="_blank"
               rel="noreferrer"
             >
@@ -1018,7 +1043,7 @@ export function ElizaAgentsTable({
           </Select>
           <Button asChild size="sm" className="h-9">
             <a
-              href={ELIZA_APP_AGENT_CREATE_URL}
+              href={resolveElizaAppAgentCreateUrl()}
               target="_blank"
               rel="noreferrer"
             >

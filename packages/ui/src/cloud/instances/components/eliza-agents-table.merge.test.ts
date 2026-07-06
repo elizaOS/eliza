@@ -9,6 +9,7 @@ import type { SandboxListAgent } from "../lib/use-sandbox-status-poll";
 import {
   type ElizaAgentRow,
   mergeAgentList,
+  resolveElizaAppAgentCreateUrl,
   retireExpiredTombstones,
 } from "./eliza-agents-table";
 
@@ -146,5 +147,31 @@ describe("retireExpiredTombstones (the single time-only retirement clock)", () =
     ]);
     retireExpiredTombstones(tombstones, 25_000, GRACE);
     expect([...tombstones.keys()]).toEqual(["fresh"]);
+  });
+});
+
+describe("resolveElizaAppAgentCreateUrl", () => {
+  it("maps every env host to its OWN env's app — staging never lands on prod", () => {
+    expect(resolveElizaAppAgentCreateUrl("staging.elizacloud.ai")).toBe(
+      "https://app-staging.elizacloud.ai",
+    );
+    expect(resolveElizaAppAgentCreateUrl("app-staging.elizacloud.ai")).toBe(
+      "https://app-staging.elizacloud.ai",
+    );
+    expect(resolveElizaAppAgentCreateUrl("elizacloud.ai")).toBe(
+      "https://app.elizacloud.ai",
+    );
+    expect(resolveElizaAppAgentCreateUrl("app.elizacloud.ai")).toBe(
+      "https://app.elizacloud.ai",
+    );
+  });
+
+  it("falls back to the prod app for unknown hosts and non-browser contexts", () => {
+    expect(resolveElizaAppAgentCreateUrl("localhost")).toBe(
+      "https://app.elizacloud.ai",
+    );
+    expect(resolveElizaAppAgentCreateUrl(undefined)).toBe(
+      "https://app.elizacloud.ai",
+    );
   });
 });
