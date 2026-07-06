@@ -11,6 +11,7 @@ import { analyzeWalletFunding } from "./analyzers/funding";
 import { analyzeWalletPortfolio } from "./analyzers/portfolio";
 import { getSolanaTokenPrices } from "./providers/priceProvider";
 import { analyzeWalletRisk } from "./analyzers/risk";
+import { analyzeWalletWhaleStatus } from "./analyzers/whale";
 import {
   SupportedChain,
   WalletBalance,
@@ -100,6 +101,14 @@ const portfolio = analyzeWalletPortfolio(
   tokenPrices,
 );
 
+const whale = analyzeWalletWhaleStatus(
+  portfolio,
+  age,
+  activity,
+  funding,
+  risk,
+);
+
 const risk = analyzeWalletRisk(
   balance.sol,
   activity,
@@ -112,6 +121,7 @@ const risk = analyzeWalletRisk(
          balance: walletBalance,
 tokenHoldings,
 portfolio,
+whale,
 recentTransactions,
 transactionCountSample: recentTransactions.length,
 activity,
