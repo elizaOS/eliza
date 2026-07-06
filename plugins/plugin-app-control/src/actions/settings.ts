@@ -592,6 +592,129 @@ function resolvePermissionNamespace(token: string | null): string | null {
 	return PERMISSION_NAMESPACE_ALIASES.get(token.trim().toLowerCase()) ?? null;
 }
 
+function readRecord(value: unknown): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+}
+
+function readStringField(data: unknown, field: string): string | null {
+	const value = readRecord(data)[field];
+	return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function readBooleanField(data: unknown, field: string): boolean | null {
+	const value = readRecord(data)[field];
+	return typeof value === "boolean" ? value : null;
+}
+
+function summarizeUpdateStatus(data: unknown): string {
+	const error = readStringField(data, "error");
+	if (error) return `Update check failed: ${error}`;
+
+	const currentVersion = readStringField(data, "currentVersion") ?? "unknown";
+	const latestVersion =
+		readStringField(data, "latestVersion") ?? currentVersion;
+	const channel = readStringField(data, "channel");
+	const updateAvailable = readBooleanField(data, "updateAvailable");
+	const availability =
+		updateAvailable === true
+			? `Update available: ${latestVersion}`
+			: updateAvailable === false
+				? "Already current"
+				: `Latest version: ${latestVersion}`;
+	return `${availability}. Current version: ${currentVersion}${channel ? ` on ${channel}` : ""}.`;
+}
+
+function normalizeUpdateChannel(value: string | null): string | null {
+	const normalized = value?.trim().toLowerCase();
+	return normalized === "stable" ||
+		normalized === "beta" ||
+		normalized === "nightly"
+		? normalized
+		: null;
+}
+
+const UPDATE_STATUS_KEY: SettingsWritableKey = {
+	description:
+		"Read the current release/update status without forcing a check.",
+	valueType: "command",
+	apply: async ({ routeFetch }) =>
+		routeFetch({ method: "GET", path: "/api/update/status" }),
+	successText: (_value, _request, outcome) =>
+		`Update status: ${summarizeUpdateStatus(outcome.data)}`,
+};
+
+const UPDATE_CHECK_KEY: SettingsWritableKey = {
+	description: "Force a release/update check and report the resulting status.",
+	valueType: "command",
+	apply: async ({ routeFetch }) =>
+		routeFetch({ method: "GET", path: "/api/update/status?force=true" }),
+	successText: (_value, _request, outcome) =>
+		`Update check complete. ${summarizeUpdateStatus(outcome.data)}`,
+};
+
+const UPDATE_CHANNEL_KEY: SettingsWritableKey = {
+	description: "Switch the release channel to stable, beta, or nightly.",
+	valueType: "command",
+	apply: async ({ request, routeFetch }) => {
+		const channel = normalizeUpdateChannel(request.value);
+		if (!channel) {
+			return {
+				ok: false,
+				detail: "provide value=stable, value=beta, or value=nightly",
+			};
+		}
+		return routeFetch({
+			method: "PUT",
+			path: "/api/update/channel",
+			body: { channel },
+		});
+	},
+	successText: (_value, request, outcome) => {
+		const channel =
+			readStringField(outcome.data, "channel") ??
+			normalizeUpdateChannel(request.value) ??
+			"selected";
+		return `Update channel is now ${channel}.`;
+	},
+};
+
+const UPDATE_APPLY_KEY: SettingsWritableKey = {
+	description:
+		"Return the trusted update apply plan from the release backend. It never fabricates a job when this host cannot execute updates directly.",
+	valueType: "command",
+	apply: async ({ routeFetch }) =>
+		routeFetch({ method: "GET", path: "/api/update/status?force=true" }),
+	successText: (_value, _request, outcome) => {
+		const error = readStringField(outcome.data, "error");
+		if (error)
+			return `I can't apply an update because the update check failed: ${error}`;
+
+		const updateAvailable = readBooleanField(outcome.data, "updateAvailable");
+		if (updateAvailable === false) {
+			return "No update is available to apply.";
+		}
+
+		const canExecute = readBooleanField(outcome.data, "canExecuteUpdate");
+		const command = readStringField(outcome.data, "updateCommand");
+		const instructions = readStringField(outcome.data, "updateInstructions");
+		if (canExecute === true) {
+			const prefix = command
+				? `Update is ready to apply. Run: ${command}`
+				: "Update is ready to apply from the Release Center.";
+			return instructions ? `${prefix} ${instructions}` : prefix;
+		}
+		return command
+			? `I can't apply this update directly from chat on this host. Run: ${command}`
+			: `I can't apply this update directly from chat on this host.${
+					instructions
+						? ` ${instructions}`
+						: " Open Release Center for the apply instructions."
+				}`;
+	},
+};
+
 const APP_PERMISSION_NAMESPACE_KEY: SettingsWritableKey = {
 	description:
 		"Grant or revoke one recognised permission namespace for a registered app. Requires app=<slug>; key/namespace is fs or net.",
@@ -768,10 +891,18 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 		trackingIssue: 14911,
 	},
 	updates: {
-		kind: "unwired",
-		reason:
-			"Update check/apply is an asynchronous job surface, not a settings value.",
-		trackingIssue: 14912,
+		kind: "route",
+		summary:
+			"Release/update status, forced update checks, release-channel changes, and trusted apply instructions.",
+		keys: {
+			status: UPDATE_STATUS_KEY,
+			check: UPDATE_CHECK_KEY,
+			"check-for-updates": UPDATE_CHECK_KEY,
+			channel: UPDATE_CHANNEL_KEY,
+			"set-channel": UPDATE_CHANNEL_KEY,
+			apply: UPDATE_APPLY_KEY,
+			"apply-update": UPDATE_APPLY_KEY,
+		},
 	},
 	advanced: {
 		kind: "route",

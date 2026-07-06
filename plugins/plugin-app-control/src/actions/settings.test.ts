@@ -231,8 +231,7 @@ describe("registry completeness", () => {
 			trackingIssue: 14911,
 		});
 		expect(SETTINGS_WRITE_REGISTRY.updates).toMatchObject({
-			kind: "unwired",
-			trackingIssue: 14912,
+			kind: "route",
 		});
 	});
 
@@ -274,7 +273,7 @@ describe("SETTINGS action: list", () => {
 			via: "SETTINGS",
 		});
 		const updates = sections.find((s) => s.id === "updates");
-		expect(updates).toMatchObject({ writable: false, via: "not-yet-wired" });
+		expect(updates).toMatchObject({ writable: true, via: "SETTINGS" });
 	});
 });
 
@@ -873,6 +872,123 @@ describe("SETTINGS action: set on an owned route section", () => {
 	});
 });
 
+it("checks update status through the same backend route as Release Center", async () => {
+	const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+		ok: true,
+		data: {
+			currentVersion: "1.0.0",
+			latestVersion: "1.0.1",
+			updateAvailable: true,
+		},
+	}));
+	const { result, texts } = await invoke(
+		{ action: "set", section: "updates", key: "check" },
+		routeFetch,
+	);
+	expect(routeFetch).toHaveBeenCalledWith({
+		method: "GET",
+		path: "/api/update/status?force=true",
+	});
+	expect(result?.success).toBe(true);
+	expect(result?.data).toMatchObject({ section: "updates", key: "check" });
+	expect(texts.join(" ")).toContain("1.0.1");
+});
+
+it("switches update channel through the backend channel route", async () => {
+	const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+		ok: true,
+		data: { channel: "beta" },
+	}));
+	const { result, texts } = await invoke(
+		{ action: "set", section: "updates", key: "channel", value: "beta" },
+		routeFetch,
+	);
+	expect(routeFetch).toHaveBeenCalledWith({
+		method: "PUT",
+		path: "/api/update/channel",
+		body: { channel: "beta" },
+	});
+	expect(result?.success).toBe(true);
+	expect(texts.join(" ")).toContain("beta");
+});
+
+it("surfaces update-check backend errors instead of saying already current", async () => {
+	const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+		ok: true,
+		data: {
+			currentVersion: "1.0.0",
+			latestVersion: null,
+			updateAvailable: false,
+			error: "Unable to reach the npm registry.",
+		},
+	}));
+	const { result, texts } = await invoke(
+		{ action: "set", section: "updates", key: "check" },
+		routeFetch,
+	);
+	expect(result?.success).toBe(true);
+	expect(texts.join(" ")).toContain("Unable to reach the npm registry");
+	expect(texts.join(" ")).not.toContain("Already current");
+});
+
+it("returns the update apply plan instead of fabricating an apply job", async () => {
+	const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+		ok: true,
+		data: {
+			canExecuteUpdate: false,
+			updateCommand: "npm i -g @elizaos/cli@latest",
+			updateInstructions: "Run the update command from a trusted shell.",
+		},
+	}));
+	const { result, texts } = await invoke(
+		{ action: "set", section: "updates", key: "apply" },
+		routeFetch,
+	);
+	expect(routeFetch).toHaveBeenCalledWith({
+		method: "GET",
+		path: "/api/update/status?force=true",
+	});
+	expect(result?.success).toBe(true);
+	expect(texts.join(" ")).toContain("npm i -g @elizaos/cli@latest");
+});
+
+it("does not offer apply when the forced check found no available update", async () => {
+	const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+		ok: true,
+		data: {
+			canExecuteUpdate: true,
+			updateAvailable: false,
+			updateCommand: "elizaos update --apply",
+		},
+	}));
+	const { result, texts } = await invoke(
+		{ action: "set", section: "updates", key: "apply" },
+		routeFetch,
+	);
+	expect(result?.success).toBe(true);
+	expect(texts.join(" ")).toContain("No update is available");
+	expect(texts.join(" ")).not.toContain("elizaos update --apply");
+});
+
+it("includes the executable update command when the backend says apply is local-safe", async () => {
+	const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+		ok: true,
+		data: {
+			canExecuteUpdate: true,
+			updateAvailable: true,
+			updateCommand: "elizaos update --apply",
+			updateInstructions:
+				"Updates are delegated to the detected package manager.",
+		},
+	}));
+	const { result, texts } = await invoke(
+		{ action: "set", section: "updates", key: "apply" },
+		routeFetch,
+	);
+	expect(result?.success).toBe(true);
+	expect(texts.join(" ")).toContain("elizaos update --apply");
+});
+
 describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 	it("points a delegated section at its dedicated action without writing", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
@@ -898,7 +1014,7 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 	it("refuses an unwired gap section with its stated reason", async () => {
 		const { result, texts } = await invoke({
 			action: "set",
-			section: "updates",
+			section: "voice",
 			value: "on",
 		});
 		expect(result?.success).toBe(false);
