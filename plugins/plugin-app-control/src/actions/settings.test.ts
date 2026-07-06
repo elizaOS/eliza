@@ -282,22 +282,24 @@ describe("SETTINGS action: get and validate", () => {
 		});
 	});
 
-	it("validates only when a verb or known section is present", async () => {
+	it("validate is an availability gate: always true (params validated in the handler)", async () => {
+		// The planner surface calls validate at EXPOSURE time with no options, so
+		// gating on parsed params would hide SETTINGS from the planner entirely
+		// (the #14461 bug: shell/permission writes routed to VIEWS). Availability is
+		// unconditional; the handler validates the actual request.
 		const action = createSettingsAction();
-		expect(
-			await action.validate(runtime, message, undefined, {
-				parameters: { action: "list" },
-			}),
-		).toBe(true);
-		expect(
-			await action.validate(runtime, message, undefined, {
-				parameters: { section: "permissions" },
-			}),
-		).toBe(true);
+		expect(await action.validate(runtime, message)).toBe(true);
+		expect(await action.validate(runtime, message, undefined, {})).toBe(true);
 		expect(
 			await action.validate(runtime, message, undefined, {
 				parameters: { value: "off" },
 			}),
-		).toBe(false);
+		).toBe(true);
+	});
+
+	it("handler asks for clarification on an unparseable request (no verb/section)", async () => {
+		const { result, texts } = await invoke({ value: "off" });
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ").toLowerCase()).toContain("settings");
 	});
 });

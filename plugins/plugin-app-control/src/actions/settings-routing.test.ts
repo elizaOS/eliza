@@ -118,6 +118,32 @@ describe("SETTINGS is discoverable for un-actioned settings writes (#14364)", ()
 		}
 	});
 
+	it("is exposable: validate() returns true at exposure (no options yet)", async () => {
+		// The planner-surface chokepoint calls validate(runtime, message, state)
+		// with NO options — params only exist once the planner invokes the action.
+		// A validate that required parsed options made SETTINGS fail its own
+		// exposure gate, so it never reached the planner and shell/permission
+		// writes routed to VIEWS (verified live on gpt-oss-120b). Availability must
+		// not depend on params; the handler validates the actual request.
+		const validate = settingsAction.validate;
+		expect(validate).toBeTypeOf("function");
+		const runtime = {} as never;
+		const message = { content: { text: "turn off shell permissions" } } as never;
+		expect(await validate?.(runtime, message)).toBe(true);
+		expect(await validate?.(runtime, message, undefined, {})).toBe(true);
+	});
+
+	it("admits the admin/system contexts a permission ask can classify to", () => {
+		// permissions/runtime/security sections live under SETTINGS, so a Stage-1
+		// admin/system classification of a permission toggle must not gate it out.
+		for (const context of ["general", "settings", "admin", "system"]) {
+			expect(
+				satisfiesContextGate(settingsAction.contextGate, [context], ["USER"]),
+				`SETTINGS must admit the ${context} context`,
+			).toBe(true);
+		}
+	});
+
 	it("keeps MODEL_SWITCH ahead for model requests so SETTINGS does not shadow it", () => {
 		// The registry delegates ai-model to MODEL_SWITCH; a model request must
 		// still rank MODEL_SWITCH on the surface (routingHint steers there).

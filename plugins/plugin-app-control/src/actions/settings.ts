@@ -485,27 +485,50 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 
 	return {
 		name: "SETTINGS",
-		contexts: ["general", "settings"],
-		contextGate: { anyOf: ["general", "settings"] },
+		// SETTINGS is the entry point to EVERY built-in section, so its context
+		// gate admits the contexts a settings/permission ask classifies to — not
+		// only general/settings. Permission/runtime/security toggles are routinely
+		// tagged admin/system by the Stage-1 classifier; gated to general/settings
+		// only, SETTINGS would be hidden from the planner on those turns. It stops
+		// at admin/system on purpose: code/terminal belong to the coding shell
+		// action, and SETTINGS must not shadow a genuine shell-command turn.
+		contexts: ["general", "settings", "admin", "system"],
+		contextGate: { anyOf: ["general", "settings", "admin", "system"] },
+		// Owner-only: changing settings/permissions is a privileged write.
 		roleGate: { minRole: "OWNER" },
 		similes: [
 			"CHANGE_SETTING",
 			"UPDATE_SETTINGS",
-			"GET_SETTING",
-			"LIST_SETTINGS",
 			"SETTINGS_WRITE",
 			"TOGGLE_SETTING",
+			"GET_SETTING",
+			"LIST_SETTINGS",
+			"PERMISSIONS",
+			"CHANGE_PERMISSION",
+			"CHANGE_PERMISSIONS",
+			"SET_PERMISSION",
+			"TOGGLE_PERMISSION",
+			"REVOKE_PERMISSION",
+			"GRANT_PERMISSION",
+			"SHELL_ACCESS",
+			"SHELL_PERMISSION",
+			"SHELL_PERMISSIONS",
+			"TOGGLE_SHELL_ACCESS",
+			"DISABLE_SHELL_ACCESS",
+			"ENABLE_SHELL_ACCESS",
+			"TURN_OFF_SHELL",
+			"TURN_OFF_SHELL_ACCESS",
 			"DISABLE_SHELL",
 			"ENABLE_SHELL",
-			"SHELL_ACCESS",
-			"TOGGLE_SHELL_ACCESS",
+			"REVOKE_SHELL_ACCESS",
+			"GRANT_SHELL_ACCESS",
 		],
 		description:
-			"Read, change, or list built-in settings sections from chat. `action=list` names the sections that are changeable and how; `action=get` reports a section's current write capability; `action=set` changes an owned section (e.g. permissions shell access) or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). Use this instead of filling settings fields directly.",
+			"Change a built-in settings VALUE from chat — most importantly turning OS/runtime permissions like shell access on or off (turn off / disable / revoke shell access, or turn it back on) via section=permissions key=shell. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section (permissions shell access) or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
 		descriptionCompressed:
-			"settings get|set|list section/key/value — change a settings section from chat (routes owned sections; delegates model/background/identity/connectors/secrets to their dedicated actions)",
+			"settings get|set|list section/key/value — CHANGE a setting VALUE from chat, incl. turning shell access / OS permissions on/off (section=permissions key=shell); delegates model/background/identity/connectors/secrets to their dedicated actions",
 		routingHint:
-			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS: 'disable shell access', 'turn off shell access', 'turn shell back on', 'stop the agent running shell commands', 'what settings can you change', 'list settings'. Toggling the agent's shell access / permissions is a SETTINGS write (section=permissions key=shell), NOT navigation. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. Merely opening/navigating to a settings page (no value change) is VIEWS. SETTINGS never fills a form field with agent-fill.",
+			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE is SETTINGS even though that permission lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -538,14 +561,14 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			},
 		],
 
-		validate: async (
-			_runtime: IAgentRuntime,
-			_message: Memory,
-			_state?: State,
-			options?: Record<string, unknown>,
-		): Promise<boolean> => {
-			return parseSettingsRequest(normalizeActionOptions(options)) !== null;
-		},
+		// `validate` is the availability gate the planner surface calls at EXPOSURE
+		// time — with no `options` yet (params only exist once the planner invokes
+		// the action). Gating on parsed options here made SETTINGS fail its own
+		// exposure check (`parseSettingsRequest(undefined) === null`), so it never
+		// reached the planner and settings/permission writes routed to VIEWS. The
+		// action is always available; retrieval/tiering decides per-turn relevance,
+		// and the handler validates the actual request (replying for a bad one).
+		validate: async (): Promise<boolean> => true,
 
 		handler: async (
 			_runtime: IAgentRuntime,
