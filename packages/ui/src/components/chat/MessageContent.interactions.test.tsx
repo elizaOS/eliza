@@ -58,7 +58,39 @@ describe("MessageContent non-bytes interaction rendering", () => {
       />,
     );
     expect(screen.getByText(/free after 3pm/i)).toBeTruthy();
-    expect(container.textContent ?? "").toContain("free after 3pm");
+    // The thinking disclosure must ACTUALLY render — a single plain-text
+    // reply is the common shape, and the single-segment fast path used to
+    // return before the ThinkingBlock, silently dropping the reasoning.
+    const toggle = screen.getByRole("button", { name: /thinking/i });
+    fireEvent.click(toggle);
+    expect(container.textContent ?? "").toContain(
+      "Cross-referencing the calendar before answering.",
+    );
+  });
+
+  it("renders the expandable tool-call log on a plain-text assistant reply", () => {
+    const { container } = withApp(
+      <MessageContent
+        message={assistant({
+          text: "Done — created the task.",
+          toolEvents: [
+            {
+              id: "ev1",
+              callId: "call1",
+              type: "tool_call",
+              status: "success",
+              toolName: "TASKS_CREATE",
+              arguments: { title: "Ship the demo" },
+              result: { ok: true },
+            } as never,
+          ],
+        })}
+      />,
+    );
+    // The chosen action renders as its collapsible log row even though the
+    // reply itself is a single plain-text segment (fast-path regression).
+    expect(container.textContent ?? "").toContain("Done — created the task.");
+    expect(container.textContent ?? "").toMatch(/TASKS_CREATE|Tasks Create/i);
   });
 
   it("renders suggestion chips from a [FOLLOWUPS] block", () => {

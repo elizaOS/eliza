@@ -1218,8 +1218,19 @@ export function MessageContent({
     );
   }
 
-  // Fast path: single plain-text segment (most messages)
-  if (segments.length === 1 && segments[0].kind === "text") {
+  // Fast path: single plain-text segment (most messages). Assistant turns
+  // that carry reasoning or tool events must NOT take it — the thinking block
+  // and the expandable action log render only on the full path below, and the
+  // common reply shape IS a single text segment, so gating on segments alone
+  // silently dropped both.
+  const hasAssistantExtras =
+    message.role === "assistant" &&
+    Boolean(message.reasoning?.trim() || message.toolEvents?.length);
+  if (
+    !hasAssistantExtras &&
+    segments.length === 1 &&
+    segments[0].kind === "text"
+  ) {
     return (
       <MessageTextBody
         text={segments[0].text}
