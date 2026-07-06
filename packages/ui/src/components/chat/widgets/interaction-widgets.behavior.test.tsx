@@ -132,6 +132,74 @@ describe("FormRequest — every input + submit", () => {
     expect(screen.getAllByText("GitHub").length).toBeGreaterThan(0);
     expect(screen.getAllByText("GitLab").length).toBeGreaterThan(0);
   });
+
+  it("handles Object-prototype field names when a malformed spec bypasses the parser", () => {
+    const onSubmit = vi.fn();
+    const inheritedNameForm: FormRequestSpec = {
+      id: "dangerous-fields",
+      submitLabel: "Save",
+      fields: [
+        {
+          name: "constructor",
+          type: "text",
+          label: "Constructor",
+          required: true,
+        },
+        {
+          name: "hasOwnProperty",
+          type: "text",
+          label: "Has own",
+        },
+        {
+          name: "__proto__",
+          type: "text",
+          label: "Prototype",
+        },
+        {
+          name: "propertyIsEnumerable",
+          type: "checkbox",
+          label: "Enumerable",
+        },
+      ],
+    };
+
+    render(<FormRequest form={inheritedNameForm} onSubmit={onSubmit} />);
+    fireEvent.submit(screen.getByTestId("form-request"));
+    expect(screen.getByText(/Constructor is required/i)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Constructor"), {
+      target: { value: "ok" },
+    });
+    fireEvent.change(screen.getByLabelText("Has own"), {
+      target: { value: "yes" },
+    });
+    fireEvent.change(screen.getByLabelText("Prototype"), {
+      target: { value: "safe" },
+    });
+    fireEvent.click(screen.getByLabelText("Enumerable"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const submitted = onSubmit.mock.calls[0]?.[1] as Record<
+      string,
+      string | boolean
+    >;
+    const submittedValue = (name: string) =>
+      Object.getOwnPropertyDescriptor(submitted, name)?.value;
+    expect(submittedValue("constructor")).toBe("ok");
+    expect(submittedValue("hasOwnProperty")).toBe("yes");
+    expect(submittedValue("__proto__")).toBe("safe");
+    expect(submittedValue("propertyIsEnumerable")).toBe(true);
+    expect(Object.getPrototypeOf(submitted)).toBe(Object.prototype);
+    for (const name of [
+      "constructor",
+      "hasOwnProperty",
+      "__proto__",
+      "propertyIsEnumerable",
+    ]) {
+      expect(Object.hasOwn(submitted, name)).toBe(true);
+    }
+  });
 });
 
 describe("ChoiceWidget — pick an option", () => {

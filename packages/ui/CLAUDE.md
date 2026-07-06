@@ -190,6 +190,49 @@ component should ship at least a `*.stories.tsx` (states) **and** a `*.test.tsx`
 (behaviour). The live full-app visual audit lives in `packages/app`
 (`audit:app`) and `packages/cloud-frontend` (`audit:cloud`).
 
+### Scroll + tap-target certification (`src/testing/scroll-cert.ts`, #14380)
+
+A UI-library-wide certification harness holds every scrollable / interactive
+widget to four device-review guarantees: **scroll stability**, **keyboard
+interaction geometry**, **safe-area clearance**, and **tap-target minimums**
+(44x44 CSS px). It is two layers, same split as the rest of `src/testing`:
+
+- **Pure verdict math** — `scroll-cert.ts` is `(measurements) -> Violation[]`,
+  proven both ways (RED on a violation, GREEN when it holds) in
+  `scroll-cert.test.ts`. This is the always-trustworthy detector.
+- **DOM sweep** — `widget-cert.ts` walks a rendered widget for interactive
+  controls + scroll containers, reads their boxes through a pluggable
+  `GeometryProvider`, and runs the verdicts into a per-widget `WidgetCertReport`
+  (JSON + rendered summary). Under jsdom (`widget-cert.test.tsx`) geometry is
+  injected via `mapGeometryProvider`; a real browser supplies
+  `liveGeometryProvider` (getBoundingClientRect + getComputedStyle).
+- **Deep layer** — `src/testing/__e2e__/run-widget-cert-e2e.mjs`
+  (`bun run test:widget-cert-e2e`) mounts the widgets in real Chromium/WebKit
+  and runs the SAME sweep against real layout, emitting evidence
+  (`output-widget-cert/{widget-cert.json,widget-cert.txt,<engine>.png}`).
+  Playwright is flaky in CI — the runner SKIPs (exit 0) if the browser can't
+  launch; the vitest static layer is the always-green gate.
+
+**To certify a NEW widget:**
+
+1. Give the widget's scroll container a `data-scroll-cert-scroller` attribute
+   (or reuse `#continuous-thread` / `[data-testid="chat-thread"]`), and make sure
+   every interactive control is a native control / has a `role` / is
+   `tabindex>=0` (the sweep only enforces the tap floor on real controls). A
+   control with an expanded hit area (padding / hitSlop) should report an
+   effective hit box via the provider; a genuinely non-pointer affordance opts
+   out with `data-tap-target="ignore"`.
+2. Add a `certifyWidget("my-widget", root, provider, { dimensions: [...] })` case
+   to `widget-cert.test.tsx` (static, always runs) — pick the dimensions that
+   apply (`scroll`, `tap-target`, `safe-area`, `keyboard`). Inject known-good and
+   known-broken geometry so the cert is proven, not just green-because-empty.
+3. Optionally add the widget to the deep fixture
+   (`__e2e__/widget-cert-fixture.tsx`) so it is also certified against real
+   layout when playwright can run.
+4. A cert FAILURE is an actionable per-control report (code + selector +
+   measurement). This harness only DETECTS — component sizing/layout fixes are
+   owned by the component's lane; route findings there.
+
 ## Config / env vars
 
 This package mostly reads config injected by the host, not raw env vars:

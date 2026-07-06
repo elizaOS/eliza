@@ -56,6 +56,22 @@ const FOLLOWUP_KINDS: ReadonlySet<FollowupKind> = new Set([
 	"navigate",
 	"prompt",
 ]);
+const UNSAFE_FORM_FIELD_NAME_SEGMENTS = new Set([
+	"__defineGetter__",
+	"__defineSetter__",
+	"__lookupGetter__",
+	"__lookupSetter__",
+	"__proto__",
+	"constructor",
+	"hasOwnProperty",
+	"isPrototypeOf",
+	"propertyIsEnumerable",
+	"prototype",
+	"toLocaleString",
+	"toString",
+	"valueOf",
+]);
+const SAFE_FORM_FIELD_NAME_RE = /^[\w.-]+$/;
 
 /** A parsed block together with the character region it occupied in the text. */
 export interface InteractionRegion {
@@ -72,6 +88,13 @@ function randomId(prefix: string): string {
 		return crypto.randomUUID();
 	}
 	return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function isSafeFormFieldName(name: string): boolean {
+	if (!SAFE_FORM_FIELD_NAME_RE.test(name)) return false;
+	return !name
+		.split(".")
+		.some((segment) => UNSAFE_FORM_FIELD_NAME_SEGMENTS.has(segment));
 }
 
 /** `value=label` lines → options (shared by CHOICE). */
@@ -122,7 +145,7 @@ function parseFormField(raw: unknown): InteractionField | null {
 	const name = typeof r.name === "string" ? r.name.trim() : "";
 	const type =
 		typeof r.type === "string" ? (r.type as InteractionFieldType) : "text";
-	if (!name || !/^[\w.-]+$/.test(name)) return null;
+	if (!name || !isSafeFormFieldName(name)) return null;
 	if (!FIELD_TYPES.has(type)) return null;
 	const field: InteractionField = { name, type };
 	if (typeof r.label === "string") field.label = r.label;

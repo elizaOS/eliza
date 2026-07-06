@@ -74,6 +74,22 @@ const FORM_FIELD_TYPES = new Set<FormFieldType>([
   "datetime",
 ]);
 
+const UNSAFE_FIELD_NAME_SEGMENTS = new Set([
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+  "__proto__",
+  "constructor",
+  "hasOwnProperty",
+  "isPrototypeOf",
+  "propertyIsEnumerable",
+  "prototype",
+  "toLocaleString",
+  "toString",
+  "valueOf",
+]);
+
 /** Field names become state-path segments + result keys; keep them safe. */
 const SAFE_FIELD_NAME_RE = /^[A-Za-z][\w-]*$/;
 
@@ -89,11 +105,18 @@ export function generateFormId(): string {
   return `form-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
 }
 
+export function isSafeFormFieldName(name: string): boolean {
+  if (!SAFE_FIELD_NAME_RE.test(name)) return false;
+  return !name
+    .split(".")
+    .some((segment) => UNSAFE_FIELD_NAME_SEGMENTS.has(segment));
+}
+
 function parseField(raw: unknown): FormFieldSpec | null {
   if (!raw || typeof raw !== "object") return null;
   const record = raw as Record<string, unknown>;
   const name = record.name;
-  if (typeof name !== "string" || !SAFE_FIELD_NAME_RE.test(name)) return null;
+  if (typeof name !== "string" || !isSafeFormFieldName(name)) return null;
   const type =
     typeof record.type === "string" &&
     FORM_FIELD_TYPES.has(record.type as FormFieldType)

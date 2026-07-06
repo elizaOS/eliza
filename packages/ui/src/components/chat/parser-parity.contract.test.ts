@@ -12,8 +12,9 @@
  *      (region count, scope, options, kinds) — so a future edit to either side
  *      that breaks parity fails here; and
  *   2. PINS the known FORM field-name divergence (UI `^[A-Za-z][\w-]*$` vs core
- *      `^[\w.-]+$`) as an explicit, tracked expectation, so reconciling it is a
- *      conscious change (update this test) rather than silent drift.
+ *      `^[\w.-]+$`) as an explicit, tracked expectation while asserting both
+ *      reject Object-prototype field-name segments, so reconciling the broader
+ *      regex difference is a conscious change rather than silent drift.
  *
  * If/when the UI parsers are made to delegate to core, the divergence assertion
  * flips to agreement and this file documents that the contract is now exact.
@@ -115,6 +116,26 @@ describe("parser parity — UI per-marker parsers vs @elizaos/core findInteracti
     ]) {
       expect(uiChoices(text)).toEqual(coreChoices(text));
       expect(findFormRegions(text)).toHaveLength(0);
+    }
+  });
+
+  it("FORM: both impls reject Object-prototype field names", () => {
+    for (const name of [
+      "constructor",
+      "hasOwnProperty",
+      "propertyIsEnumerable",
+      "toString",
+      "valueOf",
+      "__proto__",
+      "constructor.prototype",
+    ]) {
+      const text = `[FORM]\n{"id":"f","fields":[{"name":"${name}","type":"text"}]}\n[/FORM]`;
+      const ui = findFormRegions(text);
+      const core = findInteractionRegions(text)
+        .map((r) => r.block)
+        .filter((b) => b.kind === "form");
+      expect(ui, `UI form regions for ${name}`).toHaveLength(0);
+      expect(core, `core form regions for ${name}`).toHaveLength(0);
     }
   });
 

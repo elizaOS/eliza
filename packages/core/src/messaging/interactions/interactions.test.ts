@@ -115,14 +115,16 @@ describe("parse", () => {
 		})}\n[/FORM]`;
 		const { blocks } = parseInteractionBlocks(text);
 		const form = blocks[0] as FormInteraction;
-		expect(form.fields.map((f) => f.type)).toEqual(["date", "time", "datetime"]);
-		// parse ↔ serialize parity: the temporal types survive a round trip.
-		const rt = parseInteractionBlocks(serializeInteractionBlock(form));
-		expect((rt.blocks[0] as FormInteraction).fields.map((f) => f.type)).toEqual([
+		expect(form.fields.map((f) => f.type)).toEqual([
 			"date",
 			"time",
 			"datetime",
 		]);
+		// parse ↔ serialize parity: the temporal types survive a round trip.
+		const rt = parseInteractionBlocks(serializeInteractionBlock(form));
+		expect((rt.blocks[0] as FormInteraction).fields.map((f) => f.type)).toEqual(
+			["date", "time", "datetime"],
+		);
 	});
 
 	it("drops a field with an unknown type (core parser is strict)", () => {
@@ -135,6 +137,24 @@ describe("parse", () => {
 		const { blocks } = parseInteractionBlocks(text);
 		const form = blocks[0] as FormInteraction;
 		// unknown "color" is rejected; the valid "date" field survives.
+		expect(form.fields.map((f) => f.name)).toEqual(["ok"]);
+	});
+
+	it("drops Object-prototype form field names", () => {
+		const text = `[FORM]\n${JSON.stringify({
+			fields: [
+				{ name: "constructor", type: "text" },
+				{ name: "hasOwnProperty", type: "text" },
+				{ name: "propertyIsEnumerable", type: "text" },
+				{ name: "toString", type: "text" },
+				{ name: "valueOf", type: "text" },
+				{ name: "__proto__", type: "text" },
+				{ name: "constructor.prototype", type: "text" },
+				{ name: "ok", type: "text" },
+			],
+		})}\n[/FORM]`;
+		const { blocks } = parseInteractionBlocks(text);
+		const form = blocks[0] as FormInteraction;
 		expect(form.fields.map((f) => f.name)).toEqual(["ok"]);
 	});
 

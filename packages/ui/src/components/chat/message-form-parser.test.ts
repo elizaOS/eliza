@@ -84,11 +84,16 @@ describe("parseFormBody", () => {
     });
   });
 
-  it("drops fields with unsafe or missing names and dedupes by name", () => {
+  it("drops fields with unsafe, Object-prototype, or missing names and dedupes by name", () => {
     const form = parseFormBody(
       JSON.stringify({
         fields: [
           { name: "__proto__", type: "text" },
+          { name: "constructor", type: "text" },
+          { name: "hasOwnProperty", type: "text" },
+          { name: "propertyIsEnumerable", type: "text" },
+          { name: "toString", type: "text" },
+          { name: "valueOf", type: "text" },
           { name: "1bad", type: "text" },
           { type: "text" },
           { name: "ok", type: "text", label: "First" },
@@ -102,6 +107,20 @@ describe("parseFormBody", () => {
       type: "text",
       label: "First",
     });
+  });
+
+  it("returns null when every field name is unsafe", () => {
+    expect(
+      parseFormBody(
+        JSON.stringify({
+          fields: [
+            { name: "constructor", type: "text" },
+            { name: "hasOwnProperty", type: "text" },
+            { name: "__proto__", type: "text" },
+          ],
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("returns null for malformed or empty input rather than throwing", () => {
@@ -136,5 +155,12 @@ describe("findFormRegions", () => {
 
   it("ignores a FORM block with a malformed body", () => {
     expect(findFormRegions("[FORM]\nnot json\n[/FORM]")).toEqual([]);
+  });
+
+  it("ignores a FORM block whose only field names are inherited object keys", () => {
+    const body = JSON.stringify({
+      fields: [{ name: "constructor", type: "text" }],
+    });
+    expect(findFormRegions(`[FORM]\n${body}\n[/FORM]`)).toEqual([]);
   });
 });
