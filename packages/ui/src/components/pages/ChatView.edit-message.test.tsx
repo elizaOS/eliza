@@ -80,10 +80,12 @@ function makeDeps(messages: ConversationMessage[]): UseChatSendDeps {
           : value;
     },
     setUnreadConversations: vi.fn(),
+    setChatReplyTarget: vi.fn(),
     setActionNotice: vi.fn(),
     activeConversationIdRef: { current: "conv-1" },
     chatInputRef: { current: "" },
     chatPendingImagesRef: { current: [] as ImageAttachment[] },
+    chatReplyTargetRef: { current: null },
     conversationsRef,
     conversationMessagesRef,
     chatAbortRef: { current: null },

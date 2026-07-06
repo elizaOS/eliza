@@ -13,8 +13,8 @@ import type {
   ImageAttachment,
   StreamEventEnvelope,
 } from "../api";
-import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
+import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import {
   loadChatAvatarVisible,
   loadChatVoiceMuted,

@@ -151,12 +151,14 @@ function makeDeps(
     setCompanionMessageCutoffTs: vi.fn(),
     setConversationMessages,
     setUnreadConversations: vi.fn(),
+    setChatReplyTarget: vi.fn(),
     setActionNotice: vi.fn(),
     activeConversationIdRef: {
       current: overrides.activeConversationId ?? null,
     } as MutableRefObject<string | null>,
     chatInputRef: { current: "" } as MutableRefObject<string>,
     chatPendingImagesRef,
+    chatReplyTargetRef: { current: null },
     conversationsRef,
     conversationMessagesRef,
     chatAbortRef: {
@@ -1826,5 +1828,70 @@ describe("useChatSend — handleChatDelete persistent single-message delete (#13
     const ids = deps.conversationMessagesRef.current.map((m) => m.id);
     expect(ids).toContain("a-target"); // deleted message restored on failure
     expect(ids).toContain("a-streamed"); // the reply that streamed in is NOT lost
+  });
+});
+
+describe("useChatSend reply-target attachment", () => {
+  const REPLY_ID = "00000000-0000-4000-8000-00000000abcd";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Resolve the stream immediately so sendChatText's enqueue+drain completes.
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        onToken("ok", "ok");
+        return { text: "ok", completed: true };
+      },
+    );
+  });
+
+  it("stamps replyToMessageId from the reply-target ref onto the send metadata and clears it", async () => {
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    // A reply is armed by the row affordance before the user sends.
+    deps.chatReplyTargetRef.current = {
+      messageId: REPLY_ID,
+      senderName: "Alice",
+      snippet: "the 3pm slot",
+    };
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("yes please", {
+        conversationId: "conv-1",
+      });
+    });
+
+    // metadata is the 8th positional arg of sendConversationMessageStream.
+    const metadata = mocks.client.sendConversationMessageStream.mock
+      .calls[0][6] as Record<string, unknown> | undefined;
+    expect(metadata?.replyToMessageId).toBe(REPLY_ID);
+    // The armed reply is consumed exactly once: ref cleared + state cleared so a
+    // subsequent send does not re-attach a stale reply.
+    expect(deps.chatReplyTargetRef.current).toBeNull();
+    expect(deps.setChatReplyTarget).toHaveBeenCalledWith(null);
+  });
+
+  it("does not attach a reply when none is armed", async () => {
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello", { conversationId: "conv-1" });
+    });
+
+    const metadata = mocks.client.sendConversationMessageStream.mock
+      .calls[0][6] as Record<string, unknown> | undefined;
+    expect(metadata?.replyToMessageId).toBeUndefined();
+    expect(deps.setChatReplyTarget).not.toHaveBeenCalled();
   });
 });

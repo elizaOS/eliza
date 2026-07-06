@@ -181,8 +181,10 @@ function AppComposerHarness({
       chatInput,
       chatSending: false,
       chatPendingImages,
+      chatReplyTarget: null,
       setChatInput,
       setChatPendingImages,
+      setChatReplyTarget: () => {},
     }),
     [chatInput, chatPendingImages],
   );

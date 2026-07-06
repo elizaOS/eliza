@@ -9,8 +9,8 @@
 import { Reply, X } from "lucide-react";
 
 import { cn } from "../../../lib/utils";
-import { Button } from "../../ui/button";
 import type { ChatReplyTarget } from "../../../state/ChatComposerContext.hooks";
+import { Button } from "../../ui/button";
 
 export interface ChatReplyPillProps {
   target: ChatReplyTarget;
@@ -41,7 +41,10 @@ export function ChatReplyPill({
       )}
     >
       <Reply
-        className={cn("h-3.5 w-3.5 shrink-0", glass ? "text-white/70" : "text-accent")}
+        className={cn(
+          "h-3.5 w-3.5 shrink-0",
+          glass ? "text-white/70" : "text-accent",
+        )}
         aria-hidden="true"
       />
       <span className="min-w-0 flex-1 truncate">
@@ -49,7 +52,9 @@ export function ChatReplyPill({
           {replyingTo} {target.senderName}
         </span>
         {target.snippet ? (
-          <span className={cn("ml-1.5", glass ? "text-white/60" : "text-muted")}>
+          <span
+            className={cn("ml-1.5", glass ? "text-white/60" : "text-muted")}
+          >
             {target.snippet}
           </span>
         ) : null}

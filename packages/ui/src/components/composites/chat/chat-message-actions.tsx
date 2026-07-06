@@ -7,7 +7,15 @@
  * confirmed state; play toggles to stop on the bubble that is speaking
  * (`playing`, glass-row only). Wired by ChatMessage.
  */
-import { Check, Copy, Pencil, Reply, Square, Trash2, Volume2 } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Pencil,
+  Reply,
+  Square,
+  Trash2,
+  Volume2,
+} from "lucide-react";
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";

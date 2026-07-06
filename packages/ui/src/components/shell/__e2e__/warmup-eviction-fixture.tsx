@@ -129,6 +129,7 @@ function Harness(): React.JSX.Element {
     setCompanionMessageCutoffTs: () => {},
     setConversationMessages,
     setUnreadConversations: () => {},
+    setChatReplyTarget: () => {},
     setActionNotice: (text, tone) => {
       console.log(`[fixture] notice(${tone}): ${text}`);
       setNotice(text);
@@ -136,6 +137,7 @@ function Harness(): React.JSX.Element {
     activeConversationIdRef,
     chatInputRef: React.useRef(""),
     chatPendingImagesRef: React.useRef([]),
+    chatReplyTargetRef: React.useRef(null),
     conversationsRef,
     conversationMessagesRef,
     chatAbortRef: React.useRef(null),
