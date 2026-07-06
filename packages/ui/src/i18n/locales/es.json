@@ -6245,7 +6245,6 @@
   "cloud.redemptions.rejectedTitle": "Canje rechazado",
   "cloud.redemptions.rejectedDescription": "El saldo del usuario ha sido reembolsado.",
   "cloud.redemptions.rejectFailed": "Error al rechazar",
-  "cloud.redemptions.copiedToClipboard": "Copiado al portapapeles",
   "cloud.redemptions.systemStatus": "Estado del sistema",
   "cloud.redemptions.operational": "Operativo",
   "cloud.redemptions.limited": "Limitado",

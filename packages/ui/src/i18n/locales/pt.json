@@ -6245,7 +6245,6 @@
   "cloud.redemptions.rejectedTitle": "Resgate rejeitado",
   "cloud.redemptions.rejectedDescription": "O saldo do usuário foi reembolsado.",
   "cloud.redemptions.rejectFailed": "Falha ao rejeitar",
-  "cloud.redemptions.copiedToClipboard": "Copiado para a área de transferência",
   "cloud.redemptions.systemStatus": "Status do sistema",
   "cloud.redemptions.operational": "Operacional",
   "cloud.redemptions.limited": "Limitado",

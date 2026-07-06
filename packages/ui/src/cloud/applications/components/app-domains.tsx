@@ -36,6 +36,7 @@ import {
 } from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/input";
 import {
   Tooltip,
@@ -389,8 +390,6 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 url={sandboxUrl}
                 type="subdomain"
                 status="verified"
-                copyToClipboard={copyToClipboard}
-                copiedValue={copiedValue}
               />
               <div className="p-3 rounded-sm bg-bg-muted border border-border">
                 <div className="flex items-start gap-2">
@@ -438,8 +437,6 @@ export function AppDomains({ appId }: AppDomainsProps) {
                   url={primaryDomain.subdomainUrl}
                   type="subdomain"
                   status="verified"
-                  copyToClipboard={copyToClipboard}
-                  copiedValue={copiedValue}
                 />
               )}
 
@@ -461,8 +458,6 @@ export function AppDomains({ appId }: AppDomainsProps) {
                   }
                   isChecking={isChecking}
                   isRemoving={isRemoving}
-                  copyToClipboard={copyToClipboard}
-                  copiedValue={copiedValue}
                 />
               )}
 
@@ -654,8 +649,6 @@ function DomainCard({
   onRemove,
   isChecking,
   isRemoving,
-  copyToClipboard,
-  copiedValue,
 }: {
   domain: string;
   url: string | null;
@@ -666,8 +659,6 @@ function DomainCard({
   onRemove?: () => void;
   isChecking?: boolean;
   isRemoving?: boolean;
-  copyToClipboard: (text: string, label: string) => void;
-  copiedValue: string | null;
 }) {
   const t = useCloudT();
   const fullUrl = url || `https://${domain}`;
@@ -716,33 +707,16 @@ function DomainCard({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  copyToClipboard(
-                    fullUrl,
-                    t("cloud.appDomains.urlLabel", { defaultValue: "URL" }),
-                  )
-                }
-                className="h-8 w-8 p-0 min-h-touch text-muted hover:text-txt-strong hover:bg-bg-hover"
-              >
-                {copiedValue === fullUrl ? (
-                  <Check className="h-4 w-4 text-status-success" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="bottom"
-              className="bg-card text-txt-strong border-border"
-            >
-              {t("cloud.appDomains.copyUrl", { defaultValue: "Copy URL" })}
-            </TooltipContent>
-          </Tooltip>
+          <CopyButton
+            value={fullUrl}
+            copyLabel={t("cloud.appDomains.copyUrl", {
+              defaultValue: "Copy URL",
+            })}
+            copiedLabel={t("cloud.appDomains.copied", {
+              defaultValue: "Copied",
+            })}
+            className="h-8 w-8 min-h-touch justify-center p-0 hover:text-txt-strong"
+          />
 
           {isVerified && url && (
             <Tooltip>
@@ -1134,18 +1108,17 @@ function DnsRecordRow({
         <span className="font-mono text-xs text-muted flex-1 truncate">
           {value}
         </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => copyToClipboard(value, valueLabel)}
-          className="h-7 w-7 p-0 text-muted hover:text-txt-strong hover:bg-bg-hover opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          {copiedValue === value ? (
-            <Check className="h-3.5 w-3.5 text-status-success" />
-          ) : (
-            <Copy className="h-3.5 w-3.5" />
-          )}
-        </Button>
+        <CopyButton
+          value={value}
+          copyLabel={t("cloud.appDomains.copyRecordValue", {
+            type,
+            defaultValue: "Copy {{type}} value",
+          })}
+          copiedLabel={t("cloud.appDomains.copied", {
+            defaultValue: "Copied",
+          })}
+          className="h-7 w-7 justify-center p-0 hover:text-txt-strong opacity-0 group-hover:opacity-100 transition-opacity"
+        />
       </div>
 
       {/* Mobile */}

@@ -4,11 +4,9 @@
  * Wallet section of the cloud agent-instance detail: balance and wallet actions,
  * polled while the document is visible.
  */
-import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "../../../components/ui/button";
+import { CopyButton } from "../../../components/ui/copy-button";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
-import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import { useT } from "../lib/i18n";
 
 interface WalletAddresses {
@@ -62,38 +60,6 @@ function formatNative(wei?: string, symbol = "ETH"): string {
 function formatUsd(val?: number): string {
   if (val == null) return "";
   return `$${val.toFixed(2)}`;
-}
-
-function CopyButton({ text }: { text: string }) {
-  const t = useT();
-  const { copied, markCopied } = useCopyFeedback(1500);
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      markCopied();
-    } catch {
-      /* ignore */
-    }
-  }, [text, markCopied]);
-  return (
-    <Button
-      variant="ghost"
-      type="button"
-      onClick={handleCopy}
-      title={t("cloud.elizaWallet.copy", { defaultValue: "Copy" })}
-      className="ml-1.5 inline-flex h-7 w-7 shrink-0 items-center justify-center text-muted hover:text-txt transition-colors"
-    >
-      {copied ? (
-        <Check
-          className="w-3 h-3 text-status-success"
-          strokeWidth={2}
-          aria-hidden="true"
-        />
-      ) : (
-        <Copy className="w-3 h-3" strokeWidth={2} aria-hidden="true" />
-      )}
-    </Button>
-  );
 }
 
 function SectionHeader({ label }: { label: string }) {
@@ -243,7 +209,15 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
                 <span className="font-mono text-sm text-txt-strong break-all">
                   {data.addresses?.evmAddress}
                 </span>
-                <CopyButton text={data.addresses?.evmAddress ?? ""} />
+                <CopyButton
+                  value={data.addresses?.evmAddress ?? ""}
+                  feedbackDuration={1500}
+                  copyLabel={t("cloud.elizaWallet.copy", {
+                    defaultValue: "Copy",
+                  })}
+                  copiedLabel="Copied"
+                  className="ml-1.5 shrink-0"
+                />
               </div>
             </div>
           )}
@@ -256,7 +230,15 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
                 <span className="font-mono text-sm text-txt-strong break-all">
                   {data.addresses?.solanaAddress}
                 </span>
-                <CopyButton text={data.addresses?.solanaAddress ?? ""} />
+                <CopyButton
+                  value={data.addresses?.solanaAddress ?? ""}
+                  feedbackDuration={1500}
+                  copyLabel={t("cloud.elizaWallet.copy", {
+                    defaultValue: "Copy",
+                  })}
+                  copiedLabel="Copied"
+                  className="ml-1.5 shrink-0"
+                />
               </div>
             </div>
           )}

@@ -45,7 +45,6 @@ import {
   Ban,
   Check,
   CheckCircle,
-  Copy,
   ExternalLink,
   Eye,
   RefreshCw,
@@ -54,6 +53,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { CopyButton } from "../../components/ui/copy-button";
 import { ApiError, api } from "../lib/api-client";
 import { formatUsd as formatCurrency } from "../lib/format-usd";
 import { useDocumentTitle } from "../lib/use-document-title";
@@ -308,15 +308,6 @@ export default function RedemptionsPage(): React.JSX.Element {
       minute: "2-digit",
     });
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success(
-      t("cloud.redemptions.copiedToClipboard", {
-        defaultValue: "Copied to clipboard",
-      }),
-    );
-  };
-
   const getExplorerUrl = (network: string, txHash: string) => {
     const explorers: Record<string, string> = {
       base: `https://basescan.org/tx/${txHash}`,
@@ -562,15 +553,15 @@ export default function RedemptionsPage(): React.JSX.Element {
                     {formatDate(r.created_at)}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      onClick={() => copyToClipboard(r.user_id)}
-                      className="text-xs text-muted-foreground hover:text-txt-strong flex items-center gap-1"
-                    >
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       {truncateAddress(r.user_id)}
-                      <Copy className="h-3 w-3 opacity-50" />
-                    </Button>
+                      <CopyButton
+                        value={r.user_id}
+                        copyLabel={t("cloud.redemptions.copyUserId", {
+                          defaultValue: "Copy user ID",
+                        })}
+                      />
+                    </span>
                   </TableCell>
                   <TableCell>
                     <div>
@@ -584,15 +575,15 @@ export default function RedemptionsPage(): React.JSX.Element {
                   </TableCell>
                   <TableCell className="capitalize">{r.network}</TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      onClick={() => copyToClipboard(r.payout_address)}
-                      className="text-xs text-muted-foreground hover:text-txt-strong flex items-center gap-1"
-                    >
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       {truncateAddress(r.payout_address)}
-                      <Copy className="h-3 w-3 opacity-50" />
-                    </Button>
+                      <CopyButton
+                        value={r.payout_address}
+                        copyLabel={t("cloud.redemptions.copyPayoutAddress", {
+                          defaultValue: "Copy payout address",
+                        })}
+                      />
+                    </span>
                   </TableCell>
                   <TableCell>
                     <Badge

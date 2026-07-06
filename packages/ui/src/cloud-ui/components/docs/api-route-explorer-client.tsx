@@ -4,8 +4,6 @@
  * Interactive API-route explorer: filter/select a discovered route and view its details.
  */
 import {
-  Check,
-  Copy,
   DollarSign,
   FileCode2,
   Lock,
@@ -16,6 +14,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "../../../components/ui/button";
+import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/input";
 import { cn } from "../../lib/utils";
 import type { DiscoveredApiRouteDto, HttpMethod } from "../../types/cloud-api";
@@ -89,37 +88,6 @@ function groupKeyForPath(p: string) {
   const parts = p.split("/").filter(Boolean);
   const group = parts[2] ?? "root";
   return group;
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <Button
-      variant="ghost"
-      type="button"
-      onClick={handleCopy}
-      aria-label={copied ? "Copied" : "Copy to clipboard"}
-      className="absolute top-2 right-2 inline-flex min-h-touch items-center gap-1.5 rounded-sm border border-border bg-bg-elevated px-2.5 py-1 text-2xs font-medium uppercase tracking-wider text-muted transition-colors hover:border-border-strong hover:bg-bg-hover hover:text-txt"
-    >
-      {copied ? (
-        <Check
-          aria-hidden="true"
-          className="size-3.5 text-status-success"
-          strokeWidth={2}
-        />
-      ) : (
-        <Copy aria-hidden="true" className="size-3.5" strokeWidth={2} />
-      )}
-      {copied ? "Copied" : "Copy"}
-    </Button>
-  );
 }
 
 function generateCurlExample(route: DiscoveredApiRouteDto): string {
@@ -541,7 +509,11 @@ export function ApiRouteExplorerClient({
                       )}
                     </code>
                   </pre>
-                  <CopyButton text={curlExample} />
+                  <CopyButton
+                    value={curlExample}
+                    copyLabel="Copy cURL example"
+                    className="absolute top-2 right-2 border border-border bg-bg-elevated px-2.5 py-1 hover:border-border-strong"
+                  />
                 </div>
 
                 <p className="mt-3 text-xs text-muted">

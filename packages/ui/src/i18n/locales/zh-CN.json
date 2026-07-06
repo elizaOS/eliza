@@ -6245,7 +6245,6 @@
   "cloud.redemptions.rejectedTitle": "兑换已拒绝",
   "cloud.redemptions.rejectedDescription": "用户余额已退款。",
   "cloud.redemptions.rejectFailed": "拒绝失败",
-  "cloud.redemptions.copiedToClipboard": "已复制到剪贴板",
   "cloud.redemptions.systemStatus": "系统状态",
   "cloud.redemptions.operational": "正常运行",
   "cloud.redemptions.limited": "受限",

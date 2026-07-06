@@ -6245,7 +6245,6 @@
   "cloud.redemptions.rejectedTitle": "환급 거부됨",
   "cloud.redemptions.rejectedDescription": "사용자의 잔액이 환불되었습니다.",
   "cloud.redemptions.rejectFailed": "거부에 실패했습니다",
-  "cloud.redemptions.copiedToClipboard": "클립보드에 복사됨",
   "cloud.redemptions.systemStatus": "시스템 상태",
   "cloud.redemptions.operational": "정상",
   "cloud.redemptions.limited": "제한됨",

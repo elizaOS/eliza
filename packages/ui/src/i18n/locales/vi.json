@@ -6245,7 +6245,6 @@
   "cloud.redemptions.rejectedTitle": "Đã từ chối đổi thưởng",
   "cloud.redemptions.rejectedDescription": "Số dư của người dùng đã được hoàn lại.",
   "cloud.redemptions.rejectFailed": "Không thể từ chối",
-  "cloud.redemptions.copiedToClipboard": "Đã sao chép vào clipboard",
   "cloud.redemptions.systemStatus": "Trạng thái hệ thống",
   "cloud.redemptions.operational": "Hoạt động bình thường",
   "cloud.redemptions.limited": "Bị hạn chế",

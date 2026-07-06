@@ -6245,7 +6245,6 @@
   "cloud.redemptions.rejectedTitle": "換金が拒否されました",
   "cloud.redemptions.rejectedDescription": "ユーザーの残高が払い戻されました。",
   "cloud.redemptions.rejectFailed": "拒否に失敗しました",
-  "cloud.redemptions.copiedToClipboard": "クリップボードにコピーしました",
   "cloud.redemptions.systemStatus": "システムステータス",
   "cloud.redemptions.operational": "稼働中",
   "cloud.redemptions.limited": "制限あり",

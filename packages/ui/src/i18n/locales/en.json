@@ -6302,7 +6302,6 @@
   "cloud.redemptions.rejectedTitle": "Redemption rejected",
   "cloud.redemptions.rejectedDescription": "The user's balance has been refunded.",
   "cloud.redemptions.rejectFailed": "Failed to reject",
-  "cloud.redemptions.copiedToClipboard": "Copied to clipboard",
   "cloud.redemptions.systemStatus": "System Status",
   "cloud.redemptions.operational": "Operational",
   "cloud.redemptions.limited": "Limited",

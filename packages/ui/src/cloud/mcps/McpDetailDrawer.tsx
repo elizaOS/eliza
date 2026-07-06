@@ -8,8 +8,6 @@
  */
 
 import {
-  Check,
-  Copy,
   ExternalLink,
   Pencil,
   Play,
@@ -39,7 +37,7 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
+import { CopyButton } from "../../components/ui/copy-button";
 import { ApiError } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import type { UserMcpRecord } from "./lib/api-types";
@@ -71,7 +69,6 @@ export function McpDetailDrawer({
   const unpublish = useUnpublishMcp();
   const del = useDeleteMcp();
 
-  const [copied, setCopied] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<McpConnectionTestResult | null>(
     null,
@@ -82,16 +79,6 @@ export function McpDetailDrawer({
   const isOwner = data?.isOwner ?? false;
   const stats = data?.stats ?? null;
   const endpointUrl = mcp?.endpointUrl ?? "";
-
-  const copyEndpoint = async () => {
-    if (!endpointUrl) return;
-    await navigator.clipboard.writeText(endpointUrl);
-    setCopied(true);
-    toast.success(
-      t("cloud.mcps.endpointCopied", { defaultValue: "Endpoint URL copied" }),
-    );
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const runTest = async () => {
     if (!mcp) return;
@@ -210,19 +197,12 @@ export function McpDetailDrawer({
                     <code className="flex-1 rounded-sm border border-border bg-bg-elevated p-3 font-mono text-sm text-txt overflow-x-auto">
                       {endpointUrl}
                     </code>
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      onClick={() => void copyEndpoint()}
-                      className="inline-flex min-h-touch items-center justify-center p-3 rounded-sm bg-bg-elevated hover:bg-bg-hover transition-colors"
-                      aria-label="Copy endpoint"
-                    >
-                      {copied ? (
-                        <Check className="h-4 w-4 text-accent" />
-                      ) : (
-                        <Copy className="h-4 w-4 text-muted" />
-                      )}
-                    </Button>
+                    <CopyButton
+                      value={endpointUrl}
+                      copyLabel="Copy endpoint"
+                      copiedLabel="Copied"
+                      className="min-h-touch justify-center p-3 bg-bg-elevated"
+                    />
                   </div>
                 </Field>
               )}

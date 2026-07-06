@@ -7,10 +7,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
-  Check,
   ChevronRight,
   Coins,
-  Copy,
   ExternalLink,
   Eye,
   EyeOff,
@@ -46,6 +44,7 @@ import {
 } from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/input";
 import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
@@ -76,7 +75,6 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
   const t = useCloudT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [copiedItem, setCopiedItem] = useState<string | null>(null);
   const [displayApiKey, setDisplayApiKey] = useState(showApiKey || "");
   const [showKey, setShowKey] = useState(!!showApiKey);
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -95,18 +93,6 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
   const hideApiKeyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deploymentPollInFlightRef = useRef(false);
   const mountedRef = useRef(true);
-
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedItem(label);
-    toast.success(
-      t("cloud.apps.overview.copiedLabel", {
-        defaultValue: "{{label}} copied to clipboard",
-        label,
-      }),
-    );
-    setTimeout(() => setCopiedItem(null), 2000);
-  };
 
   const revealApiKey = useCallback((apiKey: string) => {
     if (hideApiKeyTimerRef.current) {
@@ -338,18 +324,12 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 <code className="flex-1 bg-surface px-3 py-2 rounded-sm text-xs text-muted font-mono overflow-x-auto">
                   {displayApiKey}
                 </code>
-                <Button
-                  variant="ghost"
-                  type="button"
-                  onClick={() => copyToClipboard(displayApiKey, "API Key")}
-                  className="p-2 bg-surface hover:bg-bg-hover rounded-sm transition-colors shrink-0"
-                >
-                  {copiedItem === "API Key" ? (
-                    <Check className="h-4 w-4 text-green-400" />
-                  ) : (
-                    <Copy className="h-4 w-4 text-muted" />
-                  )}
-                </Button>
+                <CopyButton
+                  value={displayApiKey}
+                  copyLabel="Copy API Key"
+                  copiedLabel="Copied"
+                  className="p-2 bg-surface shrink-0"
+                />
               </div>
               <p className="text-xs text-muted">
                 {t("cloud.apps.overview.saveKeyHint", {
@@ -600,18 +580,11 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                       <Eye className="h-3.5 w-3.5 text-muted" />
                     )}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    onClick={() => copyToClipboard(displayApiKey, "API Key")}
-                    className="p-1.5 hover:bg-bg-hover rounded-sm transition-colors"
-                  >
-                    {copiedItem === "API Key" ? (
-                      <Check className="h-3.5 w-3.5 text-green-400" />
-                    ) : (
-                      <Copy className="h-3.5 w-3.5 text-muted" />
-                    )}
-                  </Button>
+                  <CopyButton
+                    value={displayApiKey}
+                    copyLabel="Copy API Key"
+                    copiedLabel="Copied"
+                  />
                 </>
               )}
             </div>

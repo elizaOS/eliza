@@ -7,9 +7,7 @@ import {
   ArrowRight,
   BookOpen,
   Bot,
-  Check,
   Code,
-  Copy,
   CreditCard,
   KeyRound,
   Rocket,
@@ -19,8 +17,7 @@ import {
   Wallet,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useState } from "react";
-import { Button } from "../../../components/ui/button";
+import { CopyButton } from "../../../components/ui/copy-button";
 import { EmptyState } from "../../../components/ui/empty-state";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { ListSkeleton } from "../../../components/ui/skeleton-layouts";
@@ -247,14 +244,7 @@ export function ContainersSkeleton() {
 }
 
 export function ContainersEmptyState() {
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const commands = ["bun i -g elizaos", "elizaos deploy"];
-
-  const handleCopy = async (text: string, index: number) => {
-    await navigator.clipboard.writeText(text);
-    setCopiedIndex(index);
-    setTimeout(() => setCopiedIndex(null), 2000);
-  };
 
   return (
     <div className="flex min-h-[400px] flex-col items-center justify-center gap-6 rounded-sm bg-card py-12">
@@ -273,19 +263,11 @@ export function ContainersEmptyState() {
           >
             <span className="select-none text-muted">$</span>
             <code className="flex-1 font-mono text-sm text-txt">{cmd}</code>
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => handleCopy(cmd, index)}
-              className="rounded-sm text-muted transition-colors hover:text-txt"
-              aria-label={`Copy ${cmd}`}
-            >
-              {copiedIndex === index ? (
-                <Check className="h-4 w-4 text-status-success" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-            </Button>
+            <CopyButton
+              value={cmd}
+              copyLabel={`Copy ${cmd}`}
+              copiedLabel="Copied"
+            />
           </div>
         ))}
       </div>
