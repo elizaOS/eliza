@@ -38,7 +38,7 @@ paths = [
   '''packages/core/src/security/secret-swap\.redteam\.test\.ts$''',
   '''packages/core/src/security/secret-swap\.fuzz\.test\.ts$''',
   '''packages/core/src/security/secret-swap\.bench\.ts$''',
-  '''\test-results/evidence/10469-live-model/.*''',
+  '''test-results/evidence/10469-live-model/.*''',
 ]
 
 [[allowlists]]
