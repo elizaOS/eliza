@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import {
   aggregateVerdict,
+  buildCaptureUrl,
   buildOnboardedSeed,
   buildStateMatrix,
   FIRST_RUN_COMPLETE_KEY,
@@ -57,6 +58,17 @@ describe("buildStateMatrix", () => {
   it("gives every state a unique id", () => {
     const ids = matrix.map((s) => s.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("buildCaptureUrl", () => {
+  it("joins routes against a base with or without a trailing slash", () => {
+    expect(buildCaptureUrl("http://127.0.0.1:2138", "/views")).toBe(
+      "http://127.0.0.1:2138/views",
+    );
+    expect(buildCaptureUrl("http://127.0.0.1:2138/", "/chat")).toBe(
+      "http://127.0.0.1:2138/chat",
+    );
   });
 });
 

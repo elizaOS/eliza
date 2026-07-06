@@ -119,6 +119,10 @@ export function buildStateMatrix() {
   return states;
 }
 
+export function buildCaptureUrl(base, route) {
+  return new URL(route, base.endsWith("/") ? base : `${base}/`).toString();
+}
+
 /**
  * Fold per-capture analyzer reports into a pass/fail. The brand invariant is
  * the only hard gate: blue must stay under the ceiling on every state (elizaOS
@@ -187,8 +191,26 @@ async function main() {
           }, onboardedSeed);
         }
         const page = await ctx.newPage();
-        const url = new URL(state.route, base).toString();
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
+        const targetUrl = buildCaptureUrl(base, state.route);
+        let response;
+        try {
+          response = await page.goto(targetUrl, {
+            waitUntil: "domcontentloaded",
+            timeout: 20000,
+          });
+        } catch (error) {
+          throw new Error(
+            `Failed to load ${state.id} at ${targetUrl}: ${error?.message ?? error}`,
+          );
+        }
+        if (!response?.ok()) {
+          throw new Error(
+            `Failed to load ${state.id} at ${targetUrl}: HTTP ${response?.status() ?? "unknown"}`,
+          );
+        }
+        await page
+          .waitForLoadState("networkidle", { timeout: 5000 })
+          .catch(() => {});
         await page.waitForTimeout(1500);
         if (state.focusComposer) await focusAndType(page);
 
