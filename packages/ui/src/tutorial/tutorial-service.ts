@@ -6,7 +6,7 @@
  * conversational turns into the live chat transcript.
  *
  * Module-level store shared via globalThis (Symbol.for) so a single instance
- * survives HMR and is reachable from non-React callers (the launcher tile,
+ * survives HMR and is reachable from non-React callers (the home tutorial card,
  * the action channel) + useSyncExternalStore for React consumers. The store
  * key is the historical "elizaos.ui.tutorial-controller" symbol so state
  * carried across an HMR boundary from an older bundle keeps working; reads
@@ -183,7 +183,7 @@ function begin(): void {
 
 /**
  * Start the tour. Idle starts fresh; completed/stopped restart from the top
- * (the launcher tile and "start tutorial" both mean "show me the tour", not
+ * (the home card and "start tutorial" both mean "show me the tour", not
  * "resume some prior run"); an already-active tour is a no-op so a double-tap
  * or duplicate command can't yank the user back to the welcome turn.
  */
