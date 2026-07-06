@@ -102,17 +102,17 @@ export const OnboardingDefaults: Story = {
       notifications={[
         {
           title: "Take the tour",
-          body: "New here? A two-minute guided tour shows you chat, the launcher, and your home screen.",
+          body: "New here? A one-minute tour runs right in the chat — it walks you through messaging, voice, and navigating by asking.",
           category: "general",
           priority: "normal",
           deepLink: "/chat",
         },
         {
           title: "Get help any time",
-          body: "Stuck or curious? The help center answers common questions and can restart the tour.",
+          body: "Stuck or curious? Just ask in the chat — your agent answers questions about the app and can restart the tour.",
           category: "general",
           priority: "low",
-          deepLink: "/help",
+          deepLink: "/chat",
         },
         {
           title: "Connect your calendar",
