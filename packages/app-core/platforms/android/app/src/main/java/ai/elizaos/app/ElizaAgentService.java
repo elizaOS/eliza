@@ -1273,21 +1273,43 @@ public class ElizaAgentService extends Service {
             }
         }
 
-        boolean stdcxxLinkedFromNative = linkPackagedRuntimeLibrary(
+        ensureRuntimeLibraryLinks(abiDir);
+    }
+
+    /**
+     * Make the runtime soname symlinks (`libstdc++.so.6`, `libgcc_s.so.1`)
+     * valid against THIS process's install paths. bun requests those sonames
+     * at load time; the packaged copies live in {@link #nativeLibraryDir()}
+     * under jniLibs names (`libeliza_stdcpp.so` / `libeliza_gcc_s.so`), so the
+     * abi dir carries soname symlinks into the install dir.
+     *
+     * The install dir under /data/app/~~<random>/ is minted fresh on EVERY
+     * package update, so an absolute symlink staged by a previous install
+     * dangles after `adb install -r` / a store update — bun then dies within
+     * ~1s of exec ("Error loading shared library libstdc++.so.6") with its
+     * stdio on /dev/null, which presented as the silent
+     * `local_agent_unavailable` boot wedge. This method is therefore called
+     * BOTH from extraction finalize and from {@link #startAgentProcess}
+     * immediately before every spawn: staging correctness is not enough —
+     * the links must be re-validated against the live ApplicationInfo each
+     * time the agent launches.
+     */
+    private void ensureRuntimeLibraryLinks(File abiDir) {
+        boolean stdcxxLinkedFromNative = ensureRuntimeLibraryLink(
             abiDir,
             "libstdc++.so.6",
             "libeliza_stdcpp.so"
         );
-        linkPackagedRuntimeLibrary(abiDir, "libgcc_s.so.1", "libeliza_gcc_s.so");
+        ensureRuntimeLibraryLink(abiDir, "libgcc_s.so.1", "libeliza_gcc_s.so");
 
-        // bun requests `libstdc++.so.6` (the soname) at runtime, but the file we
-        // shipped is the versioned realpath (`libstdc++.so.6.0.33`). Without a
-        // symlink the musl loader can't find the shared object and bun crashes
-        // with hundreds of "Error relocating: symbol not found" lines. Link the
-        // soname to the realpath inside the same abi dir so LD_LIBRARY_PATH
-        // resolution works without LD_PRELOAD.
+        // No packaged libstdc++ in nativeLibraryDir (legacy assets-channel
+        // APKs): link the soname to the versioned realpath shipped next to it
+        // (`libstdc++.so.6.0.33`). The relative target is immune to install-dir
+        // churn, so only create it when missing or dangling.
         if (!stdcxxLinkedFromNative) {
-            for (String name : abiFiles) {
+            String[] names = abiDir.list();
+            if (names == null) return;
+            for (String name : names) {
                 if (name.startsWith("libstdc++.so.6.")) {
                     File realPath = new File(abiDir, name);
                     File symlink = new File(abiDir, "libstdc++.so.6");
@@ -1309,6 +1331,39 @@ public class ElizaAgentService extends Service {
                 }
             }
         }
+    }
+
+    /**
+     * Ensure one soname symlink resolves to the packaged copy in the CURRENT
+     * {@link #nativeLibraryDir()}. A link that already resolves to that exact
+     * target is left untouched; a missing, dangling, or stale-target link is
+     * recreated (the repair is logged — it is the fingerprint of the
+     * post-update dangling-symlink boot failure). Returns false when the
+     * packaged copy does not exist in this build, so the caller can fall back
+     * to the versioned-realpath link.
+     */
+    private boolean ensureRuntimeLibraryLink(
+        File abiDir,
+        String soname,
+        String packagedName
+    ) {
+        File packaged = new File(nativeLibraryDir(), packagedName);
+        if (!packaged.exists() || packaged.length() <= 0) return false;
+        File symlink = new File(abiDir, soname);
+        java.nio.file.Path linkPath = symlink.toPath();
+        try {
+            if (java.nio.file.Files.isSymbolicLink(linkPath)) {
+                java.nio.file.Path target = java.nio.file.Files.readSymbolicLink(linkPath);
+                if (target.equals(packaged.toPath()) && symlink.exists()) {
+                    return true;
+                }
+                Log.w(TAG, "Runtime symlink " + soname + " is dangling or stale ("
+                        + target + "); relinking to " + packaged.getAbsolutePath());
+            }
+        } catch (IOException error) {
+            // Unreadable link state — fall through and recreate it.
+        }
+        return linkPackagedRuntimeLibrary(abiDir, soname, packagedName);
     }
 
     /**
@@ -1808,6 +1863,13 @@ public class ElizaAgentService extends Service {
                 loader = preferPackagedExecutable(loader, packagedLoaderName);
             }
             bun = preferPackagedExecutable(bun, "libeliza_bun.so");
+
+            // Re-validate the soname symlinks against THIS install's
+            // nativeLibraryDir on every spawn: a package update mints a new
+            // /data/app/~~<random>/ dir and dangles absolute links staged by
+            // the previous install, which kills bun ~1s into exec with no
+            // visible error (stdio is on /dev/null).
+            ensureRuntimeLibraryLinks(abiDir);
 
             // Generate a fresh per-boot token for the WebView↔agent loopback.
             // Without this the loopback API would accept any local request
