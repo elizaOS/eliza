@@ -24,6 +24,8 @@ import {
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
+  CloudApiKeys,
+  CloudApiKeySummary,
   CloudBillingCheckoutRequest,
   CloudBillingCheckoutResponse,
   CloudBillingCryptoQuoteRequest,
@@ -1018,6 +1020,7 @@ declare module "./client-base" {
   interface ElizaClient {
     getCloudStatus(): Promise<CloudStatus>;
     getCloudCredits(): Promise<CloudCredits>;
+    listCloudApiKeys(): Promise<CloudApiKeys>;
     getCloudBillingSummary(): Promise<CloudBillingSummary>;
     getCloudBillingSettings(): Promise<CloudBillingSettings>;
     updateCloudBillingSettings(
@@ -1525,6 +1528,48 @@ ElizaClient.prototype.getCloudCredits = async function (this: ElizaClient) {
     }
   }
   return this.fetch("/api/cloud/credits");
+};
+
+// API-key inventory for the in-app Cloud view (keys count + manage link).
+// Direct-cloud only: `GET /api/v1/api-keys` is session-gated upstream
+// (requireUserWithOrg) and has no /api/cloud/* agent-host proxy, so when the
+// client has no direct cloud base — or the credential is an API key rather
+// than a steward session — the result degrades to `keys: null` with a reason
+// instead of throwing or fabricating an empty list.
+ElizaClient.prototype.listCloudApiKeys = async function (this: ElizaClient) {
+  const manageUrl = `${DEFAULT_DIRECT_CLOUD_BASE_URL}/dashboard/api-keys`;
+  const directBase = resolveDirectCloudClientApiBase(this);
+  if (!directBase || !readDirectCloudToken(this)) {
+    return { keys: null, manageUrl, reason: "not-connected" as const };
+  }
+  try {
+    const data = await directCloudRequest<Record<string, unknown>>(
+      this,
+      "/api/v1/api-keys",
+    );
+    const rawKeys = Array.isArray(data?.keys) ? data.keys : [];
+    const keys: CloudApiKeySummary[] = rawKeys.flatMap((raw) => {
+      if (typeof raw !== "object" || raw === null) return [];
+      const record = raw as Record<string, unknown>;
+      const id = stringOrNull(record.id);
+      const name = stringOrNull(record.name);
+      if (!id || !name) return [];
+      return [
+        {
+          id,
+          name,
+          keyPrefix: stringOrNull(record.key_prefix),
+          createdAt: stringOrNull(record.created_at),
+        },
+      ];
+    });
+    return { keys, manageUrl };
+  } catch (err) {
+    if (isDirectCloudAuthError(err)) {
+      return { keys: null, manageUrl, reason: "session-required" as const };
+    }
+    throw err;
+  }
 };
 
 ElizaClient.prototype.getCloudBillingSummary = async function (

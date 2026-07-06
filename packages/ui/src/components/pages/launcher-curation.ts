@@ -44,6 +44,9 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "tasks",
   "automations",
   "browser",
+  // Cloud account app — gated to cloud-signed-in sessions via
+  // LAUNCHER_CLOUD_IDS below.
+  "cloud",
   // Character family — ONE tile. Personality/Relationships/Skills/Experience
   // are sections inside it (CharacterSectionNav strip, #13560/#13591); their
   // standalone tiles live in LAUNCHER_HIDDEN_IDS so the grid shows a single
@@ -240,7 +243,7 @@ function preferenceScore(entry: ViewEntry): number {
  * without this gate it shows as an "Apps" tile even when cloud is
  * disconnected. (#10725)
  */
-export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set(["cloud-apps"]);
+export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set(["cloud-apps", "cloud"]);
 
 export interface CurateLauncherOptions {
   /** Include the native-OS tiles (phone/messages/contacts/camera/files). */
