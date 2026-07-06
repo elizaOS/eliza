@@ -8,6 +8,7 @@ import {
   type IAgentRuntime,
   type MessagePayload,
   type UUID,
+  type ViewSwitchedPayload,
 } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -299,6 +300,124 @@ describe("PresenceSignalBridgeService relationship recency", () => {
           lastInteractionDirection: "outbound",
         },
       }),
+    );
+  });
+});
+
+describe("PresenceSignalBridgeService view-switch + reaction signals (#14689)", () => {
+  beforeEach(() => {
+    mockState.activitySignals.length = 0;
+    vi.clearAllMocks();
+  });
+
+  function viewSwitchPayload(
+    overrides: Partial<ViewSwitchedPayload> = {},
+  ): ViewSwitchedPayload {
+    return {
+      runtime: {} as IAgentRuntime,
+      source: "client_chat",
+      viewId: "wallet",
+      viewLabel: "Wallet",
+      initiatedBy: "user",
+      ...overrides,
+    } as unknown as ViewSwitchedPayload;
+  }
+
+  it("writes an app_lifecycle signal for a user-initiated view switch", async () => {
+    const { runtime, handlers } = runtimeWithRelationships({});
+    await PresenceSignalBridgeService.start(runtime);
+
+    await handlers.get(EventType.VIEW_SWITCHED)?.(
+      viewSwitchPayload() as unknown as MessagePayload,
+    );
+
+    expect(mockState.activitySignals).toHaveLength(1);
+    expect(mockState.activitySignals[0]).toMatchObject({
+      source: "app_lifecycle",
+      platform: "agent_view",
+      state: "active",
+      metadata: expect.objectContaining({
+        eventType: "VIEW_SWITCHED",
+        viewId: "wallet",
+        initiatedBy: "user",
+      }),
+    });
+  });
+
+  it("ignores agent-initiated view switches (not owner presence)", async () => {
+    const { runtime, handlers } = runtimeWithRelationships({});
+    await PresenceSignalBridgeService.start(runtime);
+
+    await handlers.get(EventType.VIEW_SWITCHED)?.(
+      viewSwitchPayload({ initiatedBy: "agent" }) as unknown as MessagePayload,
+    );
+
+    expect(mockState.activitySignals).toHaveLength(0);
+  });
+
+  it("dedupes a rapid re-switch to the same view within the window", async () => {
+    const { runtime, handlers } = runtimeWithRelationships({});
+    await PresenceSignalBridgeService.start(runtime);
+
+    await handlers.get(EventType.VIEW_SWITCHED)?.(
+      viewSwitchPayload() as unknown as MessagePayload,
+    );
+    await handlers.get(EventType.VIEW_SWITCHED)?.(
+      viewSwitchPayload() as unknown as MessagePayload,
+    );
+
+    expect(mockState.activitySignals).toHaveLength(1);
+  });
+
+  it("writes a connector_activity signal for a contact reaction", async () => {
+    const { runtime, handlers } = runtimeWithRelationships({});
+    await PresenceSignalBridgeService.start(runtime);
+
+    await handlers.get(EventType.REACTION_RECEIVED)?.(messagePayload());
+
+    expect(mockState.activitySignals).toHaveLength(1);
+    expect(mockState.activitySignals[0]).toMatchObject({
+      source: "connector_activity",
+      platform: "telegram",
+      observedAt: "2026-06-01T12:00:00.000Z",
+      metadata: expect.objectContaining({
+        eventType: "REACTION_RECEIVED",
+        entityId: CONTACT_ID,
+      }),
+    });
+  });
+
+  it("ignores the agent's own reactions", async () => {
+    const { runtime, handlers } = runtimeWithRelationships({});
+    await PresenceSignalBridgeService.start(runtime);
+
+    await handlers.get(EventType.REACTION_RECEIVED)?.(
+      messagePayload({
+        message: {
+          ...messagePayload().message,
+          entityId: AGENT_ID,
+        },
+      }),
+    );
+
+    expect(mockState.activitySignals).toHaveLength(0);
+  });
+
+  it("registers and unregisters the view-switch and reaction handlers", async () => {
+    const { runtime, handlers } = runtimeWithRelationships({});
+    const service = await PresenceSignalBridgeService.start(runtime);
+
+    expect(handlers.has(EventType.VIEW_SWITCHED)).toBe(true);
+    expect(handlers.has(EventType.REACTION_RECEIVED)).toBe(true);
+
+    await service.stop();
+    expect(runtime.unregisterEvent).toHaveBeenCalledWith(
+      EventType.VIEW_SWITCHED,
+      expect.any(Function),
+    );
+    expect(runtime.unregisterEvent).toHaveBeenCalledWith(
+      EventType.REACTION_RECEIVED,
+      expect.any(Function),
     );
   });
 });
