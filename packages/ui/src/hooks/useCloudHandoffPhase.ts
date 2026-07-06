@@ -11,9 +11,9 @@ import {
 
 // How long a successful terminal phase lingers before the banner self-clears.
 // `migrating` has no timer — it persists until the swap resolves (the container
-// boot can take 60-90s). `timed-out`/`failed` also have NO timer: they stay
-// until the user retries (or a retry resolves), so the failure isn't a silent
-// auto-dismissed fallback.
+// boot can take 60-90s). `timed-out`/`failed`/`insufficient-credits` also have
+// NO timer: they stay until the user retries (or adds credits + retries), so a
+// failure or the credit-gate prompt is never a silent auto-dismissed fallback.
 const SUCCESS_LINGER_MS = 4000;
 
 /**
@@ -39,13 +39,14 @@ export function useCloudHandoffPhase(): CloudHandoffPhaseDetail | null {
 
   useEffect(() => {
     if (!detail) return;
-    // `migrating` persists until the swap resolves; `timed-out`/`failed` persist
-    // until the user retries (the banner offers a retry). Only the success
-    // phases self-dismiss.
+    // `migrating` persists until the swap resolves; `timed-out`/`failed`/
+    // `insufficient-credits` persist until the user retries or adds credits (the
+    // surface offers that path). Only the success phases self-dismiss.
     if (
       detail.phase === "migrating" ||
       detail.phase === "timed-out" ||
-      detail.phase === "failed"
+      detail.phase === "failed" ||
+      detail.phase === "insufficient-credits"
     ) {
       return;
     }

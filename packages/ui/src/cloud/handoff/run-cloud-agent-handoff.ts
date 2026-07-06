@@ -21,6 +21,13 @@ import type { ConversationHandoffResult } from "./conversation-handoff";
  * visible with a retry instead of being swallowed (the old
  * `startCloudAgentHandoff(...).catch(() => {})`).
  *
+ * A thrown 402 from the dedicated-agent create is the credit gate, not a boot
+ * failure: it maps to the distinct `insufficient-credits` phase so the surfaces
+ * show a first-class "add credits for a dedicated agent" state instead of a
+ * generic "setup failed / retry" one. The retry is still armed (so add-credits
+ * → retry upgrades cleanly), but retrying without credits just re-gates — the
+ * user keeps the working shared agent throughout.
+ *
  * `start` is a thunk so the caller owns the supervisor args (agent id, bases,
  * token, `onSwitch` rebind) and this module stays decoupled + unit-testable.
  *
@@ -63,11 +70,29 @@ export function runCloudAgentHandoff(
     .catch((err: unknown) => {
       dispatchCloudHandoffPhase({
         agentId,
-        phase: "failed",
+        phase: isInsufficientCreditsError(err)
+          ? "insufficient-credits"
+          : "failed",
         error: err instanceof Error ? err.message : String(err),
       });
       armRetry(agentId, start, onSwitchSucceeded);
     });
+}
+
+/**
+ * True when a thrown handoff error is the cloud credit gate (HTTP 402), so the
+ * runner can surface the distinct `insufficient-credits` phase instead of a
+ * generic `failed`. The direct-cloud client tags rejected requests with the
+ * numeric `status` (see `directCloudRequest` in `api/client-cloud.ts`); a 402 on
+ * the dedicated-agent create is the only place the create is refused for
+ * billing rather than infrastructure reasons.
+ */
+export function isInsufficientCreditsError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { status?: unknown }).status === 402
+  );
 }
 
 /**

@@ -65,6 +65,27 @@ export function isLoopbackApiHost(host: string): boolean {
   );
 }
 
+/**
+ * Canonical Eliza Cloud shared-tier control-plane hosts. The free shared agent
+ * is served in-Worker off the apex `elizacloud.ai` / its `www.` and `api.`
+ * siblings (the shared REST adapter lives at
+ * `<host>/api/v1/eliza/agents/<id>`), NOT a per-agent `*.elizacloud.ai`
+ * subdomain — so the dedicated-subdomain trust does not cover it. A store iOS
+ * build must trust these HTTPS hosts regardless of whether `cloudApiBase` was
+ * pinned to the exact host, or shared-tier bootstrap (the instant, always-on,
+ * $0 path — the mobile default) is rejected under the strict network policy.
+ * Prod hosts only; staging/dev are reached via a configured `cloudApiBase`.
+ */
+const ELIZA_CLOUD_SHARED_HOSTS: ReadonlySet<string> = new Set([
+  "elizacloud.ai",
+  "www.elizacloud.ai",
+  "api.elizacloud.ai",
+]);
+
+export function isElizaCloudSharedHost(host: string): boolean {
+  return ELIZA_CLOUD_SHARED_HOSTS.has(host.toLowerCase());
+}
+
 function isIosLocalAgentIpcUrl(parsed: URL): boolean {
   return isMobileLocalAgentIpcUrl(parsed);
 }
@@ -125,7 +146,11 @@ export function createUrlTrustPolicy(ctx: UrlTrustPolicyContext) {
       if (parsed.protocol !== "https:" || isPrivateOrLoopbackApiHost(host)) {
         return false;
       }
-      return isCurrentOriginHost(host) || isConfiguredCloudApiHost(host);
+      return (
+        isCurrentOriginHost(host) ||
+        isConfiguredCloudApiHost(host) ||
+        isElizaCloudSharedHost(host)
+      );
     }
     if (ctx.isPopoutWindow && parsed.protocol === "https:") return true;
     return (
@@ -148,7 +173,8 @@ export function createUrlTrustPolicy(ctx: UrlTrustPolicyContext) {
       }
       return (
         isCurrentOriginHost(host) ||
-        (parsed.protocol === "https:" && isConfiguredCloudApiHost(host))
+        (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
+        (parsed.protocol === "https:" && isElizaCloudSharedHost(host))
       );
     }
     return (

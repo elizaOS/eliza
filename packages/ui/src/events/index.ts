@@ -102,15 +102,20 @@ export const CLOUD_HANDOFF_PHASE_EVENT = "eliza:cloud-handoff-phase" as const;
  * adapter. `switched` — conversation copied and the live client moved to the
  * dedicated container (`switched-empty` when there was nothing to copy yet).
  * `timed-out` / `failed` — the container never became ready (or an I/O step
- * threw); the user safely stays on the working shared adapter. Mirrors
- * `ConversationHandoffStatus` plus the `migrating` in-flight phase.
+ * threw); the user safely stays on the working shared adapter.
+ * `insufficient-credits` — the dedicated upgrade was refused by the credit gate
+ * (HTTP 402): the user keeps the free shared agent, but this is a FIRST-CLASS
+ * state (a distinct "add credits for your own dedicated agent" surface), never a
+ * silent permanent shared fallback. Mirrors `ConversationHandoffStatus` plus the
+ * `migrating` in-flight phase and the `insufficient-credits` monetization gate.
  */
 export type CloudHandoffPhase =
   | "migrating"
   | "switched"
   | "switched-empty"
   | "timed-out"
-  | "failed";
+  | "failed"
+  | "insufficient-credits";
 
 export interface CloudHandoffPhaseDetail {
   agentId: string;
