@@ -29,6 +29,39 @@ function readEnvValue(
   return undefined;
 }
 
+const DOCUMENT_AUGMENTATION_PREFIX =
+  "Answer the user request using the contextual documents";
+const USER_REQUEST_WRAPPER = /<user_request>\s*([\s\S]*?)\s*<\/user_request>/i;
+const LANGUAGE_INSTRUCTION_SUFFIX = /\n*\[language instruction:[^\]]*\]\s*$/i;
+
+function extractDocumentAugmentedUserText(raw: string): string {
+  const match = raw.match(USER_REQUEST_WRAPPER);
+  return (match?.[1] ?? raw).replace(LANGUAGE_INSTRUCTION_SUFFIX, "").trim();
+}
+
+export function hasDocumentAugmentationEnvelope(text: unknown): boolean {
+  if (typeof text !== "string") return false;
+  return text.trimStart().startsWith(DOCUMENT_AUGMENTATION_PREFIX);
+}
+
+export function stripAugmentationForPersistence<
+  T extends { content?: unknown } | null | undefined,
+>(message: T): T {
+  const content = message?.content;
+  if (!content || typeof content !== "object") return message;
+  const rendered = (content as { text?: unknown }).text;
+  if (!hasDocumentAugmentationEnvelope(rendered)) return message;
+  const clean = extractDocumentAugmentedUserText(rendered as string);
+  if (clean === rendered) return message;
+  return {
+    ...message,
+    content: {
+      ...(content as Record<string, unknown>),
+      text: clean,
+    },
+  } as T;
+}
+
 // --- ElizaError: worker-safe mirror of @elizaos/core/errors (pure-JS Error
 // subclass, no I/O). Cloud Worker services (active-billing-numeric, user-mcps,
 // twap-price-oracle, cloudflare-registrar, …) import + extend it, so the shim
