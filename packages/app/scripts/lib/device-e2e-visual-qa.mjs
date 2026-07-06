@@ -15,7 +15,7 @@
  * what each phase's screenshot should show; this module knows nothing about
  * phases.
  */
-import { readdirSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { analyzeScreenshot } from "./visual-qa.mjs";
 
@@ -25,7 +25,6 @@ const SCREENSHOT_EXT = new Set([".png", ".jpg", ".jpeg"]);
 export function listScreenshots(dir) {
   return readdirSync(dir)
     .filter((name) => SCREENSHOT_EXT.has(path.extname(name).toLowerCase()))
-    .filter((name) => !name.endsWith(".visual-qa.json"))
     .sort()
     .map((name) => path.join(dir, name));
 }
@@ -75,15 +74,4 @@ export async function attachVisualQa({
     "utf8",
   );
   return aggregate;
-}
-
-/** True when `p` exists and is a directory — guards the walk entrypoint. */
-export function isDir(p) {
-  try {
-    return statSync(p).isDirectory();
-  } catch {
-    // error-policy:J3 untrusted path probe — a missing/unreadable path is a
-    // definite "not a directory", the only signal the caller needs.
-    return false;
-  }
 }

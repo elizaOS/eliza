@@ -9,11 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import {
-  attachVisualQa,
-  isDir,
-  listScreenshots,
-} from "./device-e2e-visual-qa.mjs";
+import { attachVisualQa, listScreenshots } from "./device-e2e-visual-qa.mjs";
 
 function tmpBundle() {
   return mkdtempSync(path.join(tmpdir(), "vqa-bundle-"));
@@ -130,13 +126,5 @@ describe("attachVisualQa — REAL analyzeScreenshot", () => {
     expect(report.color_fractions).toHaveProperty("blue_fraction");
     expect(report.color_fractions.blue_fraction).toBe(0);
     expect(report.verdict).toBe("pass");
-  });
-});
-
-describe("isDir", () => {
-  it("true for a directory, false for a missing path", () => {
-    const dir = tmpBundle();
-    expect(isDir(dir)).toBe(true);
-    expect(isDir(path.join(dir, "nope"))).toBe(false);
   });
 });
