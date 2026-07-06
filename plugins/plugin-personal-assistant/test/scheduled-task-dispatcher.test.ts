@@ -1,7 +1,8 @@
 /**
- * Covers private delivery of sensitive requests: sending a DM payload while returning
- * status-only public text, a typed DM-failure with public fallback text, and the production
- * scheduled-task dispatcher path. Deterministic.
+ * Deterministic coverage for the production scheduled-task dispatcher. These
+ * tests keep typed connector failures, owner-target resolution, send policy,
+ * and channel sender payload shape honest without the orphaned LifeOps
+ * sensitive-request delivery helper.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -34,10 +35,6 @@ import {
   createSendPolicyRegistry,
   registerSendPolicyRegistry,
 } from "../src/lifeops/send-policy/index.js";
-import {
-  deliverPrivateSensitiveRequest,
-  type LifeOpsSensitiveRequestDeliveryRecord,
-} from "../src/lifeops/sensitive-request-delivery.js";
 
 // Deterministic model output for the production dispatcher's render step:
 // `promptInstructions` is a model prompt, so channel payloads carry this
@@ -71,21 +68,6 @@ function sendCapableChannel(
     send,
   };
 }
-
-const request: LifeOpsSensitiveRequestDeliveryRecord = {
-  id: "sr_123",
-  kind: "secret",
-  status: "pending",
-  delivery: {
-    kind: "secret",
-    mode: "cloud_authenticated_link",
-    privateRouteRequired: true,
-    publicLinkAllowed: false,
-    authenticated: true,
-    linkBaseUrl: "https://cloud.example",
-  },
-  expiresAt: "2026-05-10T13:00:00.000Z",
-};
 
 async function withOwnerContactsConfig(
   ownerContacts: Record<
@@ -157,75 +139,6 @@ function makeRunner(runtime: IAgentRuntime) {
     now: () => new Date("2026-05-10T12:00:00.000Z"),
   });
 }
-
-describe("sensitive request private delivery", () => {
-  it("sends a private DM payload and returns status-only public success text", async () => {
-    const sent: unknown[] = [];
-    const channel = sendCapableChannel(async (payload) => {
-      sent.push(payload);
-      return { ok: true, messageId: "dm_1" };
-    });
-
-    const result = await deliverPrivateSensitiveRequest({
-      request,
-      channel,
-      target: "owner-dm",
-      form: {
-        type: "sensitive_request_form",
-        kind: "secret",
-        mode: "inline_owner_app",
-        fields: [
-          {
-            name: "OPENAI_API_KEY",
-            label: "OPENAI_API_KEY",
-            input: "secret",
-            required: true,
-          },
-        ],
-        submitLabel: "Save secret",
-        statusOnly: true,
-      },
-    });
-
-    expect(result.dispatchResult).toEqual({ ok: true, messageId: "dm_1" });
-    expect(result.publicStatusText).toBe("I sent a private setup request.");
-    expect(result.publicStatusText).not.toContain("https://cloud.example");
-    expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({
-      target: "owner-dm",
-      metadata: {
-        sensitiveRequest: {
-          id: "sr_123",
-          kind: "secret",
-          status: "pending",
-        },
-        form: {
-          type: "sensitive_request_form",
-          statusOnly: true,
-        },
-      },
-    });
-  });
-
-  it("returns typed DM failure with public fallback text only", async () => {
-    const result = await deliverPrivateSensitiveRequest({
-      request,
-      channel: null,
-      target: "owner-dm",
-    });
-
-    expect(result.dispatchResult).toMatchObject({
-      ok: false,
-      reason: "disconnected",
-      userActionable: true,
-    });
-    expect(result.publicStatusText).toBe(
-      "I could not send the private setup request. Please DM me or open the owner app as the owner.",
-    );
-    expect(result.publicStatusText).not.toContain("sr_123");
-    expect(result.publicStatusText).not.toContain("https://cloud.example");
-  });
-});
 
 describe("scheduled task production dispatcher", () => {
   it("preserves disconnected and rate-limited typed dispatch failures", async () => {
