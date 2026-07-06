@@ -1,27 +1,32 @@
 /**
  * Customize-path question set for first-run.
  *
- * Five questions: Q1/Q2/Q4 always asked; Q3/Q5 conditional. Partial answers
- * are persisted Q-by-Q via `FirstRunStateStore.recordAnswer` so a user can
- * abandon mid-flow and resume without losing progress.
+ * Three questions the owner genuinely has to state: what to be called, which
+ * categories to enable, and where to be nudged. Partial answers are persisted
+ * Q-by-Q via `FirstRunStateStore.recordAnswer` so a user can abandon mid-flow
+ * and resume without losing progress.
  *
- * Channel-validation for Q4: the chosen channel must be registered AND have
- * a connected dispatcher. If neither is the case the answer is recorded with
- * `fallbackToInApp: true` and a warning surfaces back through the action
- * result. The `ChannelRegistry` is the eventual checker; the local inspector
- * below leans on `getDefaultTriageService` adapter registration as a
- * connectivity proxy.
+ * Timezone and morning/evening windows are deliberately NOT asked here: the
+ * doctrine is anticipatory, not questionnaire (#14691). The device already
+ * knows its zone (passed in as the inferred `timezone`), and the windows are
+ * learned from observed activity by `activity-profile/window-learning.ts`.
+ * First-run records those as `agent_inferred` facts so the learner keeps
+ * refining them; the agent confirms an inferred zone conversationally rather
+ * than blocking a form step. Relationships are likewise discovered passively
+ * through the entity/relationship graph, not typed into a list up front.
+ *
+ * Channel-validation for the channel question: the chosen channel must be
+ * registered AND have a connected dispatcher. If neither is the case the
+ * answer is recorded with `fallbackToInApp: true` and a warning surfaces back
+ * through the action result. The `ChannelRegistry` is the eventual checker;
+ * the local inspector below leans on `getDefaultTriageService` adapter
+ * registration as a connectivity proxy.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
 import type { OwnerFactWindow } from "./state.js";
 
-export type FirstRunQuestionId =
-  | "preferredName"
-  | "timezoneAndWindows"
-  | "categories"
-  | "channel"
-  | "relationships";
+export type FirstRunQuestionId = "preferredName" | "categories" | "channel";
 
 export interface FirstRunQuestionDefinition {
   id: FirstRunQuestionId;
@@ -42,12 +47,6 @@ export const FIRST_RUN_QUESTIONS: readonly FirstRunQuestionDefinition[] = [
     shouldAsk: () => true,
   },
   {
-    id: "timezoneAndWindows",
-    prompt:
-      "What time zone are you in, and what counts as your morning / evening? (Defaults: morning 06:00–11:00, evening 18:00–22:00.)",
-    shouldAsk: () => true,
-  },
-  {
     id: "categories",
     prompt:
       "Which categories sound useful to enable now? (multi-select: sleep tracking, reminder packs, inbox triage, blockers/focus, follow-ups)",
@@ -58,18 +57,6 @@ export const FIRST_RUN_QUESTIONS: readonly FirstRunQuestionDefinition[] = [
     prompt:
       "Where do you want me to nudge you? (in_app, push, imessage, discord, telegram)",
     shouldAsk: () => true,
-  },
-  {
-    id: "relationships",
-    prompt:
-      "List 3–5 important relationships and a default cadence (e.g. 'Pat — 14 days; Sam — weekly').",
-    shouldAsk: (answers) => {
-      const categories = answers.categories;
-      if (!Array.isArray(categories)) return false;
-      return categories.some(
-        (c) => typeof c === "string" && c.toLowerCase() === "follow-ups",
-      );
-    },
   },
 ] as const;
 
