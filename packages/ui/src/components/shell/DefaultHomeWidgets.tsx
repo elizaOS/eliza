@@ -70,18 +70,10 @@ const WEATHER_ICON: Record<WeatherKind, LucideIcon> = {
   storm: CloudLightning,
 };
 
-function greeting(hour: number): string {
-  if (hour < 5) return "Good night";
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  if (hour < 21) return "Good evening";
-  return "Good night";
-}
-
 /**
  * The weather half of the time/weather pair - a naked 2×2 tile that mirrors the
  * time tile's footprint (bottom-aligned so the reading settles against the same
- * baseline band as the greeting, giving the pair a shared horizon).
+ * baseline band as the date, giving the pair a shared horizon).
  */
 function WeatherTile(): React.JSX.Element {
   const weather = useWeather();
@@ -198,9 +190,6 @@ const HomeClock = memo(function HomeClock(): React.JSX.Element {
       <div className={cn("mt-3 text-base font-medium", WALLPAPER_TEXT.primary)}>
         {dateLabel}
       </div>
-      <div className="mt-1 text-sm font-medium text-accent/90">
-        {greeting(hours)}
-      </div>
     </div>
   );
 });
@@ -224,9 +213,9 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
       className="grid grid-cols-4 items-start gap-x-4 gap-y-2"
     >
       {/* Time, the editorial header. Big, left-aligned, with a tight tracking
-          display feel; the date + greeting sit beneath as a quiet stack so the
-          hierarchy is unmistakable (hero numeral, supporting line, soft
-          greeting). White on the ember field with a legibility shadow.
+          display feel; the date sits beneath as a quiet supporting line so the
+          hierarchy is unmistakable (hero numeral, supporting line). White on the
+          ember field with a legibility shadow.
 
           Hideable from Appearance settings (#10706): only render when the user
           hasn't hidden the time tile. The tile footprint is reserved immediately;
