@@ -246,6 +246,22 @@ function buildCacheableSystemMessage(
   } as unknown as ModelMessage;
 }
 
+function readAnthropicCacheControl(
+  anthropicOptions: Record<string, unknown> | undefined
+): AnthropicCacheControl | undefined {
+  if (!anthropicOptions) {
+    return undefined;
+  }
+  const cacheControl = anthropicOptions.cacheControl;
+  if (isRecord(cacheControl) && cacheControl.type === "ephemeral") {
+    return {
+      type: "ephemeral",
+      ...(cacheControl.ttl === "5m" || cacheControl.ttl === "1h" ? { ttl: cacheControl.ttl } : {}),
+    };
+  }
+  return anthropicOptions.cacheSystem === true ? { type: "ephemeral" } : undefined;
+}
+
 function stripLocalAnthropicCacheOptions(
   anthropicOptions: Record<string, unknown> | undefined
 ): Record<string, unknown> | undefined {
@@ -485,24 +501,20 @@ function buildGenerateParams(
   // Detect if we need to inject Anthropic message-level cache control
   const isAnthropic = isAnthropicModel(modelName);
   const rawProviderOptions = paramsWithAttachments.providerOptions;
-  const anthropicOptions = rawProviderOptions?.anthropic as Record<string, unknown> | undefined;
-  const anthropicCacheControl = anthropicOptions?.cacheControl as
-    | AnthropicCacheControl
-    | undefined;
+  const anthropicOptions = isRecord(rawProviderOptions?.anthropic)
+    ? rawProviderOptions.anthropic
+    : undefined;
+  const anthropicCacheControl = readAnthropicCacheControl(anthropicOptions);
   const anthropicCacheSystem = anthropicOptions?.cacheSystem !== false;
-  const shouldInjectMessageLevelCache =
-    isAnthropic &&
-    anthropicCacheSystem &&
-    anthropicCacheControl &&
-    paramsWithAttachments.messages;
+  const cacheSystemMessage =
+    isAnthropic && anthropicCacheSystem
+      ? buildCacheableSystemMessage(systemPrompt, anthropicCacheControl)
+      : undefined;
+  const shouldInjectMessageLevelCache = Boolean(cacheSystemMessage);
 
-  // Build wire messages with optional message-level cache control for Anthropic
   let finalWireMessages = wireMessages;
-  if (shouldInjectMessageLevelCache) {
-    const cacheSystemMessage = buildCacheableSystemMessage(systemPrompt, anthropicCacheControl);
-    if (cacheSystemMessage) {
-      finalWireMessages = [cacheSystemMessage, ...(wireMessages || [])];
-    }
+  if (cacheSystemMessage && paramsWithAttachments.messages) {
+    finalWireMessages = [cacheSystemMessage, ...(wireMessages || [])];
   }
 
   const promptOrMessages: NativePrompt = paramsWithAttachments.messages
@@ -521,19 +533,38 @@ function buildGenerateParams(
                 "OpenRouter text generation requires prompt, messages, or attachments"
               );
             })()
-    : userContent
-      ? { messages: [{ role: "user" as const, content: userContent }] }
-      : prompt !== undefined
-        ? { prompt }
+    : shouldInjectMessageLevelCache && cacheSystemMessage
+      ? userContent || prompt !== undefined
+        ? {
+            messages: [
+              cacheSystemMessage,
+              {
+                role: "user" as const,
+                content: userContent ?? buildUserContent(paramsWithAttachments),
+              },
+            ],
+          }
         : (() => {
             throw new Error("OpenRouter text generation requires prompt, messages, or attachments");
-          })();
+          })()
+      : userContent
+        ? { messages: [{ role: "user" as const, content: userContent }] }
+        : prompt !== undefined
+          ? { prompt }
+          : (() => {
+              throw new Error(
+                "OpenRouter text generation requires prompt, messages, or attachments"
+              );
+            })();
 
   // Resolve providerOptions: forward any caller-supplied options and merge in
   // the openrouter.promptCacheKey when present. OpenRouter passes prompt_cache_key
   // through to the underlying model provider for prefix caching.
-  const { openrouter: rawOpenrouterOptions, anthropic: _, ...restProviderOptions } =
-    rawProviderOptions ?? {};
+  const {
+    openrouter: rawOpenrouterOptions,
+    anthropic: _,
+    ...restProviderOptions
+  } = rawProviderOptions ?? {};
   const openrouterOptions: Record<string, unknown> = {
     ...(rawOpenrouterOptions ?? {}),
   };

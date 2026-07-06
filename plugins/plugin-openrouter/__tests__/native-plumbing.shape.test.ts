@@ -8,16 +8,17 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-function createRuntime() {
+function createRuntime(settings: Record<string, string> = {}) {
   const runtime = {
     character: { system: "system prompt" },
     emitEvent: vi.fn(async () => undefined),
     getSetting: vi.fn((key: string) => {
-      const settings: Record<string, string> = {
+      const defaultSettings: Record<string, string> = {
         OPENROUTER_API_KEY: "test-key",
         OPENROUTER_SMALL_MODEL: "openrouter-small",
+        ...settings,
       };
-      return settings[key] ?? null;
+      return defaultSettings[key] ?? null;
     }),
   };
 
@@ -249,6 +250,100 @@ describe("OpenRouter native text plumbing", () => {
       promptCacheRetention: "24h",
     });
     expect(providerOptions.gateway).toEqual({ caching: "auto" });
+  });
+
+  it("moves Anthropic cache control onto a prompt-only system message", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      finishReason: "stop",
+      usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 },
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({
+        chat: (modelName: string) => ({ modelName }),
+      }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(
+      createRuntime({ OPENROUTER_SMALL_MODEL: "anthropic/claude-sonnet-4.5" }),
+      {
+        prompt: "prompt with caching",
+        providerOptions: {
+          anthropic: { cacheControl: { type: "ephemeral", ttl: "5m" } },
+          gateway: { caching: "auto" },
+        },
+      } as never
+    );
+
+    const call = generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect(call).not.toHaveProperty("prompt");
+    expect(call).not.toHaveProperty("system");
+    expect(call.messages).toEqual([
+      {
+        role: "system",
+        content: "system prompt",
+        providerOptions: {
+          anthropic: { cacheControl: { type: "ephemeral", ttl: "5m" } },
+        },
+      },
+      {
+        role: "user",
+        content: [{ type: "text", text: "prompt with caching" }],
+      },
+    ]);
+    expect(call.providerOptions).toEqual({ gateway: { caching: "auto" } });
+  });
+
+  it("uses cacheSystem true as an Anthropic ephemeral cache signal for native messages", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      finishReason: "stop",
+      usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 },
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({
+        chat: (modelName: string) => ({ modelName }),
+      }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(
+      createRuntime({ OPENROUTER_SMALL_MODEL: "anthropic/claude-sonnet-4.5" }),
+      {
+        messages: [
+          { role: "system", content: "system prompt" },
+          { role: "user", content: "hello" },
+        ],
+        providerOptions: {
+          anthropic: { cacheSystem: true, thinking: { type: "enabled" } },
+        },
+      } as never
+    );
+
+    const call = generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect(call).not.toHaveProperty("system");
+    expect(call.messages).toEqual([
+      {
+        role: "system",
+        content: "system prompt",
+        providerOptions: {
+          anthropic: { cacheControl: { type: "ephemeral" } },
+        },
+      },
+      { role: "user", content: "hello" },
+    ]);
+    expect(call.providerOptions).toEqual({
+      anthropic: { thinking: { type: "enabled" } },
+    });
   });
 
   it("does not inject empty providerOptions when none are provided", async () => {
