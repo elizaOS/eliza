@@ -339,6 +339,10 @@ async function composeOwnerFacingScheduledTaskText(
         now: new Date(record.firedAtIso),
       });
       const summaryText = assembled.report.summaryText.trim();
+      if (record.metadata) {
+        record.metadata.checkinReportId = assembled.report.reportId;
+        record.metadata.checkinKind = assembled.report.kind;
+      }
       if (summaryText.length > 0) return summaryText;
       throw new Error("Morning check-in assembler returned empty summaryText");
     } catch (error) {

@@ -19,6 +19,7 @@ import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.ts";
+import { CheckinService } from "../checkin/checkin-service.js";
 import { resolvePendingPromptsStore } from "../pending-prompts/store.js";
 import { LifeOpsRepository } from "../repository.js";
 import { completeFiredTasksOnOwnerReply } from "./inbound-reply-completion.js";
@@ -32,6 +33,7 @@ interface FiredTaskSeed {
   firedAtIso: string;
   completionCheck: ScheduledTaskCompletionCheck;
   subject?: ScheduledTask["subject"];
+  metadata?: ScheduledTask["metadata"];
 }
 
 async function seedFiredTask(
@@ -52,7 +54,7 @@ async function seedFiredTask(
     ownerVisible: true,
     completionCheck: seed.completionCheck,
     ...(seed.subject ? { subject: seed.subject } : {}),
-    metadata: { pendingPromptRoomId: seed.roomId },
+    metadata: { pendingPromptRoomId: seed.roomId, ...(seed.metadata ?? {}) },
     state: {
       status: "fired",
       firedAt: seed.firedAtIso,
@@ -135,6 +137,67 @@ describe("inbound-reply completion — production wiring", () => {
       (entry) => entry.transition === "completed",
     );
     expect(completedEntry?.reason).toBe("completion-check:user_replied_within");
+  }, 180_000);
+
+  it("an owner reply to a fired check-in records the check-in report acknowledgement so escalation does not ratchet to max", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const checkins = new CheckinService(runtime);
+    const base = Date.parse("2026-05-12T14:00:00.000Z");
+
+    await checkins.runMorningCheckin({
+      now: new Date(base - 48 * 60 * 60_000),
+    });
+    await checkins.runMorningCheckin({
+      now: new Date(base - 24 * 60 * 60_000),
+    });
+    const repliedReport = await checkins.runMorningCheckin({
+      now: new Date(base - 5 * 60_000),
+    });
+    expect(await checkins.getEscalationLevel(new Date(base))).toBe(3);
+
+    const roomId = "room-checkin-ack";
+    const task = await seedFiredTask(runtime, {
+      roomId,
+      firedAtIso: new Date(base - 4 * 60_000).toISOString(),
+      completionCheck: { kind: "user_replied_within" },
+      metadata: { checkinReportId: repliedReport.reportId },
+    });
+
+    const reply = ownerReply(runtime, roomId);
+    reply.createdAt = base;
+    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { message: reply });
+
+    expect(await persistedStatus(runtime, task.taskId)).toBe("completed");
+    expect(await checkins.getEscalationLevel(new Date(base))).toBe(2);
+  }, 180_000);
+
+  it("an owner reply after a sleep-cycle check-in acknowledges the latest unacknowledged report", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const checkins = new CheckinService(runtime);
+    const base = Date.parse("2026-05-12T14:00:00.000Z");
+
+    await checkins.runMorningCheckin({
+      now: new Date(base - 48 * 60 * 60_000),
+    });
+    await checkins.runMorningCheckin({
+      now: new Date(base - 24 * 60 * 60_000),
+    });
+    const repliedReport = await checkins.runMorningCheckin({
+      now: new Date(base - 5 * 60_000),
+    });
+    expect(await checkins.getEscalationLevel(new Date(base))).toBe(3);
+
+    const reply = ownerReply(runtime, "room-sleep-cycle-checkin");
+    reply.createdAt = base;
+    (reply as { metadata?: Record<string, unknown> }).metadata = {
+      checkinReportId: repliedReport.reportId,
+    };
+    const result = await completeFiredTasksOnOwnerReply(runtime, reply);
+
+    expect(result.evaluated).toHaveLength(0);
+    expect(await checkins.getEscalationLevel(new Date(base))).toBe(2);
   }, 180_000);
 
   it("a reply in a different room leaves the fired task untouched", async () => {
