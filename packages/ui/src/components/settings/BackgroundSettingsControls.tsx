@@ -51,6 +51,7 @@ import {
   addUserBackgroundEntry,
   loadUserBackgroundCatalog,
 } from "../../state/user-background-catalog";
+import { resolveApiUrl, resolveAppAssetUrl } from "../../utils/asset-url";
 import {
   BackgroundImageError,
   fileToBackgroundDataUrl,
@@ -67,8 +68,31 @@ function presetPreviewStyle(color: string) {
   };
 }
 
-/** A live thumbnail for one catalog entry, drawn from its palette (no image load). */
+function resolvePreviewImageUrl(url: string): string {
+  if (
+    url.startsWith("data:") ||
+    url.startsWith("blob:") ||
+    /^[a-z][a-z0-9+.-]*:/i.test(url) ||
+    url.startsWith("//")
+  ) {
+    return url;
+  }
+  if (url.startsWith("/api/") || url.startsWith("api/")) {
+    return resolveApiUrl(url);
+  }
+  return resolveAppAssetUrl(url);
+}
+
+/** A live thumbnail for one catalog entry. Image entries paint the real source. */
 function catalogPreviewStyle(entry: BackgroundCatalogEntry) {
+  if (entry.kind === "image") {
+    return {
+      backgroundImage: `url("${resolvePreviewImageUrl(entry.source)}")`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+    };
+  }
   const c0 = entry.palette[0] ?? DEFAULT_BACKGROUND_COLOR;
   const c1 = entry.palette[1] ?? c0;
   const c2 = entry.palette[2] ?? entry.palette[entry.palette.length - 1] ?? c1;
