@@ -465,12 +465,12 @@ describe("PresenceSignalBridgeService view-switch + reaction signals (#14689)", 
     expect(mockState.activitySignals).toHaveLength(1);
     expect(mockState.activitySignals[0]).toMatchObject({
       source: "app_lifecycle",
-      platform: "agent_view",
+      platform: "app_view",
       state: "active",
       metadata: expect.objectContaining({
-        eventType: "VIEW_SWITCHED",
+        eventType: EventType.VIEW_SWITCHED,
         viewId: "wallet",
-        initiatedBy: "user",
+        viewLabel: "Wallet",
       }),
     });
   });

@@ -358,18 +358,6 @@ export class PresenceSignalBridgeService extends Service {
     await this.captureActivityFromAction(payload);
   };
 
-  private readonly viewSwitchedHandler = async (
-    payload: ViewSwitchedPayload,
-  ): Promise<void> => {
-    await this.captureActivityFromViewSwitch(payload);
-  };
-
-  private readonly reactionReceivedHandler = async (
-    payload: MessagePayload,
-  ): Promise<void> => {
-    await this.captureActivityFromReaction(payload);
-  };
-
   static override async start(
     runtime: IAgentRuntime,
   ): Promise<PresenceSignalBridgeService> {
@@ -472,100 +460,6 @@ export class PresenceSignalBridgeService extends Service {
     );
   }
 
-  private async captureActivityFromViewSwitch(
-    payload: ViewSwitchedPayload,
-  ): Promise<void> {
-    // Only the owner navigating counts as presence. Agent-initiated switches
-    // (action/evaluator navigation) are the agent moving itself, not the owner
-    // being active, so they must not read as owner activity (#14689).
-    if (payload.initiatedBy === "agent") {
-      return;
-    }
-    const viewId =
-      typeof payload.viewId === "string" && payload.viewId.length > 0
-        ? payload.viewId
-        : "unknown";
-    const observedAt = new Date().toISOString();
-    const fingerprint = `view:${viewId}`;
-    const observedMs = Date.parse(observedAt);
-    const existing = this.recentFingerprints.get(fingerprint);
-    if (
-      existing !== undefined &&
-      Number.isFinite(observedMs) &&
-      observedMs - existing < DEDUPE_WINDOW_MS
-    ) {
-      return;
-    }
-    if (Number.isFinite(observedMs)) {
-      this.recentFingerprints.set(fingerprint, observedMs);
-    }
-    const repository = new LifeOpsRepository(this.runtime);
-    await repository.createActivitySignal(
-      createLifeOpsActivitySignal({
-        agentId: String(this.runtime.agentId),
-        source: "app_lifecycle",
-        platform: "agent_view",
-        state: "active",
-        observedAt,
-        idleState: "active",
-        idleTimeSeconds: 0,
-        onBattery: null,
-        health: null,
-        metadata: {
-          eventType: "VIEW_SWITCHED",
-          viewId,
-          initiatedBy: payload.initiatedBy,
-          deviceId: getDeviceId(),
-        },
-      }),
-    );
-  }
-
-  private async captureActivityFromReaction(
-    payload: MessagePayload,
-  ): Promise<void> {
-    // A tapback/reaction from someone other than the agent is an owner (or
-    // contact) touchpoint. Reuse the message identity readers; skip the agent's
-    // own reactions so the agent reacting does not read as owner presence.
-    const entityId = readMessageEntityId(payload);
-    if (!entityId || entityId === String(this.runtime.agentId)) {
-      return;
-    }
-    const observedAt = readMessageTimestamp(payload);
-    const fingerprint = `${EventType.REACTION_RECEIVED}:${entityId}:${observedAt}`;
-    const observedMs = Date.parse(observedAt);
-    const existing = this.recentFingerprints.get(fingerprint);
-    if (
-      existing !== undefined &&
-      Number.isFinite(observedMs) &&
-      observedMs - existing < DEDUPE_WINDOW_MS
-    ) {
-      return;
-    }
-    if (Number.isFinite(observedMs)) {
-      this.recentFingerprints.set(fingerprint, observedMs);
-    }
-    const repository = new LifeOpsRepository(this.runtime);
-    await repository.createActivitySignal(
-      createLifeOpsActivitySignal({
-        agentId: String(this.runtime.agentId),
-        source: "connector_activity",
-        platform: readPlatform(payload),
-        state: "active",
-        observedAt,
-        idleState: null,
-        idleTimeSeconds: 0,
-        onBattery: null,
-        health: null,
-        metadata: {
-          eventType: "REACTION_RECEIVED",
-          entityId,
-          deviceId: getDeviceId(),
-        },
-      }),
-    );
-  }
-
   private async captureActivityFromMessage(
     eventType:
       | EventType.MESSAGE_RECEIVED
@@ -580,6 +474,9 @@ export class PresenceSignalBridgeService extends Service {
       return;
     }
     if (isAgentEntity && !handle) {
+      return;
+    }
+    if (isAgentEntity && eventType === EventType.REACTION_RECEIVED) {
       return;
     }
     const observedAt = readMessageTimestamp(payload);
