@@ -19,7 +19,7 @@ import { chromium } from "playwright";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..", "..", "..", "..");
-const evidenceDir = join(repoRoot, ".github", "issue-evidence");
+const evidenceDir = join(repoRoot, "test-results", "evidence");
 await mkdir(evidenceDir, { recursive: true });
 const outDir = join(here, "output");
 await mkdir(outDir, { recursive: true });

@@ -21,7 +21,7 @@ bun run audit:type-duplication:update-baseline  # re-baseline after a triaged cl
 Outputs:
 
 - `reports/type-duplication.json` — full machine output (gitignored).
-- `.github/issue-evidence/10195-type-duplication.md` — committed summary.
+- `test-results/evidence/10195-type-duplication.md` — committed summary.
 - `packages/scripts/type-duplication-audit.baseline.json` — per-class counts
   for advisory drift detection (`--check`).
 

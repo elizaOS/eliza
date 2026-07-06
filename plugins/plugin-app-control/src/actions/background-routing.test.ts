@@ -4,7 +4,7 @@
  * surface under a live model's Stage-1 output.
  *
  * Ground truth is the committed misroute trajectory
- * `.github/issue-evidence/10694-gemma4-live-scenarios/trajectory-variance-undo-misroute.json`:
+ * `test-results/evidence/10694-gemma4-live-scenarios/trajectory-variance-undo-misroute.json`:
  * on "Undo the background change." gemma-4-31b emitted
  * `contexts:["settings"], candidateActions:["UPDATE_SETTINGS","RESET_SETTINGS"]`.
  * The UPDATE_SETTINGS candidate alias-hinted VIEWS (exact score 1.0) and the

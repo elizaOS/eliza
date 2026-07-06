@@ -41,7 +41,7 @@ Validates real openWakeWord wake-context evidence for issue #9958.
 
 Required report schema: ${OPENWAKEWORD_SCHEMA}
 Default report: ELIZA_VOICE_OPENWAKEWORD_REPORT
-Default output: ELIZA_VOICE_OPENWAKEWORD_OUT, or ELIZA_VOICE_MATRIX_OUT/<cell>, or .github/issue-evidence/9958-voice-openwakeword-evaluation
+Default output: ELIZA_VOICE_OPENWAKEWORD_OUT, or ELIZA_VOICE_MATRIX_OUT/<cell>, or test-results/evidence/9958-voice-openwakeword-evaluation
 `);
 }
 

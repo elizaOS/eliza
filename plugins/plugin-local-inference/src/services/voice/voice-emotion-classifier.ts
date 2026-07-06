@@ -8,7 +8,7 @@
  * acoustic-read path is DEAD at runtime today: nothing loads a `files.emotion`
  * GGUF, and no production caller passes a `model` (acoustic read) into
  * `attributeVoiceEmotion()`, so the fusion runs text/prosody-only. This is a
- * tracked gap (see .github/issue-evidence/12216-runtime-status.md, K1 follow-up),
+ * tracked gap (see test-results/evidence/12216-runtime-status.md, K1 follow-up),
  * NOT a silent fallback hidden behind a stub. Only the pure types + projection
  * helpers below survive.
  *

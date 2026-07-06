@@ -22,7 +22,7 @@
  *   09 disable toggle · 10 delete confirm · 11 deleted (disk cleaned)
  *   12 empty state after removing every account · mobile viewport captures
  *
- * Screenshots + logs land in .github/issue-evidence/10722-accounts-ui-e2e/.
+ * Screenshots + logs land in test-results/evidence/10722-accounts-ui-e2e/.
  * Exits non-zero on any failed assertion or page error.
  *
  * Run: node packages/app/e2e/accounts-ui/run-accounts-ui-e2e.mjs
@@ -46,8 +46,8 @@ const appDir = resolve(here, "../..");
 const uiSrc = join(repoRoot, "packages", "ui", "src");
 const evidenceDir = join(
   repoRoot,
-  ".github",
-  "issue-evidence",
+  "test-results",
+  "evidence",
   "10722-accounts-ui-e2e",
 );
 await mkdir(evidenceDir, { recursive: true });

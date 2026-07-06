@@ -9,7 +9,7 @@
  *
  * Example:
  *   node packages/benchmarks/mobile-resource/lab-artifacts.mjs \
- *     --input=.github/issue-evidence/12072-lab \
+ *     --input=test-results/evidence/12072-lab \
  *     --out=packages/benchmarks/mobile-resource/results/lab \
  *     --fail-on-gaps
  */

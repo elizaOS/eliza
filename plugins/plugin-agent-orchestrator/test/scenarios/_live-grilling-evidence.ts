@@ -182,7 +182,7 @@ async function main() {
     modelCalls: modelCalls.length,
   };
 
-  const outDir = ".github/issue-evidence/8932-orchestrator-scenarios";
+  const outDir = "test-results/evidence/8932-orchestrator-scenarios";
   mkdirSync(outDir, { recursive: true });
   const outPath = `${outDir}/live-grilling-trajectory.json`;
   writeFileSync(outPath, JSON.stringify(report, null, 2));

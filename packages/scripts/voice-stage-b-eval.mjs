@@ -41,7 +41,7 @@ Validates the Stage-B STT evidence report for issue #9958.
 
 Required report schema: ${STAGE_B_SCHEMA}
 Default report: ELIZA_VOICE_STAGE_B_REPORT
-Default output: ELIZA_VOICE_STAGE_B_OUT, or ELIZA_VOICE_MATRIX_OUT/<cell>, or .github/issue-evidence/9958-voice-stage-b-evaluation
+Default output: ELIZA_VOICE_STAGE_B_OUT, or ELIZA_VOICE_MATRIX_OUT/<cell>, or test-results/evidence/9958-voice-stage-b-evaluation
 `);
 }
 

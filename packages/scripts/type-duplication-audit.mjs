@@ -54,8 +54,8 @@ const ALLOWLIST_PATH = path.join(
 const JSON_OUT_PATH = path.join(ROOT, "reports", "type-duplication.json");
 const MARKDOWN_OUT_PATH = path.join(
   ROOT,
-  ".github",
-  "issue-evidence",
+  "test-results",
+  "evidence",
   "10195-type-duplication.md",
 );
 // Reviewed baseline of per-class candidate counts (#10201). Drift against
@@ -118,7 +118,7 @@ Options:
 
 Writes:
   reports/type-duplication.json                       (gitignored, full output)
-  .github/issue-evidence/10195-type-duplication.md    (committed summary)
+  test-results/evidence/10195-type-duplication.md    (committed summary)
 `);
 }
 

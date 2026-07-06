@@ -5,7 +5,7 @@
  * reviewable artifacts: an asciicast `.cast` recording (the "video walkthrough"),
  * a viewport snapshot (screen capture), and a scrollback snapshot (output
  * capture). Writes them to `TUI_EVIDENCE_DIR` when set (the CI job points it at
- * `.github/issue-evidence/9969-tui-e2e/` and uploads the dir); otherwise to a
+ * `test-results/evidence/9969-tui-e2e/` and uploads the dir); otherwise to a
  * temp dir so local runs stay clean.
  */
 

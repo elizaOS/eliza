@@ -3,7 +3,7 @@
  * External browser dataset benchmark runner - REAL Chromium engine (#10333).
  *
  * Runs the committed Mind2Web/WebArena-style external dataset records through
- * the real Chromium benchmark executor and writes an issue-evidence artifact.
+ * the real Chromium benchmark executor and writes an evidence artifact.
  * This complements `bench:external`, which keeps the JSDOM web-mode lane fast
  * for regular package tests.
  */
@@ -57,7 +57,7 @@ async function main() {
     opts.out ??
     path.join(
       repoRoot,
-      ".github/issue-evidence/10333-browser-external-dataset",
+      "test-results/evidence/10333-browser-external-dataset",
       `external-dataset-chromium-${opts.policy}-run.json`,
     );
 

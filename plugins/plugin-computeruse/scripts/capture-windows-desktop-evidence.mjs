@@ -57,7 +57,7 @@ const SCRIPT_NAME = "capture-windows-desktop-evidence.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(here, "..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const defaultOutDir = path.join(repoRoot, ".github/issue-evidence", SLUG);
+const defaultOutDir = path.join(repoRoot, "test-results/evidence", SLUG);
 const approvalConfigPath = path.join(
   os.homedir(),
   ".eliza",
@@ -83,7 +83,7 @@ function usage() {
     "",
     "Captures repeatable Windows desktop computer-use evidence for GitHub issue #9581.",
     "Writes a report, manifest, screenshots, and README into",
-    `.github/issue-evidence/${SLUG}/ by default.`,
+    `test-results/evidence/${SLUG}/ by default.`,
     "",
     "The input proof is non-disruptive: it drives a freshly-launched, controlled",
     "Notepad window (not the user's apps) and terminates it when done.",

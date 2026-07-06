@@ -29,7 +29,7 @@ screenshots/
 public/build-info.json
 
 # Aesthetic audit screenshot output (generated, not source of truth; reviewed
-# cloud-audit evidence is committed under .github/issue-evidence/10725-*)
+# cloud-audit evidence is committed under test-results/evidence/10725-*)
 aesthetic-audit-output/
 aesthetic-audit-output-cloud/
 

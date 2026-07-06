@@ -338,8 +338,7 @@ async function main(): Promise<void> {
 					process.cwd(),
 					"..",
 					"..",
-					".github",
-					"issue-evidence",
+					"test-results", "evidence",
 					"12256-echo",
 					"echo-aec-evidence.json",
 				);

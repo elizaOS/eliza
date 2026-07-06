@@ -181,7 +181,7 @@ describe("platform evidence validator", () => {
       "[linux-desktop-evidence] 9 checks validated (requires_device_evidence)",
     );
     // Windows desktop CUA is fully device-verified (#9581 — real Windows 11 host,
-    // 9/9 passed; see .github/issue-evidence/9581-windows-cua/). Its release
+    // 9/9 passed; see test-results/evidence/9581-windows-cua/). Its release
     // manifest is promoted to `passed`, like macOS evidence fields were promoted
     // when that on-device evidence landed.
     expect(result.stdout).toContain(

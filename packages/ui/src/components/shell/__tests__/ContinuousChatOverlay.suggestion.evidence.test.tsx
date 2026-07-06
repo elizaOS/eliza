@@ -4,7 +4,7 @@
 // suggestion bubble (accept "Do it" + dismiss affordance, data-proactive-
 // suggestion) and of a plain assistant reply, so a reviewer can confirm the
 // affordance renders without reading the component source. Output lands in
-// .github/issue-evidence/11387-proactive-suggestions/rendered-dom.html.
+// test-results/evidence/11387-proactive-suggestions/rendered-dom.html.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -57,7 +57,7 @@ function makeMessage(overrides: Partial<ShellMessage> = {}): ShellMessage {
 const __dir = dirname(fileURLToPath(import.meta.url));
 const EVIDENCE = resolve(
   __dir,
-  "../../../../../../.github/issue-evidence/11387-proactive-suggestions/rendered-dom.html",
+  "../../../../../../test-results/evidence/11387-proactive-suggestions/rendered-dom.html",
 );
 
 afterEach(() => {

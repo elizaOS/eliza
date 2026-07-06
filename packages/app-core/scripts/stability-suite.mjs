@@ -46,7 +46,7 @@ function parseScoreboardPath() {
     return path.resolve(process.argv[idx + 1]);
   return path.join(
     REPO_ROOT,
-    ".github/issue-evidence/10197-agent-stability-scoreboard.md",
+    "test-results/evidence/10197-agent-stability-scoreboard.md",
   );
 }
 

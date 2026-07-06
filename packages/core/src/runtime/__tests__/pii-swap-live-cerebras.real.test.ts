@@ -8,7 +8,7 @@
  * PII) and that the live model's own response references the surrogate — then
  * runs the execution boundary and asserts the real values are restored into the
  * tool-call args. Every artifact is written to
- * `.github/issue-evidence/10469-pii-ner/` for manual review.
+ * `test-results/evidence/10469-pii-ner/` for manual review.
  *
  * Gated on CEREBRAS_API_KEY (post-merge / manual lane); skips cleanly otherwise.
  */
@@ -33,11 +33,10 @@ import {
 } from "../../types";
 import { executePlannedToolCall } from "../execute-planned-tool-call";
 
-
 const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
 const EVIDENCE_DIR = join(
 	__dirname,
-	"../../../../../.github/issue-evidence/10469-pii-ner",
+	"../../../../../test-results/evidence/10469-pii-ner",
 );
 
 async function callCerebras(prompt: string): Promise<string> {

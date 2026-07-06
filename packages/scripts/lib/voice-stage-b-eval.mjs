@@ -364,8 +364,8 @@ export function defaultStageBOutputDir(
   }
   return path.resolve(
     repoRoot,
-    ".github",
-    "issue-evidence",
+    "test-results",
+    "evidence",
     `${STAGE_B_ISSUE}-voice-stage-b-evaluation`,
   );
 }

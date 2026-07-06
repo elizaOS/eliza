@@ -44,7 +44,7 @@ const NOISE_SNR_DB = 10;
 
 function parseArgs(argv) {
   const args = {
-    out: path.join(".github", "issue-evidence", `${ISSUE}-stt-stage-b-eval`),
+    out: path.join("test-results", "evidence", `${ISSUE}-stt-stage-b-eval`),
     voice: "Samantha",
   };
   for (let i = 0; i < argv.length; i++) {

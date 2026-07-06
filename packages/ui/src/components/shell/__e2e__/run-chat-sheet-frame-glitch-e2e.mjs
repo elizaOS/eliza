@@ -26,7 +26,7 @@
  * asserts each FIRES — proving the harness is not a no-op.
  *
  * Evidence (frame burst, per-frame diff overlays, opacity trace, summary, logs)
- * → .github/issue-evidence/9142-frame-glitch/.
+ * → test-results/evidence/9142-frame-glitch/.
  *
  * Run: bun run --cwd packages/ui test:chat-sheet-frame-glitch-e2e
  *      add --canary to run the self-test that the detectors fire.
@@ -52,8 +52,7 @@ const repoRoot = join(here, "..", "..", "..", "..", "..", "..");
 const outDir = join(here, "output-frame-glitch");
 const evidenceDir = join(
   repoRoot,
-  ".github",
-  "issue-evidence",
+  "test-results", "evidence",
   "9142-frame-glitch",
 );
 const CANARY = process.argv.includes("--canary");

@@ -5,7 +5,7 @@
  * device boot, local agent startup, WebView driving, and cloud provisioning.
  * This module keeps those phases visible in one run directory even when the
  * process exits non-zero, and prepares inline-friendly evidence files for PR
- * comments without sending new output to the retired issue-evidence tree.
+ * comments without sending new output to the retired repo evidence tree.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

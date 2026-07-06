@@ -1,2 +1,1 @@
 *.patch whitespace=-blank-at-eol
-.github/issue-evidence/**/*.pb binary

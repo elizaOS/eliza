@@ -35,7 +35,7 @@
  *
  * The baseline file (test-realness-baseline.json) is a reference snapshot used
  * for delta reporting on the report-only categories; it does not gate. Use
- * `--report` / `--json` to produce issue-evidence artifacts for #10718.
+ * `--report` / `--json` to produce evidence artifacts for #10718.
  */
 
 import { execFileSync } from "node:child_process";

@@ -162,9 +162,6 @@ plugins/plugin-local-inference/src/services/voice-prewarm.js
 *.onnx
 *.wav
 *.mp3
-# Human-verifiable audio evidence is force-tracked under issue-evidence.
-!.github/issue-evidence/**/*.wav
-!.github/issue-evidence/**/*.mp3
 # Real-speech ASR/decode test fixtures (relocated out of the removed
 # omnivoice.cpp submodule; see that dir's README).
 !plugins/plugin-local-inference/native/audio-fixtures/*.wav

@@ -5,7 +5,7 @@
  * Renders each ScreenSpot-Web-style task in a real Chromium, overlays the
  * target's TRUE on-screen bbox (orange outline) and the grounder's predicted
  * click point (cyan dot), screenshots it, and writes a scorecard. Artifacts land
- * under `.github/issue-evidence/10333-web-grounding/`.
+ * under `test-results/evidence/10333-web-grounding/`.
  *
  * Usage (from repo root):  bun plugins/plugin-browser/scripts/capture-web-grounding-evidence.mjs
  */
@@ -17,7 +17,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..");
 const OUT =
   process.env.OUT ||
-  join(repoRoot, ".github", "issue-evidence", "10333-web-grounding");
+  join(repoRoot, "test-results", "evidence", "10333-web-grounding");
 mkdirSync(OUT, { recursive: true });
 
 const { createChromiumBenchmarkEngine } = await import(

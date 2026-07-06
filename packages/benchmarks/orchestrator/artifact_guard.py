@@ -66,7 +66,7 @@ def _in_benchmark_scope(parts: list[str]) -> bool:
     # (``/benchmarks/**`` → ``packages/benchmarks/…`` or a top-level
     # ``benchmarks/…``) and the repo-root ``benchmark_results/``. A ``trajectories``
     # directory anywhere else — ``packages/core/src/features/trajectories`` source,
-    # UI components, or intentionally-committed ``.github/issue-evidence/…``
+    # UI components, or intentionally-committed ``test-results/evidence/…``
     # evidence — is NOT benchmark run output and must never be flagged.
     if parts and parts[0].startswith("benchmark_results"):
         return True

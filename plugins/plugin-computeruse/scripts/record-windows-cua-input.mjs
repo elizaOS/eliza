@@ -29,7 +29,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
 const outDir = path.join(
   repoRoot,
-  ".github/issue-evidence/9581-windows-cua/input-recording",
+  "test-results/evidence/9581-windows-cua/input-recording",
 );
 const framesDir = path.join(outDir, "frames");
 

@@ -13,6 +13,7 @@ import {
   boundRowBlock,
   evaluatePrEvidence,
   extractEvidenceRows,
+  findRetiredRepoEvidenceFiles,
   hasArtifactReference,
   hasNaWithReason,
   isChecked,
@@ -230,6 +231,30 @@ describe("check-pr-evidence row primitives", () => {
     assert.equal(
       findings.find((finding) => finding.id === "backend-logs").status,
       "blank",
+    );
+  });
+
+  it("rejects changed files under the retired repo-local evidence path", () => {
+    assert.deepEqual(
+      findRetiredRepoEvidenceFiles([
+        "packages/app/test-results/report.json",
+        `${RETIRED_REPO_EVIDENCE_PATH}/13676-backend.txt`,
+        String.raw`.github\issue-evidence\13676-windows-path.txt`,
+      ]),
+      [
+        `${RETIRED_REPO_EVIDENCE_PATH}/13676-backend.txt`,
+        String.raw`.github\issue-evidence\13676-windows-path.txt`,
+      ],
+    );
+  });
+
+  it("accepts non-repo evidence directories in the diff", () => {
+    assert.deepEqual(
+      findRetiredRepoEvidenceFiles([
+        "packages/evidence/src/schema.ts",
+        "packages/app/test-results/issue-evidence/report.json",
+      ]),
+      [],
     );
   });
 

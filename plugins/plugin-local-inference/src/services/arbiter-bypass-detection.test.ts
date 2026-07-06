@@ -72,7 +72,7 @@ describe("memory-arbiter capability-contract bypass detection (C11)", () => {
 		// KNOWN BYPASS. This is a real, if partial, violation of the plugin's own
 		// "never load models independently" rule. The fix (registering
 		// `transcribe`/`text-to-speech` capabilities) is a feature change tracked
-		// as a follow-up in .github/issue-evidence/12216-runtime-status.md.
+		// as a follow-up in test-results/evidence/12216-runtime-status.md.
 		const voiceFfi = subsystemMatches("voice", DIRECT_FFI_RE);
 		expect(voiceFfi.length).toBeGreaterThan(0);
 	});

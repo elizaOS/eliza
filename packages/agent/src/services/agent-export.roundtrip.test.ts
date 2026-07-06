@@ -458,7 +458,7 @@ describe("#9963 agent export → import round-trip", () => {
     const { writeFileSync, mkdirSync } = await import("node:fs");
     const evidenceDir = join(
       import.meta.dirname,
-      "../../../../.github/issue-evidence/9963-backup-restore",
+      "../../../../test-results/evidence/9963-backup-restore",
     );
     mkdirSync(evidenceDir, { recursive: true });
 

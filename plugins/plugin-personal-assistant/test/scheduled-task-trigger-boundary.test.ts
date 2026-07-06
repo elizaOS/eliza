@@ -3,7 +3,7 @@
  * (#10721 / #10723).
  *
  * Found by hand-reviewing a LIVE trajectory
- * (.github/issue-evidence/10757-cli-live-lane/report.json): the model
+ * (test-results/evidence/10757-cli-live-lane/report.json): the model
  * naturally emitted `{type:"cron", schedule:"0 8,21 * * *"}` and
  * `{kind:"cron", cron:"…"}` — the first bounced with a bare MISSING_TRIGGER,
  * the second passed the old kind-only check and blew up inside the runner as

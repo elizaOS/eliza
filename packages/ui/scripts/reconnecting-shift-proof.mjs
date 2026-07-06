@@ -25,7 +25,7 @@ import { chromium } from "playwright";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..", "..", "..");
 const args = process.argv.slice(2);
-let outDir = resolve(repoRoot, ".github/issue-evidence");
+let outDir = resolve(repoRoot, "test-results/evidence");
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--out") outDir = resolve(args[++i]);
 }

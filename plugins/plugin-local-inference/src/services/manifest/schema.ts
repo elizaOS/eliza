@@ -332,7 +332,7 @@ export const Eliza1FilesSchema = z.object({
 	// runtime, so this slot is currently unused-if-shipped. Wiring the native
 	// read + running it on `isFinal` transcript snapshots and fusing via the
 	// single `emotion-attribution.ts` point is a tracked follow-up
-	// (.github/issue-evidence/12216-runtime-status.md). All tiers would ship the
+	// (test-results/evidence/12216-runtime-status.md). All tiers would ship the
 	// same Wav2Small student (the on-device budget is dominated by the LM, not
 	// this small head); a 2b entry bundle may still choose to omit it.
 	emotion: z.array(Eliza1FileEntrySchema).optional(),

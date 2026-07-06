@@ -3,7 +3,7 @@
  * External browser dataset benchmark runner (#10333).
  *
  * Runs committed Mind2Web/WebArena-style fixtures through the real
- * plugin-browser BROWSER command router and writes an issue-evidence artifact.
+ * plugin-browser BROWSER command router and writes an evidence artifact.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -42,7 +42,7 @@ async function main() {
     opts.out ??
     path.join(
       repoRoot,
-      ".github/issue-evidence/10333-browser-external-dataset",
+      "test-results/evidence/10333-browser-external-dataset",
       `external-dataset-${opts.policy}-run.json`,
     );
 

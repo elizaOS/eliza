@@ -9,7 +9,7 @@
  * Usage:
  *   const cap = attachLogCapture(page, { allowConsoleNoise, allowNetworkNoise });
  *   // ... drive the page ...
- *   await cap.write(".github/issue-evidence/1234-frontend-logs.json");
+ *   await cap.write("test-results/evidence/1234-frontend-logs.json");
  *   if (cap.hasErrors()) process.exitCode = 1;
  */
 

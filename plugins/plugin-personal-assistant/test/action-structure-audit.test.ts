@@ -122,7 +122,7 @@ describe("LifeOps canonical action structure", () => {
 // the goals store), (2) the umbrellas expose the `confirmed` preview->confirm
 // handshake, and (3) SCHEDULED_TASKS de-claims new-habit creation so a
 // habit-shaped ask reaches OWNER_ROUTINES/OWNER_REMINDERS instead of the raw
-// scheduler surface. Evidence: .github/issue-evidence/
+// scheduler surface. Evidence: test-results/evidence/
 // 9950-gemma4-31b-live-trajectories/brush-teeth-basic-after-fix*.report.json.
 describe("brush-teeth habit-save routing contract (#9950/#10722)", () => {
   const findAction = (name: string) =>

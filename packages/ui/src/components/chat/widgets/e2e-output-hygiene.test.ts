@@ -3,7 +3,7 @@
 // packages/ui/src/components/chat/widgets/__e2e__/output/ — generated
 // artifacts that belong in the gitignored output dir (regenerate via
 // `test:task-pipeline-e2e` / `test:orchestrator-accounts-e2e`; the committed
-// evidence copies live in .github/issue-evidence/13536-pipeline-activity-inline/).
+// evidence copies live in test-results/evidence/13536-pipeline-activity-inline/).
 //
 // This test fails if:
 //  1. the output dir loses its .gitignore coverage (check-ignore stops
@@ -66,7 +66,7 @@ describe("chat widgets __e2e__/output hygiene (#13896)", () => {
       tracked,
       `generated e2e artifacts are committed under ${OUTPUT_DIR} — delete them ` +
         "(regenerate via test:task-pipeline-e2e; evidence copies belong in " +
-        ".github/issue-evidence/13536-pipeline-activity-inline/)",
+        "test-results/evidence/13536-pipeline-activity-inline/)",
     ).toEqual([]);
   });
 });

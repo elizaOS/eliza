@@ -153,7 +153,7 @@ def _openclaw_factory(model: str | None) -> AgentFactory:
     natural-language ``payloads``: it cannot surface the harness tool catalog
     as executable ``tool_calls``, so the lane completes every task yet scores
     ``mean_score=0.000``. Use it to exercise the real CLI path, not to publish
-    a scalar. See ``.github/issue-evidence/13777-multitask-live/openclaw-cli-native/``.
+    a scalar. See ``test-results/evidence/13777-multitask-live/openclaw-cli-native/``.
     """
     ensure_benchmark_adapter_importable("openclaw")
     from openclaw_adapter.client import OpenClawClient

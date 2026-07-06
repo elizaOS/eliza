@@ -143,8 +143,8 @@ describe("reflexion re-spawn injection (#8899)", () => {
     expect(trace.respawnPrompt).toContain("Past Attempt Failures");
 
     // Dump the pair only when an evidence dir is requested, so CI stays read-only
-    // while a maintainer can regenerate .github/issue-evidence/8899-… on demand:
-    //   ORCH_8899_EVIDENCE_DIR=.github/issue-evidence/8899-reflexion-respawn \
+    // while a maintainer can regenerate test-results/evidence/8899-… on demand:
+    //   ORCH_8899_EVIDENCE_DIR=test-results/evidence/8899-reflexion-respawn \
     //     bunx vitest run … reflexion-respawn
     const evidenceDir = process.env.ORCH_8899_EVIDENCE_DIR;
     if (evidenceDir) {

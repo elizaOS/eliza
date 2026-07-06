@@ -7,7 +7,7 @@
  * exactly one `head-fired` {@link FusedWakeEventDetail} carrying the firing
  * confidence. This is the CI-deterministic half of the bridge proof; the real
  * `libwakeword` + GGUF + PCM end-to-end run is
- * `.github/issue-evidence/10351-fused-wake-bridge/validate-fused-wake-e2e.mjs`.
+ * `test-results/evidence/10351-fused-wake-bridge/validate-fused-wake-e2e.mjs`.
  */
 
 import { describe, expect, it } from "vitest";

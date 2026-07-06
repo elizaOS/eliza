@@ -52,7 +52,7 @@ export interface VoiceEmotionAsrFeatures {
  * native GGUF read is not wired (native/AGENTS.md §11 K1), and no production
  * caller supplies this `model`, so the fusion runs text/prosody-only. Wiring a
  * native acoustic read is a tracked follow-up (see
- * .github/issue-evidence/12216-runtime-status.md). When it lands, pass the raw
+ * test-results/evidence/12216-runtime-status.md). When it lands, pass the raw
  * classifier output directly; the fusion logic in `attributeVoiceEmotion` is
  * the single place that combines acoustic + text-side evidence (R3-emotion §3,
  * "Two confidence scores, no fusion rule" risk).

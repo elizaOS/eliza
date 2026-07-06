@@ -21,7 +21,7 @@ import { outboundDraftOptionsFromMessage } from "./sendDraft.ts";
  * incomplete, its output is parsed into the draft, and a model failure degrades
  * gracefully. The model's extraction QUALITY (incl. non-English) is proven by the
  * live-model trajectory in
- * `.github/issue-evidence/10470-llm-driven-actions/sendDraft-extraction.md`,
+ * `test-results/evidence/10470-llm-driven-actions/sendDraft-extraction.md`,
  * not by these stubs.
  */
 function msg(text: string): Memory {

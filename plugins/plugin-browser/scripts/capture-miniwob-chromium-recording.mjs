@@ -6,7 +6,7 @@
  * through a real Chromium step by step, screenshots each step, and stitches the
  * frames into an animated GIF (via ffmpeg) so a reviewer can watch the agent
  * navigate a real browser end to end. Artifacts land under
- * `.github/issue-evidence/10333-browser-real-chromium/`.
+ * `test-results/evidence/10333-browser-real-chromium/`.
  *
  * Usage (from repo root):  bun plugins/plugin-browser/scripts/capture-miniwob-chromium-recording.mjs
  */
@@ -19,8 +19,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..");
 const OUT = join(
   repoRoot,
-  ".github",
-  "issue-evidence",
+  "test-results",
+  "evidence",
   "10333-browser-real-chromium",
 );
 mkdirSync(OUT, { recursive: true });

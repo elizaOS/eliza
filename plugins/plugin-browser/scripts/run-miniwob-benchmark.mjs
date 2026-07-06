@@ -50,7 +50,7 @@ async function main() {
     opts.out ??
     path.join(
       repoRoot,
-      ".github/issue-evidence/9476-browser-benchmark",
+      "test-results/evidence/9476-browser-benchmark",
       `miniwob-${opts.policy}-run.json`,
     );
 

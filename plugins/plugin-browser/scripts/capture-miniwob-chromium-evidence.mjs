@@ -5,7 +5,7 @@
  * Drives the SAME `BrowserBenchmarkAdapter` + oracle through a real Chromium
  * (puppeteer-core) and screenshots each task's start page and post-oracle
  * (solved) page, plus a machine-readable scorecard. Artifacts land under
- * `.github/issue-evidence/10333-browser-real-chromium/`.
+ * `test-results/evidence/10333-browser-real-chromium/`.
  *
  * Usage (from repo root):
  *   node plugins/plugin-browser/scripts/capture-miniwob-chromium-evidence.mjs
@@ -18,7 +18,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..");
 const OUT =
   process.env.OUT ||
-  join(repoRoot, ".github", "issue-evidence", "10333-browser-real-chromium");
+  join(repoRoot, "test-results", "evidence", "10333-browser-real-chromium");
 mkdirSync(OUT, { recursive: true });
 
 const { createChromiumBenchmarkEngine } = await import(

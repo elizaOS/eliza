@@ -80,6 +80,21 @@ export function hasArtifactReference(text) {
   return false;
 }
 
+export function parseChangedFiles(value) {
+  if (Array.isArray(value))
+    return value.flatMap((entry) => parseChangedFiles(entry));
+  return String(value ?? "")
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+export function findRetiredRepoEvidenceFiles(files) {
+  return parseChangedFiles(files).filter((file) =>
+    file.replaceAll("\\", "/").startsWith(`${RETIRED_REPO_EVIDENCE_PATH}/`),
+  );
+}
+
 export function isChecked(rowText) {
   return /^\s*[-*]\s*\[\s*[xX]\s*\]/m.test(rowText);
 }
@@ -191,6 +206,18 @@ function readBody(args) {
   }
 }
 
+function readChangedFiles(args) {
+  const idx = args.indexOf("--changed-files-file");
+  if (idx === -1) return [];
+
+  const file = args[idx + 1];
+  if (!file) {
+    console.error("--changed-files-file requires a path argument");
+    process.exit(2);
+  }
+  return parseChangedFiles(readFileSync(file, "utf8"));
+}
+
 function usage() {
   console.log(`Usage: node scripts/check-pr-evidence.mjs [options]
 
@@ -198,6 +225,8 @@ Options:
   --body-file <path>  Read the PR body from a file (default: stdin).
   --labels <labels>   Comma-separated PR labels; ui/frontend/native require
                       concrete screenshot/video artifacts.
+  --changed-files-file <path>
+                      Reject committed files under retired repo evidence paths.
   --json              Print machine-readable findings JSON.
   --self-test         Run the planted-fixture self-check.
   --help, -h          Show this help.
@@ -310,6 +339,16 @@ function runSelfTest() {
   }
 
   {
+    const retired = findRetiredRepoEvidenceFiles([
+      "packages/app/test-results/report.json",
+      `${RETIRED_REPO_EVIDENCE_PATH}/13676-backend.txt`,
+    ]);
+    if (retired.length !== 1) {
+      failures.push("retired repo evidence changed file should be rejected");
+    }
+  }
+
+  {
     const body = REQUIRED_EVIDENCE_ROWS.slice(1)
       .map(
         ({ id }) =>
@@ -331,7 +370,7 @@ function runSelfTest() {
     for (const failure of failures) console.error(`  - ${failure}`);
     process.exit(1);
   }
-  console.log("check-pr-evidence self-test passed (8 cases).");
+  console.log("check-pr-evidence self-test passed (9 cases).");
 }
 
 function main() {
@@ -348,12 +387,18 @@ function main() {
   const body = readBody(args);
   const labelsIdx = args.indexOf("--labels");
   const labels = labelsIdx === -1 ? "" : (args[labelsIdx + 1] ?? "");
+  const retiredEvidenceFiles = findRetiredRepoEvidenceFiles(
+    readChangedFiles(args),
+  );
   const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
     labels,
   });
+  const allOk = ok && retiredEvidenceFiles.length === 0;
 
   if (args.includes("--json")) {
-    console.log(JSON.stringify({ ok, findings }, null, 2));
+    console.log(
+      JSON.stringify({ ok: allOk, findings, retiredEvidenceFiles }, null, 2),
+    );
   } else {
     for (const finding of findings) {
       const symbol = finding.status === "ok" ? "ok  " : "FAIL";
@@ -361,15 +406,19 @@ function main() {
         `  [${symbol}] ${finding.label} (${finding.id}): ${finding.status}`,
       );
     }
+    if (retiredEvidenceFiles.length > 0) {
+      console.log("  [FAIL] Retired repo evidence files:");
+      for (const file of retiredEvidenceFiles) console.log(`    - ${file}`);
+    }
   }
 
-  if (!ok) {
+  if (!allOk) {
     const bad = findings.filter((finding) => finding.status !== "ok");
     console.error(
-      `\nEvidence gate FAILED: ${bad.length} row(s) blank or missing. ` +
+      `\nEvidence gate FAILED: ${bad.length} row(s) blank or missing, ${retiredEvidenceFiles.length} retired repo evidence file(s) changed. ` +
         "Attach the artifact inline (GitHub attachment URL) or write `N/A - <reason>` on each row. " +
         "For ui/frontend/native PRs, before/after screenshots and walkthrough video require concrete inline artifact links. " +
-        "Retired repo-local evidence paths do not count as evidence.",
+        "Retired repo-local evidence paths do not count as evidence and must not be committed.",
     );
     process.exit(1);
   }

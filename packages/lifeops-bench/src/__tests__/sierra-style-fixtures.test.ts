@@ -103,7 +103,7 @@ describe("Sierra-style benchmark fixtures", () => {
       passAt1: true,
       recoveryCategories: fixture.passCriteria.requiredFailureCategories,
       manuallyReviewedOutputs: [
-        ".github/issue-evidence/13361-sierra-style-voice/run-001.json",
+        "test-results/evidence/13361-sierra-style-voice/run-001.json",
       ],
     };
 

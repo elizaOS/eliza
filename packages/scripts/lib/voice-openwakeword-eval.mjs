@@ -293,8 +293,8 @@ export function defaultOpenWakeWordOutputDir(
   }
   return path.resolve(
     repoRoot,
-    ".github",
-    "issue-evidence",
+    "test-results",
+    "evidence",
     `${OPENWAKEWORD_ISSUE}-voice-openwakeword-evaluation`,
   );
 }

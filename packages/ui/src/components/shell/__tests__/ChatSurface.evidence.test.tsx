@@ -17,7 +17,7 @@ import type { ShellMessage } from "../shell-state";
 
 const OUT_DIR = resolve(
   dirname(new URL(import.meta.url).pathname),
-  "../../../../../../.github/issue-evidence/12348-one-message-row",
+  "../../../../../../test-results/evidence/12348-one-message-row",
 );
 
 function dump(name: string, html: string): void {

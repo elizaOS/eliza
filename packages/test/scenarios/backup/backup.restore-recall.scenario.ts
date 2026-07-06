@@ -1,7 +1,7 @@
 /**
  * Evidence scenario for #9963.
  *
- * The prep script in `.github/issue-evidence/9963-live-restore-prep.ts`
+ * The prep script in `test-results/evidence/9963-live-restore-prep.ts`
  * creates a real local encrypted backup, wipes DB/media/vault state, restores
  * it, then this scenario runs against the restored PGlite directory. The turn
  * must recall the fact that only exists if the restored DB is active.

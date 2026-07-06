@@ -184,7 +184,7 @@ export interface TrajectoryValidationResult {
   stageKinds: string[];
   /**
    * Live-vs-fabricated grade for this trajectory's evidence, derived from the
-   * providers its model stages recorded (#13623). CI/issue-evidence gates can
+   * providers its model stages recorded (#13623). CI evidence gates can
    * read this instead of a human eyeballing `report.providerName`.
    */
   evidenceGrade: TrajectoryEvidenceGrade;
@@ -201,7 +201,7 @@ export interface ValidateTrajectoryOptions {
    * grade is not `live` — i.e. every model stage was served by the
    * deterministic proxy, `"default"`, or an empty provider — fails validation
    * with an error. Off by default so structural validation is unchanged; the
-   * issue-evidence / CI convention turns it on to reject proxy-produced
+   * evidence / CI convention turns it on to reject proxy-produced
    * "proof".
    */
   requireLiveProvider?: boolean;

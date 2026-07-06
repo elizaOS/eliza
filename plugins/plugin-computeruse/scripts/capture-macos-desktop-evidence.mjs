@@ -54,7 +54,7 @@ const SCRIPT_NAME = "capture-macos-desktop-evidence.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(here, "..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const defaultOutDir = path.join(repoRoot, ".github/issue-evidence", SLUG);
+const defaultOutDir = path.join(repoRoot, "test-results/evidence", SLUG);
 const approvalConfigPath = path.join(
   os.homedir(),
   ".eliza",
@@ -67,7 +67,7 @@ function usage() {
     "",
     "Captures repeatable macOS desktop computer-use evidence for GitHub issue #9581.",
     "The harness writes a report, manifest candidate, screenshots, and README into",
-    `.github/issue-evidence/${SLUG}/ by default.`,
+    `test-results/evidence/${SLUG}/ by default.`,
   ].join("\n");
 }
 

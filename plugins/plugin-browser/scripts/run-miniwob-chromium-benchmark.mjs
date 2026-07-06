@@ -68,7 +68,7 @@ async function main() {
     opts.out ??
     path.join(
       repoRoot,
-      ".github/issue-evidence/10333-browser-real-chromium",
+      "test-results/evidence/10333-browser-real-chromium",
       `miniwob-chromium-${opts.policy}-run.json`,
     );
 

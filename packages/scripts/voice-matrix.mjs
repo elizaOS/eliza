@@ -117,7 +117,7 @@ const CELLS = [
     ],
     env: UI_SMOKE_MATRIX_ENV,
     evidence: [
-      ".github/issue-evidence/8785-voice-headful",
+      "test-results/evidence/8785-voice-headful",
       "packages/app/test-results",
     ],
     probe: "web",
@@ -145,7 +145,7 @@ const CELLS = [
     ],
     evidence: [
       "$VOICE_REAL_MATRIX_OUT/voice-workbench-real",
-      ".github/issue-evidence/9147-real-audio-matrix-m4max.md",
+      "test-results/evidence/9147-real-audio-matrix-m4max.md",
     ],
     probe: "linuxFused",
   },
@@ -237,7 +237,7 @@ const CELLS = [
       "--slug",
       "voice-ios",
     ],
-    evidence: [`.github/issue-evidence/${ISSUE}-voice-ios-ios-sim.*`],
+    evidence: [`test-results/evidence/${ISSUE}-voice-ios-ios-sim.*`],
     probe: "ios",
   },
   {
@@ -299,7 +299,7 @@ const CELLS = [
     },
     class: "mobile-live-voice",
     command: ["bun", "run", "--cwd", "packages/app", "test:e2e:android:local"],
-    evidence: ["packages/app/test-results", ".github/issue-evidence"],
+    evidence: ["packages/app/test-results", "test-results/evidence"],
     probe: "android",
   },
   {
@@ -380,7 +380,7 @@ const CELLS = [
     },
     class: "stt-evaluation",
     command: ["node", "packages/scripts/stage-b-stt-bench.mjs"],
-    evidence: [".github/issue-evidence/9958-stt-stage-b-eval"],
+    evidence: ["test-results/evidence/9958-stt-stage-b-eval"],
     probe: "stageBSttApple",
   },
   {
@@ -408,7 +408,7 @@ const CELLS = [
 function parseArgs(argv) {
   const args = {
     run: false,
-    out: path.join(".github", "issue-evidence", `${ISSUE}-voice-matrix`),
+    out: path.join("test-results", "evidence", `${ISSUE}-voice-matrix`),
     platforms: new Set(),
     includeHeavy: false,
     requireGreen: false,
