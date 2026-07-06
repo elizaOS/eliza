@@ -410,11 +410,11 @@ function SoftButton({
       )}
     >
       {Icon ? (
-        <Icon className="h-[26px] w-[26px]" aria-hidden={true} />
+        <Icon className="h-[30px] w-[30px]" aria-hidden={true} />
       ) : glyph ? (
-        // Hand-drawn glyphs fill their 36-unit box, so 24px balances their
+        // Hand-drawn glyphs fill their 36-unit box, so 28px balances their
         // optical weight against the padded lucide mic/send marks.
-        <Glyph d={glyph} className="h-[24px] w-[24px]" />
+        <Glyph d={glyph} className="h-[28px] w-[28px]" />
       ) : null}
     </Button>
   );
@@ -564,7 +564,7 @@ function SheetGrabber({
           // strictly anti-phase with the pill bar so the two are never on screen
           // together. The bar paints at full opacity — a prior regression pinned
           // it to `opacity-0`, leaving the handle grabbable but invisible (#9142).
-          "h-2.5 w-16 rounded-full opacity-100 transition-colors duration-300",
+          "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
           // Pulse while the mic is hot / a reply is speaking: the warm bar
           // breathes instead of sitting static, the "audio is on" cue.
           glow
@@ -639,7 +639,7 @@ function PillHandle({
           // the WRAPPER's `pillOpacity` crossfade (anti-phase with the grabber).
           // The bar paints at full opacity — a prior regression pinned it to
           // `opacity-0`, leaving the pill handle grabbable but invisible (#9142).
-          "h-2.5 w-16 rounded-full opacity-100 transition-colors duration-300",
+          "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
           // Same pulse as the SheetGrabber bar: while audio is on and the chat
           // is collapsed to the pill, the pill itself pulses.
           glow
