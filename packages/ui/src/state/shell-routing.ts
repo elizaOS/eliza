@@ -25,11 +25,3 @@ export function getTabForShellView(view: ShellView, lastNativeTab: Tab): Tab {
 
   return lastNativeTab;
 }
-
-export function shouldStartAtCharacterSelectOnLaunch(_params: {
-  firstRunNeedsOptions: boolean;
-  navPath: string;
-  urlTab: Tab | null;
-}): boolean {
-  return false;
-}
