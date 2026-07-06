@@ -15,8 +15,8 @@
  *      views, so its mutating surface IS the view-mutation vocabulary.
  *   2. Scan the whole first-party shell-view component tree
  *      (`packages/ui/src/components`) for calls to mutating client methods
- *      and for raw
- *      `fetch`/`client.fetch`/`client.rawRequest` calls with a mutating verb.
+ *      and for raw `fetch`/`client.fetch`/`client.rawRequest` calls with a
+ *      mutating verb or dynamic `method` variable.
  *   3. Every discovered mutation site must resolve in the curated registry
  *      (`view-action-ratchet.registry.json`) to exactly one of:
  *        - `action`: the registered action id that is its chat twin,
@@ -174,8 +174,8 @@ function callArgsSpan(src, openParen) {
  * Stable key token for a raw request's first argument: a string/template
  * literal with `${…}` collapsed to `*`, or the identifier expression text.
  */
-function firstArgToken(argsSpan) {
-  const trimmed = argsSpan.trimStart();
+function collapseLiteralToken(value) {
+  const trimmed = value.trimStart();
   const quote = trimmed[0];
   if (quote === '"' || quote === "'" || quote === "`") {
     let out = "";
@@ -202,8 +202,57 @@ function firstArgToken(argsSpan) {
     }
     return out;
   }
+  return null;
+}
+
+function pathTokensFromExpression(expression) {
+  const tokens = [];
+  for (const match of expression.matchAll(/(["'`])(?:\\.|(?!\1)[\s\S])*\1/g)) {
+    const literal = match[0];
+    if (!literal.includes("/api/")) continue;
+    const token = collapseLiteralToken(literal);
+    if (token) {
+      tokens.push(token);
+    }
+  }
+  return [...new Set(tokens)];
+}
+
+function resolvedIdentifierToken(src, beforeIndex, name) {
+  const windowStart = Math.max(0, beforeIndex - 4000);
+  const before = src.slice(windowStart, beforeIndex);
+  const pattern = new RegExp(
+    `\\b(?:const|let)\\s+${name}\\s*(?::[^=;]+)?=\\s*([\\s\\S]*?);`,
+    "g",
+  );
+  let last = null;
+  for (const match of before.matchAll(pattern)) last = match[1];
+  if (!last) return null;
+  const tokens = pathTokensFromExpression(last);
+  return tokens.length > 0 ? tokens.join("|") : null;
+}
+
+function firstArgToken(argsSpan, src, beforeIndex) {
+  const trimmed = argsSpan.trimStart();
+  const literal = collapseLiteralToken(trimmed);
+  if (literal !== null) return literal;
   const ident = trimmed.match(/^[A-Za-z_$][\w$.]*/);
-  return ident ? ident[0] : "<expr>";
+  if (!ident) return "<expr>";
+  if (!ident[0].includes(".")) {
+    return resolvedIdentifierToken(src, beforeIndex, ident[0]) ?? ident[0];
+  }
+  return ident[0];
+}
+
+function rawRequestMethodToken(argsSpan) {
+  const literal = argsSpan.match(/method:\s*["'`](POST|PUT|PATCH|DELETE)["'`]/);
+  if (literal) return literal[1];
+  const dynamic = argsSpan.match(/method:\s*([A-Za-z_$][\w$]*)/);
+  if (dynamic) return `DYNAMIC(${dynamic[1]})`;
+  if (/(?:^|[{,])\s*method\s*(?:[,}])/.test(argsSpan)) {
+    return "DYNAMIC(method)";
+  }
+  return null;
 }
 
 /** After `.fetch` / `.rawRequest`, skip optional generic args to find `(`. */
@@ -253,11 +302,11 @@ export function scanViewSource(src, mutatingMethods) {
     const open = openParenAfter(src, m.index + m[0].length);
     if (open === -1) continue;
     const argsSpan = callArgsSpan(src, open);
-    const verb = argsSpan.match(/method:\s*["'](POST|PUT|PATCH|DELETE)["']/);
+    const verb = rawRequestMethodToken(argsSpan);
     if (!verb) continue;
     sites.push({
       kind: "raw",
-      key: `${verb[1]} ${firstArgToken(argsSpan)}`,
+      key: `${verb} ${firstArgToken(argsSpan, src, m.index)}`,
       line: lineOf(m.index),
     });
   }
@@ -334,6 +383,11 @@ function runSelfTest() {
   const viewSrc = `
     const x = await client.deleteFile(name);
     const y = await client.listFiles(); // read — not a site
+    const method: "POST" | "DELETE" = action === "delete" ? "DELETE" : "POST";
+    const path = action === "delete"
+      ? \`/api/skills/curated/\${encodeURIComponent(name)}\`
+      : \`/api/skills/curated/\${encodeURIComponent(name)}/\${action}\`;
+    await client.fetch(path, { method });
     await client.rawRequest(\`/api/secrets/\${key}\`, { method: "PUT" });
     await client.fetch<{ ok: boolean }>("/api/browser-bridge/open", {
       method: "POST",
@@ -346,6 +400,7 @@ function runSelfTest() {
   const clientSites = sites.filter((s) => s.kind === "client");
   const rawKeys = sites.filter((s) => s.kind === "raw").map((s) => s.key);
   const wantRaw = [
+    "DYNAMIC(method) /api/skills/curated/*|/api/skills/curated/*/*",
     "PUT /api/secrets/*",
     "POST /api/browser-bridge/open",
     "POST WEBHOOK_URL",
@@ -383,6 +438,18 @@ function runSelfTest() {
       "[view-action-ratchet] self-test failed: real scan no longer sees FilesView deleteFile",
     );
     process.exit(1);
+  }
+  for (const key of [
+    "DYNAMIC(method) /api/skills/curated/*|/api/skills/curated/*/*",
+    "POST */api/lifeops/occurrences/*/complete",
+    "DELETE /api/secrets/logins/*/*",
+  ]) {
+    if (!realScan.some((s) => s.kind === "raw" && s.key === key)) {
+      console.error(
+        `[view-action-ratchet] self-test failed: real scan no longer sees raw key ${key}`,
+      );
+      process.exit(1);
+    }
   }
   console.log("[view-action-ratchet] self-test passed");
 }

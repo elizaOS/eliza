@@ -351,9 +351,9 @@
   "rawSites": {
     "DELETE /api/secrets/inventory/*": { "action": "CREDENTIALS" },
     "DELETE /api/secrets/inventory/*/profiles/*": { "action": "CREDENTIALS" },
-    "DELETE path": {
+    "DELETE /api/secrets/logins/*/*": {
       "action": "CREDENTIALS",
-      "note": "LoginsTab stored-login delete; the endpoint path is held in a local variable"
+      "note": "LoginsTab stored-login delete"
     },
     "PUT /api/secrets/inventory/*": { "action": "CREDENTIALS" },
     "PUT /api/secrets/inventory/*/active-profile": { "action": "CREDENTIALS" },
@@ -383,6 +383,14 @@
         "issue": "#14624",
         "reason": "capabilities training auto-config toggle has no semantic twin"
       }
+    },
+    "POST */api/lifeops/occurrences/*/complete": {
+      "action": "OWNER_TODOS",
+      "note": "TodayTodosWidget completion uses the LifeOps occurrence route; OWNER_TODOS is the user-facing chat twin for todo occurrence completion"
+    },
+    "DYNAMIC(method) /api/skills/curated/*|/api/skills/curated/*/*": {
+      "action": "SKILL",
+      "note": "CharacterLearnedSkillsSection uses a typed POST|DELETE method variable for promote/disable/delete"
     },
     "POST /api/plugins/*/reveal": {
       "exempt": "masked-secret reveal is a guarded read behind a POST; the write twin is CREDENTIALS"
