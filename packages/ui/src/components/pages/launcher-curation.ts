@@ -44,13 +44,12 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "tasks",
   "automations",
   "browser",
-  // Character family — the old single Character hub, split into top-level tiles.
+  // Character family — ONE tile. Personality/Relationships/Skills/Experience
+  // are sections inside it (CharacterSectionNav strip, #13560/#13591); their
+  // standalone tiles live in LAUNCHER_HIDDEN_IDS so the grid shows a single
+  // entry point while every /character/* deep link keeps working.
   "character",
-  // `relationships` moved to LAUNCHER_DEVELOPER_ORDER (#14479) — empty in the
-  // MVP, so hidden from the default grid but still reachable in Developer Mode.
   "documents",
-  "character-skills",
-  "experience",
   "memories",
   "feed",
   "stream",
@@ -59,10 +58,8 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
 /** Developer-gated launcher surfaces, in display order. Shown on the same
  *  launcher page after the apps, only when Developer Mode is on. Mostly tools
  *  (trajectory viewer, database, runtime, logs, skills, plugins) plus
- *  `fine-tuning` (model training, a developer surface not an everyday app) and
- *  `relationships` — a real view that renders empty in the MVP (#14479), so it
- *  is developer-gated (hidden from the everyday grid) but kept and reachable,
- *  not deleted. The whole set hides together under the Developer Mode toggle. */
+ *  `fine-tuning` (model training, a developer surface not an everyday app).
+ *  The whole set hides together under the Developer Mode toggle. */
 export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
   "trajectories",
   "database",
@@ -71,7 +68,6 @@ export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
   "skills",
   "plugins",
   "fine-tuning",
-  "relationships",
 ];
 
 /**
@@ -108,6 +104,13 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   "background",
   "voice",
   "character-select",
+  // Character-family sections — reached via the Character tile's section
+  // strip (CharacterSectionNav); standalone tiles would triple-tile one hub.
+  // The hidden-set check runs on the CANONICAL id, so this also swallows the
+  // `rolodex` alias and `@elizaos/app-relationship-viewer`'s targetTab.
+  "character-skills",
+  "experience",
+  "relationships",
   "desktop",
   // `chat` is the home/primary surface, not a launcher tile — a Chat tile is
   // pure redundancy next to the always-present home chat (#14479).

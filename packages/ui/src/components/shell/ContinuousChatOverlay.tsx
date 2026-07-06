@@ -4369,22 +4369,10 @@ export function ContinuousChatOverlay({
                   </div>
                 ) : null}
                 <div className="pointer-events-auto flex items-center gap-1.5">
-                  {/* Voice on/off: the top-bar master control for bidirectional
-                      voice. Same semantics as a composer-mic tap (hands-free
-                      conversation on/off; ends transcription when live), so
-                      there is exactly ONE voice state machine. */}
-                  <HeaderButton
-                    icon={Mic}
-                    label={
-                      handsFree || recording || transcriptionMode
-                        ? "turn voice off"
-                        : "turn voice on"
-                    }
-                    active={handsFree || recording || transcriptionMode}
-                    disabled={firstRunOpen}
-                    onClick={handleMicClick}
-                    testId="chat-full-voice"
-                  />
+                  {/* Voice lives ONLY on the composer mic. A second top-bar
+                      mic beside Home read as a duplicated control (two
+                      buttons, one voice state machine), so the header keeps
+                      navigation chrome only. */}
                   <HeaderButton
                     icon={Home}
                     label="home"

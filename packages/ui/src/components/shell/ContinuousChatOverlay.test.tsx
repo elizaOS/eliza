@@ -2729,15 +2729,15 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(screen.queryByTestId("chat-full-clear")).toBeNull();
   });
 
-  it("toggles hands-free voice from the header voice button", () => {
+  it("renders NO header voice button — voice lives only on the composer mic", () => {
     const { controller } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
     openSheet();
 
-    // The top-bar voice control shares the composer mic's state machine: a
-    // tap enters/exits the hands-free conversation (voice on/off).
-    fireEvent.click(screen.getByTestId("chat-full-voice"));
-    expect(controller.toggleHandsFree).toHaveBeenCalledTimes(1);
+    // One voice state machine, ONE control: the composer mic. A second
+    // top-bar mic beside Home read as a duplicated control and was removed.
+    expect(screen.queryByTestId("chat-full-voice")).toBeNull();
+    expect(screen.getByTestId("chat-full-launcher")).toBeTruthy();
   });
 
   it("opens the message-search panel from the header search control (#14279)", () => {

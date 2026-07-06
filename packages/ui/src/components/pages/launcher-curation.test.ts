@@ -122,9 +122,11 @@ describe("curateLauncherPages", () => {
     expect(ids(page)).toEqual(["settings", "wallet"]);
   });
 
-  it("hides relationships by default, shows it only in Developer Mode (#14479)", () => {
+  it("never tiles relationships — it is a Character section, not an app", () => {
     const views = [entry("wallet"), entry("relationships"), entry("settings")];
-    // Default (no developer/preview): relationships is developer-gated → hidden.
+    // The character family is ONE launcher tile; Relationships is reached via
+    // the Character section strip (CharacterSectionNav), so no standalone tile
+    // in any profile — including Developer Mode.
     expect(
       ids(
         curateLauncherPages(views, {
@@ -134,7 +136,6 @@ describe("curateLauncherPages", () => {
         }),
       ),
     ).toEqual(["settings", "wallet"]);
-    // Developer Mode on: relationships reappears (kept, not deleted).
     expect(
       ids(
         curateLauncherPages(views, {
@@ -143,7 +144,7 @@ describe("curateLauncherPages", () => {
           cloudActive: true,
         }),
       ),
-    ).toContain("relationships");
+    ).not.toContain("relationships");
   });
 
   it("keeps wallet-group sub-pages out of the launcher", () => {
@@ -407,8 +408,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       "browser",
       "character",
       "documents",
-      "character-skills",
-      "experience",
       "memories",
       "feed",
       "stream",
@@ -419,8 +418,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       "skills",
       "plugins",
       "fine-tuning",
-      // relationships is developer-gated (#14479) — shows in the dev section.
-      "relationships",
     ]);
   });
 
@@ -442,8 +439,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       "browser",
       "character",
       "documents",
-      "character-skills",
-      "experience",
       "memories",
     ]);
   });
@@ -475,7 +470,8 @@ describe("curateLauncherPages — full realistic view set", () => {
       }),
     );
     expect(developerOnly).toContain("fine-tuning");
-    expect(developerOnly).toContain("relationships");
+    // relationships is a Character section, never a tile — even developer-on.
+    expect(developerOnly).not.toContain("relationships");
     for (const id of ["feed", "stream"]) {
       expect(developerOnly).not.toContain(id);
     }
@@ -500,18 +496,17 @@ describe("curateLauncherPages — full realistic view set", () => {
 });
 
 describe("launcher dead-tile guard", () => {
-  it("collapses the legacy 'rolodex' alias into relationships (no standalone dead tile)", () => {
-    // `rolodex` is a routable tab with a launcher tile but no
-    // renderStaticViewRouterTab branch, so a standalone tile bounced the user
-    // back to the launcher fallback. The canonical dedup rewrites it onto
-    // `relationships` (the real contact surface) before it can tile on its own.
+  it("collapses the legacy 'rolodex' alias into relationships and neither tiles", () => {
+    // `rolodex` canonicalizes onto `relationships`, and relationships itself
+    // is hidden (a Character section, not an app) — so the alias produces NO
+    // tile at all instead of a dead standalone one.
     expect(canonicalLauncherId("rolodex")).toBe("relationships");
     const page = curateLauncherPages(
       [entry("chat"), entry("rolodex"), entry("relationships")],
       { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
     expect(ids(page)).not.toContain("rolodex");
-    expect(ids(page)).toContain("relationships");
+    expect(ids(page)).not.toContain("relationships");
   });
 });
 

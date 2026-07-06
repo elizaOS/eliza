@@ -28,6 +28,10 @@ import { dispatchNavigateViewEvent } from "../../events";
 import { snapshotResourceCounters } from "../../perf/resource-counters";
 import { viewLifecycleController } from "../../state/view-lifecycle";
 import {
+  isChunkLoadError,
+  tryChunkReloadRecovery,
+} from "../../utils/chunk-load-recovery";
+import {
   emitViewRuntimeTelemetry,
   installViewRuntimeTelemetryRing,
 } from "../../view-runtime-telemetry";
@@ -113,6 +117,16 @@ export function ViewErrorBoundary({
     (error: Error) => {
       if (reportedError.current === error) return;
       reportedError.current = error;
+      // Mid-session deploy: a lazy view chunk from the running shell's build
+      // is gone from the server. A one-shot reload picks up the current
+      // deployment and heals every view at once — only when the attempt
+      // budget is spent does this fall through to the crash card.
+      if (isChunkLoadError(error) && tryChunkReloadRecovery()) {
+        logger.info(
+          `[ViewLifecycle] view "${viewId}" hit a stale-deploy chunk failure — reloading to the current build`,
+        );
+        return;
+      }
       viewLifecycleController.markCrashed(viewId);
       installViewRuntimeTelemetryRing();
       const snap = snapshotResourceCounters(viewId);

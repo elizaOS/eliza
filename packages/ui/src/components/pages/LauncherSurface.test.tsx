@@ -107,7 +107,9 @@ describe("LauncherSurface", () => {
     expect(screen.queryByTestId("launcher-dock")).toBeNull();
 
     const page = within(screen.getByTestId("launcher-page-window"));
-    expect(page.getByTestId("launcher-tile-chat")).toBeTruthy();
+    // chat is the home surface, not a tile (#14479) — stale assertion fixed:
+    // the tile was removed there but this expectation was left behind.
+    expect(screen.queryByTestId("launcher-tile-chat")).toBeNull();
     expect(page.getByTestId("launcher-tile-settings")).toBeTruthy();
     expect(page.getByTestId("launcher-tile-wallet")).toBeTruthy();
     expect(page.getByTestId("launcher-tile-browser")).toBeTruthy();

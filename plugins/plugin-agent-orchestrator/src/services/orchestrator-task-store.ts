@@ -106,14 +106,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isDuplicateColumnError(error: unknown): boolean {
-  if (!isRecord(error)) return false;
-  if (error.code === "42701") return true;
-  const message =
-    typeof error.message === "string" ? error.message.toLowerCase() : "";
-  return (
-    message.includes("duplicate column") ||
-    /column .+ already exists/.test(message)
-  );
+  // Drizzle-backed adapters surface driver failures wrapped in
+  // DrizzleQueryError ("Failed query: …") with the real duplicate-column
+  // error on `cause`; without unwrapping, the idempotent ADD COLUMN in
+  // ensureInitialized rethrows on every boot and the cached-rejected init
+  // permanently 500s the orchestrator API on pglite/postgres runtimes.
+  for (let depth = 0; isRecord(error) && depth < 8; depth++) {
+    if (error.code === "42701") return true;
+    const message =
+      typeof error.message === "string" ? error.message.toLowerCase() : "";
+    if (
+      message.includes("duplicate column") ||
+      /column .+ already exists/.test(message)
+    ) {
+      return true;
+    }
+    error = error.cause;
+  }
+  return false;
 }
 
 /** Boundary guard for documents loaded from disk/JSON. A document must carry a

@@ -27,7 +27,7 @@
 
 import type { StewardSessionErrorCode } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
-import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { getCookie, setCookie } from "hono/cookie";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import {
   mintStewardTokenFromClaims,
@@ -35,11 +35,7 @@ import {
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
-import {
-  canMutateLegacyStewardCookies,
-  LEGACY_STEWARD_COOKIES,
-  stewardCookieNames,
-} from "@/lib/auth/steward-cookies";
+import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import { signStewardMutatingRequest } from "@/lib/steward/sign";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -382,18 +378,19 @@ app.post("/", async (c) => {
 
   if (refresh.kind === "error") {
     logRefresh(`upstream-${refresh.status}`);
-    // Steward returns 401 when the refresh token itself is invalid/revoked —
-    // the browser's HttpOnly cookie is stale, so clear it so the next page
-    // load goes straight to a login surface.
+    // Steward 401s BOTH for a genuinely dead token AND for the loser of a
+    // refresh-token ROTATION RACE: tokens are single-use, the console and the
+    // app share one domain-wide cookie, and their 15-min timers eventually
+    // fire together — the second request presents the just-consumed token.
+    // This branch used to deleteCookie() the whole session domain-wide on any
+    // 401, which turned every lost race into "signed out everywhere" (and the
+    // delete could land AFTER the winner's Set-Cookie, destroying the fresh
+    // session too). Keep the cookies instead: in the race case the browser
+    // jar already holds the winner's NEW token, so the very next refresh
+    // succeeds and the session self-heals; for a genuinely dead token every
+    // future refresh 401s and the login surface shows regardless — same
+    // terminal UX, one extra failed call, no domain-wide nuke.
     if (refresh.status === 401) {
-      const domain = cookieDomainForHost(c.req.header("host"));
-      const opts = domain ? { path: "/", domain } : { path: "/" };
-      deleteCookie(c, cookieNames.token, opts);
-      deleteCookie(c, cookieNames.refreshToken, opts);
-      deleteCookie(c, cookieNames.authed, opts);
-      if (canMutateLegacyStewardCookies(c.env.ENVIRONMENT)) {
-        deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, opts);
-      }
       return c.json(errorBody("Refresh token rejected", "invalid_token"), 401);
     }
     return c.json(
