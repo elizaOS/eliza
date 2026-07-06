@@ -123,7 +123,6 @@ Get an API key from
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS` | Max image-description response tokens | `8192` |
 | `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | Image generation model override | `google/nano-banana-2/text-to-image` |
 | `ELIZAOS_CLOUD_TTS_MODEL` | Text-to-speech model | `gpt-5-mini-tts` |
-| `ELIZAOS_CLOUD_TRANSCRIPTION_MODEL` | Audio transcription model | `gpt-5-mini-transcribe` |
 | `ELIZAOS_CLOUD_USE_STT` | Per-service opt-in for Cloud STT when `ELIZAOS_CLOUD_ENABLED` is unset (capability-only mode) | unset |
 | `ELIZAOS_CLOUD_STT_TIMEOUT_MS` | Cloud STT request timeout | `60000` |
 | `ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY` | Enables experimental telemetry metadata | `false` |

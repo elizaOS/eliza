@@ -249,7 +249,6 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS` | `8192` |
 | `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | `google/nano-banana-2/text-to-image` |
 | `ELIZAOS_CLOUD_TTS_MODEL` | `gpt-5-mini-tts` |
-| `ELIZAOS_CLOUD_TRANSCRIPTION_MODEL` | `gpt-5-mini-transcribe` |
 | `ELIZAOS_CLOUD_USE_STT` | unset — per-service opt-in for Cloud STT in capability-only mode (`ELIZAOS_CLOUD_ENABLED` unset) |
 | `ELIZAOS_CLOUD_STT_TIMEOUT_MS` | `60000` |
 

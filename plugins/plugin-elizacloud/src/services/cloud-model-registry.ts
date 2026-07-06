@@ -166,10 +166,6 @@ export class CloudModelRegistryService extends Service {
         label: "image generation model",
       },
       { key: "ELIZAOS_CLOUD_TTS_MODEL", label: "TTS model" },
-      {
-        key: "ELIZAOS_CLOUD_TRANSCRIPTION_MODEL",
-        label: "transcription model",
-      },
     ];
 
     for (const { key, label } of settingsToCheck) {

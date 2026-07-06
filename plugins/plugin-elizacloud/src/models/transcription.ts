@@ -1,7 +1,7 @@
 import type { IAgentRuntime, TranscriptionParams } from "@elizaos/core";
 import { fetchWithSsrfGuard, logger } from "@elizaos/core";
 import type { OpenAITranscriptionParams } from "../types";
-import { getSetting, isCloudSttAvailable, resolveCloudTimeoutMs } from "../utils/config";
+import { isCloudSttAvailable, resolveCloudTimeoutMs } from "../utils/config";
 import { detectAudioMimeType } from "../utils/helpers";
 import { createElizaCloudClient } from "../utils/sdk-client";
 
@@ -67,9 +67,6 @@ export async function handleTranscription(
     );
   }
 
-  let modelName = getSetting(runtime, "ELIZAOS_CLOUD_TRANSCRIPTION_MODEL", "gpt-5-mini-transcribe");
-  logger.log(`[ELIZAOS_CLOUD] Using TRANSCRIPTION model: ${modelName}`);
-
   let blob: Blob;
   let extraParams: OpenAITranscriptionParams | null = null;
 
@@ -110,9 +107,6 @@ export async function handleTranscription(
       blob = params.audio as Blob;
     }
     extraParams = params;
-    if (typeof params.model === "string" && params.model) {
-      modelName = params.model;
-    }
   } else {
     throw new Error(
       "TRANSCRIPTION expects a Blob/File/Buffer, an http(s) audio URL string, { audioUrl }, or an object { audio: Blob/File/Buffer, mimeType?, language?, response_format?, timestampGranularities?, prompt?, temperature?, model? }"

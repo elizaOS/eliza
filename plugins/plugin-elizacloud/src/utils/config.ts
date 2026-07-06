@@ -241,14 +241,6 @@ export function getTTSModel(runtime: IAgentRuntime): string {
   return getSetting(runtime, "ELIZAOS_CLOUD_TTS_MODEL", "gpt-5-mini-tts") as string;
 }
 
-export function getTranscriptionModel(runtime: IAgentRuntime): string {
-  return getSetting(
-    runtime,
-    "ELIZAOS_CLOUD_TRANSCRIPTION_MODEL",
-    "gpt-5-mini-transcribe"
-  ) as string;
-}
-
 export function getExperimentalTelemetry(runtime: IAgentRuntime): boolean {
   const setting = getSetting(runtime, "ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY", "false");
   return String(setting).toLowerCase() === "true";

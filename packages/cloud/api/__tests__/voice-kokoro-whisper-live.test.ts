@@ -11,16 +11,40 @@
  * does not require a Cloudflare Worker deploy.
  */
 import { describe, expect, test } from "bun:test";
+import { resolveWhisperSttModel } from "../v1/voice/stt/whisper-model";
 
 const LIVE = process.env.ELIZA_VOICE_LIVE_RAILWAY === "1";
+const LIVE_SPANISH =
+  LIVE && Boolean(process.env.ELIZA_VOICE_LIVE_SPANISH_AUDIO_URL);
 const KOKORO_TTS_URL =
   process.env.KOKORO_TTS_URL ??
   "https://kokoro-tts-production-aa4b.up.railway.app";
 const WHISPER_STT_URL =
   process.env.WHISPER_STT_URL ??
   "https://whisper-stt-production-6fc7.up.railway.app";
+const WHISPER_MODEL = resolveWhisperSttModel(process.env.WHISPER_STT_MODEL);
 
 const maybe = LIVE ? test : test.skip;
+const maybeSpanish = LIVE_SPANISH ? test : test.skip;
+
+async function transcribeAudio(
+  bytes: Uint8Array,
+  filename: string,
+  mimeType: string,
+  language?: string,
+) {
+  const form = new FormData();
+  form.append("file", new File([bytes], filename, { type: mimeType }));
+  form.append("model", WHISPER_MODEL);
+  if (language) form.append("language", language);
+  const sttRes = await fetch(
+    `${WHISPER_STT_URL.replace(/\/+$/, "")}/v1/audio/transcriptions`,
+    { method: "POST", body: form },
+  );
+  expect(sttRes.status).toBe(200);
+  const sttJson = (await sttRes.json()) as { text?: string };
+  return (sttJson.text ?? "").toLowerCase();
+}
 
 describe("free cloud voice — live Railway contract (Kokoro TTS + Whisper STT)", () => {
   maybe(
@@ -49,20 +73,35 @@ describe("free cloud voice — live Railway contract (Kokoro TTS + Whisper STT)"
       );
 
       // 2) STT — the exact request the cloud-api /v1/voice/stt Whisper branch makes.
-      const form = new FormData();
-      form.append("file", new File([wav], "tts.wav", { type: "audio/wav" }));
-      form.append("model", "Systran/faster-whisper-tiny.en");
-      const sttRes = await fetch(
-        `${WHISPER_STT_URL.replace(/\/+$/, "")}/v1/audio/transcriptions`,
-        { method: "POST", body: form },
-      );
-      expect(sttRes.status).toBe(200);
-      const sttJson = (await sttRes.json()) as { text?: string };
-      const transcript = (sttJson.text ?? "").toLowerCase();
+      const transcript = await transcribeAudio(wav, "tts.wav", "audio/wav");
       // The round-trip should recover the salient words.
       expect(transcript).toContain("hello");
       expect(transcript).toContain("eliza");
       expect(transcript).toContain("cloud");
+    },
+    60_000,
+  );
+
+  maybeSpanish(
+    "Whisper transcribes a non-English clip when a multilingual model is configured",
+    async () => {
+      const url = process.env.ELIZA_VOICE_LIVE_SPANISH_AUDIO_URL;
+      if (!url)
+        throw new Error("ELIZA_VOICE_LIVE_SPANISH_AUDIO_URL is required");
+      const expected = (
+        process.env.ELIZA_VOICE_LIVE_SPANISH_EXPECT ?? "recordatorio"
+      ).toLowerCase();
+      const clip = await fetch(url);
+      expect(clip.status).toBe(200);
+      const bytes = new Uint8Array(await clip.arrayBuffer());
+      expect(bytes.byteLength).toBeGreaterThan(1000);
+      const transcript = await transcribeAudio(
+        bytes,
+        "spanish.wav",
+        clip.headers.get("content-type") ?? "audio/wav",
+        "es",
+      );
+      expect(transcript).toContain(expected);
     },
     60_000,
   );
