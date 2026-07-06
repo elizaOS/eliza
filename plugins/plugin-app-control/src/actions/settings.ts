@@ -384,8 +384,7 @@ function readNullableString(value: unknown): string | null {
 /**
  * Validate the status body, requiring the fields the narration reads. Returns
  * null for a missing or malformed payload so a broken status route surfaces as
- * an error instead of a fabricated version pair — the previous `data as`
- * cast let a shapeless body render as a healthy "unknown on unknown".
+ * an error instead of a fabricated version pair.
  */
 function parseUpdateStatusPayload(data: unknown): UpdateStatusPayload | null {
 	if (!data || typeof data !== "object") return null;

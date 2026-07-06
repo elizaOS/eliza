@@ -1472,8 +1472,8 @@ describe("SETTINGS action: set on an owned route section", () => {
 	it("fails rather than narrating a healthy status from a malformed payload", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
 			ok: true,
-			// Missing currentVersion and updateAvailable: previously rendered as
-			// the healthy-looking "Current: unknown on unknown".
+			// Missing required status fields must never be narrated as a healthy
+			// version/channel pair.
 			data: { channel: "stable" },
 		}));
 		const { result, texts } = await invoke(
