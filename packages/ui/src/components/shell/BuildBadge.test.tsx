@@ -40,6 +40,11 @@ describe("BuildBadge", () => {
     render(<BuildBadge />);
     const badge = await screen.findByTestId("build-badge");
     expect(badge.textContent).toContain("58f6bb3beb · Jul 03 17:42 MDT");
+    const anchor = badge.closest("[data-aesthetic-overlay-ignore='true']");
+    expect(anchor).not.toBeNull();
+    expect((anchor as HTMLElement).style.paddingBottom).toContain(
+      "--eliza-continuous-chat-clearance",
+    );
     expect(fetch).toHaveBeenCalledWith(
       "/build-info.json",
       expect.objectContaining({ cache: "no-store" }),

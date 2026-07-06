@@ -2549,6 +2549,15 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/logger$/,
         replacement: path.resolve(elizaRoot, "packages/logger/src/index.ts"),
       },
+      // Memory import UI uses the browser facade only; keep it on source so
+      // renderer audits do not require building the Node parser package dist.
+      {
+        find: /^@elizaos\/import-conversations\/browser$/,
+        replacement: path.resolve(
+          elizaRoot,
+          "packages/import-conversations/src/browser.ts",
+        ),
+      },
       // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), redirect
       // the two lazy cloud entry points to passthrough stubs — placed BEFORE the
       // broad @elizaos/ui/* alias below (first match wins) so Rollup never

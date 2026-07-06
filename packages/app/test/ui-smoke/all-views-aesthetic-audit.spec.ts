@@ -791,6 +791,7 @@ async function collectOverlayClearanceIssues(
     ).slice(0, 400);
     for (const control of controls) {
       if (overlay.contains(control) || control.contains(overlay)) continue;
+      if (control.closest("[data-aesthetic-overlay-ignore='true']")) continue;
       const style = getComputedStyle(control);
       if (
         style.display === "none" ||

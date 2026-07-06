@@ -212,6 +212,7 @@ export function BuildBadge() {
     <>
       <div
         data-testid="build-badge-anchor"
+        data-aesthetic-overlay-ignore="true"
         className="pointer-events-none fixed left-0 bottom-0 z-[9997]"
         style={{
           paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.375rem)",

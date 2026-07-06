@@ -203,8 +203,8 @@ only navigation affordance).
   here only as a pointer; there is no remaining segment-kind divergence.
 - **D2 - per-message rail.** ChatView owns edit/delete/speak/retry/suggest;
   the overlay exposes press-and-hold copy only (mobile-first). Intentional.
-- **D3 - topic chips / grouped transcript.** Overlay-only. Intentional.
-- **D4 - chat-sidebar host.** Neither surface mounts it; it lives in the
+- **D2 - topic chips / grouped transcript.** Overlay-only. Intentional.
+- **D3 - chat-sidebar host.** Neither surface mounts it; it lives in the
   desktop layout wrapper (`TasksEventsPanel`). The overlay has no side rail by
   design (pull-up sheet).
 
