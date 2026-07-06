@@ -10,8 +10,8 @@
  * an unlabeled `success:false` (`expression.trim` throw). It then created a
  * SECOND identical reminder on the next turn under a different
  * idempotencyKey. These tests pin the boundary: aliases normalize, incomplete
- * triggers fail with a teaching message, and an identical active task is
- * returned instead of duplicated.
+ * triggers keep teaching details in structured data instead of user copy, and
+ * an identical active task is returned instead of duplicated.
  */
 
 import type { Memory, UUID } from "@elizaos/core";
@@ -35,18 +35,36 @@ function ownerMessage(agentId: UUID, text: string): Memory {
 
 type CreateParams = Record<string, unknown>;
 
+async function runScheduledTaskAction(
+  runtime: RealTestRuntimeResult["runtime"],
+  parameters: Record<string, unknown>,
+) {
+  return scheduledTaskAction.handler?.(
+    runtime,
+    ownerMessage(runtime.agentId, "scheduled-task operation"),
+    undefined,
+    { parameters },
+    undefined,
+    [],
+  );
+}
+
 async function create(
   runtime: RealTestRuntimeResult["runtime"],
   parameters: CreateParams,
 ) {
-  return scheduledTaskAction.handler?.(
-    runtime,
-    ownerMessage(runtime.agentId, "schedule it"),
-    undefined,
-    { parameters: { subaction: "create", ...parameters } },
-    undefined,
-    [],
+  return runScheduledTaskAction(runtime, {
+    subaction: "create",
+    ...parameters,
+  });
+}
+
+function expectPlainScheduledTaskText(text: string | undefined): void {
+  expect(text).toBeDefined();
+  expect(text).not.toMatch(
+    /ISO-8601|promptInstructions|trigger type|taskId|OWNER_[A-Z_]+|expression|during_window/u,
   );
+  expect(text).not.toMatch(/\b(?:st|task)_[a-z0-9_]+\b/u);
 }
 
 describe("SCHEDULED_TASKS create — trigger boundary", () => {
@@ -98,8 +116,9 @@ describe("SCHEDULED_TASKS create — trigger boundary", () => {
       kind: "reminder",
       promptInstructions: "Call mom.",
       trigger: { type: "once", at: "2026-07-03T17:00:00.000Z" },
-    })) as { success: boolean; data?: Record<string, unknown> };
+    })) as { success: boolean; text?: string; data?: Record<string, unknown> };
     expect(result.success).toBe(true);
+    expectPlainScheduledTaskText(result.text);
     const task = result.data?.task as {
       trigger: { kind: string; atIso: string };
     };
@@ -109,7 +128,34 @@ describe("SCHEDULED_TASKS create — trigger boundary", () => {
     });
   });
 
-  it("an incomplete cron trigger fails with a teaching message, never a bare success:false", async () => {
+  it("task-control confirmations keep raw ids out of user-facing text", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const created = (await create(runtime, {
+      kind: "reminder",
+      promptInstructions: "Pay the electric bill.",
+      trigger: { type: "once", at: "2026-07-03T17:00:00.000Z" },
+    })) as { success: boolean; text?: string; data?: Record<string, unknown> };
+    expect(created.success).toBe(true);
+    expectPlainScheduledTaskText(created.text);
+    const task = created.data?.task as { taskId: string };
+
+    for (const parameters of [
+      { subaction: "get", taskId: task.taskId },
+      { subaction: "update", taskId: task.taskId, patch: { priority: "low" } },
+      { subaction: "history", taskId: task.taskId },
+      { subaction: "complete", taskId: task.taskId },
+    ]) {
+      const result = (await runScheduledTaskAction(runtime, parameters)) as {
+        success: boolean;
+        text?: string;
+      };
+      expect(result.success).toBe(true);
+      expectPlainScheduledTaskText(result.text);
+    }
+  });
+
+  it("an incomplete cron trigger fails with structured detail, never a bare success:false", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
     const result = (await create(runtime, {
@@ -119,10 +165,11 @@ describe("SCHEDULED_TASKS create — trigger boundary", () => {
     })) as { success: boolean; text?: string; data?: Record<string, unknown> };
     expect(result.success).toBe(false);
     expect(result.data?.error).toBe("INVALID_TRIGGER");
-    expect(result.text).toContain('expression: "<5-field cron>"');
+    expectPlainScheduledTaskText(result.text);
+    expect(result.data?.message).toContain('expression: "<5-field cron>"');
   });
 
-  it("an unparseable once datetime fails with the expected shape in the message", async () => {
+  it("an unparseable once datetime keeps schema detail out of the user-facing message", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
     const result = (await create(runtime, {
@@ -132,10 +179,11 @@ describe("SCHEDULED_TASKS create — trigger boundary", () => {
     })) as { success: boolean; text?: string; data?: Record<string, unknown> };
     expect(result.success).toBe(false);
     expect(result.data?.error).toBe("INVALID_TRIGGER");
-    expect(result.text).toContain("ISO-8601");
+    expectPlainScheduledTaskText(result.text);
+    expect(result.data?.message).toContain("ISO-8601");
   });
 
-  it("an unknown trigger kind names the valid kinds", async () => {
+  it("an unknown trigger kind keeps valid-kind detail in data only", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
     const result = (await create(runtime, {
@@ -145,7 +193,8 @@ describe("SCHEDULED_TASKS create — trigger boundary", () => {
     })) as { success: boolean; text?: string; data?: Record<string, unknown> };
     expect(result.success).toBe(false);
     expect(result.data?.error).toBe("INVALID_TRIGGER");
-    expect(result.text).toContain("during_window");
+    expectPlainScheduledTaskText(result.text);
+    expect(result.data?.message).toContain("during_window");
   });
 
   it("an identical active task is returned instead of a duplicate (cross-turn re-ask)", async () => {
@@ -170,6 +219,7 @@ describe("SCHEDULED_TASKS create — trigger boundary", () => {
     })) as { success: boolean; data?: Record<string, unknown> };
     expect(second.success).toBe(true);
     expect(second.data?.deduplicated).toBe(true);
+    expectPlainScheduledTaskText(second.text);
     const secondTask = second.data?.task as { taskId: string };
     expect(secondTask.taskId).toBe(firstTask.taskId);
   });
@@ -183,8 +233,9 @@ describe("SCHEDULED_TASKS create — trigger boundary", () => {
     })) as { success: boolean; text?: string; data?: Record<string, unknown> };
     expect(result.success).toBe(false);
     expect(result.data?.error).toBe("MISSING_TRIGGER");
-    expect(result.text).toContain("OWNER_ROUTINES");
-    expect(result.text).toContain("action=create");
+    expectPlainScheduledTaskText(result.text);
+    expect(result.data?.repair).toContain("OWNER_ROUTINES");
+    expect(result.data?.repair).toContain("action=create");
   });
 
   it("an invalid trigger also carries the habit-definition redirect", async () => {
@@ -197,7 +248,8 @@ describe("SCHEDULED_TASKS create — trigger boundary", () => {
     })) as { success: boolean; text?: string; data?: Record<string, unknown> };
     expect(result.success).toBe(false);
     expect(result.data?.error).toBe("INVALID_TRIGGER");
-    expect(result.text).toContain("OWNER_ROUTINES");
+    expectPlainScheduledTaskText(result.text);
+    expect(result.data?.repair).toContain("OWNER_ROUTINES");
   });
 
   it("a retried create that reuses the same planner-supplied taskId is idempotent, even with a fresh idempotencyKey and rewritten body", async () => {

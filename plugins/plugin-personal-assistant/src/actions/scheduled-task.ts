@@ -291,6 +291,43 @@ const TRIGGER_KINDS =
 const HABIT_REDIRECT_HINT =
   "If the owner asked to start a habit/routine or a recurring personal reminder in chat, do not retry here — call OWNER_ROUTINES (or OWNER_REMINDERS) with action=create instead; that flow builds the habit definition and reminder plan without a raw trigger.";
 
+const PLAIN_TIMING_MISSING_TEXT =
+  "I could not save that yet because I need a clear time or recurrence. Please tell me when it should happen.";
+const PLAIN_DESTINATION_MISSING_TEXT =
+  "I could not save that yet because the delivery destination is not available.";
+
+function scheduledItemNoun(kind: ScheduledTaskKindParam | undefined): string {
+  switch (kind) {
+    case "reminder":
+      return "reminder";
+    case "checkin":
+      return "check-in";
+    case "followup":
+      return "follow-up";
+    case "approval":
+      return "approval";
+    case "recap":
+      return "recap";
+    default:
+      return "scheduled item";
+  }
+}
+
+function verbPastTense(label: string): string {
+  switch (label) {
+    case "skip":
+      return "skipped";
+    case "complete":
+      return "completed";
+    case "dismiss":
+      return "dismissed";
+    case "reopen":
+      return "reopened";
+    default:
+      return label;
+  }
+}
+
 type TriggerNormalization =
   | { ok: true; trigger: ScheduledTaskTrigger }
   | { ok: false; message: string };
@@ -680,7 +717,7 @@ async function handleList(
   const windowNote = dueWindow ? ` (${dueWindow})` : "";
   return {
     success: true,
-    text: `${filtered.length} scheduled task${filtered.length === 1 ? "" : "s"} match${windowNote}.`,
+    text: `${filtered.length} scheduled item${filtered.length === 1 ? "" : "s"} match${windowNote}.`,
     data: {
       subaction: "list",
       tasks: filtered,
@@ -697,7 +734,7 @@ async function handleGet(
   if (!taskId) {
     return {
       success: false,
-      text: "I need a taskId to fetch a scheduled task.",
+      text: "I need to know which scheduled item you mean.",
       data: { subaction: "get", error: "MISSING_TASK_ID" },
     };
   }
@@ -706,13 +743,13 @@ async function handleGet(
   if (!task) {
     return {
       success: false,
-      text: `No scheduled task found with id ${taskId}.`,
+      text: "I could not find that scheduled item.",
       data: { subaction: "get", error: "NOT_FOUND" },
     };
   }
   return {
     success: true,
-    text: `Found scheduled task ${task.taskId} (${task.kind}, ${task.state.status}).`,
+    text: "Found that scheduled item.",
     data: { subaction: "get", task },
   };
 }
@@ -728,31 +765,38 @@ async function handleCreate(
   if (promptInstructions.length === 0) {
     return {
       success: false,
-      text: "I need promptInstructions describing what the scheduled task should do.",
+      text: "I need the reminder text before I can save it.",
       data: { subaction: "create", error: "MISSING_PROMPT_INSTRUCTIONS" },
     };
   }
   if (params.trigger === undefined || params.trigger === null) {
     return {
       success: false,
-      text: `I need a trigger (${TRIGGER_KINDS}) to schedule a task. ${HABIT_REDIRECT_HINT}`,
-      data: { subaction: "create", error: "MISSING_TRIGGER" },
+      text: PLAIN_TIMING_MISSING_TEXT,
+      data: {
+        subaction: "create",
+        error: "MISSING_TRIGGER",
+        message: `Missing trigger (${TRIGGER_KINDS}).`,
+        repair: HABIT_REDIRECT_HINT,
+      },
     };
   }
   const normalized = normalizeTriggerInput(params.trigger);
   if (!normalized.ok) {
     return {
       success: false,
-      text: `${normalized.message} ${HABIT_REDIRECT_HINT}`,
+      text: PLAIN_TIMING_MISSING_TEXT,
       data: {
         subaction: "create",
         error: "INVALID_TRIGGER",
         message: normalized.message,
+        repair: HABIT_REDIRECT_HINT,
       },
     };
   }
   const trigger = normalized.trigger;
   const kind = normalizeKind(params.kind) ?? "custom";
+  const noun = scheduledItemNoun(kind);
   const priority: ScheduledTaskPriorityParam = params.priority ?? "medium";
   const subject = buildSubject(
     normalizeSubjectKind(params.subjectKind),
@@ -788,7 +832,7 @@ async function handleCreate(
   if (duplicate) {
     return {
       success: true,
-      text: `An identical ${kind} task already exists (${duplicate.taskId}) — not creating a duplicate.`,
+      text: `That ${noun} is already scheduled.`,
       data: { subaction: "create", task: duplicate, deduplicated: true },
     };
   }
@@ -834,7 +878,7 @@ async function handleCreate(
     if (error instanceof ScheduledTaskValidationError) {
       return {
         success: false,
-        text: `Scheduled task validation failed: ${error.issues.join("; ")}`,
+        text: PLAIN_TIMING_MISSING_TEXT,
         data: {
           subaction: "create",
           error: "INVALID_SCHEDULED_TASK",
@@ -845,7 +889,7 @@ async function handleCreate(
     if (error instanceof ChannelKeyError) {
       return {
         success: false,
-        text: `Scheduled task validation failed: ${error.message}`,
+        text: PLAIN_DESTINATION_MISSING_TEXT,
         data: {
           subaction: "create",
           error: "INVALID_SCHEDULED_TASK",
@@ -857,7 +901,7 @@ async function handleCreate(
   }
   return {
     success: true,
-    text: `Scheduled ${kind} task ${created.taskId}.`,
+    text: `Scheduled the ${noun}.`,
     data: { subaction: "create", task: created },
   };
 }
@@ -870,21 +914,21 @@ async function handleUpdate(
   if (!taskId) {
     return {
       success: false,
-      text: "I need a taskId to update a scheduled task.",
+      text: "I need to know which scheduled item you mean.",
       data: { subaction: "update", error: "MISSING_TASK_ID" },
     };
   }
   if (!params.patch || typeof params.patch !== "object") {
     return {
       success: false,
-      text: "I need a `patch` object describing the fields to update.",
+      text: "I need to know what to change on that scheduled item.",
       data: { subaction: "update", error: "MISSING_PATCH" },
     };
   }
   const updated = await scope.runner.apply(taskId, "edit", params.patch);
   return {
     success: true,
-    text: `Updated scheduled task ${taskId}.`,
+    text: "Updated that scheduled item.",
     data: { subaction: "update", task: updated },
   };
 }
@@ -897,7 +941,7 @@ async function handleSnooze(
   if (!taskId) {
     return {
       success: false,
-      text: "I need a taskId to snooze a scheduled task.",
+      text: "I need to know which scheduled item you mean.",
       data: { subaction: "snooze", error: "MISSING_TASK_ID" },
     };
   }
@@ -912,7 +956,7 @@ async function handleSnooze(
   if (minutes === undefined && untilIso === undefined) {
     return {
       success: false,
-      text: "I need either `minutes` or `untilIso` to snooze.",
+      text: "Tell me when to remind you again.",
       data: { subaction: "snooze", error: "MISSING_SNOOZE_TARGET" },
     };
   }
@@ -923,7 +967,7 @@ async function handleSnooze(
   await resolvePendingPromptsStore(scope.runtime).forgetTask(taskId);
   return {
     success: true,
-    text: `Snoozed scheduled task ${taskId}.`,
+    text: "Snoozed that scheduled item.",
     data: { subaction: "snooze", task: snoozed },
   };
 }
@@ -936,7 +980,7 @@ async function handleAcknowledge(
   if (!taskId) {
     return {
       success: false,
-      text: "I need a taskId to acknowledge a scheduled task.",
+      text: "I need to know which scheduled item you mean.",
       data: { subaction: "acknowledge", error: "MISSING_TASK_ID" },
     };
   }
@@ -947,7 +991,7 @@ async function handleAcknowledge(
   await resolvePendingPromptsStore(scope.runtime).forgetTask(taskId);
   return {
     success: true,
-    text: `Acknowledged scheduled task ${taskId}.`,
+    text: "Acknowledged that scheduled item.",
     data: { subaction: "acknowledge", task: updated },
   };
 }
@@ -962,7 +1006,7 @@ async function handleVerbWithReason(
   if (!taskId) {
     return {
       success: false,
-      text: `I need a taskId to ${label} a scheduled task.`,
+      text: "I need to know which scheduled item you mean.",
       data: { subaction: verb, error: "MISSING_TASK_ID" },
     };
   }
@@ -976,7 +1020,7 @@ async function handleVerbWithReason(
   }
   return {
     success: true,
-    text: `${label.charAt(0).toUpperCase()}${label.slice(1)}d scheduled task ${taskId}.`,
+    text: `Marked that scheduled item as ${verbPastTense(label)}.`,
     data: { subaction: verb, task: updated },
   };
 }
@@ -989,7 +1033,7 @@ async function handleHistory(
   if (!taskId) {
     return {
       success: false,
-      text: "I need a taskId to read history (the state log is partitioned per task).",
+      text: "I need to know which scheduled item you mean before I can read its history.",
       data: { subaction: "history", error: "MISSING_TASK_ID" },
     };
   }
@@ -1010,7 +1054,7 @@ async function handleHistory(
   });
   return {
     success: true,
-    text: `${entries.length} scheduled-task log row${entries.length === 1 ? "" : "s"}.`,
+    text: `${entries.length} history entr${entries.length === 1 ? "y" : "ies"}.`,
     data: { subaction: "history", entries },
   };
 }
