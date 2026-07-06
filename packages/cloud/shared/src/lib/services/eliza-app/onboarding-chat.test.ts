@@ -634,6 +634,10 @@ describe("runOnboardingChat", () => {
   describe("confused user messages", () => {
     test("empty and whitespace-only messages are not stored and still get a helpful reply", async () => {
       const first = await runTrustedPhoneTurn("");
+      // Proactive first turn (client posts an empty message on load): the agent
+      // greets AND explicitly offers to get the new user set up, then asks the
+      // name — a proactive hello, not a passive prompt.
+      expect(first.reply).toMatch(/i can get you set up|get you started/i);
       expect(first.reply).toContain("What should I call you?");
       expect(first.session.history).toHaveLength(1);
       expect(first.session.history[0]?.role).toBe("assistant");

@@ -380,7 +380,7 @@ function fallbackReply(args: {
 }): string {
   const name = hasPreferredName(args.session) ? args.session.name : undefined;
   if (!name) {
-    return `Hey, I'm Eliza. I set up private Eliza Cloud agents that can text, remember context, and work for you. ${ELIZA_APP_PRICING_SUMMARY} New users get ${ELIZA_APP_INITIAL_CREDIT_USD} free credit to try it. What should I call you?`;
+    return `Hey, I'm Eliza — I can get you set up with your own private Eliza Cloud agent that texts, remembers context, and works for you. ${ELIZA_APP_PRICING_SUMMARY} New users get ${ELIZA_APP_INITIAL_CREDIT_USD} free credit to try it. To get you started, what should I call you?`;
   }
   if (args.requiresLogin) {
     return `Nice to meet you, ${name}. I can set up your private Eliza Cloud agent next. ${ELIZA_APP_PRICING_SUMMARY} When you connect, you get ${ELIZA_APP_INITIAL_CREDIT_USD} free credit to try it. Connect Eliza Cloud here: ${args.loginUrl}`;
