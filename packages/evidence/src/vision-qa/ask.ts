@@ -108,7 +108,7 @@ export async function askAboutImage(
   const client = createBackendClient(backend, options);
   const image = await prepareImage(imagePath, maxEdge);
 
-  const query = queryHash(client.model, backend, questions);
+  const query = queryHash(client.model, backend, questions, image.dimensions);
   const cacheRoot = options.cacheDir ?? process.cwd();
   if (options.noCache !== true) {
     const hit = readCache(cacheRoot, image.sourceSha256, query);

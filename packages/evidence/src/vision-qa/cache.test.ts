@@ -68,6 +68,14 @@ describe("queryHash", () => {
     );
   });
 
+  it("changes when the sent image dimensions change", () => {
+    const original = RESULT.provenance.dimensions;
+    const smaller = { ...original, sentWidth: 50, sentHeight: 25 };
+    expect(queryHash("m", "anthropic", QUESTIONS, original)).not.toBe(
+      queryHash("m", "anthropic", QUESTIONS, smaller),
+    );
+  });
+
   it("is stable across object key ordering (canonical)", () => {
     const reordered: VisionQuestion[] = QUESTIONS.map(
       (q) =>

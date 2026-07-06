@@ -2,9 +2,11 @@
  * Content-addressed cache for vision-qa results so re-runs over an unchanged
  * screenshot and question set cost nothing. The key is two hashes: sha256 of
  * the ORIGINAL image bytes, and sha256 of the canonical JSON of
- * `{model, backend, questions}`. Using the foundation's `canonicalJson` for the
- * question key makes it order- and whitespace-stable, so semantically identical
- * question sets hit the same entry. Layout:
+ * `{model, backend, questions, dimensions}`. Dimensions bind the downscaled
+ * pixels actually sent to the model, so a caller changing `maxEdge` cannot reuse
+ * an answer produced from a different raster. Using the foundation's
+ * `canonicalJson` for the question key makes it order- and whitespace-stable,
+ * so semantically identical question sets hit the same entry. Layout:
  *   <root>/.vision-qa-cache/<image-sha>/<query-sha>.json
  * A hit returns the stored result with `cached: true`; a corrupt cache file is
  * treated as a miss (re-ask) rather than crashing the run — the cache is an
@@ -15,7 +17,12 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { canonicalJson } from "../canonical.ts";
-import type { AskResult, VisionBackend, VisionQuestion } from "./types.ts";
+import type {
+  AskResult,
+  ImageDimensions,
+  VisionBackend,
+  VisionQuestion,
+} from "./types.ts";
 
 export const CACHE_DIR_NAME = ".vision-qa-cache";
 
@@ -24,8 +31,9 @@ export function queryHash(
   model: string,
   backend: VisionBackend,
   questions: VisionQuestion[],
+  dimensions?: ImageDimensions,
 ): string {
-  const canonical = canonicalJson({ model, backend, questions });
+  const canonical = canonicalJson({ model, backend, questions, dimensions });
   return createHash("sha256").update(canonical, "utf8").digest("hex");
 }
 
