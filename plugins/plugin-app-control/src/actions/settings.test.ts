@@ -7,7 +7,10 @@
  */
 
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
-import { SETTINGS_SECTION_META } from "@elizaos/ui/components/settings/settings-section-meta";
+import {
+	SETTINGS_NON_CATALOG_SECTION_META,
+	SETTINGS_SECTION_META,
+} from "@elizaos/ui/components/settings/settings-section-meta";
 import { describe, expect, it, vi } from "vitest";
 import {
 	createSettingsAction,
@@ -189,11 +192,12 @@ describe("registry completeness", () => {
 	});
 
 	it("pins audit records for non-catalog settings sections", () => {
-		expect(Object.keys(SETTINGS_NON_CATALOG_SECTION_AUDIT).sort()).toEqual([
-			"cloud-agents",
-			"cloud-overview",
-			"my-runtimes",
-		]);
+		const nonCatalogIds = SETTINGS_NON_CATALOG_SECTION_META.map(
+			(meta) => meta.id,
+		).sort();
+		expect(Object.keys(SETTINGS_NON_CATALOG_SECTION_AUDIT).sort()).toEqual(
+			nonCatalogIds,
+		);
 		for (const [id, entry] of Object.entries(
 			SETTINGS_NON_CATALOG_SECTION_AUDIT,
 		)) {

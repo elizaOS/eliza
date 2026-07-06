@@ -35,7 +35,10 @@ import {
 	isPermissionId,
 	type PermissionId,
 } from "@elizaos/shared";
-import { SETTINGS_SECTION_META } from "@elizaos/ui/components/settings/settings-section-meta";
+import {
+	type SETTINGS_NON_CATALOG_SECTION_META,
+	SETTINGS_SECTION_META,
+} from "@elizaos/ui/components/settings/settings-section-meta";
 import { normalizeActionOptions, readStringOption } from "../params.js";
 
 /** The three verbs SETTINGS understands. */
@@ -136,9 +139,7 @@ export interface SettingsNonCatalogAuditEntry {
 	trackingIssue?: number;
 }
 
-export const SETTINGS_NON_CATALOG_SECTION_AUDIT: Readonly<
-	Record<string, SettingsNonCatalogAuditEntry>
-> = {
+export const SETTINGS_NON_CATALOG_SECTION_AUDIT = {
 	"cloud-overview": {
 		reason:
 			"Cloud upsell/account overview is a late-registered non-catalog page, not a local setting value.",
@@ -156,7 +157,12 @@ export const SETTINGS_NON_CATALOG_SECTION_AUDIT: Readonly<
 		coveredBy:
 			"MODEL_SWITCH for inference target changes; runtime CRUD needs a separate runtime-management action if chat-write is required.",
 	},
-};
+} satisfies Readonly<
+	Record<
+		(typeof SETTINGS_NON_CATALOG_SECTION_META)[number]["id"],
+		SettingsNonCatalogAuditEntry
+	>
+>;
 
 const PERMISSIONS_SHELL_KEY: SettingsWritableKey = {
 	description:
