@@ -198,6 +198,29 @@ export function resolveCloudTtsBaseUrl(
   }
 }
 
+/**
+ * A cloud base URL plus its `www`/apex sibling, so a base written either way
+ * still resolves. `elizacloud.ai` and `www.elizacloud.ai` are the same origin
+ * upstream; a user who configured one should still reach the other. The single
+ * `URL` parse lives here so the TTS and STT candidate resolvers share one
+ * validated fan-out instead of each carrying its own parse-guarded copy.
+ */
+function resolveWwwApexBaseSiblings(base: string): string[] {
+  const trimmed = base.replace(/\/+$/, "");
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    // A custom base URL may be a bare path the resolver already validated;
+    // without a parsable host there is no sibling to add.
+    return [trimmed];
+  }
+  parsed.hostname = parsed.hostname.startsWith("www.")
+    ? parsed.hostname.slice(4)
+    : `www.${parsed.hostname}`;
+  return [trimmed, parsed.toString().replace(/\/$/, "")];
+}
+
 export function resolveCloudTtsCandidateUrls(
   env: NodeJS.ProcessEnv = process.env,
 ): string[] {
@@ -220,18 +243,8 @@ export function resolveCloudTtsCandidateUrls(
     }
   };
 
-  addEndpointsForApiV1Base(base);
-  try {
-    const parsed = new URL(base);
-    if (parsed.hostname.startsWith("www.")) {
-      parsed.hostname = parsed.hostname.slice(4);
-      addEndpointsForApiV1Base(parsed.toString().replace(/\/$/, ""));
-    } else {
-      parsed.hostname = `www.${parsed.hostname}`;
-      addEndpointsForApiV1Base(parsed.toString().replace(/\/$/, ""));
-    }
-  } catch {
-    // The base resolver already validated the default path.
+  for (const siblingBase of resolveWwwApexBaseSiblings(base)) {
+    addEndpointsForApiV1Base(siblingBase);
   }
 
   return [...candidates];
@@ -242,26 +255,18 @@ export function resolveCloudTtsCandidateUrls(
  * same base URL as TTS. Interactive web capture posts a WAV here through the
  * agent proxy (`/api/asr/cloud`) so `eliza-cloud` ASR is the real transcriber
  * instead of the engine-dependent browser SpeechRecognition. The `www`/apex
- * pairing mirrors the TTS resolver so a base URL written either way still
- * resolves; there is no ElevenLabs-shaped legacy STT compat route (unlike TTS),
- * so only the canonical `/voice/stt` path is queued.
+ * pairing mirrors the TTS resolver (both use `resolveWwwApexBaseSiblings`) so a
+ * base URL written either way still resolves; there is no ElevenLabs-shaped
+ * legacy STT compat route (unlike TTS), so only the canonical `/voice/stt` path
+ * is queued.
  */
 export function resolveCloudSttCandidateUrls(
   env: NodeJS.ProcessEnv = process.env,
 ): string[] {
   const base = resolveCloudTtsBaseUrl(env).replace(/\/+$/, "");
   const candidates = new Set<string>();
-  candidates.add(`${base}/voice/stt`);
-  try {
-    const parsed = new URL(base);
-    if (parsed.hostname.startsWith("www.")) {
-      parsed.hostname = parsed.hostname.slice(4);
-    } else {
-      parsed.hostname = `www.${parsed.hostname}`;
-    }
-    candidates.add(`${parsed.toString().replace(/\/$/, "")}/voice/stt`);
-  } catch {
-    // The base resolver already validated the default path.
+  for (const siblingBase of resolveWwwApexBaseSiblings(base)) {
+    candidates.add(`${siblingBase}/voice/stt`);
   }
   return [...candidates];
 }

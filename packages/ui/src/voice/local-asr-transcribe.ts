@@ -125,7 +125,8 @@ export async function transcribeCloudWav(
     signal: options?.signal,
   });
   if (!res.ok) {
-    // error-policy:J6 best-effort error detail — the throw carries the status
+    // error-policy:J6 the error body is diagnostic-only; a failed read must not
+    // mask the real signal (the HTTP status the throw below already carries).
     const body = await res.text().catch(() => "");
     throw new Error(`Cloud ASR ${res.status}: ${body.slice(0, 200)}`);
   }
@@ -158,7 +159,8 @@ export async function transcribeLocalInferenceWav(
     signal: options?.signal,
   });
   if (!res.ok) {
-    // error-policy:J6 best-effort error detail — the throw carries the status
+    // error-policy:J6 the error body is diagnostic-only; a failed read must not
+    // mask the real signal (the HTTP status the throw below already carries).
     const body = await res.text().catch(() => "");
     throw new Error(`Local inference ASR ${res.status}: ${body.slice(0, 200)}`);
   }
