@@ -1334,7 +1334,9 @@ registerFinalCheckHandler("goalCountDelta", (check, { ctx }) => {
       return false;
     }
     const actualGroundingState =
-      readPath(goal, "metadata.groundingState") ?? goal.groundingState;
+      readPath(goal, "metadata.goalGrounding.groundingState") ??
+      readPath(goal, "metadata.groundingState") ??
+      goal.groundingState;
     if (
       expectedGroundingState !== undefined &&
       actualGroundingState !== expectedGroundingState

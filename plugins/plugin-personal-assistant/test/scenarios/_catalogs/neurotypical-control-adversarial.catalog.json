@@ -123,24 +123,24 @@
       "pack": "F1",
       "tier": "T1",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "live-only for #14355. Non-sleep goal-grounding control: vague 5K aspiration must be pushed for a concrete finish/date/cadence, previewed, then persisted as a grounded active goal."
+      "status": "verified",
+      "notes": "live-only for #14355. Verified 2026-07-06 with ELIZA_CHAT_VIA_CLI=claude: /tmp/eliza-14355-goals-fitness-spanish-rerun/report.json and native.jsonl passed. Vague 5K aspiration asked for concrete finish/date/cadence before save, previewed the draft, then goalCountDelta found 1 grounded persisted goal record."
     },
     {
       "id": "goal-savings-trip-basic",
       "pack": "F1",
       "tier": "T1",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "live-only for #14355. Non-sleep goal-grounding control: trip-savings goal must capture target amount, deadline, transfer cadence, and behind-plan check-in before save."
+      "status": "verified",
+      "notes": "live-only for #14355. Verified 2026-07-06 with ELIZA_CHAT_VIA_CLI=claude: /tmp/eliza-14355-goals-savings-lowact-final/report.json and native.jsonl passed. Trip-savings goal captured target amount, deadline, transfer cadence, and behind-plan check-in before save; goalCountDelta found 1 grounded persisted goal record."
     },
     {
       "id": "goal-learning-spanish-basic",
       "pack": "F1",
       "tier": "T2",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "live-only for #14355. Non-sleep goal-grounding control: learning goal must be pushed for an evidence signal (10-minute conversation), horizon, and practice cadence before save."
+      "status": "verified",
+      "notes": "live-only for #14355. Verified 2026-07-06 with ELIZA_CHAT_VIA_CLI=claude: /tmp/eliza-14355-goals-fitness-spanish-rerun/report.json and native.jsonl passed. Learning goal asked for an evidence signal, horizon, and practice cadence before save, previewed the draft, then goalCountDelta found 1 grounded persisted goal record."
     },
     {
       "id": "f1-adversarial-highstakes-wrong-recipient-payment",

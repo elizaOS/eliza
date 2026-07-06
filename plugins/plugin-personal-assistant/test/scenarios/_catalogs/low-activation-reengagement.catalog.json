@@ -114,8 +114,8 @@
       "pack": "E1",
       "tier": "T2",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "live-only for #14355. Low-activation non-sleep goal-grounding: fragmentary 'less stuck' movement goal must be grounded into a small concrete walk cadence without guilt, therapy framing, or overbuilt fitness plans."
+      "status": "verified",
+      "notes": "live-only for #14355. Verified 2026-07-06 with ELIZA_CHAT_VIA_CLI=claude: /tmp/eliza-14355-goals-savings-lowact-final/report.json and native.jsonl passed. Fragmentary low-activation movement goal was grounded into a small concrete walk cadence, previewed before save, and goalCountDelta found 1 grounded persisted goal record without guilt, therapy framing, or overbuilt fitness planning."
     },
     {
       "id": "lowact.tiny_step_tomorrow_you_pick",

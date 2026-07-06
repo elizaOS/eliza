@@ -40,6 +40,7 @@ const serviceState = vi.hoisted(() => ({
     request: { preset?: string; minutes?: number };
   }>,
   createCalls: [] as Array<Record<string, unknown>>,
+  goalCreateCalls: [] as Array<Record<string, unknown>>,
   deleteDefinitionCalls: [] as string[],
   deleteGoalCalls: [] as string[],
 }));
@@ -83,6 +84,30 @@ vi.mock("../lifeops/service.js", () => {
       serviceState.createCalls.push(request);
       return {
         definition: { title: request.title, cadence: request.cadence },
+      };
+    }
+    async createGoal(request: Record<string, unknown>) {
+      serviceState.goalCreateCalls.push(request);
+      return {
+        goal: {
+          id: "goal-created",
+          title: request.title,
+          description: request.description,
+          cadence: request.cadence ?? null,
+          supportStrategy: request.supportStrategy ?? {},
+          successCriteria: request.successCriteria ?? {},
+          status: "active",
+          reviewState: "idle",
+          metadata: request.metadata ?? {},
+        },
+        links: [],
+      };
+    }
+    async buildGoalExperienceLoop() {
+      return {
+        cadence: null,
+        matches: [],
+        summary: null,
       };
     }
     async listDefinitions() {
@@ -447,6 +472,7 @@ describe("runLifeOperationHandler snooze durations", () => {
   beforeEach(() => {
     serviceState.snoozeCalls.length = 0;
     serviceState.createCalls.length = 0;
+    serviceState.goalCreateCalls.length = 0;
     serviceState.deleteDefinitionCalls.length = 0;
     serviceState.deleteGoalCalls.length = 0;
   });
@@ -541,6 +567,283 @@ describe("runLifeOperationHandler snooze durations", () => {
     expect(serviceState.deleteDefinitionCalls).toHaveLength(0);
     expect(serviceState.deleteGoalCalls).toHaveLength(0);
     expect(result.text).toContain("won't delete everything");
+  });
+
+  it("grounds a confirmed titled goal before saving", async () => {
+    const intent =
+      "ok save this goal: leave the apartment more; count it if I walk around the block after lunch three times a week for the next six weeks, and slow counts.";
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("Ground the user's goal")) {
+        return JSON.stringify({
+          mode: "create",
+          response: null,
+          title: "Leave the apartment more",
+          description:
+            "Build a low-pressure habit of leaving the apartment for a short walk after lunch.",
+          cadence: { kind: "weekly", reviewWindowDays: 7 },
+          successCriteria: {
+            summary:
+              "Walk around the block after lunch three times per week for six weeks.",
+            metric: "post_lunch_block_walks",
+            target: { walksPerWeek: 3, weeks: 6 },
+            evidenceSignals: ["manual_checkin"],
+          },
+          supportStrategy: {
+            summary: "Keep the goal small and count slow walks.",
+            firstStep: "Take one slow walk around the block after lunch.",
+          },
+          groundingState: "grounded",
+          missingCriticalFields: [],
+          confidence: 0.88,
+          evaluationSummary:
+            "Progress means three after-lunch walks around the block each week for six weeks.",
+          targetDomain: "movement",
+        });
+      }
+      return "";
+    });
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(intent),
+      undefined,
+      {
+        parameters: {
+          action: "create_goal",
+          intent,
+          title: "Leave the apartment more",
+          confirmed: true,
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(true);
+    expect(serviceState.goalCreateCalls).toHaveLength(1);
+    expect(serviceState.goalCreateCalls[0]).toMatchObject({
+      title: "Leave the apartment more",
+      description:
+        "Build a low-pressure habit of leaving the apartment for a short walk after lunch.",
+      successCriteria: {
+        metric: "post_lunch_block_walks",
+      },
+      supportStrategy: {
+        summary: "Keep the goal small and count slow walks.",
+      },
+      metadata: {
+        source: "chat",
+        originalIntent: intent,
+        goalGrounding: {
+          groundingState: "grounded",
+          missingCriticalFields: [],
+        },
+      },
+    });
+  });
+
+  it("marks planner-supplied grounded goal details as grounded metadata", async () => {
+    const intent = "ok save that one";
+    const runtime = makeRuntime(() => "");
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(intent),
+      undefined,
+      {
+        parameters: {
+          action: "create_goal",
+          intent,
+          title: "Leave the apartment more",
+          confirmed: true,
+          details: {
+            description:
+              "Feel less stuck at home by getting outside more often.",
+            successCriteria: {
+              summary:
+                "Walk around the block after lunch at least 3 times per week for 6 weeks.",
+            },
+            supportStrategy: {
+              summary: "Anchor the walk to lunch and count slow walks.",
+            },
+          },
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(true);
+    expect(serviceState.goalCreateCalls).toHaveLength(1);
+    expect(serviceState.goalCreateCalls[0]).toMatchObject({
+      metadata: {
+        source: "chat",
+        originalIntent: intent,
+        goalGrounding: {
+          groundingState: "grounded",
+          missingCriticalFields: [],
+          summary:
+            "Walk around the block after lunch at least 3 times per week for 6 weeks.",
+        },
+      },
+    });
+  });
+
+  it("asks for concrete success criteria before previewing a vague goal save", async () => {
+    const intent = "I want to leave the apartment more";
+    const runtime = makeRuntime(() => "");
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(intent),
+      undefined,
+      {
+        parameters: {
+          action: "create_goal",
+          intent,
+          title: "Leave the apartment more",
+          confirmed: false,
+          details: {
+            description: "Feel less stuck by getting outside more often.",
+            successCriteria: {
+              summary:
+                "A meaningful increase in days per week leaving the apartment for any reason, measured by feeling less stuck instead of step counts.",
+            },
+            supportStrategy: {
+              summary: "Keep it low-pressure and non-fitness.",
+            },
+          },
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(false);
+    expect(serviceState.goalCreateCalls).toHaveLength(0);
+    expect(result.userFacingText ?? result.text).toContain(
+      "What would count as success",
+    );
+    expect(result.userFacingText ?? result.text).toContain("how often");
+    expect(result.data).toMatchObject({
+      deferred: true,
+      saved: false,
+      requiresConfirmation: true,
+    });
+  });
+
+  it("asks instead of previewing planner-invented first-turn goal criteria", async () => {
+    const intent = "I want a goal called Run a 5K by fall.";
+    const runtime = makeRuntime(() => "");
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(intent),
+      undefined,
+      {
+        parameters: {
+          action: "create_goal",
+          intent,
+          title: "Run a 5K by fall",
+          confirmed: false,
+          details: {
+            description: "Train and complete a 5K run by fall 2026.",
+            successCriteria: {
+              summary: "Complete a 5K run before the end of fall 2026.",
+            },
+            supportStrategy: {
+              summary:
+                "Build up running distance gradually with a progressive training plan.",
+            },
+          },
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(false);
+    expect(serviceState.goalCreateCalls).toHaveLength(0);
+    expect(result.userFacingText ?? result.text).toContain(
+      "What would count as success",
+    );
+  });
+
+  it("previews grounded goal criteria when planner confirmation is premature", async () => {
+    const intent =
+      "Count it if I walk around the block after lunch three times a week for the next six weeks. Even if it is slow.";
+    const runtime = makeRuntime(() => "");
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(intent),
+      undefined,
+      {
+        parameters: {
+          action: "create_goal",
+          intent,
+          title: "Walk around the block after lunch 3x/week",
+          confirmed: true,
+          details: {
+            description:
+              "Leave the apartment more by walking around the block after lunch.",
+            successCriteria: {
+              summary:
+                "Walk around the block after lunch 3 times per week for 6 weeks. Slow counts.",
+            },
+            supportStrategy: {
+              summary: "Keep it low-pressure and count any pace after lunch.",
+            },
+          },
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(false);
+    expect(serviceState.goalCreateCalls).toHaveLength(0);
+    expect(result.userFacingText ?? result.text).toContain("Confirm");
+    expect(result.data).toMatchObject({
+      deferred: true,
+      saved: false,
+      requiresConfirmation: true,
+    });
+  });
+
+  it("saves when explicit confirmation text is wrapped by an external-source notice", async () => {
+    const wrappedIntent = `SECURITY NOTICE: The following content is from an EXTERNAL, UNTRUSTED source.
+<<<EXTERNAL_UNTRUSTED_CONTENT>>>
+Source: API
+---
+Yes, save it.
+<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>`;
+    const runtime = makeRuntime(() => "");
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(wrappedIntent),
+      undefined,
+      {
+        parameters: {
+          action: "create_goal",
+          intent: "save goal",
+          title: "Save $2,000 for Lisbon trip by March 31",
+          confirmed: true,
+          details: {
+            description: "Save $2,000 by March 31 for a Lisbon trip.",
+            successCriteria: {
+              summary: "$2,000 saved by March 31 for the Lisbon trip.",
+            },
+            supportStrategy: {
+              summary: "Transfer $175 after each paycheck.",
+            },
+          },
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(true);
+    expect(serviceState.goalCreateCalls).toHaveLength(1);
+    expect(serviceState.goalCreateCalls[0]).toMatchObject({
+      title: "Save $2,000 for Lisbon trip by March 31",
+    });
+    expect(result.userFacingText ?? result.text).toContain(
+      "$2,000 saved by March 31",
+    );
+    expect(result.userFacingText ?? result.text).not.toContain(
+      "What would count as success",
+    );
   });
 });
 
