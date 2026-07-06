@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
+import { useNotifications } from "../../state/notifications/notification-store";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { Button } from "../ui/button";
@@ -174,6 +175,13 @@ export function HomeScreen({
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
 
+  // When the inbox has notifications it becomes the home's primary content and
+  // grows to fill the column down to the chat; the ranked widget host then sits
+  // below it at natural height. With an empty inbox the widget host reclaims the
+  // `flex-1` breathing region (centred), so a quiet home stays calmly centred.
+  const { notifications } = useNotifications();
+  const hasNotifications = notifications.length > 0;
+
   return (
     <>
       <div
@@ -226,25 +234,31 @@ export function HomeScreen({
 
           {/* Notifications live inline on the SAME layer as the widgets, in the
             band between the time/weather header above and the chat below —
-            self-hiding when the inbox is empty. It fades in (Apple-style) on
-            first appearance; its rows carry their own staggered slide-in. */}
-          <div className={enterClass} style={{ animationDelay: "90ms" }}>
-            <NotificationsHomeCenter />
-          </div>
-
-          {/* The prioritized data widgets (#9143) live in the breathing region:
-            a `flex-1` block that grows to fill the space between the header and
-            the bottom tiles, so the column always spans the full height. Its
-            content is vertically centred within that region - when widgets are
-            present they sit in the visual middle (no top-heavy clustering with a
-            void beneath); when the host self-hides everything, the empty region
-            simply reads as calm, intentional space rather than a dead gap. A
-            little top padding sets the stack apart from the editorial header as
-            its own section. */}
+            self-hiding when the inbox is empty. A small `mt-4` sets it apart
+            from the editorial header. When present it grows (`flex-1 min-h-0`)
+            to fill the column down to the chat, its list scrolling internally;
+            it fades in (Apple-style) on first appearance. */}
           <div
             className={cn(
               enterClass,
-              "flex flex-1 flex-col justify-center py-6",
+              "mt-4",
+              hasNotifications && "flex min-h-0 flex-1 flex-col",
+            )}
+            style={{ animationDelay: "90ms" }}
+          >
+            <NotificationsHomeCenter />
+          </div>
+
+          {/* The prioritized data widgets (#9143). With notifications present
+            they sit at natural height directly beneath the (grown) inbox. With
+            an EMPTY inbox this reclaims the `flex-1` breathing region and centres
+            its content, so a quiet home reads as calm airiness rather than a
+            broken gap. A little padding sets the stack apart as its own section. */}
+          <div
+            className={cn(
+              enterClass,
+              "flex flex-col py-6",
+              !hasNotifications && "flex-1 justify-center",
             )}
             style={{ animationDelay: "110ms" }}
           >

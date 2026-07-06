@@ -54,13 +54,6 @@ const SWIPE_DISMISS_PX = 88;
 const LONG_PRESS_MS = 420;
 
 /**
- * Height cap for the scrolling list (the header stays pinned above it). Sized
- * so the dashboard keeps the widget grid visible below on a phone while still
- * showing ~4–5 rows before scrolling.
- */
-const LIST_MAX_HEIGHT = "max-h-[min(45dvh,19.5rem)]";
-
-/**
  * Upper bound on rendered rows. The store caps the inbox at 300 but painting
  * hundreds of buttons on the always-mounted home hurts low-end mobile; 100
  * matches the HTTP hydrate limit, and dismiss/clear manage volume beyond it.
@@ -682,8 +675,9 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
       // inline on the home field directly under the time/weather header — rows
       // are separated by spacing and their hover wash, so the list reads as bare
       // lock-screen notes, not a boxed panel. `eliza-notif-center-in` fades the
-      // whole inbox in (Apple-style) the moment it first appears.
-      className="eliza-notif-center-in flex flex-col overflow-hidden"
+      // whole inbox in (Apple-style) the moment it first appears. `min-h-0 flex-1`
+      // lets it fill the home column down to the chat when the parent grows it.
+      className="eliza-notif-center-in flex min-h-0 flex-1 flex-col overflow-hidden"
     >
       <style>{NOTIF_SCROLL_CSS}</style>
       {/* Pinned header: a quiet eyebrow + unread count, actions to the right.
@@ -729,8 +723,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
         onScroll={syncEdgeFades}
         data-testid="home-notification-list"
         className={cn(
-          "eliza-notif-scroll flex flex-col gap-0.5 overflow-y-auto overscroll-y-contain px-1.5 pb-1.5",
-          LIST_MAX_HEIGHT,
+          "eliza-notif-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-y-contain px-1.5 pb-1.5",
         )}
       >
         {groups.map((group) => (
