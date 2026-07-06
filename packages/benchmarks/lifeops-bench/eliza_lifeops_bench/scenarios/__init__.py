@@ -43,6 +43,7 @@ from .shift_rotation import SHIFT_ROTATION_SCENARIOS
 from .sleep import SLEEP_SCENARIOS
 from .travel import TRAVEL_SCENARIOS
 from .traveler_timezone import TRAVELER_TIMEZONE_SCENARIOS
+from .third_party_support import THIRD_PARTY_SUPPORT_SCENARIOS
 
 EDGE_EXPANSION_MULTIPLIER = 10
 EDGE_VARIANTS: tuple[tuple[str, str, str], ...] = (
@@ -86,6 +87,7 @@ CORE_SCENARIOS: list[Scenario] = [
     *SHIFT_ROTATION_SCENARIOS,
     *TRAVEL_SCENARIOS,
     *TRAVELER_TIMEZONE_SCENARIOS,
+    *THIRD_PARTY_SUPPORT_SCENARIOS,
     *HEALTH_SCENARIOS,
     *LOW_ACTIVATION_SCENARIOS,
     *SLEEP_SCENARIOS,
@@ -222,6 +224,7 @@ __all__ = [
     "SMOKE_SCENARIOS",
     "TRAVEL_SCENARIOS",
     "TRAVELER_TIMEZONE_SCENARIOS",
+    "THIRD_PARTY_SUPPORT_SCENARIOS",
     "count_lifeops_scenarios",
     "validate_lifeops_scenarios",
 ]
