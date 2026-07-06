@@ -335,7 +335,7 @@ async function main() {
     );
     process.exit(EXIT_LANE_FAILED);
   }
-  log(`all ${laneServices.length} lanes passed in ${timings.wall}ms`);
+  log(`all ${laneServices.length} lanes passed in ${report.wallClockMs}ms`);
 }
 
 if (
