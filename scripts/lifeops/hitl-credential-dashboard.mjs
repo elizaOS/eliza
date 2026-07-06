@@ -25,10 +25,13 @@
  * last-4 masks only, probe details are redacted upstream, and one-click
  * acquisitions (gh CLI token, headless SIWE cloud login, signal-cli link)
  * run server-side and save without rendering the credential. Zero
- * dependencies: node:http on 127.0.0.1, first free port from 43117.
+ * dependencies: node:http on 127.0.0.1, first free port from 43117, with
+ * same-origin JSON POSTs bound to a per-process session token so another local
+ * web page cannot drive credential writes through the operator's browser.
  * Run: bun run lifeops:hitl (add --open to launch the macOS browser).
  */
 import { spawn, spawnSync } from "node:child_process";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -76,6 +79,13 @@ const MAX_PORT_PROBES = 50;
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_VALUE_CHARS = 4096;
 const DASHBOARD_LANE = "dashboard-probe";
+const DASHBOARD_SESSION_TOKEN = randomBytes(32).toString("base64url");
+const LOOPBACK_REMOTE_ADDRESSES = new Set([
+  "127.0.0.1",
+  "::1",
+  "::ffff:127.0.0.1",
+]);
+let dashboardOrigin = null;
 
 const FAMILY_LABELS = {
   model: "Model providers",
@@ -146,6 +156,36 @@ class HttpError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
+  }
+}
+
+function tokenMatches(actual, expected) {
+  if (typeof actual !== "string" || actual.length === 0) return false;
+  const actualBytes = Buffer.from(actual);
+  const expectedBytes = Buffer.from(expected);
+  return (
+    actualBytes.length === expectedBytes.length &&
+    timingSafeEqual(actualBytes, expectedBytes)
+  );
+}
+
+function assertDashboardPost(req) {
+  const remoteAddress = req.socket?.remoteAddress;
+  if (remoteAddress && !LOOPBACK_REMOTE_ADDRESSES.has(remoteAddress)) {
+    throw new HttpError(403, "dashboard POSTs are loopback-only");
+  }
+  if (!dashboardOrigin) {
+    throw new HttpError(503, "dashboard origin is not ready");
+  }
+  if (req.headers.origin !== dashboardOrigin) {
+    throw new HttpError(403, "dashboard POST rejected: origin mismatch");
+  }
+  const contentType = req.headers["content-type"] ?? "";
+  if (!/^application\/json\b/i.test(contentType)) {
+    throw new HttpError(415, "dashboard POSTs must use application/json");
+  }
+  if (!tokenMatches(req.headers["x-hitl-session"], DASHBOARD_SESSION_TOKEN)) {
+    throw new HttpError(403, "dashboard POST rejected: invalid session");
   }
 }
 
@@ -649,6 +689,7 @@ async function readJsonBody(req) {
 
 async function handle(req, res) {
   const url = new URL(req.url, `http://${HOST}`);
+  if (req.method === "POST") assertDashboardPost(req);
   if (
     req.method === "GET" &&
     (url.pathname === "/" || url.pathname === "/index.html")
@@ -810,6 +851,7 @@ const PAGE_HTML = `<!doctype html>
 <script>
 (function () {
   'use strict';
+  var SESSION_TOKEN = ${JSON.stringify(DASHBOARD_SESSION_TOKEN)};
   var toastTimer = null;
   function toast(message, isError) {
     var node = document.getElementById('toast');
@@ -826,11 +868,15 @@ const PAGE_HTML = `<!doctype html>
     return node;
   }
   function api(method, path, body) {
-    return fetch(path, {
-      method: method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-    }).then(function (response) {
+    var options = { method: method };
+    if (method !== 'GET') {
+      options.headers = {
+        'Content-Type': 'application/json',
+        'X-HITL-Session': SESSION_TOKEN,
+      };
+      options.body = JSON.stringify(body || {});
+    }
+    return fetch(path, options).then(function (response) {
       return response.json().then(function (payload) {
         if (!response.ok) throw new Error(payload.error || ('HTTP ' + response.status));
         return payload;
@@ -1098,6 +1144,7 @@ if (import.meta.main) {
   });
   const port = await listenOnFreePort(server);
   const address = `http://${HOST}:${port}/`;
+  dashboardOrigin = new URL(address).origin;
   const { layers } = loadLayeredEnv();
   console.log(`[hitl-dashboard] v2 listening on ${address} (commit ${COMMIT})`);
   for (const layer of layers) {
