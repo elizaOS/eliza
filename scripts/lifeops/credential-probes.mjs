@@ -1,32 +1,48 @@
 #!/usr/bin/env node
 /**
  * Live credential probes for the LifeOps HITL intake surface (#11632). Each
- * family probe hits the provider's cheapest authenticated read endpoint with
- * whatever credentials are already in process.env and resolves to
- * { family, ok, detail } — detail carries HTTP status plus provider-reported
- * identity (bot username, account status, model count), never a secret: every
- * detail string passes through redactSecrets(), which replaces any env value
- * with a secret-shaped name by its last-4 mask, so even a provider echoing a
- * token back cannot leak it. All probes are plain global fetch with a 10s
- * abort; the single non-HTTP path is the documented signal-cli fallback.
- * Consumed by scripts/lifeops/hitl-credential-dashboard.mjs; also runnable
- * directly: node scripts/lifeops/credential-probes.mjs [family ...].
+ * probe hits the provider's cheapest authenticated read endpoint and resolves
+ * to { family, ok, detail } — detail carries HTTP status plus
+ * provider-reported identity (bot username, account status, model count),
+ * never a secret: every detail string passes through redactSecrets(), which
+ * replaces any secret-shaped env value by its last-4 mask, so even a provider
+ * echoing a token back cannot leak it. All probes are plain global fetch with
+ * a 10s abort; the non-HTTP paths are the documented signal-cli fallback and
+ * the local iMessage chat.db access check.
+ *
+ * Two probe granularities coexist. PROBES/probeFamily keep the family-level
+ * sweep (one verdict per connector family; CLI:
+ * node scripts/lifeops/credential-probes.mjs [family ...]). PATH_PROBES /
+ * probeConnectorPath wire one probe per CONNECTOR_PATHS auth-path id
+ * (github.pat probes the OWNER and AGENT slots separately; x.bearer-app and
+ * x.oauth1-user get distinct verdicts) — this is what the v2 dashboard fires.
+ *
+ * Probes read credentials through an explicit env map (defaulting to
+ * process.env) so the dashboard can pass the merged layered env from
+ * env-layers.mjs without mutating the process — mutation would destroy the
+ * per-layer source attribution the UI displays. Every env map handed in is
+ * also registered into the redaction set, so values that live only in a .env
+ * file layer are masked in details exactly like process.env values.
  */
 import { spawnSync } from "node:child_process";
 import { createHmac, randomBytes } from "node:crypto";
+import { accessSync, constants as fsConstants } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 const PROBE_TIMEOUT_MS = 10_000;
 const DETAIL_MAX_CHARS = 300;
 const SECRET_ENV_NAME_PATTERN =
   /(TOKEN|SECRET|KEY|PASSWORD|AUTH|SID|CLIENT_ID|ACCOUNT_NUMBER|PHONE_NUMBER)/;
+const DEFAULT_CLOUD_BASE = "https://api.elizacloud.ai";
 
 /** True when an env var name looks like it holds a credential or PII value. */
 export function isSecretEnvName(name) {
   return SECRET_ENV_NAME_PATTERN.test(name);
 }
 
-function env(name) {
-  const value = process.env[name];
+function readEnv(envMap, name) {
+  const value = envMap[name];
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
@@ -38,20 +54,38 @@ export function maskTail(value) {
   return value.length <= 4 ? "••••" : `…${value.slice(-4)}`;
 }
 
+// Secret values seen in non-process env layers accumulate here so redaction
+// covers them for the rest of the process lifetime — a rotated-away value is
+// still a secret worth masking.
+const extraSecretValues = new Set();
+
+/** Fold an env map's secret-shaped values into the redaction set. */
+export function registerRedactionEnv(envMap) {
+  for (const [name, value] of Object.entries(envMap)) {
+    if (!isSecretEnvName(name) || typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed.length >= 6) extraSecretValues.add(trimmed);
+  }
+}
+
 /**
  * Replace every secret-shaped env value occurring in text with its last-4
- * mask. Defense in depth: providers sometimes echo request credentials inside
- * error bodies, and probe details are rendered in a browser and in logs.
+ * mask — from live process.env plus every env map registered via
+ * registerRedactionEnv. Defense in depth: providers sometimes echo request
+ * credentials inside error bodies, and probe details are rendered in a
+ * browser and in logs.
  */
 export function redactSecrets(text) {
   let out = String(text);
+  const secretValues = new Set(extraSecretValues);
   for (const [name, value] of Object.entries(process.env)) {
-    if (!isSecretEnvName(name)) continue;
-    if (typeof value !== "string") continue;
+    if (!isSecretEnvName(name) || typeof value !== "string") continue;
     const trimmed = value.trim();
-    if (trimmed.length < 6) continue;
-    while (out.includes(trimmed)) {
-      out = out.replace(trimmed, maskTail(trimmed));
+    if (trimmed.length >= 6) secretValues.add(trimmed);
+  }
+  for (const secret of secretValues) {
+    while (out.includes(secret)) {
+      out = out.replace(secret, maskTail(secret));
     }
   }
   return out;
@@ -149,10 +183,10 @@ function oauth1Header(method, url, creds) {
     .join(", ")}`;
 }
 
-// --- Family probes ----------------------------------------------------------
+// --- Messaging families -------------------------------------------------------
 
-async function probeTelegram() {
-  const token = env("TELEGRAM_BOT_TOKEN");
+async function probeTelegram(e) {
+  const token = e("TELEGRAM_BOT_TOKEN");
   if (!token) return missing("telegram", "TELEGRAM_BOT_TOKEN");
   const r = await fetchJson(`https://api.telegram.org/bot${token}/getMe`);
   return r.httpOk && r.body?.ok
@@ -160,8 +194,8 @@ async function probeTelegram() {
     : fail("telegram", `getMe HTTP ${r.status}: ${errorSnippet(r)}`);
 }
 
-async function probeDiscord() {
-  const token = env("DISCORD_API_TOKEN") ?? env("DISCORD_BOT_TOKEN");
+async function probeDiscord(e) {
+  const token = e("DISCORD_API_TOKEN") ?? e("DISCORD_BOT_TOKEN");
   if (!token)
     return missing("discord", "DISCORD_API_TOKEN or DISCORD_BOT_TOKEN");
   const r = await fetchJson("https://discord.com/api/v10/users/@me", {
@@ -172,9 +206,25 @@ async function probeDiscord() {
     : fail("discord", `users/@me HTTP ${r.status}: ${errorSnippet(r)}`);
 }
 
-async function probeSlack() {
-  const botToken = env("SLACK_BOT_TOKEN");
-  const appToken = env("SLACK_APP_TOKEN");
+// Discord user tokens authenticate raw (no "Bot " prefix) — the user-client
+// paste path, distinct from the bot path.
+async function probeDiscordUserToken(e) {
+  const token = e("DISCORD_USER_TOKEN");
+  if (!token) return missing("discord", "DISCORD_USER_TOKEN");
+  const r = await fetchJson("https://discord.com/api/v10/users/@me", {
+    headers: { Authorization: token },
+  });
+  return r.httpOk
+    ? pass(
+        "discord",
+        `users/@me ok (user context): ${r.body?.username ?? "unknown"}`,
+      )
+    : fail("discord", `users/@me HTTP ${r.status}: ${errorSnippet(r)}`);
+}
+
+async function probeSlack(e) {
+  const botToken = e("SLACK_BOT_TOKEN");
+  const appToken = e("SLACK_APP_TOKEN");
   if (!botToken && !appToken)
     return missing("slack", "SLACK_BOT_TOKEN and SLACK_APP_TOKEN");
   const parts = [];
@@ -215,56 +265,82 @@ async function probeSlack() {
   return allOk ? pass("slack", detail) : fail("slack", detail);
 }
 
-async function probeX() {
-  const consumerKey = env("TWITTER_API_KEY");
-  const consumerSecret = env("TWITTER_API_SECRET_KEY");
-  const accessToken = env("TWITTER_ACCESS_TOKEN");
-  const accessSecret = env("TWITTER_ACCESS_TOKEN_SECRET");
-  const bearer = env("TWITTER_BEARER_TOKEN");
+async function probeSlackUserToken(e) {
+  const token = e("SLACK_USER_TOKEN");
+  if (!token) return missing("slack", "SLACK_USER_TOKEN");
+  const r = await fetchJson("https://slack.com/api/auth.test", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return r.httpOk && r.body?.ok
+    ? pass(
+        "slack",
+        `auth.test ok (user context): ${r.body.team ?? "?"}/${r.body.user ?? "?"}`,
+      )
+    : fail("slack", `auth.test failed: ${r.body?.error ?? `HTTP ${r.status}`}`);
+}
+
+async function probeXOauth1(e) {
+  const consumerKey = e("TWITTER_API_KEY");
+  const consumerSecret = e("TWITTER_API_SECRET_KEY");
+  const accessToken = e("TWITTER_ACCESS_TOKEN");
+  const accessSecret = e("TWITTER_ACCESS_TOKEN_SECRET");
+  if (!consumerKey || !consumerSecret || !accessToken || !accessSecret) {
+    return missing(
+      "x",
+      "TWITTER_API_KEY + TWITTER_API_SECRET_KEY + TWITTER_ACCESS_TOKEN + TWITTER_ACCESS_TOKEN_SECRET",
+    );
+  }
   const url = "https://api.x.com/2/users/me";
-  if (consumerKey && consumerSecret && accessToken && accessSecret) {
-    const r = await fetchJson(url, {
-      headers: {
-        Authorization: oauth1Header("GET", url, {
-          consumerKey,
-          consumerSecret,
-          accessToken,
-          accessSecret,
-        }),
-      },
-    });
-    return r.httpOk
-      ? pass(
-          "x",
-          `users/me (oauth1) ok: @${r.body?.data?.username ?? "unknown"}`,
-        )
-      : fail("x", `users/me (oauth1) HTTP ${r.status}: ${errorSnippet(r)}`);
+  const r = await fetchJson(url, {
+    headers: {
+      Authorization: oauth1Header("GET", url, {
+        consumerKey,
+        consumerSecret,
+        accessToken,
+        accessSecret,
+      }),
+    },
+  });
+  return r.httpOk
+    ? pass("x", `users/me (oauth1) ok: @${r.body?.data?.username ?? "unknown"}`)
+    : fail("x", `users/me (oauth1) HTTP ${r.status}: ${errorSnippet(r)}`);
+}
+
+async function probeXBearer(e) {
+  const bearer = e("TWITTER_BEARER_TOKEN");
+  if (!bearer) return missing("x", "TWITTER_BEARER_TOKEN");
+  const r = await fetchJson("https://api.x.com/2/users/me", {
+    headers: { Authorization: `Bearer ${bearer}` },
+  });
+  return r.httpOk
+    ? pass("x", `users/me (bearer) ok: @${r.body?.data?.username ?? "unknown"}`)
+    : fail(
+        "x",
+        `users/me (bearer) HTTP ${r.status}: ${errorSnippet(r)} — app-only bearer cannot read user context; set TWITTER_ACCESS_TOKEN + TWITTER_ACCESS_TOKEN_SECRET for the OAuth1 signed probe`,
+      );
+}
+
+async function probeX(e) {
+  if (
+    e("TWITTER_API_KEY") &&
+    e("TWITTER_API_SECRET_KEY") &&
+    e("TWITTER_ACCESS_TOKEN") &&
+    e("TWITTER_ACCESS_TOKEN_SECRET")
+  ) {
+    return probeXOauth1(e);
   }
-  if (bearer) {
-    const r = await fetchJson(url, {
-      headers: { Authorization: `Bearer ${bearer}` },
-    });
-    return r.httpOk
-      ? pass(
-          "x",
-          `users/me (bearer) ok: @${r.body?.data?.username ?? "unknown"}`,
-        )
-      : fail(
-          "x",
-          `users/me (bearer) HTTP ${r.status}: ${errorSnippet(r)} — app-only bearer cannot read user context; set TWITTER_ACCESS_TOKEN + TWITTER_ACCESS_TOKEN_SECRET for the OAuth1 signed probe`,
-        );
-  }
+  if (e("TWITTER_BEARER_TOKEN")) return probeXBearer(e);
   return missing(
     "x",
-    "TWITTER_API_KEY + TWITTER_API_SECRET_KEY + TWITTER_ACCESS_TOKEN + TWITTER_ACCESS_TOKEN_SECRET",
+    "TWITTER_API_KEY + TWITTER_API_SECRET_KEY + TWITTER_ACCESS_TOKEN + TWITTER_ACCESS_TOKEN_SECRET (or TWITTER_BEARER_TOKEN)",
   );
 }
 
-async function probeWhatsapp() {
-  const token =
-    env("ELIZA_WHATSAPP_ACCESS_TOKEN") ?? env("WHATSAPP_ACCESS_TOKEN");
+async function probeWhatsapp(e) {
+  const token = e("ELIZA_WHATSAPP_ACCESS_TOKEN") ?? e("WHATSAPP_ACCESS_TOKEN");
   const phoneId =
-    env("ELIZA_WHATSAPP_PHONE_NUMBER_ID") ?? env("WHATSAPP_PHONE_NUMBER_ID");
+    e("ELIZA_WHATSAPP_PHONE_NUMBER_ID") ?? e("WHATSAPP_PHONE_NUMBER_ID");
   if (!token || !phoneId) {
     return missing(
       "whatsapp",
@@ -287,9 +363,9 @@ async function probeWhatsapp() {
   );
 }
 
-async function probeTwilio() {
-  const sid = env("TWILIO_ACCOUNT_SID");
-  const auth = env("TWILIO_AUTH_TOKEN");
+async function probeTwilio(e) {
+  const sid = e("TWILIO_ACCOUNT_SID");
+  const auth = e("TWILIO_AUTH_TOKEN");
   if (!sid || !auth)
     return missing("twilio", "TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN");
   const r = await fetchJson(
@@ -308,8 +384,8 @@ async function probeTwilio() {
     : fail("twilio", `account HTTP ${r.status}: ${errorSnippet(r)}`);
 }
 
-async function probeSignal() {
-  const httpUrl = env("SIGNAL_HTTP_URL");
+async function probeSignal(e) {
+  const httpUrl = e("SIGNAL_HTTP_URL");
   if (httpUrl) {
     const r = await fetchJson(`${httpUrl.replace(/\/+$/, "")}/v1/about`);
     return r.httpOk
@@ -319,8 +395,8 @@ async function probeSignal() {
         )
       : fail("signal", `GET /v1/about HTTP ${r.status}: ${errorSnippet(r)}`);
   }
-  const cliPath = env("SIGNAL_CLI_PATH");
-  if (!cliPath && !env("SIGNAL_ACCOUNT_NUMBER"))
+  const cliPath = e("SIGNAL_CLI_PATH");
+  if (!cliPath && !e("SIGNAL_ACCOUNT_NUMBER"))
     return missing("signal", "SIGNAL_HTTP_URL or SIGNAL_CLI_PATH");
   const command = cliPath ?? "signal-cli";
   const result = spawnSync(command, ["--version"], {
@@ -338,74 +414,128 @@ async function probeSignal() {
       );
 }
 
-async function probeModel() {
-  const providers = [];
+// --- model providers (per-key path probes + family aggregate) ----------------
+
+// Each provider helper returns null when its key is absent, so the family
+// aggregate can report "missing KEY" while the per-path probe reports a
+// proper not-configured failure.
+async function probeOpenaiModels(e) {
+  const key = e("OPENAI_API_KEY");
+  if (!key) return null;
+  const base = (e("OPENAI_BASE_URL") ?? "https://api.openai.com/v1").replace(
+    /\/+$/,
+    "",
+  );
+  const r = await fetchJson(`${base}/models`, {
+    headers: { Authorization: `Bearer ${key}` },
+  });
+  return r.httpOk
+    ? {
+        ok: true,
+        part: `openai(${new URL(base).hostname}): ok (${r.body?.data?.length ?? 0} models)`,
+      }
+    : { ok: false, part: `openai: HTTP ${r.status} ${errorSnippet(r)}` };
+}
+
+async function probeCerebrasModels(e) {
+  const key = e("CEREBRAS_API_KEY");
+  if (!key) return null;
+  const r = await fetchJson("https://api.cerebras.ai/v1/models", {
+    headers: { Authorization: `Bearer ${key}` },
+  });
+  return r.httpOk
+    ? { ok: true, part: `cerebras: ok (${r.body?.data?.length ?? 0} models)` }
+    : { ok: false, part: `cerebras: HTTP ${r.status} ${errorSnippet(r)}` };
+}
+
+async function probeAnthropicModels(e) {
+  const key = e("ANTHROPIC_API_KEY");
+  if (!key) return null;
+  const r = await fetchJson("https://api.anthropic.com/v1/models", {
+    headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
+  });
+  return r.httpOk
+    ? { ok: true, part: `anthropic: ok (${r.body?.data?.length ?? 0} models)` }
+    : { ok: false, part: `anthropic: HTTP ${r.status} ${errorSnippet(r)}` };
+}
+
+const MODEL_PROVIDERS = [
+  ["openai", "OPENAI_API_KEY", probeOpenaiModels],
+  ["cerebras", "CEREBRAS_API_KEY", probeCerebrasModels],
+  ["anthropic", "ANTHROPIC_API_KEY", probeAnthropicModels],
+];
+
+async function probeModel(e) {
+  const parts = [];
   let anyOk = false;
-  const openaiKey = env("OPENAI_API_KEY");
-  if (openaiKey) {
-    const base = (
-      env("OPENAI_BASE_URL") ?? "https://api.openai.com/v1"
-    ).replace(/\/+$/, "");
-    const r = await fetchJson(`${base}/models`, {
-      headers: { Authorization: `Bearer ${openaiKey}` },
-    });
-    if (r.httpOk) {
-      anyOk = true;
-      providers.push(
-        `openai(${new URL(base).hostname}): ok (${r.body?.data?.length ?? 0} models)`,
-      );
-    } else providers.push(`openai: HTTP ${r.status} ${errorSnippet(r)}`);
-  } else providers.push("openai: missing OPENAI_API_KEY");
-  const cerebrasKey = env("CEREBRAS_API_KEY");
-  if (cerebrasKey) {
-    const r = await fetchJson("https://api.cerebras.ai/v1/models", {
-      headers: { Authorization: `Bearer ${cerebrasKey}` },
-    });
-    if (r.httpOk) {
-      anyOk = true;
-      providers.push(`cerebras: ok (${r.body?.data?.length ?? 0} models)`);
-    } else providers.push(`cerebras: HTTP ${r.status} ${errorSnippet(r)}`);
-  } else providers.push("cerebras: missing CEREBRAS_API_KEY");
-  const anthropicKey = env("ANTHROPIC_API_KEY");
-  if (anthropicKey) {
-    const r = await fetchJson("https://api.anthropic.com/v1/models", {
-      headers: { "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" },
-    });
-    if (r.httpOk) {
-      anyOk = true;
-      providers.push(`anthropic: ok (${r.body?.data?.length ?? 0} models)`);
-    } else providers.push(`anthropic: HTTP ${r.status} ${errorSnippet(r)}`);
-  } else providers.push("anthropic: missing ANTHROPIC_API_KEY");
-  const detail = providers.join("; ");
+  for (const [name, envName, probe] of MODEL_PROVIDERS) {
+    const result = await probe(e);
+    if (result === null) {
+      parts.push(`${name}: missing ${envName}`);
+      continue;
+    }
+    anyOk ||= result.ok;
+    parts.push(result.part);
+  }
+  const detail = parts.join("; ");
   return anyOk ? pass("model", detail) : fail("model", detail);
+}
+
+function modelKeyPathProbe(provider) {
+  const [, envName, probe] = MODEL_PROVIDERS.find(
+    ([name]) => name === provider,
+  );
+  return async (e) => {
+    const result = await probe(e);
+    if (result === null) return missing("model", envName);
+    return result.ok ? pass("model", result.part) : fail("model", result.part);
+  };
+}
+
+// --- health (per-source path probes + family aggregate) ----------------------
+
+const HEALTH_SOURCES = {
+  strava: {
+    envName: "STRAVA_ACCESS_TOKEN",
+    url: "https://www.strava.com/api/v3/athlete",
+  },
+  oura: {
+    envName: "OURA_ACCESS_TOKEN",
+    url: "https://api.ouraring.com/v2/usercollection/personal_info",
+  },
+  fitbit: {
+    envName: "FITBIT_ACCESS_TOKEN",
+    url: "https://api.fitbit.com/1/user/-/profile.json",
+  },
+  withings: {
+    envName: "WITHINGS_ACCESS_TOKEN",
+    url: "https://wbsapi.withings.net/v2/user?action=getdevice",
+  },
+};
+
+async function probeHealthSource(name, e) {
+  const source = HEALTH_SOURCES[name];
+  const token = e(source.envName);
+  if (!token) return null;
+  const r = await fetchJson(source.url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  // Withings tunnels errors through HTTP 200 with a nonzero body.status.
+  const bodyOk = name === "withings" ? r.body?.status === 0 : true;
+  return r.httpOk && bodyOk
+    ? { ok: true, part: `${name}: ok` }
+    : {
+        ok: false,
+        part: `${name}: HTTP ${r.status}${bodyOk ? "" : ` api-status=${r.body?.status}`} ${errorSnippet(r)}`,
+      };
 }
 
 // One green wearable satisfies the health group — the live run only needs a
 // single working data source.
-async function probeHealth() {
-  const sources = [
-    {
-      name: "strava",
-      token: env("STRAVA_ACCESS_TOKEN"),
-      url: "https://www.strava.com/api/v3/athlete",
-    },
-    {
-      name: "oura",
-      token: env("OURA_ACCESS_TOKEN"),
-      url: "https://api.ouraring.com/v2/usercollection/personal_info",
-    },
-    {
-      name: "fitbit",
-      token: env("FITBIT_ACCESS_TOKEN"),
-      url: "https://api.fitbit.com/1/user/-/profile.json",
-    },
-    {
-      name: "withings",
-      token: env("WITHINGS_ACCESS_TOKEN"),
-      url: "https://wbsapi.withings.net/v2/user?action=getdevice",
-    },
-  ];
-  const configured = sources.filter((s) => s.token);
+async function probeHealth(e) {
+  const configured = Object.keys(HEALTH_SOURCES).filter((name) =>
+    e(HEALTH_SOURCES[name].envName),
+  );
   if (configured.length === 0) {
     return missing(
       "health",
@@ -414,28 +544,45 @@ async function probeHealth() {
   }
   const parts = [];
   let anyOk = false;
-  for (const source of configured) {
-    const r = await fetchJson(source.url, {
-      headers: { Authorization: `Bearer ${source.token}` },
-    });
-    // Withings tunnels errors through HTTP 200 with a nonzero body.status.
-    const bodyOk = source.name === "withings" ? r.body?.status === 0 : true;
-    if (r.httpOk && bodyOk) {
-      anyOk = true;
-      parts.push(`${source.name}: ok`);
-    } else {
-      parts.push(
-        `${source.name}: HTTP ${r.status}${bodyOk ? "" : ` api-status=${r.body?.status}`} ${errorSnippet(r)}`,
-      );
-    }
+  for (const name of configured) {
+    const result = await probeHealthSource(name, e);
+    anyOk ||= result.ok;
+    parts.push(result.part);
   }
   const detail = parts.join("; ");
   return anyOk ? pass("health", detail) : fail("health", detail);
 }
 
-async function probePlaid() {
-  const clientId = env("PLAID_CLIENT_ID");
-  const secret = env("PLAID_SECRET");
+function healthSourcePathProbe(name) {
+  return async (e) => {
+    const result = await probeHealthSource(name, e);
+    if (result === null) return missing("health", HEALTH_SOURCES[name].envName);
+    return result.ok
+      ? pass("health", result.part)
+      : fail("health", result.part);
+  };
+}
+
+async function probeGoogleFit(e) {
+  const token = e("ELIZA_GOOGLE_FIT_ACCESS_TOKEN");
+  if (!token) return missing("health", "ELIZA_GOOGLE_FIT_ACCESS_TOKEN");
+  const r = await fetchJson(
+    "https://www.googleapis.com/fitness/v1/users/me/dataSources",
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return r.httpOk
+    ? pass(
+        "health",
+        `google-fit dataSources ok (${r.body?.dataSource?.length ?? 0} sources)`,
+      )
+    : fail("health", `google-fit HTTP ${r.status}: ${errorSnippet(r)}`);
+}
+
+// --- finance ------------------------------------------------------------------
+
+async function probePlaid(e) {
+  const clientId = e("PLAID_CLIENT_ID");
+  const secret = e("PLAID_SECRET");
   if (!clientId || !secret)
     return missing("plaid", "PLAID_CLIENT_ID + PLAID_SECRET");
   const r = await fetchJson("https://sandbox.plaid.com/institutions/get", {
@@ -460,13 +607,13 @@ async function probePlaid() {
       );
 }
 
-async function probePaypal() {
-  const clientId = env("PAYPAL_CLIENT_ID");
-  const secret = env("PAYPAL_CLIENT_SECRET");
+async function probePaypal(e) {
+  const clientId = e("PAYPAL_CLIENT_ID");
+  const secret = e("PAYPAL_CLIENT_SECRET");
   if (!clientId || !secret)
     return missing("paypal", "PAYPAL_CLIENT_ID + PAYPAL_CLIENT_SECRET");
   const base = (
-    env("PAYPAL_API_BASE") ?? "https://api-m.sandbox.paypal.com"
+    e("PAYPAL_API_BASE") ?? "https://api-m.sandbox.paypal.com"
   ).replace(/\/+$/, "");
   const r = await fetchJson(`${base}/v1/oauth2/token`, {
     method: "POST",
@@ -489,13 +636,13 @@ async function probePaypal() {
 
 // Google credential validation requires the full in-app OAuth consent flow, so
 // this probe only confirms the client credentials are present.
-async function probeGoogle() {
+async function probeGoogle(e) {
   const names = [
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET",
     "GOOGLE_REDIRECT_URI",
   ];
-  const absent = names.filter((name) => !env(name));
+  const absent = names.filter((name) => !e(name));
   return absent.length === 0
     ? pass(
         "google",
@@ -503,6 +650,149 @@ async function probeGoogle() {
       )
     : missing("google", absent.join(" + "));
 }
+
+// --- GitHub -------------------------------------------------------------------
+
+// GitHub's REST API rejects requests without a User-Agent, and undici's fetch
+// sends none by default.
+async function probeGithubToken(token, slot) {
+  const r = await fetchJson("https://api.github.com/user", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "eliza-hitl-dashboard",
+    },
+  });
+  return r.httpOk
+    ? { ok: true, part: `${slot}: @${r.body?.login ?? "unknown"}` }
+    : { ok: false, part: `${slot}: HTTP ${r.status} ${errorSnippet(r)}` };
+}
+
+async function probeGithubGhCli(e) {
+  const token = e("GITHUB_TOKEN");
+  if (!token) {
+    return missing(
+      "github",
+      "GITHUB_TOKEN (use the gh CLI one-click to fill it)",
+    );
+  }
+  const result = await probeGithubToken(token, "GITHUB_TOKEN");
+  return result.ok
+    ? pass("github", `user ok — ${result.part}`)
+    : fail("github", result.part);
+}
+
+// OWNER maps to plugin-github role 'user', AGENT to 'agent'
+// (plugins/plugin-github/src/accounts.ts); each present slot is probed with
+// its own token so a bad agent PAT cannot hide behind a good owner PAT.
+async function probeGithubPats(e) {
+  const slots = [
+    ["OWNER", e("GITHUB_USER_PAT") ?? e("ELIZA_E2E_GITHUB_USER_PAT")],
+    ["AGENT", e("GITHUB_AGENT_PAT") ?? e("ELIZA_E2E_GITHUB_AGENT_PAT")],
+    ["legacy GITHUB_TOKEN", e("GITHUB_TOKEN")],
+  ].filter(([, token]) => token);
+  if (slots.length === 0) {
+    return missing(
+      "github",
+      "GITHUB_USER_PAT / GITHUB_AGENT_PAT / GITHUB_TOKEN",
+    );
+  }
+  const results = [];
+  for (const [slot, token] of slots) {
+    results.push(await probeGithubToken(token, slot));
+  }
+  const detail = results.map((result) => result.part).join("; ");
+  return results.every((result) => result.ok)
+    ? pass("github", detail)
+    : fail("github", detail);
+}
+
+async function probeGithubOauthApp(e) {
+  const names = [
+    "GITHUB_OAUTH_CLIENT_ID",
+    "GITHUB_OAUTH_CLIENT_SECRET",
+    "GITHUB_OAUTH_REDIRECT_URI",
+  ];
+  const absent = names.filter((name) => !e(name));
+  return absent.length === 0
+    ? pass(
+        "github",
+        "OAuth app credentials present (presence-only — run the consent flow via POST /api/connectors/github/oauth/start)",
+      )
+    : missing("github", absent.join(" + "));
+}
+
+// --- Eliza Cloud ----------------------------------------------------------------
+
+// The cheapest authenticated read on the real cloud API — the same endpoint
+// scripts/cloud/siwe-test-login.mjs uses as its auth proof. There is no
+// /api/v1/me.
+async function probeElizaCloud(e) {
+  const apiKey = e("ELIZAOS_CLOUD_API_KEY") ?? e("ELIZA_CLOUD_API_KEY");
+  if (!apiKey) {
+    return missing(
+      "elizacloud",
+      "ELIZAOS_CLOUD_API_KEY (or ELIZA_CLOUD_API_KEY)",
+    );
+  }
+  const base = (e("SIWE_BASE") ?? DEFAULT_CLOUD_BASE).replace(/\/+$/, "");
+  const r = await fetchJson(`${base}/api/v1/credits/balance`, {
+    headers: { authorization: `Bearer ${apiKey}` },
+  });
+  return r.httpOk
+    ? pass(
+        "elizacloud",
+        `credits/balance ok (${new URL(base).hostname}, balance=${r.body?.balance ?? "?"})`,
+      )
+    : fail("elizacloud", `credits/balance HTTP ${r.status}: ${errorSnippet(r)}`);
+}
+
+// --- iMessage (local-machine checks) ---------------------------------------------
+
+// Filesystem access IS the iMessage credential on macOS: the probe verdict is
+// whether this process can read chat.db (Full Disk Access).
+async function probeImessageMacos(e) {
+  const backend = e("ELIZA_IMESSAGE_BACKEND");
+  const dbPath = join(homedir(), "Library/Messages/chat.db");
+  try {
+    accessSync(dbPath, fsConstants.R_OK);
+    return pass(
+      "imessage",
+      `chat.db readable — Full Disk Access granted to this process${backend ? ` (backend=${backend})` : ""}`,
+    );
+  } catch {
+    // error-policy:J3 the access check IS the probe; unreadable is the explicit fail outcome, not an exception path.
+    return fail(
+      "imessage",
+      "chat.db not readable — grant Full Disk Access to the terminal/app running the agent",
+    );
+  }
+}
+
+async function probeBlueBubbles(e) {
+  const password = e("BLUEBUBBLES_PASSWORD");
+  if (!password) {
+    return missing(
+      "imessage",
+      "BLUEBUBBLES_PASSWORD (server URL defaults to http://localhost:1234)",
+    );
+  }
+  const base = (e("BLUEBUBBLES_SERVER_URL") ?? "http://localhost:1234").replace(
+    /\/+$/,
+    "",
+  );
+  const r = await fetchJson(
+    `${base}/api/v1/ping?password=${encodeURIComponent(password)}`,
+  );
+  return r.httpOk
+    ? pass("imessage", `BlueBubbles ping ok (${new URL(base).hostname})`)
+    : fail(
+        "imessage",
+        `BlueBubbles ping HTTP ${r.status}: ${errorSnippet(r)} — if the server app is installed but stopped, launch BlueBubbles.app`,
+      );
+}
+
+// --- family registry -------------------------------------------------------------
 
 const PROBES = {
   telegram: probeTelegram,
@@ -521,33 +811,118 @@ const PROBES = {
 
 export const PROBE_FAMILIES = Object.keys(PROBES);
 
+function toLookup(envMap) {
+  registerRedactionEnv(envMap);
+  return (name) => readEnv(envMap, name);
+}
+
+function probeErrorDetail(error) {
+  const cause = error?.cause?.code ?? error?.code;
+  const reason =
+    error?.name === "TimeoutError"
+      ? `timed out after ${PROBE_TIMEOUT_MS / 1000}s`
+      : `${error?.message ?? error}${cause ? ` (${cause})` : ""}`;
+  return `probe error: ${reason}`;
+}
+
 /**
- * Run one family probe. Network/timeout failures become a structured
- * { ok:false } result so a batch never dies on one flaky provider.
+ * Run one family probe against an env map (default process.env).
+ * Network/timeout failures become a structured { ok:false } result so a batch
+ * never dies on one flaky provider.
  */
-export async function probeFamily(family) {
+export async function probeFamily(family, envMap = process.env) {
   const probe = PROBES[family];
   if (!probe) {
     throw new Error(
       `Unknown probe family: ${family} (known: ${PROBE_FAMILIES.join(", ")})`,
     );
   }
+  const e = toLookup(envMap);
   const probedAt = new Date().toISOString();
   try {
-    return { ...(await probe()), probedAt };
+    return { ...(await probe(e)), probedAt };
   } catch (error) {
     // error-policy:J1 probe boundary — a transport error IS the probe outcome; it surfaces as a red row, not a crash.
-    const cause = error?.cause?.code ?? error?.code;
-    const reason =
-      error?.name === "TimeoutError"
-        ? `timed out after ${PROBE_TIMEOUT_MS / 1000}s`
-        : `${error?.message ?? error}${cause ? ` (${cause})` : ""}`;
-    return { ...fail(family, `probe error: ${reason}`), probedAt };
+    return { ...fail(family, probeErrorDetail(error)), probedAt };
   }
 }
 
-export async function probeAll(families = PROBE_FAMILIES) {
-  return Promise.all(families.map((family) => probeFamily(family)));
+export async function probeAll(
+  families = PROBE_FAMILIES,
+  envMap = process.env,
+) {
+  return Promise.all(families.map((family) => probeFamily(family, envMap)));
+}
+
+// --- per-auth-path registry (CONNECTOR_PATHS ids) ----------------------------------
+
+/**
+ * One probe per CONNECTOR_PATHS auth-path id. Paths absent here have no wired
+ * probe; the dashboard reports those as an explicit skip with the path's
+ * documented probeEndpoint, never as an error.
+ */
+export const PATH_PROBES = {
+  "model.openai-key": modelKeyPathProbe("openai"),
+  "model.cerebras-key": modelKeyPathProbe("cerebras"),
+  "model.anthropic-key": modelKeyPathProbe("anthropic"),
+  "elizacloud.siwe-session": probeElizaCloud,
+  "elizacloud.api-key": probeElizaCloud,
+  "github.gh-cli": probeGithubGhCli,
+  "github.pat": probeGithubPats,
+  "github.user-oauth": probeGithubOauthApp,
+  "google.oauth-owner": probeGoogle,
+  "google.oauth-agent": probeGoogle,
+  "telegram.bot": probeTelegram,
+  "discord.bot": probeDiscord,
+  "discord.user-token": probeDiscordUserToken,
+  "slack.bot": probeSlack,
+  "slack.user-token": probeSlackUserToken,
+  "signal.cli": probeSignal,
+  "whatsapp.cloud-api": probeWhatsapp,
+  "imessage.macos": probeImessageMacos,
+  "imessage.bluebubbles": probeBlueBubbles,
+  "x.oauth1-user": probeXOauth1,
+  "x.bearer-app": probeXBearer,
+  "twilio.api": probeTwilio,
+  "health.strava": healthSourcePathProbe("strava"),
+  "health.oura": healthSourcePathProbe("oura"),
+  "health.fitbit": healthSourcePathProbe("fitbit"),
+  "health.withings": healthSourcePathProbe("withings"),
+  "health.google-fit": probeGoogleFit,
+  "finance.plaid": probePlaid,
+  "finance.paypal": probePaypal,
+};
+
+export const PROBEABLE_PATH_IDS = Object.keys(PATH_PROBES);
+
+/**
+ * Run the wired probe for one auth path against an env map. Throws on unknown
+ * path ids (a caller bug); transport failures resolve to { ok:false } like
+ * probeFamily. Availability/skip policy lives with the caller — this function
+ * only runs real probes.
+ */
+export async function probeConnectorPath(pathId, envMap = process.env) {
+  const probe = PATH_PROBES[pathId];
+  if (!probe) {
+    throw new Error(
+      `No wired probe for auth path: ${pathId} (wired: ${PROBEABLE_PATH_IDS.join(", ")})`,
+    );
+  }
+  const e = toLookup(envMap);
+  const probedAt = new Date().toISOString();
+  try {
+    const { family, ok, detail } = await probe(e);
+    return { pathId, family, ok, detail, probedAt };
+  } catch (error) {
+    // error-policy:J1 probe boundary — a transport error IS the probe outcome; it surfaces as a red row, not a crash.
+    return {
+      pathId,
+      family: pathId.split(".")[0],
+      ok: false,
+      detail: clipDetail(probeErrorDetail(error)),
+      probedAt,
+    };
+  }
 }
 
 if (import.meta.main) {
