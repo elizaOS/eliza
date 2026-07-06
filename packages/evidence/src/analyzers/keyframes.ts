@@ -8,10 +8,11 @@
  * by OCR, palette, brand, corners, and phash without any of them knowing about
  * video.
  *
- * ffmpeg is optional: when absent the analyzer records `skipped-missing-tool`
- * with the reason, never a fabricated empty keyframe set. Emitting artifacts
- * requires the runner's `ctx.emitArtifact` handle; without it (analysis over a
- * bare directory with no bundle) the analyzer skips with that reason.
+ * ffmpeg resolves from env, PATH, then the installed `ffmpeg-static` package;
+ * only when every source is unavailable does the analyzer record
+ * `skipped-missing-tool`. Emitting artifacts requires the runner's
+ * `ctx.emitArtifact` handle; without it (analysis over a bare directory with no
+ * bundle) the analyzer skips with that reason.
  */
 
 import { execFile } from "node:child_process";
@@ -19,6 +20,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { EvidenceError } from "../errors.ts";
+import { resolveFfmpegBinary } from "../ffmpeg-binaries.ts";
 import type {
   Analyzer,
   AnalyzerContext,
@@ -30,7 +33,6 @@ const execFileAsync = promisify(execFile);
 
 /** Default cap on emitted scene-cut keyframes (first/last are always added). */
 const DEFAULT_MAX_SCENE_FRAMES = 12;
-const FFMPEG_BIN = process.env.ELIZA_FFMPEG_BIN || "ffmpeg";
 
 /** One emitted keyframe's placement. */
 export interface KeyframeRecord {
@@ -49,18 +51,8 @@ export interface KeyframesData {
 export async function ffmpegAvailable(): Promise<
   { available: true } | { available: false; reason: string }
 > {
-  try {
-    await execFileAsync(FFMPEG_BIN, ["-version"], { timeout: 10_000 });
-    return { available: true };
-  } catch (error) {
-    const enoent = (error as NodeJS.ErrnoException)?.code === "ENOENT";
-    return {
-      available: false,
-      reason: enoent
-        ? `ffmpeg not installed (${FFMPEG_BIN})`
-        : `ffmpeg -version failed: ${String(error instanceof Error ? error.message : error).slice(0, 160)}`,
-    };
-  }
+  const resolved = await resolveFfmpegBinary();
+  return resolved.available ? { available: true } : resolved;
 }
 
 /**
@@ -74,10 +66,14 @@ export async function extractKeyframes(
   outDir: string,
   maxSceneFrames = DEFAULT_MAX_SCENE_FRAMES,
 ): Promise<{ file: string; kind: "scene" | "first" | "last" }[]> {
+  const ffmpeg = await resolveFfmpegBinary();
+  if (!ffmpeg.available) {
+    throw new EvidenceError(ffmpeg.reason, { code: "FFMPEG_UNAVAILABLE" });
+  }
   fs.mkdirSync(outDir, { recursive: true });
   const scenePattern = path.join(outDir, "scene-%03d.png");
   await execFileAsync(
-    FFMPEG_BIN,
+    ffmpeg.bin,
     [
       "-hide_banner",
       "-loglevel",
@@ -97,7 +93,7 @@ export async function extractKeyframes(
   const first = path.join(outDir, "first.png");
   const last = path.join(outDir, "last.png");
   await execFileAsync(
-    FFMPEG_BIN,
+    ffmpeg.bin,
     [
       "-hide_banner",
       "-loglevel",
@@ -112,7 +108,7 @@ export async function extractKeyframes(
   );
   // Seek to the final frame: read the whole stream and keep only the last.
   await execFileAsync(
-    FFMPEG_BIN,
+    ffmpeg.bin,
     [
       "-hide_banner",
       "-loglevel",

@@ -13,9 +13,10 @@
  * artifact's `source`/`producedBy` provenance so a reviewer can tell a
  * send-button hover clip from a five-view tour without opening either.
  *
- * When ffmpeg/ffprobe are absent the video is still ingested (its bytes matter),
- * but normalization and keyframe analysis record explicit skipped-missing-tool
- * results — the returned report carries them, never a silent success.
+ * When ffmpeg/ffprobe are absent the video is still ingested under its original
+ * extension (its bytes matter), but normalization and keyframe analysis record
+ * explicit skipped-missing-tool results — the returned report carries them,
+ * never a silent success or mislabeled MP4.
  */
 
 import fs from "node:fs";
@@ -112,18 +113,21 @@ export async function ingestVideo(
     });
   }
 
-  const bundlePath = `${granularityDir(options.granularity)}/${options.slug}.mp4`;
   const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), "evidence-video-"));
   const canonical = path.join(scratchDir, `${options.slug}.mp4`);
   let normalize: NormalizeOutcome;
   try {
     normalize = await normalizeVideo(file, canonical);
     // When normalization is skipped (no ffmpeg), the input bytes are ingested
-    // as-is under the .mp4 name; the skip is reported so the reviewer knows the
-    // container may not be GitHub-inline-renderable. This is honest degradation,
-    // not fabricated success.
+    // as-is under the source extension; the skip is reported so the reviewer
+    // knows the container may not be GitHub-inline-renderable.
     const sourceForPlacement =
       normalize.status === "skipped-missing-tool" ? file : canonical;
+    const extension =
+      normalize.status === "skipped-missing-tool"
+        ? sourceExtension(file)
+        : ".mp4";
+    const bundlePath = `${granularityDir(options.granularity)}/${options.slug}${extension}`;
     const video = await bundle.addArtifact(sourceForPlacement, {
       kind: "video",
       source: options.source,
@@ -145,4 +149,10 @@ export async function ingestVideo(
   } finally {
     fs.rmSync(scratchDir, { recursive: true, force: true });
   }
+}
+
+/** Preserve the producer's extension only when it is safe for a bundle path. */
+function sourceExtension(file: string): string {
+  const extension = path.extname(file).toLowerCase();
+  return /^\.[a-z0-9]+$/.test(extension) ? extension : ".video";
 }

@@ -9,53 +9,28 @@
  * The transform is conditional, not blind: an mp4 that already carries h264 and
  * has `moov` before `mdat` is copied through untouched (re-encoding would waste
  * time and lose a generation of quality), while anything else is remuxed or
- * transcoded. `ffprobe` decides which; `ffmpeg` performs the transform. Both are
- * optional binaries — when either is absent the caller receives an explicit
- * `skipped-missing-tool` outcome carrying the reason, never a silent copy that
- * would smuggle an unplayable webm into the bundle under an `.mp4` name.
+ * transcoded. `ffprobe` decides which; `ffmpeg` performs the transform. Both
+ * resolve from env, PATH, then the installed static npm packages; only when all
+ * resolution paths fail does the caller receive `skipped-missing-tool`.
  */
 
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import { promisify } from "node:util";
+import { EvidenceError } from "../errors.ts";
+import {
+  resolveFfprobeBinary,
+  resolveVideoBinaries,
+} from "../ffmpeg-binaries.ts";
 
 const execFileAsync = promisify(execFile);
-
-// Read the binary names per call rather than at module load so an env override
-// (a test forcing an absent binary, a container pinning a specific ffmpeg) takes
-// effect without re-importing the module.
-const ffmpegBin = () => process.env.ELIZA_FFMPEG_BIN || "ffmpeg";
-const ffprobeBin = () => process.env.ELIZA_FFPROBE_BIN || "ffprobe";
-
-/** Whether a named binary answers `-version`, with a reason when it does not. */
-async function binaryAvailable(
-  bin: string,
-): Promise<{ available: true } | { available: false; reason: string }> {
-  try {
-    await execFileAsync(bin, ["-version"], { timeout: 10_000 });
-    return { available: true };
-  } catch (error) {
-    const enoent = (error as NodeJS.ErrnoException)?.code === "ENOENT";
-    return {
-      available: false,
-      reason: enoent
-        ? `${bin} not installed`
-        : `${bin} -version failed: ${String(
-            error instanceof Error ? error.message : error,
-          ).slice(0, 160)}`,
-    };
-  }
-}
 
 /** Whether both ffprobe and ffmpeg are invocable (normalization needs both). */
 export async function videoToolsAvailable(): Promise<
   { available: true } | { available: false; reason: string }
 > {
-  const probe = await binaryAvailable(ffprobeBin());
-  if (!probe.available) return probe;
-  const ffmpeg = await binaryAvailable(ffmpegBin());
-  if (!ffmpeg.available) return ffmpeg;
-  return { available: true };
+  const tools = await resolveVideoBinaries();
+  return tools.available ? { available: true } : tools;
 }
 
 /** The container + first-video-stream facts ffprobe reports for a file. */
@@ -100,8 +75,19 @@ function readMp4BoxOrder(filePath: string): string[] {
 
 /** Probe a video's container, first video codec, and faststart layout. */
 export async function probeVideo(filePath: string): Promise<VideoProbe> {
+  const ffprobe = await resolveFfprobeBinary();
+  if (!ffprobe.available) {
+    throw new EvidenceError(ffprobe.reason, { code: "FFPROBE_UNAVAILABLE" });
+  }
+  return probeVideoWithBin(filePath, ffprobe.bin);
+}
+
+async function probeVideoWithBin(
+  filePath: string,
+  ffprobeBin: string,
+): Promise<VideoProbe> {
   const { stdout } = await execFileAsync(
-    ffprobeBin(),
+    ffprobeBin,
     [
       "-v",
       "error",
@@ -167,12 +153,12 @@ export async function normalizeVideo(
   inputPath: string,
   outPath: string,
 ): Promise<NormalizeOutcome> {
-  const tools = await videoToolsAvailable();
+  const tools = await resolveVideoBinaries();
   if (!tools.available) {
     return { status: "skipped-missing-tool", reason: tools.reason };
   }
   fs.statSync(inputPath); // Throws a typed ENOENT if the source vanished.
-  const probe = await probeVideo(inputPath);
+  const probe = await probeVideoWithBin(inputPath, tools.ffprobe.bin);
   const isH264Mp4 =
     probe.videoCodec === "h264" &&
     probe.formatName
@@ -188,7 +174,7 @@ export async function normalizeVideo(
   if (isH264Mp4) {
     // Already h264: remux only (stream copy) to move moov to the front.
     await execFileAsync(
-      ffmpegBin(),
+      tools.ffmpeg.bin,
       [
         "-hide_banner",
         "-loglevel",
@@ -207,7 +193,7 @@ export async function normalizeVideo(
     return { status: "remuxed", probe };
   }
   await execFileAsync(
-    ffmpegBin(),
+    tools.ffmpeg.bin,
     [
       "-hide_banner",
       "-loglevel",

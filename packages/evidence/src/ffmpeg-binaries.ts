@@ -1,0 +1,198 @@
+/**
+ * FFmpeg and ffprobe binary resolution for evidence video analysis. Evidence
+ * producers should work on a clean checkout without hand-installed media tools,
+ * so system binaries are preferred when present and the npm-packaged static
+ * binaries provide the install-time fallback. Explicit env paths stay strict so
+ * CI lanes can pin a known binary and fail loudly when that pin is broken.
+ */
+
+import { execFile } from "node:child_process";
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { promisify } from "node:util";
+
+const require = createRequire(import.meta.url);
+const execFileAsync = promisify(execFile);
+
+type ToolName = "ffmpeg" | "ffprobe";
+
+interface ToolResolution {
+  bin: string;
+  source: "env" | "system" | "bundled";
+}
+
+/** Whether a binary answers `-version`, with a reason when it does not. */
+async function binaryAvailable(
+  bin: string,
+): Promise<{ available: true } | { available: false; reason: string }> {
+  try {
+    await execFileAsync(bin, ["-version"], { timeout: 10_000 });
+    return { available: true };
+  } catch (error) {
+    const enoent = (error as NodeJS.ErrnoException)?.code === "ENOENT";
+    return {
+      available: false,
+      reason: enoent
+        ? `${bin} not installed`
+        : `${bin} -version failed: ${String(
+            error instanceof Error ? error.message : error,
+          ).slice(0, 160)}`,
+    };
+  }
+}
+
+function envPath(names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function requireFfmpegStaticPath(): string | null {
+  try {
+    const mod = require("ffmpeg-static") as unknown;
+    return typeof mod === "string" && mod.length > 0 ? mod : null;
+  } catch (error) {
+    // error-policy:J3 optional packaged binary — absence is reported by caller.
+    void error;
+  }
+  return null;
+}
+
+async function bundledFfmpegPath(): Promise<string | null> {
+  const candidate = requireFfmpegStaticPath();
+  if (candidate === null) return null;
+  if (fs.existsSync(candidate)) return candidate;
+  try {
+    const packageJson = require.resolve("ffmpeg-static/package.json");
+    await execFileAsync(process.execPath, ["install.js"], {
+      cwd: path.dirname(packageJson),
+      env: { ...process.env, CI: "1" },
+      timeout: 180_000,
+    });
+  } catch (error) {
+    // error-policy:J3 optional managed install — caller reports unavailable.
+    void error;
+  }
+  return fs.existsSync(candidate) ? candidate : null;
+}
+
+function bundledFfprobePath(): string | null {
+  try {
+    const mod = require("ffprobe-static") as { path?: string } | string;
+    const candidate = typeof mod === "string" ? mod : mod.path;
+    if (
+      typeof candidate === "string" &&
+      candidate.length > 0 &&
+      fs.existsSync(candidate)
+    ) {
+      return candidate;
+    }
+  } catch (error) {
+    // error-policy:J3 optional packaged binary — absence is reported by caller.
+    void error;
+  }
+  return null;
+}
+
+function configuredEnvPath(tool: ToolName): string | undefined {
+  return tool === "ffmpeg"
+    ? envPath(["ELIZA_FFMPEG_BIN", "ELIZA_FFMPEG_PATH", "FFMPEG_PATH"])
+    : envPath(["ELIZA_FFPROBE_BIN", "ELIZA_FFPROBE_PATH", "FFPROBE_PATH"]);
+}
+
+async function bundledPath(tool: ToolName): Promise<string | null> {
+  return tool === "ffmpeg" ? bundledFfmpegPath() : bundledFfprobePath();
+}
+
+async function resolveTool(
+  tool: ToolName,
+): Promise<
+  | { available: true; resolution: ToolResolution }
+  | { available: false; reason: string }
+> {
+  const explicit = configuredEnvPath(tool);
+  if (explicit !== undefined) {
+    const available = await binaryAvailable(explicit);
+    if (available.available) {
+      return {
+        available: true,
+        resolution: { bin: explicit, source: "env" },
+      };
+    }
+    return {
+      available: false,
+      reason: `${tool} env override is not invocable: ${available.reason}`,
+    };
+  }
+
+  const system = await binaryAvailable(tool);
+  if (system.available) {
+    return {
+      available: true,
+      resolution: { bin: tool, source: "system" },
+    };
+  }
+
+  const bundled = await bundledPath(tool);
+  if (bundled !== null) {
+    const available = await binaryAvailable(bundled);
+    if (available.available) {
+      return {
+        available: true,
+        resolution: { bin: bundled, source: "bundled" },
+      };
+    }
+    return {
+      available: false,
+      reason: `${tool} system binary missing and bundled binary failed: ${available.reason}`,
+    };
+  }
+
+  return {
+    available: false,
+    reason: `${tool} not found on PATH and bundled ${tool}-static package is unavailable`,
+  };
+}
+
+/** Resolve ffmpeg from env, PATH, or the installed `ffmpeg-static` package. */
+export async function resolveFfmpegBinary(): Promise<
+  | { available: true; bin: string; source: ToolResolution["source"] }
+  | { available: false; reason: string }
+> {
+  const resolved = await resolveTool("ffmpeg");
+  if (!resolved.available) return resolved;
+  return { available: true, ...resolved.resolution };
+}
+
+/** Resolve ffprobe from env, PATH, or the installed `ffprobe-static` package. */
+export async function resolveFfprobeBinary(): Promise<
+  | { available: true; bin: string; source: ToolResolution["source"] }
+  | { available: false; reason: string }
+> {
+  const resolved = await resolveTool("ffprobe");
+  if (!resolved.available) return resolved;
+  return { available: true, ...resolved.resolution };
+}
+
+/** Whether both ffprobe and ffmpeg are invocable after packaged fallback. */
+export async function resolveVideoBinaries(): Promise<
+  | {
+      available: true;
+      ffmpeg: ToolResolution;
+      ffprobe: ToolResolution;
+    }
+  | { available: false; reason: string }
+> {
+  const ffprobe = await resolveFfprobeBinary();
+  if (!ffprobe.available) return ffprobe;
+  const ffmpeg = await resolveFfmpegBinary();
+  if (!ffmpeg.available) return ffmpeg;
+  return {
+    available: true,
+    ffmpeg: { bin: ffmpeg.bin, source: ffmpeg.source },
+    ffprobe: { bin: ffprobe.bin, source: ffprobe.source },
+  };
+}

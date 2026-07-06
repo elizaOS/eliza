@@ -74,6 +74,29 @@ describe("parseWalkthroughDef", () => {
     ).toThrow(/selector or a value/);
   });
 
+  it("rejects non-numeric timing and scroll values", () => {
+    expect(() =>
+      parseWalkthroughDef(
+        {
+          slug: "x",
+          granularity: "feature",
+          steps: [{ action: "waitFor", value: "later" }],
+        },
+        "test",
+      ),
+    ).toThrow(/non-negative millisecond/);
+    expect(() =>
+      parseWalkthroughDef(
+        {
+          slug: "x",
+          granularity: "feature",
+          steps: [{ action: "scroll", value: "down" }],
+        },
+        "test",
+      ),
+    ).toThrow(/finite pixel/);
+  });
+
   it("rejects an empty step list", () => {
     expect(() =>
       parseWalkthroughDef(

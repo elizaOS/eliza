@@ -106,6 +106,8 @@ export interface RunAndIngestResult {
   ariaSnapshots: string[];
   /** Absolute path of the driver's steps-log JSON. */
   stepsLog: string;
+  /** Number of steps the driver executed. */
+  stepCount: number;
 }
 
 /**
@@ -181,6 +183,7 @@ export async function runAndIngestWalkthrough(
       screenshots: run.screenshots,
       ariaSnapshots: run.ariaSnapshots,
       stepsLog: run.stepsLog,
+      stepCount: run.steps.length,
     };
   } finally {
     if (fixture !== undefined) await fixture.stop();

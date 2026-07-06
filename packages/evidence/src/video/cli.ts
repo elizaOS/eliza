@@ -181,7 +181,7 @@ async function runWalkthroughCommand(
       const norm = result.ingest.normalize.status;
       io.out(
         `  ${def.slug.padEnd(16)} ${def.granularity.padEnd(11)} ` +
-          `steps=${result.stepsLog ? result.screenshots.length + result.ariaSnapshots.length : 0} ` +
+          `steps=${result.stepCount} ` +
           `norm=${norm} keyframes=${result.ingest.keyframeCount} video=${result.ingest.video.path}`,
       );
       ran += 1;

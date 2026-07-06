@@ -451,6 +451,7 @@
     "dtrace-provider",
     "electron",
     "esbuild",
+    "ffmpeg-static",
     "keccak",
     "node-llama-cpp",
     "nx",

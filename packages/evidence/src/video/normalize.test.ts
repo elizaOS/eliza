@@ -10,6 +10,7 @@ import os from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, describe, expect, it } from "vitest";
+import { resolveFfmpegBinary } from "../ffmpeg-binaries.ts";
 import {
   normalizeVideo,
   probeVideo,
@@ -21,6 +22,7 @@ const dir = mkdtempSync(join(os.tmpdir(), "evidence-normalize-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const tools = await videoToolsAvailable();
+const ffmpeg = await resolveFfmpegBinary();
 
 /** Solid-colour clip in the requested container/codec/faststart layout. */
 async function makeClip(
@@ -47,7 +49,10 @@ async function makeClip(
   ];
   if (out.endsWith(".mp4") && faststart) args.push("-movflags", "+faststart");
   args.push(out);
-  await execFileAsync("ffmpeg", args);
+  if (!ffmpeg.available) {
+    throw new Error(ffmpeg.reason);
+  }
+  await execFileAsync(ffmpeg.bin, args, { timeout: 120_000 });
 }
 
 describe.skipIf(!tools.available)("normalizeVideo (ffmpeg present)", () => {
@@ -104,6 +109,23 @@ describe.skipIf(!tools.available)("normalizeVideo (ffmpeg present)", () => {
 });
 
 describe("normalizeVideo degradation", () => {
+  it("uses bundled static binaries when PATH does not provide ffmpeg/ffprobe", async () => {
+    const prevPath = process.env.PATH;
+    const prevFfmpeg = process.env.ELIZA_FFMPEG_BIN;
+    const prevFfprobe = process.env.ELIZA_FFPROBE_BIN;
+    delete process.env.ELIZA_FFMPEG_BIN;
+    delete process.env.ELIZA_FFPROBE_BIN;
+    process.env.PATH = "";
+    try {
+      const result = await videoToolsAvailable();
+      expect(result.available).toBe(true);
+    } finally {
+      restoreEnv("PATH", prevPath);
+      restoreEnv("ELIZA_FFMPEG_BIN", prevFfmpeg);
+      restoreEnv("ELIZA_FFPROBE_BIN", prevFfprobe);
+    }
+  }, 30_000);
+
   it("skips honestly when ffprobe/ffmpeg are absent", async () => {
     const prevFfmpeg = process.env.ELIZA_FFMPEG_BIN;
     const prevFfprobe = process.env.ELIZA_FFPROBE_BIN;

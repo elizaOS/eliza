@@ -131,8 +131,9 @@ src/certify/
   rollup.ts         mechanical draft verdicts (honest-skip semantics)
   sign.ts           signCertification / verifyCertification (typed failure codes)
   cli.ts            certify:keygen|rollup|sign|verify (J1 boundary)
+src/ffmpeg-binaries.ts  ffmpeg/ffprobe resolver: env → PATH → installed static packages
 src/video/          video evidence lanes (#14545, stacked on the #14542 analyzers)
-  normalize.ts        webm/mov→MP4 (h264 + faststart); ffprobe-gated, honest skip
+  normalize.ts        webm/mov→MP4 (h264 + faststart); ffprobe-gated
   ingest.ts           ingestVideo: place at video/<granularity>s/<slug>.mp4 +
                       keyframe extraction + image-analyzer fan-out over keyframes
   walkthrough-schema.ts  zod-validated walkthrough DEFINITIONS (typed invalid)
@@ -149,5 +150,7 @@ Video lanes never touch the analyzers or bundle internals — they consume
 from the bundle. Playwright is a devDependency, dynamically imported: consumers
 that only ingest pre-recorded videos never pay for it. Normalization is
 conditional (probe, then copy/remux/transcode) so an already-canonical MP4 is not
-re-encoded. Absent ffmpeg/ffprobe or an absent chromium each surface as an
-explicit skip/typed error, never a silent copy or fabricated pass.
+re-encoded. ffmpeg/ffprobe resolve from explicit env paths, PATH, then
+`ffmpeg-static`/`ffprobe-static`; only a broken explicit env pin or missing
+installed dependency surfaces as an explicit skip. An absent chromium is a typed
+error, never a silent copy or fabricated pass.

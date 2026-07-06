@@ -175,6 +175,46 @@ export {
   TIERS,
   type Tier,
 } from "./schema.ts";
+// Video evidence lanes (#14545): MP4 normalization, video ingest with keyframe
+// analysis, the data-driven walkthrough driver, and walkthrough definition
+// loading/orchestration over the shipped dashboard fixture.
+export {
+  type RunWalkthroughOptions,
+  runWalkthrough,
+  type StepLog,
+  type WalkthroughRunResult,
+} from "./video/driver.ts";
+export { type FixtureServer, serveFixture } from "./video/fixture-server.ts";
+export {
+  type IngestVideoOptions,
+  type IngestVideoResult,
+  ingestVideo,
+  VIDEO_GRANULARITIES,
+  type VideoGranularity,
+} from "./video/ingest.ts";
+export {
+  type NormalizeOutcome,
+  normalizeVideo,
+  probeVideo,
+  type VideoProbe,
+  videoToolsAvailable,
+} from "./video/normalize.ts";
+export {
+  parseWalkthroughDef,
+  WALKTHROUGH_ACTIONS,
+  type WalkthroughAction,
+  type WalkthroughDef,
+  type WalkthroughStep,
+} from "./video/walkthrough-schema.ts";
+export {
+  FIXTURE_DIR,
+  loadAllWalkthroughDefs,
+  loadWalkthroughDef,
+  type RunAndIngestOptions,
+  type RunAndIngestResult,
+  runAndIngestWalkthrough,
+  WALKTHROUGHS_DIR,
+} from "./video/walkthroughs.ts";
 // Vision-QA VLM screenshot Q&A layer (#14544).
 export {
   ANTHROPIC_BASE_URL,
@@ -217,44 +257,3 @@ export {
   writeCache,
   writeQaRecord,
 } from "./vision-qa/index.ts";
-
-// Video evidence lanes (#14545): MP4 normalization, video ingest with keyframe
-// analysis, the data-driven walkthrough driver, and walkthrough definition
-// loading/orchestration over the shipped dashboard fixture.
-export {
-  type RunWalkthroughOptions,
-  runWalkthrough,
-  type StepLog,
-  type WalkthroughRunResult,
-} from "./video/driver.ts";
-export { type FixtureServer, serveFixture } from "./video/fixture-server.ts";
-export {
-  type IngestVideoOptions,
-  type IngestVideoResult,
-  ingestVideo,
-  VIDEO_GRANULARITIES,
-  type VideoGranularity,
-} from "./video/ingest.ts";
-export {
-  type NormalizeOutcome,
-  normalizeVideo,
-  probeVideo,
-  type VideoProbe,
-  videoToolsAvailable,
-} from "./video/normalize.ts";
-export {
-  parseWalkthroughDef,
-  WALKTHROUGH_ACTIONS,
-  type WalkthroughAction,
-  type WalkthroughDef,
-  type WalkthroughStep,
-} from "./video/walkthrough-schema.ts";
-export {
-  FIXTURE_DIR,
-  loadAllWalkthroughDefs,
-  loadWalkthroughDef,
-  type RunAndIngestOptions,
-  type RunAndIngestResult,
-  runAndIngestWalkthrough,
-  WALKTHROUGHS_DIR,
-} from "./video/walkthroughs.ts";

@@ -123,6 +123,17 @@ const walkthroughSchema = z
         });
       }
       if (
+        step.action === "waitFor" &&
+        step.value !== undefined &&
+        !isNonNegativeNumber(step.value)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["steps", index, "value"],
+          message: "waitFor value must be a non-negative millisecond count",
+        });
+      }
+      if (
         step.action === "scroll" &&
         step.selector === undefined &&
         step.value === undefined
@@ -131,6 +142,18 @@ const walkthroughSchema = z
           code: "custom",
           path: ["steps", index],
           message: "scroll requires a selector or a value (px)",
+        });
+      }
+      if (
+        step.action === "scroll" &&
+        step.selector === undefined &&
+        step.value !== undefined &&
+        !isFiniteNumber(step.value)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["steps", index, "value"],
+          message: "scroll value must be a finite pixel count",
         });
       }
     });
@@ -164,4 +187,13 @@ export function parseWalkthroughDef(
     issues,
     { code: "WALKTHROUGH_DEF_INVALID" },
   );
+}
+
+function isFiniteNumber(value: string): boolean {
+  return Number.isFinite(Number(value));
+}
+
+function isNonNegativeNumber(value: string): boolean {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0;
 }
