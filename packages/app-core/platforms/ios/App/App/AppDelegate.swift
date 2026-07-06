@@ -19,6 +19,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // `devicectl device copy from` — no console required.
         ElizaStartupTrace.bootstrap()
         ElizaHomeIndicator.install()
+
+        // Brand tint on native surfaces the WebView can't reach. elizaOS ships
+        // orange as its single accent and never blue; without an app tint iOS
+        // falls back to system blue for system-presented UIKit — the deep-link
+        // "Open in Eliza?" UIAlertController buttons (verified blue on device),
+        // share sheets, and any default-tinted control. #FF5800 mirrors shared
+        // brand `--eliza-brand-orange`. Appearance proxy covers windows created
+        // later; the direct set covers the Capacitor key window already up.
+        let elizaBrandOrange = UIColor(red: 1.0, green: 0x58 / 255.0, blue: 0.0, alpha: 1.0)
+        UIWindow.appearance().tintColor = elizaBrandOrange
+        window?.tintColor = elizaBrandOrange
+
         UNUserNotificationCenter.current().delegate = self
         BackgroundRunnerPlugin.registerBackgroundTask()
         BackgroundRunnerPlugin.handleApplicationDidFinishLaunching(launchOptions: launchOptions)
