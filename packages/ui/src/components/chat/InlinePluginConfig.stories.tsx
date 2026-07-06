@@ -173,10 +173,8 @@ export const ConnectedCollapsed: Story = {
       canvasElement,
       "inline-plugin-config-summary",
     );
-    // The story-smoke harness's mock translator returns the raw defaultValue
-    // without `{{name}}` interpolation, so match the stable suffix only.
     assert(
-      summary.textContent?.includes("is enabled."),
+      summary.textContent?.includes("Telegram is enabled."),
       "collapsed summary shows the connected status",
     );
     const chevron = await waitForTestId(

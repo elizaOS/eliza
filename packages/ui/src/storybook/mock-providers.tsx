@@ -63,15 +63,17 @@ const baseMockApp: Partial<AppContextValue> = {
   pendingRestartReasons: [],
   restartBannerDismissed: false,
   systemWarnings: [],
-  t: (key, values) => values?.defaultValue?.toString() ?? key,
   triggerRestart: noopAsync,
   uiLanguage: "en",
 };
 
 function createMockApp(overrides: MockAppOptions = {}): AppContextValue {
+  const uiLanguage = overrides.uiLanguage ?? baseMockApp.uiLanguage ?? "en";
   const value = {
     ...baseMockApp,
+    t: createTranslator(uiLanguage),
     ...overrides,
+    uiLanguage,
     agentStatus:
       overrides.agentStatus === null
         ? null
