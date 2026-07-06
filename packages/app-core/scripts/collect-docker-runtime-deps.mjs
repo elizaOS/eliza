@@ -75,6 +75,7 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-personal-assistant",
   "plugins/plugin-task-coordinator",
   "plugins/plugin-training",
+  "packages/registry",
   "plugins/plugin-agent-orchestrator",
   "plugins/plugin-app-control",
   "plugins/plugin-commands",
