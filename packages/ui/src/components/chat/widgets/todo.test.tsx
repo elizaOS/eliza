@@ -1,10 +1,27 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+interface WorkbenchTodoFixture {
+  id: string;
+  name: string;
+  description: string;
+  type: string;
+  isCompleted: boolean;
+  isUrgent: boolean;
+  priority: number | null;
+}
 
 const {
   authMock,
   getBaseUrlMock,
+  fetchMock,
   listWorkbenchTodosMock,
   mockState,
   publishHomeAttentionSpy,
@@ -12,7 +29,10 @@ const {
   // Auth gate (#11084) - mutable so tests can flip the session state.
   authMock: { authenticated: true },
   getBaseUrlMock: vi.fn(() => "http://localhost"),
-  listWorkbenchTodosMock: vi.fn(async () => ({ todos: [] })),
+  fetchMock: vi.fn(),
+  listWorkbenchTodosMock: vi.fn(
+    async (): Promise<{ todos: WorkbenchTodoFixture[] }> => ({ todos: [] }),
+  ),
   mockState: {
     workbench: {
       todos: [
@@ -25,7 +45,7 @@ const {
           isUrgent: false,
           priority: null,
         },
-      ],
+      ] satisfies WorkbenchTodoFixture[],
     },
     t: (_key: string, vars?: { defaultValue?: string }) =>
       vars?.defaultValue ?? "",
@@ -68,11 +88,49 @@ if (!TodoWidget) {
   throw new Error("todo.items widget not registered");
 }
 
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function mockLifeOpsResponses({
+  todos = [],
+  goals = [],
+}: {
+  todos?: unknown[];
+  goals?: unknown[];
+} = {}) {
+  fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/api/lifeops/todos")) {
+      return jsonResponse({ todos });
+    }
+    if (url.includes("/api/lifeops/goals")) {
+      return jsonResponse({ goals });
+    }
+    if (url.includes("/api/lifeops/occurrences/")) {
+      return jsonResponse({});
+    }
+    return jsonResponse({});
+  });
+}
+
+function isoDaysFromNow(days: number): string {
+  const value = new Date();
+  value.setDate(value.getDate() + days);
+  return value.toISOString();
+}
+
 beforeEach(() => {
   getBaseUrlMock.mockReset();
   getBaseUrlMock.mockReturnValue("http://localhost");
   listWorkbenchTodosMock.mockClear();
   listWorkbenchTodosMock.mockResolvedValue({ todos: [] });
+  fetchMock.mockReset();
+  vi.stubGlobal("fetch", fetchMock);
+  mockLifeOpsResponses();
   publishHomeAttentionSpy.mockClear();
   authMock.authenticated = true;
   mockState.workbench.todos = [
@@ -196,8 +254,16 @@ describe("TodoSidebarWidget", () => {
   });
 
   it("home slot: applies the host-supplied spanClassName to its single root grid-item element (#11752)", async () => {
-    // Hold the cached todo (no poll) so the card stays rendered while asserting.
-    authMock.authenticated = false;
+    mockLifeOpsResponses({
+      todos: [
+        {
+          id: "owner-today",
+          title: "Call pharmacy",
+          status: "pending",
+          dueDate: new Date().toISOString(),
+        },
+      ],
+    });
     const { container } = render(
       <TodoWidget
         slot="home"
@@ -207,7 +273,7 @@ describe("TodoSidebarWidget", () => {
       />,
     );
 
-    expect(await screen.findByText("Cached todo")).toBeTruthy();
+    expect(await screen.findByText("Call pharmacy")).toBeTruthy();
     const root = container.firstElementChild;
     expect(root).not.toBeNull();
     expect(root?.className).toContain("col-span-2");
@@ -218,39 +284,147 @@ describe("TodoSidebarWidget", () => {
   });
 
   it("home slot: falls back to the default 2x1 span when no spanClassName is supplied (#11752)", async () => {
-    authMock.authenticated = false;
+    mockLifeOpsResponses({
+      todos: [
+        {
+          id: "owner-today",
+          title: "Call pharmacy",
+          status: "pending",
+          dueDate: new Date().toISOString(),
+        },
+      ],
+    });
     const { container } = render(
       <TodoWidget slot="home" events={[]} clearEvents={vi.fn()} />,
     );
-    expect(await screen.findByText("Cached todo")).toBeTruthy();
+    expect(await screen.findByText("Call pharmacy")).toBeTruthy();
     expect(container.firstElementChild?.className).toContain("col-span-2");
+  });
+
+  it("home slot: renders only owner todos due or overdue today", async () => {
+    mockState.workbench.todos = [
+      {
+        id: "workbench-1",
+        name: "Agent workbench todo",
+        description: "",
+        type: "task",
+        isCompleted: false,
+        isUrgent: false,
+        priority: null,
+      },
+    ];
+    mockLifeOpsResponses({
+      todos: [
+        {
+          id: "owner-overdue",
+          title: "Pay rent",
+          status: "pending",
+          dueDate: isoDaysFromNow(-1),
+        },
+        {
+          id: "owner-today",
+          title: "Call pharmacy",
+          status: "pending",
+          dueDate: new Date().toISOString(),
+        },
+        {
+          id: "owner-tomorrow",
+          title: "Pack lunch",
+          status: "pending",
+          dueDate: isoDaysFromNow(1),
+        },
+        {
+          id: "owner-undated",
+          title: "Someday",
+          status: "pending",
+          dueDate: null,
+        },
+        {
+          id: "owner-done",
+          title: "Already done",
+          status: "completed",
+          dueDate: new Date().toISOString(),
+        },
+      ],
+    });
+
+    render(<TodoWidget slot="home" events={[]} clearEvents={vi.fn()} />);
+
+    expect(await screen.findByText("Pay rent")).toBeTruthy();
+    expect(await screen.findByText("Call pharmacy")).toBeTruthy();
+    expect(screen.queryByText("Pack lunch")).toBeNull();
+    expect(screen.queryByText("Someday")).toBeNull();
+    expect(screen.queryByText("Already done")).toBeNull();
+    expect(screen.queryByText("Agent workbench todo")).toBeNull();
+    expect(listWorkbenchTodosMock).not.toHaveBeenCalled();
+  });
+
+  it("home slot: completing an owner todo posts to the occurrence endpoint and refreshes", async () => {
+    let completed = false;
+    fetchMock.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/api/lifeops/todos")) {
+          const todos = completed
+            ? []
+            : [
+                {
+                  id: "owner-today",
+                  title: "Call pharmacy",
+                  status: "pending",
+                  dueDate: new Date().toISOString(),
+                },
+              ];
+          return jsonResponse({ todos });
+        }
+        if (url.includes("/api/lifeops/goals")) {
+          return jsonResponse({ goals: [] });
+        }
+        if (url.includes("/api/lifeops/occurrences/owner-today/complete")) {
+          expect(init?.method).toBe("POST");
+          expect(JSON.parse(String(init?.body))).toEqual({
+            metadata: { source: "home_today_widget" },
+          });
+          completed = true;
+          return jsonResponse({});
+        }
+        return jsonResponse({});
+      },
+    );
+
+    render(<TodoWidget slot="home" events={[]} clearEvents={vi.fn()} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Complete "Call pharmacy"/ }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://localhost/api/lifeops/occurrences/owner-today/complete",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Call pharmacy")).toBeNull();
+    });
   });
 
   it("home slot: renders an at-risk goal as one flagged row inside Today (spec §E item 5)", async () => {
     mockState.workbench.todos = [];
     listWorkbenchTodosMock.mockResolvedValue({ todos: [] });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              goals: [
-                {
-                  goal: {
-                    id: "goal-at-risk",
-                    title: "Ship the release",
-                    status: "active",
-                    reviewState: "at_risk",
-                  },
-                  links: [],
-                },
-              ],
-            }),
-            { status: 200, headers: { "Content-Type": "application/json" } },
-          ),
-      ),
-    );
+    mockLifeOpsResponses({
+      goals: [
+        {
+          goal: {
+            id: "goal-at-risk",
+            title: "Ship the release",
+            status: "active",
+            reviewState: "at_risk",
+          },
+          links: [],
+        },
+      ],
+    });
 
     render(<TodoWidget slot="home" events={[]} clearEvents={vi.fn()} />);
 
@@ -270,28 +444,19 @@ describe("TodoSidebarWidget", () => {
   it("home slot: preserves needs-attention goals in the merged Today row", async () => {
     mockState.workbench.todos = [];
     listWorkbenchTodosMock.mockResolvedValue({ todos: [] });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              goals: [
-                {
-                  goal: {
-                    id: "goal-needs-attention",
-                    title: "Reconnect with the team",
-                    status: "active",
-                    reviewState: "needs_attention",
-                  },
-                  links: [],
-                },
-              ],
-            }),
-            { status: 200, headers: { "Content-Type": "application/json" } },
-          ),
-      ),
-    );
+    mockLifeOpsResponses({
+      goals: [
+        {
+          goal: {
+            id: "goal-needs-attention",
+            title: "Reconnect with the team",
+            status: "active",
+            reviewState: "needs_attention",
+          },
+          links: [],
+        },
+      ],
+    });
 
     render(<TodoWidget slot="home" events={[]} clearEvents={vi.fn()} />);
 

@@ -489,7 +489,7 @@ try {
   // autonomous/domain cards AND the demoted wallet/health cards must stay absent
   // even though the fixture still exposes their plugins/routes elsewhere.
   const WIDGET_CARDS = [
-    ["chat-widget-todos", "Buy groceries"],
+    ["chat-widget-todos", "Call pharmacy"],
     // The merged at-risk goal renders inside the Today card (§E item 5).
     ["todo-goal-attention-row", "Ship the release"],
     ["chat-widget-calendar-upcoming", "Design review"],

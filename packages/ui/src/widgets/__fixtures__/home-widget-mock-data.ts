@@ -3,8 +3,8 @@
  *
  * One source of truth for "the home dashboard, populated with attention-worthy
  * data" - shared between the home-screen e2e fixture and the Storybook story so
- * both render the REAL kept home widgets (calendar / Today-todos, with the
- * at-risk goal folded into the Today card per spec §E item 5) plus
+ * both render the REAL kept home widgets (calendar / Today owner-todos, with
+ * the at-risk goal folded into the Today card per spec §E item 5) plus
  * notifications/approvals, fed by injected DATA only (no stubbing of WidgetHost
  * or the widget components). The goals payload now feeds the Today card's
  * flagged row rather than a standalone goals resident; the sleep payload is
@@ -235,6 +235,22 @@ export function homeWidgetTodosResponse() {
   };
 }
 
+function homeWidgetOwnerTodosResponse() {
+  if (homeWidgetMockMode() === "quiet") {
+    return { todos: [] };
+  }
+  return {
+    todos: [
+      {
+        id: "todo-call-pharmacy",
+        title: "Call pharmacy",
+        status: "pending",
+        dueDate: new Date().toISOString(),
+      },
+    ],
+  };
+}
+
 export function homeWidgetApprovalsResponse() {
   return homeWidgetMockMode() === "attention"
     ? approvalsPayload()
@@ -274,6 +290,10 @@ function routeTable(): RouteMatch[] {
     {
       test: has("/api/lifeops/goals"),
       body: whenAttention(goalsPayload, { goals: [] }),
+    },
+    {
+      test: has("/api/lifeops/todos"),
+      body: homeWidgetOwnerTodosResponse,
     },
     {
       test: has("/api/lifeops/sleep/history"),
