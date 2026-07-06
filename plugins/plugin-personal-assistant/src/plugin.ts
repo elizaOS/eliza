@@ -136,6 +136,7 @@ import {
   createAnchorRegistry,
   createEventKindRegistry,
   createFamilyRegistry,
+  createSignalSourceRegistry,
   createWorkflowStepRegistry,
   registerAnchorRegistry,
   registerAppLifeOpsAnchors,
@@ -147,6 +148,7 @@ import {
   registerDefaultWorkflowStepPack,
   registerEventKindRegistry,
   registerFamilyRegistry,
+  registerSignalSourceRegistry,
   registerWorkflowStepRegistry,
 } from "./lifeops/registries/index.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
@@ -177,6 +179,7 @@ import {
   createActivitySignalBus,
   registerActivitySignalBus,
 } from "./lifeops/signals/bus.js";
+import { registerBuiltinSignalSources } from "./lifeops/telemetry-mapping.js";
 import { threadOpsFieldEvaluator } from "./lifeops/work-threads/field-evaluator-thread-ops.js";
 import { isDarwin } from "./platform/host.js";
 import { browserBridgeProvider } from "./provider.js";
@@ -876,6 +879,13 @@ const rawPersonalAssistantPlugin: Plugin = {
     (
       runtime as IAgentRuntime & { busFamilyRegistry?: typeof familyRegistry }
     ).busFamilyRegistry = familyRegistry;
+
+    // Passive activity-signal source registry — the single extension point a
+    // plugin registers a new source through (ingestion allow-list + telemetry
+    // mapper + reliability), instead of the old three-package coordinated edit.
+    const signalSourceRegistry = createSignalSourceRegistry();
+    registerBuiltinSignalSources(signalSourceRegistry);
+    registerSignalSourceRegistry(runtime, signalSourceRegistry);
 
     const workflowStepRegistry = createWorkflowStepRegistry();
     registerDefaultWorkflowStepPack(workflowStepRegistry);

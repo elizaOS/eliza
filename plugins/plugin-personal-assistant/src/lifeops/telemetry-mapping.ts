@@ -1,26 +1,33 @@
 /**
- * Shared mapper from persisted `LifeOpsActivitySignal` records into
- * `LifeOpsTelemetryPayload` rows. `LifeOpsRepository.createActivitySignal`
- * calls this on writes so passive signals are mirrored into
- * `life_telemetry_events` with a dedupe-stable payload.
- *
- * This file is the canonical mapping table for current signal families; keep
- * it aligned with the shared `LifeOpsTelemetryPayload` union.
+ * Built-in mapper from persisted `LifeOpsActivitySignal` records into
+ * `LifeOpsTelemetryPayload` rows, plus the registration that publishes those
+ * mappers (and their reliability weights) into the `SignalSourceRegistry`.
+ * `LifeOpsRepository.createActivitySignal` mirrors passive signals into
+ * `life_telemetry_events` by dispatching through the registry, so the switch
+ * below is the *built-in* half only — contributed sources bring their own
+ * mapper. Keep the switch aligned with the shared `LifeOpsTelemetryPayload`
+ * discriminated union.
  */
 
 import crypto from "node:crypto";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 // Import the leaf module, not the `@elizaos/plugin-health` barrel: this file is
 // in the data-layer graph that `lifeops/repository.ts` pulls into the keyless
 // node test lane (goals.real-db), where the barrel (→ React views → @elizaos/ui)
 // must never enter and has no dist entry to resolve.
 import { resolveActivitySignalReliability } from "@elizaos/plugin-health/sleep/source-reliability";
-import type {
-  LifeOpsActivitySignal,
-  LifeOpsDevicePlatform,
-  LifeOpsTelemetryEvent,
-  LifeOpsTelemetryMessageChannel,
-  LifeOpsTelemetryPayload,
+import {
+  LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
+  type LifeOpsActivitySignal,
+  type LifeOpsDevicePlatform,
+  type LifeOpsTelemetryEvent,
+  type LifeOpsTelemetryMessageChannel,
+  type LifeOpsTelemetryPayload,
 } from "@elizaos/shared";
+import type {
+  SignalSourceContribution,
+  SignalSourceRegistry,
+} from "./registries/signal-source-registry.js";
 
 export function deriveTelemetryDedupeKey(
   family: string,
@@ -206,17 +213,76 @@ export function mapSignalToTelemetryPayload(
   }
 }
 
-export function buildTelemetryEventFromSignal(
-  signal: LifeOpsActivitySignal,
-  nowIso: string,
-): LifeOpsTelemetryEvent | null {
-  const payload = mapSignalToTelemetryPayload(signal);
-  if (payload === null) return null;
-  const reliability = resolveActivitySignalReliability(
+/**
+ * Reliability weight for a built-in source, read straight from the health
+ * reliability table. Contributed sources register their own resolver.
+ */
+function builtinSignalReliability(signal: LifeOpsActivitySignal): number {
+  return resolveActivitySignalReliability(
     signal.source,
     signal.platform,
     signal.metadata,
   );
+}
+
+/**
+ * Register the eight built-in passive-signal sources. All share the typed
+ * built-in mapper (which dispatches on `signal.source`/`signal.platform`) and
+ * the health reliability table; a plugin contributes a new source by calling
+ * `registry.register` with its own `telemetryMapper` + `reliability`.
+ */
+export function registerBuiltinSignalSources(
+  registry: SignalSourceRegistry,
+): void {
+  for (const source of LIFEOPS_ACTIVITY_SIGNAL_SOURCES) {
+    const contribution: SignalSourceContribution = {
+      source,
+      description: `LifeOps built-in passive signal source: ${source}`,
+      contributor: "app-lifeops",
+      telemetryMapper: mapSignalToTelemetryPayload,
+      reliability: builtinSignalReliability,
+    };
+    registry.register(contribution);
+  }
+}
+
+/**
+ * Build the canonical telemetry event for a persisted signal by dispatching
+ * through the `SignalSourceRegistry`. An *unregistered* source is a broken
+ * pipeline — it is surfaced via `runtime.reportError` (RECENT_ERRORS provider +
+ * owner escalation) rather than silently dropped, which is what the old
+ * `default: return null` switch branch did. A registered source whose mapper
+ * returns `null` for this instance (e.g. `mobile_health` with no payload)
+ * legitimately produces no row and returns quietly.
+ */
+export function buildTelemetryEventFromSignal(
+  signal: LifeOpsActivitySignal,
+  nowIso: string,
+  registry: SignalSourceRegistry,
+  runtime: IAgentRuntime,
+): LifeOpsTelemetryEvent | null {
+  const contribution = registry.get(signal.source);
+  if (contribution === null) {
+    runtime.reportError(
+      "lifeops.telemetry-mapping",
+      new ElizaError(
+        `No SignalSourceRegistry entry for source "${signal.source}"; telemetry row dropped`,
+        {
+          code: "LIFEOPS_UNREGISTERED_SIGNAL_SOURCE",
+          context: {
+            source: signal.source,
+            platform: signal.platform,
+            agentId: signal.agentId,
+          },
+          severity: "ephemeral",
+        },
+      ),
+    );
+    return null;
+  }
+  const payload = contribution.telemetryMapper(signal);
+  if (payload === null) return null;
+  const reliability = contribution.reliability(signal);
   return {
     id: crypto.randomUUID(),
     agentId: signal.agentId,

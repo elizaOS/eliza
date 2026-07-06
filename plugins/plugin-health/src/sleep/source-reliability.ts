@@ -3,7 +3,12 @@
  * and `resolveActivitySignalReliability` rank manual overrides, mobile-health,
  * desktop-power, and message-channel evidence when inferring sleep/wake.
  */
-import type { LifeOpsActivitySignalSource } from "../contracts/health.js";
+import { ElizaError } from "@elizaos/core";
+import {
+  isBuiltinActivitySignalSource,
+  type LifeOpsActivitySignalSource,
+  type LifeOpsActivitySignalSourceName,
+} from "../contracts/health.js";
 
 export type LifeOpsReliabilityKey =
   | { kind: "manual_override" }
@@ -143,11 +148,28 @@ function connectorActivityReliabilityKey(
   };
 }
 
+/**
+ * Built-in reliability weight for one of the closed
+ * `LIFEOPS_ACTIVITY_SIGNAL_SOURCES`. Contributed (non-built-in) sources supply
+ * their own weight through their `SignalSourceRegistry` entry and never reach
+ * here — so an unknown source is a dispatch bug, not a data value: it throws
+ * rather than fabricating a confidence number.
+ */
 export function resolveActivitySignalReliability(
-  source: LifeOpsActivitySignalSource,
+  source: LifeOpsActivitySignalSourceName,
   platform: string,
   metadata?: Record<string, unknown>,
 ): number {
+  if (!isBuiltinActivitySignalSource(source)) {
+    throw new ElizaError(
+      `resolveActivitySignalReliability: no built-in reliability weight for contributed source "${source}"; resolve it through the SignalSourceRegistry entry`,
+      {
+        code: "LIFEOPS_UNKNOWN_SIGNAL_SOURCE_RELIABILITY",
+        context: { source, platform },
+        severity: "fatal",
+      },
+    );
+  }
   if (source === "app_lifecycle" && platform === "manual_override") {
     return resolveSourceReliability({ kind: "manual_override" });
   }

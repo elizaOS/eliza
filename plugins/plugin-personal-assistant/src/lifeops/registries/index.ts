@@ -68,6 +68,14 @@ export {
   UnknownFeatureFlagError,
 } from "./feature-flag-registry.js";
 export {
+  __resetSignalSourceRegistryForTests,
+  createSignalSourceRegistry,
+  getSignalSourceRegistry,
+  registerSignalSourceRegistry,
+  type SignalSourceContribution,
+  type SignalSourceRegistry,
+} from "./signal-source-registry.js";
+export {
   type WebsiteBlockerStartResult,
   websiteBlockerContribution,
 } from "./website-blocker-contribution.js";

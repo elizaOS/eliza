@@ -127,17 +127,22 @@ export function isReminderReviewClosed(
   );
 }
 
+/**
+ * Validate an ingested activity-signal source against the registered source
+ * vocabulary. `validSources` is the `SignalSourceRegistry.sources()` allow-list
+ * so a plugin-contributed source is accepted at runtime; it defaults to the
+ * built-in eight for callers that validate without a runtime in scope. The
+ * `mobileDevice`/`mobile-health` aliases stay for the mobile clients that send
+ * camelCase/kebab-case.
+ */
 export function normalizeActivitySignalSource(
   value: unknown,
   field: string,
+  validSources: readonly string[] = LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
 ): LifeOpsActivitySignal["source"] {
   const source = requireNonEmptyString(value, field);
-  if (
-    LIFEOPS_ACTIVITY_SIGNAL_SOURCES.includes(
-      source as LifeOpsActivitySignal["source"],
-    )
-  ) {
-    return source as LifeOpsActivitySignal["source"];
+  if (validSources.includes(source)) {
+    return source;
   }
   if (
     source === "mobileDevice" ||
@@ -149,10 +154,7 @@ export function normalizeActivitySignalSource(
       ? "mobile_health"
       : "mobile_device";
   }
-  fail(
-    400,
-    `${field} must be one of: ${LIFEOPS_ACTIVITY_SIGNAL_SOURCES.join(", ")}`,
-  );
+  fail(400, `${field} must be one of: ${validSources.join(", ")}`);
 }
 
 export function normalizeActivitySignalState(

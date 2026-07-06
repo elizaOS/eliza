@@ -16,7 +16,7 @@ import {
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgePageContext,
@@ -112,6 +112,7 @@ import {
   normalizeLifeOpsAccountPrivacyScope,
   normalizeLifeOpsEgressDataClasses,
 } from "./privacy-egress.js";
+import { getSignalSourceRegistry } from "./registries/signal-source-registry.js";
 import { refreshLifeOpsRelativeTime } from "./relative-time.js";
 import { lifeOpsSchema } from "./schema.js";
 import {
@@ -3447,9 +3448,29 @@ export class LifeOpsRepository {
       )`,
     );
 
+    // Both the bus publish and the telemetry mirror dispatch through the
+    // per-source registry. A missing registry is a boot-wiring failure, not a
+    // data condition: surface it observably and skip the mirror rather than
+    // fabricating a telemetry row for an unknown source.
+    const signalSourceRegistry = getSignalSourceRegistry(this.runtime);
+    if (signalSourceRegistry === null) {
+      this.runtime.reportError(
+        "lifeops.repository",
+        new ElizaError(
+          "SignalSourceRegistry is not registered on the runtime; activity-signal telemetry mirror skipped",
+          {
+            code: "LIFEOPS_SIGNAL_SOURCE_REGISTRY_MISSING",
+            context: { agentId: signal.agentId, source: signal.source },
+            severity: "fatal",
+          },
+        ),
+      );
+      return;
+    }
+
     const activityBus = getActivitySignalBus(this.runtime);
     if (activityBus) {
-      publishActivitySignalToBus(activityBus, signal);
+      publishActivitySignalToBus(activityBus, signal, signalSourceRegistry);
     }
 
     // Mirror into the canonical telemetry store. Dedupes on
@@ -3461,6 +3482,8 @@ export class LifeOpsRepository {
       const telemetry = buildTelemetryEventFromSignal(
         signal,
         new Date().toISOString(),
+        signalSourceRegistry,
+        this.runtime,
       );
       if (telemetry) {
         await this.insertTelemetryEvent(telemetry);

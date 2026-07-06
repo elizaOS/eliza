@@ -122,6 +122,7 @@ import {
   resolveOwnerFactStore,
   resolveOwnerTimeZone,
 } from "../owner/fact-store.js";
+import { getSignalSourceRegistry } from "../registries/signal-source-registry.js";
 import { refreshLifeOpsRelativeTime } from "../relative-time.js";
 import {
   createLifeOpsActivitySignal,
@@ -1061,8 +1062,9 @@ function buildActiveCalendarEventReminders(
 function normalizeActivitySignalSource(
   value: unknown,
   field: string,
+  validSources?: readonly string[],
 ): LifeOpsActivitySignal["source"] {
-  return normalizeReminderActivitySignalSource(value, field);
+  return normalizeReminderActivitySignalSource(value, field, validSources);
 }
 
 function normalizeActivitySignalState(
@@ -4603,9 +4605,16 @@ export class RemindersDomain {
     request: CaptureLifeOpsActivitySignalRequest,
   ): Promise<LifeOpsActivitySignal> {
     const health = normalizeHealthSignal(request.health, "health");
+    const registeredSources = getSignalSourceRegistry(
+      this.ctx.runtime,
+    )?.sources();
     const signal = createLifeOpsActivitySignal({
       agentId: this.ctx.agentId(),
-      source: normalizeActivitySignalSource(request.source, "source"),
+      source: normalizeActivitySignalSource(
+        request.source,
+        "source",
+        registeredSources,
+      ),
       platform: normalizeOptionalString(request.platform) ?? "client_chat",
       state: normalizeActivitySignalState(request.state, "state"),
       observedAt:

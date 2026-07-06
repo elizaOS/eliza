@@ -6,6 +6,16 @@
  * the connector-degradation types. Consumed across the screen-time, scheduling,
  * and connector layers.
  */
+// The passive-signal source vocabulary is owned by `@elizaos/shared`; health
+// imports and re-exports the canonical const/type/guard so its reliability
+// tables and the PA telemetry mapper agree on one definition instead of
+// drifting copies.
+import {
+  isBuiltinActivitySignalSource,
+  LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
+  type LifeOpsActivitySignalSource,
+  type LifeOpsActivitySignalSourceName,
+} from "@elizaos/shared";
 import type { LifeOpsConnectorDegradation } from "./lifeops-connector-degradation.js";
 
 export type {
@@ -13,6 +23,12 @@ export type {
   LifeOpsConnectorDegradationAxis,
 } from "./lifeops-connector-degradation.js";
 export { LIFEOPS_CONNECTOR_DEGRADATION_AXES } from "./lifeops-connector-degradation.js";
+export {
+  isBuiltinActivitySignalSource,
+  LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
+  type LifeOpsActivitySignalSource,
+  type LifeOpsActivitySignalSourceName,
+};
 
 export const LIFEOPS_TIME_WINDOW_NAMES = [
   "morning",
@@ -1068,19 +1084,6 @@ export interface LifeOpsChannelPolicy {
   updatedAt: string;
 }
 
-export const LIFEOPS_ACTIVITY_SIGNAL_SOURCES = [
-  "app_lifecycle",
-  "page_visibility",
-  "desktop_power",
-  "desktop_interaction",
-  "connector_activity",
-  "imessage_outbound",
-  "mobile_device",
-  "mobile_health",
-] as const;
-export type LifeOpsActivitySignalSource =
-  (typeof LIFEOPS_ACTIVITY_SIGNAL_SOURCES)[number];
-
 export const LIFEOPS_ACTIVITY_SIGNAL_STATES = [
   "active",
   "idle",
@@ -1339,7 +1342,7 @@ export interface SyncLifeOpsHealthConnectorRequest {
 export interface LifeOpsActivitySignal {
   id: string;
   agentId: string;
-  source: LifeOpsActivitySignalSource;
+  source: LifeOpsActivitySignalSourceName;
   platform: string;
   state: LifeOpsActivitySignalState;
   observedAt: string;
@@ -3520,7 +3523,7 @@ export interface CaptureLifeOpsPhoneConsentRequest {
 }
 
 export interface CaptureLifeOpsActivitySignalRequest {
-  source: LifeOpsActivitySignalSource;
+  source: LifeOpsActivitySignalSourceName;
   platform?: string;
   state: LifeOpsActivitySignalState;
   observedAt?: string;
