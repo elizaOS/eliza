@@ -116,6 +116,8 @@ import {
   REMINDER_REVIEW_AT_METADATA_KEY,
   REMINDER_REVIEW_STATUS_METADATA_KEY,
 } from "./service-constants.js";
+import { publishActivitySignalToBus } from "./signals/activity-signal-publisher.js";
+import { getActivitySignalBus } from "./signals/bus.js";
 import {
   executeRawSql,
   executeRawSqlTx,
@@ -3416,6 +3418,11 @@ export class LifeOpsRepository {
         ${sqlQuote(signal.createdAt)}
       )`,
     );
+
+    const activityBus = getActivitySignalBus(this.runtime);
+    if (activityBus) {
+      publishActivitySignalToBus(activityBus, signal);
+    }
 
     // Mirror into the canonical telemetry store. Dedupes on
     // (agent_id, dedupe_key) so re-persists and migrator replays are safe.
