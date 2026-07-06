@@ -4,7 +4,7 @@
  *
  * Before this, chat could NAVIGATE to any settings section (VIEWS) and WRITE a
  * few of them through dedicated actions (MODEL_SWITCH, BACKGROUND, CHARACTER,
- * CONNECTOR/CREDENTIALS), but the remaining sections were reachable only via the
+ * PLUGIN, SECRETS), but the remaining sections were reachable only via the
  * generic synthetic-DOM bridge (`agent-fill`/`agent-click`) — invisible to the
  * planner and broken under voice. This action closes that gap with one uniform
  * `action` (get|set|list) / `section` / `key` / `value` surface.
@@ -880,10 +880,11 @@ const APP_PERMISSION_NAMESPACE_KEY: SettingsWritableKey = {
  * write capability. Adding a built-in section without a matching entry fails the
  * completeness test — the drift guard that keeps chat and view in lockstep.
  *
- * `delegate` targets are real, registered actions (MODEL_SWITCH/BACKGROUND live
- * in this plugin; CHARACTER/CONNECTOR/CREDENTIALS in their own plugins) — the
- * planner reaches them directly via routingHint, so `set` on a delegated section
- * only ever needs to point the way, never re-implement the write.
+ * `delegate` targets are the canonical action names for sections with their own
+ * owner. MODEL_SWITCH/BACKGROUND live in this plugin; CHARACTER and PLUGIN are
+ * registered by the default agent surface; SECRETS is the encrypted-secret
+ * capability and must be enabled with the vault surface. SETTINGS points at the
+ * owner instead of re-implementing those writes.
  */
 export const SETTINGS_WRITE_REGISTRY: Readonly<
 	Record<string, SettingsSectionCapability>
@@ -923,13 +924,15 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 	},
 	connectors: {
 		kind: "delegate",
-		action: "CONNECTOR",
-		summary: "Enable, disable, or configure connectors and integrations.",
+		action: "PLUGIN",
+		summary:
+			"Enable, disable, configure, or disconnect connector plugins and integrations.",
 	},
 	secrets: {
 		kind: "delegate",
-		action: "CREDENTIALS",
-		summary: "Store or update API keys and secrets in the vault.",
+		action: "SECRETS",
+		summary:
+			"Store, update, request, mirror, or delete encrypted API keys and secrets.",
 	},
 	permissions: {
 		kind: "route",
@@ -1451,11 +1454,11 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			"ELIZA_CLOUD_RPC",
 		],
 		description:
-			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, requesting OS permissions via section=permissions key=request permission=microphone|camera|location|notifications|screen-recording, changing appearance values via section=appearance key=theme|accent|language|home-time-widget, turning automatic training on/off via section=capabilities key=auto-training, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, selecting wallet RPC providers via section=wallet-rpc key=evm|bsc|solana value=<provider> or key=cloud, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, and creating/restoring local agent backups via section=advanced key=create-backup|restore-backup. Restore requires fileName and confirm=true. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
+			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, requesting OS permissions via section=permissions key=request permission=microphone|camera|location|notifications|screen-recording, changing appearance values via section=appearance key=theme|accent|language|home-time-widget, turning automatic training on/off via section=capabilities key=auto-training, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, selecting wallet RPC providers via section=wallet-rpc key=evm|bsc|solana value=<provider> or key=cloud, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, and creating/restoring local agent backups via section=advanced key=create-backup|restore-backup. Restore requires fileName and confirm=true. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→PLUGIN, secrets→SECRETS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
 		descriptionCompressed:
 			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, OS permission requests, appearance, auto-training, wallet RPC providers, app permissions, and local backups",
 		routingHint:
-			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'ask for microphone permission', 'request camera access', 'enable location permission', 'turn on notifications', 'request screen recording' -> SETTINGS section=permissions key=request permission=microphone|camera|location|notifications|screen-recording. 'switch to dark mode', 'use system theme', 'set the accent to green', 'change UI language to Spanish', 'hide/show the home time widget' -> SETTINGS section=appearance key=theme|accent|language|home-time-widget value=<value>. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'use Alchemy for EVM RPC', 'set BSC RPC to NodeReal', 'use Helius for Solana RPC' -> SETTINGS section=wallet-rpc key=evm|bsc|solana value=alchemy|infura|ankr|nodereal|quicknode|helius-birdeye|eliza-cloud. 'use Eliza Cloud RPC' -> SETTINGS section=wallet-rpc key=cloud. 'switch wallet network to testnet' -> SETTINGS section=wallet-rpc key=network value=testnet. Never put wallet API keys or RPC URLs in SETTINGS; use CREDENTIALS/Secrets for those. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/wallpaper is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, requesting an OS permission, changing an appearance value, changing wallet RPC provider selection, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
+			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'ask for microphone permission', 'request camera access', 'enable location permission', 'turn on notifications', 'request screen recording' -> SETTINGS section=permissions key=request permission=microphone|camera|location|notifications|screen-recording. 'switch to dark mode', 'use system theme', 'set the accent to green', 'change UI language to Spanish', 'hide/show the home time widget' -> SETTINGS section=appearance key=theme|accent|language|home-time-widget value=<value>. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'use Alchemy for EVM RPC', 'set BSC RPC to NodeReal', 'use Helius for Solana RPC' -> SETTINGS section=wallet-rpc key=evm|bsc|solana value=alchemy|infura|ankr|nodereal|quicknode|helius-birdeye|eliza-cloud. 'use Eliza Cloud RPC' -> SETTINGS section=wallet-rpc key=cloud. 'switch wallet network to testnet' -> SETTINGS section=wallet-rpc key=network value=testnet. Never put wallet API keys or RPC URLs in SETTINGS; use SECRETS for API keys and vault material. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/wallpaper is BACKGROUND, the agent identity is CHARACTER, connector plugin lifecycle/config is PLUGIN, secret/API keys are SECRETS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, requesting an OS permission, changing an appearance value, changing wallet RPC provider selection, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
 		suppressPostActionContinuation: true,
 
 		parameters: [

@@ -264,12 +264,20 @@ describe("registry completeness", () => {
 			"CHARACTER",
 			"MODEL_SWITCH",
 			"BACKGROUND",
-			"CONNECTOR",
-			"CREDENTIALS",
+			"PLUGIN",
+			"SECRETS",
 		]);
 		for (const cap of Object.values(SETTINGS_WRITE_REGISTRY)) {
 			if (cap.kind === "delegate") expect(allowed.has(cap.action)).toBe(true);
 		}
+		expect(SETTINGS_WRITE_REGISTRY.connectors).toMatchObject({
+			kind: "delegate",
+			action: "PLUGIN",
+		});
+		expect(SETTINGS_WRITE_REGISTRY.secrets).toMatchObject({
+			kind: "delegate",
+			action: "SECRETS",
+		});
 	});
 });
 
@@ -1115,6 +1123,30 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
 		expect(result?.data).toMatchObject({ delegateTo: "MODEL_SWITCH" });
+	});
+
+	it("delegates connector settings to the default PLUGIN action", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "connectors", value: "telegram" },
+			routeFetch,
+		);
+		expect(routeFetch).not.toHaveBeenCalled();
+		expect(result?.success).toBe(false);
+		expect(result?.data).toMatchObject({ delegateTo: "PLUGIN" });
+		expect(texts.join(" ")).toContain("PLUGIN");
+	});
+
+	it("delegates vault settings to SECRETS, not the browser credential action", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "secrets", value: "openai" },
+			routeFetch,
+		);
+		expect(routeFetch).not.toHaveBeenCalled();
+		expect(result?.success).toBe(false);
+		expect(result?.data).toMatchObject({ delegateTo: "SECRETS" });
+		expect(texts.join(" ")).toContain("SECRETS");
 	});
 
 	it("refuses to write a read-only section", async () => {
