@@ -1170,7 +1170,6 @@
   "cloud.billing.loading": "Loading billing",
   "cloud.billing.metaDescription": "Add funds and manage your billing",
   "cloud.billing.metaTitle": "Billing",
-  "cloud.billing.noOrganization": "No organization associated with this account",
   "cloud.billing.pageTitle": "Billing",
   "cloud.billing.paymentCanceled": "Payment canceled. No charges were made.",
   "cloud.billing.success.backToBilling": "Back to Billing",
