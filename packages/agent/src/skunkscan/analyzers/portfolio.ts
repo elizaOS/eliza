@@ -1,4 +1,5 @@
 import { getSolanaTokenMetadata } from "../providers/tokenMetadata";
+import { TokenPrice } from "../providers/priceProvider";
 import {
   WalletBalance,
   WalletPortfolioSummary,
@@ -9,10 +10,12 @@ import {
 export function analyzeWalletPortfolio(
   nativeBalance: WalletBalance,
   tokenHoldings: WalletTokenHolding[],
+  tokenPrices: Record<string, TokenPrice> = {},
 ): WalletPortfolioSummary {
   const topTokenHoldings: WalletPortfolioToken[] = tokenHoldings
     .map((token) => {
       const metadata = getSolanaTokenMetadata(token.mint);
+      const price = tokenPrices[token.mint]?.priceUsd ?? null;
 
       return {
         mint: token.mint,
@@ -21,23 +24,46 @@ export function analyzeWalletPortfolio(
         rawAmount: token.rawAmount,
         symbol: metadata?.symbol ?? null,
         name: metadata?.name ?? null,
-        estimatedUsdValue: null,
+        estimatedUsdValue:
+          price !== null ? Number((token.amount * price).toFixed(2)) : null,
       };
     })
-    .sort((a, b) => b.amount - a.amount)
+    .sort((a, b) => {
+      const aValue = a.estimatedUsdValue ?? 0;
+      const bValue = b.estimatedUsdValue ?? 0;
+
+      if (bValue !== aValue) {
+        return bValue - aValue;
+      }
+
+      return b.amount - a.amount;
+    })
     .slice(0, 10);
 
-  const totalTokenUnits = tokenHoldings.reduce(
-    (total, token) => total + token.amount,
-    0,
+  const estimatedTotalUsdValue = tokenHoldings.reduce((total, token) => {
+    const price = tokenPrices[token.mint]?.priceUsd ?? null;
+
+    if (price === null) {
+      return total;
+    }
+
+    return total + token.amount * price;
+  }, 0);
+
+  const hasAnyUsdPrice = tokenHoldings.some(
+    (token) => tokenPrices[token.mint]?.priceUsd !== null,
   );
 
-  const largestTokenAmount =
-    topTokenHoldings.length > 0 ? topTokenHoldings[0].amount : 0;
+  const largestHoldingValue =
+    topTokenHoldings.length > 0
+      ? topTokenHoldings[0].estimatedUsdValue
+      : null;
 
   const largestHoldingPercentage =
-    totalTokenUnits > 0
-      ? Number(((largestTokenAmount / totalTokenUnits) * 100).toFixed(2))
+    hasAnyUsdPrice &&
+    largestHoldingValue !== null &&
+    estimatedTotalUsdValue > 0
+      ? Number(((largestHoldingValue / estimatedTotalUsdValue) * 100).toFixed(2))
       : null;
 
   const concentrationLevel =
@@ -72,10 +98,15 @@ export function analyzeWalletPortfolio(
   const notes =
     tokenHoldings.length === 0
       ? ["No SPL token holdings were found for this wallet."]
-      : [
-          "Portfolio concentration is estimated from token unit balances.",
-          "USD valuation is not enabled yet.",
-        ];
+      : hasAnyUsdPrice
+        ? [
+            "Portfolio valuation is estimated using available token prices.",
+            "Some tokens may not have available USD pricing.",
+          ]
+        : [
+            "No token USD prices were available for this wallet yet.",
+            "Portfolio concentration is estimated without USD valuation.",
+          ];
 
   return {
     nativeBalance,
@@ -84,7 +115,9 @@ export function analyzeWalletPortfolio(
     diversityScore,
     diversityLevel,
     topTokenHoldings,
-    estimatedTotalUsdValue: null,
+    estimatedTotalUsdValue: hasAnyUsdPrice
+      ? Number(estimatedTotalUsdValue.toFixed(2))
+      : null,
     concentrationLevel,
     notes,
   };
