@@ -12,9 +12,10 @@
  * facts being misattributed to the bridge sender.
  * Retrieval deliberately avoids vector search so relevance is computed from the
  * fact's own words and extracted keywords; a keyword-miss on durable facts
- * falls back to the highest-prior candidates so direct recall still works. The
- * ranking curves and two-store model are documented in
- * docs/architecture/fact-memory.md.
+ * falls back to the highest-prior candidates so direct recall still works.
+ * Sender-owned interaction preferences get a separate bounded lane because
+ * reply-style constraints should shape every turn, even when the user's current
+ * message has no lexical overlap with "brief replies" or "no emojis".
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
@@ -40,9 +41,8 @@ const spec = requireProviderSpec("FACTS");
  *
  * Score = `confidence × exp(-ageDays / 14)` so a fact is at full weight on
  * day zero, ~50% at 14 days, and ~14% at 30 days. There is no hard cutoff —
- * very old current facts can still surface when relevance is high enough
- * (see `docs/architecture/fact-memory.md`). Durable facts skip decay
- * entirely (`timeWeight = 1`).
+ * very old current facts can still surface when relevance is high enough.
+ * Durable facts skip decay entirely (`timeWeight = 1`).
  */
 const CURRENT_DECAY_DAYS = 14;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -76,8 +76,8 @@ function readFactConfidence(memory: Memory): number {
 
 /**
  * Resolve a fact's kind. Legacy facts written before the two-store model
- * carry no `kind` metadata; treat them as durable per the lazy
- * reclassification policy in `fact-memory.md`.
+ * carry no `kind` metadata; treat them as durable so existing identity-level
+ * memories remain recallable.
  */
 function readFactKind(memory: Memory): FactKind {
 	const kind = readFactMetadata(memory).kind;
@@ -187,6 +187,51 @@ function readCategory(memory: Memory): string {
 	return "uncategorized";
 }
 
+const INTERACTION_PREFERENCE_LIMIT = 3;
+const INTERACTION_PREFERENCE_PATTERN =
+	/\b(reply|replies|response|responses|respond|answer|answers|message|messages|chat|communicat(?:e|es|ing|ion)|tone|style|voice|format|verbosity|verbose|terse|brief|concise|short|long|emoji|emojis|formal|casual|direct|gentle|language|explain|explanations)\b/i;
+
+function factSearchBlob(memory: Memory): string {
+	const metadata = readFactMetadata(memory);
+	const keywords = Array.isArray(metadata.keywords)
+		? metadata.keywords.join(" ")
+		: "";
+	const structured =
+		metadata.structuredFields && typeof metadata.structuredFields === "object"
+			? JSON.stringify(metadata.structuredFields)
+			: "";
+	return [memory.content.text ?? "", keywords, structured].join(" ");
+}
+
+function isInteractionPreference(memory: Memory): boolean {
+	return (
+		readCategory(memory) === "preference" &&
+		INTERACTION_PREFERENCE_PATTERN.test(factSearchBlob(memory))
+	);
+}
+
+function topByPrior(
+	memories: Memory[],
+	kind: FactKind,
+	nowMs: number,
+	limit: number,
+): Memory[] {
+	return [...memories]
+		.sort(
+			(left, right) =>
+				scoreFactPrior(right, kind, nowMs) - scoreFactPrior(left, kind, nowMs),
+		)
+		.slice(0, limit);
+}
+
+function mergeAlwaysIncludedFacts(
+	alwaysIncluded: Memory[],
+	ranked: Memory[],
+	max: number,
+): Memory[] {
+	return dedupeById([...alwaysIncluded, ...ranked]).slice(0, max);
+}
+
 function formatDurableLine(memory: Memory): string {
 	const text = memory.content.text ?? "";
 	if (!text) return "";
@@ -220,7 +265,7 @@ function formatLines(memories: Memory[], kind: FactKind): string {
  * Function to get key facts that the agent knows about the speaker.
  * Splits retrieval into room/entity candidate pools, performs local BM25
  * keyword scoring over fact text + extracted keywords, and ranks each kind
- * with its own time-weighting curve (see `fact-memory.md`).
+ * with its own time-weighting curve.
  */
 const factsProvider: Provider = {
 	name: spec.name,
@@ -312,6 +357,10 @@ const factsProvider: Provider = {
 				partitionByKind(dedupedPool);
 
 			const nowMs = Date.now();
+			const senderEntityIds = new Set<string>(relatedEntityIds);
+			const isAboutSender = (memory: Memory): boolean =>
+				typeof memory.entityId === "string" &&
+				senderEntityIds.has(memory.entityId);
 			let durableFacts = rankByKeywordScore(
 				durableCandidates,
 				"durable",
@@ -339,6 +388,19 @@ const factsProvider: Provider = {
 					)
 					.slice(0, TOP_PER_KIND);
 			}
+			const interactionPreferences = topByPrior(
+				durableCandidates.filter(
+					(memory) => isAboutSender(memory) && isInteractionPreference(memory),
+				),
+				"durable",
+				nowMs,
+				INTERACTION_PREFERENCE_LIMIT,
+			);
+			durableFacts = mergeAlwaysIncludedFacts(
+				interactionPreferences,
+				durableFacts,
+				TOP_PER_KIND + INTERACTION_PREFERENCE_LIMIT,
+			);
 			const currentFacts = rankByKeywordScore(
 				currentCandidates,
 				"current",
@@ -372,16 +434,22 @@ const factsProvider: Provider = {
 			// header told the model that facts about other people described
 			// whoever happened to send the current message (worst on relay/webhook
 			// turns, where every room fact got attributed to the bridge bot).
-			const senderEntityIds = new Set<string>(relatedEntityIds);
-			const isAboutSender = (memory: Memory): boolean =>
-				typeof memory.entityId === "string" &&
-				senderEntityIds.has(memory.entityId);
-			const senderDurable = durableFacts.filter(isAboutSender);
+			const senderInteractionPreferences = durableFacts.filter(
+				(memory) => isAboutSender(memory) && isInteractionPreference(memory),
+			);
+			const senderDurable = durableFacts.filter(
+				(memory) => isAboutSender(memory) && !isInteractionPreference(memory),
+			);
 			const roomDurable = durableFacts.filter((m) => !isAboutSender(m));
 			const senderCurrent = currentFacts.filter(isAboutSender);
 			const roomCurrent = currentFacts.filter((m) => !isAboutSender(m));
 
 			const sections: string[] = [];
+			if (senderInteractionPreferences.length > 0) {
+				sections.push(
+					`Interaction preferences for ${senderName}:\nApply these when responding to ${senderName}:\n${formatLines(senderInteractionPreferences, "durable")}`,
+				);
+			}
 			if (senderDurable.length > 0) {
 				const durableHeader = `Things ${agentName} knows about ${senderName}:`;
 				sections.push(

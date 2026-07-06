@@ -136,6 +136,51 @@ describe("factsProvider keyword retrieval", () => {
 		expect(result.text).toContain("the user prefers aisle seats");
 	});
 
+	it("always includes sender-owned interaction preferences without including unrelated domain preferences", async () => {
+		const launchFacts = Array.from({ length: 6 }, (_, index) =>
+			memory(`fact-launch-${index}`, `launch planning detail ${index}`, {
+				kind: "durable",
+				category: "business_role",
+				confidence: 0.8,
+				keywords: ["launch", "planning", `detail-${index}`],
+			}),
+		);
+		const runtime = makeRuntime({
+			facts: [
+				...launchFacts,
+				memory("fact-style", "the user hates long replies", {
+					kind: "durable",
+					category: "preference",
+					confidence: 0.95,
+					keywords: ["brief", "replies"],
+				}),
+				memory("fact-domain", "the user likes Tokyo hotels", {
+					kind: "durable",
+					category: "preference",
+					confidence: 1,
+					keywords: ["tokyo", "hotels"],
+				}),
+			],
+		});
+
+		const message = memory("msg-current", "What changed for launch planning?");
+		message.content.senderName = "Alice";
+		const result = await factsProvider.get(runtime, message, {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		const durableFacts = result.data.durableFacts as Memory[];
+		expect(durableFacts.map((fact) => fact.id)).toContain("fact-style");
+		expect(durableFacts.map((fact) => fact.id)).not.toContain("fact-domain");
+		expect(durableFacts).toHaveLength(7);
+		expect(result.text).toContain("Interaction preferences for Alice:");
+		expect(result.text).toContain("Apply these when responding to Alice:");
+		expect(result.text).toContain("the user hates long replies");
+		expect(result.text).not.toContain("Tokyo hotels");
+	});
+
 	it("surfaces a durable fact on direct recall even when keywords do not BM25-match", async () => {
 		// Live regression on 2026-05-28 (tj-8e3d5c79321002): user stored
 		// "my car's name is Bertha" then later asked "whats my cars name?".
