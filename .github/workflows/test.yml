@@ -936,14 +936,16 @@ jobs:
           name: tests-zero-key-e2e-report
           path: |
             reports/scenarios/pr-deterministic/
+            reports/scenarios/pr-deterministic-corpus/
             reports/scenarios/pr-deterministic-orchestrator/
+            reports/scenarios/pr-deterministic-lifeops/
             reports/scenarios/catalog-inventory/
           if-no-files-found: ignore
           retention-days: 3
 
       - name: Prune deterministic E2E scratch output
         if: always()
-        run: node packages/scripts/rm-path-recursive.mjs reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-orchestrator reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
+        run: node packages/scripts/rm-path-recursive.mjs reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
 
   zero-key-harness-e2e:
     name: Zero-Key harness E2E

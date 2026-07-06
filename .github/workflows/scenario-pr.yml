@@ -876,7 +876,9 @@ jobs:
           name: scenario-pr-deterministic-report
           path: |
             reports/scenarios/pr-deterministic/
+            reports/scenarios/pr-deterministic-corpus/
             reports/scenarios/pr-deterministic-orchestrator/
+            reports/scenarios/pr-deterministic-lifeops/
             reports/scenarios/catalog-inventory/
             reports/coverage/
           if-no-files-found: ignore

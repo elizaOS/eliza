@@ -144,6 +144,8 @@ const appVerificationIntegrationPath = resolve(
 describe("scenario PR workflow contract", () => {
   it("runs deterministic zero-cost coverage on every PR without path filtering", () => {
     const workflow = readFileSync(workflowPath, "utf8");
+    const testWorkflow = readFileSync(testWorkflowPath, "utf8");
+    const prCiWorkflows = `${workflow}\n${testWorkflow}`;
     const deterministicPrScenario = readFileSync(
       deterministicPrScenarioPath,
       "utf8",
@@ -226,30 +228,32 @@ describe("scenario PR workflow contract", () => {
     expect(workflow).toContain("pull_request:");
     expect(workflow).not.toMatch(/\n\s+paths:\s*\n/);
     expect(workflow).toContain('SCENARIO_USE_LLM_PROXY: "1"');
-    expect(workflow).toContain(
+    expect(testWorkflow).toContain(
       "bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/llm-proxy-plugin.test.ts",
     );
-    expect(workflow).toContain(
+    expect(prCiWorkflows).toContain(
       "bun run --cwd packages/ui test -- src/hooks/useVoiceChat.bidirectional.test.tsx src/hooks/useContinuousChat.test.tsx",
     );
-    expect(workflow).toContain(
+    expect(prCiWorkflows).toContain(
       "src/components/shell/__tests__/shell-assistant-flow.test.tsx",
     );
-    expect(workflow).toContain("bunx playwright install --with-deps chromium");
-    expect(workflow).toContain(
+    expect(prCiWorkflows).toContain(
+      "bunx playwright install --with-deps chromium",
+    );
+    expect(prCiWorkflows).toContain(
       'bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "captures first-run, assistant home, chat suppression, and view pill states"',
     );
-    expect(workflow).toContain(
+    expect(prCiWorkflows).toContain(
       'bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "drives the assistant home voice path with a scripted browser STT turn"',
     );
-    expect(workflow).toContain(
+    expect(prCiWorkflows).toContain(
       "bun run --cwd packages/app test:e2e test/ui-smoke/tts-stt-e2e.spec.ts --project=chromium",
     );
-    expect(workflow).toContain(
+    expect(prCiWorkflows).toContain(
       "bun run --cwd packages/scenario-runner test:pr:e2e",
     );
     expect(scenarioRunnerPackage.scripts?.["test:pr:e2e"]).toBe(
-      "bun run test:deterministic:e2e && bun run test:corpus:pr:e2e && bun run test:orchestrator:pr:e2e",
+      "bun run test:deterministic:e2e && bun run test:corpus:pr:e2e && bun run test:orchestrator:pr:e2e && bun run test:lifeops:pr:e2e",
     );
     // The corpus lane runs the big `packages/test/scenarios` corpus filtered to
     // the `pr-deterministic` lane, keyless, under the same strict proxy.
@@ -261,6 +265,9 @@ describe("scenario PR workflow contract", () => {
     );
     expect(scenarioRunnerPackage.scripts?.["test:corpus:pr:e2e"]).toContain(
       "src/cli.ts run ../test/scenarios",
+    );
+    expect(prCiWorkflows).toContain(
+      "reports/scenarios/pr-deterministic-corpus/",
     );
     expect(
       scenarioRunnerPackage.scripts?.["test:orchestrator:pr:e2e"],
@@ -274,6 +281,27 @@ describe("scenario PR workflow contract", () => {
     expect(
       scenarioRunnerPackage.scripts?.["test:orchestrator:pr:e2e"],
     ).toContain("--lane pr-deterministic");
+    expect(scenarioRunnerPackage.scripts?.["test:lifeops:pr:e2e"]).toContain(
+      "TZ=UTC",
+    );
+    expect(scenarioRunnerPackage.scripts?.["test:lifeops:pr:e2e"]).toContain(
+      "SCENARIO_USE_LLM_PROXY=1",
+    );
+    expect(scenarioRunnerPackage.scripts?.["test:lifeops:pr:e2e"]).toContain(
+      "SCENARIO_LLM_PROXY_STRICT=1",
+    );
+    expect(scenarioRunnerPackage.scripts?.["test:lifeops:pr:e2e"]).toContain(
+      "plugins/plugin-personal-assistant/test/scenarios",
+    );
+    expect(scenarioRunnerPackage.scripts?.["test:lifeops:pr:e2e"]).toContain(
+      "--lane pr-deterministic",
+    );
+    expect(prCiWorkflows).toContain(
+      "reports/scenarios/pr-deterministic-lifeops/",
+    );
+    expect(testWorkflow).toContain(
+      "reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops",
+    );
     expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
       "SCENARIO_USE_LLM_PROXY=1",
     );
@@ -287,22 +315,22 @@ describe("scenario PR workflow contract", () => {
     expect(scenarioRunnerPackage.scripts?.["test:live:e2e"]).not.toContain(
       "SCENARIO_USE_LLM_PROXY",
     );
-    expect(workflow).toContain(
+    expect(prCiWorkflows).toContain(
       "bun run --cwd plugins/plugin-app-control test -- src/actions/views-management.test.ts",
     );
-    expect(workflow).toContain(
+    expect(prCiWorkflows).toContain(
       "bun run --cwd plugins/plugin-app-control test -- src/services/__tests__/app-verification.integration.test.ts src/services/__tests__/verification-room-bridge.test.ts",
     );
-    expect(workflow).toContain(
+    expect(prCiWorkflows).toContain(
       "bun run --cwd plugins/plugin-computeruse test -- test/helpers/screenshot-quality.test.ts src/__tests__/browser-auto-open.test.ts",
     );
-    expect(workflow).toContain(
+    expect(prCiWorkflows).toContain(
       "bun run --cwd packages/app test -- test/screenshot-quality.test.ts",
     );
-    expect(workflow).toContain(
+    expect(prCiWorkflows).toContain(
       "bun run --cwd packages/app-core test -- test/app/screenshot-quality.test.ts",
     );
-    expect(workflow).toContain(
+    expect(prCiWorkflows).toContain(
       "bun run --cwd packages/app-core/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts",
     );
     expect(llmProxy).toContain("failOnUnhandledAction");
