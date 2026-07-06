@@ -134,6 +134,20 @@ describe("ProactiveInteractionGate — UX governance (#8792)", () => {
     ).toBe(true);
   });
 
+  it("wouldAdmit does not prune stale emission history (#14678)", () => {
+    // Regression: the precheck must not compact `emissions` even when called far
+    // past the prune cutoff. A prune here would be an observable mutation and
+    // break the documented "never mutates gate state" contract, even though it
+    // is decision-inert.
+    const g = gate(SUBTLE);
+    g.tryAdmit({ surface: "wallet", text: "a", now: 0 });
+    const emissions = (g as unknown as { emissions: unknown[] }).emissions;
+    expect(emissions).toHaveLength(1);
+    // Three days later — well beyond any prune cutoff.
+    g.wouldAdmit("wallet", 3 * 24 * 60 * 60 * 1000);
+    expect(emissions).toHaveLength(1);
+  });
+
   it("wouldAdmit mirrors tryAdmit's text-independent denials (#14678)", () => {
     const g = gate(SUBTLE);
     g.tryAdmit({ surface: "wallet", text: "a", now: 0 });
