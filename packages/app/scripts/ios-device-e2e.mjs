@@ -5,7 +5,7 @@
  * boot-trace, and collapse everything into one run-scoped triage bundle whose
  * absolute path is printed as the last line (issue #14337).
  *
- * Chains three already-proven scripts through the pure step-runner in
+ * Chains three already-proven scripts through the argv builders in
  * `lib/ios-device-e2e-lib.mjs`:
  *   1. ios-device-deploy.mjs  --skip-appexes  (build → sign → devicectl install;
  *      appex surfaces excluded — logged loudly by the deploy script). The deploy
@@ -18,10 +18,14 @@
  *   3. ios-device-logs.mjs --no-console --pull-boot-trace  (full-Bun engine
  *      observability; attached --console SIGTRAPs the no-JIT engine, #11515).
  *
- * Every step's exit is loud: a non-zero child fails the lane non-zero. The bundle
- * (research doc 08 Q2/Q3 shape: smoke/ logs/ summary.json) is written under a
- * gitignored run-scoped dir and its path is the final stdout line so an agent
- * can post the smoke filmstrip + boot-trace to a PR.
+ * Run assembly — per-step timing, artifact collection, PNG→JPG / MOV→MP4 inline
+ * conversion, junit, and the machine-readable `summary.json` — goes through the
+ * shared `lib/device-e2e-bundle.mjs` framework, the same one `android-e2e.mjs`
+ * and `ios-e2e.mjs` use, so all three device lanes emit one summary shape
+ * (PR #14509 reconciliation). Every step's exit is loud: a non-zero child fails
+ * the lane non-zero and the partial bundle is still finalized. The bundle's
+ * absolute path is the final stdout line so an agent can post the smoke/
+ * filmstrip + logs/ boot-trace inline to the PR.
  *
  * Device id: --device flag or ELIZA_IOS_DEVICE_ID.
  *
@@ -30,7 +34,6 @@
  *     [--no-skip-appexes] [--skip-logs] [--require-chat]
  *     [--bundle-id <id>] [--output <dir>]
  */
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,12 +44,19 @@ import {
   resolveDeviceId,
 } from "./ios-device-lib.mjs";
 import {
+  captureFailureForensics,
+  collectBundleArtifacts,
+  createDeviceE2eBundle,
+  finalizeDeviceE2eBundle,
+  formatFailureForensicsBlock,
+  runBundledCommand,
+  setBundleBuild,
+  setBundleDevice,
+} from "./lib/device-e2e-bundle.mjs";
+import {
   buildDeviceDeployCommand,
   buildDeviceLogsCommand,
   buildDeviceSmokeCommand,
-  buildRunSummary,
-  classifyStepStatus,
-  formatRunId,
   planIosDeviceE2eSteps,
 } from "./lib/ios-device-e2e-lib.mjs";
 import {
@@ -64,14 +74,20 @@ const fail = (message) => {
   process.exit(1);
 };
 
-function runStep(step, { cmd, args }) {
-  log(`${step.id}: ${step.label}`);
-  log(`  $ ${cmd} ${args.join(" ")}`);
-  const startedAt = Date.now();
-  const result = spawnSync(cmd, args, { cwd: appRoot, stdio: "inherit" });
-  const durationMs = Date.now() - startedAt;
-  const verdict = classifyStepStatus(result.status);
-  return { verdict, durationMs, status: result.status };
+// Failure forensics for a chained-child step: the child script already wrote its
+// own artifacts into smoke/ or logs/; this records the cause so the triage
+// bundle names why the lane stopped.
+function captureDeviceFailure(bundle, step, error) {
+  return captureFailureForensics(
+    bundle,
+    step,
+    ({ failureDir }) => {
+      const causePath = path.join(failureDir, "failure-cause.txt");
+      fs.writeFileSync(causePath, `${error?.message ?? error}\n`);
+      return [causePath];
+    },
+    error,
+  );
 }
 
 async function main() {
@@ -115,117 +131,117 @@ async function main() {
   const skipAppexes = !args["no-skip-appexes"];
   const bundleId = args["bundle-id"] || null;
 
-  const runId = formatRunId();
-  const startedAtIso = new Date().toISOString();
-  const bundleDir = path.resolve(
-    args.output || path.join(appRoot, "device-e2e-output", `ios-${runId}`),
-  );
-  const smokeDir = path.join(bundleDir, "smoke");
-  const logsDir = path.join(bundleDir, "logs");
-  for (const dir of [bundleDir, smokeDir, logsDir]) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+  const bundle = createDeviceE2eBundle({
+    appDir: appRoot,
+    lane: "ios-device",
+    outputDir: args.output,
+  });
+  setBundleDevice(bundle, {
+    udid: device.udid,
+    identifier: device.identifier,
+    name: device.name,
+    kind: "ios-device",
+  });
+  // skippedAppexes is run configuration that scopes what the build proves; carry
+  // it on the build metadata (buildId/commit are filled in after the deploy).
+  setBundleBuild(bundle, { skippedAppexes: skipAppexes });
+
+  // BootCapture attachments land in smoke/ (per-#14337 bundle layout); the shared
+  // finalize collects logs/ + raw/ + reports/, so smoke/ is collected explicitly.
+  const smokeDir = path.join(bundle.root, "smoke");
+  fs.mkdirSync(smokeDir, { recursive: true });
 
   const steps = planIosDeviceE2eSteps({
     skipLogs: Boolean(args["skip-logs"]),
   });
   log(`plan: ${steps.map((s) => s.id).join(" → ")}`);
-  log(`bundle: ${bundleDir}`);
+  log(`bundle: ${bundle.root}`);
 
   const commandFor = (step) => {
     switch (step.id) {
       case "deploy":
-        return {
-          command: buildDeviceDeployCommand({
-            scriptsDir,
-            deviceId,
-            skipAppexes,
-            bundleId,
-          }),
-          artifacts: [],
-        };
+        return buildDeviceDeployCommand({
+          scriptsDir,
+          deviceId,
+          skipAppexes,
+          bundleId,
+        });
       case "smoke":
-        return {
-          command: buildDeviceSmokeCommand({
-            scriptsDir,
-            deviceId,
-            outputDir: smokeDir,
-            requireChat: Boolean(args["require-chat"]),
-            bundleId,
-          }),
-          artifacts: [smokeDir],
-        };
+        return buildDeviceSmokeCommand({
+          scriptsDir,
+          deviceId,
+          outputDir: smokeDir,
+          requireChat: Boolean(args["require-chat"]),
+          bundleId,
+        });
       case "logs":
-        return {
-          command: buildDeviceLogsCommand({
-            scriptsDir,
-            deviceId,
-            // ios-device-logs derives its own trace filename from
-            // path.dirname(--output), so point --output at a file inside logsDir.
-            outputFile: path.join(logsDir, "boot-trace-run"),
-            bundleId,
-          }),
-          artifacts: [logsDir],
-        };
+        return buildDeviceLogsCommand({
+          scriptsDir,
+          deviceId,
+          // ios-device-logs derives its own trace filename from
+          // path.dirname(--output), so point --output at a file inside logsDir.
+          outputFile: path.join(bundle.logsDir, "boot-trace-run"),
+          bundleId,
+        });
       default:
         throw new Error(`unknown step: ${step.id}`);
     }
   };
 
-  const recorded = [];
-  let firstFailure = null;
-  for (const step of steps) {
-    const { command, artifacts } = commandFor(step);
-    const { verdict, durationMs } = runStep(step, command);
-    recorded.push({
-      id: step.id,
-      label: step.label,
-      status: verdict.status,
-      durationMs,
-      artifacts,
-    });
-    if (!verdict.ok) {
-      firstFailure = step.id;
-      break;
-    }
-  }
-
-  // The deploy step writes the renderer stamp into the ledger; surface the
-  // buildId/commit into the summary by reading the freshly built dist stamp
-  // (the exact bundle the deploy installed). A missing stamp is not fatal to
-  // the summary — the deploy step's own assert already gated on it — so this is
-  // best-effort metadata, recorded as null when unreadable.
-  let build = { buildId: null, commit: null };
+  let finalResult = "failed";
+  let finalError = null;
   try {
-    const fresh = readRendererManifest(
-      freshRendererManifestPath({ repoRoot }),
-      "freshly built",
-    );
-    build = { buildId: fresh.buildId, commit: fresh.commit };
+    for (const step of steps) {
+      const { cmd, args: cmdArgs } = commandFor(step);
+      runBundledCommand(bundle, step.label, cmd, cmdArgs, {
+        cwd: appRoot,
+        onFailure: (bundleStep, error) =>
+          captureDeviceFailure(bundle, bundleStep, error),
+      });
+      if (step.id === "deploy") {
+        // The deploy step installs the freshly built bundle; surface its
+        // buildId/commit into the summary by reading the fresh dist stamp (the
+        // exact bundle the deploy installed). The deploy already asserted
+        // renderer freshness, so this is informational metadata only.
+        try {
+          const fresh = readRendererManifest(
+            freshRendererManifestPath({ repoRoot }),
+            "freshly built",
+          );
+          setBundleBuild(bundle, {
+            buildId: fresh.buildId,
+            commit: fresh.commit,
+          });
+        } catch (error) {
+          // error-policy:J7 diagnostics-must-not-kill-the-loop — the summary's
+          // build metadata is informational; the deploy already asserted
+          // freshness. Warn and leave it null rather than failing a good run.
+          bundle.warnings.push(
+            `summary build metadata unavailable: ${error?.message ?? error}`,
+          );
+          log(`summary build metadata unavailable: ${error?.message ?? error}`);
+        }
+      }
+    }
+    finalResult = "passed";
   } catch (error) {
-    // error-policy:J7 diagnostics-must-not-kill-the-loop — the summary's build
-    // metadata is informational; the deploy already asserted freshness. Warn
-    // and record null rather than failing an otherwise-complete run.
-    log(`summary build metadata unavailable: ${error?.message ?? error}`);
+    // runBundledCommand already recorded the step as failed and ran the failure
+    // forensics; this stops the chain at the first failing step.
+    finalError = error;
   }
 
-  const summary = buildRunSummary({
-    runId,
-    startedAt: startedAtIso,
-    finishedAt: new Date().toISOString(),
-    bundleDir,
-    device,
-    build,
-    skippedAppexes: skipAppexes,
-    steps: recorded,
-  });
-  const summaryPath = path.join(bundleDir, "summary.json");
-  fs.writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
+  collectBundleArtifacts(bundle, [smokeDir]);
+  const bundleRoot = finalizeDeviceE2eBundle(bundle, finalResult);
 
-  if (firstFailure) {
-    log(`FAILED at step "${firstFailure}". Bundle (partial) written.`);
-    // The bundle path is the machine-readable handoff even on failure.
-    console.log(bundleDir);
+  if (finalError) {
+    log(
+      `FAILED: ${finalError.message ?? finalError}. Bundle (partial) written.`,
+    );
+    const block = formatFailureForensicsBlock(bundle, finalError);
+    if (block) process.stderr.write(`\n${block}`);
+    // Last line: the absolute bundle path — the machine-readable handoff even on
+    // failure (contract with #14337).
+    console.log(bundleRoot);
     process.exit(1);
   }
 
@@ -234,7 +250,7 @@ async function main() {
   );
   // Last line: the absolute bundle path (contract with #14337 — agents post the
   // smoke/ filmstrip + logs/ boot-trace inline to the PR).
-  console.log(bundleDir);
+  console.log(bundleRoot);
 }
 
 main().catch((error) => fail(error?.stack ?? String(error)));

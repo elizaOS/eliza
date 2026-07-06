@@ -6,8 +6,6 @@
  * before a runner starts.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
@@ -25,6 +23,10 @@ import {
   hasNonFreshDevice,
 } from "./lib/devices-status.mjs";
 import {
+  readDeployLedger,
+  resolveDeployLedgerPath,
+} from "./lib/ios-deploy-ledger.mjs";
+import {
   readRendererManifest,
   rendererManifestPathFromAppPath,
 } from "./lib/ios-renderer-stamp.mjs";
@@ -32,7 +34,6 @@ import {
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(appRoot, "..", "..");
-export const IOS_DEVICE_DEPLOY_LEDGER = "ios-device-deploy-ledger.jsonl";
 
 function hasArg(name) {
   return process.argv.includes(name);
@@ -48,42 +49,6 @@ function runText(command, args, options = {}) {
   } catch {
     return null;
   }
-}
-
-export function devicesStatusStateDir(env = process.env) {
-  return path.resolve(
-    env.ELIZA_DEVICES_STATUS_DIR?.trim() ||
-      env.ELIZA_STATE_DIR?.trim() ||
-      path.join(os.homedir(), ".local", "state", "eliza"),
-  );
-}
-
-export function devicesStatusLedgerPath(env = process.env) {
-  return path.join(devicesStatusStateDir(env), IOS_DEVICE_DEPLOY_LEDGER);
-}
-
-export function appendIosDeviceDeployLedger(entry, env = process.env) {
-  const ledgerPath = devicesStatusLedgerPath(env);
-  fs.mkdirSync(path.dirname(ledgerPath), { recursive: true });
-  fs.appendFileSync(ledgerPath, `${JSON.stringify(entry)}\n`);
-  return ledgerPath;
-}
-
-function readIosDeviceDeployLedger(env = process.env) {
-  const ledgerPath = devicesStatusLedgerPath(env);
-  if (!fs.existsSync(ledgerPath)) return [];
-  return fs
-    .readFileSync(ledgerPath, "utf8")
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean);
 }
 
 function latestLedgerEntryForDevice(device, entries) {
@@ -230,15 +195,11 @@ function iosPhysicalRows(developHead) {
       }),
     ];
   }
-  const ledger = readIosDeviceDeployLedger();
+  const ledger = readDeployLedger(resolveDeployLedgerPath());
   return physicalIosDevices().map((device) => {
     const entry = latestLedgerEntryForDevice(device, ledger);
     const stamp = entry
-      ? {
-          buildId: entry.buildId,
-          commit: entry.commit,
-          builtAt: entry.builtAt,
-        }
+      ? { buildId: entry.buildId, commit: entry.commit }
       : null;
     return buildDeviceStatusRow({
       platform: "ios-device",

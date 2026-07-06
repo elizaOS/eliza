@@ -1,13 +1,15 @@
 /**
- * Pure step-sequencing and command-argument construction for the one-command
- * physical-iPhone e2e lane (`ios-device-e2e.mjs`, issue #14337), plus the
- * run-scoped triage-bundle summary shape.
+ * Pure step-planning and command-argument construction for the one-command
+ * physical-iPhone e2e lane (`ios-device-e2e.mjs`, issue #14337).
  *
  * The lane chains three already-proven scripts — deploy → on-device BootCapture
- * assertion → boot-trace logs — into one command. This module owns the
- * deterministic decisions (which steps run, exactly which argv each gets, how a
- * step's exit becomes a verdict, what the summary.json looks like); the script
- * owns the impure edges (spawning node, reading files, writing the bundle).
+ * assertion → boot-trace logs — into one command. This module owns only the
+ * decisions unique to the physical-device lane: which steps run and the exact
+ * argv each chained child gets. Run assembly and reporting (step timing, the
+ * triage bundle, `summary.json`, artifact collection, inline conversion, junit)
+ * are the shared `lib/device-e2e-bundle.mjs` framework's job — the same one
+ * `android-e2e.mjs` and `ios-e2e.mjs` use — so all three lanes emit one
+ * summary shape (PR #14509 reconciliation onto the sibling bundle lib #14336).
  * Keeping the argv construction here means the exact flags the lane hands each
  * child are unit-tested against fixtures without a device.
  *
@@ -19,14 +21,6 @@
  * so that one on-device boot yields both the pass/fail verdict and the watchable
  * filmstrip — there is no separate capture boot (a second identical BootCapture
  * run would only re-boot the phone to produce bytes the smoke step already has).
- *
- * Bundle shape mirrors research doc 08 Q2/Q3: a gitignored run-scoped dir with
- * `smoke/` (the BootCapture MP4/JPG the assertion produced), `logs/`, and a
- * JSON-canonical `summary.json` carrying lane, device identity, installed
- * buildId/commit, and per-step status/duration/artifact paths. The device-e2e
- * bundle library (`lib/device-e2e-bundle.mjs`) is owned by a sibling PR
- * (#14336); this lane ships a minimal local emitter matching that documented
- * shape and is reconciled onto the shared lib when it lands.
  */
 import path from "node:path";
 
@@ -170,86 +164,4 @@ export function buildDeviceLogsCommand({
   ];
   if (bundleId) args.push("--bundle-id", bundleId);
   return { cmd: "node", args };
-}
-
-/**
- * Classify a step's process exit into a bundle verdict. A null status is a
- * spawn that never produced an exit code (the child could not be launched) —
- * treated as failure, never as success. Only exit 0 passes.
- *
- * @param {number | null} status
- * @returns {{ status: 'passed' | 'failed', ok: boolean }}
- */
-export function classifyStepStatus(status) {
-  const ok = status === 0;
-  return { status: ok ? "passed" : "failed", ok };
-}
-
-export const IOS_DEVICE_E2E_SUMMARY_SCHEMA = "elizaos.device-e2e.summary/v1";
-
-/**
- * Assemble the run-scoped `summary.json` (JSON-canonical machine-readable
- * artifact, research doc Q3). `steps` are the recorded per-step results;
- * `overallStatus` is `passed` iff every executed step passed. The `bundleDir`
- * is echoed so a consumer that only has the summary can locate the artifacts.
- *
- * @param {{
- *   runId: string,
- *   startedAt: string,
- *   finishedAt: string,
- *   bundleDir: string,
- *   device: { udid: string | null, identifier: string | null, name: string | null },
- *   build: { buildId: string | null, commit: string | null },
- *   skippedAppexes: boolean,
- *   steps: Array<{ id: string, label: string, status: 'passed' | 'failed',
- *                  durationMs: number, artifacts: string[] }>,
- * }} input
- * @returns {Record<string, unknown>}
- */
-export function buildRunSummary(input) {
-  if (!input?.runId) throw new Error("buildRunSummary: runId is required");
-  const steps = input.steps ?? [];
-  const overallStatus = steps.every((step) => step.status === "passed")
-    ? "passed"
-    : "failed";
-  return {
-    schema: IOS_DEVICE_E2E_SUMMARY_SCHEMA,
-    lane: "ios-device-e2e",
-    runId: input.runId,
-    overallStatus,
-    startedAt: input.startedAt,
-    finishedAt: input.finishedAt,
-    bundleDir: input.bundleDir,
-    device: {
-      udid: input.device?.udid ?? null,
-      identifier: input.device?.identifier ?? null,
-      name: input.device?.name ?? null,
-    },
-    build: {
-      buildId: input.build?.buildId ?? null,
-      commit: input.build?.commit ?? null,
-    },
-    skippedAppexes: input.skippedAppexes === true,
-    steps: steps.map((step) => ({
-      id: step.id,
-      label: step.label,
-      status: step.status,
-      durationMs: step.durationMs,
-      artifacts: step.artifacts ?? [],
-    })),
-  };
-}
-
-/**
- * A run id from a Date: `YYYYMMDD-HHMMSS` in UTC. Stable, sortable, filesystem
- * safe — used as the run-scoped bundle directory suffix.
- *
- * @param {Date} [now]
- * @returns {string}
- */
-export function formatRunId(now = new Date()) {
-  const iso = now.toISOString();
-  return `${iso.slice(0, 10).replaceAll("-", "")}-${iso
-    .slice(11, 19)
-    .replaceAll(":", "")}`;
 }

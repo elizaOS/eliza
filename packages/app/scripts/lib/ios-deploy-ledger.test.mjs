@@ -38,6 +38,18 @@ afterEach(() => {
 
 describe("resolveLedgerStateDir precedence", () => {
   const home = () => "/home/tester";
+  it("prefers ELIZA_DEVICES_STATUS_DIR over every other source", () => {
+    expect(
+      resolveLedgerStateDir({
+        env: {
+          ELIZA_DEVICES_STATUS_DIR: "/d/state",
+          MILADY_STATE_DIR: "/m/state",
+          ELIZA_STATE_DIR: "/e/state",
+        },
+        homedir: home,
+      }),
+    ).toBe("/d/state");
+  });
   it("prefers MILADY_STATE_DIR over ELIZA_STATE_DIR", () => {
     expect(
       resolveLedgerStateDir({
@@ -67,13 +79,13 @@ describe("resolveLedgerStateDir precedence", () => {
       path.join("/home/tester", ".local", "state", "eliza"),
     );
   });
-  it("resolveDeployLedgerPath appends the ledger filename", () => {
+  it("resolveDeployLedgerPath appends the canonical ledger filename", () => {
     expect(
       resolveDeployLedgerPath({
         env: { ELIZA_STATE_DIR: "/e/state" },
         homedir: home,
       }),
-    ).toBe(path.join("/e/state", "device-deploy-ledger.jsonl"));
+    ).toBe(path.join("/e/state", "ios-device-deploy-ledger.jsonl"));
   });
 });
 

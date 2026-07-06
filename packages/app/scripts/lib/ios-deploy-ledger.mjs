@@ -13,6 +13,13 @@
  * guessing (a phone flashed by other means was never recorded here). The
  * boot-trace pull remains the ground-truth cross-check.
  *
+ * This module is the single owner of the ledger's filename, its state-dir
+ * resolution, its schema, and its read/write path — `devices-status.mjs` (the
+ * reader) and `ios-device-deploy.mjs` (the writer) both go through it, so there
+ * is exactly one canonical file for the two ends to agree on (a prior split —
+ * two filenames + two resolvers — made every deployed phone read back as
+ * "unknown, no ledger entry"; issues #14337/#14335, PR #14509 reconciliation).
+ *
  * Everything here is pure or takes the filesystem edge as the JSONL path, so the
  * append/read/latest-per-device logic is unit-tested against fixtures without a
  * device. The renderer stamp itself — path resolution and typed read — lives in
@@ -28,12 +35,19 @@ import os from "node:os";
 import path from "node:path";
 
 /**
- * Resolve the per-user state dir for the ledger, honoring the documented
- * branded-first precedence (`MILADY_STATE_DIR` > `ELIZA_STATE_DIR` >
- * `$XDG_STATE_HOME/<namespace>` > `~/.local/state/<namespace>`). Mirrors
- * `packages/core/src/utils/state-dir.ts` — that module is TypeScript and cannot
- * be imported from a plain build script, so the precedence is reproduced here.
- * Kept in lockstep: any change to the canonical resolver must land here too.
+ * Resolve the per-user state dir for the ledger. Precedence, highest first:
+ *   1. `ELIZA_DEVICES_STATUS_DIR` — the device-status lane's explicit override
+ *      (the reader honored this before consolidation; kept so a caller can pin
+ *      both ends of the ledger at one dir for a test or a scoped run).
+ *   2. `MILADY_STATE_DIR` — the repo-wide branded state prefix
+ *      (`packages/core/src/utils/state-dir.ts` and every alias-aware reader
+ *      honor it first; the device deploy lane inherits it).
+ *   3. `ELIZA_STATE_DIR` — the unbranded state override.
+ *   4. `$XDG_STATE_HOME/<namespace>` — XDG base-dir, absolute or home-relative.
+ *   5. `~/.local/state/<namespace>` — the default.
+ * This is the superset of the two resolvers that previously disagreed; the
+ * canonical TypeScript resolver cannot be imported from a plain build script, so
+ * the branded/XDG precedence is reproduced here and kept in lockstep with it.
  *
  * @param {{ env?: Record<string, string | undefined>, homedir?: () => string }} [options]
  * @returns {string}
@@ -42,7 +56,11 @@ export function resolveLedgerStateDir({
   env = process.env,
   homedir = os.homedir,
 } = {}) {
-  const explicit = (env.MILADY_STATE_DIR ?? env.ELIZA_STATE_DIR)?.trim();
+  const explicit = (
+    env.ELIZA_DEVICES_STATUS_DIR ??
+    env.MILADY_STATE_DIR ??
+    env.ELIZA_STATE_DIR
+  )?.trim();
   if (explicit) return path.resolve(explicit);
   const namespace = env.ELIZA_NAMESPACE?.trim() || "eliza";
   const xdg = env.XDG_STATE_HOME?.trim();
@@ -55,6 +73,13 @@ export function resolveLedgerStateDir({
 }
 
 /**
+ * Basename of the deploy-ledger JSONL. `devices:status` reads this exact file, so
+ * the writer must produce it under the same name — one canonical file, no
+ * per-name split (issues #14337/#14335).
+ */
+export const DEPLOY_LEDGER_FILENAME = "ios-device-deploy-ledger.jsonl";
+
+/**
  * Absolute path to the deploy-ledger JSONL. One file for all devices; each line
  * is a self-contained deploy record (see {@link appendDeployRecord}).
  *
@@ -62,10 +87,7 @@ export function resolveLedgerStateDir({
  * @returns {string}
  */
 export function resolveDeployLedgerPath(options = {}) {
-  return path.join(
-    resolveLedgerStateDir(options),
-    "device-deploy-ledger.jsonl",
-  );
+  return path.join(resolveLedgerStateDir(options), DEPLOY_LEDGER_FILENAME);
 }
 
 export const DEPLOY_LEDGER_SCHEMA = "elizaos.device.deploy-ledger/v1";
