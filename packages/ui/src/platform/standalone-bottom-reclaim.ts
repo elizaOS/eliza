@@ -56,6 +56,35 @@
 const RECLAIM_VAR = "--standalone-bottom-reclaim";
 
 /**
+ * A visual-viewport shortfall (`screen.height - visualViewport.height`) at or
+ * above this many CSS px is treated as a soft-keyboard intrusion, not the
+ * resting fixed-body ICB collapse. The resting collapse is ~20-80px (the
+ * home-indicator strip); a soft keyboard eats ~250-400px. 140 sits well above
+ * the largest plausible resting collapse (clamped to 160 elsewhere) and well
+ * below the smallest soft keyboard, so it separates the two regimes cleanly.
+ *
+ * WHY THIS GUARD EXISTS (the keyboard-open regression, device r-kbd):
+ * post-#15103 `html` is `100lvh`, which UN-collapsed `innerHeight` — at rest it
+ * now reads the true screen (932). But when the soft keyboard opens on the
+ * installed iOS PWA, `innerHeight` AND `visualViewport.height` BOTH shrink to
+ * the visible area (chip: `ih542 vv542 sh932`). The resting reclaim measures
+ * `screen.height - innerHeight`; with the keyboard up that is `932 - 542 = 390`
+ * (clamped 160), which would shove every fixed layer 160px DOWN mid-keyboard
+ * and fight the composer's own keyboard lift. The resting reclaim must only
+ * ever describe the keyboard-DOWN collapse, so when this shortfall says a
+ * keyboard is up we FREEZE the last resting value instead of re-measuring.
+ */
+export const KEYBOARD_INTRUSION_THRESHOLD_PX = 140;
+
+/**
+ * The last reclaim value measured while the keyboard was DOWN. Frozen and
+ * re-served whenever a soft keyboard is detected up, so the resting reclaim var
+ * never absorbs the keyboard-shrunk `innerHeight`. Seeded 0 (a no-op) until the
+ * first keyboard-down measurement runs.
+ */
+let lastRestingGap = 0;
+
+/**
  * The measured true-vs-layout viewport delta in CSS px, clamped to a sane
  * range. Returns 0 when we can't trust the measurement (SSR, missing globals)
  * or when the physical screen and the layout box agree (desktop / Android /
@@ -95,6 +124,15 @@ export function measureStandaloneBottomGap(): number {
   // shell, and the reclaim self-zeroes. If a future engine still collapses
   // innerHeight, this correctly reports the real gap again. `screen.height`
   // stays the true-screen reference.
+  //
+  // r-kbd UPDATE (the keyboard-open regression): because we now measure against
+  // `innerHeight`, and the soft keyboard shrinks `innerHeight` (post-#15103,
+  // device chip `ih542` with the keyboard up), a naive re-measure would read a
+  // 390px "gap" mid-keyboard and shove every layer down. The keyboard guard
+  // below (visual-viewport shortfall >= KEYBOARD_INTRUSION_THRESHOLD_PX) freezes
+  // the last keyboard-DOWN value while the keyboard is up, so the resting
+  // reclaim only ever describes the keyboard-down collapse. The keyboard's own
+  // lift is owned by the composer's `effectiveKeyboardInset` path, not here.
   const layoutHeight =
     typeof window.innerHeight === "number" && window.innerHeight > 0
       ? window.innerHeight
@@ -109,6 +147,29 @@ export function measureStandaloneBottomGap(): number {
       : 0;
   if (screenHeight <= 0) return 0;
 
+  // KEYBOARD-OPEN GUARD (the r-kbd regression): the resting reclaim measures
+  // against `innerHeight`, but post-#15103 the soft keyboard shrinks BOTH
+  // `innerHeight` and `visualViewport.height` to the visible area (device chip
+  // `ih542 vv542 sh932`). Re-measuring then would give `932 - 542 = 390`
+  // (clamped 160) and shove every fixed layer down mid-keyboard, fighting the
+  // composer's own `effectiveKeyboardInset` lift. Detect the keyboard via the
+  // visual-viewport shortfall (a keyboard eats ~250-400px, the resting collapse
+  // only ~20-80px) and FREEZE the last resting value instead of contaminating
+  // it. `visualViewport.height` is the reliable keyboard signal here because it
+  // ALWAYS tracks the visible area (the resting collapse leaves it within the
+  // threshold of the screen; the keyboard drops it far below).
+  const visualHeight =
+    typeof window.visualViewport?.height === "number" &&
+    window.visualViewport.height > 0
+      ? window.visualViewport.height
+      : layoutHeight;
+  const keyboardShortfall = screenHeight - visualHeight;
+  if (keyboardShortfall >= KEYBOARD_INTRUSION_THRESHOLD_PX) {
+    // Keyboard is up: keep serving the frozen keyboard-down reclaim (the
+    // composer's own lift owns keyboard geometry). Never re-measure here.
+    return lastRestingGap;
+  }
+
   const gap = screenHeight - layoutHeight;
 
   // Only a POSITIVE gap is the collapse we reclaim. Zero (web/desktop/Android,
@@ -117,8 +178,17 @@ export function measureStandaloneBottomGap(): number {
   // upper bound: a real home-indicator collapse is ~20–80px; a larger delta is
   // a transient (rotation mid-flight, an off-by-a-scaled-factor screen.height on
   // an exotic DPR) we refuse to translate a layer by.
-  if (!Number.isFinite(gap) || gap <= 0) return 0;
-  return Math.min(gap, 160);
+  if (!Number.isFinite(gap) || gap <= 0) {
+    // A clean keyboard-down measurement of 0 (un-collapsed shell) is the new
+    // resting truth — remember it so the keyboard-up branch freezes 0, not a
+    // stale non-zero from an earlier collapsed frame.
+    lastRestingGap = 0;
+    return 0;
+  }
+  const clamped = Math.min(gap, 160);
+  // Freeze this keyboard-down value so the keyboard-up branch can re-serve it.
+  lastRestingGap = clamped;
+  return clamped;
 }
 
 /**
@@ -144,6 +214,9 @@ export function clearStandaloneBottomReclaim(): void {
     activeDisposer();
     activeDisposer = null;
   }
+  // Forget any frozen resting gap: a surface re-initialised as non-standalone
+  // must not re-serve a stale iOS collapse value if it later re-arms.
+  lastRestingGap = 0;
   if (typeof document === "undefined") return;
   document.documentElement.style.setProperty(RECLAIM_VAR, "0px");
 }

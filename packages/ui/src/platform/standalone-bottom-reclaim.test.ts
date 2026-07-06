@@ -170,8 +170,81 @@ describe("measureStandaloneBottomGap: the screen.height cure for the collapsed-I
   });
 
   it("clamps an absurd transient delta (mid-rotation) to a sane upper bound", () => {
-    stubViewport({ layoutHeight: 300, screenHeight: 2000 });
+    // A mid-rotation transient where the LAYOUT box (innerHeight) is briefly
+    // tiny while screen.height reads the post-rotation dimension. The visual
+    // viewport tracks the screen here (NOT a keyboard shrink), so the keyboard
+    // guard stays disarmed and the clamp path runs: gap 1700 -> 160.
+    stubViewport({
+      layoutHeight: 300,
+      innerHeight: 300,
+      visualHeight: 2000,
+      screenHeight: 2000,
+    });
     expect(measureStandaloneBottomGap()).toBe(160);
+  });
+});
+
+describe("measureStandaloneBottomGap: keyboard-open freeze (the r-kbd regression, device chip ih542 vv542 ce873 sh932)", () => {
+  it("FREEZES the resting reclaim while the soft keyboard is up instead of re-measuring against the shrunk innerHeight", () => {
+    // 1) Establish the resting keyboard-DOWN reclaim first. Post-#15103 the
+    //    un-collapsed shell reads ih932 vv932 sh932 -> reclaim 0 (self-zero).
+    stubViewport({
+      layoutHeight: 932,
+      innerHeight: 932,
+      visualHeight: 932,
+      screenHeight: 932,
+    });
+    expect(measureStandaloneBottomGap()).toBe(0);
+
+    // 2) Now the soft keyboard opens: the DEVICE chip geometry ih542 vv542
+    //    sh932. A naive re-measure would read screen.height - innerHeight =
+    //    932 - 542 = 390 (clamped 160) and shove every fixed layer down,
+    //    fighting the composer's own keyboard lift. The keyboard guard detects
+    //    the visual-viewport shortfall (932 - 542 = 390 >= 140) and FREEZES the
+    //    resting value (0) instead. The composer lift owns keyboard geometry.
+    stubViewport({
+      layoutHeight: 873, // documentElement.clientHeight stays 873 with kbd up
+      innerHeight: 542, // keyboard shrank innerHeight (the r-kbd trap)
+      visualHeight: 542, // and the visual viewport too
+      screenHeight: 932,
+    });
+    expect(measureStandaloneBottomGap()).toBe(0);
+  });
+
+  it("re-serves a NON-zero resting reclaim (a collapsed shell) unchanged while the keyboard is up", () => {
+    // If a shell collapses innerHeight to 873 at rest (screen 932 -> resting
+    // gap 59), the keyboard-up branch must re-serve that 59 (NOT jump to the
+    // 390 keyboard delta). The resting reclaim is a fixed physical-collapse
+    // constant; the keyboard must never change it.
+    stubViewport({
+      layoutHeight: 873,
+      innerHeight: 873,
+      visualHeight: 873,
+      screenHeight: 932,
+    });
+    expect(measureStandaloneBottomGap()).toBe(59); // resting, keyboard down
+
+    stubViewport({
+      layoutHeight: 873,
+      innerHeight: 483, // keyboard up, innerHeight shrank
+      visualHeight: 483, // visual viewport shrank (shortfall 449 >= 140)
+      screenHeight: 932,
+    });
+    expect(measureStandaloneBottomGap()).toBe(59); // frozen resting value
+  });
+
+  it("does NOT freeze for the resting fixed-body collapse (shortfall below the keyboard threshold)", () => {
+    // The resting ICB collapse (~59px) drops the visual viewport only slightly
+    // below the screen (932 - 873 = 59 < 140), so the guard stays disarmed and
+    // the reclaim measures normally. This proves the threshold separates the
+    // resting collapse from a real keyboard.
+    stubViewport({
+      layoutHeight: 873,
+      innerHeight: 873,
+      visualHeight: 873, // shortfall 59 < 140 -> NOT a keyboard
+      screenHeight: 932,
+    });
+    expect(measureStandaloneBottomGap()).toBe(59);
   });
 });
 

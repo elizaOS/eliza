@@ -523,6 +523,37 @@ describe("Keyboard-lift geometry contract — reclaim does NOT shift the compose
     expect(layoutSrc).not.toContain("100lvh");
     expect(layoutSrc).not.toContain("100dvh");
   });
+
+  it("detects the soft keyboard via screen.height (not just innerHeight - vv.height) so post-#15103 the composer still lifts", () => {
+    // r-kbd REGRESSION guard: post-#15103 `html:100lvh` un-collapsed the iOS
+    // layout viewport, so the soft keyboard shrinks innerHeight AND
+    // visualViewport.height TOGETHER (device chip ih542 vv542 sh932). The old
+    // `innerHeight - vv.height` delta then reads 0 and the composer never lifts
+    // (hidden behind the keyboard, wallpaper void above the panel). readViewport
+    // must ALSO derive the intrusion from `screen.height - vv.height` and take
+    // the larger signal, gated above KEYBOARD_INTRUSION_THRESHOLD_PX so the
+    // resting fixed-body collapse (~59px) is never read as a keyboard.
+    expect(overlaySrc).toContain("insetFromScreen");
+    expect(overlaySrc).toContain("window.screen?.height");
+    expect(overlaySrc).toContain("KEYBOARD_INTRUSION_THRESHOLD_PX");
+    // The two signals are combined with max() so Android/web (which keep the
+    // pure inner-delta) are unchanged.
+    expect(overlaySrc).toContain(
+      "keyboardInset = Math.max(insetFromInner, screenKeyboard)",
+    );
+  });
+
+  it("gates the screen.height keyboard signal to iOS standalone/native (never desktop/Android where screen.height is the whole device)", () => {
+    // screen.height is only a valid full-viewport reference on the iOS
+    // standalone PWA / iOS native WebView (where the reclaim installs). On
+    // desktop it is the monitor and on Android / non-standalone the full device
+    // screen, both far larger than the layout viewport at rest — so the
+    // screen-vs-vv delta must be OFF there or it would false-positive a keyboard
+    // and lift the composer at rest. The gate mirrors the reclaim install gate.
+    expect(overlaySrc).toContain("SCREEN_KEYBOARD_SIGNAL_ACTIVE");
+    expect(overlaySrc).toContain("if (SCREEN_KEYBOARD_SIGNAL_ACTIVE) {");
+    expect(overlaySrc).toContain("shouldInstallStandaloneBottomReclaim({");
+  });
 });
 
 describe("Fixed background layers reach the TRUE physical bottom (bottom-bar root cause)", () => {
