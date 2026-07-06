@@ -119,7 +119,8 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
   // The first-time-user welcome card (greeting + "try saying…" suggestion
   // chips) and tutorial-launch card were removed deliberately: the agent is
   // proactive on a cold home, with onboarding help living in first-run and chat
-  // commands rather than resident dashboard prompts.
+  // commands rather than resident dashboard prompts. A quiet MVP home must stay
+  // empty of canned tutorial/help cards.
   // Notifications are deliberately NOT a ranked home-slot widget: the dashboard
   // notification center (NotificationsHomeCenter) is pinned by HomeScreen
   // directly below the time/weather base, so a registry entry here would

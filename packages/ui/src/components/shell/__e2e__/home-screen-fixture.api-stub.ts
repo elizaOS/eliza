@@ -7,7 +7,9 @@
 // dashboard center renders with injected data.
 
 import {
+  homeWidgetApprovalsResponse,
   homeWidgetNotificationsResponse,
+  homeWidgetTodosResponse,
 } from "../../../widgets/__fixtures__/home-widget-mock-data";
 
 const walletBalancesResponse = () => ({ evm: null, solana: null });
@@ -29,21 +31,13 @@ export const client = {
   getRelationshipsCandidates: async () => [],
   getWalletBalances: async () => walletBalancesResponse(),
   getWalletMarketOverview: async () => walletMarketOverviewResponse(),
-  // Today (todo) home card: seed one open todo so the merged card renders with a
-  // todo row alongside its flagged at-risk goal row (spec §E item 5).
-  listWorkbenchTodos: async () => ({
-    todos: [
-      {
-        id: "todo-groceries",
-        name: "Buy groceries",
-        description: "",
-        type: "task",
-        isCompleted: false,
-        isUrgent: false,
-        priority: 2,
-      },
-    ],
-  }),
+  // Today (todo) home card: attention mode seeds one open todo so the merged
+  // card renders with a todo row alongside its flagged at-risk goal row
+  // (spec §E item 5). Quiet mode returns zero work so the card self-hides.
+  listWorkbenchTodos: async () => homeWidgetTodosResponse(),
+  // Needs-response home card: attention mode seeds pending approvals; quiet
+  // mode returns none so the card self-hides.
+  listPendingActions: async () => homeWidgetApprovalsResponse(),
   // Notification store hydrate + live subscription.
   listNotifications: async () => homeWidgetNotificationsResponse(),
   onWsEvent: () => {},

@@ -69,6 +69,14 @@ const minutesFromNow = (m: number) =>
 const hoursFromNow = (h: number) =>
   new Date(Date.now() + h * 3_600_000).toISOString();
 
+export type HomeWidgetMockMode = "attention" | "quiet";
+
+export function homeWidgetMockMode(): HomeWidgetMockMode {
+  if (typeof window === "undefined") return "attention";
+  const params = new URLSearchParams(window.location.search);
+  return params.get("homeData") === "quiet" ? "quiet" : "attention";
+}
+
 // ---------------------------------------------------------------------------
 // Per-widget payloads (verified against each widget's parser).
 // ---------------------------------------------------------------------------
@@ -164,6 +172,12 @@ export const HOME_WIDGET_MOCK_NOTIFICATION: AgentNotification = {
 };
 
 function notificationsPayload() {
+  if (homeWidgetMockMode() === "quiet") {
+    return {
+      notifications: [],
+      unreadCount: 0,
+    };
+  }
   return {
     notifications: [HOME_WIDGET_MOCK_NOTIFICATION],
     unreadCount: 1,
@@ -202,6 +216,31 @@ export function homeWidgetNotificationsResponse() {
   return notificationsPayload();
 }
 
+export function homeWidgetTodosResponse() {
+  if (homeWidgetMockMode() === "quiet") {
+    return { todos: [] };
+  }
+  return {
+    todos: [
+      {
+        id: "todo-groceries",
+        name: "Buy groceries",
+        description: "",
+        type: "task",
+        isCompleted: false,
+        isUrgent: false,
+        priority: 2,
+      },
+    ],
+  };
+}
+
+export function homeWidgetApprovalsResponse() {
+  return homeWidgetMockMode() === "attention"
+    ? approvalsPayload()
+    : { pending: [] };
+}
+
 // ---------------------------------------------------------------------------
 // Fetch mock - the widgets fetch on mount, so install this BEFORE first render.
 // Matches the URL substrings each widget requests (any base) and returns a
@@ -213,8 +252,13 @@ type RouteMatch = { test: (url: string) => boolean; body: () => unknown };
 
 function routeTable(): RouteMatch[] {
   const has = (needle: string) => (url: string) => url.includes(needle);
+  const whenAttention = (body: () => unknown, quietBody: unknown) => () =>
+    homeWidgetMockMode() === "attention" ? body() : quietBody;
   return [
-    { test: has("/api/lifeops/calendar/feed"), body: calendarFeed },
+    {
+      test: has("/api/lifeops/calendar/feed"),
+      body: whenAttention(calendarFeed, { events: [] }),
+    },
     {
       test: has("/api/connectors/google/accounts"),
       body: () => ({
@@ -227,11 +271,39 @@ function routeTable(): RouteMatch[] {
         ],
       }),
     },
-    { test: has("/api/lifeops/goals"), body: goalsPayload },
-    { test: has("/api/lifeops/sleep/history"), body: sleepHistory },
-    { test: has("/api/lifeops/sleep/regularity"), body: sleepRegularity },
+    {
+      test: has("/api/lifeops/goals"),
+      body: whenAttention(goalsPayload, { goals: [] }),
+    },
+    {
+      test: has("/api/lifeops/sleep/history"),
+      body: whenAttention(sleepHistory, {
+        episodes: [],
+        summary: {
+          cycleCount: 0,
+          averageDurationMin: 0,
+          overnightCount: 0,
+          napCount: 0,
+          openCount: 0,
+        },
+        windowDays: 14,
+        includeNaps: true,
+      }),
+    },
+    {
+      test: has("/api/lifeops/sleep/regularity"),
+      body: whenAttention(sleepRegularity, {
+        classification: "regular",
+        sri: 92,
+        sampleSize: 0,
+        windowDays: 14,
+      }),
+    },
     { test: has("/api/notifications"), body: notificationsPayload },
-    { test: has("/api/approvals"), body: approvalsPayload },
+    {
+      test: has("/api/approvals"),
+      body: whenAttention(approvalsPayload, { pending: [] }),
+    },
   ];
 }
 
@@ -314,5 +386,8 @@ export function seedHomeWidgetAppStore(): void {
 /** Reset + ingest the urgent notification into the notification store. */
 export function seedHomeWidgetNotifications(): void {
   __resetNotificationStoreForTests();
-  __ingestNotificationForTests(HOME_WIDGET_MOCK_NOTIFICATION, 1);
+  const { notifications, unreadCount } = notificationsPayload();
+  for (const notification of notifications) {
+    __ingestNotificationForTests(notification, unreadCount);
+  }
 }

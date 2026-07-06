@@ -97,7 +97,7 @@ const CLOUD_SIGN_IN_CHOICE = [
 const CLOUD_WELCOME_BACK =
   "Welcome back — you're already signed in to Eliza Cloud. Setting up your agent…";
 const CLOUD_ONLY_DONE =
-  "You're all set — ask me anything. Want a quick tour? Open the Tutorial tile on your home screen whenever you like.";
+  'You\'re all set — ask me anything. Want a quick tour? Type "restart tutorial" whenever you like.';
 
 /** User-facing recovery message when a cloud provisioning call rejects. */
 function cloudFailureMessage(err: unknown): string {
@@ -460,7 +460,7 @@ export function useFirstRunConductor(): void {
 
   // Cloud-only completion (#13377): signing in IS onboarding. The moment
   // provisioning succeeds we flip the real gate — no tutorial/accent pick gates
-  // completion in this mode (the tutorial stays reachable from its home tile).
+  // completion in this mode (the chat-native tutorial remains command-driven).
   // Latched by completedRef so a double-fired finish can't flip the gate twice.
   const completeCloudOnly = React.useCallback(() => {
     if (completedRef.current) return;

@@ -276,6 +276,67 @@ async function readHomeDarkForegrounds(page) {
     return failures;
   });
 }
+const ATTENTION_HOME_TEST_IDS = [
+  "home-notification-center",
+  "chat-widget-needs-attention",
+  "chat-widget-todos",
+  "todo-goal-attention-row",
+  "chat-widget-calendar-upcoming",
+];
+async function waitForHomeEnterSettled(page) {
+  await page.waitForFunction(
+    () => {
+      const home = document.querySelector('[data-testid="home-screen"]');
+      if (!home) return false;
+      return !home
+        .getAnimations({ subtree: true })
+        .some(
+          (a) =>
+            a.animationName === "home-enter" && a.playState !== "finished",
+        );
+    },
+    undefined,
+    { timeout: 5000 },
+  );
+}
+async function assertQuietHome(page, label) {
+  await page.waitForSelector('[data-testid="home-screen"]');
+  await page.waitForSelector('[data-testid="widget-host-home"]', {
+    state: "attached",
+  });
+  await waitForHomeEnterSettled(page);
+  await page.waitForFunction(
+    (attentionIds) => {
+      const host = document.querySelector('[data-testid="widget-host-home"]');
+      if (!(host instanceof HTMLElement)) return false;
+      if (host.childElementCount !== 0) return false;
+      return attentionIds.every(
+        (testId) => document.querySelector(`[data-testid="${testId}"]`) == null,
+      );
+    },
+    ATTENTION_HOME_TEST_IDS,
+    { timeout: 15000 },
+  );
+  assert(
+    (await page.getByTestId("home-time-widget").count()) === 1,
+    `${label}: time widget remains visible`,
+  );
+  assert(
+    (await page.getByTestId("home-weather").count()) === 1,
+    `${label}: weather widget remains visible`,
+  );
+  assert(
+    (await page.getByTestId("widget-host-home").locator(":scope > *").count()) ===
+      0,
+    `${label}: no ranked attention cards render healthy-empty chrome`,
+  );
+  for (const testId of ATTENTION_HOME_TEST_IDS) {
+    assert(
+      (await page.getByTestId(testId).count()) === 0,
+      `${label}: ${testId} self-hides when data is healthy-empty`,
+    );
+  }
+}
 async function waitForSurfacePageSettled(p, pageName) {
   await p.waitForFunction((expectedPage) => {
     const surface = document.querySelector(
@@ -382,7 +443,10 @@ try {
   await mobile.addInitScript(LAYOUT_SHIFT_OBSERVER_INIT);
   // Frame sampler for the rail-swipe FPS gate below (start()/read()/stop()).
   await mobile.addInitScript(FRAME_SAMPLER_INIT);
-  await mobile.goto(`${url}?native`);
+  await mobile.goto(`${url}?homeData=quiet`);
+  await assertQuietHome(mobile, "quiet account");
+  await snap(mobile, "mobile-home-quiet");
+  await mobile.goto(`${url}?native&homeData=attention`);
   await mobile.waitForSelector('[data-testid="home-launcher-surface"]');
   await mobile.waitForSelector('[data-testid="home-screen"]');
   await mobile.waitForTimeout(600);
@@ -417,17 +481,7 @@ try {
   );
   // Wait for the staggered home-enter fade-up to settle so the cards are fully
   // opaque (and the data-driven cards have mounted + fetched) before asserting.
-  await mobile.waitForFunction(
-    () => {
-      const home = document.querySelector('[data-testid="home-screen"]');
-      if (!home) return false;
-      return !home
-        .getAnimations({ subtree: true })
-        .some((a) => a.animationName === "home-enter" && a.playState !== "finished");
-    },
-    undefined,
-    { timeout: 5000 },
-  );
+  await waitForHomeEnterSettled(mobile);
   // Kept per-plugin home widgets render only when their injected data is
   // attention-worthy. Post spec §E cut, the resident set is Today (todos) - with
   // the at-risk goal folded in as one flagged row - plus calendar. The removed
@@ -864,6 +918,9 @@ try {
     (await mobile.getByText("Pinned", { exact: true }).count()) === 0,
     'no "Pinned" label',
   );
+  await mobile.goto(`${url}?homeData=quiet`);
+  await assertQuietHome(mobile, "quiet account after clearing attention data");
+  await snap(mobile, "mobile-home-quiet-after-clear");
   const mobileVideo = await mobile.video();
   await mobile.close();
   await mobileContext.close();
