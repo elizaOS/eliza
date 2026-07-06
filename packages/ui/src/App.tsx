@@ -68,6 +68,7 @@ import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
+import { NotificationBanners } from "./components/shell/NotificationBanners";
 import { NotificationsShellBoot } from "./components/shell/notifications-boot";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
 import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
@@ -2841,6 +2842,9 @@ export function App() {
             to the dashboard, where NotificationsHomeCenter is the one
             notification surface. Renders null. */}
         <NotificationsShellBoot />
+        {/* Top-of-screen glass banners for live notification arrivals (iOS/
+            Android heads-up idiom). Renders only while the queue is non-empty. */}
+        <NotificationBanners />
         {/* Tiny dismissible build stamp (bottom-left) so testers can verify
             PWA cache freshness at a glance. Best-effort: hidden when
             /build-info.json is absent (production builds without the
