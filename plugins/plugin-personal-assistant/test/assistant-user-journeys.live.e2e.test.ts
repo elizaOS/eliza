@@ -670,16 +670,19 @@ describeIf(LIVE_SUITE_ENABLED)(
       character.secrets = selectedProviderEnv;
 
       const sqlPlugin = await loadPlugin("@elizaos/plugin-sql");
+      const schedulingPlugin = await loadPlugin("@elizaos/plugin-scheduling");
       const providerPlugin = selectedLiveProvider
         ? await loadPlugin(selectedLiveProvider.plugin)
         : null;
-      if (!sqlPlugin || !providerPlugin) {
+      if (!sqlPlugin || !schedulingPlugin || !providerPlugin) {
         throw new Error("Required live plugins were not available.");
       }
 
       // personalAssistantPlugin is part of the composition (as in the sibling
       // followup-repair suite): it registers lifeOpsSchema for migration and
       // provides the inbox/connector action surface the email journey drives.
+      // plugin-scheduling hosts the ScheduledTaskRunnerService PA's runner
+      // wiring expects (always loaded in production).
       runtime = new AgentRuntime({
         character,
         plugins: [
@@ -688,6 +691,7 @@ describeIf(LIVE_SUITE_ENABLED)(
             agentId: "main",
             workspaceDir,
           }),
+          schedulingPlugin,
           personalAssistantPlugin as Plugin,
         ],
         conversationLength: 20,
@@ -798,7 +802,9 @@ describeIf(LIVE_SUITE_ENABLED)(
         text: "Don't forget that thing I told you about this morning is STILL happening, did you forget about it already?",
       });
 
-      expectContainsAll(response, ["permit inspection", "4pm"]);
+      expectContainsAll(response, ["permit inspection"]);
+      // Live models legitimately write the time as "4pm", "4 pm", or "4:00 PM".
+      expect(normalizeText(response)).toMatch(/4(:00)?\s*pm/);
     }, 180_000);
 
     it("finds the most overdue bill from email context on the first answer", async () => {
