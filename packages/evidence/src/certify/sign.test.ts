@@ -466,6 +466,35 @@ describe("verifyCertification — tamper matrix", () => {
     expect(report.rollup?.verdicts[0].verdict).toBe("fail");
   });
 
+  it("verdict-incomplete: signed evidence paths must exist in the bundle manifest", async () => {
+    const fixture = await fixtureBundle();
+    const keypair = generateCertificationKeypair();
+    const certification = signCertification(
+      payloadFor(fixture, {
+        verdicts: [
+          {
+            subject: "lane:server",
+            verdict: "pass",
+            evidence: ["lanes/server/result.json", "lanes/server/missing.log"],
+          },
+        ],
+      }),
+      keypair.privateKeyPem,
+    );
+    const report = await verifyCertification(writeCert(certification), {
+      publicKeyPem: keypair.publicKeyPem,
+      bundleDir: fixture.bundleDir,
+      now: NOW,
+    });
+    expect(codes(report)).toEqual(["verdict-incomplete"]);
+    expect(report.failures[0].message).toContain("evidence path");
+    expect(report.failures[0].context).toMatchObject({
+      missingEvidence: [
+        { subject: "lane:server", path: "lanes/server/missing.log" },
+      ],
+    });
+  });
+
   it("schema-invalid: waived-without-notes signed by hand cannot verify clean", async () => {
     const fixture = await fixtureBundle();
     const keypair = generateCertificationKeypair();

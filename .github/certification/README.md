@@ -42,11 +42,11 @@ cannot be enabled. There is deliberately no default trust anchor in code:
 ```bash
 bun run --cwd packages/evidence certify:verify -- \
   --cert <path/to/certification.json> \
+  --bundle <bundle-dir> \
   --pubkey <base-branch-checkout>/.github/certification/certification-public-key.pem \
   --expected-commit <pr-head-sha> \
   --max-age-hours 72 \
   --required-tier full \
-  [--bundle <bundle-dir>] \
   [--requirements <requirements.json>] \
   --json
 ```
@@ -56,9 +56,15 @@ Exit 0 iff valid. `--json` prints the full report on stdout, including
 (`schema-invalid | unsigned | bad-signature | wrong-key | stale |
 commit-mismatch | bundle-tampered | verdict-failures | verdict-incomplete |
 tier-insufficient`); all detectable failures are reported together, not
-first-failure-only. The promotion gate must pass `--bundle` so the verifier
-can re-run the mechanical rollup and prove the signed verdicts cover every
-machine-derived subject. A mechanically non-pass subject may be signed as
+first-failure-only.
+
+For the required develop→main gate, `--bundle` is mandatory. Without the
+bundle, verification can only prove that the JSON was signed by the trusted
+key; it cannot prove the signed `bundleSha` matches real artifacts, that every
+mechanically-derived lane/analysis subject was reviewed, or that verdict
+evidence paths actually exist. Omitting `--bundle` is only for detached
+signature inspection, never for promotion. With a bundle, verification also
+re-runs the mechanical rollup: mechanically non-pass subjects may be signed as
 `fail` or `waived` with notes, but never omitted or signed as `pass`.
 
 ## Key rotation

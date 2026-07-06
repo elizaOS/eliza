@@ -24,7 +24,7 @@ import path from "node:path";
 import { type VerifyReport, verifyBundle } from "../bundle.ts";
 import { canonicalJsonBytes } from "../canonical.ts";
 import { EvidenceError, EvidenceValidationError } from "../errors.ts";
-import type { Tier } from "../schema.ts";
+import { parseManifest, type Tier } from "../schema.ts";
 import {
   derivePublicKeyPem,
   fingerprintPublicKey,
@@ -182,6 +182,34 @@ function verdictCompletenessFailure(
   };
 }
 
+function missingEvidencePathsFailure(
+  payload: CertificationPayload,
+  artifactPaths: Set<string>,
+): CertificationFailure | undefined {
+  const missingEvidence: Array<{ subject: string; path: string }> = [];
+
+  for (const verdict of payload.verdicts) {
+    for (const evidencePath of verdict.evidence) {
+      if (!artifactPaths.has(evidencePath)) {
+        missingEvidence.push({
+          subject: verdict.subject,
+          path: evidencePath,
+        });
+      }
+    }
+  }
+
+  if (missingEvidence.length === 0) {
+    return undefined;
+  }
+
+  return {
+    code: "verdict-incomplete",
+    message: `${missingEvidence.length} verdict evidence path(s) are not in the bundle manifest`,
+    context: { missingEvidence },
+  };
+}
+
 /**
  * Verify a certification file offline. Collects every determinable failure;
  * only an unreadable/unparseable certification file short-circuits (there is
@@ -205,6 +233,7 @@ export async function verifyCertification(
     certPath,
     failures,
   };
+  let manifestArtifactPaths: Set<string> | undefined;
 
   let rawText: string;
   try {
@@ -341,6 +370,24 @@ export async function verifyCertification(
           });
         }
         try {
+          const manifest = parseManifest(
+            JSON.parse(manifestBytes.toString("utf8")),
+            manifestPath,
+          );
+          manifestArtifactPaths = new Set(
+            manifest.artifacts.map((artifact) => artifact.path),
+          );
+        } catch (error) {
+          failures.push({
+            code: "bundle-tampered",
+            message: `bundle manifest cannot be parsed for verdict completeness: ${(error as Error).message}`,
+            context:
+              error instanceof EvidenceValidationError
+                ? validationIssues(error)
+                : {},
+          });
+        }
+        try {
           const bundleReport = await verifyBundle(options.bundleDir);
           report.bundle = bundleReport;
           if (!bundleReport.ok) {
@@ -352,6 +399,15 @@ export async function verifyCertification(
               context: { issues: bundleReport.issues },
             });
           } else {
+            if (manifestArtifactPaths !== undefined) {
+              const evidenceFailure = missingEvidencePathsFailure(
+                payload,
+                manifestArtifactPaths,
+              );
+              if (evidenceFailure !== undefined) {
+                failures.push(evidenceFailure);
+              }
+            }
             const rollup = rollupBundle(options.bundleDir, {
               requirements: options.requirements,
             });
