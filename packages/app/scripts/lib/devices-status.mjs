@@ -101,3 +101,43 @@ export function formatDeviceStatusTable(rows) {
     ...body.map(render),
   ].join("\n");
 }
+
+function escapeXml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+export function renderDeviceStatusEvidenceSvg({
+  table,
+  generatedAt,
+  title = "devices:status",
+}) {
+  const lines = String(table).split("\n");
+  const fontSize = 18;
+  const lineHeight = 28;
+  const padding = 32;
+  const longestLine = Math.max(...lines.map((line) => line.length), 1);
+  const width = Math.max(960, padding * 2 + longestLine * 11);
+  const height = padding * 2 + 44 + lines.length * lineHeight;
+  const escapedTitle = escapeXml(title);
+  const escapedGeneratedAt = escapeXml(generatedAt);
+  const text = lines
+    .map(
+      (line, index) =>
+        `<text x="${padding}" y="${padding + 72 + index * lineHeight}">${escapeXml(line)}</text>`,
+    )
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect width="100%" height="100%" fill="#111111"/>
+  <text x="${padding}" y="${padding + 12}" fill="#ffffff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="700">${escapedTitle}</text>
+  <text x="${padding}" y="${padding + 42}" fill="#a3a3a3" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">${escapedGeneratedAt}</text>
+  <g fill="#f5f5f5" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="${fontSize}" xml:space="preserve">
+${text}
+  </g>
+</svg>`;
+}

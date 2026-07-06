@@ -6,8 +6,10 @@
  * before a runner starts.
  */
 import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import sharp from "sharp";
 import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
 import { DEFAULT_APP_BUNDLE_ID } from "./ios-device-lib.mjs";
 import {
@@ -21,6 +23,7 @@ import {
   buildDeviceStatusRow,
   formatDeviceStatusTable,
   hasNonFreshDevice,
+  renderDeviceStatusEvidenceSvg,
 } from "./lib/devices-status.mjs";
 import {
   readDeployLedger,
@@ -37,6 +40,16 @@ const repoRoot = path.resolve(appRoot, "..", "..");
 
 function hasArg(name) {
   return process.argv.includes(name);
+}
+
+function optionValue(...names) {
+  for (const name of names) {
+    const index = process.argv.indexOf(name);
+    if (index !== -1) return process.argv[index + 1] ?? null;
+    const inline = process.argv.find((arg) => arg.startsWith(`${name}=`));
+    if (inline) return inline.slice(name.length + 1);
+  }
+  return null;
 }
 
 function runText(command, args, options = {}) {
@@ -66,11 +79,13 @@ function latestLedgerEntryForDevice(device, entries) {
     )[0];
 }
 
-function fetchDevelopHead() {
-  spawnSync("git", ["fetch", "origin", "develop", "--quiet"], {
-    cwd: repoRoot,
-    stdio: "ignore",
-  });
+function resolveDevelopHead({ fetch = true } = {}) {
+  if (fetch) {
+    spawnSync("git", ["fetch", "origin", "develop", "--quiet"], {
+      cwd: repoRoot,
+      stdio: "ignore",
+    });
+  }
   return runText("git", ["rev-parse", "origin/develop"]);
 }
 
@@ -214,8 +229,8 @@ function iosPhysicalRows(developHead) {
   });
 }
 
-export function collectDeviceStatus() {
-  const developHead = fetchDevelopHead();
+export function collectDeviceStatus({ fetch = true } = {}) {
+  const developHead = resolveDevelopHead({ fetch });
   return [
     ...androidRows(developHead),
     ...iosSimulatorRows(developHead),
@@ -223,12 +238,54 @@ export function collectDeviceStatus() {
   ];
 }
 
-function main() {
-  const rows = collectDeviceStatus();
+async function writeEvidenceArtifacts({ outputDir, rows, table, generatedAt }) {
+  const absoluteDir = path.resolve(outputDir);
+  mkdirSync(absoluteDir, { recursive: true });
+  const json = JSON.stringify(rows, null, 2);
+  const manifest = {
+    command: "devices:status",
+    generatedAt,
+    artifacts: {
+      table: "devices-status.txt",
+      json: "devices-status.json",
+      screenshot: "devices-status.jpg",
+    },
+  };
+  writeFileSync(path.join(absoluteDir, "devices-status.txt"), `${table}\n`);
+  writeFileSync(path.join(absoluteDir, "devices-status.json"), `${json}\n`);
+  writeFileSync(
+    path.join(absoluteDir, "manifest.json"),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+  );
+  const svg = renderDeviceStatusEvidenceSvg({
+    table,
+    generatedAt,
+    title: "bun run --cwd packages/app devices:status",
+  });
+  await sharp(Buffer.from(svg))
+    .jpeg({ quality: 92 })
+    .toFile(path.join(absoluteDir, "devices-status.jpg"));
+  return absoluteDir;
+}
+
+async function main() {
+  const rows = collectDeviceStatus({ fetch: !hasArg("--no-fetch") });
+  const table = formatDeviceStatusTable(rows);
+  const json = JSON.stringify(rows, null, 2);
+  const evidenceDir = optionValue("--evidence-dir", "--evidence");
   if (hasArg("--json")) {
-    console.log(JSON.stringify(rows, null, 2));
+    console.log(json);
   } else {
-    console.log(formatDeviceStatusTable(rows));
+    console.log(table);
+  }
+  if (evidenceDir) {
+    const outputDir = await writeEvidenceArtifacts({
+      outputDir: evidenceDir,
+      rows,
+      table,
+      generatedAt: new Date().toISOString(),
+    });
+    console.error(`evidence: ${outputDir}`);
   }
   if (hasArg("--require-fresh") && hasNonFreshDevice(rows)) {
     process.exitCode = 1;
@@ -239,5 +296,8 @@ const isDirectRun =
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isDirectRun) {
-  main();
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
 }

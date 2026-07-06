@@ -8,6 +8,7 @@ import {
   buildDeviceStatusRow,
   formatDeviceStatusTable,
   hasNonFreshDevice,
+  renderDeviceStatusEvidenceSvg,
   rendererStampVerdict,
   sameCommit,
 } from "./lib/devices-status.mjs";
@@ -79,5 +80,18 @@ describe("devices-status policy", () => {
     expect(formatDeviceStatusTable([row])).toContain("emulator-5554");
     expect(formatDeviceStatusTable([row])).toContain("FRESH");
     expect(formatDeviceStatusTable([row])).toContain("pid 42");
+  });
+
+  it("renders the table as escaped terminal-style SVG evidence", () => {
+    const svg = renderDeviceStatusEvidenceSvg({
+      table: "DEVICE  REASON\nphone   a < b & c",
+      generatedAt: "2026-07-06T00:00:00.000Z",
+    });
+
+    expect(svg).toContain("devices:status");
+    expect(svg).toContain('xml:space="preserve"');
+    expect(svg).toContain("2026-07-06T00:00:00.000Z");
+    expect(svg).toContain("a &lt; b &amp; c");
+    expect(svg).not.toContain("a < b & c");
   });
 });
