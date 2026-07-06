@@ -54,6 +54,7 @@ The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's pl
 | `websiteBlocker` | `src/providers/website-blocker.ts` | Current website-blocker status |
 | `appBlocker` | `src/providers/app-blocker.ts` | Current app-blocker status |
 | `firstRun` | `src/providers/first-run.ts` | First-run completion state and affordances |
+| `ftuGoal` | `src/providers/ftu-goal.ts` | Post-first-run goal-discovery affordance; silent once the owner's primary goal is known |
 | `roomPolicy` | `src/providers/room-policy.ts` | Per-room handoff/policy state |
 | `lifeops` | `src/providers/lifeops.ts` | Aggregated owner context for assistant planning |
 | `pendingPrompts` | `src/providers/pending-prompts.ts` | Pending questions waiting for owner input |
@@ -81,6 +82,8 @@ The `lifeops_scheduled_task_runner` service (`ScheduledTaskRunnerService`) is no
 |---|---|---|
 | `owner.profile_extraction` (response handler) | `src/lifeops/owner/profile-extraction-evaluator.ts` | Extracts owner facts from agent responses |
 | `threadOps` (response handler field) | `src/lifeops/work-threads/field-evaluator-thread-ops.ts` | Propagates work-thread field ops from responses |
+| `ftu_goal_discovery` (post-turn, merged call) | `src/lifeops/ftu-goal/evaluator.ts` | Extracts the owner's primary goal after first-run; persists the `primaryGoal` owner fact and closes discovery once confident |
+| `anticipation_feedback` (post-turn, merged call) | `src/lifeops/anticipation/evaluator.ts` | Classifies the owner's reaction to proactive dispatches (accepted / rejected / ignored) into durable rolling stats |
 
 ### Views
 
