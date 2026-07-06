@@ -693,6 +693,20 @@ if [[ -f packages/logger/package.json ]] && jq -e '.scripts.build' packages/logg
   ln -s ../../packages/logger node_modules/@elizaos/logger
 fi
 
+# @elizaos/cloud-routing must also be built BEFORE @elizaos/core: core's
+# tsconfig.declarations.json maps `@elizaos/cloud-routing` to
+# `../cloud/routing/dist/index.d.ts`, so the declarations build aborts with
+# TS2307 (src/cloud-routing.ts) if dist/ doesn't exist yet.
+if [[ -f packages/cloud/routing/package.json ]] && jq -e '.scripts.build' packages/cloud/routing/package.json >/dev/null; then
+  log "Building @elizaos/cloud-routing (required by core declarations)"
+  pushd packages/cloud/routing >/dev/null
+  "$BUN_BIN" run build
+  popd >/dev/null
+  mkdir -p node_modules/@elizaos
+  "${RM_PATH_RECURSIVE[@]}" node_modules/@elizaos/cloud-routing
+  ln -s ../../packages/cloud/routing node_modules/@elizaos/cloud-routing
+fi
+
 if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
   log "Building @elizaos/core source artifacts"
   pushd "$TYPESCRIPT_DIR" >/dev/null
