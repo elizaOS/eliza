@@ -12,9 +12,12 @@
  * facts being misattributed to the bridge sender.
  * Retrieval deliberately avoids vector search so relevance is computed from the
  * fact's own words and extracted keywords; a keyword-miss on durable facts
- * falls back to the highest-prior candidates so direct recall still works. The
- * ranking curves and two-store model are documented in
- * docs/architecture/fact-memory.md.
+ * falls back to the highest-prior candidates so direct recall still works.
+ * Sender-owned `preference` facts get a separate bounded always-on lane
+ * because standing preferences should be visible on every turn even with zero
+ * lexical overlap ("brief replies" never BM25-matches "what's next?"); the
+ * lane gate is structural (extractor-assigned category + ownership + prior),
+ * and the responding model decides which surfaced preferences apply.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
@@ -40,9 +43,8 @@ const spec = requireProviderSpec("FACTS");
  *
  * Score = `confidence × exp(-ageDays / 14)` so a fact is at full weight on
  * day zero, ~50% at 14 days, and ~14% at 30 days. There is no hard cutoff —
- * very old current facts can still surface when relevance is high enough
- * (see `docs/architecture/fact-memory.md`). Durable facts skip decay
- * entirely (`timeWeight = 1`).
+ * very old current facts can still surface when relevance is high enough.
+ * Durable facts skip decay entirely (`timeWeight = 1`).
  */
 const CURRENT_DECAY_DAYS = 14;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -76,8 +78,8 @@ function readFactConfidence(memory: Memory): number {
 
 /**
  * Resolve a fact's kind. Legacy facts written before the two-store model
- * carry no `kind` metadata; treat them as durable per the lazy
- * reclassification policy in `fact-memory.md`.
+ * carry no `kind` metadata; treat them as durable so existing identity-level
+ * memories remain recallable.
  */
 function readFactKind(memory: Memory): FactKind {
 	const kind = readFactMetadata(memory).kind;
@@ -187,6 +189,39 @@ function readCategory(memory: Memory): string {
 	return "uncategorized";
 }
 
+// Bounded always-on lane for the sender's stored `preference` facts. The gate
+// is purely structural (extractor-assigned category + sender ownership +
+// prior), never a keyword sniff of the fact text: the extractor LLM decided at
+// write time that the row is a preference, and the responding model decides at
+// read time which of the (≤3) surfaced preferences applies to this turn.
+const PREFERENCE_LANE_LIMIT = 3;
+
+function isPreferenceFact(memory: Memory): boolean {
+	return readCategory(memory) === "preference";
+}
+
+function topByPrior(
+	memories: Memory[],
+	kind: FactKind,
+	nowMs: number,
+	limit: number,
+): Memory[] {
+	return [...memories]
+		.sort(
+			(left, right) =>
+				scoreFactPrior(right, kind, nowMs) - scoreFactPrior(left, kind, nowMs),
+		)
+		.slice(0, limit);
+}
+
+function mergeAlwaysIncludedFacts(
+	alwaysIncluded: Memory[],
+	ranked: Memory[],
+	max: number,
+): Memory[] {
+	return dedupeById([...alwaysIncluded, ...ranked]).slice(0, max);
+}
+
 function formatDurableLine(memory: Memory): string {
 	const text = memory.content.text ?? "";
 	if (!text) return "";
@@ -220,7 +255,7 @@ function formatLines(memories: Memory[], kind: FactKind): string {
  * Function to get key facts that the agent knows about the speaker.
  * Splits retrieval into room/entity candidate pools, performs local BM25
  * keyword scoring over fact text + extracted keywords, and ranks each kind
- * with its own time-weighting curve (see `fact-memory.md`).
+ * with its own time-weighting curve.
  */
 const factsProvider: Provider = {
 	name: spec.name,
@@ -312,6 +347,10 @@ const factsProvider: Provider = {
 				partitionByKind(dedupedPool);
 
 			const nowMs = Date.now();
+			const senderEntityIds = new Set<string>(relatedEntityIds);
+			const isAboutSender = (memory: Memory): boolean =>
+				typeof memory.entityId === "string" &&
+				senderEntityIds.has(memory.entityId);
 			let durableFacts = rankByKeywordScore(
 				durableCandidates,
 				"durable",
@@ -339,6 +378,19 @@ const factsProvider: Provider = {
 					)
 					.slice(0, TOP_PER_KIND);
 			}
+			const preferenceLane = topByPrior(
+				durableCandidates.filter(
+					(memory) => isAboutSender(memory) && isPreferenceFact(memory),
+				),
+				"durable",
+				nowMs,
+				PREFERENCE_LANE_LIMIT,
+			);
+			durableFacts = mergeAlwaysIncludedFacts(
+				preferenceLane,
+				durableFacts,
+				TOP_PER_KIND + PREFERENCE_LANE_LIMIT,
+			);
 			const currentFacts = rankByKeywordScore(
 				currentCandidates,
 				"current",
@@ -372,16 +424,25 @@ const factsProvider: Provider = {
 			// header told the model that facts about other people described
 			// whoever happened to send the current message (worst on relay/webhook
 			// turns, where every room fact got attributed to the bridge bot).
-			const senderEntityIds = new Set<string>(relatedEntityIds);
-			const isAboutSender = (memory: Memory): boolean =>
-				typeof memory.entityId === "string" &&
-				senderEntityIds.has(memory.entityId);
-			const senderDurable = durableFacts.filter(isAboutSender);
+			const preferenceLaneIds = new Set(
+				preferenceLane.map((memory) => memory.id),
+			);
+			const senderPreferences = durableFacts.filter((memory) =>
+				preferenceLaneIds.has(memory.id),
+			);
+			const senderDurable = durableFacts.filter(
+				(memory) => isAboutSender(memory) && !preferenceLaneIds.has(memory.id),
+			);
 			const roomDurable = durableFacts.filter((m) => !isAboutSender(m));
 			const senderCurrent = currentFacts.filter(isAboutSender);
 			const roomCurrent = currentFacts.filter((m) => !isAboutSender(m));
 
 			const sections: string[] = [];
+			if (senderPreferences.length > 0) {
+				sections.push(
+					`Standing preferences ${senderName} has expressed (apply any that are relevant to this reply):\n${formatLines(senderPreferences, "durable")}`,
+				);
+			}
 			if (senderDurable.length > 0) {
 				const durableHeader = `Things ${agentName} knows about ${senderName}:`;
 				sections.push(

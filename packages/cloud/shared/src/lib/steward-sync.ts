@@ -300,20 +300,18 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       }
     }
 
-    // Self-heal a missing Steward tenant on sign-in (#14645 residual). #14869
-    // provisions tenants eagerly for NEW signups only; orgs created before it
-    // still hit the `/steward/user/me/tenants` 403 → /login bounce loop, and
-    // can never reach the lazy agent-provision heal BECAUSE they cannot sign
-    // in. Every returning user resolves through this branch, so healing here
-    // converts each looping account's next sign-in attempt into the fix —
-    // incremental, no bulk backfill. `ensureStewardTenant` reads the org first
-    // and returns immediately when a tenant already exists, so the healthy-org
-    // cost is one indexed read. FAIL-OPEN: a Steward outage must not break
-    // sign-in — same posture as the eager new-signup call site below.
+    // Self-heal missing Steward tenants on sign-in for orgs created before
+    // #14869's eager new-signup provisioning. `ensureStewardTenant` reads the
+    // org first and returns immediately when a tenant already exists, so the
+    // healthy-org cost is one indexed read while existing NULL-tenant orgs get
+    // repaired opportunistically without a bulk backfill.
     if (user.organization_id) {
       try {
         await ensureStewardTenant(user.organization_id);
       } catch (error) {
+        // error-policy:J4 tenant provisioning is an opportunistic repair, not
+        // an auth precondition; keep sign-in fail-open and leave an observable
+        // warning so Steward outages do not block returning users.
         logger.warn(
           `[StewardSync] Sign-in tenant self-heal failed for org ${user.organization_id}; sign-in proceeds and the next attempt retries: ${describeSyncError(error)}`,
         );

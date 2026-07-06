@@ -7,7 +7,7 @@
  * discriminated on the `op` field so a single `safeParse` validates every
  * variant in one pass.
  *
- * See `docs/architecture/fact-memory.md` for the full pipeline.
+ * Reflection items own the prompt and processors that consume this parse shape.
  */
 
 import z from "zod";

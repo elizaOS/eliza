@@ -32,7 +32,7 @@ import {
 import {
   createSettingsAction as createSectionSettingsAction,
   parseSettingsRequest,
-} from "@elizaos/plugin-app-control/actions/settings";
+} from "@elizaos/plugin-app-control";
 import {
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,

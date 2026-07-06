@@ -14,6 +14,7 @@ import {
 	parseBooleanValue,
 	parseSettingsRequest,
 	resolveSectionId,
+	SETTINGS_NON_CATALOG_SECTION_AUDIT,
 	SETTINGS_WRITE_REGISTRY,
 	type SettingsRouteFetch,
 } from "./settings.ts";
@@ -105,6 +106,7 @@ describe("parseSettingsRequest", () => {
 			confirm: null,
 			app: null,
 			namespace: null,
+			permission: null,
 		});
 	});
 
@@ -161,6 +163,22 @@ describe("parseSettingsRequest", () => {
 			value: "off",
 		});
 	});
+
+	it("reads permission/id options for OS permission requests", () => {
+		expect(
+			parseSettingsRequest({
+				action: "set",
+				section: "permissions",
+				key: "request",
+				id: "microphone",
+			}),
+		).toMatchObject({
+			verb: "set",
+			sectionId: "permissions",
+			key: "request",
+			permission: "microphone",
+		});
+	});
 });
 
 describe("registry completeness", () => {
@@ -168,6 +186,49 @@ describe("registry completeness", () => {
 		const metaIds = SETTINGS_SECTION_META.map((m) => m.id).sort();
 		const registryIds = Object.keys(SETTINGS_WRITE_REGISTRY).sort();
 		expect(registryIds).toEqual(metaIds);
+	});
+
+	it("pins audit records for non-catalog settings sections", () => {
+		expect(Object.keys(SETTINGS_NON_CATALOG_SECTION_AUDIT).sort()).toEqual([
+			"cloud-agents",
+			"cloud-overview",
+			"my-runtimes",
+		]);
+		for (const [id, entry] of Object.entries(
+			SETTINGS_NON_CATALOG_SECTION_AUDIT,
+		)) {
+			expect(
+				entry.reason.trim().length,
+				`non-catalog section "${id}" needs a durable audit reason`,
+			).toBeGreaterThan(20);
+			expect(
+				entry.coveredBy || entry.trackingIssue,
+				`non-catalog section "${id}" needs coverage or an issue`,
+			).toBeTruthy();
+			expect(SETTINGS_WRITE_REGISTRY[id]).toBeUndefined();
+		}
+	});
+
+	it("requires every unwired catalog section to be tracked or explicitly exempt", () => {
+		for (const [id, cap] of Object.entries(SETTINGS_WRITE_REGISTRY)) {
+			if (cap.kind !== "unwired") continue;
+			expect(
+				cap.trackingIssue || cap.exemptionReason,
+				`unwired section "${id}" needs a tracking issue or exemption`,
+			).toBeTruthy();
+		}
+		expect(SETTINGS_WRITE_REGISTRY.voice).toMatchObject({
+			kind: "unwired",
+			trackingIssue: 14910,
+		});
+		expect(SETTINGS_WRITE_REGISTRY["wallet-rpc"]).toMatchObject({
+			kind: "unwired",
+			trackingIssue: 14911,
+		});
+		expect(SETTINGS_WRITE_REGISTRY.updates).toMatchObject({
+			kind: "unwired",
+			trackingIssue: 14912,
+		});
 	});
 
 	it("names only real dedicated actions for delegated sections", () => {
@@ -229,6 +290,130 @@ describe("SETTINGS action: set on an owned route section", () => {
 			value: false,
 		});
 		expect(texts.join(" ")).toContain("off");
+	});
+
+	it("requests an OS permission then opens the permissions section when handoff is needed", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.path === "/api/permissions/microphone/request") {
+				return {
+					ok: true,
+					data: {
+						id: "microphone",
+						status: "not-determined",
+						canRequest: true,
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "permissions",
+				key: "request",
+				permission: "microphone",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(1, {
+			method: "POST",
+			path: "/api/permissions/microphone/request",
+		});
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "POST",
+			path: "/api/views/settings/navigate",
+			body: {
+				path: "/settings",
+				subview: "permissions",
+				source: "settings-action",
+				permission: "microphone",
+			},
+		});
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "permissions",
+			key: "request",
+			permission: "microphone",
+		});
+		expect(texts.join(" ")).toContain("Settings > Permissions");
+	});
+
+	it("accepts common OS permission aliases as keys", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: { id: "microphone", status: "granted" },
+		}));
+		const { result } = await invoke(
+			{ action: "set", section: "permissions", key: "mic" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledTimes(1);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "POST",
+			path: "/api/permissions/microphone/request",
+		});
+		expect(result?.values).toMatchObject({
+			key: "mic",
+			permission: "microphone",
+		});
+	});
+
+	it("does not open the permissions section when the request returns granted", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: { id: "camera", status: "granted" },
+		}));
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "permissions",
+				key: "request",
+				permission: "camera",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledTimes(1);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "POST",
+			path: "/api/permissions/camera/request",
+		});
+		expect(result?.success).toBe(true);
+		expect(texts.join(" ")).not.toContain("Settings > Permissions");
+	});
+
+	it("uses permission=<id> as an implicit request key", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: { id: "notifications", status: "not-applicable" },
+		}));
+		const { result } = await invoke(
+			{ action: "set", section: "permissions", permission: "notifications" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "POST",
+			path: "/api/permissions/notifications/request",
+		});
+		expect(result?.values).toMatchObject({
+			key: "request",
+			permission: "notifications",
+		});
+	});
+
+	it("rejects unknown OS permission requests without calling a route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "permissions",
+				key: "request",
+				permission: "telepathy",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).not.toHaveBeenCalled();
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("provide permission=<id>");
 	});
 
 	it("defaults to the section's primary key when key is omitted", async () => {

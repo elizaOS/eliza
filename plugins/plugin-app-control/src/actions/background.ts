@@ -299,6 +299,32 @@ function extractGeneratePrompt(text: string): string {
 		.trim();
 }
 
+const USER_CATALOG_REFERENCE_RE =
+	/\b(my|mine|saved|generated|created|uploaded|custom|yours?)\b/i;
+
+function cleanUserCatalogReference(value: string): string | null {
+	const cleaned = value
+		.replace(BACKGROUND_NOUN_RE, " ")
+		.replace(
+			/\b(set|make|change|use|turn|switch|give me|apply|put|choose|pick|select|to|as|a|an|the|my|mine|own|saved|generated|created|uploaded|custom|wallpaper|please|one|that|this|i|me|you|your|yours)\b/gi,
+			" ",
+		)
+		.replace(/\s+/g, " ")
+		.trim();
+	return cleaned.length >= 2 ? cleaned : null;
+}
+
+function extractUserCatalogReference(
+	text: string,
+	explicitCatalog: string | null,
+): string | null {
+	if (explicitCatalog?.trim()) return explicitCatalog.trim();
+	const quoted = text.match(/["“']([^"”']{2,})["”']/);
+	if (quoted?.[1]?.trim()) return quoted[1].trim();
+	if (!USER_CATALOG_REFERENCE_RE.test(text)) return null;
+	return cleanUserCatalogReference(text);
+}
+
 /**
  * Resolve the user's request into a single plan. Returns null when the message
  * isn't an actionable background request (so the action stays un-triggered).
@@ -369,7 +395,6 @@ export function inferBackgroundPlan(
 			catalogLabel: meta?.label ?? catalogId,
 		};
 	}
-
 	// "I want to upload a background" with no usable attachment → send the user to
 	// the /background view (upload lives there), not a dead end. Only when the
 	// message is about uploading and carries no image attachment/URL to apply.
@@ -474,6 +499,27 @@ export function inferBackgroundPlan(
 		SET_RE.test(trimmed)
 	) {
 		return null;
+	}
+
+	if (
+		!wantsFreshGenerate &&
+		!explicitImage &&
+		!explicitPrompt &&
+		!hasImageAttachment &&
+		(explicitCatalog || !isUploadIntent(trimmed))
+	) {
+		const userCatalogReference = extractUserCatalogReference(
+			trimmed,
+			explicitCatalog,
+		);
+		if (userCatalogReference) {
+			return {
+				op: "set",
+				mode: "catalog",
+				catalogId: userCatalogReference,
+				catalogLabel: userCatalogReference,
+			};
+		}
 	}
 
 	// A described background to generate.
