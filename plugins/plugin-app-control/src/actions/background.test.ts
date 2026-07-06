@@ -244,6 +244,14 @@ describe("inferBackgroundPlan", () => {
 			generatePrompt: "sunset beach",
 		});
 	});
+
+	it("keeps ordinary color requests ahead of user-catalog fallback", () => {
+		expect(inferBackgroundPlan("make my background teal")).toMatchObject({
+			op: "set",
+			mode: "shader",
+			colorLabel: "teal",
+		});
+	});
 });
 
 describe("programmable GLSL shader plan (#10694)", () => {

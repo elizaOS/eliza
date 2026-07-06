@@ -395,27 +395,6 @@ export function inferBackgroundPlan(
 			catalogLabel: meta?.label ?? catalogId,
 		};
 	}
-	if (
-		!wantsFreshGenerate &&
-		!explicitImage &&
-		!explicitPrompt &&
-		!hasImageAttachment &&
-		(explicitCatalog || !isUploadIntent(trimmed))
-	) {
-		const userCatalogReference = extractUserCatalogReference(
-			trimmed,
-			explicitCatalog,
-		);
-		if (userCatalogReference) {
-			return {
-				op: "set",
-				mode: "catalog",
-				catalogId: userCatalogReference,
-				catalogLabel: userCatalogReference,
-			};
-		}
-	}
-
 	// "I want to upload a background" with no usable attachment → send the user to
 	// the /background view (upload lives there), not a dead end. Only when the
 	// message is about uploading and carries no image attachment/URL to apply.
@@ -520,6 +499,27 @@ export function inferBackgroundPlan(
 		SET_RE.test(trimmed)
 	) {
 		return null;
+	}
+
+	if (
+		!wantsFreshGenerate &&
+		!explicitImage &&
+		!explicitPrompt &&
+		!hasImageAttachment &&
+		(explicitCatalog || !isUploadIntent(trimmed))
+	) {
+		const userCatalogReference = extractUserCatalogReference(
+			trimmed,
+			explicitCatalog,
+		);
+		if (userCatalogReference) {
+			return {
+				op: "set",
+				mode: "catalog",
+				catalogId: userCatalogReference,
+				catalogLabel: userCatalogReference,
+			};
+		}
 	}
 
 	// A described background to generate.
