@@ -1,13 +1,16 @@
 /**
- * Sleep-cycle check-in delivery carries one-tap ack chips (#14733): the
- * morning/night summary emitted onto the assistant stream must end with a
- * `[CHOICE:checkin-<reportId>]` block. The marker builder itself is pinned by
- * lifeops-choice-markers.test.ts; this suite covers the DISPATCH wiring —
- * deterministic vitest with the check-in engine and sleep-cycle predicates
- * mocked, so only summary+chips → emitAssistantEvent is under test.
+ * Sleep-cycle check-in delivery carries one-tap ack chips and honest delivery
+ * accounting. The marker builder itself is pinned by
+ * lifeops-choice-markers.test.ts; this suite covers the dispatch wiring with a
+ * mocked check-in engine so generated reports only become day-done markers
+ * after an app stream or connector accepts the message.
  */
 import { parseInteractionBlocks } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createChannelRegistry,
+  registerChannelRegistry,
+} from "../channels/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { type RemindersDeps, RemindersDomain } from "./reminders-service.js";
 
@@ -23,6 +26,7 @@ const checkinMocks = vi.hoisted(() => ({
     summaryText: "Night recap.",
     escalationLevel: 0,
   })),
+  persistCheckinReport: vi.fn(async () => undefined),
 }));
 
 vi.mock("../checkin/checkin-service.js", () => ({
@@ -30,6 +34,7 @@ vi.mock("../checkin/checkin-service.js", () => ({
     hasCheckinForLocalDay = checkinMocks.hasCheckinForLocalDay;
     runMorningCheckin = checkinMocks.runMorningCheckin;
     runNightCheckin = checkinMocks.runNightCheckin;
+    persistCheckinReport = checkinMocks.persistCheckinReport;
   },
 }));
 
@@ -52,10 +57,23 @@ vi.mock("@elizaos/plugin-health", async (importOriginal) => {
 
 const NOW = new Date("2026-07-05T08:00:00.000Z");
 
-function makeDomain() {
-  const emitAssistantEvent = vi.fn();
+const routeCandidates = [
+  {
+    channel: "in_app",
+    score: 450,
+    evidence: ["default in-app anchor"],
+    vetoReasons: [],
+    interruptionBudget: "normal",
+  },
+];
+
+function makeDomain(
+  contactRouteCandidates: Array<Record<string, unknown>> = routeCandidates,
+) {
+  const emitAssistantEvent = vi.fn(() => true);
+  const runtime = { emitEvent: vi.fn(async () => undefined) };
   const ctx = {
-    runtime: { emitEvent: vi.fn(async () => undefined) },
+    runtime,
     repository: {},
     agentId: () => "00000000-0000-0000-0000-0000000000dd",
     emitAssistantEvent,
@@ -78,8 +96,11 @@ function makeDomain() {
     domain as unknown as {
       buildOwnerContactRouteEventMetadata: unknown;
     }
-  ).buildOwnerContactRouteEventMetadata = vi.fn(async () => ({}));
-  return { domain, emitAssistantEvent };
+  ).buildOwnerContactRouteEventMetadata = vi.fn(async () => ({
+    contactRoutePurpose: "checkin",
+    contactRouteCandidates,
+  }));
+  return { domain, emitAssistantEvent, runtime };
 }
 
 const currentSchedule = {
@@ -107,15 +128,20 @@ beforeEach(() => {
   checkinMocks.hasCheckinForLocalDay.mockClear();
   checkinMocks.hasCheckinForLocalDay.mockResolvedValue(false);
   checkinMocks.runMorningCheckin.mockClear();
+  checkinMocks.runNightCheckin.mockClear();
+  checkinMocks.persistCheckinReport.mockClear();
 });
 
-describe("sleep-cycle check-in dispatch (#14733)", () => {
-  it("emits the morning summary with ack chips onto the assistant stream", async () => {
+describe("sleep-cycle check-in dispatch (#14702, #14733)", () => {
+  it("emits the morning summary with ack chips and persists only after the assistant stream accepts it", async () => {
     const { domain, emitAssistantEvent } = makeDomain();
 
     await runSleepCycleCheckins(domain);
 
     expect(checkinMocks.runMorningCheckin).toHaveBeenCalledTimes(1);
+    expect(checkinMocks.runMorningCheckin).toHaveBeenCalledWith(
+      expect.objectContaining({ now: NOW, timezone: "UTC", persist: false }),
+    );
     expect(emitAssistantEvent).toHaveBeenCalledTimes(1);
     const [text, source, data] = emitAssistantEvent.mock.calls[0] as [
       string,
@@ -140,9 +166,13 @@ describe("sleep-cycle check-in dispatch (#14733)", () => {
       "details rep-morning-1",
       "snooze rep-morning-1",
     ]);
+    expect(checkinMocks.persistCheckinReport).toHaveBeenCalledWith(
+      expect.objectContaining({ reportId: "rep-morning-1" }),
+      NOW,
+    );
   });
 
-  it("skips the emit entirely when the day's check-in already went out", async () => {
+  it("skips the emit and persist entirely when the day's check-in already went out", async () => {
     checkinMocks.hasCheckinForLocalDay.mockResolvedValue(true);
     const { domain, emitAssistantEvent } = makeDomain();
 
@@ -150,5 +180,80 @@ describe("sleep-cycle check-in dispatch (#14733)", () => {
 
     expect(checkinMocks.runMorningCheckin).not.toHaveBeenCalled();
     expect(emitAssistantEvent).not.toHaveBeenCalled();
+    expect(checkinMocks.persistCheckinReport).not.toHaveBeenCalled();
+  });
+
+  it("does not persist a generated report when no delivery surface accepts it", async () => {
+    const { domain, emitAssistantEvent } = makeDomain();
+    emitAssistantEvent.mockReturnValue(false);
+
+    await runSleepCycleCheckins(domain);
+
+    expect(checkinMocks.runMorningCheckin).toHaveBeenCalledTimes(1);
+    expect(emitAssistantEvent).toHaveBeenCalledTimes(1);
+    expect(checkinMocks.persistCheckinReport).not.toHaveBeenCalled();
+  });
+
+  it("falls through from unavailable in-app delivery to the next connector route before persisting", async () => {
+    const smsSend = vi.fn(async () => ({ ok: true, messageId: "sms-1" }));
+    const { domain, emitAssistantEvent, runtime } = makeDomain([
+      ...routeCandidates,
+      {
+        channel: "sms",
+        score: 320,
+        evidence: ["primary direct policy"],
+        vetoReasons: [],
+        interruptionBudget: "normal",
+      },
+    ]);
+    emitAssistantEvent.mockReturnValue(false);
+    const registry = createChannelRegistry();
+    registry.register({
+      kind: "sms",
+      describe: { label: "SMS" },
+      capabilities: {
+        send: true,
+        read: false,
+        reminders: true,
+        voice: false,
+        attachments: false,
+        quietHoursAware: true,
+      },
+      send: smsSend,
+    });
+    registerChannelRegistry(runtime as never, registry);
+    (
+      domain as unknown as {
+        resolvePrimaryChannelPolicy: RemindersDomain["resolvePrimaryChannelPolicy"];
+      }
+    ).resolvePrimaryChannelPolicy = vi.fn(async () => ({
+      id: "policy-sms",
+      agentId: "00000000-0000-0000-0000-0000000000dd",
+      channelType: "sms",
+      channelRef: "+15551230000",
+      enabled: true,
+      priority: 1,
+      createdAt: NOW.toISOString(),
+      updatedAt: NOW.toISOString(),
+      metadata: {},
+    }));
+
+    await runSleepCycleCheckins(domain);
+
+    expect(emitAssistantEvent).toHaveBeenCalledTimes(1);
+    expect(smsSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: "+15551230000",
+        message: expect.stringContaining("Morning! 2 meetings today"),
+        metadata: expect.objectContaining({
+          checkinKind: "morning",
+          reportId: "rep-morning-1",
+        }),
+      }),
+    );
+    expect(checkinMocks.persistCheckinReport).toHaveBeenCalledWith(
+      expect.objectContaining({ reportId: "rep-morning-1" }),
+      NOW,
+    );
   });
 });

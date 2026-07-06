@@ -693,7 +693,7 @@ export class LifeOpsServiceBase {
     text: string,
     source: string,
     data: Record<string, unknown> = {},
-  ): void {
+  ): boolean {
     const eventService = getAgentEventService(this.runtime) as {
       emit?: (event: {
         runId: string;
@@ -703,7 +703,7 @@ export class LifeOpsServiceBase {
       }) => void;
     } | null;
     if (!eventService?.emit) {
-      return;
+      return false;
     }
     eventService.emit({
       runId: crypto.randomUUID(),
@@ -715,6 +715,7 @@ export class LifeOpsServiceBase {
         ...data,
       },
     });
+    return true;
   }
 
   // -----------------------------------------------------------------------

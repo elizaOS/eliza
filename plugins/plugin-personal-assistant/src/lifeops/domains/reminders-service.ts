@@ -96,6 +96,7 @@ import {
   readNativeAppleReminderMetadata,
   updateNativeAppleReminderLikeItem,
 } from "../apple-reminders.js";
+import { getChannelRegistry } from "../channels/index.js";
 import {
   CheckinService,
   type CheckinSourceService,
@@ -103,6 +104,7 @@ import {
 import { reportSuppressedSleepCycleMorningCheckin } from "../checkin/morning-checkin-ownership.js";
 import { resolveCheckinSchedule } from "../checkin/schedule-resolver.js";
 import { appendCheckinAckChoiceMarker } from "../choice-markers.js";
+import type { DispatchResult } from "../connectors/contract.js";
 import {
   type ContactRoutePurpose,
   resolveContactRouteCandidates,
@@ -884,6 +886,25 @@ function serializeContactRouteCandidates(
     vetoReasons: candidate.vetoReasons,
     interruptionBudget: candidate.interruptionBudget,
   }));
+}
+
+type SerializedContactRouteCandidate = ReturnType<
+  typeof serializeContactRouteCandidates
+>[number];
+
+function readSerializedContactRouteCandidates(
+  value: unknown,
+): SerializedContactRouteCandidate[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(
+    (candidate): candidate is SerializedContactRouteCandidate =>
+      typeof candidate === "object" &&
+      candidate !== null &&
+      isReminderChannel((candidate as { channel?: unknown }).channel) &&
+      Array.isArray((candidate as { vetoReasons?: unknown }).vetoReasons),
+  );
 }
 
 function formatNearbyReminderTitlesForPrompt(titles: string[]): string {
@@ -2857,6 +2878,129 @@ export class RemindersDomain {
         contactRouteError: lifeOpsErrorMessage(error),
       };
     }
+  }
+
+  private async resolveCheckinRouteTarget(
+    channel: LifeOpsReminderChannel,
+  ): Promise<string | null> {
+    const policy = await this.resolvePrimaryChannelPolicy(channel);
+    if (channel === "sms" || channel === "voice") {
+      return normalizeOptionalString(policy?.channelRef) ?? null;
+    }
+    const runtimeTarget = await this.resolveRuntimeReminderTarget(
+      channel as Exclude<
+        LifeOpsReminderStep["channel"],
+        "in_app" | "sms" | "voice"
+      >,
+      policy,
+    );
+    if (!runtimeTarget) {
+      return null;
+    }
+    return (
+      normalizeOptionalString(runtimeTarget.target.channelId) ??
+      normalizeOptionalString(runtimeTarget.target.roomId) ??
+      normalizeOptionalString(runtimeTarget.target.entityId) ??
+      null
+    );
+  }
+
+  private async dispatchCheckinReport(args: {
+    reportId: string;
+    kind: "morning" | "night";
+    message: string;
+    metadata: Record<string, unknown>;
+  }): Promise<DispatchResult> {
+    const candidates = readSerializedContactRouteCandidates(
+      args.metadata.contactRouteCandidates,
+    );
+    const rankedCandidates =
+      candidates.length > 0
+        ? candidates
+        : [
+            {
+              channel: "in_app",
+              score: 0,
+              evidence: ["fallback in-app surface"],
+              vetoReasons: [],
+              interruptionBudget: "normal",
+            } satisfies SerializedContactRouteCandidate,
+          ];
+    const registry = getChannelRegistry(this.ctx.runtime);
+    let lastFailure: DispatchResult = {
+      ok: false,
+      reason: "disconnected",
+      userActionable: true,
+      message: "No eligible check-in delivery route was available.",
+    };
+
+    for (const candidate of rankedCandidates) {
+      if (candidate.vetoReasons.length > 0) {
+        continue;
+      }
+      if (candidate.channel === "in_app") {
+        const accepted = this.ctx.emitAssistantEvent(
+          args.message,
+          "lifeops-checkin",
+          args.metadata,
+        );
+        if (accepted) {
+          return {
+            ok: true,
+            messageId: `assistant-stream:${args.reportId}`,
+            channelKey: "in_app",
+          };
+        }
+        lastFailure = {
+          ok: false,
+          reason: "disconnected",
+          userActionable: false,
+          message: "Assistant event stream is not registered.",
+        };
+        continue;
+      }
+
+      const channel = registry?.get(candidate.channel) ?? null;
+      if (!channel?.send) {
+        lastFailure = {
+          ok: false,
+          reason: "disconnected",
+          userActionable: true,
+          message: `Channel "${candidate.channel}" is not registered for check-in delivery.`,
+        };
+        continue;
+      }
+      const target = await this.resolveCheckinRouteTarget(candidate.channel);
+      if (!target) {
+        lastFailure = {
+          ok: false,
+          reason: "unknown_recipient",
+          userActionable: true,
+          message: `Channel "${candidate.channel}" has no resolved owner target.`,
+        };
+        continue;
+      }
+      const result = await channel.send({
+        target,
+        message: args.message,
+        metadata: {
+          ...args.metadata,
+          checkinKind: args.kind,
+          reportId: args.reportId,
+          routeCandidate: candidate,
+        },
+      });
+      if (result.ok) {
+        return {
+          ...result,
+          target: result.target ?? target,
+          channelKey: result.channelKey ?? candidate.channel,
+        };
+      }
+      lastFailure = result;
+    }
+
+    return lastFailure;
   }
 
   public async resolveReminderEscalationChannels(args: {
@@ -5613,35 +5757,57 @@ export class RemindersDomain {
       }
       const report =
         kind === "morning"
-          ? await service.runMorningCheckin({ now: args.now, timezone })
+          ? await service.runMorningCheckin({
+              now: args.now,
+              timezone,
+              persist: false,
+            })
           : await service.runNightCheckin({
               now: args.now,
               timezone,
               sleepRecap,
+              persist: false,
             });
       const routeMetadata = await this.buildOwnerContactRouteEventMetadata({
         purpose: "checkin",
         urgency: report.escalationLevel >= 2 ? "high" : "medium",
         now: args.now,
       });
-      this.ctx.emitAssistantEvent(
-        appendCheckinAckChoiceMarker(report.summaryText, {
-          reportId: report.reportId,
-          kind,
-        }),
-        "lifeops-checkin",
-        {
-          checkinKind: kind,
-          reportId: report.reportId,
-          deliveryBasis: "sleep_cycle",
-          circadianState: currentSchedule.circadianState,
-          wakeAt: currentSchedule.wakeAt,
-          bedtimeTargetAt: currentSchedule.relativeTime.bedtimeTargetAt,
-          minutesUntilBedtimeTarget:
-            currentSchedule.relativeTime.minutesUntilBedtimeTarget,
-          ...routeMetadata,
-        },
-      );
+      const message = appendCheckinAckChoiceMarker(report.summaryText, {
+        reportId: report.reportId,
+        kind,
+      });
+      const metadata = {
+        checkinKind: kind,
+        reportId: report.reportId,
+        deliveryBasis: "sleep_cycle",
+        circadianState: currentSchedule.circadianState,
+        wakeAt: currentSchedule.wakeAt,
+        bedtimeTargetAt: currentSchedule.relativeTime.bedtimeTargetAt,
+        minutesUntilBedtimeTarget:
+          currentSchedule.relativeTime.minutesUntilBedtimeTarget,
+        ...routeMetadata,
+      };
+      const delivery = await this.dispatchCheckinReport({
+        reportId: report.reportId,
+        kind,
+        message,
+        metadata,
+      });
+      if (!delivery.ok) {
+        this.ctx.logLifeOpsWarn(
+          "sleep_cycle_checkin_delivery",
+          "[lifeops] Sleep-cycle check-in delivery failed; report not persisted.",
+          {
+            kind,
+            reportId: report.reportId,
+            reason: delivery.reason,
+            message: delivery.message,
+          },
+        );
+        return;
+      }
+      await service.persistCheckinReport(report, args.now);
     };
 
     if (

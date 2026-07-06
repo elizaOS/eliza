@@ -1347,8 +1347,17 @@ export class CheckinService {
       ...reportWithoutSummary,
       summaryText: await this.renderSummary(reportWithoutSummary),
     };
-    await this.persistReport(report, now);
+    if (request.persist !== false) {
+      await this.persistReport(report, now);
+    }
     return report;
+  }
+
+  public async persistCheckinReport(
+    report: CheckinReport,
+    now = new Date(report.generatedAt),
+  ): Promise<void> {
+    await this.persistReport(report, now);
   }
 
   private fallbackSummary(report: Omit<CheckinReport, "summaryText">): string {

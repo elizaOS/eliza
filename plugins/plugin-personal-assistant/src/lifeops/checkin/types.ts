@@ -132,6 +132,12 @@ export interface RunCheckinRequest {
   readonly now?: Date;
   readonly timezone?: string;
   /**
+   * Sleep-cycle dispatchers set this false while they are still proving an
+   * actual delivery surface accepted the report. A persisted report is the
+   * local-day idempotency marker, so failed delivery must not write it.
+   */
+  readonly persist?: boolean;
+  /**
    * Night-only sleep recap to thread into the night-summary prompt. Built by
    * `processSleepCycleCheckins` from the merged schedule-state record. Ignored
    * for morning check-ins.
