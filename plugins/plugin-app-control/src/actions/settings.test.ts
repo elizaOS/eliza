@@ -156,6 +156,8 @@ describe("SETTINGS action: list", () => {
 		expect(model).toMatchObject({ writable: true, via: "MODEL_SWITCH" });
 		const permissions = sections.find((s) => s.id === "permissions");
 		expect(permissions).toMatchObject({ writable: true, via: "SETTINGS" });
+		const capabilities = sections.find((s) => s.id === "capabilities");
+		expect(capabilities).toMatchObject({ writable: true, via: "SETTINGS" });
 		const updates = sections.find((s) => s.id === "updates");
 		expect(updates).toMatchObject({ writable: false, via: "not-yet-wired" });
 	});
@@ -192,6 +194,44 @@ describe("SETTINGS action: set on an owned route section", () => {
 			method: "PUT",
 			path: "/api/permissions/shell",
 			body: { enabled: true },
+		});
+	});
+
+	it("dispatches capabilities auto-training through the training config route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "capabilities",
+				key: "auto-training",
+				value: "on",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "POST",
+			path: "/api/training/auto/config",
+			body: { autoTrain: true },
+		});
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "capabilities",
+			key: "auto-training",
+			value: true,
+		});
+		expect(texts.join(" ")).toContain("Auto-training is on");
+	});
+
+	it("defaults capabilities to auto-training when key is omitted", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		await invoke(
+			{ action: "set", section: "capabilities", value: "off" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "POST",
+			path: "/api/training/auto/config",
+			body: { autoTrain: false },
 		});
 	});
 
