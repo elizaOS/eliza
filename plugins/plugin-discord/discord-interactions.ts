@@ -36,7 +36,7 @@ import {
 	buildDiscordEntityMetadata,
 	buildDiscordWorldMetadata,
 } from "./identity";
-import { renderDiscordInteractions } from "./interactions";
+import { buildDiscordReplyPayload } from "./interactions";
 import { generateInviteUrl } from "./permissions";
 import { syncDiscordClientProfile } from "./profileSync";
 import type { DiscordService } from "./service";
@@ -260,7 +260,7 @@ export async function handleInteractionCreate(
 				if (!content.text || !channel || typeof channel.send !== "function") {
 					return [];
 				}
-				const render = renderDiscordInteractions(content);
+				const render = buildDiscordReplyPayload(service.runtime, content);
 				await sendMessageInChunks(
 					channel,
 					render.text,
