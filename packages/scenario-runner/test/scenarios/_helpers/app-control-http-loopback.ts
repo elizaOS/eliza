@@ -83,8 +83,10 @@ function shouldHandle(url: URL | null): url is URL {
       url.pathname.startsWith("/api/plugins") ||
       // SETTINGS routes owned sections through their own backend endpoints
       // (e.g. permissions shell toggle → PUT /api/permissions/shell,
-      // auto-training toggle → POST /api/training/auto/config).
+      // auto-training toggle → POST /api/training/auto/config,
+      // local backups → POST /api/backups).
       url.pathname.startsWith("/api/permissions") ||
+      url.pathname.startsWith("/api/backups") ||
       url.pathname.startsWith("/api/training/auto/config"))
   );
 }

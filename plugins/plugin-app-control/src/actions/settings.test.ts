@@ -101,6 +101,8 @@ describe("parseSettingsRequest", () => {
 			sectionId: "permissions",
 			key: "shell",
 			value: "off",
+			fileName: null,
+			confirm: null,
 		});
 	});
 
@@ -120,6 +122,24 @@ describe("parseSettingsRequest", () => {
 	it("returns null when neither verb nor section is present", () => {
 		expect(parseSettingsRequest({ value: "off" })).toBeNull();
 		expect(parseSettingsRequest(undefined)).toBeNull();
+	});
+
+	it("reads backup command parameters", () => {
+		expect(
+			parseSettingsRequest({
+				action: "set",
+				section: "advanced",
+				key: "restore-backup",
+				fileName: "agent-2026.agent-backup.json",
+				confirm: "true",
+			}),
+		).toMatchObject({
+			verb: "set",
+			sectionId: "advanced",
+			key: "restore-backup",
+			fileName: "agent-2026.agent-backup.json",
+			confirm: "true",
+		});
 	});
 });
 
@@ -158,6 +178,8 @@ describe("SETTINGS action: list", () => {
 		expect(permissions).toMatchObject({ writable: true, via: "SETTINGS" });
 		const capabilities = sections.find((s) => s.id === "capabilities");
 		expect(capabilities).toMatchObject({ writable: true, via: "SETTINGS" });
+		const advanced = sections.find((s) => s.id === "advanced");
+		expect(advanced).toMatchObject({ writable: true, via: "SETTINGS" });
 		const updates = sections.find((s) => s.id === "updates");
 		expect(updates).toMatchObject({ writable: false, via: "not-yet-wired" });
 	});
@@ -246,6 +268,86 @@ describe("SETTINGS action: set on an owned route section", () => {
 		);
 		expect(result?.success).toBe(false);
 		expect(texts.join(" ")).toContain("runtime restart refused");
+	});
+
+	it("creates a local agent backup through the backup route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: { backup: { fileName: "agent-2026.agent-backup.json" } },
+		}));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "advanced", key: "create-backup" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "POST",
+			path: "/api/backups",
+			body: {},
+		});
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "advanced",
+			key: "create-backup",
+		});
+		expect(texts.join(" ")).toContain("agent-2026.agent-backup.json");
+	});
+
+	it("restores a local agent backup only with fileName and confirmation", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "advanced",
+				key: "restore-backup",
+				fileName: "agent-2026.agent-backup.json",
+				confirm: "true",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "POST",
+			path: "/api/backups/restore",
+			body: { fileName: "agent-2026.agent-backup.json" },
+		});
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "advanced",
+			key: "restore-backup",
+			fileName: "agent-2026.agent-backup.json",
+		});
+		expect(texts.join(" ")).toContain("Restart the agent");
+	});
+
+	it("refuses restore without explicit confirmation", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "advanced",
+				key: "restore-backup",
+				fileName: "agent-2026.agent-backup.json",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).not.toHaveBeenCalled();
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("confirm=true");
+	});
+
+	it("refuses restore without a backup file name", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "advanced",
+				key: "restore-backup",
+				confirm: "true",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).not.toHaveBeenCalled();
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("fileName");
 	});
 
 	it("rejects a non-boolean value without calling the route", async () => {

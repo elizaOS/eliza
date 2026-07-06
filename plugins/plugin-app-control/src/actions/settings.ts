@@ -41,6 +41,8 @@ export interface SettingsRouteOutcome {
 	ok: boolean;
 	/** Human-facing confirmation or failure detail. */
 	detail?: string;
+	/** Parsed JSON body for command-style settings routes. */
+	data?: unknown;
 }
 
 /**
@@ -62,16 +64,28 @@ export type SettingsRouteFetch = (request: {
  */
 export interface SettingsWritableKey {
 	description: string;
-	/** Accepted value shape. `boolean` accepts on/off/true/false/enable/disable. */
-	valueType: "boolean";
+	/**
+	 * Accepted value shape. `boolean` accepts on/off/true/false/enable/disable;
+	 * `command` executes an operation whose parameters are carried separately.
+	 */
+	valueType: "boolean" | "command";
 	/** Build the backend request for a parsed value. */
-	buildRequest: (value: boolean) => {
+	buildRequest?: (value: boolean) => {
 		method: "PUT" | "POST";
 		path: string;
 		body: unknown;
 	};
+	/** Execute a non-toggle operation through the section's backend route. */
+	apply?: (args: {
+		request: SettingsRequest;
+		routeFetch: SettingsRouteFetch;
+	}) => Promise<SettingsRouteOutcome>;
 	/** Confirmation text once the route returns ok. */
-	successText: (value: boolean) => string;
+	successText: (
+		value: boolean | null,
+		request: SettingsRequest,
+		outcome: SettingsRouteOutcome,
+	) => string;
 }
 
 /**
@@ -132,6 +146,56 @@ const AUTO_TRAINING_KEY: SettingsWritableKey = {
 		enabled
 			? "Auto-training is on. The training pipeline can start from trajectory thresholds."
 			: "Auto-training is off. Trajectory counters can still collect data, but automatic training will not start.",
+};
+
+function readBackupFileName(data: unknown): string | null {
+	if (!data || typeof data !== "object") return null;
+	const backup = (data as { backup?: unknown }).backup;
+	if (!backup || typeof backup !== "object") return null;
+	const fileName = (backup as { fileName?: unknown }).fileName;
+	return typeof fileName === "string" ? fileName : null;
+}
+
+const CREATE_BACKUP_KEY: SettingsWritableKey = {
+	description:
+		"Create an encrypted local backup of the current agent state through the same route as the Back Up Agent button.",
+	valueType: "command",
+	apply: ({ routeFetch }) =>
+		routeFetch({ method: "POST", path: "/api/backups", body: {} }),
+	successText: (_value, _request, outcome) => {
+		const fileName = readBackupFileName(outcome.data);
+		return fileName
+			? `Created local agent backup ${fileName}.`
+			: "Created a local agent backup.";
+	},
+};
+
+const RESTORE_BACKUP_KEY: SettingsWritableKey = {
+	description:
+		"Restore a named local agent backup. Requires fileName=<backup> and confirm=true because restore overwrites local state and requires restart.",
+	valueType: "command",
+	apply: ({ request, routeFetch }) => {
+		if (!request.fileName) {
+			return Promise.resolve({
+				ok: false,
+				detail: "provide fileName=<backup file name> to restore",
+			});
+		}
+		if (parseBooleanValue(request.confirm) !== true) {
+			return Promise.resolve({
+				ok: false,
+				detail:
+					"confirm=true is required before restoring a backup because it overwrites local state",
+			});
+		}
+		return routeFetch({
+			method: "POST",
+			path: "/api/backups/restore",
+			body: { fileName: request.fileName },
+		});
+	},
+	successText: (_value, request) =>
+		`Restored local agent backup ${request.fileName}. Restart the agent to activate it.`,
 };
 
 /**
@@ -223,9 +287,15 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 			"Update check/apply is an asynchronous job surface, not a settings value.",
 	},
 	advanced: {
-		kind: "unwired",
-		reason:
-			"Backup and reset are destructive one-shot operations that require a dedicated confirmation flow.",
+		kind: "route",
+		summary:
+			"Local agent backup create/restore operations. Restore requires explicit confirmation.",
+		keys: {
+			"create-backup": CREATE_BACKUP_KEY,
+			backup: CREATE_BACKUP_KEY,
+			"restore-backup": RESTORE_BACKUP_KEY,
+			restore: RESTORE_BACKUP_KEY,
+		},
 	},
 	"app-permissions": {
 		kind: "unwired",
@@ -280,6 +350,8 @@ export interface SettingsRequest {
 	sectionId: string | null;
 	key: string | null;
 	value: string | null;
+	fileName: string | null;
+	confirm: string | null;
 }
 
 const VERB_TOKENS: ReadonlyMap<string, SettingsVerb> = new Map([
@@ -313,15 +385,24 @@ export function parseSettingsRequest(
 	const sectionId = resolveSectionId(sectionToken);
 	const key = readStringOption(options, "key");
 	const value = readStringOption(options, "value");
+	const fileName = readStringOption(options, "fileName");
+	const confirm = readStringOption(options, "confirm");
 
 	if (!verb) {
 		// A bare `section` with a `value` but no verb reads as an implicit `set`;
 		// a bare `section` alone reads as `get`. No section and no verb -> not a
 		// SETTINGS turn.
 		if (!sectionId) return null;
-		return { verb: value ? "set" : "get", sectionId, key, value };
+		return {
+			verb: value || key ? "set" : "get",
+			sectionId,
+			key,
+			value,
+			fileName,
+			confirm,
+		};
 	}
-	return { verb, sectionId, key, value };
+	return { verb, sectionId, key, value, fileName, confirm };
 }
 
 async function defaultRouteFetch(request: {
@@ -349,7 +430,7 @@ async function defaultRouteFetch(request: {
 				: `route ${request.path} returned ${response.status}`;
 		return { ok: false, detail };
 	}
-	return { ok: true };
+	return { ok: true, data: parsed };
 }
 
 export interface SettingsActionDeps {
@@ -442,8 +523,9 @@ async function handleSet(
 		return { success: false, text: reply };
 	}
 
-	const parsedValue = parseBooleanValue(request.value);
-	if (parsedValue === null) {
+	const parsedValue =
+		writable.valueType === "boolean" ? parseBooleanValue(request.value) : null;
+	if (writable.valueType === "boolean" && parsedValue === null) {
 		const reply = `Tell me on or off for ${request.sectionId} ${keyName}.`;
 		await callback?.({ text: reply });
 		return { success: false, text: reply };
@@ -452,20 +534,36 @@ async function handleSet(
 	logger.info(
 		`[SettingsAction] set section=${request.sectionId} key=${keyName} value=${parsedValue}`,
 	);
-	const req = writable.buildRequest(parsedValue);
-	const outcome = await routeFetch(req);
+	const outcome = writable.apply
+		? await writable.apply({ request, routeFetch })
+		: writable.buildRequest && parsedValue !== null
+			? await routeFetch(writable.buildRequest(parsedValue))
+			: {
+					ok: false,
+					detail: `no route handler is registered for ${request.sectionId} ${keyName}`,
+				};
 	if (!outcome.ok) {
 		const reply = `I couldn't change ${request.sectionId} ${keyName}: ${outcome.detail ?? "the settings route failed"}.`;
 		await callback?.({ text: reply });
 		return { success: false, text: reply };
 	}
-	const reply = writable.successText(parsedValue);
+	const reply = writable.successText(parsedValue, request, outcome);
 	await callback?.({ text: reply });
 	return {
 		success: true,
 		text: reply,
-		values: { section: request.sectionId, key: keyName, value: parsedValue },
-		data: { section: request.sectionId, key: keyName, value: parsedValue },
+		values: {
+			section: request.sectionId,
+			key: keyName,
+			...(parsedValue === null ? {} : { value: parsedValue }),
+			...(request.fileName ? { fileName: request.fileName } : {}),
+		},
+		data: {
+			section: request.sectionId,
+			key: keyName,
+			...(parsedValue === null ? {} : { value: parsedValue }),
+			...(request.fileName ? { fileName: request.fileName } : {}),
+		},
 	};
 }
 
@@ -543,13 +641,16 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			"TOGGLE_AUTO_TRAINING",
 			"ENABLE_AUTO_TRAINING",
 			"DISABLE_AUTO_TRAINING",
+			"BACKUP_AGENT",
+			"CREATE_AGENT_BACKUP",
+			"RESTORE_AGENT_BACKUP",
 		],
 		description:
-			"Change a built-in settings VALUE from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, and turning automatic training on/off via section=capabilities key=auto-training. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section (permissions shell access, capabilities auto-training) or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
+			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, turning automatic training on/off via section=capabilities key=auto-training, and creating/restoring local agent backups via section=advanced key=create-backup|restore-backup. Restore requires fileName and confirm=true. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
 		descriptionCompressed:
-			"settings get|set|list section/key/value — CHANGE a setting VALUE from chat, incl. shell access (section=permissions key=shell) and auto-training (section=capabilities key=auto-training); delegates model/background/identity/connectors/secrets",
+			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, auto-training, and local backups (section=advanced key=create-backup|restore-backup)",
 		routingHint:
-			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE is SETTINGS even though that permission lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
+			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -569,7 +670,21 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			{
 				name: "key",
 				description:
-					"The specific toggle within the section (e.g. shell for permissions, auto-training for capabilities). Optional; defaults to the section's primary key.",
+					"The specific toggle or operation within the section (e.g. shell, auto-training, create-backup, restore-backup). Optional; defaults to the section's primary key.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "fileName",
+				description:
+					"Backup file name when section=advanced key=restore-backup.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "confirm",
+				description:
+					"Explicit confirmation for destructive operations. Restore requires true.",
 				required: false,
 				schema: { type: "string" },
 			},
