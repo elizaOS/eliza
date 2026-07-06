@@ -103,6 +103,24 @@ describe("ocr.unlimited (GPU client against a stub server)", () => {
       expect(availability.reason).toMatch(/ELIZA_GPU_VISION_URL/);
   });
 
+  it("lets an explicit unset override ELIZA_GPU_VISION_URL", async () => {
+    const previous = process.env.ELIZA_GPU_VISION_URL;
+    process.env.ELIZA_GPU_VISION_URL = "http://127.0.0.1:9";
+    try {
+      const engine = new UnlimitedOcrEngine({ baseUrl: undefined });
+      const availability = await engine.available();
+      expect(availability.available).toBe(false);
+      if (!availability.available)
+        expect(availability.reason).toMatch(/ELIZA_GPU_VISION_URL/);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.ELIZA_GPU_VISION_URL;
+      } else {
+        process.env.ELIZA_GPU_VISION_URL = previous;
+      }
+    }
+  });
+
   it("reports available when health returns 200 and parses a completion", async () => {
     await start();
     const engine = new UnlimitedOcrEngine({ baseUrl, model: "unlimited-ocr" });

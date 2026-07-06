@@ -221,7 +221,9 @@ export class UnlimitedOcrEngine implements OcrEngine {
       fetchImpl?: FetchLike;
     } = {},
   ) {
-    this.baseUrl = options.baseUrl ?? process.env.ELIZA_GPU_VISION_URL;
+    this.baseUrl = Object.hasOwn(options, "baseUrl")
+      ? options.baseUrl
+      : process.env.ELIZA_GPU_VISION_URL;
     this.model =
       options.model ?? process.env.ELIZA_GPU_VISION_MODEL ?? "unlimited-ocr";
     this.fetchImpl = options.fetchImpl ?? (fetch as unknown as FetchLike);
