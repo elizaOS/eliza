@@ -13,9 +13,10 @@ caller of `certify:verify` and perform no verification logic of its own
 generates the production keypair on a trusted machine and lands
 `certification-public-key.pem` — recording its fingerprint (first 16 hex of
 sha256 over the SPKI DER) here — in a dedicated reviewed PR; merging that PR
-is the act of trusting the key. Until it lands, the promotion gate (#14547)
-cannot be enabled. There is deliberately no default trust anchor in code:
-`certify:verify` requires an explicit `--pubkey`.
+is the act of trusting the key. Until it lands, the promotion gate workflow
+fails `trust-anchor-missing` and must not be marked required. There is
+deliberately no default trust anchor in code: `certify:verify` requires an
+explicit `--pubkey`.
 
 ## Trust model — binding rules for the CI gate (#14547)
 
@@ -38,6 +39,9 @@ cannot be enabled. There is deliberately no default trust anchor in code:
   payload and must be surfaced in the gate's check summary.
 
 ## Verify contract (what the workflow calls)
+
+The workflow check name for branch protection is
+`Certification Verify / certification-verify`.
 
 ```bash
 bun run --cwd packages/evidence certify:verify -- \
@@ -82,8 +86,9 @@ the one on `main`.
 
 Push to `main` is a production deploy, so the gate must be watertight — but
 it must not brick emergencies. The break-glass path is **not a code path**:
-a repository admin bypasses the required `certification-verify` check via
-branch-protection admin override. Every such bypass is visible in the
+a repository admin bypasses the required
+`Certification Verify / certification-verify` check via branch-protection
+admin override. Every such bypass is visible in the
 GitHub audit log; there is deliberately no in-repo flag, env var, or
 alternate verification mode that skips signature checks. #14547 must
 document the required-check name it registers so admins know exactly which

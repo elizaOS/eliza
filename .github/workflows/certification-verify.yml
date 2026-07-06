@@ -1,0 +1,52 @@
+name: Certification Verify
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: certification-verify-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  certification-verify:
+    name: certification-verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Fetch protected base branch
+        run: >
+          git fetch --no-tags origin
+          "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14"
+          install-command: bun install
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Verify signed certification
+        run: node .github/scripts/verify-certification.mjs
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CERT_REQUIRED_TIER: full
+          CERT_MAX_AGE_HOURS: "72"
