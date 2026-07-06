@@ -221,8 +221,8 @@ export interface ChannelValidationResult {
  * default implementation without touching this module.
  */
 export interface ChannelInspector {
-  isRegistered(channel: string): boolean;
-  isConnected(channel: string): boolean;
+  isRegistered(channel: string): boolean | Promise<boolean>;
+  isConnected(channel: string): boolean | Promise<boolean>;
 }
 
 class FallbackChannelInspector implements ChannelInspector {
@@ -248,10 +248,10 @@ export function setChannelInspector(inspector: ChannelInspector | null): void {
   activeInspector = inspector ?? new FallbackChannelInspector();
 }
 
-export function validateChannel(
+export async function validateChannel(
   rawChannel: unknown,
   _runtime: IAgentRuntime,
-): ChannelValidationResult {
+): Promise<ChannelValidationResult> {
   const normalized =
     typeof rawChannel === "string" ? rawChannel.trim().toLowerCase() : "";
   if (!normalized) {
@@ -263,7 +263,7 @@ export function validateChannel(
       warning: "No channel was selected — defaulting to in-app notifications.",
     };
   }
-  const registered = activeInspector.isRegistered(normalized);
+  const registered = await activeInspector.isRegistered(normalized);
   if (!registered) {
     return {
       channel: "in_app",
@@ -273,7 +273,7 @@ export function validateChannel(
       warning: `Channel "${normalized}" is not registered — falling back to in-app notifications.`,
     };
   }
-  const connected = activeInspector.isConnected(normalized);
+  const connected = await activeInspector.isConnected(normalized);
   if (!connected) {
     return {
       channel: normalized,

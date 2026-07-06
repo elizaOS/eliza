@@ -99,15 +99,15 @@ describe("nextUnansweredQuestion", () => {
 });
 
 describe("validateChannel", () => {
-  it("defaults to in_app for empty input", () => {
-    expect(validateChannel("", runtime)).toMatchObject({
+  it("defaults to in_app for empty input", async () => {
+    await expect(validateChannel("", runtime)).resolves.toMatchObject({
       channel: "in_app",
       fallbackToInApp: true,
     });
   });
 
-  it("falls back when a channel is unregistered", () => {
-    const res = validateChannel("slack", runtime);
+  it("falls back when a channel is unregistered", async () => {
+    const res = await validateChannel("slack", runtime);
     expect(res).toMatchObject({
       channel: "in_app",
       registered: false,
@@ -115,8 +115,8 @@ describe("validateChannel", () => {
     });
   });
 
-  it("keeps a registered-but-disconnected channel with a fallback warning", () => {
-    const res = validateChannel("push", runtime);
+  it("keeps a registered-but-disconnected channel with a fallback warning", async () => {
+    const res = await validateChannel("push", runtime);
     expect(res).toMatchObject({
       channel: "push",
       registered: true,
@@ -126,12 +126,12 @@ describe("validateChannel", () => {
     expect(res.warning).toMatch(/disconnected/);
   });
 
-  it("passes a connected channel through cleanly (injected inspector)", () => {
+  it("passes a connected channel through cleanly (injected inspector)", async () => {
     setChannelInspector({
       isRegistered: (c) => c === "discord",
       isConnected: (c) => c === "discord",
     });
-    expect(validateChannel("discord", runtime)).toEqual({
+    await expect(validateChannel("discord", runtime)).resolves.toEqual({
       channel: "discord",
       registered: true,
       connected: true,
