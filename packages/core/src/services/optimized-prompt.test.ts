@@ -32,6 +32,7 @@ import {
 	type OptimizedPromptArtifact,
 	OptimizedPromptService,
 	parseDisabledTasksEnv,
+	parseOptimizedPromptArtifact,
 } from "./optimized-prompt";
 
 /**
@@ -109,6 +110,35 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		expect(readlinkSync(join(dir, OPTIMIZED_PROMPT_PREVIOUS2_LINK))).toBe(
 			"v1.json",
 		);
+	});
+
+	it("strict parser preserves a valid contextConfig channel", () => {
+		const parsed = parseOptimizedPromptArtifact({
+			...makeArtifact(1),
+			contextConfig: {
+				providerSet: ["RECENT_MESSAGES", "", "FACTS"],
+				providerOrder: ["FACTS", "RECENT_MESSAGES"],
+				renderTemplates: {
+					RECENT_MESSAGES: "{{role}}: {{text}}",
+					EMPTY: "",
+				},
+				budgetVector: {
+					RECENT_MESSAGES: 1200,
+					NEGATIVE: -1,
+				},
+			},
+		});
+
+		expect(parsed?.contextConfig).toEqual({
+			providerSet: ["RECENT_MESSAGES", "FACTS"],
+			providerOrder: ["FACTS", "RECENT_MESSAGES"],
+			renderTemplates: {
+				RECENT_MESSAGES: "{{role}}: {{text}}",
+			},
+			budgetVector: {
+				RECENT_MESSAGES: 1200,
+			},
+		});
 	});
 
 	it("retains the most recent OPTIMIZED_PROMPT_RETAIN_VERSIONS artifacts", async () => {

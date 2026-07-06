@@ -20,6 +20,7 @@
  */
 
 import type { OptimizationExample, PromptScorer } from "../optimizers/index.js";
+import type { OptimizedPromptContextConfig } from "../optimizers/types.js";
 import {
   DEFAULT_PROMOTED_ARTIFACT_RETENTION,
   prunePromotedArtifacts,
@@ -62,6 +63,7 @@ export interface PromotionArtifactInput {
     notes?: string;
   }>;
   fewShotExamples?: PromotionFewShotExample[];
+  contextConfig?: OptimizedPromptContextConfig;
 }
 
 export interface PromotionServiceLike {
@@ -99,6 +101,7 @@ export interface PromotionNativeBackendResultLike {
       notes?: string;
     }>;
     fewShotExamples?: PromotionFewShotExample[];
+    contextConfig?: OptimizedPromptContextConfig;
   };
   /** Full parsed dataset. Fallback target for the gate when no holdout exists. */
   dataset: OptimizationExample[];
@@ -212,6 +215,7 @@ export async function gatedPersistNativeResult(
     generatedAt,
     lineage: input.result.result.lineage,
     fewShotExamples: input.result.result.fewShotExamples,
+    contextConfig: input.result.result.contextConfig,
   });
   notes.push(`artifact written to ${writePath}`);
 
