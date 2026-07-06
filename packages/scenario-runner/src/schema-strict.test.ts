@@ -94,6 +94,24 @@ describe("scenario() strict finalCheck validation", () => {
   });
 });
 
+describe("scenario() strict scenario metadata validation", () => {
+  const base = {
+    id: "fixture.strict.metadata",
+    title: "Strict metadata fixture",
+    domain: "fixture",
+    turns: [{ kind: "message", name: "ask", text: "hello" }],
+  } satisfies ScenarioDefinition;
+
+  it("throws on an unknown top-level scenario status instead of running it", () => {
+    expect(() =>
+      scenario({
+        ...base,
+        status: "known-red",
+      } as unknown as ScenarioDefinition),
+    ).toThrow(/invalid status "known-red"/);
+  });
+});
+
 describe("loadScenarioFile strict validation", () => {
   it("hard-fails loading a plain-object scenario with an unknown finalCheck type", async () => {
     const dir = await makeTempScenarioDir();

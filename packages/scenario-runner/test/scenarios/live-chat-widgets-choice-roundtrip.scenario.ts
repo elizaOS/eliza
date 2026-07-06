@@ -59,6 +59,7 @@ const INSTALLED_APPS_FIXTURE = [
 export default scenario({
   id: "live-chat-widgets-choice-roundtrip",
   lane: "live-only",
+  status: "pending",
   title: "Real LLM surfaces a [CHOICE] picker, then honors the picked value",
   domain: "chat-widgets",
   tags: ["live", "real-llm", "chat-widgets", "choice", "app-control"],

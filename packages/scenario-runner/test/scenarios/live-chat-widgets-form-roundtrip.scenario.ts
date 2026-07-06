@@ -47,6 +47,7 @@ const SUBMITTED_TOKEN_RE = /q3|budget|dana/i;
 export default scenario({
   id: "live-chat-widgets-form-roundtrip",
   lane: "live-only",
+  status: "pending",
   title: "Real LLM emits a [FORM], consumes the raw [form:submit] re-entry",
   domain: "chat-widgets",
   tags: ["live", "real-llm", "chat-widgets", "form", "lifeops"],

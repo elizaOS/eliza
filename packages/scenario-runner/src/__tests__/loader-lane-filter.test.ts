@@ -3,16 +3,16 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { listScenarioMetadata } from "../loader";
+import { listScenarioMetadata, loadAllScenarios } from "../loader";
 
 let tempDirs: string[] = [];
 
 function makeScenarioDir(
-  files: Record<string, { id: string; lane?: string }>,
+  files: Record<string, { id: string; lane?: string; status?: string }>,
 ): string {
   const dir = mkdtempSync(path.join(tmpdir(), "scenario-lane-filter-"));
   tempDirs.push(dir);
-  for (const [fileName, { id, lane }] of Object.entries(files)) {
+  for (const [fileName, { id, lane, status }] of Object.entries(files)) {
     writeFileSync(
       path.join(dir, fileName),
       [
@@ -21,6 +21,7 @@ function makeScenarioDir(
         `  title: "${id}",`,
         '  domain: "loader-test",',
         ...(lane ? [`  lane: "${lane}",`] : []),
+        ...(status ? [`  status: "${status}",`] : []),
         "  turns: [],",
         "};",
         "",
@@ -87,5 +88,48 @@ describe("listScenarioMetadata lane filtering", () => {
       "lane-deterministic",
       "lane-undeclared",
     ]);
+  });
+
+  it("excludes pending scenarios from list and run inventories unless explicitly included", async () => {
+    const previous = process.env.SCENARIO_INCLUDE_PENDING;
+    const dir = makeScenarioDir({
+      "active.scenario.ts": {
+        id: "pending-active",
+        lane: "live-only",
+      },
+      "pending.scenario.ts": {
+        id: "pending-hidden",
+        lane: "live-only",
+        status: "pending",
+      },
+    });
+
+    try {
+      delete process.env.SCENARIO_INCLUDE_PENDING;
+
+      await expect(listScenarioMetadata(dir)).resolves.toMatchObject([
+        { id: "pending-active" },
+      ]);
+      await expect(loadAllScenarios(dir)).resolves.toHaveLength(1);
+
+      process.env.SCENARIO_INCLUDE_PENDING = "1";
+
+      await expect(
+        listScenarioMetadata(dir).then((scenarios) =>
+          scenarios.map((scenario) => scenario.id).sort(),
+        ),
+      ).resolves.toEqual(["pending-active", "pending-hidden"]);
+      await expect(
+        loadAllScenarios(dir).then((scenarios) =>
+          scenarios.map(({ scenario }) => scenario.id).sort(),
+        ),
+      ).resolves.toEqual(["pending-active", "pending-hidden"]);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.SCENARIO_INCLUDE_PENDING;
+      } else {
+        process.env.SCENARIO_INCLUDE_PENDING = previous;
+      }
+    }
   });
 });
