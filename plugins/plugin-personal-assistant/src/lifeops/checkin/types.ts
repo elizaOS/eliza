@@ -57,6 +57,21 @@ export interface CheckinBriefingItem {
   readonly occurredAt: string | null;
   readonly href: string | null;
   readonly reason: string | null;
+  readonly signals?: {
+    readonly inbound?: boolean;
+    readonly unread?: boolean;
+    readonly replyNeeded?: boolean;
+    readonly important?: boolean;
+    readonly recent?: boolean;
+    readonly sourcePriority?: number;
+    readonly engagement?: {
+      readonly likeCount: number;
+      readonly replyCount: number;
+      readonly repostCount: number;
+      readonly quoteCount: number;
+      readonly totalCount: number;
+    };
+  };
 }
 
 export interface CheckinBriefingSection {

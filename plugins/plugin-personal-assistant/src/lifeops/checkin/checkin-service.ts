@@ -28,8 +28,13 @@ import {
 } from "../service-helpers-occurrence.js";
 import { executeRawSql, parseJsonRecord, sqlQuote, toText } from "../sql.js";
 import { buildUtcDateFromLocalParts, getZonedDateParts } from "../time.js";
+import {
+  type BriefingEngagement,
+  buildBriefingSignals,
+  sortBriefingItems,
+  toFiniteNonNegativeNumber,
+} from "./checkin-briefing-ranking.js";
 import type {
-  CheckinBriefingItem,
   CheckinBriefingSection,
   CheckinKind,
   CheckinReport,
@@ -57,10 +62,7 @@ import type {
 export const CHECKIN_REPORTS_TABLE = "app_lifeops.life_checkin_reports";
 
 const ACK_WINDOW_MS = 72 * 60 * 60 * 1000;
-const DEFAULT_SECTION_LIMIT = 8;
 const INTERNAL_URL = new URL("http://127.0.0.1/");
-const ACTION_TEXT_RE =
-  /\b(urgent|asap|blocked|deadline|today|tonight|tomorrow|confirm|review|send|reply|respond|need|please|important|agreement|agreed|promise|promised|follow up|circle back)\b/i;
 
 export interface CheckinSourceService {
   getInbox?(request?: GetLifeOpsInboxRequest): Promise<LifeOpsInbox>;
@@ -286,68 +288,6 @@ function localDayWindow(
     end,
     key: `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`,
   };
-}
-
-function rankTextSignal(args: {
-  text: string;
-  occurredAt: string | null;
-  unread?: boolean;
-  inbound?: boolean;
-  replyNeeded?: boolean;
-  important?: boolean;
-}): { score: number; reason: string | null } {
-  const reasons: string[] = [];
-  let score = 0;
-  if (args.inbound) {
-    score += 20;
-    reasons.push("incoming");
-  }
-  if (args.unread) {
-    score += 15;
-    reasons.push("unread");
-  }
-  if (args.replyNeeded) {
-    score += 25;
-    reasons.push("needs reply");
-  }
-  if (args.important) {
-    score += 20;
-    reasons.push("important");
-  }
-  if (args.text.includes("?")) {
-    score += 10;
-    reasons.push("question");
-  }
-  if (ACTION_TEXT_RE.test(args.text)) {
-    score += 20;
-    reasons.push("action language");
-  }
-  const occurredAtMs = parseMs(args.occurredAt);
-  if (
-    occurredAtMs !== null &&
-    Date.now() - occurredAtMs <= 24 * 60 * 60 * 1000
-  ) {
-    score += 10;
-    reasons.push("recent");
-  }
-  return {
-    score,
-    reason: reasons.length > 0 ? reasons.join(", ") : null,
-  };
-}
-
-function sortBriefingItems(
-  entries: Array<CheckinBriefingItem & { score: number }>,
-): CheckinBriefingItem[] {
-  return entries
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score;
-      }
-      return (parseMs(right.occurredAt) ?? 0) - (parseMs(left.occurredAt) ?? 0);
-    })
-    .slice(0, DEFAULT_SECTION_LIMIT)
-    .map(({ score: _score, ...item }) => item);
 }
 
 function unavailableSection(
@@ -721,8 +661,7 @@ async function collectXDmSection(
     const dms = await source.getXDms({ limit: 30 });
     const items = sortBriefingItems(
       dms.map((dm) => {
-        const ranked = rankTextSignal({
-          text: dm.text,
+        const ranked = buildBriefingSignals({
           occurredAt: dm.receivedAt,
           inbound: dm.isInbound,
           unread: dm.readAt === null,
@@ -734,12 +673,13 @@ async function collectXDmSection(
           occurredAt: dm.receivedAt,
           href: null,
           reason: ranked.reason,
-          score: ranked.score,
+          signals: ranked.signals,
+          sort: { ...ranked.signals, occurredAt: dm.receivedAt },
         };
       }),
     );
-    const actionNeeded = items.filter((item) =>
-      item.reason?.includes("needs reply"),
+    const actionNeeded = items.filter(
+      (item) => item.signals?.replyNeeded,
     ).length;
     return {
       key: "x_dms",
@@ -784,16 +724,21 @@ async function collectXFeedSection(
           .filter((type): type is string => typeof type === "string");
         const isReply = referenceTypes.includes("replied_to");
         const metrics = raw.public_metrics ?? {};
-        const engagement =
-          metrics.like_count +
-          metrics.reply_count * 3 +
-          metrics.retweet_count * 2 +
-          metrics.quote_count * 2;
-        const ranked = rankTextSignal({
-          text: feedItem.text,
+        const engagement: BriefingEngagement = {
+          likeCount: toFiniteNonNegativeNumber(metrics.like_count),
+          replyCount: toFiniteNonNegativeNumber(metrics.reply_count),
+          repostCount: toFiniteNonNegativeNumber(metrics.retweet_count),
+          quoteCount: toFiniteNonNegativeNumber(metrics.quote_count),
+          totalCount:
+            toFiniteNonNegativeNumber(metrics.like_count) +
+            toFiniteNonNegativeNumber(metrics.reply_count) +
+            toFiniteNonNegativeNumber(metrics.retweet_count) +
+            toFiniteNonNegativeNumber(metrics.quote_count),
+        };
+        const ranked = buildBriefingSignals({
           occurredAt: feedItem.createdAtSource,
           replyNeeded: isReply,
-          important: engagement >= 25,
+          engagement,
         });
         return {
           title: feedItem.authorHandle
@@ -803,7 +748,8 @@ async function collectXFeedSection(
           occurredAt: feedItem.createdAtSource,
           href: `https://x.com/i/web/status/${feedItem.externalTweetId}`,
           reason: ranked.reason,
-          score: ranked.score + Math.min(30, engagement),
+          signals: ranked.signals,
+          sort: { ...ranked.signals, occurredAt: feedItem.createdAtSource },
         };
       }),
     );
@@ -843,9 +789,7 @@ async function collectInboxSection(
       );
     const items = sortBriefingItems(
       inbox.messages.map((message) => {
-        const text = `${message.subject ?? ""} ${message.snippet}`;
-        const ranked = rankTextSignal({
-          text,
+        const ranked = buildBriefingSignals({
           occurredAt: message.receivedAt,
           unread: message.unread,
           inbound: true,
@@ -860,7 +804,8 @@ async function collectInboxSection(
           occurredAt: message.receivedAt,
           href: message.deepLink,
           reason: ranked.reason,
-          score: ranked.score,
+          signals: ranked.signals,
+          sort: { ...ranked.signals, occurredAt: message.receivedAt },
         };
       }),
     );
@@ -899,14 +844,13 @@ async function collectGmailSection(
     );
     const items = sortBriefingItems(
       feed.messages.map((message) => {
-        const text = `${message.subject} ${message.snippet}`;
-        const ranked = rankTextSignal({
-          text,
+        const ranked = buildBriefingSignals({
           occurredAt: message.receivedAt,
           unread: message.isUnread,
           inbound: true,
           replyNeeded: message.likelyReplyNeeded,
           important: message.isImportant,
+          sourcePriority: message.triageScore,
         });
         return {
           title: `${message.from || "Unknown"}${
@@ -916,7 +860,8 @@ async function collectGmailSection(
           occurredAt: message.receivedAt,
           href: message.htmlLink,
           reason: ranked.reason ?? (message.triageReason || null),
-          score: ranked.score + message.triageScore,
+          signals: ranked.signals,
+          sort: { ...ranked.signals, occurredAt: message.receivedAt },
         };
       }),
     );
@@ -981,6 +926,10 @@ async function collectCalendarChangeSection(
             : isChanged
               ? "added or updated"
               : "on schedule";
+        const ranked = buildBriefingSignals({
+          occurredAt: updatedAt ?? toText(row.start_at),
+          important: status.toLowerCase() === "cancelled" || isChanged,
+        });
         return {
           title,
           detail: `${toText(row.start_at)} - ${toText(row.end_at)}${
@@ -989,7 +938,11 @@ async function collectCalendarChangeSection(
           occurredAt: updatedAt ?? toText(row.start_at),
           href: toText(row.html_link) || null,
           reason,
-          score: (isChanged ? 30 : 10) + (status === "cancelled" ? 30 : 0),
+          signals: ranked.signals,
+          sort: {
+            ...ranked.signals,
+            occurredAt: updatedAt ?? toText(row.start_at),
+          },
         };
       }),
     );
@@ -1045,14 +998,14 @@ async function collectGitHubSection(
       ),
     ]);
     const mailItems = mailRows.map((row) => {
-      const text = `${toText(row.subject)} ${toText(row.snippet)}`;
-      const ranked = rankTextSignal({
-        text,
+      const sourcePriority = Number(row.triage_score ?? 0);
+      const ranked = buildBriefingSignals({
         occurredAt: toText(row.received_at),
         unread: toBoolean(row.is_unread),
         important: toBoolean(row.is_important),
         replyNeeded: toBoolean(row.likely_reply_needed),
         inbound: true,
+        sourcePriority: Number.isFinite(sourcePriority) ? sourcePriority : 0,
       });
       return {
         title: `GitHub email: ${toText(row.subject) || "(no subject)"}`,
@@ -1060,20 +1013,36 @@ async function collectGitHubSection(
         occurredAt: toText(row.received_at) || null,
         href: toText(row.html_link) || null,
         reason: ranked.reason,
-        score: ranked.score + Number(row.triage_score ?? 0),
+        signals: ranked.signals,
+        sort: {
+          ...ranked.signals,
+          occurredAt: toText(row.received_at) || null,
+        },
       };
     });
     const screenItems = screenRows.map((row) => {
       const minutes = Math.round(Number(row.duration_seconds ?? 0) / 60);
+      const engagement: BriefingEngagement = {
+        likeCount: 0,
+        replyCount: 0,
+        repostCount: 0,
+        quoteCount: 0,
+        totalCount: Number.isFinite(minutes) && minutes > 0 ? minutes : 0,
+      };
+      const ranked = buildBriefingSignals({
+        occurredAt: toText(row.start_at) || null,
+        engagement,
+      });
       return {
         title: `GitHub activity: ${
           toText(row.display_name) || toText(row.identifier)
         }`,
-        detail: `${minutes}m active`,
+        detail: `${Number.isFinite(minutes) && minutes > 0 ? minutes : 0}m active`,
         occurredAt: toText(row.start_at) || null,
         href: null,
         reason: "workspace activity",
-        score: 10 + Math.min(30, minutes),
+        signals: ranked.signals,
+        sort: { ...ranked.signals, occurredAt: toText(row.start_at) || null },
       };
     });
     const items = sortBriefingItems([...mailItems, ...screenItems]);
@@ -1138,16 +1107,21 @@ async function collectContactSection(
     };
     const uniqueNames = new Set(rows.map(nameFor).filter(Boolean));
     const items = sortBriefingItems(
-      rows.map((row) => ({
-        title: `${nameFor(row) || "Unknown"} (${
-          toText(row.channel) || "unknown"
-        })`,
-        detail: clip(toText(row.summary) || toText(row.direction)),
-        occurredAt: toText(row.occurred_at) || null,
-        href: null,
-        reason: toText(row.direction) || null,
-        score: 20,
-      })),
+      rows.map((row) => {
+        const occurredAt = toText(row.occurred_at) || null;
+        const ranked = buildBriefingSignals({ occurredAt });
+        return {
+          title: `${nameFor(row) || "Unknown"} (${
+            toText(row.channel) || "unknown"
+          })`,
+          detail: clip(toText(row.summary) || toText(row.direction)),
+          occurredAt,
+          href: null,
+          reason: toText(row.direction) || ranked.reason,
+          signals: ranked.signals,
+          sort: { ...ranked.signals, occurredAt },
+        };
+      }),
     );
     return {
       key: "contacts",
@@ -1180,16 +1154,23 @@ async function collectPromiseSection(
     // separate LifeOps follow-up table.
     const digest = await computeOverdueFollowups(runtime, now.getTime());
     const items = sortBriefingItems(
-      digest.overdue.map((entry) => ({
-        title: `${entry.displayName}: ${entry.daysOverdue}d overdue`,
-        detail: clip(
-          `Last contacted ${entry.lastContactedAt} (cadence ${entry.thresholdDays}d)`,
-        ),
-        occurredAt: entry.lastContactedAt,
-        href: null,
-        reason: "overdue follow-up",
-        score: 40 + Math.min(20, entry.daysOverdue),
-      })),
+      digest.overdue.map((entry) => {
+        const ranked = buildBriefingSignals({
+          occurredAt: entry.lastContactedAt,
+          important: true,
+        });
+        return {
+          title: `${entry.displayName}: ${entry.daysOverdue}d overdue`,
+          detail: clip(
+            `Last contacted ${entry.lastContactedAt} (cadence ${entry.thresholdDays}d)`,
+          ),
+          occurredAt: entry.lastContactedAt,
+          href: null,
+          reason: "overdue follow-up",
+          signals: ranked.signals,
+          sort: { ...ranked.signals, occurredAt: entry.lastContactedAt },
+        };
+      }),
     );
     return {
       key: "promises",
