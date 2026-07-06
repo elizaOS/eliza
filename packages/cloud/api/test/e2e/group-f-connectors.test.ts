@@ -4,7 +4,7 @@
  * Routes covered:
  *   /api/eliza-app/connections
  *   /api/eliza-app/connections/:platform/initiate
- *   /api/eliza-app/gateway/:agentId
+ *   /api/eliza-app/gateway/:agentId (removed; auth-gated before dispatch)
  *   /api/eliza-app/user/me
  *   /api/eliza-app/webhook/blooio        (forwards to webhook gateway)
  *   /api/eliza-app/webhook/discord       (forwards to Discord webhook handler)
@@ -22,7 +22,7 @@
  * Auth notes (from auth.ts publicPathPrefixes):
  *   - /api/eliza-app/webhook/* — public (no global auth gate)
  *   - /api/eliza-app/user/*   — public (handler does its own session check)
- *   - /api/eliza-app/gateway/* — public
+ *   - /api/eliza-app/gateway/* — removed from public allowlist (#12043)
  *   - /api/eliza/* — public
  *   - /api/webhooks/* — public
  *   - /api/eliza-app/connections requires an eliza-app session token
@@ -215,33 +215,25 @@ describeE2E("POST /api/eliza-app/connections/:platform/initiate", () => {
 // ---------------------------------------------------------------------------
 
 describeE2E("POST /api/eliza-app/gateway/:agentId", () => {
-  // Public path — no auth gate.
+  // Removed path — no public auth bypass (#12043).
 
-  test("missing message body → 400", async () => {
+  test("missing message body → 401 before removed gateway handling", async () => {
     const res = await api.post("/api/eliza-app/gateway/test-agent-001", {});
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { success?: boolean; error?: string };
-    expect(body.success).toBe(false);
-    expect(body.error).toMatch(/empty message/i);
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { code?: string };
+    expect(body.code).toBe("authentication_required");
   });
 
-  test("valid message → 200 with reply", async () => {
+  test("valid message → 401 before removed gateway handling", async () => {
     const res = await api.post("/api/eliza-app/gateway/test-agent-001", {
       message: "hello",
     });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      success?: boolean;
-      reply?: string;
-      historyLength?: number;
-    };
-    expect(body.success).toBe(true);
-    expect(typeof body.reply).toBe("string");
-    expect(body.reply?.length).toBeGreaterThan(0);
-    expect(typeof body.historyLength).toBe("number");
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { code?: string };
+    expect(body.code).toBe("authentication_required");
   });
 
-  test("non-JSON body → 400 or 500", async () => {
+  test("non-JSON body → 401 before body parsing", async () => {
     const res = await fetch(
       `${getBaseUrl()}/api/eliza-app/gateway/test-agent-001`,
       {
@@ -250,9 +242,9 @@ describeE2E("POST /api/eliza-app/gateway/:agentId", () => {
         body: "not-json{{",
       },
     );
-    // The handler parses the body itself; malformed JSON surfaces as its own
-    // 500 envelope (not a middleware 400).
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { code?: string };
+    expect(body.code).toBe("authentication_required");
   });
 });
 
