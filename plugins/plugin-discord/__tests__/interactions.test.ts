@@ -40,6 +40,24 @@ describe("renderDiscordInteractions", () => {
 		});
 	});
 
+	it("uses Discord's 100-byte custom_id budget for longer callback values", () => {
+		const value = "x".repeat(74);
+		const content: Content = {
+			text: `Approve?\n[CHOICE:approve id=c1]\n${value}=Long callback\n[/CHOICE]`,
+		};
+
+		const out = renderDiscordInteractions(content);
+		expect(out.needsFreeTextReply).toBe(false);
+		expect(out.components).toHaveLength(1);
+		const button = out.components[0]?.components[0];
+		expect(button?.label).toBe("Long callback");
+		expect(button?.custom_id.length).toBe(78);
+		expect(decodeCallback(button?.custom_id)).toEqual({
+			kind: "reply",
+			value,
+		});
+	});
+
 	it("renders a task card as a link button when a url resolver is provided", () => {
 		const id = "abc12345-def6-7890-abcd-ef1234567890";
 		const out = renderDiscordInteractions(

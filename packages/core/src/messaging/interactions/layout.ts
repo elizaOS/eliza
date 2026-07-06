@@ -74,6 +74,12 @@ export interface LayoutOptions {
 	resolveNavigateUrl?: (payload: string) => string | undefined;
 	/** Buttons per row before wrapping (Telegram ~8, Discord 5). Default 3. */
 	maxButtonsPerRow?: number;
+	/**
+	 * Native callback payload budget for reply buttons. Defaults to Telegram's
+	 * 64-byte `callback_data` limit; Discord passes its 100-character custom_id
+	 * budget so valid Discord buttons are not forced into free-text fallback.
+	 */
+	maxCallbackBytes?: number;
 }
 
 /**
@@ -103,11 +109,14 @@ function chunk<T>(items: T[], size: number): T[][] {
 function optionButtons(
 	options: InteractionOption[],
 	perRow: number,
+	maxCallbackBytes?: number,
 ): { rows: NeutralRow[]; anyDropped: boolean } {
 	let anyDropped = false;
 	const buttons: NeutralButton[] = [];
 	for (const o of options) {
-		const callbackData = encodeReplyCallback(o.value);
+		const callbackData = encodeReplyCallback(o.value, {
+			maxBytes: maxCallbackBytes,
+		});
 		if (!callbackData) {
 			anyDropped = true;
 			continue;
@@ -127,10 +136,15 @@ export function toNeutralLayout(
 ): NeutralLayout {
 	const perRow = opts.maxButtonsPerRow ?? 3;
 	const resolveUrl = opts.resolveUrl;
+	const maxCallbackBytes = opts.maxCallbackBytes;
 
 	switch (block.kind) {
 		case "choice": {
-			const { rows, anyDropped } = optionButtons(block.options, perRow);
+			const { rows, anyDropped } = optionButtons(
+				block.options,
+				perRow,
+				maxCallbackBytes,
+			);
 			return {
 				text: block.prompt,
 				rows,
@@ -147,7 +161,9 @@ export function toNeutralLayout(
 						continue;
 					}
 				}
-				const callbackData = encodeReplyCallback(o.payload);
+				const callbackData = encodeReplyCallback(o.payload, {
+					maxBytes: maxCallbackBytes,
+				});
 				if (callbackData)
 					buttons.push({ label: o.label, callbackData, style: "secondary" });
 			}

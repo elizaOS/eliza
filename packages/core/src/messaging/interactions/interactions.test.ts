@@ -318,6 +318,13 @@ describe("callback codec", () => {
 		expect(encodeReplyCallback(big)).toBeNull();
 	});
 
+	it("uses a caller-provided platform callback limit", () => {
+		const value = "x".repeat(MAX_CALLBACK_BYTES + 10);
+		const data = encodeReplyCallback(value, { maxBytes: 100 });
+		expect(data).not.toBeNull();
+		expect(decodeCallback(data)).toEqual({ kind: "reply", value });
+	});
+
 	it("ignores foreign callback payloads", () => {
 		expect(decodeCallback("discord:somethingelse")).toBeNull();
 		expect(isInteractionCallback(undefined)).toBe(false);
@@ -357,6 +364,29 @@ describe("layout", () => {
 			options: [{ value: "a", label: "A" }],
 		};
 		expect(toNeutralLayout(block).needsFallback).toBe(true);
+	});
+
+	it("keeps the default Telegram-safe callback cap unless a platform overrides it", () => {
+		const value = "x".repeat(MAX_CALLBACK_BYTES + 10);
+		const block: ChoiceInteraction = {
+			kind: "choice",
+			id: "i",
+			scope: "s",
+			options: [{ value, label: "Long value" }],
+		};
+
+		const defaultLayout = toNeutralLayout(block);
+		expect(defaultLayout.rows).toEqual([]);
+		expect(defaultLayout.needsFallback).toBe(true);
+
+		const discordLayout = toNeutralLayout(block, { maxCallbackBytes: 100 });
+		const button = discordLayout.rows[0]?.buttons?.[0];
+		expect(button?.label).toBe("Long value");
+		expect(decodeCallback(button?.callbackData)).toEqual({
+			kind: "reply",
+			value,
+		});
+		expect(discordLayout.needsFallback).toBe(false);
 	});
 
 	it("links out a secret block to a resolved url", () => {

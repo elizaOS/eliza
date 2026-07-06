@@ -23,6 +23,7 @@ import type { DiscordActionRow, DiscordComponentOptions } from "./types";
 /** Discord allows ≤5 buttons per action row and ≤5 action rows per message. */
 const MAX_BUTTONS_PER_ROW = 5;
 const MAX_ROWS = 5;
+const MAX_CUSTOM_ID_BYTES = 100;
 
 /** discord.js ButtonStyle numeric values. */
 const BUTTON_STYLE = { primary: 1, secondary: 2, danger: 4 } as const;
@@ -93,6 +94,7 @@ export function renderDiscordInteractions(
 			resolveUrl: opts.resolveUrl,
 			resolveNavigateUrl: opts.resolveNavigateUrl,
 			maxButtonsPerRow: MAX_BUTTONS_PER_ROW,
+			maxCallbackBytes: MAX_CUSTOM_ID_BYTES,
 		});
 		let producedButton = false;
 		for (const row of layout.rows) {
