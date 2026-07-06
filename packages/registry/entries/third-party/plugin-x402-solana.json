@@ -1,0 +1,9 @@
+{
+  "package": "plugin-x402-solana",
+  "repository": "github:digitalweb33333-creator/plugin-x402-solana",
+  "kind": "plugin",
+  "description": "Exposes the x402-solana catalogue (10 paid endpoints: crypto/Solana pre-trade safety — SPL/EVM rug & honeypot, GO/NO-GO verdicts, token dossiers — Polymarket odds, official KYB/AML via GLEIF LEI and EU sanctions screening, and x402 discoverability audits) as native ElizaOS actions, billed per call via x402 (USDC on Solana mainnet, gasless for the buyer via the Coinbase CDP facilitator).",
+  "homepage": "https://github.com/digitalweb33333-creator/plugin-x402-solana",
+  "version": "0.1.0",
+  "tags": ["x402","micropayments","solana","usdc","compliance","crypto","data","kyb"]
+}
