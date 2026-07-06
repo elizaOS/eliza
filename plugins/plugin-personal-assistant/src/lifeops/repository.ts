@@ -103,6 +103,12 @@ import {
   type LifeOpsWorkflowDefinition,
   type LifeOpsWorkflowRun,
 } from "../contracts/index.js";
+import type {
+  LifeOpsCommitmentKind,
+  LifeOpsCommitmentLedgerRecord,
+  LifeOpsCommitmentSource,
+  LifeOpsCommitmentStatus,
+} from "./commitments/index.js";
 import {
   createConnectorAccountPrivacyPolicy,
   deriveConnectorAccountId,
@@ -559,6 +565,29 @@ function parseAuditEvent(row: Record<string, unknown>): LifeOpsAuditEvent {
     decision: parseJsonRecord(row.decision_json),
     actor: toText(row.actor) as LifeOpsAuditEvent["actor"],
     createdAt: toText(row.created_at),
+  };
+}
+
+function parseCommitmentLedgerRecord(
+  row: Record<string, unknown>,
+): LifeOpsCommitmentLedgerRecord {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    source: toText(row.source) as LifeOpsCommitmentSource,
+    sourceKey: toText(row.source_key),
+    kind: toText(row.kind) as LifeOpsCommitmentKind,
+    summary: toText(row.summary),
+    counterparty: row.counterparty ? toText(row.counterparty) : null,
+    dueAt: row.due_at ? toText(row.due_at) : null,
+    confidence: toNumber(row.confidence),
+    status: toText(row.status, "open") as LifeOpsCommitmentStatus,
+    scheduledTaskId: row.scheduled_task_id
+      ? toText(row.scheduled_task_id)
+      : null,
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
   };
 }
 
@@ -3267,6 +3296,91 @@ export class LifeOpsRepository {
         ORDER BY created_at DESC`,
     );
     return rows.map(parseAuditEvent);
+  }
+
+  async upsertCommitmentLedgerRecord(
+    record: LifeOpsCommitmentLedgerRecord,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_commitment_ledger (
+        id, agent_id, source, source_key, kind, summary, counterparty, due_at,
+        confidence, status, scheduled_task_id, metadata_json, created_at,
+        updated_at
+      ) VALUES (
+        ${sqlQuote(record.id)},
+        ${sqlQuote(record.agentId)},
+        ${sqlQuote(record.source)},
+        ${sqlQuote(record.sourceKey)},
+        ${sqlQuote(record.kind)},
+        ${sqlQuote(record.summary)},
+        ${sqlText(record.counterparty)},
+        ${sqlText(record.dueAt)},
+        ${sqlNumber(record.confidence)},
+        ${sqlQuote(record.status)},
+        ${sqlText(record.scheduledTaskId)},
+        ${sqlJson(record.metadata)},
+        ${sqlQuote(record.createdAt)},
+        ${sqlQuote(record.updatedAt)}
+      )
+      ON CONFLICT(agent_id, source, source_key, kind, summary)
+      DO UPDATE SET
+        counterparty = EXCLUDED.counterparty,
+        due_at = EXCLUDED.due_at,
+        confidence = EXCLUDED.confidence,
+        status = EXCLUDED.status,
+        scheduled_task_id = EXCLUDED.scheduled_task_id,
+        metadata_json = EXCLUDED.metadata_json,
+        updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async getCommitmentLedgerRecord(
+    agentId: string,
+    id: string,
+  ): Promise<LifeOpsCommitmentLedgerRecord | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_commitment_ledger
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseCommitmentLedgerRecord(row) : null;
+  }
+
+  async listCommitmentLedgerRecords(
+    agentId: string,
+    filter: {
+      statuses?: LifeOpsCommitmentStatus[];
+      dueBeforeIso?: string;
+      source?: LifeOpsCommitmentSource;
+    } = {},
+  ): Promise<LifeOpsCommitmentLedgerRecord[]> {
+    const clauses = [`agent_id = ${sqlQuote(agentId)}`];
+    if (filter.statuses?.length) {
+      clauses.push(
+        `status IN (${filter.statuses.map((status) => sqlQuote(status)).join(", ")})`,
+      );
+    }
+    if (filter.dueBeforeIso) {
+      clauses.push(
+        `(due_at IS NULL OR due_at <= ${sqlQuote(filter.dueBeforeIso)})`,
+      );
+    }
+    if (filter.source) {
+      clauses.push(`source = ${sqlQuote(filter.source)}`);
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_commitment_ledger
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY due_at ASC NULLS LAST, created_at ASC`,
+    );
+    return rows.map(parseCommitmentLedgerRecord);
   }
 
   // ---------------------------------------------------------------------
