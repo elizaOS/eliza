@@ -18,6 +18,16 @@ export type SolanaOldestSignatureResult = {
   reachedOldestKnownTransaction: boolean;
 };
 
+export type SolanaParsedTransaction = {
+  signature?: string;
+  timestamp?: number;
+  nativeTransfers?: Array<{
+    fromUserAccount?: string;
+    toUserAccount?: string;
+    amount?: number;
+  }>;
+};
+
 function getHeliusApiKey(): string {
   const apiKey = process.env.HELIUS_API_KEY?.trim();
 
@@ -33,7 +43,16 @@ function getHeliusRpcUrl(): string {
   return `https://mainnet.helius-rpc.com/?api-key=${apiKey}`;
 }
 
-async function callHeliusRpc<T>(id: string, method: string, params: unknown[]): Promise<T> {
+function getHeliusApiUrl(path: string): string {
+  const apiKey = getHeliusApiKey();
+  return `https://api.helius.xyz${path}?api-key=${apiKey}`;
+}
+
+async function callHeliusRpc<T>(
+  id: string,
+  method: string,
+  params: unknown[],
+): Promise<T> {
   const response = await fetch(getHeliusRpcUrl(), {
     method: "POST",
     headers: {
@@ -163,6 +182,36 @@ export async function getSolanaOldestKnownSignature(
     scannedTransactionCount,
     reachedOldestKnownTransaction,
   };
+}
+
+export async function getSolanaParsedTransactions(
+  signatures: string[],
+): Promise<SolanaParsedTransaction[]> {
+  const cleanedSignatures = signatures
+    .map((signature) => signature.trim())
+    .filter(Boolean);
+
+  if (cleanedSignatures.length === 0) {
+    return [];
+  }
+
+  const response = await fetch(getHeliusApiUrl("/v0/transactions"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      transactions: cleanedSignatures,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Helius transaction parse failed with status ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  return Array.isArray(data) ? data : [];
 }
 
 export type SolanaTokenHolding = {
