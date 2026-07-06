@@ -27,18 +27,21 @@ const NEXT_FIRE_BY_PROMPT: Record<string, string | null> = {
   "overdue-task": OVERDUE_ISO,
   "later-today-task": LATER_TODAY_ISO,
   "missed-recurring-task": "2026-05-10T09:00:00.000Z",
+  "server-tomorrow-owner-tomorrow-task": "2026-05-10T13:00:00.000Z",
   "manual-task": null,
 };
 const DUE_BY_PROMPT: Record<string, boolean> = {
   "overdue-task": true,
   "later-today-task": false,
   "missed-recurring-task": true,
+  "server-tomorrow-owner-tomorrow-task": false,
   "manual-task": false,
 };
 
 let storedTasks: ScheduledTask[];
 let resolveNextFireAtCalls: string[];
 let resolveDueDecisionCalls: string[];
+let ownerTimezone: string;
 
 function fakeTask(promptInstructions: string): ScheduledTask {
   return {
@@ -75,6 +78,9 @@ vi.mock("../lifeops/scheduled-task/service.js", () => ({
           ? "test_due"
           : "test_pending",
       };
+    },
+    async resolveOwnerFacts() {
+      return { timezone: ownerTimezone };
     },
   })),
 }));
@@ -134,6 +140,7 @@ describe("SCHEDULED_TASKS list — dueWindow filter", () => {
     ];
     resolveNextFireAtCalls = [];
     resolveDueDecisionCalls = [];
+    ownerTimezone = "UTC";
   });
 
   it("returns every task with no dueWindow and never consults resolveNextFireAt", async () => {
@@ -175,6 +182,19 @@ describe("SCHEDULED_TASKS list — dueWindow filter", () => {
       "overdue-task",
     ]);
     expect(data.dueWindow).toBe("today");
+  });
+
+  it("dueWindow=today uses the owner timezone boundary, not the server date", async () => {
+    vi.setSystemTime(Date.parse("2026-05-10T02:00:00.000Z"));
+    ownerTimezone = "America/New_York";
+    storedTasks = [fakeTask("server-tomorrow-owner-tomorrow-task")];
+
+    const data = await listWith("today");
+
+    expect(data.tasks).toEqual([]);
+    expect(resolveNextFireAtCalls).toEqual([
+      "server-tomorrow-owner-tomorrow-task",
+    ]);
   });
 
   it("ignores an unknown dueWindow value (no filtering, no projection)", async () => {

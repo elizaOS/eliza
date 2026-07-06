@@ -1613,6 +1613,14 @@ describe("ScheduledTaskRunner — resolveNextFireAt (due-window primitive)", () 
     expect(await h.runner.resolveNextFireAt(manual)).toBeNull();
   });
 
+  it("exposes the owner facts used by due and next-fire evaluation", async () => {
+    const h = makeHarness();
+    h.setOwnerFacts({ timezone: "America/New_York" });
+    await expect(h.runner.resolveOwnerFacts()).resolves.toEqual({
+      timezone: "America/New_York",
+    });
+  });
+
   it("reports a missed cron occurrence as due even when next-fire projects forward", async () => {
     const h = makeHarness("2026-05-09T12:00:00.000Z");
     const task = await h.runner.schedule(

@@ -565,6 +565,12 @@ export interface ScheduledTaskRunnerExtras {
    * next natural occurrence.
    */
   resolveDueDecision(task: ScheduledTask): Promise<ScheduledTaskDueDecision>;
+  /**
+   * Return the owner facts the runner uses for trigger/gate evaluation. This is
+   * exposed for read-only views that must apply the same owner-local timezone
+   * boundary as the scheduler without reaching behind the runner deps port.
+   */
+  resolveOwnerFacts(): Promise<OwnerFactsView>;
 }
 
 export interface ScheduledTaskRunnerHandle
@@ -708,6 +714,10 @@ export function createScheduledTaskRunner(
       ownerFacts,
       anchors: deps.anchors,
     });
+  }
+
+  async function resolveOwnerFacts(): Promise<OwnerFactsView> {
+    return deps.ownerFacts();
   }
 
   async function schedule(
@@ -1718,5 +1728,6 @@ export function createScheduledTaskRunner(
     getEscalationCursor,
     resolveNextFireAt,
     resolveDueDecision,
+    resolveOwnerFacts,
   };
 }

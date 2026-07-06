@@ -512,6 +512,27 @@ function normalizeDueWindow(value: unknown): DueWindow | undefined {
     : undefined;
 }
 
+function localDateKey(date: Date, timeZone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const read = (type: string) =>
+      parts.find((part) => part.type === type)?.value;
+    const year = read("year");
+    const month = read("month");
+    const day = read("day");
+    if (year && month && day) return `${year}-${month}-${day}`;
+  } catch {
+    // error-policy:J3 invalid owner timezone fact falls back to UTC date-key comparison.
+    // Invalid owner timezone facts fall back to UTC, matching scheduler helpers.
+  }
+  return date.toISOString().slice(0, 10);
+}
+
 /**
  * Keep tasks whose due instant falls inside `window`, using the runner's
  * due-decision and next-fire projection so the chat/voice filter and scheduler
@@ -528,9 +549,9 @@ async function filterByDueWindow(
   window: DueWindow,
 ): Promise<ScheduledTask[]> {
   const now = Date.now();
-  const endOfToday = new Date(now);
-  endOfToday.setHours(23, 59, 59, 999);
-  const endOfTodayMs = endOfToday.getTime();
+  const ownerFacts = await scope.runner.resolveOwnerFacts();
+  const ownerTimeZone = ownerFacts.timezone ?? "UTC";
+  const todayKey = localDateKey(new Date(now), ownerTimeZone);
   const kept: ScheduledTask[] = [];
   for (const task of tasks) {
     const dueDecision = await scope.runner.resolveDueDecision(task);
@@ -543,7 +564,7 @@ async function filterByDueWindow(
     if (nextFireAtIso === null) continue;
     const fireMs = Date.parse(nextFireAtIso);
     if (!Number.isFinite(fireMs)) continue;
-    if (fireMs <= endOfTodayMs) {
+    if (localDateKey(new Date(fireMs), ownerTimeZone) === todayKey) {
       kept.push(task);
     }
   }
