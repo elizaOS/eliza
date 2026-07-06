@@ -17,7 +17,6 @@ import {
 	canReadScope,
 	type Memory,
 	type MemoryMetadata,
-	type MemoryScope,
 	type UUID,
 } from "@elizaos/core";
 import type {
@@ -25,6 +24,7 @@ import type {
 	TranscriptSummary,
 } from "@elizaos/shared/transcripts";
 import {
+	normalizeTranscriptScope,
 	summarizeTranscript,
 	transcriptPreview,
 } from "@elizaos/shared/transcripts";
@@ -33,12 +33,6 @@ import {
 export const TRANSCRIPTS_TABLE = "transcripts";
 /** `metadata.type` marker — NOT "document"/"fragment", so no CHECK fires. */
 export const TRANSCRIPT_METADATA_TYPE = "transcript";
-const TRANSCRIPT_SCOPES = new Set<MemoryScope>([
-	"owner-private",
-	"user-private",
-	"global",
-	"agent-private",
-]);
 
 /** The subset of `IAgentRuntime` the store needs (real runtime satisfies it). */
 export interface TranscriptStoreRuntime {
@@ -81,13 +75,6 @@ function rowToTranscript(row: Memory): Transcript | null {
 	} catch {
 		return null;
 	}
-}
-
-function normalizeTranscriptScope(scope: unknown): MemoryScope {
-	return typeof scope === "string" &&
-		TRANSCRIPT_SCOPES.has(scope as MemoryScope)
-		? (scope as MemoryScope)
-		: "owner-private";
 }
 
 export function canAccessTranscriptRecord(

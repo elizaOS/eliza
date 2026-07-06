@@ -55,6 +55,24 @@ export type TranscriptScope =
   | "global"
   | "agent-private";
 
+const TRANSCRIPT_SCOPES: ReadonlySet<string> = new Set<TranscriptScope>([
+  "owner-private",
+  "user-private",
+  "global",
+  "agent-private",
+]);
+
+/**
+ * Normalize a scope value read from an untyped row/JSON boundary. Unknown,
+ * missing, or corrupt values fail CLOSED to `"owner-private"` — a legacy row
+ * that predates scope stamping must never widen visibility.
+ */
+export function normalizeTranscriptScope(scope: unknown): TranscriptScope {
+  return typeof scope === "string" && TRANSCRIPT_SCOPES.has(scope)
+    ? (scope as TranscriptScope)
+    : "owner-private";
+}
+
 export type TranscriptStatus = "recording" | "processing" | "ready" | "failed";
 
 /** A recorded + transcribed session: audio + word-timed diarized segments. */

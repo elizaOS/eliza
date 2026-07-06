@@ -16,47 +16,27 @@ import type {
   RouteHandlerResult,
   UUID,
 } from "@elizaos/core";
-import {
-  actorFromAccessContext,
-  canReadScope,
-  type MemoryScope,
-} from "@elizaos/core";
+import { actorFromAccessContext, canReadScope } from "@elizaos/core";
 import type {
   MeetingJoinRequest,
   MeetingPlatform,
   MeetingSession,
 } from "@elizaos/shared";
 import { parseMeetingUrl } from "@elizaos/shared";
+import type { TranscriptScope } from "@elizaos/shared/transcripts";
+import { normalizeTranscriptScope } from "@elizaos/shared/transcripts";
 import { MeetingJoinError, type MeetingService } from "../service.js";
 
 function service(ctx: RouteHandlerContext): MeetingService | null {
   return ctx.runtime.getService<MeetingService>("meetings");
 }
 
-type TranscriptAccessRouteContext = RouteHandlerContext & {
-  accessContext?: AccessContext;
-};
-
 const unavailable: RouteHandlerResult = {
   status: 503,
   body: { error: "meetings service is not running" },
 };
 
-const TRANSCRIPT_SCOPES = new Set<MemoryScope>([
-  "owner-private",
-  "user-private",
-  "global",
-  "agent-private",
-]);
-
-function normalizeTranscriptScope(scope: unknown): MemoryScope {
-  return typeof scope === "string" &&
-    TRANSCRIPT_SCOPES.has(scope as MemoryScope)
-    ? (scope as MemoryScope)
-    : "owner-private";
-}
-
-function transcriptScopeFromRow(row: Memory): MemoryScope {
+function transcriptScopeFromRow(row: Memory): TranscriptScope {
   const raw = (row.content as { transcript?: unknown } | undefined)?.transcript;
   if (typeof raw !== "string") return "owner-private";
   try {
@@ -67,6 +47,8 @@ function transcriptScopeFromRow(row: Memory): MemoryScope {
         : undefined,
     );
   } catch {
+    // error-policy:J3 untrusted stored JSON — an unparseable transcript row
+    // fails CLOSED to owner-private so corruption can never widen visibility.
     return "owner-private";
   }
 }
@@ -90,7 +72,7 @@ async function redactSessionTranscriptDisclosure(
   ctx: RouteHandlerContext,
   session: MeetingSession,
 ): Promise<MeetingSession> {
-  const accessContext = (ctx as TranscriptAccessRouteContext).accessContext;
+  const accessContext = ctx.accessContext;
   if (!accessContext || !session.transcriptId) return session;
   const row = await ctx.runtime.getMemoryById(session.transcriptId as UUID);
   if (
