@@ -101,7 +101,7 @@ credentials and devices; select it explicitly:
 
 | Flow / decision point | Why HITL | Current coverage | What a harness can pre-stage |
 |---|---|---|---|
-| Connector credential intake / readiness | a human confirms which connector creds are in `.env` before live lanes run | 🟡 frame — `bun run lifeops:hitl` (`scripts/lifeops/hitl-credential-dashboard.mjs`) | readiness dashboard frame (values masked to last-4) |
+| Connector credential intake / readiness | a human confirms which connector creds are present (and fresh) before live lanes run | 🟡 frame — `bun run lifeops:hitl` (`scripts/lifeops/hitl-credential-dashboard.mjs` v2: per-auth-path rows from `connector-paths.mjs`, layered env sources, one-click gh/SIWE/signal-link, probes recorded to `docs/testing/hitl-ledger.json`) | readiness dashboard frame (values masked to last-4; freshness green ≤7d / yellow >7d / red >30d-or-never) |
 | 9-state OWNER/AGENT permission matrix (credentialed) | correctness (not visual) | ✅ auto — `owner-agent-permission-matrix.integration.test.ts` under `LIFEOPS_PERMISSION_MATRIX=1` | n/a (machine-decided) |
 | Live connector suites | correctness; creds present → live, absent → clean skip | ✅ auto — `node scripts/lifeops/run-11632-live-lanes.mjs` (each suite `describeIf`-gates on its creds) | n/a (machine-decided) |
 | LifeOps split views populated with live data | populated/empty/error render quality with real data | 🟡 frame — `/lifeops-live-test` view + `bun run --cwd packages/app audit:app` + `bun run test:e2e:record` | populated-view frames per split view, desktop + mobile |

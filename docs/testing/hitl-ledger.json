@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "updatedAt": "2026-07-06T04:20:48.808Z",
+  "entries": {
+    "elizacloud.api-key": {
+      "pathId": "elizacloud.api-key",
+      "lastSuccessAt": "2026-07-06T04:20:33.762Z",
+      "lastRunAt": "2026-07-06T04:20:33.762Z",
+      "lane": "dashboard-probe",
+      "commit": "abe39023f60",
+      "counts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "elizacloud.siwe-session": {
+      "pathId": "elizacloud.siwe-session",
+      "lastSuccessAt": "2026-07-06T04:20:35.049Z",
+      "lastRunAt": "2026-07-06T04:20:35.049Z",
+      "lane": "dashboard-probe",
+      "commit": "abe39023f60",
+      "counts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "github.gh-cli": {
+      "pathId": "github.gh-cli",
+      "lastSuccessAt": "2026-07-06T04:19:11.098Z",
+      "lastRunAt": "2026-07-06T04:19:11.098Z",
+      "lane": "dashboard-probe",
+      "commit": "abe39023f60",
+      "counts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "model.cerebras-key": {
+      "pathId": "model.cerebras-key",
+      "lastSuccessAt": "2026-07-06T04:18:59.127Z",
+      "lastRunAt": "2026-07-06T04:18:59.127Z",
+      "lane": "dashboard-probe",
+      "commit": "abe39023f60",
+      "counts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "signal.cli": {
+      "pathId": "signal.cli",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:20:48.804Z",
+      "lane": "dashboard-probe",
+      "commit": "abe39023f60",
+      "counts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1
+      }
+    },
+    "x.agent-account": {
+      "pathId": "x.agent-account",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:20:48.718Z",
+      "lane": "dashboard-probe",
+      "commit": "abe39023f60",
+      "counts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1
+      }
+    },
+    "x.bearer-app": {
+      "pathId": "x.bearer-app",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:19:20.932Z",
+      "lane": "dashboard-probe",
+      "commit": "abe39023f60",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    "x.oauth1-user": {
+      "pathId": "x.oauth1-user",
+      "lastSuccessAt": null,
+      "lastRunAt": "2026-07-06T04:20:13.162Z",
+      "lane": "dashboard-probe",
+      "commit": "abe39023f60",
+      "counts": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    }
+  }
+}

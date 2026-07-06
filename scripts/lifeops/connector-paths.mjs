@@ -429,6 +429,11 @@ export const CONNECTOR_PATHS = [
     requiredAny: ["SIGNAL_HTTP_URL", "SIGNAL_CLI_PATH"],
     probeId: "signal",
     probeEndpoint: "GET {SIGNAL_HTTP_URL}/v1/about, else signal-cli --version",
+    oneClick: {
+      type: "shell",
+      detail:
+        "signal-cli link -n eliza-hitl-dashboard — emits an sgnl://linkdevice URI to scan from the phone (Signal → Settings → Linked devices → Link new device)",
+    },
     availability: {
       type: "any-of",
       specs: [

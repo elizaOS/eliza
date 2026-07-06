@@ -285,11 +285,16 @@ async function probeXOauth1(e) {
   const consumerSecret = e("TWITTER_API_SECRET_KEY");
   const accessToken = e("TWITTER_ACCESS_TOKEN");
   const accessSecret = e("TWITTER_ACCESS_TOKEN_SECRET");
-  if (!consumerKey || !consumerSecret || !accessToken || !accessSecret) {
-    return missing(
-      "x",
-      "TWITTER_API_KEY + TWITTER_API_SECRET_KEY + TWITTER_ACCESS_TOKEN + TWITTER_ACCESS_TOKEN_SECRET",
-    );
+  const absent = [
+    ["TWITTER_API_KEY", consumerKey],
+    ["TWITTER_API_SECRET_KEY", consumerSecret],
+    ["TWITTER_ACCESS_TOKEN", accessToken],
+    ["TWITTER_ACCESS_TOKEN_SECRET", accessSecret],
+  ]
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
+  if (absent.length > 0) {
+    return missing("x", absent.join(" + "));
   }
   const url = "https://api.x.com/2/users/me";
   const r = await fetchJson(url, {
@@ -744,7 +749,10 @@ async function probeElizaCloud(e) {
         "elizacloud",
         `credits/balance ok (${new URL(base).hostname}, balance=${r.body?.balance ?? "?"})`,
       )
-    : fail("elizacloud", `credits/balance HTTP ${r.status}: ${errorSnippet(r)}`);
+    : fail(
+        "elizacloud",
+        `credits/balance HTTP ${r.status}: ${errorSnippet(r)}`,
+      );
 }
 
 // --- iMessage (local-machine checks) ---------------------------------------------

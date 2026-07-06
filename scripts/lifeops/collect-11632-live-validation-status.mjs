@@ -6,9 +6,10 @@
  * Reports which connector groups are configured so the live
  * validation run knows what it can actually exercise.
  *
- * CONNECTOR_GROUPS and groupStatus are also imported by
- * scripts/lifeops/hitl-credential-dashboard.mjs, so the CLI body only runs
- * when this file is the entrypoint (import.meta.main).
+ * CONNECTOR_GROUPS and groupStatus are also imported by the lane driver
+ * (run-11632-live-lanes.mjs gates lanes on group readiness), so the CLI body
+ * only runs when this file is the entrypoint (import.meta.main). The HITL
+ * dashboard renders per-auth-path rows from connector-paths.mjs instead.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
