@@ -6,7 +6,7 @@
  * buttons. Message data, send, and capabilities arrive as props (driven by
  * useShellController); the composer itself is the shared composer core: the
  * ChatComposerContext draft slot (context-or-local), the IME-safe
- * Enter-to-send keydown, and the usePushToTalk mic hold machine (#12188
+ * Enter-to-send keydown, and the usePushToTalk mic hold machine (issue 12188
  * Phase 3). Tail-following and the jump-to-latest control come from the one
  * shared `useThreadAutoScroll` engine, not a local scroll handler.
  */
@@ -92,7 +92,7 @@ export function ChatSurface({
   }, [canSendNow, onSend, setDraft, trimmed]);
 
   // Shared composer-core keydown: Enter sends, the Enter that commits an IME
-  // composition never does (#9148).
+  // composition never does (issue 9148).
   const handleKeyDown = useComposerKeydown<HTMLInputElement>({
     onSend: handleSend,
   });
@@ -118,7 +118,7 @@ export function ChatSurface({
             `auto` too, so a single over-wide message child (a long code line,
             an unaudited inline widget) would turn this transcript into a
             two-axis scroller. This message list only ever scrolls vertically —
-            pin the horizontal axis closed (#14328). */}
+            pin the horizontal axis closed (issue 14328). */}
         <div
           ref={scrollRef}
           className="h-full overflow-y-auto overflow-x-hidden py-2"
@@ -193,8 +193,8 @@ export function ChatSurface({
           </button>
         ) : null}
       </div>
-      {/* Refractive-glass composer: a well-defined glass bar (no plain top
-          border) holding the input and the matching mic + send buttons. */}
+      {/* Composer row: same token, icon, and touch-target idiom as the
+          continuous overlay composer. */}
       <div className={cn("m-2", GLASS_COMPOSER_CLASS)}>
         <Input
           type="text"
@@ -208,7 +208,7 @@ export function ChatSurface({
           aria-label={t("chatsurface.messageLabel", {
             defaultValue: "Message {{appName}}",
           })}
-          className="min-w-0 flex-1 border-0 bg-transparent px-2 py-1.5 text-sm text-txt placeholder:text-txt/50   disabled:opacity-50"
+          className="min-w-0 flex-1 border-0 bg-transparent px-2 py-1.5 text-sm text-txt placeholder:text-txt/50 disabled:opacity-50"
         />
         <GlassIconButton
           icon="mic"

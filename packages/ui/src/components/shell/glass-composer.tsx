@@ -1,45 +1,24 @@
 /**
- * Renders the glass composer input used by the floating chat and launcher
- * shell surfaces.
+ * Renders the composer controls used by the floating chat and launcher shell
+ * surfaces.
  */
+import { Eye, type LucideIcon, Mic, Send } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 
 /**
- * Shared chat-composer chrome: a well-defined refractive-glass bar plus
- * xs-cornered white "negative-space" icon buttons (the glyph is cut OUT of the
- * white so the glass/background shows through it, matching the negative-space
- * face art). Used by both the homescreen composer and the overlay ChatSurface
- * so the mic and send controls read as one consistent set.
- *
- * The bar class lives in {@link ./glass-composer.helpers}.
+ * Shared chat-composer icon control. This mirrors the continuous overlay
+ * composer idiom: token colors, lucide icons, transparent chrome, and a 44px
+ * touch target. State reads through color and opacity instead of a second
+ * hand-drawn button dialect.
  */
 
-// xs-cornered button rect + filled glyphs, combined under fillRule=evenodd so
-// the glyph becomes a transparent hole in the white button.
-const BTN_RECT =
-  "M6 0H30A6 6 0 0 1 36 6V30A6 6 0 0 1 30 36H6A6 6 0 0 1 0 30V6A6 6 0 0 1 6 0Z";
-// Up arrow — shaft + head, pointing up (send).
-const SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
-// Five-bar waveform — tallest in the center, like OpenAI's voice indicator.
-const MIC_GLYPH =
-  "M6 14H9V22H6Z" +
-  "M11.5 10H14.5V26H11.5Z" +
-  "M16.5 7H19.5V29H16.5Z" +
-  "M22 10H25V26H22Z" +
-  "M27 14H30V22H27Z";
-// Eye — almond outline + center pupil dot (vision / "look at my screen"). The
-// almond cuts a hole in the white button; the pupil cuts a hole inside that
-// hole (even-odd) so it fills back to white, reading as an eye.
-const VISION_GLYPH =
-  "M7 18Q18 9 29 18Q18 27 7 18Z" + "M22 18A4 4 0 1 0 14 18A4 4 0 1 0 22 18Z";
-
-function glyphForIcon(icon: "mic" | "send" | "vision"): string {
-  if (icon === "mic") return MIC_GLYPH;
-  if (icon === "vision") return VISION_GLYPH;
-  return SEND_GLYPH;
+function iconForControl(icon: "mic" | "send" | "vision"): LucideIcon {
+  if (icon === "mic") return Mic;
+  if (icon === "vision") return Eye;
+  return Send;
 }
 
 export function GlassIconButton({
@@ -56,8 +35,7 @@ export function GlassIconButton({
   icon: "mic" | "send" | "vision";
   label: string;
   disabled?: boolean;
-  /** Mic/vision: reflects recording/capturing state (adds a pulse; mic also
-   * gets aria-pressed). */
+  /** Mic/vision: reflects recording/capturing state (mic also gets aria-pressed). */
   active?: boolean;
   onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
@@ -66,6 +44,7 @@ export function GlassIconButton({
   onPointerLeave?: (event: React.PointerEvent<HTMLButtonElement>) => void;
 }): React.JSX.Element {
   const pointerActivatedRef = React.useRef(false);
+  const Icon = iconForControl(icon);
   const handleClick = React.useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       if (pointerActivatedRef.current) {
@@ -91,7 +70,7 @@ export function GlassIconButton({
   return (
     <Button
       variant="ghost"
-      size="icon-sm"
+      size="icon-lg"
       aria-label={label}
       aria-pressed={icon === "mic" ? active : undefined}
       disabled={disabled}
@@ -102,23 +81,12 @@ export function GlassIconButton({
       onPointerLeave={onPointerLeave}
       onMouseDown={handleMouseDown}
       className={cn(
-        "grid h-9 w-9 shrink-0 place-items-center p-0 transition-transform hover:bg-transparent",
-        "   ",
-        disabled ? "opacity-40" : "hover:scale-105",
-        active && "animate-pulse",
+        "grid shrink-0 place-items-center bg-transparent p-0 transition-colors hover:bg-transparent",
+        active ? "text-accent" : "text-muted-strong hover:text-txt",
+        disabled && "opacity-40",
       )}
     >
-      <svg
-        viewBox="0 0 36 36"
-        className="pointer-events-none h-full w-full"
-        aria-hidden="true"
-      >
-        <path
-          fill="#ffffff"
-          fillRule="evenodd"
-          d={`${BTN_RECT}${glyphForIcon(icon)}`}
-        />
-      </svg>
+      <Icon className="h-[26px] w-[26px]" aria-hidden={true} />
     </Button>
   );
 }
