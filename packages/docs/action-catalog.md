@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 9
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 188
+- **Registered runtime actions:** 189
 
 ## Actions
 
@@ -413,6 +413,7 @@ section drifts from source.
 - `LIST_LINEAR_COMMENTS` — `plugins/plugin-linear/src/actions/listComments.ts`
 - `LIST_OVERDUE_FOLLOWUPS` — `plugins/plugin-personal-assistant/src/followup/actions/listOverdueFollowups.ts`
 - `LIST_PRESS_RELEASES` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
+- `LOCAL_INFERENCE` — `plugins/plugin-local-inference/src/actions/local-inference-management.ts`
 - `LOGS` — `packages/agent/src/actions/logs.ts`
 - `MANAGE_BROWSER_BRIDGE` — `plugins/plugin-browser/src/actions/manage-browser-bridge.ts`
 - `MANAGE_PLUGINS` — `packages/core/src/features/plugin-manager/actions/plugin.ts`
