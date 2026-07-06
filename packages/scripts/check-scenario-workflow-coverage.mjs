@@ -403,6 +403,28 @@ function workflowScenarioGlobs() {
     .filter((item) => item !== "**/*.scenario.ts");
 }
 
+function scenarioMatrixCoverage() {
+  const globs = workflowScenarioGlobs();
+  const enabled = process.env.ELIZA_SCENARIO_MATRIX_ENABLED === "true";
+  if (enabled) {
+    return {
+      enabled,
+      coveredGlobs: globs,
+      deferredGlobs: [],
+    };
+  }
+  return {
+    enabled,
+    coveredGlobs: [],
+    deferredGlobs: globs.map((glob) => ({
+      glob,
+      issue: "#14695",
+      reason:
+        "tracked in #14695; scenario-matrix.yml is disabled unless ELIZA_SCENARIO_MATRIX_ENABLED=true or a manual dispatch enables it",
+    })),
+  };
+}
+
 const KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE = [
   {
     glob: "packages/test/scenarios/activity/**/*.scenario.ts",
@@ -858,8 +880,9 @@ function main() {
     .sort();
 
   const covered = new Set();
+  const matrixCoverage = scenarioMatrixCoverage();
   const coverageGlobs = [
-    ...workflowScenarioGlobs(),
+    ...matrixCoverage.coveredGlobs,
     "packages/test/scenarios/executive-assistant/*.scenario.ts",
     "packages/test/scenarios/connector-certification/*.scenario.ts",
   ];
@@ -868,14 +891,19 @@ function main() {
     .map((scenario) => scenario.id)
     .sort();
   const deferred = new Map();
+  const deferredCoverageGlobs = [
+    ...KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE,
+    ...matrixCoverage.deferredGlobs,
+  ];
   for (const scenario of defaultScenarios) {
-    const match = KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE.find((entry) =>
+    const match = deferredCoverageGlobs.find((entry) =>
       matchesScenarioFileGlobs(scenario.file, [entry.glob]),
     );
     if (match) {
       deferred.set(
         scenario.id,
-        `tracked in ${match.issue}; not currently part of the PR/live matrix`,
+        match.reason ??
+          `tracked in ${match.issue}; not currently part of the PR/live matrix`,
       );
     }
   }
@@ -940,6 +968,9 @@ function main() {
     pluginAgentOrchestratorCount: pluginAgentOrchestratorIds.length,
     scenarioRunnerCount: scenarioRunnerIds.length,
     allScenarioCount: allScenarioRows.length,
+    scenarioMatrixCoverageEnabled: matrixCoverage.enabled,
+    scenarioMatrixCoveredGlobCount: matrixCoverage.coveredGlobs.length,
+    scenarioMatrixDeferredGlobCount: matrixCoverage.deferredGlobs.length,
     prDeterministicDefaultCount: prDeterministicDefaultIds.length,
     prDeterministicDefaultIds,
     coveredDefaultCount: defaultIds.filter((id) => covered.has(id)).length,
