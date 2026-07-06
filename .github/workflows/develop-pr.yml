@@ -58,6 +58,16 @@ jobs:
       - name: Test-integrity audit self-test
         run: node packages/scripts/lint-test-integrity.self-test.mjs
 
+      # View→action ratchet (#14369): every builtin-view on-screen mutation
+      # must map to a registered agent action (chat twin), and the generated
+      # action catalog must reflect the real registered surface. Dependency-free
+      # (node stdlib only) like the other audits in this job.
+      - name: View-action ratchet self-test
+        run: node packages/scripts/view-action-ratchet.mjs --self-test
+
+      - name: View-action ratchet
+        run: node packages/scripts/view-action-ratchet.mjs
+
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10

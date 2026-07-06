@@ -471,6 +471,10 @@ describe("view related action names resolve to declared actions in source", () =
           "--",
           "plugins",
           "packages/agent/src",
+          // Core registers actions too (documents feature → DOCUMENT, the
+          // personality feature → CHARACTER/PERSONALITY), and builtin views
+          // may declare affinity to them (#14369).
+          "packages/core/src",
         ],
         {
           cwd: repoRoot,
@@ -489,7 +493,7 @@ describe("view related action names resolve to declared actions in source", () =
     for (const name of names) {
       expect(
         declaredNames.has(name),
-        `no \`name: "${name}"\` found under plugins/ or packages/agent/src`,
+        `no \`name: "${name}"\` found under plugins/, packages/agent/src, or packages/core/src`,
       ).toBe(true);
     }
   });

@@ -2,11 +2,19 @@
  * Guards the builtin view mutation ratchet: first-party pages with local
  * mutation controls must have semantic action coverage, while diagnostic views
  * stay explicitly exempt.
+ *
+ * The registered-action set is scanned live from source (the same
+ * `registered-action-inventory` scanner the action-catalog generator and the
+ * repo-level view->action ratchet use, #14369) unioned with the canonical
+ * prompt-spec names, so a renamed/deleted action fails this test instead of
+ * silently passing against a hand-maintained list — the drift class that
+ * mis-filed #14365/#14366/#14367.
  */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { collectRegisteredActionInventory } from "../../../prompts/scripts/registered-action-inventory.js";
 import {
   BUILTIN_VIEW_MUTATION_BASELINE,
   validateBuiltinViewMutationCoverage,
@@ -15,19 +23,25 @@ import {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
 
+/** Canonical spec names cover REPLY-style actions whose `name:` is spec-derived. */
+function canonicalSpecActionNames(): string[] {
+  const specsDir = path.join(repoRoot, "packages/prompts/specs/actions");
+  const names: string[] = [];
+  for (const file of readdirSync(specsDir)) {
+    if (!file.endsWith(".json")) continue;
+    const spec = JSON.parse(
+      readFileSync(path.join(specsDir, file), "utf8"),
+    ) as { actions?: { name?: unknown }[] };
+    for (const item of spec.actions ?? []) {
+      if (typeof item.name === "string") names.push(item.name);
+    }
+  }
+  return names;
+}
+
 const REGISTERED_ACTIONS = new Set([
-  "APP",
-  "BACKGROUND",
-  "CHARACTER",
-  "PLUGIN",
-  "SECRETS",
-  "MODEL_SWITCH",
-  "RUNTIME",
-  "SCHEDULED_TASKS",
-  "SETTINGS",
-  "VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE",
-  "VIEW_CHARACTER_ADD_STYLE_RULE",
-  "VIEW_CHARACTER_FILL_BIO",
+  ...collectRegisteredActionInventory(repoRoot).map((entry) => entry.name),
+  ...canonicalSpecActionNames(),
 ]);
 
 function readRepoSource(sourcePath: string): string {

@@ -1,0 +1,227 @@
+{
+  "//": "Curated map for view-action-ratchet.mjs (#14369): every mutating typed-client method and raw write request that builtin views call, resolved to its registered chat-twin action, a designed exemption, or a tracked gap. Entries whose mutation site disappears from the scan fail the gate until removed, so this file can only shrink toward full action coverage.",
+  "clientMethods": {
+    "acceptRelationshipsCandidate": {
+      "action": "CONTACT",
+      "note": "candidate-merge approval — CONTACT carries candidateId/mergeWith/confirmation params"
+    },
+    "rejectRelationshipsCandidate": {
+      "action": "CONTACT",
+      "note": "candidate-merge rejection — same CONTACT merge-review surface"
+    },
+    "activateWorkflowDefinition": { "action": "SCHEDULED_TASKS" },
+    "deactivateWorkflowDefinition": { "action": "SCHEDULED_TASKS" },
+    "createWorkflowDefinition": { "action": "SCHEDULED_TASKS" },
+    "updateWorkflowDefinition": { "action": "SCHEDULED_TASKS" },
+    "restoreWorkflowRevision": { "action": "SCHEDULED_TASKS" },
+    "runWorkflowDefinition": { "action": "SCHEDULED_TASKS" },
+    "applyScheduledTask": { "action": "SCHEDULED_TASKS" },
+    "createTrigger": { "action": "TRIGGER" },
+    "updateTrigger": { "action": "TRIGGER" },
+    "deleteTrigger": { "action": "TRIGGER" },
+    "createWorkbenchTask": { "action": "TASKS" },
+    "updateWorkbenchTask": { "action": "TASKS" },
+    "deleteWorkbenchTask": { "action": "TASKS" },
+    "openBrowserWorkspaceTab": { "action": "BROWSER" },
+    "closeBrowserWorkspaceTab": { "action": "BROWSER" },
+    "showBrowserWorkspaceTab": { "action": "BROWSER" },
+    "navigateBrowserWorkspaceTab": { "action": "BROWSER" },
+    "deleteDocument": { "action": "DOCUMENT" },
+    "updateDocument": { "action": "DOCUMENT" },
+    "uploadDocument": { "action": "DOCUMENT" },
+    "uploadDocumentsBulk": { "action": "DOCUMENT" },
+    "deleteFile": { "action": "FILES" },
+    "generateBackgroundImage": { "action": "BACKGROUND" },
+    "uploadBackgroundImage": { "action": "BACKGROUND" },
+    "executeDatabaseQuery": { "action": "DATABASE" },
+    "launchApp": { "action": "APP" },
+    "stopApp": { "action": "APP" },
+    "restartAgent": { "action": "RUNTIME" },
+    "saveSkillSource": { "action": "SKILL" },
+    "streamGoLive": { "action": "STREAM" },
+    "streamGoOffline": { "action": "STREAM" },
+    "switchProvider": { "action": "MODEL_SWITCH" },
+    "updateCharacter": { "action": "CHARACTER" },
+    "updateConfig": {
+      "action": "SETTINGS",
+      "note": "generic agent-config write; per-section chat coverage is pinned by SETTINGS_WRITE_REGISTRY's completeness test in plugin-app-control"
+    },
+    "setShellEnabled": {
+      "action": "SETTINGS",
+      "note": "permissions section route write (PUT /api/permissions/shell) in SETTINGS_WRITE_REGISTRY"
+    },
+    "updateSecrets": { "action": "CREDENTIALS" },
+    "installRegistryPlugin": { "action": "PLUGIN" },
+    "uninstallRegistryPlugin": { "action": "PLUGIN" },
+    "updateRegistryPlugin": { "action": "PLUGIN" },
+    "testPluginConnection": { "action": "PLUGIN" },
+    "initiateCloudOauth": {
+      "action": "CONNECTOR",
+      "note": "connector setup entry point; the OAuth redirect itself completes in-browser"
+    },
+    "initiateCloudTwitterOauth": { "action": "CONNECTOR" },
+    "createCloudCompatAgentManagedDiscordOauth": { "action": "CONNECTOR" },
+    "ensureCloudCompatManagedDiscordAgent": { "action": "CONNECTOR" },
+    "provisionCloudCompatAgent": {
+      "action": "CONNECTOR",
+      "note": "managed-connector backend provisioning for the connectors section"
+    },
+    "createLocalAgentBackup": {
+      "gap": {
+        "issue": "#14620",
+        "reason": "Backups section create has no semantic twin; SETTINGS_WRITE_REGISTRY.advanced is unwired"
+      }
+    },
+    "restoreLocalAgentBackup": {
+      "gap": {
+        "issue": "#14620",
+        "reason": "Backups section restore has no semantic twin; SETTINGS_WRITE_REGISTRY.advanced is unwired"
+      }
+    },
+    "setAppPermissions": {
+      "gap": {
+        "issue": "#14622",
+        "reason": "app-permissions namespace grants have no semantic twin; SETTINGS_WRITE_REGISTRY is unwired"
+      }
+    },
+    "updateExperience": {
+      "gap": {
+        "issue": "#14623",
+        "reason": "character experience edit has no semantic twin (SEARCH_EXPERIENCES is read-only)"
+      }
+    },
+    "deleteExperience": {
+      "gap": {
+        "issue": "#14623",
+        "reason": "character experience delete has no semantic twin (SEARCH_EXPERIENCES is read-only)"
+      }
+    },
+    "sendInboxMessage": {
+      "exempt": "chat composer send — chat IS the semantic path; a chat twin of chat is circular"
+    },
+    "createConversation": {
+      "exempt": "chat conversation plumbing (page-scoped threads), not an on-screen view mutation"
+    },
+    "deleteConversation": {
+      "exempt": "chat conversation plumbing (page-scoped threads), not an on-screen view mutation"
+    },
+    "updateConversation": {
+      "exempt": "chat conversation plumbing (page-scoped threads), not an on-screen view mutation"
+    },
+    "clearAllTrajectories": {
+      "exempt": "trajectories is a developerOnly diagnostics view — outside the chat/voice parity contract (design doc: read-only diagnostics need no write action)"
+    },
+    "deleteTrajectories": {
+      "exempt": "trajectories is a developerOnly diagnostics view — outside the chat/voice parity contract"
+    },
+    "exportTrajectories": {
+      "exempt": "trajectories is a developerOnly diagnostics view — outside the chat/voice parity contract"
+    },
+    "seedDevNotifications": {
+      "exempt": "developer-only test-data seeding control in the Backups section"
+    },
+    "requestPermission": {
+      "exempt": "OS permission prompt requires a user gesture on-device; the agent must not self-grant permissions"
+    },
+    "refreshPermissions": {
+      "exempt": "re-reads OS permission state after a user-gesture prompt; part of the same non-delegable flow"
+    },
+    "openPermissionSettings": {
+      "exempt": "opens the OS settings app; user-gesture navigation outside the agent surface"
+    },
+    "signBrowserWalletMessage": {
+      "exempt": "dapp wallet consent — signatures require explicit user approval; agent-initiated signing is a security boundary violation"
+    },
+    "sendBrowserWalletTransaction": {
+      "exempt": "dapp wallet consent — transactions require explicit user approval by design"
+    },
+    "signBrowserSolanaMessage": {
+      "exempt": "dapp wallet consent — signatures require explicit user approval by design"
+    },
+    "sendBrowserSolanaTransaction": {
+      "exempt": "dapp wallet consent — transactions require explicit user approval by design"
+    },
+    "startAnthropicLogin": {
+      "exempt": "provider OAuth login is interactive and secret-bearing; never agent-drivable"
+    },
+    "startOpenAILogin": {
+      "exempt": "provider OAuth login is interactive and secret-bearing; never agent-drivable"
+    },
+    "exchangeAnthropicCode": {
+      "exempt": "OAuth code exchange completes the interactive login flow"
+    },
+    "exchangeOpenAICode": {
+      "exempt": "OAuth code exchange completes the interactive login flow"
+    },
+    "submitAnthropicSetupToken": {
+      "exempt": "setup-token entry is part of the interactive provider login flow"
+    },
+    "deleteSubscription": {
+      "exempt": "cloud billing — payment/subscription changes are user-interactive by design"
+    },
+    "createCloudBillingCheckout": {
+      "exempt": "cloud billing — checkout is a user-interactive payment flow"
+    },
+    "updateCloudBillingSettings": {
+      "exempt": "cloud billing — payment settings are user-interactive by design"
+    },
+    "deleteCloudCompatAgent": {
+      "exempt": "Eliza Cloud account-scoped agent management, authenticated by the user's cloud session"
+    },
+    "updateCloudCompatAgent": {
+      "exempt": "Eliza Cloud account-scoped agent management, authenticated by the user's cloud session"
+    }
+  },
+  "rawSites": {
+    "DELETE /api/secrets/inventory/*": { "action": "CREDENTIALS" },
+    "DELETE /api/secrets/inventory/*/profiles/*": { "action": "CREDENTIALS" },
+    "DELETE path": {
+      "action": "CREDENTIALS",
+      "note": "LoginsTab stored-login delete; the endpoint path is held in a local variable"
+    },
+    "PUT /api/secrets/inventory/*": { "action": "CREDENTIALS" },
+    "PUT /api/secrets/inventory/*/active-profile": { "action": "CREDENTIALS" },
+    "PUT /api/secrets/logins/*/autoallow": { "action": "CREDENTIALS" },
+    "PUT /api/secrets/manager/preferences": { "action": "CREDENTIALS" },
+    "PUT /api/secrets/routing": { "action": "CREDENTIALS" },
+    "POST /api/secrets/inventory/*/profiles": { "action": "CREDENTIALS" },
+    "POST /api/secrets/inventory/migrate-to-profiles": {
+      "action": "CREDENTIALS"
+    },
+    "POST /api/secrets/logins": { "action": "CREDENTIALS" },
+    "POST /api/apps/create": { "action": "APP" },
+    "POST /api/apps/load-from-directory": { "action": "APP" },
+    "POST /api/apps/relaunch": { "action": "APP" },
+    "POST /api/browser-bridge/packages/chrome/build": {
+      "action": "MANAGE_BROWSER_BRIDGE"
+    },
+    "POST /api/browser-bridge/packages/chrome/open-manager": {
+      "action": "MANAGE_BROWSER_BRIDGE"
+    },
+    "POST /api/browser-bridge/packages/open-path": {
+      "action": "MANAGE_BROWSER_BRIDGE"
+    },
+    "POST /api/capability-router/connect": { "action": "CONNECT_ACCOUNT" },
+    "POST /api/training/auto/config": {
+      "gap": {
+        "issue": "#14624",
+        "reason": "capabilities training auto-config toggle has no semantic twin"
+      }
+    },
+    "POST /api/plugins/*/reveal": {
+      "exempt": "masked-secret reveal is a guarded read behind a POST; the write twin is CREDENTIALS"
+    },
+    "POST /api/secrets/manager/install": {
+      "exempt": "local password-manager install is an interactive OS-level flow"
+    },
+    "POST /api/secrets/manager/signin": {
+      "exempt": "password-manager sign-in needs the user's own master credentials"
+    },
+    "POST /api/secrets/manager/signout": {
+      "exempt": "password-manager sign-out pairs with the interactive sign-in flow"
+    },
+    "POST ANDROID_SMS_GATEWAY_WEBHOOK_URL": {
+      "exempt": "background SMS-forwarding bridge to the cloud gateway, not an on-screen control"
+    }
+  }
+}
