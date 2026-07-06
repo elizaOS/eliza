@@ -1,11 +1,15 @@
 // Shared helpers for the per-platform evidence-capture scripts (issue #9944).
 //
-// One place owns: resolving the repo root, the `.github/issue-evidence/`
-// artifact directory, the `<issue#>-<slug>-<platform>.<ext>` naming convention
-// (per PR_EVIDENCE.md and .github/issue-evidence/README.md), CLI flag parsing,
-// the skip-with-reason exit, and a best-effort backend-log pull. The iOS and
-// Android capture helpers both build on this so the path math and conventions
-// live here, not duplicated per platform.
+// One place owns: resolving the repo root, the capture-output directory, the
+// `<issue#>-<slug>-<platform>.<ext>` naming convention (per PR_EVIDENCE.md), CLI
+// flag parsing, the skip-with-reason exit, and a best-effort backend-log pull.
+// The iOS and Android capture helpers both build on this so the path math and
+// conventions live here, not duplicated per platform.
+//
+// Output lands under `$RUNNER_TEMP/eliza-capture` in CI (runner-scratch that the
+// job then uploads) and a gitignored `packages/app/capture-output/` locally —
+// NOT the retired, committed `.github/issue-evidence/` directory (#14342). The
+// evidence itself is attached inline in the PR (MP4/JPG), never committed.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -14,11 +18,9 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 // lib -> scripts -> app -> packages -> repo root
 export const REPO_ROOT = path.resolve(here, "..", "..", "..", "..");
-export const ISSUE_EVIDENCE_DIR = path.join(
-  REPO_ROOT,
-  ".github",
-  "issue-evidence",
-);
+export const CAPTURE_OUTPUT_DIR = process.env.RUNNER_TEMP
+  ? path.join(process.env.RUNNER_TEMP, "eliza-capture")
+  : path.join(REPO_ROOT, "packages", "app", "capture-output");
 
 /**
  * Truthiness for an env var that carries a boolean intent. Treats the common
@@ -135,10 +137,10 @@ export function evidenceBaseName({ issue, slug, platform }) {
   return `${platform}-capture-${timestamp()}`;
 }
 
-/** Ensure the issue-evidence dir exists and return an absolute path inside it. */
+/** Ensure the capture-output dir exists and return an absolute path inside it. */
 export function evidencePath(baseName, ext) {
-  fs.mkdirSync(ISSUE_EVIDENCE_DIR, { recursive: true });
-  return path.join(ISSUE_EVIDENCE_DIR, `${baseName}.${ext}`);
+  fs.mkdirSync(CAPTURE_OUTPUT_DIR, { recursive: true });
+  return path.join(CAPTURE_OUTPUT_DIR, `${baseName}.${ext}`);
 }
 
 /**

@@ -24,7 +24,7 @@ import {
   ensureBootedIosSimulator,
   startIosSimulatorVideo,
 } from "./lib/ios-simulator-capture.mjs";
-import { ISSUE_EVIDENCE_DIR, parseFlags } from "./lib/issue-evidence.mjs";
+import { CAPTURE_OUTPUT_DIR, parseFlags } from "./lib/issue-evidence.mjs";
 
 const log = (message) => console.log(`[ios-sim-lifecycle] ${message}`);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -91,7 +91,7 @@ async function main() {
   const settleMs = Math.max(1, Number(flags.settle ?? 5)) * 1000;
   const outDir = path.resolve(
     flags["out-dir"] ??
-      path.join(ISSUE_EVIDENCE_DIR, "12185-device-lifecycle", "ios"),
+      path.join(CAPTURE_OUTPUT_DIR, "12185-device-lifecycle", "ios"),
   );
   fs.mkdirSync(outDir, { recursive: true });
 

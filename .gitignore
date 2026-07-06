@@ -1536,3 +1536,5 @@ packages/ui/src/components/shell/__e2e__/output-fused-wake-integration/
 packages/ui/src/testing/__e2e__/output-widget-cert/
 # Home locale e2e output (screenshots — regenerate via test:home-locale-e2e)
 packages/ui/src/components/shell/__e2e__/output-home-locale/
+# Local device-capture output (screenshots/recordings/logs — regenerate via capture:* ; #14342)
+packages/app/capture-output/
