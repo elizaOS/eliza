@@ -190,7 +190,15 @@ export function collectReferencedMedia(memories: Memory[]): Set<string> {
     // Document-linked original-bytes files: a knowledge document references its
     // stored original via `metadata.mediaUrl` (no content.attachments entry).
     // Collect it so the file survives GC while the document still references it.
-    addUrl((memory.metadata as { mediaUrl?: unknown } | undefined)?.mediaUrl);
+    // Transcript documents (voice sessions, meetings) additionally anchor the
+    // retained recording via `metadata.audioUrl` — the key transcript readers
+    // look up. Collect it too so a producer that set only `audioUrl` doesn't
+    // leave its WAV invisible to the sweep and deleted after the grace window.
+    const metadata = memory.metadata as
+      | { mediaUrl?: unknown; audioUrl?: unknown }
+      | undefined;
+    addUrl(metadata?.mediaUrl);
+    addUrl(metadata?.audioUrl);
   }
   return referenced;
 }

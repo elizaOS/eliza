@@ -51,7 +51,11 @@ describe("transcriptKnowledgePayload", () => {
 		expect(p.metadata.source).toBe(TRANSCRIPT_DOCUMENT_TAG);
 		expect(p.metadata.transcriptId).toBe("t-123");
 		expect(p.metadata.title).toBe("Standup — June 20");
+		// Both audio keys must be set: `mediaUrl` is what the daily media GC's
+		// referenced-set scan counts on document rows; `audioUrl` is what
+		// transcript readers look up. Missing `mediaUrl` gets the WAV swept.
 		expect(p.metadata.audioUrl).toBe("/api/media/abc.wav");
+		expect(p.metadata.mediaUrl).toBe("/api/media/abc.wav");
 		expect(p.metadata.durationMs).toBe(4000);
 		expect(p.metadata.speakerCount).toBe(2);
 		expect(p.metadata.textBacked).toBe(true);
@@ -64,6 +68,7 @@ describe("transcriptKnowledgePayload", () => {
 			audioUrl: undefined,
 		});
 		expect(p.metadata.audioUrl).toBeUndefined();
+		expect(p.metadata.mediaUrl).toBeUndefined();
 		expect(p.filename).toBe("transcript.txt");
 	});
 });

@@ -209,6 +209,26 @@ describe("collectReferencedMedia", () => {
     expect(referenced.size).toBe(0);
   });
 
+  it("collects a file referenced only via memory.metadata.audioUrl", () => {
+    const memories = [
+      {
+        // Voice-session transcript knowledge doc: the retained WAV is anchored
+        // by `metadata.audioUrl` (what transcript readers look up) with no
+        // content.attachments entry — it must still be a live referent.
+        content: { text: "Alice: ship the build\nBob: on it" },
+        metadata: {
+          type: "document",
+          source: "transcript",
+          audioUrl: `/api/media/${HASH_A}.wav`,
+        },
+      },
+    ] as unknown as Memory[];
+
+    const referenced = collectReferencedMedia(memories);
+
+    expect(referenced.has(`${HASH_A}.wav`)).toBe(true);
+  });
+
   it("collects an attachment's thumbnailUrl alongside its full-image url", () => {
     // Full image and its downscaled preview are two separate stored files.
     const memories = [
@@ -272,6 +292,46 @@ describe("thumbnail GC protection (data-loss regression)", () => {
     // otherwise the inline preview 404s once GC sweeps the orphaned thumbnail.
     expect(fs.existsSync(mediaPath(full.fileName))).toBe(true);
     expect(fs.existsSync(mediaPath(thumb.fileName))).toBe(true);
+  });
+});
+
+describe("voice-session WAV GC protection (data-loss regression)", () => {
+  function mediaPath(fileName: string): string {
+    return path.join(stateDir, "media", fileName);
+  }
+
+  it("keeps a voice-session WAV referenced only by a transcript document's metadata.audioUrl", () => {
+    // A finished voice session persists its WAV into the media store and
+    // mirrors the transcript into knowledge with `metadata.audioUrl` pointing
+    // at it (plugin-local-inference transcript-knowledge). That document row
+    // is the only reference — there is no content.attachments entry — so the
+    // referenced-set scan must count `audioUrl` or the daily GC deletes the
+    // recording after the grace window (#14806).
+    const wav = persistMediaBytes(
+      Buffer.from("RIFF-voice-session-wav-regression"),
+      "audio/wav",
+    );
+
+    const memories = [
+      {
+        content: { text: "Alice: ship the build\nBob: on it" },
+        metadata: {
+          type: "document",
+          source: "transcript",
+          transcriptId: "t-123",
+          textBacked: true,
+          audioUrl: wav.url,
+        },
+      },
+    ] as unknown as Memory[];
+
+    // Age past the 1h grace window so only the reference set protects it.
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    fs.utimesSync(mediaPath(wav.fileName), old, old);
+
+    gcUnreferencedMedia(collectReferencedMedia(memories));
+
+    expect(fs.existsSync(mediaPath(wav.fileName))).toBe(true);
   });
 });
 

@@ -63,7 +63,14 @@ export function transcriptKnowledgePayload(
 		// text rather than an opaque binary upload.
 		textBacked: true,
 	};
-	if (transcript.audioUrl) metadata.audioUrl = transcript.audioUrl;
+	if (transcript.audioUrl) {
+		// `mediaUrl` is the key the daily media GC scans on document rows;
+		// `audioUrl` alone would leave the retained WAV unreferenced and it
+		// would be swept. Set both: mediaUrl anchors the media store handle,
+		// audioUrl is what transcript readers look up.
+		metadata.mediaUrl = transcript.audioUrl;
+		metadata.audioUrl = transcript.audioUrl;
+	}
 
 	return {
 		content: transcriptPlainText(transcript.segments),
