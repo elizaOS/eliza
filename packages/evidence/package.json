@@ -6,7 +6,8 @@
   "description": "Evidence-bundle foundation: versioned manifest schema, provenance-stamped bundle builder, integrity verification, and silo ingestors for the unified evidence harness (#14541).",
   "main": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./visual-primitives": "./src/visual-primitives.mjs"
   },
   "scripts": {
     "bundle:create": "bun src/cli.ts create",

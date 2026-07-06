@@ -7,8 +7,12 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import sharp from "sharp";
 import { analyzeImageFile, classifyArtifactPath, inferSource } from "./lib.mjs";
+
+const WHITE_PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+  "base64",
+);
 
 test("classifies supported evidence artifact types", () => {
   assert.equal(classifyArtifactPath("shot.png"), "image");
@@ -54,21 +58,11 @@ test("flags one-color screenshots and summarizes dominant colors", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "evidence-review-"));
   try {
     const imagePath = path.join(tmpDir, "solid.png");
-    const png = await sharp({
-      create: {
-        width: 64,
-        height: 64,
-        channels: 4,
-        background: "#ffffff",
-      },
-    })
-      .png()
-      .toBuffer();
-    await writeFile(imagePath, png);
+    await writeFile(imagePath, WHITE_PIXEL_PNG);
 
-    const analysis = await analyzeImageFile(imagePath, sharp);
-    assert.equal(analysis.width, 64);
-    assert.equal(analysis.height, 64);
+    const analysis = await analyzeImageFile(imagePath);
+    assert.equal(analysis.width, 1);
+    assert.equal(analysis.height, 1);
     assert.equal(analysis.colorBuckets, 1);
     assert.match(analysis.issues.join(" "), /one color/);
     assert.match(analysis.issues.join(" "), /near-solid/);

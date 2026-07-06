@@ -169,6 +169,7 @@
     "@elizaos/capacitor-websiteblocker": "workspace:*",
     "@elizaos/capacitor-wifi": "workspace:*",
     "@elizaos/cloud-ui": "workspace:*",
+    "@elizaos/evidence": "workspace:*",
     "@elizaos/logger": "workspace:*",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-background-runner": "workspace:*",
