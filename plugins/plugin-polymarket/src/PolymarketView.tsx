@@ -11,7 +11,7 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { useContinuousChatSideClearanceActive } from "@elizaos/ui/spatial";
+import { useContinuousChatCompactClearanceActive } from "@elizaos/ui/spatial";
 import { type CSSProperties, useCallback, useEffect } from "react";
 import {
   type PolymarketSnapshot,
@@ -105,7 +105,7 @@ export function PolymarketView() {
     loading,
     error,
   };
-  const compactChatClearance = useContinuousChatSideClearanceActive();
+  const compactChatClearance = useContinuousChatCompactClearanceActive();
 
   return (
     <>

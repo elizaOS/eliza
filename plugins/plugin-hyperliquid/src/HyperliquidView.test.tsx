@@ -180,7 +180,51 @@ afterEach(() => {
 	cleanup();
 	vi.clearAllMocks();
 	vi.unstubAllGlobals();
+	document.documentElement.style.removeProperty(
+		"--eliza-continuous-chat-clearance",
+	);
 });
+
+function mockMobileBottomComposerClearance(): () => void {
+	const originalInnerWidth = Object.getOwnPropertyDescriptor(
+		window,
+		"innerWidth",
+	);
+	const originalMatchMedia = window.matchMedia;
+	Object.defineProperty(window, "innerWidth", {
+		configurable: true,
+		value: 390,
+	});
+	Object.defineProperty(window, "matchMedia", {
+		configurable: true,
+		value: vi.fn((query: string) => ({
+			matches: query.includes("max-width: 767px"),
+			media: query,
+			onchange: null,
+			addListener: vi.fn(),
+			removeListener: vi.fn(),
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+			dispatchEvent: vi.fn(),
+		})),
+	});
+	document.documentElement.style.setProperty(
+		"--eliza-continuous-chat-clearance",
+		"96px",
+	);
+	return () => {
+		if (originalInnerWidth) {
+			Object.defineProperty(window, "innerWidth", originalInnerWidth);
+		}
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: originalMatchMedia,
+		});
+		document.documentElement.style.removeProperty(
+			"--eliza-continuous-chat-clearance",
+		);
+	};
+}
 
 describe("HyperliquidView — populated snapshot", () => {
 	it("loads status + markets + positions + orders on mount and renders the markets", async () => {
@@ -296,6 +340,22 @@ describe("HyperliquidView — controls", () => {
 		expect(
 			screen.queryByRole("toolbar", { name: "Hyperliquid controls" }),
 		).toBeNull();
+	});
+
+	it("uses the concise layout when mobile-width bottom composer clearance is active", async () => {
+		const restore = mockMobileBottomComposerClearance();
+		try {
+			render(React.createElement(HyperliquidView));
+			await screen.findByText(/Positions BTC long/);
+
+			const text = document.body.textContent ?? "";
+			expect(text).toContain("Markets BTC 50x sz5");
+			expect(text).not.toContain("orders");
+			expect(screen.queryByText("Refresh")).toBeNull();
+			expect(document.querySelector('[data-agent-id="back"]')).toBeNull();
+		} finally {
+			restore();
+		}
 	});
 
 	it("the Refresh control re-fetches status + reads", async () => {

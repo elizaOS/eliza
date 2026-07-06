@@ -205,7 +205,51 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
+  document.documentElement.style.removeProperty(
+    "--eliza-continuous-chat-clearance",
+  );
 });
+
+function mockMobileBottomComposerClearance(): () => void {
+  const originalInnerWidth = Object.getOwnPropertyDescriptor(
+    window,
+    "innerWidth",
+  );
+  const originalMatchMedia = window.matchMedia;
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: 390,
+  });
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn((query: string) => ({
+      matches: query.includes("max-width: 767px"),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+  document.documentElement.style.setProperty(
+    "--eliza-continuous-chat-clearance",
+    "96px",
+  );
+  return () => {
+    if (originalInnerWidth) {
+      Object.defineProperty(window, "innerWidth", originalInnerWidth);
+    }
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: originalMatchMedia,
+    });
+    document.documentElement.style.removeProperty(
+      "--eliza-continuous-chat-clearance",
+    );
+  };
+}
 
 describe("PolymarketView — populated markets", () => {
   it("loads status + markets on mount and opens the auto-selected market detail", async () => {
@@ -306,6 +350,24 @@ describe("PolymarketView — refresh + error path", () => {
       screen.queryByRole("toolbar", { name: "Polymarket controls" }),
     ).toBeNull();
     expect(screen.queryByText("All markets")).toBeNull();
+  });
+
+  it("uses the concise detail layout when mobile-width bottom composer clearance is active", async () => {
+    const restore = mockMobileBottomComposerClearance();
+    try {
+      render(React.createElement(PolymarketView));
+      await screen.findByText("Will BTC be above 100k?");
+
+      const text = document.body.textContent ?? "";
+      expect(text).toContain("Yes 61% · No 39%");
+      expect(text).not.toContain("orderbook tokens");
+      expect(screen.queryByText("Refresh")).toBeNull();
+      expect(
+        document.querySelector('[data-agent-id="detail-back"]'),
+      ).toBeNull();
+    } finally {
+      restore();
+    }
   });
 
   it("the Refresh control re-loads status + markets", async () => {
