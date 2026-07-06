@@ -11,6 +11,8 @@ import {
 } from "./core-fact-memory-bridge.js";
 import {
   createOwnerFactStore,
+  type OwnerFactStore,
+  type OwnerFactsPatch,
   registerOwnerFactStore,
   resolveOwnerFactStore,
 } from "./fact-store.js";
@@ -179,6 +181,24 @@ class FakeRelationshipStore {
   }
 }
 
+/**
+ * Fake OwnerFactStore that records the patches the bridge writes, so the
+ * value-extraction leg can be asserted directly without dragging in the
+ * cache-backed store's scheduler-profile mirror (owner-profile.ts).
+ */
+function captureFactStore(): {
+  store: OwnerFactStore;
+  patches: OwnerFactsPatch[];
+} {
+  const patches: OwnerFactsPatch[] = [];
+  const store = {
+    async update(patch: OwnerFactsPatch) {
+      patches.push(patch);
+    },
+  } as unknown as OwnerFactStore;
+  return { store, patches };
+}
+
 function installFakeGraph(
   entityStore = new FakeEntityStore(),
   relationshipStore = new FakeRelationshipStore(),
@@ -219,6 +239,58 @@ describe("bridgeCoreFactMemory", () => {
       source: "agent_inferred",
       note: "core fact-memory bridge from fact:44444444-4444-4444-4444-444444444444",
     });
+  });
+
+  it("projects a preferred name from a language-agnostic structured field", async () => {
+    // The core extractor's `structured_fields` carry the value regardless of
+    // the claim's language ("je m'appelle" here), so a non-English identity
+    // fact still projects a preferredName the English claim regex never sees.
+    const { store, patches } = captureFactStore();
+    const result = await bridgeCoreFactMemory(
+      makeRuntime(),
+      factMemory({
+        id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" as UUID,
+        text: "je m'appelle Alex",
+        category: "identity",
+        structuredFields: { name: "Alex" },
+      }),
+      { factStore: store },
+    );
+
+    expect(result.ownerFactKeys).toEqual(["preferredName"]);
+    expect(patches).toEqual([{ preferredName: "Alex" }]);
+  });
+
+  it("recovers a preferred name from the English claim when structured fields are absent", async () => {
+    const { store, patches } = captureFactStore();
+    const result = await bridgeCoreFactMemory(
+      makeRuntime(),
+      factMemory({
+        id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" as UUID,
+        text: "my name is Robin",
+        category: "identity",
+      }),
+      { factStore: store },
+    );
+
+    expect(result.ownerFactKeys).toContain("preferredName");
+    expect(patches).toEqual([{ preferredName: "Robin" }]);
+  });
+
+  it("lets the structured field win over the English claim regex", async () => {
+    const { store, patches } = captureFactStore();
+    await bridgeCoreFactMemory(
+      makeRuntime(),
+      factMemory({
+        id: "cccccccc-cccc-cccc-cccc-cccccccccccc" as UUID,
+        text: "call me Bob",
+        category: "identity",
+        structuredFields: { preferredName: "Robert" },
+      }),
+      { factStore: store },
+    );
+
+    expect(patches).toEqual([{ preferredName: "Robert" }]);
   });
 
   it("projects relationship facts and handle claims into the entity graph", async () => {

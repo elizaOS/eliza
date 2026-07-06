@@ -175,6 +175,24 @@ function normalizeTravelPreference(claim: string): string | null {
   return `Prefer ${cleaned}`;
 }
 
+/**
+ * Sets a claim-derived value only when the structured fields did not already
+ * supply one. The core extractor's `structured_fields` are the language-
+ * agnostic primary — they carry the same value whether the owner wrote "my
+ * name is Alex" or "je m'appelle Alex" — so they must win over the English
+ * claim regexes, which are a fast path for the common phrasings the model
+ * happened to echo verbatim in the claim text.
+ */
+function setFactFromClaim(
+  patch: OwnerFactsPatch,
+  key: OwnerStringFactKey,
+  value: string | null,
+): void {
+  if (!patch[key]) {
+    setFact(patch, key, value);
+  }
+}
+
 function extractOwnerFacts(
   claim: string,
   metadata: FactMetadata,
@@ -184,32 +202,117 @@ function extractOwnerFacts(
   const category = metadata.category;
 
   if (category === "identity") {
-    setFact(patch, "preferredName", firstString(fields, ["preferredName"]));
-    setFact(patch, "orientation", firstString(fields, ["orientation"]));
-    setFact(patch, "gender", firstString(fields, ["gender"]));
+    // Alias lists cover the natural key names the extractor emits — it is not
+    // constrained to a canonical schema, so a name may arrive as `name`,
+    // `preferredName`, `nickname`, etc. Missing all of them is fine; the claim
+    // fallbacks below recover the English case.
+    setFact(
+      patch,
+      "preferredName",
+      firstString(fields, [
+        "preferredName",
+        "preferred_name",
+        "name",
+        "fullName",
+        "full_name",
+        "nickname",
+        "goesBy",
+        "goes_by",
+        "displayName",
+      ]),
+    );
+    setFact(
+      patch,
+      "orientation",
+      firstString(fields, [
+        "orientation",
+        "sexualOrientation",
+        "sexual_orientation",
+      ]),
+    );
+    setFact(
+      patch,
+      "gender",
+      firstString(fields, [
+        "gender",
+        "genderIdentity",
+        "gender_identity",
+        "pronouns",
+      ]),
+    );
     setFact(patch, "age", firstString(fields, ["age"]));
     setFact(
       patch,
       "location",
-      firstString(fields, ["location", "city", "homeCity", "home_location"]),
+      firstString(fields, [
+        "location",
+        "city",
+        "homeCity",
+        "home_city",
+        "home_location",
+        "hometown",
+        "country",
+        "residence",
+      ]),
     );
     setFact(
       patch,
       "timezone",
-      firstString(fields, ["timezone", "timeZone", "ianaTimezone"]),
+      firstString(fields, [
+        "timezone",
+        "timeZone",
+        "time_zone",
+        "ianaTimezone",
+        "iana_timezone",
+      ]),
+    );
+
+    setFactFromClaim(
+      patch,
+      "preferredName",
+      cleanName(
+        /\b(?:my name is|i'?m called|people call me|you can call me|call me)\s+(?!at\b|on\b)([^,.!?]{2,60})/iu.exec(
+          claim,
+        )?.[1],
+      ),
     );
 
     const location =
       /\b(?:live|lives|living|based|located)\s+in\s+([^,.!?]{2,80})/iu.exec(
         claim,
       )?.[1] ?? /\bmoved\s+to\s+([^,.!?]{2,80})/iu.exec(claim)?.[1];
-    setFact(patch, "location", cleanName(location));
+    setFactFromClaim(patch, "location", cleanName(location));
 
     const timezone =
       /\b(?:timezone|time zone)\s+(?:is\s+)?([A-Za-z0-9_/+.-]{2,60})/iu.exec(
         claim,
       )?.[1];
-    setFact(patch, "timezone", timezone ?? null);
+    setFactFromClaim(patch, "timezone", timezone ?? null);
+  }
+
+  if (category === "relationship") {
+    setFact(
+      patch,
+      "relationshipStatus",
+      firstString(fields, [
+        "relationshipStatus",
+        "relationship_status",
+        "status",
+        "maritalStatus",
+        "marital_status",
+      ]),
+    );
+    setFact(
+      patch,
+      "partnerName",
+      firstString(fields, [
+        "partnerName",
+        "partner_name",
+        "partner",
+        "spouse",
+        "spouseName",
+      ]),
+    );
   }
 
   const partner =
@@ -219,20 +322,7 @@ function extractOwnerFacts(
     /\b([^,.!?]{2,60})\s+is\s+(?:my\s+)?(?:partner|spouse|husband|wife)\b/iu.exec(
       claim,
     )?.[1];
-  setFact(patch, "partnerName", cleanName(partner));
-
-  if (category === "relationship") {
-    setFact(
-      patch,
-      "relationshipStatus",
-      firstString(fields, ["relationshipStatus", "status"]),
-    );
-    setFact(
-      patch,
-      "partnerName",
-      firstString(fields, ["partnerName", "partner", "spouse"]),
-    );
-  }
+  setFactFromClaim(patch, "partnerName", cleanName(partner));
 
   if (category === "preference") {
     setFact(patch, "locale", firstString(fields, ["locale", "languageLocale"]));
