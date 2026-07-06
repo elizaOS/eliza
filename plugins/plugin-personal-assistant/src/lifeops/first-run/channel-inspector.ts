@@ -7,13 +7,13 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { ChannelRegistry } from "../channels/index.js";
 import { getConnectorRegistry } from "../connectors/registry.js";
-import { setChannelInspector } from "./questions.js";
+import { setRuntimeChannelInspector } from "./questions.js";
 
 export function installFirstRunChannelInspector(
   runtime: IAgentRuntime,
   channelRegistry: ChannelRegistry,
 ): void {
-  setChannelInspector({
+  setRuntimeChannelInspector(runtime, {
     isRegistered(channel) {
       return channelRegistry.get(channel) !== null;
     },

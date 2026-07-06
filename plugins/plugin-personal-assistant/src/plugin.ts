@@ -111,7 +111,7 @@ import {
 import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
 import { handleVoiceTurnObserved } from "./lifeops/entities/voice-observer-bridge.js";
 import { installFirstRunChannelInspector } from "./lifeops/first-run/channel-inspector.js";
-import { setChannelInspector } from "./lifeops/first-run/questions.js";
+import { setRuntimeChannelInspector } from "./lifeops/first-run/questions.js";
 import { FirstRunService } from "./lifeops/first-run/service.js";
 import { createOwnerLocaleExamplesProvider } from "./lifeops/i18n/localized-examples-provider.js";
 import {
@@ -1003,7 +1003,7 @@ const rawPersonalAssistantPlugin: Plugin = {
    * to touch those here.
    */
   dispose: async (runtime: IAgentRuntime) => {
-    setChannelInspector(null);
+    setRuntimeChannelInspector(runtime, null);
 
     const taskNames: readonly string[] = [
       PROACTIVE_TASK_NAME,

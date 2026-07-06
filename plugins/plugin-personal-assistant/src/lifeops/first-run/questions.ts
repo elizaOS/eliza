@@ -242,15 +242,28 @@ class FallbackChannelInspector implements ChannelInspector {
   }
 }
 
-let activeInspector: ChannelInspector = new FallbackChannelInspector();
+const fallbackInspector = new FallbackChannelInspector();
+const runtimeInspectors = new WeakMap<IAgentRuntime, ChannelInspector>();
+let activeInspector: ChannelInspector | null = null;
 
 export function setChannelInspector(inspector: ChannelInspector | null): void {
-  activeInspector = inspector ?? new FallbackChannelInspector();
+  activeInspector = inspector;
+}
+
+export function setRuntimeChannelInspector(
+  runtime: IAgentRuntime,
+  inspector: ChannelInspector | null,
+): void {
+  if (inspector) {
+    runtimeInspectors.set(runtime, inspector);
+    return;
+  }
+  runtimeInspectors.delete(runtime);
 }
 
 export async function validateChannel(
   rawChannel: unknown,
-  _runtime: IAgentRuntime,
+  runtime: IAgentRuntime,
 ): Promise<ChannelValidationResult> {
   const normalized =
     typeof rawChannel === "string" ? rawChannel.trim().toLowerCase() : "";
@@ -263,7 +276,9 @@ export async function validateChannel(
       warning: "No channel was selected — defaulting to in-app notifications.",
     };
   }
-  const registered = await activeInspector.isRegistered(normalized);
+  const inspector =
+    runtimeInspectors.get(runtime) ?? activeInspector ?? fallbackInspector;
+  const registered = await inspector.isRegistered(normalized);
   if (!registered) {
     return {
       channel: "in_app",
@@ -273,7 +288,7 @@ export async function validateChannel(
       warning: `Channel "${normalized}" is not registered — falling back to in-app notifications.`,
     };
   }
-  const connected = await activeInspector.isConnected(normalized);
+  const connected = await inspector.isConnected(normalized);
   if (!connected) {
     return {
       channel: normalized,

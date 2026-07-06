@@ -245,6 +245,45 @@ describe("first-run config validation", () => {
     });
   });
 
+  it("keeps production channel inspectors isolated per runtime", async () => {
+    const connectedRuntime = createMinimalRuntimeStub();
+    const connectorRegistry = createConnectorRegistry();
+    connectorRegistry.register(makeConnectedTelegramConnector());
+    registerConnectorRegistry(connectedRuntime, connectorRegistry);
+
+    const connectedChannelRegistry = createChannelRegistry();
+    registerDefaultChannelPack(connectedChannelRegistry, connectedRuntime);
+    installFirstRunChannelInspector(connectedRuntime, connectedChannelRegistry);
+
+    const disconnectedRuntime = createMinimalRuntimeStub();
+    const disconnectedChannelRegistry = createChannelRegistry();
+    registerDefaultChannelPack(
+      disconnectedChannelRegistry,
+      disconnectedRuntime,
+    );
+    installFirstRunChannelInspector(
+      disconnectedRuntime,
+      disconnectedChannelRegistry,
+    );
+
+    await expect(
+      validateChannel("telegram", connectedRuntime),
+    ).resolves.toEqual({
+      channel: "telegram",
+      registered: true,
+      connected: true,
+      fallbackToInApp: false,
+    });
+    await expect(
+      validateChannel("telegram", disconnectedRuntime),
+    ).resolves.toMatchObject({
+      channel: "telegram",
+      registered: true,
+      connected: false,
+      fallbackToInApp: true,
+    });
+  });
+
   it("rejects an unregistered channel with the right warning", async () => {
     const runtime = createMinimalRuntimeStub();
     const result = await validateChannel("morse_code", runtime);
