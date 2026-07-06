@@ -99,10 +99,10 @@ Config resolution order for each key: account record in `character.settings.tail
 - **Multi-account config.** `TailscaleAccountConfig` can be declared in `character.settings.tailscale.accounts` (array or keyed object) or via `TAILSCALE_ACCOUNTS` JSON. Per-account fields mirror the flat env vars — see `src/accounts.ts` for field aliases.
 - **Peer dep on `@elizaos/plugin-tunnel`.** `getTunnelService`, `ITunnelService`, `TunnelStatus`, and `tunnelSlotIsFree` all come from there — do not duplicate them here.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

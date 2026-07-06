@@ -258,10 +258,10 @@ Call `registerSetOfMarksProvider(provider)` (same module, `src/mobile/ocr-provid
 - **Parity matrix (#9170 M14)**: `src/parity/parity-matrix.ts` is the machine-checkable trycua/cua capability map. `validateParityMatrix(actionNames)` is asserted in the test suite — adding a verb to the matrix without registering it (or renaming a promoted action) fails CI, so the map can't silently drift. `src/parity/screenspot.ts` scores click-grounding (point-in-bbox) for any grounder.
 - **Further reading**: `docs/MULTI_MONITOR.md`, `docs/SCENE_BUILDER.md`, `docs/MOBILE_ASSISTANT_ROUTING.md`, `docs/AOSP_SYSTEM_APP.md`, `docs/TEST_LANES_COMPUTERUSE_VISION.md` (unit vs real-driver lanes, per-OS reqs, and the Windows non-interactive-session input gotcha).
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

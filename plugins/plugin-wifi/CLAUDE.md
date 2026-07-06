@@ -73,10 +73,10 @@ No env vars or settings keys. The plugin reads no process environment at runtime
 - **`elizaos.app` metadata.** `package.json` carries an `elizaos.app` block (`displayName: "WiFi"`, `category: "system"`, `androidOnly: true`, `heroImage: "assets/hero.png"`) used by the app catalog tooling.
 - **Root AGENTS.md.** Repo-wide architecture rules, logger conventions, ESM requirements, and naming rules live in the root `AGENTS.md`. This file covers only plugin-wifi specifics.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

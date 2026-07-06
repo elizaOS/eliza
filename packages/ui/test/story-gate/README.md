@@ -69,6 +69,6 @@ intentional change).
 - `determinism-shim.mjs` — browser-side determinism, usable by any
   Playwright/esbuild harness (the `__e2e__` runners can adopt it).
 - `log-capture.mjs` — structured frontend console/network/error capture that
-  writes a durable JSON artifact matching the `PR_EVIDENCE.md` convention. The
+  writes a durable JSON artifact matching the `AGENTS.md` convention. The
   gate wires it per story; the aggregated capture (including failed/erroring
   network responses + request failures) lands in `output/frontend-logs.json`.

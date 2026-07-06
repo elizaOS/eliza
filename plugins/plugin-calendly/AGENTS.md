@@ -111,10 +111,10 @@ The `autoEnable.envKeys` check uses `CALENDLY_ACCESS_TOKEN`, `CALENDLY_ACCOUNTS`
 - **Test mock URL.** Set `ELIZA_MOCK_CALENDLY_BASE` in tests to redirect all `https://api.calendly.com` calls to a local server.
 - **`attach()` is a test hook.** `CalendlyService.attach()` bypasses env resolution and registers credentials directly — use only in tests.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

@@ -20,7 +20,7 @@
  *
  * Live gate: this scenario needs a live model for the conversational turns; its
  * per-scenario live-model trajectory is the remaining evidence gate (captured
- * where model credentials are available, per PR_EVIDENCE.md). The scheduling
+ * where model credentials are available, per AGENTS.md). The scheduling
  * mechanic it proves is also covered keyless by
  * shift-rotation-reanchor-protects-new-sleep-window.
  */

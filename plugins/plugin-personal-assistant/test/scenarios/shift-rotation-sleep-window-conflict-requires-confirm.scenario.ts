@@ -24,7 +24,7 @@
  *
  * Live gate: needs a live model for the conversational turn; its per-scenario
  * live-model trajectory is the remaining evidence gate (captured where model
- * credentials are available, per PR_EVIDENCE.md).
+ * credentials are available, per AGENTS.md).
  */
 
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";

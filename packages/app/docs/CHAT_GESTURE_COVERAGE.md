@@ -54,7 +54,7 @@ and record a stable-named `.webm` (Design decision 8).
 | Lane | Produced by | Enforced by the gate? |
 | --- | --- | --- |
 | **Automated (L1–L3)** | jsdom unit/component tests, the `run-*-e2e.mjs` CDP-touch runners (real gestures + video), and `gesture-matrix.spec.ts` on the shipped app | ✅ Existence of every referenced test/runner file is asserted; running them is a CI lane, not this vitest gate. |
-| **Platform / manual (L4)** | `bun run --cwd packages/app audit:app`, `capture:ios-sim` / `capture:android-emu` / desktop, video walkthroughs | ❌ No — needs a booted renderer / device; tracked here, produced per [`PR_EVIDENCE.md`](../../../PR_EVIDENCE.md). |
+| **Platform / manual (L4)** | `bun run --cwd packages/app audit:app`, `capture:ios-sim` / `capture:android-emu` / desktop, video walkthroughs | ❌ No — needs a booted renderer / device; tracked here, produced per [`AGENTS.md`](../../../AGENTS.md). |
 
 The vitest gate is deliberately **boot-free** (file reads + set diffs), like its
 sibling [`launcher-view-coverage.test.ts`](../test/launcher-view-coverage.test.ts),
@@ -121,7 +121,7 @@ one appeared), do all three:
 3. Add a row to the matrix table above.
 
 Then capture the L4 platform evidence (`audit:app`, Android/iOS/desktop where
-relevant) for the PR per `PR_EVIDENCE.md`.
+relevant) for the PR per `AGENTS.md`.
 
 ## Scope boundary vs #12179
 

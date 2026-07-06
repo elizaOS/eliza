@@ -9,7 +9,7 @@
     "targetCount": 28,
     "notes": [
       "This file is the progress ledger for pack A1 only. Add one entry per authored scenario, across both surfaces (lifeops-bench Python ids and scenario-runner .scenario.ts ids).",
-      "status flips planned -> authored once the scenario file/literal exists; -> verified once a real-LLM run has been captured and hand-reviewed per PR_EVIDENCE.md.",
+      "status flips planned -> authored once the scenario file/literal exists; -> verified once a real-LLM run has been captured and hand-reviewed per AGENTS.md.",
       "2026-07-05 re-verification pass (#14350): all 8 scenario-runner rows were re-run and hand-read on develop@afc2626 and stay green — 6 live (Cerebras gpt-oss-120b, TZ=UTC): adhd-buried-commitment-ramble, adhd-medication-refill-fuzzy-date-capture, adhd-wait-no-correction-supersedes, adhd-duplicate-capture-dedup, adhd-search-not-create-yesterday-mention, adhd-task-initiation-two-minute-step; and 2 keyless deterministic (strict LLM proxy): adhd-hyperfocus-guardrail-protects-standup, adhd-distractor-storm-mid-capture. No regression; the capture-and-start pack asserts on capture side-effects (definition-count deltas, INBOX_SEARCH routing) which the tool-calling path completes correctly. The 12 surface:lifeops-bench rows were not part of this pass."
     ]
   },

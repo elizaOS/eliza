@@ -190,10 +190,10 @@ Legacy aliases `SMARTGLASSES_TRANSPORT`, `SMARTGLASSES_SCAN_TIMEOUT_MS`, `SMARTG
 - **`XR_WS_PORT_DEFAULT = 31338`** is exported from `xr-session-service.ts` and must stay in sync with the `FACEWEAR_WS_PORT` default in `agentConfig`.
 - See `docs/smartglasses.md` for the full Even Realities G1 protocol reference and hardware proof workflow.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

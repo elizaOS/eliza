@@ -9,7 +9,7 @@
     "targetCount": 28,
     "notes": [
       "This file is the progress ledger for pack C1 only. Add one entry per authored scenario, across both surfaces (lifeops-bench Python ids and scenario-runner .scenario.ts ids).",
-      "status flips planned -> authored once the scenario file/literal exists; -> verified once a real-LLM run has been captured and hand-reviewed per PR_EVIDENCE.md."
+      "status flips planned -> authored once the scenario file/literal exists; -> verified once a real-LLM run has been captured and hand-reviewed per AGENTS.md."
     ]
   },
   "scenarios": [

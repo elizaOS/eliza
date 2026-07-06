@@ -121,10 +121,10 @@ The state-dir path used by `readAppRunStore` / `writeAppRunStore` comes from `@e
 - **Agents-list guard.** App launch must not replace the user's active character config. If `agents.list` in `eliza.config.json` changes during launch, it is restored via `shouldRestoreAgentsListAfterAppLaunch` (imported from `@elizaos/agent`).
 - **Dependencies.** Declared dependencies are `@elizaos/core`, `@elizaos/plugin-registry`, and `@elizaos/shared`. The source also imports from `@elizaos/agent` subpaths (config, services, registry client) at runtime — `@elizaos/agent` is not listed in `package.json` but is provided by the host at runtime. Keep that boundary in mind if reorganizing.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

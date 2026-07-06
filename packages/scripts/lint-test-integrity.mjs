@@ -3,7 +3,7 @@
  * lint-test-integrity.mjs
  *
  * Whole-repo test-integrity gate for the "de-larp" mandate (issue #10718,
- * PR_EVIDENCE.md law #2 — "test everything for real, no larp"). Complements
+ * AGENTS.md law #2 — "test everything for real, no larp"). Complements
  * `lint-lane-coverage.mjs` (which checks *plugin-level* coverage): this gate
  * works at the individual test-call granularity and blocks the two silent
  * larp vectors that no existing check catches, plus an informational inventory

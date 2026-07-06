@@ -78,10 +78,10 @@ To add a new collection: add a key to `COLLECTIONS` in `@elizaos/plugin-inmemory
 - **Batch API only.** No single-item helpers. Use `createEntities`, `getMemoriesByIds`, etc.
 - **Browser entry is separate.** The `exports` map routes `browser` consumers to `dist/index.browser.js`. Do not import from `index.ts` directly in a browser context.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

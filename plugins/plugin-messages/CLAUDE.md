@@ -114,10 +114,10 @@ import messagesPlugin from "@elizaos/plugin-messages";
 - **Cross-view recipient handoff.** `MessagesAppView` consumes a one-shot `{ recipient }` payload via `consumeNavigateViewPayload("messages")` from `@elizaos/ui/app-navigate-view` on mount, opening the composer with the "To" field pre-seeded. Callers dispatch `eliza:navigate:view` with `{ viewId: "messages", viewPath: "/messages", payload: { recipient } }`; the shared UI module must stay generic and contain no Messages-specific pending state.
 - **Spatial view.** `MessagesSpatialView` is the unified presentational component that renders correctly in GUI, XR, and TUI contexts. It is purely presentational (a snapshot + action callback in, spatial primitives out) and does not import Capacitor runtime code, making it safe to render in the Node agent process.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

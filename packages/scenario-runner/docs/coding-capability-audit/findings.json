@@ -892,7 +892,7 @@
       {
         "title": "No committed end-to-end evidence (trajectory/video/timeline) for the multi-account feature",
         "severity": "medium",
-        "description": ".github/issue-evidence has zero multi-account/quota artifacts. The live scripts (live-codex-spawn-e2e, live-opencode-build-e2e, coding-account-bridge.live.test) prove the real path but emit ephemeral console output / vitest assertions, and the accounts-widget screenshot is generated to a local dir from mock props. Per repo Definition of Done (PR_EVIDENCE.md), agent/model changes need real-LLM trajectories + before/after screenshots + a video walkthrough — none are captured for this domain.",
+        "description": ".github/issue-evidence has zero multi-account/quota artifacts. The live scripts (live-codex-spawn-e2e, live-opencode-build-e2e, coding-account-bridge.live.test) prove the real path but emit ephemeral console output / vitest assertions, and the accounts-widget screenshot is generated to a local dir from mock props. Per repo Definition of Done (AGENTS.md), agent/model changes need real-LLM trajectories + before/after screenshots + a video walkthrough — none are captured for this domain.",
         "suggestedWork": "Convert live-codex/live-opencode scripts to emit a scenario-runner JSON report + native jsonl, capture a before/after screenshot of the accounts widget populated by the REAL pool (not the mock fixture), and record a short video of two real sub-agents on distinct accounts with diverging usage bars. Land artifacts under .github/issue-evidence/<issue#>-multi-account.*."
       },
       {
@@ -1095,7 +1095,7 @@
       {
         "title": "No committed visual/trajectory/video/log evidence for the coding chat UX",
         "severity": "high",
-        "description": "Per PR_EVIDENCE.md, agent/UI changes require real-LLM trajectories, before/after full-page screenshots, a video walkthrough, and backend+frontend logs. For the orchestrator/task surfaces none of these are committed: dashboard-shots are gitignored and shoot only static cards; there is no scenario report, no run viewer, no video, no log capture of a real task lifecycle.",
+        "description": "Per AGENTS.md, agent/UI changes require real-LLM trajectories, before/after full-page screenshots, a video walkthrough, and backend+frontend logs. For the orchestrator/task surfaces none of these are committed: dashboard-shots are gitignored and shoot only static cards; there is no scenario report, no run viewer, no video, no log capture of a real task lifecycle.",
         "suggestedWork": "Add a scenario-runner scenario that drives a real coding task end-to-end against a live model and capture: (1) JSON report + native jsonl trajectory, (2) full-page before/after screenshots of the workbench/inspector/PTY console (real components, not fixtures), (3) a recorded video walkthrough, (4) structured backend [Orchestrator...] logs + frontend console/network logs. Land artifacts under .github/issue-evidence/."
       },
       {
@@ -1560,7 +1560,7 @@
       {
         "title": "No committed coding-flow evidence; all recording output is gitignored",
         "severity": "medium",
-        "description": "e2e-recordings/, test-results/, aesthetic-audit-output/, reports/ai-qa/ are all gitignored, so PRs cannot attach a coding-flow video/timeline as required by PR_EVIDENCE.md. .github/issue-evidence/ has only two static UI PNGs and no coding trajectory/video.",
+        "description": "e2e-recordings/, test-results/, aesthetic-audit-output/, reports/ai-qa/ are all gitignored, so PRs cannot attach a coding-flow video/timeline as required by AGENTS.md. .github/issue-evidence/ has only two static UI PNGs and no coding trajectory/video.",
         "suggestedWork": "Define a small committed-evidence convention for coding flows: a compressed video + timeline.json + key screenshots + scenario JSONL bundle under .github/issue-evidence/<issue#>-coding-flow/, and a CI step (extending check-live-test-artifact-coverage.mjs) that fails coding/orchestrator PRs lacking the bundle."
       },
       {
@@ -2011,7 +2011,7 @@
       {
         "title": "Live remote-container smoke is credential-gated, not in CI, and emits no rich evidence",
         "severity": "high",
-        "description": "live-sandbox-smoke.ts is the only thing that hits a real remote runner, but it skips without E2B/cloud credentials, is not part of default CI, and only prints PASS/SKIP/FAILED stdout lines — no trajectory, screenshot, video, or timeline. The repo's own Definition of Done (PR_EVIDENCE.md) requires real-LLM trajectories + logs + video for agent/action changes; this domain has none committed.",
+        "description": "live-sandbox-smoke.ts is the only thing that hits a real remote runner, but it skips without E2B/cloud credentials, is not part of default CI, and only prints PASS/SKIP/FAILED stdout lines — no trajectory, screenshot, video, or timeline. The repo's own Definition of Done (AGENTS.md) requires real-LLM trajectories + logs + video for agent/action changes; this domain has none committed.",
         "suggestedWork": "Add a CI lane (with secrets) that runs test:sandbox-live --strict against a docker-compose'd coding-remote-runner for the 'home' provider (no external creds needed), produce a structured JSON report + captured runner logs, and store artifacts under .github/issue-evidence/. Make the home-provider variant non-skippable so at least one real-container path is always proven."
       },
       {
@@ -2255,7 +2255,7 @@
       {
         "title": "gpt-oss-120b is the documented built-in coding model but has no built-in-path coding trajectory evidence",
         "severity": "high",
-        "description": "gpt-oss-120b is wired as the default cloud TEXT_SMALL (built-in answer/plan path) and as the default judge, but there is no committed real-LLM trajectory showing the built-in agent planning+executing a coding/orchestration turn on gpt-oss-120b. Per the repo Definition of Done (PR_EVIDENCE.md), agent/action/prompt/model changes require real-LLM trajectories; this domain has none committed for the coding path.",
+        "description": "gpt-oss-120b is wired as the default cloud TEXT_SMALL (built-in answer/plan path) and as the default judge, but there is no committed real-LLM trajectory showing the built-in agent planning+executing a coding/orchestration turn on gpt-oss-120b. Per the repo Definition of Done (AGENTS.md), agent/action/prompt/model changes require real-LLM trajectories; this domain has none committed for the coding path.",
         "suggestedWork": "Run packages/scenario-runner/bin/eliza-scenarios against a live elizacloud gpt-oss-120b for a coding-delegation scenario (TASKS_SPAWN_AGENT) and commit the JSON report + run viewer + jsonl. Wire it as a nightly (extend cerebras-nightly.yml) so drift surfaces."
       },
       {
@@ -2499,7 +2499,7 @@
       {
         "title": "Zero trajectory/log/video/timeline evidence for the surfacing domain",
         "severity": "high",
-        "description": "Per PR_EVIDENCE.md, agent/action/prompt changes require real-LLM trajectories, connector logs, before/after screenshots, and a video walkthrough. For coding-task surfacing none exist: no scenario trajectory, no captured progress timeline, no video of progress arriving in a chat or as a notification, no issue-evidence artifacts for this domain.",
+        "description": "Per AGENTS.md, agent/action/prompt changes require real-LLM trajectories, connector logs, before/after screenshots, and a video walkthrough. For coding-task surfacing none exist: no scenario trajectory, no captured progress timeline, no video of progress arriving in a chat or as a notification, no issue-evidence artifacts for this domain.",
         "suggestedWork": "Build a recorded walkthrough harness that runs a real coding task, captures (1) the structured [orchestrator] progress/heartbeat/notify logs, (2) a timeline of cadence events (spawn ACK at T0, heartbeat ticks, completion), (3) screenshots/video of the message in Discord/Telegram and the in-app/OS notification, and lands them under .github/issue-evidence/."
       },
       {

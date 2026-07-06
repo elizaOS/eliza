@@ -121,7 +121,7 @@ function timestamp() {
 
 /**
  * Build an artifact base name. With `--issue`/`--slug`: `<issue>-<slug>-<platform>`
- * (the PR_EVIDENCE.md convention); otherwise a timestamped fallback so ad-hoc
+ * (the AGENTS.md convention); otherwise a timestamped fallback so ad-hoc
  * runs never collide.
  */
 export function evidenceBaseName({ issue, slug, platform }) {

@@ -93,10 +93,10 @@ To add a new method to this Capacitor plugin:
 - **Build requires Android SDK.** The Kotlin plugin only compiles as part of an Android Gradle project; running `bun run build` builds only the TypeScript/JS artifacts. The Kotlin source is compiled by Gradle when the Capacitor plugin is synced into an Android project. The Wi-Fi state read is covered by an **instrumented test** (`android/src/androidTest/.../WiFiStateReaderInstrumentedTest.kt`) run on a real device/emulator via `./gradlew :elizaos-capacitor-wifi:connectedDebugAndroidTest` from `packages/app-core/platforms/android` (issue #9967); the read lives in `WiFiStateReader` so it is exercisable without a Capacitor `Bridge`/WebView.
 - **Capacitor peer dep.** `@capacitor/core ^8.3.1` must be present in the host app. This package declares it as both a `peerDependency` and a `devDependency`.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

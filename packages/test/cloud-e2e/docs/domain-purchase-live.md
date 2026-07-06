@@ -151,4 +151,4 @@ control-plane pumping the deploy worker and the app's mock-container
 `production_url` standing in for public DNS), the ceiling refusal, the 409 /
 402 / 502-refund / cross-tenant / idempotent-re-buy negatives, and the ledger
 format. **This is harness-logic verification, not money-path evidence** — the
-paid run above is the only real proof, per `PR_EVIDENCE.md`.
+paid run above is the only real proof, per `AGENTS.md`.

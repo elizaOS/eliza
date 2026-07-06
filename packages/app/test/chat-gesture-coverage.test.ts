@@ -27,7 +27,7 @@ import { describe, expect, it } from "vitest";
  * matrix references no renamed/removed site; every referenced test/runner file
  * exists on disk; the discovered roster is stable (a broken predicate can't empty
  * it silently). What it does NOT enforce: that each row actually runs green — that
- * is the L3 runner + ui-smoke + platform lanes' job, tracked per PR_EVIDENCE.md.
+ * is the L3 runner + ui-smoke + platform lanes' job, tracked per AGENTS.md.
  */
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

@@ -182,10 +182,10 @@ bun run --cwd plugins/plugin-cli-inference build
 - **Multi-account pool auth + rotation (SDK backends only).** The `claude-sdk` / `codex-sdk` chat brain consults the shared `CODING_AGENT_SELECTOR_BRIDGE_SYMBOL` bridge accessor from `@elizaos/core` (in `src/account-rotation.ts`) POOL-FIRST: the FIRST warm-session auth selects a healthy pooled account and materializes its subprocess-only SDK env (`CLAUDE_CODE_OAUTH_TOKEN` / per-account `CODEX_HOME`), so an app-connected subscription is used immediately — the ambient `~/.claude` / `CLAUDE_CODE_OAUTH_TOKEN` credential is only the fallback when the pool is empty or selection fails. On a subscription-limit throw it then rotates to the next healthy pooled account before falling to provider failover — see issue #11180. Rotation evicts the warm session so it re-auths as the new account and retries transparently without mutating the parent `process.env`. Only rate-limit-class errors rotate; non-limit errors rethrow straight to failover. Default ON when a pool is present; opt out with `ELIZA_CLI_INFERENCE_ACCOUNT_ROTATION=0`. The COLD `claude --print` / `codex exec` CLIs still own one on-disk cred set (pool auth is SDK-only; the bare-CLI shim is issue #11180 Gap B).
 - See the root `AGENTS.md` for repo-wide architecture rules, logger conventions, and ESM requirements.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

@@ -102,10 +102,10 @@ Append a `TestCase` object to the `pluginTests[0].tests` array in `index.ts`. Te
 - **Embedding truncation.** Inputs longer than ~32 768 characters (~8 192 tokens) are truncated before being sent to the embedding model.
 - **No actions, providers, or evaluators.** If you need to add behavior beyond model inference, register it in a separate plugin or in the agent's character definition.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

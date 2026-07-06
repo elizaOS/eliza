@@ -126,12 +126,11 @@ The repo is self-contained — runtime, CLI, dashboard, native OS forks, cloud b
 
 Contributions welcome. Open an issue before sending a non-trivial PR. Before
 opening a PR, read [CONTRIBUTING.md](CONTRIBUTING.md) and the evidence standard
-in [PR_EVIDENCE.md](PR_EVIDENCE.md); frontend-testable changes need screenshots
-(JPG), an MP4 video walkthrough, logs, and any relevant real-LLM trajectories
-attached inline in the PR itself. Agents and maintainers working from a GitHub
-Project board should read the coordination workflow in
-[docs/AGENT_COORDINATION.md](docs/AGENT_COORDINATION.md) before claiming kanban
-work. Active MVP work is coordinated on the
+in [AGENTS.md](AGENTS.md); frontend-testable changes need screenshots (JPG), an
+MP4 video walkthrough, logs, and any relevant real-LLM trajectories attached
+inline in the PR itself. Agents and maintainers working from a GitHub Project
+board use the coordination workflow in [CONTRIBUTING.md](CONTRIBUTING.md) before
+claiming kanban work. Active MVP work is coordinated on the
 [LifeOps Personal Assistant MVP board](https://github.com/orgs/elizaOS/projects/15)
 and in [Discussions](https://github.com/elizaOS/eliza/discussions); in-flight
 design docs live in
@@ -140,13 +139,9 @@ design docs live in
 - [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
 - [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md)
 - [Agent Work Item](.github/ISSUE_TEMPLATE/agent_work_item.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Security Policy](SECURITY.md)
-- [Windows Setup](WINDOWS.md)
 
-All community spaces are covered by our [Code of Conduct](CODE_OF_CONDUCT.md).
-To report a security vulnerability, follow [SECURITY.md](SECURITY.md); do not
-open a public issue.
+To report a security vulnerability, email `security@elizalabs.ai`; do not open a
+public issue.
 
 ## License
 

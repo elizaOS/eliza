@@ -147,7 +147,7 @@ bun run --cwd plugins/plugin-cloud-apps build       # bun build.ts
 
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)** — read
+The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)** — read
 it. Nothing here is *done* until a reviewer can confirm it works **without reading
 the code**, from the artifacts you attach: real-LLM trajectories for
 action/prompt changes (`packages/scenario-runner/bin/eliza-scenarios run …`

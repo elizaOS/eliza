@@ -117,10 +117,10 @@ Language preference is stored in `localStorage` under the key `os.lang`. The `?l
 - **Checkout uses Steward (Eliza Cloud auth).** The `CheckoutPage` authenticates via OAuth (Google/GitHub/Discord) or magic-link email through the `@stwd/sdk` `StewardAuth` class and then initiates a Stripe session via `startStripeCheckout` from `@elizaos/shared/checkout`. The Stripe session is created server-side by the Eliza Cloud API.
 - **The blue accent (`--brand-blue`) is intentional for this surface.** The OS homepage uses blue as its primary accent (distinct from the main app's orange). Do not replace blue with orange here.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

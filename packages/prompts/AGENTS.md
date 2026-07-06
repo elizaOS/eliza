@@ -82,10 +82,10 @@ Regenerate the plugin action spec after adding or renaming a plugin `Action`:
 - Never embed secrets or PII in templates (they are source-controlled); use placeholders. `check:secrets` enforces this over prompt `.ts` files — see the path/regex list in `scripts/check-secrets.js`.
 - Repo-wide rules (logger-only, ESM, naming, architecture) live in the root [AGENTS.md](../../AGENTS.md); not repeated here.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

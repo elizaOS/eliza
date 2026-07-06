@@ -149,10 +149,10 @@ supervisor relaunches) — never a silent `process.exit`.
 - TEE work (dstack) is gated behind `services/tee-boot-gate*` and validated by `scripts/validate-tee-*.mjs` + `scripts/tee-*-smoke.ts`; see `docs/tee-agent-implementation-plan.md`.
 - **Files / media storage.** Attachment bytes live in one content-addressed store, `api/media-store.ts` (`${STATE_DIR}/media/<sha256>.<ext>`, served pre-auth at `/api/media/<sha256>` with `nosniff` + a download `Content-Disposition` for SVG/active types). `services/file-storage.ts` (`LocalFileStorageService`, fills `ServiceType.REMOTE_FILES`) is the contract the rest of the system resolves via `runtime.getService(ServiceType.REMOTE_FILES)` — `store`/`getUrl`/`list`/`delete`; the authenticated `api/files-routes.ts` (`GET`/`DELETE /api/files`) and the `actions/files.ts` `FILES` agent tool both go through it. `api/media-runtime.ts` rehosts inline `data:` and remote generated-media URLs into the store on the outgoing path (SSRF-guarded) and runs the reference-aware orphan GC (which also counts document `metadata.mediaUrl`). Do NOT add a second file store, a `files` DB table, or a refcount/GC engine — see issue #8876 and the root AGENTS.md anti-pattern clause.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

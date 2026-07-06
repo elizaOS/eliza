@@ -93,7 +93,7 @@ and daemon rollback job execution.
 
 Full PR evidence still requires a live staging run: backup -> wipe -> restore,
 plus upgrade -> rollback, with real agent logs, DB/media artifacts,
-screenshots/video, and a live LLM trajectory per `PR_EVIDENCE.md`.
+screenshots/video, and a live LLM trajectory per `AGENTS.md`.
 
 ## Image upgrade ↔ rollback & DB-migration discipline (#9964)
 

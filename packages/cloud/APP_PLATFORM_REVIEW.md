@@ -102,7 +102,7 @@ Why this path:
 5. Evidence:
    - non-CI app/domain money-path scenario from #10691
    - app-platform walkthrough with screenshots/video once UI exists
-   - DB rows, logs, hosted URL, and domain artifacts per `PR_EVIDENCE.md`
+   - DB rows, logs, hosted URL, and domain artifacts per `AGENTS.md`
 
 ## Generality And Access Review
 

@@ -17,7 +17,7 @@
  *
  * Generated artifacts stay gitignored (`reports/walkthrough/`, `e2e-recordings/`);
  * only the verdict markdown + JOURNEY.md updates are committed. Final reviewed
- * evidence is attached inline to the PR per PR_EVIDENCE.md.
+ * evidence is attached inline to the PR per AGENTS.md.
  *
  * Usage:
  *   node scripts/walkthrough-e2e.mjs [--live] [--viewports desktop,mobile]

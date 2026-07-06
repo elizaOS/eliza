@@ -183,10 +183,10 @@ Follow the same pattern in `src/actions/views.ts` and create a `src/actions/view
 - **`resolveIntentView` is a RETAINED #10471 fast-path allow-list, not a string smell.** The deterministic intent→view matcher in `src/actions/views-show.ts` (`matchViewCommand` + `INTENT_VIEW_RULES`) is intentionally kept: it is multilingual by construction (EN + ES/FR/DE/ZH/JA/KO), fires only as a fallback after normal id/label/fuzzy resolution returns nothing, never overrides an explicit planner navigation, and is the local-first safety net a small/on-device planner relies on for cross-language navigation. Do not "clean it up" into an English-only path or delete it; extend the rules multilingually and keep them anchored on a possessive/navigation-verb + surface noun. Full written justification lives on `resolveIntentView`.
 - **Pre-edit snapshots are best-effort (#8915).** `VIEWS create`/`edit` and `APP create`/edit take a `git commit --no-verify --allow-empty` snapshot of the target workdir before dispatching the coding agent and record the SHA on a `views-snapshot`-tagged Task keyed by room/plugin. A failed snapshot (workdir not in a git work tree, no committer identity, …) only disables rollback for that edit — it must never abort the dispatch. `VIEWS rollback` resolves the most-recent snapshot for the room (or an explicit `sha`/`view`), runs `git reset --hard`, then re-registers via `load-from-directory`. On verification failure after max retries, `VerificationRoomBridgeService` surfaces a chat offer naming `VIEWS action=rollback` for plugins so the user is never left with a broken create/edit. Shell out via the injectable `GitRunner` in `views-snapshot.ts` (so tests stay deterministic); do not reach into `CodingWorkspaceService`, which is keyed by managed-workspace IDs, not local repo workdirs.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

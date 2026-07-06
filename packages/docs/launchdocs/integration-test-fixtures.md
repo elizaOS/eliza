@@ -18,7 +18,7 @@ Use this contract when verifying:
 - Wallet inventory, funded-wallet state, direct crypto payment, and on-chain
   evidence flows.
 
-This contract does not replace `PR_EVIDENCE.md`. It narrows that standard for
+This contract does not replace `AGENTS.md`. It narrows that standard for
 launch-QA account and wallet fixtures so reviewers can confirm which real
 accounts were used without seeing the secrets.
 
@@ -100,7 +100,7 @@ bun run test:e2e:record
 ```
 
 For app UI changes, also run the app audit command required by
-`PR_EVIDENCE.md` and attach the manually reviewed desktop/mobile output to the
+`AGENTS.md` and attach the manually reviewed desktop/mobile output to the
 issue or PR.
 
 When a command intentionally stops at a signing boundary or OAuth boundary, the

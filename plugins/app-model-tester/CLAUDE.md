@@ -103,10 +103,10 @@ No plugin-specific env vars are read at load time. Model provider credentials (A
 - **Spatial view:** `components/ModelTesterSpatialView.tsx` is a cross-modality presentational component (pure snapshot + callback in, spatial primitives out). It is registered in the TUI terminal registry by `register-terminal-view.tsx` and is safe to render in the Node agent process (no browser/Capacitor imports).
 - See the root `AGENTS.md` for repo-wide conventions (logger-only, ESM, architecture rules, naming).
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

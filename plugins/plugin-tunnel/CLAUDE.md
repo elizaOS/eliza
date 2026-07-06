@@ -94,10 +94,10 @@ None are required; all have defaults. The device must already be authenticated (
 - **`promoteSubactionsToActions`**: `index.ts` spreads `promoteSubactionsToActions(tunnelAction)` into the `actions` array. This `@elizaos/core` helper reads the `action` parameter enum (`start|stop|status`) and registers virtual top-level actions (`TUNNEL_START`, `TUNNEL_STOP`, `TUNNEL_STATUS`) that delegate to the parent's handler, while keeping the `TUNNEL` umbrella registered too.
 - **`serviceType` declaration**: `src/types.ts` extends `@elizaos/core`'s `ServiceTypeRegistry` with `TUNNEL: 'tunnel'` via module augmentation — do not declare it elsewhere.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

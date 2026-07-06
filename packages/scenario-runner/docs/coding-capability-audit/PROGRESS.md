@@ -6,7 +6,7 @@ Live tracker for the gap backlog in [`MASTER_PLAN.md`](./MASTER_PLAN.md) (85 gap
 
 Each completed item records the **verification evidence** (reproduced-before →
 verified-after) so a reviewer can confirm it without reading the code, per
-`PR_EVIDENCE.md`.
+`AGENTS.md`.
 
 Legend: ✅ done & verified · 🔧 in progress · ⏳ queued · ⛔ blocked
 

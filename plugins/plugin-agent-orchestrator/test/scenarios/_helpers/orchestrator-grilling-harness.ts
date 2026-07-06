@@ -17,7 +17,7 @@
  *
  * Mirrors the unit harness in `__tests__/auto-goal-verify.test.ts`, lifted to
  * run against a real runtime under the scenario CLI so it emits the JSON report
- * + run viewer + native JSONL that PR_EVIDENCE.md requires.
+ * + run viewer + native JSONL that AGENTS.md requires.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { AcpService } from "../../../src/services/acp-service";

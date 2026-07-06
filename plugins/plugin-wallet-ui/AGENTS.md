@@ -126,10 +126,10 @@ Two localStorage keys are used for user preferences (no config required):
 - Supported primary chains for the inventory filter UI: `ethereum`, `base`, `bsc`, `avax`, `solana`. Chains `arbitrum`, `optimism`, `polygon` are in `CHAIN_CONFIGS` (for URL helpers) but are not primary filter toggles.
 - See root `AGENTS.md` for repo-wide architecture rules, naming, logger requirements, and ESM conventions.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

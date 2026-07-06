@@ -96,10 +96,10 @@ Run from repo root with `--cwd packages/app-core`:
 - Peer deps `react`, `react-dom`, `three`; Capacitor mobile bridges are `optionalDependencies` (`@elizaos/capacitor-*`). Node `>=24`.
 - **iOS local-agent watchdog parity** (`platforms/ios/App/App/AgentWatchdog.swift`, wired from `AppDelegate`): the iOS equivalent of Android's `ElizaAgentService` watchdog (issue #10197). The iOS agent is in-process (the `ElizaBunRuntime` Capacitor plugin, no TCP port), so the watchdog polls liveness through the Capacitor bridge (`ElizaBunRuntime.getStatus().ready`) gated on `localStorage["eliza:mobile-runtime-mode"]` (dormant/no-op only in pure `cloud` mode; `local`, `cloud-hybrid`, and `tunnel-to-mobile` own a phone-side agent), accumulates 3 strikes like Android's `HEALTH_FAIL_STRIKES`, and on a confirmed crash emits a bounded restart *request* (`AgentWatchdog.restartRequestedNotification` + a `window` `eliza:local-agent-restart-requested` event, max 5 attempts/exponential backoff) for the renderer's existing `ElizaBunRuntime.start(...)` to honor — it never invents a second restart mechanism. To auto-recover end-to-end the renderer must honor that restart-request signal.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

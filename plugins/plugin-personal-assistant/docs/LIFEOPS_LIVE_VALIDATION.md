@@ -10,7 +10,7 @@ This document is the durable QA matrix for that pass: the prerequisites, the
 exact states to exercise per connector, the expected behavior, and the
 skip rules when credentials/devices are absent. Fill the **Result** columns in a
 copy under `.github/issue-evidence/8833-lifeops-live-validation/` and attach the
-redacted screenshots / logs called for in [`PR_EVIDENCE.md`](../../../PR_EVIDENCE.md).
+redacted screenshots / logs called for in [`AGENTS.md`](../../../AGENTS.md).
 
 ## How to run a live session
 

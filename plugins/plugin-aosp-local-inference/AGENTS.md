@@ -120,10 +120,10 @@ All env vars are read at call time (no module-load side effects).
 - **Interactive-over-background text lane (#11914).** Every text generate routes through `generateOnPriorityLane` → the process-wide `InferencePriorityGate` (`@elizaos/core`): interactive turns (the default) dispatch ahead of queued background jobs; requests marked `priority: "background"` (scheduled prompt tasks, prompt-batcher drains) run only when the lane is idle, wait at most the RAM-class bound (constrained 120 s / standard 300 s), and are clamped to the RAM-class budget (constrained maxTokens 192 / prompt ≤ 4 000 chars; standard 1 024 / 24 000) before the decode. A bounded-wait timeout throws the typed `InferenceBackgroundWaitTimeoutError` (classified `local-overloaded` → cloud-fallback eligible) without ever reaching the native lane, so a self-queueing background job can't pile abandoned work onto the resident lock. RAM class comes from the #11760 probe (`classifyInferenceRamClass` in `inference-memory-policy.ts`).
 - **Root AGENTS.md** covers all global conventions (logger-only, ESM, architecture rules, naming). This file covers only what is specific to this package.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

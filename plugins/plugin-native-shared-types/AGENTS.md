@@ -68,10 +68,10 @@ Do not add runtime logic, class implementations, or any code with side effects t
 - **`private: true`.** This package is not published; it only exists as a workspace dependency.
 - The Web Speech API shims exist because TypeScript's `lib.dom.d.ts` does not expose `SpeechRecognition` in all compiler targets. They are intentionally minimal — cover only what Swabble and TalkMode actually use.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

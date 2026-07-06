@@ -2,7 +2,7 @@
 /**
  * audit-focused-skipped-tests.mjs — anti-larp CI gate (#10718).
  *
- * PR_EVIDENCE.md law #2 ("test everything for real — no larp") and #10718's
+ * AGENTS.md law #2 ("test everything for real — no larp") and #10718's
  * acceptance criteria require a gate that prevents two silent-larp regressions
  * that green CI otherwise hides:
  *

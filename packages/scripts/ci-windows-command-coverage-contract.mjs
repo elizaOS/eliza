@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Contract for #13402's Windows command-coverage slice. The Windows CI lane is
- * a deliberately narrow subset of the Linux gates (see WINDOWS.md), so the
+ * a deliberately narrow subset of the Linux gates, so the
  * suites it guards are the only proof that the runtime/dashboard/shared
  * TypeScript packages still build and pass on Windows. Nothing else re-runs
  * them there. That makes silent shrinkage the failure mode: a lane trimmed

@@ -140,7 +140,7 @@ voice PR — loud-fail (#12253), latency (#12254), turn-taking (#12255), echo
    for any latency-touching change and cited against `maxFirstAudioMs`.
 3. **interrupt-bench numbers** — `bun run --cwd
    packages/benchmarks/interrupt-bench test` for barge-in / interruption changes.
-4. **Captured real audio + narrated walkthrough** — `PR_EVIDENCE.md` is binding
+4. **Captured real audio + narrated walkthrough** — `AGENTS.md` is binding
    for voice: the real STT→TTS round-trip audio, backend `[ClassName]` logs
    showing the exact path (router re-throw, AEC `echoReferenceWired` flip,
    barge-in hard-stop), per-platform capture for native/desktop changes.

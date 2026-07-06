@@ -265,7 +265,7 @@ The nine research docs, one line each. Full detail behind each link.
 
 ## Acceptance bar
 
-MVP done is **evidence-driven**, per [`PR_EVIDENCE.md`](../../../../PR_EVIDENCE.md):
+MVP done is **evidence-driven**, per [`AGENTS.md`](../../../../AGENTS.md):
 a reviewer confirms each change works *without reading the code*, from artifacts
 attached inline to the PR. "Tests pass" is not proof; "CI is green" is not
 proof. Per workstream, done means:

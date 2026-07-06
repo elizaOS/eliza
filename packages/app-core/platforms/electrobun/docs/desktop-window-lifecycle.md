@@ -151,4 +151,4 @@ overrides). `desktop-deep-link-events.test.ts`
 covers the deep-link router. Full-shell e2e that drives the real Electrobun
 window via the `/api/dev/*` loopback (`dev/stack`, `dev/cursor-screenshot`,
 `dev/console-log`) requires a built desktop app and is captured by a human per
-`PR_EVIDENCE.md`.
+`AGENTS.md`.

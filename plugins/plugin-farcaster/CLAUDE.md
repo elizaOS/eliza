@@ -132,10 +132,10 @@ Read via `validateFarcasterConfig()` in `utils/config.ts` against `FarcasterConf
 - **`generated/specs/`** — auto-generated; do not edit by hand. Provider spec names (`requireProviderSpec("farcasterProfile")`) come from here.
 - **Browser build is a proxy boundary.** The `browser` export condition (`dist/browser/`) builds `index.browser.ts`, which only re-exports the types and an unsupported-browser `farcasterPlugin` whose `init` logs a warning ("not supported directly in browsers. Use a server proxy"). The real Neynar-backed plugin runs Node-only; browsers must call it through a server proxy.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

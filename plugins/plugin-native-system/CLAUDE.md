@@ -113,10 +113,10 @@ Use `notifyListeners("eventName", data)` in the Kotlin plugin and `System.addLis
 - **Build output** — `dist/esm/` is produced by `tsc`, then Rollup bundles it to `dist/plugin.js` (IIFE) and `dist/plugin.cjs.js` (CJS). The Android AAR is built separately by Gradle inside the host Capacitor project.
 - **Test suite** — `src/web.test.ts` contains Vitest unit tests for the web fallback layer (`bun run --cwd plugins/plugin-native-system test`). The Android Kotlin device reads are covered by an **instrumented test**, `android/src/androidTest/.../SystemDeviceReaderInstrumentedTest.kt`, run on a real device/emulator via `./gradlew :elizaos-capacitor-system:connectedDebugAndroidTest` from `packages/app-core/platforms/android` (issue #9967). The reads live in `SystemDeviceReader` precisely so they are exercisable without a Capacitor `Bridge`/WebView; `SystemPlugin` delegates to it and marshals the result into the unchanged JS shape.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

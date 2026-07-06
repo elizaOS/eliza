@@ -18,7 +18,7 @@ packages/security/soc2-verify/
     controls/
       index.ts        Assembles ALL_CHECKS (all 27 checks ordered by TSC category)
       audit-actions.ts  CC4 — audit action comprehensiveness check
-      codeowners.ts   CC6/CC9 — CODEOWNERS, branch-protection, SECURITY.md checks
+      codeowners.ts   CC6/CC9 — CODEOWNERS, branch-protection, security-reporting checks
       db-and-pii.ts   CC6.7/C1 — DB SSL, KMS adoption, PII/soft-delete columns, log retention
       dynamic.ts      C1/CC4/PI1 — live round-trip tests using @elizaos/security adapters
       k8s.ts          CC6.6 — k8s securityContext + NetworkPolicy checks
@@ -121,10 +121,10 @@ Readiness score = `pass / (pass + fail)`, excludes `warn` and `skip`.
 - `severity: "critical"` checks are the only ones that trigger a non-zero exit under `--strict-fail`.
 - The package is `"private": true` — it is never published to npm and has no build step (source files run directly under Bun).
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

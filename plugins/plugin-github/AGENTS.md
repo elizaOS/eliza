@@ -124,10 +124,10 @@ Add an entry to `githubRoutes` in `src/index.ts` and a handler in `src/routes/gi
 - **`GitHubOctokitClient` is a structural interface**, not the full Octokit class — tests can inject a mock without depending on the real Octokit.
 - **`tsup` builds two entry points:** `src/index.ts` and `src/register-routes.ts`. `register-routes.ts` is an app-route plugin loader that calls `registerAppRoutePluginLoader("@elizaos/plugin-github", ...)` — it registers the full `githubPlugin`, it is not a route-only subset.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

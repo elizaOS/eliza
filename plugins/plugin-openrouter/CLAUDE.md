@@ -119,10 +119,10 @@ Settings are read via `runtime.getSetting(key)` first, then `process.env[key]`. 
 - **Audio transcription:** `ModelType.TRANSCRIPTION` posts base64 audio to OpenRouter's `/audio/transcriptions` endpoint. Supported inputs are URL strings, `Buffer`, `Blob` / `File`, core `{ audioUrl, prompt? }`, and local `{ audio, model?, language?, temperature?, format?, mimeType? }` objects.
 - **`@openrouter/ai-sdk-provider` + `ai` SDK:** The plugin wraps `@openrouter/ai-sdk-provider ^2.0.0` and uses `ai ^6.0.30`. Both are runtime dependencies, not peer deps.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

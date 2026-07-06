@@ -17,11 +17,10 @@ working material, deliberately omitted from `docs.json`. Start with
 ## How work flows
 
 The canonical board / claim / verify workflow is
-[`docs/AGENT_COORDINATION.md`](../../../docs/AGENT_COORDINATION.md) (Issues =
-work cards, Projects = state, Discussions = coordination rooms, PRs = code +
-proof). This folder **adds a design-doc layer** on top of it: product and
-planning work is doc-driven, so the path from idea to landed change is one
-pipeline:
+[`CONTRIBUTING.md`](../../../CONTRIBUTING.md) (Issues = work cards, Projects =
+state, Discussions = coordination rooms, PRs = code + proof). This folder
+**adds a design-doc layer** on top of it: product and planning work is
+doc-driven, so the path from idea to landed change is one pipeline:
 
 1. **Discussion** — conversation starts in
    [GitHub Discussions](https://github.com/elizaOS/eliza/discussions): one
@@ -38,7 +37,7 @@ pipeline:
    the active kanban. Claim work by commenting on the issue and moving its
    card. **Don't start unboarded MVP work** — file the issue first.
 4. **PR with inline evidence** — every PR proves itself inline per
-   [`PR_EVIDENCE.md`](../../../PR_EVIDENCE.md): a reviewer confirms it works
+   [`AGENTS.md`](../../../AGENTS.md): a reviewer confirms it works
    *without reading the code*, from the artifacts attached to the PR.
 5. **Doc updated on merge** — if implementation diverged from the doc, the same
    PR updates the doc, and the workstream row in [`status/STATUS.md`](status/STATUS.md)
@@ -53,7 +52,7 @@ Evidence attaches **directly to the GitHub issue/PR** — drag-and-drop into the
 description or a comment — so proof sits next to the change it proves. It is
 **not committed to the repo**: the `.github/issue-evidence/` directory is
 retired (it bloated every clone and detached proof from the conversation it
-belonged to). The full standard is [`PR_EVIDENCE.md`](../../../PR_EVIDENCE.md);
+belonged to). The full standard is [`AGENTS.md`](../../../AGENTS.md);
 the mechanics in one paragraph:
 
 - **Video: MP4 only.** GitHub renders MP4 inline in issues/PRs; `.mov` /

@@ -133,10 +133,10 @@ Settings are read via `runtime.getSetting(key)` inside `plugin.init`.
 - **RLS is PostgreSQL-only.** PGlite does not support Row Level Security. The `ENABLE_DATA_ISOLATION` path is silently skipped on PGlite.
 - **Tests live under `src/__tests__/`** and run via vitest configured in `src/vitest.config.ts`.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

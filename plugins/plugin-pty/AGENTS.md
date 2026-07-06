@@ -164,7 +164,7 @@ from loading the orchestrator and recursively spawning sub-agents.
 
 ## ⛔ NON-NEGOTIABLE — evidence & real end-to-end tests
 
-The binding standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. The unit suite
+The binding standard is **[AGENTS.md](../../AGENTS.md)**. The unit suite
 proves the store/bridge/routing/spec logic against an injected PTY; the gated
 `pty.real.test.ts` (and the manual real-runtime checks) prove the actual
 node-pty / Bun-truePty path spawns real processes, streams output, round-trips

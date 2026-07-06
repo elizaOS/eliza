@@ -132,10 +132,10 @@ bun run --cwd plugins/plugin-birdclaw build        # build:js (tsup) + build:vie
 
 ## ⛔ NON-NEGOTIABLE — evidence & real end-to-end tests
 
-The binding standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. The unit
+The binding standard is **[AGENTS.md](../../AGENTS.md)**. The unit
 suite proves the arg-building/parsing/route/action/view logic against an
 injected exec seam; `birdclaw.real.test.ts` (`bun run test:real`) drives the
 REAL CLI — real spawn, real SQLite, real `--json` envelopes — against a
 throwaway `BIRDCLAW_HOME` seeded by `birdclaw init`. UI changes additionally
 require the rendered proof set (screenshots, walkthrough, client+server logs)
-from `PR_EVIDENCE.md`.
+from `AGENTS.md`.

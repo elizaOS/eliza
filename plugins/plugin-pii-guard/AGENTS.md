@@ -95,4 +95,4 @@ bunx vitest run src/ner-recognizer.real.test.ts \
 ```
 
 Repo-wide rules (logger-only, ESM, naming, evidence standard) are in the root
-[AGENTS.md](../../AGENTS.md) / [PR_EVIDENCE.md](../../PR_EVIDENCE.md).
+[AGENTS.md](../../AGENTS.md) / [AGENTS.md](../../AGENTS.md).

@@ -99,10 +99,10 @@ This plugin has a single responsibility (TTS model handler). The typical extensi
 - **`synthesizeEdgeSpeech`** passes `null` as the runtime to `getEdgeTTSSettings`, so it reads only from `process.env`. Do not call it inside an agent handler where a runtime is available — use `runtime.useModel(ModelType.TEXT_TO_SPEECH, ...)` instead.
 - **Triple build targets.** `build.ts` produces `dist/node/` (ESM), `dist/browser/` (ESM), and `dist/cjs/` (CJS) bundles. The `exports` map in `package.json` selects the right bundle per environment. Keep `index.node.ts` and `index.browser.ts` as thin re-exports; all synthesis logic lives in `src/index.ts` and the browser boundary lives in `src/index.browser.ts`.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

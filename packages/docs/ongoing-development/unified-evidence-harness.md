@@ -132,7 +132,7 @@ behind capture: analyzers stream as images appear instead of a barrier at the en
 
 - Rewriting existing capture producers (they are ingested, then consolidated incrementally
   under #14470/#14523-style follow-ups).
-- Replacing PR-inline evidence for ordinary develop PRs (`PR_EVIDENCE.md` unchanged; the bundle
+- Replacing PR-inline evidence for ordinary develop PRs (`AGENTS.md` unchanged; the bundle
   feeds it).
 - A second scheduling/queueing system beyond the minimal GPU job queue.
 

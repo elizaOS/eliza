@@ -120,10 +120,10 @@ Multi-account config: set `character.settings.slack.accounts` as a record keyed 
 - **No direct Bolt HTTP server:** the plugin does not expose any HTTP routes. All traffic flows through the Socket Mode WebSocket managed by `@slack/bolt`.
 - **External deps:** `@slack/bolt ^4.1.0`, `@slack/web-api ^7.15.2`. Both are runtime dependencies, not dev-only.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

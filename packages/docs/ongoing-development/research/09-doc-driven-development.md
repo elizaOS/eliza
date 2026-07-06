@@ -37,7 +37,7 @@ and repointing CI scratch paths.
 
 **The binding standard and its mechanical gate exist and work:**
 
-- `PR_EVIDENCE.md` (243 lines) is the repo-wide definition of done; the root
+- `AGENTS.md` (243 lines) is the repo-wide definition of done; the root
   `CLAUDE.md`/`AGENTS.md` "Definition of Done" section restates it and every
   package guide points back to it.
 - `.github/pull_request_template.md:85-106` carries 7 stable
@@ -100,8 +100,8 @@ and repointing CI scratch paths.
 **The prose rewrite is already applied (uncommitted, this branch) — verified
 file by file:**
 
-- `PR_EVIDENCE.md:75-83` — evidence table "Where it goes" column now says
-  inline-in-PR per row; `PR_EVIDENCE.md:134-156` — new section "Where evidence
+- `AGENTS.md:75-83` — evidence table "Where it goes" column now says
+  inline-in-PR per row; `AGENTS.md:134-156` — new section "Where evidence
   goes: inline in the issue/PR" (MP4-only video + ffmpeg convert line, JPG over
   PNG, `<details>` for logs, external-host fallback keeps an inline JPG still,
   explicit retirement of `.github/issue-evidence/`).
@@ -192,7 +192,7 @@ so an unregistered working folder is safe to add.
 ## Recommendation (minimal-scope MVP plan, ordered)
 
 1. **P0 — Land the applied prose rewrite + create this folder.** Commit the
-   already-applied edits (PR_EVIDENCE.md, PR template, issue templates,
+   already-applied edits (AGENTS.md, PR template, issue templates,
    config.yml, CONTRIBUTING.md, README.md, root CLAUDE.md/AGENTS.md) together
    with `ongoing-development/README.md` (Appendix A) and `mvp/MVP.md` stub
    (Appendix B) so `markdown-links` is green in one commit.
@@ -220,7 +220,7 @@ so an unregistered working folder is safe to add.
 - Automated board sync, bots, status dashboards, or discussion tooling.
 - Re-homing benchmark score history (benchmarks workstream, only if wanted).
 - Publishing `ongoing-development/` on the docs site or any docs.json changes.
-- Rewriting PR_EVIDENCE.md beyond evidence-location mechanics — the three laws
+- Rewriting AGENTS.md beyond evidence-location mechanics — the three laws
   and the real-tests doctrine are untouched.
 
 ## Proposed issues
@@ -271,7 +271,7 @@ verify what exists; prefer deleting over adding.
    Claim work by commenting on the issue and moving its card. Don't start
    unboarded MVP work.
 4. **PR with inline evidence** — every PR proves itself inline per
-   [`PR_EVIDENCE.md`](../../../PR_EVIDENCE.md): MP4 video (renders inline),
+   [`AGENTS.md`](../../../AGENTS.md): MP4 video (renders inline),
    JPG screenshots, logs in `<details>` blocks, real-LLM trajectories where
    agent behavior changed. Nothing committed to the repo.
 5. **Doc updated** — if implementation diverged from the doc, the same PR

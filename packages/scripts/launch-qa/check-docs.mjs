@@ -23,10 +23,8 @@ const SKIP_DIRS = new Set([
 ]);
 const ROOT_DOCS = [
   "README.md",
-  "PR_EVIDENCE.md",
+  "AGENTS.md",
   "CONTRIBUTING.md",
-  "SECURITY.md",
-  "WINDOWS.md",
 ];
 
 function rel(repoRoot, filePath) {

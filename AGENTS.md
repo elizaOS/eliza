@@ -194,8 +194,8 @@ To build on the runtime from your own TypeScript with no CLI/UI, import
 ## GitHub project coordination
 
 For agent/human work coordinated through GitHub Projects, read
-[`docs/AGENT_COORDINATION.md`](docs/AGENT_COORDINATION.md) before claiming work.
-Permanent process lives in that doc, not in a long issue-comment thread.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) before claiming work. Permanent process
+lives in that doc, not in a long issue-comment thread.
 
 - Issues are scoped work cards with acceptance criteria and evidence.
 - GitHub Projects are the live kanban state: `Todo` -> `Claimed` ->
@@ -204,7 +204,7 @@ Permanent process lives in that doc, not in a long issue-comment thread.
   card, and keep `Status` accurate.
 - Discussions are for coordination, handoffs, and noisy multi-card chat; roll
   durable decisions back into docs, issue bodies, or Project readmes.
-- PRs carry the code and the proof required by `PR_EVIDENCE.md`; link the issue
+- PRs carry the code and the proof required by this guide; link the issue
   or Project card they resolve.
 - Do not move cards to `Done` unless the board explicitly grants that authority
   to your role. Human verification owns final done for launch/QA boards.
@@ -227,7 +227,7 @@ Evidence attaches **inline in the issue/PR**, not committed to the repo: MP4
 video (renders inline in GitHub), JPG over PNG for screenshots, logs in a
 `<details>` block. Bug reports include a screenshot or recording of the *wrong*
 behavior. `.github/issue-evidence/` is retired; the full standard is
-`PR_EVIDENCE.md`.
+in this guide and `CONTRIBUTING.md`.
 
 ## Error-Handling Simplification
 
@@ -432,9 +432,9 @@ deferrals, and rationale live in issue #8876.
 ## Definition of Done — sync, PR, and human-verifiable evidence
 
 Every fix/feature ships through a **PR against `develop`**, and a reviewer must
-be able to confirm it works **without reading the code**. Full standard:
-[`PR_EVIDENCE.md`](PR_EVIDENCE.md) — read it; it is binding. **The same standard
-is restated in every package's `CLAUDE.md` / `AGENTS.md` and is non-negotiable.**
+be able to confirm it works **without reading the code**. This section is the
+binding standard. **The same standard is restated in every package's
+`CLAUDE.md` / `AGENTS.md` and is non-negotiable.**
 
 **The three laws of "done"** (the whole standard expands these):
 
@@ -491,8 +491,8 @@ The non-negotiables in practice:
     desktop changes — `bun run --cwd packages/app capture:ios-sim` /
     `capture:android-emu` / `capture:linux-desktop` / `capture:windows-desktop`,
     electrobun `GET /api/dev/cursor-screenshot`. Run native features on the real
-    device/simulator/platform matrix, not mocked-bridge desktop Chromium. Full
-    surface→command matrix in `PR_EVIDENCE.md`.
+    device/simulator/platform matrix, not mocked-bridge desktop Chromium. The
+    command matrix lives in `CONTRIBUTING.md`.
   - **Always build + deploy the latest before capturing.** Capture helpers
     screenshot whatever is **already installed/running** — they do not build.
     Before any on-device/simulator/desktop capture, rebuild and redeploy the
@@ -517,4 +517,4 @@ The non-negotiables in practice:
 ## Contributing
 
 Open an issue before a non-trivial PR. License: MIT (`LICENSE`). Security
-policy: `SECURITY.md`. Shipping standard: `PR_EVIDENCE.md`.
+reporting and shipping workflow: `CONTRIBUTING.md`.

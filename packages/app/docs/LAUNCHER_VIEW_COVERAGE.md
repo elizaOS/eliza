@@ -39,7 +39,7 @@ excluded from this inventory and the gate.
 | --- | --- | --- |
 | **Automated smoke** | `builtin-views-visual.spec.ts` (desktop + mobile boot-smoke: view mounts, renders content, no uncaught page error) | ✅ Yes — every launcher view's path must be in the smoke matrix, and its spec/runner files must exist. |
 | **Dedicated e2e** | The `run-*-e2e.mjs` runners (real view → esbuild → headless Chromium, real interactions, video) | ✅ Existence of the referenced runner file is asserted; running it is a CI lane, not this vitest gate. |
-| **Manual / on-device capture** | `bun run --cwd packages/app audit:app` (live full-page audit), `capture:ios-sim` / `capture:android-emu` / `capture:linux-desktop` / `capture:windows-desktop`, video walkthroughs | ❌ No — needs a booted renderer / device; tracked here, produced in the PR-evidence lane per [`PR_EVIDENCE.md`](../../../PR_EVIDENCE.md). |
+| **Manual / on-device capture** | `bun run --cwd packages/app audit:app` (live full-page audit), `capture:ios-sim` / `capture:android-emu` / `capture:linux-desktop` / `capture:windows-desktop`, video walkthroughs | ❌ No — needs a booted renderer / device; tracked here, produced in the PR-evidence lane per [`AGENTS.md`](../../../AGENTS.md). |
 
 The vitest gate is deliberately **boot-free** (file reads + set diffs), like its
 sibling [`route-coverage.test.ts`](../test/route-coverage.test.ts), so it runs on
@@ -80,7 +80,7 @@ tutorial is interaction-covered by `test/ui-smoke/tutorial-chat.spec.ts` (the
 tour is transcript turns, not a view of its own). The remaining views are
 `smoke-only`: boot-smoke is their automated floor, and the manual/CI capture lane
 (`audit:app` + on-device captures) supplies the full-page-screenshot / video /
-device evidence per `PR_EVIDENCE.md`.
+device evidence per `AGENTS.md`.
 
 If a launcher view is ever added with **no** smoke case, the gate's "every
 launcher view's smoke spec actually covers its declared path" assertion fails —
@@ -101,4 +101,4 @@ tells you if it is), do all three:
 3. Add a row to the inventory table above.
 
 Then capture the manual-lane evidence (`audit:app`, on-device where relevant) for
-the PR per `PR_EVIDENCE.md`.
+the PR per `AGENTS.md`.

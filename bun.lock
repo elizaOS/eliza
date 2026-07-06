@@ -2571,6 +2571,7 @@
       },
       "devDependencies": {
         "@types/node": "^25.0.0",
+        "fast-check": "^4.8.0",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
       },
@@ -5082,10 +5083,6 @@
         "vite": "^8.0.0",
       },
     },
-    "plugins/plugin-taskboard": {
-      "name": "@elizaos/plugin-taskboard",
-      "version": "0.0.0-plan.0",
-    },
     "plugins/plugin-tee": {
       "name": "@elizaos/plugin-tee",
       "version": "2.0.3-beta.7",
@@ -6575,8 +6572,6 @@
     "@elizaos/plugin-tailscale": ["@elizaos/plugin-tailscale@workspace:plugins/plugin-tailscale"],
 
     "@elizaos/plugin-task-coordinator": ["@elizaos/plugin-task-coordinator@workspace:plugins/plugin-task-coordinator"],
-
-    "@elizaos/plugin-taskboard": ["@elizaos/plugin-taskboard@workspace:plugins/plugin-taskboard"],
 
     "@elizaos/plugin-tee": ["@elizaos/plugin-tee@workspace:plugins/plugin-tee"],
 

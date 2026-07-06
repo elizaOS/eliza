@@ -226,7 +226,7 @@ I'll synthesize the 12 domain audits into a master document. Let me produce the 
 
 ## 4. Test & Evidence Plan
 
-For each capability: the harness/test to add and the evidence types to capture. Unless noted, real-LLM trajectory artifacts go to `.github/issue-evidence/<issue#>-<slug>/` (JSON report + native jsonl + run viewer); video/screenshots/timeline go to the same bundle per PR_EVIDENCE.md.
+For each capability: the harness/test to add and the evidence types to capture. Unless noted, real-LLM trajectory artifacts go to `.github/issue-evidence/<issue#>-<slug>/` (JSON report + native jsonl + run viewer); video/screenshots/timeline go to the same bundle per AGENTS.md.
 
 | Capability | Test / harness to add | Evidence to capture | Artifact location |
 |---|---|---|---|

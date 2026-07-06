@@ -4,7 +4,7 @@
  * Bundles `widget-cert-fixture.tsx`, mounts it in real Chromium (and WebKit if
  * `ENGINE=webkit`) at a mobile viewport, then drives `window.__widgetCert.run()`
  * so the SAME `certifyWidget` sweep runs against real layout + computed style.
- * Emits, per PR_EVIDENCE.md, an evidence directory with:
+ * Emits, per AGENTS.md, an evidence directory with:
  *   - `widget-cert.json`     — the machine-readable run summary (per-widget)
  *   - `widget-cert.txt`      — the rendered, human-readable summary
  *   - `<engine>.png`         — a screenshot of the certified surface
