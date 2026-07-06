@@ -221,16 +221,27 @@ async function focusAndType(page) {
   await page.waitForTimeout(600);
 }
 
-async function readVisibleText(page, stateId) {
-  try {
-    return (await page.locator("body").innerText({ timeout: 4000 }))
-      .replace(/\s+/g, " ")
-      .trim();
-  } catch (error) {
+async function readVisibleText(page, stateId, { minLength = 12 } = {}) {
+  const deadline = Date.now() + 12_000;
+  let lastText = "";
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      lastText = (await page.locator("body").innerText({ timeout: 1000 }))
+        .replace(/\s+/g, " ")
+        .trim();
+      if (lastText.length >= minLength) return lastText;
+    } catch (error) {
+      lastError = error;
+    }
+    await page.waitForTimeout(250);
+  }
+  if (lastError) {
     throw new Error(
-      `Failed to read visible DOM text for ${stateId}: ${error?.message ?? error}`,
+      `Failed to read visible DOM text for ${stateId}: ${lastError?.message ?? lastError}`,
     );
   }
+  return lastText;
 }
 
 async function readComposerText(page) {
@@ -352,7 +363,9 @@ async function main() {
             focusError = String(error?.message ?? error).slice(0, 180);
           }
         }
-        const domText = await readVisibleText(page, state.id);
+        const domText = await readVisibleText(page, state.id, {
+          minLength: 12,
+        });
         let composerText = "";
         if (state.focusComposer && !focusError) {
           try {

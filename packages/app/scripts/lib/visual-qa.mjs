@@ -11,12 +11,13 @@
  * gate asserts on, right beside the screenshot — so "looks fine" becomes
  * "OCR shows the expected copy, palette is neutral, 0.0 blue, verdict pass".
  *
- * Pixels come from `sharp` (already a repo dep); OCR shells to the `tesseract`
- * CLI when present and degrades to an explicit note (never a fabricated empty
- * read) when it is not, so the analyzer is safe to call from any capture lane.
+ * Pixels come from `sharp` (already a repo dep); OCR uses the system
+ * `tesseract` CLI when present and falls back to the repo's `tesseract.js`
+ * dependency before reporting an explicit unavailable note. A missing OCR
+ * binary must never masquerade as "no text on screen".
  */
 import { execFile } from "node:child_process";
-import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -133,7 +134,20 @@ async function retryOcrFromWorkspaceCopy(pngPath) {
   }
 }
 
-/** On-screen text via the tesseract CLI, or an explicit note when unavailable. */
+async function runTesseractJs(pngPath) {
+  const { createWorker } = await import("tesseract.js");
+  const cachePath = path.join(tmpdir(), "eliza-visual-qa-tesseract-cache");
+  await mkdir(cachePath, { recursive: true });
+  const worker = await createWorker("eng", undefined, { cachePath });
+  try {
+    const result = await worker.recognize(pngPath);
+    return normalizeOcrText(result?.data?.text ?? "");
+  } finally {
+    await worker.terminate();
+  }
+}
+
+/** On-screen text via tesseract OCR, or an explicit note when unavailable. */
 async function ocrText(pngPath) {
   try {
     return { text: await runTesseract(pngPath), note: null };
@@ -150,13 +164,25 @@ async function ocrText(pngPath) {
       // error-policy:J3 the explicit note below reports the primary OCR failure;
       // retry failure does not fabricate text or hide the unavailable signal.
     }
-    // error-policy:J3 OCR is optional enrichment; report absence explicitly
-    // rather than fabricate an empty transcript as "no text on screen".
-    const note =
-      err?.code === "ENOENT"
-        ? "tesseract not installed"
-        : `tesseract failed: ${String(err?.message ?? err).slice(0, 120)}`;
-    return { text: "", note };
+    try {
+      return {
+        text: await runTesseractJs(pngPath),
+        note: "tesseract CLI unavailable; OCR succeeded with tesseract.js",
+      };
+    } catch (fallbackError) {
+      // error-policy:J3 OCR is optional enrichment; report absence explicitly
+      // rather than fabricate an empty transcript as "no text on screen".
+      const primary =
+        err?.code === "ENOENT"
+          ? "tesseract CLI not installed"
+          : `tesseract CLI failed: ${String(err?.message ?? err).slice(0, 120)}`;
+      return {
+        text: "",
+        note: `${primary}; tesseract.js failed: ${String(
+          fallbackError?.message ?? fallbackError,
+        ).slice(0, 120)}`,
+      };
+    }
   }
 }
 
