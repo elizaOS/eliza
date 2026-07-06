@@ -88,9 +88,9 @@ describe("SETTINGS action — always available at the chat boundary", () => {
     // structurally by core (satisfiesRoleGate) before the handler runs, so the
     // action stays selectable and the gate can't be bypassed by a passing
     // validate.
-    await expect(
-      settingsAction.validate(RUNTIME, OWNER_MESSAGE),
-    ).resolves.toBe(true);
+    await expect(settingsAction.validate(RUNTIME, OWNER_MESSAGE)).resolves.toBe(
+      true,
+    );
   });
 });
 
