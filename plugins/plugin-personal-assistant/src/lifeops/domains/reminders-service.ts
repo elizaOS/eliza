@@ -5579,8 +5579,8 @@ export class RemindersDomain {
    * night (or sleep-cycle morning) summary off-app (#14702). This walks the
    * already-veto-filtered candidate list, skips channels with no runtime
    * target (`in_app` / `sms` / `voice` — the reminder path handles those
-   * separately), resolves the first connector-backed route, and sends the same
-   * owner-facing text (ack-choice-marker included, so #14884/#14885 ack
+   * separately), resolves connector-backed routes in rank order, and sends the
+   * same owner-facing text (ack-choice-marker included, so #14884/#14885 ack
    * round-trips regardless of which surface the reply lands on) through the
    * proven `runtime.sendMessageToTarget` path the reminder escalation uses.
    *
@@ -5604,6 +5604,10 @@ export class RemindersDomain {
     if (typeof this.ctx.runtime.sendMessageToTarget !== "function") {
       return { attempted: false, channel: null, delivered: false };
     }
+    let firstFailure: {
+      channel: LifeOpsReminderChannel;
+      reason: string;
+    } | null = null;
     for (const candidate of args.candidates) {
       if (candidate.vetoReasons.length > 0) {
         continue;
@@ -5652,18 +5656,22 @@ export class RemindersDomain {
           delivered: true,
         };
       } catch (error) {
+        const reason = lifeOpsErrorMessage(error);
         this.ctx.logLifeOpsWarn(
           "checkin_connector_dispatch",
-          `[lifeops] Check-in connector delivery failed for ${channel}; falling back to in-app.`,
-          { error: lifeOpsErrorMessage(error) },
+          `[lifeops] Check-in connector delivery failed for ${channel}; trying the next ranked route before falling back to in-app.`,
+          { error: reason },
         );
-        return {
-          attempted: true,
-          channel,
-          delivered: false,
-          reason: lifeOpsErrorMessage(error),
-        };
+        firstFailure ??= { channel, reason };
       }
+    }
+    if (firstFailure) {
+      return {
+        attempted: true,
+        channel: firstFailure.channel,
+        delivered: false,
+        reason: firstFailure.reason,
+      };
     }
     return { attempted: false, channel: null, delivered: false };
   }
@@ -5748,6 +5756,8 @@ export class RemindersDomain {
           now: args.now,
         });
       } catch (error) {
+        // error-policy:J4 Check-in route ranking is optional delivery enrichment;
+        // the in-app check-in below is the designed unavailable state.
         this.ctx.logLifeOpsWarn(
           "checkin_contact_route",
           "[lifeops] Failed to resolve check-in contact routes; delivering in-app only.",
