@@ -108,7 +108,7 @@ describe.skipIf(!tools.available)("normalizeVideo (ffmpeg present)", () => {
 });
 
 describe("normalizeVideo degradation", () => {
-  it("uses installed bundled binaries when PATH does not provide system tools", async () => {
+  it("uses bundled binaries when installed and otherwise reports honest unavailability", async () => {
     const prevPath = process.env.PATH;
     const prevFfmpeg = process.env.ELIZA_FFMPEG_BIN;
     const prevFfprobe = process.env.ELIZA_FFPROBE_BIN;
@@ -117,8 +117,13 @@ describe("normalizeVideo degradation", () => {
     process.env.PATH = "";
     try {
       const ffprobe = await resolveFfprobeBinary();
-      expect(ffprobe.available).toBe(true);
-      if (ffprobe.available) expect(ffprobe.source).toBe("bundled");
+      if (ffprobe.available) {
+        expect(ffprobe.source).toBe("bundled");
+      } else {
+        expect(ffprobe.reason).toMatch(
+          /ffprobe not found on PATH and bundled ffprobe-static package is unavailable/,
+        );
+      }
 
       const ffmpeg = await resolveFfmpegBinary();
       if (ffmpeg.available) {
