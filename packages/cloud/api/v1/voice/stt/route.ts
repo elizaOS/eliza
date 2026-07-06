@@ -40,6 +40,7 @@ import {
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
+import { resolveWhisperSttModel } from "./whisper-model";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
 
@@ -193,7 +194,8 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         "file",
         new File([buffer], audioFile.name, { type: finalMimeType }),
       );
-      form.append("model", "Systran/faster-whisper-tiny.en");
+      const whisperModel = resolveWhisperSttModel(env.WHISPER_STT_MODEL);
+      form.append("model", whisperModel);
       if (languageCode) form.append("language", languageCode);
       const whisperResponse = await fetch(
         `${whisperBaseUrl.replace(/\/+$/, "")}/v1/audio/transcriptions`,
@@ -213,7 +215,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       const transcript = (whisperJson.text ?? "").trim();
       const whisperDuration = Date.now() - whisperStart;
       logger.info(
-        `[Voice STT API] Whisper completed in ${whisperDuration}ms (free): "${transcript.substring(0, 100)}"`,
+        `[Voice STT API] Whisper (${whisperModel}) completed in ${whisperDuration}ms (free): "${transcript.substring(0, 100)}"`,
       );
       return Response.json({ transcript, duration_ms: whisperDuration });
     }
