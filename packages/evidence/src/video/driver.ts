@@ -133,14 +133,46 @@ async function loadChromium(): Promise<PwChromium> {
 }
 
 function resolveUrl(value: string, baseUrl: string | undefined): string {
-  if (/^https?:\/\//.test(value)) return value;
-  if (baseUrl === undefined) {
+  let resolved: URL;
+  if (/^https?:\/\//i.test(value)) {
+    resolved = parseUrl(value, undefined);
+  } else {
+    if (baseUrl === undefined) {
+      throw new EvidenceError(
+        `walkthrough goto '${value}' is relative but no baseUrl was provided`,
+        { code: "WALKTHROUGH_NO_BASE_URL", context: { value } },
+      );
+    }
+    resolved = parseUrl(value, baseUrl);
+  }
+  // Scheme allowlist enforced again at execution time (the schema also rejects
+  // non-http(s) gotos): a def constructed in code, or a file:/javascript: base
+  // URL, must never reach page.goto — that would screenshot local files or run
+  // script into the evidence bundle.
+  if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
     throw new EvidenceError(
-      `walkthrough goto '${value}' is relative but no baseUrl was provided`,
-      { code: "WALKTHROUGH_NO_BASE_URL", context: { value } },
+      `walkthrough goto '${value}' resolved to a non-http(s) URL: ${resolved.href}`,
+      {
+        code: "WALKTHROUGH_URL_SCHEME",
+        context: { value, resolved: resolved.href },
+      },
     );
   }
-  return new URL(value, baseUrl).toString();
+  return resolved.toString();
+}
+
+function parseUrl(value: string, base: string | undefined): URL {
+  try {
+    return new URL(value, base);
+  } catch (error) {
+    // error-policy:J3 untrusted definition input — an unparseable goto target
+    // is a typed invalid, never a raw TypeError from the URL constructor.
+    throw new EvidenceError(`walkthrough goto is not a valid URL: ${value}`, {
+      code: "WALKTHROUGH_URL_INVALID",
+      cause: error,
+      context: { value, base },
+    });
+  }
 }
 
 /** Execute one step against the page; throws on any failure (fail-fast). */
@@ -223,60 +255,92 @@ export async function runWalkthrough(
   const stepPauseMs = options.stepPauseMs ?? DEFAULT_STEP_PAUSE_MS;
   fs.mkdirSync(options.out, { recursive: true });
   const videoDir = path.join(options.out, ".video");
+  // A reused `out` dir may still hold a previous run's recording; clearing the
+  // video dir up front guarantees whatever file appears here afterwards belongs
+  // to THIS run — a stale recording ingested as fresh evidence is worse than
+  // no evidence.
+  fs.rmSync(videoDir, { recursive: true, force: true });
   fs.mkdirSync(videoDir, { recursive: true });
 
   const chromium = options.browser ?? (await loadChromium());
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
-    viewport,
-    recordVideo: { dir: videoDir, size: viewport },
-    ...(baseUrl !== undefined ? { baseURL: baseUrl } : {}),
-  });
-  const page = await context.newPage();
 
   const steps: StepLog[] = [];
   const screenshots: string[] = [];
   const ariaSnapshots: string[] = [];
-  let index = 0;
+  // Once the browser process exists, every failure path below must still close
+  // it — and the failure that aborted the run must be the one the caller sees,
+  // never a secondary close() rejection. `failure` carries the first error
+  // through both teardown stages instead of letting a throwing finally mask it.
+  let failure: { error: unknown } | undefined;
   try {
-    for (const step of def.steps) {
-      const started = performance.now();
-      await runStep(page, step, baseUrl, timeout);
-      if (stepPauseMs > 0) await page.waitForTimeout(stepPauseMs);
-      const record: StepLog = {
-        index,
-        action: step.action,
-        durationMs: Math.round(performance.now() - started),
-        ...(step.label !== undefined ? { label: step.label } : {}),
-        ...("selector" in step && step.selector !== undefined
-          ? { selector: step.selector }
-          : {}),
-        ...("value" in step && step.value !== undefined
-          ? { value: step.value }
-          : {}),
-      };
-      const tag = `${String(index).padStart(2, "0")}-${slugStep(step)}`;
-      if (step.screenshotAfter) {
-        const shot = path.join(options.out, `${tag}.png`);
-        await page.screenshot({ path: shot });
-        screenshots.push(shot);
-        record.screenshot = path.basename(shot);
+    const context = await browser.newContext({
+      viewport,
+      recordVideo: { dir: videoDir, size: viewport },
+      ...(baseUrl !== undefined ? { baseURL: baseUrl } : {}),
+    });
+    try {
+      const page = await context.newPage();
+      let index = 0;
+      for (const step of def.steps) {
+        const started = performance.now();
+        await runStep(page, step, baseUrl, timeout);
+        if (stepPauseMs > 0) await page.waitForTimeout(stepPauseMs);
+        const record: StepLog = {
+          index,
+          action: step.action,
+          durationMs: Math.round(performance.now() - started),
+          ...(step.label !== undefined ? { label: step.label } : {}),
+          ...("selector" in step && step.selector !== undefined
+            ? { selector: step.selector }
+            : {}),
+          ...("value" in step && step.value !== undefined
+            ? { value: step.value }
+            : {}),
+        };
+        const tag = `${String(index).padStart(2, "0")}-${slugStep(step)}`;
+        if (step.screenshotAfter) {
+          const shot = path.join(options.out, `${tag}.png`);
+          await page.screenshot({ path: shot });
+          screenshots.push(shot);
+          record.screenshot = path.basename(shot);
+        }
+        if (step.ariaAfter) {
+          const snapshot = await captureAriaSnapshot(page, timeout);
+          const snapPath = path.join(options.out, `${tag}.aria.yaml`);
+          fs.writeFileSync(snapPath, snapshot);
+          ariaSnapshots.push(snapPath);
+          record.ariaSnapshot = path.basename(snapPath);
+        }
+        steps.push(record);
+        index += 1;
       }
-      if (step.ariaAfter) {
-        const snapshot = await captureAriaSnapshot(page, timeout);
-        const snapPath = path.join(options.out, `${tag}.aria.yaml`);
-        fs.writeFileSync(snapPath, snapshot);
-        ariaSnapshots.push(snapPath);
-        record.ariaSnapshot = path.basename(snapPath);
-      }
-      steps.push(record);
-      index += 1;
+    } catch (error) {
+      failure = { error };
     }
+    // Closing the context flushes and finalizes the recorded video file — after
+    // a failed step too, so a failed run leaves a diagnosable recording.
+    try {
+      await context.close();
+    } catch (error) {
+      // error-policy:J6 best-effort teardown — the step failure is the primary
+      // diagnosis; a context-close rejection surfaces only when the run itself
+      // succeeded (browser.close below still runs either way).
+      failure ??= { error };
+    }
+  } catch (error) {
+    // newContext (or an unexpected non-step failure) before the guarded region.
+    failure ??= { error };
   } finally {
-    // Closing the context flushes and finalizes the recorded video file.
-    await context.close();
-    await browser.close();
+    try {
+      await browser.close();
+    } catch (error) {
+      // error-policy:J6 best-effort teardown — same rule as context.close: the
+      // original run failure wins; a close rejection surfaces only on its own.
+      failure ??= { error };
+    }
   }
+  if (failure !== undefined) throw failure.error;
 
   const rawVideo = findVideoFile(videoDir);
   const stepsLogPath = path.join(options.out, "steps.json");
@@ -327,7 +391,12 @@ function slugStep(step: WalkthroughStep): string {
   );
 }
 
-/** Playwright writes the video as a random-named file in `videoDir`. */
+/**
+ * Playwright writes the video as a random-named file in `videoDir`. The dir is
+ * cleared before the run, so normally exactly one file exists; if several do
+ * (e.g. a page recreated mid-run), the newest by mtime is this run's final
+ * recording — never an arbitrary directory-order pick.
+ */
 function findVideoFile(videoDir: string): string {
   const files = fs
     .readdirSync(videoDir)
@@ -338,5 +407,13 @@ function findVideoFile(videoDir: string): string {
       { code: "WALKTHROUGH_NO_VIDEO", context: { videoDir } },
     );
   }
-  return path.join(videoDir, files[0]);
+  const newest = files
+    .map((name) => {
+      const filePath = path.join(videoDir, name);
+      return { filePath, mtimeMs: fs.statSync(filePath).mtimeMs };
+    })
+    .sort(
+      (a, b) => b.mtimeMs - a.mtimeMs || (a.filePath < b.filePath ? -1 : 1),
+    );
+  return newest[0].filePath;
 }

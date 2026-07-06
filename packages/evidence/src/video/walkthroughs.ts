@@ -145,31 +145,24 @@ export async function runAndIngestWalkthrough(
         : {}),
     });
     // Screenshots, snapshots, and the steps-log ride into the bundle alongside
-    // the video so the walkthrough is fully self-describing evidence.
-    let shotIndex = 0;
+    // the video so the walkthrough is fully self-describing evidence. The
+    // driver's basenames already carry the zero-padded step index, so they are
+    // used as-is — re-prefixing would double-index ("00-03-click.png").
     for (const shot of run.screenshots) {
       await bundle.addArtifact(shot, {
         kind: "screenshot",
         source,
         producedBy: "walkthrough-driver",
-        bundlePath: `video/${def.granularity}s/${def.slug}/steps/${String(
-          shotIndex,
-        ).padStart(2, "0")}-${path.basename(shot)}`,
+        bundlePath: `video/${def.granularity}s/${def.slug}/steps/${path.basename(shot)}`,
       });
-      shotIndex += 1;
     }
-    let snapIndex = 0;
     for (const snap of run.ariaSnapshots) {
       await bundle.addArtifact(snap, {
         kind: "html-tree",
         source,
         producedBy: "walkthrough-driver",
-        bundlePath: `html-trees/${def.slug}/${String(snapIndex).padStart(
-          2,
-          "0",
-        )}-${path.basename(snap)}`,
+        bundlePath: `html-trees/${def.slug}/${path.basename(snap)}`,
       });
-      snapIndex += 1;
     }
     await bundle.addArtifact(run.stepsLog, {
       kind: "report",

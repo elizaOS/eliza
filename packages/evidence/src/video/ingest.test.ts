@@ -12,6 +12,7 @@ import { promisify } from "node:util";
 import { afterAll, describe, expect, it } from "vitest";
 import { createBundle, verifyBundle } from "../bundle.ts";
 import { EvidenceError } from "../errors.ts";
+import { resolveFfmpegBinary } from "../ffmpeg-binaries.ts";
 import { ingestVideo } from "./ingest.ts";
 import { videoToolsAvailable } from "./normalize.ts";
 
@@ -20,10 +21,15 @@ const dir = mkdtempSync(join(os.tmpdir(), "evidence-video-ingest-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const tools = await videoToolsAvailable();
+// Generate clips with the SAME binary the code under test resolves: the gate
+// above accepts env/PATH/bundled ffmpeg, so a hardcoded "ffmpeg" would fail
+// (instead of honestly skipping) on machines with only the bundled binary.
+const ffmpeg = await resolveFfmpegBinary();
+const ffmpegBin = ffmpeg.available ? ffmpeg.bin : "ffmpeg";
 
 /** Two-scene webm: 1s red then 1s blue, so scene detection sees one hard cut. */
 async function makeTwoSceneWebm(out: string): Promise<void> {
-  await execFileAsync("ffmpeg", [
+  await execFileAsync(ffmpegBin, [
     "-hide_banner",
     "-loglevel",
     "error",
@@ -109,7 +115,9 @@ describe.skipIf(!tools.available)("ingestVideo (ffmpeg present)", () => {
     expect(finalized.manifest.artifacts.length).toBeGreaterThan(4);
     const report = await verifyBundle(bundle.dir);
     expect(report.ok).toBe(true);
-  });
+    // ffmpeg transcode + keyframe fan-out overrun vitest's 5s default under
+    // parallel suite load; the explicit budget matches the driver suite's.
+  }, 120_000);
 });
 
 describe("ingestVideo validation", () => {

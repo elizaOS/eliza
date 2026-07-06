@@ -40,7 +40,16 @@ export async function serveFixture(
       res.writeHead(405).end("method not allowed");
       return;
     }
-    const urlPath = decodeURIComponent((req.url ?? "/").split("?")[0]);
+    let urlPath: string;
+    try {
+      urlPath = decodeURIComponent((req.url ?? "/").split("?")[0]);
+    } catch {
+      // error-policy:J3 untrusted request input — malformed percent-encoding
+      // (e.g. GET /%) is a 400 response, never an uncaught URIError that kills
+      // the server mid-walkthrough.
+      res.writeHead(400).end("bad request");
+      return;
+    }
     const rel = urlPath === "/" ? indexFile : urlPath.replace(/^\/+/, "");
     const filePath = path.resolve(root, rel);
     // Traversal guard: a resolved path must stay inside the served root.

@@ -38,13 +38,32 @@ const stepBase = {
   ariaAfter: z.boolean().optional(),
 };
 
+// A goto target is either a relative path (no scheme; resolved against the
+// run's baseUrl — the fixture server's or the booted app's http origin) or an
+// absolute http(s) URL. Any other explicit scheme (file:, javascript:, data:,
+// …) is rejected at validation time: page.goto on such a URL would screenshot
+// local files or execute script straight into an evidence bundle.
+const SCHEME_PREFIX = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
+function isHttpOrRelative(value: string): boolean {
+  const scheme = SCHEME_PREFIX.exec(value);
+  if (scheme === null) return true;
+  return /^https?:$/i.test(scheme[0]);
+}
+const NON_HTTP_MESSAGE =
+  "must be an http(s) URL or a relative path (non-http(s) schemes are not allowed)";
+
 // Each action carries exactly the fields it needs; a discriminated union means
 // `click` without a `selector` fails validation instead of no-op'ing at runtime.
 const stepSchema = z.discriminatedUnion("action", [
   z.strictObject({
     action: z.literal("goto"),
-    /** Absolute URL, or a path resolved against the run's baseUrl. */
-    value: z.string().min(1),
+    /** http(s) URL, or a path resolved against the run's baseUrl. */
+    value: z
+      .string()
+      .min(1)
+      .refine(isHttpOrRelative, {
+        message: `goto value ${NON_HTTP_MESSAGE}`,
+      }),
     ...stepBase,
   }),
   z.strictObject({
@@ -100,7 +119,13 @@ const walkthroughSchema = z
     /** Human title for the walkthrough. */
     title: z.string().min(1).optional(),
     /** Default base URL for relative `goto` steps; overridable at run time. */
-    baseUrl: z.string().url().optional(),
+    baseUrl: z
+      .string()
+      .url()
+      .refine((value) => /^https?:\/\//i.test(value), {
+        message: "baseUrl must be an http(s) URL",
+      })
+      .optional(),
     /**
      * Marks a walkthrough that can only run against the booted real app (no
      * self-contained fixture). The driver refuses to run it without an explicit
@@ -120,6 +145,20 @@ const walkthroughSchema = z
           code: "custom",
           path: ["steps", index],
           message: "waitFor requires a selector or a value (ms)",
+        });
+      }
+      // The driver executes selector-or-value, never both; accepting both
+      // would silently ignore one field of the definition.
+      if (
+        step.action === "waitFor" &&
+        step.selector !== undefined &&
+        step.value !== undefined
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["steps", index],
+          message:
+            "waitFor takes a selector or a value (ms), not both (the value would be ignored)",
         });
       }
       if (
@@ -142,6 +181,18 @@ const walkthroughSchema = z
           code: "custom",
           path: ["steps", index],
           message: "scroll requires a selector or a value (px)",
+        });
+      }
+      if (
+        step.action === "scroll" &&
+        step.selector !== undefined &&
+        step.value !== undefined
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["steps", index],
+          message:
+            "scroll takes a selector or a value (px), not both (the value would be ignored)",
         });
       }
       if (

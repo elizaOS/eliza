@@ -3,9 +3,17 @@
  * over one or all shipped definitions and ingests each produced video (normalized
  * + keyframe-analyzed) into a bundle; `ingest` normalizes and ingests an already
  * recorded video (a producer's webm/mov) into a bundle. Like the bundle CLI this
- * is a thin process boundary: it parses argv, opens or reuses a bundle with real
+ * is a thin process boundary: it parses argv, opens a fresh bundle with real
  * git provenance, drives the library, and prints an honest summary. The library
  * never logs; stdout/stderr here are the product.
+ *
+ * Bundles are sealed single-writer artifacts: a pre-existing `--bundle` dir is
+ * a typed BUNDLE_DIR_EXISTS error, never an append. To keep that contract
+ * retry-safe, arguments and definitions are validated BEFORE the bundle dir is
+ * created, and a run that fails mid-way removes its unfinalized bundle dir (no
+ * manifest — worthless as evidence, poisonous to the next attempt) while
+ * preserving the walkthrough scratch dir, whose raw video/screenshots ARE the
+ * failure evidence; its path is printed for diagnosis.
  */
 
 import fs from "node:fs";
@@ -145,15 +153,10 @@ async function runWalkthroughCommand(
   }
   const repoRoot = path.resolve(values.get("repo-root") ?? defaultRepoRoot());
   const tier = parseTier(values.get("tier"));
-  const bundle = openBundle(values.get("bundle"), repoRoot, tier);
-  // Scratch must live OUTSIDE the bundle dir: verifyBundle sweeps for unlisted
-  // files, and the driver's raw webm/screenshots are not manifest artifacts.
-  const outRoot = values.get("out")
-    ? path.resolve(values.get("out") as string)
-    : fs.mkdtempSync(path.join(os.tmpdir(), "evidence-walkthrough-"));
-  const cleanupScratch = values.get("out") === undefined;
   const baseUrl = values.get("base-url");
 
+  // Definitions load and validate BEFORE the bundle dir is created: a bad
+  // --def must not leave an empty bundle dir behind to poison the retry.
   const defs =
     defArg === "all"
       ? loadAllWalkthroughDefs()
@@ -164,8 +167,17 @@ async function runWalkthroughCommand(
           },
         ];
 
+  const bundle = openBundle(values.get("bundle"), repoRoot, tier);
+  // Scratch must live OUTSIDE the bundle dir: verifyBundle sweeps for unlisted
+  // files, and the driver's raw webm/screenshots are not manifest artifacts.
+  const outRoot = values.get("out")
+    ? path.resolve(values.get("out") as string)
+    : fs.mkdtempSync(path.join(os.tmpdir(), "evidence-walkthrough-"));
+  const cleanupScratch = values.get("out") === undefined;
+
   io.out(`bundle ${bundle.runId}`);
   let ran = 0;
+  let finalized: Awaited<ReturnType<EvidenceBundle["finalize"]>>;
   try {
     for (const { def } of defs) {
       if (def.requiresApp && baseUrl === undefined) {
@@ -186,10 +198,19 @@ async function runWalkthroughCommand(
       );
       ran += 1;
     }
-  } finally {
-    if (cleanupScratch) fs.rmSync(outRoot, { recursive: true, force: true });
+    finalized = await bundle.finalize();
+  } catch (error) {
+    // error-policy:J6 best-effort teardown — the unfinalized bundle dir (no
+    // manifest) would fail the next run with BUNDLE_DIR_EXISTS, so it is
+    // removed; the scratch dir is the failure evidence (raw recording,
+    // screenshots) and is preserved with its path printed. The original error
+    // rethrows untouched to the J1 boundary below.
+    fs.rmSync(bundle.dir, { recursive: true, force: true });
+    io.err(`run failed; removed unfinalized bundle dir: ${bundle.dir}`);
+    io.err(`walkthrough scratch preserved for diagnosis: ${outRoot}`);
+    throw error;
   }
-  const finalized = await bundle.finalize();
+  if (cleanupScratch) fs.rmSync(outRoot, { recursive: true, force: true });
   io.out("");
   io.out(`  walkthroughs ran: ${ran}`);
   io.out(`  manifest:  ${finalized.manifestPath}`);
@@ -226,14 +247,26 @@ async function runIngestCommand(argv: string[], io: CliIo): Promise<number> {
   const repoRoot = path.resolve(values.get("repo-root") ?? defaultRepoRoot());
   const tier = parseTier(values.get("tier"));
   const bundle = openBundle(values.get("bundle"), repoRoot, tier);
-  const result = await ingestVideo(bundle, path.resolve(file), {
-    granularity: granularityRaw as VideoGranularity,
-    slug,
-    source: "video-ingest",
-    producedBy: "video:ingest",
-    tier,
-  });
-  const finalized = await bundle.finalize();
+  let result: Awaited<ReturnType<typeof ingestVideo>>;
+  let finalized: Awaited<ReturnType<EvidenceBundle["finalize"]>>;
+  try {
+    result = await ingestVideo(bundle, path.resolve(file), {
+      granularity: granularityRaw as VideoGranularity,
+      slug,
+      source: "video-ingest",
+      producedBy: "video:ingest",
+      tier,
+    });
+    finalized = await bundle.finalize();
+  } catch (error) {
+    // error-policy:J6 best-effort teardown — a failed ingest leaves no
+    // manifest; the dir would poison the retry with BUNDLE_DIR_EXISTS. The
+    // source video is the caller's file and is untouched; the original error
+    // rethrows untouched to the J1 boundary below.
+    fs.rmSync(bundle.dir, { recursive: true, force: true });
+    io.err(`run failed; removed unfinalized bundle dir: ${bundle.dir}`);
+    throw error;
+  }
   io.out(`bundle ${bundle.runId}`);
   io.out(`  video:     ${result.video.path}`);
   io.out(`  normalize: ${result.normalize.status}`);

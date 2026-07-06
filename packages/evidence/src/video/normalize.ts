@@ -173,6 +173,9 @@ export async function normalizeVideo(
   }
   if (isH264Mp4) {
     // Already h264: remux only (stream copy) to move moov to the front.
+    // `-map 0` keeps every input stream (ffmpeg's default keeps only one per
+    // type, silently dropping e.g. a second audio track); subtitles are dropped
+    // to match the transcode path — GitHub inline playback ignores them.
     await execFileAsync(
       tools.ffmpeg.bin,
       [
@@ -182,6 +185,10 @@ export async function normalizeVideo(
         "-y",
         "-i",
         inputPath,
+        "-map",
+        "0",
+        "-map",
+        "-0:s?",
         "-c",
         "copy",
         "-movflags",

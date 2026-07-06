@@ -19,6 +19,7 @@ import { promisify } from "node:util";
 import { afterAll, describe, expect, it } from "vitest";
 import { createBundle } from "../bundle.ts";
 import { EvidenceError } from "../errors.ts";
+import { resolveFfmpegBinary } from "../ffmpeg-binaries.ts";
 import { ffmpegAvailable } from "./keyframes.ts";
 import { analyzeArtifacts } from "./runner.ts";
 import { makeTmpDir, solidPng } from "./test-fixtures.ts";
@@ -27,10 +28,15 @@ import type { Analyzer } from "./types.ts";
 const execFileAsync = promisify(execFile);
 const scratch = makeTmpDir();
 const hasFfmpeg = await ffmpegAvailable();
+// Generate the clip with the SAME binary the gate above resolves (env, PATH,
+// or bundled): a hardcoded "ffmpeg" fails instead of skipping on machines
+// that only carry the bundled static binary.
+const ffmpeg = await resolveFfmpegBinary();
+const ffmpegBin = ffmpeg.available ? ffmpeg.bin : "ffmpeg";
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 async function makeVideo(out: string): Promise<void> {
-  await execFileAsync("ffmpeg", [
+  await execFileAsync(ffmpegBin, [
     "-hide_banner",
     "-loglevel",
     "error",
@@ -148,7 +154,9 @@ describe("analyzeArtifacts (runner integration)", () => {
     }
 
     await bundle.finalize();
-  });
+    // Keyframe extraction + the analyzer fan-out overrun vitest's 5s default
+    // under parallel suite load; the explicit budget matches the driver suite's.
+  }, 120_000);
 
   it("returns documents without a bundle and skips emit-requiring analyzers", async () => {
     // Analyze a bare screenshot with no bundle: documents are returned but not

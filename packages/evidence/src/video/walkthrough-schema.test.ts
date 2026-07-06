@@ -145,6 +145,73 @@ describe("parseWalkthroughDef", () => {
       ),
     ).toThrow(EvidenceValidationError);
   });
+
+  it("rejects goto targets with non-http(s) schemes", () => {
+    for (const value of [
+      "file:///etc/passwd",
+      "javascript:alert(1)",
+      "data:text/html,<script>1</script>",
+      "chrome://settings",
+    ]) {
+      expect(() =>
+        parseWalkthroughDef(
+          {
+            slug: "x",
+            granularity: "feature",
+            steps: [{ action: "goto", value }],
+          },
+          "test",
+        ),
+      ).toThrow(EvidenceValidationError);
+    }
+  });
+
+  it("accepts http(s) and relative goto targets", () => {
+    for (const value of [
+      "https://example.com/page",
+      "http://127.0.0.1:8080/",
+      "/settings",
+      "settings?tab=1",
+    ]) {
+      const def = parseWalkthroughDef(
+        {
+          slug: "ok",
+          granularity: "feature",
+          steps: [{ action: "goto", value }],
+        },
+        "test",
+      );
+      expect(def.steps).toHaveLength(1);
+    }
+  });
+
+  it("rejects a non-http(s) baseUrl", () => {
+    expect(() =>
+      parseWalkthroughDef(
+        {
+          slug: "x",
+          granularity: "feature",
+          baseUrl: "file:///srv/app/",
+          steps: [{ action: "goto", value: "/" }],
+        },
+        "test",
+      ),
+    ).toThrow(EvidenceValidationError);
+  });
+
+  it("rejects waitFor and scroll steps carrying both selector and value", () => {
+    for (const step of [
+      { action: "waitFor", selector: "#a", value: "500" },
+      { action: "scroll", selector: "#a", value: "300" },
+    ]) {
+      expect(() =>
+        parseWalkthroughDef(
+          { slug: "x", granularity: "feature", steps: [step] },
+          "test",
+        ),
+      ).toThrow(EvidenceValidationError);
+    }
+  });
 });
 
 describe("shipped walkthrough definitions", () => {

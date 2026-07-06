@@ -46,4 +46,21 @@ describe("serveFixture", () => {
       await server.stop();
     }
   });
+
+  it("answers malformed percent-encoding with 400 and keeps serving", async () => {
+    const root = mkdtempSync(join(dir, "root3-"));
+    writeFileSync(join(root, "index.html"), "<h1>hi</h1>");
+    const server = await serveFixture(root);
+    try {
+      // decodeURIComponent("%") throws URIError; before the guard this crashed
+      // the whole process mid-walkthrough instead of answering the request.
+      const bad = await fetch(`${server.baseUrl}%`);
+      expect(bad.status).toBe(400);
+      // The server survived and still serves the index.
+      const index = await fetch(server.baseUrl);
+      expect(index.status).toBe(200);
+    } finally {
+      await server.stop();
+    }
+  });
 });
