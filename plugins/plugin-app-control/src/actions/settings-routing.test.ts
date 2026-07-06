@@ -32,13 +32,13 @@ const FILLER_ACTIONS = [
 		contexts: ["settings", "character"],
 	},
 	{
-		name: "CONNECTOR",
+		name: "PLUGIN",
 		description:
-			"Enable, disable, or configure connectors and integrations in settings.",
+			"Enable, disable, or configure connector plugins and integrations in settings.",
 		contexts: ["settings", "connectors"],
 	},
 	{
-		name: "CREDENTIALS",
+		name: "SECRETS",
 		description:
 			"Look up or update saved credentials, passwords, and API keys in settings.",
 		contexts: ["settings", "secrets"],
@@ -128,7 +128,9 @@ describe("SETTINGS is discoverable for un-actioned settings writes (#14364)", ()
 		const validate = settingsAction.validate;
 		expect(validate).toBeTypeOf("function");
 		const runtime = {} as never;
-		const message = { content: { text: "turn off shell permissions" } } as never;
+		const message = {
+			content: { text: "turn off shell permissions" },
+		} as never;
 		expect(await validate?.(runtime, message)).toBe(true);
 		expect(await validate?.(runtime, message, undefined, {})).toBe(true);
 	});

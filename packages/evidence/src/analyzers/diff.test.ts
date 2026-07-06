@@ -11,6 +11,7 @@ import {
   clusterRegions,
   diffChangeAnalyzer,
   diffRegionAnalyzer,
+  evaluateRegionExpectations,
 } from "./diff.ts";
 import { makeTmpDir, rectPng, solidPng } from "./test-fixtures.ts";
 import type { AnalyzerContext, AnalyzerInput } from "./types.ts";
@@ -190,5 +191,47 @@ describe("diffRegionAnalyzer", () => {
       tier: "cpu",
     });
     expect(result.status).toBe("skipped-missing-tool");
+  });
+
+  it("rejects malformed region expectations instead of sampling garbage", () => {
+    const mask = new Uint8Array(16);
+    const bad = [
+      { x: 0.5, y: 0, w: 0.8, h: 0.5 }, // x+w > 1
+      { x: -0.1, y: 0, w: 0.5, h: 0.5 }, // negative origin
+      { x: 0, y: 0, w: 0, h: 0.5 }, // degenerate width
+      { x: 0, y: 0, w: Number.NaN, h: 0.5 }, // non-finite
+    ];
+    for (const region of bad) {
+      expect(() =>
+        evaluateRegionExpectations(mask, 4, 4, [
+          { kind: "change", label: "typo", region },
+        ]),
+      ).toThrow(/invalid normalized box/);
+    }
+    // A valid box still evaluates.
+    expect(
+      evaluateRegionExpectations(mask, 4, 4, [
+        { kind: "static", region: { x: 0, y: 0, w: 1, h: 1 } },
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it("fails the analyzer (never a wrong pass) on an out-of-range expectation", async () => {
+    const before = await solidPng(join(dir, "exp-a.png"), [30, 30, 30], 64, 64);
+    const after = await solidPng(join(dir, "exp-b.png"), [30, 30, 30], 64, 64);
+    const ctx: AnalyzerContext = {
+      tier: "cpu",
+      baselineResolver: () => before,
+      expectations: {
+        "visual/x/after.png": {
+          regions: [
+            { kind: "change", region: { x: 0.9, y: 0.9, w: 0.5, h: 0.5 } },
+          ],
+        },
+      },
+    };
+    await expect(
+      diffRegionAnalyzer.analyze(inputFor(after), ctx),
+    ).rejects.toThrow(/invalid normalized box/);
   });
 });

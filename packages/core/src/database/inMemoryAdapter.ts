@@ -14,7 +14,7 @@
  * lost on restart.
  */
 import { DatabaseAdapter } from "../database";
-import { rankMessageSearch } from "../search";
+import { rankMessageSearch, withinCreatedAtWindow } from "../search";
 import type {
 	AccessContext,
 	Agent,
@@ -954,6 +954,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		tableName?: string;
 		limit?: number;
 		offset?: number;
+		since?: number;
+		until?: number;
 		accessContext?: AccessContext;
 	}): Promise<MessageSearchHit[]> {
 		if (params.roomIds.length === 0) return [];
@@ -963,7 +965,16 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			const list = this.memoriesByRoom.get(roomTableKey(tableName, rid)) ?? [];
 			candidates.push(...list);
 		}
-		const ranked = rankMessageSearch(candidates, params.query);
+		// The window is applied before ranking + LIMIT/OFFSET, mirroring the SQL
+		// adapters' created_at range conditions.
+		const windowed = candidates.filter((memory) =>
+			withinCreatedAtWindow(
+				typeof memory.createdAt === "number" ? memory.createdAt : undefined,
+				params.since,
+				params.until,
+			),
+		);
+		const ranked = rankMessageSearch(windowed, params.query);
 		const offset = typeof params.offset === "number" ? params.offset : 0;
 		const limit = params.limit ?? 20;
 		return ranked

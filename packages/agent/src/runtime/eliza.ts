@@ -4286,6 +4286,9 @@ export async function startEliza(
     skipCharacterProvider: false,
     enableAutonomy:
       settings.ENABLE_AUTONOMY === true || settings.ENABLE_AUTONOMY === "true",
+    // The app ships a Vault/Secrets settings section by default, so the
+    // matching chat action must be present in the default runtime as well.
+    enableSecretsManager: true,
   });
   deduplicatePluginActions([
     basicCapabilitiesPlugin,
@@ -4299,6 +4302,7 @@ export async function startEliza(
     // advancedCapabilities: true,
     actionPlanning: true,
     // advancedMemory is enabled via character.advancedMemory
+    enableSecretsManager: true,
     plugins: [...subAgentCredentialPlugins, elizaPlugin, ...pluginsForRuntime],
     ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
     // Sandbox options — only active when mode != "off"
@@ -4318,6 +4322,11 @@ export async function startEliza(
       : {}),
     settings: {
       VALIDATION_LEVEL: "fast",
+      // SecretsService uses ENCRYPTION_SALT; the app already persists SECRET_SALT
+      // for durable ciphertext, so reuse it rather than requiring a second key.
+      ...(process.env.SECRET_SALT
+        ? { ENCRYPTION_SALT: process.env.SECRET_SALT }
+        : {}),
       // Forward non-sensitive Eliza config.env vars as runtime settings so
       // plugins can access them via runtime.getSetting(). This fixes a bug where
       // plugins (e.g. @elizaos/plugin-google-genai) call runtime.getSetting()
@@ -5605,6 +5614,7 @@ export async function startEliza(
           ]);
           const newRuntime = new AgentRuntime({
             character: freshCharacter,
+            enableSecretsManager: true,
             plugins: [
               ...subAgentCredentialPlugins,
               freshElizaPlugin,
@@ -5612,6 +5622,14 @@ export async function startEliza(
             ],
             ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
             settings: {
+              ...(process.env.SECRET_SALT
+                ? { ENCRYPTION_SALT: process.env.SECRET_SALT }
+                : {}),
+              ...Object.fromEntries(
+                Object.entries(collectConfigEnvVars(freshConfig)).filter(
+                  ([key]) => isEnvKeyAllowedForForwarding(key),
+                ),
+              ),
               ...(freshPreferredProviderId
                 ? { MODEL_PROVIDER: freshPreferredProviderId }
                 : {}),

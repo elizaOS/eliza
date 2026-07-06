@@ -47,6 +47,7 @@ import {
   type Task,
   type UUID,
   type World,
+  withinCreatedAtWindow,
 } from "@elizaos/core";
 import { EphemeralHNSW } from "./hnsw";
 import { COLLECTIONS, type IStorage } from "./types";
@@ -647,6 +648,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     tableName?: string;
     limit?: number;
     offset?: number;
+    since?: number;
+    until?: number;
     accessContext?: AccessContext;
   }): Promise<MessageSearchHit[]> {
     if (params.roomIds.length === 0) return [];
@@ -656,7 +659,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.MEMORIES,
       (m) => roomSet.has(m.roomId as UUID) && m.metadata?.type === tableName
     );
-    const candidates = stored.map(toMemory);
+    // The window is applied before ranking + LIMIT/OFFSET, mirroring the SQL
+    // adapters' created_at range conditions.
+    const candidates = stored
+      .map(toMemory)
+      .filter((memory) =>
+        withinCreatedAtWindow(
+          typeof memory.createdAt === "number" ? memory.createdAt : undefined,
+          params.since,
+          params.until
+        )
+      );
     const ranked = rankMessageSearch(candidates, params.query);
     const offset = typeof params.offset === "number" ? params.offset : 0;
     const limit = params.limit ?? 20;

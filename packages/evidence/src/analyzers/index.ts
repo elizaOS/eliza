@@ -54,15 +54,20 @@ export {
   ffmpegAvailable,
   type KeyframeRecord,
   type KeyframesData,
+  slugForVideo,
   videoKeyframesAnalyzer,
 } from "./keyframes.ts";
 export {
   AppleVisionOcrEngine,
+  defaultServeStatePath,
   type OcrAvailable,
   type OcrEngine,
+  type OcrGroundedRegion,
   type OcrRecognition,
   type OcrUnavailable,
+  parseGroundingDecorations,
   TesseractOcrEngine,
+  UNLIMITED_OCR_PROMPT,
   UnlimitedOcrEngine,
 } from "./ocr/engines.ts";
 export {

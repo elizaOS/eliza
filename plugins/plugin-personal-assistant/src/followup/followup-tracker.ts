@@ -42,6 +42,9 @@ export interface ContactInfo {
   categories: string[];
   tags: string[];
   customFields: Record<string, JsonValue>;
+  interactions?: Array<{ occurredAt: string }>;
+  lastInteractionAt?: string;
+  followupThresholdDays?: number;
 }
 
 export interface RelationshipsServiceLike {
@@ -77,6 +80,8 @@ export const FOLLOWUP_DEFAULT_THRESHOLD_DAYS = 30;
 export const FOLLOWUP_MEMORY_TABLE = "reminders" as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MIN_LEARNED_THRESHOLD_DAYS = 3;
+const MAX_LEARNED_THRESHOLD_DAYS = 90;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -153,21 +158,61 @@ function getStringField(contact: ContactInfo, key: string): string | null {
 }
 
 function resolveLastContactedAtMs(contact: ContactInfo): number | null {
-  const raw =
-    getStringField(contact, "lastContactedAt") ??
-    getStringField(contact, "lastInteractionAt");
-  if (!raw) return null;
-  const ms = new Date(raw).getTime();
-  return Number.isFinite(ms) ? ms : null;
+  const candidates = [
+    getStringField(contact, "lastContactedAt"),
+    getStringField(contact, "lastInteractionAt"),
+    contact.lastInteractionAt,
+  ];
+  const parsed = candidates
+    .map((raw) => (raw ? new Date(raw).getTime() : Number.NaN))
+    .filter(Number.isFinite);
+  return parsed.length > 0 ? Math.max(...parsed) : null;
+}
+
+function clampThresholdDays(days: number): number {
+  return Math.min(
+    MAX_LEARNED_THRESHOLD_DAYS,
+    Math.max(MIN_LEARNED_THRESHOLD_DAYS, Math.ceil(days)),
+  );
+}
+
+function resolveLearnedCadenceDays(contact: ContactInfo): number | null {
+  const interactionTimes = (contact.interactions ?? [])
+    .map((interaction) => new Date(interaction.occurredAt).getTime())
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  if (interactionTimes.length < 2) return null;
+
+  const gaps: number[] = [];
+  for (let index = 1; index < interactionTimes.length; index += 1) {
+    const gapDays =
+      (interactionTimes[index] - interactionTimes[index - 1]) / DAY_MS;
+    if (Number.isFinite(gapDays) && gapDays > 0) {
+      gaps.push(gapDays);
+    }
+  }
+  if (gaps.length === 0) return null;
+
+  const middle = Math.floor(gaps.length / 2);
+  const median =
+    gaps.length % 2 === 1
+      ? gaps[middle]
+      : (gaps[middle - 1] + gaps[middle]) / 2;
+  return clampThresholdDays(median);
 }
 
 function resolveThresholdDays(
   contact: ContactInfo,
   defaultDays: number,
 ): number {
-  const days = getNumberField(contact, "followupThresholdDays");
+  const days =
+    getNumberField(contact, "followupThresholdDays") ??
+    (typeof contact.followupThresholdDays === "number" &&
+    Number.isFinite(contact.followupThresholdDays)
+      ? contact.followupThresholdDays
+      : null);
   if (days !== null && days > 0) return days;
-  return defaultDays;
+  return resolveLearnedCadenceDays(contact) ?? defaultDays;
 }
 
 async function resolveDisplayName(

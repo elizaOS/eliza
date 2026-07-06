@@ -632,17 +632,23 @@ describeE2E("/api/my-agents/characters", () => {
     expect(body.data?.pagination?.page).toBe(1);
   });
 
-  test("POST with malformed body returns 500 (create fails at the DB layer)", async () => {
-    // Missing the required `name` field — the handler casts to ElizaCharacter
-    // without route-layer validation, so the insert fails in the repository.
-    // Current contract: 500. A route-layer validator would make this a 400;
-    // update this pin when one lands.
+  test("POST with malformed body returns 400 validation error", async () => {
+    // Missing the required `name` field. The character service rejects it as a
+    // caller validation error before any DB insert is attempted.
     const res = await api.post(
       "/api/my-agents/characters",
       { nope: "no name here" },
       { headers: bearerHeaders() },
     );
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as {
+      success?: boolean;
+      error?: string;
+      code?: string;
+    };
+    expect(body.success).toBe(false);
+    expect(body.code).toBe("validation_error");
+    expect(body.error).toMatch(/invalid name/i);
   });
 });
 

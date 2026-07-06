@@ -94,9 +94,11 @@ import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import {
+  buildReplyTargetFromMessage,
   ChatMessage,
   getChatMessageAnchorId,
 } from "../composites/chat/chat-message";
+import { ChatReplyPill } from "../composites/chat/chat-reply-pill";
 import type {
   ChatMessageData,
   ChatMessageRenderContext,
@@ -128,6 +130,7 @@ import {
 } from "./topic-grouping";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import type { ConversationNav, ShellController } from "./useShellController";
+import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 
 /** No-op slash controller so the overlay renders without a provider (stories). */
 const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
@@ -176,9 +179,6 @@ const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
  * in isolation (stories / harness) with a mock. The app wraps it in a small
  * context-reading mount (see App.tsx) that supplies the shared controller.
  */
-
-// Floating (un-scrimmed) text gets a soft shadow so it reads over bright views.
-const FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
 
 // The chat floats over arbitrary app surfaces, including theme-app where
 // `--card` is brand orange. Keep the sheet's local tokens dark and self-owned so
@@ -673,11 +673,11 @@ function TurnStatusIndicator({
       <div
         className={cn(
           "rounded-2xl rounded-bl-md border px-3.5 py-2",
-          FLOAT_SHADOW,
+          WALLPAPER_FLOAT_SHADOW,
           // Orange (the accent) ONLY for spoken replies; every other phase is
           // neutral white glass. No blue anywhere.
           // #10698: no own scrim — the shared panel glass carries the contrast;
-          // keep only the tone border (orange when speaking) + FLOAT_SHADOW.
+          // keep only the tone border (orange when speaking) + WALLPAPER_FLOAT_SHADOW.
           speaking ? "border-accent/45" : "border-border",
         )}
       >
@@ -736,7 +736,7 @@ function renderOverlayMessageBody(
       <div
         className={cn(
           "max-w-[85%] rounded-2xl rounded-bl-md border border-accent/30 bg-scrim px-3.5 py-3 text-txt",
-          FLOAT_SHADOW,
+          WALLPAPER_FLOAT_SHADOW,
         )}
       >
         <div className="mb-1 text-[14px] font-medium">
@@ -1094,6 +1094,8 @@ export function ContinuousChatOverlay({
     setChatInput: setDraft,
     chatPendingImages: pendingImages,
     setChatPendingImages: setPendingImages,
+    chatReplyTarget,
+    setChatReplyTarget,
   } = useChatComposerOrLocal();
   const activeConversationId = conversationNav.activeId;
   // Live handle to the draft for callbacks that must read the current text
@@ -1716,6 +1718,18 @@ export function ContinuousChatOverlay({
       renderOverlayMessageBody(m, ctx, openSettings),
     [openSettings],
   );
+  // Reply arms the shared composer reply target so the next send() stamps
+  // replyToMessageId (attached at the sendChatText chokepoint → REPLY_CONTEXT)
+  // and the pill renders above the input. Opens the sheet so the reply is typed
+  // against the visible thread, not the bare collapsed bar.
+  const handleReplyMessage = React.useCallback(
+    (message: ChatMessageData) => {
+      setChatReplyTarget(buildReplyTargetFromMessage(message, agentName));
+      setMode((m) => (m === "half" || m === "full" ? m : "half"));
+      inputRef.current?.focus();
+    },
+    [setChatReplyTarget, agentName],
+  );
   // Render one transcript line as the canonical ChatMessage (glass chrome);
   // shared by the flat and topic-grouped paths so the in-flight-turn detection
   // stays identical.
@@ -1745,6 +1759,7 @@ export function ContinuousChatOverlay({
           onSpeak={handleSpeakMessage}
           onEdit={handleEditResend}
           onDelete={handleDeleteMessage}
+          onReply={handleReplyMessage}
           onRetry={handleRetry}
           playing={speaking && playingMessageId === m.id}
           renderContent={renderRowBody}
@@ -1764,6 +1779,7 @@ export function ContinuousChatOverlay({
       handleSpeakMessage,
       handleEditResend,
       handleDeleteMessage,
+      handleReplyMessage,
       handleRetry,
       speaking,
       playingMessageId,
@@ -3851,7 +3867,7 @@ export function ContinuousChatOverlay({
             className={cn(
               "pointer-events-auto h-auto gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
               "border-warn/40 bg-warn/15 text-warn hover:bg-warn/25",
-              FLOAT_SHADOW,
+              WALLPAPER_FLOAT_SHADOW,
             )}
           >
             <Glyph d={SPEAKER_MUTED_GLYPH} />
@@ -4445,6 +4461,16 @@ export function ContinuousChatOverlay({
                 ) : null}
               </motion.div>
             ) : null}
+            {/* Reply target pill, just above the input (glass chrome). */}
+            {chatReplyTarget ? (
+              <div className="relative z-10 shrink-0 px-3 pt-2">
+                <ChatReplyPill
+                  appearance="glass"
+                  target={chatReplyTarget}
+                  onCancel={() => setChatReplyTarget(null)}
+                />
+              </div>
+            ) : null}
             {/* Pending image attachments + any read error, just above the input. */}
             {hasImages || imageError ? (
               <div className="relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2">
@@ -4507,7 +4533,11 @@ export function ContinuousChatOverlay({
                 {imageError ? (
                   <p
                     role="alert"
-                    className={cn("text-xs text-red-200/90", FLOAT_SHADOW)}
+                    className={cn(
+                      "text-xs",
+                      WALLPAPER_TEXT.danger,
+                      WALLPAPER_FLOAT_SHADOW,
+                    )}
                   >
                     {imageError}
                   </p>

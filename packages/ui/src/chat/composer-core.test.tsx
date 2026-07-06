@@ -242,8 +242,10 @@ describe("useChatComposerOrLocal", () => {
             chatInput,
             chatSending: false,
             chatPendingImages,
+            chatReplyTarget: null,
             setChatInput,
             setChatPendingImages,
+            setChatReplyTarget: () => {},
           }}
         >
           {children}

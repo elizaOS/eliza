@@ -179,6 +179,17 @@ export async function decideProactiveComment(
     };
   }
 
+  // Text-independent gate precheck BEFORE the (paid) judge. Daily cap, global
+  // cooldown, and per-surface cooldown are all knowable without the candidate
+  // text, and tryAdmit would discard the judge output unconditionally if any of
+  // them fails. Short-circuit here so a settled view-switch during a cooldown /
+  // cap window costs zero model calls (#14678). Only textual dedup still needs
+  // the candidate, so the final tryAdmit below remains the source of truth.
+  const precheck = gate.wouldAdmit(surface, now);
+  if (!precheck.admitted) {
+    return { text: null, delivery: null, reason: precheck.reason };
+  }
+
   const candidate = normalizeProactiveOffer(await judge(payload));
   if (!candidate) {
     return {

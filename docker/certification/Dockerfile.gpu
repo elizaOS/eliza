@@ -1,0 +1,99 @@
+# syntax=docker/dockerfile:1
+# GPU certification image for vast.ai runs (#14548, epic #14541).
+#
+# scripts/vast/run-certification.mjs rents a vast.ai RTX 4090 and boots this
+# image; the onstart script it injects only clones the repo at one sha and
+# runs the packages/evidence certification chain. vast caps onstart-cmd at
+# 16 KB, so EVERYTHING heavy is baked here instead: CUDA-enabled llama-server
+# (>= build b8525, the minimum scripts/gpu-vision accepts for the
+# DeepSeek-OCR mmproj), the sha256-pinned OCR + VLM GGUFs from
+# scripts/gpu-vision/models.lock.json, Node 24 + Bun (the workspace
+# toolchain), Playwright Chromium with OS deps, tesseract, and ffmpeg.
+#
+# Secrets NEVER bake into this image — the Ed25519 signing key and any
+# storage push command are injected as instance env at create time and die
+# with the instance. Build/publish: .github/workflows/certification-image.yml
+# pushes ghcr.io/elizaos/certification-gpu:{latest,sha-<short>}.
+
+ARG CUDA_VERSION=12.4.1
+ARG UBUNTU_VERSION=22.04
+
+# --- Stage 1: build llama-server with the CUDA backend --------------------
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS llama-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential cmake git ca-certificates libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# b8525 is the exact minimum scripts/gpu-vision/lib.mjs (MIN_LLAMA_BUILD)
+# demands; every llama.cpp CI build is tagged bNNNN so the ref is stable.
+ARG LLAMA_CPP_REF=b8525
+RUN git clone --depth 1 --branch "${LLAMA_CPP_REF}" \
+      https://github.com/ggml-org/llama.cpp /opt/llama.cpp
+
+# Static-ish build (no shared ggml libs to carry over) for the two GPU
+# generations the offer filter can realistically land on: sm_86 (RTX 3090)
+# and sm_89 (RTX 4090, the default --gpu-name).
+RUN cmake -S /opt/llama.cpp -B /opt/llama.cpp/build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DGGML_CUDA=ON \
+      -DCMAKE_CUDA_ARCHITECTURES="86;89" \
+      -DBUILD_SHARED_LIBS=OFF \
+      -DLLAMA_CURL=ON \
+    && cmake --build /opt/llama.cpp/build --target llama-server -j "$(nproc)"
+
+# --- Stage 2: runtime ------------------------------------------------------
+FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu${UBUNTU_VERSION}
+
+LABEL org.opencontainers.image.source="https://github.com/elizaOS/eliza" \
+      org.opencontainers.image.description="elizaOS GPU certification runner (vast.ai) — CUDA llama-server + pinned vision models + node24/bun/playwright/tesseract/ffmpeg" \
+      org.opencontainers.image.licenses="MIT"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# openssh-server: vast's `runtype ssh` instances start sshd inside the
+# container; without it the instance never leaves the loading state.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl git unzip xz-utils jq \
+      openssh-server \
+      tesseract-ocr \
+      ffmpeg \
+      libcurl4 libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node 24 — the engines.node pin of the workspace (plain-node scripts like
+# scripts/gpu-vision run under it directly).
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && node --version
+
+# Bun, pinned to the same version CI pins (floating canary rewrites bun.lock).
+ARG BUN_VERSION=1.3.14
+ENV BUN_INSTALL=/root/.bun
+ENV PATH="${BUN_INSTALL}/bin:${PATH}"
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}" \
+    && bun --version
+
+# Playwright Chromium + OS deps, pinned to the packages/evidence devDep line.
+ARG PLAYWRIGHT_VERSION=1.61.0
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
+RUN npx --yes "playwright@${PLAYWRIGHT_VERSION}" install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
+# CUDA llama-server from the builder.
+COPY --from=llama-builder /opt/llama.cpp/build/bin/llama-server /usr/local/bin/llama-server
+# Build gate: a broken binary (missing lib, bad link) fails here, not on a
+# billed vast instance. --version needs no GPU.
+RUN llama-server --version
+
+# Pinned GPU-vision models, fetched + sha256-verified by the repo's own
+# setup script (lockfile resolves relative to lib.mjs, so the trio is copied
+# together). ELIZA_GPU_VISION_CACHE points the cloned repo's serve.mjs at
+# this baked cache at runtime — no model download on the billed instance.
+ENV ELIZA_GPU_VISION_CACHE=/opt/eliza/gpu-vision-cache
+COPY scripts/gpu-vision/setup.mjs scripts/gpu-vision/lib.mjs scripts/gpu-vision/models.lock.json /opt/eliza/gpu-vision/
+RUN node /opt/eliza/gpu-vision/setup.mjs --with-vlm
+
+WORKDIR /workspace
+CMD ["/bin/bash"]

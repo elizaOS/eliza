@@ -53,6 +53,9 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/character",
     order: 50,
     tags: ["identity", "personality", "character"],
+    // CHARACTER/PERSONALITY are the semantic twins of the editor's field
+    // writes; the scoped actions below add view-targeted fill/click verbs.
+    relatedActions: ["CHARACTER", "PERSONALITY"],
     anticipatoryIntent:
       "Offer to refine the agent's identity, personality, or style from the current character state, and point out the highest-leverage next edit.",
     // The scoped actions below expand into mutating `agent-fill`/`agent-click`
@@ -151,7 +154,10 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       "media",
       "attachments",
     ],
-    relatedActions: ["OWNER_DOCUMENTS"],
+    // OWNER_DOCUMENTS is the personal-assistant signature/portal umbrella;
+    // DOCUMENT (core documents feature) is the CRUD twin of the view's
+    // upload/delete controls (#14369 ratchet mapping).
+    relatedActions: ["OWNER_DOCUMENTS", "DOCUMENT"],
     anticipatoryIntent:
       "Offer to triage the newest ingested attachments/documents — summarize, tag, or file them — grounded in the recent-attachment counts.",
     visibleInManager: true,
@@ -167,6 +173,9 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/automations",
     order: 55,
     tags: ["automation", "tasks", "scheduling"],
+    // SCHEDULED_TASKS is the umbrella over the one scheduler (workflows are
+    // ScheduledTask records); TRIGGER pairs the trigger editor (#14369).
+    relatedActions: ["SCHEDULED_TASKS", "TRIGGER"],
     anticipatoryIntent:
       "Offer to create a new scheduled workflow or check on existing automations — flag any recently failed runs — grounded in the live task list.",
     visibleInManager: true,
@@ -189,7 +198,9 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       "configuration",
       "extensions",
     ],
-    relatedActions: ["RUNTIME"],
+    // PLUGIN is the install/enable/configure twin of the plugin browser's
+    // controls (#14369 ratchet mapping); RUNTIME stays per #13589.
+    relatedActions: ["RUNTIME", "PLUGIN"],
     anticipatoryIntent:
       "Offer to install, configure, or troubleshoot a plugin — surface the smallest setup gap — grounded in installed-plugin and health state.",
     visibleInManager: true,
@@ -237,6 +248,9 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/memories",
     order: 72,
     tags: ["memory", "knowledge"],
+    // MEMORY (op:create|search|update|delete) is the chat twin of the viewer's
+    // browse/prune controls (#14366 closed it; #14369 pins the affinity).
+    relatedActions: ["MEMORY"],
     anticipatoryIntent:
       "Offer to search, review, or prune the agent's stored memories, and point to what's worth revisiting.",
     visibleInManager: true,
@@ -277,7 +291,9 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/settings",
     order: 90,
     tags: ["configuration", "preferences", "plugins"],
-    relatedActions: ["RUNTIME"],
+    // SETTINGS is the consolidated section write action (#14364); RUNTIME
+    // stays for the runtime/status affinity the #13589 stub migration pinned.
+    relatedActions: ["RUNTIME", "SETTINGS"],
     anticipatoryIntent:
       "Offer to set up the model/provider, voice, or connectors — recommend the smallest concrete configuration step from current settings state.",
     visibleInManager: true,
@@ -294,6 +310,9 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/background",
     order: 92,
     tags: ["background", "wallpaper", "color", "theme", "appearance", "image"],
+    // BACKGROUND is the one-write-two-triggers exemplar: the view controls and
+    // the action drive the same store (#14369 pins the affinity).
+    relatedActions: ["BACKGROUND"],
     anticipatoryIntent:
       "Offer to set the app background — pick a shader color, generate an image, or use an upload.",
     visibleInManager: true,

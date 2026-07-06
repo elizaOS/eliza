@@ -9,6 +9,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { promoteSubactionsToActions } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { pluginAction } from "./plugin.ts";
 
@@ -58,6 +59,47 @@ async function invokeToggle(pluginId: string, enabled: boolean) {
 
 describe("PLUGIN action=toggle → PUT /api/plugins/:id", () => {
   let restoreFetch: (() => void) | null = null;
+
+  it("is exposed even without plugin_manager so local connector/config ops can route", async () => {
+    expect(
+      await pluginAction.validate?.(
+        { getService: () => null } as never,
+        { content: { text: "turn on the discord connector" } } as never,
+      ),
+    ).toBe(true);
+    expect(
+      await pluginAction.validate?.(
+        { getService: () => null } as never,
+        { content: { text: "install the calendar plugin" } } as never,
+        undefined,
+        { parameters: { action: "install" } },
+      ),
+    ).toBe(false);
+    expect(
+      await pluginAction.validate?.(
+        { getService: () => null } as never,
+        { content: { text: "disable the discord connector" } } as never,
+        undefined,
+        { parameters: { action: "toggle" } },
+      ),
+    ).toBe(true);
+
+    const virtuals = promoteSubactionsToActions(pluginAction);
+    const install = virtuals.find((action) => action.name === "PLUGIN_INSTALL");
+    const toggle = virtuals.find((action) => action.name === "PLUGIN_TOGGLE");
+    await expect(
+      install?.validate?.(
+        { getService: () => null } as never,
+        { content: { text: "install the calendar plugin" } } as never,
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      toggle?.validate?.(
+        { getService: () => null } as never,
+        { content: { text: "disable the discord connector" } } as never,
+      ),
+    ).resolves.toBe(true);
+  });
 
   afterEach(() => {
     restoreFetch?.();

@@ -18,9 +18,11 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, describe, expect, it } from "vitest";
 import { createBundle } from "../bundle.ts";
+import { EvidenceError } from "../errors.ts";
 import { ffmpegAvailable } from "./keyframes.ts";
 import { analyzeArtifacts } from "./runner.ts";
 import { makeTmpDir, solidPng } from "./test-fixtures.ts";
+import type { Analyzer } from "./types.ts";
 
 const execFileAsync = promisify(execFile);
 const scratch = makeTmpDir();
@@ -169,5 +171,48 @@ describe("analyzeArtifacts (runner integration)", () => {
     expect(subjects).toHaveLength(1);
     expect(subjects[0].documentPath).toBeUndefined();
     expect(subjects[0].document.results["brand.rules"].status).toBe("ran");
+  });
+
+  it("records a throwing analyzer as failed with its message, isolated from the rest", async () => {
+    const looseDir = join(scratch, "failed-path");
+    mkdirSync(looseDir, { recursive: true });
+    await solidPng(join(looseDir, "b.png"), [40, 40, 40]);
+    const entry = {
+      path: "b.png",
+      sha256: "0".repeat(64),
+      bytes: 0,
+      kind: "screenshot" as const,
+      source: "test",
+      producedBy: "test",
+      createdAt: new Date().toISOString(),
+    };
+    const boom: Analyzer = {
+      name: "test.boom",
+      tier: "cpu",
+      kinds: ["screenshot"],
+      analyze() {
+        throw new EvidenceError("synthetic analyzer failure", {
+          code: "TEST_BOOM",
+        });
+      },
+    };
+    const healthy: Analyzer = {
+      name: "test.healthy",
+      tier: "cpu",
+      kinds: ["screenshot"],
+      analyze: () => ({ status: "ran", data: { ok: true } }),
+    };
+    const { subjects } = await analyzeArtifacts(looseDir, [entry], {
+      tier: "cpu",
+      analyzers: [boom, healthy],
+    });
+    const results = subjects[0].document.results;
+    // The throw becomes an honest failed record — message surfaced, no data.
+    expect(results["test.boom"].status).toBe("failed");
+    expect(results["test.boom"].reason).toContain("synthetic analyzer failure");
+    expect(results["test.boom"].data).toBeUndefined();
+    expect(results["test.boom"].durationMs).toBeGreaterThanOrEqual(0);
+    // One broken analyzer cannot take down the rest of the matrix.
+    expect(results["test.healthy"].status).toBe("ran");
   });
 });

@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
 
 /**
- * Initial tab routing of the hydrating phase (#13371 / #13396): the
- * character-select landing keys on the SESSION-scoped just-committed ref, so
- * a cold boot at the app root — where the DURABLE completion ref is seeded
- * true from the persisted flag (#11506) — lands on the default tab, never on
- * character-select; the landing fires exactly once right after a live
- * completion; and a deep-linked URL wins over the root landing. The client
- * and every dep are doubled; only the tab-routing tail is under test.
+ * Initial tab routing of the hydrating phase (#13371 / #14362): a root boot
+ * lands on the default landing tab (chat) and never on character-select — there
+ * is no automatic post-onboarding character-select landing; character
+ * customization is reached explicitly from Settings/launcher. A deep-linked URL
+ * still wins over the root landing. The client and every dep are doubled; only
+ * the tab-routing tail is under test.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -28,14 +27,7 @@ vi.mock("../components/apps/load-apps-catalog", () => ({
 
 import { type HydratingDeps, runHydrating } from "./startup-phase-hydrate";
 
-function makeDeps(
-  overrides: Partial<
-    Pick<
-      HydratingDeps,
-      "firstRunCompletionCommittedRef" | "firstRunCompletionJustCommittedRef"
-    >
-  > = {},
-): HydratingDeps {
+function makeDeps(): HydratingDeps {
   return {
     setStartupError: vi.fn(),
     setFirstRunLoading: vi.fn(),
@@ -55,10 +47,7 @@ function makeDeps(
     setWalletAddresses: vi.fn(),
     setTab: vi.fn(),
     setTabRaw: vi.fn(),
-    firstRunCompletionCommittedRef: { current: false },
-    firstRunCompletionJustCommittedRef: { current: false },
     initialTabSetRef: { current: false },
-    ...overrides,
   };
 }
 
@@ -79,29 +68,16 @@ beforeEach(() => {
 });
 
 describe("runHydrating initial tab routing", () => {
-  it("an ordinary root boot lands on the default tab — never character-select — even with the DURABLE completion ref seeded true (#13371)", async () => {
-    const deps = makeDeps({
-      firstRunCompletionCommittedRef: { current: true },
-    });
+  it("a root boot lands on the default landing tab (chat) — never character-select (#13371 / #14362)", async () => {
+    const deps = makeDeps();
     const events = await run(deps);
 
     expect(deps.setTab).toHaveBeenCalledTimes(1);
+    expect(deps.setTab).toHaveBeenCalledWith("chat");
     expect(deps.setTab).not.toHaveBeenCalledWith("character-select");
     expect(deps.setTabRaw).not.toHaveBeenCalledWith("character-select");
     expect(deps.initialTabSetRef.current).toBe(true);
     expect(events).toContainEqual({ type: "HYDRATION_COMPLETE" });
-  });
-
-  it("the boot right after a live completion lands on character-select ONCE and clears both refs (#13396)", async () => {
-    const deps = makeDeps({
-      firstRunCompletionCommittedRef: { current: true },
-      firstRunCompletionJustCommittedRef: { current: true },
-    });
-    await run(deps);
-
-    expect(deps.setTab).toHaveBeenCalledWith("character-select");
-    expect(deps.firstRunCompletionJustCommittedRef.current).toBe(false);
-    expect(deps.firstRunCompletionCommittedRef.current).toBe(false);
   });
 
   it("a deep-linked URL wins: no root landing, the named tab is applied", async () => {
@@ -111,6 +87,7 @@ describe("runHydrating initial tab routing", () => {
 
     expect(deps.setTab).not.toHaveBeenCalled();
     expect(deps.setTabRaw).toHaveBeenCalledWith("settings");
+    expect(deps.setTabRaw).not.toHaveBeenCalledWith("character-select");
     expect(deps.initialTabSetRef.current).toBe(true);
   });
 

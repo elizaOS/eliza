@@ -259,6 +259,19 @@ This package mostly reads config injected by the host, not raw env vars:
   pick it up.
 - **Make a view agent-controllable:** use `useAgentElement` — see
   `src/agent-surface/README.md` for ids/roles/controlled-component rules.
+- **Add a mutating control to a builtin view:** every on-screen mutation in
+  `components/pages/`, `components/settings/`, or `components/character/` must
+  have a registered agent-action twin ("views display, chat controls" — voice
+  has no DOM to click). Two gates enforce this (#14369): the repo-level
+  `node packages/scripts/view-action-ratchet.mjs` (develop-pr lane) fails a new
+  mutating typed-client call or raw write `fetch` until it is mapped to its
+  action in `packages/scripts/view-action-ratchet.registry.json`, given a
+  designed exemption with a reason, or — only with a tracking issue — recorded
+  as a gap; and the per-view handler baseline in
+  `src/testing/builtin-view-action-ratchet.ts` (client test lane) ratchets
+  local handler growth per view. Prefer adding/extending the semantic action
+  over exempting; the generic `useAgentElement` bridge is for third-party
+  plugin views only.
 - **Add a cloud-frontend component:** add under `cloud-ui/components/` and export
   from `cloud-ui/index.ts`; it ships under the `@elizaos/ui/cloud-ui` subpath.
   Import primitives from `../../components/ui/*` — do not create re-export shims
@@ -294,7 +307,10 @@ This package mostly reads config injected by the host, not raw env vars:
   mutation site in the baseline either maps to a semantic action (`SETTINGS`,
   `SCHEDULED_TASKS`, `BACKGROUND`, etc.) or is explicitly exempt as a diagnostic
   view. When adding a button/filter/toggle/form handler to a builtin view, add or
-  reuse the action first, then update the ratchet baseline with the reason.
+  reuse the action first, then update the ratchet baseline with the reason. The
+  per-site twin mapping (typed-client writes → action ids) is enforced by the
+  repo-level gate — see "Add a mutating control to a builtin view" in the
+  how-to list above.
 - Type root `src/types/index.ts` re-exports from `@elizaos/shared/types`; keep
   shared transport/domain types there rather than redefining them here.
 - **Files / attachments.** The "Files" tab (`components/pages/FilesView.tsx`,

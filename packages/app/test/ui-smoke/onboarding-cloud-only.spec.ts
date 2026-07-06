@@ -14,7 +14,7 @@
  */
 import { rm } from "node:fs/promises";
 import path from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import {
   expectNoPageDiagnostics,
   installPageDiagnosticsGuard,
@@ -37,6 +37,18 @@ const SCREENSHOT_DIR = path.join(
   "onboarding-cloud-only",
 );
 const screenshot = makeScreenshotter(SCREENSHOT_DIR);
+
+/**
+ * #14362: cloud-only onboarding lands the user straight in chat/home. The
+ * one-time post-onboarding character-select landing was removed, so the
+ * character-customization surface must never mount automatically — it is
+ * reached explicitly from Settings/launcher. Assert both the surface (the
+ * `character-editor-view` marker) and the route.
+ */
+async function expectNoCharacterSelectLanding(page: Page): Promise<void> {
+  await expect(page.getByTestId("character-editor-view")).toHaveCount(0);
+  expect(page.url()).not.toContain("character/select");
+}
 
 test.describe("cloud-only onboarding (production default)", () => {
   test.beforeEach(({ page }) => {
@@ -68,6 +80,7 @@ test.describe("cloud-only onboarding (production default)", () => {
     await settleHomeEntrance(page);
     await screenshot(page, "cloud-only-home");
     expect(await surface.getAttribute("data-page")).toBe("home");
+    await expectNoCharacterSelectLanding(page);
   });
 
   test("session injection: a stored Eliza Cloud session skips the sign-in ask — zero interactions to the onboarded home", async ({
@@ -86,6 +99,7 @@ test.describe("cloud-only onboarding (production default)", () => {
     await settleHomeEntrance(page);
     await screenshot(page, "cloud-only-session-injection-home");
     expect(await surface.getAttribute("data-page")).toBe("home");
+    await expectNoCharacterSelectLanding(page);
   });
 
   test("existing cloud agents are auto-adopted — no picker, zero interactions", async ({
@@ -104,5 +118,6 @@ test.describe("cloud-only onboarding (production default)", () => {
     await settleHomeEntrance(page);
     await screenshot(page, "cloud-only-auto-adopt-home");
     expect(await surface.getAttribute("data-page")).toBe("home");
+    await expectNoCharacterSelectLanding(page);
   });
 });

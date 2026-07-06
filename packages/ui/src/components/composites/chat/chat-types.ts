@@ -4,13 +4,14 @@
  * voice-speaker types. The single source these sibling components import their
  * types from so their contracts stay in sync.
  */
-import type { NativeToolCallEvent } from "../../../api/client-types-cloud";
+
 import type {
   ChatFailureKind,
   ChatTurnStatus,
   ConversationSecretRequest,
   MessageAttachment,
 } from "../../../api/client-types-chat";
+import type { NativeToolCallEvent } from "../../../api/client-types-cloud";
 
 export type ChatVariant = "default" | "game-modal";
 
@@ -51,6 +52,8 @@ export interface ChatLabelSet {
   play?: string;
   releaseToSend?: string;
   rename?: string;
+  /** Reply control on a message row — sets the composer to reply to it. */
+  reply?: string;
   responseInterrupted?: string;
   saveAndResend?: string;
   searchChats?: string;

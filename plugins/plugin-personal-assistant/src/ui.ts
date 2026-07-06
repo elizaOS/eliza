@@ -8,6 +8,7 @@ import "./api/client-lifeops.js";
 import React from "react";
 import { AppBlockerSettingsCard as AppBlockerSettingsCardImpl } from "./components/AppBlockerSettingsCard.js";
 import { WebsiteBlockerSettingsCard as WebsiteBlockerSettingsCardImpl } from "./components/WebsiteBlockerSettingsCard.js";
+import { useLifeOpsActivitySignals } from "./hooks/useLifeOpsActivitySignals.js";
 
 import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "./platform/lifeops-github.js";
 import type {
@@ -19,11 +20,10 @@ import type {
   WebsiteBlockerSettingsMode,
 } from "./types/website-blocker-settings-card.js";
 
-function EmptyComponent() {
+export function LifeOpsActivitySignalsEffect() {
+  useLifeOpsActivitySignals();
   return null;
 }
-
-export const LifeOpsActivitySignalsEffect = EmptyComponent;
 
 export function AppBlockerSettingsCard(props: AppBlockerSettingsCardProps) {
   return React.createElement(AppBlockerSettingsCardImpl, props);

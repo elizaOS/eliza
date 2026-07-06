@@ -123,6 +123,39 @@ describe("decideProactiveComment (#8792)", () => {
     expect(res.reason).toContain("cooldown");
   });
 
+  it("does not spend a judge call when the gate denies pre-judge (#14678)", async () => {
+    const gate = new ProactiveInteractionGate(configForChattiness("subtle"));
+    const judge = vi.fn(async () => "offer");
+    // First user switch is admitted (one judge call, consumed).
+    await decideProactiveComment({ payload: payload(), gate, judge, now: 0 });
+    expect(judge).toHaveBeenCalledTimes(1);
+    // A settled second switch to a DIFFERENT surface inside the global cooldown
+    // window is text-independently deniable — the judge must not be called.
+    const res = await decideProactiveComment({
+      payload: payload({ viewId: "calendar", viewLabel: "Calendar" }),
+      gate,
+      judge,
+      now: 30_000,
+    });
+    expect(res.text).toBeNull();
+    expect(res.reason).toContain("cooldown");
+    // Still only the first call — the cooldown short-circuited before the judge.
+    expect(judge).toHaveBeenCalledTimes(1);
+  });
+
+  it("still invokes the judge when the gate would admit pre-judge (#14678)", async () => {
+    const gate = new ProactiveInteractionGate(configForChattiness("subtle"));
+    const judge = vi.fn(async () => "pull balances?");
+    const res = await decideProactiveComment({
+      payload: payload(),
+      gate,
+      judge,
+      now: 0,
+    });
+    expect(judge).toHaveBeenCalledTimes(1);
+    expect(res.text).toBe("pull balances?");
+  });
+
   it("debounces a burst: an immediate re-switch is not yet settled", async () => {
     const gate = new ProactiveInteractionGate(configForChattiness("subtle"));
     const judge = async () => "offer";

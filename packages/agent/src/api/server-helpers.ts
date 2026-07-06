@@ -20,6 +20,7 @@ import {
   type Media,
   sendJsonError,
   type UUID,
+  validateUuid,
 } from "@elizaos/core";
 import {
   normalizeCharacterLanguage,
@@ -681,6 +682,13 @@ export async function buildUserMessages(params: {
   const { attachments, compactAttachments } =
     await buildChatAttachments(images);
   const id = crypto.randomUUID() as UUID;
+  // Lift the client's reply target onto the canonical core reply field. The
+  // dashboard reply affordance sends `metadata.replyToMessageId`;
+  // `content.inReplyTo` is what the REPLY_CONTEXT provider and the GET
+  // /messages round-trip read, so a reply persisted here survives a reload and
+  // reaches the model with its surrounding context. Validated as a UUID so a
+  // forged value can't smuggle arbitrary strings into the prompt pipeline.
+  const inReplyTo = validateUuid(metadata?.replyToMessageId);
   const userMessage = createMessageMemory({
     id,
     entityId: userId,
@@ -690,6 +698,7 @@ export async function buildUserMessages(params: {
       text: prompt,
       source,
       channelType,
+      ...(inReplyTo ? { inReplyTo } : {}),
       ...(attachments?.length ? { attachments } : {}),
       ...(metadata ? { metadata } : {}),
     } as Content & { text: string },
@@ -704,6 +713,7 @@ export async function buildUserMessages(params: {
           text: prompt,
           source,
           channelType,
+          ...(inReplyTo ? { inReplyTo } : {}),
           attachments: compactAttachments,
           ...(metadata ? { metadata } : {}),
         } as Content & { text: string },

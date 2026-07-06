@@ -37,7 +37,9 @@ import {
 } from "../../state/notifications/notification-store";
 import { NOTIFICATION_PRIORITY_RANK } from "../../widgets/home-priority";
 import { Button } from "../ui/button";
+import { HOME_GLASS_CLASS } from "./home-glass";
 import { RelativeTime } from "./RelativeTime";
+import { WALLPAPER_TEXT } from "./wallpaper-idiom";
 
 /**
  * Height cap for the scrolling list (the header stays pinned above it). Sized
@@ -415,24 +417,21 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
       // The card owns its gap from the editorial header above (mt-4) so a
       // hidden widget (null render) leaves no dead spacer in the column.
       //
-      // Lock-screen glass, not a chrome box: a single hairline border + a
-      // faintly translucent surface over the wallpaper (backdrop-blur where
-      // supported), no heavy filled card. This reads as an iOS lock-screen
-      // notification stack sitting on the home field rather than an app card.
-      //
-      // Blur audit (spec §C.4 item 4): stepped `backdrop-blur-xl` →
-      // `backdrop-blur-md`. A full-strength blur over the animated wallpaper is
-      // a per-frame compositing cost on iOS Safari that the always-mounted home
-      // pays forever; `md` still reads as glass. The `supports-[backdrop-filter]`
-      // translucency stays the primary low-end path (an opaque-enough surface
-      // where blur is unsupported), so legibility never depends on the blur.
-      className="mt-4 flex flex-col overflow-hidden rounded-2xl border border-white/55 bg-black/35 text-white backdrop-blur-md supports-[backdrop-filter]:bg-black/30"
+      // Lock-screen glass, not a chrome box: a single shared recipe owns the
+      // entire home backdrop-filter budget. Ranked widgets stay solid token
+      // tiles, so adding residents never adds more blur surfaces.
+      className={HOME_GLASS_CLASS}
     >
       <style>{NOTIF_SCROLL_CSS}</style>
       {/* Pinned header: a quiet eyebrow + unread count, actions to the right.
           No boxed bell chip - the label alone names the surface. */}
       <div className="flex shrink-0 items-center gap-1.5 px-3.5 pb-1 pt-2.5">
-        <span className="text-2xs font-medium uppercase tracking-[0.1em] text-white/70">
+        <span
+          className={cn(
+            "text-2xs font-medium uppercase tracking-[0.1em]",
+            WALLPAPER_TEXT.secondary,
+          )}
+        >
           Notifications
         </span>
         {unreadCount > 0 ? (
@@ -451,7 +450,10 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
               aria-label="Mark all read"
               title="Mark all read"
               data-testid="notifications-mark-all-read"
-              className="text-white/70 hover:bg-white/10 hover:text-white"
+              className={cn(
+                WALLPAPER_TEXT.secondary,
+                "hover:bg-white/10 hover:text-white",
+              )}
               onClick={() => void markAllNotificationsRead()}
             >
               <CheckCheck className="h-4 w-4" />
@@ -463,7 +465,10 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
             aria-label="Clear all notifications"
             title="Clear all"
             data-testid="notifications-clear-all"
-            className="text-white/70 hover:bg-white/10 hover:text-white"
+            className={cn(
+              WALLPAPER_TEXT.secondary,
+              "hover:bg-white/10 hover:text-white",
+            )}
             onClick={() => void clearNotifications()}
           >
             <Trash2 className="h-4 w-4" />

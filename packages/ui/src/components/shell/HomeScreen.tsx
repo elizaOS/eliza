@@ -25,6 +25,7 @@ import { Button } from "../ui/button";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { HomeGestureHint } from "./HomeGestureHint";
 import { NotificationsShade } from "./NotificationsShade";
+import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 
 // A gentle staggered fade-up as the home settles in - iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
@@ -370,7 +371,9 @@ export function HomeScreen({
                       className={cn(
                         // Naked tile: icon + label sit directly on the ambient
                         // orange field - no fill, no border.
-                        "flex h-auto flex-col items-center gap-1.5 whitespace-normal rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
+                        "flex h-auto flex-col items-center gap-1.5 whitespace-normal rounded-2xl px-1 py-3.5",
+                        WALLPAPER_TEXT.base,
+                        WALLPAPER_FLOAT_SHADOW,
                         // Tactile press: a quick scale-down on tap (stilled for
                         // reduce-motion users), plus a faint white wash on hover.
                         "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",

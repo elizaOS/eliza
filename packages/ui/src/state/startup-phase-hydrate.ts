@@ -50,7 +50,6 @@ import {
   parseProactiveMessageEvent,
   parseStreamEventEnvelopeEvent,
 } from "./internal";
-import { shouldStartAtCharacterSelectOnLaunch } from "./shell-routing";
 import type { StartupEvent } from "./startup-coordinator";
 import { switchRuntimeNonDestructive } from "./switch-runtime";
 
@@ -75,8 +74,6 @@ export interface HydratingDeps {
   setWalletAddresses: (v: WalletAddresses) => void;
   setTab: (t: Tab) => void;
   setTabRaw: (t: Tab) => void;
-  firstRunCompletionCommittedRef: React.MutableRefObject<boolean>;
-  firstRunCompletionJustCommittedRef: React.MutableRefObject<boolean>;
   initialTabSetRef: React.MutableRefObject<boolean>;
 }
 
@@ -261,42 +258,17 @@ export async function runHydrating(
 
   // Tab routing. A root open lands on the default tab; a URL that names a
   // specific view is an explicit deep link and wins via the `setTabRaw(urlTab)`
-  // pass below. The character-select landing keys on the SESSION-scoped
-  // just-committed ref (#13396), never the durable completion ref — the
-  // durable ref is seeded from the persisted flag on every process start
-  // (#11506), and branching on it routed every post-onboarding cold boot to
-  // /character/select instead of home (#13371).
+  // pass below. Cloud-only onboarding lands the user straight in chat (#14362):
+  // `completeFirstRun` sets the landing tab and marks `initialTabSetRef`, so on
+  // the first post-onboarding paint this pass is a no-op. There is no automatic
+  // character-select landing — character customization is reached explicitly
+  // from Settings/launcher.
   const navPath = getWindowNavigationPath();
   const urlTab = tabFromPath(navPath);
   const isRoot = isRouteRootPath(navPath);
-  // The post-first-run character-select landing only applies when the app was
-  // opened at the root. A URL that names a specific view is an explicit deep
-  // link and must win — otherwise this branch rewrote the URL to
-  // /character/select while the `setTabRaw(urlTab)` pass below flipped the tab
-  // back to the deep-linked view, leaving the URL and the rendered view
-  // contradicting each other (and sometimes stranding the user on character
-  // select instead of the view they asked for).
-  const shouldCharSelect =
-    (deps.firstRunCompletionJustCommittedRef.current ||
-      shouldStartAtCharacterSelectOnLaunch({
-        firstRunNeedsOptions: false,
-        navPath,
-        urlTab,
-      })) &&
-    (isRoot || !urlTab);
   if (!deps.initialTabSetRef.current) {
     deps.initialTabSetRef.current = true;
-    if (shouldCharSelect) {
-      deps.firstRunCompletionJustCommittedRef.current = false;
-      deps.firstRunCompletionCommittedRef.current = false;
-      deps.setTab("character-select");
-      void deps.loadCharacter();
-    } else if (isRoot) {
-      deps.setTab(resolveDefaultLandingTab());
-    } else {
-      deps.firstRunCompletionJustCommittedRef.current = false;
-      deps.firstRunCompletionCommittedRef.current = false;
-    }
+    if (isRoot) deps.setTab(resolveDefaultLandingTab());
   }
   if (urlTab && urlTab !== "chat") {
     deps.setTabRaw(urlTab);

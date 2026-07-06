@@ -156,8 +156,10 @@ describe("ChatSurface composer (shared core)", () => {
             chatInput,
             chatSending: false,
             chatPendingImages,
+            chatReplyTarget: null,
             setChatInput,
             setChatPendingImages,
+            setChatReplyTarget: () => {},
           }}
         >
           <span data-testid="shared-draft" hidden>

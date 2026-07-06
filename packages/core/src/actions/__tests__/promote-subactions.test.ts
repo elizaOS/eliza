@@ -98,6 +98,48 @@ describe("promoteSubactionsToActions parameter slicing", () => {
 		expect(discriminator?.schema.default).toBe("read");
 	});
 
+	it("validates virtual actions with their pinned discriminator injected", async () => {
+		const seen: unknown[] = [];
+		const [, ...virtuals] = promoteSubactionsToActions(
+			makeUmbrella({
+				validate: async (_runtime, _message, _state, options) => {
+					seen.push((options as HandlerOptions | undefined)?.parameters);
+					return (
+						(
+							(options as HandlerOptions | undefined)?.parameters as {
+								action?: string;
+							}
+						)?.action === "read"
+					);
+				},
+			}),
+		);
+
+		await expect(
+			findVirtual(virtuals, "WIDGET_READ").validate?.({} as never, {} as never),
+		).resolves.toBe(true);
+		await expect(
+			findVirtual(virtuals, "WIDGET_DELETE").validate?.(
+				{} as never,
+				{} as never,
+			),
+		).resolves.toBe(false);
+		expect(seen).toEqual([
+			{ action: "read", subaction: "read" },
+			{ action: "delete", subaction: "delete" },
+		]);
+	});
+
+	it("defaults virtual validation to true when the parent has no validator", async () => {
+		const parent = makeUmbrella();
+		delete (parent as Partial<Action>).validate;
+		const [, ...virtuals] = promoteSubactionsToActions(parent as Action);
+
+		await expect(
+			findVirtual(virtuals, "WIDGET_CREATE").validate({} as never, {} as never),
+		).resolves.toBe(true);
+	});
+
 	it("treats an explicit empty subactions list as parent-only", () => {
 		const umbrella = makeUmbrella({
 			parameters: [

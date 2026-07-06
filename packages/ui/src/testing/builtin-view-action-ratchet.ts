@@ -54,10 +54,10 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "packages/ui/src/components/pages/PluginCard.tsx",
       "packages/ui/src/components/pages/PluginConfigForm.tsx",
     ],
-    semanticActions: ["APP", "SETTINGS", "CONNECTOR", "CREDENTIALS", "RUNTIME"],
+    semanticActions: ["APP", "SETTINGS", "PLUGIN", "SECRETS", "RUNTIME"],
     maxMutationSites: 14,
     notes:
-      "Plugin enable/config/reorder/setup flows are covered by app/settings/connector/credential/runtime actions; the count ratchets local-only control growth.",
+      "Plugin enable/config/reorder/setup flows are covered by app/settings/plugin/secrets/runtime actions; the count ratchets local-only control growth.",
   },
   {
     viewId: "settings",
@@ -71,8 +71,8 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "MODEL_SWITCH",
       "BACKGROUND",
       "CHARACTER",
-      "CONNECTOR",
-      "CREDENTIALS",
+      "PLUGIN",
+      "SECRETS",
     ],
     maxMutationSites: 18,
     notes:

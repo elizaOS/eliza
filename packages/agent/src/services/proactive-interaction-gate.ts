@@ -175,13 +175,28 @@ export class ProactiveInteractionGate {
   }
 
   /**
-   * Check every gate and, when all pass, record the emission. Returns the first
-   * failing reason so callers can log why a comment was suppressed.
+   * Evaluate every text-INDEPENDENT gate (disabled, settle, daily cap, global
+   * cooldown, per-surface cooldown) without touching the candidate text and
+   * without recording anything. Returns the first failing reason, or `"ok"`
+   * when the surface would currently be admitted pending only textual dedup.
+   *
+   * Callers use this as a cheap precheck BEFORE soliciting the (paid) model
+   * judge: if the gate would deny on a text-independent rule, there is no point
+   * spending a judge call whose output {@link tryAdmit} would discard
+   * unconditionally (#14678). It never mutates gate state, so a real admission
+   * still goes through {@link tryAdmit}.
    */
-  tryAdmit(input: AdmitInput): AdmitResult {
-    const { surface, text, now } = input;
+  wouldAdmit(surface: string, now: number): AdmitResult {
     this.pruneOlderThan(now);
+    return this.checkTextIndependentGates(surface, now);
+  }
 
+  /**
+   * The text-independent portion of the admission gate. Shared by
+   * {@link wouldAdmit} (precheck) and {@link tryAdmit} (commit) so the two can
+   * never drift. Assumes {@link pruneOlderThan} has already run.
+   */
+  private checkTextIndependentGates(surface: string, now: number): AdmitResult {
     if (this.config.chattiness === "off" || this.config.dailyCap <= 0) {
       return { admitted: false, reason: "disabled" };
     }
@@ -207,6 +222,21 @@ export class ProactiveInteractionGate {
       now - lastForSurface.at < this.config.perSurfaceCooldownMs
     ) {
       return { admitted: false, reason: "per-surface cooldown" };
+    }
+    return { admitted: true, reason: "ok" };
+  }
+
+  /**
+   * Check every gate and, when all pass, record the emission. Returns the first
+   * failing reason so callers can log why a comment was suppressed.
+   */
+  tryAdmit(input: AdmitInput): AdmitResult {
+    const { surface, text, now } = input;
+    this.pruneOlderThan(now);
+
+    const textIndependent = this.checkTextIndependentGates(surface, now);
+    if (!textIndependent.admitted) {
+      return textIndependent;
     }
     // Textual dedup (same surface + same text within the window).
     const normalized = text.trim().toLowerCase();

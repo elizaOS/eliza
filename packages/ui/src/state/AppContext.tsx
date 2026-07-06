@@ -312,6 +312,7 @@ function AppProviderInner({
       ptySessions,
       unreadConversations,
       chatPendingImages,
+      chatReplyTarget,
     },
     setChatInput,
     setChatSending,
@@ -330,10 +331,12 @@ function AppProviderInner({
     setAutonomousRunHealthByRunId,
     setPtySessions,
     setChatPendingImages,
+    setChatReplyTarget,
     resetDraftState: resetConversationDraftState,
     activeConversationIdRef,
     chatInputRef,
     chatPendingImagesRef,
+    chatReplyTargetRef,
     conversationsRef,
     conversationMessagesRef,
     conversationHydrationEpochRef,
@@ -644,7 +647,6 @@ function AppProviderInner({
       cloudProvisionedContainer: firstRunCloudProvisionedContainer,
     },
     completionCommittedRef: firstRunCompletionCommittedRefFromHook,
-    completionJustCommittedRef: firstRunCompletionJustCommittedRefFromHook,
   } = firstRun;
 
   const {
@@ -802,8 +804,6 @@ function AppProviderInner({
   const _restartNotificationSignatureRef = useRef<string | null>(null);
   const _heartbeatNotificationKeyRef = useRef<string | null>(null);
   const firstRunCompletionCommittedRef = firstRunCompletionCommittedRefFromHook;
-  const firstRunCompletionJustCommittedRef =
-    firstRunCompletionJustCommittedRefFromHook;
 
   // --- Confirm Modal ---
   const { modalProps } = useConfirm();
@@ -1062,10 +1062,12 @@ function AppProviderInner({
     setCompanionMessageCutoffTs,
     setConversationMessages,
     setUnreadConversations,
+    setChatReplyTarget,
     resetConversationDraftState,
     activeConversationIdRef,
     chatInputRef,
     chatPendingImagesRef,
+    chatReplyTargetRef,
     conversationsRef,
     conversationMessagesRef,
     conversationHydrationEpochRef,
@@ -1527,7 +1529,6 @@ function AppProviderInner({
     setConversations,
     requestGreetingWhenRunningRef,
     firstRunCompletionCommittedRef,
-    firstRunCompletionJustCommittedRef,
     initialTabSetRef,
     activeConversationIdRef,
     elizaCloudPollInterval,
@@ -1675,15 +1676,19 @@ function AppProviderInner({
       chatInput,
       chatSending,
       chatPendingImages,
+      chatReplyTarget,
       setChatInput,
       setChatPendingImages,
+      setChatReplyTarget,
     }),
     [
       chatInput,
       chatSending,
       chatPendingImages,
+      chatReplyTarget,
       setChatInput,
       setChatPendingImages,
+      setChatReplyTarget,
     ],
   );
 

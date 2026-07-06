@@ -111,6 +111,12 @@ describe("parseSettingsRequest", () => {
 			app: null,
 			namespace: null,
 			permission: null,
+			provider: null,
+			chain: null,
+			network: null,
+			evm: null,
+			bsc: null,
+			solana: null,
 		});
 	});
 
@@ -183,6 +189,24 @@ describe("parseSettingsRequest", () => {
 			permission: "microphone",
 		});
 	});
+
+	it("reads wallet RPC provider options", () => {
+		expect(
+			parseSettingsRequest({
+				action: "set",
+				section: "wallet-rpc",
+				chain: "evm",
+				provider: "alchemy",
+				network: "testnet",
+			}),
+		).toMatchObject({
+			verb: "set",
+			sectionId: "wallet-rpc",
+			chain: "evm",
+			provider: "alchemy",
+			network: "testnet",
+		});
+	});
 });
 
 describe("registry completeness", () => {
@@ -223,16 +247,43 @@ describe("registry completeness", () => {
 			).toBeTruthy();
 		}
 		expect(SETTINGS_WRITE_REGISTRY.voice).toMatchObject({
-			kind: "unwired",
-			trackingIssue: 14910,
+			kind: "route",
 		});
 		expect(SETTINGS_WRITE_REGISTRY["wallet-rpc"]).toMatchObject({
-			kind: "unwired",
-			trackingIssue: 14911,
+			kind: "route",
 		});
-		expect(SETTINGS_WRITE_REGISTRY.updates).toMatchObject({
-			kind: "unwired",
-			trackingIssue: 14912,
+	});
+
+	it("routes delegated sections to registered canonical actions", async () => {
+		expect(SETTINGS_WRITE_REGISTRY.connectors).toMatchObject({
+			kind: "delegate",
+			action: "PLUGIN",
+		});
+		expect(SETTINGS_WRITE_REGISTRY.secrets).toMatchObject({
+			kind: "delegate",
+			action: "SECRETS",
+		});
+
+		const connector = await invoke({
+			action: "set",
+			section: "connectors",
+			key: "discord",
+			value: "on",
+		});
+		expect(connector.result?.data).toMatchObject({
+			delegateTo: "PLUGIN",
+			section: "connectors",
+		});
+
+		const secrets = await invoke({
+			action: "set",
+			section: "secrets",
+			key: "OPENAI_API_KEY",
+			value: "sk-test",
+		});
+		expect(secrets.result?.data).toMatchObject({
+			delegateTo: "SECRETS",
+			section: "secrets",
 		});
 	});
 
@@ -241,12 +292,20 @@ describe("registry completeness", () => {
 			"CHARACTER",
 			"MODEL_SWITCH",
 			"BACKGROUND",
-			"CONNECTOR",
-			"CREDENTIALS",
+			"PLUGIN",
+			"SECRETS",
 		]);
 		for (const cap of Object.values(SETTINGS_WRITE_REGISTRY)) {
 			if (cap.kind === "delegate") expect(allowed.has(cap.action)).toBe(true);
 		}
+		expect(SETTINGS_WRITE_REGISTRY.connectors).toMatchObject({
+			kind: "delegate",
+			action: "PLUGIN",
+		});
+		expect(SETTINGS_WRITE_REGISTRY.secrets).toMatchObject({
+			kind: "delegate",
+			action: "SECRETS",
+		});
 	});
 });
 
@@ -264,8 +323,12 @@ describe("SETTINGS action: list", () => {
 		expect(permissions).toMatchObject({ writable: true, via: "SETTINGS" });
 		const appearance = sections.find((s) => s.id === "appearance");
 		expect(appearance).toMatchObject({ writable: true, via: "SETTINGS" });
+		const voice = sections.find((s) => s.id === "voice");
+		expect(voice).toMatchObject({ writable: true, via: "SETTINGS" });
 		const capabilities = sections.find((s) => s.id === "capabilities");
 		expect(capabilities).toMatchObject({ writable: true, via: "SETTINGS" });
+		const walletRpc = sections.find((s) => s.id === "wallet-rpc");
+		expect(walletRpc).toMatchObject({ writable: true, via: "SETTINGS" });
 		const advanced = sections.find((s) => s.id === "advanced");
 		expect(advanced).toMatchObject({ writable: true, via: "SETTINGS" });
 		const appPermissions = sections.find((s) => s.id === "app-permissions");
@@ -274,7 +337,7 @@ describe("SETTINGS action: list", () => {
 			via: "SETTINGS",
 		});
 		const updates = sections.find((s) => s.id === "updates");
-		expect(updates).toMatchObject({ writable: false, via: "not-yet-wired" });
+		expect(updates).toMatchObject({ writable: true, via: "SETTINGS" });
 	});
 });
 
@@ -371,6 +434,151 @@ describe("SETTINGS action: set on an owned route section", () => {
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
 		expect(texts.join(" ")).toContain("supported appearance value");
+	});
+
+	it("updates voice continuous-chat mode through the config route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						messages: {
+							existing: { keep: true },
+							voice: {
+								continuous: "off",
+								vadAutoStop: {
+									silenceMs: 900,
+									speechRmsThreshold: 0.006,
+								},
+							},
+						},
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "voice",
+				key: "continuous",
+				value: "always-on",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(1, {
+			method: "GET",
+			path: "/api/config",
+		});
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/config",
+			body: {
+				messages: {
+					existing: { keep: true },
+					voice: {
+						continuous: "always-on",
+						vadAutoStop: {
+							silenceMs: 900,
+							speechRmsThreshold: 0.006,
+						},
+					},
+				},
+			},
+		});
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "voice",
+			key: "continuous",
+		});
+		expect(texts.join(" ")).toContain("continuous chat is always-on");
+	});
+
+	it("updates voice VAD silence while preserving existing voice prefs", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						messages: {
+							voice: {
+								continuous: "vad-gated",
+								vadAutoStop: {
+									silenceMs: 900,
+									speechRmsThreshold: 0.006,
+								},
+							},
+						},
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "voice",
+				key: "silence-ms",
+				value: "1200",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/config",
+			body: {
+				messages: {
+					voice: {
+						continuous: "vad-gated",
+						vadAutoStop: {
+							silenceMs: 1200,
+							speechRmsThreshold: 0.006,
+						},
+					},
+				},
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("rejects out-of-range voice VAD values before writing", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: { messages: { voice: { continuous: "off" } } },
+		}));
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "voice",
+				key: "rms",
+				value: "0.2",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledTimes(1);
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("between 0.001 and 0.02");
+	});
+
+	it("surfaces voice config backend failures instead of fabricating success", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return { ok: true, data: { messages: {} } };
+			}
+			return { ok: false, detail: "config save failed" };
+		});
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "voice",
+				key: "continuous-chat",
+				value: "vad",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledTimes(2);
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("config save failed");
 	});
 
 	it("dispatches permissions shell off through the backend route", async () => {
@@ -629,6 +837,260 @@ describe("SETTINGS action: set on an owned route section", () => {
 		expect(result?.success).toBe(true);
 	});
 
+	it("updates one wallet RPC provider through the wallet config route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						selectedRpcProviders: {
+							evm: "eliza-cloud",
+							bsc: "eliza-cloud",
+							solana: "eliza-cloud",
+						},
+						walletNetwork: "mainnet",
+						legacyCustomChains: [],
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				key: "evm",
+				value: "alchemy",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(1, {
+			method: "GET",
+			path: "/api/wallet/config",
+		});
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: {
+				selections: {
+					evm: "alchemy",
+					bsc: "eliza-cloud",
+					solana: "eliza-cloud",
+				},
+				walletNetwork: "mainnet",
+				credentials: {},
+			},
+		});
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "wallet-rpc",
+			key: "evm",
+		});
+		expect(texts.join(" ")).toContain("EVM=alchemy");
+		expect(texts.join(" ")).toContain("Secrets/Vault");
+	});
+
+	it("scopes chain/provider wallet RPC requests to the requested chain", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						selectedRpcProviders: {
+							evm: "eliza-cloud",
+							bsc: "ankr",
+							solana: "helius-birdeye",
+						},
+						walletNetwork: "mainnet",
+						legacyCustomChains: [],
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				chain: "evm",
+				provider: "alchemy",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: {
+				selections: {
+					evm: "alchemy",
+					bsc: "ankr",
+					solana: "helius-birdeye",
+				},
+				walletNetwork: "mainnet",
+				credentials: {},
+			},
+		});
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "wallet-rpc",
+			key: "evm",
+		});
+	});
+
+	it("switches all wallet RPC providers to Eliza Cloud without exposing secrets", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						selectedRpcProviders: {
+							evm: "alchemy",
+							bsc: "nodereal",
+							solana: "helius-birdeye",
+						},
+						walletNetwork: "mainnet",
+						legacyCustomChains: ["evm"],
+						alchemyKeySet: true,
+						nodeRealBscRpcSet: true,
+						heliusKeySet: true,
+						birdeyeKeySet: true,
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result } = await invoke(
+			{ action: "set", section: "wallet-rpc", key: "cloud" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: expect.objectContaining({
+				selections: {
+					evm: "eliza-cloud",
+					bsc: "eliza-cloud",
+					solana: "eliza-cloud",
+				},
+				walletNetwork: "mainnet",
+				credentials: expect.objectContaining({
+					ALCHEMY_API_KEY: "",
+					NODEREAL_BSC_RPC_URL: "",
+					HELIUS_API_KEY: "",
+					BIRDEYE_API_KEY: "",
+				}),
+			}),
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("changes wallet network mode while preserving current RPC selections", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						selectedRpcProviders: {
+							evm: "infura",
+							bsc: "ankr",
+							solana: "eliza-cloud",
+						},
+						walletNetwork: "mainnet",
+						legacyCustomChains: [],
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				key: "network",
+				value: "testnet",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: {
+				selections: {
+					evm: "infura",
+					bsc: "ankr",
+					solana: "eliza-cloud",
+				},
+				walletNetwork: "testnet",
+				credentials: {},
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("rejects invalid wallet RPC providers before writing", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						selectedRpcProviders: {
+							evm: "eliza-cloud",
+							bsc: "eliza-cloud",
+							solana: "eliza-cloud",
+						},
+						walletNetwork: "mainnet",
+						legacyCustomChains: [],
+					},
+				};
+			}
+			return { ok: true };
+		});
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				key: "evm",
+				value: "nodereal",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledTimes(1);
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("not a supported evm RPC provider");
+	});
+
+	it("surfaces wallet RPC backend failures instead of fabricating success", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return {
+					ok: true,
+					data: {
+						selectedRpcProviders: {
+							evm: "eliza-cloud",
+							bsc: "eliza-cloud",
+							solana: "eliza-cloud",
+						},
+						walletNetwork: "mainnet",
+						legacyCustomChains: [],
+					},
+				};
+			}
+			return { ok: false, detail: "wallet config save failed" };
+		});
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				key: "solana",
+				value: "helius",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledTimes(2);
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("wallet config save failed");
+	});
+
 	it("surfaces a backend failure instead of fabricating success", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
 			ok: false,
@@ -871,6 +1333,118 @@ describe("SETTINGS action: set on an owned route section", () => {
 		expect(result?.success).toBe(false);
 		expect(texts.join(" ")).toContain("shell");
 	});
+
+	it("reads update status through the Release Center backend status route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: {
+				currentVersion: "1.0.0",
+				channel: "stable",
+				updateAvailable: false,
+				latestVersion: "1.0.0",
+			},
+		}));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "status" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "GET",
+			path: "/api/update/status",
+		});
+		expect(result?.success).toBe(true);
+		expect(texts.join(" ")).toContain("Current: 1.0.0 on stable");
+	});
+
+	it("forces an update check through the update status route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: {
+				currentVersion: "1.0.0",
+				channel: "beta",
+				updateAvailable: true,
+				latestVersion: "1.1.0-beta.1",
+			},
+		}));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "check" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "GET",
+			path: "/api/update/status?force=true",
+		});
+		expect(result?.success).toBe(true);
+		expect(texts.join(" ")).toContain("Update available: 1.0.0");
+	});
+
+	it("changes the update channel then refreshes status", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "PUT")
+				return { ok: true, data: { channel: "beta" } };
+			return {
+				ok: true,
+				data: {
+					currentVersion: "1.0.0",
+					channel: "beta",
+					updateAvailable: false,
+					latestVersion: "1.0.0",
+				},
+			};
+		});
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "channel", value: "beta" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(1, {
+			method: "PUT",
+			path: "/api/update/channel",
+			body: { channel: "beta" },
+		});
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "GET",
+			path: "/api/update/status?force=true",
+		});
+		expect(result?.success).toBe(true);
+		expect(texts.join(" ")).toContain("Update channel is beta");
+	});
+
+	it("rejects invalid update channels before calling the route", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "channel", value: "canary" },
+			routeFetch,
+		);
+		expect(routeFetch).not.toHaveBeenCalled();
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("stable, beta, or nightly");
+	});
+
+	it("reports the update apply plan without fabricating a remote installer job", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
+			ok: true,
+			data: {
+				currentVersion: "1.0.0",
+				channel: "stable",
+				updateAvailable: true,
+				latestVersion: "1.1.0",
+				canExecuteUpdate: false,
+				updateInstructions:
+					'This is a remote status view. Run "npm install -g elizaos@latest" on the host; no remote execution endpoint is exposed.',
+			},
+		}));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "updates", key: "apply" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "GET",
+			path: "/api/update/status?force=true",
+		});
+		expect(result?.success).toBe(true);
+		expect(texts.join(" ")).toContain("chat cannot apply it directly");
+		expect(texts.join(" ")).toContain("no remote execution endpoint");
+	});
 });
 
 describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
@@ -885,6 +1459,30 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 		expect(result?.data).toMatchObject({ delegateTo: "MODEL_SWITCH" });
 	});
 
+	it("delegates connector settings to the default PLUGIN action", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "connectors", value: "telegram" },
+			routeFetch,
+		);
+		expect(routeFetch).not.toHaveBeenCalled();
+		expect(result?.success).toBe(false);
+		expect(result?.data).toMatchObject({ delegateTo: "PLUGIN" });
+		expect(texts.join(" ")).toContain("PLUGIN");
+	});
+
+	it("delegates vault settings to SECRETS, not the browser credential action", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+		const { result, texts } = await invoke(
+			{ action: "set", section: "secrets", value: "openai" },
+			routeFetch,
+		);
+		expect(routeFetch).not.toHaveBeenCalled();
+		expect(result?.success).toBe(false);
+		expect(result?.data).toMatchObject({ delegateTo: "SECRETS" });
+		expect(texts.join(" ")).toContain("SECRETS");
+	});
+
 	it("refuses to write a read-only section", async () => {
 		const { result, texts } = await invoke({
 			action: "set",
@@ -895,14 +1493,29 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 		expect(texts.join(" ")).toContain("read-only");
 	});
 
-	it("refuses an unwired gap section with its stated reason", async () => {
-		const { result, texts } = await invoke({
-			action: "set",
-			section: "updates",
-			value: "on",
-		});
-		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("yet");
+	it("refuses every unwired gap section with its stated reason", async () => {
+		const unwiredEntries = Object.entries(SETTINGS_WRITE_REGISTRY).filter(
+			(
+				entry,
+			): entry is [
+				string,
+				Extract<
+					(typeof SETTINGS_WRITE_REGISTRY)[keyof typeof SETTINGS_WRITE_REGISTRY],
+					{ kind: "unwired" }
+				>,
+			] => entry[1].kind === "unwired",
+		);
+		expect(unwiredEntries.length).toBeGreaterThan(0);
+
+		for (const [section, cap] of unwiredEntries) {
+			const { result, texts } = await invoke({
+				action: "set",
+				section,
+				value: "on",
+			});
+			expect(result?.success).toBe(false);
+			expect(texts.join(" ")).toContain(cap.reason);
+		}
 	});
 });
 

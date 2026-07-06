@@ -117,6 +117,42 @@ describe("ProactiveInteractionGate — UX governance (#8792)", () => {
     expect(r.admitted).toBe(false);
     expect(r.reason).toBe("disabled");
   });
+
+  it("wouldAdmit is a non-mutating text-independent precheck (#14678)", () => {
+    const g = gate(SUBTLE);
+    // Pure precheck: no emission recorded, so calling it many times never
+    // consumes the daily cap or arms a cooldown.
+    for (let i = 0; i < 5; i++) {
+      const w = g.wouldAdmit("wallet", 0);
+      expect(w.admitted).toBe(true);
+      expect(w.reason).toBe("ok");
+    }
+    // A real admission still goes through, proving wouldAdmit did not mutate.
+    expect(
+      g.tryAdmit({ surface: "wallet", text: "pull balances?", now: 0 })
+        .admitted,
+    ).toBe(true);
+  });
+
+  it("wouldAdmit mirrors tryAdmit's text-independent denials (#14678)", () => {
+    const g = gate(SUBTLE);
+    g.tryAdmit({ surface: "wallet", text: "a", now: 0 });
+    // Global cooldown across surfaces is text-independent — precheck sees it.
+    const w = g.wouldAdmit("calendar", 30_000);
+    expect(w.admitted).toBe(false);
+    expect(w.reason).toBe("global cooldown");
+    // And it matches what tryAdmit would report for the same surface/time.
+    expect(
+      g.tryAdmit({ surface: "calendar", text: "b", now: 30_000 }).reason,
+    ).toBe("global cooldown");
+  });
+
+  it("wouldAdmit reports 'disabled' when chattiness is off (#14678)", () => {
+    const g = gate(configForChattiness("off"));
+    const w = g.wouldAdmit("wallet", 0);
+    expect(w.admitted).toBe(false);
+    expect(w.reason).toBe("disabled");
+  });
 });
 
 describe("resolveProactiveChattiness — kill-switch + setting", () => {

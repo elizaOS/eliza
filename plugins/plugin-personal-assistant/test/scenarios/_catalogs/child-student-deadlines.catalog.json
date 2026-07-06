@@ -1,0 +1,64 @@
+{
+  "catalogId": "child-student-deadlines",
+  "title": "Pack L1 - Child voice and student deadline scenario catalog",
+  "source": {
+    "parentIssue": "#14352",
+    "packId": "L1",
+    "persona": "MVP child/student owner coverage",
+    "targetCount": 6,
+    "notes": [
+      "This ledger covers the MVP gap where child-voice owners and student report/deadline owners had zero scenario coverage.",
+      "Rows start authored because live model trajectories and hand-reviewed store artifacts are required before verification. Flip to verified only after the scenario-runner report, native trajectory JSONL, and persisted reminder/todo rows have been inspected."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "child-book-report-backplan",
+      "pack": "L1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Child owner asks for help with a Friday book report, gets distracted, then confirms. Live verification must show a stored report plan with an earlier checkpoint, no parent-only or therapy framing."
+    },
+    {
+      "id": "child-book-report-cancel-reask",
+      "pack": "L1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Cancellation/re-ask flow. Live verification must show the canceled science-report reminder was not persisted and only the confirmed ask-Ms.-Rivera replacement exists."
+    },
+    {
+      "id": "child-morning-routine-plain-words",
+      "pack": "L1",
+      "tier": "T1",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Plain child morning routine. Live verification must show a daily routine/reminder covering teeth, lunch, and math folder without infantilizing or clinical wording."
+    },
+    {
+      "id": "student-term-paper-night-owl-deadline",
+      "pack": "L1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Night-owl adult student asks for a seminar-paper plan. Live verification must show the stored reminder plan avoids default 8am/9am slots and includes draft/citations/final-pass phases."
+    },
+    {
+      "id": "student-lab-report-distractor-deadline",
+      "pack": "L1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Lab-report deadline survives an unrelated pizza distractor. Live verification must show a report plan exists and no pizza task was created."
+    },
+    {
+      "id": "student-report-two-phase-commit",
+      "pack": "L1",
+      "tier": "T1",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Two-phase commit for a history report. Live verification must show the first turn asks before saving and the confirmed turn creates the outline/draft/proofread reminder plan."
+    }
+  ]
+}

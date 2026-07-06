@@ -21,6 +21,7 @@ export {
 } from "./platformContext.ts";
 export { providersProvider } from "./providers.ts";
 export { recentMessagesProvider } from "./recentMessages.ts";
+export { replyContextProvider } from "./replyContext.ts";
 export { runtimeModelContextProvider } from "./runtimeModelContext.ts";
 export { uiContextProvider } from "./uiContext.ts";
 export { userEmotionSignalProvider } from "./userEmotionSignal.ts";
@@ -51,6 +52,7 @@ import {
 } from "./platformContext.ts";
 import { providersProvider as _bs_13_providersProvider } from "./providers.ts";
 import { recentMessagesProvider as _bs_14_recentMessagesProvider } from "./recentMessages.ts";
+import { replyContextProvider as _bs_20_replyContextProvider } from "./replyContext.ts";
 import { runtimeModelContextProvider as _bs_18_runtimeModelContextProvider } from "./runtimeModelContext.ts";
 import { uiContextProvider as _bs_15_uiContextProvider } from "./uiContext.ts";
 import { userEmotionSignalProvider as _bs_17_userEmotionSignalProvider } from "./userEmotionSignal.ts";
@@ -76,4 +78,5 @@ anchorBundleSafety("FEATURES_BASIC_CAPABILITIES_PROVIDERS_INDEX", [
 	_bs_17_userEmotionSignalProvider,
 	_bs_18_runtimeModelContextProvider,
 	_bs_19_channelTopicsProvider,
+	_bs_20_replyContextProvider,
 ]);

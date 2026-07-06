@@ -4,6 +4,8 @@
  * Handles:
  *   POST   /api/conversations            – create
  *   GET    /api/conversations             – list
+ *   GET    /api/conversations/messages/search – corpus-wide message search
+ *   POST   /api/conversations/dev/seed-messages – dev-only backdated corpus seed
  *   GET    /api/conversations/:id/messages – get messages
  *   POST   /api/conversations/:id/messages/truncate – truncate
  *   DELETE /api/conversations/:id/messages/:messageId – delete one message
@@ -41,6 +43,7 @@ import {
   PostConversationCleanupEmptyRequestSchema,
   PostConversationRequestSchema,
   PostConversationTruncateRequestSchema,
+  PostSeedMessagesRequestSchema,
   parsePositiveInteger,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
@@ -75,6 +78,7 @@ import {
   sanitizeConversationMetadata,
 } from "./conversation-metadata.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
+import { generateMessageCorpus, seedMessageCorpus } from "./message-corpus.ts";
 import {
   buildUserMessages,
   getErrorMessage,
@@ -1485,6 +1489,26 @@ function normalizeMessageSearchQuery(value: string | null): string {
   return (value === null ? "" : value).trim().replace(/\s+/g, " ");
 }
 
+/**
+ * Parse an optional `since`/`until` search param into epoch ms. Accepts a
+ * non-negative epoch-ms integer or any `Date.parse`-able string (ISO 8601).
+ * Absent → `null`; present-but-unparseable → `"invalid"` so the route can 400
+ * instead of silently searching an unbounded window the caller didn't ask for.
+ */
+function parseMessageSearchTime(
+  value: string | null,
+): number | null | "invalid" {
+  if (value === null) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return "invalid";
+  if (/^\d+$/.test(trimmed)) {
+    const epochMs = Number(trimmed);
+    return Number.isSafeInteger(epochMs) ? epochMs : "invalid";
+  }
+  const parsed = Date.parse(trimmed);
+  return Number.isNaN(parsed) ? "invalid" : parsed;
+}
+
 /** A `…keyword…` excerpt around the first match, or a head-truncated fallback. */
 function buildMessageSearchSnippet(text: string, query: string): string {
   const normalizedText = text.replace(/\s+/g, " ").trim();
@@ -1558,6 +1582,23 @@ export async function handleConversationRoutes(
       requestUrl.searchParams.get("offset"),
       0,
     );
+    // Optional inclusive time window (epoch ms or ISO 8601): "messages from a
+    // year ago" is `until=<9 months ago>` etc. Garbage input is a 400, never a
+    // silently ignored filter.
+    const since = parseMessageSearchTime(requestUrl.searchParams.get("since"));
+    const until = parseMessageSearchTime(requestUrl.searchParams.get("until"));
+    if (since === "invalid" || until === "invalid") {
+      error(
+        res,
+        "since/until must be an epoch-ms timestamp or an ISO 8601 date",
+        400,
+      );
+      return true;
+    }
+    if (since !== null && until !== null && since > until) {
+      error(res, "since must not be later than until", 400);
+      return true;
+    }
     const runtime = state.runtime;
     const waifuAccess = resolveWaifuChatAccess(req);
     const conversationsByRoomId = new Map<UUID, ConversationMeta>();
@@ -1590,6 +1631,8 @@ export async function handleConversationRoutes(
         tableName: "messages",
         limit,
         offset,
+        ...(since !== null ? { since } : {}),
+        ...(until !== null ? { until } : {}),
       });
       const results = hits.flatMap(({ memory, ftsRank, trigramSimilarity }) => {
         const roomId = memory.roomId;
@@ -1613,10 +1656,9 @@ export async function handleConversationRoutes(
             messageId: memory.id,
             conversationId: conversation.id,
             roomId,
-            role:
-              memory.entityId === runtime.agentId
-                ? "assistant"
-                : ("user" as const),
+            role: (memory.entityId === runtime.agentId
+              ? "assistant"
+              : "user") as "assistant" | "user",
             text: rawText,
             snippet: buildMessageSearchSnippet(rawText, query),
             createdAt: memory.createdAt,
@@ -1629,6 +1671,8 @@ export async function handleConversationRoutes(
           queryLength: query.length,
           limit,
           offset,
+          ...(since !== null ? { since } : {}),
+          ...(until !== null ? { until } : {}),
           rawHits: hits.length,
           results: results.length,
         },
@@ -1644,6 +1688,88 @@ export async function handleConversationRoutes(
       error(res, "Failed to search conversation messages", 500);
       return true;
     }
+  }
+
+  // ── POST /api/conversations/dev/seed-messages ───────────────────────
+  // Dev-only: generate a large, realistic, BACKDATED conversation history
+  // (default 12 conversations × 40 messages over 13 months, plus derived
+  // facts) so message search — including since/until windows like "a year
+  // ago" — has a real corpus. Invoked by
+  // `packages/scripts/seed-message-corpus.mjs` for manual demo prep.
+  if (
+    method === "POST" &&
+    pathname === "/api/conversations/dev/seed-messages"
+  ) {
+    // 404 (not 403) in production so the route's existence isn't advertised.
+    if (process.env.NODE_ENV === "production") {
+      error(res, "Not found", 404);
+      return true;
+    }
+    if (!state.runtime) {
+      error(res, "Agent runtime not available", 503);
+      return true;
+    }
+    const rawSeed = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawSeed === null) return true;
+    const parsedSeed = PostSeedMessagesRequestSchema.safeParse(rawSeed);
+    if (!parsedSeed.success) {
+      error(
+        res,
+        parsedSeed.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    await waitForConversationRestore(state);
+    const corpus = generateMessageCorpus({
+      ...(parsedSeed.data.conversations !== undefined
+        ? { conversationCount: parsedSeed.data.conversations }
+        : {}),
+      ...(parsedSeed.data.messagesPerConversation !== undefined
+        ? { messagesPerConversation: parsedSeed.data.messagesPerConversation }
+        : {}),
+      ...(parsedSeed.data.spanMonths !== undefined
+        ? { spanMonths: parsedSeed.data.spanMonths }
+        : {}),
+      ...(parsedSeed.data.factsPerConversation !== undefined
+        ? { factsPerConversation: parsedSeed.data.factsPerConversation }
+        : {}),
+      ...(parsedSeed.data.seed !== undefined
+        ? { seed: parsedSeed.data.seed }
+        : {}),
+    });
+    const summary = await seedMessageCorpus(state.runtime, corpus);
+    // Register the seeded conversations in the live in-memory list so they are
+    // visible + searchable immediately, without waiting for a restart-restore.
+    for (const conv of summary.conversations) {
+      state.conversations.set(conv.id, {
+        id: conv.id,
+        title: conv.title,
+        roomId: conv.roomId,
+        createdAt: new Date(conv.createdAt).toISOString(),
+        updatedAt: new Date(conv.lastMessageAt).toISOString(),
+      });
+    }
+    evictOldestConversation(state.conversations, 500);
+    logger.info(
+      {
+        conversations: summary.conversations.length,
+        messages: summary.messagesCreated,
+        facts: summary.factsCreated,
+        oldestMessageAt: summary.oldestMessageAt,
+        newestMessageAt: summary.newestMessageAt,
+      },
+      "[ConversationSearch] seeded backdated message corpus",
+    );
+    json(res, {
+      conversations: summary.conversations.length,
+      messagesCreated: summary.messagesCreated,
+      factsCreated: summary.factsCreated,
+      oldestMessageAt: summary.oldestMessageAt,
+      newestMessageAt: summary.newestMessageAt,
+      sampleQueries: summary.sampleQueries,
+    });
+    return true;
   }
 
   // ── POST /api/conversations ─────────────────────────────────────────

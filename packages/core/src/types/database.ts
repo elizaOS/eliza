@@ -978,6 +978,14 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		tableName?: string;
 		limit?: number;
 		offset?: number;
+		/**
+		 * Inclusive lower bound on `Memory.createdAt` (epoch ms). Applied in the
+		 * store together with the match predicate, before ranking and LIMIT/OFFSET,
+		 * so a time window never truncates recall ("messages from a year ago").
+		 */
+		since?: number;
+		/** Inclusive upper bound on `Memory.createdAt` (epoch ms). */
+		until?: number;
 		accessContext?: AccessContext;
 	}): Promise<MessageSearchHit[]>;
 
