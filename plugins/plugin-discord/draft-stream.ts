@@ -2,7 +2,12 @@
  * Streams an in-progress agent reply to Discord by editing a single message as
  * draft chunks arrive, using the draft-chunking break logic.
  */
-import type { Message as DiscordMessage, TextChannel } from "discord.js";
+import type {
+	ActionRowBuilder,
+	Message as DiscordMessage,
+	MessageActionRowComponentBuilder,
+	TextChannel,
+} from "discord.js";
 import {
 	DEFAULT_DRAFT_CHUNK_CONFIG,
 	type DraftChunkConfig,
@@ -27,7 +32,10 @@ export interface DraftStreamController {
 		replyToMode?: DraftReplyToMode,
 	) => Promise<DiscordMessage | null>;
 	update: (text: string) => void;
-	finalize: (text: string) => Promise<DiscordMessage[]>;
+	finalize: (
+		text: string,
+		components?: ActionRowBuilder<MessageActionRowComponentBuilder>[],
+	) => Promise<DiscordMessage[]>;
 	abort: (reason?: string) => Promise<void>;
 	messageId: () => string | undefined;
 	isStarted: () => boolean;
@@ -65,7 +73,10 @@ export function createDraftStreamController(
 		}
 	};
 
-	const sendSnapshot = async (text: string): Promise<boolean> => {
+	const sendSnapshot = async (
+		text: string,
+		components?: ActionRowBuilder<MessageActionRowComponentBuilder>[],
+	): Promise<boolean> => {
 		if (done || !channel) {
 			return false;
 		}
@@ -80,12 +91,52 @@ export function createDraftStreamController(
 				? `${trimmed.slice(0, maxChars - 3)}...`
 				: trimmed;
 		if (displayText === lastSentText) {
+			if (components && components.length > 0 && lastSentMessage) {
+				try {
+					const edited = await lastSentMessage.edit({
+						content: displayText,
+						components,
+					});
+					lastSentMessage = edited;
+					const lastIndex = sentMessages.length - 1;
+					if (lastIndex >= 0) {
+						sentMessages[lastIndex] = edited;
+					}
+				} catch (error) {
+					const errorMessage =
+						error instanceof Error ? error.message : String(error);
+					warn(`draft-stream: final component edit failed: ${errorMessage}`);
+					try {
+						const sent = await channel.send({
+							content: displayText,
+							components,
+							...(draftReplyToMessageId && draftReplyToMode !== "off"
+								? {
+										reply: { messageReference: draftReplyToMessageId },
+									}
+								: {}),
+						});
+						lastSentMessage = sent;
+						sentMessages.push(sent);
+					} catch (sendError) {
+						const sendErrorMessage =
+							sendError instanceof Error
+								? sendError.message
+								: String(sendError);
+						warn(
+							`draft-stream: final component resend failed: ${sendErrorMessage}`,
+						);
+						return false;
+					}
+				}
+			}
 			return true;
 		}
 
 		try {
 			const sent = await channel.send({
 				content: displayText,
+				...(components && components.length > 0 ? { components } : {}),
 				...(draftReplyToMessageId && draftReplyToMode !== "off"
 					? {
 							reply: { messageReference: draftReplyToMessageId },
@@ -151,7 +202,10 @@ export function createDraftStreamController(
 		scheduleUpdate(text);
 	};
 
-	const finalize = async (text: string): Promise<DiscordMessage[]> => {
+	const finalize = async (
+		text: string,
+		components?: ActionRowBuilder<MessageActionRowComponentBuilder>[],
+	): Promise<DiscordMessage[]> => {
 		if (done) {
 			return sentMessages;
 		}
@@ -172,7 +226,7 @@ export function createDraftStreamController(
 		}
 
 		if (trimmed.length <= maxChars) {
-			await sendSnapshot(trimmed);
+			await sendSnapshot(trimmed, components);
 			done = true;
 			log("draft-stream: finalized (single message)");
 			return sentMessages;
@@ -204,8 +258,12 @@ export function createDraftStreamController(
 				continue;
 			}
 			try {
+				const isLastChunk = remaining.length === 0;
 				const overflowMessage = await channel.send({
 					content: chunk,
+					...(isLastChunk && components && components.length > 0
+						? { components }
+						: {}),
 					...(draftReplyToMessageId && draftReplyToMode === "all"
 						? {
 								reply: { messageReference: draftReplyToMessageId },

@@ -1136,8 +1136,11 @@ export class MessageManager {
 					let messages: DiscordMessage[] = [];
 					if (draftStream?.isStarted() && !draftStream.isDone()) {
 						if (hasText || files.length === 0) {
+							const draftComponents = hasComponents
+								? buildDiscordComponents(rendered.components)
+								: undefined;
 							messages = await runResponseDispatch(() =>
-								draftStream.finalize(textContent),
+								draftStream.finalize(textContent, draftComponents),
 							);
 						} else {
 							await finalizePendingDraft();
