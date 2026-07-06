@@ -185,7 +185,6 @@ vi.mock("./state", async () => {
     canUndoBackground: false,
     copyToClipboard: vi.fn(),
     databaseSubTab: "overview",
-    dismissActionBanner: vi.fn(),
     dismissSystemWarning: vi.fn(),
     elizaCloudConnected: false,
     elizaCloudVoiceProxyAvailable: false,
@@ -266,9 +265,6 @@ vi.mock("./components/shell/AssistantOverlay", () => ({
   AssistantOverlay: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="assistant-overlay">{children}</div>
   ),
-}));
-vi.mock("./components/shell/ConnectionFailedBanner", () => ({
-  ConnectionFailedBanner: () => null,
 }));
 vi.mock("./components/shell/SystemWarningBanner", () => ({
   SystemWarningBanner: () => null,
