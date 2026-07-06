@@ -11,8 +11,14 @@ import {
   type IAgentRuntime,
   type MessagePayload,
   Service,
+  type UUID,
 } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { getDeviceId } from "../lifeops/device-identity.js";
+import {
+  contactEdgeId,
+  LIFEOPS_CONTACT_TAG,
+} from "../lifeops/relationships/mapping.js";
 import {
   createLifeOpsActivitySignal,
   LifeOpsRepository,
@@ -92,6 +98,126 @@ function readPlatform(payload: MessagePayload): string {
 
 function hashTelemetryIdentity(scope: string, value: string): string {
   return `${scope}:${crypto.createHash("sha256").update(value).digest("hex").slice(0, 32)}`;
+}
+
+function readMetadataRecord(payload: MessagePayload): Record<string, unknown> {
+  const record = isRecord(payload.message) ? payload.message : null;
+  return isRecord(record?.metadata) ? record.metadata : {};
+}
+
+function readNestedString(value: unknown, key: string): string | null {
+  if (!isRecord(value)) return null;
+  const candidate = value[key];
+  return typeof candidate === "string" && candidate.trim().length > 0
+    ? candidate.trim()
+    : null;
+}
+
+function readMessageHandle(payload: MessagePayload): string | null {
+  const record = isRecord(payload.message) ? payload.message : null;
+  const content = isRecord(record?.content) ? record.content : {};
+  const metadata = readMetadataRecord(payload);
+  const sender = metadata.sender ?? metadata.author ?? metadata.user;
+  const imessage = metadata.imessage;
+  const candidates = [
+    content.handle,
+    content.username,
+    content.senderUsername,
+    content.senderName,
+    content.to,
+    metadata.to,
+    metadata.recipient,
+    readNestedString(imessage, "chatId"),
+    readNestedString(sender, "username"),
+    readNestedString(sender, "handle"),
+    readNestedString(sender, "id"),
+    metadata.senderHandle,
+    metadata.username,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  return null;
+}
+
+function readExternalMessageId(payload: MessagePayload): string | undefined {
+  const record = isRecord(payload.message) ? payload.message : null;
+  const metadata = readMetadataRecord(payload);
+  const candidates = [metadata.originalId, metadata.externalId, record?.id];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  return undefined;
+}
+
+interface RelationshipActivityContact {
+  entityId: UUID;
+}
+
+interface RelationshipActivityService {
+  getContact(entityId: UUID): Promise<RelationshipActivityContact | null>;
+  findByHandle?(
+    platform: string,
+    identifier: string,
+  ): Promise<RelationshipActivityContact | null>;
+  recordInteraction?(input: {
+    contactId: UUID;
+    platform: string;
+    direction: "inbound" | "outbound";
+    summary?: string;
+    externalRef?: string;
+    occurredAt?: string;
+  }): Promise<unknown>;
+}
+
+function isRelationshipActivityContact(
+  value: unknown,
+): value is RelationshipActivityContact {
+  return (
+    isRecord(value) &&
+    typeof value.entityId === "string" &&
+    value.entityId.length > 0
+  );
+}
+
+function getRelationshipActivityService(
+  runtime: IAgentRuntime,
+): RelationshipActivityService | null {
+  const service: unknown = runtime.getService("relationships");
+  if (!isRecord(service)) return null;
+  const getContact = service.getContact;
+  if (typeof getContact !== "function") return null;
+  const findByHandle = service.findByHandle;
+  const recordInteraction = service.recordInteraction;
+  return {
+    getContact: async (entityId) => {
+      const result = await getContact.call(service, entityId);
+      return isRelationshipActivityContact(result) ? result : null;
+    },
+    ...(typeof findByHandle === "function"
+      ? {
+          findByHandle: async (platform, identifier) => {
+            const result = await findByHandle.call(
+              service,
+              platform,
+              identifier,
+            );
+            return isRelationshipActivityContact(result) ? result : null;
+          },
+        }
+      : {}),
+    ...(typeof recordInteraction === "function"
+      ? {
+          recordInteraction: async (input) => {
+            await recordInteraction.call(service, input);
+          },
+        }
+      : {}),
+  };
 }
 
 export class PresenceSignalBridgeService extends Service {
@@ -201,11 +327,17 @@ export class PresenceSignalBridgeService extends Service {
     payload: MessagePayload,
   ): Promise<void> {
     const entityId = readMessageEntityId(payload);
-    if (!entityId || entityId === String(this.runtime.agentId)) {
+    const handle = readMessageHandle(payload);
+    const isAgentEntity = entityId === String(this.runtime.agentId);
+    if (!entityId && !handle) {
+      return;
+    }
+    if (isAgentEntity && !handle) {
       return;
     }
     const observedAt = readMessageTimestamp(payload);
-    const fingerprint = `${eventType}:${entityId}:${observedAt}`;
+    const fingerprintEntity = handle ?? entityId;
+    const fingerprint = `${eventType}:${fingerprintEntity}:${observedAt}`;
     const observedMs = Date.parse(observedAt);
     const existing = this.recentFingerprints.get(fingerprint);
     if (
@@ -222,6 +354,7 @@ export class PresenceSignalBridgeService extends Service {
     const platform = readPlatform(payload);
     const direction =
       eventType === EventType.MESSAGE_SENT ? "outbound_by_owner" : "inbound";
+    const senderIdentity = entityId ?? handle ?? "unknown-sender";
     await repository.createActivitySignal(
       createLifeOpsActivitySignal({
         agentId: String(this.runtime.agentId),
@@ -235,13 +368,14 @@ export class PresenceSignalBridgeService extends Service {
         health: null,
         metadata: {
           eventType,
-          entityId,
+          entityId: entityId ?? null,
+          ...(handle ? { handle } : {}),
           direction,
           externalMessageId: readMessageId(payload),
           senderHash:
             direction === "outbound_by_owner"
               ? "owner"
-              : hashTelemetryIdentity("sender", entityId),
+              : hashTelemetryIdentity("sender", senderIdentity),
           conversationHash: hashTelemetryIdentity(
             "conversation",
             readConversationId(payload),
@@ -250,5 +384,93 @@ export class PresenceSignalBridgeService extends Service {
         },
       }),
     );
+    await this.recordRelationshipRecency({
+      eventType,
+      entityId: isAgentEntity ? null : (entityId ?? null),
+      observedAt,
+      platform,
+      payload,
+      repository,
+    });
+  }
+
+  private async recordRelationshipRecency(args: {
+    eventType: EventType.MESSAGE_RECEIVED | EventType.MESSAGE_SENT;
+    entityId: string | null;
+    observedAt: string;
+    platform: string;
+    payload: MessagePayload;
+    repository: LifeOpsRepository;
+  }): Promise<void> {
+    const direction =
+      args.eventType === EventType.MESSAGE_SENT ? "outbound" : "inbound";
+    const handle = readMessageHandle(args.payload);
+    const externalRef = readExternalMessageId(args.payload);
+    const summary = `Passive ${args.platform} message activity`;
+    const service = getRelationshipActivityService(this.runtime);
+
+    let contactId: UUID | null = null;
+    if (service?.findByHandle && handle) {
+      const matched = await service.findByHandle(args.platform, handle);
+      contactId = matched?.entityId ?? null;
+    }
+    if (!contactId && service && args.entityId) {
+      const direct = await service.getContact(args.entityId as UUID);
+      contactId = direct?.entityId ?? null;
+    }
+    if (contactId && service?.recordInteraction) {
+      await service.recordInteraction({
+        contactId,
+        platform: args.platform,
+        direction,
+        summary,
+        ...(externalRef ? { externalRef } : {}),
+        occurredAt: args.observedAt,
+      });
+    }
+
+    const agentId = String(this.runtime.agentId);
+    const entityStore = await args.repository.entityStore(agentId);
+    let graphEntityId = contactId ?? args.entityId;
+    if (handle && !contactId) {
+      const observed = await entityStore.observeIdentity({
+        platform: args.platform,
+        handle,
+        evidence: [LIFEOPS_CONTACT_TAG, "message_ingest"],
+        confidence: 0.8,
+        suggestedType: "person",
+      });
+      graphEntityId = observed.entity.entityId;
+    }
+    if (!graphEntityId) {
+      return;
+    }
+    await entityStore.recordInteraction(graphEntityId, {
+      platform: args.platform,
+      direction,
+      summary,
+      occurredAt: args.observedAt,
+    });
+
+    const relationshipStore = await args.repository.relationshipStore(agentId);
+    const existingEdge = await relationshipStore.get(
+      contactEdgeId(graphEntityId),
+    );
+    if (!existingEdge) {
+      return;
+    }
+    await relationshipStore.observe({
+      fromEntityId: SELF_ENTITY_ID,
+      toEntityId: graphEntityId,
+      type: existingEdge.type,
+      metadataPatch: {
+        lastInteractionPlatform: args.platform,
+        lastInteractionDirection: direction,
+      },
+      evidence: [LIFEOPS_CONTACT_TAG, "message_ingest"],
+      confidence: 0.8,
+      occurredAt: args.observedAt,
+      source: "extraction",
+    });
   }
 }
