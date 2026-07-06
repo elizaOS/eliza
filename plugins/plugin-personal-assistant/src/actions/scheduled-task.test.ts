@@ -26,11 +26,19 @@ const LATER_TODAY_ISO = "2026-05-09T18:00:00.000Z";
 const NEXT_FIRE_BY_PROMPT: Record<string, string | null> = {
   "overdue-task": OVERDUE_ISO,
   "later-today-task": LATER_TODAY_ISO,
+  "missed-recurring-task": "2026-05-10T09:00:00.000Z",
   "manual-task": null,
+};
+const DUE_BY_PROMPT: Record<string, boolean> = {
+  "overdue-task": true,
+  "later-today-task": false,
+  "missed-recurring-task": true,
+  "manual-task": false,
 };
 
 let storedTasks: ScheduledTask[];
 let resolveNextFireAtCalls: string[];
+let resolveDueDecisionCalls: string[];
 
 function fakeTask(promptInstructions: string): ScheduledTask {
   return {
@@ -58,6 +66,15 @@ vi.mock("../lifeops/scheduled-task/service.js", () => ({
     async resolveNextFireAt(task: ScheduledTask) {
       resolveNextFireAtCalls.push(task.promptInstructions);
       return NEXT_FIRE_BY_PROMPT[task.promptInstructions] ?? null;
+    },
+    async resolveDueDecision(task: ScheduledTask) {
+      resolveDueDecisionCalls.push(task.promptInstructions);
+      return {
+        due: DUE_BY_PROMPT[task.promptInstructions] ?? false,
+        reason: DUE_BY_PROMPT[task.promptInstructions]
+          ? "test_due"
+          : "test_pending",
+      };
     },
   })),
 }));
@@ -112,9 +129,11 @@ describe("SCHEDULED_TASKS list — dueWindow filter", () => {
     storedTasks = [
       fakeTask("overdue-task"),
       fakeTask("later-today-task"),
+      fakeTask("missed-recurring-task"),
       fakeTask("manual-task"),
     ];
     resolveNextFireAtCalls = [];
+    resolveDueDecisionCalls = [];
   });
 
   it("returns every task with no dueWindow and never consults resolveNextFireAt", async () => {
@@ -122,23 +141,28 @@ describe("SCHEDULED_TASKS list — dueWindow filter", () => {
     expect(data.tasks.map((t) => t.promptInstructions).sort()).toEqual([
       "later-today-task",
       "manual-task",
+      "missed-recurring-task",
       "overdue-task",
     ]);
     expect(data.dueWindow).toBeUndefined();
     // Unfiltered list must not pay the per-task next-fire projection cost.
     expect(resolveNextFireAtCalls).toEqual([]);
+    expect(resolveDueDecisionCalls).toEqual([]);
   });
 
-  it("dueWindow=overdue keeps only tasks whose fire time is already past", async () => {
+  it("dueWindow=overdue keeps already-due tasks, including missed recurring occurrences", async () => {
     const data = await listWith("overdue");
-    expect(data.tasks.map((t) => t.promptInstructions)).toEqual([
+    expect(data.tasks.map((t) => t.promptInstructions).sort()).toEqual([
+      "missed-recurring-task",
       "overdue-task",
     ]);
     expect(data.dueWindow).toBe("overdue");
-    // Every candidate is projected through the runner's own next-fire math.
-    expect(resolveNextFireAtCalls.sort()).toEqual([
+    // Pending tasks do not pay the next-fire projection cost for overdue.
+    expect(resolveNextFireAtCalls).toEqual([]);
+    expect(resolveDueDecisionCalls.sort()).toEqual([
       "later-today-task",
       "manual-task",
+      "missed-recurring-task",
       "overdue-task",
     ]);
   });
@@ -147,6 +171,7 @@ describe("SCHEDULED_TASKS list — dueWindow filter", () => {
     const data = await listWith("today");
     expect(data.tasks.map((t) => t.promptInstructions).sort()).toEqual([
       "later-today-task",
+      "missed-recurring-task",
       "overdue-task",
     ]);
     expect(data.dueWindow).toBe("today");
@@ -162,9 +187,10 @@ describe("SCHEDULED_TASKS list — dueWindow filter", () => {
       callback,
     );
     const data = result.data as ListResultData;
-    expect(data.tasks).toHaveLength(3);
+    expect(data.tasks).toHaveLength(4);
     expect(data.dueWindow).toBeUndefined();
     expect(resolveNextFireAtCalls).toEqual([]);
+    expect(resolveDueDecisionCalls).toEqual([]);
   });
 
   it("exposes dueWindow on the semantic action's parameters", () => {

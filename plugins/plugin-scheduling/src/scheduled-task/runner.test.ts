@@ -1612,4 +1612,23 @@ describe("ScheduledTaskRunner — resolveNextFireAt (due-window primitive)", () 
     );
     expect(await h.runner.resolveNextFireAt(manual)).toBeNull();
   });
+
+  it("reports a missed cron occurrence as due even when next-fire projects forward", async () => {
+    const h = makeHarness("2026-05-09T12:00:00.000Z");
+    const task = await h.runner.schedule(
+      baseInput({
+        trigger: { kind: "cron", expression: "0 9 * * *", tz: "UTC" },
+        metadata: { createdAtIso: "2026-05-09T00:00:00.000Z" },
+      }),
+    );
+
+    expect(await h.runner.resolveNextFireAt(task)).toBe(
+      "2026-05-10T09:00:00.000Z",
+    );
+    expect(await h.runner.resolveDueDecision(task)).toMatchObject({
+      due: true,
+      reason: "cron_due",
+      occurrenceAtIso: "2026-05-09T09:00:00.000Z",
+    });
+  });
 });

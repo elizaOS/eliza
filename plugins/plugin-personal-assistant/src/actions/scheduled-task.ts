@@ -513,17 +513,14 @@ function normalizeDueWindow(value: unknown): DueWindow | undefined {
 }
 
 /**
- * Keep tasks whose next fire time falls inside `window`, using the runner's
- * own next-fire projection (the same value the scheduler tick indexes) so the
- * chat/voice filter and the tick never disagree about what is "due". Tasks
- * with no wall-clock fire time (event/manual/after_task, or settled
- * non-recurring rows) resolve to `null` and are excluded from both windows —
- * they have no "overdue"/"today" instant to compare against. `overdue` is
- * strictly in the past; `today` is anything due by end of the current day
- * (so it is a superset of `overdue` — an already-missed reminder is still due
- * today). The day boundary uses server-local time; the runner's projected
- * instant already carries the owner's trigger timezone, so cross-tz skew is at
- * most one day-boundary and acceptable for this coarse "today" cut.
+ * Keep tasks whose due instant falls inside `window`, using the runner's
+ * due-decision and next-fire projection so the chat/voice filter and scheduler
+ * tick share the same owner-facts and anchor dependencies. Already-due tasks
+ * are considered before the future next-fire projection; otherwise a missed
+ * recurring occurrence can project to tomorrow and disappear from an
+ * "overdue" view. Tasks with no wall-clock due time (event/manual/after_task,
+ * or settled non-recurring rows) are excluded from both windows. `today` is a
+ * superset of `overdue`.
  */
 async function filterByDueWindow(
   scope: RunnerScope,
@@ -536,13 +533,17 @@ async function filterByDueWindow(
   const endOfTodayMs = endOfToday.getTime();
   const kept: ScheduledTask[] = [];
   for (const task of tasks) {
+    const dueDecision = await scope.runner.resolveDueDecision(task);
+    if (dueDecision.due) {
+      kept.push(task);
+      continue;
+    }
+    if (window === "overdue") continue;
     const nextFireAtIso = await scope.runner.resolveNextFireAt(task);
     if (nextFireAtIso === null) continue;
     const fireMs = Date.parse(nextFireAtIso);
     if (!Number.isFinite(fireMs)) continue;
-    if (window === "overdue") {
-      if (fireMs < now) kept.push(task);
-    } else if (fireMs <= endOfTodayMs) {
+    if (fireMs <= endOfTodayMs) {
       kept.push(task);
     }
   }

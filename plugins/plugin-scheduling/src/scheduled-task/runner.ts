@@ -25,7 +25,7 @@ import type {
   AnchorRegistry,
   ConsolidationRegistry,
 } from "./consolidation-policy.js";
-import { isScheduledTaskDue } from "./due.js";
+import { isScheduledTaskDue, type ScheduledTaskDueDecision } from "./due.js";
 import {
   type EscalationLadderRegistry,
   resetLadderForSnooze,
@@ -557,6 +557,14 @@ export interface ScheduledTaskRunnerExtras {
    * indexed value the tick relies on.
    */
   resolveNextFireAt(task: ScheduledTask): Promise<string | null>;
+  /**
+   * Evaluate whether a task is due at the runner's current clock, using the
+   * same owner-facts and anchor dependencies as the scheduler tick. Consumers
+   * that present due-window views need this before a future next-fire
+   * projection, otherwise a missed recurring occurrence can be hidden by the
+   * next natural occurrence.
+   */
+  resolveDueDecision(task: ScheduledTask): Promise<ScheduledTaskDueDecision>;
 }
 
 export interface ScheduledTaskRunnerHandle
@@ -685,6 +693,17 @@ export function createScheduledTaskRunner(
     }
     const ownerFacts = await deps.ownerFacts();
     return computeNextFireAt(task, {
+      now: now(),
+      ownerFacts,
+      anchors: deps.anchors,
+    });
+  }
+
+  async function resolveDueDecision(
+    task: ScheduledTask,
+  ): Promise<ScheduledTaskDueDecision> {
+    const ownerFacts = await deps.ownerFacts();
+    return isScheduledTaskDue(task, {
       now: now(),
       ownerFacts,
       anchors: deps.anchors,
@@ -1698,5 +1717,6 @@ export function createScheduledTaskRunner(
     inspectRegistries,
     getEscalationCursor,
     resolveNextFireAt,
+    resolveDueDecision,
   };
 }
