@@ -1,8 +1,8 @@
 /**
  * The dashboard notification center: a home-surface widget pinned directly
  * below the time/weather base that IS the app's notification inbox. It replaced
- * the pull-down sheet/panel shells — notifications live on the dashboard, not
- * behind a gesture — so this card renders the full inbox with its actions
+ * the pull-down sheet/panel shells - notifications live on the dashboard, not
+ * behind a gesture - so this card renders the full inbox with its actions
  * (open/deep-link, dismiss, mark-all-read, clear) and self-hides when empty.
  *
  * The list is height-capped and scrolls internally: edge fades mask the
@@ -18,8 +18,7 @@
  */
 import type { AgentNotification } from "@elizaos/core";
 import { CheckCheck, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
-import { useNow } from "../../hooks/useNow";
+import { memo, useCallback, useEffect, useRef } from "react";
 import { cn } from "../../lib/utils";
 import {
   isSafeDeepLink,
@@ -32,9 +31,9 @@ import {
   removeNotification,
   useNotifications,
 } from "../../state/notifications/notification-store";
-import { formatRelativeTime } from "../../utils/format";
 import { NOTIFICATION_PRIORITY_RANK } from "../../widgets/home-priority";
 import { Button } from "../ui/button";
+import { RelativeTime } from "./RelativeTime";
 
 /**
  * Height cap for the scrolling list (the header stays pinned above it). Sized
@@ -51,14 +50,14 @@ const LIST_MAX_HEIGHT = "max-h-[min(45dvh,19.5rem)]";
 const MAX_RENDERED_ROWS = 100;
 
 /**
- * Scroll polish for the capped list, in one inline block (house pattern —
+ * Scroll polish for the capped list, in one inline block (house pattern -
  * see HOME_ENTER_CSS in HomeScreen):
  *
  *  - `.eliza-notif-scroll` carries the top/bottom edge fade masks, toggled by
  *    the `data-fade-top` / `data-fade-bottom` attributes the scroll handler
  *    maintains, so rows dissolve at the clipped edges instead of hard-cutting.
  *  - Where `animation-timeline: view()` is supported, each row also scales and
- *    fades slightly while crossing the scrollport edges — the depth cue of a
+ *    fades slightly while crossing the scrollport edges - the depth cue of a
  *    platform notification shade. Progressive enhancement only; the fallback
  *    is the plain masked scroll.
  *  - New rows (live arrivals) slide in from the top.
@@ -116,7 +115,7 @@ const NOTIF_SCROLL_CSS = `
 
 /**
  * Stable dashboard order: priority bucket, then recency, then id as the total
- * tiebreak. Read state styles rows but never orders them — marking a row read
+ * tiebreak. Read state styles rows but never orders them - marking a row read
  * on tap must not move it (the inbox-style unread-first rank reshuffles).
  */
 export function orderDashboardNotifications(
@@ -135,26 +134,69 @@ export function orderDashboardNotifications(
 /**
  * One notification row: a whole-row open button (mark read + scheme-checked
  * deep link) plus an always-visible dismiss X sized to the touch token on
- * coarse pointers. Deliberately NOT memoized: the parent re-renders on the
- * shared 60s clock tick precisely so each row's relative timestamp refreshes —
- * a memo with stable props would pin "just now" forever. Rows are cheap and
- * capped, so the once-a-minute re-render is negligible.
+ * coarse pointers.
+ *
+ * Memoized (binding pattern, spec §C.4): the relative timestamp now lives in a
+ * `<RelativeTime>` leaf that owns the minute tick, so the row no longer has to
+ * re-render every minute to keep "5m ago" honest. With time rendering out of
+ * the row's render path, a stable-props memo is correct - it re-renders only
+ * when the row's actual content changes, and `arePropsEqual` compares the
+ * identity fields that drive its markup: `id`, `readAt` (unread styling),
+ * `priority` (rail), `title`, `body`, plus the two callbacks (stable via the
+ * parent's `useCallback`). `createdAt` is intentionally NOT compared: it feeds
+ * only the leaf, which subscribes to the tick itself.
  */
-function NotificationRow({
-  notification,
-  onOpen,
-  onDismiss,
-}: {
+export function rowPropsEqual(
+  prev: NotificationRowProps,
+  next: NotificationRowProps,
+): boolean {
+  const a = prev.notification;
+  const b = next.notification;
+  return (
+    a.id === b.id &&
+    a.readAt === b.readAt &&
+    a.priority === b.priority &&
+    a.title === b.title &&
+    a.body === b.body &&
+    a.deepLink === b.deepLink &&
+    prev.onOpen === next.onOpen &&
+    prev.onDismiss === next.onDismiss
+  );
+}
+
+export interface NotificationRowProps {
   notification: AgentNotification;
   onOpen: (n: AgentNotification) => void;
   onDismiss: (id: string) => void;
-}): React.JSX.Element {
+}
+
+let notificationRowRenderObserverForTests: (() => void) | null = null;
+let notificationsHomeCenterRenderObserverForTests: (() => void) | null = null;
+
+export function __setNotificationRowRenderObserverForTests(
+  observer: (() => void) | null,
+): void {
+  notificationRowRenderObserverForTests = observer;
+}
+
+export function __setNotificationsHomeCenterRenderObserverForTests(
+  observer: (() => void) | null,
+): void {
+  notificationsHomeCenterRenderObserverForTests = observer;
+}
+
+const NotificationRow = memo(function NotificationRow({
+  notification,
+  onOpen,
+  onDismiss,
+}: NotificationRowProps): React.JSX.Element {
+  notificationRowRenderObserverForTests?.();
   const unread = !notification.readAt;
   const urgent = notification.priority === "urgent";
   const high = notification.priority === "high";
   // Lock-screen restraint: NO per-row icon chip (a box inside a box inside the
-  // card). Priority is carried by a hairline accent rail on the leading edge —
-  // present only for urgent/high — and an unread state by a single dot, so a
+  // card). Priority is carried by a hairline accent rail on the leading edge -
+  // present only for urgent/high - and an unread state by a single dot, so a
   // quiet normal notification is just its line + time, like an iOS lock note.
   const accent = urgent || high ? "bg-white/75" : null;
   return (
@@ -166,7 +208,7 @@ function NotificationRow({
         )}
       >
         {/* Priority rail: a 2px edge tint, urgent/high only. The row without
-            it reads as ordinary — restraint over decoration. */}
+            it reads as ordinary - restraint over decoration. */}
         {accent ? (
           <span
             aria-hidden
@@ -208,12 +250,11 @@ function NotificationRow({
             >
               {notification.title}
             </span>
-            <time
+            <RelativeTime
+              ts={notification.createdAt}
               className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-white/60"
               data-testid="notification-row-time"
-            >
-              {formatRelativeTime(notification.createdAt)}
-            </time>
+            />
           </span>
           {notification.body ? (
             <span className="line-clamp-2 text-xs leading-snug text-white/62">
@@ -221,7 +262,7 @@ function NotificationRow({
             </span>
           ) : null}
         </button>
-        {/* Visible at rest (dimmed) — on touch there is no hover, and an
+        {/* Visible at rest (dimmed) - on touch there is no hover, and an
             invisible dismiss silently ate near-edge taps in the old center. */}
         <Button
           variant="ghost"
@@ -236,7 +277,8 @@ function NotificationRow({
       </div>
     </li>
   );
-}
+}, rowPropsEqual);
+NotificationRow.displayName = "NotificationRow";
 
 /**
  * The dashboard notification center card. Self-hiding: renders nothing until
@@ -244,9 +286,12 @@ function NotificationRow({
  * clock/weather base. Mounted once by HomeScreen below DefaultHomeWidgets.
  */
 export function NotificationsHomeCenter(): React.JSX.Element | null {
+  notificationsHomeCenterRenderObserverForTests?.();
   const { notifications, unreadCount } = useNotifications();
-  // Coarse tick so relative timestamps stay honest while the card is visible.
-  useNow(60_000);
+  // No list-level clock tick here (binding pattern, spec §C.4): relative
+  // timestamps live in the `<RelativeTime>` leaf inside each row, which owns the
+  // shared visibility-gated ticker. The minute roll re-renders those text nodes
+  // only - not this list, not the rows, not the glass surface.
   const scrollRef = useRef<HTMLUListElement | null>(null);
 
   // Maintain the edge-fade attributes from real scroll geometry. Runs on
@@ -266,7 +311,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
 
   const openNotification = useCallback((n: AgentNotification) => {
     if (!n.readAt) void markNotificationRead(n.id);
-    // deepLink is producer/LLM-influenceable — only scheme-checked links
+    // deepLink is producer/LLM-influenceable - only scheme-checked links
     // navigate; anything else the tap is just "mark read".
     if (n.deepLink && isSafeDeepLink(n.deepLink)) {
       navigateDeepLink(n.deepLink);
@@ -298,11 +343,18 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
       // faintly translucent surface over the wallpaper (backdrop-blur where
       // supported), no heavy filled card. This reads as an iOS lock-screen
       // notification stack sitting on the home field rather than an app card.
-      className="mt-4 flex flex-col overflow-hidden rounded-2xl border border-white/55 bg-black/35 text-white backdrop-blur-xl supports-[backdrop-filter]:bg-black/30"
+      //
+      // Blur audit (spec §C.4 item 4): stepped `backdrop-blur-xl` →
+      // `backdrop-blur-md`. A full-strength blur over the animated wallpaper is
+      // a per-frame compositing cost on iOS Safari that the always-mounted home
+      // pays forever; `md` still reads as glass. The `supports-[backdrop-filter]`
+      // translucency stays the primary low-end path (an opaque-enough surface
+      // where blur is unsupported), so legibility never depends on the blur.
+      className="mt-4 flex flex-col overflow-hidden rounded-2xl border border-white/55 bg-black/35 text-white backdrop-blur-md supports-[backdrop-filter]:bg-black/30"
     >
       <style>{NOTIF_SCROLL_CSS}</style>
       {/* Pinned header: a quiet eyebrow + unread count, actions to the right.
-          No boxed bell chip — the label alone names the surface. */}
+          No boxed bell chip - the label alone names the surface. */}
       <div className="flex shrink-0 items-center gap-1.5 px-3.5 pb-1 pt-2.5">
         <span className="text-2xs font-medium uppercase tracking-[0.1em] text-white/70">
           Notifications
