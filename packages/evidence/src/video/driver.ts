@@ -65,6 +65,11 @@ interface PwChromium {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_VIEWPORT = { width: 1280, height: 800 } as const;
+// Post-step dwell so the recorded video lingers on each state long enough for a
+// human to follow and for ffmpeg scene detection to see distinct frames — the
+// steps themselves execute in milliseconds, which would otherwise yield a
+// sub-second blur with no reviewable per-step moment.
+const DEFAULT_STEP_PAUSE_MS = 700;
 
 /** One executed step's record for the steps-log. */
 export interface StepLog {
@@ -108,6 +113,8 @@ export interface RunWalkthroughOptions {
   viewport?: { width: number; height: number };
   /** Per-action timeout override (ms). */
   timeoutMs?: number;
+  /** Dwell after each step so the video lingers on each state (ms). */
+  stepPauseMs?: number;
 }
 
 /** Load Playwright's chromium, or throw a typed error when it is unavailable. */
@@ -213,6 +220,7 @@ export async function runWalkthrough(
   }
   const viewport = options.viewport ?? DEFAULT_VIEWPORT;
   const timeout = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const stepPauseMs = options.stepPauseMs ?? DEFAULT_STEP_PAUSE_MS;
   fs.mkdirSync(options.out, { recursive: true });
   const videoDir = path.join(options.out, ".video");
   fs.mkdirSync(videoDir, { recursive: true });
@@ -234,6 +242,7 @@ export async function runWalkthrough(
     for (const step of def.steps) {
       const started = performance.now();
       await runStep(page, step, baseUrl, timeout);
+      if (stepPauseMs > 0) await page.waitForTimeout(stepPauseMs);
       const record: StepLog = {
         index,
         action: step.action,
@@ -310,8 +319,12 @@ function slugStep(step: WalkthroughStep): string {
     ("selector" in step && step.selector !== undefined
       ? step.selector
       : step.action);
-  return base.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40)
-    || step.action;
+  return (
+    base
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || step.action
+  );
 }
 
 /** Playwright writes the video as a random-named file in `videoDir`. */

@@ -21,8 +21,11 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-const FFMPEG_BIN = process.env.ELIZA_FFMPEG_BIN || "ffmpeg";
-const FFPROBE_BIN = process.env.ELIZA_FFPROBE_BIN || "ffprobe";
+// Read the binary names per call rather than at module load so an env override
+// (a test forcing an absent binary, a container pinning a specific ffmpeg) takes
+// effect without re-importing the module.
+const ffmpegBin = () => process.env.ELIZA_FFMPEG_BIN || "ffmpeg";
+const ffprobeBin = () => process.env.ELIZA_FFPROBE_BIN || "ffprobe";
 
 /** Whether a named binary answers `-version`, with a reason when it does not. */
 async function binaryAvailable(
@@ -48,9 +51,9 @@ async function binaryAvailable(
 export async function videoToolsAvailable(): Promise<
   { available: true } | { available: false; reason: string }
 > {
-  const probe = await binaryAvailable(FFPROBE_BIN);
+  const probe = await binaryAvailable(ffprobeBin());
   if (!probe.available) return probe;
-  const ffmpeg = await binaryAvailable(FFMPEG_BIN);
+  const ffmpeg = await binaryAvailable(ffmpegBin());
   if (!ffmpeg.available) return ffmpeg;
   return { available: true };
 }
@@ -98,7 +101,7 @@ function readMp4BoxOrder(filePath: string): string[] {
 /** Probe a video's container, first video codec, and faststart layout. */
 export async function probeVideo(filePath: string): Promise<VideoProbe> {
   const { stdout } = await execFileAsync(
-    FFPROBE_BIN,
+    ffprobeBin(),
     [
       "-v",
       "error",
@@ -172,7 +175,9 @@ export async function normalizeVideo(
   const probe = await probeVideo(inputPath);
   const isH264Mp4 =
     probe.videoCodec === "h264" &&
-    probe.formatName.split(",").some((name) => name === "mp4" || name === "mov");
+    probe.formatName
+      .split(",")
+      .some((name) => name === "mp4" || name === "mov");
 
   if (isH264Mp4 && probe.faststart) {
     if (fs.realpathSync(inputPath) !== safeRealpath(outPath)) {
@@ -183,7 +188,7 @@ export async function normalizeVideo(
   if (isH264Mp4) {
     // Already h264: remux only (stream copy) to move moov to the front.
     await execFileAsync(
-      FFMPEG_BIN,
+      ffmpegBin(),
       [
         "-hide_banner",
         "-loglevel",
@@ -202,7 +207,7 @@ export async function normalizeVideo(
     return { status: "remuxed", probe };
   }
   await execFileAsync(
-    FFMPEG_BIN,
+    ffmpegBin(),
     [
       "-hide_banner",
       "-loglevel",

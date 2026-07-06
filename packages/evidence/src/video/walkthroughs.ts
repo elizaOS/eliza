@@ -17,9 +17,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { EvidenceBundle } from "../bundle.ts";
 import { EvidenceError } from "../errors.ts";
-import { runWalkthrough, type RunWalkthroughOptions } from "./driver.ts";
+import { type RunWalkthroughOptions, runWalkthrough } from "./driver.ts";
 import { serveFixture } from "./fixture-server.ts";
-import { ingestVideo, type IngestVideoResult } from "./ingest.ts";
+import { type IngestVideoResult, ingestVideo } from "./ingest.ts";
 import {
   parseWalkthroughDef,
   type WalkthroughDef,
@@ -51,17 +51,23 @@ export function loadWalkthroughDef(file: string): WalkthroughDef {
     parsed = JSON.parse(raw);
   } catch (error) {
     // error-policy:J3 untrusted disk input — malformed JSON is a typed invalid.
-    throw new EvidenceError(`walkthrough definition is not valid JSON: ${file}`, {
-      code: "WALKTHROUGH_DEF_INVALID",
-      cause: error,
-      context: { file },
-    });
+    throw new EvidenceError(
+      `walkthrough definition is not valid JSON: ${file}`,
+      {
+        code: "WALKTHROUGH_DEF_INVALID",
+        cause: error,
+        context: { file },
+      },
+    );
   }
   return parseWalkthroughDef(parsed, file);
 }
 
 /** Every shipped definition, sorted by slug for deterministic run order. */
-export function loadAllWalkthroughDefs(): { def: WalkthroughDef; file: string }[] {
+export function loadAllWalkthroughDefs(): {
+  def: WalkthroughDef;
+  file: string;
+}[] {
   return fs
     .readdirSync(WALKTHROUGHS_DIR)
     .filter((name) => name.endsWith(".json"))
@@ -83,8 +89,11 @@ export interface RunAndIngestOptions {
   baseUrl?: string;
   /** Producer id recorded on the ingested video's source. */
   source?: string;
-  /** Injectable browser + viewport + timeout, forwarded to the driver. */
-  driver?: Pick<RunWalkthroughOptions, "browser" | "viewport" | "timeoutMs">;
+  /** Injectable browser + viewport + timeout + dwell, forwarded to the driver. */
+  driver?: Pick<
+    RunWalkthroughOptions,
+    "browser" | "viewport" | "timeoutMs" | "stepPauseMs"
+  >;
 }
 
 /** Result of running one walkthrough and ingesting its video into a bundle. */

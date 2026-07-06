@@ -904,6 +904,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
+        "@playwright/test": "^1.61.0",
         "@types/node": "^24.0.0",
       },
     },

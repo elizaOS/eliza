@@ -18,7 +18,11 @@ import {
   resolveRunnerKind,
 } from "../provenance.ts";
 import { TIERS, type Tier } from "../schema.ts";
-import { VIDEO_GRANULARITIES, ingestVideo, type VideoGranularity } from "./ingest.ts";
+import {
+  ingestVideo,
+  VIDEO_GRANULARITIES,
+  type VideoGranularity,
+} from "./ingest.ts";
 import {
   loadAllWalkthroughDefs,
   loadWalkthroughDef,
@@ -41,7 +45,10 @@ export interface CliIo {
 
 function defaultRepoRoot(): string {
   // src/video/cli.ts → video → src → packages/evidence → packages → repo root.
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+  return path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../../..",
+  );
 }
 
 interface ParsedArgs {
@@ -61,7 +68,9 @@ function parseArgs(argv: string[], known: Set<string>): ParsedArgs {
     }
     const key = arg.slice(2);
     if (!known.has(key)) {
-      throw new EvidenceError(`unknown argument: ${arg}`, { code: "CLI_USAGE" });
+      throw new EvidenceError(`unknown argument: ${arg}`, {
+        code: "CLI_USAGE",
+      });
     }
     const next = argv[index + 1];
     if (next === undefined || next.startsWith("--")) {
@@ -77,15 +86,22 @@ function parseArgs(argv: string[], known: Set<string>): ParsedArgs {
 function parseTier(raw: string | undefined): Tier {
   if (raw === undefined) return "cpu";
   if (!(TIERS as readonly string[]).includes(raw)) {
-    throw new EvidenceError(`--tier must be one of ${TIERS.join("|")}, got: ${raw}`, {
-      code: "CLI_USAGE",
-    });
+    throw new EvidenceError(
+      `--tier must be one of ${TIERS.join("|")}, got: ${raw}`,
+      {
+        code: "CLI_USAGE",
+      },
+    );
   }
   return raw as Tier;
 }
 
 /** Open a fresh bundle under `--bundle`'s parent (or evidence/runs) with real provenance. */
-function openBundle(bundleDir: string | undefined, repoRoot: string, tier: Tier): EvidenceBundle {
+function openBundle(
+  bundleDir: string | undefined,
+  repoRoot: string,
+  tier: Tier,
+): EvidenceBundle {
   const git = collectGitProvenance(repoRoot);
   const runner = resolveRunnerKind(process.env);
   const provenance = {
@@ -111,31 +127,45 @@ function openBundle(bundleDir: string | undefined, repoRoot: string, tier: Tier)
   });
 }
 
-async function runWalkthroughCommand(argv: string[], io: CliIo): Promise<number> {
+async function runWalkthroughCommand(
+  argv: string[],
+  io: CliIo,
+): Promise<number> {
   const { values } = parseArgs(
     argv,
     new Set(["def", "bundle", "base-url", "tier", "out", "repo-root"]),
   );
   const defArg = values.get("def");
   if (defArg === undefined) {
-    throw new EvidenceError("--def <file|all> is required", { code: "CLI_USAGE" });
+    throw new EvidenceError("--def <file|all> is required", {
+      code: "CLI_USAGE",
+    });
   }
   const repoRoot = path.resolve(values.get("repo-root") ?? defaultRepoRoot());
   const tier = parseTier(values.get("tier"));
   const bundle = openBundle(values.get("bundle"), repoRoot, tier);
-  const outRoot = path.resolve(values.get("out") ?? path.join(bundle.dir, ".walkthrough-scratch"));
+  const outRoot = path.resolve(
+    values.get("out") ?? path.join(bundle.dir, ".walkthrough-scratch"),
+  );
   const baseUrl = values.get("base-url");
 
   const defs =
     defArg === "all"
       ? loadAllWalkthroughDefs()
-      : [{ def: loadWalkthroughDef(path.resolve(defArg)), file: path.resolve(defArg) }];
+      : [
+          {
+            def: loadWalkthroughDef(path.resolve(defArg)),
+            file: path.resolve(defArg),
+          },
+        ];
 
   io.out(`bundle ${bundle.runId}`);
   let ran = 0;
   for (const { def } of defs) {
     if (def.requiresApp && baseUrl === undefined) {
-      io.err(`  ${def.slug.padEnd(16)} skipped   requires --base-url (requiresApp)`);
+      io.err(
+        `  ${def.slug.padEnd(16)} skipped   requires --base-url (requiresApp)`,
+      );
       continue;
     }
     const result = await runAndIngestWalkthrough(def, bundle, {
@@ -166,10 +196,17 @@ async function runIngestCommand(argv: string[], io: CliIo): Promise<number> {
   const file = values.get("file");
   const granularityRaw = values.get("granularity");
   const slug = values.get("slug");
-  if (file === undefined || granularityRaw === undefined || slug === undefined) {
-    throw new EvidenceError("--file, --granularity, and --slug are all required", {
-      code: "CLI_USAGE",
-    });
+  if (
+    file === undefined ||
+    granularityRaw === undefined ||
+    slug === undefined
+  ) {
+    throw new EvidenceError(
+      "--file, --granularity, and --slug are all required",
+      {
+        code: "CLI_USAGE",
+      },
+    );
   }
   if (!(VIDEO_GRANULARITIES as readonly string[]).includes(granularityRaw)) {
     throw new EvidenceError(
@@ -204,7 +241,9 @@ export async function runVideoCli(argv: string[], io: CliIo): Promise<number> {
     if (command === "walkthrough") return await runWalkthroughCommand(rest, io);
     if (command === "ingest") return await runIngestCommand(rest, io);
     io.err(USAGE);
-    return command === undefined || command === "--help" || command === "-h" ? 0 : 1;
+    return command === undefined || command === "--help" || command === "-h"
+      ? 0
+      : 1;
   } catch (error) {
     // error-policy:J1 process boundary — translate typed failures into a
     // structured stderr line + non-zero exit for the invoking harness.

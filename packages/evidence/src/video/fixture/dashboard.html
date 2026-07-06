@@ -105,11 +105,11 @@
 <body>
   <nav>
     <h1>Eliza</h1>
-    <button data-testid="nav-chat" data-view="chat" aria-current="true">Chat</button>
-    <button data-testid="nav-documents" data-view="documents">Documents</button>
-    <button data-testid="nav-database" data-view="database">Database</button>
-    <button data-testid="nav-files" data-view="files">Files</button>
-    <button data-testid="nav-settings" data-view="settings">Settings</button>
+    <button type="button" data-testid="nav-chat" data-view="chat" aria-current="true">Chat</button>
+    <button type="button" data-testid="nav-documents" data-view="documents">Documents</button>
+    <button type="button" data-testid="nav-database" data-view="database">Database</button>
+    <button type="button" data-testid="nav-files" data-view="files">Files</button>
+    <button type="button" data-testid="nav-settings" data-view="settings">Settings</button>
   </nav>
   <main>
     <section id="view-chat" class="view active" data-testid="chat-view">
@@ -124,7 +124,7 @@
           placeholder="Message Eliza…"
           aria-label="Message input"
         ></textarea>
-        <button data-testid="chat-composer-action" aria-label="Send message">Send</button>
+        <button type="button" data-testid="chat-composer-action" aria-label="Send message">Send</button>
       </div>
     </section>
     <section id="view-documents" class="view" data-testid="documents-view">
@@ -182,7 +182,7 @@
       append("user", text);
       textarea.value = "";
       setTimeout(() => {
-        append("agent", "Got it — I received: " + text);
+        append("agent", `Got it — I received: ${text}`);
       }, 400);
     }
     sendButton.addEventListener("click", send);

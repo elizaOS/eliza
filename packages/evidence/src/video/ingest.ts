@@ -21,15 +21,19 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { EvidenceBundle } from "../bundle.ts";
-import { analyzeArtifacts } from "../analyzers/runner.ts";
 import type { SubjectAnalysis } from "../analyzers/runner.ts";
+import { analyzeArtifacts } from "../analyzers/runner.ts";
+import type { EvidenceBundle } from "../bundle.ts";
 import { EvidenceError } from "../errors.ts";
 import type { ArtifactEntry, Tier } from "../schema.ts";
-import { normalizeVideo, type NormalizeOutcome } from "./normalize.ts";
+import { type NormalizeOutcome, normalizeVideo } from "./normalize.ts";
 
 /** The three evidence granularities video lanes produce. */
-export const VIDEO_GRANULARITIES = ["element", "feature", "walkthrough"] as const;
+export const VIDEO_GRANULARITIES = [
+  "element",
+  "feature",
+  "walkthrough",
+] as const;
 export type VideoGranularity = (typeof VIDEO_GRANULARITIES)[number];
 
 /** Placement directory for a granularity: `video/elements`, `video/features`, `video/walkthroughs`. */
@@ -118,9 +122,8 @@ export async function ingestVideo(
     // as-is under the .mp4 name; the skip is reported so the reviewer knows the
     // container may not be GitHub-inline-renderable. This is honest degradation,
     // not fabricated success.
-    const sourceForPlacement = normalize.status === "skipped-missing-tool"
-      ? file
-      : canonical;
+    const sourceForPlacement =
+      normalize.status === "skipped-missing-tool" ? file : canonical;
     const video = await bundle.addArtifact(sourceForPlacement, {
       kind: "video",
       source: options.source,
