@@ -11,7 +11,6 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Button } from "@elizaos/ui/components/ui/button";
 import { type CSSProperties, useCallback, useEffect } from "react";
 import {
   type PolymarketSnapshot,
@@ -19,32 +18,16 @@ import {
 } from "./components/PolymarketSpatialView.tsx";
 import { usePolymarketState } from "./usePolymarketState.ts";
 
-const AGENT_TOOLBAR_STYLE: CSSProperties = {
-  display: "flex",
-  gap: "0.5rem",
-  alignItems: "center",
-  flexWrap: "wrap",
-  padding: "0.4rem 0.5rem",
-};
-
-const AGENT_BUTTON_STYLE: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "0.4rem 0.85rem",
-  borderRadius: "0.4rem",
-  border: "1px solid var(--primary, #d2691e)",
-  background: "var(--primary, #d2691e)",
-  color: "var(--primary-foreground, #fff)",
-  fontWeight: 600,
-  fontSize: "0.85rem",
-  cursor: "pointer",
-};
-
-const AGENT_BUTTON_OUTLINE_STYLE: CSSProperties = {
-  ...AGENT_BUTTON_STYLE,
-  background: "transparent",
-  color: "var(--primary, #d2691e)",
+const AGENT_HIDDEN_CONTROL_STYLE: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  margin: -1,
+  padding: 0,
+  overflow: "hidden",
+  clipPath: "inset(50%)",
+  whiteSpace: "nowrap",
+  border: 0,
 };
 
 export function PolymarketView() {
@@ -124,37 +107,25 @@ export function PolymarketView() {
 
   return (
     <>
-      <div
-        role="toolbar"
-        aria-label="Polymarket controls"
-        style={AGENT_TOOLBAR_STYLE}
-      >
-        <Button
-          unstyled
+      <div aria-hidden="true">
+        <button
           ref={refreshControl.ref}
           {...refreshControl.agentProps}
           type="button"
           onClick={() => void refresh()}
           disabled={loading}
-          style={{
-            ...AGENT_BUTTON_STYLE,
-            opacity: loading ? 0.6 : 1,
-            cursor: loading ? "not-allowed" : "pointer",
-          }}
-        >
-          {loading ? "Refreshing…" : "Refresh"}
-        </Button>
+          tabIndex={-1}
+          style={AGENT_HIDDEN_CONTROL_STYLE}
+        />
         {selectedMarket ? (
-          <Button
-            unstyled
+          <button
             ref={backToMarketsControl.ref}
             {...backToMarketsControl.agentProps}
             type="button"
             onClick={() => setSelectedMarket(null)}
-            style={AGENT_BUTTON_OUTLINE_STYLE}
-          >
-            All markets
-          </Button>
+            tabIndex={-1}
+            style={AGENT_HIDDEN_CONTROL_STYLE}
+          />
         ) : null}
       </div>
       <PolymarketSpatialView snapshot={snapshot} onAction={onAction} />
