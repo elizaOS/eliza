@@ -25,11 +25,14 @@ jobs:
   lane-coverage:
     name: Test Integrity (lane coverage)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: false
+          # Full history: the error-policy ratchet diffs every touched file
+          # against its content at the merge-base with origin/develop.
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -38,6 +41,22 @@ jobs:
 
       - name: Per-plugin e2e coverage
         run: node packages/scripts/lint-lane-coverage.mjs
+
+      # Binding policy audits from CLAUDE.md that previously ran nowhere in
+      # CI. Both are dependency-free node scripts (<5s): the error-policy
+      # ratchet fails only when a file this PR touches ADDS an empty catch or
+      # server-side console.* call; test-integrity statically lints test
+      # sources for larp patterns.
+      - name: Error-policy ratchet (diff-scoped)
+        run: |
+          git fetch --no-tags origin develop:refs/remotes/origin/develop || true
+          node packages/scripts/error-policy-ratchet.mjs
+
+      - name: Test-integrity audit
+        run: node packages/scripts/lint-test-integrity.mjs
+
+      - name: Test-integrity audit self-test
+        run: node packages/scripts/lint-test-integrity.self-test.mjs
 
   lint:
     runs-on: ubuntu-latest
