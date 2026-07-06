@@ -44,7 +44,9 @@ afterEach(() => {
 describe("assertSSHKeyAvailable", () => {
   test("throws when neither an inline key nor a key path is configured", () => {
     expect(containersEnv.resolveSshKeySource()).toEqual({ kind: "none" });
-    expect(() => assertSSHKeyAvailable()).toThrow(/neither CONTAINERS_SSH_KEY .* nor CONTAINERS_SSH_KEY_PATH/);
+    expect(() => assertSSHKeyAvailable()).toThrow(
+      /neither CONTAINERS_SSH_KEY .* nor CONTAINERS_SSH_KEY_PATH/,
+    );
   });
 
   test("throws when the key PATH is set but the file is missing", () => {

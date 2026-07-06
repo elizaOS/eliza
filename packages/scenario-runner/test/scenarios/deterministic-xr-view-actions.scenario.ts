@@ -22,11 +22,11 @@ import type {
 import { scenario } from "@elizaos/scenario-runner/schema";
 import WebSocket from "ws";
 import {
+  facewearPlugin,
   XR_SERVICE_TYPE,
   type XRSessionService,
-  xrPlugin,
-} from "../../../../plugins/plugin-xr/src/index.ts";
-import { encodeBinaryFrame } from "../../../../plugins/plugin-xr/src/protocol.ts";
+} from "../../../../plugins/plugin-facewear/src/index.ts";
+import { encodeBinaryFrame } from "../../../../plugins/plugin-facewear/src/protocol/xr.ts";
 import {
   type RuntimeWithScenarioLlmFixtures,
   registerStrictActionRouteFixtures,
@@ -206,8 +206,8 @@ function withScenarioXrActionParameters(action: Action): Action {
 }
 
 const scenarioXrPlugin: Plugin = {
-  ...xrPlugin,
-  actions: xrPlugin.actions?.map(withScenarioXrActionParameters),
+  ...facewearPlugin,
+  actions: facewearPlugin.actions?.map(withScenarioXrActionParameters),
 };
 
 const strictXrViewRoutes = [
@@ -624,7 +624,7 @@ export default scenario({
   tags: ["pr", "deterministic", "zero-cost", "xr", "views"],
   isolation: "shared-runtime",
   requires: {
-    plugins: ["@elizaos/plugin-xr"],
+    plugins: ["@elizaos/plugin-facewear"],
   },
   seed: [
     {

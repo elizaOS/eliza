@@ -52,10 +52,7 @@ describe("composeState under trajectory recording", () => {
 			names: ["User"],
 			components: [],
 		};
-		const getRoomsForParticipants = vi.fn(async () => [
-			ROOM_ID,
-			OTHER_ROOM_ID,
-		]);
+		const getRoomsForParticipants = vi.fn(async () => [ROOM_ID, OTHER_ROOM_ID]);
 		const getMemoriesByRoomIds = vi.fn(async () => [
 			{
 				id: "cross-1" as UUID,

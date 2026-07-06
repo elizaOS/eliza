@@ -339,7 +339,7 @@ export function installDesktopNotificationTestRecorder(): void {
   notificationTestRecorderInstalled = true;
 
   const originalShowNotification = Utils.showNotification.bind(Utils);
-  Utils.showNotification = ((payload: {
+  const recordableShowNotification = ((payload: {
     title: string;
     body?: string;
     subtitle?: string;
@@ -353,6 +353,11 @@ export function installDesktopNotificationTestRecorder(): void {
       silent: payload.silent,
     });
   }) as typeof Utils.showNotification;
+
+  Object.defineProperty(Utils, "showNotification", {
+    configurable: true,
+    value: recordableShowNotification,
+  });
 }
 
 export function readDesktopNotificationTestRecords(): DesktopNotificationTestRecord[] {

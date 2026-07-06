@@ -13,6 +13,7 @@ import {
   asUuid,
   canMutateDocumentMemory,
   canReadDocumentMemory,
+  type DocumentReadableMemory,
   documentMediaFormat,
   documentScopedEntityId,
   documentTags,
@@ -329,7 +330,7 @@ function isDocumentMemory(memory: Memory, agentId: UUID): boolean {
 }
 
 function matchesDocumentFilter(
-  memory: Memory,
+  memory: DocumentReadableMemory,
   filters: DocumentFilter,
 ): boolean {
   if (!matchesSharedDocumentFilter(memory, filters)) return false;

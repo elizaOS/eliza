@@ -24,6 +24,7 @@ import type {
   MessageSearchHit,
   UUID,
 } from "@elizaos/core";
+import { MemoryType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConversationRouteContext,
@@ -122,7 +123,7 @@ function modelSearch(
         ...(row.attachments ? { attachments: row.attachments } : {}),
       },
       createdAt: row.createdAt,
-      metadata: { type: "messages" },
+      metadata: { type: MemoryType.MESSAGE },
     } as Memory,
     ftsRank,
     trigramSimilarity: 0,

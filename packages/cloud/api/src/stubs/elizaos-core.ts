@@ -125,6 +125,59 @@ export function resolveStateDir(
   return `${home}/.${getElizaNamespace(env)}`;
 }
 
+const TRUTHY_ENV_VALUES = new Set(["1", "true", "yes", "y", "on", "enabled"]);
+
+export function isTruthyEnvValue(value: string | undefined | null): boolean {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 && TRUTHY_ENV_VALUES.has(normalized);
+}
+
+function presentEnvValue(value: string | undefined): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return value.trim() ? value : undefined;
+}
+
+function buildAliasPartnerMap(
+  aliases: readonly (readonly [string, string])[],
+): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  const link = (from: string, to: string): void => {
+    if (from === to) return;
+    const existing = map.get(from);
+    if (existing) {
+      if (!existing.includes(to)) existing.push(to);
+    } else {
+      map.set(from, [to]);
+    }
+  };
+  for (const [brandKey, elizaKey] of aliases) {
+    link(brandKey, elizaKey);
+    link(elizaKey, brandKey);
+  }
+  return map;
+}
+
+export function resolveAliasedEnvValue(
+  key: string,
+  aliases: readonly (readonly [string, string])[] | undefined = undefined,
+  env: Record<string, string | undefined> | null = process.env,
+): string | undefined {
+  if (!env) return undefined;
+
+  const direct = presentEnvValue(env[key]);
+  if (direct !== undefined) return direct;
+  if (!aliases || aliases.length === 0) return undefined;
+
+  const partners = buildAliasPartnerMap(aliases).get(key);
+  if (!partners) return undefined;
+  for (const partner of partners) {
+    const value = presentEnvValue(env[partner]);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -659,20 +712,119 @@ const CONNECTOR_SOURCE_ALIASES: Record<string, readonly string[]> = {
   whatsapp: ["whatsapp"],
 };
 
-const registeredConnectorAliases = new Map<string, Set<string>>();
+export type ConnectorSourceKind = "passive" | "active";
+
+export interface ConnectorIdentityMetadataMapping {
+  userIdField: string;
+  nameField?: string;
+}
+
+export interface ConnectorSourceMetadata {
+  aliases?: readonly string[];
+  sourceKind?: ConnectorSourceKind;
+  isPassive?: boolean;
+  identityMetadataMapping?: ConnectorIdentityMetadataMapping;
+  worldIdMetadataKeys?: readonly string[];
+}
+
+export interface ConnectorSourceDefinition extends ConnectorSourceMetadata {
+  source: string;
+}
+
+const DEFAULT_CONNECTOR_SOURCE_OWNER = "manual";
+const registeredMetadataByOwner = new Map<
+  string,
+  Map<string, ConnectorSourceMetadata>
+>();
+
+function mergeConnectorSourceMetadata(
+  base: ConnectorSourceMetadata | undefined,
+  registered: ConnectorSourceMetadata | undefined,
+): ConnectorSourceMetadata {
+  return {
+    aliases: Array.from(
+      new Set([...(base?.aliases ?? []), ...(registered?.aliases ?? [])]),
+    ),
+    sourceKind: registered?.sourceKind ?? base?.sourceKind,
+    isPassive: registered?.isPassive ?? base?.isPassive,
+    identityMetadataMapping:
+      registered?.identityMetadataMapping ?? base?.identityMetadataMapping,
+    worldIdMetadataKeys:
+      registered?.worldIdMetadataKeys ?? base?.worldIdMetadataKeys,
+  };
+}
+
+function listRegisteredCanonicalSources(): string[] {
+  const sources = new Set<string>();
+  for (const ownerMetadata of registeredMetadataByOwner.values()) {
+    for (const canonical of ownerMetadata.keys()) sources.add(canonical);
+  }
+  return [...sources];
+}
+
+function getMergedConnectorSourceMetadata(
+  canonical: string,
+): ConnectorSourceMetadata {
+  let merged: ConnectorSourceMetadata | undefined;
+  for (const ownerMetadata of registeredMetadataByOwner.values()) {
+    merged = mergeConnectorSourceMetadata(merged, ownerMetadata.get(canonical));
+  }
+  return merged ?? {};
+}
+
+function getMergedConnectorSourceAliases(canonical: string): readonly string[] {
+  return getMergedConnectorSourceMetadata(canonical).aliases ?? [];
+}
+
+export function registerConnectorSourceMetadata(
+  canonical: string,
+  metadata: ConnectorSourceMetadata,
+  owner = DEFAULT_CONNECTOR_SOURCE_OWNER,
+): void {
+  const key = canonical.trim().toLowerCase();
+  if (!key) return;
+
+  const ownerKey = owner.trim() || DEFAULT_CONNECTOR_SOURCE_OWNER;
+  let ownerMetadata = registeredMetadataByOwner.get(ownerKey);
+  if (!ownerMetadata) {
+    ownerMetadata = new Map();
+    registeredMetadataByOwner.set(ownerKey, ownerMetadata);
+  }
+
+  const existing = ownerMetadata.get(key);
+  const mergedAliases = new Set([
+    key,
+    ...(existing?.aliases ?? []),
+    ...(metadata.aliases ?? []).map((alias) => alias.trim().toLowerCase()),
+  ]);
+  ownerMetadata.set(key, {
+    ...existing,
+    ...metadata,
+    aliases: Array.from(mergedAliases).filter(Boolean),
+  });
+}
+
+export function registerConnectorSourceDefinitions(
+  definitions: readonly ConnectorSourceDefinition[] | null | undefined,
+  owner = DEFAULT_CONNECTOR_SOURCE_OWNER,
+): void {
+  for (const definition of definitions ?? []) {
+    const { source, ...metadata } = definition;
+    registerConnectorSourceMetadata(source, metadata, owner);
+  }
+}
+
+export function unregisterConnectorSourceMetadataOwner(owner: string): void {
+  const ownerKey = owner.trim();
+  if (!ownerKey) return;
+  registeredMetadataByOwner.delete(ownerKey);
+}
 
 export function registerConnectorSourceAliases(
   canonical: string,
   aliases: readonly string[],
 ): void {
-  const key = canonical.trim().toLowerCase();
-  if (!key) return;
-  const existing = registeredConnectorAliases.get(key) ?? new Set<string>();
-  for (const alias of aliases) {
-    const normalized = alias.trim().toLowerCase();
-    if (normalized) existing.add(normalized);
-  }
-  registeredConnectorAliases.set(key, existing);
+  registerConnectorSourceMetadata(canonical, { aliases });
 }
 
 export function normalizeConnectorSource(
@@ -684,8 +836,10 @@ export function normalizeConnectorSource(
   for (const [canonical, aliases] of Object.entries(CONNECTOR_SOURCE_ALIASES)) {
     if (aliases.includes(trimmed)) return canonical;
   }
-  for (const [canonical, aliases] of registeredConnectorAliases) {
-    if (aliases.has(trimmed)) return canonical;
+  for (const canonical of listRegisteredCanonicalSources()) {
+    if (getMergedConnectorSourceAliases(canonical).includes(trimmed)) {
+      return canonical;
+    }
   }
   return trimmed;
 }
@@ -698,9 +852,50 @@ export function getConnectorSourceAliases(
   return Array.from(
     new Set([
       ...(CONNECTOR_SOURCE_ALIASES[canonical] ?? [canonical]),
-      ...(registeredConnectorAliases.get(canonical) ?? []),
+      ...getMergedConnectorSourceAliases(canonical),
     ]),
   );
+}
+
+export function getConnectorSourceMetadata(
+  source: string | null | undefined,
+): ConnectorSourceMetadata | null {
+  const canonical = normalizeConnectorSource(source);
+  if (!canonical) return null;
+  const metadata = getMergedConnectorSourceMetadata(canonical);
+  return Object.keys(metadata).length > 0 ? metadata : null;
+}
+
+export function isPassiveConnectorSource(
+  source: string | null | undefined,
+): boolean {
+  const metadata = getConnectorSourceMetadata(source);
+  return Boolean(metadata?.isPassive || metadata?.sourceKind === "passive");
+}
+
+export function getConnectorIdentityMetadataMapping(
+  source: string | null | undefined,
+): ConnectorIdentityMetadataMapping | null {
+  const mapping = getConnectorSourceMetadata(source)?.identityMetadataMapping;
+  if (!mapping || typeof mapping.userIdField !== "string") return null;
+  const userIdField = mapping.userIdField.trim();
+  if (!userIdField) return null;
+  const nameField =
+    typeof mapping.nameField === "string" && mapping.nameField.trim()
+      ? mapping.nameField.trim()
+      : undefined;
+  return { userIdField, ...(nameField ? { nameField } : {}) };
+}
+
+export function getConnectorWorldIdMetadataKeys(
+  source: string | null | undefined,
+): string[] {
+  const keys = getConnectorSourceMetadata(source)?.worldIdMetadataKeys;
+  if (!Array.isArray(keys)) return [];
+  return keys
+    .filter((key): key is string => typeof key === "string")
+    .map((key) => key.trim())
+    .filter((key) => key.length > 0);
 }
 
 export function expandConnectorSourceFilter(
@@ -713,6 +908,29 @@ export function expandConnectorSourceFilter(
     }
   }
   return expanded;
+}
+
+registerConnectorSourceMetadata(
+  "discord",
+  {
+    identityMetadataMapping: {
+      userIdField: "fromId",
+      nameField: "entityName",
+    },
+    worldIdMetadataKeys: ["discordServerId", "discordChannelId"],
+  },
+  "core:legacy-discord-metadata",
+);
+
+export function getRecentMessagesData(state: unknown): unknown[] {
+  const providers = (
+    state as { data?: { providers?: Record<string, unknown> } }
+  )?.data?.providers;
+  const recentProvider = providers?.RECENT_MESSAGES as
+    | { data?: { recentMessages?: unknown } }
+    | undefined;
+  const messages = recentProvider?.data?.recentMessages;
+  return Array.isArray(messages) ? messages : [];
 }
 
 export function isWechatConfigured(
