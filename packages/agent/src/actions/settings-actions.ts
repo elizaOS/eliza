@@ -1,8 +1,10 @@
 /**
- * SETTINGS — single polymorphic owner-only action covering provider, capability,
- * training, owner-name, and worldSettings-registry mutations.
+ * SETTINGS — single polymorphic owner-only action covering built-in settings
+ * sections, provider, capability, training, owner-name, backend routing, and
+ * worldSettings-registry mutations.
  *
  * Ops:
+ *   - get/list           → section registry from @elizaos/plugin-app-control
  *   - update_ai_provider → applyFirstRunConnectionConfig + saveElizaConfig
  *   - toggle_capability  → config.ui.capabilities.{wallet|browser|computerUse}
  *   - toggle_training    → training plugin's TrainingConfigService (via registry)
@@ -28,6 +30,10 @@ import {
   type WorldSettings,
 } from "@elizaos/core";
 import {
+  createSettingsAction as createSectionSettingsAction,
+  parseSettingsRequest,
+} from "@elizaos/plugin-app-control/actions/settings";
+import {
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,
 } from "@elizaos/shared";
@@ -45,6 +51,8 @@ import {
 // ── Op catalog ────────────────────────────────────────────────────────────
 
 export const SETTINGS_OPS = [
+  "get",
+  "list",
   "update_ai_provider",
   "toggle_capability",
   "toggle_training",
@@ -54,6 +62,8 @@ export const SETTINGS_OPS = [
   "set_backend",
 ] as const;
 export type SettingsOp = (typeof SETTINGS_OPS)[number];
+const SECTION_SETTINGS_OPS = new Set(["get", "list"]);
+const sectionSettingsAction = createSectionSettingsAction();
 
 // Coding sub-agent adapters the orchestrator can route to. Mirrors
 // KNOWN_ADAPTER_TYPES in plugin-agent-orchestrator (kept as a literal here so
@@ -181,6 +191,20 @@ function readParams(
 ): Record<string, unknown> {
   const raw = options?.parameters;
   return isRecord(raw) ? raw : {};
+}
+
+function shouldUseSectionSettingsAction(
+  options: HandlerOptions | undefined,
+  params: Record<string, unknown>,
+): boolean {
+  const rawOp = params.action ?? params.subaction ?? params.op;
+  const op = typeof rawOp === "string" ? rawOp.trim().toLowerCase() : "";
+  if (SECTION_SETTINGS_OPS.has(op)) return true;
+  if (op !== "set") return false;
+  return (
+    parseSettingsRequest(options as Record<string, unknown> | undefined) !==
+    null
+  );
 }
 
 // ── op: update_ai_provider ────────────────────────────────────────────────
@@ -815,9 +839,29 @@ function handleSetBackend(
 
 export const settingsAction: Action = {
   name: "SETTINGS",
-  contexts: ["settings", "admin", "agent_internal"],
+  contexts: ["general", "settings", "admin", "system", "agent_internal"],
+  contextGate: { anyOf: ["general", "settings", "admin", "system"] },
   roleGate: { minRole: "OWNER" },
   similes: [
+    "CHANGE_SETTING",
+    "UPDATE_SETTINGS",
+    "SETTINGS_WRITE",
+    "TOGGLE_SETTING",
+    "GET_SETTING",
+    "LIST_SETTINGS",
+    "PERMISSIONS",
+    "CHANGE_PERMISSION",
+    "CHANGE_PERMISSIONS",
+    "SET_PERMISSION",
+    "TOGGLE_PERMISSION",
+    "REVOKE_PERMISSION",
+    "GRANT_PERMISSION",
+    "SHELL_ACCESS",
+    "SHELL_PERMISSION",
+    "SHELL_PERMISSIONS",
+    "TOGGLE_SHELL_ACCESS",
+    "DISABLE_SHELL_ACCESS",
+    "ENABLE_SHELL_ACCESS",
     // Old leaf action names
     "UPDATE_AI_PROVIDER",
     "TOGGLE_CAPABILITY",
@@ -837,14 +881,11 @@ export const settingsAction: Action = {
     "ROUTE_BACKEND",
   ],
   description:
-    "Owner-only polymorphic settings mutation. Dispatches on `action` to update " +
-    "AI provider, toggle a capability, toggle/configure auto-training, set " +
-    "the owner display name, write to the world's settings registry, show the " +
-    "current backend routing (show_backends), or change which backend handles " +
-    "coding sub-agents / the chat brain (set_backend) — e.g. 'use codex for " +
-    "simple tasks and claude for hard ones', 'switch the brain to cerebras'.",
+    "Owner-only polymorphic settings action. Dispatches on `action` to read/list/change built-in settings sections (`get|set|list` with `section`/`key`/`value`, including permissions, app permissions, backups, and auto-training), update AI provider, toggle a capability, toggle/configure auto-training, set the owner display name, write to the world's settings registry, show the current backend routing (show_backends), or change which backend handles coding sub-agents / the chat brain (set_backend) — e.g. 'turn off shell access', 'what settings can you change', 'use codex for simple tasks and claude for hard ones', 'switch the brain to cerebras'. Opening a settings page without changing or reading a value is VIEWS, not SETTINGS.",
   descriptionCompressed:
-    "owner settings action: AI provider|capability|auto-train|display name|world registry|backend routing",
+    "owner settings action: get|set|list sections plus AI provider|capability|auto-train|display name|world registry|backend routing",
+  routingHint:
+    "Changing or reading a settings VALUE -> SETTINGS. Permissions/shell/app permissions/auto-training/backups use SETTINGS action=set section=<section> key=<key> value=on|off. Listing settings uses SETTINGS action=list. Legacy provider/capability/backend commands still use SETTINGS action=update_ai_provider|toggle_capability|toggle_training|set_owner_name|show_backends|set_backend. Pure navigation to a settings page is VIEWS.",
 
   validate: async () => true,
 
@@ -854,6 +895,41 @@ export const settingsAction: Action = {
       description: `Operation discriminator. One of: ${SETTINGS_OPS.join(", ")}.`,
       required: true,
       schema: { type: "string" as const, enum: [...SETTINGS_OPS] },
+    },
+    {
+      name: "section",
+      description:
+        "[get | set] Canonical settings section id or alias (e.g. permissions, capabilities, app-permissions, ai-model, background, secrets).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "app",
+      description:
+        "[set, app-permissions] Registered app slug for app permission writes.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "namespace",
+      description:
+        "[set, app-permissions] Permission namespace, e.g. fs/filesystem or net/network.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "fileName",
+      description:
+        "[set, advanced restore-backup] Backup file name to restore.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "confirm",
+      description:
+        "[set, destructive settings operations] Explicit confirmation token, usually true.",
+      required: false,
+      schema: { type: "string" as const },
     },
     {
       name: "provider",
@@ -948,9 +1024,24 @@ export const settingsAction: Action = {
     },
   ],
 
-  handler: async (runtime, message, _state, options) => {
+  handler: async (runtime, message, _state, options, callback) => {
     const params = readParams(options as HandlerOptions | undefined);
     const op = params.action ?? params.subaction ?? params.op;
+
+    if (
+      shouldUseSectionSettingsAction(
+        options as HandlerOptions | undefined,
+        params,
+      )
+    ) {
+      return sectionSettingsAction.handler(
+        runtime,
+        message,
+        _state,
+        options,
+        callback,
+      );
+    }
 
     switch (op) {
       case "update_ai_provider":

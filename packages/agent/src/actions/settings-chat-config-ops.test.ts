@@ -92,6 +92,21 @@ describe("SETTINGS action — always available at the chat boundary", () => {
       true,
     );
   });
+
+  it("lists built-in settings sections through the consolidated registry", async () => {
+    const result = await invoke({ action: "list" });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "permissions",
+          writable: true,
+          via: "SETTINGS",
+        }),
+      ]),
+    );
+  });
 });
 
 describe("SETTINGS update_ai_provider — persists to the real config store", () => {

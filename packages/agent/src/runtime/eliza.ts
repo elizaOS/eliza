@@ -43,6 +43,7 @@ import {
   OPTIONAL_STATIC_PLUGIN_REGISTRATIONS,
   optionalPluginImportSpecifier,
 } from "./optional-plugins.ts";
+import { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
 import {
   isWorkspacePluginSourceFallbackAllowed,
   type PluginResolutionPhase,
@@ -55,6 +56,7 @@ import {
 } from "./plugin-types.ts";
 import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate.ts";
 
+export { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
 export {
   CHANNEL_PLUGIN_MAP,
   collectPluginNames,
@@ -1570,31 +1572,6 @@ export async function shutdownRuntime(
 
   if (firstError) {
     throw firstError;
-  }
-}
-
-/**
- * Remove duplicate actions across an ordered list of plugins.
- *
- * When multiple plugins define an action with the same `name`, only the first
- * occurrence is kept.  This prevents "Action already registered" warnings from
- * elizaOS core.  The function mutates each plugin's `actions` array in-place.
- */
-export function deduplicatePluginActions(plugins: Plugin[]): void {
-  const seen = new Set<string>();
-  for (const plugin of plugins) {
-    if (plugin.actions) {
-      plugin.actions = plugin.actions.filter((action) => {
-        if (seen.has(action.name)) {
-          logger.debug(
-            `[eliza] Skipping duplicate action "${action.name}" from plugin "${plugin.name}"`,
-          );
-          return false;
-        }
-        seen.add(action.name);
-        return true;
-      });
-    }
   }
 }
 
