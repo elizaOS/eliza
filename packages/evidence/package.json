@@ -1,0 +1,32 @@
+{
+  "name": "@elizaos/evidence",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Evidence-bundle foundation: versioned manifest schema, provenance-stamped bundle builder, integrity verification, and silo ingestors for the unified evidence harness (#14541).",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "bundle:create": "bun src/cli.ts create",
+    "bundle:verify": "bun src/cli.ts verify",
+    "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write src",
+    "format": "bunx @biomejs/biome format --write src",
+    "format:check": "bunx @biomejs/biome format src"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": ["server"]
+    }
+  }
+}
