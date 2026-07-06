@@ -40,7 +40,9 @@ export type FormResultValue = string | boolean;
  * so no custom picker or dependency is added. Any other type is a plain text
  * box. Exported for the field-type unit test.
  */
-export function htmlInputTypeForField(fieldType: FormFieldSpec["type"]): string {
+export function htmlInputTypeForField(
+  fieldType: FormFieldSpec["type"],
+): string {
   switch (fieldType) {
     case "number":
       return "number";

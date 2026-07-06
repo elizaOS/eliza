@@ -115,14 +115,16 @@ describe("parse", () => {
 		})}\n[/FORM]`;
 		const { blocks } = parseInteractionBlocks(text);
 		const form = blocks[0] as FormInteraction;
-		expect(form.fields.map((f) => f.type)).toEqual(["date", "time", "datetime"]);
-		// parse ↔ serialize parity: the temporal types survive a round trip.
-		const rt = parseInteractionBlocks(serializeInteractionBlock(form));
-		expect((rt.blocks[0] as FormInteraction).fields.map((f) => f.type)).toEqual([
+		expect(form.fields.map((f) => f.type)).toEqual([
 			"date",
 			"time",
 			"datetime",
 		]);
+		// parse ↔ serialize parity: the temporal types survive a round trip.
+		const rt = parseInteractionBlocks(serializeInteractionBlock(form));
+		expect((rt.blocks[0] as FormInteraction).fields.map((f) => f.type)).toEqual(
+			["date", "time", "datetime"],
+		);
 	});
 
 	it("drops a field with an unknown type (core parser is strict)", () => {
