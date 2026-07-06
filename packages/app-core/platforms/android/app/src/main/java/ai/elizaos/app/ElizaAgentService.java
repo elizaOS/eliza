@@ -3667,7 +3667,15 @@ public class ElizaAgentService extends Service {
     public static void start(Context context) {
         Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_START);
-        context.startForegroundService(intent);
+        try {
+            context.startForegroundService(intent);
+        } catch (IllegalStateException error) {
+            // error-policy:J1 process boundary — same background-FGS
+            // restriction as GatewayConnectionService.start: a receiver-time
+            // start while the app is stopped must degrade to a deferred
+            // start (next foreground entry), not kill the process.
+            Log.w(TAG, "Deferred ElizaAgentService start; background FGS not allowed now: " + error.getMessage());
+        }
     }
 
     /** Request a graceful stop via the ACTION_STOP intent. */
