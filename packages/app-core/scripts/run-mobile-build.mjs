@@ -5345,6 +5345,13 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "AndroidVirtualizationBridge.java",
   "ElizaAgentService.java",
   "ElizaAgentWatchdogPolicy.java",
+  // On-device agent helpers that only ElizaAgentService drives: the cold-boot
+  // asset-extraction policy (170 MB agent bundle staging) and the in-process
+  // bionic/llama GPU inference server. They import/reference ElizaAgentService,
+  // so they must be removed alongside it or the cloud target compiles a dangling
+  // reference and auditAndroidCloudSource rejects the tree (#15106).
+  "ElizaAssetExtractionPolicy.java",
+  "ElizaBionicInferenceServer.java",
   "ElizaAccessibilityService.java",
   "ElizaAssistActivity.java",
   "ElizaVoiceInteractionService.java",
@@ -5368,6 +5375,17 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaRespondViaMessageService.java",
   "ElizaSmsComposeActivity.java",
   "ElizaSmsReceiver.java",
+];
+
+// Java sources that survive the cloud strip but are rewritten (or deleted) by
+// rewriteCloudJavaSources() so that the android-cloud tree compiles without
+// ElizaAgentService. Kept as an exported single source of truth so the strip
+// list and the audit stay in agreement (#15106).
+export const ANDROID_CLOUD_REWRITTEN_JAVA_FILES = [
+  "MainActivity.java",
+  "AgentPlugin.java",
+  "ElizaTasksWorker.java",
+  "ElizaNativeBridge.java",
 ];
 
 export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([

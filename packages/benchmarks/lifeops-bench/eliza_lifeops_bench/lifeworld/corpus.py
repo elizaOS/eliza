@@ -197,8 +197,27 @@ def _email_message(row: dict[str, Any], owner_email: str) -> EmailMessage:
     )
 
 
-def _chat_channel(platform: str) -> str:
-    return "telegram" if platform == "x" else platform
+# Explicit map from corpus `platform` strings to valid ``ChatChannel`` literals.
+# ``gmail`` is intentionally absent: gmail rows are routed to the email path and
+# never reach ``_chat_channel``. ``x`` (Twitter/X) has no dedicated ChatChannel,
+# so it is folded into ``telegram`` to preserve prior behaviour.
+_PLATFORM_TO_CHAT_CHANNEL: dict[str, ChatChannel] = {
+    "x": "telegram",
+    "telegram": "telegram",
+    "discord": "discord",
+    "imessage": "imessage",
+    "signal": "signal",
+}
+
+
+def _chat_channel(platform: str) -> ChatChannel:
+    try:
+        return _PLATFORM_TO_CHAT_CHANNEL[platform]
+    except KeyError as exc:
+        raise ValueError(
+            f"unknown corpus platform {platform!r}; "
+            f"expected one of {sorted(_PLATFORM_TO_CHAT_CHANNEL)}"
+        ) from exc
 
 
 def _chat_message(row: dict[str, Any], owner_email: str) -> ChatMessage:

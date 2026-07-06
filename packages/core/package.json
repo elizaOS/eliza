@@ -108,7 +108,7 @@
 		"dist"
 	],
 	"scripts": {
-		"prebuild": "bun run --cwd ../logger build && bun run --cwd ../contracts build && ([ -f src/i18n/generated/validation-keyword-data.ts ] || node ../shared/scripts/generate-keywords.mjs --target ts)",
+		"prebuild": "bun run --cwd ../logger build && bun run --cwd ../contracts build && bun run --cwd ../cloud/routing build && ([ -f src/i18n/generated/validation-keyword-data.ts ] || node ../shared/scripts/generate-keywords.mjs --target ts)",
 		"prepublishOnly": "bun run build",
 		"build": "bun run build.ts",
 		"build:node": "bun run build.ts --node-only",

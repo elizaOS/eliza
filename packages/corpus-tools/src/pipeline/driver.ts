@@ -444,20 +444,11 @@ function defaultStage(stage: ScrubStageName): ScrubStageDefinition {
       }
       const next = stableCloneMessage(message);
       next.scrubState = targetState;
-      const mined =
-        stage === "mine"
-          ? await minePiiCandidates([message], {
-              hashSalt: context.rulesetVersion,
-            })
-          : undefined;
+      // Per-message mining here would be redundant: report.candidateCount is
+      // recomputed post-loop from the whole-corpus minePiiCandidates() call.
       return {
         message: next,
-        metadata:
-          mined === undefined
-            ? undefined
-            : {
-                candidateCount: mined.candidates.length,
-              },
+        metadata: undefined,
         cost: ZERO_COST,
       };
     },
@@ -526,6 +517,17 @@ async function writeReport(
   await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
 }
 
+/**
+ * Ensure a state directory exists and can never be accidentally committed by
+ * writing a `*`-glob `.gitignore` into it. This makes safety independent of
+ * where `--state-dir` happens to point (previously it relied on the dir
+ * sitting under a `data/`-covered path). Safe to call repeatedly.
+ */
+async function ensureStateDirIgnored(stateDir: string): Promise<void> {
+  await fs.mkdir(stateDir, { recursive: true });
+  await fs.writeFile(path.join(stateDir, ".gitignore"), "*\n");
+}
+
 async function writePiiSweepClassification(
   stateDir: string,
   rows: readonly {
@@ -538,9 +540,24 @@ async function writePiiSweepClassification(
     "pii-sweep-classification.json",
   );
   await fs.mkdir(stateDir, { recursive: true });
+  // Strip the raw PII cleartext (`text`) from the on-disk artifact. Only
+  // non-sensitive classification fields are persisted; the in-memory pipeline
+  // result returned to callers still carries the full span.
+  const sanitizedRows = rows.map((row) => ({
+    messageId: row.messageId,
+    replacements: row.replacements.map((replacement) => ({
+      kind: replacement.kind,
+      start: replacement.start,
+      end: replacement.end,
+      confidence: replacement.confidence,
+      engine: replacement.engine,
+      valueHash: replacement.valueHash,
+      replacement: replacement.replacement,
+    })),
+  }));
   await fs.writeFile(
     classificationPath,
-    `${JSON.stringify({ rows }, null, 2)}\n`,
+    `${JSON.stringify({ rows: sanitizedRows }, null, 2)}\n`,
   );
   return classificationPath;
 }
@@ -560,6 +577,10 @@ export async function runScrubPipeline(
     options.outputPath ?? path.join(stateDir, "scrub-output.jsonl");
   const reportPath =
     options.reportPath ?? path.join(stateDir, "scrub-report.json");
+  // Guarantee the state dir (ledger + all artifacts, including pre-scrub
+  // snapshots that still contain raw PII) can never be committed, regardless of
+  // where it points. Runs before any ledger/artifact write.
+  await ensureStateDirIgnored(stateDir);
   const ledger = options.resume
     ? await loadLedger(ledgerPath)
     : { recordsRead: 0, byKey: new Map<string, ScrubLedgerRecord>() };
