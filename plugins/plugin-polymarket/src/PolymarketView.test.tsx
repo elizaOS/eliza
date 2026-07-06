@@ -10,6 +10,12 @@
 // capability handler the view bundle re-exports.
 
 import {
+  type AgentElementSnapshot,
+  AgentSurfaceProvider,
+  getViewRegistry,
+  handleAgentSurfaceCapability,
+} from "@elizaos/ui/agent-surface";
+import {
   cleanup,
   fireEvent,
   render,
@@ -373,6 +379,110 @@ describe("PolymarketView — terminal interact capabilities", () => {
           size: 1,
         }),
       }),
+    );
+  });
+});
+
+// The visible orange toolbar was removed (#14594); the refresh/detail-back
+// controls now live in an aria-hidden, off-screen wrapper. These assert the
+// agent-surface path still drives them — they remain real registered buttons,
+// keep their handlers, and fire when the agent activates them through the
+// capability bridge (the same `agent-click` route the pill/automation uses),
+// independent of any visible pixel.
+describe("PolymarketView — hidden agent-surface controls fire for the agent", () => {
+  const VIEW = "polymarket-agent-surface-test";
+
+  function renderWithSurface() {
+    return render(
+      <AgentSurfaceProvider viewId={VIEW} viewType="gui">
+        <PolymarketView />
+      </AgentSurfaceProvider>,
+    );
+  }
+
+  it("keeps refresh + detail-back in the DOM but visually + a11y hidden", async () => {
+    renderWithSurface();
+    // Auto-select opens the detail pane, so the detail-back control renders.
+    await screen.findByText("Will BTC be above 100k?");
+    await waitFor(() => expect(agent("detail-back")).toBeTruthy());
+
+    const refreshBtn = document.querySelector<HTMLElement>(
+      '[data-agent-id="polymarket-refresh"]',
+    );
+    const backBtn = document.querySelector<HTMLElement>(
+      '[data-agent-id="polymarket-detail-back"]',
+    );
+    expect(refreshBtn?.tagName).toBe("BUTTON");
+    expect(backBtn?.tagName).toBe("BUTTON");
+    // Clipped off-screen inside an aria-hidden wrapper — not display:none, so the
+    // node stays activatable for the agent surface.
+    expect(refreshBtn?.closest('[aria-hidden="true"]')).toBeTruthy();
+    expect(backBtn?.closest('[aria-hidden="true"]')).toBeTruthy();
+    expect(refreshBtn?.style.clipPath).toContain("inset");
+  });
+
+  it("registers refresh + detail-back as clickable buttons on the surface", async () => {
+    renderWithSurface();
+    await screen.findByText("Will BTC be above 100k?");
+    const registry = getViewRegistry(VIEW, "gui");
+    if (!registry) throw new Error("registry missing");
+    const elements = handleAgentSurfaceCapability(
+      registry,
+      "list-elements",
+      undefined,
+    ) as AgentElementSnapshot[];
+    const ids = elements.map((e) => e.id);
+    expect(ids).toContain("polymarket-refresh");
+    expect(ids).toContain("polymarket-detail-back");
+    const refresh = elements.find((e) => e.id === "polymarket-refresh");
+    expect(refresh?.role).toBe("button");
+    expect(refresh?.clickable).toBe(true);
+  });
+
+  it("re-fetches when the agent activates the hidden refresh control", async () => {
+    renderWithSurface();
+    await screen.findByText("Will BTC be above 100k?");
+    expect(polymarketClient.polymarketMarkets).toHaveBeenCalledTimes(1);
+    const registry = getViewRegistry(VIEW, "gui");
+    if (!registry) throw new Error("registry missing");
+
+    const result = handleAgentSurfaceCapability(registry, "agent-click", {
+      id: "polymarket-refresh",
+    });
+    expect(result).toMatchObject({ ok: true, id: "polymarket-refresh" });
+    await waitFor(() =>
+      expect(polymarketClient.polymarketMarkets).toHaveBeenCalledTimes(2),
+    );
+    expect(polymarketClient.polymarketStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("closes the open market detail when the agent activates the hidden detail-back control", async () => {
+    renderWithSurface();
+    await screen.findByText("Will BTC be above 100k?");
+    // Mounts on the auto-selected detail pane.
+    await waitFor(() => expect(agent("detail-back")).toBeTruthy());
+    const registry = getViewRegistry(VIEW, "gui");
+    if (!registry) throw new Error("registry missing");
+
+    const result = handleAgentSurfaceCapability(registry, "agent-click", {
+      id: "polymarket-detail-back",
+    });
+    expect(result).toMatchObject({ ok: true, id: "polymarket-detail-back" });
+    // setSelectedMarket(null) returns to the list — the row Open control appears.
+    await waitFor(() => expect(agent("market:market-1")).toBeTruthy());
+  });
+
+  it("still fires the hidden refresh control's own onClick when clicked directly", async () => {
+    renderWithSurface();
+    await screen.findByText("Will BTC be above 100k?");
+    expect(polymarketClient.polymarketMarkets).toHaveBeenCalledTimes(1);
+    const refreshBtn = document.querySelector<HTMLElement>(
+      '[data-agent-id="polymarket-refresh"]',
+    );
+    if (!refreshBtn) throw new Error("hidden refresh control missing");
+    fireEvent.click(refreshBtn);
+    await waitFor(() =>
+      expect(polymarketClient.polymarketMarkets).toHaveBeenCalledTimes(2),
     );
   });
 });
