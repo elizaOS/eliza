@@ -34,6 +34,14 @@ const EXPECTED_CATALOGS = [
   ["comms-flood-triage.catalog.json", "D1", 26],
   ["low-activation-reengagement.catalog.json", "E1", 28],
   ["neurotypical-control-adversarial.catalog.json", "F1", 32],
+  ["overdue-comms-apology.catalog.json", "G1", 10],
+  ["reconnect-old-friends.catalog.json", "G2", 8],
+  ["relationship-type-inference.catalog.json", "H1", 10],
+  ["kg-live-capture.catalog.json", "H2", 8],
+  ["rupture-repair.catalog.json", "I1", 10],
+  ["mediation-logistics.catalog.json", "I2", 8],
+  ["co-parenting.catalog.json", "J1", 10],
+  ["third-party-support.catalog.json", "K1", 10],
 ];
 
 const VALID_TIERS = new Set(["T1", "T2", "T3", "T4"]);
