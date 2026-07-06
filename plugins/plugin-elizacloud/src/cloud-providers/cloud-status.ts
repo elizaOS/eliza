@@ -16,8 +16,8 @@ export const cloudStatusProvider: Provider = {
   descriptionCompressed: "ElizaCloud container/connection status.",
   dynamic: true,
   position: 90,
-  contexts: ["settings", "finance"],
-  contextGate: { anyOf: ["settings", "finance"] },
+  contexts: ["cloud", "settings", "finance"],
+  contextGate: { anyOf: ["cloud", "settings", "finance"] },
   cacheStable: false,
   cacheScope: "turn",
   // Cloud account/connection state is operator context — admin+ only (#12094 item 3).
