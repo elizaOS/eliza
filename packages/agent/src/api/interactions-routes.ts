@@ -74,6 +74,7 @@ export function parseShortcutBody(
   try {
     parsed = JSON.parse(raw);
   } catch {
+    // error-policy:J3 untrusted request JSON parses to an explicit invalid body.
     return null;
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -120,6 +121,7 @@ export function parseComposerBody(
   try {
     parsed = JSON.parse(raw);
   } catch {
+    // error-policy:J3 untrusted request JSON parses to an explicit invalid body.
     return null;
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -213,6 +215,7 @@ export async function handleInteractionsRoutes(
           initiatedBy: "user",
         })
         .catch((err) => {
+          // error-policy:J7 telemetry emission must not break the interaction route.
           runtime.logger?.debug?.(
             { src: "InteractionsRoutes", err },
             "[InteractionsRoutes] composer activity emit failed",
@@ -242,6 +245,7 @@ export async function handleInteractionsRoutes(
         initiatedBy: "user",
       })
       .catch((err) => {
+        // error-policy:J7 telemetry emission must not break the interaction route.
         runtime.logger?.debug?.(
           { src: "InteractionsRoutes", err },
           "[InteractionsRoutes] SHORTCUT_FIRED emit failed",

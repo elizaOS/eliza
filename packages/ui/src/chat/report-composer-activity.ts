@@ -53,8 +53,11 @@ export function reportComposerActivity(report: ComposerActivityReport): void {
         `[reportComposerActivity] composer report failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     });
-  } catch {
+  } catch (err) {
     // error-policy:J7 same guard for synchronous setup failures — telemetry
     // must never break composer input.
+    logger.warn(
+      `[reportComposerActivity] composer report setup failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
