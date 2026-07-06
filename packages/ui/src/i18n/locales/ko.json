@@ -521,6 +521,8 @@
   "chat.toolCallChip.DELETE_WORKFLOW": "워크플로우 삭제 중…",
   "chat.uncached": "캐시되지 않음",
   "chat.voiceInput": "음성 입력",
+  "chatwidget.Collapse": "접기",
+  "chatwidget.Expand": "펼치기",
   "chatmessage.ResponseInterrupte": "(응답이 중단됨)",
   "chatmessage.SaveAndResend": "저장하고 다시 보내기",
   "chatsidebar.launchApp": "{{name}} 실행",

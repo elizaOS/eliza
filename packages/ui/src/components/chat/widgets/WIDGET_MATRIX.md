@@ -67,11 +67,43 @@ for the overlay (importing the same renderers from `MessageContent`). The
 
 | Segment | Marker | Producing source | ChatView renderer | Overlay renderer |
 |---|---|---|---|---|
-| Plugin config | `[CONFIG:<pluginId>]` | plugin-config flows | `InlinePluginConfig` | `InlinePluginConfig` (`InlineWidgetText.tsx` case `config`) |
+| Plugin config / connector setup | `[CONFIG:<pluginId>]` | plugin-config flows | `InlinePluginConfig` (in `ChatWidgetShell`) | `InlinePluginConfig` (`InlineWidgetText.tsx` case `config`) |
 | Permission card | `__permission:...` | mobile/desktop permission requests | `MessagePermissionCard` | `MessagePermissionCard` (case `permission`) |
 | Secret / OAuth request | `message.secretRequest` passthrough | credential/OAuth actions | `SensitiveRequestBlock` | `SensitiveRequestBlock` (mounted by `ContinuousChatOverlay` body) |
 | Code block | fenced ``` ``` ``` ``` | any | `CodeBlock` | `CodeBlock` (case `code`) |
 | GenUI ui-spec | fenced JSON / JSONL patches | Chat-Mode / Generate-Mode GenUI | `MessageUiSpecBlock` (wraps `UiRenderer`) | `MessageUiSpecBlock` (case `ui-spec`) |
+
+### ChatWidgetShell — the standardized collapsible widget shell (#14412)
+
+`chat-widget-shell.tsx` is the shared collapser for chat-transcript widgets:
+header (icon + title + status chips + chevron), an expanded body, and a compact
+collapsed summary row. Contract:
+
+- **Start expanded while incomplete; auto-collapse to the summary once
+  `complete` flips true** (connector connected, form submitted). A later
+  `complete` → false transition (disconnect) auto-expands. The chevron
+  re-expands/collapses at any time and a user toggle sticks until the next
+  transition.
+- **The collapsed body stays mounted** — hidden via `display:none` +
+  `content-visibility:hidden` — so in-progress field edits survive a
+  collapse/expand round-trip and the collapsed subtree costs no layout/paint.
+  `contain:content` on the root isolates internal relayouts from the
+  transcript. Contract lock: `chat-widget-shell.test.tsx`.
+
+**Connector-setup widget** = the `[CONFIG:<pluginId>]` card wrapped in the
+shell (the "`[CONFIG]` variant" of #14412; no separate `[CONNECTOR:]` marker).
+`buildInlinePluginConfigModel` derives minimal-vs-advanced from the param
+schema: when a plugin declares `required` params those are the minimal set and
+every optional param moves behind `ConfigRenderer`'s Advanced disclosure (a
+server `configUiHints[key].advanced: false` pins a field in the minimal set;
+plugins with no required params keep the heuristic split). "Connected" =
+`enabled && configured` from the plugins DTO — that drives collapse-on-connect.
+Secrets keep routing through the sensitive-request flow (`SensitiveRequestBlock`,
+#14326), never plain in-chat fields. Repaint lock: `InlinePluginConfig` is
+memoized on its primitive `pluginId` prop so transcript re-renders bail out
+before the card subtree (`MessageContent.config-render-count.test.tsx`);
+behavior: `MessageContent.connector-setup.test.tsx`. Other widgets should adopt
+the shell as they are touched (#14327 tracks the matrix refresh).
 
 ---
 

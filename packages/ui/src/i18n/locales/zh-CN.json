@@ -521,6 +521,8 @@
   "chat.toolCallChip.DELETE_WORKFLOW": "正在删除工作流…",
   "chat.uncached": "未缓存",
   "chat.voiceInput": "语音输入",
+  "chatwidget.Collapse": "折叠",
+  "chatwidget.Expand": "展开",
   "chatmessage.ResponseInterrupte": "（反应中断）",
   "chatmessage.SaveAndResend": "保存并重新发送",
   "chatsidebar.launchApp": "启动 {{name}}",

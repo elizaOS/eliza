@@ -521,6 +521,8 @@
   "chat.toolCallChip.DELETE_WORKFLOW": "Excluindo fluxo de trabalho…",
   "chat.uncached": "fora do cache",
   "chat.voiceInput": "Entrada de voz",
+  "chatwidget.Collapse": "Recolher",
+  "chatwidget.Expand": "Expandir",
   "chatmessage.ResponseInterrupte": "(Resposta interrompida)",
   "chatmessage.SaveAndResend": "Salvar e reenviar",
   "chatsidebar.launchApp": "Abrir {{name}}",

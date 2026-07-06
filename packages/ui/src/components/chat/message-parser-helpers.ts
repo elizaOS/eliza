@@ -573,6 +573,21 @@ export function buildInlinePluginConfigModel(
     }
   }
 
+  // Progressive disclosure for the in-chat setup card (#14412): when the
+  // plugin declares required params, those are the minimal setup set — every
+  // optional param moves behind ConfigRenderer's existing Advanced disclosure.
+  // The schema's own `required` flag is the minimal-vs-advanced signal; a
+  // server-provided `advanced: false` hint explicitly pins an optional field
+  // in the minimal set. Plugins with no required params keep the heuristic
+  // split from paramsToSchema (an all-Advanced card would render empty).
+  if (pluginParams.some((p) => p.required)) {
+    for (const param of pluginParams) {
+      if (param.required) continue;
+      if (plugin.configUiHints?.[param.key]?.advanced === false) continue;
+      auto.hints[param.key] = { ...auto.hints[param.key], advanced: true };
+    }
+  }
+
   const initialValues: Record<string, unknown> = {};
   const setKeys = new Set<string>();
   for (const param of pluginParams) {

@@ -15,6 +15,7 @@
  */
 import {
   type FormEvent,
+  memo,
   type ReactNode,
   useCallback,
   useEffect,
@@ -62,6 +63,7 @@ import {
   splitInlineCode,
 } from "./message-parser-helpers";
 import { ThinkingBlock } from "./ThinkingBlock";
+import { ChatWidgetShell } from "./widgets/chat-widget-shell";
 // Side effect: registers the built-in inline widgets (choice/followups/form/task).
 import "./widgets/inline-builtins";
 import { getInlineWidget } from "./widgets/inline-registry";
@@ -154,7 +156,14 @@ function MessageTextBody({
 
 // ── InlinePluginConfig ──────────────────────────────────────────────
 
-export function InlinePluginConfig({
+// The in-chat connector/plugin setup card for `[CONFIG:pluginId]` markers
+// (#14412). All state (fetch status, field edits, mutations) is internal and
+// the only prop is a primitive, so `memo` makes a transcript-parent re-render
+// (streaming ticks, unrelated store updates) bail out before this subtree —
+// the widget repaints only when its own state changes. Connection status is
+// fetched inside, never derived from props at render, so memo cannot pin a
+// stale status (the NotificationRow lesson).
+export const InlinePluginConfig = memo(function InlinePluginConfig({
   pluginId: rawPluginId,
 }: {
   pluginId: string;
@@ -167,7 +176,6 @@ export function InlinePluginConfig({
   const [saved, setSaved] = useState(false);
   const [enabling, setEnabling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dismissed, setDismissed] = useState(false);
   const mountedRef = useRef(true);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { setActionNotice, loadPlugins, t } = useAppSelectorShallow((s) => ({
@@ -291,7 +299,13 @@ export function InlinePluginConfig({
             "success",
             4000,
           );
-          setDismissed(true);
+          // Optimistic connect: flip the local status so the shell collapses
+          // to its compact summary immediately. The delayed refetch below
+          // reconciles with the server and re-expands the card if the plugin
+          // actually still needs configuration.
+          setPlugin((prev) =>
+            prev ? { ...prev, enabled: true, configured: true } : prev,
+          );
         }
         // Wait for agent restart then refresh (with cleanup on unmount)
         refreshTimerRef.current = setTimeout(() => void fetchPlugin(), 3000);
@@ -317,17 +331,6 @@ export function InlinePluginConfig({
     [pluginId, plugin, values, fetchPlugin, loadPlugins, setActionNotice, t],
   );
 
-  if (dismissed) {
-    return (
-      <div className="my-2 px-3 py-2 border border-ok/30 bg-ok/5 text-xs text-ok">
-        {t("messagecontent.PluginEnabledInlineNotice", {
-          defaultValue: "{{name}} is enabled.",
-          name: plugin?.name ?? pluginId,
-        })}
-      </div>
-    );
-  }
-
   if (loading) {
     return (
       <div className="my-2 px-3 py-2 border border-border bg-card text-xs text-muted italic">
@@ -351,25 +354,28 @@ export function InlinePluginConfig({
   }
 
   const isEnabled = plugin.enabled;
+  // "Connected" is the server's own setup verdict: enabled AND configured.
+  // It drives the shell's collapse-on-connect \u2014 the card mounts collapsed for
+  // an already-connected plugin and auto-collapses when the status flips.
+  const connected = isEnabled && plugin.configured;
 
   return (
-    <div className="my-2 border border-border bg-card overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 bg-bg-hover">
-        <div className="flex items-center gap-2 text-xs font-bold text-txt">
-          {plugin.icon ? (
-            <span className="text-sm">{plugin.icon}</span>
-          ) : (
-            <span className="text-sm opacity-60">{"\u2699\uFE0F"}</span>
-          )}
-          <span>
-            {t("messagecontent.PluginConfigurationTitle", {
-              defaultValue: "{{name}} Configuration",
-              name: plugin.name,
-            })}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
+    <ChatWidgetShell
+      testId="inline-plugin-config"
+      complete={connected}
+      icon={
+        plugin.icon ? (
+          <span className="text-sm">{plugin.icon}</span>
+        ) : (
+          <span className="text-sm opacity-60">{"\u2699\uFE0F"}</span>
+        )
+      }
+      title={t("messagecontent.PluginConfigurationTitle", {
+        defaultValue: "{{name}} Configuration",
+        name: plugin.name,
+      })}
+      status={
+        <>
           {plugin.configured && (
             <span className="text-2xs text-ok font-medium">
               {t("config-field.Configured")}
@@ -386,9 +392,17 @@ export function InlinePluginConfig({
                   defaultValue: "Inactive",
                 })}
           </span>
-        </div>
-      </div>
-
+        </>
+      }
+      summary={
+        <span className="text-ok">
+          {t("messagecontent.PluginEnabledInlineNotice", {
+            defaultValue: "{{name}} is enabled.",
+            name: plugin.name ?? pluginId,
+          })}
+        </span>
+      }
+    >
       {/* Form — always shown so user can configure before enabling */}
       {schema && hasConfigurableParams ? (
         <div className="p-3">
@@ -463,9 +477,9 @@ export function InlinePluginConfig({
         {saved && <span className="text-xs text-ok">{t("common.saved")}</span>}
         {error && <span className="text-xs text-danger">{error}</span>}
       </div>
-    </div>
+    </ChatWidgetShell>
   );
-}
+});
 
 // ── UiSpec block ────────────────────────────────────────────────────
 

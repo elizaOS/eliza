@@ -525,6 +525,8 @@
   "chat.toolCallChip.DELETE_WORKFLOW": "Deleting workflow…",
   "chat.uncached": "uncached",
   "chat.voiceInput": "Voice input",
+  "chatwidget.Collapse": "Collapse",
+  "chatwidget.Expand": "Expand",
   "chatmessage.ResponseInterrupte": "(Response interrupted)",
   "chatmessage.SaveAndResend": "Save and resend",
   "chatmessage.suggestion": "Suggestion",

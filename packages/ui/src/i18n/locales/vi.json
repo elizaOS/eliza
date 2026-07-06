@@ -521,6 +521,8 @@
   "chat.toolCallChip.DELETE_WORKFLOW": "Đang xóa workflow…",
   "chat.uncached": "chưa cache",
   "chat.voiceInput": "Nhập giọng nói",
+  "chatwidget.Collapse": "Thu gọn",
+  "chatwidget.Expand": "Mở rộng",
   "chatmessage.ResponseInterrupte": "(Phản hồi bị gián đoạn)",
   "chatmessage.SaveAndResend": "Lưu và gửi lại",
   "chatsidebar.launchApp": "Mở {{name}}",

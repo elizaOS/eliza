@@ -521,6 +521,8 @@
   "chat.toolCallChip.DELETE_WORKFLOW": "Binubura ang workflow…",
   "chat.uncached": "hindi naka-cache",
   "chat.voiceInput": "Input ng boses",
+  "chatwidget.Collapse": "I-collapse",
+  "chatwidget.Expand": "Palawakin",
   "chatmessage.ResponseInterrupte": "(Na-interrupt ang tugon)",
   "chatmessage.SaveAndResend": "I-save at ipadala ulit",
   "chatsidebar.launchApp": "Buksan ang {{name}}",
