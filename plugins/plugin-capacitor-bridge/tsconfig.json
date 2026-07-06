@@ -45,7 +45,19 @@
 			],
 			"@elizaos/auth": ["../../packages/auth/src/index.ts"],
 			"@elizaos/auth/*": ["../../packages/auth/src/*"],
+			"@elizaos/capacitor-bun-runtime": [
+				"../../plugins/plugin-native-bun-runtime/src/index.ts"
+			],
+			"@elizaos/capacitor-camera": [
+				"../../plugins/plugin-native-camera/src/index.ts"
+			],
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
+			"@elizaos/import-conversations": [
+				"../../packages/import-conversations/src/index.ts"
+			],
+			"@elizaos/import-conversations/browser": [
+				"../../packages/import-conversations/src/browser.ts"
+			],
 			"@elizaos/logger": ["../../packages/logger/src/index.ts"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],

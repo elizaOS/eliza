@@ -460,6 +460,9 @@
       "dependsOn": [
         "@elizaos/core#build",
         "@elizaos/shared#build",
+        "@elizaos/capacitor-bun-runtime#build",
+        "@elizaos/capacitor-camera#build",
+        "@elizaos/import-conversations#build",
         "@elizaos/plugin-streaming#build",
         "@elizaos/plugin-elizacloud#build",
         "@elizaos/plugin-inbox#build",
