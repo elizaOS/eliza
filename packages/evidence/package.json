@@ -11,6 +11,10 @@
   "scripts": {
     "bundle:create": "bun src/cli.ts create",
     "bundle:verify": "bun src/cli.ts verify",
+    "certify:keygen": "bun src/certify/cli.ts keygen",
+    "certify:rollup": "bun src/certify/cli.ts rollup",
+    "certify:sign": "bun src/certify/cli.ts sign",
+    "certify:verify": "bun src/certify/cli.ts verify",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src",
