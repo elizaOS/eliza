@@ -39,6 +39,7 @@ import {
 	normalizeWalletRpcProviderId,
 	type PermissionId,
 	resolveInitialWalletRpcSelections,
+	WALLET_RPC_PROVIDER_OPTIONS,
 	type WalletConfigStatus,
 	type WalletRpcChain,
 	type WalletRpcSelections,
@@ -852,6 +853,16 @@ const WALLET_RPC_CHAIN_ALIASES: ReadonlyMap<string, WalletRpcChain> = new Map([
 
 const WALLET_RPC_NETWORKS = new Set(["mainnet", "testnet"]);
 
+// Tokens that mean "the managed Eliza Cloud RPC, for every chain" whether they
+// arrive as the key or as the value. Matching values too lets a keyless
+// `value=eliza-cloud` reach the all-chains reset instead of an ambiguity error.
+const WALLET_RPC_CLOUD_TOKENS = new Set([
+	"cloud",
+	"managed",
+	"eliza-cloud",
+	"elizacloud",
+]);
+
 function resolveWalletRpcChain(token: string | null): WalletRpcChain | null {
 	if (!token) return null;
 	return WALLET_RPC_CHAIN_ALIASES.get(token.trim().toLowerCase()) ?? null;
@@ -873,7 +884,7 @@ function normalizeWalletRpcNetwork(
 
 function readWalletRpcProviderToken(
 	request: SettingsRequest,
-	keyName: string,
+	requestedChain: WalletRpcChain | null,
 	chain: WalletRpcChain,
 ): string | null {
 	const chainSpecific =
@@ -883,13 +894,28 @@ function readWalletRpcProviderToken(
 				? request.bsc
 				: request.solana;
 	if (chainSpecific) return chainSpecific;
-	const providerTargetChain = resolveWalletRpcChain(request.chain ?? keyName);
-	if (request.provider && providerTargetChain === chain) {
-		return request.provider;
-	}
-	return resolveWalletRpcChain(keyName) === chain ? request.value : null;
+	// `provider=`/`value=` name a provider for exactly ONE chain — the one the
+	// request targeted via `chain=` or a chain-named key. Honoring them for
+	// every chain made a single-chain request rewrite all three selections and
+	// blank the other chains' stored credentials (#14911 follow-up).
+	if (requestedChain !== chain) return null;
+	return request.provider ?? request.value;
 }
 
+function walletRpcProviderError(
+	chain: WalletRpcChain,
+	providerToken: string,
+): Error {
+	const valid = WALLET_RPC_PROVIDER_OPTIONS[chain]
+		.map((option) => option.id)
+		.join(", ");
+	return new Error(
+		`${providerToken} is not a supported ${chain} RPC provider (valid: ${valid})`,
+	);
+}
+
+// Per-chain branches (rather than `selections[chain] = …`) so each assignment
+// keeps the chain-narrowed provider type from normalizeWalletRpcProviderId.
 function applyWalletRpcProviderSelection(
 	selections: WalletRpcSelections,
 	chain: WalletRpcChain,
@@ -897,30 +923,18 @@ function applyWalletRpcProviderSelection(
 ): void {
 	if (chain === "evm") {
 		const provider = normalizeWalletRpcProviderId("evm", providerToken);
-		if (!provider) {
-			throw new Error(
-				`${providerToken} is not a supported ${chain} RPC provider`,
-			);
-		}
+		if (!provider) throw walletRpcProviderError(chain, providerToken);
 		selections.evm = provider;
 		return;
 	}
 	if (chain === "bsc") {
 		const provider = normalizeWalletRpcProviderId("bsc", providerToken);
-		if (!provider) {
-			throw new Error(
-				`${providerToken} is not a supported ${chain} RPC provider`,
-			);
-		}
+		if (!provider) throw walletRpcProviderError(chain, providerToken);
 		selections.bsc = provider;
 		return;
 	}
 	const provider = normalizeWalletRpcProviderId("solana", providerToken);
-	if (!provider) {
-		throw new Error(
-			`${providerToken} is not a supported ${chain} RPC provider`,
-		);
-	}
+	if (!provider) throw walletRpcProviderError(chain, providerToken);
 	selections.solana = provider;
 }
 
@@ -932,49 +946,67 @@ function buildWalletRpcSelections(args: {
 	const { current, keyName, request } = args;
 	const selections: WalletRpcSelections = { ...current };
 	const normalizedKey = keyName.trim().toLowerCase();
+	const valueToken = request.value?.trim().toLowerCase() ?? null;
 	const explicitNetwork = normalizeWalletRpcNetwork(
 		request.network ?? (normalizedKey === "network" ? request.value : null),
 	);
+	const allCloud: WalletRpcSelections = {
+		evm: "eliza-cloud",
+		bsc: "eliza-cloud",
+		solana: "eliza-cloud",
+	};
 
-	if (
-		normalizedKey === "cloud" ||
-		normalizedKey === "managed" ||
-		normalizedKey === "eliza-cloud"
-	) {
-		return {
-			selections: {
-				evm: "eliza-cloud",
-				bsc: "eliza-cloud",
-				solana: "eliza-cloud",
-			},
-			network: explicitNetwork,
-		};
+	if (WALLET_RPC_CLOUD_TOKENS.has(normalizedKey)) {
+		// key=cloud resets every chain AND clears the other providers' stored
+		// credentials. A non-cloud value alongside it means the caller named a
+		// specific provider — refuse rather than silently discard it.
+		if (valueToken && !WALLET_RPC_CLOUD_TOKENS.has(valueToken)) {
+			throw new Error(
+				`key=cloud resets every chain to eliza-cloud and cannot take value=${request.value}; use chain=evm|bsc|solana provider=${request.value} to change one chain`,
+			);
+		}
+		return { selections: allCloud, network: explicitNetwork };
 	}
 
+	const requestedChain = resolveWalletRpcChain(request.chain ?? normalizedKey);
+
 	for (const chain of ["evm", "bsc", "solana"] as const) {
-		const providerToken = readWalletRpcProviderToken(request, keyName, chain);
+		const providerToken = readWalletRpcProviderToken(
+			request,
+			requestedChain,
+			chain,
+		);
 		if (!providerToken) continue;
 		applyWalletRpcProviderSelection(selections, chain, providerToken);
 	}
 
-	const chain = resolveWalletRpcChain(request.chain ?? keyName);
-	if (chain) {
-		const providerToken = readWalletRpcProviderToken(request, keyName, chain);
-		if (!providerToken) {
-			throw new Error(`provide provider=<id> or value=<id> for ${chain} RPC`);
+	if (requestedChain) {
+		if (!readWalletRpcProviderToken(request, requestedChain, requestedChain)) {
+			throw new Error(
+				`provide provider=<id> or value=<id> for ${requestedChain} RPC`,
+			);
 		}
-		applyWalletRpcProviderSelection(selections, chain, providerToken);
+		return { selections, network: explicitNetwork };
 	}
 
-	if (
-		!chain &&
-		!request.evm &&
-		!request.bsc &&
-		!request.solana &&
-		!explicitNetwork
-	) {
+	if (!request.evm && !request.bsc && !request.solana && !explicitNetwork) {
+		// No chain scope anywhere in the request. A bare cloud or mainnet/testnet
+		// token still has an unambiguous meaning; a bare provider does not — never
+		// guess a chain, and never fall through to the destructive cloud reset
+		// (#14911 follow-up: that reset used to discard the requested value).
+		const soleToken =
+			valueToken ?? request.provider?.trim().toLowerCase() ?? null;
+		if (soleToken && WALLET_RPC_CLOUD_TOKENS.has(soleToken)) {
+			return { selections: allCloud, network: explicitNetwork };
+		}
+		const impliedNetwork = normalizeWalletRpcNetwork(soleToken);
+		if (impliedNetwork) {
+			return { selections, network: impliedNetwork };
+		}
 		throw new Error(
-			"provide key=evm|bsc|solana value=<provider>, key=cloud, or key=network value=mainnet|testnet",
+			soleToken
+				? `tell me which chain gets ${soleToken}: use chain=evm|bsc|solana provider=${soleToken} (or key=cloud, or key=network value=mainnet|testnet)`
+				: "provide key=evm|bsc|solana value=<provider>, key=cloud, or key=network value=mainnet|testnet",
 		);
 	}
 
@@ -987,7 +1019,7 @@ function describeWalletRpcSelections(selections: WalletRpcSelections): string {
 
 const WALLET_RPC_CONFIG_KEY: SettingsWritableKey = {
 	description:
-		"Select wallet RPC providers without exposing API keys. Use key=evm|bsc|solana value=<provider>, key=cloud, or key=network value=mainnet|testnet.",
+		"Select wallet RPC providers without exposing API keys. Use key=evm|bsc|solana value=<provider> (or chain=<chain> provider=<id>), key=cloud, or key=network value=mainnet|testnet. A chain-scoped request changes that chain only.",
 	valueType: "command",
 	apply: async ({ keyName, request, routeFetch }) => {
 		const current = await routeFetch({
@@ -1311,15 +1343,24 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 		kind: "route",
 		summary:
 			"Wallet RPC provider selection and mainnet/testnet mode through the wallet config route. Provider credentials stay out of chat.",
+		// Every alias WALLET_RPC_CHAIN_ALIASES resolves must appear here, or a
+		// `chain=<alias>` request dies at key lookup before the chain resolver
+		// ever runs. `provider` is the neutral default key for requests that
+		// carry only chain=/provider=/value= options (see handleSet).
 		keys: {
 			cloud: WALLET_RPC_CONFIG_KEY,
 			managed: WALLET_RPC_CONFIG_KEY,
 			"eliza-cloud": WALLET_RPC_CONFIG_KEY,
+			elizacloud: WALLET_RPC_CONFIG_KEY,
+			provider: WALLET_RPC_CONFIG_KEY,
 			evm: WALLET_RPC_CONFIG_KEY,
 			eth: WALLET_RPC_CONFIG_KEY,
 			ethereum: WALLET_RPC_CONFIG_KEY,
+			base: WALLET_RPC_CONFIG_KEY,
+			avalanche: WALLET_RPC_CONFIG_KEY,
 			bsc: WALLET_RPC_CONFIG_KEY,
 			bnb: WALLET_RPC_CONFIG_KEY,
+			binance: WALLET_RPC_CONFIG_KEY,
 			solana: WALLET_RPC_CONFIG_KEY,
 			sol: WALLET_RPC_CONFIG_KEY,
 			network: WALLET_RPC_CONFIG_KEY,
@@ -1413,6 +1454,11 @@ export interface SettingsRequest {
 	provider: string | null;
 	chain: string | null;
 	network: string | null;
+	// Per-chain provider tokens (evm=alchemy bsc=nodereal …): the batch form for
+	// changing several wallet RPC selections in one call. Intentionally parsed
+	// but not declared in the action's parameter schema — the planner is steered
+	// to the single-chain chain=/provider= form; these stay for structured
+	// callers and are pinned by the settings tests.
 	evm: string | null;
 	bsc: string | null;
 	solana: string | null;
@@ -1612,11 +1658,15 @@ async function handleSet(
 	}
 
 	// cap.kind === "route"
+	// wallet-rpc must not fall through to the first-registry-key default: that
+	// key is `cloud`, whose write is a destructive all-chains reset. A request
+	// with no key/chain routes to the neutral `provider` key, where
+	// buildWalletRpcSelections resolves the remaining options or refuses.
 	const requestedKeyName =
 		request.namespace ??
 		request.key ??
-		(request.sectionId === "wallet-rpc" && request.chain
-			? request.chain
+		(request.sectionId === "wallet-rpc"
+			? (request.chain?.toLowerCase() ?? "provider")
 			: null) ??
 		(request.sectionId === "permissions" && request.permission
 			? "request"
@@ -1628,7 +1678,10 @@ async function handleSet(
 	const writable = keyName ? cap.keys[keyName] : undefined;
 	if (!writable) {
 		const known = Object.keys(cap.keys).join(", ");
-		const reply = `I don't know how to set "${request.key}" on ${request.sectionId}. I can change: ${known}.`;
+		// Print the key we actually resolved (which may come from chain= or a
+		// namespace), not request.key — that reads as `"null"` when the caller
+		// used a different parameter to name the key.
+		const reply = `I don't know how to set "${keyName ?? request.key}" on ${request.sectionId}. I can change: ${known}.`;
 		await callback?.({ text: reply });
 		return { success: false, text: reply };
 	}

@@ -1091,6 +1091,304 @@ describe("SETTINGS action: set on an owned route section", () => {
 		expect(texts.join(" ")).toContain("wallet config save failed");
 	});
 
+	/** GET returns the given wallet config; every write succeeds. */
+	function walletConfigRouteFetch(
+		config: Record<string, unknown>,
+	): ReturnType<typeof vi.fn<SettingsRouteFetch>> {
+		return vi.fn<SettingsRouteFetch>(async (request) =>
+			request.method === "GET" ? { ok: true, data: config } : { ok: true },
+		);
+	}
+
+	const ALL_CLOUD_CONFIG = {
+		selectedRpcProviders: {
+			evm: "eliza-cloud",
+			bsc: "eliza-cloud",
+			solana: "eliza-cloud",
+		},
+		walletNetwork: "mainnet",
+		legacyCustomChains: [],
+	};
+
+	const MIXED_PROVIDER_CONFIG = {
+		selectedRpcProviders: {
+			evm: "alchemy",
+			bsc: "nodereal",
+			solana: "helius-birdeye",
+		},
+		walletNetwork: "mainnet",
+		legacyCustomChains: [],
+		alchemyKeySet: true,
+		nodeRealBscRpcSet: true,
+		heliusKeySet: true,
+		birdeyeKeySet: true,
+	};
+
+	// #14949 verify-pass defect 1: chain=/provider= — the action's own declared
+	// parameter form — must scope the write to the requested chain instead of
+	// looping the provider over all three chains.
+	it("applies chain=evm provider=alchemy to the EVM chain only", async () => {
+		const routeFetch = walletConfigRouteFetch(ALL_CLOUD_CONFIG);
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				chain: "evm",
+				provider: "alchemy",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: {
+				selections: {
+					evm: "alchemy",
+					bsc: "eliza-cloud",
+					solana: "eliza-cloud",
+				},
+				walletNetwork: "mainnet",
+				credentials: {},
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("applies chain=solana provider=helius to Solana only", async () => {
+		const routeFetch = walletConfigRouteFetch(ALL_CLOUD_CONFIG);
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				chain: "solana",
+				provider: "helius",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: {
+				selections: {
+					evm: "eliza-cloud",
+					bsc: "eliza-cloud",
+					solana: "helius-birdeye",
+				},
+				walletNetwork: "mainnet",
+				credentials: {},
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("keeps other chains' selections and credentials on chain=evm provider=infura", async () => {
+		const routeFetch = walletConfigRouteFetch(MIXED_PROVIDER_CONFIG);
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				chain: "evm",
+				provider: "infura",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: {
+				selections: {
+					evm: "infura",
+					bsc: "nodereal",
+					solana: "helius-birdeye",
+				},
+				walletNetwork: "mainnet",
+				// Only the credential the EVM chain moved off of is cleared; the
+				// still-selected NodeReal/Helius/Birdeye credentials stay intact.
+				credentials: { ALCHEMY_API_KEY: "" },
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("moves one chain to eliza-cloud without resetting the others", async () => {
+		const routeFetch = walletConfigRouteFetch(MIXED_PROVIDER_CONFIG);
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				chain: "evm",
+				provider: "eliza-cloud",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: {
+				selections: {
+					evm: "eliza-cloud",
+					bsc: "nodereal",
+					solana: "helius-birdeye",
+				},
+				walletNetwork: "mainnet",
+				credentials: { ALCHEMY_API_KEY: "" },
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	// #14949 verify-pass defect 2: a keyless request must never fall through to
+	// the destructive all-chains cloud reset, and must never discard the value
+	// the caller asked for.
+	it("refuses a keyless provider value instead of resetting every chain", async () => {
+		const routeFetch = walletConfigRouteFetch(MIXED_PROVIDER_CONFIG);
+		const { result, texts } = await invoke(
+			{ section: "wallet-rpc", value: "alchemy" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledTimes(1);
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("chain=evm|bsc|solana provider=alchemy");
+	});
+
+	it("refuses key=cloud with a non-cloud value instead of discarding it", async () => {
+		const routeFetch = walletConfigRouteFetch(MIXED_PROVIDER_CONFIG);
+		const { result, texts } = await invoke(
+			{ action: "set", section: "wallet-rpc", key: "cloud", value: "alchemy" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledTimes(1);
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain("resets every chain");
+	});
+
+	it("accepts a keyless eliza-cloud value as the all-chains cloud reset", async () => {
+		const routeFetch = walletConfigRouteFetch(ALL_CLOUD_CONFIG);
+		const { result } = await invoke(
+			{ action: "set", section: "wallet-rpc", value: "eliza-cloud" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: {
+				selections: {
+					evm: "eliza-cloud",
+					bsc: "eliza-cloud",
+					solana: "eliza-cloud",
+				},
+				walletNetwork: "mainnet",
+				credentials: {},
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("treats a keyless mainnet/testnet value as a network switch", async () => {
+		const routeFetch = walletConfigRouteFetch(MIXED_PROVIDER_CONFIG);
+		const { result } = await invoke(
+			{ action: "set", section: "wallet-rpc", value: "testnet" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: expect.objectContaining({
+				selections: {
+					evm: "alchemy",
+					bsc: "nodereal",
+					solana: "helius-birdeye",
+				},
+				walletNetwork: "testnet",
+			}),
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	// #14949 verify-pass defect 3: every chain alias the resolver accepts must
+	// survive key resolution, and an unknown chain names itself in the error.
+	it("resolves the base alias onto the EVM chain", async () => {
+		const routeFetch = walletConfigRouteFetch(ALL_CLOUD_CONFIG);
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				chain: "base",
+				provider: "alchemy",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: {
+				selections: {
+					evm: "alchemy",
+					bsc: "eliza-cloud",
+					solana: "eliza-cloud",
+				},
+				walletNetwork: "mainnet",
+				credentials: {},
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("names the unknown chain token in the wallet-rpc key error", async () => {
+		const routeFetch = walletConfigRouteFetch(ALL_CLOUD_CONFIG);
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				chain: "polygon",
+				provider: "alchemy",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).not.toHaveBeenCalled();
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain('"polygon"');
+	});
+
+	it("applies per-chain batch options to exactly the named chains", async () => {
+		const routeFetch = walletConfigRouteFetch(MIXED_PROVIDER_CONFIG);
+		const { result } = await invoke(
+			{ action: "set", section: "wallet-rpc", evm: "infura", bsc: "ankr" },
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/wallet/config",
+			body: expect.objectContaining({
+				selections: {
+					evm: "infura",
+					bsc: "ankr",
+					solana: "helius-birdeye",
+				},
+				walletNetwork: "mainnet",
+			}),
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("names the chain and its valid providers in the invalid-provider error", async () => {
+		const routeFetch = walletConfigRouteFetch(ALL_CLOUD_CONFIG);
+		const { result, texts } = await invoke(
+			{
+				action: "set",
+				section: "wallet-rpc",
+				chain: "solana",
+				provider: "infura",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenCalledTimes(1);
+		expect(result?.success).toBe(false);
+		expect(texts.join(" ")).toContain(
+			"infura is not a supported solana RPC provider (valid: eliza-cloud, helius-birdeye)",
+		);
+	});
+
 	it("surfaces a backend failure instead of fabricating success", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({
 			ok: false,
