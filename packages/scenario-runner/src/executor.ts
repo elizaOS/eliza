@@ -478,13 +478,28 @@ async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
       appControlPlugin?: Plugin;
       backgroundAction?: Action;
       viewsAction?: Action;
+      settingsAction?: Action;
     };
-    if (!mod.appAction || !mod.backgroundAction || !mod.viewsAction)
+    // settingsAction is load-bearing for the app-permissions / semantic-SETTINGS
+    // scenarios (#14622): without it the polymorphic SETTINGS action is never
+    // registered here, so chat can never route a permission grant/revoke to it —
+    // required, not optional, for the same reason app/background/views are.
+    if (
+      !mod.appAction ||
+      !mod.backgroundAction ||
+      !mod.viewsAction ||
+      !mod.settingsAction
+    )
       return null;
     return {
       name: "app-control",
       description: "App control deterministic scenario actions",
-      actions: [mod.appAction, mod.backgroundAction, mod.viewsAction],
+      actions: [
+        mod.appAction,
+        mod.backgroundAction,
+        mod.viewsAction,
+        mod.settingsAction,
+      ],
       responseHandlerEvaluators:
         mod.appControlPlugin?.responseHandlerEvaluators,
     };

@@ -832,10 +832,22 @@ function dedupeNormalizedStrings(values: string[] | undefined): string[] {
 
 export function parentAliasesForCandidateAction(actionName: string): string[] {
 	const normalized = normalizeActionName(actionName);
-	const aliases: string[] = [
-		...(CANDIDATE_ACTION_PARENT_ALIASES[normalized] ?? []),
-	];
-	if (aliases.length === 0 && looksLikeViewCandidateAction(normalized)) {
+	const explicit = CANDIDATE_ACTION_PARENT_ALIASES[normalized];
+	if (explicit) {
+		return [...explicit];
+	}
+	// Permission/access management is SETTINGS (grant/revoke an app's fs/net
+	// namespace, OS permission requests, shell access) — never view navigation.
+	// Checked before the view/app surface heuristics because Stage-1 invents
+	// names like SET_APP_NETWORK_PERMISSION / REVOKE_NETWORK_ACCESS whose SET+APP
+	// tokens otherwise trip looksLikeViewCandidateAction and route the write to
+	// the VIEWS catalog, so "revoke network access for the weather app" never
+	// reaches the SETTINGS writer (#14622).
+	if (looksLikeSettingsPermissionCandidateAction(normalized)) {
+		return ["SETTINGS"];
+	}
+	const aliases: string[] = [];
+	if (looksLikeViewCandidateAction(normalized)) {
 		aliases.push("VIEWS");
 	}
 	// App-operation candidates (LIST_APPS, GET_INSTALLED_APPS, LAUNCH_APP, …)
@@ -883,6 +895,57 @@ function looksLikeAppCandidateAction(normalizedActionName: string): boolean {
 		hasAnyToken(tokens, APP_SURFACE_TOKENS) &&
 		hasAnyToken(tokens, APP_OPERATION_TOKENS)
 	);
+}
+
+// A permission namespace/surface must accompany a bare ACCESS token before it
+// counts as a settings-permission ask: this keeps "REVOKE_NETWORK_ACCESS" /
+// "GRANT_FILESYSTEM_ACCESS" / "REVOKE_SHELL_ACCESS" (permission writes SETTINGS
+// owns) mapping to SETTINGS while leaving a person-scoped "REVOKE_ACCESS" (which
+// is BLOCK, not a settings write) untouched.
+const SETTINGS_PERMISSION_NAMESPACE_TOKENS = new Set([
+	"APP",
+	"APPS",
+	"CAMERA",
+	"FILESYSTEM",
+	"FS",
+	"LOCATION",
+	"MIC",
+	"MICROPHONE",
+	"NET",
+	"NETWORK",
+	"NOTIFICATION",
+	"NOTIFICATIONS",
+	"SCREEN",
+	"SHELL",
+]);
+
+const SETTINGS_PERMISSION_OPERATION_TOKENS = new Set([
+	"ALLOW",
+	"CHANGE",
+	"DENY",
+	"DISABLE",
+	"ENABLE",
+	"GRANT",
+	"REQUEST",
+	"REVOKE",
+	"SET",
+	"TOGGLE",
+	"TURN",
+	"UPDATE",
+]);
+
+function looksLikeSettingsPermissionCandidateAction(
+	normalizedActionName: string,
+): boolean {
+	if (!normalizedActionName) return false;
+	const tokens = new Set(normalizedActionName.split(/_+/).filter(Boolean));
+	if (!hasAnyToken(tokens, SETTINGS_PERMISSION_OPERATION_TOKENS)) return false;
+	const namesAPermission =
+		tokens.has("PERMISSION") || tokens.has("PERMISSIONS");
+	const namesAScopedAccess =
+		tokens.has("ACCESS") &&
+		hasAnyToken(tokens, SETTINGS_PERMISSION_NAMESPACE_TOKENS);
+	return namesAPermission || namesAScopedAccess;
 }
 
 function looksLikeViewCandidateAction(normalizedActionName: string): boolean {
