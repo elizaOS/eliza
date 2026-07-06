@@ -16,6 +16,14 @@
  *   html-tree  → html-trees/<rel>           log  → lanes/<lane>/logs/<rel> (lane-less: misc)
  *   report     → lanes/<lane>/<rel> (lane-less: misc)
  *   analysis | qa | other → misc/<source>/<rel>
+ *
+ * Integrity invariants: bundle paths are NFC-normalized at ingress (macOS NFD
+ * vs linux NFC must not change manifest bytes for the same logical name);
+ * `manifest.metaSha256` binds the meta.json bytes into the signed envelope
+ * (forged provenance fails verification); and a verified bundle contains no
+ * symlinks anywhere — `verifyBundle` lstat-classifies so a symlinked artifact
+ * (mutable after signing) or a symlinked directory (mounting an unswept
+ * external tree) is reported, never silently followed.
  */
 
 import { createHash } from "node:crypto";
@@ -83,7 +91,13 @@ export interface FinalizeResult {
 /** One integrity problem found by {@link verifyBundle}. */
 export interface VerifyIssue {
   path: string;
-  issue: "missing" | "size-mismatch" | "hash-mismatch" | "unlisted";
+  issue:
+    | "missing"
+    | "size-mismatch"
+    | "hash-mismatch"
+    | "unlisted"
+    | "symlink"
+    | "meta-mismatch";
   expected?: string;
   actual?: string;
 }
@@ -144,8 +158,10 @@ function materialize(
   try {
     link(sourcePath, destPath);
   } catch (error) {
-    // error-policy:J4 EXDEV means the silo lives on a different volume than the
-    // bundle; copying is the designed fallback. Every other failure rethrows.
+    // Not error suppression: EXDEV (silo on a different volume than the
+    // bundle) is an expected condition that selects the copy strategy — the
+    // artifact is still fully materialized and hashed, nothing is lost or
+    // defaulted. Every other failure rethrows untouched.
     if ((error as NodeJS.ErrnoException).code !== "EXDEV") {
       throw error;
     }
@@ -267,7 +283,11 @@ export class EvidenceBundle {
       });
     }
     const rel = options.relativePath ?? path.basename(filePath);
-    const bundlePath = options.bundlePath ?? familyPath(options, rel);
+    // NFC-normalize at ingress: macOS reports NFD filenames, linux NFC; the
+    // same logical name must produce identical manifest bytes on both.
+    const bundlePath = (
+      options.bundlePath ?? familyPath(options, rel)
+    ).normalize("NFC");
     if (!isBundleRelativePath(bundlePath)) {
       throw new EvidenceError(
         `artifact bundle path is not bundle-relative posix: ${bundlePath}`,
@@ -312,12 +332,6 @@ export class EvidenceBundle {
       a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
     );
     const finishedAt = this.now().toISOString();
-    const manifest: BundleManifest = {
-      schema: 1,
-      runId: this.runId,
-      createdAt: finishedAt,
-      artifacts,
-    };
     const meta: BundleMeta = {
       schema: 1,
       runId: this.runId,
@@ -330,11 +344,21 @@ export class EvidenceBundle {
       envFingerprint: this.provenance.envFingerprint,
       ...(options.timings !== undefined ? { timings: options.timings } : {}),
     };
+    // Order matters: meta bytes are written and hashed BEFORE the manifest is
+    // built, so `metaSha256` binds provenance into the signed envelope.
+    const metaBytes = canonicalJsonBytes(meta);
+    const metaPath = path.join(this.dir, "meta.json");
+    fs.writeFileSync(metaPath, metaBytes);
+    const manifest: BundleManifest = {
+      schema: 1,
+      runId: this.runId,
+      createdAt: finishedAt,
+      metaSha256: createHash("sha256").update(metaBytes).digest("hex"),
+      artifacts,
+    };
     const manifestBytes = canonicalJsonBytes(manifest);
     const manifestPath = path.join(this.dir, "manifest.json");
-    const metaPath = path.join(this.dir, "meta.json");
     fs.writeFileSync(manifestPath, manifestBytes);
-    fs.writeFileSync(metaPath, canonicalJsonBytes(meta));
     return {
       manifest,
       meta,
@@ -350,14 +374,22 @@ export function createBundle(options: CreateBundleOptions): EvidenceBundle {
   return new EvidenceBundle(options);
 }
 
-function* walkFiles(root: string, relBase = ""): Generator<string> {
+// lstat-based classification: symlinks (file or directory targets) are yielded
+// as their own kind and never followed — following one would let a bundle
+// reference mutable-after-signing external bytes or mount an unswept tree.
+function* walkEntries(
+  root: string,
+  relBase = "",
+): Generator<{ rel: string; kind: "file" | "symlink" }> {
   const entries = fs.readdirSync(root, { withFileTypes: true });
   for (const entry of entries) {
     const rel = relBase === "" ? entry.name : `${relBase}/${entry.name}`;
-    if (entry.isDirectory()) {
-      yield* walkFiles(path.join(root, entry.name), rel);
+    if (entry.isSymbolicLink()) {
+      yield { rel, kind: "symlink" };
+    } else if (entry.isDirectory()) {
+      yield* walkEntries(path.join(root, entry.name), rel);
     } else if (entry.isFile()) {
-      yield rel;
+      yield { rel, kind: "file" };
     }
   }
 }
@@ -399,15 +431,28 @@ export async function verifyBundle(dir: string): Promise<VerifyReport> {
   const manifest = parseManifest(parsed, manifestPath);
 
   const issues: VerifyIssue[] = [];
+  const symlinkFlagged = new Set<string>();
   let verifiedCount = 0;
   for (const artifact of manifest.artifacts) {
     const artifactPath = path.join(dir, ...artifact.path.split("/"));
     let stat: fs.Stats;
     try {
-      stat = fs.statSync(artifactPath);
+      // lstat, not stat: a listed artifact replaced by a symlink to an
+      // external file with matching bytes must fail, not verify green.
+      stat = fs.lstatSync(artifactPath);
     } catch {
-      // error-policy:J3 a listed-but-absent artifact is exactly what this
-      // report exists to surface; recorded as an issue, not swallowed.
+      // error-policy:J1 boundary translation — verify IS the integrity
+      // boundary; a listed-but-absent artifact becomes a structured
+      // "missing" finding in the report, never a swallowed failure.
+      issues.push({ path: artifact.path, issue: "missing" });
+      continue;
+    }
+    if (stat.isSymbolicLink()) {
+      issues.push({ path: artifact.path, issue: "symlink" });
+      symlinkFlagged.add(artifact.path);
+      continue;
+    }
+    if (!stat.isFile()) {
       issues.push({ path: artifact.path, issue: "missing" });
       continue;
     }
@@ -433,11 +478,44 @@ export async function verifyBundle(dir: string): Promise<VerifyReport> {
     verifiedCount += 1;
   }
 
+  // Bind provenance: meta.json bytes must hash to manifest.metaSha256.
+  const metaPath = path.join(dir, "meta.json");
+  let metaBytes: Buffer | undefined;
+  try {
+    metaBytes = fs.readFileSync(metaPath);
+  } catch {
+    // error-policy:J1 boundary translation — absent provenance is a
+    // structured "meta-mismatch" finding, part of the integrity report.
+    issues.push({
+      path: "meta.json",
+      issue: "meta-mismatch",
+      expected: manifest.metaSha256,
+      actual: "missing",
+    });
+  }
+  if (metaBytes !== undefined) {
+    const metaSha256 = createHash("sha256").update(metaBytes).digest("hex");
+    if (metaSha256 !== manifest.metaSha256) {
+      issues.push({
+        path: "meta.json",
+        issue: "meta-mismatch",
+        expected: manifest.metaSha256,
+        actual: metaSha256,
+      });
+    }
+  }
+
   const listed = new Set(manifest.artifacts.map((artifact) => artifact.path));
-  for (const rel of walkFiles(dir)) {
-    if (ENVELOPE_FILES.has(rel)) continue;
-    if (!listed.has(rel)) {
-      issues.push({ path: rel, issue: "unlisted" });
+  for (const entry of walkEntries(dir)) {
+    if (entry.kind === "symlink") {
+      if (!symlinkFlagged.has(entry.rel)) {
+        issues.push({ path: entry.rel, issue: "symlink" });
+      }
+      continue;
+    }
+    if (ENVELOPE_FILES.has(entry.rel)) continue;
+    if (!listed.has(entry.rel)) {
+      issues.push({ path: entry.rel, issue: "unlisted" });
     }
   }
 

@@ -15,8 +15,14 @@ whole pipeline (analyzers → VLM Q&A → certify → CI gate) fits together.
   the interfaces at compile time — keep that guard intact.
 - **Manifest bytes are signed.** `finalize()` must stay byte-stable: artifacts
   sorted by path, canonical JSON (sorted keys, no whitespace, one trailing
-  newline — `src/canonical.ts`). Any change to serialization is a
-  certification-breaking change.
+  newline — `src/canonical.ts`; non-plain objects throw, `toJSON` is not
+  honored), bundle paths NFC-normalized at ingress. Any change to
+  serialization is a certification-breaking change.
+- **Provenance is bound.** `finalize()` writes + hashes `meta.json` before
+  building the manifest and embeds `metaSha256`; `verifyBundle` re-checks it
+  (`meta-mismatch`). A verified bundle contains no symlinks anywhere —
+  verification is lstat-based and reports `symlink` findings instead of
+  following links (mutable-after-signing / unswept-tree exploits).
 - **Producers are not touched.** Ingestors (`src/ingest.ts`) only discover and
   copy. `packages/app/scripts/**` and `scripts/evidence-review/**` are hot
   zones with in-flight PRs; this package deliberately lives outside them.

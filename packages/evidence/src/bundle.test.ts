@@ -7,6 +7,7 @@
  * created portably inside one tmp volume).
  */
 
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -148,6 +149,41 @@ describe("EvidenceBundle", () => {
         bundlePath: "visual/s/a.png",
       }),
     ).rejects.toMatchObject({ code: "ARTIFACT_PLACEMENT_AMBIGUOUS" });
+  });
+
+  it("NFC-normalizes bundle paths so NFD input cannot drift manifest bytes", async () => {
+    const sources = tmpDir();
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: PROVENANCE,
+      now: fixedClock(),
+    });
+    // "caf\u00e9.png" in decomposed NFD form (e + combining acute), the way
+    // macOS reports filenames; the manifest must carry the precomposed NFC.
+    const nfdName = "cafe\u0301.png";
+    const nfcName = "caf\u00e9.png";
+    expect(nfdName).not.toBe(nfcName);
+    const entry = await bundle.addArtifact(
+      writeFixture(sources, "shot.png", "png"),
+      {
+        kind: "screenshot",
+        source: "s",
+        producedBy: "p",
+        relativePath: nfdName,
+      },
+    );
+    expect(entry.path).toBe(`visual/s/${nfcName}`);
+    const { manifest } = await bundle.finalize();
+    expect(manifest.artifacts[0].path).toBe(`visual/s/${nfcName}`);
+  });
+
+  it("binds meta.json into the manifest via metaSha256", async () => {
+    const bundle = await buildSampleBundle(tmpDir(), tmpDir());
+    const { manifest, metaPath } = await bundle.finalize();
+    const metaHash = createHash("sha256")
+      .update(fs.readFileSync(metaPath))
+      .digest("hex");
+    expect(manifest.metaSha256).toBe(metaHash);
   });
 
   it("produces byte-identical manifests across two runs with the same inputs", async () => {
@@ -390,5 +426,110 @@ describe("verifyBundle", () => {
     await expect(verifyBundle(empty)).rejects.toBeInstanceOf(
       EvidenceValidationError,
     );
+  });
+
+  it("fails when meta.json provenance is forged (commit flip)", async () => {
+    const bundle = await buildSampleBundle(tmpDir(), tmpDir());
+    await bundle.finalize();
+    const metaPath = path.join(bundle.dir, "meta.json");
+    const forged = fs
+      .readFileSync(metaPath, "utf8")
+      .replace(COMMIT, "f".repeat(40));
+    expect(forged).not.toBe(fs.readFileSync(metaPath, "utf8"));
+    fs.writeFileSync(metaPath, forged);
+
+    const report = await verifyBundle(bundle.dir);
+    expect(report.ok).toBe(false);
+    const metaIssue = report.issues.find((i) => i.issue === "meta-mismatch");
+    expect(metaIssue).toMatchObject({ path: "meta.json" });
+    expect(metaIssue?.expected).toMatch(/^[0-9a-f]{64}$/);
+    expect(metaIssue?.actual).toMatch(/^[0-9a-f]{64}$/);
+    expect(metaIssue?.actual).not.toBe(metaIssue?.expected);
+  });
+
+  it("fails when meta.json is missing", async () => {
+    const bundle = await buildSampleBundle(tmpDir(), tmpDir());
+    await bundle.finalize();
+    fs.rmSync(path.join(bundle.dir, "meta.json"));
+    const report = await verifyBundle(bundle.dir);
+    expect(report.ok).toBe(false);
+    expect(
+      report.issues.some(
+        (i) => i.issue === "meta-mismatch" && i.actual === "missing",
+      ),
+    ).toBe(true);
+  });
+
+  // The four symlink scenarios the security review proved exploitable when the
+  // walk was isFile()/isDirectory()-based and the verify loop followed links.
+  it("flags an unlisted file symlink instead of ignoring it", async () => {
+    const external = tmpDir();
+    const externalFile = path.join(external, "external.txt");
+    fs.writeFileSync(externalFile, "outside the bundle");
+    const bundle = await buildSampleBundle(tmpDir(), tmpDir());
+    await bundle.finalize();
+    fs.symlinkSync(externalFile, path.join(bundle.dir, "sneaky-link.txt"));
+
+    const report = await verifyBundle(bundle.dir);
+    expect(report.ok).toBe(false);
+    expect(report.issues).toContainEqual({
+      path: "sneaky-link.txt",
+      issue: "symlink",
+    });
+  });
+
+  it("flags a directory symlink instead of following it", async () => {
+    const external = tmpDir();
+    fs.writeFileSync(path.join(external, "mounted.txt"), "external tree");
+    const bundle = await buildSampleBundle(tmpDir(), tmpDir());
+    await bundle.finalize();
+    fs.symlinkSync(external, path.join(bundle.dir, "mounted-dir"));
+
+    const report = await verifyBundle(bundle.dir);
+    expect(report.ok).toBe(false);
+    expect(report.issues).toContainEqual({
+      path: "mounted-dir",
+      issue: "symlink",
+    });
+    // The external tree behind the link must not be walked.
+    expect(report.issues.some((i) => i.path.includes("mounted.txt"))).toBe(
+      false,
+    );
+  });
+
+  it("fails a listed artifact replaced by a symlink to matching external bytes", async () => {
+    const bundle = await buildSampleBundle(tmpDir(), tmpDir());
+    await bundle.finalize();
+    const artifactRel = ["lanes", "e2e", "logs", "server.log"];
+    const artifactPath = path.join(bundle.dir, ...artifactRel);
+    // Byte-identical external copy: stat-based verification would pass this.
+    const external = tmpDir();
+    const externalCopy = path.join(external, "server.log");
+    fs.copyFileSync(artifactPath, externalCopy);
+    fs.rmSync(artifactPath);
+    fs.symlinkSync(externalCopy, artifactPath);
+
+    const report = await verifyBundle(bundle.dir);
+    expect(report.ok).toBe(false);
+    expect(report.issues).toContainEqual({
+      path: "lanes/e2e/logs/server.log",
+      issue: "symlink",
+    });
+    // Flagged exactly once (verify loop), not duplicated by the sweep.
+    expect(
+      report.issues.filter((i) => i.path === "lanes/e2e/logs/server.log"),
+    ).toHaveLength(1);
+  });
+
+  it("still reports a plain unlisted regular file as unlisted (control)", async () => {
+    const bundle = await buildSampleBundle(tmpDir(), tmpDir());
+    await bundle.finalize();
+    fs.writeFileSync(path.join(bundle.dir, "plain-stray.txt"), "stray");
+    const report = await verifyBundle(bundle.dir);
+    expect(report.issues).toContainEqual({
+      path: "plain-stray.txt",
+      issue: "unlisted",
+    });
+    expect(report.issues.some((i) => i.issue === "symlink")).toBe(false);
   });
 });

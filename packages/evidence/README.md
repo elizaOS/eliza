@@ -31,7 +31,11 @@ interface ArtifactEntry {
   createdAt: string;   // ISO-8601
 }
 
-interface BundleManifest { schema: 1; runId: string; createdAt: string; artifacts: ArtifactEntry[] }
+interface BundleManifest {
+  schema: 1; runId: string; createdAt: string;
+  metaSha256: string;  // sha256 of meta.json bytes — binds provenance into the signed envelope
+  artifacts: ArtifactEntry[];
+}
 
 interface BundleMeta {
   schema: 1; runId: string; commit: string; branch: string;
@@ -66,7 +70,14 @@ evidence/runs/<run-id>/
 
 Manifest canonicalization (hard requirement — certification signs these
 bytes): artifacts sorted by `path` (UTF-16 code-unit order), object keys
-sorted, no whitespace, UTF-8, one trailing newline. See `src/canonical.ts`.
+sorted, no whitespace, UTF-8, one trailing newline. Non-plain objects
+(Date/Map/Set/class instances) throw rather than silently serializing as
+`{}`; `toJSON` is not honored — callers pre-serialize. See `src/canonical.ts`.
+
+Bundle paths are NFC-normalized at `addArtifact` ingress so macOS (NFD) and
+linux (NFC) produce identical manifest bytes for the same logical filename.
+`finalize()` writes and hashes `meta.json` first, then embeds that hash as
+`manifest.metaSha256` — forged provenance fails verification.
 
 ## Ingestors
 
@@ -100,8 +111,10 @@ bun run --cwd packages/evidence bundle:verify -- evidence/runs/<run-id>
 runner (`ELIZA_EVIDENCE_RUNNER` ∈ local|vast|ci, else `CI` env, else local),
 ingests every silo, finalizes, and prints a per-silo summary plus the manifest
 sha256. `verify` re-hashes every artifact and reports `missing` /
-`size-mismatch` / `hash-mismatch` / `unlisted` findings; non-zero exit on any
-issue.
+`size-mismatch` / `hash-mismatch` / `unlisted` / `symlink` / `meta-mismatch`
+findings; non-zero exit on any issue. Verification is lstat-based: a verified
+bundle contains no symlinks anywhere — a symlinked artifact would be mutable
+after signing, and a symlinked directory would mount an unswept external tree.
 
 ## How later pieces slot in
 

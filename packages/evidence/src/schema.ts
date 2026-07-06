@@ -58,6 +58,11 @@ export interface BundleManifest {
   schema: 1;
   runId: string;
   createdAt: string;
+  /**
+   * sha256 of the `meta.json` bytes, binding provenance into the signed
+   * envelope — a forged commit/branch/runner in meta.json fails verification.
+   */
+  metaSha256: string;
   artifacts: ArtifactEntry[];
 }
 
@@ -120,6 +125,7 @@ const bundleManifestSchema = z
     schema: z.literal(1),
     runId: z.string().min(1),
     createdAt: isoTimestamp,
+    metaSha256: sha256Hex,
     artifacts: z.array(artifactEntrySchema),
   })
   .superRefine((manifest, ctx) => {

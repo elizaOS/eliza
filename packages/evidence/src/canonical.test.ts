@@ -43,6 +43,31 @@ describe("canonicalJson", () => {
       expect((error as EvidenceError).code).toBe("CANONICAL_UNSERIALIZABLE");
     }
   });
+
+  // On a signing surface a Date/Map/Set/class instance silently serializing
+  // as "{}" would be silent data loss; toJSON is deliberately not honored.
+  it.each([
+    ["Date", new Date(0)],
+    ["Map", new Map([["a", 1]])],
+    ["Set", new Set([1])],
+    ["class instance", new (class Payload {})()],
+    ["nested non-plain object", { outer: new Date(0) }],
+  ])("throws CANONICAL_UNSERIALIZABLE for non-plain object %s", (_label, value) => {
+    try {
+      canonicalJson(value);
+      expect.unreachable("should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(EvidenceError);
+      expect((error as EvidenceError).code).toBe("CANONICAL_UNSERIALIZABLE");
+    }
+  });
+
+  it("accepts plain objects and null-prototype objects", () => {
+    expect(canonicalJson({ a: 1 })).toBe('{"a":1}');
+    const nullProto = Object.create(null) as Record<string, unknown>;
+    nullProto.a = 1;
+    expect(canonicalJson(nullProto)).toBe('{"a":1}');
+  });
 });
 
 describe("canonicalJsonBytes", () => {

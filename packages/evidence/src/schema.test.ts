@@ -38,6 +38,7 @@ function validManifest(
     schema: 1,
     runId: "20260705-120000-abcdef0-cpu",
     createdAt: "2026-07-05T12:00:00.000Z",
+    metaSha256: "b".repeat(64),
     artifacts: [validEntry()],
     ...overrides,
   };
@@ -86,6 +87,14 @@ describe("parseManifest", () => {
     ["wrong schema version", () => ({ ...validManifest(), schema: 2 })],
     ["non-array artifacts", () => ({ ...validManifest(), artifacts: {} })],
     ["unknown top-level key", () => ({ ...validManifest(), extra: true })],
+    [
+      "missing metaSha256",
+      () => ({ ...validManifest(), metaSha256: undefined }),
+    ],
+    [
+      "non-hex metaSha256",
+      () => ({ ...validManifest(), metaSha256: "Z".repeat(64) }),
+    ],
   ])("rejects a manifest with %s", (_label, make) => {
     expect(() =>
       parseManifest(JSON.parse(JSON.stringify(make())), "test"),
