@@ -300,6 +300,26 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       }
     }
 
+    // Self-heal a missing Steward tenant on sign-in (#14645 residual). #14869
+    // provisions tenants eagerly for NEW signups only; orgs created before it
+    // still hit the `/steward/user/me/tenants` 403 → /login bounce loop, and
+    // can never reach the lazy agent-provision heal BECAUSE they cannot sign
+    // in. Every returning user resolves through this branch, so healing here
+    // converts each looping account's next sign-in attempt into the fix —
+    // incremental, no bulk backfill. `ensureStewardTenant` reads the org first
+    // and returns immediately when a tenant already exists, so the healthy-org
+    // cost is one indexed read. FAIL-OPEN: a Steward outage must not break
+    // sign-in — same posture as the eager new-signup call site below.
+    if (user.organization_id) {
+      try {
+        await ensureStewardTenant(user.organization_id);
+      } catch (error) {
+        logger.warn(
+          `[StewardSync] Sign-in tenant self-heal failed for org ${user.organization_id}; sign-in proceeds and the next attempt retries: ${describeSyncError(error)}`,
+        );
+      }
+    }
+
     return user;
   }
 
