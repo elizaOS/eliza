@@ -36,6 +36,15 @@
     }
   },
   "builtin-chat": {
-    "accentOrange": true
+    "accentOrange": true,
+    "ocr": {
+      "absent": [
+        "orchestrator",
+        "Agent activity",
+        "App runs",
+        "Bills & Balance",
+        "Overdrawn"
+      ]
+    }
   }
 }

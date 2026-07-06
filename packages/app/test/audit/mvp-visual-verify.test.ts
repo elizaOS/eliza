@@ -341,6 +341,76 @@ describe("expectation-eval", () => {
   });
 });
 
+// The resting home (audit slug `builtin-chat`, mounted at /chat) is sparse by
+// doctrine (#14343): time/weather + wallet + notifications + self-hiding LifeOps
+// keepers. The seven non-MVP widgets (orchestrator activity/apps, feed activity,
+// workflow tasks, finances, relationships, inbox) were removed from the home
+// slot; this drives the REAL committed `builtin-chat` spec so the expected-absent
+// OCR guard both passes on a clean sparse home and fires the instant a removed
+// widget's signature text reappears there.
+describe("sparse-home OCR regression guard (#14343)", () => {
+  const specs = JSON.parse(
+    readFileSync(
+      path.resolve(
+        __dirname,
+        "../../scripts/mvp-visual-verify/expectations.json",
+      ),
+      "utf8",
+    ),
+  );
+  const homeSpec = resolveSpec(specs, "builtin-chat");
+
+  function ocrCheck(text: string) {
+    const result = evaluateExpectations(
+      {
+        viewport: "desktop",
+        ocr: { available: true as const, text },
+        palette: { buckets: { orange: 0.01 }, swatches: [] },
+        finding: { blueColors: [], horizontalOverflowPx: 0 },
+      },
+      homeSpec,
+    );
+    return result.checks.find((c) => c.name === "ocr-text");
+  }
+
+  it("declares expected-absent removed-widget tokens on builtin-chat", () => {
+    expect(homeSpec.ocr.absent).toEqual(
+      expect.arrayContaining([
+        "orchestrator",
+        "Agent activity",
+        "App runs",
+        "Bills & Balance",
+        "Overdrawn",
+      ]),
+    );
+  });
+
+  it("passes for a quiet sparse home (no removed-widget text present)", () => {
+    // A realistic quiet-account home readout: greeting + weather + wallet prices
+    // + a self-hiding keeper. None of the removed widgets' text appears.
+    const sparse =
+      "Good evening Weather 68 Partly cloudy BTC 64,120 ETH 3,410 SOL 172 Upcoming Dentist tomorrow 9:00 AM Todos";
+    const check = ocrCheck(sparse);
+    expect(check?.status).toBe("pass");
+  });
+
+  it("fires when any removed widget's signature text returns to the home", () => {
+    // Each removed widget's OCR-visible text must trip the guard so a regression
+    // that re-mounts it on the home slot is caught.
+    for (const regressed of [
+      "Agent activity 5 new events", // feed.agent-activity
+      "orchestrator run blocked", // agent-orchestrator.activity
+      "App runs 2 live", // agent-orchestrator.apps
+      "Bills & Balance overdue", // finances.alerts
+      "Overdrawn by 40", // finances.alerts
+    ]) {
+      const check = ocrCheck(`Good evening ${regressed}`);
+      expect(check?.status, regressed).toBe("fail");
+      expect(check?.detail, regressed).toMatch(/forbidden/);
+    }
+  });
+});
+
 describe("mvp-visual-verify CLI", () => {
   it("strict mode fails when the run has skipped checks or first-run baselines", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "eliza-mvp-visual-verify-"));
