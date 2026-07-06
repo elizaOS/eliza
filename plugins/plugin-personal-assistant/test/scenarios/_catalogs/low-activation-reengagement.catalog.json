@@ -110,6 +110,14 @@
       "notes": "Live-only. Decision paralysis across three options -> assistant PICKS one (definitionCountDelta{delta:1} proves only the single picked step scheduled) instead of re-offering the menu; judge fails a menu re-list or scheduling several. NOT a crisis guard (no 988; #12780 not-planned). Live-verify deferred (#12781). Live-verify attempts 2026-07-04 (Cerebras gpt-oss-120b, TZ=UTC) FAILED — row stays authored: both attempts picked one option with decent tone but never scheduled/created the step (judge 0.60→0.50 vs 0.6 bar; definition delta 0 both)."
     },
     {
+      "id": "goal-lowact-walk-around-block",
+      "pack": "E1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "live-only for #14355. Low-activation non-sleep goal-grounding: fragmentary 'less stuck' movement goal must be grounded into a small concrete walk cadence without guilt, therapy framing, or overbuilt fitness plans."
+    },
+    {
       "id": "lowact.tiny_step_tomorrow_you_pick",
       "pack": "E1",
       "tier": "T1",

@@ -119,6 +119,30 @@
       "notes": "live-only; live-verify deferred (#12781). The plainest timed reminder at its literal time, bare confirmation, zero ND scaffolding (negative control floor)."
     },
     {
+      "id": "goal-fitness-5k-basic",
+      "pack": "F1",
+      "tier": "T1",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "live-only for #14355. Non-sleep goal-grounding control: vague 5K aspiration must be pushed for a concrete finish/date/cadence, previewed, then persisted as a grounded active goal."
+    },
+    {
+      "id": "goal-savings-trip-basic",
+      "pack": "F1",
+      "tier": "T1",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "live-only for #14355. Non-sleep goal-grounding control: trip-savings goal must capture target amount, deadline, transfer cadence, and behind-plan check-in before save."
+    },
+    {
+      "id": "goal-learning-spanish-basic",
+      "pack": "F1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "live-only for #14355. Non-sleep goal-grounding control: learning goal must be pushed for an evidence signal (10-minute conversation), horizon, and practice cadence before save."
+    },
+    {
       "id": "f1-adversarial-highstakes-wrong-recipient-payment",
       "pack": "F1",
       "tier": "T4",
