@@ -7,6 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { verifyInstalledApkHash } from "./lib/android-device.mjs";
 import {
   ANDROID_APK_RENDERER_MANIFEST_PATH,
   assertAndroidApkRendererFresh,
@@ -189,5 +190,23 @@ describe("Android renderer stamp", () => {
     expect(() => readAndroidApkRendererManifest(apkPath)).toThrow(
       /missing assets\/public\/eliza-renderer-build\.json/,
     );
+  });
+
+  it("accepts an installed APK hash that matches the local file", () => {
+    expect(
+      verifyInstalledApkHash({
+        localHash: "abc123",
+        deviceHash: "abc123",
+      }),
+    ).toEqual({ sha256: "abc123" });
+  });
+
+  it("rejects an installed APK hash mismatch", () => {
+    expect(() =>
+      verifyInstalledApkHash({
+        localHash: "fresh",
+        deviceHash: "stale",
+      }),
+    ).toThrow(/on-device APK does not match installed file/);
   });
 });

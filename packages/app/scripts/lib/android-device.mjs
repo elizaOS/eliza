@@ -8,6 +8,7 @@
 // SDK/adb resolution lives in exactly one place and runs on Linux CI, a mac, or
 // Windows without hardcoded "~/Library/Android/sdk" paths.
 import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -405,6 +406,46 @@ export function installApk(adbBin, serial, apk) {
   adbDevice(adbBin, serial, ["install", "-r", "-d", apk], { stdio: "inherit" });
 }
 
+function sha256File(filePath) {
+  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+export function verifyInstalledApkHash({ localHash, deviceHash } = {}) {
+  if (!localHash) {
+    throw new Error("local APK sha256 is required after install.");
+  }
+  if (!deviceHash) {
+    throw new Error("on-device APK sha256 is required after install.");
+  }
+  if (deviceHash !== localHash) {
+    throw new Error(
+      `on-device APK does not match installed file: device sha256=${deviceHash} local sha256=${localHash}`,
+    );
+  }
+  return { sha256: localHash };
+}
+
+export function readInstalledApkPath(adbBin, serial) {
+  const pmPath = adbTry(adbBin, ["-s", serial, "shell", "pm", "path", APP_ID]);
+  return parseApkPath(pmPath);
+}
+
+export function verifyInstalledApkMatches(adbBin, serial, apkPath) {
+  const remoteApk = readInstalledApkPath(adbBin, serial);
+  if (!remoteApk) {
+    throw new Error(`installed package ${APP_ID} has no base APK path.`);
+  }
+  const deviceHash = adbDevice(adbBin, serial, [
+    "shell",
+    "sha256sum",
+    remoteApk,
+  ])
+    .trim()
+    .split(/\s+/)[0];
+  const localHash = sha256File(apkPath);
+  return verifyInstalledApkHash({ localHash, deviceHash });
+}
+
 function validateRendererStamp(stamp, label) {
   if (!stamp || typeof stamp !== "object") {
     throw new Error(`${label} renderer stamp is missing or invalid.`);
@@ -450,8 +491,7 @@ export function readInstalledRendererStamp(
   serial,
   { tmpRoot = os.tmpdir(), log = () => {} } = {},
 ) {
-  const pmPath = adbTry(adbBin, ["-s", serial, "shell", "pm", "path", APP_ID]);
-  const remoteApk = parseApkPath(pmPath);
+  const remoteApk = readInstalledApkPath(adbBin, serial);
   if (!remoteApk) return null;
 
   const tempDir = fs.mkdtempSync(path.join(tmpRoot, "eliza-android-apk-"));

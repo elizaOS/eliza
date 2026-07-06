@@ -39,6 +39,7 @@ import {
   resolveAdb,
   resolveApk,
   resolveSerial,
+  verifyInstalledApkMatches,
 } from "./lib/android-device.mjs";
 import {
   captureFailureForensics,
@@ -346,6 +347,8 @@ function ensureFreshApkInstalled(bundle, adb, serial) {
     const step = startBundleStep(bundle, "install Android APK");
     try {
       installApk(adb, serial, apk);
+      const hash = verifyInstalledApkMatches(adb, serial, apk);
+      log(`installed APK bytes verified: sha256=${hash.sha256.slice(0, 12)}…`);
       finishBundleStep(bundle, step, "passed");
     } catch (error) {
       failAndroidStep(bundle, step, error);
