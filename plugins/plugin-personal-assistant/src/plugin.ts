@@ -110,6 +110,8 @@ import {
 } from "./lifeops/connectors/index.js";
 import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
 import { handleVoiceTurnObserved } from "./lifeops/entities/voice-observer-bridge.js";
+import { ConnectorChannelInspector } from "./lifeops/first-run/connector-channel-inspector.js";
+import { setChannelInspector } from "./lifeops/first-run/questions.js";
 import { FirstRunService } from "./lifeops/first-run/service.js";
 import { createOwnerLocaleExamplesProvider } from "./lifeops/i18n/localized-examples-provider.js";
 import {
@@ -751,6 +753,11 @@ const rawPersonalAssistantPlugin: Plugin = {
         connectorRegistry?: typeof connectorRegistry;
       }
     ).connectorRegistry = connectorRegistry;
+
+    // First-run channel picker (Q4) reads *live* connector status through this
+    // registry instead of fabricating a verdict (#14730). Must follow the
+    // connector-registry registration above.
+    setChannelInspector(new ConnectorChannelInspector(runtime));
 
     const channelRegistry = createChannelRegistry();
     registerDefaultChannelPack(channelRegistry, runtime);

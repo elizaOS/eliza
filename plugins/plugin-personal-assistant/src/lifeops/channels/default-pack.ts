@@ -286,6 +286,21 @@ export const DEFAULT_CHANNEL_KINDS: readonly string[] = CHANNEL_DESCRIPTORS.map(
   (descriptor) => descriptor.kind,
 );
 
+/**
+ * The connector kind that backs a channel's delivery, or `null` for in-process
+ * channels (`in_app`, `push`, `browser`) the runtime delivers directly.
+ * Returns `undefined` for an unknown channel. This is the authoritative
+ * channel → connector edge; the first-run channel validator reads it to probe
+ * live `ConnectorRegistry` status instead of fabricating a verdict (#14730).
+ */
+export function channelConnectorKind(
+  channelKind: string,
+): string | null | undefined {
+  return CHANNEL_DESCRIPTORS.find(
+    (descriptor) => descriptor.kind === channelKind,
+  )?.connectorKind;
+}
+
 export function registerDefaultChannelPack(
   registry: ChannelRegistry,
   runtime?: IAgentRuntime,

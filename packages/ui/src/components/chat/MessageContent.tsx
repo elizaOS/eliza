@@ -272,6 +272,10 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
   const selectedModeId =
     modeChoice ?? defaultConnectorWidgetModeId(pluginId, modes);
   const selectedMode = modes.find((m) => m.id === selectedModeId) ?? null;
+  // The first non-OAuth mode powers the "use an API key / local setup instead"
+  // fallback link under a sign-in button — the required visible toggle away
+  // from OAuth. Undefined when the connector is OAuth-only.
+  const apiKeyModeId = modes.find((m) => m.kind !== "oauth")?.id ?? undefined;
 
   // Bounded refetch loop after a sign-in hand-off: the authorization finishes
   // in another window/app, so the card polls the plugin status until the
@@ -306,7 +310,11 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
     setSigningIn(true);
     setError(null);
     try {
-      const result = await client.startConnectorAccountOAuth(pluginId);
+      const result = await client.startConnectorAccountOAuth(
+        pluginId,
+        pluginId,
+        {},
+      );
       const authUrl = result.authUrl;
       if (!isHttpsAuthorizationUrl(authUrl)) {
         throw new Error(
@@ -535,9 +543,123 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
         </span>
       }
     >
-      {/* Form — always shown so user can configure before enabling */}
-      {schema && hasConfigurableParams ? (
+      {/* Auth-mode switch — OAuth / API-key / local-bridge, when the connector
+          declares more than one setup mode. A single-mode connector shows no
+          switch (nothing to choose). */}
+      {modes.length > 1 && (
+        <div
+          className="flex flex-wrap items-center gap-1.5 px-3 pt-3"
+          role="group"
+          aria-label={t("messagecontent.SetupModeLabel", {
+            defaultValue: "Setup method",
+          })}
+          data-testid="inline-plugin-config-modes"
+        >
+          {modes.map((mode) => {
+            const active = mode.id === selectedModeId;
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                aria-pressed={active}
+                title={mode.description}
+                data-testid={`inline-plugin-config-mode-${mode.id}`}
+                onClick={() => {
+                  setModeChoice(mode.id);
+                  setError(null);
+                }}
+                className={`px-3 py-1 h-7 text-2xs font-medium border transition-colors ${
+                  active
+                    ? "border-accent text-accent bg-accent/10"
+                    : "border-border text-muted hover:text-txt hover:border-txt/40"
+                }`}
+              >
+                {mode.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* OAuth sign-in — shown for a cloud/OAuth-shaped mode instead of the env
+          form. The API-key / local fallback is always one click away below. */}
+      {selectedMode?.kind === "oauth" && (
+        <div className="p-3" data-testid="inline-plugin-config-oauth">
+          <Button
+            variant="default"
+            size="sm"
+            className="px-4 py-1.5 h-8 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            onClick={() => void handleOAuthSignIn()}
+            disabled={signingIn}
+            data-testid="inline-plugin-config-oauth-btn"
+          >
+            {signingIn
+              ? t("messagecontent.OAuthSigningIn", {
+                  defaultValue: "Waiting for sign-in…",
+                })
+              : t("messagecontent.OAuthSignIn", {
+                  defaultValue: "Sign in with {{name}}",
+                  name: plugin.name ?? pluginId,
+                })}
+          </Button>
+          {apiKeyModeId && (
+            <button
+              type="button"
+              onClick={() => {
+                setModeChoice(apiKeyModeId);
+                setError(null);
+              }}
+              data-testid="inline-plugin-config-use-apikey"
+              className="mt-2 block text-2xs text-muted underline hover:text-txt"
+            >
+              {t("messagecontent.OAuthUseApiKey", {
+                defaultValue: "Use an API key / local setup instead",
+              })}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Local desktop pairing (Discord IPC): one-click authorize instead of an
+          env form, plus the mode's guidance text. */}
+      {selectedMode?.kind === "local" && localSignIn && (
+        <div className="p-3" data-testid="inline-plugin-config-local">
+          {selectedMode.description && (
+            <p className="mb-2 text-2xs text-muted">
+              {selectedMode.description}
+            </p>
+          )}
+          <Button
+            variant="default"
+            size="sm"
+            className="px-4 py-1.5 h-8 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            onClick={() => void handleLocalSignIn()}
+            disabled={signingIn}
+            data-testid="inline-plugin-config-local-btn"
+          >
+            {signingIn
+              ? t("messagecontent.LocalSigningIn", {
+                  defaultValue: "Pairing…",
+                })
+              : t("messagecontent.LocalSignIn", {
+                  defaultValue: "Authorize the desktop app",
+                })}
+          </Button>
+        </div>
+      )}
+
+      {/* Config form — the env-var / token form for local-config + local-setup
+          modes (and connectors with no declared modes at all). Hidden while an
+          OAuth or one-click-local mode owns the body. */}
+      {showConfigForm ? (
         <div className="p-3">
+          {selectedMode?.description &&
+            selectedMode.kind === "local" &&
+            !localSignIn && (
+              <p className="mb-2 text-2xs text-muted">
+                {selectedMode.description}
+              </p>
+            )}
           <ConfigRenderer
             schema={schema}
             hints={hints}
@@ -548,7 +670,8 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
             onChange={handleChange}
           />
         </div>
-      ) : (
+      ) : selectedMode?.kind === "oauth" ||
+        (selectedMode?.kind === "local" && localSignIn) ? null : (
         <div className="px-3 py-2 text-xs text-muted italic">
           {t("messagecontent.NoConfigurablePara")}
         </div>
@@ -556,7 +679,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
 
       {/* Footer */}
       <div className="flex items-center gap-2 px-3 py-2 flex-wrap">
-        {schema && hasConfigurableParams && (
+        {showConfigForm && (
           <Button
             variant="default"
             size="sm"

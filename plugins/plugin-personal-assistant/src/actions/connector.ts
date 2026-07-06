@@ -39,6 +39,7 @@ const VERBOSE_DISPATCHER_KINDS = [
   "discord",
   "imessage",
   "whatsapp",
+  "wechat",
   "health",
   "browser_bridge",
 ] as const;
@@ -127,6 +128,7 @@ const MESSAGE_CONNECTOR_SOURCE_BY_LIFEOPS_CONNECTOR: Record<string, string> = {
   discord: "discord",
   imessage: "imessage",
   whatsapp: "whatsapp",
+  wechat: "wechat",
 };
 
 /**
@@ -764,11 +766,14 @@ async function dispatchTelegram(
   switch (subaction) {
     case "connect": {
       const status = await service.getTelegramConnectorStatus(side);
+      const base = status.connected
+        ? `Telegram is connected through @elizaos/plugin-telegram (side=${side}).`
+        : `Set up Telegram below — pick OAuth/cloud gateway, a bot token, or your personal account.`;
       return {
         success: status.connected,
         text: status.connected
-          ? `Telegram is connected through @elizaos/plugin-telegram (side=${side}).`
-          : `Telegram connection is managed by @elizaos/plugin-telegram (side=${side}). Configure the Telegram connector plugin, then check status again.`,
+          ? base
+          : withConfigCard(base, connectorConfigPluginId("telegram")),
         data: {
           actionName: ACTION_NAME,
           connector: "telegram",
@@ -850,11 +855,14 @@ async function dispatchSignal(
   switch (subaction) {
     case "connect": {
       const status = await service.getSignalConnectorStatus(side);
+      const base = status.connected
+        ? `Signal is connected through @elizaos/plugin-signal (side=${side}).`
+        : `Set up Signal below — link this agent as a device to your Signal account by scanning the QR code.`;
       return {
         success: status.connected,
         text: status.connected
-          ? `Signal is connected through @elizaos/plugin-signal (side=${side}).`
-          : `Signal pairing is managed by @elizaos/plugin-signal (side=${side}). Configure the Signal connector plugin, then check status again.`,
+          ? base
+          : withConfigCard(base, connectorConfigPluginId("signal")),
         data: {
           actionName: ACTION_NAME,
           connector: "signal",
@@ -970,11 +978,14 @@ async function dispatchDiscord(
   switch (subaction) {
     case "connect": {
       const status = await service.getDiscordConnectorStatus(side);
+      const base = status.connected
+        ? `Discord is connected through @elizaos/plugin-discord (side=${side}).`
+        : `Set up Discord below — sign in with the Eliza Cloud OAuth gateway, pair the desktop app, or paste a bot token.`;
       return {
         success: status.connected,
         text: status.connected
-          ? `Discord is connected through @elizaos/plugin-discord (side=${side}).`
-          : `Discord setup is managed by @elizaos/plugin-discord (side=${side}). Configure the Discord connector plugin, then check status again.`,
+          ? base
+          : withConfigCard(base, connectorConfigPluginId("discord")),
         data: {
           actionName: ACTION_NAME,
           connector: "discord",
@@ -1103,12 +1114,24 @@ async function dispatchIMessage(
         },
       };
     }
-    case "connect":
-      return unsupportedOperation(
-        "imessage",
-        subaction,
-        "iMessage uses the native macOS bridge; nothing to connect via the agent action layer. Inspect status to see bridge readiness.",
-      );
+    case "connect": {
+      const status = await service.getIMessageConnectorStatus();
+      const base = status.connected
+        ? "iMessage is connected through the native macOS bridge."
+        : "Set up iMessage below — read chat.db directly (Full Disk Access), bridge via BlueBubbles, or use the Blooio cloud gateway.";
+      return {
+        success: status.connected,
+        text: status.connected
+          ? base
+          : withConfigCard(base, connectorConfigPluginId("imessage")),
+        data: {
+          actionName: ACTION_NAME,
+          connector: "imessage",
+          subaction,
+          status,
+        },
+      };
+    }
     case "disconnect":
       return unsupportedOperation(
         "imessage",
@@ -1187,12 +1210,28 @@ async function dispatchWhatsApp(
         },
       };
     }
-    case "connect":
-      return unsupportedOperation(
+    case "connect": {
+      const registryStatus = registryStatusResult(
+        runtime,
         "whatsapp",
         subaction,
-        "WhatsApp connection is managed by @elizaos/plugin-whatsapp. Configure the WhatsApp connector plugin; LifeOps no longer owns local WhatsApp API credentials.",
       );
+      if (registryStatus) {
+        return registryStatus;
+      }
+      const base =
+        "Set up WhatsApp below — scan a QR code from your phone or paste Business Cloud API credentials.";
+      return {
+        success: false,
+        text: withConfigCard(base, connectorConfigPluginId("whatsapp")),
+        data: {
+          actionName: ACTION_NAME,
+          connector: "whatsapp",
+          subaction,
+          status: { provider: "whatsapp", connected: false, registered: false },
+        },
+      };
+    }
     case "disconnect":
       return unsupportedOperation(
         "whatsapp",
@@ -1239,6 +1278,78 @@ async function dispatchWhatsAppVerify(
       send,
     },
   };
+}
+
+/**
+ * WeChat is configured entirely through `@elizaos/plugin-wechat` (WECHAT_API_KEY
+ * + WECHAT_PROXY_URL under `config.connectors.wechat`); LifeOpsService owns no
+ * WeChat state, so this dispatcher reads live status from the core message
+ * connector registry when the plugin is loaded and otherwise emits the setup
+ * card for the owner to fill in. It never fabricates a connected/disconnected
+ * verdict it did not observe.
+ */
+async function dispatchWeChat(
+  { runtime }: ConnectorDispatchContext,
+  subaction: ConnectorSubaction,
+  _params: ConnectorActionParams,
+): Promise<ActionResult> {
+  const registryStatus = registryStatusResult(runtime, "wechat", subaction);
+  switch (subaction) {
+    case "connect": {
+      if (registryStatus) {
+        return registryStatus;
+      }
+      const base =
+        "Set up WeChat below — paste your WeChat proxy API key and proxy URL to route messages through @elizaos/plugin-wechat.";
+      return {
+        success: false,
+        text: withConfigCard(base, connectorConfigPluginId("wechat")),
+        data: {
+          actionName: ACTION_NAME,
+          connector: "wechat",
+          subaction,
+          status: { provider: "wechat", connected: false, registered: false },
+        },
+      };
+    }
+    case "status":
+    case "list": {
+      if (registryStatus) {
+        return registryStatus;
+      }
+      return {
+        success: true,
+        text: "WeChat is not connected. Configure @elizaos/plugin-wechat (WECHAT_API_KEY + WECHAT_PROXY_URL) to enable it.",
+        data: {
+          actionName: ACTION_NAME,
+          connector: "wechat",
+          subaction,
+          status: { provider: "wechat", connected: false, registered: false },
+        },
+      };
+    }
+    case "disconnect":
+      return unsupportedOperation(
+        "wechat",
+        subaction,
+        "WeChat disconnect is managed by @elizaos/plugin-wechat. Clear the WeChat connector config, then check status again.",
+      );
+    case "verify": {
+      if (registryStatus) {
+        return registryStatus;
+      }
+      return {
+        success: false,
+        text: "WeChat verify: not connected. Configure @elizaos/plugin-wechat first.",
+        data: {
+          actionName: ACTION_NAME,
+          connector: "wechat",
+          subaction,
+          status: { provider: "wechat", connected: false, registered: false },
+        },
+      };
+    }
+  }
 }
 
 async function dispatchBrowserBridge(
@@ -1344,6 +1455,7 @@ const VERBOSE_DISPATCHERS: Record<VerboseConnectorKind, ConnectorDispatcher> = {
   discord: dispatchDiscord,
   imessage: dispatchIMessage,
   whatsapp: dispatchWhatsApp,
+  wechat: dispatchWeChat,
   health: dispatchHealth,
   browser_bridge: dispatchBrowserBridge,
 };
@@ -1607,7 +1719,7 @@ export const connectorAction: Action & {
     {
       name: "connector",
       description:
-        "ConnectorRegistry kind: google, x, telegram, signal, discord, imessage, whatsapp, twilio, calendly, duffel, health, browser_bridge. Optional action=list.",
+        "ConnectorRegistry kind: google, x, telegram, signal, discord, imessage, whatsapp, wechat, twilio, calendly, duffel, health, browser_bridge. Optional action=list.",
       required: false,
       schema: { type: "string" as const },
     },

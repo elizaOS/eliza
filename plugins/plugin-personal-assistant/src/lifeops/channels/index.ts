@@ -6,6 +6,7 @@ export type {
   ChannelRegistryFilter,
 } from "./contract.js";
 export {
+  channelConnectorKind,
   DEFAULT_CHANNEL_PACK,
   registerDefaultChannelPack,
 } from "./default-pack.js";
