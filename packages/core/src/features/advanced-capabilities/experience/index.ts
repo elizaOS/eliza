@@ -2,6 +2,7 @@
  * Experience learning bundled with advanced capabilities.
  */
 
+export { experienceAction } from "./actions/experience.ts";
 export { searchExperiencesAction } from "./actions/search-experiences.ts";
 export { experiencePatternEvaluator } from "./evaluators/experience-items.ts";
 export { experienceProvider } from "./providers/experienceProvider.ts";
@@ -13,17 +14,19 @@ export * from "./types.ts";
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 import { anchorBundleSafety } from "../../../bundle-safety.ts";
+import { experienceAction as _bs_2_experienceAction } from "./actions/experience.ts";
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel
 // into an empty `init_X = () => {}`. Without this the on-device
 // mobile agent explodes with `ReferenceError: <name> is not defined`
 // when a consumer dereferences a re-exported binding at runtime.
 import { searchExperiencesAction as _bs_1_searchExperiencesAction } from "./actions/search-experiences.ts";
-import { experiencePatternEvaluator as _bs_2_experiencePatternEvaluator } from "./evaluators/experience-items.ts";
-import { experienceProvider as _bs_3_experienceProvider } from "./providers/experienceProvider.ts";
+import { experiencePatternEvaluator as _bs_3_experiencePatternEvaluator } from "./evaluators/experience-items.ts";
+import { experienceProvider as _bs_4_experienceProvider } from "./providers/experienceProvider.ts";
 
 anchorBundleSafety("FEATURES_ADVANCED_CAPABILITIES_EXPERIENCE_INDEX", [
 	_bs_1_searchExperiencesAction,
-	_bs_2_experiencePatternEvaluator,
-	_bs_3_experienceProvider,
+	_bs_2_experienceAction,
+	_bs_3_experiencePatternEvaluator,
+	_bs_4_experienceProvider,
 ]);

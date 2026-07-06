@@ -20,6 +20,7 @@ import { promoteSubactionsToActions } from "../../actions/promote-subactions.ts"
 import { createService } from "../../services.ts";
 import type { IAgentRuntime, RegisteredEvaluator } from "../../types/index.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
+import { experienceAction } from "./experience/actions/experience.ts";
 // Direct leaf-file imports — see comment lower in this file for the
 // Bun.build mis-rewrite that requires bypassing barrels.
 import { searchExperiencesAction } from "./experience/actions/search-experiences.ts";
@@ -91,6 +92,7 @@ export const advancedActions = [
 	...promoteSubactionsToActions(withCanonicalActionDocs(roomOpAction)),
 	withCanonicalActionDocs(updateRoleAction),
 	withCanonicalActionDocs(searchExperiencesAction),
+	withCanonicalActionDocs(experienceAction),
 	...promoteSubactionsToActions(messageAction),
 	...promoteSubactionsToActions(postAction),
 	// Personality actions — keep CHARACTER (legacy) alongside the new
