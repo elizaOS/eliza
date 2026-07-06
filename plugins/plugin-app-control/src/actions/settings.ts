@@ -231,7 +231,7 @@ function resolveSystemPermissionId(token: string | null): PermissionId | null {
 function isPermissionStateNeedingHandoff(data: unknown): boolean {
 	if (!data || typeof data !== "object") return true;
 	const status = (data as { status?: unknown }).status;
-	return status !== "granted" && status !== "not-applicable";
+	return status !== "granted";
 }
 
 function readPermissionFromOutcome(data: unknown): PermissionId | null {
@@ -292,7 +292,7 @@ const PERMISSIONS_REQUEST_KEY: SettingsWritableKey = {
 					path: "/settings",
 					subview: "permissions",
 					source: "settings-action",
-					permission,
+					payload: { permissionRequest: { permission } },
 				},
 			});
 			handoff = handoffOutcome.ok;

@@ -14,12 +14,14 @@
  * deep-links a specific section. Also reusable in modal form (`inModal`).
  */
 import { isViewVisible } from "@elizaos/core";
+import { isPermissionId, type PermissionId } from "@elizaos/shared";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { ContentLayout } from "../../layouts/content-layout";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { useAppSelectorShallow } from "../../state";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
+import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
 import { SettingsSectionNav } from "../settings/SettingsSectionNav";
 import {
   type GroupedSettingsSections,
@@ -37,6 +39,19 @@ import { ErrorBoundary } from "../ui/error-boundary";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 type Translate = (key: string, vars?: Record<string, unknown>) => string;
+
+function readSettingsPermissionRequest(payload: unknown): PermissionId | null {
+  if (!payload || typeof payload !== "object") return null;
+  const permissionRequest = (payload as { permissionRequest?: unknown })
+    .permissionRequest;
+  if (!permissionRequest || typeof permissionRequest !== "object") {
+    return null;
+  }
+  const permission = (permissionRequest as { permission?: unknown }).permission;
+  return isPermissionId(permission) && permission !== "shell"
+    ? permission
+    : null;
+}
 
 /**
  * Loading placeholder for a lazily-loaded section body (#11351). Deliberately
@@ -181,10 +196,14 @@ function SettingsSectionSurfaceAnchor({
 export function SettingsView({
   inModal,
   initialSection,
+  navigatePayload,
+  navigateSequence = 0,
 }: {
   inModal?: boolean;
   onClose?: () => void;
   initialSection?: string;
+  navigatePayload?: unknown;
+  navigateSequence?: number;
 } = {}) {
   const { t, loadPlugins, walletEnabled } = useAppSelectorShallow((s) => ({
     t: s.t,
@@ -194,6 +213,9 @@ export function SettingsView({
   const enabledKinds = useEnabledViewKinds();
   const [activeSection, setActiveSection] = useState<string | null>(
     () => initialSection ?? readSettingsHashSection(),
+  );
+  const [primePermission, setPrimePermission] = useState<PermissionId | null>(
+    null,
   );
 
   const visibleSections = useMemo(() => {
@@ -233,6 +255,15 @@ export function SettingsView({
     if (!initialSection) return;
     openSection(initialSection);
   }, [initialSection, openSection]);
+
+  useEffect(() => {
+    const permission = readSettingsPermissionRequest(navigatePayload);
+    if (!permission) {
+      if (navigateSequence > 0) setPrimePermission(null);
+      return;
+    }
+    setPrimePermission(permission);
+  }, [navigatePayload, navigateSequence]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -304,6 +335,13 @@ export function SettingsView({
               <SettingsHubEmptyState t={t} />
             )}
           </div>
+          {primePermission ? (
+            <PermissionPrimingModal
+              ids={[primePermission]}
+              open
+              onComplete={() => setPrimePermission(null)}
+            />
+          ) : null}
         </div>
       </ContentLayout>
     </ShellViewAgentSurface>

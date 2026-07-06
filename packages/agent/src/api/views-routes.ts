@@ -905,6 +905,7 @@ export async function handleViewsRoutes(
   //   placement: string    — optional split placement hint: left/right/top/bottom
   //   path: string         — override the navigation path
   //   alwaysOnTop: boolean — for open-window, ask the shell to keep it above normal windows
+  //   payload: unknown     — opaque deep-link state consumed by the target view
   if (method === "POST" && subResource === "navigate") {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
@@ -948,11 +949,14 @@ export async function handleViewsRoutes(
       typeof body?.placement === "string" && body.placement.trim().length > 0
         ? body.placement.trim()
         : undefined;
+    const payload =
+      body && Object.hasOwn(body, "payload") ? body.payload : undefined;
     const layoutPayload = {
       ...(layoutViews && layoutViews.length > 0 ? { views: layoutViews } : {}),
       ...(layout ? { layout } : {}),
       ...(placement ? { placement } : {}),
     };
+    const deepLinkPayload = payload !== undefined ? { payload } : {};
 
     logger.info(
       { src: "ViewsRoutes", viewId: id, viewPath, action, subview },
@@ -1044,6 +1048,7 @@ export async function handleViewsRoutes(
         ...(subview ? { subview } : {}),
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
         ...layoutPayload,
+        ...deepLinkPayload,
       };
       ctx.broadcastWs?.(createShellNavigateViewWsFrame(navigatePayload));
     }
@@ -1057,6 +1062,7 @@ export async function handleViewsRoutes(
       ...(subview ? { subview } : {}),
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
       ...layoutPayload,
+      ...deepLinkPayload,
     });
     return true;
   }

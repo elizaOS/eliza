@@ -330,7 +330,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 				path: "/settings",
 				subview: "permissions",
 				source: "settings-action",
-				permission: "microphone",
+				payload: { permissionRequest: { permission: "microphone" } },
 			},
 		});
 		expect(result?.success).toBe(true);
@@ -397,6 +397,16 @@ describe("SETTINGS action: set on an owned route section", () => {
 		expect(routeFetch).toHaveBeenCalledWith({
 			method: "POST",
 			path: "/api/permissions/notifications/request",
+		});
+		expect(routeFetch).toHaveBeenCalledWith({
+			method: "POST",
+			path: "/api/views/settings/navigate",
+			body: {
+				path: "/settings",
+				subview: "permissions",
+				source: "settings-action",
+				payload: { permissionRequest: { permission: "notifications" } },
+			},
 		});
 		expect(result?.values).toMatchObject({
 			key: "request",

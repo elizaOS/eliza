@@ -27,6 +27,9 @@ import { SettingsView } from "./SettingsView";
 // their own tests). The useApp + section-registry mocks are the seams this
 // refactor must keep stable.
 const appMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
+const permissionPrimingMock = vi.hoisted(() => ({
+  calls: [] as Array<{ ids: string[]; open: boolean }>,
+}));
 // Controls whether the deliberately-throwing "crash" section throws on render,
 // so a single test can flip it off and assert the per-section retry recovers.
 const crashControl = vi.hoisted(() => ({ shouldThrow: true }));
@@ -69,6 +72,26 @@ vi.mock("../../state", () => ({
     sel(appMock.value),
   useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
+}));
+
+vi.mock("../permissions/PermissionPrimingModal", () => ({
+  PermissionPrimingModal: (props: {
+    ids: string[];
+    open: boolean;
+    onComplete: () => void;
+  }) => {
+    permissionPrimingMock.calls.push({
+      ids: props.ids,
+      open: props.open,
+    });
+    return (
+      <div
+        data-testid="permission-priming-modal"
+        data-ids={props.ids.join(",")}
+        data-open={String(props.open)}
+      />
+    );
+  },
 }));
 
 vi.mock("../settings/settings-sections", () => {
@@ -168,6 +191,7 @@ function sectionTab(label: string): HTMLButtonElement {
 
 beforeEach(() => {
   appMock.value = makeContext();
+  permissionPrimingMock.calls = [];
   crashControl.shouldThrow = true;
 });
 
@@ -227,6 +251,41 @@ describe("SettingsView", () => {
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
     expect(screen.queryByTestId("stub-identity")).toBeNull();
     expect(screen.getByTestId("view-header").textContent).toContain("Runtime");
+  });
+
+  it("opens a targeted permission priming modal from a settings navigate payload", async () => {
+    render(
+      <SettingsView
+        initialSection="runtime"
+        navigatePayload={{
+          permissionRequest: { permission: "microphone" },
+        }}
+        navigateSequence={1}
+      />,
+    );
+
+    expect(
+      (await screen.findByTestId("permission-priming-modal")).getAttribute(
+        "data-ids",
+      ),
+    ).toBe("microphone");
+    expect(permissionPrimingMock.calls.at(-1)).toEqual({
+      ids: ["microphone"],
+      open: true,
+    });
+  });
+
+  it("ignores malformed permission request navigation payloads", () => {
+    render(
+      <SettingsView
+        initialSection="runtime"
+        navigatePayload={{ permissionRequest: { permission: "shell" } }}
+        navigateSequence={1}
+      />,
+    );
+
+    expect(screen.queryByTestId("permission-priming-modal")).toBeNull();
+    expect(permissionPrimingMock.calls).toHaveLength(0);
   });
 
   it("the header back affordance returns from a section to the hub", () => {
