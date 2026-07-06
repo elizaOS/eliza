@@ -17,6 +17,20 @@ vi.mock("../../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
 }));
 
+const { runtimeModeMock } = vi.hoisted(() => ({
+  runtimeModeMock: {
+    state: { phase: "ready" as const, snapshot: { mode: "local" as const } },
+    mode: "local" as const,
+    isLocalOnly: true,
+    isCloudMode: false,
+    isRemoteMode: false,
+    refetch: vi.fn(),
+  },
+}));
+vi.mock("../../../hooks/useRuntimeMode", () => ({
+  useRuntimeMode: () => runtimeModeMock,
+}));
+
 import type {
   LocalInferenceSlotReadiness,
   ModelHubSnapshot,
@@ -25,12 +39,14 @@ import type {
 // The widget reads via the typed client (getLocalInferenceHub /
 // startLocalInferenceDownload) — mock both. getLocalInferenceHub is overridden
 // per-test; startLocalInferenceDownload is a spy we assert the retry against.
-const { getHubMock, startDownloadMock } = vi.hoisted(() => ({
+const { getBaseUrlMock, getHubMock, startDownloadMock } = vi.hoisted(() => ({
+  getBaseUrlMock: vi.fn(() => "http://localhost:31337"),
   getHubMock: vi.fn(),
   startDownloadMock: vi.fn(),
 }));
 vi.mock("../../../api", () => ({
   client: {
+    getBaseUrl: getBaseUrlMock,
     getLocalInferenceHub: getHubMock,
     startLocalInferenceDownload: startDownloadMock,
   },
@@ -114,6 +130,16 @@ function hub(
 describe("ModelDownloadWidget", () => {
   beforeEach(() => {
     authMock.authenticated = true;
+    Object.assign(runtimeModeMock, {
+      state: { phase: "ready", snapshot: { mode: "local" } },
+      mode: "local",
+      isLocalOnly: true,
+      isCloudMode: false,
+      isRemoteMode: false,
+    });
+    runtimeModeMock.refetch.mockClear();
+    getBaseUrlMock.mockReset();
+    getBaseUrlMock.mockReturnValue("http://localhost:31337");
     getHubMock.mockReset();
     startDownloadMock.mockReset();
     startDownloadMock.mockResolvedValue({ job: {} });
@@ -275,6 +301,27 @@ describe("ModelDownloadWidget", () => {
     await Promise.resolve();
     expect(getHubMock).not.toHaveBeenCalled();
     // Dormant → the first-fetch loading hold renders nothing.
+    expect(
+      container.querySelector('[data-testid="chat-widget-model-download"]'),
+    ).toBeNull();
+  });
+
+  it("does not fetch local-inference endpoints in cloud runtime mode", async () => {
+    Object.assign(runtimeModeMock, {
+      state: { phase: "ready", snapshot: { mode: "cloud" } },
+      mode: "cloud",
+      isLocalOnly: false,
+      isCloudMode: true,
+      isRemoteMode: false,
+    });
+    getHubMock.mockResolvedValue(
+      hub({ TEXT_LARGE: slot({ state: "downloading" }) }),
+    );
+
+    const { container } = render(<ModelDownloadWidget />);
+
+    await Promise.resolve();
+    expect(getHubMock).not.toHaveBeenCalled();
     expect(
       container.querySelector('[data-testid="chat-widget-model-download"]'),
     ).toBeNull();

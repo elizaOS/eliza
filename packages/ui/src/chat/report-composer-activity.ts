@@ -4,6 +4,7 @@
  * client-side.
  */
 import { logger } from "@elizaos/core";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 
 export type ComposerActivityKind =
@@ -26,6 +27,7 @@ export function reportComposerActivity(report: ComposerActivityReport): void {
   try {
     const base = getElizaApiBase();
     if (!base || typeof fetch === "undefined") return;
+    if (!supportsFullAppShellRoutes(base)) return;
     const token = getElizaApiToken();
     void fetch(`${base}/api/interactions/composer`, {
       method: "POST",
