@@ -8,9 +8,11 @@ developer string a user should never read (`[object Object]`, `undefined`, an
 unresolved `{{token}}`), or be missing the one label it exists to show — and the
 DOM audit calls it `good`.
 
-This stage reads the **pixels**. It OCRs each captured screenshot with Apple
-Vision, runs content rules over the recognized text, and cross-checks the result
-against the DOM verdict already in `report.json`.
+This stage reads the **pixels**. It OCRs each captured screenshot with the
+packaged `tesseract.js` dependency, runs content rules over the recognized text,
+and cross-checks the result against the DOM verdict already in `report.json`.
+The OCR engine is installed by the normal workspace `bun install`; if it is
+missing or cannot initialize, the gate fails instead of skipping the check.
 
 ## What it produces
 
@@ -27,8 +29,8 @@ against the DOM verdict already in `report.json`.
 
 | File | Role |
 |------|------|
-| `scripts/ocr-vision.swift` | Batch Apple Vision OCR: reads image paths on stdin, emits one NDJSON record per image. On-device, no model download, reports per-line confidence. |
-| `test/ui-smoke/ocr-content-rules.ts` | Pure, dependency-free verdict rules (blank / dev-string / placeholder / expectation). Unit-tested; no Vision, no `page`, no fs. |
+| `scripts/mvp-visual-verify/ocr.mjs` | Shared OCR engine resolver. Prefers packaged `tesseract.js`, with an explicit system `tesseract` fallback for debugging. |
+| `test/ui-smoke/ocr-content-rules.ts` | Pure, dependency-free verdict rules (blank / dev-string / placeholder / expectation). Unit-tested; no OCR engine, no `page`, no fs. |
 | `test/ui-smoke/ocr-view-expectations.ts` | Per-builtin-view expectation manifest (required/forbidden on-screen labels), seeded from the real OCR of a healthy capture. |
 | `test/ui-smoke/ocr-triage-baseline.json` | `slug::viewport` of pixel-broken renders already tracked by an issue. Ratchet posture: known debt is reported but non-gating; a NEW pixel-broken render fails the gate. |
 | `scripts/ocr-triage.ts` | CLI: OCRs a capture dir, applies the rules, cross-checks `report.json`, writes `ocr-triage.json`, exits non-zero on a new regression. |
@@ -42,7 +44,7 @@ bun scripts/ocr-triage.ts \
   --audit-dir aesthetic-audit-output \
   --baseline test/ui-smoke/ocr-triage-baseline.json
 
-# Reuse a precomputed OCR pass instead of re-running Vision:
+# Reuse a precomputed OCR pass instead of re-running OCR:
 bun scripts/ocr-triage.ts --audit-dir <dir> --ocr <ocr.ndjson> --baseline <file>
 ```
 

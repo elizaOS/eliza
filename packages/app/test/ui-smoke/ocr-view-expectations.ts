@@ -1,8 +1,8 @@
 /**
  * What each builtin view's pixels must show to count as correctly rendered.
  *
- * Seeded from the real Apple Vision OCR of the committed all-views capture, so
- * every label here is one the OCR actually reads off a healthy render. Labels are
+ * Seeded from the real OCR of the committed all-views capture, so every label
+ * here is one the packaged engine actually reads off a healthy render. Labels are
  * chosen for OCR stability — short, high-contrast chrome text ("Ask Eliza",
  * "Settings", section headers) rather than long body copy that garbles — and kept
  * deliberately loose (`requireAny` for time-of-day/empty-vs-populated states) so a

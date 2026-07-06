@@ -1,6 +1,6 @@
 /**
  * Unit tests for the pixel-truth OCR content rules. Pure functions over
- * hand-authored OCR fixtures — no Vision, no screenshots — so every verdict
+ * hand-authored OCR fixtures — no OCR engine, no screenshots — so every verdict
  * branch (blank, dev-string leak, placeholder, missing/forbidden expectation,
  * positive verify) is exercised deterministically.
  */
@@ -61,6 +61,18 @@ describe("evaluateOcrContent", () => {
     const f = evaluateOcrContent({ ocr: ocr("", { ok: false, words: 0 }) });
     expect(f.verdict).toBe("broken");
     expect(f.reasons[0]).toMatch(/decode/);
+  });
+
+  it("marks an OCR engine failure broken with the real reason", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr("", {
+        ok: false,
+        words: 0,
+        reason: "tesseract.js worker initialization timed out",
+      }),
+    });
+    expect(f.verdict).toBe("broken");
+    expect(f.reasons[0]).toMatch(/tesseract\.js/);
   });
 
   it("catches a blank paint on a non-exempt view (the DOM-metric blind spot)", () => {

@@ -12,7 +12,7 @@
  * missing the label it exists to show. Only the rendered pixels reveal those, and
  * the rules here operate on the OCR of those pixels.
  *
- * Kept dependency-free (no Vision, no `page`, no fs) so it unit-tests as pure
+ * Kept dependency-free (no OCR engine, no `page`, no fs) so it unit-tests as pure
  * functions, mirroring how `aesthetic-audit-rules.ts` was extracted from its
  * Playwright spec. The CLI (`ocr-triage.mjs`) and, in CI, the audit spec, supply
  * the OCR and consume the verdict.
@@ -24,8 +24,10 @@ export interface OcrResult {
   text: string;
   lines: string[];
   words: number;
-  /** Mean Vision top-candidate confidence, 0..1. Low + non-empty ⇒ noisy/garbled pixels. */
+  /** Mean OCR confidence, 0..1 when the engine reports it. */
   meanConfidence: number;
+  /** Present when OCR could not read the screenshot because the image or engine failed. */
+  reason?: string;
 }
 
 /**
@@ -143,7 +145,11 @@ export function evaluateOcrContent({
       placeholderLeaks: [],
       missingRequired: [],
       forbiddenPresent: [],
-      reasons: ["screenshot failed to decode"],
+      reasons: [
+        ocr.reason
+          ? `OCR failed: ${ocr.reason}`
+          : "screenshot failed to decode",
+      ],
     };
   }
 
