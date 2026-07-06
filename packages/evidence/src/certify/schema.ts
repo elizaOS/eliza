@@ -18,7 +18,7 @@
 
 import { z } from "zod";
 import { EvidenceValidationError } from "../errors.ts";
-import { isBundleRelativePath, type Tier, TIERS } from "../schema.ts";
+import { isBundleRelativePath, TIERS, type Tier } from "../schema.ts";
 
 export const VERDICT_VALUES = ["pass", "fail", "waived"] as const;
 export type VerdictValue = (typeof VERDICT_VALUES)[number];
@@ -209,7 +209,11 @@ void _verdictContract;
 void _payloadContract;
 void _certificationContract;
 
-function throwInvalid(what: string, described: string, error: z.ZodError): never {
+function throwInvalid(
+  what: string,
+  described: string,
+  error: z.ZodError,
+): never {
   const issues = error.issues.map((issue) => ({
     path: issue.path.map(String).join(".") || "$",
     message: issue.message,

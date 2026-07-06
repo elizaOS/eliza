@@ -38,6 +38,54 @@ whole pipeline (analyzers → VLM Q&A → certify → CI gate) fits together.
   `git init` repos; the only injected seams are the clock (byte-stability)
   and the link function (EXDEV cannot be created portably in one tmp volume).
 
+## Certification (#14546)
+
+`src/certify/` turns a finalized bundle into a signed, offline-verifiable
+promotion claim. Full flow:
+
+1. **bundle** — `bundle:create` (or the orchestrator) finalizes
+   `evidence/runs/<run-id>/`; `finalize()` returns `manifestSha256`.
+2. **rollup** — `certify:rollup -- --bundle <dir> [--requirements <file>]`
+   derives draft verdicts mechanically: lane `lanes/<lane>/result.json`
+   counters (`failed>0` ⇒ fail; `skipped>0` ⇒ fail unless the requirements
+   mark the lane optional-with-reason, then waived — honest-skip, #14506),
+   `analysis.json` expectation failures (non-`pass` verdict or `ok:false`
+   checks ⇒ fail), and required-artifact presence. Unparseable reporter
+   output drafts as fail — a broken reporter is never a green lane.
+3. **review** — an agent or human walks the draft + artifacts, edits the
+   verdicts file. `waived` requires non-empty notes (schema-enforced).
+4. **sign** — `certify:sign -- --bundle <dir> --verdicts <file>
+   --reviewer-id <id> --reviewer-kind <agent|human>` refuses tampered
+   bundles, builds the payload (bundleSha = sha256 of manifest bytes; commit/
+   branch/tier from the integrity-bound `meta.json`), signs Ed25519 over
+   `canonicalJsonBytes(payload-without-signature)`, writes
+   `<bundle>/certification.json` (an envelope file, exempt from the
+   unlisted-file sweep).
+5. **verify** — `certify:verify -- --cert <file> [--bundle <dir>]
+   [--pubkey <pem>] [--expected-commit <sha>] [--max-age-hours N]
+   [--required-tier T] [--json]` — the exact code the #14547 gate runs,
+   fully offline. Exit 0 iff valid; every failure is a distinct typed code
+   (`schema-invalid | unsigned | bad-signature | wrong-key | stale |
+   commit-mismatch | bundle-tampered | verdict-failures |
+   tier-insufficient`) and ALL detectable failures are reported together.
+
+**Threat model.** A valid signature proves a holder of the private key
+signed exactly these verdicts over exactly this bundle manifest for exactly
+this commit — bundleSha binds the manifest, `metaSha256` binds provenance
+transitively. It does NOT prove the review was diligent; the reviewer
+identity `{kind, id, model?}` is in the signed payload for exactly that
+reason. Certification parsing is strict: unknown top-level fields, unknown
+verdict values, traversal/absolute evidence paths, and short commit shas are
+all rejected — forward compat is a `schema` bump, never silent tolerance.
+
+**Key custody.** Public key + trust model + rotation + break-glass:
+`.github/certification/README.md`. The gate MUST read the public key from
+the BASE branch (main), never the PR head. Private key ingress is
+`ELIZA_CERT_SIGNING_KEY` (PEM or base64-wrapped PEM) or `--key-file` only;
+nothing in this package writes a private key to disk or logs one —
+`certify:keygen` prints it only under the explicit `--print-private-key`
+flag.
+
 ## Commands
 
 ```bash
@@ -46,6 +94,10 @@ bun run --cwd packages/evidence typecheck    # tsgo --noEmit
 bun run --cwd packages/evidence lint         # biome
 bun run --cwd packages/evidence bundle:create -- --tier cpu
 bun run --cwd packages/evidence bundle:verify -- evidence/runs/<run-id>
+bun run --cwd packages/evidence certify:keygen -- [--print-private-key]
+bun run --cwd packages/evidence certify:rollup -- --bundle <dir> [--requirements <file>] [--out <file>]
+bun run --cwd packages/evidence certify:sign -- --bundle <dir> --verdicts <file> --reviewer-id <id> --reviewer-kind <agent|human>
+bun run --cwd packages/evidence certify:verify -- --cert <file> [--bundle <dir>] [--json]
 ```
 
 Test-lane membership is declared via `elizaos.scripts.testLanes: ["server"]`
@@ -61,4 +113,10 @@ src/provenance.ts   git facts (fail loud), runner kind, env fingerprint allowlis
 src/ingest.ts       silo definitions + ingestAllSilos / ingestNamedSilo
 src/cli.ts          thin argv/formatting layer over the lib (J1 boundary)
 src/errors.ts       EvidenceError / EvidenceValidationError
+src/certify/
+  schema.ts         strict certification contract + tier ordering
+  keys.ts           Ed25519 keygen/fingerprint/ingress (never writes/logs keys)
+  rollup.ts         mechanical draft verdicts (honest-skip semantics)
+  sign.ts           signCertification / verifyCertification (typed failure codes)
+  cli.ts            certify:keygen|rollup|sign|verify (J1 boundary)
 ```

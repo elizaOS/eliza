@@ -294,8 +294,7 @@ export async function verifyCertification(
           failures.push({
             code: "bundle-tampered",
             message: `bundle unverifiable: ${(error as Error).message}`,
-            context:
-              error instanceof EvidenceError ? { code: error.code } : {},
+            context: error instanceof EvidenceError ? { code: error.code } : {},
           });
         }
       }

@@ -62,6 +62,19 @@ const bundleRelativePath = z.string().refine(isBundleRelativePath, {
     "must be a bundle-relative posix path with no empty, `.`, or `..` segments",
 });
 
+// Prefixes match raw string starts (`visual/` matches `visual/audit/home.png`),
+// so a single trailing slash is legal where a bundle path would reject it.
+const bundlePathPrefix = z
+  .string()
+  .refine(
+    (value) =>
+      isBundleRelativePath(value.endsWith("/") ? value.slice(0, -1) : value),
+    {
+      message:
+        "must be a bundle-relative posix path prefix (a trailing `/` is allowed)",
+    },
+  );
+
 const laneRequirementSchema = z
   .strictObject({
     lane: z.string().min(1),
@@ -86,10 +99,13 @@ const artifactRequirementSchema = z
   .strictObject({
     subject: z.string().min(1),
     path: bundleRelativePath.optional(),
-    pathPrefix: bundleRelativePath.optional(),
+    pathPrefix: bundlePathPrefix.optional(),
   })
   .superRefine((requirement, ctx) => {
-    if ((requirement.path === undefined) === (requirement.pathPrefix === undefined)) {
+    if (
+      (requirement.path === undefined) ===
+      (requirement.pathPrefix === undefined)
+    ) {
       ctx.addIssue({
         code: "custom",
         message: "exactly one of path or pathPrefix is required",
@@ -476,7 +492,9 @@ export function rollupBundle(
     analysesScanned += 1;
     const read = readBundleJson(bundleDir, artifact.path);
     const parsed =
-      "error" in read ? undefined : analysisDocumentSchema.safeParse(read.value);
+      "error" in read
+        ? undefined
+        : analysisDocumentSchema.safeParse(read.value);
     const failures: string[] = [];
     if (parsed === undefined || !parsed.success) {
       failures.push(

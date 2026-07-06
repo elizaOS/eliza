@@ -14,42 +14,9 @@ export {
 } from "./bundle.ts";
 export { canonicalJson, canonicalJsonBytes } from "./canonical.ts";
 export {
-  EvidenceError,
-  type EvidenceErrorOptions,
-  EvidenceValidationError,
-  type ValidationIssue,
-} from "./errors.ts";
-export {
-  type IngestResult,
-  ingestAllSilos,
-  ingestNamedSilo,
-  SILO_NAMES,
-} from "./ingest.ts";
-export {
-  buildEnvFingerprint,
-  collectGitProvenance,
-  type GitProvenance,
-  type ProcessFacts,
-  resolveRunnerKind,
-} from "./provenance.ts";
-export {
-  ARTIFACT_KINDS,
-  type ArtifactEntry,
-  type ArtifactKind,
-  type BundleManifest,
-  type BundleMeta,
-  isBundleRelativePath,
-  parseManifest,
-  parseMeta,
-  RUNNER_KINDS,
-  type RunnerKind,
-  TIERS,
-  type Tier,
-} from "./schema.ts";
-export {
   fingerprintPublicKey,
-  generateCertificationKeypair,
   type GeneratedKeypair,
+  generateCertificationKeypair,
   type ResolveSigningKeyOptions,
   resolveSigningKey,
   SIGNING_KEY_ENV_VAR,
@@ -89,3 +56,36 @@ export {
   signCertification,
   verifyCertification,
 } from "./certify/sign.ts";
+export {
+  EvidenceError,
+  type EvidenceErrorOptions,
+  EvidenceValidationError,
+  type ValidationIssue,
+} from "./errors.ts";
+export {
+  type IngestResult,
+  ingestAllSilos,
+  ingestNamedSilo,
+  SILO_NAMES,
+} from "./ingest.ts";
+export {
+  buildEnvFingerprint,
+  collectGitProvenance,
+  type GitProvenance,
+  type ProcessFacts,
+  resolveRunnerKind,
+} from "./provenance.ts";
+export {
+  ARTIFACT_KINDS,
+  type ArtifactEntry,
+  type ArtifactKind,
+  type BundleManifest,
+  type BundleMeta,
+  isBundleRelativePath,
+  parseManifest,
+  parseMeta,
+  RUNNER_KINDS,
+  type RunnerKind,
+  TIERS,
+  type Tier,
+} from "./schema.ts";

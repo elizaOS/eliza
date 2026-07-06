@@ -28,12 +28,12 @@ import {
   parseVerdictsDocument,
   rollupBundle,
 } from "./rollup.ts";
-import { signCertification, verifyCertification } from "./sign.ts";
 import {
   type CertificationPayload,
   REVIEWER_KINDS,
   type ReviewerKind,
 } from "./schema.ts";
+import { signCertification, verifyCertification } from "./sign.ts";
 
 const USAGE = `Usage:
   certify:keygen  -- [--print-private-key] [--pubkey-out <file>]
@@ -135,11 +135,7 @@ export const DEFAULT_PUBLIC_KEY_RELPATH =
   ".github/certification/certification-public-key.pem";
 
 function runKeygen(argv: string[], io: CliIo): number {
-  const parsed = parseFlags(
-    argv,
-    ["--pubkey-out"],
-    ["--print-private-key"],
-  );
+  const parsed = parseFlags(argv, ["--pubkey-out"], ["--print-private-key"]);
   const keypair = generateCertificationKeypair();
   const pubkeyOut = parsed.flags.get("--pubkey-out");
   if (pubkeyOut !== undefined) {
@@ -388,7 +384,10 @@ async function runVerify(argv: string[], io: CliIo): Promise<number> {
 }
 
 /** Parse argv (without node/script prefix) and run; returns the exit code. */
-export async function runCertifyCli(argv: string[], io: CliIo): Promise<number> {
+export async function runCertifyCli(
+  argv: string[],
+  io: CliIo,
+): Promise<number> {
   const [command, ...rest] = argv;
   try {
     if (command === "keygen") return runKeygen(rest, io);
