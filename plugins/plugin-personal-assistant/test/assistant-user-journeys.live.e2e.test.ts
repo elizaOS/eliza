@@ -590,7 +590,12 @@ function expectContainsAtLeast(
   const matches = fragments.filter((fragment) =>
     normalized.includes(normalizeText(fragment)),
   );
-  expect(matches.length).toBeGreaterThanOrEqual(minimumMatches);
+  // Carry the live response in the failure so a red lane log is reviewable
+  // evidence on its own (these suites run unattended in the HITL lanes).
+  expect(
+    matches.length,
+    `expected >=${minimumMatches} of ${JSON.stringify(fragments)} in live response:\n${text}`,
+  ).toBeGreaterThanOrEqual(minimumMatches);
 }
 
 const selectedLiveProvider = await selectLifeOpsLiveProvider();
