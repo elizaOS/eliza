@@ -103,12 +103,6 @@ import {
   type LifeOpsWorkflowDefinition,
   type LifeOpsWorkflowRun,
 } from "../contracts/index.js";
-import type {
-  LifeOpsCommitmentKind,
-  LifeOpsCommitmentLedgerRecord,
-  LifeOpsCommitmentSource,
-  LifeOpsCommitmentStatus,
-} from "./commitments/index.js";
 import {
   type LifeOpsBriefEngagementEventType,
   type LifeOpsBriefItemEngagementSummary,
@@ -116,6 +110,12 @@ import {
   type LifeOpsBriefItemSource,
   summarizeBriefEngagementRows,
 } from "./briefing/editorial-judgment.js";
+import type {
+  LifeOpsCommitmentKind,
+  LifeOpsCommitmentLedgerRecord,
+  LifeOpsCommitmentSource,
+  LifeOpsCommitmentStatus,
+} from "./commitments/index.js";
 import {
   createConnectorAccountPrivacyPolicy,
   deriveConnectorAccountId,
@@ -2772,7 +2772,7 @@ export class LifeOpsRepository {
             eventType: input.eventType,
             eventAt: input.eventAt,
           },
-          severity: "error",
+          severity: "fatal",
         },
       );
     }
