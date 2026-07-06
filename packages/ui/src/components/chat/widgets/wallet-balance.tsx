@@ -1,13 +1,13 @@
 /**
  * WALLET home widget. A glanceable, chromeless tile on the ember home field
- * showing crypto **unit prices only** — never the amount held or the holding
+ * showing crypto **unit prices only** - never the amount held or the holding
  * value (#10706). Tapping opens the wallet view.
  *
  * Two states, always visible once prices load (#14344): when the user holds ≥1
  * priced token worth ≥ $1, the top-3 held by holding value; otherwise the
  * tracked BTC/SOL/ETH default rows (back-filled from trending movers if the
  * overview is partial). Prices refresh on a 60s document-visibility-gated
- * interval — no polling while the app is backgrounded. It self-hides only when
+ * interval - no polling while the app is backgrounded. It self-hides only when
  * prices are unavailable (both endpoints down / never loaded): the home surface
  * shows no error chrome; the wallet view owns error state (J4).
  */
@@ -20,7 +20,10 @@ import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import type { WidgetProps } from "../../../widgets/types";
 import { Button } from "../../ui/button";
-import { useWidgetNavigation } from "./home-widget-card";
+import {
+  HOME_WIDGET_SOLID_TILE_CLASS,
+  useWidgetNavigation,
+} from "./home-widget-card";
 import {
   type PricedHolding,
   selectDefaultPriceRows,
@@ -43,7 +46,7 @@ function formatPrice(priceUsd: number): string {
       maximumFractionDigits: digits,
     }).format(priceUsd);
   } catch {
-    // error-policy:J3 Intl rejected the locale/currency — plain formatting
+    // error-policy:J3 Intl rejected the locale/currency - plain formatting
     return `$${priceUsd.toFixed(digits)}`;
   }
 }
@@ -147,9 +150,9 @@ export function WalletBalanceWidget(
         .join(", ")}. Open wallet.`}
       onClick={() => nav.openView("/wallet", "wallet")}
       variant="ghost"
-      className={`${spanClassName} group flex h-auto w-full flex-col items-stretch gap-1 rounded-2xl border border-white/55 bg-black/35 px-3 py-2.5 text-left font-normal text-white backdrop-blur-xl transition-[background-color,border-color,opacity] hover:border-white/75 hover:bg-black/45 hover:opacity-90`}
+      className={`${spanClassName} ${HOME_WIDGET_SOLID_TILE_CLASS} flex-col items-stretch gap-1 px-3 py-2.5 font-normal transition-[background-color,border-color,opacity] hover:border-[color:color-mix(in_srgb,var(--brand-white)_34%,var(--brand-black))] hover:bg-[var(--brand-black)] hover:opacity-90`}
     >
-      <span className="flex items-center gap-2 text-xs text-white/65 [&>svg]:h-3.5 [&>svg]:w-3.5">
+      <span className="flex items-center gap-2 text-xs text-[color:color-mix(in_srgb,var(--brand-white)_68%,transparent)] [&>svg]:h-3.5 [&>svg]:w-3.5">
         <Wallet />
         Wallet
       </span>
@@ -161,13 +164,15 @@ export function WalletBalanceWidget(
             data-testid={`wallet-price-row-${h.symbol}`}
             className="flex items-baseline justify-between gap-2 text-sm"
           >
-            <span className="truncate font-medium text-white">{h.symbol}</span>
+            <span className="truncate font-medium text-[var(--brand-white)]">
+              {h.symbol}
+            </span>
             <span className="flex shrink-0 items-baseline gap-1.5">
-              <span className="tabular-nums text-white">
+              <span className="tabular-nums text-[var(--brand-white)]">
                 {formatPrice(h.priceUsd)}
               </span>
               {change ? (
-                <span className="tabular-nums text-xs text-white/75">
+                <span className="tabular-nums text-xs text-[color:color-mix(in_srgb,var(--brand-white)_82%,transparent)]">
                   {change}
                 </span>
               ) : null}

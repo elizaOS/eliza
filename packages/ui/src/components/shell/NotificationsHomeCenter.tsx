@@ -33,6 +33,7 @@ import {
 } from "../../state/notifications/notification-store";
 import { NOTIFICATION_PRIORITY_RANK } from "../../widgets/home-priority";
 import { Button } from "../ui/button";
+import { HOME_GLASS_CLASS } from "./home-glass";
 import { RelativeTime } from "./RelativeTime";
 
 /**
@@ -359,18 +360,10 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
       // The card owns its gap from the editorial header above (mt-4) so a
       // hidden widget (null render) leaves no dead spacer in the column.
       //
-      // Lock-screen glass, not a chrome box: a single hairline border + a
-      // faintly translucent surface over the wallpaper (backdrop-blur where
-      // supported), no heavy filled card. This reads as an iOS lock-screen
-      // notification stack sitting on the home field rather than an app card.
-      //
-      // Blur audit (spec §C.4 item 4): stepped `backdrop-blur-xl` →
-      // `backdrop-blur-md`. A full-strength blur over the animated wallpaper is
-      // a per-frame compositing cost on iOS Safari that the always-mounted home
-      // pays forever; `md` still reads as glass. The `supports-[backdrop-filter]`
-      // translucency stays the primary low-end path (an opaque-enough surface
-      // where blur is unsupported), so legibility never depends on the blur.
-      className="mt-4 flex flex-col overflow-hidden rounded-2xl border border-white/55 bg-black/35 text-white backdrop-blur-md supports-[backdrop-filter]:bg-black/30"
+      // Lock-screen glass, not a chrome box: a single shared recipe owns the
+      // entire home backdrop-filter budget. Ranked widgets stay solid token
+      // tiles, so adding residents never adds more blur surfaces.
+      className={HOME_GLASS_CLASS}
     >
       <style>{NOTIF_SCROLL_CSS}</style>
       {/* Pinned header: a quiet eyebrow + unread count, actions to the right.

@@ -20,7 +20,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Auth gate (#11084) — mutable so tests can flip the session state. Default
+// Auth gate (#11084) - mutable so tests can flip the session state. Default
 // authenticated so the pre-gate behavior tests exercise the live poll path.
 const { authMock } = vi.hoisted(() => ({
   authMock: { authenticated: true },
@@ -38,6 +38,8 @@ vi.mock("../../../api", () => ({
 
 const navOpenView = vi.fn();
 vi.mock("./home-widget-card", () => ({
+  HOME_WIDGET_SOLID_TILE_CLASS:
+    "group relative flex h-auto w-full overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--brand-white)_20%,var(--brand-black))] bg-[var(--brand-black)] text-left text-[var(--brand-white)]",
   useWidgetNavigation: () => ({ openView: navOpenView, openTab: vi.fn() }),
 }));
 
@@ -146,7 +148,7 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     ).toBeTruthy();
   });
 
-  it("renders price-only rows for held assets — no amount or holding value", async () => {
+  it("renders price-only rows for held assets - no amount or holding value", async () => {
     getWalletBalances.mockResolvedValue(
       balances([
         { symbol: "USDC", valueUsd: "500" },
