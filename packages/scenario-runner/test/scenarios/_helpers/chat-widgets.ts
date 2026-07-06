@@ -7,9 +7,8 @@
  * `[FOLLOWUPS]` / `[CHECKLIST]` / `[WORKFLOW]`). `uiWidgetsGuideSeed` registers
  * the REAL provider (imported from the agent package, not a copy) on the
  * scenario runtime so live scenarios exercise the exact guide text production
- * ships. The scenario sender resolves to OWNER (the executor sets
- * ELIZA_ADMIN_ENTITY_ID to the primary room user), so the provider's
- * `roleGate: { minRole: "ADMIN" }` is satisfied on the v5 planner path.
+ * ships. The provider is intentionally not role-gated; channel/context gating is
+ * the production guard, and the scenarios use the same DM/API-style runtime path.
  *
  * The FORM helpers replicate exactly what the dashboard renderer does with a
  * model-emitted `[FORM]` block: parse it with the shared core parser
