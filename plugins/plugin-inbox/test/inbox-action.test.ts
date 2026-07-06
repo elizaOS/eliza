@@ -949,5 +949,42 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
         entryId: "e2",
       });
     });
+
+    it("a snooze chip value round-trips into a successful default snooze of that entry (#14735)", async () => {
+      // The Snooze chip emitted by the triage grammar carries only
+      // `inbox snooze <id>` (no timestamp — a tap has no free text to add and
+      // the value must stay under the 64-byte connector cap). Before this fix
+      // the snooze op threw "valid snooze timestamp is required", so the one
+      // shipped Snooze affordance was a guaranteed error. A bare snooze tap
+      // must now succeed with a sane default window instead of failing.
+      const before = Date.now();
+      const { runtime, calls } = makeDbRuntime((sql) =>
+        sql.startsWith("SELECT") ? [makeTriageRow({ id: "e3" })] : [],
+      );
+
+      // The tapped value is exactly `inbox snooze e3`; the planner maps the
+      // tokens to subaction + entryId with NO `until`/`snoozedUntil` param.
+      const value = "inbox snooze e3";
+      const [, subaction, entryId] = value.split(" ");
+      const result = await callInbox(runtime, makeMessage(value), {
+        subaction,
+        entryId,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({ subaction: "snooze", entryId: "e3" });
+
+      const snoozedUntil = (result.data as { snoozedUntil?: string })
+        .snoozedUntil;
+      expect(typeof snoozedUntil).toBe("string");
+      const untilMs = Date.parse(snoozedUntil ?? "");
+      // Default window is ~24h out: safely in the future, and under two days.
+      expect(untilMs).toBeGreaterThan(before + 20 * 60 * 60 * 1000);
+      expect(untilMs).toBeLessThan(before + 48 * 60 * 60 * 1000);
+
+      const update = calls.find((call) => call.sql.startsWith("UPDATE"));
+      expect(update?.sql).toContain("snoozed_until = ");
+      expect(update?.sql).toContain("resolved = FALSE");
+    });
   });
 });
