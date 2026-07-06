@@ -39,6 +39,7 @@ const DUE_BY_PROMPT: Record<string, boolean> = {
 };
 
 let storedTasks: ScheduledTask[];
+let scheduledInputs: Record<string, unknown>[];
 let resolveNextFireAtCalls: string[];
 let resolveDueDecisionCalls: string[];
 let ownerTimezone: string;
@@ -81,6 +82,14 @@ vi.mock("../lifeops/scheduled-task/service.js", () => ({
     },
     async resolveOwnerFacts() {
       return { timezone: ownerTimezone };
+    },
+    async schedule(input: Record<string, unknown>) {
+      scheduledInputs.push(input);
+      return {
+        ...fakeTask("created-task"),
+        ...input,
+        taskId: "created-task",
+      } as ScheduledTask;
     },
   })),
 }));
@@ -138,6 +147,7 @@ describe("SCHEDULED_TASKS list — dueWindow filter", () => {
       fakeTask("missed-recurring-task"),
       fakeTask("manual-task"),
     ];
+    scheduledInputs = [];
     resolveNextFireAtCalls = [];
     resolveDueDecisionCalls = [];
     ownerTimezone = "UTC";
@@ -218,6 +228,65 @@ describe("SCHEDULED_TASKS list — dueWindow filter", () => {
       (p) => p.name,
     );
     expect(paramNames).toContain("dueWindow");
+  });
+
+  it("normalizes planner create aliases and empty structural objects before scheduling", async () => {
+    const result = await scheduledTaskAction.handler(
+      makeRuntime(),
+      makeMessage(),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          kind: "reminder",
+          promptInstructions: "Remind the user to send the Q3 budget report.",
+          trigger: { fire_at: "2026-07-14T09:30:00Z" },
+          contextRequest: {},
+          shouldFire: {},
+          completionCheck: { type: "user_acknowledged" },
+          output: {},
+          pipeline: {},
+          escalation: {},
+        },
+      },
+      undefined,
+    );
+
+    expect(result.success).toBe(true);
+    expect(scheduledInputs).toHaveLength(1);
+    const input = scheduledInputs[0];
+    expect(input).toMatchObject({
+      trigger: { kind: "once", atIso: "2026-07-14T09:30:00Z" },
+      completionCheck: { kind: "user_acknowledged" },
+      output: { destination: "channel", target: "in_app:room-1" },
+    });
+    expect(input).not.toHaveProperty("contextRequest");
+    expect(input).not.toHaveProperty("shouldFire");
+    expect(input).not.toHaveProperty("pipeline");
+    expect(input).not.toHaveProperty("escalation");
+  });
+
+  it("maps common planner output aliases back to the channel destination", async () => {
+    const result = await scheduledTaskAction.handler(
+      makeRuntime(),
+      makeMessage(),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          kind: "reminder",
+          promptInstructions: "Remind the user to send the Q3 budget report.",
+          trigger: { kind: "once", atIso: "2026-07-14T09:30:00Z" },
+          output: { destination: "push" },
+        },
+      },
+      undefined,
+    );
+
+    expect(result.success).toBe(true);
+    expect(scheduledInputs.at(-1)).toMatchObject({
+      output: { destination: "channel", target: "in_app:room-1" },
+    });
   });
 
   afterEach(() => {

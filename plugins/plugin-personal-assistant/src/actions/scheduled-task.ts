@@ -346,7 +346,17 @@ function normalizeTriggerInput(value: unknown): TriggerNormalization {
     };
   }
   const record = value as Record<string, unknown>;
-  const kindRaw = pickString(record, ["kind", "type"]);
+  const onceAtIso = pickString(record, [
+    "atIso",
+    "fireAtIso",
+    "fireAt",
+    "fire_at",
+    "at",
+    "when",
+    "datetime",
+  ]);
+  const kindRaw =
+    pickString(record, ["kind", "type"]) ?? (onceAtIso ? "once" : null);
   if (!kindRaw) {
     return {
       ok: false,
@@ -375,7 +385,7 @@ function normalizeTriggerInput(value: unknown): TriggerNormalization {
       };
     }
     case "once": {
-      const atIso = pickString(record, ["atIso", "at", "when", "datetime"]);
+      const atIso = onceAtIso;
       if (!atIso || !Number.isFinite(Date.parse(atIso))) {
         return {
           ok: false,
@@ -499,6 +509,93 @@ function stableTriggerKey(trigger: ScheduledTaskTrigger): string {
     .sort()
     .map((key) => `${key}=${JSON.stringify(record[key])}`)
     .join("|");
+}
+
+function nonEmptyRecord<T>(value: T | undefined): T | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  return Object.keys(value).length > 0 ? value : undefined;
+}
+
+function defaultChatOutput(
+  scope: RunnerScope,
+): ScheduledTask["output"] | undefined {
+  return scope.roomId
+    ? { destination: "channel", target: `in_app:${scope.roomId}` }
+    : undefined;
+}
+
+function normalizeOutputDestination(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+function normalizeOutputInput(
+  scope: RunnerScope,
+  output: ScheduledTaskParams["output"],
+): ScheduledTask["output"] | undefined {
+  if (!output || typeof output !== "object" || Array.isArray(output)) {
+    return defaultChatOutput(scope);
+  }
+  if (Object.keys(output).length === 0) {
+    return defaultChatOutput(scope);
+  }
+  const rawDestination =
+    typeof output.destination === "string" ? output.destination.trim() : "";
+  const destination = normalizeOutputDestination(rawDestination);
+  const rawTarget =
+    typeof output.target === "string" && output.target.trim().length > 0
+      ? output.target.trim()
+      : undefined;
+  const inAppTarget =
+    rawTarget ?? (scope.roomId ? `in_app:${scope.roomId}` : "in_app");
+
+  if (
+    destination === "in_app" ||
+    destination === "push" ||
+    destination === "notification" ||
+    destination.startsWith("in_app:")
+  ) {
+    return {
+      ...output,
+      destination: "channel",
+      target: destination.startsWith("in_app:") ? rawDestination : inAppTarget,
+    };
+  }
+
+  if (destination === "channel") {
+    return {
+      ...output,
+      destination: "channel",
+      target: rawTarget ?? inAppTarget,
+    };
+  }
+
+  return output;
+}
+
+function normalizeCompletionCheckInput(
+  value: ScheduledTaskParams["completionCheck"],
+): ScheduledTask["completionCheck"] | undefined {
+  const check = nonEmptyRecord(value);
+  if (!check) return undefined;
+  if (typeof check.kind === "string" && check.kind.trim().length > 0) {
+    return check;
+  }
+  if (typeof (check as { type?: unknown }).type === "string") {
+    const kind = (check as { type: string }).type.trim();
+    if (kind.length > 0) {
+      const { type: _type, ...rest } =
+        check as ScheduledTask["completionCheck"] & {
+          type?: string;
+        };
+      return { ...rest, kind };
+    }
+  }
+  return check;
 }
 
 const DUE_WINDOWS = ["overdue", "today"] as const;
@@ -695,6 +792,8 @@ async function handleCreate(
       data: { subaction: "create", task: duplicate, deduplicated: true },
     };
   }
+  const output = normalizeOutputInput(scope, params.output);
+  const completionCheck = normalizeCompletionCheckInput(params.completionCheck);
   const metadata = {
     ...(params.metadata ?? {}),
     ...(requestedTaskId ? { plannerTaskId: requestedTaskId } : {}),
@@ -709,25 +808,18 @@ async function handleCreate(
       promptInstructions,
       trigger,
       priority,
-      ...(params.contextRequest
+      ...(nonEmptyRecord(params.contextRequest)
         ? { contextRequest: params.contextRequest }
         : {}),
-      ...(params.shouldFire ? { shouldFire: params.shouldFire } : {}),
-      ...(params.completionCheck
-        ? { completionCheck: params.completionCheck }
+      ...(nonEmptyRecord(params.shouldFire)
+        ? { shouldFire: params.shouldFire }
         : {}),
-      ...(params.escalation ? { escalation: params.escalation } : {}),
-      ...(params.output
-        ? { output: params.output }
-        : scope.roomId
-          ? {
-              output: {
-                destination: "channel",
-                target: `in_app:${scope.roomId}`,
-              },
-            }
-          : {}),
-      ...(params.pipeline ? { pipeline: params.pipeline } : {}),
+      ...(completionCheck ? { completionCheck } : {}),
+      ...(nonEmptyRecord(params.escalation)
+        ? { escalation: params.escalation }
+        : {}),
+      ...(output ? { output } : {}),
+      ...(nonEmptyRecord(params.pipeline) ? { pipeline: params.pipeline } : {}),
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
       ...(params.idempotencyKey
         ? { idempotencyKey: params.idempotencyKey }
