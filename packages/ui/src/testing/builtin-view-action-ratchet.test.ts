@@ -19,8 +19,8 @@ const REGISTERED_ACTIONS = new Set([
   "APP",
   "BACKGROUND",
   "CHARACTER",
-  "CONNECTOR",
-  "CREDENTIALS",
+  "PLUGIN",
+  "SECRETS",
   "MODEL_SWITCH",
   "RUNTIME",
   "SCHEDULED_TASKS",
@@ -51,13 +51,7 @@ describe("builtin view action ratchet (#14369)", () => {
         }),
         expect.objectContaining({
           viewId: "plugins-page",
-          semanticActions: [
-            "APP",
-            "SETTINGS",
-            "CONNECTOR",
-            "CREDENTIALS",
-            "RUNTIME",
-          ],
+          semanticActions: ["APP", "SETTINGS", "PLUGIN", "SECRETS", "RUNTIME"],
         }),
         expect.objectContaining({
           viewId: "logs",

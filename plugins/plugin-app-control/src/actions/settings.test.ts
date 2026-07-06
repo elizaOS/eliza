@@ -254,6 +254,39 @@ describe("registry completeness", () => {
 		});
 	});
 
+	it("routes delegated sections to registered canonical actions", async () => {
+		expect(SETTINGS_WRITE_REGISTRY.connectors).toMatchObject({
+			kind: "delegate",
+			action: "PLUGIN",
+		});
+		expect(SETTINGS_WRITE_REGISTRY.secrets).toMatchObject({
+			kind: "delegate",
+			action: "SECRETS",
+		});
+
+		const connector = await invoke({
+			action: "set",
+			section: "connectors",
+			key: "discord",
+			value: "on",
+		});
+		expect(connector.result?.data).toMatchObject({
+			delegateTo: "PLUGIN",
+			section: "connectors",
+		});
+
+		const secrets = await invoke({
+			action: "set",
+			section: "secrets",
+			key: "OPENAI_API_KEY",
+			value: "sk-test",
+		});
+		expect(secrets.result?.data).toMatchObject({
+			delegateTo: "SECRETS",
+			section: "secrets",
+		});
+	});
+
 	it("names only real dedicated actions for delegated sections", () => {
 		const allowed = new Set([
 			"CHARACTER",

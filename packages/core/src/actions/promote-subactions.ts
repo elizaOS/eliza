@@ -262,9 +262,13 @@ function buildVirtualHandler(parent: Action, subaction: string): Handler {
 	};
 }
 
-function buildVirtualValidator(parent: Action): Validator {
+function buildVirtualValidator(parent: Action, subaction: string): Validator {
 	const parentValidate = parent.validate;
-	return parentValidate;
+	if (!parentValidate) return async () => true;
+	return (runtime, message, state, options) => {
+		const merged = mergeOptionsWithSubaction(parent, options, subaction);
+		return parentValidate(runtime, message, state, merged);
+	};
 }
 
 /**
@@ -326,7 +330,7 @@ export function promoteSubactionsToActions(
 			similes,
 			examples,
 			handler: buildVirtualHandler(parent, subKey),
-			validate: buildVirtualValidator(parent),
+			validate: buildVirtualValidator(parent, subKey),
 			parameters: pinDiscriminatorForVirtual(parent.parameters, subKey),
 			contexts: parent.contexts,
 			contextGate: parent.contextGate,
