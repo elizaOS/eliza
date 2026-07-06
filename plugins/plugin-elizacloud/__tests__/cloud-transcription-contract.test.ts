@@ -102,7 +102,7 @@ describe("plugin-elizacloud TRANSCRIPTION param shapes", () => {
     expect(body.get("audio")).toBeInstanceOf(Blob);
   });
 
-  it("accepts { audio: Buffer, language, model } and forwards languageCode", async () => {
+  it("accepts { audio: Buffer, language } and forwards languageCode only", async () => {
     const fetchSpy = mockSttResponse({ text: "param object" });
     const text = await handleTranscription(makeRuntime(), {
       audio: Buffer.from("RIFF....WAVEfmt "),
@@ -113,6 +113,7 @@ describe("plugin-elizacloud TRANSCRIPTION param shapes", () => {
     expect(text).toBe("param object");
     const body = (fetchSpy.mock.calls[0]?.[1] as RequestInit | undefined)?.body as FormData;
     expect(body.get("languageCode")).toBe("de");
+    expect(body.get("model")).toBeNull();
   });
 
   it("fetches a string audio URL through the SSRF guard", async () => {

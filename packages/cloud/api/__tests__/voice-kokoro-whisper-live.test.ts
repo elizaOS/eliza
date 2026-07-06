@@ -33,8 +33,10 @@ async function transcribeAudio(
   mimeType: string,
   language?: string,
 ) {
+  const audioBytes = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(audioBytes).set(bytes);
   const form = new FormData();
-  form.append("file", new File([bytes], filename, { type: mimeType }));
+  form.append("file", new File([audioBytes], filename, { type: mimeType }));
   form.append("model", WHISPER_MODEL);
   if (language) form.append("language", language);
   const sttRes = await fetch(
