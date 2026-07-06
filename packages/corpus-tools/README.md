@@ -43,6 +43,13 @@ The driver refuses `rewrite` and `llm` unless the local ledger contains a green
 `secrets` record for each message, so off-device stages cannot run on raw
 credentials by accident.
 
+Stage `rewrite` runs only in `deep` mode. It replaces gray-area named specifics
+such as employers, projects, cities, and events with stable fictional
+equivalents while preserving the surrounding message structure; `fast-track`
+mode records an explicit skip. The current package-local implementation is the
+deterministic contract harness for the model-backed Cerebras pass, so live
+Cerebras proof still requires `CEREBRAS_API_KEY`.
+
 ## X Mapping
 
 The canonical schema includes platform `x`. The existing LifeOps simulator

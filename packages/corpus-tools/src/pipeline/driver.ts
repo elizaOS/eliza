@@ -15,6 +15,11 @@ import {
 } from "../schema.ts";
 import { findCorpusShardFiles, readCorpusShard } from "../validator.ts";
 import { minePiiCandidates, writeMineArtifacts } from "./mine.ts";
+import {
+  buildRewritePlan,
+  type RewritePlan,
+  rewriteSameThemes,
+} from "./rewrite.ts";
 import { swapPermanentSecrets } from "./secrets.ts";
 
 export const SCRUB_STAGE_NAMES = [
@@ -39,6 +44,7 @@ export interface ScrubStageContext {
   clusterKey: string;
   isClusterExemplar: boolean;
   knownSecrets?: Record<string, string | undefined>;
+  rewritePlan?: RewritePlan;
 }
 
 export interface ScrubStageResult {
@@ -109,6 +115,8 @@ export interface ScrubStageReport {
   estimatedUsd: number;
   candidateCount?: number;
   secretReplacementCount?: number;
+  rewriteReplacementCount?: number;
+  rewriteSkipped?: number;
 }
 
 export interface ScrubRunReport {
@@ -371,6 +379,36 @@ function defaultStage(stage: ScrubStageName): ScrubStageDefinition {
           cost: ZERO_COST,
         };
       }
+      if (stage === "rewrite") {
+        const next = stableCloneMessage(message);
+        if (context.mode === "fast-track") {
+          next.scrubState = targetState;
+          return {
+            message: next,
+            metadata: {
+              rewriteSkipped: 1,
+            },
+            cost: ZERO_COST,
+          };
+        }
+        const rewritten = rewriteSameThemes(
+          message,
+          context.rewritePlan ?? { surrogates: [] },
+        );
+        return {
+          message: rewritten.message,
+          metadata: {
+            rewriteReplacementCount: rewritten.replacements.length,
+          },
+          cost: {
+            inputTokens: Math.ceil(message.text.length / 4),
+            outputTokens: Math.ceil(rewritten.message.text.length / 4),
+            estimatedUsd:
+              0.0000006 * (message.text.length + rewritten.message.text.length),
+            llmCalls: 1,
+          },
+        };
+      }
       const next = stableCloneMessage(message);
       next.scrubState = targetState;
       const mined =
@@ -511,6 +549,10 @@ export async function runScrubPipeline(
     const stage = stages[stageIndex];
     const report = stageReports[stageIndex];
     const nextMessages: CorpusMessage[] = [];
+    const rewritePlan =
+      stage.name === "rewrite"
+        ? buildRewritePlan(messages, { hashSalt: options.rulesetVersion })
+        : undefined;
     clusterExemplars.clear();
 
     for (const message of messages) {
@@ -570,6 +612,7 @@ export async function runScrubPipeline(
         clusterKey,
         isClusterExemplar,
         knownSecrets,
+        rewritePlan,
       });
       stageExecutions += 1;
       report.executed += 1;
@@ -596,6 +639,25 @@ export async function runScrubPipeline(
         report.secretReplacementCount =
           (report.secretReplacementCount ?? 0) +
           result.metadata.secretReplacementCount;
+      }
+      if (
+        result.metadata &&
+        typeof result.metadata === "object" &&
+        "rewriteReplacementCount" in result.metadata &&
+        typeof result.metadata.rewriteReplacementCount === "number"
+      ) {
+        report.rewriteReplacementCount =
+          (report.rewriteReplacementCount ?? 0) +
+          result.metadata.rewriteReplacementCount;
+      }
+      if (
+        result.metadata &&
+        typeof result.metadata === "object" &&
+        "rewriteSkipped" in result.metadata &&
+        typeof result.metadata.rewriteSkipped === "number"
+      ) {
+        report.rewriteSkipped =
+          (report.rewriteSkipped ?? 0) + result.metadata.rewriteSkipped;
       }
       const output = result.tombstone ? undefined : result.message;
       if (!result.tombstone && !output) {
