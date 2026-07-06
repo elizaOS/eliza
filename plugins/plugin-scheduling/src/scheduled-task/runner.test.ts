@@ -1576,3 +1576,40 @@ describe("Inspect registries", () => {
     );
   });
 });
+
+describe("ScheduledTaskRunner — resolveNextFireAt (due-window primitive)", () => {
+  it("projects a once trigger's fire instant and clears it after firing", async () => {
+    const h = makeHarness("2026-05-09T12:00:00.000Z");
+    const task = await h.runner.schedule(
+      baseInput({
+        trigger: { kind: "once", atIso: "2026-05-09T15:00:00.000Z" },
+      }),
+    );
+    expect(await h.runner.resolveNextFireAt(task)).toBe(
+      "2026-05-09T15:00:00.000Z",
+    );
+  });
+
+  it("honors the scheduled-override (snooze) instant over the trigger", async () => {
+    const h = makeHarness("2026-05-09T12:00:00.000Z");
+    const task = await h.runner.schedule(
+      baseInput({
+        trigger: { kind: "cron", expression: "0 9 * * *", tz: "UTC" },
+      }),
+    );
+    const snoozed = await h.runner.apply(task.taskId, "snooze", {
+      untilIso: "2026-05-09T13:30:00.000Z",
+    });
+    expect(await h.runner.resolveNextFireAt(snoozed)).toBe(
+      "2026-05-09T13:30:00.000Z",
+    );
+  });
+
+  it("returns null for triggers with no wall-clock fire time", async () => {
+    const h = makeHarness();
+    const manual = await h.runner.schedule(
+      baseInput({ trigger: { kind: "manual" } }),
+    );
+    expect(await h.runner.resolveNextFireAt(manual)).toBeNull();
+  });
+});

@@ -545,6 +545,18 @@ export interface ScheduledTaskRunnerExtras {
    * `null` when the task is not found or has no cursor recorded yet.
    */
   getEscalationCursor(taskId: string): Promise<EscalationCursorView | null>;
+  /**
+   * Project the next wall-clock fire instant for a task, honoring the same
+   * scheduled-override and recurrence rules the runner uses to index
+   * `next_fire_at`. Returns `null` for triggers with no wall-clock time
+   * (`event`/`manual`/`after_task`) or settled non-recurring rows.
+   *
+   * Exposed so consumers that need a due-window view (e.g. the
+   * `SCHEDULED_TASKS` action's "overdue"/"today" list filter) share the one
+   * next-fire computation instead of re-deriving it and drifting from the
+   * indexed value the tick relies on.
+   */
+  resolveNextFireAt(task: ScheduledTask): Promise<string | null>;
 }
 
 export interface ScheduledTaskRunnerHandle
@@ -1685,5 +1697,6 @@ export function createScheduledTaskRunner(
     rolloverStateLog,
     inspectRegistries,
     getEscalationCursor,
+    resolveNextFireAt,
   };
 }
