@@ -13,6 +13,7 @@ import { useAppSelector } from "../../state";
 import {
   initNotifications,
   registerNotificationToastSink,
+  seedDevNotificationsIfEmpty,
 } from "../../state/notifications/notification-store";
 import { initPushRegistration } from "../../state/notifications/push-registration";
 import { goHome } from "../../state/shell-surface-store";
@@ -27,6 +28,14 @@ export function NotificationsShellBoot(): null {
     // Native-only, gated on granted permission, guarded against double-register.
     // The token POST is what makes the server's APNs/FCM stack a live pipeline.
     void initPushRegistration();
+    // Dev builds only: paint the demo spread when the inbox is empty so the
+    // inline home notification surface is visible by default while developing.
+    // Prod bundles compile `import.meta.env.DEV` to false, so this is stripped.
+    try {
+      if (import.meta.env?.DEV) void seedDevNotificationsIfEmpty();
+    } catch {
+      // `import.meta.env` unavailable (non-Vite host) — treat as non-dev.
+    }
   }, []);
 
   // The single shared toast sink: interrupt-worthy notifications surface as
