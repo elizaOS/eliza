@@ -21,7 +21,9 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
+import { openSync } from "node:fs";
 import fs from "node:fs/promises";
+import path from "node:path";
 import {
   cacheDir,
   findFreePort,
@@ -159,9 +161,14 @@ async function serve({ setKey, parallel, requestedPort }) {
     "--port",
     String(port),
   ];
-  // detached so the resident server outlives this launcher process.
+  // The server is detached so it outlives this launcher, and its stdout/stderr
+  // go to a log file rather than being inherited — inheriting the pipe would
+  // keep this launcher's process alive after readiness, which is not what a
+  // "start it and hand back the shell" command should do.
+  const logPath = path.join(cacheDir(), `llama-server.${setKey}.log`);
+  const logFd = openSync(logPath, "a");
   const child = spawn("llama-server", args, {
-    stdio: ["ignore", "inherit", "inherit"],
+    stdio: ["ignore", logFd, logFd],
     detached: true,
   });
   child.unref();
@@ -173,6 +180,7 @@ async function serve({ setKey, parallel, requestedPort }) {
     model: set.files.model.name,
     repo: set.repo,
     revision: set.revision,
+    logPath,
     startedAt,
   };
   await writeState(state);
@@ -185,10 +193,13 @@ async function serve({ setKey, parallel, requestedPort }) {
     `[gpu-vision]   chat endpoint: ${baseUrl}/v1/chat/completions\n`,
   );
   process.stdout.write(`[gpu-vision]   pid:           ${child.pid}\n`);
+  process.stdout.write(`[gpu-vision]   server log:    ${logPath}\n`);
   process.stdout.write(`[gpu-vision]   state file:    ${serveStatePath()}\n`);
   process.stdout.write(
     `[gpu-vision] stop with: node scripts/gpu-vision/serve.mjs --stop${setKey === "vlm" ? " --vlm" : ""}\n`,
   );
+  // Exit explicitly so the launcher returns the shell; the server keeps running.
+  process.exit(0);
 }
 
 async function main() {

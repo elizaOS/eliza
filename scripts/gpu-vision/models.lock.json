@@ -1,1 +1,18 @@
-{}
+{
+  "sahilchachra/Unlimited-OCR-GGUF@0dc781d8a23f52963918ebd5b2d1b9fe61504661/Unlimited-OCR-Q4_K_M.gguf": {
+    "sha256": "c8461bded976eac709a33f6b26e1414efcd2124a203f2ee93ee984a4c9e9265b",
+    "bytes": 1950326784,
+    "repo": "sahilchachra/Unlimited-OCR-GGUF",
+    "revision": "0dc781d8a23f52963918ebd5b2d1b9fe61504661",
+    "file": "Unlimited-OCR-Q4_K_M.gguf",
+    "url": "https://huggingface.co/sahilchachra/Unlimited-OCR-GGUF/resolve/0dc781d8a23f52963918ebd5b2d1b9fe61504661/Unlimited-OCR-Q4_K_M.gguf"
+  },
+  "sahilchachra/Unlimited-OCR-GGUF@0dc781d8a23f52963918ebd5b2d1b9fe61504661/mmproj-Unlimited-OCR-F16.gguf": {
+    "sha256": "4f28c295e1fcf67a97488e356f2b4372da4702b77fdfad0fa138b5821325743c",
+    "bytes": 811876448,
+    "repo": "sahilchachra/Unlimited-OCR-GGUF",
+    "revision": "0dc781d8a23f52963918ebd5b2d1b9fe61504661",
+    "file": "mmproj-Unlimited-OCR-F16.gguf",
+    "url": "https://huggingface.co/sahilchachra/Unlimited-OCR-GGUF/resolve/0dc781d8a23f52963918ebd5b2d1b9fe61504661/mmproj-Unlimited-OCR-F16.gguf"
+  }
+}
