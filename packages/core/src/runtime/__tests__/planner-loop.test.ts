@@ -218,8 +218,13 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
-	it("bans JSON/tool attempts in the base planner template", () => {
-		expect(plannerTemplate).toContain("function syntax, JSON/tool attempts");
+	it("allows structured chat markers while still banning arbitrary JSON/tool attempts", () => {
+		expect(plannerTemplate).toContain("arbitrary JSON/tool attempts");
+		expect(plannerTemplate).toContain(
+			"Structured chat markers are allowed in messageToUser",
+		);
+		expect(plannerTemplate).toContain("[FORM]\\n{json}\\n[/FORM]");
+		expect(plannerTemplate).toContain("The JSON inside [FORM] is form data");
 	});
 
 	it("forbids phantom in-flight investigative claims in messageToUser/REPLY (planner side)", () => {
