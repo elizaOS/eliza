@@ -43,7 +43,7 @@ def _repo_root_from_variant(variant_dir: Path) -> Path:
 
 
 DEFAULT_CHIP_REPORT = (
-    _repo_root_from_variant(VARIANT_DIR) / "packages/research/chip/build/reports/qemu_virt_smoke.json"
+    _repo_root_from_variant(VARIANT_DIR) / "upstreams/research/chip/build/reports/qemu_virt_smoke.json"
 )
 REPO_ROOT = _repo_root_from_variant(VARIANT_DIR)
 
@@ -109,10 +109,10 @@ def _prepend_path(path: Path) -> None:
 
 def _repo_qemu_candidates() -> tuple[Path, ...]:
     return (
-        REPO_ROOT / "packages/research/chip/tools/bin/qemu-system-riscv64",
-        REPO_ROOT / "packages/research/chip/external/qemu-build/bin/qemu-system-riscv64",
+        REPO_ROOT / "upstreams/research/chip/tools/bin/qemu-system-riscv64",
+        REPO_ROOT / "upstreams/research/chip/external/qemu-build/bin/qemu-system-riscv64",
         REPO_ROOT
-        / "packages/research/chip/external/xpack-qemu-riscv-9.2.4-1/bin/qemu-system-riscv64",
+        / "upstreams/research/chip/external/xpack-qemu-riscv-9.2.4-1/bin/qemu-system-riscv64",
     )
 
 
@@ -714,8 +714,8 @@ def main(argv: list[str] | None = None) -> int:
     if qemu is None:
         message = (
             "STATUS: BLOCKED os_rv64.qemu_virt_smoke - qemu-system-riscv64 not on PATH; "
-            "source packages/research/chip/tools/env.sh (native oss-cad-suite), install a riscv64 "
-            "QEMU system emulator, or stage one at packages/research/chip/tools/bin/qemu-system-riscv64."
+            "source upstreams/research/chip/tools/env.sh (native oss-cad-suite), install a riscv64 "
+            "QEMU system emulator, or stage one at upstreams/research/chip/tools/bin/qemu-system-riscv64."
         )
         write_report(
             args.report,
@@ -727,7 +727,7 @@ def main(argv: list[str] | None = None) -> int:
                 finding(
                     "os_rv64_qemu_system_riscv64_missing",
                     "qemu-system-riscv64 is not on PATH and no repo-local QEMU candidate is executable",
-                    "Source packages/research/chip/tools/env.sh, install a riscv64 QEMU system emulator, or stage one under packages/research/chip/tools/bin.",
+                    "Source upstreams/research/chip/tools/env.sh, install a riscv64 QEMU system emulator, or stage one under upstreams/research/chip/tools/bin.",
                 )
             ],
         )

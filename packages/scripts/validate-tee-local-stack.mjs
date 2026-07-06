@@ -99,38 +99,6 @@ const checks = [
     ],
   },
   {
-    id: "chip-confidential-domain-contract",
-    command: "python3",
-    args: [
-      "packages/research/chip/scripts/check_tee_confidential_domain_contract.py",
-    ],
-    env: { PYTHONDONTWRITEBYTECODE: "1" },
-  },
-  {
-    id: "chip-iopmp-policy",
-    command: "python3",
-    args: ["packages/research/chip/scripts/check_tee_iopmp_policy.py"],
-    env: { PYTHONDONTWRITEBYTECODE: "1" },
-  },
-  {
-    id: "chip-page-state-policy",
-    command: "python3",
-    args: ["packages/research/chip/scripts/check_tee_page_state_policy.py"],
-    env: { PYTHONDONTWRITEBYTECODE: "1" },
-  },
-  {
-    id: "chip-attestation-evidence",
-    command: "python3",
-    args: ["packages/research/chip/scripts/check_tee_attestation_evidence.py"],
-    env: { PYTHONDONTWRITEBYTECODE: "1" },
-  },
-  {
-    id: "chip-side-channel-claims",
-    command: "python3",
-    args: ["packages/research/chip/scripts/check_tee_side_channel_claims.py"],
-    env: { PYTHONDONTWRITEBYTECODE: "1" },
-  },
-  {
     id: "agent-local-tee-smoke",
     command: "bun",
     args: ["run", "packages/agent/scripts/tee-local-smoke.ts"],

@@ -3,7 +3,7 @@
 Date: 2026-05-20
 
 This report maps current TEE research and implementation options onto the
-local `packages/research/chip`, `packages/os`, and `packages/agent` codebase. The target
+local `upstreams/research/chip`, `packages/os`, and `packages/agent` codebase. The target
 product is an Eliza agent running on elizaOS Linux or AOSP, on an eventual
 Eliza RISC-V chip, with end-to-end attestation and key release. The preferred
 long-term shape is a whole-OS confidential domain: the OS, agent runtime, NPU
@@ -20,7 +20,7 @@ Build this in three layers, with a staged fallback path:
 2. **OS second:** make elizaOS Linux and AOSP emit and consume measured-boot
    evidence, then support a protected VM / confidential VM boot path for the
    agent environment.
-3. **Chip third:** evolve `packages/research/chip` from its current secure boot, ePMP,
+3. **Chip third:** evolve `upstreams/research/chip` from its current secure boot, ePMP,
    IOPMP, DICE, and OpenTitan-style research plan into a CoVE-like
    whole-system confidential computing architecture.
 
@@ -32,25 +32,25 @@ plus normal Linux/AOSP execution until the whole-OS TEE is mature.
 
 ## Local Repository Baseline
 
-### `packages/research/chip`
+### `upstreams/research/chip`
 
 The chip package already has a security research spine that aligns with this
 plan:
 
-- `packages/research/chip/research/security_2026/02_analysis/tee_and_confidential_compute.md`
+- `upstreams/research/chip/research/security_2026/02_analysis/tee_and_confidential_compute.md`
   covers RISC-V TEE options, ePMP/Smepmp, IOPMP, Keystone, Penglai, CoVE,
   DICE, SPDM/RATS, and KeyMint.
-- `packages/research/chip/research/security_2026/02_analysis/side_channel_and_tamper.md`
+- `upstreams/research/chip/research/security_2026/02_analysis/side_channel_and_tamper.md`
   covers cache, branch, speculation, DPA/EM, fault injection, RowHammer, cold
   boot, OTP scrambling, active mesh, analog monitors, and v0/v1/v2 posture.
-- `packages/research/chip/research/security_2026/03_implementation/security_path_for_e1.md`
+- `upstreams/research/chip/research/security_2026/03_implementation/security_path_for_e1.md`
   ranks OpenTitan-style RoT, AVB, OTBN/HMAC, dm-verity, ePMP/IOPMP, TRNG, DICE,
   and Keystone/OP-TEE as implementation items.
 
 The package also has architecture docs for boot, memory, interrupts, IOMMU,
-NPU, interconnect, and security under `packages/research/chip/docs/arch/`, plus
-Buildroot/AOSP/Linux scaffolding and NPU runtime packages under `packages/research/chip/sw`
-and `packages/research/chip/compiler/runtime`.
+NPU, interconnect, and security under `upstreams/research/chip/docs/arch/`, plus
+Buildroot/AOSP/Linux scaffolding and NPU runtime packages under `upstreams/research/chip/sw`
+and `upstreams/research/chip/compiler/runtime`.
 
 ### `packages/os`
 
@@ -242,9 +242,9 @@ This is the preferred long-term target.
 **Implementation**
 
 - Specify the confidential physical memory model in
-  `packages/research/chip/docs/arch/memory-subsystem.md` and
-  `packages/research/chip/docs/arch/security.md`.
-- Add a `packages/research/chip/docs/security/confidential-domain.md` contract covering
+  `upstreams/research/chip/docs/arch/memory-subsystem.md` and
+  `upstreams/research/chip/docs/arch/security.md`.
+- Add a `upstreams/research/chip/docs/security/confidential-domain.md` contract covering
   page states: free, private, shared, measured, assigned-device, scrub-pending.
 - Extend IOMMU/IOPMP docs and RTL stubs so each DMA master has a source ID and
   deny-by-default policy.
@@ -289,11 +289,11 @@ and confidential worlds.
 
 **Implementation**
 
-- Add a `packages/research/chip/docs/project/cove-readiness-plan.md` gate tracking
+- Add a `upstreams/research/chip/docs/project/cove-readiness-plan.md` gate tracking
   H-extension, AIA, ePMP, IOPMP, memory ownership, attestation, and QEMU/Salus
   boot evidence.
 - Prototype trusted Linux boot in QEMU/Salus or closest available RISC-V CoVE
-  stack and capture transcripts under `packages/research/chip/docs/evidence/`.
+  stack and capture transcripts under `upstreams/research/chip/docs/evidence/`.
 - Define the monitor ABI and evidence format before RTL hardening.
 - Make "TVM with only virtio-block/virtio-net shared buffers" the first secure
   I/O milestone.
@@ -630,7 +630,7 @@ Deliverables:
 - `packages/agent/src/services/tee-evidence.ts`
 - `packages/agent/src/services/tee-policy.ts`
 - `packages/os/docs/tee-measured-boot-contract.md`
-- `packages/research/chip/docs/security/confidential-domain.md`
+- `upstreams/research/chip/docs/security/confidential-domain.md`
 - Fixed quote/evidence fixtures for tests.
 
 Gates:
@@ -761,7 +761,7 @@ Gates:
 - Add installer/device support matrix for AVF/pKVM or equivalent protected VM
   availability.
 
-### `packages/research/chip`
+### `upstreams/research/chip`
 
 - Promote existing research notes into architecture contracts.
 - Add confidential-domain memory contract.
@@ -915,22 +915,22 @@ Implemented on macOS:
   `packages/os/scripts/validate-tee-measurements.mjs`, with example fixture
   `packages/os/release/schema/tee-measurements.example.json`.
 - Chip confidential-domain contract in
-  `packages/research/chip/docs/security/confidential-domain.md`, machine-readable spec
-  in `packages/research/chip/docs/spec-db/tee-confidential-domain-contract.json`, and
-  checker in `packages/research/chip/scripts/check_tee_confidential_domain_contract.py`.
+  `upstreams/research/chip/docs/security/confidential-domain.md`, machine-readable spec
+  in `upstreams/research/chip/docs/spec-db/tee-confidential-domain-contract.json`, and
+  checker in `upstreams/research/chip/scripts/check_tee_confidential_domain_contract.py`.
 - Chip IOPMP source-ID policy in
-  `packages/research/chip/docs/spec-db/tee-iopmp-source-id-map.json`, checked by
-  `packages/research/chip/scripts/check_tee_iopmp_policy.py`.
+  `upstreams/research/chip/docs/spec-db/tee-iopmp-source-id-map.json`, checked by
+  `upstreams/research/chip/scripts/check_tee_iopmp_policy.py`.
 - Chip confidential-domain page-state transition policy in
-  `packages/research/chip/docs/spec-db/tee-page-state-transitions.json`, checked by
-  `packages/research/chip/scripts/check_tee_page_state_policy.py`.
+  `upstreams/research/chip/docs/spec-db/tee-page-state-transitions.json`, checked by
+  `upstreams/research/chip/scripts/check_tee_page_state_policy.py`.
 - Chip attestation evidence fixture in
-  `packages/research/chip/docs/spec-db/tee-attestation-evidence.example.json`, checked by
-  `packages/research/chip/scripts/check_tee_attestation_evidence.py` against the same
+  `upstreams/research/chip/docs/spec-db/tee-attestation-evidence.example.json`, checked by
+  `upstreams/research/chip/scripts/check_tee_attestation_evidence.py` against the same
   normalized evidence shape consumed by the agent.
 - Chip side-channel claim matrix in
-  `packages/research/chip/docs/spec-db/tee-side-channel-claim-matrix.json`, checked by
-  `packages/research/chip/scripts/check_tee_side_channel_claims.py`.
+  `upstreams/research/chip/docs/spec-db/tee-side-channel-claim-matrix.json`, checked by
+  `upstreams/research/chip/scripts/check_tee_side_channel_claims.py`.
 
 Validation run on macOS:
 
@@ -940,11 +940,11 @@ Validation run on macOS:
 - `node --test packages/os/scripts/__tests__/os-release-scripts.test.mjs`
 - `node packages/os/scripts/validate-tee-measurements.mjs`
 - `node -e "JSON.parse(...elizaos-os-release-manifest.schema.json...)"`
-- `python3 packages/research/chip/scripts/check_tee_confidential_domain_contract.py`
-- `python3 packages/research/chip/scripts/check_tee_iopmp_policy.py`
-- `python3 packages/research/chip/scripts/check_tee_page_state_policy.py`
-- `python3 packages/research/chip/scripts/check_tee_attestation_evidence.py`
-- `python3 packages/research/chip/scripts/check_tee_side_channel_claims.py`
+- `python3 upstreams/research/chip/scripts/check_tee_confidential_domain_contract.py`
+- `python3 upstreams/research/chip/scripts/check_tee_iopmp_policy.py`
+- `python3 upstreams/research/chip/scripts/check_tee_page_state_policy.py`
+- `python3 upstreams/research/chip/scripts/check_tee_attestation_evidence.py`
+- `python3 upstreams/research/chip/scripts/check_tee_side_channel_claims.py`
 - `bun run packages/agent/scripts/tee-local-smoke.ts`
 - `bun run packages/agent/scripts/tee-full-stack-local.ts`
 - `node packages/agent/scripts/validate-tee-deployment.mjs packages/agent/tee/dstack-agent-deployment.example.json packages/agent/tee/revocations.example.json`

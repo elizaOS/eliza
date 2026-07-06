@@ -7,7 +7,7 @@ release-manifest promotion. It refuses to pass until the qemu-virt boot
 transcript exists, hashes match, the GRUB EFI RISC-V boot path is visible
 in the transcript, and every required evidence row has been collected.
 
-Classification policy (matches ``packages/research/chip/scripts/aggregate_tapeout_readiness.py``):
+Classification policy (matches ``upstreams/research/chip/scripts/aggregate_tapeout_readiness.py``):
 
 * ``PASS``     — every required evidence row is present and the qemu-virt /
                  GRUB EFI evidence files pass the structural + content checks.
@@ -55,7 +55,7 @@ _MALFORMED_INPUT_ERRORS: tuple[type[BaseException], ...] = (
 
 VARIANT_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = VARIANT_DIR.parents[3]
-DEFAULT_REPORT = REPO_ROOT / "packages/research/chip/build/reports/release_manifest.json"
+DEFAULT_REPORT = REPO_ROOT / "upstreams/research/chip/build/reports/release_manifest.json"
 RELEASE_SCHEMA = (
     REPO_ROOT / "packages/os/release/schema/elizaos-os-release-manifest.schema.json"
 )
@@ -166,7 +166,7 @@ def _recapture_commands(manifest_path: Path, message: str) -> list[str]:
     iso = f"packages/os/linux/elizaos/out/{filename}" if isinstance(filename, str) else "<iso>"
     qemu_evidence = "packages/os/linux/elizaos/evidence/qemu_virt_boot.json"
     transcript = "packages/os/linux/elizaos/evidence/qemu_virt_boot.transcript.log"
-    qemu_report = "packages/research/chip/build/reports/qemu_virt_smoke.json"
+    qemu_report = "upstreams/research/chip/build/reports/qemu_virt_smoke.json"
     commands = [
         (
             "python3 packages/os/linux/elizaos/scripts/qemu_virt_smoke.py "
@@ -175,7 +175,7 @@ def _recapture_commands(manifest_path: Path, message: str) -> list[str]:
         ),
         (
             "python3 packages/os/linux/elizaos/scripts/check_release_manifest.py "
-            "--report packages/research/chip/build/reports/release_manifest.json"
+            "--report upstreams/research/chip/build/reports/release_manifest.json"
         ),
     ]
     if "manifest" in message and "evidence" not in message:

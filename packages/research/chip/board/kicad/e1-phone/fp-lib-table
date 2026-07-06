@@ -1,3 +1,0 @@
-(fp_lib_table
-  (lib (name "e1-phone-dev")(type "KiCad")(uri "${KIPRJMOD}/e1-phone-dev.pretty")(options "")(descr "E1 phone non-release development footprints with CAD envelope STEP bindings"))
-)

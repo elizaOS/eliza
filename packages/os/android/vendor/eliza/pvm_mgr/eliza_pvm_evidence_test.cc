@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Host unit tests for the eliza_pvm_mgr bring-up TeeEvidence assembly. These
-// validate the same shape that packages/research/chip/scripts/check_aosp_tee_contract.py
+// validate the same shape that upstreams/research/chip/scripts/check_aosp_tee_contract.py
 // validates, with no Android/hardware dependency:
 //   - golden measurements parse out of the tee-measurements.json schema,
 //   - assembled evidence carries the contracted (non-simulated) kind/provider,

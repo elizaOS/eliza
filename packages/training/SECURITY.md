@@ -151,5 +151,5 @@ audit-log line shows the new ``sha256_prefix``.
      ``GET /v1/creds/:name`` against Steward and point production
      ``ELIZA_STEWARD_CREDS_URL`` at it.
   4. **Firmware signing.** Scaffolding lives in
-     ``packages/research/chip/fw/signing/`` but no firmware blob has been signed
+     ``upstreams/research/chip/fw/signing/`` but no firmware blob has been signed
      yet; that needs the hardware-backed signing key to be provisioned.

@@ -1,7 +1,0 @@
-E1 phone supplier-return placeholder
-lane: battery
-function: battery_pack
-evidence_class: recommended_land_pattern
-expected_intake_path: board/kicad/e1-phone/production/sourcing/battery_pack/recommended-land-pattern.pdf
-release_credit: false
-This is not supplier evidence. Replace with signed supplier artifact.

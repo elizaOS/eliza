@@ -159,9 +159,6 @@
       "@elizaos/plugin-agent-skills": [
         "./plugins/plugin-agent-skills/dist/index.d.ts"
       ],
-      "@elizaos/plugin-ainex": [
-        "./plugins/plugin-ainex/dist/index.d.ts"
-      ],
       "@elizaos/plugin-anthropic": [
         "./plugins/plugin-anthropic/dist/index.d.ts"
       ],
@@ -369,9 +366,6 @@
       "@elizaos/plugin-native-settings": [
         "./plugins/plugin-native-settings/dist/index.d.ts"
       ],
-      "@elizaos/plugin-nearai": [
-        "./plugins/plugin-nearai/dist/node/index.d.ts"
-      ],
       "@elizaos/plugin-ngrok": [
         "./plugins/plugin-ngrok/dist/index.d.ts"
       ],
@@ -429,17 +423,11 @@
       "@elizaos/plugin-shell": [
         "./plugins/plugin-shell/dist/index.d.ts"
       ],
-      "@elizaos/plugin-shopify": [
-        "./plugins/plugin-shopify/dist/index.d.ts"
-      ],
       "@elizaos/plugin-signal": [
         "./plugins/plugin-signal/dist/index.d.ts"
       ],
       "@elizaos/plugin-slack": [
         "./plugins/plugin-slack/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-social-alpha": [
-        "./plugins/plugin-social-alpha/dist/index.d.ts"
       ],
       "@elizaos/plugin-sql": [
         "./plugins/plugin-sql/src/dist/index.node.d.ts"
@@ -531,9 +519,6 @@
       "@elizaos/plugin-xai/*": [
         "./plugins/plugin-xai/*"
       ],
-      "@elizaos/plugin-xr": [
-        "./plugins/plugin-xr/dist/index.d.ts"
-      ],
       "@elizaos/plugin-zai": [
         "./plugins/plugin-zai/dist/node/index.d.ts"
       ],
@@ -542,9 +527,6 @@
       ],
       "@elizaos/registry": [
         "./packages/registry/src/index.ts"
-      ],
-      "@elizaos/robot": [
-        "./packages/research/robot/dist/index.d.ts"
       ],
       "@elizaos/scenario-runner": [
         "./packages/scenario-runner/dist/index.d.ts"

@@ -19,7 +19,7 @@ It owns the OS half of the contracts already defined in:
   measurement set and key-release rules.
 - `packages/os/docs/tee-protected-agent-vm.md` — the macOS-feasible bridge and
   host↔guest contract.
-- `packages/research/chip/docs/security/tee-plan/06-os-on-tee-software.md` — the chip-side
+- `upstreams/research/chip/docs/security/tee-plan/06-os-on-tee-software.md` — the chip-side
   OS-on-TEE software stack (CoVE/TSM, attestation agent, reproducible image).
 
 It does **not** redefine the agent-side types. The canonical contract is

@@ -6,7 +6,7 @@
  * why):
  *
  *   1. `services/imagegen/backend-selector.ts#TIER_TO_DEFAULT_IMAGE_MODEL`
- *   2. `eliza/packages/research/chip/ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`
+ *   2. `src/services/manifest/catalog/eliza-1-bundle-extras.json#imagegen.perTier`
  *
  * This test asserts they agree, plus that every tier lands on the SD 1.5
  * default until a legacy-free split-diffusion encoder is available.
@@ -24,7 +24,7 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const EXTRAS_PATH = resolve(
 	__dirname,
-	"../../../packages/research/chip/ELIZA_1_BUNDLE_EXTRAS.json",
+	"../src/services/manifest/catalog/eliza-1-bundle-extras.json",
 );
 
 interface ExtrasShape {

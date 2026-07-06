@@ -24,8 +24,8 @@ This file maps every package under `packages/` to its docs-site coverage. Mainta
 | `packages/cloud-frontend/`       | Cloud     | `tracks/cloud/overview.mdx`, `guides/cloud.md`                       |
 | `packages/cloud/sdk/`            | Cloud     | `tracks/cloud/*.mdx`                                                 |
 | `packages/cloud/shared/`         | Cloud     | (shared schemas; consumed by cloud track)                            |
-| `packages/research/chip/`                 | Chip      | `tracks/chip/*.mdx`                                                  |
-| `packages/research/robot/`                | Robot     | `tracks/training/robot.mdx`                                          |
+| `upstreams/research/chip/`                 | Chip      | `tracks/chip/*.mdx`                                                  |
+| `upstreams/research/robot/`                | Robot     | `tracks/training/robot.mdx`                                          |
 | `packages/feed/`                 | Robot     | `tracks/training/feed.mdx`                                           |
 | `packages/benchmarks/`           | Robot     | `tracks/training/benchmarks.mdx`                                     |
 | `packages/vault/`                | Runtime   | `guides/wallet.md`, `guides/platform-secure-store.md`                |

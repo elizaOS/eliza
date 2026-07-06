@@ -1,5 +1,0 @@
-# sby workspace artifacts
-e1_cache_coherence/
-e1_cache_coherence_cover/
-*.vcd
-*.fst

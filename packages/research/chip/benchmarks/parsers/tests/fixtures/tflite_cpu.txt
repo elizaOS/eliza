@@ -1,4 +1,0 @@
-STARTING!
-Initialized session in 0.876ms.
-count=50 first=900 curr=870 min=820 max=950 avg=875.4 std=18
-Inference timings in us: Init: 876, First inference: 2510, Warmup (avg): 1295.5, Inference (avg): 875.4

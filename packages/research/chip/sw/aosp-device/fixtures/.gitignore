@@ -1,7 +1,0 @@
-# Re-allow the committed reproducible test WAVs that the global *.wav
-# ignore would otherwise drop. The fixtures are small, deterministic
-# outputs of fixtures/scripts/generate_fixtures.py and act as the
-# agent-smoke-riscv64.sh smoke inputs.
-!golden-stt.wav
-!wakeword-stimulus.wav
-!vad-speech-silence.wav

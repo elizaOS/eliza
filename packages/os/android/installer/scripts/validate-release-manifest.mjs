@@ -118,7 +118,7 @@ function releaseArtifactInstructions(
       ? "eliza_ai_soc_riscv64"
       : "generic_android_release",
     build_commands: [
-      'packages/research/chip/sw/aosp-device/build-aosp-riscv64.sh --workspace "$AOSP_WORKSPACE" --lunch-target eliza_openagent_ai_soc_phone-trunk_staging-userdebug --report "$AOSP_WORKSPACE/eliza-build-report.json"',
+      'upstreams/research/chip/sw/aosp-device/build-aosp-riscv64.sh --workspace "$AOSP_WORKSPACE" --lunch-target eliza_openagent_ai_soc_phone-trunk_staging-userdebug --report "$AOSP_WORKSPACE/eliza-build-report.json"',
     ],
     stage_commands: [`mkdir -p "${stageDir}"`, ...copyCommands],
     manifest_update_commands: [

@@ -163,7 +163,7 @@ final OS-image / store-bundle steps require an Apple host.
 
 ## RISC-V cross-build
 
-`verify:riscv64`, `verify:riscv64:e2e`, `build:riscv64-artifacts`,
+`verify:riscv64`, `build:riscv64-artifacts`,
 `check:riscv64-artifacts` cross-compile native plugins for RISC-V Linux.
 The scripts currently invoke bash + `qemu-riscv64-static` for the
 optional smoke phase, which doesn't have a Windows-native equivalent.

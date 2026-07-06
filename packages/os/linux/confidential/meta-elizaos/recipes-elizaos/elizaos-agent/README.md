@@ -29,7 +29,7 @@ installed by the `elizaos-confidential-profile` recipe above.
 Each component digest is recorded in the image manifest so a verifier can
 recompute the golden `os` / `agent` / `policy` / `compose` digests offline. The
 image-manifest schema is shared with the chip lane
-(`packages/research/chip/docs/security/tee-plan/06-os-on-tee-software.md` WI-3).
+(`upstreams/research/chip/docs/security/tee-plan/06-os-on-tee-software.md` WI-3).
 
 Proving command once unblocked:
 

@@ -47,7 +47,7 @@ Both forks consume the same code for everything above the OS layer:
   (`*riscv64*` → architecture `"riscv64"`).
   `DEFAULT_ELIZAOS_IMAGES` is the catalog and validates against the
   same schema.
-- **Firmware sources** — `packages/research/chip/sw/{bootrom, opensbi,
+- **Firmware sources** — `upstreams/research/chip/sw/{bootrom, opensbi,
   buildroot, platform}` for the e1 SoC, shared between both forks
   when the target hardware is e1.
 
@@ -60,13 +60,13 @@ Code that lives in exactly one fork and should not be unified:
 | `packages/app/android/` | AOSP |
 | `packages/app-core/platforms/android/` | AOSP |
 | `packages/app-core/scripts/aosp/` | AOSP |
-| `packages/research/chip/sw/aosp-device/` | AOSP |
+| `upstreams/research/chip/sw/aosp-device/` | AOSP |
 | `packages/os/android/` (system-ui, vendor, installer) | AOSP |
 | `packages/os/setup/` (Pixel/fastboot flasher UI) | AOSP |
 | `packages/os/linux/` (`ELIZAOS_ARCH=amd64`) | Debian (x86_64) |
 | `packages/os/linux/` (`ELIZAOS_ARCH=arm64`) | Debian (arm64) |
 | `packages/os/linux/` (`ELIZAOS_ARCH=riscv64`) | Debian (riscv64) |
-| `packages/research/chip/sw/linux/{configs,dts,drivers}` | Debian (e1) |
+| `upstreams/research/chip/sw/linux/{configs,dts,drivers}` | Debian (e1) |
 
 ## Cross-fork contracts that MUST stay aligned
 
@@ -108,11 +108,8 @@ Changes to any of these need both forks to be re-validated together:
 
 ```bash
 bun run verify:riscv64          # cross-build native plugins (musl)
-bun run verify:riscv64:e2e      # full end-to-end matrix
 ```
 
-The `verify:riscv64:e2e` matrix covers shared code (native plugins,
-schema, USB installer, Bun pipeline, cloud Dockerfiles), AOSP-fork
-specifics (AOSP scripts, seccomp shim, Bun-riscv64 source-build,
-Cuttlefish smoke), and Debian-fork specifics (canonical Linux build path,
-manifest template). Output: `reports/riscv64-end-to-end.md`.
+The optional end-to-end RISC-V matrix now lives with the research checkout
+under `upstreams/research`; the default repo only keeps the native
+cross-build contract.

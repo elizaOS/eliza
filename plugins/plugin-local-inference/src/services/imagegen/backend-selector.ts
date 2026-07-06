@@ -248,7 +248,7 @@ export function selectImageGenBackends(
 
 /**
  * Tier → default image-gen model id. Mirrors
- * `eliza/packages/research/chip/ELIZA_1_BUNDLE_EXTRAS.json` and the WS10 golden test's
+ * `services/manifest/catalog/eliza-1-bundle-extras.json` and the WS10 golden test's
  * `PER_TIER_DEFAULT` map. Used by the WS3 capability registration to
  * resolve the catalog's bare tier id into a concrete diffusion file.
  */

@@ -299,7 +299,7 @@ export const Eliza1FilesSchema = z.object({
 	embedding: z.array(Eliza1FileEntrySchema).optional(),
 	// Optional image-generation artifacts. Most Eliza-1 base bundles do not
 	// carry diffusion weights; those are documented in
-	// packages/research/chip/ELIZA_1_BUNDLE_EXTRAS.json and downloaded on first use. When an
+	// services/manifest/catalog/eliza-1-bundle-extras.json and downloaded on first use. When an
 	// additional bundle ships local image-gen weights inline, list them here
 	// and provide matching `lineage.imagegen`.
 	imagegen: z.array(Eliza1FileEntrySchema).optional(),

@@ -7,7 +7,7 @@ The chip ships with software scaffolds for both Linux and Android pathways:
 
 ## Firmware
 
-`packages/research/chip/fw/` —
+`upstreams/research/chip/fw/` —
 
 - **Boot ROM** — minimal first-stage loader.
 - **Bare-metal** — sandbox payloads for verification.
@@ -15,7 +15,7 @@ The chip ships with software scaffolds for both Linux and Android pathways:
 
 ## Software / BSP
 
-`packages/research/chip/sw/` —
+`upstreams/research/chip/sw/` —
 
 - **OpenSBI** — supervisor firmware.
 - **U-Boot** — second-stage loader.
@@ -26,7 +26,7 @@ These scaffolds let you boot Linux or Android on a simulator or FPGA before sili
 
 ## NPU runtime
 
-`packages/research/chip/compiler/runtime/` holds the Python runtime that talks to the NPU through the published contract. The same runtime drives the simulator and (eventually) silicon, so a compiled model runs identically across paths.
+`upstreams/research/chip/compiler/runtime/` holds the Python runtime that talks to the NPU through the published contract. The same runtime drives the simulator and (eventually) silicon, so a compiled model runs identically across paths.
 
 ## See also
 

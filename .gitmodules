@@ -24,12 +24,6 @@
 	url = https://github.com/elizaOS/opencode.git
 	branch = dev
 
-[submodule "packages/research/robot/vendor/asimov-1"]
-	# ASIMOV-1 public CAD, MuJoCo model, electrical, and fabrication assets.
-	# The robot package generates its profile MJCF from this pinned checkout.
-	path = packages/research/robot/vendor/asimov-1
-	url = https://github.com/asimovinc/asimov-1.git
-	branch = main
 [submodule "upstreams/electrobun"]
 	path = upstreams/electrobun
 	url = https://github.com/elizaOS/electrobun.git

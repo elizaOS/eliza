@@ -1,7 +1,7 @@
 # Eliza E1 — TEE-Native Threat Model and Side-Channel Mitigation Catalog
 
 Date: 2026-05-21
-Lane: cross-cutting / synthesis-spine (sibling to `packages/research/chip` hardware,
+Lane: cross-cutting / synthesis-spine (sibling to `upstreams/research/chip` hardware,
 `packages/os` OS, `packages/agent` agent).
 
 This document is the connective threat model the three layers share. It is the
@@ -96,7 +96,7 @@ attack classes and a layered response.
 ### 1.2 The cryptographic design control — counter-mode + integrity tree (NOT XTS)
 
 The single most important memory decision, already converged with the hardware
-lane (`packages/research/chip/.../00-overview.md` §2.3, `04-side-channel...md` §3), is:
+lane (`upstreams/research/chip/.../00-overview.md` §2.3, `04-side-channel...md` §3), is:
 
 > **The memory-encryption engine (MEE) MUST use counter-mode AES with a
 > per-line monotonic write counter folded into the encryption tweak, backed by a
@@ -123,7 +123,7 @@ Why this is the right control, point by point against the attacks:
 
 **[PERF]** Counter fetch + tree walk is the **dominant** side-channel performance
 cost (counter cache, tree cache, extra DRAM bandwidth). The perf lane
-(`packages/research/chip/.../05-cpu-memory-performance.md`) must budget it explicitly;
+(`upstreams/research/chip/.../05-cpu-memory-performance.md`) must budget it explicitly;
 integrity-tree caching is the primary recovery lever. Target: stay within the
 program's 10% perf budget; **BLOCKED** on a real LPDDR5X controller model for the
 measured figure.
@@ -166,7 +166,7 @@ residual. We say so.
 
 Each row: attack class → representative public attack(s) → the E1 control → which
 layer **owns** it → perf cost vs the 10% budget → evidence status. "Owner" is
-silicon (`packages/research/chip`), OS/monitor (`packages/os` + the M-mode TSM), or agent
+silicon (`upstreams/research/chip`), OS/monitor (`packages/os` + the M-mode TSM), or agent
 (`packages/agent`). This is the master cross-lane table; the chip lane's
 `04-side-channel-physical-hardening.md` holds the RTL-level detail.
 

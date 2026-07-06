@@ -1,5 +1,0 @@
-mach create "eliza-e1"
-machine LoadPlatformDescription @sim/renode/eliza_e1.repl
-sysbus LoadELF @build/qemu/e1_qemu_firmware.elf
-showAnalyzer uart
-start

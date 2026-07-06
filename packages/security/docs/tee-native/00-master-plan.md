@@ -15,7 +15,7 @@ It indexes and reconciles four detailed lane plans produced by a parallel swarm:
 
 | Layer | Detailed plan | Owns |
 |---|---|---|
-| **Hardware** | [`packages/research/chip/docs/security/tee-plan/07-hardware-implementation-plan.md`](../../../chip/docs/security/tee-plan/07-hardware-implementation-plan.md) (consolidates lanes 00–06) | Silicon TEE: TSM, memory isolation+encryption, RoT, secure I/O, side-channel/physical, perf, attestation |
+| **Hardware** | [`upstreams/research/chip/docs/security/tee-plan/07-hardware-implementation-plan.md`](../../../chip/docs/security/tee-plan/07-hardware-implementation-plan.md) (consolidates lanes 00–06) | Silicon TEE: TSM, memory isolation+encryption, RoT, secure I/O, side-channel/physical, perf, attestation |
 | **OS** | [`packages/os/docs/tee-os-implementation-plan.md`](../../os/docs/tee-os-implementation-plan.md) | Confidential-guest boot, dstack/meta-dstack image, measured-boot manifest, kernel hardening, memory policy |
 | **Agent** | [`packages/agent/docs/tee-agent-implementation-plan.md`](../../agent/docs/tee-agent-implementation-plan.md) | Evidence/policy/key-release, confidential-AI unseal, secret gating, dstack provider hardening |
 | **Cross-cut** | [`threat-model-and-sidechannel.md`](threat-model-and-sidechannel.md) · [`attestation-and-dstack-integration.md`](attestation-and-dstack-integration.md) | Threat model, side-channel catalog, the end-to-end attestation chain, dstack verdict |
@@ -80,7 +80,7 @@ are the work.
  └───────────────▲───────────────────────────────────────────┬───────────────┘
                  │ launch evidence + measurements              │ runs as guest
  ┌───────────────┴───────────────────────────────────────────▼───────────────┐
- │ HARDWARE  (packages/research/chip)                                                   │
+ │ HARDWARE  (upstreams/research/chip)                                                   │
  │  OpenTitan Earl Grey RoT (Ibex): ROM • OTP/lifecycle • DICE • CSRNG • KMAC  │
  │     holds CVA6 cluster + PMC in reset; releases only on verified meas. boot │
  │  M-mode TEE Security Manager (TSM, ~10k LoC, Dorami Smepmp wall)            │

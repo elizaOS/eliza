@@ -43,7 +43,6 @@
 
 # ML / training / hardware.
 /packages/training/                     @elizaos/ml-hw-lead
-/packages/research/chip/                         @elizaos/ml-hw-lead
 /packages/feed/                         @elizaos/ml-hw-lead
 
 # Deployment artifacts.

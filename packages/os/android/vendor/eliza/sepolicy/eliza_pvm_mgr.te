@@ -23,7 +23,7 @@
 ### (plan §5 decisions; 06-os-on-tee-software.md §5). On the bring-up track
 ### the management channel runs with confidentiality disabled.
 ###
-### Validated by packages/research/chip/scripts/check_aosp_tee_contract.py.
+### Validated by upstreams/research/chip/scripts/check_aosp_tee_contract.py.
 ###
 
 type eliza_pvm_mgr, domain;

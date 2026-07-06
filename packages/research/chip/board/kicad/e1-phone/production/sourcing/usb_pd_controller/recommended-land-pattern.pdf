@@ -1,7 +1,0 @@
-E1 phone supplier-return placeholder
-lane: charger_pd
-function: usb_pd_controller
-evidence_class: recommended_land_pattern
-expected_intake_path: board/kicad/e1-phone/production/sourcing/usb_pd_controller/recommended-land-pattern.pdf
-release_credit: false
-This is not supplier evidence. Replace with signed supplier artifact.

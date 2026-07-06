@@ -1,1 +1,0 @@
-"""Bridge test suite."""

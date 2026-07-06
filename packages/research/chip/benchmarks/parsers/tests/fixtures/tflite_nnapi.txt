@@ -1,6 +1,0 @@
-STARTING!
-Use NNAPI: [1]
-Number of nodes executed: 10
-NNAPI delegated 7 nodes; 3 fallback to CPU
-Number of unsupported ops: 3
-Inference timings in us: Init: 1500, First inference: 1200, Warmup (avg): 700.0, Inference (avg): 635.7

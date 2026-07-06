@@ -16,7 +16,7 @@
 // bring-up evidence SHAPE with the quote explicitly marked unavailable and with
 // NO confidentiality claims (memoryEncrypted / ioProtected / npuProtected) so
 // it cannot over-claim. The shape is what is validated locally by
-// packages/research/chip/scripts/check_aosp_tee_contract.py.
+// upstreams/research/chip/scripts/check_aosp_tee_contract.py.
 //
 // The assembly logic here is pure (no Android/binder/vsock dependencies) so it
 // is host-compilable and host-testable; the service binary
@@ -59,7 +59,7 @@ struct EvidenceInputs {
 
 // Assembled bring-up evidence, ready to serialize. Mirrors the agent's
 // TeeEvidence shape and the checked-in contract fixture
-// (packages/research/chip/sw/aosp-device/fixtures/tee/pvm-tee-evidence.bringup.json).
+// (upstreams/research/chip/sw/aosp-device/fixtures/tee/pvm-tee-evidence.bringup.json).
 struct BringupEvidence {
   // pVM kind. "pkvm" is in the contracted ALLOWED_PVM_KINDS and is NOT a
   // simulated token (mock/sim/fake/debug), so the production policy accepts the

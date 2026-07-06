@@ -29,12 +29,11 @@ import { describe, expect, it } from "vitest";
 const EXTRAS_PATH = path.resolve(
 	path.dirname(fileURLToPath(import.meta.url)),
 	"..",
-	"..",
-	"..",
-	"packages",
-	"research",
-	"chip",
-	"ELIZA_1_BUNDLE_EXTRAS.json",
+	"src",
+	"services",
+	"manifest",
+	"catalog",
+	"eliza-1-bundle-extras.json",
 );
 
 interface ImageGenEntry {

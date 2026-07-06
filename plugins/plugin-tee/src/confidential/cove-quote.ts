@@ -10,13 +10,13 @@
  *
  * Format conformance. The measurement set, claim derivation, freshness shape,
  * and `reportData` binding mirror the chip-side reference serializer
- * (packages/research/chip/scripts/tee/teeevidence_quote.py): `kind:"cove"`,
+ * (upstreams/research/chip/scripts/tee/teeevidence_quote.py): `kind:"cove"`,
  * `provider:"eliza-riscv"`, `verifier:"eliza-local-verifier"`,
  * `reportData = sha256(nonce_utf8 || ephemeral_pubkey)`. That model is unsigned
  * (the silicon attestation key is BLOCKED there). This module adds the real
  * cryptographic layer the silicon must reproduce: a DICE Ed25519 certificate
  * chain (RoT root -> DeviceID -> per-boot Alias) and an Alias signature over the
- * quote body. The chip DICE lane (packages/research/chip/fw/dice/cdi.{c,h},
+ * quote body. The chip DICE lane (upstreams/research/chip/fw/dice/cdi.{c,h},
  * ed25519_sign.{c,h}) derives DeviceID/Alias as Ed25519 keypairs from
  * CDI_monitor, so Ed25519 is the matching algorithm here (RFC 8032), not P-256.
  *

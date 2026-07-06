@@ -1,5 +1,0 @@
-archived DRAMSim3 behavioural simulation transcript: lpddr5x_10667 stream_copy
-standard=LPDDR5X-10667
-simulated_total_bandwidth_gbps=15.00
-simulated_p95_latency_ns=374.80
-claim_boundary=simulator-only; not physical LPDDR, phone, or release evidence.

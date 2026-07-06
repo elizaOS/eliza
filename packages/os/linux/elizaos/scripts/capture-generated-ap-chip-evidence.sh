@@ -6,8 +6,8 @@ workspace_dir="$(CDPATH='' cd -- "$variant_dir/../../../.." && pwd)"
 boot_transcript="${ELIZA_GENERATED_AP_BOOT_TRANSCRIPT:-$variant_dir/evidence/generated_eliza_ap_boot.transcript.log}"
 agent_transcript="${ELIZA_GENERATED_AP_AGENT_TRANSCRIPT:-$variant_dir/evidence/generated_eliza_ap_agent_live.transcript.log}"
 blocked_report="$variant_dir/evidence/generated_eliza_ap_capture_blocked.json"
-chipyard_smoke_report="$workspace_dir/packages/research/chip/build/chipyard/eliza_rocket/verilator-linux-smoke.json"
-chipyard_smoke_mirror="$workspace_dir/packages/research/chip/build/reports/chipyard_verilator_linux_smoke.json"
+chipyard_smoke_report="$workspace_dir/upstreams/research/chip/build/chipyard/eliza_rocket/verilator-linux-smoke.json"
+chipyard_smoke_mirror="$workspace_dir/upstreams/research/chip/build/reports/chipyard_verilator_linux_smoke.json"
 boot_cmd="${ELIZA_GENERATED_AP_CHIP_BOOT_CMD:-}"
 agent_cmd="${ELIZA_GENERATED_AP_CHIP_AGENT_CMD:-}"
 skip_agent="${ELIZA_GENERATED_AP_SKIP_AGENT:-0}"
@@ -42,7 +42,7 @@ boot_transcript = Path(sys.argv[4])
 agent_transcript = Path(sys.argv[5])
 smoke_candidates = [Path(sys.argv[6]), Path(sys.argv[7])]
 
-sys.path.insert(0, str(workspace_dir / "packages/research/chip/scripts"))
+sys.path.insert(0, str(workspace_dir / "upstreams/research/chip/scripts"))
 from provenance_sanitize import sanitize_host_local_paths  # noqa: E402
 
 

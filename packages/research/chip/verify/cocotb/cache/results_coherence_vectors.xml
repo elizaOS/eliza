@@ -1,9 +1,0 @@
-<testsuites name="results">
-  <testsuite name="all" package="all">
-    <property name="random_seed" value="1779590630" />
-    <testcase name="test_clean_line_probe_invalidate_no_writeback" classname="test_coherence_vectors" file="/home/shaw/eliza/eliza/packages/research/chip/verify/cocotb/cache/test_coherence_vectors.py" lineno="80" time="0.0016913414001464844" sim_time_ns="140.001" ratio_time="82775.12747448549" />
-    <testcase name="test_dirty_line_probe_invalidate_writeback" classname="test_coherence_vectors" file="/home/shaw/eliza/eliza/packages/research/chip/verify/cocotb/cache/test_coherence_vectors.py" lineno="111" time="0.0011582374572753906" sim_time_ns="170.001" ratio_time="146775.60195636065" />
-    <testcase name="test_dirty_line_probe_downgrade_to_shared" classname="test_coherence_vectors" file="/home/shaw/eliza/eliza/packages/research/chip/verify/cocotb/cache/test_coherence_vectors.py" lineno="149" time="0.0011348724365234375" sim_time_ns="170.00099999999998" ratio_time="149797.45258487394" />
-    <testcase name="test_invalidate_miss_no_data" classname="test_coherence_vectors" file="/home/shaw/eliza/eliza/packages/research/chip/verify/cocotb/cache/test_coherence_vectors.py" lineno="184" time="0.0008158683776855469" sim_time_ns="70.00100000000003" ratio_time="85799.37881472828" />
-  </testsuite>
-</testsuites>

@@ -69,4 +69,4 @@ policy without regenerating fails both gates.
 The shared seam across the cloud-TDX and E1-CoVE substrates is the
 **manifest + measurements contract**, not the image builder. The riscv64/E1 path
 reuses this manifest schema, policy blob, and evidence bridge via the chip lane
-(`packages/research/chip/docs/security/tee-plan/06-os-on-tee-software.md`).
+(`upstreams/research/chip/docs/security/tee-plan/06-os-on-tee-software.md`).

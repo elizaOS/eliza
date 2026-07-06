@@ -1,6 +1,0 @@
-read_verilog -sv -formal rtl/dma/e1_dma.sv verify/formal/e1_dma_formal.sv
-prep -top e1_dma_formal
-async2sync
-dffunmap
-flatten
-sat -prove-asserts -seq 12 -verify

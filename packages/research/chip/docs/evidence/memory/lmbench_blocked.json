@@ -1,8 +1,0 @@
-{
-  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
-  "expected_command": "make build && make run",
-  "generated_utc": "2026-05-20T10:12:30Z",
-  "reason": "RV64 cross toolchain or lmbench source absent",
-  "schema": "eliza.memory.lmbench_blocked.v1",
-  "status": "blocked_no_toolchain_or_source"
-}
