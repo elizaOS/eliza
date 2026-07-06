@@ -42,6 +42,7 @@ export type {
   LlmAdapter,
   OptimizationExample,
   OptimizedPromptArtifact,
+  OptimizedPromptContextConfig,
   OptimizerLineageEntry,
   OptimizerName,
   OptimizerResult,
