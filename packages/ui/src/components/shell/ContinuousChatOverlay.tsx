@@ -131,6 +131,7 @@ import {
 } from "./topic-grouping";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import type { ConversationNav, ShellController } from "./useShellController";
+import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 
 /** No-op slash controller so the overlay renders without a provider (stories). */
 const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
@@ -179,9 +180,6 @@ const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
  * in isolation (stories / harness) with a mock. The app wraps it in a small
  * context-reading mount (see App.tsx) that supplies the shared controller.
  */
-
-// Floating (un-scrimmed) text gets a soft shadow so it reads over bright views.
-const FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
 
 // Shared easing for the overlay's cheap motion path. Open/close must stay
 // opacity/translate only: animating blur/filter or scaling a scrollable
@@ -652,11 +650,11 @@ function TurnStatusIndicator({
       <div
         className={cn(
           "rounded-2xl rounded-bl-md border px-3.5 py-2",
-          FLOAT_SHADOW,
+          WALLPAPER_FLOAT_SHADOW,
           // Orange (the accent) ONLY for spoken replies; every other phase is
           // neutral white glass. No blue anywhere.
           // #10698: no own scrim — the shared panel glass carries the contrast;
-          // keep only the tone border (orange when speaking) + FLOAT_SHADOW.
+          // keep only the tone border (orange when speaking) + WALLPAPER_FLOAT_SHADOW.
           speaking ? "border-accent/45" : "border-border",
         )}
       >
@@ -715,7 +713,7 @@ function renderOverlayMessageBody(
       <div
         className={cn(
           "max-w-[85%] rounded-2xl rounded-bl-md border border-accent/30 bg-scrim px-3.5 py-3 text-txt",
-          FLOAT_SHADOW,
+          WALLPAPER_FLOAT_SHADOW,
         )}
       >
         <div className="mb-1 text-[14px] font-medium">
@@ -3847,7 +3845,7 @@ export function ContinuousChatOverlay({
             className={cn(
               "pointer-events-auto h-auto gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
               "border-warn/40 bg-warn/15 text-warn hover:bg-warn/25",
-              FLOAT_SHADOW,
+              WALLPAPER_FLOAT_SHADOW,
             )}
           >
             <Glyph d={SPEAKER_MUTED_GLYPH} />
@@ -4515,7 +4513,11 @@ export function ContinuousChatOverlay({
                 {imageError ? (
                   <p
                     role="alert"
-                    className={cn("text-xs text-red-200/90", FLOAT_SHADOW)}
+                    className={cn(
+                      "text-xs",
+                      WALLPAPER_TEXT.danger,
+                      WALLPAPER_FLOAT_SHADOW,
+                    )}
                   >
                     {imageError}
                   </p>

@@ -35,6 +35,7 @@ import { NOTIFICATION_PRIORITY_RANK } from "../../widgets/home-priority";
 import { Button } from "../ui/button";
 import { HOME_GLASS_CLASS } from "./home-glass";
 import { RelativeTime } from "./RelativeTime";
+import { WALLPAPER_TEXT } from "./wallpaper-idiom";
 
 /**
  * Height cap for the scrolling list (the header stays pinned above it). Sized
@@ -369,7 +370,12 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
       {/* Pinned header: a quiet eyebrow + unread count, actions to the right.
           No boxed bell chip - the label alone names the surface. */}
       <div className="flex shrink-0 items-center gap-1.5 px-3.5 pb-1 pt-2.5">
-        <span className="text-2xs font-medium uppercase tracking-[0.1em] text-white/70">
+        <span
+          className={cn(
+            "text-2xs font-medium uppercase tracking-[0.1em]",
+            WALLPAPER_TEXT.secondary,
+          )}
+        >
           Notifications
         </span>
         {unreadCount > 0 ? (
@@ -388,7 +394,10 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
               aria-label="Mark all read"
               title="Mark all read"
               data-testid="notifications-mark-all-read"
-              className="text-white/70 hover:bg-white/10 hover:text-white"
+              className={cn(
+                WALLPAPER_TEXT.secondary,
+                "hover:bg-white/10 hover:text-white",
+              )}
               onClick={() => void markAllNotificationsRead()}
             >
               <CheckCheck className="h-4 w-4" />
@@ -400,7 +409,10 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
             aria-label="Clear all notifications"
             title="Clear all"
             data-testid="notifications-clear-all"
-            className="text-white/70 hover:bg-white/10 hover:text-white"
+            className={cn(
+              WALLPAPER_TEXT.secondary,
+              "hover:bg-white/10 hover:text-white",
+            )}
             onClick={() => void clearNotifications()}
           >
             <Trash2 className="h-4 w-4" />

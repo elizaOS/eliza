@@ -24,6 +24,7 @@ import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { HomeBackgroundQuickPicker } from "./HomeBackgroundQuickPicker";
 import { HomeGestureHint } from "./HomeGestureHint";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
+import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 
 /**
  * A press that lands on a tile, widget, or any interactive control owns its own
@@ -354,7 +355,9 @@ export function HomeScreen({
                       className={cn(
                         // Naked tile: icon + label sit directly on the ambient
                         // orange field - no fill, no border.
-                        "flex h-auto flex-col items-center gap-1.5 whitespace-normal rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
+                        "flex h-auto flex-col items-center gap-1.5 whitespace-normal rounded-2xl px-1 py-3.5",
+                        WALLPAPER_TEXT.base,
+                        WALLPAPER_FLOAT_SHADOW,
                         // Tactile press: a quick scale-down on tap (stilled for
                         // reduce-motion users), plus a faint white wash on hover.
                         "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",

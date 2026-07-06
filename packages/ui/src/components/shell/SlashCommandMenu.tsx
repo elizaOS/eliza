@@ -18,8 +18,11 @@ import {
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
-
-const FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
+import {
+  WALLPAPER_FLOAT_SHADOW,
+  WALLPAPER_GLASS,
+  WALLPAPER_TEXT,
+} from "./wallpaper-idiom";
 
 export interface SlashMenuItem {
   id: string;
@@ -236,8 +239,10 @@ export function SlashCommandMenu({
       return (
         <div
           className={cn(
-            "absolute bottom-full left-0 right-0 z-10 mb-2 rounded-2xl border border-white/12 bg-black/85 px-4 py-3 text-xs text-white/55",
-            FLOAT_SHADOW,
+            "absolute bottom-full left-0 right-0 z-10 mb-2 rounded-2xl px-4 py-3 text-xs",
+            WALLPAPER_GLASS.menuStatus,
+            WALLPAPER_TEXT.soft,
+            WALLPAPER_FLOAT_SHADOW,
           )}
           role="status"
           data-testid="slash-menu-loading"
@@ -252,8 +257,10 @@ export function SlashCommandMenu({
       return (
         <div
           className={cn(
-            "absolute bottom-full left-0 right-0 z-10 mb-2 rounded-2xl border border-amber-400/25 bg-black/85 px-4 py-3 text-xs text-amber-200/80",
-            FLOAT_SHADOW,
+            "absolute bottom-full left-0 right-0 z-10 mb-2 rounded-2xl px-4 py-3 text-xs",
+            WALLPAPER_GLASS.menuWarning,
+            WALLPAPER_TEXT.warning,
+            WALLPAPER_FLOAT_SHADOW,
           )}
           role="status"
           data-testid="slash-menu-error"
@@ -275,14 +282,16 @@ export function SlashCommandMenu({
       data-testid="slash-command-menu"
       className={cn(
         "absolute bottom-full left-0 right-0 z-10 mb-2 max-h-[min(46vh,22rem)] overflow-y-auto",
-        "rounded-2xl border border-white/14 bg-black/85 py-1.5",
+        "rounded-2xl py-1.5",
+        WALLPAPER_GLASS.menuPanel,
         "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
       )}
     >
       <div
         className={cn(
-          "px-3.5 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-wider text-white/40",
-          FLOAT_SHADOW,
+          "px-3.5 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-wider",
+          WALLPAPER_TEXT.faint,
+          WALLPAPER_FLOAT_SHADOW,
         )}
       >
         {state.headerLabel}
@@ -295,7 +304,7 @@ export function SlashCommandMenu({
         <div
           className={cn(
             "mx-2 mb-1 rounded-lg border border-amber-400/25 bg-amber-400/5 px-2.5 py-1 text-[10px] text-amber-200/80",
-            FLOAT_SHADOW,
+            WALLPAPER_FLOAT_SHADOW,
           )}
           role="status"
           data-testid="slash-menu-partial-error"
@@ -333,8 +342,9 @@ export function SlashCommandMenu({
         >
           <span
             className={cn(
-              "min-w-0 shrink-0 font-mono text-[13px] text-white/95",
-              FLOAT_SHADOW,
+              "min-w-0 shrink-0 font-mono text-[13px]",
+              WALLPAPER_TEXT.strong,
+              WALLPAPER_FLOAT_SHADOW,
             )}
           >
             {item.primary}
@@ -342,8 +352,9 @@ export function SlashCommandMenu({
           {item.secondary ? (
             <span
               className={cn(
-                "min-w-0 flex-1 truncate text-[12px] text-white/55",
-                FLOAT_SHADOW,
+                "min-w-0 flex-1 truncate text-[12px]",
+                WALLPAPER_TEXT.soft,
+                WALLPAPER_FLOAT_SHADOW,
               )}
             >
               {item.secondary}

@@ -11,13 +11,16 @@ import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
 import {
+  WALLPAPER_FLOAT_SHADOW,
+  WALLPAPER_GLASS,
+} from "../../shell/wallpaper-idiom";
+import {
   getChatSourceMeta,
   normalizeChatSourceKey,
 } from "./chat-source.helpers";
 
-/** Soft text shadow for floating (un-scrimmed) glass text so it reads over
- * bright views. Shared with the overlay's other floating chrome. */
-export const GLASS_FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
+/** @deprecated Use WALLPAPER_FLOAT_SHADOW from shell/wallpaper-idiom instead. */
+export const GLASS_FLOAT_SHADOW = WALLPAPER_FLOAT_SHADOW;
 
 /** The overlay's shared easing for cheap (opacity/translate-only) motion. */
 export const GLASS_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -59,8 +62,8 @@ export function ChatBubble({
           "select-text [-webkit-touch-callout:default]",
           // No per-message fill — text floats on the overlay's one shared panel
           // glass; the hairline edge defines the item boundary (#10698).
-          "border border-white/15 text-white",
-          GLASS_FLOAT_SHADOW,
+          WALLPAPER_GLASS.messageBubble,
+          WALLPAPER_FLOAT_SHADOW,
           className,
         )}
         data-chat-source={normalizedSource ?? undefined}
