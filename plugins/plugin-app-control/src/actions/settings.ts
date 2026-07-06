@@ -566,7 +566,12 @@ function readWalletRpcProviderToken(
 	keyName: string,
 	chain: WalletRpcChain,
 ): string | null {
-	const chainSpecific = request[chain];
+	const chainSpecific =
+		chain === "evm"
+			? request.evm
+			: chain === "bsc"
+				? request.bsc
+				: request.solana;
 	if (chainSpecific) return chainSpecific;
 	if (request.provider) return request.provider;
 	return resolveWalletRpcChain(keyName) === chain ? request.value : null;
