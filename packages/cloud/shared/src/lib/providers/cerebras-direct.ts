@@ -14,6 +14,7 @@ import type {
   AIProvider,
   OpenAIChatRequest,
   OpenAIEmbeddingsRequest,
+  ProviderHttpError,
   ProviderRequestOptions,
 } from "./types";
 
@@ -23,6 +24,29 @@ const CEREBRAS_LABEL: ProviderLabel = {
   requestFailedCode: "cerebras_request_failed",
   timeoutCode: "cerebras_timeout",
 };
+
+const RESPONSE_FORMAT_DROPPED_HEADER = "x-eliza-response-format";
+
+function isResponseFormatUnsupported(error: unknown): error is ProviderHttpError {
+  if (!error || typeof error !== "object" || !("status" in error)) {
+    return false;
+  }
+  const httpError = error as ProviderHttpError;
+  if (httpError.status !== 400) return false;
+  const message = httpError.error?.message ?? "";
+  const code = httpError.error?.code ?? "";
+  return /response_format/i.test(`${message} ${code}`);
+}
+
+function withResponseFormatDroppedHeader(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set(RESPONSE_FORMAT_DROPPED_HEADER, "dropped");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 export class CerebrasDirectProvider implements AIProvider {
   name = "cerebras";
@@ -65,16 +89,41 @@ export class CerebrasDirectProvider implements AIProvider {
       messageCount: request.messages.length,
     });
 
-    return await this.fetchWithTimeout(
-      `${this.baseUrl}/chat/completions`,
-      {
-        method: "POST",
-        headers: this.getHeaders(),
-        body: JSON.stringify(body),
-        signal: options?.signal,
-      },
-      options?.timeoutMs,
-    );
+    try {
+      return await this.fetchWithTimeout(
+        `${this.baseUrl}/chat/completions`,
+        {
+          method: "POST",
+          headers: this.getHeaders(),
+          body: JSON.stringify(body),
+          signal: options?.signal,
+        },
+        options?.timeoutMs,
+      );
+    } catch (error) {
+      // error-policy:J4 explicit provider degrade — Cerebras can reject
+      // OpenAI-compatible structured-output hints; retry once without that hint
+      // and mark the response so callers know upstream did not enforce it.
+      if (!request.response_format || !isResponseFormatUnsupported(error)) {
+        throw error;
+      }
+      const { response_format: _responseFormat, ...degradedBody } = body;
+      logger.warn("[Cerebras Direct] Upstream rejected response_format; retrying once without it", {
+        model: degradedBody.model,
+        responseFormatType: request.response_format.type,
+      });
+      const degradedResponse = await this.fetchWithTimeout(
+        `${this.baseUrl}/chat/completions`,
+        {
+          method: "POST",
+          headers: this.getHeaders(),
+          body: JSON.stringify(degradedBody),
+          signal: options?.signal,
+        },
+        options?.timeoutMs,
+      );
+      return withResponseFormatDroppedHeader(degradedResponse);
+    }
   }
 
   async embeddings(_request: OpenAIEmbeddingsRequest): Promise<Response> {
