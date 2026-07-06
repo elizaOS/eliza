@@ -1,7 +1,7 @@
 /**
  * Client store for agent notifications: validates untrusted WS payloads into
  * typed AgentNotification records, tracks unread state, and fans out to the
- * toast + native-notification bridges. Subscribed via useSyncExternalStore.
+ * banner + native-notification bridges. Subscribed via useSyncExternalStore.
  */
 import {
   type AgentNotification,
@@ -16,11 +16,7 @@ import { useSyncExternalStore } from "react";
 import { client } from "../../api/client";
 import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
 import { showNativeNotification } from "../../bridge/native-notifications";
-import {
-  type ActionTone,
-  TOAST_TTL_MS,
-  toastToneForPriority,
-} from "../action-notice";
+import { pushNotificationBanner } from "./notification-banner-store";
 
 /**
  * Notification center store.
@@ -29,10 +25,10 @@ import {
  * notification center. It hydrates the inbox from `GET /api/notifications`
  * once, subscribes to the live WS `agent_event` stream filtered to
  * `stream === "notification"`, and fans each new notification out to the
- * interrupt sinks (desktop OS notification, mobile native notification, and
- * an optional in-app toast registered by the app shell) based on priority and
- * window focus. The inbox itself is always updated — the center is the
- * source-of-truth surface; the OS/toast sinks are best-effort interrupts.
+ * interrupt sinks (desktop OS notification, mobile native notification, and the
+ * in-app top banner queue) based on priority and window focus. The inbox itself
+ * is always updated — the center is the source-of-truth surface; the OS/banner
+ * sinks are best-effort interrupts.
  */
 
 export interface NotificationState {
@@ -40,8 +36,6 @@ export interface NotificationState {
   unreadCount: number;
   hydrated: boolean;
 }
-
-type ToastSink = (text: string, tone?: ActionTone, ttlMs?: number) => void;
 
 let state: NotificationState = {
   notifications: [],
@@ -51,7 +45,6 @@ let state: NotificationState = {
 
 const listeners = new Set<() => void>();
 let initialized = false;
-let toastSink: ToastSink | null = null;
 
 function emit(): void {
   for (const listener of listeners) listener();
@@ -153,20 +146,13 @@ function deliver(notification: AgentNotification): void {
     }).catch(() => {});
   }
 
-  // In-app toast: interruptive priorities always surface a toast; quieter
-  // notifications only toast when the window is focused (so the user who is
-  // looking still gets a glance) and otherwise rely on the OS notification.
-  if (toastSink && (interruptive || focused)) {
-    const text = notification.body
-      ? `${notification.title} — ${notification.body}`
-      : notification.title;
-    toastSink(
-      text,
-      toastToneForPriority(notification.priority),
-      interruptive
-        ? TOAST_TTL_MS.notificationInterruptive
-        : TOAST_TTL_MS.notification,
-    );
+  // In-app banner: interruptive priorities always surface a top banner card;
+  // quieter notifications only banner when the window is focused (so the user
+  // who is looking still gets a glance) and otherwise rely on the OS
+  // notification. The banner is the momentary heads-up; the inbox (updated in
+  // ingest) is the durable record.
+  if (interruptive || focused) {
+    pushNotificationBanner(notification);
   }
 }
 
@@ -346,11 +332,6 @@ export async function seedDevNotificationsIfEmpty(): Promise<void> {
   }
 }
 
-/** Register the in-app toast sink (the app shell wires `setActionNotice`). */
-export function registerNotificationToastSink(sink: ToastSink | null): void {
-  toastSink = sink;
-}
-
 // ── Mutations (optimistic; backed by the HTTP API) ──────────────────────────
 
 /**
@@ -441,7 +422,6 @@ export function __resetNotificationStoreForTests(): void {
   state = { notifications: [], unreadCount: 0, hydrated: false };
   initialized = false;
   devSeedAttempted = false;
-  toastSink = null;
   listeners.clear();
 }
 
