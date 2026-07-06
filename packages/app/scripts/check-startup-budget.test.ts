@@ -16,6 +16,7 @@ import {
   extractTtiMark,
   METRIC_STATUS,
   selectColdRun,
+  shouldPassAfterBaselineUpdate,
 } from "./check-startup-budget.mjs";
 
 function traceRun(kind: string, marks: Array<[string, number]>, extra = {}) {
@@ -229,5 +230,37 @@ describe("evaluateAll", () => {
     // 12.5% > 10% file tolerance → regressed
     expect(res.tolerancePct).toBe(10);
     expect(res.rows[0].status).toBe(METRIC_STATUS.REGRESSED);
+  });
+});
+
+describe("shouldPassAfterBaselineUpdate", () => {
+  it("allows recording over-budget values when every metric updated a budget", () => {
+    expect(
+      shouldPassAfterBaselineUpdate(
+        [
+          {
+            category: "tti",
+            target: "ci-web",
+            status: METRIC_STATUS.OVER_BUDGET,
+          },
+        ],
+        1,
+      ),
+    ).toBe(true);
+  });
+
+  it("fails recording runs that did not map every metric to a budget entry", () => {
+    expect(
+      shouldPassAfterBaselineUpdate(
+        [
+          {
+            category: "build",
+            target: "typo",
+            status: METRIC_STATUS.MISSING_BUDGET,
+          },
+        ],
+        0,
+      ),
+    ).toBe(false);
   });
 });

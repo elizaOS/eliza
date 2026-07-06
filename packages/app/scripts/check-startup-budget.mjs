@@ -158,6 +158,11 @@ const FAILING = new Set([
   METRIC_STATUS.MISSING_BUDGET,
 ]);
 
+const BASELINE_RECORDING_BLOCKERS = new Set([
+  METRIC_STATUS.MISSING_METRIC,
+  METRIC_STATUS.MISSING_BUDGET,
+]);
+
 /**
  * Grade every requested metric. `metrics` is [{ category, target, valueMs }].
  * `ok` is true only when no row failed — that is the gate's exit signal.
@@ -182,6 +187,19 @@ export function evaluateAll({ metrics, budgets, tolerancePct }) {
     ok: rows.every((r) => !FAILING.has(r.status)),
     tolerancePct: tol,
   };
+}
+
+/**
+ * A baseline-recording run may be over budget because the measured value is the
+ * new baseline, but it must still prove every requested metric mapped to a real
+ * budget entry. Otherwise `--update-baseline` would turn a misspelled target
+ * into a green no-op.
+ */
+export function shouldPassAfterBaselineUpdate(rows, updatedCount) {
+  return (
+    updatedCount === rows.length &&
+    rows.every((r) => !BASELINE_RECORDING_BLOCKERS.has(r.status))
+  );
 }
 
 // ── CLI boundary ────────────────────────────────────────────────────────────
@@ -349,10 +367,13 @@ async function main() {
     tolerancePct: args.tolerancePct,
   });
 
+  let updatedBaselines = 0;
   if (args.updateBaseline) {
-    const n = applyBaselineUpdates(budgets, rows);
+    updatedBaselines = applyBaselineUpdates(budgets, rows);
     writeFileSync(args.budgets, `${JSON.stringify(budgets, null, 2)}\n`);
-    console.log(`Recorded ${n} baseline(s) into ${args.budgets}`);
+    console.log(
+      `Recorded ${updatedBaselines} baseline(s) into ${args.budgets}`,
+    );
   }
 
   const report = {
@@ -372,9 +393,16 @@ async function main() {
     console.log(ok ? "\nBudget gate: PASS" : "\nBudget gate: FAIL");
   }
 
-  // --update-baseline is a recording run: never fail the process on the same
-  // pass that just rewrote the baselines (the "regression" is the recording).
-  process.exit(ok || args.updateBaseline ? 0 : 1);
+  // --update-baseline is a recording run: over-budget/regressed values are the
+  // new baseline, but missing metrics/budget entries still mean nothing useful
+  // was recorded.
+  process.exit(
+    ok ||
+      (args.updateBaseline &&
+        shouldPassAfterBaselineUpdate(rows, updatedBaselines))
+      ? 0
+      : 1,
+  );
 }
 
 const isMain =
