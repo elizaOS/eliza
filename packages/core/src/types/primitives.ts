@@ -115,6 +115,16 @@ export interface Content {
 	/** Source/origin of the content (e.g., 'discord', 'telegram') */
 	source?: string;
 
+	/**
+	 * Provenance flag for the humanness voice gate (#14873): `true` marks text
+	 * that is already the agent's own composed voice (a model-generated reply,
+	 * or output the voice gate has already rephrased) so `ensureAgentVoice`
+	 * passes it through untouched instead of double-voicing it. Hardcoded
+	 * templates and raw error strings leave this unset so the gate rephrases
+	 * them into the agent's voice before delivery.
+	 */
+	agentVoiced?: boolean;
+
 	/** Target/destination for responses */
 	target?: string;
 

@@ -1350,6 +1350,12 @@ export {
 } from "./message/fallback-reply";
 
 export {
+	buildVoiceGatePrompt,
+	ensureAgentVoice,
+	type EnsureAgentVoiceOptions,
+} from "./message/voice-gate";
+
+export {
 	type EffectiveMuteState,
 	muteExpiryDue,
 	resolveEffectiveMuteState,

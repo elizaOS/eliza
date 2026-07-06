@@ -11,6 +11,7 @@ import {
   ChannelType,
   ContentType,
   createMessageMemory,
+  ensureAgentVoice,
   getSwarmCoordinatorService,
   type ISwarmCoordinatorService,
   logger,
@@ -130,6 +131,25 @@ export async function routeAutonomyTextToUser(
   ]);
   const isEphemeral = ephemeralSources.has(source);
 
+  // Humanness voice gate (#14873): this is the in-app WebSocket transport for
+  // agent-initiated proactive text. Durable (persisted) proactive messages get
+  // rephrased into the agent's voice before persist + broadcast so a user never
+  // sees a templated proactive string. Ephemeral sources are already
+  // model-composed relays of a sub-agent/coordinator's output, so they skip the
+  // gate; the gate fails open and returns the original text on any outage. The
+  // dedupe below keys on the FINAL delivered text so both delivery paths agree.
+  let deliveredText = normalizedText;
+  if (!isEphemeral) {
+    const voiced = await ensureAgentVoice(
+      runtime,
+      { text: normalizedText, source },
+      { source },
+    );
+    if (typeof voiced.text === "string" && voiced.text.trim().length > 0) {
+      deliveredText = voiced.text.trim();
+    }
+  }
+
   // Cross-path delivery dedupe (Bug A): the same reply may also be delivered
   // by the `client_chat` send handler (client-chat-sender.deliver). If this
   // exact (roomId + text) was just delivered, suppress this relay copy instead
@@ -142,7 +162,7 @@ export async function routeAutonomyTextToUser(
   // transient WS message that vanishes on reconnect/history reload).
   const delivery = isEphemeral
     ? undefined
-    : beginDelivery(state.deliveryDedupe, conv.roomId, normalizedText);
+    : beginDelivery(state.deliveryDedupe, conv.roomId, deliveredText);
   if (delivery?.kind === "duplicate") {
     return;
   }
@@ -155,8 +175,9 @@ export async function routeAutonomyTextToUser(
       entityId: runtime.agentId,
       roomId: conv.roomId,
       content: {
-        text: normalizedText,
+        text: deliveredText,
         source,
+        agentVoiced: true,
       },
     });
     try {
@@ -175,7 +196,7 @@ export async function routeAutonomyTextToUser(
     message: {
       id: messageId,
       role: "assistant",
-      text: normalizedText,
+      text: deliveredText,
       timestamp: Date.now(),
       source,
     },
@@ -745,6 +766,10 @@ async function routeSynthesisToConnector(
       {
         text: resultText,
         source: "swarm_synthesis",
+        // voice-policy:V3 swarm synthesis text is already composed by the model
+        // in the agent's voice; it must not be re-voiced (double-voicing risks
+        // truncating or altering the synthesized result's exact values).
+        agentVoiced: true,
         ...(attachments.length > 0 ? { attachments } : {}),
         ...(replyToExternalMessageId
           ? { inReplyTo: replyToExternalMessageId }

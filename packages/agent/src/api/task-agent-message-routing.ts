@@ -106,7 +106,10 @@ export async function routeTaskAgentTextToConnector(
       channelId: room.channelId ?? room.id,
       serverId: room.serverId ?? undefined,
     } as Parameters<RoutingRuntime["sendMessageToTarget"]>[0],
-    { text, source },
+    // voice-policy:V3 `text` is a sub-agent's already model-composed message
+    // being routed to the origin room; it is the agent's voice already, so the
+    // voice gate must pass it through untouched.
+    { text, source, agentVoiced: true },
   );
   return true;
 }

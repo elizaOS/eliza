@@ -118,6 +118,7 @@ import {
 	describeModelCallError,
 	isModelProviderFallbackError,
 } from "./services/message/fallback-reply";
+import { ensureAgentVoice } from "./services/message/voice-gate";
 import type { TaskService } from "./services/task";
 import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
@@ -10280,7 +10281,14 @@ ${section_end}`;
 			);
 			throw new Error(errorMsg);
 		}
-		const result = await handler(this, target, content);
+		// Humanness voice gate (#14873): this is the connector-transport chokepoint
+		// for every agent-initiated outbound message (scheduled dispatches,
+		// escalations, task-agent routing, raw error strings). Rephrase the literal
+		// into the agent's own voice unless it is already model-voiced
+		// (`content.agentVoiced`); the gate fails open, so a rephrase outage
+		// delivers the original text rather than blocking the send.
+		const voicedContent = await ensureAgentVoice(this, content, { source });
+		const result = await handler(this, target, voicedContent);
 		return result as Memory | undefined;
 	}
 

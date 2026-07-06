@@ -2225,6 +2225,10 @@ export async function handleInboxRoute(
           ...(replyToMessageId ? { inReplyTo: replyToMessageId } : {}),
           source,
           text,
+          // voice-policy:V2 this is the owner's own manually-typed inbox reply —
+          // it is a real person's words, so the voice gate must pass it through
+          // verbatim and never rephrase it.
+          agentVoiced: true,
         },
       );
 
