@@ -14,6 +14,7 @@
     "typecheck": "tsgo --noEmit -p tsconfig.typecheck.json",
     "test": "vitest run --config vitest.config.ts",
     "trace:startup": "node scripts/capture-startup-trace.mjs",
+    "perf:startup-budget": "node scripts/check-startup-budget.mjs",
     "test:dev-smoke": "node scripts/run-ui-playwright.mjs --config playwright.dev-smoke.config.ts",
     "test:hmr": "node scripts/run-ui-playwright.mjs --config playwright.hmr.config.ts",
     "test:e2e": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts",

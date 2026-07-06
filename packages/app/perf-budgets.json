@@ -1,0 +1,41 @@
+{
+  "description": "Mobile cold-boot TTI + build-time budgets and recorded baselines (issue #14414). budgetMs is the hard ceiling the regression gate (scripts/check-startup-budget.mjs) fails past. baselineMs is the last recorded measurement on the named reference target; the gate also fails a measurement that regresses past baselineMs by more than tolerancePct. Record baselines with `--update-baseline` after a capture on the reference target; null baselineMs means not-yet-recorded (skipped by the regression check, still gated by budgetMs).",
+  "tolerancePct": 15,
+  "tti": {
+    "ci-web": {
+      "budgetMs": 4000,
+      "baselineMs": null,
+      "mark": "startup-shell:mounted",
+      "target": "Headless Chromium against the built renderer (packages/app dev server). The CI-runnable TTI path — no device, no model key. Capture: scripts/capture-startup-trace.mjs --out trace.json."
+    },
+    "android-lowram": {
+      "budgetMs": 9000,
+      "baselineMs": null,
+      "mark": "startup-shell:mounted",
+      "target": "Reference low-RAM Android emulator (Pixel-class, 2GB) cold launch to a usable chat shell. Capture: scripts/capture-startup-trace.mjs --url <device-tunnelled WebView>."
+    },
+    "ios-reference": {
+      "budgetMs": 6000,
+      "baselineMs": null,
+      "mark": "startup-shell:mounted",
+      "target": "Reference iPhone simulator cold launch to a usable chat shell. Capture: scripts/ios-device-capture.mjs / scripts/capture-startup-trace.mjs against the sim WebView."
+    }
+  },
+  "build": {
+    "android-apk": {
+      "budgetMs": 900000,
+      "baselineMs": null,
+      "target": "run-mobile-build.mjs android — full web bundle + cap sync + gradle assemble, wall-clock. Emit: ELIZA_MOBILE_BUILD_TIMING_OUT=<file> bun run build:android."
+    },
+    "ios-ipa": {
+      "budgetMs": 900000,
+      "baselineMs": null,
+      "target": "run-mobile-build.mjs ios — full web bundle + cap sync + xcodebuild, wall-clock. Emit: ELIZA_MOBILE_BUILD_TIMING_OUT=<file> bun run build:ios."
+    },
+    "rebuild-loop": {
+      "budgetMs": 60000,
+      "baselineMs": null,
+      "target": "Renderer-only change to on-device visible, warm caches (turbo web bundle + cap sync + incremental native). The inner-loop cost the issue drives toward seconds."
+    }
+  }
+}
