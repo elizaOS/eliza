@@ -443,6 +443,7 @@ export const OVERLAY_NATIVE_OR_CANVAS_SLUGS = new Set([
   "builtin-phone",
   "builtin-messages",
   "builtin-camera",
+  "builtin-tutorial",
   "plugin-phone-gui",
   "plugin-messages-gui",
 ]);
