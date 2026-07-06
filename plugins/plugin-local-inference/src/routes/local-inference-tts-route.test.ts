@@ -163,10 +163,8 @@ describe("local inference TTS route", () => {
 	});
 
 	it("status reports ready when a TEXT_TO_SPEECH handler is registered", async () => {
-		const getModel = vi.fn((type: string, provider?: string) =>
-			type === ModelType.TEXT_TO_SPEECH && provider === "eliza-local-inference"
-				? () => new Uint8Array()
-				: undefined,
+		const getModel = vi.fn((type: string) =>
+			type === ModelType.TEXT_TO_SPEECH ? () => new Uint8Array() : undefined,
 		);
 		const state: CompatRuntimeState = {
 			current: { getModel } as unknown as CompatRuntimeState["current"],

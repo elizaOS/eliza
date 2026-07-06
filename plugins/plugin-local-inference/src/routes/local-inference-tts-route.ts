@@ -141,23 +141,20 @@ function isClosed(res: http.ServerResponse): boolean {
 }
 
 /**
- * True when the runtime has a TEXT_TO_SPEECH handler registered under one of
- * the on-device provider ids the POST path drives (`useLocalInferenceTts`).
+ * True when the runtime has a TEXT_TO_SPEECH handler registered — the same
+ * signal the ASR status route uses for TRANSCRIPTION. The POST path
+ * (`useLocalInferenceTts`) then resolves the concrete on-device provider from
+ * `LOCAL_TTS_PROVIDER_IDS`; readiness only needs to know a synthesizer exists.
  * The client TTS default-resolver probes this so a box without a staged Kokoro
  * voice degrades to Eliza Cloud / ElevenLabs / browser SpeechSynthesis instead
  * of picking `local-inference` and 503-ing on the first utterance.
  */
 function hasLocalInferenceTtsHandler(state: CompatRuntimeState): boolean {
-	const runtime = state.current;
-	const getModel = runtime?.getModel;
-	if (typeof getModel !== "function") return false;
-	for (const provider of LOCAL_TTS_PROVIDER_IDS) {
-		if (getModel.call(runtime, ModelType.TEXT_TO_SPEECH, provider)) {
-			return true;
-		}
-	}
-	// A provider-less lookup covers a handler registered without an explicit id.
-	return Boolean(getModel.call(runtime, ModelType.TEXT_TO_SPEECH));
+	const getModel = state.current?.getModel;
+	return (
+		typeof getModel === "function" &&
+		Boolean(getModel.call(state.current, ModelType.TEXT_TO_SPEECH))
+	);
 }
 
 export async function handleLocalInferenceTtsRoute(
