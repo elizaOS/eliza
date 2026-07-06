@@ -239,6 +239,67 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     expect(task?.promptInstructions).toContain(`reject ${enqueued.id}`);
   }, 60_000);
 
+  it("rolls back the approval row when the ScheduledTask cannot be created", async () => {
+    const failedStateDir = mkdtempSync(
+      join(tmpdir(), "approval-queue-schedule-fail-"),
+    );
+    const failedConfigPath = join(failedStateDir, "eliza.json");
+    writeFileSync(
+      failedConfigPath,
+      JSON.stringify({ logging: { level: "error" } }),
+      "utf8",
+    );
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    const previousConfigPath = process.env.ELIZA_CONFIG_PATH;
+    const previousPersistConfigPath = process.env.ELIZA_PERSIST_CONFIG_PATH;
+    process.env.ELIZA_STATE_DIR = failedStateDir;
+    process.env.ELIZA_CONFIG_PATH = failedConfigPath;
+    process.env.ELIZA_PERSIST_CONFIG_PATH = failedConfigPath;
+    let failedCleanup: (() => Promise<void>) | null = null;
+    try {
+      const result = await createRealTestRuntime({
+        plugins: [personalAssistantPlugin],
+      });
+      failedCleanup = result.cleanup;
+      const failedQueue = createApprovalQueue(result.runtime, {
+        agentId: result.runtime.agentId,
+      });
+
+      await expect(
+        failedQueue.enqueue(
+          messageInput({ subjectUserId: "owner-schedule-fail" }),
+        ),
+      ).rejects.toThrow("failed to schedule approval task");
+
+      await expect(
+        failedQueue.list({
+          subjectUserId: "owner-schedule-fail",
+          state: null,
+          action: null,
+          limit: 10,
+        }),
+      ).resolves.toEqual([]);
+    } finally {
+      await failedCleanup?.();
+      if (previousStateDir === undefined) {
+        delete process.env.ELIZA_STATE_DIR;
+      } else {
+        process.env.ELIZA_STATE_DIR = previousStateDir;
+      }
+      if (previousConfigPath === undefined) {
+        delete process.env.ELIZA_CONFIG_PATH;
+      } else {
+        process.env.ELIZA_CONFIG_PATH = previousConfigPath;
+      }
+      if (previousPersistConfigPath === undefined) {
+        delete process.env.ELIZA_PERSIST_CONFIG_PATH;
+      } else {
+        process.env.ELIZA_PERSIST_CONFIG_PATH = previousPersistConfigPath;
+      }
+      rmSync(failedStateDir, { recursive: true, force: true });
+    }
+  }, 180_000);
+
   it("enqueue → reject records resolver", async () => {
     const enqueued = await queue.enqueue(
       messageInput({ subjectUserId: "owner-reject" }),

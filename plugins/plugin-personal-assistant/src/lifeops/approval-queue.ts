@@ -739,16 +739,29 @@ export class PgApprovalQueue implements ApprovalQueue {
     logger.info(
       `[ApprovalQueue] enqueued ${input.action} for ${input.subjectUserId} as ${id}`,
     );
-    await scheduleApprovalTask(this.runtime, {
-      agentId: this.agentId,
-      requestId: id,
-      subjectUserId: input.subjectUserId,
-      action: input.action,
-      channel: input.channel,
-      reason: input.reason,
-      requestedBy: input.requestedBy,
-      createdAt: now,
-    });
+    try {
+      await scheduleApprovalTask(this.runtime, {
+        agentId: this.agentId,
+        requestId: id,
+        subjectUserId: input.subjectUserId,
+        action: input.action,
+        channel: input.channel,
+        reason: input.reason,
+        requestedBy: input.requestedBy,
+        createdAt: now,
+      });
+    } catch (error) {
+      // error-policy:J2 The approval row and ScheduledTask must be atomic from
+      // the caller's perspective: rollback the row, then rethrow with context.
+      await executeRawSql(
+        this.runtime,
+        `DELETE FROM approval_requests WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}`,
+      );
+      throw new Error(
+        `[ApprovalQueue] failed to schedule approval task for ${id}; rolled back approval row`,
+        { cause: error },
+      );
+    }
     // An outbound action now needs the owner's go-ahead. Surface it directly
     // in chat with one-tap approval chips, and also on the notification rail so
     // the owner is interrupted even when they are not watching chat. Both
