@@ -97,7 +97,8 @@ const dynamicViewLoaderMock = vi.hoisted(() => ({
 }));
 
 // A couple of registered remote views so the registry-resolution branches are
-// exercised by the fuzz too (one shares, one is opaque-by-default).
+// exercised by the fuzz too (one shares via a wallpaper-granted manifest —
+// the only way to share since the #13452 grant gate — one is opaque-by-default).
 const sharedCanvasView = {
   id: "shared-canvas",
   label: "Shared Canvas",
@@ -106,7 +107,10 @@ const sharedCanvasView = {
   path: "/shared-canvas",
   bundleUrl: "/api/views/shared-canvas/bundle.js",
   viewType: "gui" as const,
-  backgroundPolicy: "shared" as const,
+  surface: {
+    background: "shared" as const,
+    capabilities: ["wallpaper"] as const,
+  },
 };
 const documentsView = {
   id: "documents",
@@ -557,6 +561,18 @@ function readBackgroundLayer(container: HTMLElement): {
   return { kind: "opaque", el: opaque as HTMLElement };
 }
 
+// The color a wallpaper layer actually paints. The glsl layer paints a flat
+// `backgroundColor` behind its canvas; the "midnight ember" ShaderBackground
+// (#13466) paints the configured color as the leading stop of a
+// `backgroundImage` field gradient instead — jsdom normalizes that stop to
+// `rgb(...)`, so the first rgb() in the gradient IS the configured color.
+// Empty string when the layer hasn't painted a color yet (cold mount).
+function paintedWallpaperColor(el: HTMLElement): string {
+  if (el.style.backgroundColor) return el.style.backgroundColor;
+  const gradientStop = el.style.backgroundImage.match(/rgb\(\d+, \d+, \d+\)/);
+  return gradientStop ? gradientStop[0] : "";
+}
+
 describe("App screen-background fuzz — color invariant across view switching", () => {
   // Walking through EVERY view mounts real view content (PluginsView, LogsView,
   // …) whose deep data deps are not mocked here; those throw and are caught by
@@ -649,14 +665,13 @@ describe("App screen-background fuzz — color invariant across view switching",
       // cold-mount tolerance the mutation-isolation block below applies. The
       // color is asserted wherever it is populated (the steady state); the
       // wallpaper *kind* (asserted above) is the unconditional invariant.
-      if (
-        (layer.kind === "shader" || layer.kind === "glsl") &&
-        layer.el.style.backgroundColor
-      ) {
-        expect(
-          layer.el.style.backgroundColor,
-          `${label} ${where}: wallpaper color preserved`,
-        ).toBe(expectedRgb(bgState.config.color));
+      if (layer.kind === "shader" || layer.kind === "glsl") {
+        const painted = paintedWallpaperColor(layer.el);
+        if (painted) {
+          expect(painted, `${label} ${where}: wallpaper color preserved`).toBe(
+            expectedRgb(bgState.config.color),
+          );
+        }
       }
     };
 
@@ -701,14 +716,13 @@ describe("App screen-background fuzz — color invariant across view switching",
       // Invariant B everywhere a wallpaper shows AND its color is painted:
       // color is the persisted one (cold-mount empty-string tolerated, as in
       // assertWallpaper above).
-      if (
-        (layer.kind === "shader" || layer.kind === "glsl") &&
-        layer.el.style.backgroundColor
-      ) {
-        expect(
-          layer.el.style.backgroundColor,
-          `${label} ${key}: wallpaper color preserved`,
-        ).toBe(expectedRgb(bgState.config.color));
+      if (layer.kind === "shader" || layer.kind === "glsl") {
+        const painted = paintedWallpaperColor(layer.el);
+        if (painted) {
+          expect(painted, `${label} ${key}: wallpaper color preserved`).toBe(
+            expectedRgb(bgState.config.color),
+          );
+        }
       }
 
       // Invariant E: bounce back to the launcher — wallpaper always restored.
@@ -760,7 +774,11 @@ describe("App screen-background fuzz — color invariant across view switching",
 
     const layer = readBackgroundLayer(container);
     expect(layer.kind).toBe("shader");
-    expect(layer.el.style.backgroundColor).toBe(expectedRgb("#65a30d"));
+    // The plain ShaderBackground paints the configured color as the leading
+    // stop of its field gradient (#13466) — assert the fallback carries the
+    // persisted color through, not a flat backgroundColor.
+    expect(layer.el.style.backgroundImage).toContain("linear-gradient");
+    expect(paintedWallpaperColor(layer.el)).toBe(expectedRgb("#65a30d"));
   }, 60_000);
 
   it("never leaves the screen without a defined background on ANY builtin tab", async () => {

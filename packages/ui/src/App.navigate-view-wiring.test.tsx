@@ -136,7 +136,14 @@ const sharedCanvasView = {
   path: "/shared-canvas",
   bundleUrl: "/api/views/shared-canvas/bundle.js",
   viewType: "gui" as const,
-  backgroundPolicy: "shared" as const,
+  // Sharing the Home/Launcher wallpaper is grant-gated (#13452): the surface
+  // manifest must declare `background: "shared"` AND the `wallpaper`
+  // capability. A bare `backgroundPolicy: "shared"` resolves to opaque by
+  // design (no view opts into the wallpaper by accident).
+  surface: {
+    background: "shared" as const,
+    capabilities: ["wallpaper"] as const,
+  },
 };
 
 const documentsView = {
