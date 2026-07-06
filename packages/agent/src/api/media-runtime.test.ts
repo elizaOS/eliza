@@ -11,7 +11,7 @@ import { Buffer } from "node:buffer";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 let stateDir: string;
 
@@ -251,6 +251,56 @@ describe("collectReferencedMedia", () => {
     expect(referenced.has(`${HASH_B}.jpg`)).toBe(true);
     expect(referenced.size).toBe(2);
   });
+
+  it("collects retained transcript audio referenced only inside content.transcript", () => {
+    const memories = [
+      {
+        content: {
+          text: "voice note",
+          transcript: JSON.stringify({
+            id: "transcript-1",
+            audioUrl: `/api/media/${HASH_A}.wav`,
+          }),
+        },
+        metadata: { source: "transcript" },
+      },
+    ] as unknown as Memory[];
+
+    const referenced = collectReferencedMedia(memories);
+
+    expect(referenced.has(`${HASH_A}.wav`)).toBe(true);
+    expect(referenced.size).toBe(1);
+  });
+
+  it("reports malformed transcript JSON without aborting collection", () => {
+    const diagnostics = {
+      logger: { warn: vi.fn() },
+      reportError: vi.fn(),
+    };
+    const memories = [
+      {
+        id: "transcript-row",
+        content: { transcript: "not-json" },
+        metadata: {
+          source: "transcript",
+          mediaUrl: `/api/media/${HASH_A}.wav`,
+        },
+      },
+    ] as unknown as Memory[];
+
+    const referenced = collectReferencedMedia(memories, diagnostics as never);
+
+    expect(referenced.has(`${HASH_A}.wav`)).toBe(true);
+    expect(diagnostics.logger.warn).toHaveBeenCalledTimes(1);
+    expect(diagnostics.reportError).toHaveBeenCalledWith(
+      "media-gc.transcript-reference",
+      expect.any(SyntaxError),
+      expect.objectContaining({
+        memoryId: "transcript-row",
+        field: "content.transcript",
+      }),
+    );
+  });
 });
 
 describe("thumbnail GC protection (data-loss regression)", () => {
@@ -332,6 +382,46 @@ describe("voice-session WAV GC protection (data-loss regression)", () => {
     gcUnreferencedMedia(collectReferencedMedia(memories));
 
     expect(fs.existsSync(mediaPath(wav.fileName))).toBe(true);
+  });
+});
+
+describe("transcript audio GC protection (data-loss regression)", () => {
+  function mediaPath(fileName: string): string {
+    return path.join(stateDir, "media", fileName);
+  }
+
+  it("keeps retained transcript audio while the transcript row references it", () => {
+    const audio = persistMediaBytes(
+      Buffer.from("retained-transcript-audio-regression"),
+      "audio/wav",
+    );
+    const memories = [
+      {
+        content: {
+          text: "meeting transcript",
+          transcript: JSON.stringify({
+            id: "transcript-with-audio",
+            audioUrl: audio.url,
+          }),
+        },
+        metadata: { source: "transcript" },
+      },
+    ] as unknown as Memory[];
+
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    fs.utimesSync(mediaPath(audio.fileName), old, old);
+
+    const referencedResult = gcUnreferencedMedia(
+      collectReferencedMedia(memories),
+    );
+
+    expect(fs.existsSync(mediaPath(audio.fileName))).toBe(true);
+    expect(referencedResult.scanned).toBeGreaterThanOrEqual(1);
+
+    const orphanResult = gcUnreferencedMedia(collectReferencedMedia([]));
+
+    expect(fs.existsSync(mediaPath(audio.fileName))).toBe(false);
+    expect(orphanResult.removed).toBeGreaterThanOrEqual(1);
   });
 });
 
