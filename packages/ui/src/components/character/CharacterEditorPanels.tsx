@@ -221,7 +221,7 @@ export function CharacterIdentityPanel({
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("system", e.target.value)
           }
-          className="w-full resize-none min-h-[14rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt"
+          className="w-full resize-none min-h-[10rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt lg:min-h-[14rem]"
           {...systemAgentProps}
         />
       </div>
@@ -239,7 +239,7 @@ export function CharacterIdentityPanel({
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("bio", e.target.value)
           }
-          className="w-full resize-none min-h-[8rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt"
+          className="w-full resize-none min-h-[6rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt lg:min-h-[8rem]"
           {...bioAgentProps}
         />
       </div>
