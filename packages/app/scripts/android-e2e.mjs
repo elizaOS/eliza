@@ -354,21 +354,14 @@ function ensureFreshApkInstalled(bundle, adb, serial) {
       failAndroidStep(bundle, step, error);
       throw error;
     }
-    const readback = readInstalledRendererStamp(adb, serial, { log });
-    const readbackDecision = androidInstallDecision({
-      freshStamp,
-      installedStamp: readback,
-    });
-    if (readbackDecision.install) {
-      throw new Error(
-        `Android install did not produce the fresh renderer stamp: ${readbackDecision.reason}`,
-      );
-    }
+    // Byte identity with the local APK is the strongest post-install check:
+    // the renderer stamp lives inside the verified bytes, so the stamp equals
+    // the already-validated local `apkStamp` and no `adb pull` readback of the
+    // whole APK is needed.
     setBundleBuild(bundle, {
-      buildId: readback?.buildId ?? freshStamp.buildId,
-      commit: readback?.commit ?? freshStamp.commit ?? null,
+      buildId: apkStamp?.buildId ?? freshStamp.buildId,
+      commit: apkStamp?.commit ?? freshStamp.commit ?? null,
     });
-    log(`installed renderer stamp verified: ${stampLabel(readback)}`);
     return;
   }
 
