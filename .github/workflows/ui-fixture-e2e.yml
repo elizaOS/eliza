@@ -71,7 +71,7 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Install Playwright Chromium
+      - name: Install Playwright Chromium + WebKit
         run: bunx playwright install --with-deps chromium webkit
 
       # The permission-priming fixture pulls @elizaos/shared, whose i18n module

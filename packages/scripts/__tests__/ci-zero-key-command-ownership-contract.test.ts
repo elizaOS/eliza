@@ -194,6 +194,34 @@ describe("ci-zero-key-command-ownership-contract", () => {
     );
   });
 
+  test("treats the shared chromium+webkit playwright install as setup, not ownership", () => {
+    withRepo(
+      {
+        "test.yml": workflow({
+          name: "Tests",
+          jobName: "Zero-Key deterministic",
+          commands: [
+            "bunx playwright install --with-deps chromium webkit",
+            "bun run test:server",
+          ],
+        }),
+        "ui-fixture-e2e.yml": workflow({
+          name: "UI Fixture E2E",
+          jobName: "Fixture e2e",
+          commands: [
+            "bunx playwright install --with-deps chromium webkit",
+            "bun run --cwd packages/ui test:launcher-e2e",
+          ],
+        }),
+      },
+      (root) => {
+        const rows = collectZeroKeyCommands(root);
+        expect(findDuplicateOwnedCommands(rows)).toEqual([]);
+        expect(runContract(root).commandCount).toBe(6);
+      },
+    );
+  });
+
   test("ignores static classifier and delegation jobs that mention the contract", () => {
     withRepo(
       {
