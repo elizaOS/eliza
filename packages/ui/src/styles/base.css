@@ -146,6 +146,19 @@
   --min-touch-target: 2.75rem;
   --eliza-mobile-nav-offset: 0px;
 
+  /* ── Per-view content padding (#14-view-padding-normalize) ──────────────
+     The STANDARD top/bottom gutter a routed view puts around its OWN content.
+     Deliberately small: the app FRAME already reserves the status-bar safe
+     area (App.tsx app-column `padding-top`) and the shared view wrappers
+     (`TabScrollView`/`TabContentView`/`AppWorkspaceChrome`) already reserve the
+     bottom safe-area + floating-composer clearance. So a view must NOT re-add
+     `env(safe-area-*)`, `--safe-area-top/bottom`, `--eliza-mobile-nav-offset`,
+     or `--eliza-continuous-chat-clearance` itself — that double-pads. It only
+     adds these tight content gutters on top of the frame the shell gives it.
+     One token per axis so the whole app breathes on one rhythm. */
+  --view-pad-top: 0.5rem;
+  --view-pad-bottom: 1rem;
+
   /* Plugin UI Design Tokens */
   --plugin-field-gap: 1rem;
   --plugin-group-gap: 1.5rem;

@@ -137,8 +137,12 @@ import { confirmDesktopAction } from "./utils/desktop-dialogs";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
-const MOBILE_NAV_PADDING_CLASS =
-  "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem))]";
+// NOTE (#view-padding-normalize): the full floating-composer + bottom-nav +
+// safe-area bottom clearance is owned EXACTLY ONCE by the scroll region a view
+// mounts into (`TabScrollView` / `TabContentView` inner scroller, complemented
+// by `AppWorkspaceChrome`'s safe-area floor). The routed `<main>`
+// (`routedShellMainClass`) deliberately does NOT re-apply that clearance —
+// doing so double-counted it and left an oversized empty band under every view.
 type ExtractComponent<TValue> =
   TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
 
@@ -1655,18 +1659,25 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
 }
 
 function routedShellMainClass(tab: string): string {
-  // One tight page gutter for every routed view: minimal top so headers sit
-  // right under the chrome, a small side gutter, modest bottom. Views that own
-  // their full surface (browser/apps/views/background) still get zero padding.
+  // One tight page gutter for every routed view: a small side gutter + the
+  // standard `--view-pad-top` content gutter, and NOTHING at the bottom. This
+  // `<main>` is `overflow-hidden` — the real scroll owner (and therefore the
+  // sole owner of the bottom safe-area + floating-composer clearance) is the
+  // view wrapper mounted inside it (`TabScrollView`/`TabContentView`/
+  // `AppWorkspaceChrome`). Adding a bottom pad here on a non-scrolling box
+  // double-counted the clearance the wrapper already reserves, leaving an
+  // oversized empty band under every view (the recurring "too much space at the
+  // bottom" report). Bottom clearance is reserved exactly once, downstream.
+  // Views that own their full surface (browser/apps/views/background) still get
+  // zero padding.
   const pagePadding =
     tab === "browser" ||
     tab === "apps" ||
     tab === "views" ||
     tab === "background"
       ? ""
-      : "px-2 sm:px-3 pt-2 pb-4";
-  const mobilePadding = tab === "browser" ? "" : MOBILE_NAV_PADDING_CLASS;
-  return `flex flex-1 min-h-0 min-w-0 overflow-hidden ${pagePadding} ${mobilePadding}`;
+      : "px-2 sm:px-3 pt-[var(--view-pad-top)]";
+  return `flex flex-1 min-h-0 min-w-0 overflow-hidden ${pagePadding}`;
 }
 
 /**

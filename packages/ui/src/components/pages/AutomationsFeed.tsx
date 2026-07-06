@@ -466,7 +466,7 @@ export function AutomationsFeed({
       {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
       <div
         data-testid="automations-shell"
-        className="device-layout mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-4 lg:px-6"
+        className="device-layout mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 pt-[var(--view-pad-top)] pb-[var(--view-pad-bottom)] lg:px-6"
       >
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {overviewStats.map((stat) => (
@@ -951,7 +951,7 @@ function WorkflowEditorLoader({
     );
   }
   return (
-    <div className="device-layout mx-auto flex h-full w-full max-w-7xl flex-col gap-4 px-4 py-4 lg:px-6">
+    <div className="device-layout mx-auto flex h-full w-full max-w-7xl flex-col gap-4 px-4 pt-[var(--view-pad-top)] pb-[var(--view-pad-bottom)] lg:px-6">
       <WorkflowEditor
         initial={fetchState.data}
         onSaved={onSaved}

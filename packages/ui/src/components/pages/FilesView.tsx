@@ -513,7 +513,7 @@ function FilesViewBody() {
 
   return (
     <section
-      className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-5 sm:px-6"
+      className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 pt-[var(--view-pad-top)] pb-[var(--view-pad-bottom)] sm:px-6"
       data-testid="files-view"
       aria-label={t("filesview.title", { defaultValue: "Files" })}
       aria-busy={loading}
