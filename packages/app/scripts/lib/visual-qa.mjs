@@ -16,6 +16,9 @@
  * read) when it is not, so the analyzer is safe to call from any capture lane.
  */
 import { execFile } from "node:child_process";
+import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { promisify } from "node:util";
 import sharp from "sharp";
 
@@ -86,22 +89,69 @@ async function colorFractions(image) {
   };
 }
 
+function normalizeOcrText(stdout) {
+  const lines = stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return lines.join("\n");
+}
+
+async function runTesseract(pngPath, { psm = "6", cwd } = {}) {
+  const { stdout } = await execFileAsync(
+    "tesseract",
+    [pngPath, "stdout", "--psm", psm],
+    { timeout: 60_000, maxBuffer: 8 * 1024 * 1024, cwd },
+  );
+  return normalizeOcrText(stdout);
+}
+
+/**
+ * Some macOS tesseract/leptonica builds fail to open screenshots from `/tmp`
+ * even when normal file APIs can read the PNG. Retrying from the caller's
+ * workspace keeps OCR useful for evidence bundles that live under `/tmp`.
+ */
+async function retryOcrFromWorkspaceCopy(pngPath) {
+  const cwd = process.cwd();
+  const workspaceRoot = cwd && !cwd.startsWith(tmpdir()) ? cwd : null;
+  if (!workspaceRoot) return null;
+  const tempDir = await mkdtemp(path.join(workspaceRoot, ".visual-qa-ocr-"));
+  try {
+    const copied = path.join(tempDir, "screenshot.png");
+    await copyFile(pngPath, copied);
+    return await runTesseract(path.relative(workspaceRoot, copied), {
+      psm: "11",
+      cwd: workspaceRoot,
+    });
+  } finally {
+    try {
+      await rm(tempDir, { recursive: true, force: true });
+    } catch {
+      // error-policy:J6 temporary OCR cleanup is best-effort; a failed delete
+      // should not turn a valid screenshot analysis into a false failure.
+    }
+  }
+}
+
 /** On-screen text via the tesseract CLI, or an explicit note when unavailable. */
 async function ocrText(pngPath) {
   try {
-    const { stdout } = await execFileAsync(
-      "tesseract",
-      [pngPath, "-", "--psm", "6"],
-      { timeout: 60_000, maxBuffer: 8 * 1024 * 1024 },
-    );
-    const lines = stdout
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean);
-    return { text: lines.join("\n"), note: null };
+    return { text: await runTesseract(pngPath), note: null };
   } catch (err) {
-    // J3: OCR is an optional enrichment — report its absence explicitly rather
-    // than fabricate an empty transcript that would read as "no text on screen".
+    try {
+      const retryText = await retryOcrFromWorkspaceCopy(pngPath);
+      if (retryText !== null) {
+        return {
+          text: retryText,
+          note: "primary tesseract read failed; OCR succeeded from a workspace-local copy",
+        };
+      }
+    } catch {
+      // error-policy:J3 the explicit note below reports the primary OCR failure;
+      // retry failure does not fabricate text or hide the unavailable signal.
+    }
+    // error-policy:J3 OCR is optional enrichment; report absence explicitly
+    // rather than fabricate an empty transcript as "no text on screen".
     const note =
       err?.code === "ENOENT"
         ? "tesseract not installed"

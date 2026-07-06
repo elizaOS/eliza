@@ -11,6 +11,8 @@ import {
   buildCaptureUrl,
   buildOnboardedSeed,
   buildStateMatrix,
+  COMPOSER_PROBE_TEXT,
+  evaluateCaptureReadiness,
   FIRST_RUN_COMPLETE_KEY,
   STEWARD_SESSION_TOKEN_KEY,
   seedDriftOffenders,
@@ -119,5 +121,45 @@ describe("seedDriftOffenders", () => {
     expect(seedDriftOffenders([{ viewport: "desktop" }])).toEqual([
       { viewport: "desktop", changedFraction: undefined },
     ]);
+  });
+});
+
+describe("evaluateCaptureReadiness", () => {
+  it("passes for a nonblank state with visible DOM text", () => {
+    const v = evaluateCaptureReadiness({
+      state: { id: "desktop-shell" },
+      domText: "Backend Unreachable Try again",
+    });
+    expect(v.pass).toBe(true);
+  });
+
+  it("fails blank captures before color heuristics can hide them", () => {
+    const v = evaluateCaptureReadiness({
+      state: { id: "desktop-shell" },
+      domText: "   ",
+    });
+    expect(v.pass).toBe(false);
+    expect(v.checks.map((c) => c.name)).toContain("dom:not_blank");
+  });
+
+  it("requires the mobile composer probe to survive focus and typing", () => {
+    const state = {
+      id: "mobile-composer-focused",
+      expectedComposerText: COMPOSER_PROBE_TEXT,
+    };
+    expect(
+      evaluateCaptureReadiness({
+        state,
+        domText: "Sign in to Eliza Cloud",
+        composerText: COMPOSER_PROBE_TEXT,
+      }).pass,
+    ).toBe(true);
+    expect(
+      evaluateCaptureReadiness({
+        state,
+        domText: "Sign in to Eliza Cloud",
+        composerText: "",
+      }).pass,
+    ).toBe(false);
   });
 });
