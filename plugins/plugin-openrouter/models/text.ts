@@ -13,6 +13,11 @@
  * the SDK `output` field; and prompt/messages/attachments are reconciled into a
  * single wire shape. Callers that pass messages/tools/toolChoice/responseSchema
  * get the richer native result object; plain prompts get a string.
+ *
+ * When routing Anthropic models through OpenRouter, message-level cache_control
+ * is injected on the system message to enable proper Anthropic prompt caching.
+ * The @openrouter/ai-sdk-provider only emits wire-level cache_control directives
+ * when providerOptions.anthropic.cacheControl is attached at the message level.
  */
 import type {
   GenerateTextParams,
@@ -57,6 +62,7 @@ const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as ModelTypeName;
 const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as ModelTypeName;
 const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as ModelTypeName;
 const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as ModelTypeName;
+
 type ChatAttachment = {
   data: string | Uint8Array | URL;
   mediaType: string;
@@ -67,6 +73,11 @@ interface OpenRouterPromptCacheOptions {
   promptCacheKey?: string;
 }
 
+interface AnthropicCacheControl {
+  type: "ephemeral";
+  ttl?: "5m" | "1h";
+}
+
 type GenerateTextParamsWithAttachments = GenerateTextParams & {
   attachments?: ChatAttachment[];
   messages?: ModelMessage[];
@@ -75,6 +86,10 @@ type GenerateTextParamsWithAttachments = GenerateTextParams & {
   responseSchema?: unknown;
   providerOptions?: Record<string, object | unknown> & {
     openrouter?: OpenRouterPromptCacheOptions;
+    anthropic?: {
+      cacheControl?: AnthropicCacheControl;
+      cacheSystem?: boolean;
+    };
   };
 };
 
@@ -206,6 +221,43 @@ function supportsSamplingParameters(modelName: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isAnthropicModel(modelName: string): boolean {
+  return modelName.toLowerCase().startsWith("anthropic/");
+}
+
+function buildCacheableSystemMessage(
+  systemPrompt: string | undefined,
+  cacheControl: AnthropicCacheControl | undefined
+): ModelMessage | undefined {
+  if (!systemPrompt) {
+    return undefined;
+  }
+  if (!cacheControl) {
+    return undefined;
+  }
+  return {
+    role: "system",
+    content: systemPrompt,
+    providerOptions: {
+      anthropic: { cacheControl },
+    },
+  } as unknown as ModelMessage;
+}
+
+function stripLocalAnthropicCacheOptions(
+  anthropicOptions: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (!anthropicOptions) {
+    return undefined;
+  }
+  const {
+    cacheControl: _cacheControl,
+    cacheSystem: _cacheSystem,
+    ...wireOptions
+  } = anthropicOptions;
+  return Object.keys(wireOptions).length > 0 ? wireOptions : undefined;
 }
 
 function readToolSet(value: GenerateTextParams["tools"]): ToolSet | undefined {
@@ -429,12 +481,36 @@ function buildGenerateParams(
     paramsWithAttachments.messages,
     systemPrompt
   );
+
+  // Detect if we need to inject Anthropic message-level cache control
+  const isAnthropic = isAnthropicModel(modelName);
+  const rawProviderOptions = paramsWithAttachments.providerOptions;
+  const anthropicOptions = rawProviderOptions?.anthropic as Record<string, unknown> | undefined;
+  const anthropicCacheControl = anthropicOptions?.cacheControl as
+    | AnthropicCacheControl
+    | undefined;
+  const anthropicCacheSystem = anthropicOptions?.cacheSystem !== false;
+  const shouldInjectMessageLevelCache =
+    isAnthropic &&
+    anthropicCacheSystem &&
+    anthropicCacheControl &&
+    paramsWithAttachments.messages;
+
+  // Build wire messages with optional message-level cache control for Anthropic
+  let finalWireMessages = wireMessages;
+  if (shouldInjectMessageLevelCache) {
+    const cacheSystemMessage = buildCacheableSystemMessage(systemPrompt, anthropicCacheControl);
+    if (cacheSystemMessage) {
+      finalWireMessages = [cacheSystemMessage, ...(wireMessages || [])];
+    }
+  }
+
   const promptOrMessages: NativePrompt = paramsWithAttachments.messages
-    ? wireMessages && wireMessages.length > 0
+    ? finalWireMessages && finalWireMessages.length > 0
       ? {
           messages: attachmentContent
-            ? appendUserContentToMessages(wireMessages, attachmentContent)
-            : wireMessages,
+            ? appendUserContentToMessages(finalWireMessages, attachmentContent)
+            : finalWireMessages,
         }
       : userContent
         ? { messages: [{ role: "user" as const, content: userContent }] }
@@ -452,17 +528,25 @@ function buildGenerateParams(
         : (() => {
             throw new Error("OpenRouter text generation requires prompt, messages, or attachments");
           })();
+
   // Resolve providerOptions: forward any caller-supplied options and merge in
   // the openrouter.promptCacheKey when present. OpenRouter passes prompt_cache_key
   // through to the underlying model provider for prefix caching.
-  const rawProviderOptions = paramsWithAttachments.providerOptions;
-  const { openrouter: rawOpenrouterOptions, ...restProviderOptions } = rawProviderOptions ?? {};
+  const { openrouter: rawOpenrouterOptions, anthropic: _, ...restProviderOptions } =
+    rawProviderOptions ?? {};
   const openrouterOptions: Record<string, unknown> = {
     ...(rawOpenrouterOptions ?? {}),
   };
+
+  // Strip local Anthropic cache options if we injected message-level cache
+  const wireAnthropicOptions = shouldInjectMessageLevelCache
+    ? stripLocalAnthropicCacheOptions(anthropicOptions)
+    : anthropicOptions;
+
   const mergedProviderOptions: Record<string, unknown> = {
     ...restProviderOptions,
     ...(Object.keys(openrouterOptions).length > 0 ? { openrouter: openrouterOptions } : {}),
+    ...(wireAnthropicOptions ? { anthropic: wireAnthropicOptions } : {}),
   };
   const resolvedProviderOptions =
     Object.keys(mergedProviderOptions).length > 0 ? mergedProviderOptions : undefined;
@@ -473,7 +557,8 @@ function buildGenerateParams(
   const generateParams: NativeTextParams = {
     model: openrouter.chat(modelName) as LanguageModel,
     ...promptOrMessages,
-    system: systemPrompt,
+    // Omit system parameter when we injected message-level cache to prevent duplication
+    ...(shouldInjectMessageLevelCache ? {} : { system: systemPrompt }),
     ...(supportsSampling
       ? {
           temperature: temperature,
