@@ -211,22 +211,17 @@ export function certifyWidget(
     for (const el of collectScrollers(root)) {
       const box = provider.box(el);
       const cs = provider.computed(el);
-      const anyEl = el as unknown as {
-        scrollHeight: number;
-        scrollWidth: number;
-        scrollTop: number;
-      };
       const geo: ScrollerGeometry = {
-        scrollHeight: anyEl.scrollHeight,
+        scrollHeight: el.scrollHeight,
         clientHeight: box.height,
-        scrollWidth: anyEl.scrollWidth,
+        scrollWidth: el.scrollWidth,
         clientWidth: box.width,
         overflowY: cs.overflowY,
         overflowX: cs.overflowX,
         overscrollBehaviorY: cs.overscrollBehaviorY,
         midScrollTopSettled: provider.probeMidScrollTop
           ? provider.probeMidScrollTop(el)
-          : anyEl.scrollTop,
+          : el.scrollTop,
       };
       const loc = locate(el);
       violations.push(...certifyScrollGeometry(geo, loc));
@@ -316,12 +311,8 @@ export function liveGeometryProvider(win: Window): GeometryProvider {
       };
     },
     probeMidScrollTop(el) {
-      const node = el as unknown as {
-        scrollHeight: number;
-        scrollTop: number;
-      };
-      node.scrollTop = Math.round(node.scrollHeight / 2);
-      return node.scrollTop;
+      el.scrollTop = Math.round(el.scrollHeight / 2);
+      return el.scrollTop;
     },
   };
 }

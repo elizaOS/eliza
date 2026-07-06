@@ -204,15 +204,19 @@ const JSONL_PATCH_RE = /"op"\s*:\s*"(?:add|replace|remove)"/;
  * catalog. Fires only on dashboard/table/visualization intent so its ~150
  * lines never tax a plugin-setup or scheduling turn.
  */
+// Shared by the provider metadata and its own get() intent gate, so the gate
+// never has to reach back through the optional Provider field.
+const GENERATIVE_INTENT_KEYWORDS = getValidationKeywordTerms(
+  "provider.uiGenerative.relevance",
+  { includeAllLocales: true },
+);
+
 export const uiGenerativeProvider: Provider = {
   name: "uiGenerative",
   description:
     "How to render custom dashboards, tables, charts, and metrics views as generative UI (JSONL patches + component catalog)",
   dynamic: true,
-  relevanceKeywords: getValidationKeywordTerms(
-    "provider.uiGenerative.relevance",
-    { includeAllLocales: true },
-  ),
+  relevanceKeywords: GENERATIVE_INTENT_KEYWORDS,
   contexts: ["general"],
   contextGate: { anyOf: ["general"] },
   // Renders after uiWidgets (markers-first); composeState orders by
@@ -230,7 +234,7 @@ export const uiGenerativeProvider: Provider = {
     // generative UI is already mid-iteration (recent JSONL patches). This is
     // the sole guard on the hot path — the v5 planner composes context-gated
     // dynamic providers on every general ADMIN turn.
-    const keywords = uiGenerativeProvider.relevanceKeywords ?? [];
+    const keywords = GENERATIVE_INTENT_KEYWORDS;
     const texts = [
       message.content.text ?? "",
       ...getRecentMessagesData(state).map((m) => m.content.text ?? ""),

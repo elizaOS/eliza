@@ -9,7 +9,7 @@
  */
 import type {
   AccessContext,
-  AgentRuntime,
+  IAgentRuntime,
   Memory,
   Service,
   UUID,
@@ -131,7 +131,7 @@ export function getDocumentsServiceTimeoutMs(): number {
 }
 
 export async function getDocumentsService(
-  runtime: AgentRuntime | null,
+  runtime: IAgentRuntime | null,
 ): Promise<DocumentsServiceResult> {
   if (!runtime) {
     return { service: null, reason: "runtime_unavailable" };

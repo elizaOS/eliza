@@ -171,9 +171,7 @@ async function resolveItem(
   mimeType?: string;
   title: string;
 } | null> {
-  const { service } = await getDocumentsService(
-    runtime as unknown as Parameters<typeof getDocumentsService>[0],
-  );
+  const { service } = await getDocumentsService(runtime);
   const asId = asUuid(itemRef);
   let memory: Memory | null = null;
   if (asId) {
@@ -367,9 +365,7 @@ export const searchKnowledgeAction: Action = {
       {}) as Record<string, unknown>;
     const query = typeof params.query === "string" ? params.query.trim() : "";
 
-    const { service, reason } = await getDocumentsService(
-      runtime as unknown as Parameters<typeof getDocumentsService>[0],
-    );
+    const { service, reason } = await getDocumentsService(runtime);
     if (!service) {
       return fail(
         "Knowledge store is not available.",
