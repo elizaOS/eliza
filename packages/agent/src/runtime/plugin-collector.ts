@@ -168,7 +168,6 @@ export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   signal: "@elizaos/plugin-signal",
   imessage: "@elizaos/plugin-imessage",
   farcaster: "@elizaos/plugin-farcaster",
-  lens: "@elizaos/plugin-lens",
   msteams: "@elizaos/plugin-msteams",
   feishu: "@elizaos/plugin-feishu",
   matrix: "@elizaos/plugin-matrix",
@@ -190,9 +189,6 @@ export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> = {
   GROQ_API_KEY: "@elizaos/plugin-groq",
   XAI_API_KEY: "@elizaos/plugin-xai",
   OPENROUTER_API_KEY: "@elizaos/plugin-openrouter",
-  DEEPSEEK_API_KEY: "@elizaos/plugin-deepseek",
-  MISTRAL_API_KEY: "@elizaos/plugin-mistral",
-  TOGETHER_API_KEY: "@elizaos/plugin-together",
   AI_GATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
   AIGATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
   OLLAMA_BASE_URL: "@elizaos/plugin-ollama",
@@ -291,7 +287,6 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   vision: "@elizaos/plugin-vision",
   elizacloud: "@elizaos/plugin-elizacloud",
   selfcontrol: "@elizaos/plugin-personal-assistant",
-  cua: "@elizaos/plugin-cua",
   computeruse: "@elizaos/plugin-computeruse",
   obsidian: "@elizaos/plugin-obsidian",
   repoprompt: "@elizaos/plugin-repoprompt",
@@ -662,14 +657,6 @@ export function collectPluginNames(
   if (config.x402?.enabled) {
     pluginsToLoad.add("@elizaos/plugin-x402");
     track("@elizaos/plugin-x402", "config.x402.enabled");
-  }
-
-  // Opinion plugin — auto-load when API key is present.
-  // NOT in PROVIDER_PLUGIN_MAP because it is a feature plugin, not a model
-  // provider, and would be incorrectly removed during provider precedence.
-  if (process.env.OPINION_API_KEY?.trim()) {
-    pluginsToLoad.add("@elizaos/plugin-opinion");
-    track("@elizaos/plugin-opinion", "env: OPINION_API_KEY");
   }
 
   // These are plugins that were installed via the plugin-manager at runtime

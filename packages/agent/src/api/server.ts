@@ -2594,43 +2594,52 @@ async function handleRequest(
     pathname === "/api/secrets" ||
     pathname === "/api/core/status"
   ) {
-    const { handlePluginRoutes } = await getPluginRegistryApi();
-    if (
-      await handlePluginRoutes({
-        req,
-        res,
-        method,
-        pathname,
-        url,
-        state,
-        json,
-        error,
-        readJsonBody,
-        scheduleRuntimeRestart,
-        restartRuntime,
-        BLOCKED_ENV_KEYS,
-        discoverInstalledPlugins,
-        maskValue,
-        aggregateSecrets,
-        readProviderCache,
-        paramKeyToCategory,
-        buildPluginEvmDiagnosticEntry,
-        EVM_PLUGIN_PACKAGE,
-        applyWhatsAppQrOverride: (
-          await getOptionalPluginApi<{
-            applyWhatsAppQrOverride: (...args: unknown[]) => void;
-          }>("whatsapp")
-        ).applyWhatsAppQrOverride,
-        applySignalQrOverride: (
-          await getOptionalPluginApi<{
-            applySignalQrOverride: (...args: unknown[]) => void;
-          }>("signal")
-        ).applySignalQrOverride,
-        resolvePluginConfigMutationRejections,
-        requirePluginManager,
-        requireCoreManager,
-      })
-    ) {
+    try {
+      const { handlePluginRoutes } = await getPluginRegistryApi();
+      if (
+        await handlePluginRoutes({
+          req,
+          res,
+          method,
+          pathname,
+          url,
+          state,
+          json,
+          error,
+          readJsonBody,
+          scheduleRuntimeRestart,
+          restartRuntime,
+          BLOCKED_ENV_KEYS,
+          discoverInstalledPlugins,
+          maskValue,
+          aggregateSecrets,
+          readProviderCache,
+          paramKeyToCategory,
+          buildPluginEvmDiagnosticEntry,
+          EVM_PLUGIN_PACKAGE,
+          applyWhatsAppQrOverride: (
+            await getOptionalPluginApi<{
+              applyWhatsAppQrOverride: (...args: unknown[]) => void;
+            }>("whatsapp")
+          ).applyWhatsAppQrOverride,
+          applySignalQrOverride: (
+            await getOptionalPluginApi<{
+              applySignalQrOverride: (...args: unknown[]) => void;
+            }>("signal")
+          ).applySignalQrOverride,
+          resolvePluginConfigMutationRejections,
+          requirePluginManager,
+          requireCoreManager,
+        })
+      ) {
+        return;
+      }
+    } catch (err) {
+      logger.warn(
+        `[startApiServer] plugin-registry not available for ${pathname}: ${err instanceof Error ? err.message : String(err)}`
+      );
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "plugin-registry not available" }));
       return;
     }
   }
