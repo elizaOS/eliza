@@ -8,6 +8,8 @@
  * never logs; stdout/stderr here are the product.
  */
 
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createBundle, type EvidenceBundle } from "../bundle.ts";
@@ -144,9 +146,12 @@ async function runWalkthroughCommand(
   const repoRoot = path.resolve(values.get("repo-root") ?? defaultRepoRoot());
   const tier = parseTier(values.get("tier"));
   const bundle = openBundle(values.get("bundle"), repoRoot, tier);
-  const outRoot = path.resolve(
-    values.get("out") ?? path.join(bundle.dir, ".walkthrough-scratch"),
-  );
+  // Scratch must live OUTSIDE the bundle dir: verifyBundle sweeps for unlisted
+  // files, and the driver's raw webm/screenshots are not manifest artifacts.
+  const outRoot = values.get("out")
+    ? path.resolve(values.get("out") as string)
+    : fs.mkdtempSync(path.join(os.tmpdir(), "evidence-walkthrough-"));
+  const cleanupScratch = values.get("out") === undefined;
   const baseUrl = values.get("base-url");
 
   const defs =
@@ -161,24 +166,28 @@ async function runWalkthroughCommand(
 
   io.out(`bundle ${bundle.runId}`);
   let ran = 0;
-  for (const { def } of defs) {
-    if (def.requiresApp && baseUrl === undefined) {
-      io.err(
-        `  ${def.slug.padEnd(16)} skipped   requires --base-url (requiresApp)`,
+  try {
+    for (const { def } of defs) {
+      if (def.requiresApp && baseUrl === undefined) {
+        io.err(
+          `  ${def.slug.padEnd(16)} skipped   requires --base-url (requiresApp)`,
+        );
+        continue;
+      }
+      const result = await runAndIngestWalkthrough(def, bundle, {
+        out: path.join(outRoot, def.slug),
+        ...(baseUrl !== undefined ? { baseUrl } : {}),
+      });
+      const norm = result.ingest.normalize.status;
+      io.out(
+        `  ${def.slug.padEnd(16)} ${def.granularity.padEnd(11)} ` +
+          `steps=${result.stepsLog ? result.screenshots.length + result.ariaSnapshots.length : 0} ` +
+          `norm=${norm} keyframes=${result.ingest.keyframeCount} video=${result.ingest.video.path}`,
       );
-      continue;
+      ran += 1;
     }
-    const result = await runAndIngestWalkthrough(def, bundle, {
-      out: path.join(outRoot, def.slug),
-      ...(baseUrl !== undefined ? { baseUrl } : {}),
-    });
-    const norm = result.ingest.normalize.status;
-    io.out(
-      `  ${def.slug.padEnd(16)} ${def.granularity.padEnd(11)} ` +
-        `steps=${result.stepsLog ? result.screenshots.length + result.ariaSnapshots.length : 0} ` +
-        `norm=${norm} keyframes=${result.ingest.keyframeCount} video=${result.ingest.video.path}`,
-    );
-    ran += 1;
+  } finally {
+    if (cleanupScratch) fs.rmSync(outRoot, { recursive: true, force: true });
   }
   const finalized = await bundle.finalize();
   io.out("");

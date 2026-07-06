@@ -105,6 +105,11 @@ bun run --cwd packages/evidence certify:keygen -- [--print-private-key]
 bun run --cwd packages/evidence certify:rollup -- --bundle <dir> [--requirements <file>] [--out <file>]
 bun run --cwd packages/evidence certify:sign -- --bundle <dir> --verdicts <file> --reviewer-id <id> --reviewer-kind <agent|human>
 bun run --cwd packages/evidence certify:verify -- --cert <file> --bundle <dir> --pubkey <pem> [--requirements <file>] [--json]
+# Video evidence lanes (#14545): drive the data-driven walkthroughs against the
+# self-contained dashboard fixture (or the real app via --base-url) and ingest
+# each MP4 with keyframe analysis, or ingest a pre-recorded video directly.
+bun run --cwd packages/evidence video:walkthrough -- --def all --bundle <dir>
+bun run --cwd packages/evidence video:ingest -- --file x.webm --granularity feature --slug send-message --bundle <dir>
 ```
 
 Test-lane membership is declared via `elizaos.scripts.testLanes: ["server"]`
@@ -126,4 +131,23 @@ src/certify/
   rollup.ts         mechanical draft verdicts (honest-skip semantics)
   sign.ts           signCertification / verifyCertification (typed failure codes)
   cli.ts            certify:keygen|rollup|sign|verify (J1 boundary)
+src/video/          video evidence lanes (#14545, stacked on the #14542 analyzers)
+  normalize.ts        webm/mov→MP4 (h264 + faststart); ffprobe-gated, honest skip
+  ingest.ts           ingestVideo: place at video/<granularity>s/<slug>.mp4 +
+                      keyframe extraction + image-analyzer fan-out over keyframes
+  walkthrough-schema.ts  zod-validated walkthrough DEFINITIONS (typed invalid)
+  driver.ts           one runWalkthrough driver (real Playwright chromium, video)
+  fixture-server.ts   ephemeral localhost static server for the fixture
+  fixture/            self-contained dashboard fixture (real app data-testids)
+  walkthroughs/       three shipped definitions (element/feature/walkthrough)
+  walkthroughs.ts     load + orchestrate driver → normalize → ingest
+  cli.ts              video:walkthrough / video:ingest (J1 boundary)
 ```
+
+Video lanes never touch the analyzers or bundle internals — they consume
+`extractKeyframes` + `analyzeArtifacts` from the #14542 registry and `addArtifact`
+from the bundle. Playwright is a devDependency, dynamically imported: consumers
+that only ingest pre-recorded videos never pay for it. Normalization is
+conditional (probe, then copy/remux/transcode) so an already-canonical MP4 is not
+re-encoded. Absent ffmpeg/ffprobe or an absent chromium each surface as an
+explicit skip/typed error, never a silent copy or fabricated pass.
