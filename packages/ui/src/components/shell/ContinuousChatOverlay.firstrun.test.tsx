@@ -5,8 +5,9 @@
 // (Escape, outside tap, grabber pull-down/close) is a no-op, the composer TEXT
 // + SEND are UNLOCKED (#12178 — typed text is answered by the in-chat conductor
 // and never reaches the server) while attach + mic stay disabled, the CHOICE
-// widgets stay interactive, and the sheet auto-collapses (with the backdrop
-// fading to the normal scrim) exactly once on the completion (falling) edge.
+// widgets stay interactive, and the sheet drops from full to the half detent
+// (with the backdrop fading to the normal scrim) exactly once on the completion
+// (falling) edge.
 
 import {
   act,
@@ -357,7 +358,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
     expect(screen.queryByTestId("onboarding-state-probe")).toBeNull();
   });
 
-  it("auto-collapses exactly once on the completion edge, unlocks the composer, and re-arms Escape", () => {
+  it("settles to half exactly once on the completion edge, unlocks the composer, and re-arms Escape", () => {
     const controller = makeController();
     const { rerender } = render(
       <ContinuousChatOverlay controller={controller} firstRunOpen />,
@@ -371,16 +372,17 @@ describe("ContinuousChatOverlay first-run gating", () => {
     rerender(
       <ContinuousChatOverlay controller={controller} firstRunOpen={false} />,
     );
-    expect(sheet.getAttribute("data-variant")).toBe("closed");
-    expect(overlay.hasAttribute("data-open")).toBe(false);
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(overlay.getAttribute("data-open")).toBe("true");
 
     // The composer unlocks.
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
     expect(input.placeholder).toBe("Ask Eliza");
 
-    // Re-open (type-to-open); a later re-render with onboarding still complete
-    // must NOT collapse again — the collapse is a one-shot falling edge.
+    // A later re-render with onboarding still complete must NOT force another
+    // detent change — the half-settle is a one-shot falling edge.
     fireEvent.focus(input);
     expect(sheet.getAttribute("data-variant")).toBe("open");
     rerender(
