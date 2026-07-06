@@ -115,6 +115,7 @@ function setVisibility(state: "visible" | "hidden"): void {
 
 beforeEach(() => {
   authMock.authenticated = true;
+  setVisibility("visible");
   navOpenView.mockReset();
   getWalletBalances.mockReset();
   getWalletMarketOverview.mockReset();
@@ -123,11 +124,19 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.clearAllMocks();
-  setVisibility("visible");
 });
 
 describe("WalletBalanceWidget (price-only, #10706)", () => {
+  it("renders nothing and fetches nothing while unauthenticated", () => {
+    authMock.authenticated = false;
+    const { container } = render(<WalletBalanceWidget />);
+    expect(container.firstChild).toBeNull();
+    expect(getWalletBalances).not.toHaveBeenCalled();
+    expect(getWalletMarketOverview).not.toHaveBeenCalled();
+  });
+
   it("renders a loading placeholder until the data resolves", () => {
     const d = deferred<WalletBalancesResponse>();
     getWalletBalances.mockReturnValue(d.promise);
@@ -231,81 +240,104 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     expect(text).toContain("$3,000.00");
   });
 
+  it("shows BTC/SOL/ETH default rows when balances fail but prices load", async () => {
+    getWalletBalances.mockRejectedValue(new Error("balances 503"));
+    getWalletMarketOverview.mockResolvedValue(
+      overview([
+        { symbol: "BTC", priceUsd: 64000, change24hPct: 1.2 },
+        { symbol: "ETH", priceUsd: 3000, change24hPct: -0.5 },
+        { symbol: "SOL", priceUsd: 150, change24hPct: 2.1 },
+      ]),
+    );
+
+    render(<WalletBalanceWidget />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("chat-widget-wallet-prices")).toBeTruthy(),
+    );
+    expect(
+      screen.getAllByTestId(/^wallet-price-row-/).map((r) => r.dataset.testid),
+    ).toEqual([
+      "wallet-price-row-BTC",
+      "wallet-price-row-SOL",
+      "wallet-price-row-ETH",
+    ]);
+  });
+
   it("refreshes prices on the 60s visibility-gated interval (#14344)", async () => {
     vi.useFakeTimers();
-    try {
-      getWalletBalances.mockResolvedValue({ evm: null, solana: null });
-      getWalletMarketOverview
-        .mockResolvedValueOnce(overview([{ symbol: "BTC", priceUsd: 64000 }]))
-        .mockResolvedValue(overview([{ symbol: "BTC", priceUsd: 70000 }]));
-      render(<WalletBalanceWidget />);
-      // Flush the initial fetch.
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      expect(
-        screen.getByTestId("chat-widget-wallet-prices").textContent,
-      ).toContain("$64,000.00");
-      expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
-      // One interval tick → a fresh fetch updates the displayed price.
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(60_000);
-      });
-      expect(getWalletMarketOverview).toHaveBeenCalledTimes(2);
-      expect(
-        screen.getByTestId("chat-widget-wallet-prices").textContent,
-      ).toContain("$70,000.00");
-    } finally {
-      vi.useRealTimers();
-    }
+    getWalletBalances.mockResolvedValue({ evm: null, solana: null });
+    getWalletMarketOverview
+      .mockResolvedValueOnce(overview([{ symbol: "BTC", priceUsd: 64000 }]))
+      .mockResolvedValue(overview([{ symbol: "BTC", priceUsd: 70000 }]));
+    render(<WalletBalanceWidget />);
+    // Flush the initial fetch.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(
+      screen.getByTestId("chat-widget-wallet-prices").textContent,
+    ).toContain("$64,000.00");
+    expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
+    // One interval tick → a fresh fetch updates the displayed price.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(getWalletMarketOverview).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getByTestId("chat-widget-wallet-prices").textContent,
+    ).toContain("$70,000.00");
   });
 
   it("does not poll while the document is hidden", async () => {
     vi.useFakeTimers();
-    try {
-      setVisibility("hidden");
-      getWalletBalances.mockResolvedValue({ evm: null, solana: null });
-      getWalletMarketOverview.mockResolvedValue(
-        overview([{ symbol: "BTC", priceUsd: 64000 }]),
-      );
+    setVisibility("hidden");
+    getWalletBalances.mockResolvedValue({ evm: null, solana: null });
+    getWalletMarketOverview.mockResolvedValue(
+      overview([{ symbol: "BTC", priceUsd: 64000 }]),
+    );
 
-      render(<WalletBalanceWidget />);
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
+    render(<WalletBalanceWidget />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(180_000);
-      });
-      expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.useRealTimers();
-    }
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(180_000);
+    });
+    expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
   });
 
-  it("does not fetch or install the refresh poll before authentication", async () => {
+  it("ignores an older refresh response that resolves after a newer one", async () => {
     vi.useFakeTimers();
-    try {
-      authMock.authenticated = false;
-      getWalletBalances.mockResolvedValue({ evm: null, solana: null });
-      getWalletMarketOverview.mockResolvedValue(
-        overview([{ symbol: "BTC", priceUsd: 64000 }]),
-      );
+    const firstOverview = deferred<WalletMarketOverviewResponse>();
+    const secondOverview = deferred<WalletMarketOverviewResponse>();
+    getWalletBalances.mockResolvedValue({ evm: null, solana: null });
+    getWalletMarketOverview
+      .mockReturnValueOnce(firstOverview.promise)
+      .mockReturnValueOnce(secondOverview.promise);
 
-      render(<WalletBalanceWidget />);
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(180_000);
-      });
+    render(<WalletBalanceWidget />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
 
-      expect(getWalletBalances).not.toHaveBeenCalled();
-      expect(getWalletMarketOverview).not.toHaveBeenCalled();
-      expect(
-        screen.getByTestId("chat-widget-wallet-balance-loading"),
-      ).toBeTruthy();
-    } finally {
-      vi.useRealTimers();
-    }
+    secondOverview.resolve(overview([{ symbol: "BTC", priceUsd: 70000 }]));
+    await act(async () => {
+      await secondOverview.promise;
+    });
+    expect(
+      screen.getByTestId("chat-widget-wallet-prices").textContent,
+    ).toContain("$70,000.00");
+
+    firstOverview.resolve(overview([{ symbol: "BTC", priceUsd: 64000 }]));
+    await act(async () => {
+      await firstOverview.promise;
+    });
+    expect(
+      screen.getByTestId("chat-widget-wallet-prices").textContent,
+    ).toContain("$70,000.00");
   });
 
   it("hides (no error chrome) when the overview is unavailable", async () => {

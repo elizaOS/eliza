@@ -14,7 +14,7 @@
 
 import type { WalletBalancesResponse } from "@elizaos/shared";
 import { Wallet } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
@@ -66,12 +66,30 @@ export function WalletBalanceWidget(
   // Auth gate (#11084): the widget mounts before the auth probe resolves, so
   // fetching stays dormant until the session is authenticated.
   const authenticated = useIsAuthenticated();
+  const activeRef = useRef(true);
+  const refreshSeqRef = useRef(0);
+
+  useEffect(() => {
+    activeRef.current = true;
+    return () => {
+      activeRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authenticated) return;
+    refreshSeqRef.current += 1;
+    setHoldings(null);
+    setLoading(true);
+  }, [authenticated]);
 
   // Prices (BTC/SOL/ETH + trending) come from the market-overview endpoint;
   // balances decide the held-vs-default branch. Both are fetched together and
   // best-effort (J4): a null overview means prices are unavailable → hide; a
   // null balances alone still shows the default rows.
   const refresh = useCallback(async () => {
+    refreshSeqRef.current += 1;
+    const seq = refreshSeqRef.current;
     const [balances, overview] = await Promise.all([
       // error-policy:J4 balances failure ⇒ no held rows; default rows still show
       (client.getWalletBalances() as Promise<WalletBalancesResponse>).catch(
@@ -80,6 +98,7 @@ export function WalletBalanceWidget(
       // error-policy:J4 overview failure ⇒ no prices at all ⇒ widget hides
       client.getWalletMarketOverview().catch(() => null),
     ]);
+    if (!activeRef.current || seq !== refreshSeqRef.current) return;
     const held = selectPricedHoldings(balances, overview?.prices);
     const next = held.length > 0 ? held : selectDefaultPriceRows(overview);
     // A failed refresh (next empty) keeps the last-good rows so a transient
@@ -102,6 +121,8 @@ export function WalletBalanceWidget(
     REFRESH_INTERVAL_MS,
     authenticated,
   );
+
+  if (!authenticated) return null;
 
   // First load pending: a quiet placeholder keeps the grid cell stable.
   if (loading && holdings == null) {
