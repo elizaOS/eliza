@@ -52,6 +52,22 @@ export interface Bindings {
    */
   KOKORO_TTS_URL?: string;
   /**
+   * Enables the first-line TTS cache on the free Kokoro branch (#14375). Short
+   * whole-input openers ("Got it.", "Sure.") are served from the provider-keyed
+   * cache instead of paying full Railway synthesis every turn. Truthy values:
+   * `"1"`/`"true"`/`"yes"`. Default off — the rollout is gated on the #14370
+   * TTFB benchmark (short-sentence TTFB above threshold), which needs the live
+   * Railway service to measure. ElevenLabs caching is unaffected by this flag.
+   */
+  KOKORO_FIRST_LINE_CACHE?: string;
+  /**
+   * Deploy identity of the Kokoro service, folded into the cache `voiceRevision`
+   * so a model/image change on the Railway side invalidates only Kokoro entries.
+   * Defaults to `"unpinned"` when unset — set it to the deployed image tag/digest
+   * so a redeploy that changes audio output rolls the Kokoro cache.
+   */
+  KOKORO_SERVICE_IMAGE_TAG?: string;
+  /**
    * Base URL of the self-hosted Whisper STT service (OpenAI-compatible
    * `/v1/audio/transcriptions`, e.g. the Railway deploy). When set, the cloud
    * STT endpoint serves Whisper for free; ElevenLabs STT is the fallback.

@@ -52,6 +52,10 @@ import {
 } from "@/lib/services/tts-first-line-cache";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
+import {
+  buildKokoroCacheKey,
+  isKokoroFirstLineCacheEnabled,
+} from "./kokoro-first-line-cache";
 
 /**
  * Default ElevenLabs output format. Must stay in sync with the ElevenLabs
@@ -164,6 +168,51 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const kokoroBaseUrl = env.KOKORO_TTS_URL?.trim();
     if (kokoroBaseUrl) {
       const kokoroVoice = resolveKokoroVoice(voiceId);
+
+      // First-line cache (#14375), gated on the #14370 TTFB benchmark and off by
+      // default. Only WHOLE-input short openers ("Got it.") are cacheable — the
+      // same whole-input-only rule the ElevenLabs path uses (no concat).
+      const kokoroCacheEnabled = isKokoroFirstLineCacheEnabled(
+        env.KOKORO_FIRST_LINE_CACHE,
+      );
+      const kokoroSnip = kokoroCacheEnabled ? firstSentenceSnip(text) : null;
+      const kokoroCacheable =
+        kokoroSnip !== null && kokoroSnip.endOffset === text.trimEnd().length;
+      const kokoroCacheKey =
+        kokoroCacheEnabled && kokoroCacheable && kokoroSnip
+          ? buildKokoroCacheKey({
+              kokoroVoice,
+              normalizedText: kokoroSnip.normalized,
+              imageTag: env.KOKORO_SERVICE_IMAGE_TAG,
+            })
+          : null;
+
+      if (kokoroCacheKey) {
+        try {
+          const cached =
+            await getCloudFirstLineCacheService().get(kokoroCacheKey);
+          if (cached) {
+            logger.info(
+              `[Voice TTS API] Kokoro first-line cache HIT (${cached.byteSize}B, hits=${cached.hitCount}, voice=${kokoroVoice}) — no upstream request`,
+            );
+            return new Response(cached.bytes as unknown as BodyInit, {
+              status: 200,
+              headers: {
+                "Content-Type": cached.contentType,
+                "Cache-Control": "no-cache",
+                "X-TTS-Cache": "hit; kokoro; first-sentence",
+              },
+            });
+          }
+        } catch (err) {
+          // error-policy:J4 cache lookup failure degrades to fresh synthesis;
+          // the upstream Railway request below is the source of truth.
+          logger.warn?.(
+            `[Voice TTS API] Kokoro first-line cache lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+
       const kokoroStart = Date.now();
       const kokoroResponse = await fetch(
         `${kokoroBaseUrl.replace(/\/+$/, "")}/api/tts`,
@@ -184,14 +233,55 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           { status: 502 },
         );
       }
+      const kokoroContentType =
+        kokoroResponse.headers.get("Content-Type") ?? "audio/wav";
       logger.info(
         `[Voice TTS API] Kokoro stream started in ${Date.now() - kokoroStart}ms (voice=${kokoroVoice}, free)`,
       );
+
+      // Cacheable opener MISS: buffer the (tiny, ≤10-word) WAV so we can serve
+      // it AND populate the cache. Non-cacheable text streams straight through
+      // to preserve time-to-first-byte on long responses.
+      if (kokoroCacheKey && kokoroSnip) {
+        const bytes = new Uint8Array(await kokoroResponse.arrayBuffer());
+        void getCloudFirstLineCacheService()
+          .put({
+            ...kokoroCacheKey,
+            bytes,
+            rawText: kokoroSnip.raw,
+            contentType: kokoroContentType,
+            durationMs: 0,
+            wordCount: kokoroSnip.wordCount,
+          })
+          .then((ok) => {
+            if (ok) {
+              logger.info(
+                `[Voice TTS API] Kokoro first-line cache POPULATE ok (${bytes.byteLength}B, "${kokoroSnip.normalized}")`,
+              );
+            }
+          })
+          .catch((err) => {
+            // error-policy:J7 populate is a background write; a failure must not
+            // affect the response the user already receives below.
+            logger.warn?.(
+              `[Voice TTS API] Kokoro first-line cache populate failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+
+        return new Response(bytes as unknown as BodyInit, {
+          status: 200,
+          headers: {
+            "Content-Type": kokoroContentType,
+            "Cache-Control": "no-store",
+            "X-TTS-Cache": "miss; kokoro",
+          },
+        });
+      }
+
       return new Response(kokoroResponse.body, {
         status: 200,
         headers: {
-          "Content-Type":
-            kokoroResponse.headers.get("Content-Type") ?? "audio/wav",
+          "Content-Type": kokoroContentType,
           "Cache-Control": "no-store",
         },
       });
