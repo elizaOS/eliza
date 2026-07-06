@@ -1,5 +1,5 @@
 /** Covers `TranscriptService` transcript lifecycle. Deterministic. */
-import type { Memory, UUID } from "@elizaos/core";
+import type { AccessContext, Memory, UUID } from "@elizaos/core";
 import type { Transcript } from "@elizaos/shared/transcripts";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -11,8 +11,9 @@ import {
 const WORLD = "00000000-0000-0000-0000-0000000000ww" as UUID;
 const ROOM = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY = "22222222-2222-2222-2222-222222222222" as UUID;
+const OTHER_ENTITY = "33333333-3333-3333-3333-333333333333" as UUID;
 
-function makeTranscript(): Transcript {
+function makeTranscript(over: Partial<Transcript> = {}): Transcript {
 	return {
 		id: "aaaaaaaa-0000-0000-0000-000000000001",
 		title: "Standup",
@@ -33,6 +34,7 @@ function makeTranscript(): Transcript {
 				words: [],
 			},
 		],
+		...over,
 	};
 }
 
@@ -83,6 +85,16 @@ const input = (transcript: Transcript): CreateTranscriptInput => ({
 	roomId: ROOM,
 	entityId: ENTITY,
 	transcript,
+});
+
+const access = (
+	requesterEntityId: UUID,
+	role: AccessContext["role"] = "USER",
+): AccessContext => ({
+	requesterEntityId,
+	worldId: WORLD,
+	role,
+	isOwner: role === "OWNER",
 });
 
 describe("TranscriptService", () => {
@@ -192,5 +204,79 @@ describe("TranscriptService", () => {
 			},
 		);
 		expect(result).toBeNull();
+	});
+
+	it("filters list/get by transcript scope when a requester context is supplied", async () => {
+		const rt = fakeRuntime({ withDocuments: false });
+		const svc = new TranscriptService(rt);
+		const records = [
+			makeTranscript({
+				id: "aaaaaaaa-0000-0000-0000-0000000000a1",
+				title: "Owner private",
+				scope: "owner-private",
+			}),
+			makeTranscript({
+				id: "aaaaaaaa-0000-0000-0000-0000000000a2",
+				title: "Agent private",
+				scope: "agent-private",
+			}),
+			makeTranscript({
+				id: "aaaaaaaa-0000-0000-0000-0000000000a3",
+				title: "Global",
+				scope: "global",
+			}),
+			makeTranscript({
+				id: "aaaaaaaa-0000-0000-0000-0000000000a4",
+				title: "User owned",
+				scope: "user-private",
+			}),
+			makeTranscript({
+				id: "aaaaaaaa-0000-0000-0000-0000000000a5",
+				title: "Other user",
+				scope: "user-private",
+			}),
+		];
+		for (const record of records.slice(0, 4)) {
+			await svc.create(input(record));
+		}
+		await svc.create({
+			worldId: WORLD,
+			roomId: ROOM,
+			entityId: OTHER_ENTITY,
+			transcript: records[4],
+		});
+
+		expect((await svc.list(ROOM)).map((t) => t.title).sort()).toEqual([
+			"Agent private",
+			"Global",
+			"Other user",
+			"Owner private",
+			"User owned",
+		]);
+		expect(
+			(await svc.list(ROOM, undefined, access(ENTITY)))
+				.map((t) => t.title)
+				.sort(),
+		).toEqual(["Global", "User owned"]);
+		expect(
+			(await svc.list(ROOM, undefined, access(OTHER_ENTITY)))
+				.map((t) => t.title)
+				.sort(),
+		).toEqual(["Global", "Other user"]);
+		expect(
+			(await svc.list(ROOM, undefined, access("owner" as UUID, "OWNER"))).map(
+				(t) => t.title,
+			),
+		).toHaveLength(5);
+		expect(
+			(await svc.list(ROOM, undefined, access(rt.agentId, "USER"))).map(
+				(t) => t.title,
+			),
+		).toHaveLength(5);
+
+		expect(await svc.get(records[0].id as UUID, access(ENTITY))).toBeNull();
+		expect((await svc.get(records[3].id as UUID, access(ENTITY)))?.title).toBe(
+			"User owned",
+		);
 	});
 });

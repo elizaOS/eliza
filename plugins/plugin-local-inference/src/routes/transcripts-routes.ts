@@ -109,7 +109,11 @@ const listRoute: Route = {
 	rawPath: true,
 	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
 		const roomId = (ctx.query.roomId as string | undefined) || undefined;
-		const transcripts = await service(ctx).list(roomId as UUID | undefined);
+		const transcripts = await service(ctx).list(
+			roomId as UUID | undefined,
+			undefined,
+			ctx.accessContext,
+		);
 		return { status: 200, body: { transcripts } };
 	},
 };
@@ -119,7 +123,10 @@ const getRoute: Route = {
 	path: "/api/transcripts/:id",
 	rawPath: true,
 	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
-		const transcript = await service(ctx).get(ctx.params.id as UUID);
+		const transcript = await service(ctx).get(
+			ctx.params.id as UUID,
+			ctx.accessContext,
+		);
 		if (!transcript) return { status: 404, body: { error: "not found" } };
 		return { status: 200, body: { transcript } };
 	},

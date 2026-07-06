@@ -11,7 +11,15 @@
  * `metadata.type` keeps it clear of the document/fragment CHECK constraints.
  */
 
-import type { Memory, MemoryMetadata, UUID } from "@elizaos/core";
+import {
+	type AccessContext,
+	actorFromAccessContext,
+	canReadScope,
+	type Memory,
+	type MemoryMetadata,
+	type MemoryScope,
+	type UUID,
+} from "@elizaos/core";
 import type {
 	Transcript,
 	TranscriptSummary,
@@ -25,6 +33,12 @@ import {
 export const TRANSCRIPTS_TABLE = "transcripts";
 /** `metadata.type` marker — NOT "document"/"fragment", so no CHECK fires. */
 export const TRANSCRIPT_METADATA_TYPE = "transcript";
+const TRANSCRIPT_SCOPES = new Set<MemoryScope>([
+	"owner-private",
+	"user-private",
+	"global",
+	"agent-private",
+]);
 
 /** The subset of `IAgentRuntime` the store needs (real runtime satisfies it). */
 export interface TranscriptStoreRuntime {
@@ -69,6 +83,48 @@ function rowToTranscript(row: Memory): Transcript | null {
 	}
 }
 
+function normalizeTranscriptScope(scope: unknown): MemoryScope {
+	return typeof scope === "string" &&
+		TRANSCRIPT_SCOPES.has(scope as MemoryScope)
+		? (scope as MemoryScope)
+		: "owner-private";
+}
+
+export function canAccessTranscriptRecord(
+	transcript: Pick<Transcript, "scope">,
+	scopedEntityId: UUID | undefined,
+	accessContext: AccessContext | undefined,
+	agentId: UUID,
+): boolean {
+	if (!accessContext) return true;
+	if (accessContext.requesterEntityId === agentId) return true;
+	const actor = actorFromAccessContext(accessContext, agentId);
+	if (actor.role === "OWNER") return true;
+	return canReadScope(
+		normalizeTranscriptScope(transcript.scope),
+		scopedEntityId,
+		actor,
+	);
+}
+
+function canAccessTranscriptRow(
+	row: Memory,
+	transcript: Pick<Transcript, "scope">,
+	accessContext: AccessContext | undefined,
+	agentId: UUID,
+): boolean {
+	const metadata = row.metadata as Record<string, unknown> | undefined;
+	const scopedTo = metadata?.scopedToEntityId;
+	const scopedEntityId =
+		typeof scopedTo === "string" ? (scopedTo as UUID) : row.entityId;
+	return canAccessTranscriptRecord(
+		transcript,
+		scopedEntityId,
+		accessContext,
+		agentId,
+	);
+}
+
 /** CRUD for transcript records over the runtime memory partition. */
 export class TranscriptStore {
 	constructor(private readonly runtime: TranscriptStoreRuntime) {}
@@ -79,6 +135,8 @@ export class TranscriptStore {
 		const metadata: MemoryMetadata = {
 			type: "custom",
 			source: TRANSCRIPT_METADATA_TYPE,
+			scope: transcript.scope,
+			scopedToEntityId: entityId,
 			timestamp: transcript.createdAt,
 			transcriptId: transcript.id,
 			durationMs: transcript.durationMs,
@@ -106,7 +164,11 @@ export class TranscriptStore {
 	}
 
 	/** List recent transcripts (newest first) as compact summaries. */
-	async list(roomId?: UUID, limit = 100): Promise<TranscriptSummary[]> {
+	async list(
+		roomId?: UUID,
+		limit = 100,
+		accessContext?: AccessContext,
+	): Promise<TranscriptSummary[]> {
 		const rows = await this.runtime.getMemories({
 			tableName: TRANSCRIPTS_TABLE,
 			roomId,
@@ -117,15 +179,33 @@ export class TranscriptStore {
 		const summaries: TranscriptSummary[] = [];
 		for (const row of rows) {
 			const t = rowToTranscript(row);
-			if (t) summaries.push(summarizeTranscript(t));
+			if (
+				t &&
+				canAccessTranscriptRow(row, t, accessContext, this.runtime.agentId)
+			) {
+				summaries.push(summarizeTranscript(t));
+			}
 		}
 		return summaries;
 	}
 
 	/** Load one full transcript record by id. */
-	async get(id: UUID): Promise<Transcript | null> {
+	async get(
+		id: UUID,
+		accessContext?: AccessContext,
+	): Promise<Transcript | null> {
 		const row = await this.runtime.getMemoryById(id);
-		return row ? rowToTranscript(row) : null;
+		if (!row) return null;
+		const transcript = rowToTranscript(row);
+		if (!transcript) return null;
+		return canAccessTranscriptRow(
+			row,
+			transcript,
+			accessContext,
+			this.runtime.agentId,
+		)
+			? transcript
+			: null;
 	}
 
 	/**
@@ -135,6 +215,7 @@ export class TranscriptStore {
 	 * consumers and the list stay consistent. Returns the record as stored.
 	 */
 	async update(transcript: Transcript): Promise<Transcript> {
+		const existing = await this.runtime.getMemoryById(transcript.id as UUID);
 		const ok = await this.runtime.updateMemory({
 			id: transcript.id as UUID,
 			content: {
@@ -144,6 +225,8 @@ export class TranscriptStore {
 			metadata: {
 				type: "custom",
 				source: TRANSCRIPT_METADATA_TYPE,
+				scope: transcript.scope,
+				scopedToEntityId: existing?.entityId,
 				timestamp: transcript.createdAt,
 				transcriptId: transcript.id,
 				durationMs: transcript.durationMs,

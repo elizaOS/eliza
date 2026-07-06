@@ -7,7 +7,7 @@
  * link. Delete removes the mirror too.
  */
 
-import { logger, type UUID } from "@elizaos/core";
+import { type AccessContext, logger, type UUID } from "@elizaos/core";
 import type {
 	Transcript,
 	TranscriptScope,
@@ -84,12 +84,16 @@ export class TranscriptService {
 		return this.store.create({ roomId, entityId, transcript: record });
 	}
 
-	list(roomId?: UUID, limit?: number): Promise<TranscriptSummary[]> {
-		return this.store.list(roomId, limit);
+	list(
+		roomId?: UUID,
+		limit?: number,
+		accessContext?: AccessContext,
+	): Promise<TranscriptSummary[]> {
+		return this.store.list(roomId, limit, accessContext);
 	}
 
-	get(id: UUID): Promise<Transcript | null> {
-		return this.store.get(id);
+	get(id: UUID, accessContext?: AccessContext): Promise<Transcript | null> {
+		return this.store.get(id, accessContext);
 	}
 
 	/**
