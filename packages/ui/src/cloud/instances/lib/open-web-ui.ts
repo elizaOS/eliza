@@ -4,26 +4,17 @@
  *
  * 1. Opens a popup immediately (must be in a click handler to dodge blockers).
  * 2. Polls `POST /api/v1/eliza/agents/:id/pairing-token` for a one-time token
- *    (202 + Retry-After while the agent boots).
+ *    (202 + Retry-After while the agent boots) via the shared
+ *    `pollPairingTokenRedirectUrl` loop.
  * 3. Redirects the popup to the agent's `/pair` page, which exchanges the token
  *    server-side and pins the agent's API key on the SPA's
  *    boot config before redirecting to `/`.
  */
 
 import { toast } from "sonner";
+import { pollPairingTokenRedirectUrl } from "../../pairing-token-poll";
 
 const MAX_PAIRING_WAIT_MS = 120_000;
-const DEFAULT_RETRY_AFTER_MS = 5_000;
-
-interface PairingTokenResponse {
-  data?: {
-    redirectUrl?: string;
-    retryAfterMs?: number;
-    status?: string;
-    message?: string;
-  };
-  error?: string;
-}
 
 function escapeHtml(value: string): string {
   return value
@@ -42,20 +33,6 @@ function setPopupMessage(popup: Window, message: string) {
   }
 }
 
-function retryAfterMs(res: Response, data: PairingTokenResponse): number {
-  const fromBody = data.data?.retryAfterMs;
-  if (typeof fromBody === "number" && fromBody > 0) return fromBody;
-
-  const retryAfter = Number(res.headers.get("Retry-After"));
-  if (Number.isFinite(retryAfter) && retryAfter > 0) {
-    return retryAfter * 1000;
-  }
-
-  return DEFAULT_RETRY_AFTER_MS;
-}
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 export async function openWebUIWithPairing(agentId: string): Promise<void> {
   const popup = window.open("", "_blank");
   if (!popup) {
@@ -66,47 +43,37 @@ export async function openWebUIWithPairing(agentId: string): Promise<void> {
   try {
     setPopupMessage(popup, "Connecting to your agent…");
 
-    const deadline = Date.now() + MAX_PAIRING_WAIT_MS;
-    while (Date.now() < deadline) {
-      const res = await fetch(`/api/v1/eliza/agents/${agentId}/pairing-token`, {
-        method: "POST",
-      });
-      const data = (await res
-        .json()
-        .catch(() => ({ error: "Unknown error" }))) as PairingTokenResponse;
+    const result = await pollPairingTokenRedirectUrl({
+      agentId,
+      maxWaitMs: MAX_PAIRING_WAIT_MS,
+      onStarting: (message) => setPopupMessage(popup, message),
+      shouldAbort: () => popup.closed,
+    });
 
-      if (popup.closed) return;
-
-      if (res.status === 202) {
-        const message =
-          data.data?.message ??
-          "Agent is starting. Connecting when the Web UI is ready…";
-        setPopupMessage(popup, message);
-        await sleep(retryAfterMs(res, data));
-        continue;
-      }
-
-      if (!res.ok) {
-        popup.close();
-        toast.error(
-          data.error || `Failed to generate pairing token (HTTP ${res.status})`,
-        );
-        return;
-      }
-
-      if (data.data?.redirectUrl) {
-        popup.location.href = data.data.redirectUrl;
-        return;
-      }
-
-      popup.close();
-      toast.error("No redirect URL returned from pairing token endpoint");
+    if (result.ok) {
+      popup.location.href = result.redirectUrl;
       return;
     }
 
+    // The user closing the popup is a cancel, not a failure — no toast.
+    if (result.reason === "aborted") return;
+
     popup.close();
+    if (result.reason === "request_failed") {
+      toast.error(
+        result.message ||
+          `Failed to generate pairing token (HTTP ${result.status})`,
+      );
+      return;
+    }
+    if (result.reason === "no_redirect_url") {
+      toast.error("No redirect URL returned from pairing token endpoint");
+      return;
+    }
     toast.error("Agent Web UI did not become ready in time. Try again.");
   } catch (err) {
+    // error-policy:J1 click-handler boundary — a network-level mint failure
+    // surfaces as a visible toast instead of an unhandled rejection.
     popup.close();
     toast.error(
       `Failed to connect: ${err instanceof Error ? err.message : String(err)}`,

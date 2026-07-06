@@ -12,6 +12,9 @@ const clientMock = vi.hoisted(() => ({
   getAuthStatus: vi.fn(),
   hasToken: vi.fn(),
   startAgent: vi.fn(),
+  // Local (non-dedicated-cloud) base: the #15132 credential-repair guard must
+  // stay inert for every scenario in this suite.
+  getBaseUrl: vi.fn(() => "http://127.0.0.1:31337"),
 }));
 
 vi.mock("../api", () => ({

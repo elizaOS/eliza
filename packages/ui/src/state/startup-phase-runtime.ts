@@ -13,6 +13,8 @@ import {
   client,
   type LaunchSnapshot,
 } from "../api";
+import { repairDedicatedAgentCredential } from "../cloud/repair-agent-credential";
+import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import {
   computeAgentDeadlineExtensions,
   getAgentReadyTimeoutMs,
@@ -474,6 +476,18 @@ export async function runStartingRuntime(
       }
     } catch (err) {
       const ae = asApiLikeError(err);
+      if (
+        ae?.status === 401 &&
+        isDedicatedCloudAgentBase(client.getBaseUrl()) &&
+        (await repairDedicatedAgentCredential())
+      ) {
+        // A dedicated cloud agent 401ing here usually means the container
+        // upgrade rotated ELIZA_API_TOKEN out from under the token adopted at
+        // pair time (#15132). The repair re-paired through the still-valid
+        // cloud session and persisted the fresh credential — re-poll instead
+        // of dead-ending on BACKEND_AUTH_REQUIRED/LoginView.
+        continue;
+      }
       if (ae?.status === 401 && !client.hasToken()) {
         // On Capacitor native the bearer token is injected asynchronously.
         // The first /api/status poll can race the injection and return 401

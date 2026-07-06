@@ -287,6 +287,27 @@ function resolveDirectCloudAuthApiBase(cloudBase: string): string {
   return normalized;
 }
 
+/**
+ * Resolve the Eliza Cloud CONTROL-PLANE API base regardless of what agent the
+ * client is currently pointed at. A client bound to a dedicated agent
+ * subdomain (`<agentId>.elizacloud.ai`) is NOT a control-plane base — cloud
+ * management calls (e.g. the pairing-token mint used by the dedicated-agent
+ * credential repair) must go to the cloud API itself. Preference order:
+ * configured boot cloudApiBase → the page's own host when it is a known cloud
+ * host → the production default.
+ */
+export function resolveDirectCloudControlPlaneApiBase(): string {
+  const configured = getBootConfig().cloudApiBase?.trim();
+  if (configured) return resolveDirectCloudAuthApiBase(configured);
+  if (typeof window !== "undefined") {
+    const byHost = DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
+      window.location.hostname.toLowerCase(),
+    );
+    if (byHost) return byHost;
+  }
+  return DEFAULT_DIRECT_CLOUD_API_BASE_URL;
+}
+
 function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   const baseUrl = client.getBaseUrl().trim();
   if (baseUrl && isDirectCloudBase(client)) {
