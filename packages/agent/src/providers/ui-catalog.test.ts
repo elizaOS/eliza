@@ -186,6 +186,21 @@ describe("relevance keyword separation", () => {
     expect(uiWidgetsProvider.relevanceKeywords?.length ?? 0).toBeGreaterThan(0);
   });
 
+  it("keeps uiWidgets context-gated to scheduling and setup turns, not only general", () => {
+    const expectedContexts = [
+      "general",
+      "tasks",
+      "todos",
+      "productivity",
+      "connectors",
+      "settings",
+    ];
+    expect(uiWidgetsProvider.contexts).toEqual(expectedContexts);
+    expect(uiWidgetsProvider.contextGate).toEqual({
+      anyOf: expectedContexts,
+    });
+  });
+
   it("keeps the heavy generative guide dynamic + turn-scoped + ADMIN-gated", () => {
     expect(uiGenerativeProvider.dynamic).toBe(true);
     expect(uiGenerativeProvider.cacheStable).toBeUndefined();

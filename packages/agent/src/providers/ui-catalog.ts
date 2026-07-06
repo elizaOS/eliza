@@ -104,9 +104,9 @@ follow-up exists.
 
 ### [FORM] — collect several specific values at once
 Render a form instead of asking in prose. This includes relaying a tool result
-that reports missing fields or asks the user for 2+ details: re-ask via [FORM]
-with one field per missing value, never as a prose checklist. Emit INLINE (no
-code fences); body is one JSON object on its own line between the markers:
+that reports missing fields or asks the user for 2+ details: re-ask with a form
+field per missing value, never as a prose checklist. Emit INLINE (no code
+fences); body is one JSON object on its own line between the markers:
 [FORM]
 {"title":"Schedule reminder","submitLabel":"Create","fields":[{"name":"title","type":"text","label":"Reminder","required":true},{"name":"when","type":"datetime","label":"When","required":true},{"name":"channel","type":"select","label":"Notify via","options":[{"label":"Push","value":"push"},{"label":"Email","value":"email"}]}]}
 [/FORM]
