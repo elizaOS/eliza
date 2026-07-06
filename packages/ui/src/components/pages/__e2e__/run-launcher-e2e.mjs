@@ -3,8 +3,10 @@
  * no app server. Bundles launcher-fixture.tsx with esbuild, loads it in
  * headless chromium via Playwright, and:
  *
- *   - asserts the read-only launcher renders (≥1 tile, ≥1 image tile, no
- *     edit/pin/delete affordances, exactly one page),
+ *   - asserts the read-only launcher renders (≥1 tile, no edit/pin/delete
+ *     affordances, exactly one page). Launcher tiles are glyph-only app icons
+ *     (the "icons are slop" redesign; ViewTileImage renders no <img> hero for
+ *     `source="launcher"`), so there is deliberately no image-tile assertion.
  *   - captures REST screenshots at desktop (1180×900) and mobile (402×874),
  *   - records a .webm walkthrough driving REAL interactions: tap-launch a tile,
  *     a stationary long-press (which must NOT enter any edit mode), and a
@@ -155,10 +157,6 @@ async function captureViewport(name, viewport, deviceScaleFactor) {
 
   const tiles = await page.locator('[data-testid^="launcher-tile-"]').count();
   assert(tiles >= 1, `${name}: ≥1 tile renders (${tiles})`);
-  const images = await page
-    .locator('[data-testid^="launcher-image-"]')
-    .count();
-  assert(images >= 1, `${name}: ≥1 image tile renders (${images})`);
   // Read-only: no per-tile edit/pin/delete affordances anywhere.
   const editAffordances = await page
     .locator(
