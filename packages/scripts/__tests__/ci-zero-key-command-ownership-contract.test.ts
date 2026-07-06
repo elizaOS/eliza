@@ -138,7 +138,7 @@ describe("ci-zero-key-command-ownership-contract", () => {
     );
   });
 
-  test("normalizes leading env assignments before ownership checks", () => {
+  test("normalizes non-semantic leading env assignments before ownership checks", () => {
     withRepo(
       {
         "scenario-pr.yml": workflow({
@@ -158,6 +158,38 @@ describe("ci-zero-key-command-ownership-contract", () => {
         expect(() => runContract(root)).toThrow(
           /Duplicate zero-key command ownership/,
         );
+      },
+    );
+  });
+
+  test("keeps engine selector env assignments when they define distinct browser legs", () => {
+    withRepo(
+      {
+        "ui-fixture-e2e.yml": workflow({
+          name: "UI fixture",
+          jobName: "Zero-Key UI fixture",
+          commands: [
+            "bun run --cwd packages/ui test:chat-infinite-scroll-e2e",
+            "ENGINE=webkit bun run --cwd packages/ui test:chat-infinite-scroll-e2e",
+          ],
+        }),
+      },
+      (root) => {
+        const rows = collectZeroKeyCommands(root);
+        expect(rows).toContainEqual(
+          expect.objectContaining({
+            workflow: ".github/workflows/ui-fixture-e2e.yml",
+            command: "bun run --cwd packages/ui test:chat-infinite-scroll-e2e",
+          }),
+        );
+        expect(rows).toContainEqual(
+          expect.objectContaining({
+            workflow: ".github/workflows/ui-fixture-e2e.yml",
+            command:
+              "ENGINE=webkit bun run --cwd packages/ui test:chat-infinite-scroll-e2e",
+          }),
+        );
+        expect(findDuplicateOwnedCommands(rows)).toEqual([]);
       },
     );
   });
