@@ -300,7 +300,32 @@ else
 fi
 
 (
-  setsid sh -c 'log_file=$1; agent_root=$2; runtime_ld=$3; port=$4; diagnostics_file=$5; startup_trace_id=$6; shift 6
+  setsid sh "\${AGENT_ROOT}/launch-child.sh" "\${LOG_FILE}" "\${AGENT_ROOT}" "\${RUNTIME_LD_LIBRARY_PATH}" "\${PORT:-}" "\${DIAGNOSTICS_FILE}" "\${STARTUP_TRACE_ID}" "$@" &
+) &
+disown 2>/dev/null || true
+exit 0
+`;
+
+/**
+ * Detached-child half of launch.sh's double-fork, shipped as its OWN file.
+ *
+ * This logic used to be inlined as a multi-line \`sh -c '...'\` string inside
+ * launch.sh. That is a runtime trap: the script body contains single-quoted
+ * printf formats AND brace groups with commas ({"childPid":"%s",...}), so the
+ * quoting fuses into an unquoted segment that Android's mksh BRACE-EXPANDS
+ * into multiple words — the -c script truncates mid-body and mksh execs the
+ * leftover tail as a filename. The detached agent then never spawns, silently
+ * (launcher stdio is /dev/null). Desktop shells don't brace-expand unquoted
+ * words, so sh -n and laptop runs never catch it; the breakage is
+ * device-only. A standalone file has no nested-quoting layer at all.
+ */
+const LAUNCH_CHILD_SCRIPT = `#!/system/bin/sh
+# launch-child.sh — detached child half of launch.sh's setsid double-fork.
+# Invoked as: sh launch-child.sh LOG_FILE AGENT_ROOT RUNTIME_LD PORT \\
+#             DIAGNOSTICS_FILE STARTUP_TRACE_ID <argv...>
+# Redirects stdio, spawns the agent argv, and journals child start/exit into
+# the restart-diagnostics JSONL so a dead spawn is visible from adb run-as.
+log_file=$1; agent_root=$2; runtime_ld=$3; port=$4; diagnostics_file=$5; startup_trace_id=$6; shift 6
 append_diag() {
   event=$1
   child_pid=$2
@@ -317,10 +342,7 @@ append_diag "agent-child-started" "$agent_pid" ""
 wait "$agent_pid"
 status=$?
 append_diag "agent-child-exited" "$agent_pid" "$status"
-exit "$status"' sh "\${LOG_FILE}" "\${AGENT_ROOT}" "\${RUNTIME_LD_LIBRARY_PATH}" "\${PORT:-}" "\${DIAGNOSTICS_FILE}" "\${STARTUP_TRACE_ID}" "$@" &
-) &
-disown 2>/dev/null || true
-exit 0
+exit "$status"
 `;
 
 function logFor(log) {
@@ -1440,6 +1462,18 @@ export async function stageAndroidAgentRuntime({
         launchTarget,
       ),
       source: { kind: "stage-android-agent", constant: "LAUNCH_SCRIPT" },
+    }),
+  );
+  const launchChildTarget = path.join(assetsAgentDir, "launch-child.sh");
+  if (writeIfChanged(launchChildTarget, LAUNCH_CHILD_SCRIPT)) stagedCount += 1;
+  stagedFiles.push(
+    fileProvenanceEntry({
+      filePath: launchChildTarget,
+      relativePath: path.relative(
+        path.join(androidDir, "app", "src", "main"),
+        launchChildTarget,
+      ),
+      source: { kind: "stage-android-agent", constant: "LAUNCH_CHILD_SCRIPT" },
     }),
   );
   const llamaDiagnosticTarget = path.join(

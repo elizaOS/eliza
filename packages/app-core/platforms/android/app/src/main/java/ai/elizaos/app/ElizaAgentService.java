@@ -101,6 +101,7 @@ public class ElizaAgentService extends Service {
     private static final String AGENT_STATE_DIR_NAME = ".eliza";
     private static final String AGENT_BUNDLE_NAME = "agent-bundle.js";
     private static final String AGENT_LAUNCH_SCRIPT = "launch.sh";
+    private static final String AGENT_LAUNCH_CHILD_SCRIPT = "launch-child.sh";
     private static final String BUN_BINARY = "bun";
     private static final String AGENT_LOG_NAME = "agent.log";
     private static final String AGENT_RESTART_DIAGNOSTICS_NAME = "agent-restart-diagnostics.jsonl";
@@ -1206,6 +1207,10 @@ public class ElizaAgentService extends Service {
         // Staging is fresh, so copyAssetIfMissing always copies here.
         copyAssetIfMissing(assets, "agent/" + AGENT_BUNDLE_NAME, new File(stagingRoot, AGENT_BUNDLE_NAME));
         copyAssetIfPresent(assets, "agent/" + AGENT_LAUNCH_SCRIPT, new File(stagingRoot, AGENT_LAUNCH_SCRIPT));
+        // Detached-child half of the launcher (see stage-android-agent.mjs:
+        // LAUNCH_CHILD_SCRIPT) — launch.sh invokes it by path, so it must land
+        // in the same atomic stage as launch.sh itself.
+        copyAssetIfPresent(assets, "agent/" + AGENT_LAUNCH_CHILD_SCRIPT, new File(stagingRoot, AGENT_LAUNCH_CHILD_SCRIPT));
 
         // PGlite runtime assets. pglite.wasm + initdb.wasm + pglite.data sit
         // next to the bundle (`new URL("./pglite.X", import.meta.url)`).
