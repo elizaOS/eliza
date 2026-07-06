@@ -4,6 +4,7 @@
  * across trigger kinds. Deterministic clock, no runtime or store.
  */
 
+import { stringToUuid } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -145,7 +146,7 @@ describe("ScheduledTask due evaluation", () => {
     });
   });
 
-  it("detects completion timeouts and pending-prompt room targets", () => {
+  it("detects completion timeouts and in-app pending-prompt room targets", () => {
     const fired = task({
       completionCheck: {
         kind: "user_replied_within",
@@ -165,6 +166,48 @@ describe("ScheduledTask due evaluation", () => {
       reason: "completion_timeout_due",
     });
     expect(pendingPromptRoomIdForTask(fired)).toBe("room-1");
+  });
+
+  it("derives connector pending-prompt room ids from prefixed targets", () => {
+    const fired = task({
+      completionCheck: {
+        kind: "user_replied_within",
+        followupAfterMinutes: 30,
+      },
+      output: { destination: "channel", target: "telegram:chat-123" },
+      state: {
+        status: "fired",
+        followupCount: 0,
+        firedAt: "2026-05-10T09:00:00.000Z",
+      },
+    });
+
+    expect(pendingPromptRoomIdForTask(fired)).toBeNull();
+    expect(pendingPromptRoomIdForTask(fired, { agentId: "agent-1" })).toBe(
+      stringToUuid("chat-123:agent-1"),
+    );
+  });
+
+  it("does not resolve a connector target when the actual dispatch channel differs", () => {
+    const fired = task({
+      completionCheck: {
+        kind: "user_replied_within",
+        followupAfterMinutes: 30,
+      },
+      output: { destination: "channel", target: "telegram:chat-123" },
+      state: {
+        status: "fired",
+        followupCount: 0,
+        firedAt: "2026-05-10T09:00:00.000Z",
+      },
+    });
+
+    expect(
+      pendingPromptRoomIdForTask(fired, {
+        agentId: "agent-1",
+        channelKey: "in_app",
+      }),
+    ).toBeNull();
   });
 });
 

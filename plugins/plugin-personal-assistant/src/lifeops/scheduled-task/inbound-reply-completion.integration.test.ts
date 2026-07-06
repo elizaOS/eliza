@@ -13,7 +13,7 @@
  */
 
 import { KNOWLEDGE_GRAPH_SERVICE, KnowledgeGraphService } from "@elizaos/agent";
-import { EventType, type Memory } from "@elizaos/core";
+import { EventType, type Memory, stringToUuid } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
@@ -29,9 +29,10 @@ type Runtime = RealTestRuntimeResult["runtime"];
 
 interface FiredTaskSeed {
   taskId?: string;
-  roomId: string;
+  roomId?: string;
   firedAtIso: string;
   completionCheck: ScheduledTaskCompletionCheck;
+  output?: ScheduledTask["output"];
   subject?: ScheduledTask["subject"];
   metadata?: ScheduledTask["metadata"];
 }
@@ -53,8 +54,16 @@ async function seedFiredTask(
     createdBy: runtime.agentId,
     ownerVisible: true,
     completionCheck: seed.completionCheck,
+    ...(seed.output ? { output: seed.output } : {}),
     ...(seed.subject ? { subject: seed.subject } : {}),
-    metadata: { pendingPromptRoomId: seed.roomId, ...(seed.metadata ?? {}) },
+    ...(seed.roomId || seed.metadata
+      ? {
+          metadata: {
+            ...(seed.roomId ? { pendingPromptRoomId: seed.roomId } : {}),
+            ...(seed.metadata ?? {}),
+          },
+        }
+      : {}),
     state: {
       status: "fired",
       firedAt: seed.firedAtIso,
@@ -215,6 +224,28 @@ describe("inbound-reply completion — production wiring", () => {
     });
 
     expect(await persistedStatus(runtime, task.taskId)).toBe("fired");
+  }, 180_000);
+
+  it("an owner reply in a connector room completes a connector-fired task from output.target", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const chatId = "telegram-chat-1";
+    const roomId = stringToUuid(`${chatId}:${runtime.agentId}`);
+
+    const task = await seedFiredTask(runtime, {
+      firedAtIso: FIVE_MINUTES_AGO(),
+      completionCheck: { kind: "user_replied_within" },
+      output: { destination: "channel", target: `telegram:${chatId}` },
+    });
+
+    const result = await completeFiredTasksOnOwnerReply(
+      runtime,
+      ownerReply(runtime, roomId),
+    );
+
+    expect(result.evaluated).toContain(task.taskId);
+    expect(result.completed).toContain(task.taskId);
+    expect(await persistedStatus(runtime, task.taskId)).toBe("completed");
   }, 180_000);
 
   it("a plain reply does NOT complete user_acknowledged (acknowledgment stays an explicit verb)", async () => {

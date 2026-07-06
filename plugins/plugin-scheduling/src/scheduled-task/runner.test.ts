@@ -17,6 +17,7 @@
  *  - the runner does NOT pattern-match `promptInstructions`
  */
 
+import { stringToUuid } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 import type { DispatchResult } from "../dispatch-types.js";
@@ -30,6 +31,7 @@ import {
 } from "./consolidation-policy.js";
 import {
   createEscalationLadderRegistry,
+  HIGH_PRIORITY_ESCALATION_CHANNEL_ORDER,
   registerDefaultEscalationLadders,
   resolveEffectiveLadder,
 } from "./escalation.js";
@@ -461,6 +463,29 @@ describe("ScheduledTaskRunner — fire path + gates", () => {
     const fired = await h.runner.fire(task.taskId);
     expect(fired.state.status).toBe("fired");
     expect(fired.state.firedAt).toBeDefined();
+  });
+
+  it("persists connector pending-prompt room id on successful reply-awaited fires", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(
+      baseInput({
+        completionCheck: {
+          kind: "user_replied_within",
+          followupAfterMinutes: 30,
+        },
+        output: { destination: "channel", target: "telegram:chat-123" },
+      }),
+    );
+
+    const fired = await h.runner.fire(task.taskId);
+
+    expect(fired.metadata?.pendingPromptRoomId).toBe(
+      stringToUuid("chat-123:test-agent"),
+    );
+    const [persisted] = await h.runner.list();
+    expect(persisted?.metadata?.pendingPromptRoomId).toBe(
+      stringToUuid("chat-123:test-agent"),
+    );
   });
 
   it("respectsGlobalPause: paused tasks are skipped with reason global_pause (cross-agent invariant §7.8)", async () => {
@@ -937,7 +962,9 @@ describe("ScheduledTaskRunner — getEscalationCursor (A6)", () => {
     expect(view).not.toBeNull();
     expect(view?.stepIndex).toBe(-1);
     expect(view?.lastFiredAt).toBe("2026-05-09T12:00:00.000Z");
-    expect(view?.channelKey).toBe("in_app");
+    expect(view?.channelKey).toBe(
+      HIGH_PRIORITY_ESCALATION_CHANNEL_ORDER[0]?.channelKey,
+    );
   });
 
   it("reflects the snooze-reset cursor (lastFiredAt = new fire time)", async () => {

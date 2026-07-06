@@ -420,7 +420,9 @@ async function recordPendingPromptIfNeeded(args: {
 }): Promise<RecordedPendingPrompt | null> {
   if (args.result.state.status !== "fired") return null;
   if (!shouldRecordPendingPrompt(args.result)) return null;
-  const roomId = pendingPromptRoomIdForTask(args.result);
+  const roomId = pendingPromptRoomIdForTask(args.result, {
+    agentId: String(args.runtime.agentId),
+  });
   if (!roomId || !args.result.state.firedAt) return null;
   const store = resolvePendingPromptsStore(args.runtime);
   return store.record({
