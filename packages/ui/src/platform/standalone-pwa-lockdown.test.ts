@@ -139,15 +139,23 @@ describe("CSS lockdown contract — base.css / styles.css cover body.pwa-standal
     // physical bottom), not the old 100dvh clamp that left a ~59px ember-floor
     // strip below it. The class-path rule must carry pwa-standalone and pin the
     // large-viewport height (with 100dvh/100vh progressive fallbacks).
+    // The large-viewport height is now centralized in the
+    // `--eliza-large-viewport-height` custom property (declared 100vh with
+    // @supports upgrades to 100dvh then 100lvh), so the #root rule pins
+    // min/max-height to that var instead of a literal unit ladder.
     const rootBlock = stylesCss.match(
-      /body\.native #root,[\s\S]*?max-height: 100lvh;/,
+      /body\.native #root,[\s\S]*?max-height: var\(--eliza-large-viewport-height\);/,
     );
     expect(rootBlock).not.toBeNull();
     expect(rootBlock?.[0]).toContain("body.pwa-standalone #root");
-    // Large-viewport reclaim + progressive-enhancement fallbacks.
-    expect(rootBlock?.[0]).toContain("100lvh");
-    expect(rootBlock?.[0]).toContain("100dvh");
-    expect(rootBlock?.[0]).toContain("100vh");
+    // And the var's progressive-enhancement ladder must exist at :root.
+    expect(stylesCss).toMatch(/--eliza-large-viewport-height:\s*100vh/);
+    expect(stylesCss).toMatch(
+      /@supports \(height: 100dvh\)[\s\S]*?--eliza-large-viewport-height:\s*100dvh/,
+    );
+    expect(stylesCss).toMatch(
+      /@supports \(height: 100lvh\)[\s\S]*?--eliza-large-viewport-height:\s*100lvh/,
+    );
     // The old hard 100dvh clamp (min AND max pinned to dvh) must be gone.
     expect(rootBlock?.[0]).not.toMatch(
       /min-height:\s*100dvh;\s*max-height:\s*100dvh;/,
@@ -161,16 +169,15 @@ describe("CSS lockdown contract — base.css / styles.css cover body.pwa-standal
     // #root above and doesn't stop ~59px short (which would expose #root's
     // --launch-bg as a near-black band). Targets the stable
     // `[data-app-shell-root]` hook on the column.
+    // Same centralization: the column pins to var(--eliza-large-viewport-height)
+    // (whose @supports ladder covers 100vh -> 100dvh -> 100lvh).
     const columnBlock = stylesCss.match(
-      /body\.native \[data-app-shell-root\],[\s\S]*?height: 100lvh;/,
+      /body\.native \[data-app-shell-root\],[\s\S]*?height: var\(--eliza-large-viewport-height\);/,
     );
     expect(columnBlock).not.toBeNull();
     expect(columnBlock?.[0]).toContain(
       "body.pwa-standalone [data-app-shell-root]",
     );
-    expect(columnBlock?.[0]).toContain("100lvh");
-    expect(columnBlock?.[0]).toContain("100dvh");
-    expect(columnBlock?.[0]).toContain("100vh");
   });
 });
 
@@ -211,12 +218,12 @@ describe("CSS geometry contract — fixed-body ICB collapse fix (bottom black ba
 
   it("pins the standalone-PWA fixed body to the LARGE viewport height (100lvh)", () => {
     const block = standalonePwaOwnBlock();
-    // `100lvh` is the load-bearing declaration: it forces the fixed body's ICB
-    // to the large viewport so `fixed inset-0` children reach the true bottom.
-    expect(block).toContain("100lvh");
-    // Progressive-enhancement fallbacks for engines without lvh.
-    expect(block).toContain("100dvh");
-    expect(block).toContain("100vh");
+    // The large-viewport height is centralized in
+    // `--eliza-large-viewport-height` (100vh, @supports-upgraded to 100dvh then
+    // 100lvh at :root) — the load-bearing declaration that forces the fixed
+    // body's ICB to the large viewport so `fixed inset-0` children reach the
+    // true bottom.
+    expect(block).toContain("height: var(--eliza-large-viewport-height)");
   });
 
   it("releases `bottom` on the standalone-PWA body so top+height drive the box", () => {
@@ -435,13 +442,15 @@ describe("CSS-FIRST contract — media-query lockdown is detection-independent",
     const block = mediaBlock(
       stylesCss,
       ["display-mode: standalone", "pointer: coarse"],
-      "100lvh",
+      "--eliza-large-viewport-height",
     );
     expect(block).not.toBeNull();
-    expect(block ?? "").toMatch(/#root\s*\{[\s\S]*?max-height:\s*100lvh/);
+    expect(block ?? "").toMatch(
+      /#root\s*\{[\s\S]*?max-height:\s*var\(--eliza-large-viewport-height\)/,
+    );
     // The app shell column reclaim must ride the same media block.
     expect(block ?? "").toMatch(
-      /\[data-app-shell-root\]\s*\{[\s\S]*?height:\s*100lvh/,
+      /\[data-app-shell-root\]\s*\{[\s\S]*?height:\s*var\(--eliza-large-viewport-height\)/,
     );
   });
 });
