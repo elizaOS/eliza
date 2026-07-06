@@ -832,8 +832,8 @@
         "@ai-sdk/gateway": "3.0.133",
         "@ai-sdk/google": "^3.0.8",
         "@ai-sdk/openai": "^3.0.9",
-        "@ai-sdk/provider": "3.0.10",
-        "@ai-sdk/provider-utils": "4.0.26",
+        "@ai-sdk/provider": "3.0.13",
+        "@ai-sdk/provider-utils": "4.0.36",
         "@bufbuild/protobuf": "^2.12.0",
         "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/contracts": "workspace:*",
@@ -2543,6 +2543,7 @@
         "@elizaos/plugin-capacitor-bridge": "workspace:*",
         "@elizaos/plugin-coding-tools": "workspace:*",
         "@elizaos/plugin-commands": "workspace:*",
+        "@elizaos/plugin-facewear": "workspace:*",
         "@elizaos/plugin-github": "workspace:*",
         "@elizaos/plugin-gitpathologist": "workspace:*",
         "@elizaos/plugin-health": "workspace:*",
@@ -3486,8 +3487,8 @@
       "dependencies": {
         "@ai-sdk/gateway": "3.0.133",
         "@ai-sdk/openai": "^3.0.9",
-        "@ai-sdk/provider": "3.0.10",
-        "@ai-sdk/provider-utils": "4.0.26",
+        "@ai-sdk/provider": "3.0.13",
+        "@ai-sdk/provider-utils": "4.0.36",
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
@@ -5636,8 +5637,8 @@
   "overrides": {
     "@ai-sdk/gateway": "3.0.109",
     "@ai-sdk/openai": "3.0.58",
-    "@ai-sdk/provider": "3.0.10",
-    "@ai-sdk/provider-utils": "4.0.26",
+    "@ai-sdk/provider": "3.0.13",
+    "@ai-sdk/provider-utils": "4.0.36",
     "@biomejs/biome": "2.5.1",
     "@clack/prompts": "1.3.0",
     "@cloudflare/workerd-darwin-arm64": "1.20260611.1",
@@ -5731,9 +5732,9 @@
 
     "@ai-sdk/openai-compatible": ["@ai-sdk/openai-compatible@2.0.54", "", { "dependencies": { "@ai-sdk/provider": "3.0.12", "@ai-sdk/provider-utils": "4.0.33" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-OyXt0zK8y2/ZIyWlbxTv2r1M7AK227S+Gl4BYOEF42q0wz1n5m4fwR8L4Fy/MQ4Ho6xje47MPsFcRdIqIyP6Rw=="],
 
-    "@ai-sdk/provider": ["@ai-sdk/provider@3.0.10", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-Q3BZ27qfpYqnCYGvE3vt+Qi6LGOF9R5Nmzn+9JoM1lCRsD9mYaIhfJLkSunN48nfGXJ6n+XNV0J/XVpqGQl7Dw=="],
+    "@ai-sdk/provider": ["@ai-sdk/provider@3.0.13", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-ZPtVYt5QIJzOta1kdUiDuCx4HhFkvNPv/rvmZ2b1iXwybYjJsCnNYR4PAw4kW7rgVfDARvHXcU64efWuqNp6bw=="],
 
-    "@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@4.0.26", "", { "dependencies": { "@ai-sdk/provider": "3.0.10", "@standard-schema/spec": "^1.1.0", "eventsource-parser": "^3.0.8" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-CsKNLKsOpvPujRlIYvoz+Ybw+kGn7J4/fIZa/58+R7iWLLfwn6ifE2G6Yq8K9XvH/I/3bzaDAJ3NhRwEMsLBKQ=="],
+    "@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@4.0.36", "", { "dependencies": { "@ai-sdk/provider": "3.0.13", "@standard-schema/spec": "^1.1.0", "eventsource-parser": "^3.0.8" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-hy0V+eyKcYyjmIxdcSh1jvy4+zNC7DbP0/V45jkRmfVnz+lI6GslT0qsd0V/bfJKo/A+P2t1tYFypTQJdOH1Sg=="],
 
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
 

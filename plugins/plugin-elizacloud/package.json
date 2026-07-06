@@ -70,8 +70,8 @@
   "dependencies": {
     "@ai-sdk/gateway": "3.0.133",
     "@ai-sdk/openai": "^3.0.9",
-    "@ai-sdk/provider": "3.0.10",
-    "@ai-sdk/provider-utils": "4.0.26",
+    "@ai-sdk/provider": "3.0.13",
+    "@ai-sdk/provider-utils": "4.0.36",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",

@@ -189,6 +189,16 @@ jobs:
             git -c submodule.recurse=false checkout --no-recurse-submodules \
               -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
 
+            # The `rm -f bun.lock` above deletes a TRACKED file; when bun.lock
+            # is identical between the previous HEAD and the new tip, checkout
+            # carries that deletion over as a local change and `bun install`
+            # then resolves the whole tree fresh from package.json ranges —
+            # newest-in-range @ai-sdk/* against the overridden provider-utils
+            # pin took the worker down at boot (`does not provide an export
+            # named 'secureJsonParse'`). Always restore the tracked lockfile so
+            # installs are lockfile-pinned and deterministic.
+            git checkout "origin/$DEPLOY_BRANCH" -- bun.lock
+
             if ! command -v bun >/dev/null 2>&1; then
               curl -fsSL https://bun.sh/install | bash -s "canary"
               export BUN_INSTALL="$HOME/.bun"
