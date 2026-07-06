@@ -37,6 +37,7 @@ import {
 	type TraceCorrelation,
 } from "./trace-correlation";
 import { resolveTrajectoryGate } from "./trajectory-gate";
+import type { TrajectoryProviderAttribution } from "./trajectory-provider-attribution";
 
 // ---------------------------------------------------------------------------
 // Schema (mirrors PLAN.md §18.1)
@@ -93,6 +94,14 @@ export interface RecordedModelCall {
 	 * pricing table at `features/trajectories/pricing.ts` changes.
 	 */
 	priceTableId?: string;
+	/** Provider order selected for the composeState call that fed this model input. */
+	providerOrder?: string[];
+	/**
+	 * Hash-first provider contributions with spans into `prompt`. Text is not
+	 * duplicated here; consumers can slice the recorded prompt to verify exact
+	 * provenance when spans are present.
+	 */
+	providerAttributions?: TrajectoryProviderAttribution[];
 }
 
 /**

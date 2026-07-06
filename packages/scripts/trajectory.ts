@@ -23,6 +23,7 @@
  *   validate   - Structural validation for complete, reviewable trajectories.
  *   compare    - Cache/batching/cost deltas between two trajectories.
  *   aggregate  - Cross-trajectory rollup.
+ *   providers  - Per-provider token/cost attribution for model calls.
  */
 
 import type { Dirent } from "node:fs";
@@ -79,6 +80,17 @@ interface ModelCallRecord {
   usage?: UsageBreakdown;
   finishReason?: string;
   costUsd?: number;
+  providerOrder?: string[];
+  providerAttributions?: ProviderAttributionRecord[];
+}
+
+interface ProviderAttributionRecord {
+  providerName: string;
+  sha256: string;
+  tokenCount: number;
+  position: number;
+  spanStart?: number;
+  spanEnd?: number;
 }
 
 interface ToolStageRecord {
@@ -1087,6 +1099,91 @@ async function cmdAggregate(opts: AggregateOptions): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Subcommand: providers
+// ---------------------------------------------------------------------------
+
+interface ProviderRollupRow {
+  providerName: string;
+  calls: number;
+  tokens: number;
+  costUsd: number;
+  spans: number;
+  sha256: string;
+}
+
+function providerRows(trajectory: RecordedTrajectory): ProviderRollupRow[] {
+  const rows = new Map<string, ProviderRollupRow>();
+  for (const stage of trajectory.stages) {
+    const model = stage.model;
+    const attributions = model?.providerAttributions ?? [];
+    if (!model || attributions.length === 0) continue;
+    const totalProviderTokens = attributions.reduce(
+      (total, entry) => total + Math.max(0, entry.tokenCount || 0),
+      0,
+    );
+    for (const entry of attributions) {
+      const current = rows.get(entry.providerName) ?? {
+        providerName: entry.providerName,
+        calls: 0,
+        tokens: 0,
+        costUsd: 0,
+        spans: 0,
+        sha256: entry.sha256,
+      };
+      current.calls += 1;
+      current.tokens += Math.max(0, entry.tokenCount || 0);
+      if (
+        typeof model.costUsd === "number" &&
+        Number.isFinite(model.costUsd) &&
+        totalProviderTokens > 0
+      ) {
+        current.costUsd +=
+          model.costUsd *
+          (Math.max(0, entry.tokenCount || 0) / totalProviderTokens);
+      }
+      if (
+        typeof entry.spanStart === "number" &&
+        typeof entry.spanEnd === "number"
+      ) {
+        current.spans += 1;
+      }
+      rows.set(entry.providerName, current);
+    }
+  }
+  return [...rows.values()].sort(
+    (left, right) =>
+      right.tokens - left.tokens ||
+      left.providerName.localeCompare(right.providerName),
+  );
+}
+
+async function cmdProviders(id: string): Promise<void> {
+  const loaded = await loadTrajectory(id);
+  if (!loaded) throw new Error(`Trajectory not found: ${id}`);
+  const rows = providerRows(loaded.trajectory);
+  if (rows.length === 0) {
+    console.log(c.dim("No provider attribution records found."));
+    return;
+  }
+  const widths = {
+    provider: Math.max(8, ...rows.map((row) => row.providerName.length)),
+    calls: 5,
+    tokens: Math.max(6, ...rows.map((row) => String(row.tokens).length)),
+    cost: 10,
+    spans: 5,
+    sha: 12,
+  };
+  const header = `${"provider".padEnd(widths.provider)}  ${"calls".padEnd(widths.calls)}  ${"tokens".padEnd(widths.tokens)}  ${"cost".padEnd(widths.cost)}  ${"spans".padEnd(widths.spans)}  sha256`;
+  console.log(c.bold(header));
+  console.log(c.dim("-".repeat(header.length)));
+  for (const row of rows) {
+    console.log(
+      `${row.providerName.padEnd(widths.provider)}  ${String(row.calls).padEnd(widths.calls)}  ${String(row.tokens).padEnd(widths.tokens)}  ${formatUsd(row.costUsd).padEnd(widths.cost)}  ${String(row.spans).padEnd(widths.spans)}  ${row.sha256.slice(0, widths.sha)}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Argv parsing (lightweight; no dependency)
 // ---------------------------------------------------------------------------
 
@@ -1178,6 +1275,7 @@ Commands:
   export <id> --format markdown|html|json [--out <path>]
   validate <id-or-path> [--expected-stages a,b] [--expected-contexts x,y] [--strict-messages] [--json]
   compare <idA> <idB> [--json]
+  providers <id>
   aggregate [--since <iso>] [--agent <id>]
 
 Trajectories are read from \${ELIZA_TRAJECTORY_DIR} (default ./trajectories/).`);
@@ -1281,6 +1379,12 @@ async function main(): Promise<void> {
         idB,
         flags.has("json") && flags.get("json") !== "false",
       );
+      return;
+    }
+    case "providers": {
+      const id = positional[0];
+      if (!id) throw new Error("`providers` requires a trajectory id");
+      await cmdProviders(id);
       return;
     }
     case "aggregate": {

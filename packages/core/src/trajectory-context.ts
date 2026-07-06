@@ -7,6 +7,7 @@
  */
 
 import { getAmbientSingleton, setAmbientSingleton } from "./ambient-context";
+import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution";
 import type { PseudonymSession } from "./security/pii-pseudonymizer";
 import type { SecretSwapSession } from "./security/secret-swap";
 import type { RoleGateRole } from "./types/contexts";
@@ -32,6 +33,13 @@ export interface TrajectoryContext {
 	userRole?: RoleGateRole;
 	/** Pipeline stage purpose for trajectory logging (e.g. "should_respond", "response", "action", "evaluation"). */
 	purpose?: string;
+	/**
+	 * Latest composed provider contribution snapshot for the active step. The
+	 * runtime stamps it onto the next model call so DB trajectories can
+	 * reconstruct provider order and prompt spans without storing provider text.
+	 */
+	providerOrder?: string[];
+	providerAttributions?: TrajectoryProviderAttribution[];
 	/**
 	 * Turn-scoped secret-swap session (#10469). Minted on the first `useModel`
 	 * call of a turn when secret-swap is enabled, then reused by every subsequent
