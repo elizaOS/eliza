@@ -26,6 +26,8 @@ export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
     "@elizaos/plugin-native-filesystem": () =>
       import("@elizaos/plugin-native-filesystem"),
     "@elizaos/plugin-scheduling": () => import("@elizaos/plugin-scheduling"),
+    // biome-ignore lint/suspicious/noTsIgnore: mixed package tsconfigs make @ts-expect-error unstable here.
+    // @ts-ignore: runtime subpath export is intentional; not every package tsconfig resolves its declaration condition.
     "@elizaos/plugin-inbox": () => import("@elizaos/plugin-inbox/plugin"),
     "@elizaos/plugin-app-control": () => import("@elizaos/plugin-app-control"),
     "@elizaos/plugin-anthropic": () => import("@elizaos/plugin-anthropic"),

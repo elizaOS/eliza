@@ -3,6 +3,7 @@
 		"target": "ES2022",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
+		"jsx": "react-jsx",
 		"esModuleInterop": true,
 		"strict": true,
 		"strictNullChecks": true,
@@ -12,7 +13,7 @@
 		"declarationMap": true,
 		"outDir": "./dist",
 		"rootDir": "../../../",
-		"lib": ["ES2022", "DOM"],
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
 		"types": ["node", "bun"],
 		"allowImportingTsExtensions": true,
 		"rewriteRelativeImportExtensions": true,
@@ -42,10 +43,20 @@
 			"@elizaos/app-core/services/vault-mirror": [
 				"../../packages/app-core/src/services/vault-mirror.ts"
 			],
+			"@elizaos/auth": ["../../packages/auth/src/index.ts"],
+			"@elizaos/auth/*": ["../../packages/auth/src/*"],
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
 			"@elizaos/logger": ["../../packages/logger/src/index.ts"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],
+			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
+			"@elizaos/ui/agent-surface": [
+				"../../packages/ui/src/agent-surface/index.ts"
+			],
+			"@elizaos/ui/api/*": ["../../packages/ui/src/api/*"],
+			"@elizaos/ui/components/*": ["../../packages/ui/src/components/*"],
+			"@elizaos/ui/state": ["../../packages/ui/src/state/index.ts"],
+			"@elizaos/ui/state/*": ["../../packages/ui/src/state/*"],
 			"@elizaos/ui/agent-surface/types": [
 				"../../packages/ui/src/agent-surface/types.ts"
 			],
@@ -75,8 +86,17 @@
 			"@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
 			"@elizaos/plugin-capacitor-bridge": ["./src/index.ts"],
 			"@elizaos/plugin-capacitor-bridge/*": ["./src/*"],
+			"@elizaos/plugin-coding-tools": [
+				"../../plugins/plugin-coding-tools/src/index.ts"
+			],
+			"@elizaos/plugin-coding-tools/*": [
+				"../../plugins/plugin-coding-tools/src/*"
+			],
 			"@elizaos/plugin-commands": [
 				"../../plugins/plugin-commands/src/index.ts"
+			],
+			"@elizaos/plugin-elizacloud/host-routes": [
+				"../../plugins/plugin-elizacloud/src/host-routes.ts"
 			],
 			"@elizaos/plugin-local-inference": [
 				"../../plugins/plugin-local-inference/src/index.ts"

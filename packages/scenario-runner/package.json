@@ -88,6 +88,7 @@
     "@elizaos/plugin-capacitor-bridge": "workspace:*",
     "@elizaos/plugin-coding-tools": "workspace:*",
     "@elizaos/plugin-commands": "workspace:*",
+    "@elizaos/plugin-facewear": "workspace:*",
     "@elizaos/plugin-native-filesystem": "workspace:*",
     "@elizaos/plugin-gitpathologist": "workspace:*",
     "@elizaos/plugin-github": "workspace:*",

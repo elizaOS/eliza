@@ -38,6 +38,22 @@ electrobun-wgpu {
 
 /* ── Global resets ──────────────────────────────────────────────────── */
 
+:root {
+  --eliza-large-viewport-height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --eliza-large-viewport-height: 100dvh;
+  }
+}
+
+@supports (height: 100lvh) {
+  :root {
+    --eliza-large-viewport-height: 100lvh;
+  }
+}
+
 html,
 body {
   width: 100%;
@@ -130,9 +146,10 @@ body.native {
 
    Fix: pin the fixed body to the LARGE viewport height so its ICB fills the real
    screen. `100lvh` is the large-viewport unit (stable regardless of the
-   fixed-body ICB collapse); `100dvh`/`100vh` are progressive-enhancement
-   fallbacks for engines without `lvh`. `top: 0; left: 0; right: 0` anchor it;
-   height (not `bottom: 0`) drives the extent so it reaches the true bottom. */
+   fixed-body ICB collapse). `--eliza-large-viewport-height` resolves through a
+   `100vh` -> `100dvh` -> `100lvh` support ladder. `top: 0; left: 0; right: 0`
+   anchor it; height (not `bottom: 0`) drives the extent so it reaches the true
+   bottom. */
 body.pwa-standalone {
   top: 0;
   left: 0;
@@ -141,12 +158,7 @@ body.pwa-standalone {
      top + height driving the box, a leftover `bottom: 0` would re-anchor the
      fixed body to the collapsed layout-viewport bottom — the exact bug. */
   bottom: auto;
-  /* Progressive vh→dvh→lvh viewport fallback: older engines use vh, newer
-     override with dvh then lvh. The duplicate `height` is intentional. */
-  height: 100vh;
-  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
-  height: 100dvh;
-  height: 100lvh;
+  height: var(--eliza-large-viewport-height);
   /* BOTTOM-BAR FIX (r4): TRANSPARENT floor. The prior "defensive" warm-ember
      color-mix(--launch-bg 82%, #ef5a1f) resolved to an OPAQUE rgb(61,27,11)
      slab on the fixed body. It was meant only to hide a 1px sub-pixel seam, but
@@ -171,18 +183,11 @@ body.pwa-standalone {
    home-indicator safe area is handled as PADDING *inside* the app (the
    composer + bottom rows already respect `env(safe-area-inset-bottom)` via
    --safe-area-bottom), so interactive controls still sit above the indicator
-   while background content bleeds under it. Height stack (100vh → 100dvh →
-   100lvh) is the same progressive-enhancement trick the fixed body uses: older
-   engines without `lvh` fall back to `dvh`, then `vh`. */
+   while background content bleeds under it. */
 body.native #root,
 body.pwa-standalone #root {
-  min-height: 100vh;
-  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
-  min-height: 100dvh;
-  min-height: 100lvh;
-  max-height: 100vh;
-  max-height: 100dvh;
-  max-height: 100lvh;
+  min-height: var(--eliza-large-viewport-height);
+  max-height: var(--eliza-large-viewport-height);
   padding: 0;
   box-sizing: border-box;
 }
@@ -191,15 +196,11 @@ body.pwa-standalone #root {
    base `h-[100dvh]` that is correct for a desktop browser tab / popout, but in
    the installed PWA it must fill the 100lvh #root above — otherwise the column
    stops ~59px short of the true bottom and #root's own --launch-bg paints a
-   near-black band there. Pin it to the LARGE viewport (100lvh) with the same
-   100vh→100dvh→100lvh progressive-enhancement stack; height governs so the
-   column reaches the physical screen edge, full-bleed. */
+   near-black band there. Pin it to the large viewport so the column reaches the
+   physical screen edge, full-bleed. */
 body.native [data-app-shell-root],
 body.pwa-standalone [data-app-shell-root] {
-  height: 100vh;
-  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
-  height: 100dvh;
-  height: 100lvh;
+  height: var(--eliza-large-viewport-height);
 }
 
 body.native textarea,
@@ -220,7 +221,6 @@ body.pwa-standalone textarea {
    fullscreen (fine pointer) is excluded by `(pointer: coarse)`. */
 @media all and (display-mode: standalone) and (pointer: coarse),
   all and (display-mode: fullscreen) and (pointer: coarse) {
-  /* biome-ignore lint/style/noDescendingSpecificity: intentional bare-body geometry that must apply regardless of the JS class landing. */
   body {
     position: fixed;
     touch-action: pan-y;
@@ -231,10 +231,7 @@ body.pwa-standalone textarea {
        top + height driving the box, a leftover bottom would re-anchor the fixed
        body to the collapsed layout-viewport bottom — the #14319 bug. */
     bottom: auto;
-    height: 100vh;
-    /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
-    height: 100dvh;
-    height: 100lvh;
+    height: var(--eliza-large-viewport-height);
     /* BOTTOM-BAR FIX (r4): TRANSPARENT floor (mirror of the class-path rule).
        An opaque warm-ember slab here bled through as a uniform brown bar in the
        home-indicator zone whenever the fixed wallpaper missed the true bottom.
@@ -243,39 +240,30 @@ body.pwa-standalone textarea {
     background-color: transparent;
   }
 
-  /* biome-ignore lint/style/noDescendingSpecificity: intentional bare #root lock mirroring body.pwa-standalone #root. */
   /* RECLAIM THE BOTTOM STRIP (#14411): #root fills the LARGE viewport (100lvh)
      so the app paints full-bleed to the physical bottom edge instead of
      clamping to 100dvh and leaving the ~59px lvh–dvh strip as a dead ember
      floor. Mirror of the class-path `body.pwa-standalone #root` rule; the
      home-indicator safe area is padded INSIDE the app (composer/bottom rows
-     use env(safe-area-inset-bottom)), not left as void below #root. Same
-     100vh→100dvh→100lvh progressive-enhancement stack the body uses. */
+     use env(safe-area-inset-bottom)), not left as void below #root. */
   body #root {
-    min-height: 100vh;
-    /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
-    min-height: 100dvh;
-    min-height: 100lvh;
-    max-height: 100vh;
-    max-height: 100dvh;
-    max-height: 100lvh;
+    min-height: var(--eliza-large-viewport-height);
+    max-height: var(--eliza-large-viewport-height);
     padding: 0;
     box-sizing: border-box;
   }
 
-  /* biome-ignore lint/style/noDescendingSpecificity: intentional app-shell-column reclaim mirroring the class-path [data-app-shell-root] rule. */
   /* RECLAIM THE BOTTOM STRIP (#14411): the app shell column (App.tsx) carries a
      base `h-[100dvh]`; in the installed PWA it must fill the 100lvh #root or it
      stops ~59px short and #root's --launch-bg paints a near-black band there.
-     Pin it to 100lvh (100vh→100dvh→100lvh progressive-enhancement) so the
-     column reaches the physical screen edge, full-bleed. */
+     Pin it to the large viewport so the column reaches the physical screen
+     edge, full-bleed. */
+  /* biome-ignore lint/style/noDescendingSpecificity: intentional app-shell-column reclaim mirroring the class-path [data-app-shell-root] rule. */
   body [data-app-shell-root] {
-    height: 100vh;
-    /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
-    height: 100dvh;
-    height: 100lvh;
+    height: var(--eliza-large-viewport-height);
   }
 
+  /* biome-ignore lint/style/noDescendingSpecificity: intentional installed-PWA textarea mirror for classless detection. */
   body textarea {
     resize: none;
   }

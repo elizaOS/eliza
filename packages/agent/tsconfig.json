@@ -82,6 +82,10 @@
       "@elizaos/plugin-shopify": ["../../plugins/plugin-shopify/src/index.ts"],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
+      "@elizaos/import-conversations": ["../import-conversations/src/index.ts"],
+      "@elizaos/import-conversations/browser": [
+        "../import-conversations/src/browser.ts"
+      ],
       "@elizaos/tui": ["../tui/src/index.ts"],
       "@elizaos/ui/api/client-types-cloud": [
         "../ui/src/api/client-types-cloud.ts"

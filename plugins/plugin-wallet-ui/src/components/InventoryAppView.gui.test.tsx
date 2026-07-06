@@ -407,7 +407,9 @@ describe("InventoryView GUI — populated holdings", () => {
     const sidebar = await screen.findByTestId("wallets-sidebar");
 
     // Funded EVM side still renders its rows + values.
-    expect(within(sidebar).getByText(hasFlatText("100.0000 USDC"))).toBeTruthy();
+    expect(
+      within(sidebar).getByText(hasFlatText("100.0000 USDC")),
+    ).toBeTruthy();
     expect(within(sidebar).getByText("$750.00")).toBeTruthy();
     expect(within(sidebar).getByText("$80.00")).toBeTruthy();
 
@@ -833,7 +835,9 @@ describe("InventoryView GUI — calm empty-wallet hero", () => {
     await screen.findByTestId("wallets-sidebar");
 
     expect(
-      await screen.findByText("Couldn't load trading stats — try again shortly."),
+      await screen.findByText(
+        "Couldn't load trading stats — try again shortly.",
+      ),
     ).toBeTruthy();
     expect(screen.queryByText(/upstream exploded/)).toBeNull();
   });

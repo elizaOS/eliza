@@ -163,7 +163,9 @@ export class DockerNodesRepository {
         host_key_fingerprint: fingerprint,
         updated_at: new Date(),
       })
-      .where(and(eq(dockerNodes.node_id, nodeId), sql`${dockerNodes.host_key_fingerprint} IS NULL`));
+      .where(
+        and(eq(dockerNodes.node_id, nodeId), sql`${dockerNodes.host_key_fingerprint} IS NULL`),
+      );
   }
 
   /**

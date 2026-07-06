@@ -257,7 +257,10 @@ const NON_CATALOG_META_BY_ID = new Map(
   SETTINGS_NON_CATALOG_SECTION_META.map((meta) => [meta.id, meta]),
 );
 
-function nonCatalogMeta(id: string) {
+type NonCatalogSettingsSectionId =
+  (typeof SETTINGS_NON_CATALOG_SECTION_META)[number]["id"];
+
+function nonCatalogMeta(id: NonCatalogSettingsSectionId) {
   const meta = NON_CATALOG_META_BY_ID.get(id);
   if (!meta) {
     throw new Error(`Unknown non-catalog settings section "${id}"`);

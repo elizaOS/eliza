@@ -2024,7 +2024,12 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
         },
         {
           persistedActiveServer: null,
-          restoredActiveServer: null,
+          restoredActiveServer: {
+            id: "local:desktop",
+            kind: "local",
+            label: "Local agent",
+            apiBase: "http://127.0.0.1:34137",
+          },
           shouldPreserveCompletedFirstRun: false,
           hadPriorFirstRun: false,
         },

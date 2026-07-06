@@ -29,10 +29,7 @@ import { readStewardAccessCookieFromHeader } from "./steward-cookies";
 
 function readStewardCookie(c: AppContext): string | null {
   return (
-    readStewardAccessCookieFromHeader(
-      c.req.header("cookie") ?? null,
-      c.env?.ENVIRONMENT,
-    ) ?? null
+    readStewardAccessCookieFromHeader(c.req.header("cookie") ?? null, c.env?.ENVIRONMENT) ?? null
   );
 }
 

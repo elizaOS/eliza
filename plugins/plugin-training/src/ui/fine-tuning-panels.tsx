@@ -458,14 +458,16 @@ export function TrajectoriesSection({
                     {t("finetuningview.NoTrajectoriesFoun")}
                   </div>
                 ) : (
-                  trajectoryList.trajectories.map((trajectory: TrajectorySummary) => (
-                    <TrajectoryListItem
-                      key={trajectory.trajectoryId}
-                      trajectory={trajectory}
-                      onSelectTrajectory={onSelectTrajectory}
-                      t={t}
-                    />
-                  ))
+                  trajectoryList.trajectories.map(
+                    (trajectory: TrajectorySummary) => (
+                      <TrajectoryListItem
+                        key={trajectory.trajectoryId}
+                        trajectory={trajectory}
+                        onSelectTrajectory={onSelectTrajectory}
+                        t={t}
+                      />
+                    ),
+                  )
                 )}
               </div>
             </div>

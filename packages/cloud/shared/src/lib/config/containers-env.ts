@@ -17,10 +17,7 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
  * from. Discriminated so a fail-fast startup check can branch without
  * re-reading env or duplicating the precedence rules.
  */
-export type SshKeySource =
-  | { kind: "inline" }
-  | { kind: "file"; path: string }
-  | { kind: "none" };
+export type SshKeySource = { kind: "inline" } | { kind: "file"; path: string } | { kind: "none" };
 
 function normalizeEnvValue(value: string): string {
   return value

@@ -511,7 +511,7 @@ export async function seedMessageCorpus(
           roomId,
           worldId,
           content: { text: message.text, source: MESSAGE_SOURCE_CLIENT_CHAT },
-          metadata: { type: "messages" },
+          metadata: { type: MemoryType.MESSAGE },
           createdAt: message.createdAt,
         },
         "messages",
