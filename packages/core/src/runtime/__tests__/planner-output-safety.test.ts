@@ -61,6 +61,21 @@ describe("planner output user-visible safety", () => {
 		expect(output.toolCalls).toEqual([]);
 	});
 
+	it("preserves a form interaction marker with a JSON body as visible message text", () => {
+		const form =
+			'[FORM]\n{"title":"Connect Discord","fields":[{"name":"token","type":"secret"}]}\n[/FORM]';
+		const output = parsePlannerOutput(
+			JSON.stringify({
+				thought: "Need the user to provide the connector token.",
+				toolCalls: [],
+				messageToUser: form,
+			}),
+		);
+
+		expect(output.messageToUser).toBe(form);
+		expect(output.toolCalls).toEqual([]);
+	});
+
 	it("classifies raw evaluator envelopes as control JSON, plain JSON as not", () => {
 		expect(
 			looksLikeEvaluatorEnvelopeJson(

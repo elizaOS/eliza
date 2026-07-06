@@ -218,6 +218,15 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
+	it("allows structured chat markers while still banning arbitrary JSON/tool attempts", () => {
+		expect(plannerTemplate).toContain("arbitrary JSON/tool attempts");
+		expect(plannerTemplate).toContain(
+			"Structured chat markers are allowed in messageToUser",
+		);
+		expect(plannerTemplate).toContain("[FORM]\\n{json}\\n[/FORM]");
+		expect(plannerTemplate).toContain("The JSON inside [FORM] is form data");
+	});
+
 	it("forbids phantom in-flight investigative claims in messageToUser/REPLY (planner side)", () => {
 		// Live regression on 2026-05-26: user asked
 		// "look it up bitch" after the bot honestly declined a current-news
@@ -284,6 +293,10 @@ describe("v5 planner loop skeleton", () => {
 			"Optimized planner without bundled safety policy",
 		);
 		expect(systemContent).toContain("mandatory planner policy:");
+		expect(systemContent).toContain(
+			"Structured chat markers are allowed in messageToUser",
+		);
+		expect(systemContent).toContain("[FORM]\\n{json}\\n[/FORM]");
 		expect(systemContent).toContain(
 			"SHELL is for filesystem/process work, not a fallback for chat-message search/recall",
 		);

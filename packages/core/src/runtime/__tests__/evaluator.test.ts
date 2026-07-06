@@ -5,10 +5,20 @@
  * canned strings, no live model or DB.
  */
 import { describe, expect, it, vi } from "vitest";
+import { evaluatorTemplate } from "../../prompts/evaluator";
 import { ModelType } from "../../types/model";
 import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
 
 describe("v5 evaluator skeleton", () => {
+	it("allows structured chat markers while still banning arbitrary JSON/tool attempts", () => {
+		expect(evaluatorTemplate).toContain("arbitrary JSON/tool attempts");
+		expect(evaluatorTemplate).toContain(
+			"Structured chat markers are allowed in messageToUser",
+		);
+		expect(evaluatorTemplate).toContain("[FORM]\\n{json}\\n[/FORM]");
+		expect(evaluatorTemplate).toContain("The JSON inside [FORM] is form data");
+	});
+
 	it("normalizes evaluator routes and next tool recommendations", () => {
 		const output = parseEvaluatorOutput(`{
   "success": true,
@@ -41,6 +51,22 @@ describe("v5 evaluator skeleton", () => {
 		expect(output.decision).toBe("CONTINUE");
 		expect(output.parseError).toBe("response is not a single JSON object");
 		expect(output.thought).toContain("Invalid evaluator output");
+	});
+
+	it("preserves a form interaction marker with a JSON body in messageToUser", () => {
+		const form =
+			'[FORM]\n{"title":"Connect Discord","fields":[{"name":"token","type":"secret"}]}\n[/FORM]';
+		const output = parseEvaluatorOutput(
+			JSON.stringify({
+				success: false,
+				decision: "FINISH",
+				thought: "Need user input.",
+				messageToUser: form,
+			}),
+		);
+
+		expect(output.messageToUser).toBe(form);
+		expect(output.decision).toBe("FINISH");
 	});
 
 	it("does not salvage claimed success from malformed evaluator text", () => {
