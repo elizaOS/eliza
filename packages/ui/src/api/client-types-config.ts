@@ -173,7 +173,6 @@ export interface PluginInfo {
     developerOnly?: boolean;
     viewKind?: ViewKind;
     componentExport?: string;
-    defaultWidget?: "notifications" | "messages" | "activity";
     signalKinds?: readonly string[];
   }>;
   /**

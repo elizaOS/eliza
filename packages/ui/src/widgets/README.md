@@ -63,32 +63,15 @@ notification center
 (`components/shell/NotificationsHomeCenter.tsx`) directly below the
 time/weather base, so a registry declaration would double-render it.
 
-**To put a plugin on the frontpage:** declare a widget with `slot: "home"` only
-when it is a keeper for the sparse home surface. Read your own store/API in the
-component; it receives `WidgetProps` (`pluginId`, `events?`, …). Keep it
-compact and self-hiding — domain dashboards belong in launcher/routed views, not
-resident home cards.
-
-If a plugin has live state but no bundled React card, opt into a shared default
-sink instead of shipping a component:
-
-```ts
-{
-  id: "my-plugin.default-home",
-  pluginId: "my-plugin",
-  slot: "home",
-  label: "My Plugin",
-  defaultWidget: "activity", // "notifications" | "messages" | "activity"
-  signalKinds: ["workflow", "activity"],
-}
-```
-
-Default-sink declarations are participation records: the shared Activity card
-no longer renders on sparse home, while the declaration lets coverage prove the
-plugin is frontpage-aware. The `notifications` / `messages` / `activity` sink
-kinds yield no home tile — notification content already surfaces through the
-pinned notification center, and activity/detail surfaces live in launcher/routed
-views.
+**Frontpage presence is opt-in and curated, not mandated (#14349).** A plugin
+appears on home only by declaring a widget with `slot: "home"` that resolves to a
+bundled React component or a `uiSpec` — there is no breadth mandate that every
+app-manifest plugin be "frontpage-aware", and no shared default-sink
+participation record. Declare a home widget only when it is a keeper for the
+sparse home surface. Read your own store/API in the component; it receives
+`WidgetProps` (`pluginId`, `events?`, …). Keep it compact and self-hiding —
+domain dashboards belong in launcher/routed views, not resident home cards. A
+declaration with no registered component and no `uiSpec` simply does not render.
 
 The home is **priority-ranked**, not all-or-nothing: `home-priority.ts`
 (`rankHomeWidgets`) scores each home widget by base `order` plus decayed

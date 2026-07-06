@@ -17,7 +17,6 @@ export {
 export type { ResolvedWidget, WidgetPluginState } from "./registry";
 export {
   BUILTIN_WIDGET_DECLARATIONS,
-  DEFAULT_WIDGET_SINK_COMPONENT,
   getWidgetComponent,
   getWidgetRegistryVersion,
   registerBuiltinWidgetDeclarations,

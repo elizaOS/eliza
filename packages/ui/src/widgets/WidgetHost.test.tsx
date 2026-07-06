@@ -30,7 +30,6 @@ const mockAppState = {
           pluginId: "spec-plugin",
           slot: "home",
           label: "Server Home",
-          defaultWidget: "activity" as const,
         },
       ],
     },
@@ -201,7 +200,6 @@ describe("WidgetHost", () => {
           pluginId: "spec-plugin",
           slot: "home",
           label: "Server Home",
-          defaultWidget: "activity",
         },
       ],
     );
@@ -222,16 +220,6 @@ describe("WidgetHost", () => {
         Component: () => <div>Apps widget</div>,
       },
       {
-        declaration: {
-          id: "activity-sink",
-          pluginId: "spec-plugin",
-          slot: "home",
-          label: "Activity sink",
-        },
-        Component: () => <div>Activity sink</div>,
-        defaultWidgetSink: "activity",
-      },
-      {
         // wallet is NOT in FULL_APP_SHELL_WIDGET_PLUGIN_IDS, so it must keep
         // rendering on the limited base while the shell-bound widgets hide.
         declaration: {
@@ -247,7 +235,6 @@ describe("WidgetHost", () => {
     render(<WidgetHost slot="home" />);
 
     expect(screen.queryByText("Apps widget")).toBeNull();
-    expect(screen.queryByText("Activity sink")).toBeNull();
     expect(screen.getByText("Wallet widget")).toBeTruthy();
   });
 });

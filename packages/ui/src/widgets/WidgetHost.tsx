@@ -250,8 +250,7 @@ export function WidgetHost({
       (entry) =>
         isViewVisible(entry.declaration, enabledKinds) &&
         (fullAppShellRoutesEnabled ||
-          (!FULL_APP_SHELL_WIDGET_PLUGIN_IDS.has(entry.declaration.pluginId) &&
-            entry.defaultWidgetSink !== "activity")),
+          !FULL_APP_SHELL_WIDGET_PLUGIN_IDS.has(entry.declaration.pluginId)),
     );
     return filter ? gated.filter((entry) => filter(entry.declaration)) : gated;
     // `registryVersion` is a resolution input: bumping it re-runs `resolveWidgetsForSlot`
@@ -294,7 +293,6 @@ export function WidgetHost({
     if (slot !== "home") return resolved;
     const renderable = resolved.filter(
       (entry) =>
-        !entry.defaultWidgetSink &&
         !isHomeWidgetSunset(
           homeWidgetKey(entry.declaration),
           entry.declaration.sunset,

@@ -165,46 +165,6 @@ describe("WidgetHost home-slot ranking (#9143)", () => {
     expect(ids[0]).toBe("w9");
   });
 
-  it("does not render default-sink participant declarations as duplicate cards", () => {
-    const participant: PluginWidgetDeclaration = {
-      id: "plugin.default-home",
-      pluginId: "plugin",
-      slot: "home",
-      label: "Plugin",
-      defaultWidget: "activity",
-      uiSpec: {
-        root: "root",
-        state: {},
-        elements: {
-          root: {
-            type: "Text",
-            props: { text: "participant should not render" },
-            children: [],
-          },
-        },
-      },
-    };
-    vi.mocked(resolveWidgetsForSlot).mockImplementation((slot: string) =>
-      slot === "home"
-        ? [
-            ...HOME_DECLS.map((declaration) => ({
-              declaration,
-              Component: null,
-            })),
-            {
-              declaration: participant,
-              Component: null,
-              defaultWidgetSink: "activity" as const,
-            },
-          ]
-        : [],
-    );
-
-    render(<WidgetHost slot="home" />);
-
-    expect(screen.queryByText("participant should not render")).toBeNull();
-  });
-
   // #9959 — the show-once-then-sunset lifecycle: a home widget declaring a
   // `sunset` policy must be dropped from the ranked home set once its condition
   // is met (here: a dismissible card the user dismissed), while non-sunset
