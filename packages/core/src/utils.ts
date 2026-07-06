@@ -1371,7 +1371,9 @@ export { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 export {
 	extractUserText,
 	getUserMessageText,
+	hasDocumentAugmentationEnvelope,
 	normalizeUserMessageText,
+	stripAugmentationForPersistence,
 } from "./utils/message-text";
 // `export * from "./utils"` (in index.node.ts etc.) resolves to this file, not
 // to a `./utils/index.ts`. Any helper in the `utils/` directory that needs to be
