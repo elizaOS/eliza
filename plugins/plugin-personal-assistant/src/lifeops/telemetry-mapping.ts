@@ -1,11 +1,11 @@
 /**
- * Shared mapper from a persisted `LifeOpsActivitySignal` into a
- * `LifeOpsTelemetryPayload`. Used by the live writer in
- * `LifeOpsRepository.createActivitySignal` so every signal is mirrored into
- * the canonical `life_telemetry_events` store with a dedupe-stable payload.
+ * Shared mapper from persisted `LifeOpsActivitySignal` records into
+ * `LifeOpsTelemetryPayload` rows. `LifeOpsRepository.createActivitySignal`
+ * calls this on writes so passive signals are mirrored into
+ * `life_telemetry_events` with a dedupe-stable payload.
  *
- * See `eliza/plugins/plugin-personal-assistant/docs/telemetry-event-families.md` §8 for the
- * canonical mapping table.
+ * This file is the canonical mapping table for current signal families; keep
+ * it aligned with the shared `LifeOpsTelemetryPayload` union.
  */
 
 import crypto from "node:crypto";

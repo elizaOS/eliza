@@ -1,11 +1,8 @@
 /**
- * ActivitySignalBus.
- *
- * Pub/sub fabric for `LifeOpsBusFamily` events. Producers (calendar
- * watcher, plugin-health, time-window emitter, manual-override gateway)
- * publish typed envelopes; consumers (the `ScheduledTaskRunner`'s
- * `ActivitySignalBusView`, plugin-health's recap aggregator) subscribe by
- * family and read recent events.
+ * In-memory pub/sub fabric for `LifeOpsBusFamily` events. The personal
+ * assistant runtime owns the bus, derived health-signal publishers write
+ * typed envelopes to it, and scheduled-task completion checks consume the
+ * read-side `ActivitySignalBusView`.
  *
  * The bus is intentionally narrow. It does NOT:
  *   - Persist events (that is `LifeOpsRepository.insertTelemetryEvent`).
