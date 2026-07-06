@@ -97,6 +97,7 @@ import { BootRecoveryConductorMount } from "./first-run/use-boot-recovery-conduc
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { ModelStatusConductorMount } from "./first-run/use-model-status-conductor";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
+import { useAgentSessionRecovery } from "./hooks/useAgentSessionRecovery";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useRole } from "./hooks/useRole";
 import { useSecretsManagerModalState } from "./hooks/useSecretsManagerModal";
@@ -2096,6 +2097,18 @@ export function App() {
       startupCoordinator.phase === "first-run-required" ||
       isPopout,
   });
+  // #15132: after a dedicated cloud agent's container upgrade the persisted
+  // agent credential is stale (every agent-subdomain call 401s) while the cloud
+  // session is still valid. Rather than dead-end at the agent's internal
+  // password wall (a credential no cloud user has), transparently re-run the
+  // pairing exchange to refresh the credential. Only fires for a cloud-managed
+  // dedicated agent WITH a valid cloud session; otherwise stays "idle" and the
+  // wall renders exactly as before.
+  const agentSessionRecoveryStatus = useAgentSessionRecovery({
+    active: authState.phase === "unauthenticated",
+    reason:
+      authState.phase === "unauthenticated" ? authState.reason : undefined,
+  });
   // Don't initialize the 3D scene while the system is still booting — this
   // prevents VrmEngine's Three.js setup from blocking the JS thread and
   // delaying WebSocket agent-status updates (which would freeze the loader).
@@ -2627,6 +2640,19 @@ export function App() {
       );
     }
     if (authState.phase === "unauthenticated") {
+      // #15132: a stale post-upgrade agent credential with a valid cloud session
+      // is recoverable, so hold the startup surface while the re-pair runs (it
+      // ends in a full-page navigation to `/pair`) instead of flashing the
+      // password wall. Recovery drops back to "idle" if it can't proceed, and
+      // the wall renders then.
+      if (agentSessionRecoveryStatus === "recovering") {
+        return (
+          <BugReportProvider value={bugReport}>
+            <StartupScreen />
+            <BugReportModal />
+          </BugReportProvider>
+        );
+      }
       return (
         <BugReportProvider value={bugReport}>
           <LoginView onLoginSuccess={refetchAuth} reason={authState.reason} />
