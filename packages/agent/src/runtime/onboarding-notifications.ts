@@ -44,7 +44,7 @@ function isNotifier(value: unknown): value is NotifierLike {
 export const ONBOARDING_NOTIFICATIONS: readonly NotificationInput[] = [
   {
     title: "Take the tour",
-    body: "New here? A one-minute tour runs right in the chat — it walks you through messaging, voice, and navigating by asking.",
+    body: "New here? A one-minute tour runs right in the chat — open the chat and tap “Take a quick tour” to walk through messaging, voice, and navigating by asking.",
     category: "general",
     priority: "normal",
     source: "system",

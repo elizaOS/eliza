@@ -40,6 +40,7 @@ import { MODEL_DOWNLOAD_HOME_WIDGET } from "../components/chat/widgets/model-dow
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
 import { NEEDS_ATTENTION_HOME_WIDGET } from "../components/chat/widgets/needs-attention";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
+import { TUTORIAL_LAUNCH_HOME_WIDGET } from "../components/chat/widgets/tutorial-launch";
 import { WalletBalanceWidget } from "../components/chat/widgets/wallet-balance";
 
 // -- Seed bundled widgets into the registry ----------------------------------
@@ -83,6 +84,13 @@ registerWidgetComponent(
   FTU_WELCOME_HOME_WIDGET.pluginId,
   FTU_WELCOME_HOME_WIDGET.id,
   FTU_WELCOME_HOME_WIDGET.Component,
+);
+// Chat-native tutorial launch card: a core FTU surface that is always-visible
+// until the user launches or dismisses it.
+registerWidgetComponent(
+  TUTORIAL_LAUNCH_HOME_WIDGET.pluginId,
+  TUTORIAL_LAUNCH_HOME_WIDGET.id,
+  TUTORIAL_LAUNCH_HOME_WIDGET.Component,
 );
 
 // Per-plugin frontpage widgets: each surfaces a compact, attention-ranked slice
@@ -145,6 +153,22 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     signalKinds: FTU_WELCOME_HOME_WIDGET.signalKinds,
     size: FTU_WELCOME_HOME_WIDGET.size,
     sunset: FTU_WELCOME_HOME_WIDGET.sunset,
+  },
+  // Chat-native tutorial launch: ranks just below the FTU welcome for a cold
+  // user and retires permanently once the tour is launched or dismissed.
+  {
+    id: TUTORIAL_LAUNCH_HOME_WIDGET.id,
+    pluginId: TUTORIAL_LAUNCH_HOME_WIDGET.pluginId,
+    slot: "home",
+    label: "Take a tour",
+    icon: "GraduationCap",
+    order: TUTORIAL_LAUNCH_HOME_WIDGET.order,
+    defaultEnabled: true,
+    // Core FTU surface, not a loadable plugin — always-visible, self-retires.
+    visibility: "always",
+    signalKinds: TUTORIAL_LAUNCH_HOME_WIDGET.signalKinds,
+    size: TUTORIAL_LAUNCH_HOME_WIDGET.size,
+    sunset: TUTORIAL_LAUNCH_HOME_WIDGET.sunset,
   },
   // Notifications are deliberately NOT a ranked home-slot widget: the dashboard
   // notification center (NotificationsHomeCenter) is pinned by HomeScreen

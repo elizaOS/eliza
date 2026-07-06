@@ -3,12 +3,13 @@
  * by the user's enabled view kinds and active modality, curates them into the
  * ordered page (`curateLauncherPages`), partitions that page into the named
  * Recents/Favorites/All-Apps zones (`curateLauncherZones`), and wires tile taps
- * to view navigation. It owns the launcher's Recents/Favorites state (view-id
- * keyed, persisted locally) so a tap records recency and a pin toggles a
- * favorite. `Launcher` itself is pure presentation.
+ * to view navigation and chat-open. It owns the launcher's
+ * Recents/Favorites state (view-id keyed, persisted locally) so a tap records
+ * recency and a pin toggles a favorite. `Launcher` itself is pure presentation.
  */
 import { logger } from "@elizaos/logger";
 import * as React from "react";
+import { dispatchChatOpen } from "../../events";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
 import { type ViewEntry, viewToEntry } from "../../hooks/view-catalog";
 import { isAospShellEnabled } from "../../navigation";
@@ -101,6 +102,11 @@ export const LauncherSurface = React.memo(
         } else {
           window.history.pushState(null, "", path);
           window.dispatchEvent(new PopStateEvent("popstate"));
+        }
+        if (entry.id === "chat") {
+          // The Messages tile lands on `/chat` (the ambient home). Open the chat
+          // so the user arrives in a conversation, not on a collapsed pill.
+          dispatchChatOpen();
         }
       } catch (err) {
         // error-policy:J4 sandboxed webviews (embeds) can reject history

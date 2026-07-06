@@ -72,8 +72,6 @@ const SUBJECTS = {
   runtime: "a terminal command prompt",
   database: "a database cylinder stack",
   desktop: "a desktop monitor",
-  tutorial: "a graduation cap",
-  help: "a question mark in a circle",
   logs: "a scroll with list lines",
   background: "a framed landscape picture",
   facewear: "a face silhouette wearing a pair of smart glasses",

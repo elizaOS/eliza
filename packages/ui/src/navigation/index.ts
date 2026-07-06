@@ -472,6 +472,12 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     return "chat";
   }
 
+  // Historical /tutorial links land in chat because the tutorial is a
+  // chat-native flow launched from the home card, not a routable page.
+  if (normalized === "/tutorial") {
+    return "chat";
+  }
+
   // /views — legacy launcher alias; renders the combined Home/Launcher.
   if (normalized === "/views" || normalized.startsWith("/views/")) {
     return "views";
