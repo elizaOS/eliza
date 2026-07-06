@@ -61,6 +61,10 @@ const PA_LIVE_E2E_FILES = [
  * deliberately credential-free (it gates itself on LIFEOPS_PERMISSION_MATRIX).
  * Lane 3's plugin-x tests call dotenv.config() against the plugin cwd with
  * override:false, so the env injected here wins over any plugin-local .env.
+ * Lane 5 runs the shared live-e2e vitest lane; its include globs are derived
+ * from the resolved eliza workspace root (packages/test/vitest/e2e.config.ts),
+ * so the same command collects the PA live e2e files from both the flat
+ * elizaOS checkout and the nested `eliza/` consumer layout.
  */
 const LANES = [
   {

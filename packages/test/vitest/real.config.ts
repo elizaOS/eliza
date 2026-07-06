@@ -233,6 +233,13 @@ const realResolveAlias: ModuleAlias[] = [
     replacement: path.join(pluginElizaCloudRoot, "index.node.ts"),
   },
   {
+    // Same prefix-alias hazard as plugin-discord above: the installed-package
+    // string alias rewrites subpath imports (e.g. ./cloud/duffel-client) into
+    // dist paths that do not exist. Route them to source like app-core does.
+    find: /^@elizaos\/plugin-elizacloud\/(.+)$/,
+    replacement: `${pluginElizaCloudRoot.split(path.sep).join("/")}/$1`,
+  },
+  {
     find: /^@elizaos\/plugin-discord$/,
     replacement: path.join(pluginDiscordRoot, "index.ts"),
   },
@@ -242,7 +249,11 @@ const realResolveAlias: ModuleAlias[] = [
     // Pin the one subpath the PA plugin graph imports to source, mirroring
     // integration.config.ts.
     find: /^@elizaos\/plugin-discord\/user-account-scraper$/,
-    replacement: path.join(pluginDiscordRoot, "user-account-scraper", "index.ts"),
+    replacement: path.join(
+      pluginDiscordRoot,
+      "user-account-scraper",
+      "index.ts",
+    ),
   },
   {
     // Subpath imports (e.g. @elizaos/plugin-wallet/diagnostic) must resolve to
