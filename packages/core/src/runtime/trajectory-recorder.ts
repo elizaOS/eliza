@@ -97,9 +97,11 @@ export interface RecordedModelCall {
 	/** Provider order selected for the composeState call that fed this model input. */
 	providerOrder?: string[];
 	/**
-	 * Hash-first provider contributions with spans into `prompt`. Text is not
-	 * duplicated here; consumers can slice the recorded prompt to verify exact
-	 * provenance when spans are present.
+	 * Hash-first provider contributions. No provider text is duplicated: when
+	 * `spanStart`/`spanEnd` are present they index into the flattened form of the
+	 * persisted `messages` (`flattenTrajectoryMessages(messages)`), derived once
+	 * at read time — consumers slice that to verify exact provenance rather than a
+	 * second stored copy of the prompt.
 	 */
 	providerAttributions?: TrajectoryProviderAttribution[];
 }

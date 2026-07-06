@@ -27,7 +27,10 @@ describe("trajectory provider attribution", () => {
 				},
 			},
 		} as State;
-		const prompt = flattenTrajectoryMessages([
+		// The recorded stage persists `messages`, never a second flattened prompt.
+		// Spans index into the read-time reconstruction of that same array, so the
+		// round trip below mirrors exactly what a consumer reconstructs on read.
+		const messages = [
 			{
 				role: "system",
 				content: "provider:CHARACTER:\nCharacter voice: precise and brief.",
@@ -36,7 +39,8 @@ describe("trajectory provider attribution", () => {
 				role: "user",
 				content: "provider:RECENT_MESSAGES:\nUser: remind me tomorrow.",
 			},
-		]);
+		];
+		const prompt = flattenTrajectoryMessages(messages);
 
 		const result = buildProviderAttributionsFromState({ state, prompt });
 
@@ -49,10 +53,12 @@ describe("trajectory provider attribution", () => {
 			expect(entry.spanEnd).toBeGreaterThan(entry.spanStart ?? 0);
 		}
 		const [character, recent] = result.providerAttributions;
-		expect(prompt.slice(character.spanStart, character.spanEnd)).toBe(
+		// Reconstruct from `messages` (as a reader does) — no stored prompt needed.
+		const reconstructed = flattenTrajectoryMessages(messages);
+		expect(reconstructed.slice(character.spanStart, character.spanEnd)).toBe(
 			"Character voice: precise and brief.",
 		);
-		expect(prompt.slice(recent.spanStart, recent.spanEnd)).toBe(
+		expect(reconstructed.slice(recent.spanStart, recent.spanEnd)).toBe(
 			"User: remind me tomorrow.",
 		);
 		expect(character.sha256).toBe(

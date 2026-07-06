@@ -1848,10 +1848,12 @@ async function recordPlannerStage(args: {
 		const usage = extractUsage(args.raw);
 		const finishReason = extractFinishReason(args.raw);
 		const modelName = extractModelName(args.raw);
-		const prompt = flattenTrajectoryMessages(args.modelParams.messages);
+		// Flatten `messages` only to locate provider spans; the flattened form is
+		// not persisted — `messages` is the canonical record and spans index into
+		// `flattenTrajectoryMessages(messages)` reconstructed at read time.
 		const providerAttribution = buildProviderAttributionsFromState({
 			state: args.providerAttributionState,
-			prompt,
+			prompt: flattenTrajectoryMessages(args.modelParams.messages),
 		});
 		const stage: RecordedStage = {
 			stageId: `stage-planner-iter-${args.iteration}-${args.startedAt}`,
@@ -1865,7 +1867,6 @@ async function recordPlannerStage(args: {
 				modelType: String(args.modelType),
 				modelName,
 				provider: args.provider ?? "default",
-				prompt,
 				messages: args.modelParams.messages,
 				tools: args.modelParams.tools,
 				toolChoice: args.modelParams.toolChoice,

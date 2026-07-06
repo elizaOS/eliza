@@ -6972,10 +6972,12 @@ async function recordMessageHandlerStage(args: {
 				? undefined
 				: extractMessageHandlerUsage(args.raw);
 		const modelName = extractMessageHandlerModelName(args.raw);
-		const prompt = flattenTrajectoryMessages(args.messages);
+		// Flatten `messages` only to locate provider spans; the flattened form is
+		// not persisted — `messages` is the canonical record and spans index into
+		// `flattenTrajectoryMessages(messages)` reconstructed at read time.
 		const providerAttribution = buildProviderAttributionsFromState({
 			state: args.state,
-			prompt,
+			prompt: flattenTrajectoryMessages(args.messages),
 		});
 		await args.recorder.recordStage(args.trajectoryId, {
 			stageId: `stage-msghandler-${args.startedAt}`,
@@ -6987,7 +6989,6 @@ async function recordMessageHandlerStage(args: {
 				modelType: String(ModelType.RESPONSE_HANDLER),
 				modelName,
 				provider: resolveRecordedStageProvider(args.raw, args.provider),
-				prompt,
 				messages: args.messages,
 				tools: args.tools,
 				toolChoice: args.toolChoice,
