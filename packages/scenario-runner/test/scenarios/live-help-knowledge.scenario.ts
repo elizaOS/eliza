@@ -14,6 +14,9 @@ const FORBIDDEN_UI_REFERENCES = [
   /help screen/i,
   /spotlight tour/i,
   /full[- ]screen help/i,
+  /tutorial (launcher )?tile/i,
+  /tutorial view/i,
+  /launcher tile/i,
   /tap (the )?button below/i,
   /click (the )?button below/i,
 ];
@@ -88,14 +91,14 @@ export default scenario({
       name: "new user asks what to do first",
       text: "What should I do first if I do not know where to start?",
       assertResponse: assertHelpAnswer([
-        [/start|restart|take/i],
+        [/start tutorial|restart tutorial|tutorial card|tutorial widget/i],
         [/tutorial|tour/i],
-        ["chat", "conversation"],
+        ["chat", "conversation", "in-chat"],
       ]),
       responseJudge: {
         minimumScore: 0.8,
         rubric:
-          'The answer must ground the first step in the bundled help: take/restart the interactive tutorial from chat by typing "start tutorial" or using the Tutorial launcher tile. It must not refer to a deleted Help view, spotlight-only tour, or a button below the response.',
+          'The answer must ground the first step in the bundled help: take/restart the interactive tutorial from chat by typing "start tutorial" or using an in-chat tutorial card/widget. It must not refer to a Tutorial launcher tile, deleted Help view, spotlight-only tour, separate Tutorial view, or a button below the response.',
       },
     },
     {
@@ -121,14 +124,14 @@ export default scenario({
       name: "user asks how to restart the tour",
       text: "Can I see the tutorial again later? How do I restart it?",
       assertResponse: assertHelpAnswer([
-        [/restart tutorial|start tutorial/i],
-        ["chat", "launcher"],
+        [/restart tutorial|start tutorial|tutorial card|tutorial widget/i],
+        ["chat", "conversation", "in-chat"],
         [/rerunnable|again|any time|later/i],
       ]),
       responseJudge: {
         minimumScore: 0.8,
         rubric:
-          'The answer must say the tutorial is rerunnable and can be started from chat with "restart tutorial" or "start tutorial", or from the Tutorial launcher tile. It must not call it one-time-only.',
+          'The answer must say the tutorial is rerunnable and can be started from chat with "restart tutorial" or "start tutorial", or from an in-chat tutorial card/widget. It must not mention a Tutorial launcher tile or a separate Tutorial view, and must not call it one-time-only.',
       },
     },
     {
@@ -152,7 +155,7 @@ export default scenario({
     {
       type: "modelCallOccurred",
       name: "trajectory includes getting-started help fragment",
-      includesAll: ["I just opened Eliza", "Take the interactive tutorial"],
+      includesAll: ["I just opened Eliza", 'type "start tutorial" in the chat'],
       minCount: 1,
     },
     {
