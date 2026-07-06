@@ -220,9 +220,6 @@ jobs:
     timeout-minutes: 60
     env:
       PGLITE_WASM_MODE: node
-      # The TUI e2e capture test writes its .cast / viewport / scrollback
-      # artifacts here during `test:server`; the upload step below attaches them.
-      TUI_EVIDENCE_DIR: ${{ runner.temp }}/evidence/9969-tui-e2e
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -320,13 +317,22 @@ jobs:
       - name: Remote capability Docker smoke
         run: bun run test:remote-capabilities:docker
 
+      # TUI_EVIDENCE_DIR must be step-level: the `runner` context does not
+      # exist in job-level `env`, and a job-level reference makes GitHub
+      # reject the entire workflow file ("workflow file issue" on every run).
+      # The TUI e2e capture test writes its .cast / viewport / scrollback
+      # artifacts here during `test:server`; the upload step below attaches them.
       - name: Run server tests
+        env:
+          TUI_EVIDENCE_DIR: ${{ runner.temp }}/evidence/9969-tui-e2e
         run: bun run test:server
 
       # Real-PTY smoke: spawns the packaged `tui` under a true TTY to exercise
       # ProcessTerminal / Kitty / stdin / resize end to end. Skips cleanly if
       # @lydell/node-pty has no usable prebuild on the runner.
       - name: Real-PTY TUI smoke
+        env:
+          TUI_EVIDENCE_DIR: ${{ runner.temp }}/evidence/9969-tui-e2e
         run: bun run --cwd packages/agent test:tui-pty
 
       # The TUI e2e capture test (packages/agent/test/tui-e2e/tui-capture.test.ts)
