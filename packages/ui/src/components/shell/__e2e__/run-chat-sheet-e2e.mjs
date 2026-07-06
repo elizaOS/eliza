@@ -957,7 +957,7 @@ try {
     await p.close();
   }
 
-  // responding: typing dots inside the (opened) sheet
+  // responding: an in-progress status row inside the opened sheet
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -967,7 +967,7 @@ try {
     await p.getByTestId("chat-sheet-grabber").focus();
     await p.keyboard.press("ArrowUp"); // open to half so the dots are visible
     await p.waitForTimeout(450);
-    assert(await p.getByTestId("typing-dots").isVisible(), "RESPONDING: typing-dots shown in the open sheet");
+    assert(await p.getByTestId("turn-status-indicator").isVisible(), "RESPONDING: turn status shown in the open sheet");
     await snap(p, "state-responding");
     await p.close();
   }
@@ -2150,12 +2150,10 @@ try {
     await p.close();
   }
 
-  // ONBOARDING (firstRunOpen): the sheet is pinned open + undismissable, but now
-  // sized to its CONTENT so the greeting + choice widget sit just above the
-  // composer (it grows from the bottom) instead of floating under a tall empty
-  // full-screen panel. Assert the sheet's TOP sits in the LOWER portion of the
-  // viewport (content-sized, not full-height), the detent still reports the
-  // pinned "full" contract, and the composer shows the onboarding copy.
+  // ONBOARDING (firstRunOpen): the sheet is pinned full-screen + undismissable.
+  // The greeting/choice widget owns the whole first-run screen; on completion the
+  // sheet settles to HALF so the home appears behind the top half while the
+  // conversation stays in hand.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2169,8 +2167,8 @@ try {
       "ONBOARDING: sheet reports the pinned-open 'full' detent contract",
     );
     assert(
-      top > vh * 0.4,
-      `ONBOARDING: sheet is content-sized at the BOTTOM, not a full-screen panel (top ${Math.round(top)} > ${Math.round(vh * 0.4)})`,
+      top < vh * 0.15,
+      `ONBOARDING: sheet is full-screen, not content-sized at the bottom (top ${Math.round(top)} < ${Math.round(vh * 0.15)})`,
     );
     assert(
       (await p
@@ -2184,7 +2182,7 @@ try {
         .isEnabled()),
       "ONBOARDING: composer textarea is unlocked (#12178)",
     );
-    await snap(p, "state-onboarding-bottom-anchored");
+    await snap(p, "state-onboarding-full-screen");
 
     // OPAQUE BACKDROP (#12178 impl / #12364 proof): a solid bg-bg plane covers
     // the launcher/home so no launcher pixel shows through — the fixture's
@@ -2235,8 +2233,8 @@ try {
     await snap(p, "state-onboarding-opaque-backdrop");
 
     // COMPLETION REVEAL (#12364): drive the falling edge — the backdrop fades
-    // off its opaque state and the sheet auto-collapses, revealing the home
-    // surface cleanly.
+    // off its opaque state and the sheet settles to HALF, revealing the home
+    // surface behind the conversation.
     await p.evaluate(() => window.__setFirstRun?.(false));
     await p.waitForTimeout(900);
     const revealOpaque = await p.evaluate(() => {
@@ -2255,8 +2253,8 @@ try {
       `REVEAL: the home surface is painted again once the backdrop reveals (pixel rgb(${revealPx.r}, ${revealPx.g}, ${revealPx.b}) is no longer the opaque bg)`,
     );
     assert(
-      (await variant(p)) === "closed",
-      "REVEAL: the sheet auto-collapses on completion, revealing home",
+      (await detent(p)) === "half",
+      "REVEAL: the sheet settles to half on completion, revealing home behind the conversation",
     );
     await snap(p, "state-onboarding-reveal-home");
     await p.close();

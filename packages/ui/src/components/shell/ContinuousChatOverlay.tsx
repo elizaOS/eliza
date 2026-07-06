@@ -461,6 +461,7 @@ function SheetGrabber({
   glow,
   opacity,
   pilled,
+  inert,
 }: {
   open: boolean;
   onOpen: () => void;
@@ -474,14 +475,18 @@ function SheetGrabber({
   // Inert while pilled so the invisible grabber can't steal taps meant for the
   // pill capsule (or pass-through to the home screen) below it.
   pilled: boolean;
+  // Inert while collapsed attachment controls are visible; their tap targets sit
+  // in the same top edge zone the broad swipe handle normally owns.
+  inert?: boolean;
 }): React.JSX.Element {
+  const disabled = pilled || inert;
   return (
     <motion.button
-      style={{ opacity, pointerEvents: pilled ? "none" : "auto" }}
+      style={{ opacity, pointerEvents: disabled ? "none" : "auto" }}
       // Invisible + inert while pilled: the pill capsule below owns the drag, so
       // keep this out of the tab order and the a11y tree until it's the handle.
-      tabIndex={pilled ? -1 : undefined}
-      aria-hidden={pilled || undefined}
+      tabIndex={disabled ? -1 : undefined}
+      aria-hidden={disabled || undefined}
       // A disclosure toggle for the chat history, not a value-bearing separator:
       // button + aria-expanded is the accurate semantic and stays keyboard-
       // operable (Enter/Space toggle, Arrow keys nudge) per WCAG 2.1.1.
@@ -3797,6 +3802,7 @@ export function ContinuousChatOverlay({
             glow={listening || responding}
             opacity={grabberOpacity}
             pilled={pilled}
+            inert={!sheetOpen && (hasImages || Boolean(imageError))}
           />
         ) : null}
         <motion.fieldset
@@ -4362,7 +4368,7 @@ export function ContinuousChatOverlay({
                           // Small visual disc, but a 44px-class hit zone via the
                           // invisible `before` overlay so it's thumb-tappable
                           // without crowding the tile.
-                          className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
+                          className="absolute -right-1.5 -top-1.5 z-30 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
                         >
                           ×
                         </Button>
