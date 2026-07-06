@@ -1,7 +1,7 @@
 /**
  * Vitest config for the Discord plugin's unit tests. Aliases unbuilt workspace
- * deps (`@elizaos/plugin-commands`, `@elizaos/plugin-meetings`) to their source
- * so tests resolve without a prebuild of those packages.
+ * deps and core interaction contracts to their source so tests resolve without
+ * a prebuild and exercise the current workspace code under review.
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,7 @@ import { defineConfig } from "vitest/config";
 
 const pluginRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(pluginRoot, "../..");
+const coreSrc = path.join(repoRoot, "packages/core/src");
 
 export default defineConfig({
 	resolve: {
@@ -39,6 +40,14 @@ export default defineConfig({
 					repoRoot,
 					"plugins/plugin-meetings/src/index.ts",
 				),
+			},
+			{
+				find: /^@elizaos\/core\/(.*)\.js$/,
+				replacement: path.join(coreSrc, "$1.ts"),
+			},
+			{
+				find: /^@elizaos\/core$/,
+				replacement: path.join(coreSrc, "index.node.ts"),
 			},
 		],
 	},
