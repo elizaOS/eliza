@@ -6,7 +6,7 @@
  * or channel surfaces, and a render failure fails closed. Deterministic: the
  * model is stubbed at the runtime boundary (`useModel`).
  */
-import { type IAgentRuntime, ServiceType } from "@elizaos/core";
+import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { dailyRhythmPack } from "../../default-packs/daily-rhythm.js";
 import { morningBriefPack } from "../../default-packs/morning-brief.js";
@@ -14,10 +14,15 @@ import {
   createChannelRegistry,
   registerChannelRegistry,
 } from "../channels/registry.js";
+import { reportSuppressedSleepCycleMorningCheckin } from "../checkin/morning-checkin-ownership.js";
 import { createProductionScheduledTaskDispatcher } from "./runtime-wiring.js";
 
 const agentMocks = vi.hoisted(() => ({
   eventService: { emit: vi.fn() },
+}));
+
+vi.mock("../repository.js", () => ({
+  LifeOpsRepository: class LifeOpsRepository {},
 }));
 
 vi.mock("@elizaos/agent", () => ({
@@ -153,6 +158,57 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
       "Assemble the owner's morning brief",
     );
     expect(notify.mock.calls[0]?.[0].body).toBe(summaryText);
+  });
+
+  it("delivers exactly one morning check-in when the sleep-cycle domain and scheduled spine are both armed", async () => {
+    const summaryText =
+      "Good morning. Scheduled spine owns this assembled morning brief.";
+    morningBriefMocks.assembleMorningBrief.mockResolvedValueOnce({
+      promptText: "internal prompt text",
+      report: { summaryText },
+    });
+    const reportError = vi.fn();
+    const loggerInfo = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const { runtime } = makeRuntime({ reportError });
+
+    reportSuppressedSleepCycleMorningCheckin(runtime, {
+      agentId: "agent-test",
+      nowIso: "2026-07-06T14:00:00.000Z",
+      timezone: "America/Denver",
+      circadianState: "wake",
+      wakeAt: "2026-07-06T13:30:00.000Z",
+    });
+
+    const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
+    const record = morningBriefPack.records[0];
+    if (!record) throw new Error("morning-brief record missing");
+
+    const result = await dispatcher.dispatch({
+      taskId: record.taskId,
+      firedAtIso: "2026-07-06T14:00:00.000Z",
+      channelKey: "in_app",
+      intensity: "normal",
+      promptInstructions: record.promptInstructions,
+      contextRequest: record.contextRequest,
+      output: record.output,
+      metadata: record.metadata,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(agentMocks.eventService.emit).toHaveBeenCalledTimes(1);
+    const emitted = agentMocks.eventService.emit.mock.calls[0]?.[0];
+    if (!emitted) throw new Error("assistant event missing");
+    expect(emitted.data.text).toBe(summaryText);
+    expect(reportError).not.toHaveBeenCalled();
+    expect(loggerInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "agent-test",
+        ownerEngine: "scheduled-task-spine",
+        suppressedEngine: "reminders-domain-sleep-cycle",
+      }),
+      "Suppressed duplicate sleep-cycle morning check-in; scheduled-task spine owns morning delivery.",
+    );
+    loggerInfo.mockRestore();
   });
 
   it("sends the model-rendered message through connected channel payloads", async () => {

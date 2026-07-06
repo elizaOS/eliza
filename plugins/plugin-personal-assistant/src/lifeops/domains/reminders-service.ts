@@ -100,6 +100,10 @@ import {
   CheckinService,
   type CheckinSourceService,
 } from "../checkin/checkin-service.js";
+import {
+  reportSuppressedSleepCycleMorningCheckin,
+  shouldSuppressSleepCycleMorningCheckin,
+} from "../checkin/morning-checkin-ownership.js";
 import { resolveCheckinSchedule } from "../checkin/schedule-resolver.js";
 import {
   type ContactRoutePurpose,
@@ -232,7 +236,7 @@ import {
   DEFAULT_TELEMETRY_RETENTION_DAYS,
   runTelemetryRetention,
 } from "../telemetry-retention.js";
-import { addMinutes, getZonedDateParts } from "../time.js";
+import { addMinutes, getLocalDateKey, getZonedDateParts } from "../time.js";
 import { resolveReminderNotificationPriority } from "./reminder-notification-priority.js";
 
 export { REMINDER_DISPATCH_INSTRUCTIONS } from "../optimized-prompt-instructions.js";
@@ -1106,6 +1110,7 @@ export class RemindersDomain {
    * fires once per day per runtime process.
    */
   private telemetryRollupLastRunDate: string | null = null;
+  private readonly loggedMorningCheckinSuppressionKeys = new Set<string>();
 
   protected emitInAppReminderNudge(args: {
     text: string;
@@ -5590,6 +5595,22 @@ export class RemindersDomain {
         timezone,
       });
       if (alreadySent) {
+        if (kind === "morning" && shouldSuppressSleepCycleMorningCheckin()) {
+          const localDay = getLocalDateKey(
+            getZonedDateParts(args.now, timezone),
+          );
+          const suppressionKey = `${this.ctx.agentId()}:${timezone}:${localDay}`;
+          if (!this.loggedMorningCheckinSuppressionKeys.has(suppressionKey)) {
+            this.loggedMorningCheckinSuppressionKeys.add(suppressionKey);
+            reportSuppressedSleepCycleMorningCheckin(this.ctx.runtime, {
+              agentId: this.ctx.agentId(),
+              nowIso: args.now.toISOString(),
+              timezone,
+              circadianState: currentSchedule.circadianState,
+              wakeAt: currentSchedule.wakeAt,
+            });
+          }
+        }
         return;
       }
       const report =
