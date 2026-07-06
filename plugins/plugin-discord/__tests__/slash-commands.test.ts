@@ -18,7 +18,9 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 });
 
 import {
+	addCommand,
 	getRegisteredCommands,
+	handleSlashCommand,
 	registerSlashCommands,
 	type SlashCommand,
 } from "../slash-commands";
@@ -43,14 +45,24 @@ interface MockInteraction {
 	channelId: string;
 	user: { id: string; username: string };
 	reply: ReturnType<typeof vi.fn>;
+	editReply: ReturnType<typeof vi.fn>;
+	deferred: boolean;
+	replied: boolean;
+	commandName: string;
+	guild: { ownerId: string } | null;
 }
 
-function makeInteraction(): MockInteraction {
+function makeInteraction(commandName = "app"): MockInteraction {
 	return {
 		id: "interaction-1",
 		channelId: "987654321098765432",
 		user: { id: "123456789012345678", username: "tester" },
+		commandName,
 		reply: vi.fn(async () => undefined),
+		editReply: vi.fn(async () => undefined),
+		deferred: false,
+		replied: false,
+		guild: { ownerId: "guild-owner" },
 	};
 }
 
@@ -138,5 +150,94 @@ describe("/app embedded-app launch command (#9947)", () => {
 		expect(reply.ephemeral).toBe(true);
 		expect(reply.content).not.toContain("https://");
 		expect(reply.content).toMatch(/ELIZA_EMBED_URL/);
+	});
+});
+
+describe("slash command dispatcher role gates (#14710)", () => {
+	beforeEach(() => {
+		hasRoleAccess.mockReset();
+		hasRoleAccess.mockResolvedValue(true);
+	});
+
+	it("denies a role-gated command when dispatch context is missing", async () => {
+		const execute = vi.fn(async () => undefined);
+		addCommand({
+			name: "gated_missing_context",
+			description: "gated",
+			requiredRole: "ADMIN",
+			execute,
+		});
+		const interaction = makeInteraction("gated_missing_context");
+
+		await handleSlashCommand(interaction as never, makeRuntime());
+
+		expect(hasRoleAccess).not.toHaveBeenCalled();
+		expect(execute).not.toHaveBeenCalled();
+		expect(lastReply(interaction).content).toContain("Unable to verify");
+	});
+
+	it("denies a role-gated command when role resolution throws", async () => {
+		hasRoleAccess.mockRejectedValue(new Error("role backend down"));
+		const execute = vi.fn(async () => undefined);
+		addCommand({
+			name: "gated_role_error",
+			description: "gated",
+			requiredRole: "ADMIN",
+			execute,
+		});
+		const interaction = makeInteraction("gated_role_error");
+
+		await handleSlashCommand(interaction as never, makeRuntime(), {
+			entityId: "entity-1",
+			roomId: "room-1",
+		});
+
+		expect(hasRoleAccess).toHaveBeenCalled();
+		expect(execute).not.toHaveBeenCalled();
+		expect(lastReply(interaction).content).toContain("ADMIN");
+	});
+
+	it("does not execute when a denial reply fails", async () => {
+		hasRoleAccess.mockResolvedValue(false);
+		const execute = vi.fn(async () => undefined);
+		addCommand({
+			name: "gated_reply_failure",
+			description: "gated",
+			requiredRole: "ADMIN",
+			execute,
+		});
+		const interaction = makeInteraction("gated_reply_failure");
+		interaction.reply.mockRejectedValueOnce(new Error("interaction expired"));
+
+		await expect(
+			handleSlashCommand(interaction as never, makeRuntime(), {
+				entityId: "entity-1",
+				roomId: "room-1",
+			}),
+		).rejects.toThrow("interaction expired");
+
+		expect(execute).not.toHaveBeenCalled();
+	});
+
+	it("checks ownerOnly through the elizaOS OWNER role instead of Discord guild ownership", async () => {
+		hasRoleAccess.mockResolvedValue(false);
+		const execute = vi.fn(async () => undefined);
+		addCommand({
+			name: "owner_only",
+			description: "owner",
+			ownerOnly: true,
+			execute,
+		});
+		const interaction = makeInteraction("owner_only");
+		interaction.user.id = "guild-owner";
+
+		await handleSlashCommand(interaction as never, makeRuntime(), {
+			entityId: "entity-1",
+			roomId: "room-1",
+		});
+
+		expect(hasRoleAccess.mock.calls[0][2]).toBe("OWNER");
+		expect(execute).not.toHaveBeenCalled();
+		expect(lastReply(interaction).content).toContain("OWNER");
 	});
 });

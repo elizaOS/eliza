@@ -43,6 +43,19 @@ export interface SlashCommandContext {
 	roomId: string;
 }
 
+async function replyEphemeral(
+	interaction: ChatInputCommandInteraction,
+	content: string,
+): Promise<void> {
+	if (interaction.deferred) {
+		await interaction.editReply({ content });
+		return;
+	}
+	if (!interaction.replied) {
+		await interaction.reply({ content, ephemeral: true });
+	}
+}
+
 export interface SlashCommandOption {
 	name: string;
 	description: string;
@@ -745,25 +758,35 @@ export async function handleSlashCommand(
 	}
 
 	// elizaOS role check — uses the agent's role hierarchy (OWNER > ADMIN > USER > GUEST)
-	if (command.requiredRole && command.requiredRole !== "GUEST" && context) {
+	if (command.requiredRole && command.requiredRole !== "GUEST") {
+		if (!context) {
+			runtime.logger.warn(
+				{
+					src: "slash-commands",
+					commandName: command.name,
+					requiredRole: command.requiredRole,
+				},
+				"Role-gated slash command missing dispatch context",
+			);
+			await replyEphemeral(
+				interaction,
+				`Unable to verify your **${command.requiredRole}** role for \`/${command.name}\`.`,
+			);
+			return;
+		}
+
+		let allowed = false;
 		try {
 			const memory = {
 				entityId: context.entityId,
 				roomId: context.roomId,
 				content: { text: `/${command.name}`, source: "discord" },
-			};
-			const allowed = await hasRoleAccess(
+			} satisfies Pick<Memory, "entityId" | "roomId" | "content">;
+			allowed = await hasRoleAccess(
 				runtime,
-				memory,
+				memory as Memory,
 				command.requiredRole,
 			);
-			if (!allowed) {
-				await interaction.reply({
-					content: `You need at least **${command.requiredRole}** role to use \`/${command.name}\`.`,
-					ephemeral: true,
-				});
-				return;
-			}
 		} catch (error) {
 			runtime.logger.warn(
 				{
@@ -771,18 +794,53 @@ export async function handleSlashCommand(
 					commandName: command.name,
 					error: error instanceof Error ? error.message : String(error),
 				},
-				"Role check failed, falling through",
+				"Role check failed; denying slash command",
 			);
+		}
+		if (!allowed) {
+			await replyEphemeral(
+				interaction,
+				`You need at least **${command.requiredRole}** role to use \`/${command.name}\`.`,
+			);
+			return;
 		}
 	}
 
 	if (command.ownerOnly) {
-		const guild = interaction.guild;
-		if (guild && interaction.user.id !== guild.ownerId) {
-			await interaction.reply({
-				content: "This command can only be used by the server owner.",
-				ephemeral: true,
-			});
+		if (!context) {
+			runtime.logger.warn(
+				{ src: "slash-commands", commandName: command.name },
+				"Owner-only slash command missing dispatch context",
+			);
+			await replyEphemeral(
+				interaction,
+				`Unable to verify OWNER role for \`/${command.name}\`.`,
+			);
+			return;
+		}
+		const memory = {
+			entityId: context.entityId,
+			roomId: context.roomId,
+			content: { text: `/${command.name}`, source: "discord" },
+		} satisfies Pick<Memory, "entityId" | "roomId" | "content">;
+		let allowed = false;
+		try {
+			allowed = await hasRoleAccess(runtime, memory as Memory, "OWNER");
+		} catch (error) {
+			runtime.logger.warn(
+				{
+					src: "slash-commands",
+					commandName: command.name,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Owner role check failed; denying slash command",
+			);
+		}
+		if (!allowed) {
+			await replyEphemeral(
+				interaction,
+				`You need OWNER role to use \`/${command.name}\`.`,
+			);
 			return;
 		}
 	}

@@ -652,12 +652,16 @@ export function validateMessageAllowed(params: {
 			return { allowed: false, reason: "DMs disabled" };
 		}
 
-		const dmPolicy = dmConfig?.policy ?? "open";
+		const dmPolicy = dmConfig?.policy ?? "pairing";
 		if (dmPolicy === "disabled") {
 			return { allowed: false, reason: "DM policy disabled" };
 		}
 
-		if (dmPolicy === "allowlist" && dmConfig?.allowFrom) {
+		if (dmPolicy === "open") {
+			return { allowed: true };
+		}
+
+		if (dmConfig?.allowFrom) {
 			const isAllowed = resolveDiscordUserAllowed({
 				allowList: dmConfig.allowFrom,
 				userId: author.id,
@@ -665,12 +669,18 @@ export function validateMessageAllowed(params: {
 				userTag: formatDiscordUserTag(author),
 			});
 
-			if (!isAllowed) {
-				return { allowed: false, reason: "User not in DM allowlist" };
+			if (isAllowed) {
+				return { allowed: true };
 			}
 		}
 
-		return { allowed: true };
+		return {
+			allowed: false,
+			reason:
+				dmPolicy === "pairing"
+					? "DM pairing required"
+					: "User not in DM allowlist",
+		};
 	}
 
 	// Handle group DMs

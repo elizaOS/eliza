@@ -88,12 +88,15 @@ export async function checkPairingAllowed(
 
 	const pairingService = await getPairingService(runtime);
 	if (!pairingService) {
-		// No pairing service available - allow by default (fallback behavior)
 		runtime.logger.warn(
 			{ src: "pairing-integration", channel },
-			"PairingService not available, allowing message by default",
+			"PairingService not available; denying pairing-gated sender",
 		);
-		return { allowed: true };
+		return {
+			allowed: false,
+			replyMessage: "Access pairing is temporarily unavailable.",
+			idLabel: getPairingIdLabel(channel),
+		};
 	}
 
 	// Check if already in allowlist
