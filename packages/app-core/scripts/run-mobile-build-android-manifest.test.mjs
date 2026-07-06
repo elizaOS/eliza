@@ -113,4 +113,33 @@ describe("Android manifest XML helpers", () => {
     ).not.toContain("ElizaAgentService");
     expect(stripXmlComments(xml)).toBe("\n<manifest></manifest>");
   });
+
+  it("does not swallow real markup between two separate comments (regression #14408)", () => {
+    // Reproduces the android-cloud pre-gradle audit failure: an earlier
+    // comment, then real markup we must keep (the MainActivity @xml/shortcuts
+    // meta-data), then a later descriptive comment that MENTIONS the stripped
+    // marker. The unbounded `[\s\S]*?` regex matched from the first `<!--`
+    // across the closing `-->` into the second comment, deleting the shortcuts
+    // registration in between and tripping the "does not register @xml/shortcuts"
+    // audit failure.
+    const xml = `<!-- leading note, no marker here -->
+<application>
+    <meta-data
+        android:name="android.app.shortcuts"
+        android:resource="@xml/shortcuts" />
+    <!-- descriptive note that references ElizaAssistActivity fallback flow -->
+    <activity android:name=".MainActivity" />
+</application>`;
+
+    const stripped = removeXmlCommentsContaining(xml, ["ElizaAssistActivity"]);
+
+    // The real shortcuts meta-data between the two comments must survive.
+    expect(stripped).toContain('android:name="android.app.shortcuts"');
+    expect(stripped).toContain("@xml/shortcuts");
+    expect(stripped).toContain(".MainActivity");
+    // The leading comment (no marker) must survive untouched.
+    expect(stripped).toContain("leading note, no marker here");
+    // Only the comment that actually contains the marker is removed.
+    expect(stripped).not.toContain("ElizaAssistActivity");
+  });
 });

@@ -47,9 +47,16 @@ export function removeXmlCommentsContaining(xml, markers) {
   let patched = xml;
   for (const marker of markers) {
     const escapedMarker = escapeRegExp(marker);
+    // Match a SINGLE comment whose body contains the marker. The body pattern
+    // `(?:(?!-->)[\s\S])*?` refuses to cross a closing `-->`, so the match can
+    // no longer span from one comment, through real markup we must keep (e.g.
+    // the MainActivity @xml/shortcuts meta-data), into a later comment that
+    // merely mentions the marker. Without the boundary guard the unbounded
+    // `[\s\S]*?` deleted the intervening markup and tripped the android-cloud
+    // "does not register @xml/shortcuts" audit (elizaOS/eliza#14408).
     patched = patched.replace(
       new RegExp(
-        `\\n?\\s*<!--[\\s\\S]*?${escapedMarker}[\\s\\S]*?-->\\s*`,
+        `\\n?\\s*<!--(?:(?!-->)[\\s\\S])*?${escapedMarker}(?:(?!-->)[\\s\\S])*?-->\\s*`,
         "g",
       ),
       "\n",
