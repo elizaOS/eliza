@@ -62,6 +62,11 @@ describeLive("SubAgentRouter (live, gated by RUN_LIVE_ACPX=1)", () => {
       getService: (name: string) =>
         name === "ACP_SUBPROCESS_SERVICE" ? acp : null,
       createMemory: async () => undefined,
+      createEntity: async () => true,
+      addParticipant: async () => true,
+      getEntitiesForRoom: async () => [],
+      deleteParticipants: async () => true,
+      reportError: () => {},
       emitEvent: async () => undefined,
       messageService: {
         handleMessage: async (

@@ -62,6 +62,9 @@ function makeRuntime(
     getSetting: vi.fn((k: string) => setting[k]),
     createEntity: vi.fn(async () => true),
     addParticipant: vi.fn(async () => true),
+    getEntitiesForRoom: vi.fn(async () => []),
+    deleteParticipants: vi.fn(async () => true),
+    reportError: vi.fn(),
     createMemory: vi.fn(async () => undefined),
     emitEvent: vi.fn(async () => undefined),
     sendMessageToTarget: vi.fn(
