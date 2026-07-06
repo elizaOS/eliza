@@ -10,6 +10,9 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(here, "../..");
+const uiSrc = path.join(repoRoot, "packages/ui/src");
+const tuiSrc = path.join(repoRoot, "packages/tui/src");
 const require = createRequire(import.meta.url);
 
 export default defineConfig({
@@ -52,10 +55,19 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/ui\/agent-surface$/,
-        replacement: path.resolve(
-          here,
-          "../../packages/ui/src/agent-surface/index.ts",
-        ),
+        replacement: path.join(uiSrc, "agent-surface/index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/spatial$/,
+        replacement: path.join(uiSrc, "spatial/index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/spatial\/tui$/,
+        replacement: path.join(uiSrc, "spatial/tui/index.ts"),
+      },
+      {
+        find: /^@elizaos\/tui$/,
+        replacement: path.join(tuiSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/ui\/spatial\/tui$/,
