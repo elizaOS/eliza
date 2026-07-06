@@ -66,7 +66,7 @@ export function MfaPanel() {
       <CornerBrackets size="sm" className="opacity-50" />
       <div className="relative z-10 space-y-3">
         <div className="flex items-center gap-2">
-          <Lock className="h-5 w-5 text-[var(--brand-orange)]" />
+          <Lock className="h-5 w-5 text-muted" />
           <h3 className="text-lg font-bold text-txt-strong">
             {t("cloud.mfaPanel.title", {
               defaultValue: "Two-factor authentication",

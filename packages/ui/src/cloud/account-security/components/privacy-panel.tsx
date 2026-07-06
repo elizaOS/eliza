@@ -95,8 +95,8 @@ export function PrivacyPanel() {
         {/* Trajectory logging toggle */}
         <div className="flex items-start justify-between gap-3 rounded-sm border border-border bg-surface p-4">
           <div className="flex items-start gap-3">
-            <div className="rounded-sm border border-[var(--brand-orange)]/40 bg-[var(--brand-orange)]/15 p-2">
-              <ScrollText className="h-4 w-4 text-[var(--brand-orange)]" />
+            <div className="rounded-sm border border-border bg-muted p-2">
+              <ScrollText className="h-4 w-4 text-muted" />
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-txt-strong">

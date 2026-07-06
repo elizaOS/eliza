@@ -160,7 +160,7 @@ export function ContributeCredentialDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-txt-strong font-mono">
-                <KeyRound className="h-5 w-5 text-[var(--accent)]" />
+                <KeyRound className="h-5 w-5 text-muted" />
                 {t("cloud.contributeCredential.title", {
                   defaultValue: "Contribute an API Key",
                 })}

@@ -77,7 +77,7 @@ export function IncidentReportPanel() {
             {t("cloud.incidentReport.emailPre", { defaultValue: "Email" })}{" "}
             <a
               href={`mailto:${SECURITY_EMAIL}`}
-              className="text-[var(--brand-orange)] underline"
+              className="text-txt-strong underline"
             >
               {SECURITY_EMAIL}
             </a>{" "}

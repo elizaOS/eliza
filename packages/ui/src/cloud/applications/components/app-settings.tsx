@@ -194,7 +194,7 @@ export function AppSettings({ app }: AppSettingsProps) {
       {/* Basic Settings */}
       <div className="bg-card rounded-sm p-4 space-y-4">
         <h3 className="text-sm font-medium text-txt flex items-center gap-2">
-          <Settings className="h-4 w-4 text-[var(--brand-orange)]" />
+          <Settings className="h-4 w-4 text-muted" />
           {t("cloud.appSettings.basicSettings", {
             defaultValue: "Basic Settings",
           })}
@@ -384,7 +384,7 @@ export function AppSettings({ app }: AppSettingsProps) {
         <Button
           onClick={handleSave}
           disabled={isLoading}
-          className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt"
+          className="bg-txt text-bg hover:bg-txt/90"
         >
           {isLoading ? (
             <>

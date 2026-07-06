@@ -105,7 +105,7 @@ export function AppsListView({
                 {renderAppLink({
                   app,
                   className:
-                    "min-w-0 truncate text-sm font-medium text-white transition-colors hover:text-[var(--accent)]",
+                    "min-w-0 truncate text-sm font-medium text-white transition-colors hover:text-txt-strong",
                   children: app.name,
                 })}
                 <StatusBadge
@@ -114,7 +114,7 @@ export function AppsListView({
                   className="px-1.5 py-0 text-[10px]"
                 />
                 {app.affiliate_code ? (
-                  <Badge className="shrink-0 rounded-sm border-accent/30 bg-accent-subtle px-1.5 py-0 text-2xs text-accent">
+                  <Badge className="shrink-0 rounded-sm border-border bg-surface px-1.5 py-0 text-2xs text-muted">
                     Affiliate
                   </Badge>
                 ) : null}

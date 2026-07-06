@@ -96,7 +96,7 @@ function getMethodColor(method: string) {
     case "POST":
       return "bg-white/10 text-white/80";
     case "PUT":
-      return "bg-orange-500/20 text-orange-400";
+      return "bg-muted text-txt";
     case "DELETE":
       return "bg-red-500/20 text-red-400";
     case "PATCH":
@@ -118,16 +118,15 @@ function formatPrice(pricing: ApiEndpoint["pricing"]) {
 function getPricingIcon(pricing: ApiEndpoint["pricing"]) {
   if (!pricing) return null;
   if (pricing.isFree) return <Sparkles className="h-4 w-4 text-green-400" />;
-  if (pricing.isVariable)
-    return <TrendingUp className="h-4 w-4 text-orange-400" />;
-  return <Coins className="h-4 w-4 text-[var(--accent)]" />;
+  if (pricing.isVariable) return <TrendingUp className="h-4 w-4 text-muted" />;
+  return <Coins className="h-4 w-4 text-muted" />;
 }
 
 function getPricingStyle(pricing: ApiEndpoint["pricing"]) {
   if (!pricing) return "";
   if (pricing.isFree) return "bg-green-500/20 text-green-400";
-  if (pricing.isVariable) return "bg-orange-500/20 text-orange-400";
-  return "bg-[var(--accent)]/20 text-[var(--accent)]";
+  if (pricing.isVariable) return "bg-muted text-txt";
+  return "bg-muted text-txt";
 }
 
 function resolveApiUrl() {
@@ -370,7 +369,7 @@ export function ApiExplorerSurface() {
                     className={cn(
                       "flex h-7 shrink-0 items-center gap-1 rounded-sm border px-2 text-[11px] font-medium transition-colors sm:h-9 sm:gap-2 sm:rounded-sm sm:px-3 sm:text-xs",
                       selectedCategory === category
-                        ? "bg-[var(--accent)]/10 text-[var(--accent)] border-[var(--accent)]/30"
+                        ? "bg-muted text-txt-strong border-border"
                         : "bg-neutral-900/50 text-neutral-400 border-white/5 hover:text-white hover:border-white/10",
                     )}
                   >
@@ -379,7 +378,7 @@ export function ApiExplorerSurface() {
                       className={cn(
                         "text-[11px] sm:text-xs font-semibold",
                         selectedCategory === category
-                          ? "text-[var(--accent)]"
+                          ? "text-txt-strong"
                           : "text-neutral-500",
                       )}
                     >
@@ -474,7 +473,7 @@ export function ApiExplorerSurface() {
                 variant="ghost"
                 type="button"
                 onClick={handleCopyJson}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#FF5800] text-black rounded-sm hover:bg-[#e54f00] transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-txt text-bg rounded-sm hover:bg-txt/90 transition-colors"
               >
                 {copied === "json" ? (
                   <Check className="h-3.5 w-3.5" />

@@ -32,13 +32,13 @@ export function CostInsightsCard({
         : `${costTrending.daysUntilBalanceZero}d`;
 
   return (
-    <BrandCard corners={false} className="border-[var(--accent)]/40 bg-[var(--accent)]/10">
+    <BrandCard corners={false} className="border-border bg-card">
       <div className="flex flex-col gap-2 p-6 pb-4">
         <div className="flex items-center gap-3">
           <h3 className="text-base font-semibold text-white">Cost outlook</h3>
           <Badge
             variant="outline"
-            className="border-[var(--accent)]/30 bg-[var(--accent)]/10 text-xs font-medium text-[var(--accent)]"
+            className="border-border bg-muted text-xs font-medium text-txt-strong"
           >
             {costTrending.burnChangePercent > 0 ? "+" : ""}
             {costTrending.burnChangePercent.toFixed(1)}%
@@ -47,7 +47,7 @@ export function CostInsightsCard({
       </div>
       <div className="flex flex-col gap-5 p-6 pt-2">
         <div className="grid gap-4">
-          <div className="grid gap-2 rounded-sm border border-orange-500/20 bg-black/35 p-4">
+          <div className="grid gap-2 rounded-sm border border-border bg-black/35 p-4">
             <p className="text-xs uppercase tracking-wide text-white/50">
               Daily burn
             </p>
@@ -67,13 +67,13 @@ export function CostInsightsCard({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-sm border border-orange-500/20 bg-black/35 p-3">
+            <div className="rounded-sm border border-border bg-black/35 p-3">
               <p className="text-xs uppercase tracking-wide text-white/50">
                 Runway
               </p>
               <p className="text-lg font-semibold text-white">{runwayLabel}</p>
             </div>
-            <div className="rounded-sm border border-orange-500/20 bg-black/35 p-3">
+            <div className="rounded-sm border border-border bg-black/35 p-3">
               <p className="text-xs uppercase tracking-wide text-white/50">
                 Balance
               </p>

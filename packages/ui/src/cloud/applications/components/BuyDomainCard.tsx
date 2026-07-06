@@ -172,7 +172,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
     <div className="bg-card rounded-sm p-4 space-y-4">
       <div>
         <h3 className="text-sm font-medium text-txt flex items-center gap-2">
-          <ShoppingCart className="h-4 w-4 text-[var(--accent)]" />
+          <ShoppingCart className="h-4 w-4 text-muted" />
           {t("cloud.appDomains.buyTitle", { defaultValue: "Buy a Domain" })}
         </h3>
         <p className="text-xs text-neutral-500 mt-1">
@@ -208,7 +208,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
           type="submit"
           size="sm"
           disabled={!isValid || checking}
-          className="bg-[#FF5800] hover:bg-[#e54f00] text-black rounded-sm shrink-0"
+          className="bg-txt hover:bg-txt/90 text-bg rounded-sm shrink-0"
         >
           {checking ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -237,7 +237,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-sm bg-surface">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-[var(--accent)] shrink-0" />
+              <CheckCircle2 className="h-4 w-4 text-txt shrink-0" />
               <span className="text-sm font-medium text-txt truncate">
                 {result.domain}
               </span>
@@ -264,7 +264,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
               <Button
                 size="sm"
                 disabled={buying}
-                className="bg-[#FF5800] hover:bg-[#e54f00] text-black rounded-sm shrink-0"
+                className="bg-txt hover:bg-txt/90 text-bg rounded-sm shrink-0"
               >
                 {buying ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -304,7 +304,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
                 </AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() => void handleBuy()}
-                  className="bg-[#FF5800] hover:bg-[#e54f00] text-black"
+                  className="bg-txt hover:bg-txt/90 text-bg"
                 >
                   {t("cloud.appDomains.buyConfirmAction", {
                     defaultValue: "Buy domain",

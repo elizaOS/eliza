@@ -284,7 +284,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
+        <Loader2 className="h-8 w-8 animate-spin text-muted" />
       </div>
     );
   }
@@ -335,7 +335,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                 type="button"
                 onClick={submitForReview}
                 disabled={isSubmittingReview}
-                className="shrink-0 bg-[var(--brand-orange)] text-txt hover:bg-[#e54f00]"
+                className="shrink-0 bg-txt text-bg hover:bg-txt/90"
               >
                 {isSubmittingReview ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -530,7 +530,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <span className="text-lg font-mono font-semibold text-orange-400">
+                <span className="text-lg font-mono font-semibold text-txt-strong">
                   {settings.purchaseSharePercentage}%
                 </span>
               </div>
@@ -553,7 +553,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                     className={cn(
                       "px-2.5 py-1 text-xs rounded-sm transition-colors",
                       settings.purchaseSharePercentage === preset
-                        ? "bg-orange-500/20 text-txt border border-orange-500/30"
+                        ? "bg-muted text-txt border border-border"
                         : "bg-surface text-neutral-400 hover:bg-bg-hover border border-transparent",
                     )}
                     onClick={() =>
@@ -571,7 +571,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
               <Button
                 onClick={handleSave}
                 disabled={!hasChanges || isSaving}
-                className="w-full bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white disabled:bg-surface disabled:text-muted"
+                className="w-full bg-txt text-bg hover:bg-txt/90 disabled:bg-surface disabled:text-muted"
               >
                 {isSaving ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -637,7 +637,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                   })}
                 </li>
               </ul>
-              <p className="pt-2 text-[var(--brand-orange)]">
+              <p className="pt-2 text-txt">
                 {t("cloud.monetization.enableDialogNote", {
                   defaultValue:
                     "You can adjust markup and purchase share after enabling.",
@@ -653,7 +653,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                   toggleMonetization(true);
                   setShowEnableDialog(false);
                 }}
-                className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt px-6"
+                className="bg-txt text-bg hover:bg-txt/90 px-6"
               >
                 {t("cloud.monetization.startEarning", {
                   defaultValue: "Start Earning",
@@ -714,10 +714,10 @@ function getReviewStatusLabel(
 function SelfHostCTA() {
   const t = useCloudT();
   return (
-    <div className="border border-[var(--brand-orange)]/30 bg-[var(--brand-orange)]/10 p-5">
+    <div className="border border-border bg-card p-5">
       <div className="flex items-start gap-4">
-        <div className="hidden sm:flex items-center justify-center w-10 h-10 rounded-sm border border-[var(--brand-orange)]/40 bg-[var(--brand-orange)]/10 shrink-0">
-          <Server className="h-5 w-5 text-[var(--brand-orange)]" />
+        <div className="hidden sm:flex items-center justify-center w-10 h-10 rounded-sm border border-border bg-surface shrink-0">
+          <Server className="h-5 w-5 text-muted" />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-mono text-txt mb-1">
@@ -741,7 +741,7 @@ function SelfHostCTA() {
                   e.preventDefault();
                 }
               }}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt text-sm font-mono transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-txt text-bg hover:bg-txt/90 text-sm font-mono transition-colors"
             >
               <Server className="h-4 w-4" />
               {t("cloud.monetization.deployAgent", {

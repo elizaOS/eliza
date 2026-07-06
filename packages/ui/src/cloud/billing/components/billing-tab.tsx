@@ -241,7 +241,7 @@ export function BillingTab({ user }: BillingTabProps) {
 
         <div className="relative z-10 space-y-6">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-[var(--accent)]" />
+            <div className="w-2 h-2 rounded-full bg-muted" />
             <h3 className="text-base font-mono text-txt uppercase">
               {t("cloud.billingTab.creditBalance", {
                 defaultValue: "Credit Balance",
@@ -293,7 +293,7 @@ export function BillingTab({ user }: BillingTabProps) {
                       aria-pressed={paymentMethod === "card"}
                       className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
                         paymentMethod === "card"
-                          ? "bg-accent border-accent text-accent-foreground"
+                          ? "bg-txt border-txt text-bg"
                           : "bg-transparent border-border text-muted hover:border-border-strong"
                       }`}
                     >
@@ -307,7 +307,7 @@ export function BillingTab({ user }: BillingTabProps) {
                       aria-pressed={paymentMethod === "crypto"}
                       className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
                         paymentMethod === "crypto"
-                          ? "bg-accent border-accent text-accent-foreground"
+                          ? "bg-txt border-txt text-bg"
                           : "bg-transparent border-border text-muted hover:border-border-strong"
                       }`}
                     >
@@ -438,7 +438,7 @@ export function BillingTab({ user }: BillingTabProps) {
         <div className="relative z-10 space-y-6">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-[var(--accent)]" />
+              <div className="w-2 h-2 rounded-full bg-muted" />
               <h3 className="text-base font-mono text-txt uppercase">
                 {t("cloud.billingTab.invoices", { defaultValue: "Invoices" })}
               </h3>
@@ -484,7 +484,7 @@ export function BillingTab({ user }: BillingTabProps) {
 
               {loadingInvoices ? (
                 <div className="flex items-center justify-center p-8 border-l border-r border-b border-brand-surface">
-                  <Loader2 className="h-6 w-6 animate-spin text-[var(--accent)]" />
+                  <Loader2 className="h-6 w-6 animate-spin text-muted" />
                 </div>
               ) : invoicesError ? (
                 <div className="flex items-start gap-3 p-8 border-l border-r border-b border-brand-surface bg-red-500/5">

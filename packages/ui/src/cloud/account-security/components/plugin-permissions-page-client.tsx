@@ -105,7 +105,7 @@ export function PluginPermissionsPageClient() {
         <CornerBrackets size="sm" className="opacity-50" />
         <div className="relative z-10 space-y-4">
           <div className="flex items-center gap-2">
-            <Puzzle className="h-5 w-5 text-[var(--brand-orange)]" />
+            <Puzzle className="h-5 w-5 text-muted" />
             <h3 className="text-lg font-bold text-txt-strong">Active grants</h3>
           </div>
           {state.kind === "loading" ? (

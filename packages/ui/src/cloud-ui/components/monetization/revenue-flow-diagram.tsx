@@ -72,8 +72,8 @@ export function RevenueFlowDiagram({
             icon={<Wallet className="h-5 w-5" />}
             label="You"
             value={`Earn $${markup.toFixed(2)}`}
-            color="text-[var(--accent)]"
-            bgColor="bg-[var(--accent)]/10"
+            color="text-txt-strong"
+            bgColor="bg-muted"
             highlight
           />
         </div>
@@ -97,13 +97,13 @@ export function RevenueFlowDiagram({
             sublabel="(base cost)"
           />
           <div className="flex justify-center">
-            <ArrowRight className="h-4 w-4 text-[var(--accent)] rotate-90" />
+            <ArrowRight className="h-4 w-4 text-txt-strong rotate-90" />
           </div>
           <FlowNodeMobile
             icon={<Wallet className="h-4 w-4" />}
             label="You earn"
             value={`$${markup.toFixed(2)}`}
-            color="text-[var(--accent)]"
+            color="text-txt-strong"
             sublabel={`(${markupPercentage}% markup)`}
             highlight
           />
@@ -114,9 +114,9 @@ export function RevenueFlowDiagram({
       <div className="mt-auto pt-4 border-t border-white/10">
         <div className="space-y-3 text-xs">
           <div className="flex items-start gap-2">
-            <Zap className="h-3 w-3 text-accent mt-0.5" />
+            <Zap className="h-3 w-3 text-muted mt-0.5" />
             <div>
-              <p className="font-medium text-accent">Inference Markup</p>
+              <p className="font-medium text-txt-strong">Inference Markup</p>
               <p className="text-neutral-500 mt-0.5">
                 You set {markupPercentage}% markup on AI costs. More usage =
                 more earnings.
@@ -124,9 +124,9 @@ export function RevenueFlowDiagram({
             </div>
           </div>
           <div className="flex items-start gap-2">
-            <Coins className="h-3 w-3 text-amber-400 mt-0.5" />
+            <Coins className="h-3 w-3 text-muted mt-0.5" />
             <div>
-              <p className="font-medium text-amber-400">Purchase Share</p>
+              <p className="font-medium text-txt-strong">Purchase Share</p>
               <p className="text-neutral-500 mt-0.5">
                 Earn {purchaseSharePercentage}% when users buy credits in your
                 app.
@@ -160,7 +160,7 @@ function FlowNode({
     <div
       className={cn(
         "flex flex-col items-center gap-2 p-3 rounded-sm border transition-colors w-[90px]",
-        highlight ? "border-[var(--accent)]/30" : "border-white/10",
+        highlight ? "border-border" : "border-white/10",
         bgColor,
       )}
     >
@@ -184,13 +184,13 @@ function FlowArrow({ label, highlight }: FlowArrowProps) {
       <ArrowRight
         className={cn(
           "h-4 w-4",
-          highlight ? "text-[var(--accent)]" : "text-neutral-600",
+          highlight ? "text-txt-strong" : "text-neutral-600",
         )}
       />
       <span
         className={cn(
           "text-[10px] font-mono",
-          highlight ? "text-[var(--accent)]" : "text-neutral-500",
+          highlight ? "text-txt-strong" : "text-neutral-500",
         )}
       >
         {label}
@@ -220,9 +220,7 @@ function FlowNodeMobile({
     <div
       className={cn(
         "flex items-center justify-between p-3 rounded-sm border",
-        highlight
-          ? "border-[var(--accent)]/30 bg-[var(--accent)]/10"
-          : "border-white/10 bg-black/30",
+        highlight ? "border-border bg-muted" : "border-white/10 bg-black/30",
       )}
     >
       <div className="flex items-center gap-2">

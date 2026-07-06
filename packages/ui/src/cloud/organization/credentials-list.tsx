@@ -56,7 +56,7 @@ function healthDotClass(health: string): string {
     case "ok":
       return "bg-green-500";
     case "rate-limited":
-      return "bg-[var(--accent)]";
+      return "bg-yellow-500";
     default:
       // needs-reauth / invalid / unknown
       return "bg-[#EB4335]";
@@ -131,7 +131,7 @@ export function CredentialsList({
                   <span className="font-mono font-semibold text-sm md:text-base text-txt-strong truncate">
                     {credential.label}
                   </span>
-                  <span className="px-2 py-0.5 border border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)] text-xs font-mono uppercase">
+                  <span className="px-2 py-0.5 border border-border bg-muted text-txt-strong text-xs font-mono uppercase">
                     {providerDisplayName(credential.provider)}
                   </span>
                 </div>

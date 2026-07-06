@@ -136,7 +136,6 @@ export function AnalyticsPageClient({
             }
           : undefined,
       icon: Activity,
-      accent: "amber" as const,
     },
     {
       label: t("cloud.analytics.metric.totalCost", {
@@ -156,7 +155,6 @@ export function AnalyticsPageClient({
             }
           : undefined,
       icon: Coins,
-      accent: "amber" as const,
     },
     {
       label: t("cloud.analytics.metric.successRate", {
@@ -197,7 +195,6 @@ export function AnalyticsPageClient({
             }
           : undefined,
       icon: BarChart3,
-      accent: "amber" as const,
     },
   ];
 
@@ -207,7 +204,7 @@ export function AnalyticsPageClient({
         <div className="min-w-0 space-y-5 lg:max-w-3xl">
           <div className="flex flex-wrap items-center gap-2 gap-y-3 text-xs font-medium text-white/60">
             <span className="flex min-w-0 max-w-full items-center gap-1 rounded-sm border border-white/20 bg-white/10 px-3 py-1">
-              <CalendarRange className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
+              <CalendarRange className="h-3.5 w-3.5 shrink-0 text-muted" />
               <span className="min-w-0 break-words">{rangeLabel}</span>
             </span>
             <span className="max-w-full break-words rounded-sm border border-white/20 bg-white/10 px-3 py-1">

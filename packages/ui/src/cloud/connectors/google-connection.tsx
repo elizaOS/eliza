@@ -109,8 +109,8 @@ export function GoogleConnection() {
             {activeConnections.map((connection) => (
               <ConnectionIdentityPanel
                 key={connection.id}
-                icon={<Mail className="h-6 w-6 text-[var(--accent)]" />}
-                iconClassName="bg-[var(--accent)]/10"
+                icon={<Mail className="h-6 w-6 text-txt" />}
+                iconClassName="bg-muted"
                 title={
                   connection.email || connection.displayName || connection.id
                 }
@@ -186,7 +186,7 @@ export function GoogleConnection() {
               </p>
             </div>
             <div className="p-3 bg-muted rounded-sm text-center">
-              <Calendar className="h-6 w-6 mx-auto mb-2 text-[var(--accent)]" />
+              <Calendar className="h-6 w-6 mx-auto mb-2 text-txt" />
               <p className="text-sm font-medium">
                 {t("cloud.google.calendar", { defaultValue: "Calendar" })}
               </p>

@@ -124,7 +124,7 @@ export function InviteMemberDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-txt-strong font-mono">
-                <Link2 className="h-5 w-5 text-[var(--accent)]" />
+                <Link2 className="h-5 w-5 text-muted" />
                 Invitation Created
               </DialogTitle>
               <DialogDescription className="text-muted font-mono text-xs md:text-sm">
@@ -174,7 +174,7 @@ export function InviteMemberDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-txt-strong font-mono">
-                <Mail className="h-5 w-5 text-[var(--accent)]" />
+                <Mail className="h-5 w-5 text-muted" />
                 Invite Team Member
               </DialogTitle>
               <DialogDescription className="text-muted font-mono text-xs md:text-sm">
@@ -226,7 +226,7 @@ export function InviteMemberDialog({
                   htmlFor="role"
                   className="flex items-center gap-2 text-txt-strong font-mono text-sm"
                 >
-                  <UserCog className="h-4 w-4 text-[var(--accent)]" />
+                  <UserCog className="h-4 w-4 text-muted" />
                   Role
                 </Label>
                 <Select

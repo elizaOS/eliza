@@ -7,9 +7,11 @@
  * everything in `.theme-cloud`, where `--accent` resolves to `--brand-white`.
  * The result was `bg:white + text-white` — a blank white box (invisible label).
  *
- * The fix pairs the accent fill with `text-accent-foreground` (black under
- * `.theme-cloud`) so the selected label stays readable in every theme scope,
- * and drops the raw white-opacity ladder for theme-aware border/muted tokens.
+ * The selected fill is the neutral invert pair `bg-txt text-bg` (fill = theme
+ * text color, label = theme background color) so the selected label stays
+ * readable in every theme scope without depending on `--accent` — which is
+ * brand-orange in the app shell and white under `.theme-cloud`. The unselected
+ * state keeps theme-aware border/muted tokens (no raw white-opacity ladder).
  *
  * This is a source-contract test (the full BillingTab needs api/router/i18n/
  * wallet providers to render); it guards the exact className regression.
@@ -32,12 +34,12 @@ describe("billing payment-method selected state (#13406 finding 2)", () => {
     expect(source).not.toContain("bg-accent border-accent text-white");
   });
 
-  it("uses accent-foreground for the selected label so it is readable on the accent fill", () => {
-    const selectedMatches = source.match(
-      /bg-accent border-accent text-accent-foreground/g,
-    );
+  it("uses the theme-inverting txt/bg pair for the selected fill so the label is readable in every theme", () => {
+    const selectedMatches = source.match(/bg-txt border-txt text-bg/g);
     // Two toggles: Card + Crypto.
     expect(selectedMatches?.length).toBe(2);
+    // No accent-fill dependence remains (orange in-app, white under .theme-cloud).
+    expect(source).not.toContain("bg-accent border-accent");
   });
 
   it("uses theme-aware tokens for the unselected toggle (no raw white-opacity ladder)", () => {

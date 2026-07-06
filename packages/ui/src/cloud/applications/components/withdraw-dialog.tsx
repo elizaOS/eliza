@@ -109,7 +109,7 @@ export function WithdrawDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-txt">
-                <Wallet className="h-5 w-5 text-[var(--brand-orange)]" />
+                <Wallet className="h-5 w-5 text-muted" />
                 Withdraw Earnings
               </DialogTitle>
               <DialogDescription className="text-neutral-400">
@@ -189,7 +189,7 @@ export function WithdrawDialog({
               <Button
                 onClick={handleWithdraw}
                 disabled={!isValidAmount}
-                className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt disabled:opacity-50"
+                className="bg-txt hover:bg-txt/90 text-bg disabled:opacity-50"
               >
                 <ArrowRight className="h-4 w-4 mr-2" />
                 Withdraw ${parsedAmount.toFixed(2)}
@@ -201,7 +201,7 @@ export function WithdrawDialog({
         {state === "processing" && (
           <div className="py-12 text-center">
             <div className="mx-auto w-16 h-16 mb-4 flex items-center justify-center">
-              <Loader2 className="h-8 w-8 text-[var(--brand-orange)] animate-spin" />
+              <Loader2 className="h-8 w-8 text-muted animate-spin" />
             </div>
             <h3 className="text-lg font-medium text-txt-strong mb-2">
               Processing Withdrawal
@@ -243,7 +243,7 @@ export function WithdrawDialog({
             <DialogFooter className="mt-6">
               <Button
                 onClick={handleClose}
-                className="w-full bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt"
+                className="w-full bg-txt hover:bg-txt/90 text-bg"
               >
                 Done
               </Button>

@@ -143,7 +143,7 @@ export function DashboardSidebarNavigationItem({
     "relative flex items-center border-l-2 transition-colors duration-150",
     "hover:bg-white/[0.06] hover:text-white",
     isActive
-      ? "border-l-[var(--accent)] bg-white/[0.06] text-white"
+      ? "border-l-border bg-white/[0.06] text-white"
       : "border-l-transparent text-white/70",
     isCollapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5",
   );
@@ -158,8 +158,8 @@ export function DashboardSidebarNavigationItem({
             <span
               className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
               style={{
-                backgroundColor: "rgba(255, 138, 36, 0.2)",
-                color: "#fff7ee",
+                backgroundColor: "rgba(255, 255, 255, 0.1)",
+                color: "#ffffff",
                 border: "1px solid rgba(255, 255, 255, 0.28)",
               }}
             >

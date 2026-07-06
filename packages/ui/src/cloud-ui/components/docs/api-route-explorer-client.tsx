@@ -54,7 +54,7 @@ const GROUP_LABELS: Record<string, string> = {
 // The brand palette is black/white/orange + one status-green, so methods are
 // differentiated by the tokenized status ramp rather than arbitrary colors:
 //   GET    -> success (safe, read-only)
-//   POST   -> accent (the brand action color)
+//   POST   -> neutral strong (bordered, no brand tint)
 //   PUT    -> warning (mutating)
 //   PATCH  -> info (neutral, partial update)
 //   DELETE -> destructive (orange-by-design in this system)
@@ -65,7 +65,7 @@ function methodBadgeClass(method: HttpMethod) {
     case "GET":
       return `${base} bg-status-success-bg text-status-success border-status-success/30`;
     case "POST":
-      return `${base} bg-accent-subtle text-accent border-accent/30`;
+      return `${base} bg-bg-muted text-txt-strong border-border`;
     case "PUT":
       return `${base} bg-status-warning-bg text-status-warning border-status-warning/30`;
     case "PATCH":
@@ -109,7 +109,11 @@ function CopyButton({ text }: { text: string }) {
       className="absolute top-2 right-2 inline-flex min-h-touch items-center gap-1.5 rounded-sm border border-border bg-bg-elevated px-2.5 py-1 text-2xs font-medium uppercase tracking-wider text-muted transition-colors hover:border-border-strong hover:bg-bg-hover hover:text-txt"
     >
       {copied ? (
-        <Check aria-hidden="true" className="size-3.5 text-status-success" strokeWidth={2} />
+        <Check
+          aria-hidden="true"
+          className="size-3.5 text-status-success"
+          strokeWidth={2}
+        />
       ) : (
         <Copy aria-hidden="true" className="size-3.5" strokeWidth={2} />
       )}
@@ -212,7 +216,7 @@ export function ApiRouteExplorerClient({
             <div className="border-b border-border p-4 bg-bg-elevated">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-accent" />
+                  <div className="w-2 h-2 rounded-full bg-muted" />
                   <span className="text-xs font-bold uppercase tracking-[0.18em] text-muted">
                     Route Explorer
                   </span>
@@ -226,7 +230,7 @@ export function ApiRouteExplorerClient({
                     type="checkbox"
                     checked={showAll}
                     onChange={(e) => setShowAll(e.target.checked)}
-                    className="accent-[var(--accent)] w-3.5 h-3.5"
+                    className="accent-txt w-3.5 h-3.5"
                   />
                   Show all
                 </label>
@@ -290,7 +294,7 @@ export function ApiRouteExplorerClient({
                             className={cn(
                               "w-full min-h-touch text-left rounded-sm border px-3 py-2.5 transition-colors my-1",
                               active
-                                ? "bg-accent-subtle border-accent/40"
+                                ? "bg-bg-muted border-border-strong"
                                 : "border-transparent hover:bg-bg-hover hover:border-border",
                             )}
                           >
@@ -319,7 +323,9 @@ export function ApiRouteExplorerClient({
                                 <div
                                   className={cn(
                                     "text-sm font-medium truncate transition-colors",
-                                    active ? "text-txt-strong" : "text-muted-strong",
+                                    active
+                                      ? "text-txt-strong"
+                                      : "text-muted-strong",
                                   )}
                                 >
                                   {title}
@@ -385,7 +391,11 @@ export function ApiRouteExplorerClient({
                         key={tag}
                         className="inline-flex items-center gap-1 text-2xs font-medium uppercase tracking-wider rounded-sm px-2 py-1 bg-bg-muted border border-border text-muted"
                       >
-                        <Tag aria-hidden="true" className="size-3" strokeWidth={2} />
+                        <Tag
+                          aria-hidden="true"
+                          className="size-3"
+                          strokeWidth={2}
+                        />
                         {tag}
                       </span>
                     ))}
@@ -484,7 +494,7 @@ export function ApiRouteExplorerClient({
                   <div className="flex items-center gap-2">
                     <Terminal
                       aria-hidden="true"
-                      className="size-4 text-accent"
+                      className="size-4 text-muted"
                       strokeWidth={2}
                     />
                     <span className="text-xs font-bold uppercase tracking-wider text-muted">
@@ -524,7 +534,7 @@ export function ApiRouteExplorerClient({
                           <span className="text-muted"> \</span>
                           {"\n"}
                           <span className="text-muted"> -d </span>
-                          <span className="text-accent">
+                          <span className="text-txt-strong">
                             &apos;{"{}"}&apos;
                           </span>
                         </>
@@ -536,12 +546,12 @@ export function ApiRouteExplorerClient({
 
                 <p className="mt-3 text-xs text-muted">
                   Replace{" "}
-                  <code className="text-accent bg-accent-subtle rounded-sm px-1.5 py-0.5">
+                  <code className="text-txt-strong bg-bg-muted rounded-sm px-1.5 py-0.5">
                     YOUR_API_KEY
                   </code>{" "}
                   with your actual API key from{" "}
                   <a
-                    className="text-accent hover:underline"
+                    className="text-txt-strong hover:underline"
                     href="/dashboard/api-keys"
                   >
                     Dashboard → API Keys
@@ -567,10 +577,10 @@ export function ApiRouteExplorerClient({
           ) : (
             /* Empty state */
             <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-8 text-center">
-              <div className="w-16 h-16 rounded-full bg-accent-subtle flex items-center justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-bg-muted flex items-center justify-center mb-4">
                 <Terminal
                   aria-hidden="true"
-                  className="size-8 text-accent"
+                  className="size-8 text-muted"
                   strokeWidth={1.5}
                 />
               </div>

@@ -64,8 +64,8 @@ export function CostAlerts({ costTrending }: CostAlertsProps) {
   }
 
   const toneClasses: Record<"warning" | "error" | "info", string> = {
-    warning: "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-white",
-    error: "border-[var(--accent)] bg-[var(--accent)] text-black",
+    warning: "border-border bg-muted text-txt",
+    error: "border-border bg-txt text-bg",
     info: "border-border bg-surface text-txt",
   };
 

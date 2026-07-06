@@ -12,7 +12,7 @@ interface ApiKeyEmptyStateProps {
 export function ApiKeyEmptyState({ onCreateKey }: ApiKeyEmptyStateProps) {
   return (
     <EmptyState
-      icon={<KeyRound className="h-7 w-7 text-[var(--accent)]" />}
+      icon={<KeyRound className="h-7 w-7 text-muted" />}
       title="No API keys yet"
       description="Create your first API key to start authenticating requests and tracking usage across the platform."
       action={

@@ -5,7 +5,6 @@
  */
 
 import { toRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
-import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { formatDistanceToNow } from "date-fns";
 import {
   Activity,
@@ -166,9 +165,9 @@ interface RequestLogsResponse {
 }
 
 const SOURCE_COLORS: Record<string, string> = {
-  api_key: BRAND_COLORS.orange,
+  api_key: "var(--txt)",
   sandbox_preview: "#e11d48",
-  embed: "var(--accent)",
+  embed: "var(--muted)",
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -179,10 +178,10 @@ const SOURCE_LABELS: Record<string, string> = {
 
 const TYPE_COLORS: Record<string, string> = {
   pageview: "#10b981",
-  chat: BRAND_COLORS.orange,
+  chat: "var(--txt)",
   image: "#e11d48",
-  video: "var(--accent)",
-  voice: "#f59e0b",
+  video: "var(--muted)",
+  voice: "#9ca3af",
   agent: "#ec4899",
 };
 
@@ -343,7 +342,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
+        <Loader2 className="h-8 w-8 animate-spin text-muted" />
       </div>
     );
   }
@@ -455,7 +454,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
 
           <div className="bg-card rounded-sm p-4">
             <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-[var(--brand-orange)]" />
+              <BarChart3 className="h-4 w-4 text-muted" />
               Requests Over Time
             </h3>
             {chartData.length > 0 ? (
@@ -486,9 +485,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <Line
                     type="monotone"
                     dataKey="requests"
-                    stroke={BRAND_COLORS.orange}
+                    stroke={"var(--txt)"}
                     strokeWidth={2}
-                    dot={{ fill: BRAND_COLORS.orange, r: 3 }}
+                    dot={{ fill: "var(--txt)", r: 3 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -527,11 +526,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                     }}
                   />
                   <Bar dataKey="newUsers" fill="#e11d48" name="New Users" />
-                  <Bar
-                    dataKey="users"
-                    fill="var(--accent)"
-                    name="Total Users"
-                  />
+                  <Bar dataKey="users" fill="var(--muted)" name="Total Users" />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -548,7 +543,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
         <div className="space-y-4">
           {isLoadingStats ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
+              <Loader2 className="h-8 w-8 animate-spin text-muted" />
             </div>
           ) : requestStats ? (
             <>
@@ -566,7 +561,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                     requestStats.totalRequests -
                     (requestStats.byType?.pageview || 0)
                   ).toLocaleString("en-US")}
-                  color="text-[var(--brand-orange)]"
+                  color="text-txt"
                 />
                 <MiniStatCard
                   label="Unique Visitors"
@@ -663,7 +658,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                                   style={{
                                     width: `${toRatePercent(count, requestStats.totalRequests)}%`,
                                     backgroundColor:
-                                      TYPE_COLORS[type] || BRAND_COLORS.orange,
+                                      TYPE_COLORS[type] || "var(--txt)",
                                   }}
                                 />
                               </div>
@@ -696,7 +691,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
         <div className="space-y-4">
           {isLoadingStats ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
+              <Loader2 className="h-8 w-8 animate-spin text-muted" />
             </div>
           ) : (
             <>
@@ -705,9 +700,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <DashboardStatCard
                     label="Unique IPs"
                     value={requestStats.uniqueIps.toLocaleString("en-US")}
-                    icon={
-                      <Globe className="h-5 w-5 text-[var(--brand-orange)]" />
-                    }
+                    icon={<Globe className="h-5 w-5 text-muted" />}
                   />
                   <DashboardStatCard
                     label="Unique Users"
@@ -804,7 +797,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
         <div className="space-y-4">
           {isLoadingStats ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
+              <Loader2 className="h-8 w-8 animate-spin text-muted" />
             </div>
           ) : sessionAnalytics ? (
             <>
@@ -814,7 +807,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   value={sessionAnalytics.summary.totalSessions.toLocaleString(
                     "en-US",
                   )}
-                  color="text-[var(--brand-orange)]"
+                  color="text-txt"
                 />
                 <MiniStatCard
                   label="Visitors"
@@ -845,7 +838,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
                 <div className="bg-card rounded-sm p-4">
                   <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
-                    <GitBranch className="h-4 w-4 text-[var(--brand-orange)]" />
+                    <GitBranch className="h-4 w-4 text-muted" />
                     Funnel
                   </h3>
                   {sessionAnalytics.funnel.steps.length > 0 ? (
@@ -862,7 +855,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                           </div>
                           <div className="h-2 bg-surface rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-[var(--brand-orange)]"
+                              className="h-full bg-txt"
                               style={{
                                 width: `${Math.min(100, step.conversionFromStartPercent)}%`,
                               }}
@@ -976,7 +969,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
 
           {isLoadingLogs ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
+              <Loader2 className="h-8 w-8 animate-spin text-muted" />
             </div>
           ) : requestLogs.length > 0 ? (
             <>

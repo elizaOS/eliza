@@ -113,8 +113,8 @@ export function MicrosoftConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Mail className="h-6 w-6 text-[var(--accent)]" />}
-            iconClassName="bg-[var(--accent)]/10"
+            icon={<Mail className="h-6 w-6 text-txt-strong" />}
+            iconClassName="bg-muted"
             title={activeConnection?.email}
             subtitle={t("cloud.microsoft.connectedSubtitle", {
               defaultValue: "Microsoft Account Connected",
@@ -185,7 +185,7 @@ export function MicrosoftConnection() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 bg-muted rounded-sm text-center">
-              <Mail className="h-6 w-6 mx-auto mb-2 text-[var(--accent)]" />
+              <Mail className="h-6 w-6 mx-auto mb-2 text-muted" />
               <p className="text-sm font-medium">
                 {t("cloud.microsoft.outlook", { defaultValue: "Outlook" })}
               </p>
@@ -196,7 +196,7 @@ export function MicrosoftConnection() {
               </p>
             </div>
             <div className="p-3 bg-muted rounded-sm text-center">
-              <Calendar className="h-6 w-6 mx-auto mb-2 text-[var(--accent)]" />
+              <Calendar className="h-6 w-6 mx-auto mb-2 text-muted" />
               <p className="text-sm font-medium">
                 {t("cloud.microsoft.calendar", { defaultValue: "Calendar" })}
               </p>

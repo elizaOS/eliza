@@ -134,7 +134,7 @@ export function AnalyticsFilters() {
 
         {activeRange === "custom" ? (
           <span className="flex min-w-0 max-w-full items-center gap-1 rounded-sm border border-white/20 bg-white/10 px-3 py-1 text-xs">
-            <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
+            <Sparkles className="h-3.5 w-3.5 shrink-0 text-muted" />
             <span className="min-w-0 break-words">
               {t("cloud.analytics.filters.customRange", {
                 defaultValue: "Custom range detected",

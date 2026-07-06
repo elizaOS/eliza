@@ -171,7 +171,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-[var(--accent)]" />
+        <Loader2 className="h-8 w-8 animate-spin text-muted" />
       </div>
     );
   }
@@ -203,9 +203,9 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
   return (
     <div className="space-y-4">
       {isTestData && (
-        <div className="flex items-center gap-2 p-3 bg-orange-500/10 border border-orange-500/20 rounded-sm">
-          <FlaskConical className="h-4 w-4 text-orange-400" />
-          <p className="text-sm text-orange-400">
+        <div className="flex items-center gap-2 p-3 bg-surface border border-border rounded-sm">
+          <FlaskConical className="h-4 w-4 text-muted" />
+          <p className="text-sm text-muted">
             Test Data Mode - Showing sample earnings data
           </p>
         </div>
@@ -248,7 +248,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                 onClick={() => {
                   navigate(`/dashboard/apps/${appId}?tab=monetization`);
                 }}
-                className="bg-[#FF5800] hover:bg-[#e54f00] text-black"
+                className="bg-txt hover:bg-txt/90 text-bg"
               >
                 Enable Monetization
               </Button>
@@ -277,7 +277,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                   </p>
                 )}
               </div>
-              <TrendingUp className="h-5 w-5 text-[var(--accent)]" />
+              <TrendingUp className="h-5 w-5 text-muted" />
             </div>
           </div>
 
@@ -368,7 +368,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                   <Zap className="h-3 w-3" />$
                   {data.inferenceEarnings.toFixed(2)}
                 </span>
-                <span className="text-orange-400 flex items-center gap-1">
+                <span className="text-muted flex items-center gap-1">
                   <Coins className="h-3 w-3" />$
                   {data.purchaseEarnings.toFixed(2)}
                 </span>
@@ -426,7 +426,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
               />
               <Bar
                 dataKey="purchaseEarnings"
-                fill="#f59e0b"
+                fill="var(--muted)"
                 name="Purchase Share"
                 stackId="a"
                 radius={[4, 4, 0, 0]}
@@ -532,7 +532,7 @@ function TransactionBadge({ type }: { type: string }) {
       );
     case "purchase_share":
       return (
-        <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px]">
+        <Badge className="bg-surface text-muted border-border text-[10px]">
           Purchase
         </Badge>
       );

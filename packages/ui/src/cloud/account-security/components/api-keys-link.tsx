@@ -14,8 +14,8 @@ export function ApiKeysLink() {
       <CornerBrackets size="sm" className="opacity-50" />
       <div className="relative z-10 flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <div className="rounded-sm border border-[var(--brand-orange)]/40 bg-[var(--brand-orange)]/15 p-2">
-            <KeyRound className="h-4 w-4 text-[var(--brand-orange)]" />
+          <div className="rounded-sm border border-border bg-muted p-2">
+            <KeyRound className="h-4 w-4 text-txt-strong" />
           </div>
           <div className="space-y-0.5">
             <p className="text-sm font-medium text-txt-strong">

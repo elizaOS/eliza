@@ -150,8 +150,8 @@ export function AuthManager({
       </div>
 
       {/* Billed-calls notice */}
-      <div className="flex items-center gap-2 px-3 py-2 rounded-sm bg-orange-500/10 border border-orange-500/20">
-        <span className="text-xs text-orange-400">
+      <div className="flex items-center gap-2 px-3 py-2 rounded-sm bg-muted border border-border">
+        <span className="text-xs text-muted">
           API calls are billed to your account
         </span>
       </div>

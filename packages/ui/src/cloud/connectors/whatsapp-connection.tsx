@@ -279,7 +279,7 @@ export function WhatsAppConnection() {
                   href="https://developers.facebook.com/apps"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[var(--accent)] hover:underline inline-flex items-center gap-1"
+                  className="text-txt-strong hover:underline inline-flex items-center gap-1"
                 >
                   {t("cloud.whatsapp.metaDashboard", {
                     defaultValue: "Meta App Dashboard",

@@ -152,11 +152,11 @@ export function EarningsSimulator({
 
         {/* Purchase earnings */}
         <div className="flex items-center justify-between text-sm">
-          <span className="text-amber-400 flex items-center gap-1.5">
+          <span className="text-white/90 flex items-center gap-1.5">
             <Coins className="h-3 w-3" />
             Purchase ({purchaseSharePercentage}%)
           </span>
-          <span className="font-mono text-amber-400">
+          <span className="font-mono text-white/90">
             +${calculations.purchaseEarnings.toFixed(2)}
           </span>
         </div>
@@ -167,7 +167,7 @@ export function EarningsSimulator({
         {/* Total */}
         <div className="flex items-center justify-between">
           <span className="text-white font-medium">Your Earnings</span>
-          <span className="text-xl font-semibold text-[var(--accent)]">
+          <span className="text-xl font-semibold text-white">
             ${calculations.totalEarnings.toFixed(2)}
           </span>
         </div>

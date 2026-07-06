@@ -132,7 +132,7 @@ export function MembersList({
         >
           <div className="flex flex-col sm:flex-row items-start gap-4">
             {/* Avatar */}
-            <div className="flex items-center justify-center bg-[rgba(var(--accent-rgb), 0.25)] size-10 md:size-12 flex-shrink-0">
+            <div className="flex items-center justify-center bg-muted size-10 md:size-12 flex-shrink-0">
               <span className="text-txt-strong text-sm md:text-base font-mono font-medium">
                 {getInitials(member)}
               </span>
@@ -230,7 +230,7 @@ export function MembersList({
                     </Select>
                   ) : (
                     <span
-                      className={`px-2 py-1 border text-xs font-mono uppercase flex items-center gap-1.5 ${member.role === "owner" ? "bg-[var(--accent)]/20 text-[var(--accent)] border-[var(--accent)]/40" : member.role === "admin" ? "bg-surface text-txt-strong border-border-strong" : "bg-surface text-muted border-border"}`}
+                      className={`px-2 py-1 border text-xs font-mono uppercase flex items-center gap-1.5 ${member.role === "owner" ? "bg-muted text-txt-strong border-border-strong" : member.role === "admin" ? "bg-surface text-txt-strong border-border-strong" : "bg-surface text-muted border-border"}`}
                     >
                       {getRoleIcon(member.role)}
                       <span className="capitalize">{member.role}</span>

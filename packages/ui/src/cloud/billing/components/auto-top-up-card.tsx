@@ -151,7 +151,7 @@ export function AutoTopUpCard() {
       <BrandCard className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-5 w-5 animate-spin text-[var(--accent)]" />
+          <Loader2 className="h-5 w-5 animate-spin text-muted" />
         </div>
       </BrandCard>
     );
@@ -166,7 +166,7 @@ export function AutoTopUpCard() {
       <div className="relative z-10 space-y-6">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-[var(--accent)]" />
+            <div className="w-2 h-2 rounded-full bg-muted" />
             <h3 className="text-base font-mono text-txt uppercase">
               {t("cloud.autoTopUp.title", {
                 defaultValue: "Auto Top-Up (Card)",
@@ -204,7 +204,7 @@ export function AutoTopUpCard() {
             checked={enabled}
             onCheckedChange={setEnabled}
             disabled={saving || !!noPaymentMethod}
-            className="data-[state=checked]:bg-[var(--accent)] flex-shrink-0"
+            className="data-[state=checked]:bg-txt flex-shrink-0"
           />
         </div>
 
@@ -259,7 +259,7 @@ export function AutoTopUpCard() {
             type="button"
             onClick={handleSave}
             disabled={saving || !!validationError || !!noPaymentMethod}
-            className="bg-[#FF5800] hover:bg-[#e54f00] text-black font-mono"
+            className="bg-txt hover:bg-txt/90 text-bg font-mono"
           >
             {saving ? (
               <>

@@ -66,7 +66,7 @@ const STATUS_BADGE_STYLES: Record<string, string> = {
   provisioning: "border-white/20 bg-white/5 text-white/80",
   pending: "border-yellow-500/40 bg-yellow-500/10 text-yellow-400",
   stopped: "border-white/20 bg-white/5 text-white/70",
-  disconnected: "border-orange-500/40 bg-orange-500/10 text-orange-400",
+  disconnected: "border-white/20 bg-white/5 text-white/70",
   error: "border-red-500/40 bg-red-500/10 text-red-400",
 };
 
@@ -298,7 +298,7 @@ export function ElizaAgentLogsViewer({
           )}
           {statusHint && status !== "running" && (
             <div className="flex items-start gap-3 border border-white/10 bg-black/30 p-4">
-              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent)]" />
+              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
               <p className="text-sm text-white/70">{statusHint}</p>
             </div>
           )}

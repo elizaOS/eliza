@@ -81,10 +81,10 @@ export function ElizaPoliciesSection({ agentId }: ElizaPoliciesSectionProps) {
 
   if (error) {
     return (
-      <div className="flex items-start gap-3 p-4 bg-orange-950/20 border border-orange-500/20">
-        <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0 mt-1" />
+      <div className="flex items-start gap-3 p-4 bg-surface border border-border">
+        <span className="w-2 h-2 rounded-full bg-txt shrink-0 mt-1" />
         <div>
-          <p className="font-mono text-xs text-orange-400">{error}</p>
+          <p className="font-mono text-xs text-txt">{error}</p>
           <Button
             variant="ghost"
             type="button"
