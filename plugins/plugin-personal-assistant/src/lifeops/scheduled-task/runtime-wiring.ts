@@ -42,6 +42,8 @@ import {
   registerDefaultEscalationLadders,
   registerFallbackAnchors,
   registerScheduledTaskRunnerDeps,
+  renderFailureDispatchResult,
+  renderScheduledDispatchMessage,
   type ScheduledTaskRunnerDepsBundle,
   type ScheduledTaskRunnerHandle,
   type ScheduledTaskStore,
@@ -296,17 +298,6 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
   return svc && typeof svc.notify === "function" ? svc : null;
 }
 
-function reportScheduledTaskCompositionError(
-  runtime: IAgentRuntime,
-  error: unknown,
-  context: Record<string, unknown>,
-): void {
-  runtime.reportError?.("lifeops:scheduled-task:owner-facing-copy", error, {
-    agentId: runtime.agentId,
-    ...context,
-  });
-}
-
 function metadataString(
   metadata: ScheduledTaskDispatchRecord["metadata"],
   key: string,
@@ -317,6 +308,21 @@ function metadataString(
     : null;
 }
 
+/**
+ * Compose the owner-facing message for one dispatch. `promptInstructions` is a
+ * model prompt, never user-facing copy, so there are exactly two composition
+ * paths and neither delivers it verbatim:
+ *
+ * - Tasks whose structural `metadata.delegatesAssemblyTo` names the morning
+ *   check-in assembler get the assembled brief's `summaryText` (#14802) —
+ *   real data (meetings, todos, wins) the render prompt alone cannot supply;
+ *   CheckinService already composes that text through the model.
+ * - Everything else renders through `renderScheduledDispatchMessage` (the
+ *   CheckinService model seam): the instruction is the PROMPT, the model's
+ *   output is what the owner sees. Render failure throws and the dispatcher
+ *   translates it into a typed retryable failure — no raw-instruction
+ *   fallback and no canned placeholder copy.
+ */
 async function composeOwnerFacingScheduledTaskText(
   runtime: IAgentRuntime,
   record: ScheduledTaskDispatchRecord,
@@ -336,7 +342,12 @@ async function composeOwnerFacingScheduledTaskText(
       if (summaryText.length > 0) return summaryText;
       throw new Error("Morning check-in assembler returned empty summaryText");
     } catch (error) {
-      reportScheduledTaskCompositionError(runtime, error, {
+      // error-policy:J4 designed degrade — the scheduled check-in still
+      // reaches the owner with an honest "couldn't assemble" message instead
+      // of silently dropping the fire; the assembly failure is surfaced via
+      // reportError for RECENT_ERRORS/escalation.
+      runtime.reportError("lifeops:scheduled-task:owner-facing-copy", error, {
+        agentId: runtime.agentId,
         taskId: record.taskId,
         firedAtIso: record.firedAtIso,
         delegatesAssemblyTo,
@@ -345,36 +356,7 @@ async function composeOwnerFacingScheduledTaskText(
     }
   }
 
-  const packKey = metadataString(record.metadata, "packKey");
-  const recordKey = metadataString(record.metadata, "recordKey");
-
-  if (packKey === "daily-rhythm" && recordKey === "gm") {
-    return "Good morning. Hope the day starts gently.";
-  }
-  if (packKey === "daily-rhythm" && recordKey === "gn") {
-    return "Good night. Rest well.";
-  }
-  if (packKey === "daily-rhythm" && recordKey === "checkin-followup") {
-    return "No rush if you're busy. I'm here whenever you're ready.";
-  }
-  if (packKey === "morning-brief") {
-    return "Your morning brief is ready, but I couldn't assemble the full details right now.";
-  }
-
-  const isUrgent = record.intensity === "urgent";
-  const fallback = isUrgent ? "Approval needed." : "Reminder.";
-  reportScheduledTaskCompositionError(
-    runtime,
-    new Error("No owner-facing scheduled-task composer registered"),
-    {
-      taskId: record.taskId,
-      firedAtIso: record.firedAtIso,
-      channelKey: record.channelKey,
-      packKey,
-      recordKey,
-    },
-  );
-  return fallback;
+  return renderScheduledDispatchMessage(runtime, record);
 }
 
 const LOCAL_AGENT_BACKUP_OPERATION = "agent.localBackup";
@@ -468,96 +450,13 @@ export function createProductionScheduledTaskDispatcher(opts: {
         };
       }
 
-      const ownerFacingText = await composeOwnerFacingScheduledTaskText(
-        opts.runtime,
-        record,
-      );
       const registry = getChannelRegistry(opts.runtime);
       const channel = registry?.get(record.channelKey) ?? null;
-      if (!channel?.send) {
-        if (
-          record.channelKey === "in_app" ||
-          record.channelKey === "push" ||
-          record.output?.destination === "in_app_card"
-        ) {
-          // Honest delivery accounting: an in_app dispatch "succeeded" only
-          // if at least one real surface accepted the payload — the live
-          // assistant event bus (transient stream) or the notification
-          // service (durable inbox). Previously this branch returned
-          // ok:true unconditionally, fabricating delivery on hosts where
-          // both surfaces were absent, so nothing ever retried/escalated.
-          let surfacesAccepted = 0;
-          const eventService = getAgentEventService(opts.runtime) as {
-            emit?: (event: {
-              runId: string;
-              stream: string;
-              data: Record<string, unknown>;
-              agentId?: string;
-            }) => void;
-          } | null;
-          if (typeof eventService?.emit === "function") {
-            eventService.emit({
-              runId: crypto.randomUUID(),
-              stream: "assistant",
-              agentId: opts.runtime.agentId,
-              data: {
-                text: ownerFacingText,
-                source: "lifeops-scheduled-task",
-                taskId: record.taskId,
-                firedAtIso: record.firedAtIso,
-                channelKey: record.channelKey,
-                target: normalizeChannelTarget(
-                  record.channelKey,
-                  record.output?.target,
-                ),
-                ...(record.intensity ? { intensity: record.intensity } : {}),
-                ...(record.contextRequest
-                  ? { contextRequest: record.contextRequest }
-                  : {}),
-              },
-            });
-            surfacesAccepted += 1;
-          }
-          const isUrgent = record.intensity === "urgent";
-          const notifier = getNotifier(opts.runtime);
-          if (notifier) {
-            try {
-              await notifier.notify({
-                title: isUrgent ? "Approval needed" : "Reminder",
-                body: ownerFacingText,
-                category: isUrgent ? "approval" : "reminder",
-                priority: isUrgent ? "urgent" : "normal",
-                source: "lifeops",
-                groupKey: `lifeops:${record.taskId}`,
-                deepLink: "/chat",
-                data: {
-                  taskId: record.taskId,
-                  firedAtIso: record.firedAtIso,
-                  channelKey: record.channelKey,
-                },
-              });
-              surfacesAccepted += 1;
-            } catch (error) {
-              logger.warn(
-                { src: "lifeops:scheduled-task", error },
-                "Notification emit failed",
-              );
-            }
-          }
-          if (surfacesAccepted === 0) {
-            return {
-              ok: false,
-              reason: "disconnected",
-              userActionable: false,
-              message:
-                "No in-app surface (assistant event bus or notification service) accepted the payload.",
-            };
-          }
-          return {
-            ok: true,
-            messageId: `in_app:${record.taskId}:${record.firedAtIso}`,
-          };
-        }
+      const hasInAppSurfaceFallback =
+        record.channelKey === "in_app" ||
+        record.channelKey === "push" ||
+        record.output?.destination === "in_app_card";
+      if (!channel?.send && !hasInAppSurfaceFallback) {
         return applyDispatchPolicy({
           ok: false,
           reason: "disconnected",
@@ -566,12 +465,117 @@ export function createProductionScheduledTaskDispatcher(opts: {
         });
       }
 
+      // `promptInstructions` is a model prompt, never user-facing copy: every
+      // user-visible surface below (assistant stream, notification body,
+      // connector channel send) delivers the composed owner-facing message —
+      // delegated assembly or the model's rendering. A composition failure is
+      // a typed, retryable dispatch failure — there is deliberately no
+      // raw-instruction fallback, because delivering instruction-voice text
+      // verbatim to the owner was the bug this step exists to fix.
+      let message: string;
+      try {
+        message = await composeOwnerFacingScheduledTaskText(
+          opts.runtime,
+          record,
+        );
+      } catch (error) {
+        // error-policy:J1 boundary translation — dispatch outcomes are the
+        // runner's typed contract; the failure also reaches RECENT_ERRORS and
+        // owner escalation via reportError.
+        opts.runtime.reportError(
+          "lifeops:scheduled-task:dispatch-render",
+          error,
+          { taskId: record.taskId, channelKey: record.channelKey },
+        );
+        return renderFailureDispatchResult(error);
+      }
+
+      if (!channel?.send) {
+        // Honest delivery accounting: an in_app dispatch "succeeded" only
+        // if at least one real surface accepted the payload — the live
+        // assistant event bus (transient stream) or the notification
+        // service (durable inbox). Previously this branch returned
+        // ok:true unconditionally, fabricating delivery on hosts where
+        // both surfaces were absent, so nothing ever retried/escalated.
+        let surfacesAccepted = 0;
+        const eventService = getAgentEventService(opts.runtime) as {
+          emit?: (event: {
+            runId: string;
+            stream: string;
+            data: Record<string, unknown>;
+            agentId?: string;
+          }) => void;
+        } | null;
+        if (typeof eventService?.emit === "function") {
+          eventService.emit({
+            runId: crypto.randomUUID(),
+            stream: "assistant",
+            agentId: opts.runtime.agentId,
+            data: {
+              text: message,
+              source: "lifeops-scheduled-task",
+              taskId: record.taskId,
+              firedAtIso: record.firedAtIso,
+              channelKey: record.channelKey,
+              target: normalizeChannelTarget(
+                record.channelKey,
+                record.output?.target,
+              ),
+              ...(record.intensity ? { intensity: record.intensity } : {}),
+              ...(record.contextRequest
+                ? { contextRequest: record.contextRequest }
+                : {}),
+            },
+          });
+          surfacesAccepted += 1;
+        }
+        const isUrgent = record.intensity === "urgent";
+        const notifier = getNotifier(opts.runtime);
+        if (notifier) {
+          try {
+            await notifier.notify({
+              title: isUrgent ? "Approval needed" : "Reminder",
+              body: message,
+              category: isUrgent ? "approval" : "reminder",
+              priority: isUrgent ? "urgent" : "normal",
+              source: "lifeops",
+              groupKey: `lifeops:${record.taskId}`,
+              deepLink: "/chat",
+              data: {
+                taskId: record.taskId,
+                firedAtIso: record.firedAtIso,
+                channelKey: record.channelKey,
+              },
+            });
+            surfacesAccepted += 1;
+          } catch (error) {
+            logger.warn(
+              { src: "lifeops:scheduled-task", error },
+              "Notification emit failed",
+            );
+          }
+        }
+        if (surfacesAccepted === 0) {
+          return {
+            ok: false,
+            reason: "disconnected",
+            userActionable: false,
+            message:
+              "No in-app surface (assistant event bus or notification service) accepted the payload.",
+          };
+        }
+        return {
+          ok: true,
+          messageId: `in_app:${record.taskId}:${record.firedAtIso}`,
+        };
+      }
+
       const payload = {
         target: normalizeChannelTarget(
           record.channelKey,
           record.output?.target ?? record.channelKey,
         ),
-        message: ownerFacingText,
+        message,
         metadata: {
           taskId: record.taskId,
           firedAtIso: record.firedAtIso,

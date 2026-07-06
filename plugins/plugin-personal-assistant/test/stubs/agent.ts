@@ -179,8 +179,58 @@ export function parseCronExpression(expression: string): {
 
 export function registerEscalationChannel(): void {}
 
-export function getAgentEventService(): null {
-  return null;
+export interface AgentEventServiceStubEvent {
+  runId: string;
+  stream: string;
+  agentId?: string;
+  data: Record<string, unknown>;
+}
+
+interface AgentEventServiceStubState {
+  enabled: boolean;
+  events: AgentEventServiceStubEvent[];
+}
+
+const AGENT_EVENT_SERVICE_STUB_STATE = Symbol.for(
+  "eliza.lifeops.test.agentEventServiceStubState",
+);
+
+function getAgentEventServiceStubState(): AgentEventServiceStubState {
+  const globalWithState = globalThis as typeof globalThis & {
+    [AGENT_EVENT_SERVICE_STUB_STATE]?: AgentEventServiceStubState;
+  };
+  globalWithState[AGENT_EVENT_SERVICE_STUB_STATE] ??= {
+    enabled: false,
+    events: [],
+  };
+  return globalWithState[AGENT_EVENT_SERVICE_STUB_STATE];
+}
+
+/** Enable the capturing event-bus stand-in; disabled (null service) by default. */
+export function enableAgentEventServiceStub(): void {
+  getAgentEventServiceStubState().enabled = true;
+}
+
+export function resetAgentEventServiceStub(): void {
+  const state = getAgentEventServiceStubState();
+  state.enabled = false;
+  state.events = [];
+}
+
+export function getAgentEventServiceStubEvents(): AgentEventServiceStubEvent[] {
+  return [...getAgentEventServiceStubState().events];
+}
+
+export function getAgentEventService(): {
+  emit: (event: AgentEventServiceStubEvent) => void;
+} | null {
+  const state = getAgentEventServiceStubState();
+  if (!state.enabled) return null;
+  return {
+    emit: (event) => {
+      state.events.push(event);
+    },
+  };
 }
 
 export const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";

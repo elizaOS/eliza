@@ -20,6 +20,11 @@ function makeFakeRuntime(): IAgentRuntime {
   return {
     agentId: "00000000-0000-0000-0000-00000000cafe",
     getService: () => null,
+    // The default dispatcher renders promptInstructions through the model
+    // before notifying; a deterministic stub keeps fires succeeding so the
+    // assertions below stay about the clock.
+    useModel: async () => "Rendered dispatch message.",
+    reportError: () => undefined,
   } as unknown as IAgentRuntime;
 }
 

@@ -36,6 +36,21 @@ import {
   type LifeOpsSensitiveRequestDeliveryRecord,
 } from "../src/lifeops/sensitive-request-delivery.js";
 
+// Deterministic model output for the production dispatcher's render step:
+// `promptInstructions` is a model prompt, so channel payloads carry this
+// rendered text, never the instruction verbatim.
+const RENDERED_MESSAGE = "Your private request is ready — open it to continue.";
+
+function makeDispatchRuntime(): IAgentRuntime {
+  return {
+    agentId: "00000000-0000-0000-0000-0000000000bb",
+    getService: () => null,
+    getSetting: () => null,
+    useModel: async () => RENDERED_MESSAGE,
+    reportError: () => undefined,
+  } as unknown as IAgentRuntime;
+}
+
 function sendCapableChannel(
   send: ChannelContribution["send"],
 ): ChannelContribution {
@@ -182,7 +197,7 @@ describe("sensitive request private delivery", () => {
 
 describe("scheduled task production dispatcher", () => {
   it("preserves disconnected and rate-limited typed dispatch failures", async () => {
-    const runtime = {} as IAgentRuntime;
+    const runtime = makeDispatchRuntime();
     const registry = createChannelRegistry();
     registerChannelRegistry(runtime, registry);
     const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
@@ -223,7 +238,7 @@ describe("scheduled task production dispatcher", () => {
   });
 
   it("applies decideDispatchPolicy: fills default retry backoff for rate_limited without one", async () => {
-    const runtime = {} as IAgentRuntime;
+    const runtime = makeDispatchRuntime();
     const registry = createChannelRegistry();
     registerChannelRegistry(runtime, registry);
     // Connector reports rate_limited but omits retryAfterMinutes.
@@ -256,7 +271,7 @@ describe("scheduled task production dispatcher", () => {
   });
 
   it("applies decideDispatchPolicy: leaves a non-retriable transport_error untouched", async () => {
-    const runtime = {} as IAgentRuntime;
+    const runtime = makeDispatchRuntime();
     const registry = createChannelRegistry();
     registerChannelRegistry(runtime, registry);
     const failure = {
@@ -283,7 +298,7 @@ describe("scheduled task production dispatcher", () => {
   });
 
   it("evaluates send policy before channel send", async () => {
-    const runtime = {} as IAgentRuntime;
+    const runtime = makeDispatchRuntime();
     const registry = createChannelRegistry();
     const send = vi.fn(async () => ({ ok: true as const }));
     registry.register(sendCapableChannel(send));
@@ -325,7 +340,7 @@ describe("scheduled task production dispatcher", () => {
   });
 
   it("fires a ScheduledTask through a fake channel sender", async () => {
-    const runtime = {} as IAgentRuntime;
+    const runtime = makeDispatchRuntime();
     const sent: unknown[] = [];
     const registry = createChannelRegistry();
     registry.register(
@@ -346,14 +361,19 @@ describe("scheduled task production dispatcher", () => {
 
     expect(fired.state.status).toBe("fired");
     expect(sent).toHaveLength(1);
+    // The channel carries the model-rendered message, never the task's
+    // instruction-voice `promptInstructions` verbatim.
     expect(sent[0]).toMatchObject({
       target: "owner-dm",
-      message: "Open the private request to continue.",
+      message: RENDERED_MESSAGE,
       metadata: {
         taskId: "task_sensitive_request",
         firedAtIso: "2026-05-10T12:00:00.000Z",
       },
     });
+    expect((sent[0] as { message?: unknown }).message).not.toBe(
+      "Open the private request to continue.",
+    );
 
     const [stored] = await runner.list();
     expect(stored?.metadata?.lastDispatchResult).toEqual({
@@ -363,7 +383,7 @@ describe("scheduled task production dispatcher", () => {
   });
 
   it("does not advertise in_app or push send support without a sender", () => {
-    const runtime = {} as IAgentRuntime;
+    const runtime = makeDispatchRuntime();
     const registry = createChannelRegistry();
     registerDefaultChannelPack(registry, runtime);
 

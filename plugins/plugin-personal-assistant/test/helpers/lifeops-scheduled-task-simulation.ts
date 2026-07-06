@@ -71,11 +71,24 @@ export interface LifeOpsScheduledTaskSimulationOptions {
   simulatedConnectorKind?: string;
 }
 
+/**
+ * Deterministic output of the harness's stubbed `useModel`: the production
+ * dispatcher renders `promptInstructions` through the model before any
+ * user-visible surface, so simulated connector sends carry exactly this text.
+ */
+export const SIMULATED_RENDERED_DISPATCH_MESSAGE =
+  "Simulated model-rendered dispatch message.";
+
 export interface LifeOpsScheduledTaskSimulationHarness {
   runner: ScheduledTaskRunnerHandle;
   logStore: ScheduledTaskLogStore;
   readonly dispatches: LifeOpsDispatchLedgerEntry[];
   readonly connectorSends: LifeOpsSimulatedConnectorSend[];
+  /**
+   * Prompts the production dispatcher's render step sent to the stubbed
+   * model (empty unless `useProductionConnectorDispatcher` is set).
+   */
+  readonly modelPrompts: string[];
   nowIso(): string;
   setNow(iso: string): void;
   advanceMinutes(minutes: number): void;
@@ -150,6 +163,7 @@ export function createLifeOpsScheduledTaskSimulationHarness(
 
   const dispatches: LifeOpsDispatchLedgerEntry[] = [];
   const connectorSends: LifeOpsSimulatedConnectorSend[] = [];
+  const modelPrompts: string[] = [];
 
   const gates = createTaskGateRegistry();
   registerBuiltInGates(gates);
@@ -177,6 +191,14 @@ export function createLifeOpsScheduledTaskSimulationHarness(
     const runtime = {
       agentId: "pa-simulation-agent",
       getService: () => null,
+      // Deterministic stand-in for the dispatcher's render step: capture the
+      // prompt (so tests can assert instruction text only ever reaches the
+      // model as opaque payload) and return a fixed rendered message.
+      useModel: async (_type: string, params: { prompt: string }) => {
+        modelPrompts.push(params.prompt);
+        return SIMULATED_RENDERED_DISPATCH_MESSAGE;
+      },
+      reportError: () => undefined,
     } as unknown as IAgentRuntime;
     const connectorRegistry = createConnectorRegistry();
     connectorRegistry.register({
@@ -270,6 +292,7 @@ export function createLifeOpsScheduledTaskSimulationHarness(
     logStore,
     dispatches,
     connectorSends,
+    modelPrompts,
     nowIso: () => now.toISOString(),
     setNow: (iso) => {
       now = new Date(iso);

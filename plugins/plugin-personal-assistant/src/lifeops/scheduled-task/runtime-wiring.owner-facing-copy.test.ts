@@ -1,3 +1,11 @@
+/**
+ * Covers the production dispatcher's owner-facing composition: delegated
+ * morning-brief assembly (structural `metadata.delegatesAssemblyTo`) delivers
+ * the assembled summaryText, everything else is rendered through the model —
+ * raw instruction-voice `promptInstructions` never reaches chat, notification,
+ * or channel surfaces, and a render failure fails closed. Deterministic: the
+ * model is stubbed at the runtime boundary (`useModel`).
+ */
 import { type IAgentRuntime, ServiceType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { dailyRhythmPack } from "../../default-packs/daily-rhythm.js";
@@ -32,14 +40,20 @@ vi.mock("../../default-packs/morning-brief.js", async (importOriginal) => {
   };
 });
 
+const RENDERED = "Here's your gentle nudge from me.";
+
 function makeRuntime(
   options: {
     notify?: ReturnType<typeof vi.fn>;
     reportError?: ReturnType<typeof vi.fn>;
+    /** Model handler; pass `null` to build a runtime with NO model surface. */
+    model?: ((params: { prompt: string }) => string) | null;
   } = {},
-): IAgentRuntime {
+): { runtime: IAgentRuntime; modelPrompts: string[] } {
   const notify = options.notify;
-  return {
+  const modelPrompts: string[] = [];
+  const model = options.model === undefined ? () => RENDERED : options.model;
+  const runtime = {
     agentId: "agent-test",
     getService: vi.fn((serviceType: string) => {
       if (serviceType === ServiceType.NOTIFICATION && notify) {
@@ -49,7 +63,16 @@ function makeRuntime(
     }),
     getSetting: vi.fn(() => undefined),
     reportError: options.reportError ?? vi.fn(),
+    ...(model
+      ? {
+          useModel: async (_type: string, params: { prompt: string }) => {
+            modelPrompts.push(params.prompt);
+            return model(params);
+          },
+        }
+      : {}),
   } as unknown as IAgentRuntime;
+  return { runtime, modelPrompts };
 }
 
 describe("production scheduled-task dispatcher owner-facing copy", () => {
@@ -58,9 +81,9 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
     morningBriefMocks.assembleMorningBrief.mockReset();
   });
 
-  it("emits daily-rhythm owner-facing chat and notification copy instead of raw promptInstructions", async () => {
+  it("renders daily-rhythm copy through the model instead of raw promptInstructions", async () => {
     const notify = vi.fn().mockResolvedValue(undefined);
-    const runtime = makeRuntime({ notify });
+    const { runtime, modelPrompts } = makeRuntime({ notify });
     const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
     const record = dailyRhythmPack.records.find(
       (candidate) => candidate.metadata?.recordKey === "gn",
@@ -79,14 +102,18 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
     });
 
     expect(result?.ok).toBe(true);
+    // The instruction fed the model as opaque prompt payload...
+    expect(modelPrompts).toHaveLength(1);
+    expect(modelPrompts[0]).toContain(record.promptInstructions);
+    // ...and only the model's rendering reached the user-visible surfaces.
     expect(agentMocks.eventService.emit).toHaveBeenCalledTimes(1);
     const emitted = agentMocks.eventService.emit.mock.calls[0]?.[0];
     if (!emitted) throw new Error("assistant event missing");
-    expect(emitted.data.text).toBe("Good night. Rest well.");
+    expect(emitted.data.text).toBe(RENDERED);
     expect(emitted.data.text).not.toBe(record.promptInstructions);
     expect(emitted.data.text).not.toContain("Send a gentle good-night");
     expect(notify).toHaveBeenCalledTimes(1);
-    expect(notify.mock.calls[0]?.[0].body).toBe("Good night. Rest well.");
+    expect(notify.mock.calls[0]?.[0].body).toBe(RENDERED);
     expect(notify.mock.calls[0]?.[0].body).not.toBe(record.promptInstructions);
   });
 
@@ -98,7 +125,7 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
       report: { summaryText },
     });
     const notify = vi.fn().mockResolvedValue(undefined);
-    const runtime = makeRuntime({ notify });
+    const { runtime, modelPrompts } = makeRuntime({ notify });
     const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
     const record = morningBriefPack.records[0];
     if (!record) throw new Error("morning-brief record missing");
@@ -115,6 +142,8 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
     });
 
     expect(morningBriefMocks.assembleMorningBrief).toHaveBeenCalledTimes(1);
+    // Delegated assembly supplies the real brief; the render seam is not used.
+    expect(modelPrompts).toHaveLength(0);
     expect(agentMocks.eventService.emit).toHaveBeenCalledTimes(1);
     const emitted = agentMocks.eventService.emit.mock.calls[0]?.[0];
     if (!emitted) throw new Error("assistant event missing");
@@ -126,8 +155,8 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
     expect(notify.mock.calls[0]?.[0].body).toBe(summaryText);
   });
 
-  it("sends owner-facing copy through connected channel payloads", async () => {
-    const runtime = makeRuntime();
+  it("sends the model-rendered message through connected channel payloads", async () => {
+    const { runtime, modelPrompts } = makeRuntime();
     const send = vi.fn().mockResolvedValue({ ok: true, messageId: "sent-1" });
     const registry = createChannelRegistry();
     registry.register({
@@ -161,24 +190,24 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
       metadata: record.metadata,
     });
 
+    expect(modelPrompts).toHaveLength(1);
+    expect(modelPrompts[0]).toContain(record.promptInstructions);
     expect(send).toHaveBeenCalledTimes(1);
     expect(send.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({
-        message: "Good morning. Hope the day starts gently.",
-      }),
+      expect.objectContaining({ message: RENDERED }),
     );
     expect(send.mock.calls[0]?.[0].message).not.toBe(record.promptInstructions);
   });
 
-  it("fails closed for unknown scheduled tasks without delivering promptInstructions verbatim", async () => {
+  it("fails closed when no model surface exists — nothing is emitted, never the raw instruction", async () => {
     const notify = vi.fn().mockResolvedValue(undefined);
     const reportError = vi.fn();
-    const runtime = makeRuntime({ notify, reportError });
+    const { runtime } = makeRuntime({ notify, reportError, model: null });
     const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
     const promptInstructions =
       "Send a gentle custom reminder with these internal instructions.";
 
-    await dispatcher.dispatch({
+    const result = await dispatcher.dispatch({
       taskId: "task-custom",
       firedAtIso: "2026-07-06T16:00:00.000Z",
       channelKey: "in_app",
@@ -188,15 +217,54 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
       metadata: { packKey: "custom-pack", recordKey: "custom" },
     });
 
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "transport_error",
+      retryAfterMinutes: 5,
+    });
+    expect(agentMocks.eventService.emit).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+    expect(reportError).toHaveBeenCalledWith(
+      "lifeops:scheduled-task:dispatch-render",
+      expect.any(Error),
+      expect.objectContaining({ taskId: "task-custom" }),
+    );
+  });
+
+  it("degrades honestly when the delegated assembler fails — never the raw instruction", async () => {
+    morningBriefMocks.assembleMorningBrief.mockRejectedValueOnce(
+      new Error("brief sources unavailable"),
+    );
+    const notify = vi.fn().mockResolvedValue(undefined);
+    const reportError = vi.fn();
+    const { runtime, modelPrompts } = makeRuntime({ notify, reportError });
+    const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
+    const record = morningBriefPack.records[0];
+    if (!record) throw new Error("morning-brief record missing");
+
+    const result = await dispatcher.dispatch({
+      taskId: record.taskId,
+      firedAtIso: "2026-07-06T14:00:00.000Z",
+      channelKey: "in_app",
+      intensity: "normal",
+      promptInstructions: record.promptInstructions,
+      contextRequest: record.contextRequest,
+      output: record.output,
+      metadata: record.metadata,
+    });
+
+    expect(result?.ok).toBe(true);
+    expect(modelPrompts).toHaveLength(0);
     const emitted = agentMocks.eventService.emit.mock.calls[0]?.[0];
     if (!emitted) throw new Error("assistant event missing");
-    expect(emitted.data.text).toBe("Reminder.");
-    expect(emitted.data.text).not.toBe(promptInstructions);
-    expect(notify.mock.calls[0]?.[0].body).toBe("Reminder.");
+    expect(emitted.data.text).toBe(
+      "Your morning check-in is ready, but I couldn't assemble the full brief right now.",
+    );
+    expect(emitted.data.text).not.toBe(record.promptInstructions);
     expect(reportError).toHaveBeenCalledWith(
       "lifeops:scheduled-task:owner-facing-copy",
       expect.any(Error),
-      expect.objectContaining({ taskId: "task-custom" }),
+      expect.objectContaining({ taskId: record.taskId }),
     );
   });
 });

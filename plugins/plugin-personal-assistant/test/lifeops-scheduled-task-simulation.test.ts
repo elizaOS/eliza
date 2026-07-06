@@ -6,7 +6,10 @@
  */
 import { describe, expect, it } from "vitest";
 import type { LifeOpsScheduledPrimitive } from "./helpers/lifeops-scheduled-task-simulation.js";
-import { createLifeOpsScheduledTaskSimulationHarness } from "./helpers/lifeops-scheduled-task-simulation.js";
+import {
+  createLifeOpsScheduledTaskSimulationHarness,
+  SIMULATED_RENDERED_DISPATCH_MESSAGE,
+} from "./helpers/lifeops-scheduled-task-simulation.js";
 
 const PRIMITIVES: LifeOpsScheduledPrimitive[] = [
   "goal",
@@ -219,13 +222,18 @@ describe("LifeOps scheduled-task simulation harness", () => {
       messageId: `sim_${reminder.taskId}`,
     });
     expect(h.connectorSends).toHaveLength(1);
+    // The connector receives the model-rendered message; the task's
+    // instruction-voice `promptInstructions` only ever reaches the model
+    // prompt, never the wire.
     expect(h.connectorSends[0]?.payload).toMatchObject({
       target: "owner-room",
-      message: "Simulated reminder scheduled task",
+      message: SIMULATED_RENDERED_DISPATCH_MESSAGE,
       metadata: {
         taskId: reminder.taskId,
       },
     });
+    expect(h.modelPrompts).toHaveLength(1);
+    expect(h.modelPrompts[0]).toContain(reminder.promptInstructions);
     expect(h.connectorSends[0]?.result).toEqual(
       fired.metadata?.lastDispatchResult,
     );

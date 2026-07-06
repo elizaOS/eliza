@@ -2,8 +2,11 @@
  * Test-runtime helpers for LifeOps: wraps createRealTestRuntime and provides an in-memory
  * notification sink standing in for the production NotificationService, so in-app
  * scheduled-task dispatches report honest DispatchResults and tests can assert what was
- * delivered.
+ * delivered. Also registers a deterministic TEXT_LARGE stand-in when no live model is
+ * present, because the production dispatcher renders `promptInstructions` through the
+ * model before every user-visible surface and fails the dispatch closed without one.
  */
+import { ModelType } from "@elizaos/core";
 import {
   createRealTestRuntime,
   type RealTestRuntimeOptions,
@@ -70,6 +73,34 @@ export function getRecordedTestNotifications(
   return sink?.recorded ?? [];
 }
 
+/**
+ * Deterministic output of the TEXT_LARGE stand-in registered by
+ * {@link createLifeOpsTestRuntime} when no live model is available. The
+ * production scheduled-task dispatcher renders `promptInstructions` through
+ * the model before any user-visible surface, so dispatched bodies/messages in
+ * keyless tests carry exactly this text.
+ */
+export const TEST_RENDERED_DISPATCH_MESSAGE =
+  "Deterministic test-rendered dispatch message.";
+
+/**
+ * Register a deterministic TEXT_LARGE handler when none exists (mirrors the
+ * notification sink above: production hosts always have a model surface, and
+ * without one every model-rendered dispatch would — correctly — fail closed,
+ * which is not what production hosts look like). Live-LLM runtimes
+ * (`withLLM: true`) keep their real handler.
+ */
+function injectDeterministicTextModel(
+  runtime: RealTestRuntimeResult["runtime"],
+): void {
+  if (runtime.getModel(ModelType.TEXT_LARGE)) return;
+  runtime.registerModel(
+    ModelType.TEXT_LARGE,
+    async () => TEST_RENDERED_DISPATCH_MESSAGE,
+    "lifeops-test-render-stub",
+  );
+}
+
 export async function createLifeOpsTestRuntime(
   options?: RealTestRuntimeOptions,
 ): Promise<RealTestRuntimeResult> {
@@ -93,6 +124,7 @@ export async function createLifeOpsTestRuntime(
       ],
     });
     injectNotificationSink(result.runtime);
+    injectDeterministicTextModel(result.runtime);
     return result;
   } finally {
     if (previousDisableProactiveAgent === undefined) {

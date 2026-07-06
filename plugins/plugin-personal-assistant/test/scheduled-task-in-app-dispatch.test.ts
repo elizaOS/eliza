@@ -13,6 +13,10 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { createProductionScheduledTaskDispatcher } from "../src/lifeops/scheduled-task/runtime-wiring.ts";
 
+// Deterministic model output: the dispatcher renders `promptInstructions`
+// through the model before any surface, so assertions target this text.
+const RENDERED_BODY = "Time for a glass of water.";
+
 function makeRuntime(args: {
   notifier?: { notify: (input: unknown) => Promise<unknown> } | null;
 }): IAgentRuntime {
@@ -23,6 +27,8 @@ function makeRuntime(args: {
       return null;
     },
     getSetting: () => null,
+    useModel: async () => RENDERED_BODY,
+    reportError: () => undefined,
   } as unknown as IAgentRuntime;
 }
 
@@ -32,7 +38,7 @@ function inAppRecord() {
     firedAtIso: "2026-07-01T12:00:00.000Z",
     channelKey: "in_app",
     intensity: "normal" as const,
-    promptInstructions: "Drink a glass of water.",
+    promptInstructions: "Remind the owner to drink a glass of water.",
     contextRequest: undefined,
     output: undefined,
     metadata: undefined,
@@ -58,7 +64,7 @@ describe("production dispatcher in_app honesty", () => {
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: "Drink a glass of water.",
+        body: RENDERED_BODY,
         category: "reminder",
         groupKey: "lifeops:st_test_inapp",
       }),

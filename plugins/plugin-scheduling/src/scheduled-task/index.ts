@@ -25,6 +25,12 @@ export {
   FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS,
 } from "./default-pack.js";
 export {
+  buildScheduledDispatchRenderPrompt,
+  RENDER_FAILURE_RETRY_MINUTES,
+  renderFailureDispatchResult,
+  renderScheduledDispatchMessage,
+} from "./dispatch-render.js";
+export {
   expectedReplyKindForTask,
   isCompletionTimeoutDue,
   isRecurringTrigger,

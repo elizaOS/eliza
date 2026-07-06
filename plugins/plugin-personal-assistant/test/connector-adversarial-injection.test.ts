@@ -10,8 +10,8 @@
  * structural, and injected text is inert data.
  *
  * These are deterministic structural assertions that run keyless in the unit
- * lane (no model). They drive the REAL `@elizaos/plugin-scheduling` runner via
- * the #10835 simulation harness. The claims proven:
+ * lane (no live model). They drive the REAL `@elizaos/plugin-scheduling` runner
+ * via the #10835 simulation harness. The claims proven:
  *
  * - An injection payload placed in `promptInstructions` does NOT change
  *   routing: a task with a deny gate still skips even when its text screams
@@ -24,8 +24,10 @@
  *   string; it is never parsed into structural state.
  * - Conflicting instructions: firing / completing one task never mutates a
  *   sibling task's structural state or existence.
- * - The injected payload is dispatched verbatim (still inert) and the outcome
- *   is a typed `DispatchResult`.
+ * - The injected payload reaches transport only as the model-rendered message
+ *   (`promptInstructions` is a model prompt, never delivered verbatim) and the
+ *   outcome is a typed `DispatchResult`. The production-dispatcher tests stub
+ *   the model deterministically at the runtime boundary.
  *
  * The 2026-07-01 clock the harness defaults to is a Wednesday (UTC day 3), so
  * `weekday_only` allows and `weekend_only` denies deterministically.
@@ -35,7 +37,10 @@ import type { DispatchResult, ScheduledTask } from "@elizaos/plugin-scheduling";
 import { describe, expect, it } from "vitest";
 import type { InboundMessage } from "../src/inbox/types.js";
 import { toInboxMessages } from "../src/lifeops/domains/inbox-service.js";
-import { createLifeOpsScheduledTaskSimulationHarness } from "./helpers/lifeops-scheduled-task-simulation.js";
+import {
+  createLifeOpsScheduledTaskSimulationHarness,
+  SIMULATED_RENDERED_DISPATCH_MESSAGE,
+} from "./helpers/lifeops-scheduled-task-simulation.js";
 
 const WEDNESDAY_ISO = "2026-07-01T12:00:00.000Z";
 
@@ -154,7 +159,7 @@ describe("adversarial: prompt-injection cannot override structural routing", () 
     );
   });
 
-  it("injected payload is dispatched verbatim as inert data with a typed DispatchResult", async () => {
+  it("injected payload reaches transport only as the model-rendered message with a typed DispatchResult", async () => {
     const h = createLifeOpsScheduledTaskSimulationHarness({
       initialIso: WEDNESDAY_ISO,
       useProductionConnectorDispatcher: true,
@@ -176,10 +181,14 @@ describe("adversarial: prompt-injection cannot override structural routing", () 
     expectTypedDispatchResult(fired.metadata?.lastDispatchResult);
     // Structure untouched by the injection content.
     expect(structuralSnapshot(fired)).toEqual(before);
-    // The payload carried the injection text through as a plain string body —
-    // inert data, never interpreted as an instruction to the spine.
+    // The injection text never touches structural state and never reaches the
+    // wire verbatim: it flows to the model only as opaque prompt payload, and
+    // the transport carries the model's rendering.
     const payload = h.connectorSends[0]?.payload as { message?: unknown };
-    expect(payload.message).toBe(INJECTION_CORPUS.exfiltrate);
+    expect(payload.message).toBe(SIMULATED_RENDERED_DISPATCH_MESSAGE);
+    expect(payload.message).not.toBe(INJECTION_CORPUS.exfiltrate);
+    expect(h.modelPrompts).toHaveLength(1);
+    expect(h.modelPrompts[0]).toContain(INJECTION_CORPUS.exfiltrate);
   });
 });
 
@@ -302,9 +311,12 @@ describe("adversarial: injected inbound content cannot mutate the schedule", () 
     // attacker's embedded `respectsGlobalPause:false` / cron trigger.
     expect(all[0]?.trigger).toEqual({ kind: "manual" });
     expect(all[0]?.respectsGlobalPause).toBe(true);
-    // Body delivered as an opaque string.
+    // The fake-task JSON stays an opaque string end to end: it reaches the
+    // model only as prompt payload and the wire only as the model's rendering
+    // — never parsed into structure, never delivered verbatim.
     const payload = h.connectorSends[0]?.payload as { message?: unknown };
-    expect(payload.message).toBe(INJECTION_CORPUS.fakeTaskJson);
+    expect(payload.message).toBe(SIMULATED_RENDERED_DISPATCH_MESSAGE);
+    expect(payload.message).not.toBe(INJECTION_CORPUS.fakeTaskJson);
   });
 });
 
