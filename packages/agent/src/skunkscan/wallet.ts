@@ -1,12 +1,14 @@
 import {
   getSolanaBalance,
   getSolanaOldestKnownSignature,
+  getSolanaParsedTransactions,
   getSolanaRecentSignatures,
   getSolanaTokenHoldings,
 } from "./helius";
 import { analyzeWalletActivity } from "./analyzers/activity";
 import { analyzeWalletRisk } from "./analyzers/risk";
 import { analyzeWalletAge } from "./analyzers/walletAge";
+import { analyzeWalletFunding } from "./analyzers/funding";
 import {
   SupportedChain,
   WalletBalance,
@@ -45,6 +47,18 @@ const oldestKnownSignature = await getSolanaOldestKnownSignature(
   walletAddress,
 );
 
+const parsedTransactions =
+  oldestKnownSignature.signature
+    ? await getSolanaParsedTransactions([
+        oldestKnownSignature.signature,
+      ])
+    : [];
+
+const firstParsedTransaction =
+  parsedTransactions.length > 0
+    ? parsedTransactions[0]
+    : null;
+
 const tokenHoldings = await getSolanaTokenHoldings(walletAddress);
 
         const walletBalance: WalletBalance = {
@@ -68,6 +82,12 @@ const tokenHoldings = await getSolanaTokenHoldings(walletAddress);
   oldestKnownSignature.blockTime,
 );
 
+        const funding = analyzeWalletFunding(
+  chain,
+  walletAddress,
+  firstParsedTransaction,
+);
+
 const risk = analyzeWalletRisk(
   balance.sol,
   activity,
@@ -83,6 +103,7 @@ recentTransactions,
 transactionCountSample: recentTransactions.length,
 activity,
 age,
+funding,
 risk,
 summary: `Wallet found. Current balance: ${balance.sol.toFixed(
   6,
