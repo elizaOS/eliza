@@ -81,17 +81,19 @@ const DIRECT_ELIZA_CLOUD_API_BY_HOST = new Map([
   ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
   ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
 ]);
-// Also normalizes the non-API site hosts (www → apex): a popup/tab must never
-// be pointed through the www 308 edge — the extra redirect hop is where mobile
-// Safari's download panel attributed the #15143 "document.txt" to
-// www.elizacloud.ai — and production builds configure the cloud base as
-// https://www.elizacloud.ai (packages/app/wrangler.toml).
-const DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST = new Map([
+// Also normalizes non-API site hosts (www/app/dev -> apex): a browser
+// navigation must never be pointed through the API worker or www redirect edge.
+// The former serves JSON that mobile Safari can download as document.txt; the
+// latter adds the redirect hop the owner capture attributed to www (#15143).
+const DIRECT_ELIZA_CLOUD_WEB_BY_HOST = new Map([
   ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
   ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
   ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["app.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
   ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
   ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
+  ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
 ]);
 
 type DirectCloudAgent = {
@@ -283,7 +285,7 @@ export function resolveDirectCloudWebBase(cloudBase: string): string {
   const normalized = cloudBase.replace(/\/+$/, "");
   try {
     const host = new URL(normalized).hostname.toLowerCase();
-    return DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST.get(host) ?? normalized;
+    return DIRECT_ELIZA_CLOUD_WEB_BY_HOST.get(host) ?? normalized;
   } catch {
     // Fall back to the provided base below.
   }
