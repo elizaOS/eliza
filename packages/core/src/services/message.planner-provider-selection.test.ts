@@ -104,6 +104,16 @@ describe("selectV5PlannerStateProviderNames — declared contextGate honored (#1
 		expect(select([declared], ["wallet"])).not.toContain("DECLARED_SIGNAL");
 	});
 
+	it("keeps the legacy PROVIDERS catalog out of v5 planner composition", () => {
+		const catalog = provider({
+			name: "PROVIDERS",
+			contextGate: { anyOf: ["general"] },
+		});
+		const selected = select([catalog], ["general"]);
+
+		expect(selected).not.toContain("PROVIDERS");
+	});
+
 	it("keeps an undeclared, uncataloged plugin provider on narrow turns (#13204 follow-up)", () => {
 		// TWITTER_IDENTITY shape: a plugin provider with no contexts, no
 		// contextGate, and no catalog entry. Hosts that bypass the wrapped

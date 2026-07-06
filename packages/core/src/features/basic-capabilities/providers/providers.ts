@@ -1,11 +1,9 @@
 /**
- * PROVIDERS provider — injects the catalog of available data providers into the
- * planner prompt so the model can pick which context sources to pull on the next
- * turn. Renders each provider's (compressed) description alongside a set of
- * selection hints that map request kinds to provider names, and filters the list
- * to providers whose declared contexts match the turn's active routing contexts.
- * Suppresses the list entirely when the message looks like non-actionable
- * chatter. Part of the basic-capabilities bundle.
+ * Legacy provider-catalog renderer for composeState callers that explicitly ask
+ * for `PROVIDERS`. The v5 chat planner does not use a model-emitted
+ * request-by-name loop; it selects provider text before the model call through
+ * context gates plus `alwaysInResponseState`. This catalog stays out of v5
+ * planner composition so provider descriptions do not become prompt-stuffing.
  */
 
 import {

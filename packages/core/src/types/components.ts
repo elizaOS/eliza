@@ -632,10 +632,15 @@ export interface Provider {
 	/** Provider name */
 	name: string;
 
-	/** Description of the provider */
+	/**
+	 * Human-readable metadata for catalogs and diagnostics. The v5 chat planner
+	 * does not see this text unless a caller explicitly composes the provider;
+	 * route provider prompt text with `contexts`/`contextGate` or
+	 * `alwaysInResponseState`.
+	 */
 	description?: string;
 
-	/** Compressed description for prompt-optimized rendering */
+	/** Compressed description for legacy catalog rendering and diagnostics. */
 	descriptionCompressed?: string;
 	/** Alias accepted for plugin compatibility; canonical output uses descriptionCompressed */
 	compressedDescription?: string;
@@ -661,7 +666,10 @@ export interface Provider {
 	 */
 	private?: boolean;
 
-	/** Keywords used to determine relevance for action filtering */
+	/**
+	 * Advisory keywords for provider-owned self-gates and catalogs. Core does
+	 * not run a global keyword selector over providers.
+	 */
 	relevanceKeywords?: string[];
 
 	/**
@@ -723,16 +731,6 @@ export interface Provider {
 
 	/** Child provider/action names exposed beneath this provider, if any. */
 	subActions?: string[];
-
-	/** Whether this provider should be composed through a sub-planner. */
-	subPlanner?: boolean | { name?: string; description?: string };
-
-	/**
-	 * Additional providers that should run alongside this provider when it is
-	 * selected by the planner. Use this for provider composition, not semantic
-	 * routing.
-	 */
-	companionProviders?: string[];
 
 	/** Data retrieval function */
 	get: (

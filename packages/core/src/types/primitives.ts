@@ -105,7 +105,11 @@ export interface Content {
 	/** Actions to be performed */
 	actions?: string[];
 
-	/** Providers to use for context generation */
+	/**
+	 * Legacy serialized provider names from pre-v5 planner replies. The v5
+	 * message loop does not use model-emitted content to select providers;
+	 * providers enter prompts through context routing or `alwaysInResponseState`.
+	 */
 	providers?: string[];
 
 	/** Source/origin of the content (e.g., 'discord', 'telegram') */

@@ -9,7 +9,6 @@
  * to replace it wholesale.
  */
 import { v4 } from "uuid";
-import z from "zod";
 import { formatActionNames, formatActions } from "../actions";
 import {
 	actionToTool,
@@ -696,138 +695,6 @@ function resolvePlannerActionNameFromLookup(
 	return [];
 }
 
-function isStructuredPlannerIdentifier(value: string): boolean {
-	const unwrapped = unwrapPlannerIdentifier(value).trim();
-	return /^[A-Za-z][A-Za-z0-9_:-]*$/u.test(unwrapped);
-}
-
-function extractStructuredProviderList(rawProviders: string): string[] {
-	const safe =
-		rawProviders.length > 10_000 ? rawProviders.slice(0, 10_000) : rawProviders;
-	const tokens = safe
-		.split(/[\n,;]/)
-		.map((providerName) =>
-			providerName.replace(/^[\s"'[\](){}]+|[\s"'[\](){}]+$/g, ""),
-		)
-		.map((providerName) => unwrapPlannerIdentifier(providerName).trim())
-		.filter((providerName) => providerName.length > 0);
-	if (tokens.length === 0 || !tokens.every(isStructuredPlannerIdentifier)) {
-		return [];
-	}
-	return tokens;
-}
-
-// Schemas for LLM-emitted provider lists embedded as JSON strings inside the
-// planner output. The planner sometimes returns providers as a JSON array of
-// strings or as a `{ providers: string[] }` object.
-// We coerce non-string entries to string and validate downstream.
-const ProviderJsonArraySchema = z.array(z.unknown());
-const ProviderJsonEnvelopeSchema = z.object({
-	providers: z.array(z.unknown()),
-});
-
-export function extractPlannerProviderNames(
-	parsedPlanner: Record<string, unknown>,
-): string[] {
-	const rawProviders = parsedPlanner.providers;
-	if (typeof rawProviders === "string") {
-		const trimmedProviders = rawProviders.trim();
-		if (!trimmedProviders) {
-			return [];
-		}
-		if (
-			(trimmedProviders.startsWith("[") && trimmedProviders.endsWith("]")) ||
-			(trimmedProviders.startsWith("{") && trimmedProviders.endsWith("}"))
-		) {
-			try {
-				const parsedJson: unknown = JSON.parse(trimmedProviders);
-				const arrayResult = ProviderJsonArraySchema.safeParse(parsedJson);
-				if (arrayResult.success) {
-					return arrayResult.data
-						.map((providerName) => String(providerName).trim())
-						.filter(
-							(providerName): providerName is string =>
-								providerName.length > 0 &&
-								isStructuredPlannerIdentifier(providerName),
-						);
-				}
-				const envelopeResult = ProviderJsonEnvelopeSchema.safeParse(parsedJson);
-				if (envelopeResult.success) {
-					return envelopeResult.data.providers
-						.map((providerName) => String(providerName).trim())
-						.filter(
-							(providerName): providerName is string =>
-								providerName.length > 0 &&
-								isStructuredPlannerIdentifier(providerName),
-						);
-				}
-				logger.warn(
-					{
-						raw: trimmedProviders,
-						arrayErr: arrayResult.error.issues,
-						envelopeErr: envelopeResult.error.issues,
-					},
-					"[message] LLM response failed schema validation",
-				);
-			} catch (err) {
-				logger.warn(
-					{ raw: trimmedProviders, err },
-					"[message] LLM response failed schema validation",
-				);
-			}
-		}
-
-		return extractStructuredProviderList(trimmedProviders);
-	}
-
-	if (Array.isArray(rawProviders)) {
-		return rawProviders.flatMap((providerName) => {
-			if (typeof providerName !== "string") {
-				const normalized = String(providerName).trim();
-				return normalized.length > 0 &&
-					isStructuredPlannerIdentifier(normalized)
-					? [normalized]
-					: [];
-			}
-
-			const trimmedProvider = providerName.trim();
-			if (!trimmedProvider) {
-				return [];
-			}
-			if (
-				(trimmedProvider.startsWith("[") && trimmedProvider.endsWith("]")) ||
-				(trimmedProvider.startsWith("{") && trimmedProvider.endsWith("}"))
-			) {
-				try {
-					const parsedJson: unknown = JSON.parse(trimmedProvider);
-					const arrayResult = ProviderJsonArraySchema.safeParse(parsedJson);
-					if (arrayResult.success) {
-						return arrayResult.data
-							.map((entry) => String(entry).trim())
-							.filter(
-								(entry): entry is string =>
-									entry.length > 0 && isStructuredPlannerIdentifier(entry),
-							);
-					}
-					logger.warn(
-						{ raw: trimmedProvider, err: arrayResult.error.issues },
-						"[message] LLM response failed schema validation",
-					);
-				} catch (err) {
-					logger.warn(
-						{ raw: trimmedProvider, err },
-						"[message] LLM response failed schema validation",
-					);
-				}
-			}
-
-			return extractStructuredProviderList(trimmedProvider);
-		});
-	}
-
-	return [];
-}
-
 const CORE_RESPONSE_STATE_PROVIDERS = [
 	"RUNTIME_MODEL_CONTEXT",
 	"UI_CONTEXT",
@@ -928,8 +795,6 @@ const STAGE1_EXTRA_PROVIDER_EXCLUSIONS = [
 	"DOCUMENTS",
 ] as const;
 
-const STRUCTURED_RESPONSE_STATE_PROVIDERS = ["ACTIONS", "PROVIDERS"];
-
 function isCurrentTimeQuestion(message: Memory): boolean {
 	const text = message.content.text?.toLowerCase() ?? "";
 	if (!text) return false;
@@ -946,8 +811,6 @@ function stage1ProviderExclusionsForMessage(message: Memory): string[] {
 	}
 	return exclusions;
 }
-const FOCUSED_PROVIDER_REPLY_STATE_PROVIDERS = ["CHARACTER", "RECENT_MESSAGES"];
-
 function hasInboundBenchmarkContext(message: Memory): boolean {
 	const metadata = message.metadata as Record<string, unknown> | undefined;
 	const benchmarkContext = metadata?.benchmarkContext;
@@ -1159,43 +1022,6 @@ async function composeResponseState(
 	);
 }
 
-function _composeStructuredResponseState(
-	runtime: IAgentRuntime,
-	message: Memory,
-	skipCache = false,
-): Promise<State> {
-	return runtime.composeState(
-		message,
-		STRUCTURED_RESPONSE_STATE_PROVIDERS,
-		false,
-		skipCache,
-	);
-}
-
-async function composeProviderGroundedResponseState(
-	runtime: IAgentRuntime,
-	message: Memory,
-	providers: string[],
-	skipCache = false,
-): Promise<State> {
-	const state = await runtime.composeState(
-		message,
-		[
-			...CORE_RESPONSE_STATE_PROVIDERS,
-			...alwaysOnResponseStateProviderNames(runtime),
-			...providers,
-		],
-		false,
-		skipCache,
-	);
-	return applyMessageHistoryCompactionHook(
-		runtime,
-		message,
-		state,
-		"provider-grounded-state",
-	);
-}
-
 export function selectV5PlannerStateProviderNames(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -1236,20 +1062,6 @@ export function selectV5PlannerStateProviderNames(args: {
 	}
 
 	return [...providerNames];
-}
-
-function _composeFocusedProviderReplyState(
-	runtime: IAgentRuntime,
-	message: Memory,
-	providers: string[],
-	skipCache = false,
-): Promise<State> {
-	return runtime.composeState(
-		message,
-		[...FOCUSED_PROVIDER_REPLY_STATE_PROVIDERS, ...providers],
-		true,
-		skipCache,
-	);
 }
 
 function _ensureActionStateValues(
@@ -1842,7 +1654,6 @@ function createV5ReplyStrategyResult(args: {
 	const responseContent: Content = {
 		thought: args.thought,
 		actions: ["REPLY"],
-		providers: [],
 		text: restorePiiInUserReplyText(args.text),
 		simple: args.mode !== "actions",
 		responseId: args.responseId,
@@ -9395,7 +9206,6 @@ export class DefaultMessageService implements IMessageService {
 					const earlyContent: Content = {
 						thought: event.messageHandler.thought,
 						actions: ["REPLY"],
-						providers: [],
 						text,
 						responseId: earlyResponseId,
 						inReplyTo: createUniqueUuid(runtime, message.id),
@@ -9801,23 +9611,6 @@ export class DefaultMessageService implements IMessageService {
 				responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 			}
 
-			const providerStateValues = {
-				[AVAILABLE_CONTEXTS_STATE_KEY]:
-					state.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
-				[CONTEXT_ROUTING_STATE_KEY]: state.values?.[CONTEXT_ROUTING_STATE_KEY],
-			};
-
-			if (responseContent?.providers && responseContent.providers.length > 0) {
-				state = withContextRoutingValues(
-					await composeProviderGroundedResponseState(
-						runtime,
-						message,
-						responseContent.providers,
-					),
-					providerStateValues,
-				);
-			}
-
 			// Save response memory to database.
 			// - simple mode: persists after hooks in the branch below.
 			// - actions mode: do NOT persist the initial LLM text here.
@@ -9864,19 +9657,6 @@ export class DefaultMessageService implements IMessageService {
 
 			if (responseContent) {
 				if (mode === "simple") {
-					// Log provider usage for simple responses
-					if (
-						responseContent.providers &&
-						responseContent.providers.length > 0
-					) {
-						runtime.logger.debug(
-							{
-								src: "service:message",
-								providers: responseContent.providers,
-							},
-							"Simple response used providers",
-						);
-					}
 					// Keep content hooks and DB write before delivery so the wire
 					// response and stored memory match. Do not put MESSAGE_SENT
 					// handlers or post-turn evaluators before the callback; they are
@@ -10782,7 +10562,6 @@ export class DefaultMessageService implements IMessageService {
 			elizaSyntheticFailure: true,
 			transient: true,
 			doNotPersist: true,
-			providers: [],
 			text: replyText,
 			responseId,
 		};
@@ -10836,7 +10615,6 @@ export class DefaultMessageService implements IMessageService {
 			thought: `No LLM provider configured during ${stage}.`,
 			actions: ["REPLY"],
 			failureKind: "no_provider",
-			providers: [],
 			text: replyText,
 			responseId,
 		};
