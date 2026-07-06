@@ -153,7 +153,8 @@ function writeCache(value: CachedWeather): void {
 
 /** Has the user ALREADY granted geolocation? We never trigger the OS permission
  *  prompt from the home — precise device location is used only when it's already
- *  allowed; otherwise the coarse IP lookup is the no-prompt default. */
+ *  allowed; otherwise the widget degrades to its unavailable state (no prompt,
+ *  and no IP-lookup fallback — see {@link resolveCoords}). */
 async function geolocationAlreadyGranted(): Promise<boolean> {
   try {
     const perms = navigator.permissions;
@@ -162,7 +163,8 @@ async function geolocationAlreadyGranted(): Promise<boolean> {
     return status.state === "granted";
   } catch {
     // error-policy:J3 Permissions API unsupported (older WebKit) reads as
-    // "not granted" — the coarse IP lookup is the designed no-prompt default.
+    // "not granted" — the widget degrades to its unavailable state (the
+    // designed no-prompt path; no IP-lookup fallback).
     return false;
   }
 }
