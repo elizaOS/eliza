@@ -9,20 +9,38 @@ proven in unit tests because it depends on real credentials and devices.
 This document is the durable QA matrix for that pass: the prerequisites, the
 exact states to exercise per connector, the expected behavior, and the
 skip rules when credentials/devices are absent. Fill the **Result** columns in a
-copy under `.github/issue-evidence/8833-lifeops-live-validation/` and attach the
-redacted screenshots / logs called for in [`AGENTS.md`](../../../AGENTS.md).
+copy under the local scratch dir `reports/lifeops-live-validation/<session>/`
+(gitignored — evidence is never committed to the repo) and attach the redacted
+screenshots / logs **inline in the PR/issue** per
+[`PR_EVIDENCE.md`](../../../PR_EVIDENCE.md) (MP4 video, JPG screenshots, logs in
+a `<details>` block).
 
 ## How to run a live session
 
 ```bash
-# 1. Provide working credentials in .env (see "Env vars" per connector below).
+# 1. Provide working credentials in .env (see "Env vars" per connector below),
+#    then confirm readiness on the credential dashboard (values masked to last-4):
+bun run lifeops:hitl                    # scripts/lifeops/hitl-credential-dashboard.mjs
 # 2. Boot the local app (Eliza API on :31337, dashboard on :2138):
 bun run dev
 # 3. Open the dashboard and complete first-run onboarding as the OWNER:
 open http://localhost:2138
-# 4. Drive each view/action below as OWNER, then repeat as a non-owner AGENT
-#    identity to confirm the permission matrix.
+# 4. Drive the credential-gated live lanes (matrix harness + live connector
+#    suites; each lane skips cleanly when its creds are absent):
+node scripts/lifeops/run-11632-live-lanes.mjs
+# 5. Capture the populated views: open the /lifeops-live-test view, then
+bun run --cwd packages/app audit:app    # desktop + mobile screenshots per view
+bun run test:e2e:record                 # recorded walkthrough for the PR video
+# 6. Drive each view/action below as OWNER, then repeat as a non-owner AGENT
+#    identity to confirm the permission matrix. Stage all artifacts under
+#    reports/lifeops-live-validation/<session>/ and attach them inline on the
+#    PR/issue per PR_EVIDENCE.md.
 ```
+
+The HITL runner tracks this lane as the `lifeops-live` group
+(`node scripts/hitl/run-hitl.mjs --groups=lifeops-live` — see
+`docs/testing/hitl-inventory.md`); it is intentionally outside the golden-path
+default because it requires real credentials and devices.
 
 > **Agent responses require a working model provider.** If the model keys in
 > `.env` are empty/expired (a `401` on first model call), the agent will not

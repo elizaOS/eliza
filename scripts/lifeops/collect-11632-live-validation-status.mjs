@@ -5,6 +5,10 @@
  * provider, Google, and others) and writing a status.json under reports/.
  * Reports which connector groups are configured so the live
  * validation run knows what it can actually exercise.
+ *
+ * CONNECTOR_GROUPS and groupStatus are also imported by
+ * scripts/lifeops/hitl-credential-dashboard.mjs, so the CLI body only runs
+ * when this file is the entrypoint (import.meta.main).
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -17,7 +21,7 @@ const DEFAULT_OUT = join(
 );
 const LIFEOPS_REPORT_ROOT = "reports/lifeops-live-validation";
 
-const CONNECTOR_GROUPS = [
+export const CONNECTOR_GROUPS = [
   {
     id: "model",
     label: "Live model provider",
@@ -166,7 +170,7 @@ function summarizeOutput(value) {
     .join("\n");
 }
 
-function groupStatus(group) {
+export function groupStatus(group) {
   const requiredAll = group.requiredAll ?? [];
   const requiredAny = group.requiredAny ?? [];
   const optional = group.optional ?? [];
@@ -376,16 +380,18 @@ ${status.existingEvidence.map((entry) => `- ${entry.exists ? "present" : "missin
 `;
 }
 
-const args = parseArgs(process.argv.slice(2));
-const status = buildStatus();
-mkdirSync(dirname(args.out), { recursive: true });
-writeFileSync(args.out, `${JSON.stringify(status, null, 2)}\n`, "utf8");
-writeFileSync(
-  join(dirname(args.out), "README.md"),
-  renderMarkdown(status),
-  "utf8",
-);
-console.log(`[11632-status] wrote ${args.out}`);
-console.log(
-  `[11632-status] closeable=${status.verdict.closeable} blocked=${status.verdict.blockedGroups.join(",")}`,
-);
+if (import.meta.main) {
+  const args = parseArgs(process.argv.slice(2));
+  const status = buildStatus();
+  mkdirSync(dirname(args.out), { recursive: true });
+  writeFileSync(args.out, `${JSON.stringify(status, null, 2)}\n`, "utf8");
+  writeFileSync(
+    join(dirname(args.out), "README.md"),
+    renderMarkdown(status),
+    "utf8",
+  );
+  console.log(`[11632-status] wrote ${args.out}`);
+  console.log(
+    `[11632-status] closeable=${status.verdict.closeable} blocked=${status.verdict.blockedGroups.join(",")}`,
+  );
+}
