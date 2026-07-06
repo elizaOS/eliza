@@ -55,9 +55,7 @@ export const RETRY_CORRECTION =
 
 /** Render the questions as a stable, numbered instruction block. */
 export function renderQuestionPrompt(questions: VisionQuestion[]): string {
-  const lines = questions.map(
-    (q) => `- id "${q.id}": ${q.question}`,
-  );
+  const lines = questions.map((q) => `- id "${q.id}": ${q.question}`);
   return `Answer each of these questions about the screenshot:\n${lines.join("\n")}`;
 }
 
@@ -108,7 +106,10 @@ export function parseAnswers(
   }
   const asked = new Set(questions.map((q) => q.id));
   const answered = new Set(result.data.answers.map((a) => a.id));
-  if (asked.size !== answered.size || [...asked].some((id) => !answered.has(id))) {
+  if (
+    asked.size !== answered.size ||
+    [...asked].some((id) => !answered.has(id))
+  ) {
     throw new EvidenceError(
       "vision-qa answer ids do not match the asked question ids",
       {
@@ -291,16 +292,22 @@ export class OpenAiCompatibleBackend implements VisionBackendClient {
   extractResponse(responseBody: unknown): BackendResponse {
     const parsed = openAiResponseSchema.safeParse(responseBody);
     if (!parsed.success) {
-      throw new EvidenceError("openai-compatible response shape was unexpected", {
-        code: "VISION_BACKEND_RESPONSE",
-        context: { backend: "openai-compatible" },
-      });
+      throw new EvidenceError(
+        "openai-compatible response shape was unexpected",
+        {
+          code: "VISION_BACKEND_RESPONSE",
+          context: { backend: "openai-compatible" },
+        },
+      );
     }
     const text = parsed.data.choices[0]?.message.content;
     if (text === undefined || text === null || text.length === 0) {
       throw new EvidenceError(
         "openai-compatible response had no message content",
-        { code: "VISION_BACKEND_RESPONSE", context: { backend: "openai-compatible" } },
+        {
+          code: "VISION_BACKEND_RESPONSE",
+          context: { backend: "openai-compatible" },
+        },
       );
     }
     return {

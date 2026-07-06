@@ -83,7 +83,19 @@ export async function prepareImage(
   const sourceSha256 = createHash("sha256").update(sourceBytes).digest("hex");
 
   const pipeline = sharp(sourceBytes, { failOn: "error" });
-  const metadata = await pipeline.metadata();
+  let metadata: sharp.Metadata;
+  try {
+    metadata = await pipeline.metadata();
+  } catch (error) {
+    // error-policy:J3 untrusted input — bytes that are not a decodable raster
+    // (wrong extension, truncated, plain text) fail the ask typed, never a
+    // blank-image request.
+    throw new EvidenceError(`vision-qa could not decode image: ${imagePath}`, {
+      code: "VISION_IMAGE_UNDECODABLE",
+      cause: error,
+      context: { imagePath },
+    });
+  }
   const originalWidth = metadata.width;
   const originalHeight = metadata.height;
   const format = metadata.format;

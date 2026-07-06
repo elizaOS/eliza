@@ -10,8 +10,8 @@
 
 import { EvidenceError } from "../errors.ts";
 import {
-  AnthropicBackend,
   ANTHROPIC_BASE_URL,
+  AnthropicBackend,
   DEFAULT_ANTHROPIC_MODEL,
   DEFAULT_LOCAL_MODEL,
   DEFAULT_OPENAI_MODEL,
@@ -29,7 +29,11 @@ export const ENV = {
   openaiKey: "OPENAI_API_KEY",
 } as const;
 
-const VALID_BACKENDS: readonly VisionBackend[] = ["anthropic", "openai", "local"];
+const VALID_BACKENDS: readonly VisionBackend[] = [
+  "anthropic",
+  "openai",
+  "local",
+];
 
 function readEnv(env: NodeJS.ProcessEnv, key: string): string | undefined {
   const value = env[key]?.trim();
@@ -56,7 +60,10 @@ export function resolveBackend(
     return explicit as VisionBackend;
   }
   if (readEnv(env, ENV.anthropicKey) !== undefined) return "anthropic";
-  if (options.baseUrl !== undefined || readEnv(env, ENV.baseUrl) !== undefined) {
+  if (
+    options.baseUrl !== undefined ||
+    readEnv(env, ENV.baseUrl) !== undefined
+  ) {
     return "local";
   }
   throw new EvidenceError(
@@ -115,7 +122,9 @@ export function createBackendClient(
       }
       // Local llama-server needs no key; an empty key means "omit auth header".
       return new OpenAiCompatibleBackend(
-        options.model ?? readEnv(env, "ELIZA_VISION_QA_MODEL") ?? DEFAULT_LOCAL_MODEL,
+        options.model ??
+          readEnv(env, "ELIZA_VISION_QA_MODEL") ??
+          DEFAULT_LOCAL_MODEL,
         options.apiKey ?? readEnv(env, ENV.openaiKey) ?? "",
         baseUrl,
       );

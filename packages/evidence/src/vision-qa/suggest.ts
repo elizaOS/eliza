@@ -67,7 +67,9 @@ const DEV_STRING_PATTERNS: readonly RegExp[] = [
 ];
 
 function subject(context: SuggestContext | undefined): string {
-  return context?.viewName ? `the ${context.viewName} screenshot` : "the screenshot";
+  return context?.viewName
+    ? `the ${context.viewName} screenshot`
+    : "the screenshot";
 }
 
 function pct(fraction: number): string {

@@ -14,9 +14,8 @@
  */
 
 import { EvidenceError } from "../errors.ts";
-import { RETRY_CORRECTION, parseAnswers } from "./backends.ts";
-import { readCache, writeCache } from "./cache.ts";
-import { queryHash } from "./cache.ts";
+import { parseAnswers, RETRY_CORRECTION } from "./backends.ts";
+import { queryHash, readCache, writeCache } from "./cache.ts";
 import { createBackendClient, resolveBackend } from "./config.ts";
 import { DEFAULT_MAX_EDGE, prepareImage } from "./image.ts";
 import type {

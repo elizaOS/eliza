@@ -14,7 +14,12 @@ import path from "node:path";
 import { EvidenceError } from "../errors.ts";
 import { askAboutImage } from "./ask.ts";
 import { suggestQuestions } from "./suggest.ts";
-import type { AskOptions, AskResult, VisionBackend, VisionQuestion } from "./types.ts";
+import type {
+  AskOptions,
+  AskResult,
+  VisionBackend,
+  VisionQuestion,
+} from "./types.ts";
 
 const USAGE = `Usage:
   vision-qa ask <image> -q "question" [-q "question" ...] [options]
@@ -25,6 +30,7 @@ Options:
       --backend <name>    anthropic | openai | local (else resolved from env)
       --model <id>        Override the backend's default model
       --base-url <url>    Base URL for the openai-compatible/local path
+      --api-key <key>     API key override (else the backend's env var)
       --no-cache          Bypass the content-addressed cache
       --view <name>       View/surface name, used when suggesting questions
       --json              Print the raw JSON result instead of a table`;
@@ -57,7 +63,9 @@ function parseAskArgs(argv: string[]): AskArgs {
     const value = () => {
       const next = argv[index + 1];
       if (next === undefined) {
-        throw new EvidenceError(`${arg} requires a value`, { code: "CLI_USAGE" });
+        throw new EvidenceError(`${arg} requires a value`, {
+          code: "CLI_USAGE",
+        });
       }
       index += 1;
       return next;
@@ -72,6 +80,8 @@ function parseAskArgs(argv: string[]): AskArgs {
       options.model = value();
     } else if (arg === "--base-url") {
       options.baseUrl = value();
+    } else if (arg === "--api-key") {
+      options.apiKey = value();
     } else if (arg === "--no-cache") {
       options.noCache = true;
     } else if (arg === "--view") {
@@ -79,16 +89,22 @@ function parseAskArgs(argv: string[]): AskArgs {
     } else if (arg === "--json") {
       json = true;
     } else if (arg.startsWith("-")) {
-      throw new EvidenceError(`unknown argument: ${arg}`, { code: "CLI_USAGE" });
+      throw new EvidenceError(`unknown argument: ${arg}`, {
+        code: "CLI_USAGE",
+      });
     } else if (imagePath === undefined) {
       imagePath = arg;
     } else {
-      throw new EvidenceError(`unexpected argument: ${arg}`, { code: "CLI_USAGE" });
+      throw new EvidenceError(`unexpected argument: ${arg}`, {
+        code: "CLI_USAGE",
+      });
     }
   }
 
   if (imagePath === undefined) {
-    throw new EvidenceError("ask requires an image path", { code: "CLI_USAGE" });
+    throw new EvidenceError("ask requires an image path", {
+      code: "CLI_USAGE",
+    });
   }
   const questions: VisionQuestion[] = questionTexts.map((question, i) => ({
     id: `q${i + 1}`,
@@ -130,7 +146,11 @@ function loadContextQuestions(
   });
 }
 
-function printTable(io: VisionQaCliIo, questions: VisionQuestion[], result: AskResult): void {
+function printTable(
+  io: VisionQaCliIo,
+  questions: VisionQuestion[],
+  result: AskResult,
+): void {
   const byId = new Map(result.answers.map((a) => [a.id, a]));
   io.out(
     `backend=${result.provenance.backend} model=${result.provenance.model} ` +
@@ -200,7 +220,8 @@ export async function runVisionQaCli(
 
 const invokedDirectly =
   process.argv[1] !== undefined &&
-  path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);
+  path.resolve(process.argv[1]) ===
+    path.resolve(new URL(import.meta.url).pathname);
 
 if (invokedDirectly) {
   const io: VisionQaCliIo = {

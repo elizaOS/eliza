@@ -5,6 +5,8 @@ export {
   ANTHROPIC_BASE_URL,
   ANTHROPIC_VERSION,
   AnthropicBackend,
+  type BackendRequest,
+  type BackendResponse,
   DEFAULT_ANTHROPIC_MODEL,
   DEFAULT_LOCAL_MODEL,
   DEFAULT_OPENAI_MODEL,
@@ -12,8 +14,6 @@ export {
   parseAnswers,
   renderQuestionPrompt,
   SYSTEM_RUBRIC,
-  type BackendRequest,
-  type BackendResponse,
   type VisionBackendClient,
 } from "./backends.ts";
 export {
@@ -23,16 +23,16 @@ export {
   readCache,
   writeCache,
 } from "./cache.ts";
+export { runVisionQaCli, type VisionQaCliIo } from "./cli.ts";
 export {
   createBackendClient,
   ENV as VISION_QA_ENV,
   resolveBackend,
 } from "./config.ts";
-export { runVisionQaCli, type VisionQaCliIo } from "./cli.ts";
 export {
   DEFAULT_MAX_EDGE,
-  prepareImage,
   type PreparedImage,
+  prepareImage,
   scaleToMaxEdge,
 } from "./image.ts";
 export {
@@ -42,8 +42,8 @@ export {
 } from "./qa-record.ts";
 export {
   type AnalysisInput,
-  suggestQuestions,
   type SuggestContext,
+  suggestQuestions,
 } from "./suggest.ts";
 export type {
   AskOptions,

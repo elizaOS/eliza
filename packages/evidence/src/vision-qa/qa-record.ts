@@ -13,9 +13,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { ArtifactEntry, EvidenceBundle } from "../bundle.ts";
+import type { EvidenceBundle } from "../bundle.ts";
 import { canonicalJson } from "../canonical.ts";
 import { EvidenceError } from "../errors.ts";
+import type { ArtifactEntry } from "../schema.ts";
 import type { AskResult, VisionQuestion } from "./types.ts";
 
 /** The on-disk qa.json shape. Schema-1; widen additively under a bump. */
