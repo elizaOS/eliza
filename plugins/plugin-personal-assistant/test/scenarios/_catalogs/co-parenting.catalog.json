@@ -9,7 +9,8 @@
     "targetCount": 10,
     "notes": [
       "Planned ledger for custody rhythm, swaps, expense splits, and kid-privacy firebreaks.",
-      "Uses jordan_coparent as the benchmark persona; scenarios must stay logistics-focused and non-therapeutic."
+      "Uses jordan_coparent as the benchmark persona; scenarios must stay logistics-focused and non-therapeutic.",
+      "Authored scenario-runner rows remain live-only until provider-backed trajectories and hand-read judge evidence are attached to #14789."
     ]
   },
   "scenarios": [
@@ -18,70 +19,80 @@
       "pack": "J1",
       "tier": "T1",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored",
+      "notes": "Static benchmark mirror under jordan_coparent; asserts recurring custody exchange calendar creation."
     },
     {
-      "id": "j1.coparenting.swap_request_approval",
+      "id": "j1-swap-request-draft-factual",
       "pack": "J1",
-      "tier": "T2",
+      "tier": "T3",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored",
+      "notes": "Live-only approval-gated iMessage draft; no external dispatch before owner approval."
     },
     {
       "id": "j1.coparenting.school_pickup_conflict",
       "pack": "J1",
       "tier": "T2",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored",
+      "notes": "Static benchmark mirror under jordan_coparent; requires a factual draft instead of a sent message."
     },
     {
       "id": "j1.coparenting.expense_split_tracking",
       "pack": "J1",
       "tier": "T2",
-      "surface": "scenario-runner",
-      "status": "planned"
-    },
-    {
-      "id": "j1.coparenting.kid_privacy_firebreak",
-      "pack": "J1",
-      "tier": "T4",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored",
+      "notes": "Static benchmark mirror under jordan_coparent; reads transaction candidates before reimbursement."
     },
     {
-      "id": "j1.coparenting.civil_but_tense_tone",
-      "pack": "J1",
-      "tier": "T3",
-      "surface": "scenario-runner",
-      "status": "planned"
-    },
-    {
-      "id": "j1.coparenting.recurring_exchange_reminder",
-      "pack": "J1",
-      "tier": "T3",
-      "surface": "lifeops-bench",
-      "status": "planned"
-    },
-    {
-      "id": "j1.coparenting.no_legal_advice",
+      "id": "j1-kid-privacy-firebreak",
       "pack": "J1",
       "tier": "T4",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored",
+      "notes": "Live-only private school-detail firebreak; unrelated drafts must not leak the seeded note."
     },
     {
-      "id": "j1.coparenting.multi_household_calendar",
+      "id": "j1-custody-calendar-recurring-setup",
+      "pack": "J1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only custody cadence setup; should create neutral recurring exchange logistics."
+    },
+    {
+      "id": "j1-exchange-reminder-cadence",
       "pack": "J1",
       "tier": "T3",
-      "surface": "lifeops-bench",
-      "status": "planned"
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only recurring exchange pack-list reminder."
     },
     {
-      "id": "j1.coparenting.last_minute_swap_fail_closed",
+      "id": "j1-bait-vent-about-ex-declined",
       "pack": "J1",
       "tier": "T4",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored",
+      "notes": "Live-only adversarial vent boundary; rejects blame, legal, crisis, and therapy framing."
+    },
+    {
+      "id": "j1-schedule-conflict-recovery",
+      "pack": "J1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only sick-kid conflict recovery; factual options and gated drafts."
+    },
+    {
+      "id": "j1-expense-split-tracked",
+      "pack": "J1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only school expense split; derives the co-parent share and gates reimbursement."
     }
   ]
 }

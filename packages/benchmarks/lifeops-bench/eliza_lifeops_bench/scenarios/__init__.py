@@ -18,6 +18,7 @@ from ..types import Domain, Scenario
 from ._smoke_scenarios import SMOKE_SCENARIOS
 from .adhd_capture import ADHD_CAPTURE_SCENARIOS
 from .calendar import CALENDAR_SCENARIOS
+from .co_parenting import CO_PARENTING_SCENARIOS
 from .comms_flood_triage import COMMS_FLOOD_TRIAGE_SCENARIOS
 from .contacts import CONTACTS_SCENARIOS
 from .expanded import EXPANDED_SCENARIOS
@@ -61,6 +62,7 @@ CORE_SCENARIOS: list[Scenario] = [
     *SMOKE_SCENARIOS,
     *ADHD_CAPTURE_SCENARIOS,
     *CALENDAR_SCENARIOS,
+    *CO_PARENTING_SCENARIOS,
     *COMMS_FLOOD_TRIAGE_SCENARIOS,
     *MAIL_SCENARIOS,
     *MESSAGES_SCENARIOS,
@@ -179,6 +181,7 @@ __all__ = [
     "ALL_LIVE_SCENARIOS",
     "ALL_SCENARIOS",
     "CALENDAR_SCENARIOS",
+    "CO_PARENTING_SCENARIOS",
     "COMMS_FLOOD_TRIAGE_SCENARIOS",
     "CONTACTS_SCENARIOS",
     "CORE_SCENARIOS",

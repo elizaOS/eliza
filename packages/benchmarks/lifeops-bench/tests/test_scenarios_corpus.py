@@ -69,30 +69,31 @@ def test_corpus_size_meets_minimum() -> None:
 
 
 def test_corpus_expands_current_core_by_exactly_10x() -> None:
-    # 1398 distinct base scenarios (1260 prior + 18 issue #12279 traveler
+    # 1401 distinct base scenarios (1260 prior + 18 issue #12279 traveler
     # timezone scenarios + 18 issue #12282 neurotypical-control scenarios +
     # 18 issue #12281 comms-flood scenarios + 32 issue #12278 irregular-sleep
-    # scenarios + 54 issue #12280 ADHD/low-activation scenarios, minus the 2
-    # crisis-language-guard scenarios removed with #12284 item 9 — the guard is
-    # not being built), each re-emitted 10x under fixed prompt-prefix framings =
-    # 15378 robustness runs. The legacy keys
+    # scenarios + 54 issue #12280 ADHD/low-activation scenarios + 3 issue
+    # #14789 co-parenting mirrors, minus the 2 crisis-language-guard scenarios
+    # removed with #12284 item 9 — the guard is not being built), each
+    # re-emitted 10x under fixed prompt-prefix framings = 15411 robustness
+    # runs. The legacy keys
     # (existing/added/total/multiplierAdded) stay pinned for back-compat; the
     # base/variantsPerBase/totalRuns/summary keys state the split.
     assert count_lifeops_scenarios() == {
         "suite": "lifeops-bench",
-        "existing": 1398,
-        "added": 13980,
-        "total": 15378,
+        "existing": 1401,
+        "added": 14010,
+        "total": 15411,
         "multiplierAdded": 10,
-        "base": 1398,
+        "base": 1401,
         "variantsPerBase": 10,
-        "totalRuns": 15378,
-        "summary": "1398 base scenarios; 10x prompt-prefix robustness variants = 15378 runs",
+        "totalRuns": 15411,
+        "summary": "1401 base scenarios; 10x prompt-prefix robustness variants = 15411 runs",
     }
     assert validate_lifeops_scenarios() == {
         "valid": True,
-        "total": 15378,
-        "uniqueIds": 15378,
+        "total": 15411,
+        "uniqueIds": 15411,
         "duplicateIds": [],
         "emptyInstructions": [],
         "expansionMatches": True,
