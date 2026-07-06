@@ -17,6 +17,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { applyLayeredEnvToProcess } from "./env-layers.mjs";
 
 const ROOT = resolve(new URL("../..", import.meta.url).pathname);
@@ -392,7 +393,10 @@ ${status.existingEvidence.map((entry) => `- ${entry.exists ? "present" : "missin
 `;
 }
 
-if (import.meta.main) {
+const IS_MAIN =
+  import.meta.main || process.argv[1] === fileURLToPath(import.meta.url);
+
+if (IS_MAIN) {
   applyLayeredEnvToProcess();
   const args = parseArgs(process.argv.slice(2));
   const status = buildStatus();

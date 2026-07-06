@@ -28,6 +28,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(new URL("../..", import.meta.url).pathname);
 
@@ -287,7 +288,10 @@ export function saveEnvVar(key, value, target = "home", options = {}) {
 
 // --- CLI: presence/source inspection (never prints values) -------------------
 
-if (import.meta.main) {
+const IS_MAIN =
+  import.meta.main || process.argv[1] === fileURLToPath(import.meta.url);
+
+if (IS_MAIN) {
   const args = process.argv.slice(2);
   const json = args.includes("--json");
   const names = args.filter((arg) => !arg.startsWith("--"));

@@ -33,6 +33,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { PROBE_FAMILIES } from "./credential-probes.mjs";
 
 /** Path kinds — how the credential is obtained/held, not which provider. */
@@ -1052,7 +1053,10 @@ export function validateConnectorPaths(paths = CONNECTOR_PATHS) {
 
 // --- CLI: evaluate availability on this machine (no secrets printed) -------------
 
-if (import.meta.main) {
+const IS_MAIN =
+  import.meta.main || process.argv[1] === fileURLToPath(import.meta.url);
+
+if (IS_MAIN) {
   const rows = evaluateConnectorPaths();
   if (process.argv.includes("--json")) {
     console.log(JSON.stringify(rows, null, 2));

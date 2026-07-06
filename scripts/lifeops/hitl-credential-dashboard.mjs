@@ -41,6 +41,7 @@ import {
 } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   appBase,
   CONNECTOR_PATH_ENV_NAMES,
@@ -1132,7 +1133,10 @@ function listenOnFreePort(server) {
   });
 }
 
-if (import.meta.main) {
+const IS_MAIN =
+  import.meta.main || process.argv[1] === fileURLToPath(import.meta.url);
+
+if (IS_MAIN) {
   const server = createServer((req, res) => {
     handle(req, res).catch((error) => {
       // error-policy:J1 transport boundary — every route failure becomes a structured JSON error response.

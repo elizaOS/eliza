@@ -29,6 +29,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const PROBE_TIMEOUT_MS = 10_000;
 const DETAIL_MAX_CHARS = 300;
@@ -933,7 +934,10 @@ export async function probeConnectorPath(pathId, envMap = process.env) {
   }
 }
 
-if (import.meta.main) {
+const IS_MAIN =
+  import.meta.main || process.argv[1] === fileURLToPath(import.meta.url);
+
+if (IS_MAIN) {
   const requested = process.argv.slice(2);
   const results = await probeAll(
     requested.length > 0 ? requested : PROBE_FAMILIES,
