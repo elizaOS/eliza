@@ -496,7 +496,11 @@ describe("view related action names resolve to declared actions in source", () =
         `no \`name: "${name}"\` found under plugins/, packages/agent/src, or packages/core/src`,
       ).toBe(true);
     }
-  });
+    // Spawns a `git grep` over plugins/ + packages/agent/src + packages/core/src;
+    // the added core scope (#14369) pushes the subprocess + module-load cost past
+    // the 5s default on a cold checkout. Give it room so the drift guard is not
+    // a flaky wall-clock gate.
+  }, 30000);
 });
 
 describe("compactActionsForIntent with view-scoped actions", () => {
