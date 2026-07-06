@@ -325,16 +325,22 @@ export function CloudView(props: CloudViewProps = {}): ReactNode {
   fetchersRef.current = fetchers;
 
   // `background` refreshes in place (the 30s agent-status poll); user-driven
-  // loads (mount, retry) show the loading state.
+  // loads (mount, retry) show the loading state. Background refreshes keep the
+  // last-good view on failure: one transient network blip mid-session must not
+  // replace a healthy dashboard with the full-screen error (or flip a
+  // momentary connected:false into the signed-out card) — errors surface only
+  // on user-driven loads, and the next poll self-corrects.
   const load = useCallback((background = false) => {
     let cancelled = false;
     if (!background) setState({ kind: "loading" });
     loadAccount(fetchersRef.current)
       .then((next) => {
-        if (!cancelled) setState(next);
+        if (cancelled) return;
+        if (background && next.kind !== "ready") return;
+        setState(next);
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (cancelled || background) return;
         setState({
           kind: "error",
           message:

@@ -36,8 +36,11 @@ const ERROR_MESSAGE =
  * blocks on a missing name.
  */
 export function parseApiKeyName(text: string, now = new Date()): string {
-  const quoted = text.match(/["'“”']([^"'“”']{1,64})["'“”']/);
-  if (quoted?.[1]?.trim()) return quoted[1].trim();
+  // Per-quote alternation so the delimiters must MATCH (`"ci-deploys'` is not
+  // a quoted name); curly quotes pair with their curly counterparts.
+  const quoted = text.match(/"([^"]{1,64})"|'([^']{1,64})'|“([^”]{1,64})”/);
+  const quotedName = quoted?.[1] ?? quoted?.[2] ?? quoted?.[3];
+  if (quotedName?.trim()) return quotedName.trim();
   const named = text.match(/\b(?:named|called)\s+([\w][\w./-]{0,63})/i);
   if (named?.[1]) return named[1];
   return `agent-created-${now.toISOString().slice(0, 10)}`;
