@@ -53,7 +53,6 @@ const localPackages = [
   "eliza/packages/auth",
   "eliza/packages/logger",
   "eliza/packages/security",
-  "eliza/packages/elizaos",
   "eliza/packages/app-core",
   "eliza/packages/cloud/sdk",
   "eliza/packages/shared",

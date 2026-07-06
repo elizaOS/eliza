@@ -82,7 +82,6 @@ const LINKED_WORKSPACE_PACKAGES = [
   "packages/auth",
   "packages/logger",
   "packages/security",
-  "packages/elizaos",
   "plugins/plugin-agent-skills",
   "plugins/plugin-app-manager",
   "plugins/plugin-browser",
