@@ -231,14 +231,26 @@ export async function handleConnectorRoutes(
     if (isDisconnect) {
       try {
         await emitConnectorDisconnected(state.runtime, connectorName);
-      } catch {
-        /* don't let event-bus failure block the response */
+      } catch (err) {
+        // error-policy:#14415 — don't let event-bus failure block the response,
+        // but don't let it vanish either: a failed disconnect broadcast leaves
+        // service caches (workflow credential store, etc.) holding stale creds
+        // for a connector the user just disconnected. Surface it.
+        state.runtime?.reportError("connector.disconnect.emitEvent", err, {
+          connector: connectorName,
+          op: "POST-disconnect",
+        });
       }
       if (onConnectorDisconnect) {
         try {
           await onConnectorDisconnect(connectorName);
-        } catch {
-          /* don't let host callback failure block the response */
+        } catch (err) {
+          // error-policy:#14415 — host cache-invalidation callback failed; report
+          // rather than swallow so the stale-cache risk is observable.
+          state.runtime?.reportError("connector.disconnect.hostCallback", err, {
+            connector: connectorName,
+            op: "POST-disconnect",
+          });
         }
       }
     }
@@ -298,14 +310,23 @@ export async function handleConnectorRoutes(
     }
     try {
       await emitConnectorDisconnected(state.runtime, name);
-    } catch {
-      /* don't let event-bus failure block the response */
+    } catch (err) {
+      // error-policy:#14415 — see POST-disconnect: a failed disconnect broadcast
+      // must not block the DELETE response but must remain observable.
+      state.runtime?.reportError("connector.disconnect.emitEvent", err, {
+        connector: name,
+        op: "DELETE",
+      });
     }
     if (onConnectorDisconnect) {
       try {
         await onConnectorDisconnect(name);
-      } catch {
-        /* don't let host callback failure block the response */
+      } catch (err) {
+        // error-policy:#14415 — host cache-invalidation callback failed; report.
+        state.runtime?.reportError("connector.disconnect.hostCallback", err, {
+          connector: name,
+          op: "DELETE",
+        });
       }
     }
     json(res, {

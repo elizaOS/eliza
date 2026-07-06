@@ -21,6 +21,13 @@ export type CloudConnectionStatus =
 
 export interface CloudManagerCallbacks {
   onStatusChange?: (status: CloudConnectionStatus) => void;
+  /**
+   * error-policy:#14415 — forwarded from the connection monitor when every
+   * reconnect attempt is exhausted (the cloud link is durably down). A host
+   * that owns an `IAgentRuntime` can wire this into `runtime.reportError` so
+   * the dead link surfaces via RECENT_ERRORS + owner escalation. Best-effort.
+   */
+  onReconnectExhausted?: (context: { attempts: number }) => void;
 }
 
 export class CloudManager {
@@ -87,6 +94,8 @@ export class CloudManager {
             else if (s === "reconnecting") this.setStatus("reconnecting");
             else this.setStatus("error");
           },
+          onReconnectExhausted: (ctx) =>
+            this.callbacks.onReconnectExhausted?.(ctx),
         },
         this.cloudConfig.bridge?.heartbeatIntervalMs ?? 30_000,
       );

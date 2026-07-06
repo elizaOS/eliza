@@ -103,4 +103,66 @@ describe("connector routes", () => {
     });
     expect(onConnectorDisconnect).not.toHaveBeenCalled();
   });
+
+  // ── #14415 observability: disconnect-path failures must be reported ──────
+  it("reports (not swallows) a disconnect event-bus failure on DELETE", async () => {
+    const reportError = vi.fn();
+    const runtime = {
+      agentId: "agent-1",
+      emitEvent: vi.fn(() => Promise.reject(new Error("event bus down"))),
+      reportError,
+    } as unknown as NonNullable<ConnectorRouteContext["state"]["runtime"]>;
+    const config: ConnectorRouteContext["state"]["config"] = {
+      connectors: { slack: { enabled: true } },
+    };
+    const { ctx, captured } = createHarness({
+      method: "DELETE",
+      pathname: "/api/connectors/slack",
+      state: { config, runtime },
+      saveElizaConfig: vi.fn(),
+    });
+
+    await expect(handleConnectorRoutes(ctx)).resolves.toBe(true);
+
+    // The response still succeeds — a broken event bus must not block the
+    // disconnect (fail-open on the response, per the existing contract) …
+    expect(captured.status).toBe(200);
+    // … but the failure is now observable via reportError instead of a silent
+    // empty catch, with structured context identifying the connector + op.
+    expect(reportError).toHaveBeenCalledTimes(1);
+    expect(reportError).toHaveBeenCalledWith(
+      "connector.disconnect.emitEvent",
+      expect.any(Error),
+      expect.objectContaining({ connector: "slack", op: "DELETE" }),
+    );
+  });
+
+  it("reports (not swallows) a host disconnect-callback failure on POST enabled:false", async () => {
+    const reportError = vi.fn();
+    const runtime = {
+      agentId: "agent-1",
+      emitEvent: vi.fn(() => Promise.resolve()),
+      reportError,
+    } as unknown as NonNullable<ConnectorRouteContext["state"]["runtime"]>;
+    const onConnectorDisconnect = vi.fn(() => {
+      throw new Error("cache purge failed");
+    });
+    const { ctx, captured } = createHarness({
+      method: "POST",
+      pathname: "/api/connectors",
+      body: { name: "slack", config: { enabled: false } },
+      state: { config: { connectors: { slack: { enabled: true } } }, runtime },
+      saveElizaConfig: vi.fn(),
+      onConnectorDisconnect,
+    });
+
+    await expect(handleConnectorRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.status).toBe(200);
+    expect(reportError).toHaveBeenCalledWith(
+      "connector.disconnect.hostCallback",
+      expect.any(Error),
+      expect.objectContaining({ connector: "slack", op: "POST-disconnect" }),
+    );
+  });
 });

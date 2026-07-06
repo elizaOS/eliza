@@ -11,6 +11,15 @@ export interface ConnectionMonitorCallbacks {
   onStatusChange?: (
     status: "connected" | "reconnecting" | "disconnected",
   ) => void;
+  /**
+   * error-policy:#14415 — fired once when every reconnect attempt is exhausted
+   * (the connection is now durably down, not transiently reconnecting). Lets a
+   * host wire this into `runtime.reportError` so a silently-dead cloud link
+   * surfaces via RECENT_ERRORS + owner escalation instead of only a log line.
+   * Best-effort: a throwing handler must never break the monitor, so callers
+   * are invoked inside a try/catch.
+   */
+  onReconnectExhausted?: (context: { attempts: number }) => void;
 }
 
 export class ConnectionMonitor {
@@ -107,5 +116,17 @@ export class ConnectionMonitor {
     logger.error("[cloud-monitor] Failed to reconnect after 10 attempts");
     this.reconnecting = false;
     this.callbacks.onStatusChange?.("disconnected");
+    // error-policy:#14415 — the link is now durably down. Report exactly once
+    // per exhaustion (not per failed attempt) so this is observable without
+    // spamming. A throwing handler must not re-break the monitor.
+    try {
+      this.callbacks.onReconnectExhausted?.({ attempts: 10 });
+    } catch (err) {
+      logger.warn(
+        `[cloud-monitor] onReconnectExhausted handler threw: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 }

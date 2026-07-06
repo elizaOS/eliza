@@ -5147,9 +5147,18 @@ export async function startEliza(
             `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms)`,
           );
         } catch (err) {
+          // error-policy:#14415 — a deferred plugin that fails to register
+          // silently drops every capability it provides (its actions,
+          // providers, connectors). Report it so the failure is agent-visible
+          // via RECENT_ERRORS and escalates when a plugin fails repeatedly,
+          // rather than only landing in a boot-log warning the user never sees.
           logger.warn(
             `[eliza] deferred: Plugin ${plugin.name} registration failed: ${formatError(err)}`,
           );
+          runtime.reportError("eliza.deferredPluginRegistration", err, {
+            plugin: plugin.name,
+            phase: "deferred-boot",
+          });
         }
       }),
     );
@@ -5378,7 +5387,16 @@ export async function startEliza(
   // wave's awaited work cannot starve the API bind off the event loop.
   const kickoffDeferredBoot = (): void => {
     void runDeferredBoot().catch((err) => {
+      // error-policy:#14415 — deferred boot registers connectors + feature
+      // plugins after the runtime is chat-ready. A swallowed failure here left
+      // capabilities silently absent (the device-review class of bug: the user
+      // sees an empty feature, not an error). Surface it via reportError so it
+      // reaches RECENT_ERRORS (agent-visible) and escalates on repeat, in
+      // addition to the boot-log warning.
       logger.warn(`[eliza] Deferred boot failed: ${formatError(err)}`);
+      runtime.reportError("eliza.deferredBoot", err, {
+        phase: "deferred-boot",
+      });
     });
   };
 
