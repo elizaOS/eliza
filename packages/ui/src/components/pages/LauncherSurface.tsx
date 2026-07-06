@@ -3,7 +3,7 @@
  * by the user's enabled view kinds and active modality, curates them into the
  * ordered page (`curateLauncherPages`), partitions that page into the named
  * Recents/Favorites/All-Apps zones (`curateLauncherZones`), and wires tile taps
- * to view navigation, chat-open, and the tutorial start. It owns the launcher's
+ * to view navigation and chat-open. It owns the launcher's
  * Recents/Favorites state (view-id keyed, persisted locally) so a tap records
  * recency and a pin toggles a favorite. `Launcher` itself is pure presentation.
  */
@@ -22,7 +22,6 @@ import {
   saveLauncherFavorites,
 } from "../../state/persistence";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
-import { startTutorial } from "../../tutorial/tutorial-service";
 import { Launcher } from "./Launcher";
 import {
   canonicalLauncherId,
@@ -95,11 +94,7 @@ export const LauncherSurface = React.memo(
 
     const handleLaunch = React.useCallback((entry: ViewEntry) => {
       setRecentIds(recordLauncherRecent(canonicalLauncherId(entry.id)));
-      // The Tutorial tile starts the chat-native tour directly (a restart
-      // after a completed/stopped run) and lands on the chat home with the
-      // chat open, where the tour's conversational turns appear.
-      const isTutorial = entry.id === "tutorial";
-      const path = isTutorial ? "/chat" : (entry.path ?? `/apps/${entry.id}`);
+      const path = entry.path ?? `/apps/${entry.id}`;
       try {
         if (typeof window === "undefined") return;
         if (window.location.protocol === "file:") {
@@ -108,10 +103,7 @@ export const LauncherSurface = React.memo(
           window.history.pushState(null, "", path);
           window.dispatchEvent(new PopStateEvent("popstate"));
         }
-        if (isTutorial) {
-          startTutorial();
-          dispatchChatOpen();
-        } else if (entry.id === "chat") {
+        if (entry.id === "chat") {
           // The Messages tile lands on `/chat` (the ambient home). Open the chat
           // so the user arrives in a conversation, not on a collapsed pill.
           dispatchChatOpen();

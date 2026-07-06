@@ -47,12 +47,7 @@ export interface DesktopViewWindow {
 }
 
 export const DESKTOP_VIEW_WINDOWS: readonly DesktopViewWindow[] = [
-  {
-    id: "tutorial",
-    label: "Tutorial",
-    labelKey: "desktop.views.tutorial",
-    path: "/tutorial",
-  },
+  // Tutorial removed (#14476): no standalone view, so no tray window.
   {
     id: "chat",
     label: "Messages",

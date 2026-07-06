@@ -71,7 +71,6 @@ export type BuiltinTab =
   | "database"
   | "desktop"
   | "settings"
-  | "tutorial"
   | "logs"
   | "background";
 
@@ -369,7 +368,6 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   database: "/apps/database",
   desktop: "/desktop",
   settings: "/settings",
-  tutorial: "/tutorial",
   logs: "/apps/logs",
   background: "/background",
 };
@@ -479,6 +477,15 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
       normalized.startsWith("/views/") ||
       normalized === "/game")
   ) {
+    return "chat";
+  }
+
+  // Legacy /tutorial deep link — the standalone tutorial view was removed
+  // (#14476); the chat-native tour is now reachable via the in-chat launch
+  // widget. Old deep links (seeded onboarding notifications, saved links)
+  // redirect to chat instead of 404-ing; the tour itself starts from the
+  // home tutorial-launch card, not from a landed route.
+  if (normalized === "/tutorial") {
     return "chat";
   }
 

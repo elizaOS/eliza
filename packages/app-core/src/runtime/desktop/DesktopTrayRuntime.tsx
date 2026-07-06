@@ -34,7 +34,6 @@ import {
 } from "./tray-menu";
 
 const LAUNCHER_ICON_IDS: ReadonlySet<string> = new Set<DesktopLauncherIconId>([
-  "tutorial",
   "chat",
   "character",
   "documents",

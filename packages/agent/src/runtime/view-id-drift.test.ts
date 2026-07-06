@@ -50,11 +50,12 @@ describe("view-id drift guard (#8797)", () => {
   });
 
   it("every user-facing builtin view has at least one matcher noun", () => {
-    // developerOnly + tutorial views are not voice/command navigable by design;
-    // everything else a user can land on should be matcher-resolvable.
-    const userFacing = BUILTIN_VIEWS.filter(
-      (v) => !v.developerOnly && v.id !== "tutorial",
-    ).map((v) => v.id);
+    // developerOnly views are not voice/command navigable by design; everything
+    // else a user can land on should be matcher-resolvable. (The tutorial view
+    // was removed in #14476 — the tour is chat-native, not a navigable view.)
+    const userFacing = BUILTIN_VIEWS.filter((v) => !v.developerOnly).map(
+      (v) => v.id,
+    );
     const missing = userFacing.filter((id) => !MATCHER.has(id));
     expect(
       missing,

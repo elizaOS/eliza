@@ -10,21 +10,10 @@
 import type { ViewDeclaration } from "@elizaos/core";
 
 export const BUILTIN_VIEWS: ViewDeclaration[] = [
-  {
-    id: "tutorial",
-    viewKind: "system",
-    label: "Tutorial",
-    description:
-      "Conversational walkthrough of the basics — runs right in the chat",
-    icon: "GraduationCap",
-    heroImagePath: "assets/view-heroes/tutorial.png",
-    path: "/tutorial",
-    order: 0,
-    tags: ["tutorial", "onboarding", "learn", "guide", "help"],
-    visibleInManager: true,
-    desktopTabEnabled: true,
-    platforms: ["web", "desktop", "ios", "android"],
-  },
+  // The standalone tutorial view was removed (#14476): the chat-native tour now
+  // runs entirely in chat, reachable via the in-chat tutorial-launch widget, so
+  // there is no navigable `/tutorial` view. Help likewise has no view — it is
+  // answered by the agent from seeded knowledge, browsable via KnowledgeView.
   {
     id: "camera",
     viewKind: "preview",

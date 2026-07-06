@@ -24,12 +24,10 @@ describe("buildViewsMenu", () => {
     );
   });
 
-  it("includes the core desktop views and excludes the android-only camera", () => {
+  it("includes the core desktop views and excludes removed + android-only views", () => {
     const ids = getViewMenuEntries().map((entry) => entry.id);
     expect(ids).toEqual(
       expect.arrayContaining([
-        "tutorial",
-        "help",
         "chat",
         "character",
         "documents",
@@ -37,6 +35,10 @@ describe("buildViewsMenu", () => {
         "background",
       ]),
     );
+    // The standalone tutorial + help views were removed (#14476), and camera is
+    // android-only — none get a desktop menu-bar window entry.
+    expect(ids).not.toContain("tutorial");
+    expect(ids).not.toContain("help");
     expect(ids).not.toContain("camera");
   });
 

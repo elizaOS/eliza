@@ -264,10 +264,6 @@ const SettingsView = lazyNamedView(
   () => import("./components/pages/SettingsView"),
   "SettingsView",
 );
-const TutorialView = lazyNamedView(
-  () => import("./components/pages/tutorial/TutorialView"),
-  "TutorialView",
-);
 const StreamView = lazyNamedView(
   () => import("./components/pages/StreamView"),
   "StreamView",
@@ -1311,7 +1307,6 @@ function buildStaticTabRenderers(): Record<
     <TabContentView>{node}</TabContentView>
   );
   return {
-    tutorial: wrap(<TutorialView />),
     chat: () => <ViewUnavailableFallback />,
     browser: () => <BrowserWorkspaceView />,
     stream: () => <StreamView />,
