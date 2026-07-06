@@ -7,6 +7,10 @@
  */
 
 export {
+	preferenceEvaluator,
+	preferenceItems,
+} from "./preference-items.ts";
+export {
 	factMemoryEvaluator,
 	identityEvaluator,
 	reflectionItems,
@@ -28,6 +32,10 @@ import { anchorBundleSafety } from "../../../bundle-safety.ts";
 // into an empty `init_X = () => {}`. Without this the on-device
 // mobile agent explodes with `ReferenceError: <name> is not defined`
 // when a consumer dereferences a re-exported binding at runtime.
+import {
+	preferenceEvaluator as _bs_10_preferenceEvaluator,
+	preferenceItems as _bs_11_preferenceItems,
+} from "./preference-items.ts";
 import {
 	factMemoryEvaluator as _bs_1_factMemoryEvaluator,
 	identityEvaluator as _bs_2_identityEvaluator,
@@ -52,4 +60,6 @@ anchorBundleSafety("FEATURES_ADVANCED_CAPABILITIES_EVALUATORS_INDEX", [
 	_bs_7_skillItems,
 	_bs_8_skillProposalEvaluator,
 	_bs_9_skillRefinementEvaluator,
+	_bs_10_preferenceEvaluator,
+	_bs_11_preferenceItems,
 ]);

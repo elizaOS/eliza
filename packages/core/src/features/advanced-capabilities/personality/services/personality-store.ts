@@ -257,6 +257,7 @@ export class PersonalityStore extends Service {
 		agentId: UUID;
 		actorId: UUID;
 		directive: string;
+		source?: PersonalitySlot["source"];
 	}): { before: PersonalitySlot; after: PersonalitySlot } {
 		const before = this.getSlot(args.userId, args.agentId);
 		const next = [...before.custom_directives, args.directive];
@@ -266,7 +267,7 @@ export class PersonalityStore extends Service {
 			...before,
 			custom_directives: next,
 			updated_at: new Date().toISOString(),
-			source: "user",
+			source: args.source ?? "user",
 		};
 		this.setSlot(after);
 		this.recordAudit({

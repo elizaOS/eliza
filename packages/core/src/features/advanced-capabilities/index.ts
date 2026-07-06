@@ -59,6 +59,7 @@ import { messageAction } from "./actions/message.ts";
 import { postAction } from "./actions/post.ts";
 import { updateRoleAction } from "./actions/role.ts";
 import { roomOpAction } from "./actions/room.ts";
+import { preferenceItems } from "./evaluators/preference-items.ts";
 import { reflectionItems } from "./evaluators/reflection-items.ts";
 import { skillItems } from "./evaluators/skill-items.ts";
 import { advancedContactsProvider } from "./providers/contacts.ts";
@@ -103,6 +104,7 @@ export const advancedActions = [
 
 export const advancedEvaluators = [
 	...reflectionItems,
+	...preferenceItems,
 	...skillItems,
 	experiencePatternEvaluator,
 ] satisfies readonly RegisteredEvaluator[];

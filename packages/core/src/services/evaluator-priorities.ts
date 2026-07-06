@@ -35,6 +35,11 @@ export const EvaluatorPriority = {
 
 	// Reflection group: ordered by dependency (facts before identity, etc.).
 	REFLECTION_FACTS: 100,
+	// Preferences run right after facts: both extract from the same recent
+	// window, and the fact extractor stays the owner of generic claims — the
+	// preference extractor only routes behavior-shaping ops (personality slot
+	// traits, directives, durable preference facts).
+	REFLECTION_PREFERENCES: 105,
 	REFLECTION_RELATIONSHIPS: 110,
 	REFLECTION_IDENTITY: 120,
 	REFLECTION_SUCCESS: 130,

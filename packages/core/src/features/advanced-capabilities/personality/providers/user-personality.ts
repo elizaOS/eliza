@@ -40,6 +40,14 @@ function renderSlot(
 		});
 	}
 	if (lines.length === 0) return null;
+	if (slot.source === "agent_inferred") {
+		// Provenance is slot-level (last writer), so this annotates the block,
+		// not individual traits. The model should treat inferred style as an
+		// observation it can explain and offer to undo, not a user order.
+		lines.push(
+			"- provenance: inferred from conversation, not explicitly set; offer to adjust if the user objects",
+		);
+	}
 	return [header, ...lines, footer].join("\n");
 }
 

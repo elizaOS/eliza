@@ -98,6 +98,14 @@ export function makeFakeRuntime(options: FakeRuntimeOptions = {}): FakeRuntime {
 				.filter((m) => !opts.roomId || m.roomId === opts.roomId)
 				.slice(0, opts.count ?? list.length);
 		},
+		async updateMemory(patch: Partial<Memory> & { id: UUID }): Promise<void> {
+			for (const [k, list] of memories.entries()) {
+				memories.set(
+					k,
+					list.map((m) => (m.id === patch.id ? { ...m, ...patch } : m)),
+				);
+			}
+		},
 		async deleteMemory(id: UUID): Promise<void> {
 			for (const [k, list] of memories.entries()) {
 				memories.set(
