@@ -23,6 +23,22 @@ import type { JsonValue, UUID } from "./primitives.ts";
 export type NotificationPriority = "low" | "normal" | "high" | "urgent";
 
 /**
+ * Triage tier (spec §C.1). A derived, human-facing name for the delivery
+ * behavior a `NotificationPriority` binds to. Producers still pass a priority;
+ * the tier is what the priority *means*:
+ *
+ * | Tier        | Priority        | Behavior                                             |
+ * |-------------|-----------------|------------------------------------------------------|
+ * | `interrupt` | `urgent`,`high` | OS notification (even focused for `urgent`), toast, inbox, badge |
+ * | `digest`    | `normal`        | inbox + unread badge, no OS interrupt while focused  |
+ * | `silent`    | `low`           | inbox only, no badge weight, auto-expires            |
+ *
+ * The tier is never stored on the record — it is a pure function of priority so
+ * the two can never drift. Use {@link tierForPriority} to name it.
+ */
+export type NotificationTier = "interrupt" | "digest" | "silent";
+
+/**
  * What produced the notification. Lets clients group, filter, and icon
  * notifications without parsing free text.
  */
@@ -67,7 +83,16 @@ export interface AgentNotification {
 	 * same task). Omit for independent notifications.
 	 */
 	groupKey?: string;
-	/** Structured metadata for renderers / deep-link handlers. */
+	/**
+	 * Structured metadata for renderers / deep-link handlers.
+	 *
+	 * Reserved key `count` (see {@link NOTIFICATION_COUNT_KEY}): when a producer
+	 * emits N notifications sharing a `groupKey` in a window, the surviving
+	 * (superseding) record carries `data.count = N` so the row can render "3 new
+	 * files" instead of the last event silently eating the earlier ones (§C.3).
+	 * The service increments this automatically on same-`groupKey` supersede
+	 * unless the producer set `data.count` explicitly.
+	 */
 	data?: Record<string, JsonValue>;
 	/** Unix ms when created. */
 	createdAt: number;
@@ -114,7 +139,7 @@ export interface NotificationQuery {
 
 /** The shape the notification stream carries over the agent event bus. */
 export interface NotificationEventData {
-	type: "notification";
+	type: "notification" | "notification_update";
 	notification: AgentNotification;
 	/** Total unread after this notification, so clients can update a badge. */
 	unreadCount: number;
@@ -131,3 +156,63 @@ export const DEFAULT_NOTIFICATION_SOURCE = "agent";
 
 /** The agent event stream notifications ride on. */
 export const NOTIFICATION_STREAM = "notification" as const;
+
+/**
+ * Reserved `data` key carrying the coalesced count of same-`groupKey`
+ * notifications (§C.3). `data.count > 1` means the row should render a count
+ * chip ("3 new files"). Absent or `1` means a single event.
+ */
+export const NOTIFICATION_COUNT_KEY = "count" as const;
+
+/**
+ * Default self-destroy window for silent-tier (`low`) notifications (§C.1): 24h.
+ * A `low` notification with no producer-set `expiresAt` ages out so the inbox
+ * self-cleans. Interrupt-tier notifications never default an expiry.
+ */
+export const SILENT_TIER_DEFAULT_EXPIRY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Name the triage tier (§C.1) a priority binds to. Pure function of priority so
+ * the tier can never drift from the stored record.
+ */
+export function tierForPriority(
+	priority: NotificationPriority,
+): NotificationTier {
+	switch (priority) {
+		case "urgent":
+		case "high":
+			return "interrupt";
+		case "normal":
+			return "digest";
+		case "low":
+			return "silent";
+	}
+}
+
+/**
+ * Category → default priority (§C.1 producer rule). A producer that omits an
+ * explicit priority gets the tier the category implies:
+ *
+ * - `approval` → `high` (interrupt — the user must act)
+ * - `task` / `workflow` → `normal` (digest — completions worth surfacing)
+ * - `system` → `low` (silent — routine confirmations, self-expiring)
+ * - everything else → {@link DEFAULT_NOTIFICATION_PRIORITY} (`normal`/digest)
+ *
+ * A producer can always downgrade by passing an explicit priority; these are
+ * only the defaults applied when none is given.
+ */
+export function defaultPriorityForCategory(
+	category: NotificationCategory,
+): NotificationPriority {
+	switch (category) {
+		case "approval":
+			return "high";
+		case "task":
+		case "workflow":
+			return "normal";
+		case "system":
+			return "low";
+		default:
+			return DEFAULT_NOTIFICATION_PRIORITY;
+	}
+}

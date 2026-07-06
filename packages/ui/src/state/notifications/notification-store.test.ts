@@ -102,6 +102,15 @@ describe("notification-store", () => {
     expect(showNativeNotification).not.toHaveBeenCalled(); // focused + normal → no OS
   });
 
+  it("keeps silent-tier notifications in the inbox without badge weight", () => {
+    __ingestNotificationForTests(
+      makeNotification({ title: "Silent", priority: "low" }),
+    );
+    const state = __getStateForTests();
+    expect(state.notifications).toHaveLength(1);
+    expect(state.unreadCount).toBe(0);
+  });
+
   it("fires desktop + native sinks when the window is unfocused", () => {
     vi.spyOn(document, "hasFocus").mockReturnValue(false);
     __ingestNotificationForTests(makeNotification({ priority: "normal" }), 1);
@@ -122,6 +131,20 @@ describe("notification-store", () => {
     __ingestNotificationForTests(makeNotification({ priority: "low" }), 1);
     expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
     expect(showNativeNotification).not.toHaveBeenCalled();
+  });
+
+  it("keeps silent-tier notifications out of OS sinks even while unfocused", () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    __ingestNotificationForTests(makeNotification({ priority: "low" }));
+    expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
+    expect(showNativeNotification).not.toHaveBeenCalled();
+  });
+
+  it("keeps silent-tier notifications out of the toast sink", () => {
+    const sink = vi.fn();
+    registerNotificationToastSink(sink);
+    __ingestNotificationForTests(makeNotification({ priority: "low" }));
+    expect(sink).not.toHaveBeenCalled();
   });
 
   it("routes a toast through the registered sink", () => {
@@ -230,6 +253,137 @@ describe("notification-store", () => {
     expect(stored?.category).toBe("general");
     expect(stored?.priority).toBe("normal");
     expect(typeof stored?.createdAt).toBe("number");
+  });
+
+  it("WS handler applies notification_update without re-delivering sinks", () => {
+    initNotifications();
+    const handler = onWsEvent.mock.calls[0][1] as (
+      d: Record<string, unknown>,
+    ) => void;
+    const sink = vi.fn();
+    registerNotificationToastSink(sink);
+    handler({
+      stream: "notification",
+      payload: {
+        type: "notification_update",
+        notification: makeNotification({
+          id: "update-1",
+          title: "Approval needed",
+          priority: "high",
+          readAt: 123,
+        }),
+        unreadCount: 0,
+      },
+    });
+    const stored = __getStateForTests().notifications.find(
+      (n) => n.id === "update-1",
+    );
+    expect(stored?.readAt).toBe(123);
+    expect(__getStateForTests().unreadCount).toBe(0);
+    expect(sink).not.toHaveBeenCalled();
+    expect(showNativeNotification).not.toHaveBeenCalled();
+  });
+
+  it("WS handler applies notification_update without reordering existing rows", () => {
+    initNotifications();
+    const handler = onWsEvent.mock.calls[0][1] as (
+      d: Record<string, unknown>,
+    ) => void;
+    __ingestNotificationForTests(makeNotification({ id: "old", title: "Old" }));
+    __ingestNotificationForTests(makeNotification({ id: "new", title: "New" }));
+    expect(__getStateForTests().notifications.map((n) => n.id)).toEqual([
+      "new",
+      "old",
+    ]);
+
+    handler({
+      stream: "notification",
+      payload: {
+        type: "notification_update",
+        notification: makeNotification({
+          id: "old",
+          title: "Old",
+          readAt: 123,
+        }),
+      },
+    });
+    expect(__getStateForTests().notifications.map((n) => n.id)).toEqual([
+      "new",
+      "old",
+    ]);
+    expect(
+      __getStateForTests().notifications.find((n) => n.id === "old")?.readAt,
+    ).toBe(123);
+  });
+
+  it("WS handler carries data.count through for the coalesced count chip (§C.3)", () => {
+    initNotifications();
+    const handler = onWsEvent.mock.calls[0][1] as (
+      d: Record<string, unknown>,
+    ) => void;
+    handler({
+      stream: "notification",
+      payload: {
+        notification: {
+          id: "count-1",
+          title: "3 new files",
+          groupKey: "files",
+          data: { count: 3 },
+        },
+      },
+    });
+    const stored = __getStateForTests().notifications.find(
+      (n) => n.id === "count-1",
+    );
+    expect(stored?.data?.count).toBe(3);
+  });
+
+  it("WS handler drops a non-object data field rather than passing garbage", () => {
+    initNotifications();
+    const handler = onWsEvent.mock.calls[0][1] as (
+      d: Record<string, unknown>,
+    ) => void;
+    handler({
+      stream: "notification",
+      payload: {
+        notification: { id: "bad-data", title: "x", data: "nope" },
+      },
+    });
+    const stored = __getStateForTests().notifications.find(
+      (n) => n.id === "bad-data",
+    );
+    expect(stored).toBeTruthy();
+    expect(stored?.data).toBeUndefined();
+  });
+
+  it("WS handler collapses same-groupKey, surviving the newer count (§C.3)", () => {
+    initNotifications();
+    const handler = onWsEvent.mock.calls[0][1] as (
+      d: Record<string, unknown>,
+    ) => void;
+    handler({
+      stream: "notification",
+      payload: {
+        notification: { id: "c1", title: "1 file", groupKey: "g" },
+      },
+    });
+    handler({
+      stream: "notification",
+      payload: {
+        notification: {
+          id: "c2",
+          title: "2 files",
+          groupKey: "g",
+          data: { count: 2 },
+        },
+      },
+    });
+    const list = __getStateForTests().notifications.filter(
+      (n) => n.groupKey === "g",
+    );
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe("c2");
+    expect(list[0].data?.count).toBe(2);
   });
 
   it("markNotificationRead calls the API optimistically", async () => {

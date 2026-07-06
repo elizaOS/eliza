@@ -77,7 +77,7 @@ describe("handleNotificationRoute", () => {
   });
 
   it("GET returns the inbox and unread count", async () => {
-    await service.notify({ title: "Hello", category: "system" });
+    await service.notify({ title: "Hello", category: "task" });
     const helpers = makeHelpers();
     await handleNotificationRoute(
       req("/api/notifications"),

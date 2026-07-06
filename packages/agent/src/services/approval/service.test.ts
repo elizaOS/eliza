@@ -15,6 +15,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { ServiceType } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -153,7 +154,22 @@ function parseSet(setSql: string): Record<string, string | null> {
   return out;
 }
 
-function createApprovalTableRuntime(agentId: string): IAgentRuntime {
+interface NotifierSpy {
+  notify: ReturnType<typeof vi.fn>;
+  markReadByGroupKey: ReturnType<typeof vi.fn>;
+}
+
+function createNotifierSpy(): NotifierSpy {
+  return {
+    notify: vi.fn(async () => ({})),
+    markReadByGroupKey: vi.fn(async () => 1),
+  };
+}
+
+function createApprovalTableRuntime(
+  agentId: string,
+  notifier: NotifierSpy | null = null,
+): IAgentRuntime {
   const rows = new Map<string, Record<string, unknown>>();
 
   const execute = (
@@ -227,7 +243,10 @@ function createApprovalTableRuntime(agentId: string): IAgentRuntime {
           execute(chunks.__sql ?? ""),
       },
     },
-    getService: () => null,
+    // The store resolves the NotificationService via ServiceType.NOTIFICATION;
+    // return the spy when one is supplied so enqueue/resolve wiring is testable.
+    getService: (type: string) =>
+      notifier && type === ServiceType.NOTIFICATION ? notifier : null,
   } as unknown as IAgentRuntime;
 }
 
@@ -297,6 +316,69 @@ describe("ApprovalService", () => {
     expect(pendingList.every((r) => r.id !== enqueued.id)).toBe(true);
   });
 
+  it("enqueue surfaces an approval notification under the approval:<id> groupKey", async () => {
+    const notifier = createNotifierSpy();
+    const runtime = createApprovalTableRuntime("agent-notif", notifier);
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+
+    const enqueued = await queue.enqueue(messageInput());
+    expect(notifier.notify).toHaveBeenCalledTimes(1);
+    const arg = notifier.notify.mock.calls[0][0];
+    expect(arg.category).toBe("approval");
+    expect(arg.priority).toBe("high"); // interrupt tier (§C.1)
+    expect(arg.groupKey).toBe(`approval:${enqueued.id}`);
+  });
+
+  it("approving an approval auto-reads its notification by groupKey (§C.5)", async () => {
+    const notifier = createNotifierSpy();
+    const runtime = createApprovalTableRuntime("agent-autoread", notifier);
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+
+    const enqueued = await queue.enqueue(messageInput());
+    expect(notifier.markReadByGroupKey).not.toHaveBeenCalled();
+
+    await queue.approve(enqueued.id, {
+      resolvedBy: "owner-123",
+      resolutionReason: "ok",
+    });
+    // The done thing must not keep nagging: the pointing notification is read.
+    expect(notifier.markReadByGroupKey).toHaveBeenCalledWith(
+      `approval:${enqueued.id}`,
+    );
+  });
+
+  it("rejecting an approval also auto-reads its notification (§C.5)", async () => {
+    const notifier = createNotifierSpy();
+    const runtime = createApprovalTableRuntime("agent-reject-read", notifier);
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+
+    const enqueued = await queue.enqueue(messageInput());
+    await queue.reject(enqueued.id, {
+      resolvedBy: "owner-123",
+      resolutionReason: "no",
+    });
+    expect(notifier.markReadByGroupKey).toHaveBeenCalledWith(
+      `approval:${enqueued.id}`,
+    );
+  });
+
+  it("resolve does not throw when the notifier predates markReadByGroupKey", async () => {
+    // An older NotificationService exposes notify but not markReadByGroupKey.
+    const legacy = { notify: vi.fn(async () => ({})) };
+    const runtime = createApprovalTableRuntime(
+      "agent-legacy",
+      legacy as unknown as NotifierSpy,
+    );
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const enqueued = await queue.enqueue(messageInput());
+    // Must resolve cleanly even though markReadByGroupKey is absent.
+    const approved = await queue.approve(enqueued.id, {
+      resolvedBy: "owner-123",
+      resolutionReason: "ok",
+    });
+    expect(approved.state).toBe("approved");
+  });
+
   it("enqueue → reject records the resolver", async () => {
     const runtime = createApprovalTableRuntime("agent-1");
     const queue = (await ApprovalService.start(runtime)).getQueue();
@@ -312,7 +394,8 @@ describe("ApprovalService", () => {
   });
 
   it("purgeExpired moves past-due pending rows to expired", async () => {
-    const runtime = createApprovalTableRuntime("agent-1");
+    const notifier = createNotifierSpy();
+    const runtime = createApprovalTableRuntime("agent-1", notifier);
     const queue = (await ApprovalService.start(runtime)).getQueue();
     const enqueued = await queue.enqueue(
       messageInput({
@@ -324,12 +407,16 @@ describe("ApprovalService", () => {
     expect(purgedIds).toContain(enqueued.id);
     const after = await queue.byId(enqueued.id);
     expect(after?.state).toBe("expired");
+    expect(notifier.markReadByGroupKey).toHaveBeenCalledWith(
+      `approval:${enqueued.id}`,
+    );
   });
 
   it("a lapsed pending request is refused and expired at the transition boundary (#11092)", async () => {
     // No purge runs: the lazy guard alone must keep an expired approval from
     // ever executing — nothing calls purgeExpired periodically in production.
-    const runtime = createApprovalTableRuntime("agent-1");
+    const notifier = createNotifierSpy();
+    const runtime = createApprovalTableRuntime("agent-1", notifier);
     const queue = (await ApprovalService.start(runtime)).getQueue();
     const enqueued = await queue.enqueue(
       messageInput({
@@ -349,6 +436,9 @@ describe("ApprovalService", () => {
     const after = await queue.byId(enqueued.id);
     expect(after?.state).toBe("expired");
     expect(after?.resolvedBy).toBeNull();
+    expect(notifier.markReadByGroupKey).toHaveBeenCalledWith(
+      `approval:${enqueued.id}`,
+    );
   });
 
   it("a fresh pending request still approves normally under the expiry guard (#11092)", async () => {

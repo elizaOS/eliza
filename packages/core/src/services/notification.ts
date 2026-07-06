@@ -21,12 +21,16 @@ import { logger } from "../logger.ts";
 import {
 	type AgentNotification,
 	DEFAULT_NOTIFICATION_CATEGORY,
-	DEFAULT_NOTIFICATION_PRIORITY,
 	DEFAULT_NOTIFICATION_SOURCE,
+	defaultPriorityForCategory,
+	NOTIFICATION_COUNT_KEY,
 	NOTIFICATION_STREAM,
 	type NotificationEventData,
 	type NotificationInput,
+	type NotificationPriority,
 	type NotificationQuery,
+	SILENT_TIER_DEFAULT_EXPIRY_MS,
+	tierForPriority,
 } from "../types/notification.ts";
 import { asUUID, type UUID } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
@@ -128,33 +132,60 @@ export class NotificationService extends Service {
 			throw new Error("[NotificationService] notification.title is required");
 		}
 
+		const category = input.category ?? DEFAULT_NOTIFICATION_CATEGORY;
+		// §C.1: an explicit priority always wins; otherwise the category names the
+		// tier (approval→interrupt, task/workflow→digest, system→silent).
+		const priority: NotificationPriority =
+			input.priority ?? defaultPriorityForCategory(category);
+
+		const createdAt = Date.now();
+		const groupKey = input.groupKey;
+
+		// Drop any entries whose explicit expiry has passed before we inspect the
+		// group for supersede/count — an expired prior must not seed a new count.
+		this.notifications = this.notifications.filter(
+			(n) => !isExpired(n, createdAt),
+		);
+
+		// §C.3 Count-aware supersede: a same-groupKey notify replaces the prior
+		// record and carries the coalesced count so the row can render "3 new
+		// files" instead of the last event silently eating the earlier ones. The
+		// producer may set data.count explicitly to override the auto-increment.
+		let superseded: AgentNotification | undefined;
+		if (groupKey) {
+			superseded = this.notifications.find((n) => n.groupKey === groupKey);
+			this.notifications = this.notifications.filter(
+				(n) => n.groupKey !== groupKey,
+			);
+		}
+		const data = this.resolveCoalescedData(input.data, superseded);
+
+		// §C.1 Silent-tier default expiry: a `low` (silent) notification with no
+		// producer-set expiry ages out after 24h so the inbox self-cleans.
+		// Interrupt/digest tiers never default an expiry (an unread approval must
+		// not evaporate).
+		let expiresAt = input.expiresAt;
+		if (expiresAt === undefined && tierForPriority(priority) === "silent") {
+			expiresAt = createdAt + SILENT_TIER_DEFAULT_EXPIRY_MS;
+		}
+
 		const notification: AgentNotification = {
 			id: newNotificationId(),
 			title,
 			body: input.body?.trim() || undefined,
-			category: input.category ?? DEFAULT_NOTIFICATION_CATEGORY,
-			priority: input.priority ?? DEFAULT_NOTIFICATION_PRIORITY,
+			category,
+			priority,
 			source: input.source ?? DEFAULT_NOTIFICATION_SOURCE,
 			deepLink: input.deepLink,
 			icon: input.icon,
-			groupKey: input.groupKey,
-			data: input.data,
-			createdAt: Date.now(),
+			groupKey,
+			data,
+			createdAt,
 			readAt: null,
-			expiresAt: input.expiresAt ?? undefined,
+			expiresAt,
 			agentId: input.agentId ?? (this.runtime.agentId as UUID),
 		};
 
-		// Collapse by groupKey: a newer notification supersedes an older one for
-		// the same logical thing instead of stacking duplicates.
-		if (notification.groupKey) {
-			this.notifications = this.notifications.filter(
-				(n) => n.groupKey !== notification.groupKey,
-			);
-		}
-		// Drop any entries whose explicit expiry has passed before appending.
-		const nowMs = Date.now();
-		this.notifications = this.notifications.filter((n) => !isExpired(n, nowMs));
 		this.notifications.push(notification);
 		if (this.notifications.length > MAX_NOTIFICATIONS) {
 			this.notifications = this.notifications.slice(-MAX_NOTIFICATIONS);
@@ -176,13 +207,16 @@ export class NotificationService extends Service {
 		return notification;
 	}
 
-	private broadcast(notification: AgentNotification): void {
+	private broadcast(
+		notification: AgentNotification,
+		type: NotificationEventData["type"] = "notification",
+	): void {
 		const bus = this.runtime.getService(ServiceType.AGENT_EVENT);
 		if (!isEventBus(bus)) {
 			return; // No live bus (headless/test) — inbox API still serves it.
 		}
 		const data: NotificationEventData = {
-			type: "notification",
+			type,
 			notification,
 			unreadCount: this.getUnreadCount(),
 		};
@@ -216,9 +250,34 @@ export class NotificationService extends Service {
 		const now = Date.now();
 		let count = 0;
 		for (const n of this.notifications) {
-			if (!n.readAt && !isExpired(n, now)) count++;
+			// §C.1 Silent tier (`low`) is inbox-only with no badge weight.
+			if (!n.readAt && n.priority !== "low" && !isExpired(n, now)) count++;
 		}
 		return count;
+	}
+
+	/**
+	 * Compute the `data` for a notification that may be coalescing onto a prior
+	 * same-`groupKey` record (§C.3). A producer-set `data.count` always wins; a
+	 * bare supersede increments the surviving count (prior `count`, defaulting to
+	 * 1, plus one). A first (un-superseded) notification carries no count key.
+	 */
+	private resolveCoalescedData(
+		inputData: AgentNotification["data"],
+		superseded: AgentNotification | undefined,
+	): AgentNotification["data"] {
+		const producerCount = inputData?.[NOTIFICATION_COUNT_KEY];
+		// Producer stated the count explicitly — honor it verbatim.
+		if (typeof producerCount === "number") {
+			return inputData;
+		}
+		// No supersede — nothing to coalesce; leave data untouched (no count key).
+		if (!superseded) {
+			return inputData;
+		}
+		const priorCount = superseded.data?.[NOTIFICATION_COUNT_KEY];
+		const nextCount = (typeof priorCount === "number" ? priorCount : 1) + 1;
+		return { ...(inputData ?? {}), [NOTIFICATION_COUNT_KEY]: nextCount };
 	}
 
 	/** Mark one notification read. Returns true if it existed and changed. */
@@ -230,6 +289,37 @@ export class NotificationService extends Service {
 		notification.readAt = Date.now();
 		await this.persist();
 		return true;
+	}
+
+	/**
+	 * §C.5 Acted-upon auto-read: mark every unread notification pointing at a
+	 * given `groupKey` read, without removing it (read is history, not deletion).
+	 * A producer whose action completed — an approval approved, a task opened —
+	 * calls this so the inbox never nags about a done thing. Returns the number of
+	 * records changed (0 for an unknown/already-read group). Never reorders the
+	 * inbox (§C.2): read state styles rows but does not move them.
+	 */
+	async markReadByGroupKey(groupKey: string): Promise<number> {
+		if (!groupKey) {
+			return 0;
+		}
+		const now = Date.now();
+		const changedNotifications: AgentNotification[] = [];
+		for (const n of this.notifications) {
+			if (n.groupKey === groupKey && !n.readAt) {
+				n.readAt = now;
+				changedNotifications.push(n);
+			}
+		}
+		if (changedNotifications.length > 0) {
+			await this.persist();
+			for (const n of changedNotifications) {
+				// Push a non-interruptive update so open clients clear unread state without
+				// re-toasting/re-alerting the notification that just became read.
+				this.broadcast(n, "notification_update");
+			}
+		}
+		return changedNotifications.length;
 	}
 
 	/** Mark every notification read. Returns the number changed. */

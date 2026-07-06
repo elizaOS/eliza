@@ -236,4 +236,24 @@ describe("NotificationsHomeCenter", () => {
     expect(card.className).toContain("backdrop-blur");
     expect(card.className).not.toContain("border-border");
   });
+
+  it("renders a count chip when data.count > 1 (§C.3 coalescing)", () => {
+    __ingestNotificationForTests(
+      makeNotification({ title: "3 new files", data: { count: 3 } }),
+    );
+    render(<NotificationsHomeCenter />);
+    const chip = screen.getByTestId("notification-count-chip");
+    // The visible glyph is the count; a visually-hidden suffix names it for AT.
+    expect(chip.textContent).toContain("3");
+    expect(chip.querySelector(".sr-only")?.textContent).toContain("grouped");
+  });
+
+  it("omits the count chip for a single (count ≤ 1 or absent) notification", () => {
+    __ingestNotificationForTests(
+      makeNotification({ title: "one", data: { count: 1 } }),
+    );
+    __ingestNotificationForTests(makeNotification({ title: "plain" }));
+    render(<NotificationsHomeCenter />);
+    expect(screen.queryByTestId("notification-count-chip")).toBeNull();
+  });
 });

@@ -64,17 +64,36 @@ function setState(next: Partial<NotificationState>): void {
 
 function countUnread(list: AgentNotification[]): number {
   let count = 0;
-  for (const n of list) if (!n.readAt) count++;
+  for (const n of list) {
+    // §C.1 Silent tier (`low`) lands in the inbox but carries no badge weight.
+    if (!n.readAt && n.priority !== "low") count++;
+  }
   return count;
 }
 
 /** Insert/replace a notification (collapsing by groupKey), newest-first. */
-function upsert(notification: AgentNotification): AgentNotification[] {
-  const withoutDuplicate = state.notifications.filter(
-    (n) =>
-      n.id !== notification.id &&
-      !(notification.groupKey && n.groupKey === notification.groupKey),
-  );
+function upsert(
+  notification: AgentNotification,
+  options: { preserveOrder?: boolean } = {},
+): AgentNotification[] {
+  const matches = (n: AgentNotification): boolean =>
+    n.id === notification.id ||
+    !!(notification.groupKey && n.groupKey === notification.groupKey);
+
+  // Read-state / metadata updates must not move the row under the user's finger
+  // (§C.2). Replace in place when the row already exists; only insert if this
+  // client missed the original notification.
+  if (options.preserveOrder) {
+    let replaced = false;
+    const next = state.notifications.map((n) => {
+      if (!matches(n)) return n;
+      replaced = true;
+      return notification;
+    });
+    return (replaced ? next : [notification, ...next]).slice(0, 300);
+  }
+
+  const withoutDuplicate = state.notifications.filter((n) => !matches(n));
   return [notification, ...withoutDuplicate].slice(0, 300);
 }
 
@@ -111,6 +130,9 @@ async function fireDesktopNotification(
  * separately; this only decides whether to also raise an OS/toast alert.
  */
 function deliver(notification: AgentNotification): void {
+  // §C.1 Silent tier is inbox-only: no OS/native interrupt, no toast, no badge.
+  if (notification.priority === "low") return;
+
   const focused = isWindowFocused();
   const interruptive =
     notification.priority === "high" || notification.priority === "urgent";
@@ -148,8 +170,14 @@ function deliver(notification: AgentNotification): void {
   }
 }
 
-function ingest(notification: AgentNotification, unreadCount?: number): void {
-  const notifications = upsert(notification);
+function ingest(
+  notification: AgentNotification,
+  unreadCount?: number,
+  options: { deliver?: boolean } = {},
+): void {
+  const notifications = upsert(notification, {
+    preserveOrder: options.deliver === false,
+  });
   setState({
     notifications,
     unreadCount:
@@ -157,7 +185,9 @@ function ingest(notification: AgentNotification, unreadCount?: number): void {
         ? unreadCount
         : countUnread(notifications),
   });
-  deliver(notification);
+  if (options.deliver !== false) {
+    deliver(notification);
+  }
 }
 
 interface WsAgentEvent {
@@ -187,6 +217,19 @@ function optionalTimestamp(value: unknown): number | null | undefined {
   if (value === null) return null;
   return typeof value === "number" && Number.isFinite(value)
     ? value
+    : undefined;
+}
+
+/**
+ * Pass through the producer `data` bag only when it is a plain object (the wire
+ * is untrusted). Carries reserved keys like `count` (§C.3) to the row; a scalar
+ * or array `data` is malformed and dropped rather than rendered as garbage.
+ */
+function optionalDataObject(
+  value: unknown,
+): AgentNotification["data"] | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as AgentNotification["data"])
     : undefined;
 }
 
@@ -226,6 +269,7 @@ function validateWsNotification(value: unknown): AgentNotification | null {
     deepLink: optionalString(raw.deepLink),
     icon: optionalString(raw.icon),
     groupKey: optionalString(raw.groupKey),
+    data: optionalDataObject(raw.data),
     readAt: optionalTimestamp(raw.readAt),
     expiresAt: optionalTimestamp(raw.expiresAt),
   };
@@ -236,13 +280,18 @@ function handleWsAgentEvent(data: Record<string, unknown>): void {
   if (event.stream !== "notification") return;
   const payload =
     event.payload && typeof event.payload === "object"
-      ? (event.payload as { notification?: unknown; unreadCount?: unknown })
+      ? (event.payload as {
+          notification?: unknown;
+          unreadCount?: unknown;
+          type?: unknown;
+        })
       : undefined;
   const notification = validateWsNotification(payload?.notification);
   if (!notification) return;
   const unreadCount =
     typeof payload?.unreadCount === "number" ? payload.unreadCount : undefined;
-  ingest(notification, unreadCount);
+  const deliverUpdate = payload?.type !== "notification_update";
+  ingest(notification, unreadCount, { deliver: deliverUpdate });
 }
 
 async function hydrate(): Promise<void> {

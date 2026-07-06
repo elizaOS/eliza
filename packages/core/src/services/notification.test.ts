@@ -166,7 +166,8 @@ describe("NotificationService", () => {
 		const list = restarted.list();
 		expect(list).toHaveLength(1);
 		expect(list[0].title).toBe("Persisted");
-		expect(restarted.getUnreadCount()).toBe(1);
+		// system defaults to low/silent (§C.1): inbox history, no badge weight.
+		expect(restarted.getUnreadCount()).toBe(0);
 	});
 
 	it("excludes a notification whose explicit expiresAt has passed", async () => {
@@ -230,5 +231,195 @@ describe("NotificationService", () => {
 	it("uses vi spies without leaking timers", () => {
 		// Guard: the suite must not depend on fake timers.
 		expect(vi.isFakeTimers()).toBe(false);
+	});
+
+	// ── §C.1 Triage tiers: category → priority producer defaults ────────────
+
+	it("defaults an approval notification to the interrupt tier (high)", async () => {
+		const n = await service.notify({
+			title: "Approve send",
+			category: "approval",
+		});
+		expect(n.priority).toBe("high");
+	});
+
+	it("defaults task/workflow notifications to the digest tier (normal)", async () => {
+		const task = await service.notify({ title: "Task done", category: "task" });
+		const wf = await service.notify({
+			title: "Run done",
+			category: "workflow",
+		});
+		expect(task.priority).toBe("normal");
+		expect(wf.priority).toBe("normal");
+	});
+
+	it("defaults a routine system notification to the silent tier (low)", async () => {
+		const n = await service.notify({
+			title: "Backup done",
+			category: "system",
+		});
+		expect(n.priority).toBe("low");
+	});
+
+	it("does not include silent-tier notifications in unread badge counts", async () => {
+		await service.notify({ title: "Routine", priority: "low" });
+		expect(service.list({ unreadOnly: true })).toHaveLength(1); // inbox history
+		expect(service.getUnreadCount()).toBe(0); // no badge weight (§C.1)
+		await service.notify({ title: "Digest", priority: "normal" });
+		expect(service.getUnreadCount()).toBe(1);
+	});
+
+	it("lets a producer override the category default priority", async () => {
+		// A system notification the producer deems urgent (e.g. disk full) keeps its
+		// explicit priority; the category default only applies when none is given.
+		const n = await service.notify({
+			title: "Disk full",
+			category: "system",
+			priority: "urgent",
+		});
+		expect(n.priority).toBe("urgent");
+	});
+
+	// ── §C.1 Silent-tier default expiry ─────────────────────────────────────
+
+	it("defaults a low-priority notification to a 24h expiry", async () => {
+		const before = Date.now();
+		const n = await service.notify({ title: "Routine", priority: "low" });
+		const after = Date.now();
+		expect(n.expiresAt).toBeGreaterThanOrEqual(before + 24 * 60 * 60 * 1000);
+		expect(n.expiresAt).toBeLessThanOrEqual(after + 24 * 60 * 60 * 1000);
+	});
+
+	it("defaults expiry for a category that maps to the silent tier", async () => {
+		// system → low → silent, so a bare system notification self-expires too.
+		const n = await service.notify({
+			title: "Log rotated",
+			category: "system",
+		});
+		expect(n.priority).toBe("low");
+		expect(n.expiresAt).toBeGreaterThan(Date.now());
+	});
+
+	it("never overrides a producer-set expiresAt on a low notification", async () => {
+		const explicit = Date.now() + 5 * 60 * 1000;
+		const n = await service.notify({
+			title: "Quick note",
+			priority: "low",
+			expiresAt: explicit,
+		});
+		expect(n.expiresAt).toBe(explicit);
+	});
+
+	it("honors explicit null expiresAt on a low notification", async () => {
+		const n = await service.notify({
+			title: "Pinned silent note",
+			priority: "low",
+			expiresAt: null,
+		});
+		expect(n.expiresAt).toBeNull();
+	});
+
+	it("does NOT default an expiry for interrupt/digest tiers", async () => {
+		const high = await service.notify({ title: "Approve", priority: "high" });
+		const urgent = await service.notify({
+			title: "Blocked",
+			priority: "urgent",
+		});
+		const normal = await service.notify({ title: "Done", priority: "normal" });
+		expect(high.expiresAt).toBeUndefined();
+		expect(urgent.expiresAt).toBeUndefined();
+		expect(normal.expiresAt).toBeUndefined();
+	});
+
+	// ── §C.3 Count-aware groupKey supersede ─────────────────────────────────
+
+	it("carries data.count across same-groupKey supersede", async () => {
+		await service.notify({ title: "1 new file", groupKey: "files" });
+		await service.notify({ title: "another file", groupKey: "files" });
+		await service.notify({ title: "3 new files", groupKey: "files" });
+		const list = service.list();
+		expect(list).toHaveLength(1);
+		expect(list[0].title).toBe("3 new files");
+		expect(list[0].data?.count).toBe(3);
+	});
+
+	it("leaves count absent for a first, un-superseded notification", async () => {
+		const n = await service.notify({ title: "solo", groupKey: "once" });
+		expect(n.data?.count).toBeUndefined();
+	});
+
+	it("honors a producer-set data.count instead of auto-incrementing", async () => {
+		await service.notify({ title: "a", groupKey: "g" });
+		const n = await service.notify({
+			title: "b",
+			groupKey: "g",
+			data: { count: 12 },
+		});
+		expect(n.data?.count).toBe(12);
+		expect(service.list()[0].data?.count).toBe(12);
+	});
+
+	it("does not add a count to notifications without a groupKey", async () => {
+		await service.notify({ title: "x" });
+		const n = await service.notify({ title: "y" });
+		expect(n.data?.count).toBeUndefined();
+		expect(service.list()).toHaveLength(2);
+	});
+
+	it("resets the count for a reused groupKey after the record expired away", async () => {
+		// A prior record that has already expired should not seed the count of a
+		// fresh notification reusing the same key.
+		await service.notify({
+			title: "old",
+			groupKey: "reuse",
+			expiresAt: Date.now() - 1000,
+		});
+		const n = await service.notify({ title: "new", groupKey: "reuse" });
+		expect(n.data?.count).toBeUndefined();
+		expect(service.list()).toHaveLength(1);
+		expect(service.list()[0].title).toBe("new");
+	});
+
+	// ── §C.5 Acted-upon auto-read (markReadByGroupKey) ──────────────────────
+
+	it("marks the notification for a groupKey read when its action completes", async () => {
+		await service.notify({
+			title: "Approval needed",
+			category: "approval",
+			groupKey: "approval:42",
+		});
+		expect(service.getUnreadCount()).toBe(1);
+		const changed = await service.markReadByGroupKey("approval:42");
+		expect(changed).toBe(1);
+		expect(service.getUnreadCount()).toBe(0);
+		expect(service.list()).toHaveLength(1); // read, not removed (§C.5)
+		expect(service.list()[0].readAt).toBeTruthy();
+	});
+
+	it("broadcasts non-interruptive updates when marking a groupKey read", async () => {
+		await service.notify({ title: "Approval", groupKey: "approval:7" });
+		ctx.emitted.length = 0;
+		await service.markReadByGroupKey("approval:7");
+		expect(ctx.emitted).toHaveLength(1);
+		expect(ctx.emitted[0].data.type).toBe("notification_update");
+		expect(ctx.emitted[0].data.unreadCount).toBe(0);
+		const notification = ctx.emitted[0].data.notification as AgentNotification;
+		expect(notification.readAt).toBeTruthy();
+	});
+
+	it("markReadByGroupKey returns 0 for an unknown or already-read group", async () => {
+		expect(await service.markReadByGroupKey("nope")).toBe(0);
+		await service.notify({ title: "done", groupKey: "g1" });
+		await service.markReadByGroupKey("g1");
+		// Second call: already read, nothing changes.
+		expect(await service.markReadByGroupKey("g1")).toBe(0);
+	});
+
+	it("markReadByGroupKey does not reorder the inbox (§C.2)", async () => {
+		await service.notify({ title: "A", groupKey: "ga" });
+		await service.notify({ title: "B", groupKey: "gb" });
+		await service.notify({ title: "C", groupKey: "gc" });
+		await service.markReadByGroupKey("ga"); // read the oldest
+		expect(service.list().map((n) => n.title)).toEqual(["C", "B", "A"]);
 	});
 });

@@ -142,7 +142,7 @@ export function orderDashboardNotifications(
  * the row's render path, a stable-props memo is correct - it re-renders only
  * when the row's actual content changes, and `arePropsEqual` compares the
  * identity fields that drive its markup: `id`, `readAt` (unread styling),
- * `priority` (rail), `title`, `body`, plus the two callbacks (stable via the
+ * `priority` (rail), `title`, `body`, `data.count`, plus the two callbacks (stable via the
  * parent's `useCallback`). `createdAt` is intentionally NOT compared: it feeds
  * only the leaf, which subscribes to the tick itself.
  */
@@ -159,6 +159,7 @@ export function rowPropsEqual(
     a.title === b.title &&
     a.body === b.body &&
     a.deepLink === b.deepLink &&
+    a.data?.count === b.data?.count &&
     prev.onOpen === next.onOpen &&
     prev.onDismiss === next.onDismiss
   );
@@ -194,6 +195,11 @@ const NotificationRow = memo(function NotificationRow({
   const unread = !notification.readAt;
   const urgent = notification.priority === "urgent";
   const high = notification.priority === "high";
+  // §C.3 count-aware coalescing: a superseding same-groupKey notification carries
+  // data.count so the row reads "3 new files" via a small chip instead of the
+  // inbox silently keeping only the last of the batch. Only surfaced for N > 1.
+  const rawCount = notification.data?.count;
+  const count = typeof rawCount === "number" && rawCount > 1 ? rawCount : null;
   // Lock-screen restraint: NO per-row icon chip (a box inside a box inside the
   // card). Priority is carried by a hairline accent rail on the leading edge -
   // present only for urgent/high - and an unread state by a single dot, so a
@@ -250,6 +256,20 @@ const NotificationRow = memo(function NotificationRow({
             >
               {notification.title}
             </span>
+            {count ? (
+              <span
+                data-testid="notification-count-chip"
+                className={cn(
+                  "shrink-0 rounded-full px-1.5 text-2xs font-semibold tabular-nums leading-[1.15rem]",
+                  unread
+                    ? "bg-white/18 text-white"
+                    : "bg-white/10 text-white/70",
+                )}
+              >
+                {count}
+                <span className="sr-only"> grouped notifications</span>
+              </span>
+            ) : null}
             <RelativeTime
               ts={notification.createdAt}
               className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-white/60"

@@ -557,6 +557,12 @@ interface NotificationEmitter {
     groupKey?: string;
     data?: Record<string, unknown>;
   }) => Promise<unknown>;
+  /**
+   * §C.5 acted-upon auto-read: mark the notification(s) for a groupKey read
+   * without removing them. Optional — an older NotificationService may not
+   * expose it, so callers guard on its presence.
+   */
+  markReadByGroupKey?: (groupKey: string) => Promise<number>;
 }
 
 function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
@@ -564,6 +570,31 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
     ServiceType.NOTIFICATION,
   ) as NotificationEmitter | null;
   return svc && typeof svc.notify === "function" ? svc : null;
+}
+
+/** The inbox groupKey an approval's notification is filed under. */
+function approvalGroupKey(id: string): string {
+  return `approval:${id}`;
+}
+
+/**
+ * §C.5 acted-upon auto-read: once an approval is resolved (approved/rejected/
+ * expired), the "Approval needed" notification that pointed at it is a done
+ * thing — mark it read so the inbox stops nagging. Fire-and-forget: a notifier
+ * that predates this method, or a failed write, must never fail the resolve.
+ */
+function markApprovalNotificationRead(
+  runtime: IAgentRuntime,
+  id: string,
+): void {
+  const notifier = getNotifier(runtime);
+  if (!notifier?.markReadByGroupKey) return;
+  void notifier.markReadByGroupKey(approvalGroupKey(id)).catch((error) => {
+    logger.warn(
+      { error, id },
+      "[ApprovalQueue] failed to auto-read resolved approval notification",
+    );
+  });
 }
 
 export class PgApprovalQueue implements ApprovalQueue {
@@ -621,7 +652,7 @@ export class PgApprovalQueue implements ApprovalQueue {
         priority: "high",
         source: "lifeops",
         deepLink: "/chat",
-        groupKey: `approval:${id}`,
+        groupKey: approvalGroupKey(id),
         data: { requestId: id, kind: input.action },
       })
       .catch(() => {});
@@ -691,6 +722,9 @@ export class PgApprovalQueue implements ApprovalQueue {
     const ids = rows.map((row) => toText(row.id));
     if (ids.length > 0) {
       logger.info(`[ApprovalQueue] purged ${ids.length} expired requests`);
+      for (const id of ids) {
+        markApprovalNotificationRead(this.runtime, id);
+      }
     }
     return ids;
   }
@@ -752,6 +786,9 @@ export class PgApprovalQueue implements ApprovalQueue {
     logger.info(
       `[ApprovalQueue] ${current.state} -> ${target} (${id}) by ${resolution.resolvedBy}`,
     );
+    // §C.5: the approval is now resolved — the owner acted, so auto-read the
+    // "Approval needed" notification (fire-and-forget; never blocks resolve).
+    markApprovalNotificationRead(this.runtime, id);
     return rowToRequest(rows[0]);
   }
 
@@ -776,6 +813,11 @@ export class PgApprovalQueue implements ApprovalQueue {
       return this.throwLostRace(id, target);
     }
     logger.info(`[ApprovalQueue] ${current.state} -> ${target} (${id})`);
+    if (target === "expired") {
+      // Terminal expiry also resolves the thing the notification pointed at;
+      // auto-read so a dead approval cannot keep nagging (§C.5).
+      markApprovalNotificationRead(this.runtime, id);
+    }
     return rowToRequest(rows[0]);
   }
 
