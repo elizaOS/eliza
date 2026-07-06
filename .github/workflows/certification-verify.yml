@@ -1,0 +1,265 @@
+# certification-verify — the develop→main promotion gate (#14547, epic #14541).
+#
+# PRs targeting `main` (a production deploy) must carry a `certification.json`
+# at the repo root: an Ed25519-signed claim (produced by
+# `packages/evidence certify:sign`, protocol in #14546) that a trusted
+# keyholder reviewed the evidence bundle for the promoted commit. This
+# workflow is a THIN CALLER of `certify:verify` — zero verification logic
+# lives here — plus a docs/template-only commit-drift check
+# (scripts/certification/check-commit-drift.mjs) and a human-readable check
+# summary showing WHO certified WHAT.
+#
+# Required-check name for main's branch protection: `verify-certification`
+# (admin wiring + break-glass runbook: .github/certification/README.md).
+#
+# The `certification-verify-selftest` job runs on PRs (to main or develop)
+# that touch the gate's own plumbing: it generates a throwaway keypair, signs
+# a fixture bundle with the real CLIs, and asserts green-verifies + tampered
+# fails — so gate changes are CI-tested without a real certification. It is
+# NOT the required check; skipping its steps on unrelated PRs is safe.
+
+name: certification-verify
+
+on:
+  pull_request:
+    # `main` for the gate itself; `develop` only so the selftest job covers
+    # PRs that change the gate's plumbing (which target develop).
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: certification-verify-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify-certification:
+    name: verify-certification
+    # Draft promotion PRs skip the gate: GitHub cannot merge a draft, and the
+    # ready_for_review trigger re-runs the check the moment it matters.
+    if: github.event.pull_request.base.ref == 'main' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BASE_REF: ${{ github.event.pull_request.base.ref }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      ELIZA_SKIP_ARTIFACT_SYNC: "1"
+    steps:
+      - name: Checkout PR head
+        # actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          # The exact head commit, not the synthetic merge ref: the
+          # certification binds to a real commit sha, and the drift check
+          # compares that sha against this head.
+          ref: ${{ github.event.pull_request.head.sha }}
+          # Full history so `git diff cert.commit..head` and the ancestry
+          # check resolve however far back the certified commit sits.
+          fetch-depth: 0
+
+      # TRUST ANCHOR — read the public key from the BASE branch (main), never
+      # from the PR head. If this step read the PR's own copy of the key, an
+      # attacker could swap the key and a matching self-signed
+      # certification.json in a single promotion PR and the gate would happily
+      # verify their own signature. Reading main's copy means a key only
+      # becomes trusted after it lands on main through review; until then a
+      # foreign-key certification fails `wrong-key`. (Rotation + bootstrap:
+      # .github/certification/README.md.)
+      - name: Read trusted public key from the base branch
+        run: |
+          set -euo pipefail
+          git fetch --quiet --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          if ! git show "refs/remotes/origin/${BASE_REF}:.github/certification/certification-public-key.pem" \
+              > "$RUNNER_TEMP/trusted-public-key.pem"; then
+            echo "::error title=certification-verify::No trusted public key at .github/certification/certification-public-key.pem on ${BASE_REF}. Until the certification stack lands on ${BASE_REF}, this gate cannot pass (bootstrap: see .github/certification/README.md)."
+            exit 1
+          fi
+
+      # Artifact convention: `certification.json` committed at the repo root,
+      # with the signed evidence bundle committed at `evidence/bundle/`.
+      # Checked before dependency install so missing artifacts fail in seconds,
+      # with remediation.
+      - name: Locate certification and evidence bundle
+        run: |
+          set -euo pipefail
+          if [ ! -f certification.json ]; then
+            {
+              echo "## certification-verify"
+              echo ""
+              echo "**Result:** ❌ no \`certification.json\` at the repo root of this promotion branch."
+              echo ""
+              echo "Produce one by running the vast certification workflow for this commit, or locally:"
+              echo ""
+              echo '```bash'
+              echo "bun run --cwd packages/evidence bundle:create -- --tier full"
+              echo "bun run --cwd packages/evidence certify:rollup -- --bundle <bundle-dir> --out verdicts.json"
+              echo "# review + edit verdicts.json, then (requires the ELIZA_CERT_SIGNING_KEY secret):"
+              echo "bun run --cwd packages/evidence certify:sign -- --bundle <bundle-dir> --verdicts verdicts.json --reviewer-id <you> --reviewer-kind human"
+              echo "cp <bundle-dir>/certification.json ./certification.json"
+              echo "rm -rf evidence/bundle && mkdir -p evidence && cp -R <bundle-dir> evidence/bundle"
+              echo '```'
+              echo ""
+              echo "Full runbook: [.github/certification/README.md](https://github.com/${GITHUB_REPOSITORY}/blob/${BASE_REF}/.github/certification/README.md)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=certification-verify::certification.json missing at the repo root — run the vast certification workflow or local certify:sign; see .github/certification/README.md"
+            exit 1
+          fi
+          if [ ! -f evidence/bundle/manifest.json ]; then
+            {
+              echo "## certification-verify"
+              echo ""
+              echo "**Result:** ❌ no evidence bundle at \`evidence/bundle/\` on this promotion branch."
+              echo ""
+              echo "The promotion gate always passes \`--bundle evidence/bundle\` to \`certify:verify\` so artifact integrity, rollup completeness, and signed evidence-path membership are re-derived from the committed bundle."
+              echo ""
+              echo '```bash'
+              echo "bun run --cwd packages/evidence bundle:create -- --tier full"
+              echo "bun run --cwd packages/evidence certify:rollup -- --bundle <bundle-dir> --out verdicts.json"
+              echo "bun run --cwd packages/evidence certify:sign -- --bundle <bundle-dir> --verdicts verdicts.json --reviewer-id <you> --reviewer-kind human"
+              echo "cp <bundle-dir>/certification.json ./certification.json"
+              echo "rm -rf evidence/bundle && mkdir -p evidence && cp -R <bundle-dir> evidence/bundle"
+              echo '```'
+              echo ""
+              echo "Full runbook: [.github/certification/README.md](https://github.com/${GITHUB_REPOSITORY}/blob/${BASE_REF}/.github/certification/README.md)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=certification-verify::evidence/bundle/manifest.json missing — commit the signed evidence bundle and re-run the gate"
+            exit 1
+          fi
+          echo "certification.json present"
+          echo "evidence/bundle present"
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14" # pinned: floating canary rewrites bun.lock (#11184/#9454)
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          run-postinstall: "false" # certify:verify needs only zod; skips the multi-GB artifact sync
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      # The certification may sit a few commits behind head when only docs
+      # moved after signing. The helper passes iff head == cert.commit, or
+      # cert.commit is an ancestor and every drifted path is docs/template-only
+      # (docs/**, packages/docs/**, *.md, plus signed certification artifacts).
+      # Any source, workflow, policy, or config drift forces re-certification.
+      - name: Check commit drift (certification commit vs PR head)
+        id: drift
+        run: |
+          set -euo pipefail
+          status=0
+          node scripts/certification/check-commit-drift.mjs \
+            --cert "$GITHUB_WORKSPACE/certification.json" \
+            --head "$HEAD_SHA" \
+            --repo "$GITHUB_WORKSPACE" \
+            --json-out "$RUNNER_TEMP/drift.json" \
+            --github-output "$GITHUB_OUTPUT" || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Verify certification (certify:verify)
+        id: verify
+        env:
+          CERT_COMMIT: ${{ steps.drift.outputs.cert-commit }}
+        run: |
+          set -euo pipefail
+          args=(
+            --cert "$GITHUB_WORKSPACE/certification.json"
+            --pubkey "$RUNNER_TEMP/trusted-public-key.pem"
+            --max-age-hours 72
+            --required-tier full
+            --json
+          )
+          # The commit binding: certify:verify checks the SIGNED commit; the
+          # drift step above already bound that commit to this PR head.
+          if [ -n "$CERT_COMMIT" ]; then
+            args+=( --expected-commit "$CERT_COMMIT" )
+          fi
+          # Required committed bundle: verify re-hashes every artifact and
+          # re-derives the mechanical rollup and evidence-path membership
+          # (bundle-tampered / verdict-incomplete).
+          args+=( --bundle "$GITHUB_WORKSPACE/evidence/bundle" )
+          status=0
+          bun run --cwd packages/evidence certify:verify -- "${args[@]}" \
+            > "$RUNNER_TEMP/certification-report.json" || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Render check summary
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          node scripts/certification/render-check-summary.mjs \
+            --mode summary \
+            --report "$RUNNER_TEMP/certification-report.json" \
+            --drift "$RUNNER_TEMP/drift.json" \
+            --pubkey "$RUNNER_TEMP/trusted-public-key.pem" \
+            --cert-path "certification.json (repo root, head ${HEAD_SHA})" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce gate result
+        env:
+          DRIFT_STATUS: ${{ steps.drift.outputs.status }}
+          VERIFY_STATUS: ${{ steps.verify.outputs.status }}
+        run: |
+          set -euo pipefail
+          node scripts/certification/render-check-summary.mjs \
+            --mode annotations \
+            --report "$RUNNER_TEMP/certification-report.json" \
+            --drift "$RUNNER_TEMP/drift.json"
+          if [ "$DRIFT_STATUS" != "0" ] || [ "$VERIFY_STATUS" != "0" ]; then
+            echo "::error title=certification-verify::gate failed (commit-drift status=$DRIFT_STATUS, certify:verify status=$VERIFY_STATUS) — failure codes above and in the step summary"
+            exit 1
+          fi
+          echo "certification verified"
+
+  certification-verify-selftest:
+    name: certification-verify-selftest
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Detect gate-relevant changes
+        id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          files="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --paginate --jq '.[].filename')"
+          if printf '%s\n' "$files" | grep -Eq '^(\.github/workflows/certification-verify\.yml$|scripts/certification/|packages/evidence/|\.github/certification/)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "gate plumbing untouched by this PR; selftest not needed"
+          fi
+
+      - name: Checkout
+        if: steps.changes.outputs.relevant == 'true'
+        # actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup workspace dependencies
+        if: steps.changes.outputs.relevant == 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14" # pinned: floating canary rewrites bun.lock (#11184/#9454)
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          run-postinstall: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+        env:
+          ELIZA_SKIP_ARTIFACT_SYNC: "1"
+
+      - name: Commit-drift helper tests
+        if: steps.changes.outputs.relevant == 'true'
+        run: node --test scripts/certification/check-commit-drift.test.mjs
+
+      - name: Gate plumbing selftest (keygen → sign → verify → tamper)
+        if: steps.changes.outputs.relevant == 'true'
+        run: node scripts/certification/selftest.mjs
