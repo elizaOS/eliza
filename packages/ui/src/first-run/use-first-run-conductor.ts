@@ -43,6 +43,10 @@
  */
 
 import { logger } from "@elizaos/logger";
+import {
+  hasStewardAuthedCookie,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import * as React from "react";
 import type {
   ConversationMessage,
@@ -50,7 +54,10 @@ import type {
   LocalAgentBackupMetadata,
 } from "../api";
 import { client } from "../api";
-import { getCloudAuthToken } from "../api/client-cloud";
+import {
+  getCloudAuthToken,
+  refreshCloudStewardSession,
+} from "../api/client-cloud";
 import { getBootConfig } from "../config/boot-config";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
@@ -1149,6 +1156,29 @@ export function useFirstRunConductor(): void {
             `${CLOUD_SIGN_IN_GREETING}\n\n${CLOUD_SIGN_IN_CHOICE}`,
           ),
         );
+        // Cross-subdomain SSO: a user already signed in on the console carries
+        // the shared, HttpOnly .elizacloud.ai refresh cookie, but localStorage
+        // does not cross subdomains — so this app origin has no stored token
+        // and would ask them to sign in AGAIN. Recover the access token from
+        // the cookie (same-origin refresh route, same pattern as the /login
+        // page); the token poll below then upgrades to welcome-back within
+        // 500ms. Fire-and-forget: a failed refresh simply leaves the normal
+        // sign-in greeting in place.
+        if (typeof window !== "undefined" && hasStewardAuthedCookie()) {
+          // error-policy:J4 failed cookie refresh degrades to the sign-in
+          // greeting already on screen; it never fabricates a session.
+          refreshCloudStewardSession()
+            .then((refreshed) => {
+              if (!refreshed?.token) return;
+              writeStoredStewardToken(refreshed.token);
+              try {
+                window.dispatchEvent(new CustomEvent("steward-token-sync"));
+              } catch {
+                // error-policy:J6 best-effort nudge — the poll re-reads anyway.
+              }
+            })
+            .catch(() => undefined);
+        }
         // A usable session can also LAND after this mount without any
         // elizaCloudConnected flip: the native storage bridge hydrates the
         // durable token from Capacitor Preferences asynchronously, and a web

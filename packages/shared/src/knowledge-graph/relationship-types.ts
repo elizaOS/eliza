@@ -19,7 +19,11 @@
 export const BUILT_IN_RELATIONSHIP_TYPES = [
   "follows",
   "colleague_of",
+  "friend_of",
+  "family_of",
   "partner_of",
+  "ex_partner_of",
+  "co_parent_of",
   "manages",
   "managed_by",
   "lives_at",
@@ -132,9 +136,29 @@ export class RelationshipTypeRegistry {
       metadataKeys: ["since", "team"],
       symmetric: true,
     });
+    this.registered.set("friend_of", {
+      label: "friend of",
+      metadataKeys: ["since", "cadenceDays"],
+      symmetric: true,
+    });
+    this.registered.set("family_of", {
+      label: "family of",
+      metadataKeys: ["role", "since", "cadenceDays"],
+      symmetric: true,
+    });
     this.registered.set("partner_of", {
       label: "partner of",
       metadataKeys: ["since"],
+      symmetric: true,
+    });
+    this.registered.set("ex_partner_of", {
+      label: "ex-partner of",
+      metadataKeys: ["since", "endedAt"],
+      symmetric: true,
+    });
+    this.registered.set("co_parent_of", {
+      label: "co-parent of",
+      metadataKeys: ["childId", "cadenceDays", "since"],
       symmetric: true,
     });
     this.registered.set("manages", {

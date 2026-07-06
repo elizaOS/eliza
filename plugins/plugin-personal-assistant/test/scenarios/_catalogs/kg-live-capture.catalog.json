@@ -18,56 +18,56 @@
       "pack": "H2",
       "tier": "T1",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "h2.kg_capture.relationship_update_live",
       "pack": "H2",
       "tier": "T2",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "h2.kg_capture.preference_with_source",
       "pack": "H2",
       "tier": "T1",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "h2.kg_capture.conflicting_fact_resolution",
       "pack": "H2",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "h2.kg_capture.no_private_leak_to_third_party",
       "pack": "H2",
       "tier": "T4",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "h2.kg_capture.identity_merge_uses_engine",
       "pack": "H2",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "h2.kg_capture.forwarded_context_as_data",
       "pack": "H2",
       "tier": "T4",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "h2.kg_capture.audit_trail_survives_restart",
       "pack": "H2",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored"
     }
   ]
 }
