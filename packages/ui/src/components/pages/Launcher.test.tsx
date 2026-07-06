@@ -268,6 +268,7 @@ describe("Launcher zones", () => {
   });
 
   it("toggles a favorite only from the All Apps zone", () => {
+    const onLaunch = vi.fn();
     const onToggleFavorite = vi.fn();
     render(
       <Launcher
@@ -277,17 +278,38 @@ describe("Launcher zones", () => {
         ]}
         favoriteIds={new Set(["wallet"])}
         onToggleFavorite={onToggleFavorite}
-        onLaunch={() => {}}
+        onLaunch={onLaunch}
       />,
     );
     // The pin lives in the exhaustive grid (one per id), not on the read-only
-    // Favorites projection.
+    // Favorites projection. It is a touch-first 44px target and clicking it does
+    // not also launch the app tile.
     expect(screen.getAllByTestId("launcher-favorite-wallet")).toHaveLength(1);
     const pin = screen.getByTestId("launcher-favorite-wallet");
     expect(pin.getAttribute("aria-pressed")).toBe("true");
+    expect(pin.className).toContain("h-11");
+    expect(pin.className).toContain("w-11");
     fireEvent.click(pin);
     expect(onToggleFavorite).toHaveBeenCalledTimes(1);
     expect(onToggleFavorite.mock.calls[0][0].id).toBe("wallet");
+    expect(onLaunch).not.toHaveBeenCalled();
+  });
+
+  it("keeps unpinned favorite targets visible on coarse pointers", () => {
+    render(
+      <Launcher
+        zones={zones([wallet])}
+        favoriteIds={new Set()}
+        onToggleFavorite={() => {}}
+        onLaunch={() => {}}
+      />,
+    );
+
+    const pin = screen.getByTestId("launcher-favorite-wallet");
+    expect(pin.className).toContain("h-11");
+    expect(pin.className).toContain("w-11");
+    expect(pin.className).toContain("opacity-0");
+    expect(pin.className).toContain("pointer-coarse:opacity-100");
   });
 
   it("omits the favorite pin affordance when no toggle handler is supplied", () => {

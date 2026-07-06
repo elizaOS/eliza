@@ -121,12 +121,11 @@ const IconTile = memo(function IconTile({
         ) : null}
         {onToggleFavorite ? (
           // The pin lives on the tile itself (the only place a launcher-scoped
-          // favorite has meaning). Neutral, hidden until hover/focus so the grid
-          // stays calm; the filled/gold state persists once pinned so a Favorites
-          // member reads as pinned even at rest.
+          // favorite has meaning). Fine pointers keep the quiet hover/focus
+          // reveal, while coarse pointers get a visible 44px target at rest so
+          // Favorites can be managed on the phone-primary surface.
           <Button
-            variant="ghost"
-            size="icon-sm"
+            unstyled
             data-testid={`launcher-favorite-${entry.id}`}
             aria-pressed={isFavorite}
             aria-label={
@@ -139,14 +138,14 @@ const IconTile = memo(function IconTile({
               onToggleFavorite(entry);
             }}
             className={cn(
-              "absolute -right-2 -top-2 h-6 w-6 rounded-full bg-black/55 p-0 text-white transition-opacity hover:bg-black/70",
+              "absolute -right-3.5 -top-3.5 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/50 bg-card/85 p-0 text-card-foreground shadow-sm transition-[background-color,opacity,transform] active:scale-[0.98] hover:bg-card",
               isFavorite
                 ? "text-warn opacity-100"
-                : "text-white/80 opacity-0 focus-visible:opacity-100 group-hover:opacity-100",
+                : "opacity-0 focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100",
             )}
           >
             <Star
-              className="h-3.5 w-3.5"
+              className="h-4 w-4"
               fill={isFavorite ? "currentColor" : "none"}
               aria-hidden
             />
