@@ -38,6 +38,7 @@ const BUILTIN_INLINE_KINDS = [
   "form",
   "workflow",
   "checklist",
+  "background",
 ] as const;
 
 // A representative marker per built-in, in the exact wire format its parser
@@ -52,6 +53,8 @@ const SAMPLE: Record<(typeof BUILTIN_INLINE_KINDS)[number], string> = {
     '[WORKFLOW]\n{"id":"w1","title":"Deploy","steps":[{"label":"build","status":"done"},{"label":"push","status":"running"}]}\n[/WORKFLOW]',
   checklist:
     '[CHECKLIST]\n{"title":"Todos","items":[{"content":"read","status":"completed"},{"content":"edit","status":"in_progress"}]}\n[/CHECKLIST]',
+  // A bare marker — the picker widget is self-contained state, no body.
+  background: "[BACKGROUND]",
 };
 
 const ctx: InlineWidgetContext = {

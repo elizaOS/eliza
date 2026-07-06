@@ -10,6 +10,10 @@
  */
 
 import {
+  type BackgroundMatch,
+  findBackgroundRegions,
+} from "../message-background-parser";
+import {
   type ChecklistMatch,
   findChecklistRegions,
 } from "../message-checklist-parser";
@@ -23,6 +27,7 @@ import {
   findWorkflowRegions,
   type WorkflowMatch,
 } from "../message-workflow-parser";
+import { BackgroundWidget } from "./background-widget";
 import { ChoiceWidget } from "./ChoiceWidget";
 import { FollowupsWidget } from "./followups";
 import { FormRequest } from "./form-request";
@@ -76,6 +81,13 @@ registerInlineWidget<WorkflowMatch>({
   parse: (text) => findWorkflowRegions(text).map((m) => ({ ...m, data: m })),
   keyFor: (m) => `workflow:${m.workflow.id}`,
   render: (m, _ctx, key) => <WorkflowSteps key={key} workflow={m.workflow} />,
+});
+
+registerInlineWidget<BackgroundMatch>({
+  kind: "background",
+  parse: (text) => findBackgroundRegions(text).map((m) => ({ ...m, data: m })),
+  keyFor: (m) => `background:${m.start}`,
+  render: (_m, _ctx, key) => <BackgroundWidget key={key} />,
 });
 
 registerInlineWidget<ChecklistMatch>({

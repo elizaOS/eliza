@@ -73,6 +73,10 @@ type BackgroundPlan =
 	// The user wants to upload a background — no color/image/prompt to apply.
 	// Route them to the /background view instead of a dead end (#13538 handoff).
 	| { op: "navigate-upload" }
+	// The user wants to CHANGE/CHOOSE their background but named no concrete
+	// color/image/preset/prompt/catalog — render the in-chat wallpaper picker
+	// (BackgroundSettingsControls filmstrip) instead of dead-ending.
+	| { op: "pick" }
 	| { op: "set"; generatePrompt: string };
 
 // Any reference to the background surface — gates the action so unrelated chat
@@ -127,6 +131,15 @@ function isUploadIntent(text: string): boolean {
 // prompt like "from this attachment".
 const ATTACHMENT_REFERENCE_RE =
 	/\b(this|that|these|those|attached|attachment|upload(?:ed)?|file)\b/i;
+
+// A generic ask to CHANGE/CHOOSE the background surface with no concrete target
+// ("change my background", "let me pick a wallpaper", "show me background
+// options", "I want to customize my backdrop"). Fires only as the last resort
+// after every concrete resolution fails, and renders the in-chat picker widget.
+// Deliberately narrow verbs so a concrete "set the background to teal" (SET_RE
+// with a resolvable color) is never demoted to the picker.
+const PICK_INTENT_RE =
+	/\b(change|choose|pick|customi[sz]e|customi[sz]ing|options?|different|another|new|browse|select)\b/i;
 
 // ── Programmable GLSL shader (#10694) ───────────────────────────────────────
 // The action names a preset id; the GLSL source lives in @elizaos/ui, where the
@@ -482,6 +495,11 @@ export function inferBackgroundPlan(
 		if (prompt.length >= 3) return { op: "set", generatePrompt: prompt };
 	}
 
+	// Last resort: the message is about the background surface and expresses a
+	// change/choose/customize intent, but named nothing concrete to apply. Render
+	// the in-chat wallpaper picker rather than dead-ending on null.
+	if (PICK_INTENT_RE.test(trimmed)) return { op: "pick" };
+
 	return null;
 }
 
@@ -729,6 +747,16 @@ export function createBackgroundAction(
 						text: reply,
 						values: { op: "navigate-upload", viewId: "background" },
 					};
+				}
+				if (plan.op === "pick") {
+					// No concrete target — render the in-chat wallpaper picker inline.
+					// The [BACKGROUND] marker is parsed by the UI into the
+					// BackgroundSettingsControls filmstrip; the picks it makes drive the
+					// same persisted background config globally (no view event needed).
+					const reply =
+						"Here are your background options — pick one:\n\n[BACKGROUND]";
+					await callback?.({ text: reply });
+					return { success: true, text: reply, values: { op: "pick" } };
 				}
 				if ("mode" in plan && plan.mode === "catalog") {
 					// Named curated-catalog entry. The renderer resolves catalogId →

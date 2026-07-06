@@ -38,7 +38,14 @@ describe("inline-widget registry", () => {
       getInlineWidgets()
         .map((w) => w.kind)
         .sort(),
-    ).toEqual(["checklist", "choice", "followups", "form", "workflow"]);
+    ).toEqual([
+      "background",
+      "checklist",
+      "choice",
+      "followups",
+      "form",
+      "workflow",
+    ]);
   });
 
   it("lets a plugin register a new marker and render it end to end", () => {

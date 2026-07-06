@@ -59,6 +59,7 @@ affordances.
 | **Form** | `[FORM]\n{json}\n[/FORM]` | any action emitting a form schema | `message-form-parser.ts` | `form-request.tsx` `FormRequest` | `submitForm` | both | wired + verified |
 | **Workflow** | `[WORKFLOW]\n{json}\n[/WORKFLOW]` | any agent emitting an ordered step pipeline (#13536) | `message-workflow-parser.ts` | `workflow-steps.tsx` `WorkflowSteps` | none (display-only; re-emit to advance) | both | wired + verified |
 | **Checklist** | `[CHECKLIST]\n{json}\n[/CHECKLIST]` | any agent emitting a standalone todo list (#13536) | `message-checklist-parser.ts` | `task-pipeline.tsx` `PlanChecklist` | none (display-only; re-emit to mutate in place) | both | wired + verified |
+| **Background** | `[BACKGROUND]` (bare marker) | `BACKGROUND` op=`pick` -> `plugin-app-control/src/actions/background.ts` | `message-background-parser.ts` | `background-widget.tsx` `BackgroundWidget` (`BackgroundSettingsControls` filmstrip in `ChatWidgetShell`) | none (picks drive the persisted `useBackgroundConfig` directly, applied globally) | both | wired + verified |
 
 (1) The Task widget is registered by `plugin-task-coordinator` (`registerTaskWidget()`), **not** auto-loaded in `inline-builtins`. It renders on both surfaces only when the orchestrator UI is loaded, by design (`MessageContent` knows nothing about tasks).
 

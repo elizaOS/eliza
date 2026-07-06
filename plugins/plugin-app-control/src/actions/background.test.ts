@@ -184,6 +184,31 @@ describe("inferBackgroundPlan", () => {
 		).toBeNull();
 	});
 
+	it("renders the in-chat picker for a generic change/choose intent with no target", () => {
+		expect(inferBackgroundPlan("change my background", undefined)).toEqual({
+			op: "pick",
+		});
+		expect(
+			inferBackgroundPlan("let me pick a different wallpaper", undefined),
+		).toEqual({ op: "pick" });
+		expect(
+			inferBackgroundPlan("show me my background options", undefined),
+		).toEqual({ op: "pick" });
+	});
+
+	it("does NOT demote a concrete color/preset request to the picker", () => {
+		// A resolvable color still wins over the generic pick fallback.
+		expect(
+			inferBackgroundPlan("choose a green background", undefined),
+		).toMatchObject({ op: "set", mode: "shader" });
+		expect(
+			inferBackgroundPlan(
+				"change the background to the aurora shader",
+				undefined,
+			),
+		).toMatchObject({ op: "set", mode: "glsl", presetId: "aurora" });
+	});
+
 	it("honors explicit options over text", () => {
 		expect(
 			inferBackgroundPlan("change my background", undefined, {
@@ -345,6 +370,22 @@ describe("BACKGROUND action handler", () => {
 		expect(emitted).toEqual([{ op: "set", mode: "glsl", presetId: "lava" }]);
 		expect(result.success).toBe(true);
 		expect(replies[0].toLowerCase()).toContain("lava");
+	});
+
+	it("emits the [BACKGROUND] picker marker for a generic change intent (no view event)", async () => {
+		const { action, emitted, replies, callback } = setup();
+		const result = await action.handler(
+			runtime,
+			message("change my background"),
+			undefined,
+			undefined,
+			callback,
+		);
+		// No apply event — the picker widget owns the selection, applied globally
+		// through the persisted background config, not a one-shot view event.
+		expect(emitted).toEqual([]);
+		expect(result.success).toBe(true);
+		expect(replies[0]).toContain("[BACKGROUND]");
 	});
 
 	it("broadcasts a uniform tweak (mode glsl, uniforms only) for a relative ask", async () => {
