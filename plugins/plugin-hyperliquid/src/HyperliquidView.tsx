@@ -12,7 +12,6 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Button } from "@elizaos/ui/components/ui/button";
 import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
 import { type CSSProperties, useCallback } from "react";
 import {
@@ -27,32 +26,16 @@ function navigateHome(): void {
 	dispatchNavigateViewEvent({ viewId: "home", viewPath: "/" });
 }
 
-const AGENT_TOOLBAR_STYLE: CSSProperties = {
-	display: "flex",
-	gap: "0.5rem",
-	alignItems: "center",
-	flexWrap: "wrap",
-	padding: "0.4rem 0.5rem",
-};
-
-const AGENT_BUTTON_STYLE: CSSProperties = {
-	display: "inline-flex",
-	alignItems: "center",
-	justifyContent: "center",
-	padding: "0.4rem 0.85rem",
-	borderRadius: "0.4rem",
-	border: "1px solid var(--primary, #d2691e)",
-	background: "var(--primary, #d2691e)",
-	color: "var(--primary-foreground, #fff)",
-	fontWeight: 600,
-	fontSize: "0.85rem",
-	cursor: "pointer",
-};
-
-const AGENT_BUTTON_OUTLINE_STYLE: CSSProperties = {
-	...AGENT_BUTTON_STYLE,
-	background: "transparent",
-	color: "var(--primary, #d2691e)",
+const AGENT_HIDDEN_CONTROL_STYLE: CSSProperties = {
+	position: "absolute",
+	width: 1,
+	height: 1,
+	margin: -1,
+	padding: 0,
+	overflow: "hidden",
+	clipPath: "inset(50%)",
+	whiteSpace: "nowrap",
+	border: 0,
 };
 
 export function HyperliquidView() {
@@ -129,36 +112,24 @@ export function HyperliquidView() {
 
 	return (
 		<>
-			<div
-				role="toolbar"
-				aria-label="Hyperliquid controls"
-				style={AGENT_TOOLBAR_STYLE}
-			>
-				<Button
-					unstyled
+			<div aria-hidden="true">
+				<button
 					ref={refreshControl.ref}
 					{...refreshControl.agentProps}
 					type="button"
 					onClick={() => void refresh()}
 					disabled={loading}
-					style={{
-						...AGENT_BUTTON_STYLE,
-						opacity: loading ? 0.6 : 1,
-						cursor: loading ? "not-allowed" : "pointer",
-					}}
-				>
-					{loading ? "Refreshing…" : "Refresh"}
-				</Button>
-				<Button
-					unstyled
+					tabIndex={-1}
+					style={AGENT_HIDDEN_CONTROL_STYLE}
+				/>
+				<button
 					ref={homeControl.ref}
 					{...homeControl.agentProps}
 					type="button"
 					onClick={navigateHome}
-					style={AGENT_BUTTON_OUTLINE_STYLE}
-				>
-					Home
-				</Button>
+					tabIndex={-1}
+					style={AGENT_HIDDEN_CONTROL_STYLE}
+				/>
 			</div>
 			<HyperliquidSpatialView snapshot={snapshot} onAction={onAction} />
 		</>

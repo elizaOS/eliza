@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 /**
- * Renders BackgroundSettingsControls against a seeded in-memory App store to
- * assert undo/redo affordances appear only when history exists and fire the
+ * Renders the BackgroundSettingsControls wallpaper gallery against a seeded
+ * in-memory App store: asserts the gallery renders live tiles, marks the active
+ * wallpaper, applies a choice on tap through the shared store, and that the
+ * revert (undo/redo) affordances appear only when history exists and fire the
  * store callbacks. jsdom, no backend.
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __setAppValueForTests } from "../../state/app-store";
+import type { BackgroundConfig } from "../../state/ui-preferences";
 import { BackgroundSettingsControls } from "./BackgroundSettingsControls";
 
 function seed(
@@ -15,11 +18,16 @@ function seed(
     canRedoBackground?: boolean;
     undoBackgroundConfig?: () => void;
     redoBackgroundConfig?: () => void;
+    setBackgroundConfig?: (config: BackgroundConfig) => void;
+    backgroundConfig?: BackgroundConfig;
   } = {},
 ) {
   __setAppValueForTests({
-    backgroundConfig: { mode: "shader", color: "#ef5a1f" },
-    setBackgroundConfig: vi.fn(),
+    backgroundConfig: opts.backgroundConfig ?? {
+      mode: "shader",
+      color: "#ef5a1f",
+    },
+    setBackgroundConfig: opts.setBackgroundConfig ?? vi.fn(),
     undoBackgroundConfig: opts.undoBackgroundConfig ?? vi.fn(),
     redoBackgroundConfig: opts.redoBackgroundConfig ?? vi.fn(),
     canUndoBackground: opts.canUndoBackground ?? false,
@@ -95,5 +103,54 @@ describe("BackgroundSettingsControls undo/redo", () => {
 
     fireEvent.click(screen.getByLabelText("Undo background change"));
     expect(undoBackgroundConfig).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("BackgroundSettingsControls wallpaper gallery", () => {
+  it("renders the gallery with live wallpaper tiles", () => {
+    seed();
+    render(<BackgroundSettingsControls />);
+
+    const gallery = screen.getByTestId("background-catalog-gallery");
+    expect(gallery).toBeTruthy();
+    // Curated catalog tiles and color presets both render as tappable tiles.
+    expect(
+      screen.getByLabelText("Set background to Misty Forest"),
+    ).toBeTruthy();
+    expect(screen.getByLabelText("Set background to Green")).toBeTruthy();
+  });
+
+  it("marks the active wallpaper as pressed and leaves others unpressed", () => {
+    // The live config is the Green shader color, so its tile is the active one.
+    seed({ backgroundConfig: { mode: "shader", color: "#059669" } });
+    render(<BackgroundSettingsControls />);
+
+    const green = screen.getByLabelText("Set background to Green");
+    const rose = screen.getByLabelText("Set background to Rose");
+    expect(green.getAttribute("aria-pressed")).toBe("true");
+    expect(rose.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("applies a wallpaper on tap through the shared store", () => {
+    const setBackgroundConfig = vi.fn();
+    seed({ setBackgroundConfig });
+    render(<BackgroundSettingsControls />);
+
+    fireEvent.click(screen.getByLabelText("Set background to Rose"));
+    expect(setBackgroundConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "shader", color: "#e11d48" }),
+    );
+  });
+
+  it("lays the filmstrip variant out as a single scroll row of tiles", () => {
+    seed();
+    render(<BackgroundSettingsControls variant="filmstrip" />);
+
+    const root = screen.getByTestId("background-settings-controls");
+    expect(root.getAttribute("data-variant")).toBe("filmstrip");
+    // Tiles still apply on tap in the condensed sheet.
+    expect(
+      screen.getByLabelText("Set background to Misty Forest"),
+    ).toBeTruthy();
   });
 });

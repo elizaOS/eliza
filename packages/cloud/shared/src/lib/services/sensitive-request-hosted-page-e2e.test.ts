@@ -448,7 +448,7 @@ describe("#14326 secret flow stores the value without leaking it into transport"
     // Invariant: the secret value is absent from every redacted surface and
     // from the connector DM payload. Search the full serialized blobs.
     const publicView = JSON.stringify(
-      await service.getPublicByToken(created.request.id, created.submitToken).catch(() => ({})),
+      await service.getPublicByToken(created.request.id, created.submitToken),
     );
     const privateView = JSON.stringify(submitted);
     const deliveryPayloads = capturedDeliveries.map((d) => d.payload).join("|");

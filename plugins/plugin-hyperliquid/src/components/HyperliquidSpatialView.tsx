@@ -256,6 +256,7 @@ export function HyperliquidSpatialView({
 
 			{!status.vaultReady &&
 			status.credentialMode !== "local_key" &&
+			!status.executionBlockedReason &&
 			status.vaultGuidance ? (
 				<Text style="caption" tone="muted">
 					{status.vaultGuidance}

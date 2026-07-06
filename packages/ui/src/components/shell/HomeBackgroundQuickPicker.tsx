@@ -10,7 +10,10 @@
  * Surfaced via `createPortal` at the shell-overlay z-layer so it floats above
  * the home rail. A tinted scrim dims the home behind it; tapping the scrim, the
  * grabber, or pressing Escape dismisses. The sheet enters with a settle-in
- * translate that stills under prefers-reduced-motion.
+ * translate that stills under prefers-reduced-motion. The sheet shows the
+ * gallery's condensed `filmstrip` variant: a horizontal row of live wallpaper
+ * tiles plus the make-with-AI and tool affordances, so it reads as the same
+ * gallery, just reached from the home.
  */
 
 import { X } from "lucide-react";
@@ -127,12 +130,13 @@ export function HomeBackgroundQuickPicker({
 
         <header className="flex w-full items-center justify-between">
           <div className="flex flex-col">
-            <h2 id={titleId} className="text-sm font-semibold text-txt">
-              Background
+            <h2
+              id={titleId}
+              className="text-base font-semibold text-txt-strong"
+            >
+              Wallpaper
             </h2>
-            <p className="text-xs text-muted">
-              Pick a wallpaper. It applies right away.
-            </p>
+            <p className="text-xs text-muted">Tap a tile to try it on.</p>
           </div>
           <Button
             type="button"
@@ -146,8 +150,11 @@ export function HomeBackgroundQuickPicker({
           </Button>
         </header>
 
-        <div className="max-h-[60vh] w-full overflow-y-auto overscroll-contain">
-          <BackgroundSettingsControls className="max-w-none" />
+        <div className="w-full overscroll-contain">
+          <BackgroundSettingsControls
+            variant="filmstrip"
+            className="max-w-none"
+          />
         </div>
       </section>
     </div>,

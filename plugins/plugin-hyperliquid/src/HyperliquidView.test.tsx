@@ -4,12 +4,18 @@
 // the rendered DOM: the same component the bundle exports for the "gui", "xr",
 // and (via the spatial terminal registry) "tui" modalities. Asserts the
 // populated markets/positions/orders snapshot, the readiness tiles, the
-// executionBlockedReason + vault-guidance banners, the positions/orders
+// executionBlockedReason and vault-guidance banners, the positions/orders
 // read-blocked surfaces, the DOM-clickable Refresh / Back controls, the
 // read-blocked + error + unavailable branches — functional parity with the
 // retired HyperliquidTuiView surface. Also covers the unchanged `interact`
 // terminal capability handler the view bundle re-exports.
 
+import {
+	type AgentElementSnapshot,
+	AgentSurfaceProvider,
+	getViewRegistry,
+	handleAgentSurfaceCapability,
+} from "@elizaos/ui/agent-surface";
 import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
 import {
 	cleanup,
@@ -203,13 +209,25 @@ describe("HyperliquidView — populated snapshot", () => {
 		expect(screen.getByText("Account")).toBeTruthy();
 	});
 
-	it("surfaces the executionBlockedReason and vault guidance banners", async () => {
+	it("surfaces the executionBlockedReason without duplicate vault guidance", async () => {
 		render(React.createElement(HyperliquidView));
 		await screen.findByText("ETH");
 		expect(
 			screen.getByText(/Signed Hyperliquid exchange mutations are disabled/),
 		).toBeTruthy();
-		// vault.ready=false and credentialMode!=local_key -> vault guidance shows.
+		expect(
+			screen.queryByText("Connect a managed vault to enable signed requests."),
+		).toBeNull();
+	});
+
+	it("shows vault guidance when no specific execution block is present", async () => {
+		hyperliquidClient.hyperliquidStatus.mockResolvedValue({
+			...sampleStatus,
+			executionBlockedReason: null,
+		});
+
+		render(React.createElement(HyperliquidView));
+		await screen.findByText("ETH");
 		expect(
 			screen.getByText("Connect a managed vault to enable signed requests."),
 		).toBeTruthy();
@@ -399,6 +417,112 @@ describe("HyperliquidView — terminal interact capabilities", () => {
 	it("throws on an unsupported capability", async () => {
 		await expect(interact("terminal-hyperliquid-unknown")).rejects.toThrow(
 			'Unsupported capability "terminal-hyperliquid-unknown"',
+		);
+	});
+});
+
+// The visible orange toolbar was removed (#14594); the refresh/home controls now
+// live in an aria-hidden, off-screen wrapper. These assert the agent-surface path
+// still drives them — they remain real registered buttons, keep their handlers,
+// and fire when the agent activates them through the capability bridge (the same
+// `agent-click` route the pill/automation uses), independent of any visible pixel.
+describe("HyperliquidView — hidden agent-surface controls fire for the agent", () => {
+	const VIEW = "hyperliquid-agent-surface-test";
+
+	function renderWithSurface() {
+		return render(
+			<AgentSurfaceProvider viewId={VIEW} viewType="gui">
+				<HyperliquidView />
+			</AgentSurfaceProvider>,
+		);
+	}
+
+	it("keeps refresh + home in the DOM but visually + a11y hidden", async () => {
+		renderWithSurface();
+		await screen.findByText("ETH");
+
+		const refreshBtn = document.querySelector<HTMLElement>(
+			'[data-agent-id="hyperliquid-refresh"]',
+		);
+		const homeBtn = document.querySelector<HTMLElement>(
+			'[data-agent-id="hyperliquid-home"]',
+		);
+		expect(refreshBtn?.tagName).toBe("BUTTON");
+		expect(homeBtn?.tagName).toBe("BUTTON");
+		// Clipped off-screen inside an aria-hidden wrapper — not display:none, so
+		// the node stays activatable for the agent surface.
+		expect(refreshBtn?.closest('[aria-hidden="true"]')).toBeTruthy();
+		expect(homeBtn?.closest('[aria-hidden="true"]')).toBeTruthy();
+		expect(refreshBtn?.style.clipPath).toContain("inset");
+	});
+
+	it("registers both controls as clickable buttons on the surface", async () => {
+		renderWithSurface();
+		await screen.findByText("ETH");
+		const registry = getViewRegistry(VIEW, "gui");
+		if (!registry) throw new Error("registry missing");
+		const elements = handleAgentSurfaceCapability(
+			registry,
+			"list-elements",
+			undefined,
+		) as AgentElementSnapshot[];
+		const ids = elements.map((e) => e.id);
+		expect(ids).toContain("hyperliquid-refresh");
+		expect(ids).toContain("hyperliquid-home");
+		const refresh = elements.find((e) => e.id === "hyperliquid-refresh");
+		expect(refresh?.role).toBe("button");
+		expect(refresh?.clickable).toBe(true);
+	});
+
+	it("re-fetches when the agent activates the hidden refresh control", async () => {
+		renderWithSurface();
+		await screen.findByText("ETH");
+		expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(1);
+		const registry = getViewRegistry(VIEW, "gui");
+		if (!registry) throw new Error("registry missing");
+
+		const result = handleAgentSurfaceCapability(registry, "agent-click", {
+			id: "hyperliquid-refresh",
+		});
+		expect(result).toMatchObject({ ok: true, id: "hyperliquid-refresh" });
+		await waitFor(() =>
+			expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(2),
+		);
+		expect(hyperliquidClient.hyperliquidMarkets).toHaveBeenCalledTimes(2);
+	});
+
+	it("navigates home when the agent activates the hidden home control", async () => {
+		renderWithSurface();
+		await screen.findByText("ETH");
+		const registry = getViewRegistry(VIEW, "gui");
+		if (!registry) throw new Error("registry missing");
+
+		const events: CustomEvent[] = [];
+		const listener = (e: Event) => events.push(e as CustomEvent);
+		window.addEventListener(NAVIGATE_VIEW_EVENT, listener);
+		try {
+			const result = handleAgentSurfaceCapability(registry, "agent-click", {
+				id: "hyperliquid-home",
+			});
+			expect(result).toMatchObject({ ok: true, id: "hyperliquid-home" });
+		} finally {
+			window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);
+		}
+		expect(events).toHaveLength(1);
+		expect(events[0]?.detail).toMatchObject({ viewId: "home", viewPath: "/" });
+	});
+
+	it("still fires the hidden control's own onClick when clicked directly", async () => {
+		renderWithSurface();
+		await screen.findByText("ETH");
+		expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(1);
+		const refreshBtn = document.querySelector<HTMLElement>(
+			'[data-agent-id="hyperliquid-refresh"]',
+		);
+		if (!refreshBtn) throw new Error("hidden refresh control missing");
+		fireEvent.click(refreshBtn);
+		await waitFor(() =>
+			expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(2),
 		);
 	});
 });

@@ -119,6 +119,21 @@ const PERMISSIONS_SHELL_KEY: SettingsWritableKey = {
 			: "Shell access is off. The agent can no longer run shell commands.",
 };
 
+const AUTO_TRAINING_KEY: SettingsWritableKey = {
+	description:
+		"Whether trajectory thresholds may automatically start the training pipeline.",
+	valueType: "boolean",
+	buildRequest: (enabled) => ({
+		method: "POST",
+		path: "/api/training/auto/config",
+		body: { autoTrain: enabled },
+	}),
+	successText: (enabled) =>
+		enabled
+			? "Auto-training is on. The training pipeline can start from trajectory thresholds."
+			: "Auto-training is off. Trajectory counters can still collect data, but automatic training will not start.",
+};
+
 /**
  * The single source of truth mapping every built-in settings section to its
  * write capability. Adding a built-in section without a matching entry fails the
@@ -182,9 +197,10 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 			"Voice enable/config is not yet exposed as a semantic action; it currently lives behind the voice section controls.",
 	},
 	capabilities: {
-		kind: "unwired",
-		reason:
-			"Per-capability toggles route through plugin config, not a single-value settings write.",
+		kind: "route",
+		summary:
+			"Capability toggles that already have backend settings routes, including automatic training.",
+		keys: { "auto-training": AUTO_TRAINING_KEY },
 	},
 	apps: {
 		kind: "unwired",
@@ -522,13 +538,18 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			"ENABLE_SHELL",
 			"REVOKE_SHELL_ACCESS",
 			"GRANT_SHELL_ACCESS",
+			"AUTO_TRAINING",
+			"AUTOMATIC_TRAINING",
+			"TOGGLE_AUTO_TRAINING",
+			"ENABLE_AUTO_TRAINING",
+			"DISABLE_AUTO_TRAINING",
 		],
 		description:
-			"Change a built-in settings VALUE from chat — most importantly turning OS/runtime permissions like shell access on or off (turn off / disable / revoke shell access, or turn it back on) via section=permissions key=shell. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section (permissions shell access) or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
+			"Change a built-in settings VALUE from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, and turning automatic training on/off via section=capabilities key=auto-training. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section (permissions shell access, capabilities auto-training) or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). This CHANGES a setting's value; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
 		descriptionCompressed:
-			"settings get|set|list section/key/value — CHANGE a setting VALUE from chat, incl. turning shell access / OS permissions on/off (section=permissions key=shell); delegates model/background/identity/connectors/secrets to their dedicated actions",
+			"settings get|set|list section/key/value — CHANGE a setting VALUE from chat, incl. shell access (section=permissions key=shell) and auto-training (section=capabilities key=auto-training); delegates model/background/identity/connectors/secrets",
 		routingHint:
-			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE is SETTINGS even though that permission lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
+			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE is SETTINGS even though that permission lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -541,14 +562,14 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			{
 				name: "section",
 				description:
-					"Canonical settings section id or alias (e.g. permissions, ai-model, background, secrets). Required for get/set.",
+					"Canonical settings section id or alias (e.g. permissions, capabilities, ai-model, background, secrets). Required for get/set.",
 				required: false,
 				schema: { type: "string" },
 			},
 			{
 				name: "key",
 				description:
-					"The specific toggle within the section (e.g. shell for permissions). Optional; defaults to the section's primary key.",
+					"The specific toggle within the section (e.g. shell for permissions, auto-training for capabilities). Optional; defaults to the section's primary key.",
 				required: false,
 				schema: { type: "string" },
 			},
