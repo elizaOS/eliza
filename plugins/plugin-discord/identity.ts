@@ -165,21 +165,25 @@ export function buildDiscordWorldMetadata(
 	const roles: Record<string, Role> = {
 		[ownerId]: Role.OWNER,
 	};
+	const roleSources: Record<string, "owner" | "connector_admin"> = {
+		[ownerId]: "owner",
+	};
 
-	// The Discord guild owner should also be recognized as an owner in their
-	// guild.  Map the guild owner's Discord snowflake to a runtime entity ID
-	// and grant OWNER so that role resolution picks them up even when the bot-
-	// application owner extraction didn't include them.
+	// Discord guild ownership is connector provenance, not app ownership. Keep
+	// the grant auditable and let core's connector-admin whitelist decide whether
+	// it can rise above GUEST at read time.
 	if (guildOwnerId && DISCORD_SNOWFLAKE_PATTERN.test(guildOwnerId)) {
 		const guildOwnerEntityId = createUniqueUuid(runtime, guildOwnerId);
 		if (guildOwnerEntityId !== ownerId) {
-			roles[guildOwnerEntityId] = Role.OWNER;
+			roles[guildOwnerEntityId] = Role.ADMIN;
+			roleSources[guildOwnerEntityId] = "connector_admin";
 		}
 	}
 
 	return {
 		ownership: { ownerId },
 		roles,
+		roleSources,
 	};
 }
 

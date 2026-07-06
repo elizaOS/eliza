@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+	buildDiscordWorldMetadata,
 	extractDiscordOwnerUserIds,
 	extractDiscordTeamAdminUserIds,
 	parseDiscordOwnerUserIds,
@@ -103,5 +104,45 @@ describe("parseDiscordOwnerUserIds", () => {
 		expect(parseDiscordOwnerUserIds("not json")).toEqual([]);
 		expect(parseDiscordOwnerUserIds("")).toEqual([]);
 		expect(parseDiscordOwnerUserIds(42)).toEqual([]);
+	});
+});
+
+describe("buildDiscordWorldMetadata", () => {
+	it("records the app owner as OWNER with owner provenance", () => {
+		const metadata = buildDiscordWorldMetadata(
+			{
+				agentId: "00000000-0000-0000-0000-000000000001",
+				character: { name: "Agent" },
+				getSetting: () => undefined,
+			} as never,
+			undefined,
+		);
+
+		const ownerId = metadata?.ownership?.ownerId;
+		expect(ownerId).toBeTruthy();
+		expect(metadata?.roles?.[ownerId as string]).toBe("OWNER");
+		expect(metadata?.roleSources?.[ownerId as string]).toBe("owner");
+	});
+
+	it("records Discord guild owners as connector-admin sourced ADMIN, not bare OWNER", () => {
+		const metadata = buildDiscordWorldMetadata(
+			{
+				agentId: "00000000-0000-0000-0000-000000000001",
+				character: { name: "Agent" },
+				getSetting: () => undefined,
+			} as never,
+			SNOWFLAKE_A,
+		);
+
+		const ownerId = metadata?.ownership?.ownerId;
+		const guildOwnerEntityId = Object.keys(metadata?.roles ?? {}).find(
+			(entityId) => entityId !== ownerId,
+		);
+
+		expect(guildOwnerEntityId).toBeTruthy();
+		expect(metadata?.roles?.[guildOwnerEntityId as string]).toBe("ADMIN");
+		expect(metadata?.roleSources?.[guildOwnerEntityId as string]).toBe(
+			"connector_admin",
+		);
 	});
 });
