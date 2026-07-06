@@ -9,8 +9,13 @@ specific commit. Verification logic lives in
 caller of `certify:verify` and perform no verification logic of its own
 (#14546 / #14547).
 
-Current key fingerprint (first 16 hex of sha256 over the SPKI DER):
-`3ac9e3e625a9ed2f`.
+**The public key PEM is not committed yet.** The key custodian (repo owner)
+generates the production keypair on a trusted machine and lands
+`certification-public-key.pem` — recording its fingerprint (first 16 hex of
+sha256 over the SPKI DER) here — in a dedicated reviewed PR; merging that PR
+is the act of trusting the key. Until it lands, the promotion gate (#14547)
+cannot be enabled. There is deliberately no default trust anchor in code:
+`certify:verify` requires an explicit `--pubkey`.
 
 ## Trust model — binding rules for the CI gate (#14547)
 
