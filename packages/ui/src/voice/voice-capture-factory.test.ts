@@ -205,6 +205,38 @@ describe("createVoiceCapture", () => {
     });
   });
 
+  it("prefers native TalkMode over an explicit local-inference preference on native mobile", async () => {
+    // The on-device Kokoro/ASR default resolves ASR to `local-inference` on
+    // desktop, but on native mobile the local-inference ASR assets are not
+    // staged — the readiness probe can report ready and then 502 at stop() with
+    // no recoverable fallback. So on a native platform the OS recognizer
+    // (TalkMode) must win ahead of the probe even when the caller passes
+    // `asrProvider: "local-inference"`.
+    isNativePlatformMock.mockReturnValue(true);
+    isLocalInferenceAsrReadyMock.mockResolvedValue(true);
+    const talkMode = makeFakeTalkMode();
+    getTalkModePluginMock.mockReturnValue(talkMode as never);
+    const onTranscript = vi.fn();
+
+    const capture = createVoiceCapture({
+      onTranscript,
+      asrProvider: "local-inference",
+    });
+    await capture.start();
+
+    expect(talkMode.start).toHaveBeenCalledTimes(1);
+    expect(startLocalAsrRecorderMock).not.toHaveBeenCalled();
+    // The native path is chosen ahead of the local-inference readiness probe.
+    expect(isLocalInferenceAsrReadyMock).not.toHaveBeenCalled();
+
+    talkMode.emit("transcript", { transcript: "hello", isFinal: true });
+    expect(onTranscript).toHaveBeenLastCalledWith({
+      text: "hello",
+      final: true,
+      backend: "talkmode",
+    });
+  });
+
   it("finalizeOnStop commits the running interim as the final turn (push-to-talk)", async () => {
     isNativePlatformMock.mockReturnValue(true);
     const talkMode = makeFakeTalkMode();
