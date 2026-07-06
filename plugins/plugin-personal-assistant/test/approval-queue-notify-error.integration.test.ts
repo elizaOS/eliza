@@ -18,6 +18,7 @@ import {
   Service,
   ServiceType,
 } from "@elizaos/core";
+import { schedulingPlugin } from "@elizaos/plugin-scheduling";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
@@ -71,11 +72,12 @@ beforeAll(async () => {
   stateDir = mkdtempSync(join(tmpdir(), "approval-notify-err-"));
   process.env.ELIZA_STATE_DIR = stateDir;
   const result = await createRealTestRuntime({
-    plugins: [personalAssistantPlugin],
+    plugins: [schedulingPlugin, personalAssistantPlugin],
   });
   runtime = result.runtime;
   cleanup = result.cleanup;
   await runtime.registerService(FailingNotificationService);
+  await runtime.getServiceLoadPromise(ServiceType.NOTIFICATION);
   queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
 }, 180_000);
 

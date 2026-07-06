@@ -8,6 +8,10 @@ import { randomUUID } from "node:crypto";
 import { getAgentEventService, resolveApprovalService } from "@elizaos/agent";
 import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";
 import {
+  getScheduledTaskRunner,
+  type ScheduledTaskInput,
+} from "@elizaos/plugin-scheduling";
+import {
   type ApprovalAction,
   type ApprovalChannel,
   type ApprovalEnqueueInput,
@@ -21,6 +25,7 @@ import {
   ApprovalStateTransitionError,
   ApprovalTransitionConflictError,
 } from "./approval-queue.types.js";
+import { getChannelRegistry } from "./channels/index.js";
 import { buildApprovalChoiceText } from "./choice-markers.js";
 import {
   executeRawSql,
@@ -599,6 +604,93 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
   return svc && typeof svc.notify === "function" ? svc : null;
 }
 
+const APPROVAL_ESCALATION_CHANNEL_ORDER = [
+  "telegram",
+  "signal",
+  "whatsapp",
+  "discord",
+  "sms",
+  "voice",
+  "imessage",
+  "email",
+  "x_dm",
+  "push",
+  "in_app",
+] as const;
+
+function approvalEscalationSteps(
+  runtime: IAgentRuntime,
+  preferredChannel: ApprovalChannel,
+): NonNullable<ScheduledTaskInput["escalation"]>["steps"] {
+  const registry = getChannelRegistry(runtime);
+  const registered = new Set(registry?.list().map((c) => c.kind) ?? []);
+  const ordered = [preferredChannel, ...APPROVAL_ESCALATION_CHANNEL_ORDER];
+  const seen = new Set<string>();
+  return ordered
+    .filter((channelKey) => {
+      if (seen.has(channelKey) || !registered.has(channelKey)) return false;
+      seen.add(channelKey);
+      const channel = registry?.get(channelKey);
+      return (
+        channelKey === "push" ||
+        channelKey === "in_app" ||
+        Boolean(channel?.send)
+      );
+    })
+    .map((channelKey, index) => ({
+      channelKey,
+      delayMinutes: index === 0 ? 0 : 15,
+      intensity: index === 0 ? "normal" : "urgent",
+    }));
+}
+
+async function scheduleApprovalTask(
+  runtime: IAgentRuntime,
+  input: {
+    agentId: string;
+    requestId: string;
+    subjectUserId: string;
+    action: ApprovalAction;
+    channel: ApprovalChannel;
+    reason: string;
+    requestedBy: string;
+    createdAt: Date;
+  },
+): Promise<string> {
+  const runner = getScheduledTaskRunner(runtime, { agentId: input.agentId });
+  const task = await runner.schedule({
+    kind: "approval",
+    promptInstructions: `Approval needed: ${input.reason}. Reply "approve ${input.requestId}" or "reject ${input.requestId}".`,
+    trigger: { kind: "once", atIso: input.createdAt.toISOString() },
+    priority: "high",
+    completionCheck: {
+      kind: "user_acknowledged",
+      params: { requestId: input.requestId },
+    },
+    escalation: {
+      steps: approvalEscalationSteps(runtime, input.channel),
+    },
+    subject: { kind: "self", id: input.subjectUserId },
+    idempotencyKey: `approval:${input.requestId}`,
+    respectsGlobalPause: false,
+    source: "plugin",
+    createdBy: input.agentId,
+    ownerVisible: true,
+    metadata: {
+      approvalRequestId: input.requestId,
+      approvalAction: input.action,
+      approvalChannel: input.channel,
+      requestedBy: input.requestedBy,
+      pendingPromptRoomId: `approval:${input.requestId}`,
+      pendingPromptAction: input.action,
+    },
+  });
+  logger.info(
+    `[ApprovalQueue] scheduled approval task ${task.taskId} for ${input.requestId}`,
+  );
+  return task.taskId;
+}
+
 export interface ApprovalQueueOptions {
   readonly agentId: string;
 }
@@ -647,6 +739,16 @@ export class PgApprovalQueue implements ApprovalQueue {
     logger.info(
       `[ApprovalQueue] enqueued ${input.action} for ${input.subjectUserId} as ${id}`,
     );
+    await scheduleApprovalTask(this.runtime, {
+      agentId: this.agentId,
+      requestId: id,
+      subjectUserId: input.subjectUserId,
+      action: input.action,
+      channel: input.channel,
+      reason: input.reason,
+      requestedBy: input.requestedBy,
+      createdAt: now,
+    });
     // An outbound action now needs the owner's go-ahead. Surface it directly
     // in chat with one-tap approval chips, and also on the notification rail so
     // the owner is interrupted even when they are not watching chat. Both

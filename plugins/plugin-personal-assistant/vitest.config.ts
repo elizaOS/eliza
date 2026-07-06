@@ -58,9 +58,16 @@ const optionalCorePluginStubPackages = new Set([
   "@elizaos/plugin-app-control",
   "@elizaos/plugin-shell",
   "@elizaos/plugin-coding-tools",
+  "@elizaos/plugin-pty",
+  "@elizaos/plugin-birdclaw",
   "@elizaos/plugin-commands",
   "@elizaos/plugin-video",
+  "@elizaos/plugin-vision",
   "@elizaos/plugin-background-runner",
+  "@elizaos/plugin-native-filesystem",
+  "@elizaos/plugin-app-manager",
+  "@elizaos/plugin-elizacloud",
+  "@elizaos/plugin-inbox/plugin",
   "@elizaos/plugin-ollama",
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
@@ -102,6 +109,23 @@ const agentSourceJsToTsPlugin = {
   load(id: string) {
     if (!id.startsWith(optionalCorePluginStubPrefix)) return null;
     const packageName = id.slice(optionalCorePluginStubPrefix.length);
+    if (packageName === "@elizaos/plugin-app-control") {
+      return [
+        "export function parseSettingsRequest(input) { return input ?? {}; }",
+        "export function createSettingsAction() {",
+        "  return {",
+        '    name: "SETTINGS_SECTION_TEST_STUB",',
+        '    description: "Test stub for app-control section settings.",',
+        "    examples: [],",
+        "    validate: async () => true,",
+        "    handler: async () => ({ success: false, text: 'settings stub unavailable' }),",
+        "  };",
+        "}",
+        'const plugin = { name: "plugin-app-control-test-stub", description: "Test stub for @elizaos/plugin-app-control", actions: [], providers: [], evaluators: [], services: [] };',
+        "export { plugin };",
+        "export default plugin;",
+      ].join("\n");
+    }
     const name = `${packageName.slice("@elizaos/".length)}-test-stub`;
     return [
       `const plugin = ${JSON.stringify({

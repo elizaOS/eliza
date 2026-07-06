@@ -223,9 +223,22 @@ export function getAgentEventServiceStubEvents(): AgentEventServiceStubEvent[] {
   return [...getAgentEventServiceStubState().events];
 }
 
-export function getAgentEventService(): {
+export function getAgentEventService(runtime?: {
+  getService?: (serviceType: string) => unknown;
+}): {
   emit: (event: AgentEventServiceStubEvent) => void;
 } | null {
+  const runtimeService = runtime?.getService?.("agent_event");
+  if (
+    runtimeService &&
+    typeof runtimeService === "object" &&
+    "emit" in runtimeService &&
+    typeof runtimeService.emit === "function"
+  ) {
+    return runtimeService as {
+      emit: (event: AgentEventServiceStubEvent) => void;
+    };
+  }
   const state = getAgentEventServiceStubState();
   if (!state.enabled) return null;
   return {
@@ -233,6 +246,10 @@ export function getAgentEventService(): {
       state.events.push(event);
     },
   };
+}
+
+export function resolveApprovalService(): null {
+  return null;
 }
 
 export const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
