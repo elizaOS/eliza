@@ -90,6 +90,7 @@ async function deliverViaIMessage(args: {
       expiresAt: request.expiresAt,
     };
   } catch (err) {
+    // error-policy:J1 boundary translation — adapter delivery reports a typed failure result.
     const message = err instanceof Error ? err.message : String(err);
     logger.warn(
       { src: "imessage:sensitive-request-adapter", err: message },
@@ -121,6 +122,7 @@ export function registerIMessageDmSensitiveRequestAdapter(runtime: IAgentRuntime
       registry.register(imessageDmSensitiveRequestAdapter);
       return true;
     } catch (err) {
+      // error-policy:J1 boundary translation — plugin init must continue while the registry observes no adapter.
       logger.warn(
         {
           src: "imessage:sensitive-request-adapter",

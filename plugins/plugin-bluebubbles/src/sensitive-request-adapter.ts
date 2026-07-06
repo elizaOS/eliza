@@ -95,6 +95,7 @@ async function deliverViaBlueBubbles(args: {
 			expiresAt: request.expiresAt,
 		};
 	} catch (err) {
+		// error-policy:J1 boundary translation — adapter delivery reports a typed failure result.
 		const message = err instanceof Error ? err.message : String(err);
 		logger.warn(
 			{ src: "bluebubbles:sensitive-request-adapter", err: message },
@@ -137,6 +138,7 @@ export function registerBlueBubblesDmSensitiveRequestAdapter(
 			registry.register(blueBubblesDmSensitiveRequestAdapter);
 			return true;
 		} catch (err) {
+			// error-policy:J1 boundary translation — plugin init must continue while the registry observes no adapter.
 			logger.warn(
 				{
 					src: "bluebubbles:sensitive-request-adapter",
