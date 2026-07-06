@@ -69,33 +69,34 @@ def test_corpus_size_meets_minimum() -> None:
 
 
 def test_corpus_expands_current_core_by_exactly_10x() -> None:
-    # 1411 distinct base scenarios (1260 prior + 18 issue #12279 traveler
+    # 1416 distinct base scenarios (1260 prior + 18 issue #12279 traveler
     # timezone scenarios + 18 issue #12282 neurotypical-control scenarios +
     # 18 issue #12281 comms-flood scenarios + 32 issue #12278 irregular-sleep
     # scenarios + 54 issue #12280 ADHD/low-activation scenarios + 3 issue
     # #14789 co-parenting mirrors + 6 issue #14783 overdue-communications
-    # scenarios + 4 issue #14784 reconnect-old-friends scenarios, minus the
-    # 2 crisis-language-guard scenarios removed with #12284 item 9 — the guard
-    # is not being built), each re-emitted 10x under fixed prompt-prefix
-    # framings = 15521 robustness
+    # scenarios + 4 issue #14784 reconnect-old-friends scenarios + 5 issue
+    # #14785 relationship-type-inference scenarios, minus the 2
+    # crisis-language-guard scenarios removed with #12284 item 9 — the guard is
+    # not being built), each re-emitted 10x under fixed prompt-prefix framings =
+    # 15576 robustness
     # runs. The legacy keys
     # (existing/added/total/multiplierAdded) stay pinned for back-compat; the
     # base/variantsPerBase/totalRuns/summary keys state the split.
     assert count_lifeops_scenarios() == {
         "suite": "lifeops-bench",
-        "existing": 1411,
-        "added": 14110,
-        "total": 15521,
+        "existing": 1416,
+        "added": 14160,
+        "total": 15576,
         "multiplierAdded": 10,
-        "base": 1411,
+        "base": 1416,
         "variantsPerBase": 10,
-        "totalRuns": 15521,
-        "summary": "1411 base scenarios; 10x prompt-prefix robustness variants = 15521 runs",
+        "totalRuns": 15576,
+        "summary": "1416 base scenarios; 10x prompt-prefix robustness variants = 15576 runs",
     }
     assert validate_lifeops_scenarios() == {
         "valid": True,
-        "total": 15521,
-        "uniqueIds": 15521,
+        "total": 15576,
+        "uniqueIds": 15576,
         "duplicateIds": [],
         "emptyInstructions": [],
         "expansionMatches": True,

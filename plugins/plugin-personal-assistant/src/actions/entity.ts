@@ -924,11 +924,11 @@ export const entityAction: Action & {
     {
       name: "relationshipType",
       description:
-        "set_relationship edge type: manages|colleague_of|works_at|partner_of|family_of.",
+        "set_relationship edge type: manages|managed_by|colleague_of|friend_of|family_of|partner_of|ex_partner_of|co_parent_of|works_at.",
       descriptionCompressed:
-        "set_relationship edge type label e.g. manages|colleague_of|works_at|partner_of",
+        "set_relationship edge type label e.g. manages|colleague_of|friend_of|family_of|co_parent_of",
       schema: { type: "string" as const },
-      examples: ["manages", "colleague_of", "works_at", "partner_of"],
+      examples: ["manages", "colleague_of", "friend_of", "co_parent_of"],
     },
     {
       name: "sourceEntityIds",

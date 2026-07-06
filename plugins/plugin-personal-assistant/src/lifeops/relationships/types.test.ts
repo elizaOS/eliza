@@ -17,6 +17,10 @@ describe("RelationshipTypeRegistry", () => {
     const registry = new RelationshipTypeRegistry();
     expect(registry.isSymmetric("partner_of")).toBe(true);
     expect(registry.isSymmetric("colleague_of")).toBe(true);
+    expect(registry.isSymmetric("friend_of")).toBe(true);
+    expect(registry.isSymmetric("family_of")).toBe(true);
+    expect(registry.isSymmetric("ex_partner_of")).toBe(true);
+    expect(registry.isSymmetric("co_parent_of")).toBe(true);
     expect(registry.isSymmetric("knows")).toBe(true);
     expect(registry.isSymmetric("manages")).toBe(false);
     expect(registry.isSymmetric("managed_by")).toBe(false);
