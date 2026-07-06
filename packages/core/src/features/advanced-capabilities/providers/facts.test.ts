@@ -576,6 +576,36 @@ describe("factsProvider provenance attribution", () => {
 		expect(result.data.facts).toEqual([]);
 	});
 
+	it("withholds private facts for named third-party availability requests", async () => {
+		const privateOwnerFact = memory(
+			"fact-private-named-availability",
+			"Owner fact: recurring therapy appointment with Dr. Okafor every Wednesday 4pm. Home address is 1400 Larkspur Lane.",
+			{
+				kind: "durable",
+				category: "seeded",
+				confidence: 0.95,
+				keywords: ["therapy", "okafor", "wednesday"],
+				privacyClass: "private",
+			},
+		);
+		const runtime = makeRuntime({
+			facts: [privateOwnerFact],
+		});
+
+		const result = await factsProvider.get(
+			runtime,
+			memory(
+				"msg-current",
+				"When is Shaw free Wednesday afternoon for a partner call?",
+			),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).not.toMatch(/therapy|Okafor|1400 Larkspur/i);
+		expect(result.values.facts).not.toMatch(/therapy|Okafor|1400 Larkspur/i);
+		expect(result.data.facts).toEqual([]);
+	});
+
 	it("still surfaces private facts for direct owner recall", async () => {
 		const privateOwnerFact = memory(
 			"fact-private-direct",

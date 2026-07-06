@@ -74,6 +74,8 @@ const THIRD_PARTY_SCHEDULE_REFERENCE_PATTERN =
 	/\b(?:your boss|boss'?s?|their schedule|his schedule|her schedule|around (?:their|his|her) schedule|someone else's calendar)\b/i;
 const THIRD_PARTY_SELF_IDENTIFICATION_PATTERN =
 	/\b(?:this is|it is|it's)\s+[^.!?\n]{1,80}\bfrom\b/i;
+const THIRD_PARTY_NAMED_AVAILABILITY_PATTERN =
+	/\b(?:(?:when\s+(?:is|can|could|would|will|does)|is|can|could|would|will|does)\s+(?!i\b|me\b|my\b|we\b|us\b|you\b|your\b|the\b|a\b|an\b)[a-z][a-z0-9'_-]{1,30}(?:\s+[a-z][a-z0-9'_-]{1,30}){0,2}\s+(?:free|available|busy|meet|join|take|do|have|book)|(?:availability|schedule|calendar)\s+for\s+(?!me\b|my\b|you\b|your\b)[a-z][a-z0-9'_-]{1,30}(?:\s+[a-z][a-z0-9'_-]{1,30}){0,2})\b/i;
 
 function readFactMetadata(memory: Memory): FactMetadata {
 	const meta = memory.metadata;
@@ -231,7 +233,8 @@ function shouldMinimizePrivateFactsForTurn(message: Memory): boolean {
 	return (
 		AVAILABILITY_REQUEST_PATTERN.test(text) &&
 		(THIRD_PARTY_SCHEDULE_REFERENCE_PATTERN.test(text) ||
-			THIRD_PARTY_SELF_IDENTIFICATION_PATTERN.test(text))
+			THIRD_PARTY_SELF_IDENTIFICATION_PATTERN.test(text) ||
+			THIRD_PARTY_NAMED_AVAILABILITY_PATTERN.test(text))
 	);
 }
 
