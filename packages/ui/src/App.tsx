@@ -63,6 +63,7 @@ import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
+import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
@@ -750,14 +751,12 @@ function DynamicPluginPage({ resolved }: { resolved: ResolvedDynamicPage }) {
   if (resolved.registration) {
     return <RegisteredAppShellPage registration={resolved.registration} />;
   }
-  // No bundled registration — display a lightweight loading fallback
-  // so the shell stays responsive. Plugins that ship bundled components
-  // should call `registerAppShellPage` at boot to avoid this path.
-  return (
-    <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
-      Loading {resolved.id}…
-    </div>
-  );
+  // No bundled registration yet: the tab declared a `componentExport` but no
+  // plugin has called `registerAppShellPage`. Registration may still arrive on
+  // the boot idle path (a `registryVersion` bump re-resolves this page and the
+  // branch above takes over); if it never does, the fallback degrades from
+  // loading to a designed error state instead of an unbounded spinner.
+  return <DynamicPluginFallback id={resolved.id} />;
 }
 
 function WalletInventoryPage() {

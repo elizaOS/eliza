@@ -22,6 +22,7 @@ import {
   parseMinimalismBaseline,
   parseNavigationTabPaths,
   parseRgb,
+  resolveAuditStrictFlags,
   type VerdictFinding,
 } from "../ui-smoke/aesthetic-audit-rules";
 
@@ -761,5 +762,51 @@ describe("evaluateStrictGate (#9304 / #10710 strict verdict gate)", () => {
     expect(gate.message).toContain("crash @ desktop: readableChars=0");
     expect(gate.message).toContain("'needs-work'");
     expect(gate.message).toContain("debt @ desktop");
+  });
+});
+
+describe("resolveAuditStrictFlags (#10710 default-on gate)", () => {
+  it("defaults BOTH gates on when the vars are unset", () => {
+    expect(resolveAuditStrictFlags({})).toEqual({
+      strict: true,
+      needsWorkStrict: true,
+    });
+  });
+
+  it('opts out only on an explicit "0"', () => {
+    expect(
+      resolveAuditStrictFlags({
+        ELIZA_AUDIT_APP_STRICT: "0",
+        ELIZA_AUDIT_APP_STRICT_NEEDS_WORK: "0",
+      }),
+    ).toEqual({ strict: false, needsWorkStrict: false });
+  });
+
+  it('stays on for "1" — parity with the app-aesthetic-audit CI lane', () => {
+    expect(
+      resolveAuditStrictFlags({
+        ELIZA_AUDIT_APP_STRICT: "1",
+        ELIZA_AUDIT_APP_STRICT_NEEDS_WORK: "1",
+      }),
+    ).toEqual({ strict: true, needsWorkStrict: true });
+  });
+
+  it("gates each axis independently", () => {
+    expect(
+      resolveAuditStrictFlags({ ELIZA_AUDIT_APP_STRICT_NEEDS_WORK: "0" }),
+    ).toEqual({ strict: true, needsWorkStrict: false });
+    expect(resolveAuditStrictFlags({ ELIZA_AUDIT_APP_STRICT: "0" })).toEqual({
+      strict: false,
+      needsWorkStrict: true,
+    });
+  });
+
+  it('treats any non-"0" value as on', () => {
+    expect(
+      resolveAuditStrictFlags({
+        ELIZA_AUDIT_APP_STRICT: "",
+        ELIZA_AUDIT_APP_STRICT_NEEDS_WORK: "true",
+      }),
+    ).toEqual({ strict: true, needsWorkStrict: true });
   });
 });
