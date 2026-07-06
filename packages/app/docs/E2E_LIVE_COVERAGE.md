@@ -105,37 +105,71 @@ persistence are all real; only token generation is deterministic. Wired into
 ## Real voice pipeline — STT and TTS, fully local, no mocks
 
 The voice stages are validated with real engines + real models, not the
-silent-WAV / shimmed-transcript stubs the keyless ui-smoke lane uses:
+silent-WAV / shimmed-transcript stubs the keyless ui-smoke lane uses. The
+on-device runtime is the **fused `libelizainference`** — whisper.cpp was
+removed and there is **no whisper fallback** (see
+`plugins/plugin-local-inference/src/services/voice/transcriber.ts`, the plugin
+`README.md`, and the decision record in
+`packages/ui/src/voice/STT_SELECTION.md`):
 
-- **Real STT** — `plugins/plugin-local-inference/src/services/voice/whisper-cpp-asr.real.test.ts`
-  transcribes a real speech WAV through the actual whisper.cpp FFI adapter + a
-  real ggml model (`bun test`, GPU). Build `native/build-whisper.mjs`.
-- **Real TTS → STT round-trip (gold standard)** —
-  `.../voice/voice-roundtrip.real.test.ts`: text → real **OmniVoice** TTS
-  (`omnivoice-tts` CLI + OmniVoice base/tokenizer GGUF) → real 24 kHz speech WAV
-  → assert non-silent real signal → ffmpeg resample → real whisper STT → assert
-  the transcript reads back the spoken words. Subprocess-based; self-skips
-  unless the built CLIs + GGUFs + whisper model + ffmpeg resolve.
-  Validated on GPU: *"And so my fellow Americans, ask not what your country can
-  do for you."* synthesizes and transcribes back verbatim.
+- **Real STT (fused eliza-1-asr)** —
+  `bun run --cwd plugins/plugin-local-inference test:asr:real`
+  (`plugins/plugin-local-inference/scripts/asr-real-smoke.ts`; runs under bun
+  directly for `bun:ffi`) loads the fused `libelizainference`, transcribes real
+  recorded speech (`plugins/plugin-local-inference/native/audio-fixtures/freeman.wav`),
+  and asserts a non-empty **multi-sentence** transcript — which also guards the
+  ASR sentence-final early-stop regression. The per-word-timings variant is
+  `plugins/plugin-local-inference/src/services/voice/asr-timed.real.test.ts`
+  (`bun test`; ABI v12 `asrTranscribeTimed` on the same real audio;
+  `*.real.test.ts` is excluded from the package's default vitest lane). Both
+  self-skip, never fake, when the lib/bundle aren't staged.
+- **Real STT WER (publish gate)** —
+  `plugins/plugin-local-inference/native/verify/asr_bench.ts` measures WER +
+  RTF against the fused lib. A WAV dir only counts as publish-gate ASR WER when
+  explicitly marked `--real-recorded` with ≥5 WAV+`.txt` pairs; generated TTS
+  audio stays loopback-only evidence
+  (`plugins/plugin-local-inference/native/verify/asr_bench_real_recorded_workflow.mjs`
+  scaffolds the fail-closed report until a real corpus is supplied).
+- **Real TTS → STT intelligibility (fully local round-trip)** —
+  `bun run --cwd plugins/plugin-local-inference test:kokoro:real`
+  (`plugins/plugin-local-inference/scripts/kokoro-real-smoke.ts`): the real
+  published Kokoro GGUF synthesizes a phrase through the fused lib, the test
+  asserts non-empty 24 kHz PCM with a speech-like amplitude envelope, and —
+  when `ELIZA_ASR_BUNDLE` is staged — round-trips the audio through fused
+  eliza-1-asr and gates intelligibility by WER. `KOKORO_SMOKE_REQUIRE=1` turns
+  every skip into a hard failure so a provisioned lane goes RED instead of
+  green-skipping. **Kokoro is the only on-device TTS engine**, folded into the
+  fused library itself — the old standalone OmniVoice CLI + separate native
+  voice-engine builds no longer exist.
+- **Mixed real round-trip (hybrid topology)** —
+  `bun run --cwd plugins/plugin-local-inference roundtrip:real`
+  (`plugins/plugin-local-inference/scripts/mixed-real-roundtrip.ts`): cloud TTS
+  (ElevenLabs) → **local fused STT** → fast cloud LLM (Cerebras) → cloud TTS,
+  printing per-stage latency + hybrid time-to-first-audio. Needs
+  `ELEVENLABS_API_KEY` + `CEREBRAS_API_KEY`; exits 2 (skip) otherwise.
+- **Rest of the acoustic stack** — `voicestack:real` (speaker recognition,
+  diarization, VAD, local TTS with real GGUFs), `agentvoice:real` (agent
+  self-voice rejection + overlapping speakers), `robustness:real` (WER under
+  noise/reverb/far-field/telephone) — all package scripts in
+  `plugins/plugin-local-inference`, all skip-on-missing-artifact,
+  fail-on-bad-result.
 
-Both on-device voice tests run via `bun run --cwd plugins/plugin-local-inference
-test:voice:real` (or `:test:voice:roundtrip` for just the round-trip). They run
-under **`bun test`, not vitest** — the package vitest config excludes
-`*.real.test.ts` (the round-trip script previously pointed at vitest and so
-silently ran nothing). The whisper STT half needs the model + WAV resolvable:
-either stage `ggml-base.en.bin` at `~/.cache/eliza/whisper/` (the production
-resolver path) or run with `ELIZA_WHISPER_MODEL=…/ggml-base.en.bin
-ELIZA_ASR_TEST_WAV=…/jfk.wav`.
+Staging: build + stage the fused lib with
+`node packages/app-core/scripts/stage-desktop-fused-lib.mjs` (the app-core
+`build:fused-desktop` script), point `ELIZA_INFERENCE_LIBRARY` /
+`ELIZA_INFERENCE_LIB_DIR` at it, and set `ELIZA_ASR_BUNDLE` to a bundle dir
+containing `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` (default
+probe: `~/.eliza/local-inference/models/eliza-1-2b.bundle`). The Kokoro GGUF +
+voice pack stage from HF `elizaos/eliza-1` (`bundles/2b/tts/kokoro/…`) — the
+exact curl recipe is in `plugins/plugin-local-inference/README.md`.
 
-Build steps: `node plugins/plugin-local-inference/native/build-omnivoice.mjs`
-(+ `cmake --build native/omnivoice.cpp/build --target omnivoice-tts`) and
-`node .../native/build-whisper.mjs`; stage the OmniVoice GGUFs from HF
-`elizaos/eliza-1` (`voice/omnivoice/omnivoice-base-q4_k_m.gguf` +
-`omnivoice-tokenizer-q4_k_m.gguf`) under
-`<stateDir>/local-inference/models/omnivoice/` and a whisper ggml model under
-`~/.cache/eliza-whisper-models/`. The Kokoro GGUF path is `missing-from-local-staging`
-in the HF repo (`voice-models.ts`); OmniVoice is the available local TTS engine.
+CI: `.github/workflows/voice-live-e2e.yml` (nightly + dispatch, self-hosted,
+never on PRs) runs `test:asr:real` + `roundtrip:real` against the
+preprovisioned fused bundle, and the acoustic-matrix job runs
+`test:kokoro:real`, `voicestack:real`, `agentvoice:real`, and
+`robustness:real` in require-real mode (missing model/ABI/credential = hard
+failure, not green skip). `.github/workflows/kokoro-real-smoke.yml` is the
+dedicated Kokoro loader↔GGUF drift gate.
 
 ## Real LLM through the *shipped UI*, fully local + keyless (Ollama recipe)
 
