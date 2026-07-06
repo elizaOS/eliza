@@ -14,6 +14,12 @@ import {
   scrubStateRank,
 } from "../schema.ts";
 import { findCorpusShardFiles, readCorpusShard } from "../validator.ts";
+import {
+  applyPiiSweep,
+  createDeterministicPiiSweepEngine,
+  type PiiSweepEngine,
+  type PiiSweepReplacement,
+} from "./llm-pii.ts";
 import { minePiiCandidates, writeMineArtifacts } from "./mine.ts";
 import {
   buildRewritePlan,
@@ -45,6 +51,7 @@ export interface ScrubStageContext {
   isClusterExemplar: boolean;
   knownSecrets?: Record<string, string | undefined>;
   rewritePlan?: RewritePlan;
+  piiSweepEngine?: PiiSweepEngine;
 }
 
 export interface ScrubStageResult {
@@ -100,6 +107,7 @@ export interface ScrubRunOptions {
   stages?: readonly ScrubStageDefinition[];
   maxStageExecutions?: number;
   knownSecrets?: Record<string, string | undefined>;
+  piiSweepEngine?: PiiSweepEngine;
 }
 
 export interface ScrubStageReport {
@@ -117,6 +125,7 @@ export interface ScrubStageReport {
   secretReplacementCount?: number;
   rewriteReplacementCount?: number;
   rewriteSkipped?: number;
+  piiSpanCount?: number;
 }
 
 export interface ScrubRunReport {
@@ -145,6 +154,9 @@ export interface ScrubRunReport {
     candidatesPath: string;
     frequencyPath: string;
     reviewCsvPath: string;
+  };
+  piiSweepArtifacts?: {
+    classificationPath: string;
   };
 }
 
@@ -409,6 +421,27 @@ function defaultStage(stage: ScrubStageName): ScrubStageDefinition {
           },
         };
       }
+      if (stage === "llm") {
+        const engine =
+          context.piiSweepEngine ?? createDeterministicPiiSweepEngine();
+        const swept = await applyPiiSweep(message, engine, {
+          hashSalt: context.rulesetVersion,
+        });
+        return {
+          message: swept.message,
+          metadata: {
+            piiSpanCount: swept.replacements.length,
+            piiSweepReplacements: swept.replacements,
+          },
+          cost: {
+            inputTokens: Math.ceil(message.text.length / 4),
+            outputTokens: Math.ceil(swept.message.text.length / 4),
+            estimatedUsd:
+              0.0000008 * (message.text.length + swept.message.text.length),
+            llmCalls: 1,
+          },
+        };
+      }
       const next = stableCloneMessage(message);
       next.scrubState = targetState;
       const mined =
@@ -417,9 +450,6 @@ function defaultStage(stage: ScrubStageName): ScrubStageDefinition {
               hashSalt: context.rulesetVersion,
             })
           : undefined;
-      const isLlmExemplar =
-        stage === "llm" &&
-        (context.mode === "deep" || context.isClusterExemplar);
       return {
         message: next,
         metadata:
@@ -428,14 +458,7 @@ function defaultStage(stage: ScrubStageName): ScrubStageDefinition {
             : {
                 candidateCount: mined.candidates.length,
               },
-        cost: isLlmExemplar
-          ? {
-              inputTokens: Math.ceil(message.text.length / 4),
-              outputTokens: Math.ceil(message.text.length / 8),
-              estimatedUsd: 0.000001 * message.text.length,
-              llmCalls: 1,
-            }
-          : ZERO_COST,
+        cost: ZERO_COST,
       };
     },
   };
@@ -503,6 +526,25 @@ async function writeReport(
   await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
 }
 
+async function writePiiSweepClassification(
+  stateDir: string,
+  rows: readonly {
+    messageId: string;
+    replacements: readonly PiiSweepReplacement[];
+  }[],
+): Promise<string> {
+  const classificationPath = path.join(
+    stateDir,
+    "pii-sweep-classification.json",
+  );
+  await fs.mkdir(stateDir, { recursive: true });
+  await fs.writeFile(
+    classificationPath,
+    `${JSON.stringify({ rows }, null, 2)}\n`,
+  );
+  return classificationPath;
+}
+
 export async function runScrubPipeline(
   options: ScrubRunOptions,
 ): Promise<{ messages: CorpusMessage[]; report: ScrubRunReport }> {
@@ -544,6 +586,11 @@ export async function runScrubPipeline(
     estimatedUsd: 0,
   }));
   let mineArtifactPaths: ScrubRunReport["mineArtifacts"] | undefined;
+  let piiSweepArtifacts: ScrubRunReport["piiSweepArtifacts"] | undefined;
+  const piiSweepRows: {
+    messageId: string;
+    replacements: PiiSweepReplacement[];
+  }[] = [];
 
   for (let stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
     const stage = stages[stageIndex];
@@ -613,6 +660,7 @@ export async function runScrubPipeline(
         isClusterExemplar,
         knownSecrets,
         rewritePlan,
+        piiSweepEngine: options.piiSweepEngine,
       });
       stageExecutions += 1;
       report.executed += 1;
@@ -659,6 +707,28 @@ export async function runScrubPipeline(
         report.rewriteSkipped =
           (report.rewriteSkipped ?? 0) + result.metadata.rewriteSkipped;
       }
+      if (
+        result.metadata &&
+        typeof result.metadata === "object" &&
+        "piiSpanCount" in result.metadata &&
+        typeof result.metadata.piiSpanCount === "number"
+      ) {
+        report.piiSpanCount =
+          (report.piiSpanCount ?? 0) + result.metadata.piiSpanCount;
+      }
+      if (
+        stage.name === "llm" &&
+        result.metadata &&
+        typeof result.metadata === "object" &&
+        "piiSweepReplacements" in result.metadata &&
+        Array.isArray(result.metadata.piiSweepReplacements)
+      ) {
+        piiSweepRows.push({
+          messageId: message.id,
+          replacements: result.metadata
+            .piiSweepReplacements as PiiSweepReplacement[],
+        });
+      }
       const output = result.tombstone ? undefined : result.message;
       if (!result.tombstone && !output) {
         throw new Error(
@@ -697,6 +767,14 @@ export async function runScrubPipeline(
       mineArtifactPaths = await writeMineArtifacts(stateDir, artifacts);
       report.candidateCount = artifacts.candidates.length;
     }
+    if (!options.dryRun && stage.name === "llm") {
+      piiSweepArtifacts = {
+        classificationPath: await writePiiSweepClassification(
+          stateDir,
+          piiSweepRows,
+        ),
+      };
+    }
   }
 
   if (!options.dryRun) {
@@ -728,6 +806,7 @@ export async function runScrubPipeline(
     outputPath: options.dryRun ? undefined : outputPath,
     reportPath,
     mineArtifacts: mineArtifactPaths,
+    piiSweepArtifacts,
   };
   await writeReport(reportPath, runReport);
   return { messages, report: runReport };

@@ -50,6 +50,15 @@ mode records an explicit skip. The current package-local implementation is the
 deterministic contract harness for the model-backed Cerebras pass, so live
 Cerebras proof still requires `CEREBRAS_API_KEY`.
 
+Stage `llm` is the final local PII sweep contract. Engines return
+fragment-relative spans, the driver replaces those spans with salted
+`[[PII:<kind>:<hash>]]` placeholders, and `.state/pii-sweep-classification.json`
+records the local classification artifact for review. The pf-cli adapter
+enforces `privacy-filter-f16.gguf`; q8 model paths are rejected because the
+issue research found token-label mismatches. The committed deterministic engine
+is the test/parity harness until the large f16 GGUF and `pf-cli` sidecar are
+installed locally.
+
 ## X Mapping
 
 The canonical schema includes platform `x`. The existing LifeOps simulator
