@@ -114,6 +114,21 @@ export const PostConversationCleanupEmptyRequestSchema = z
     return trimmed ? { keepId: trimmed } : {};
   });
 
+/**
+ * POST /api/conversations/dev/seed-messages (dev-only, 404 in production).
+ * Shape of the backdated message-corpus seed request; bounds keep a fat-finger
+ * from generating an unbounded corpus in one call.
+ */
+export const PostSeedMessagesRequestSchema = z
+  .object({
+    conversations: z.number().int().min(1).max(200).optional(),
+    messagesPerConversation: z.number().int().min(1).max(500).optional(),
+    spanMonths: z.number().int().min(1).max(60).optional(),
+    factsPerConversation: z.number().int().min(0).max(10).optional(),
+    seed: z.number().int().optional(),
+  })
+  .strict();
+
 export type ConversationMetadataInput = z.infer<
   typeof ConversationMetadataSchema
 >;
@@ -138,4 +153,7 @@ export type PatchConversationRequest = z.infer<
 >;
 export type PostConversationCleanupEmptyRequest = z.infer<
   typeof PostConversationCleanupEmptyRequestSchema
+>;
+export type PostSeedMessagesRequest = z.infer<
+  typeof PostSeedMessagesRequestSchema
 >;

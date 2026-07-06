@@ -4,6 +4,8 @@
  * Handles:
  *   POST   /api/conversations            – create
  *   GET    /api/conversations             – list
+ *   GET    /api/conversations/messages/search – corpus-wide message search
+ *   POST   /api/conversations/dev/seed-messages – dev-only backdated corpus seed
  *   GET    /api/conversations/:id/messages – get messages
  *   POST   /api/conversations/:id/messages/truncate – truncate
  *   DELETE /api/conversations/:id/messages/:messageId – delete one message
@@ -41,8 +43,10 @@ import {
   PostConversationCleanupEmptyRequestSchema,
   PostConversationRequestSchema,
   PostConversationTruncateRequestSchema,
+  PostSeedMessagesRequestSchema,
   parsePositiveInteger,
 } from "@elizaos/shared";
+import { generateMessageCorpus, seedMessageCorpus } from "./message-corpus.ts";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import type {
@@ -1680,6 +1684,88 @@ export async function handleConversationRoutes(
       error(res, "Failed to search conversation messages", 500);
       return true;
     }
+  }
+
+  // ── POST /api/conversations/dev/seed-messages ───────────────────────
+  // Dev-only: generate a large, realistic, BACKDATED conversation history
+  // (default 12 conversations × 40 messages over 13 months, plus derived
+  // facts) so message search — including since/until windows like "a year
+  // ago" — has a real corpus. Invoked by
+  // `packages/scripts/seed-message-corpus.mjs` for manual demo prep.
+  if (
+    method === "POST" &&
+    pathname === "/api/conversations/dev/seed-messages"
+  ) {
+    // 404 (not 403) in production so the route's existence isn't advertised.
+    if (process.env.NODE_ENV === "production") {
+      error(res, "Not found", 404);
+      return true;
+    }
+    if (!state.runtime) {
+      error(res, "Agent runtime not available", 503);
+      return true;
+    }
+    const rawSeed = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawSeed === null) return true;
+    const parsedSeed = PostSeedMessagesRequestSchema.safeParse(rawSeed);
+    if (!parsedSeed.success) {
+      error(
+        res,
+        parsedSeed.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    await waitForConversationRestore(state);
+    const corpus = generateMessageCorpus({
+      ...(parsedSeed.data.conversations !== undefined
+        ? { conversationCount: parsedSeed.data.conversations }
+        : {}),
+      ...(parsedSeed.data.messagesPerConversation !== undefined
+        ? { messagesPerConversation: parsedSeed.data.messagesPerConversation }
+        : {}),
+      ...(parsedSeed.data.spanMonths !== undefined
+        ? { spanMonths: parsedSeed.data.spanMonths }
+        : {}),
+      ...(parsedSeed.data.factsPerConversation !== undefined
+        ? { factsPerConversation: parsedSeed.data.factsPerConversation }
+        : {}),
+      ...(parsedSeed.data.seed !== undefined
+        ? { seed: parsedSeed.data.seed }
+        : {}),
+    });
+    const summary = await seedMessageCorpus(state.runtime, corpus);
+    // Register the seeded conversations in the live in-memory list so they are
+    // visible + searchable immediately, without waiting for a restart-restore.
+    for (const conv of summary.conversations) {
+      state.conversations.set(conv.id, {
+        id: conv.id,
+        title: conv.title,
+        roomId: conv.roomId,
+        createdAt: new Date(conv.createdAt).toISOString(),
+        updatedAt: new Date(conv.lastMessageAt).toISOString(),
+      });
+    }
+    evictOldestConversation(state.conversations, 500);
+    logger.info(
+      {
+        conversations: summary.conversations.length,
+        messages: summary.messagesCreated,
+        facts: summary.factsCreated,
+        oldestMessageAt: summary.oldestMessageAt,
+        newestMessageAt: summary.newestMessageAt,
+      },
+      "[ConversationSearch] seeded backdated message corpus",
+    );
+    json(res, {
+      conversations: summary.conversations.length,
+      messagesCreated: summary.messagesCreated,
+      factsCreated: summary.factsCreated,
+      oldestMessageAt: summary.oldestMessageAt,
+      newestMessageAt: summary.newestMessageAt,
+      sampleQueries: summary.sampleQueries,
+    });
+    return true;
   }
 
   // ── POST /api/conversations ─────────────────────────────────────────
