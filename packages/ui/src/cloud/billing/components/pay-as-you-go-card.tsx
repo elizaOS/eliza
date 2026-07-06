@@ -63,7 +63,7 @@ export function PayAsYouGoCard() {
 
       <div className="relative z-10 space-y-4">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-white/40" />
+          <div className="w-2 h-2 rounded-full bg-muted" />
           <h3 className="text-base font-mono text-txt uppercase">
             Pay Hosting From Earnings
           </h3>
@@ -72,7 +72,7 @@ export function PayAsYouGoCard() {
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1 flex-1 min-w-0">
             <Label className="text-txt-strong font-mono text-sm flex items-center gap-2">
-              <Coins className="h-4 w-4 text-white/70" />
+              <Coins className="h-4 w-4 text-muted" />
               Use my app earnings to pay container hosting
             </Label>
             <p className="text-xs font-mono text-muted leading-relaxed">
@@ -83,13 +83,13 @@ export function PayAsYouGoCard() {
             </p>
           </div>
           {enabled === null ? (
-            <Loader2 className="h-5 w-5 animate-spin text-white/70 flex-shrink-0" />
+            <Loader2 className="h-5 w-5 animate-spin text-muted flex-shrink-0" />
           ) : (
             <Switch
               checked={enabled}
               onCheckedChange={handleToggle}
               disabled={saving}
-              className="data-[state=checked]:bg-white/80 flex-shrink-0"
+              className="flex-shrink-0"
             />
           )}
         </div>
