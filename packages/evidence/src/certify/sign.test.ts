@@ -46,13 +46,16 @@ interface Fixture {
 }
 
 /** A real finalized bundle with one lane result artifact. */
-async function fixtureBundle(): Promise<Fixture> {
+async function fixtureBundle(
+  laneResult: { passed: number; failed: number; skipped: number } = {
+    passed: 3,
+    failed: 0,
+    skipped: 0,
+  },
+): Promise<Fixture> {
   const sourceDir = tmpDir();
   const sourcePath = path.join(sourceDir, "result.json");
-  fs.writeFileSync(
-    sourcePath,
-    JSON.stringify({ passed: 3, failed: 0, skipped: 0 }),
-  );
+  fs.writeFileSync(sourcePath, JSON.stringify(laneResult));
   const bundle = createBundle({
     rootDir: tmpDir(),
     provenance: {
@@ -381,6 +384,86 @@ describe("verifyCertification — tamper matrix", () => {
     });
     expect(codes(report)).toEqual(["verdict-failures"]);
     expect(report.failures[0].message).toContain("lane:server");
+  });
+
+  it("verdict-incomplete: signed verdicts must cover the bundle rollup", async () => {
+    const fixture = await fixtureBundle({ passed: 0, failed: 1, skipped: 0 });
+    const keypair = generateCertificationKeypair();
+    const certification = signCertification(
+      payloadFor(fixture, {
+        verdicts: [
+          {
+            subject: "manual:declared-green",
+            verdict: "pass",
+            evidence: [],
+          },
+        ],
+      }),
+      keypair.privateKeyPem,
+    );
+    const report = await verifyCertification(writeCert(certification), {
+      publicKeyPem: keypair.publicKeyPem,
+      bundleDir: fixture.bundleDir,
+      now: NOW,
+    });
+    expect(codes(report)).toEqual(["verdict-incomplete"]);
+    expect(report.failures[0].context).toMatchObject({
+      missingSubjects: ["lane:server"],
+      falsePassSubjects: [],
+    });
+  });
+
+  it("verdict-incomplete: a mechanically failing subject cannot be signed as pass", async () => {
+    const fixture = await fixtureBundle({ passed: 0, failed: 1, skipped: 0 });
+    const keypair = generateCertificationKeypair();
+    const certification = signCertification(
+      payloadFor(fixture, {
+        verdicts: [
+          {
+            subject: "lane:server",
+            verdict: "pass",
+            evidence: ["lanes/server/result.json"],
+          },
+        ],
+      }),
+      keypair.privateKeyPem,
+    );
+    const report = await verifyCertification(writeCert(certification), {
+      publicKeyPem: keypair.publicKeyPem,
+      bundleDir: fixture.bundleDir,
+      now: NOW,
+    });
+    expect(codes(report)).toEqual(["verdict-incomplete"]);
+    expect(report.failures[0].context).toMatchObject({
+      missingSubjects: [],
+      falsePassSubjects: ["lane:server"],
+    });
+  });
+
+  it("allows a reviewer to waive a mechanically failing subject with notes", async () => {
+    const fixture = await fixtureBundle({ passed: 0, failed: 1, skipped: 0 });
+    const keypair = generateCertificationKeypair();
+    const certification = signCertification(
+      payloadFor(fixture, {
+        verdicts: [
+          {
+            subject: "lane:server",
+            verdict: "waived",
+            evidence: ["lanes/server/result.json"],
+            notes: "known flaky lane accepted by release owner",
+          },
+        ],
+      }),
+      keypair.privateKeyPem,
+    );
+    const report = await verifyCertification(writeCert(certification), {
+      publicKeyPem: keypair.publicKeyPem,
+      bundleDir: fixture.bundleDir,
+      now: NOW,
+    });
+    expect(report.ok).toBe(true);
+    expect(report.rollup?.verdicts[0].subject).toBe("lane:server");
+    expect(report.rollup?.verdicts[0].verdict).toBe("fail");
   });
 
   it("schema-invalid: waived-without-notes signed by hand cannot verify clean", async () => {

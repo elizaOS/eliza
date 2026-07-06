@@ -41,7 +41,7 @@ const USAGE = `Usage:
   certify:sign    -- --bundle <dir> --verdicts <file> --reviewer-id <id> --reviewer-kind <agent|human>
                      [--reviewer-model <model>] [--key-file <pem>] [--base-ref <ref>]
                      [--expires-hours <n>] [--out <file>]
-  certify:verify  -- --cert <file> [--bundle <dir>] [--pubkey <pem-file>]
+  certify:verify  -- --cert <file> [--bundle <dir>] [--requirements <file>] [--pubkey <pem-file>]
                      [--expected-commit <sha>] [--max-age-hours <n>]
                      [--required-tier <cpu|gpu|full>] [--json]
 
@@ -314,6 +314,7 @@ async function runVerify(argv: string[], io: CliIo): Promise<number> {
     [
       "--cert",
       "--bundle",
+      "--requirements",
       "--pubkey",
       "--expected-commit",
       "--max-age-hours",
@@ -342,11 +343,20 @@ async function runVerify(argv: string[], io: CliIo): Promise<number> {
   const maxAgeRaw = parsed.flags.get("--max-age-hours");
   const tierRaw = parsed.flags.get("--required-tier");
   const bundleFlag = parsed.flags.get("--bundle");
+  const requirementsPath = parsed.flags.get("--requirements");
+  let requirements: CertificationRequirements | undefined;
+  if (requirementsPath !== undefined) {
+    requirements = parseRequirements(
+      readJsonFile(requirementsPath, "requirements file"),
+      requirementsPath,
+    );
+  }
   const report = await verifyCertification(certPath, {
     publicKeyPem,
     ...(bundleFlag !== undefined
       ? { bundleDir: path.resolve(bundleFlag) }
       : {}),
+    ...(requirements !== undefined ? { requirements } : {}),
     ...(parsed.flags.get("--expected-commit") !== undefined
       ? { expectedCommit: parsed.flags.get("--expected-commit") }
       : {}),

@@ -42,14 +42,19 @@ bun run --cwd packages/evidence certify:verify -- \
   --max-age-hours 72 \
   --required-tier full \
   [--bundle <bundle-dir>] \
+  [--requirements <requirements.json>] \
   --json
 ```
 
 Exit 0 iff valid. `--json` prints the full report on stdout, including
 `failures: [{code, message, context}]` with distinct codes
 (`schema-invalid | unsigned | bad-signature | wrong-key | stale |
-commit-mismatch | bundle-tampered | verdict-failures | tier-insufficient`);
-all detectable failures are reported together, not first-failure-only.
+commit-mismatch | bundle-tampered | verdict-failures | verdict-incomplete |
+tier-insufficient`); all detectable failures are reported together, not
+first-failure-only. The promotion gate must pass `--bundle` so the verifier
+can re-run the mechanical rollup and prove the signed verdicts cover every
+machine-derived subject. A mechanically non-pass subject may be signed as
+`fail` or `waived` with notes, but never omitted or signed as `pass`.
 
 ## Key rotation
 

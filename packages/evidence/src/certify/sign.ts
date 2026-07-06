@@ -32,8 +32,14 @@ import {
   toPublicKey,
 } from "./keys.ts";
 import {
+  type CertificationRequirements,
+  type RollupResult,
+  rollupBundle,
+} from "./rollup.ts";
+import {
   type Certification,
   type CertificationPayload,
+  type CertificationVerdict,
   parseCertificationPayload,
   parseCertificationSignature,
   tierSatisfies,
@@ -71,6 +77,7 @@ export const CERTIFICATION_FAILURE_CODES = [
   "commit-mismatch",
   "bundle-tampered",
   "verdict-failures",
+  "verdict-incomplete",
   "tier-insufficient",
 ] as const;
 export type CertificationFailureCode =
@@ -95,6 +102,8 @@ export interface CertificationVerifyOptions {
   maxAgeHours?: number;
   /** When given, the certification tier must satisfy this tier. */
   requiredTier?: Tier;
+  /** Requirements used to derive the mechanical rollup for verdict-completeness checks. */
+  requirements?: CertificationRequirements;
   /** Injectable clock for deterministic freshness tests. */
   now?: () => Date;
 }
@@ -110,6 +119,8 @@ export interface CertificationVerifyReport {
   certification?: Certification;
   /** Bundle integrity report, when `bundleDir` was given and the bundle was readable. */
   bundle?: VerifyReport;
+  /** Mechanical rollup used to check signed verdict completeness, when `bundleDir` was given. */
+  rollup?: RollupResult;
 }
 
 /** Tolerate small signer/verifier clock skew without letting future-dated certs extend max-age windows. */
@@ -119,6 +130,56 @@ function validationIssues(error: unknown): Record<string, unknown> {
   return error instanceof EvidenceValidationError
     ? { issues: error.issues }
     : {};
+}
+
+function findVerdictBySubject(
+  verdicts: CertificationVerdict[],
+): Map<string, CertificationVerdict> {
+  const bySubject = new Map<string, CertificationVerdict>();
+  for (const verdict of verdicts) bySubject.set(verdict.subject, verdict);
+  return bySubject;
+}
+
+function verdictCompletenessFailure(
+  payload: CertificationPayload,
+  rollup: RollupResult,
+): CertificationFailure | undefined {
+  const signedBySubject = findVerdictBySubject(payload.verdicts);
+  const missingSubjects: string[] = [];
+  const falsePassSubjects: string[] = [];
+
+  for (const mechanical of rollup.verdicts) {
+    const signed = signedBySubject.get(mechanical.subject);
+    if (signed === undefined) {
+      missingSubjects.push(mechanical.subject);
+      continue;
+    }
+    if (mechanical.verdict !== "pass" && signed.verdict === "pass") {
+      falsePassSubjects.push(mechanical.subject);
+    }
+  }
+
+  if (missingSubjects.length === 0 && falsePassSubjects.length === 0) {
+    return undefined;
+  }
+
+  const details: string[] = [];
+  if (missingSubjects.length > 0) {
+    details.push(`missing ${missingSubjects.length} rollup subject(s)`);
+  }
+  if (falsePassSubjects.length > 0) {
+    details.push(
+      `${falsePassSubjects.length} mechanically non-pass subject(s) signed as pass`,
+    );
+  }
+  return {
+    code: "verdict-incomplete",
+    message: `signed verdicts do not cover the bundle rollup: ${details.join("; ")}`,
+    context: {
+      missingSubjects,
+      falsePassSubjects,
+    },
+  };
 }
 
 /**
@@ -290,13 +351,25 @@ export async function verifyCertification(
                 .join(", ")}`,
               context: { issues: bundleReport.issues },
             });
+          } else {
+            const rollup = rollupBundle(options.bundleDir, {
+              requirements: options.requirements,
+            });
+            report.rollup = rollup;
+            const completenessFailure = verdictCompletenessFailure(
+              payload,
+              rollup,
+            );
+            if (completenessFailure !== undefined) {
+              failures.push(completenessFailure);
+            }
           }
         } catch (error) {
           // error-policy:J1 boundary translation — structural bundle failures
-          // (invalid manifest) land in the report as tampering.
+          // (invalid manifest or rollup inputs) land in the report as tampering.
           failures.push({
             code: "bundle-tampered",
-            message: `bundle unverifiable: ${(error as Error).message}`,
+            message: `bundle unverifiable for certification: ${(error as Error).message}`,
             context: error instanceof EvidenceError ? { code: error.code } : {},
           });
         }
