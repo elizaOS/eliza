@@ -44,8 +44,10 @@ evidence/runs/<run-id>/
 ```
 
 Existing producers are not rewritten; they are **ingested**. The 9 silos keep producing where
-they are; ingestors copy/hardlink into the bundle and record provenance. `evidence-review`
-dashboard reads the bundle manifest instead of re-scanning silos.
+they are; ingestors copy/hardlink into the bundle and record provenance. The `evidence-review`
+dashboard reads a bundle manifest directly — `generate.mjs --bundle=<run-dir>` maps the
+`@elizaos/evidence` `BundleManifest` entries into the review dashboard instead of re-scanning
+silos (bare `--bundle` reviews only that bundle; add `--source` to also scan silos).
 
 ### 2. `@elizaos/evidence` (new `packages/evidence`)
 

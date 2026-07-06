@@ -11,7 +11,6 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import sharp from "sharp";
 import {
   closeOcrEngines,
   ocrImage,
@@ -26,8 +25,11 @@ import {
   toPosixPath,
 } from "./lib.mjs";
 
-sharp.cache(false);
-sharp.concurrency(1);
+// sharp is not imported here: all pixel work runs inside
+// @elizaos/evidence/visual-primitives (reached via lib.mjs and ocr.mjs), which
+// owns the only `sharp` this repo resolves from a root-level script. Importing
+// it here fails module resolution (sharp is nested under the evidence package),
+// which is why analyzeImageFile no longer takes a sharp handle.
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -66,6 +68,7 @@ function parseArgs(argv) {
     maxImages: 240,
     maxFilesPerDir: 6000,
     scanDirs: [],
+    bundleDir: null,
   };
   for (const arg of argv) {
     if (arg === "--open") options.open = true;
@@ -91,6 +94,11 @@ function parseArgs(argv) {
       );
     } else if (arg.startsWith("--source=")) {
       options.scanDirs.push(arg.slice("--source=".length));
+    } else if (arg.startsWith("--bundle=")) {
+      options.bundleDir = path.resolve(
+        REPO_ROOT,
+        arg.slice("--bundle=".length),
+      );
     } else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -124,6 +132,9 @@ Options:
   --no-open               Do not open the dashboard.
   --out=<dir>             Output directory. Default: evidence/
   --source=<dir>          Scan a specific directory. Repeatable.
+  --bundle=<dir>          Read an evidence bundle's manifest.json (the @elizaos/evidence
+                          BundleManifest inventory) and review its artifacts. Used alone
+                          it reviews only that bundle; add --source to also scan silos.
   --ocr=on|auto|off       Run OCR with the packaged tesseract.js engine. Default: on.
   --max-artifacts=<n>     Limit total artifacts in the dashboard. Default: 900.
   --max-images=<n>        Limit image heuristic work. Default: 240.
@@ -209,8 +220,148 @@ function walkFiles(scanRoot, maxFiles) {
   return files.sort((a, b) => a.full.localeCompare(b.full));
 }
 
+/**
+ * Build one reviewer artifact record: stat plus the OCR/image heuristics for
+ * screenshots and a text preview for logs/reports. Shared by the silo scan and
+ * the `--bundle` manifest reader so both render through exactly the same
+ * pipeline; `counters` carries the running id, image-analysis budget, and OCR
+ * tallies across both sources.
+ */
+async function buildArtifactRecord(full, meta, options, counters) {
+  const stat = fs.statSync(full);
+  const artifact = {
+    id: `${counters.nextId++}`,
+    type: meta.type,
+    source: meta.source,
+    path: toPosixPath(path.relative(REPO_ROOT, full)),
+    href: toPosixPath(path.relative(options.outputDir, full)),
+    bytes: stat.size,
+    mtime: stat.mtime.toISOString(),
+  };
+  if (meta.bundleRunId) artifact.bundleRunId = meta.bundleRunId;
+  if (meta.type === "image") {
+    if (options.ocr !== "off") {
+      artifact.ocr = await runOcr(full, options);
+      if (artifact.ocr.status === "ok") counters.ocrOk += 1;
+      else if (options.ocr === "on") counters.ocrFail += 1;
+    }
+    if (counters.imageAnalysis < options.maxImages) {
+      counters.imageAnalysis += 1;
+      try {
+        artifact.image = await analyzeImageFile(full);
+      } catch (error) {
+        artifact.imageError = error?.message || String(error);
+      }
+    } else {
+      artifact.imageSkipped = "max image analysis limit reached";
+    }
+  } else if (
+    meta.type === "log" ||
+    meta.type === "report" ||
+    meta.type === "trajectory" ||
+    meta.type === "viewer"
+  ) {
+    artifact.preview = readTextPreview(full);
+  }
+  return artifact;
+}
+
+/**
+ * The @elizaos/evidence BundleManifest artifact kinds mapped onto the reviewer's
+ * coarser artifact types. `screenshot`/`keyframe` are pixels the image
+ * heuristics and OCR run over; `analysis`/`qa`/`report` render as inspectable
+ * text. An unlisted kind falls back to extension-based classification.
+ */
+const BUNDLE_KIND_TO_TYPE = {
+  screenshot: "image",
+  keyframe: "image",
+  video: "video",
+  log: "log",
+  trajectory: "trajectory",
+  report: "report",
+  analysis: "report",
+  qa: "report",
+  "html-tree": "viewer",
+};
+
+/**
+ * Read and structurally validate an evidence bundle's `manifest.json` — the
+ * signed artifact inventory @elizaos/evidence writes (schema 1). This is
+ * untrusted disk input (error-policy:J3): a missing or malformed manifest throws
+ * an explicit error rather than silently reviewing a partial/forged inventory.
+ */
+function readBundleManifest(bundleDir) {
+  const manifestPath = path.join(bundleDir, "manifest.json");
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(
+      `--bundle: no manifest.json in ${toPosixPath(path.relative(REPO_ROOT, bundleDir))} (expected an @elizaos/evidence bundle directory)`,
+    );
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `--bundle: ${manifestPath} is not valid JSON: ${error?.message || error}`,
+    );
+  }
+  if (manifest?.schema !== 1 || !Array.isArray(manifest.artifacts)) {
+    throw new Error(
+      `--bundle: ${manifestPath} is not a schema-1 bundle manifest (need { schema: 1, artifacts: [] })`,
+    );
+  }
+  return manifest;
+}
+
+/**
+ * Append reviewer artifacts read from a bundle manifest. Each listed file's
+ * absolute path is recorded in `seen` so the subsequent silo scan does not
+ * re-add the same bytes when the bundle lives under a scan root. A manifest
+ * entry whose path escapes the bundle, or names a file missing from disk, throws
+ * — a bundle's signed inventory must match its contents.
+ */
+async function collectBundleArtifacts(bundleDir, options, counters, seen, out) {
+  const manifest = readBundleManifest(bundleDir);
+  const runId = typeof manifest.runId === "string" ? manifest.runId : null;
+  for (const entry of manifest.artifacts) {
+    if (out.length >= options.maxArtifacts) break;
+    const rel = typeof entry?.path === "string" ? entry.path : "";
+    const full = path.resolve(bundleDir, rel);
+    if (full !== bundleDir && !full.startsWith(bundleDir + path.sep)) {
+      throw new Error(
+        `--bundle: artifact path ${JSON.stringify(rel)} escapes the bundle directory`,
+      );
+    }
+    if (!fs.existsSync(full)) {
+      throw new Error(
+        `--bundle: manifest lists ${rel || "(empty path)"} but it is missing from the bundle`,
+      );
+    }
+    seen.add(full);
+    const type = BUNDLE_KIND_TO_TYPE[entry.kind] ?? classifyArtifactPath(full);
+    if (!type) continue;
+    const source =
+      typeof entry.source === "string" && entry.source
+        ? entry.source
+        : inferSource(REPO_ROOT, full);
+    out.push(
+      await buildArtifactRecord(
+        full,
+        { type, source, bundleRunId: runId },
+        options,
+        counters,
+      ),
+    );
+  }
+}
+
 async function collectArtifacts(options) {
-  const scanDirs = resolveScanDirs(options);
+  // A bare --bundle reviews just that bundle; the default silos are scanned only
+  // when no bundle is given, or alongside a bundle when --source is explicit.
+  const scanDirs =
+    options.bundleDir && options.scanDirs.length === 0
+      ? []
+      : resolveScanDirs(options);
   const ocrEngine =
     options.ocr === "off"
       ? { available: false, kind: "disabled", label: null, reason: null }
@@ -220,52 +371,37 @@ async function collectArtifacts(options) {
       `OCR is required but unavailable: ${ocrEngine.reason}. Run \`bun install\` so the packaged tesseract.js dependency is available, or set ELIZA_TESSERACT_BIN to a system tesseract binary.`,
     );
   }
+  const counters = { nextId: 1, imageAnalysis: 0, ocrOk: 0, ocrFail: 0 };
   const artifacts = [];
-  let imageAnalysisCount = 0;
-  let ocrFailureCount = 0;
-  let ocrOkCount = 0;
+  // Absolute paths already emitted, so a bundle under a scan root is not listed
+  // twice: the bundle read wins, the silo scan skips those files.
+  const seen = new Set();
+
+  if (options.bundleDir) {
+    await collectBundleArtifacts(
+      options.bundleDir,
+      options,
+      counters,
+      seen,
+      artifacts,
+    );
+  }
 
   for (const scanRoot of scanDirs) {
     if (artifacts.length >= options.maxArtifacts) break;
     const files = walkFiles(scanRoot, options.maxFilesPerDir);
     for (const { full, type } of files) {
       if (artifacts.length >= options.maxArtifacts) break;
-      const stat = fs.statSync(full);
-      const rel = toPosixPath(path.relative(REPO_ROOT, full));
-      const artifact = {
-        id: `${artifacts.length + 1}`,
-        type,
-        source: inferSource(REPO_ROOT, full),
-        path: rel,
-        href: toPosixPath(path.relative(options.outputDir, full)),
-        bytes: stat.size,
-        mtime: stat.mtime.toISOString(),
-      };
-      if (type === "image") {
-        if (options.ocr !== "off") {
-          artifact.ocr = await runOcr(full, options);
-          if (artifact.ocr.status === "ok") ocrOkCount += 1;
-          else if (options.ocr === "on") ocrFailureCount += 1;
-        }
-      }
-      if (type === "image" && imageAnalysisCount < options.maxImages) {
-        imageAnalysisCount += 1;
-        try {
-          artifact.image = await analyzeImageFile(full, sharp);
-        } catch (error) {
-          artifact.imageError = error?.message || String(error);
-        }
-      } else if (type === "image") {
-        artifact.imageSkipped = "max image analysis limit reached";
-      } else if (
-        type === "log" ||
-        type === "report" ||
-        type === "trajectory" ||
-        type === "viewer"
-      ) {
-        artifact.preview = readTextPreview(full);
-      }
-      artifacts.push(artifact);
+      if (seen.has(full)) continue;
+      seen.add(full);
+      artifacts.push(
+        await buildArtifactRecord(
+          full,
+          { type, source: inferSource(REPO_ROOT, full) },
+          options,
+          counters,
+        ),
+      );
     }
   }
 
@@ -274,12 +410,15 @@ async function collectArtifacts(options) {
     repoRoot: REPO_ROOT,
     outputDir: options.outputDir,
     scanDirs: scanDirs.map((dir) => toPosixPath(path.relative(REPO_ROOT, dir))),
+    bundleDir: options.bundleDir
+      ? toPosixPath(path.relative(REPO_ROOT, options.bundleDir))
+      : null,
     ocr: {
       mode: options.ocr,
       engine: ocrEngine.available ? ocrEngine.label : null,
       available: options.ocr === "off" ? false : Boolean(ocrEngine.available),
-      ok: ocrOkCount,
-      failures: ocrFailureCount,
+      ok: counters.ocrOk,
+      failures: counters.ocrFail,
     },
     artifacts,
   };
@@ -457,7 +596,7 @@ function buildHtml(manifest) {
 <body>
 <header>
   <h1>Evidence Review</h1>
-  <p class="subtitle">Generated ${htmlEscape(manifest.generatedAt)} from ${htmlEscape(manifest.scanDirs.join(", "))}. OCR: ${htmlEscape(ocrLabel)}.</p>
+  <p class="subtitle">Generated ${htmlEscape(manifest.generatedAt)} from ${htmlEscape([manifest.bundleDir ? `bundle ${manifest.bundleDir}` : null, ...manifest.scanDirs].filter(Boolean).join(", "))}. OCR: ${htmlEscape(ocrLabel)}.</p>
   <div class="stats">
     <span class="stat">${counts.total} artifacts</span>
     <span class="stat">${counts.image ?? 0} screenshots</span>
