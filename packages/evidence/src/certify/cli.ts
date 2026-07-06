@@ -41,7 +41,7 @@ const USAGE = `Usage:
   certify:sign    -- --bundle <dir> --verdicts <file> --reviewer-id <id> --reviewer-kind <agent|human>
                      [--reviewer-model <model>] [--key-file <pem>] [--base-ref <ref>]
                      [--expires-hours <n>] [--out <file>]
-  certify:verify  -- --cert <file> [--bundle <dir>] [--requirements <file>] [--pubkey <pem-file>]
+  certify:verify  -- --cert <file> --pubkey <pem-file> [--bundle <dir>] [--requirements <file>]
                      [--expected-commit <sha>] [--max-age-hours <n>]
                      [--required-tier <cpu|gpu|full>] [--json]
 
@@ -121,18 +121,6 @@ function parsePositiveNumber(flag: string, raw: string): number {
   }
   return value;
 }
-
-function defaultRepoRoot(): string {
-  // src/certify/cli.ts → certify → src → packages/evidence → packages → repo root.
-  return path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "../../../..",
-  );
-}
-
-/** Repo-committed trusted public key; the CI gate passes --pubkey from the BASE branch instead. */
-export const DEFAULT_PUBLIC_KEY_RELPATH =
-  ".github/certification/certification-public-key.pem";
 
 function runKeygen(argv: string[], io: CliIo): number {
   const parsed = parseFlags(argv, ["--pubkey-out"], ["--print-private-key"]);
@@ -323,10 +311,7 @@ async function runVerify(argv: string[], io: CliIo): Promise<number> {
     ["--json"],
   );
   const certPath = path.resolve(requireFlag(parsed, "--cert"));
-  const pubkeyPath = path.resolve(
-    parsed.flags.get("--pubkey") ??
-      path.join(defaultRepoRoot(), DEFAULT_PUBLIC_KEY_RELPATH),
-  );
+  const pubkeyPath = path.resolve(requireFlag(parsed, "--pubkey"));
   let publicKeyPem: string;
   try {
     publicKeyPem = fs.readFileSync(pubkeyPath, "utf8");

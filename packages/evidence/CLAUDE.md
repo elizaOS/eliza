@@ -61,8 +61,8 @@ promotion claim. Full flow:
    `canonicalJsonBytes(payload-without-signature)`, writes
    `<bundle>/certification.json` (an envelope file, exempt from the
    unlisted-file sweep).
-5. **verify** — `certify:verify -- --cert <file> [--bundle <dir>]
-   [--requirements <file>] [--pubkey <pem>] [--expected-commit <sha>]
+5. **verify** — `certify:verify -- --cert <file> --pubkey <pem>
+   [--bundle <dir>] [--requirements <file>] [--expected-commit <sha>]
    [--max-age-hours N] [--required-tier T] [--json]` — the exact code the
    #14547 gate runs, fully offline. With `--bundle`, verification re-runs the
    mechanical rollup and fails if signed verdicts omit a rollup subject or mark
@@ -100,7 +100,7 @@ bun run --cwd packages/evidence bundle:verify -- evidence/runs/<run-id>
 bun run --cwd packages/evidence certify:keygen -- [--print-private-key]
 bun run --cwd packages/evidence certify:rollup -- --bundle <dir> [--requirements <file>] [--out <file>]
 bun run --cwd packages/evidence certify:sign -- --bundle <dir> --verdicts <file> --reviewer-id <id> --reviewer-kind <agent|human>
-bun run --cwd packages/evidence certify:verify -- --cert <file> [--bundle <dir>] [--requirements <file>] [--json]
+bun run --cwd packages/evidence certify:verify -- --cert <file> --pubkey <pem> [--bundle <dir>] [--requirements <file>] [--json]
 ```
 
 Test-lane membership is declared via `elizaos.scripts.testLanes: ["server"]`

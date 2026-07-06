@@ -138,6 +138,7 @@ describe("runCertifyCli (in-process)", () => {
       ["rollup"],
       ["sign", "--bundle", "x"],
       ["verify"],
+      ["verify", "--cert", "x"],
       ["rollup", "--bundle", "x", "--bogus"],
       ["nonsense"],
     ]) {
