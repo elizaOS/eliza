@@ -5,11 +5,17 @@
 // first-run remote-connect handler used by the OS deep-link path. The verifier
 // proves the app landed on home and reports back via Preferences. No onboarding
 // DOM is driven, so the lane survives the in-chat redesign.
+//
+// Liveness contract (#14359): STUB-BACKED by default. Point the host at a
+// live-provider backend and set `ELIZA_ONBOARDING_LIVENESS=1` to have the
+// verifier drive one real post-onboarding chat turn; the harness then enforces
+// the shared non-stub assertion (`assertLiveReply`) on the reported reply.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertLiveReply } from "../test/liveness-contract.mjs";
 import {
   DEFAULT_HOST_AGENT_PORT,
   startDeviceE2eHostAgent,
@@ -498,7 +504,13 @@ async function main() {
       extraKeys: FIRST_RUN_STATE_KEYS,
       log,
     });
-    defaultsWriteString(udid, appId, REQUEST_KEY, JSON.stringify({ apiBase }));
+    const requestLiveness = process.env.ELIZA_ONBOARDING_LIVENESS === "1";
+    defaultsWriteString(
+      udid,
+      appId,
+      REQUEST_KEY,
+      JSON.stringify({ apiBase, liveness: requestLiveness }),
+    );
     defaultsWriteString(
       udid,
       appId,
@@ -559,6 +571,13 @@ async function main() {
       throw new Error(
         `iOS onboarding smoke did not persist active server ${apiBase}: ${JSON.stringify(result.storage)}`,
       );
+    }
+    // Liveness contract (#14359): when a live host was requested, the reported
+    // post-onboarding reply must pass the shared non-stub assertion. Throws with
+    // the lane label if the reply is empty or carries the stub fixture marker.
+    if (requestLiveness) {
+      assertLiveReply(result.livenessReply, { label: "ios-onboarding" });
+      log(`liveness reply OK: ${JSON.stringify(result.livenessReply)}`);
     }
     const mixedContentResult = await pollMixedContentResult(udid, appId);
     if (

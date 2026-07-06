@@ -809,16 +809,36 @@ function renderIosFullBunSmokeStatus(message: string): void {
 
 function parseIosOnboardingSmokeRequest(raw: string | null): {
   apiBase: string;
+  // Liveness contract (#14359): when the harness points the lane at a
+  // live-provider host it sets `liveness: true` so the verifier drives one real
+  // chat turn after landing on home and reports the reply for the shared
+  // non-stub assertion. Default false — the deterministic host is stub-backed.
+  liveness: boolean;
+  livenessPrompt: string;
 } {
-  const fallback = { apiBase: "http://127.0.0.1:31338" };
+  const fallback = {
+    apiBase: "http://127.0.0.1:31338",
+    liveness: false,
+    livenessPrompt: "In one short sentence, say hello.",
+  };
   if (!raw || raw === "1") return fallback;
   try {
-    const parsed = JSON.parse(raw) as { apiBase?: unknown };
+    const parsed = JSON.parse(raw) as {
+      apiBase?: unknown;
+      liveness?: unknown;
+      livenessPrompt?: unknown;
+    };
     return {
       apiBase:
         typeof parsed.apiBase === "string" && parsed.apiBase.trim()
           ? parsed.apiBase.trim()
           : fallback.apiBase,
+      liveness: parsed.liveness === true,
+      livenessPrompt:
+        typeof parsed.livenessPrompt === "string" &&
+        parsed.livenessPrompt.trim()
+          ? parsed.livenessPrompt.trim()
+          : fallback.livenessPrompt,
     };
   } catch {
     // error-policy:J3 corrupt smoke-request blob — run with the defaults
@@ -910,6 +930,69 @@ async function waitForIosOnboardingSmokeStorageSnapshot(
   }
   throw new Error(
     `Timed out waiting for iOS onboarding active server ${apiBase}: ${JSON.stringify(snapshot)}`,
+  );
+}
+
+const IOS_LIVENESS_ASSISTANT_SELECTOR =
+  '[data-role="assistant"], [data-testid="chat-message-assistant"], [data-testid="thread-line"][data-role="assistant"]';
+
+// Set a React-controlled textarea's value so React's onChange fires. Assigning
+// `.value` directly bypasses React's synthetic value tracker, so we call the
+// native prototype setter first, then dispatch a bubbling `input` event — the
+// canonical way to drive a controlled input from outside React.
+function setReactTextareaValue(el: HTMLTextAreaElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    "value",
+  )?.set;
+  if (!setter) {
+    throw new Error("HTMLTextAreaElement value setter unavailable");
+  }
+  setter.call(el, value);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/**
+ * Drive one real chat turn in-app and return the rendered assistant reply, so
+ * the harness can enforce the shared liveness contract (#14359) against a
+ * live-provider host. Only invoked when the smoke request opts in
+ * (`liveness: true`); against the deterministic stub host it is skipped.
+ */
+async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
+  const composer = await waitForIosOnboardingElement<HTMLTextAreaElement>(
+    '[data-testid="chat-composer-textarea"]',
+    { visible: true },
+  );
+  const priorReplies = document.querySelectorAll(
+    IOS_LIVENESS_ASSISTANT_SELECTOR,
+  ).length;
+
+  composer.focus();
+  setReactTextareaValue(composer, prompt);
+  const send = document.querySelector<HTMLButtonElement>(
+    '[data-testid="chat-composer-action"], button[aria-label="Send"], button[aria-label="Send message"]',
+  );
+  if (send && !send.disabled) {
+    send.click();
+  } else {
+    composer.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+    );
+  }
+
+  const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const replies = document.querySelectorAll<HTMLElement>(
+      IOS_LIVENESS_ASSISTANT_SELECTOR,
+    );
+    if (replies.length > priorReplies) {
+      const text = replies[replies.length - 1]?.textContent?.trim() ?? "";
+      if (text.length > 0) return text;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+  throw new Error(
+    "iOS liveness chat turn: assistant never produced a reply within the timeout",
   );
 }
 
@@ -1113,6 +1196,13 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
     );
     await runIosMixedContentSmokeIfRequested({ apiBase: request.apiBase });
 
+    // Liveness contract (#14359): against a live-provider host, end the lane
+    // with one real chat turn and report the reply for the harness's shared
+    // non-stub assertion. Skipped for the default deterministic (stub) host.
+    const livenessReply = request.liveness
+      ? await driveIosLivenessChatTurn(request.livenessPrompt)
+      : null;
+
     await writeIosOnboardingSmokeResult({
       ok: true,
       phase: "complete",
@@ -1122,6 +1212,8 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
       composerVisible: Boolean(composer),
       onboardingHidden,
       storage,
+      livenessRequested: request.liveness,
+      livenessReply,
     });
   } catch (error) {
     // error-policy:J1 smoke boundary — the failure is written to the

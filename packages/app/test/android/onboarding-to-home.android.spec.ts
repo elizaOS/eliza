@@ -13,6 +13,12 @@
 //
 // The deterministic host agent is reachable at 127.0.0.1:31337 through
 // `adb reverse`; 127.0.0.1 is loopback, so the connect needs no confirm prompt.
+//
+// Liveness contract (#14359): this lane is STUB-BACKED by default — the host
+// agent is the deterministic ui-smoke stub, so a "real model" reply cannot be
+// asserted and the lane ends by proving the stub reply renders. Point the host
+// at a live-provider backend and set `ELIZA_ONBOARDING_LIVENESS=1` to promote
+// the final turn to the shared liveness assertion (non-empty, non-stub reply).
 import path from "node:path";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
 import {
@@ -21,7 +27,17 @@ import {
   adbReverse,
   resolveAdb,
 } from "../../scripts/lib/android-device.mjs";
+import {
+  assertOnboardingLiveness,
+  STUB_FIXTURE_MARKER,
+  sendChatAndReadReply,
+} from "../liveness-contract";
 import { expect, ORIGIN, test } from "./android-harness";
+
+// When the host is a live-provider backend, the final onboarding turn must
+// prove a real model answered. Off by default because the shared host agent is
+// the deterministic stub.
+const LIVENESS_ENABLED = process.env.ELIZA_ONBOARDING_LIVENESS === "1";
 
 const HOST_AGENT_BASE = "http://127.0.0.1:31337";
 // app.config.ts `desktop.urlScheme`; the Android manifest registers it as the
@@ -136,6 +152,33 @@ test.describe
           path: screenshotPath,
           contentType: "image/png",
         });
+
+        // Every onboarding lane ends with the liveness contract (#14359): send a
+        // real chat turn. Against a live-provider host it must be a real
+        // (non-stub) reply; against the default deterministic host it must be the
+        // stub fixture (proving the connected agent actually answers, without
+        // claiming a real model).
+        if (LIVENESS_ENABLED) {
+          const reply = await assertOnboardingLiveness(page, {
+            label: "android-onboarding",
+          });
+          await testInfo.attach("liveness reply (real model)", {
+            body: reply,
+            contentType: "text/plain",
+          });
+        } else {
+          const stubReply = await sendChatAndReadReply(page, {
+            label: "android-onboarding",
+          });
+          expect(
+            stubReply,
+            "stub-backed host must render its deterministic reply",
+          ).toContain(STUB_FIXTURE_MARKER);
+          await testInfo.attach("liveness reply (stub-backed)", {
+            body: stubReply,
+            contentType: "text/plain",
+          });
+        }
       } finally {
         const videoPath = await recording.stop();
         if (videoPath) {

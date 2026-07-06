@@ -18,6 +18,7 @@
 // only into the nightly/dispatch app-live-e2e.yml workflow.
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { assertOnboardingLiveness } from "../liveness-contract";
 import { openAppPath, seedAppStorage } from "./helpers";
 
 const CLOUD_LIVE_ENABLED =
@@ -25,23 +26,7 @@ const CLOUD_LIVE_ENABLED =
   process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
 const HAS_CLOUD_KEY = Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim());
 
-const CHAT_COMPOSER_SELECTOR =
-  '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
-const CHAT_SEND_SELECTOR =
-  '[data-testid="chat-composer-action"], button[aria-label="Send"], button[aria-label="Send message"]';
-// The deterministic stub tags every reply with this fixture id. A real cloud
-// agent must NOT produce it — that is how we prove the turn was not a stub.
-const STUB_FIXTURE_MARKER = "ui-smoke-assistant-v1";
-
 const PROVISION_TIMEOUT_MS = 180_000;
-
-function chatComposer(page: Page): Locator {
-  return page.locator(CHAT_COMPOSER_SELECTOR).first();
-}
-
-function chatSendButton(page: Page): Locator {
-  return page.locator(CHAT_SEND_SELECTOR).first();
-}
 
 async function clickIfVisible(
   locator: Locator,
@@ -129,27 +114,9 @@ test.describe("real cloud login + provisioning + chat", () => {
       15_000,
     );
 
-    // Real chat turn against the provisioned cloud agent.
+    // Real chat turn against the provisioned cloud agent — the shared liveness
+    // contract (#14359) proves a real model answered (non-empty, no stub marker).
     await openAppPath(page, "/chat");
-    const composer = chatComposer(page);
-    await expect(composer).toBeVisible({ timeout: 60_000 });
-    const prompt = "In one short sentence, say hello.";
-    await composer.fill(prompt);
-    await expect(chatSendButton(page)).toBeEnabled();
-    await chatSendButton(page).click();
-
-    const assistant = page
-      .locator(
-        '[data-role="assistant"], [data-testid="chat-message-assistant"]',
-      )
-      .last();
-    await expect(assistant).toBeVisible({ timeout: 120_000 });
-    const text = (await assistant.textContent())?.trim() ?? "";
-    expect(
-      text.length,
-      "cloud agent must produce a non-empty reply",
-    ).toBeGreaterThan(0);
-    // Prove it was a real model turn, not the deterministic stub fixture.
-    expect(text).not.toContain(STUB_FIXTURE_MARKER);
+    await assertOnboardingLiveness(page, { label: "cloud-live" });
   });
 });
