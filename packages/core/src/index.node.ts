@@ -102,9 +102,7 @@ export type {
 	ScoreContext,
 	SearchMessagesFilters,
 	SendPolicy,
-	SuggestedAction,
 	TriageOptions,
-	TriagePriority,
 	TriageScore,
 } from "./features/messaging/triage";
 // Cross-platform messaging triage (MESSAGE, MESSAGE, MESSAGE,

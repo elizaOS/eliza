@@ -1,10 +1,11 @@
 /**
  * Read-only triage action that returns unread messages across every connected
- * platform as one priority-sorted feed. Registered under the shared `MESSAGE`
- * action name; serves cached refs from the TriageService store when present
- * (re-ranked via `rankScored`) and otherwise triggers a live `triage()` pull,
- * then filters to unread and trims to the requested limit. ADMIN-gated and
- * side-effect free — it never drafts or mutates.
+ * platform as one recency-sorted feed with structural signals attached; the
+ * model reading the result judges urgency (#14716). Registered under the
+ * shared `MESSAGE` action name; serves cached refs from the TriageService
+ * store when present (re-ranked via `rankScored`) and otherwise triggers a
+ * live `triage()` pull, then filters to unread and trims to the requested
+ * limit. ADMIN-gated and side-effect free — it never drafts or mutates.
  */
 
 import { logger } from "../../../../logger.ts";
@@ -28,7 +29,7 @@ export const listInboxAction: Action = {
 	contexts: ["messaging", "email", "connectors"],
 	roleGate: { minRole: "ADMIN" },
 	description:
-		"Read-only list of unread messages from every connected platform as one feed, sorted by priority and recency. Use when the user asks 'what's in my inbox across everything' or 'show me unread across all platforms'. Do not use as the first step for respond/reply-to-inbox or needs-answer requests; use MESSAGE so reply-worthy messages are identified before drafting.",
+		"Read-only list of unread messages from every connected platform as one feed, newest first with sender relationship weight attached. Use when the user asks 'what's in my inbox across everything' or 'show me unread across all platforms'. Do not use as the first step for respond/reply-to-inbox or needs-answer requests; use MESSAGE so reply-worthy messages are identified before drafting.",
 	similes: ["LIST_MESSAGES", "SHOW_UNREAD_ACROSS"],
 	parameters: [
 		{
@@ -134,7 +135,9 @@ export const listInboxAction: Action = {
 						from: m.from.identifier,
 						subject: m.subject ?? null,
 						snippet: m.snippet,
-						priority: m.triageScore?.priority ?? null,
+						receivedAtMs: m.receivedAtMs,
+						contactWeight: m.triageScore?.contactWeight ?? null,
+						userRepliedInThread: m.triageScore?.userRepliedInThread ?? null,
 					})),
 				},
 			};

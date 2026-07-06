@@ -1,10 +1,10 @@
 /**
  * The inbox-triage action for the messaging-triage capability, registered under
  * the shared `MESSAGE` action name. It fetches unread/recent messages across
- * connected platforms via the TriageService, scores each with deterministic
- * contact + urgency heuristics, and returns a priority-ranked summary plus a
- * per-message list (priority + suggested action). Read-only scan; it never
- * drafts or sends.
+ * connected platforms via the TriageService and returns them newest-first with
+ * structural signals attached (sender relationship weight, unread state, prior
+ * thread engagement); the model reading the result decides urgency and next
+ * action (#14716). Read-only scan; it never drafts or sends.
  */
 import { logger } from "../../../../logger.ts";
 import type {
@@ -31,7 +31,7 @@ export const triageMessagesAction: Action = {
 	contexts: ["messaging", "email", "documents"],
 	roleGate: { minRole: "ADMIN" },
 	description:
-		"Fetch unread/recent messages across connected platforms (gmail, discord, telegram, twitter, imessage, signal, whatsapp), score each one with deterministic contact+urgency heuristics, and return a priority-ranked list.",
+		"Fetch unread/recent messages across connected platforms (gmail, discord, telegram, twitter, imessage, signal, whatsapp) and return them newest-first with structural signals per message (sender relationship weight, unread state, whether the user previously replied in the thread). Judge urgency and the right next action from each message's content and signals.",
 	similes: ["PRIORITIZE_MESSAGES", "RANK_INBOX", "SCAN_MESSAGES"],
 	parameters: [messageSourceParameter, limitParameter, sinceMsParameter],
 	examples: [
@@ -75,7 +75,7 @@ export const triageMessagesAction: Action = {
 		const summary =
 			ranked.length === 0
 				? "No new messages across connected platforms."
-				: `Triaged ${ranked.length} message(s). Top priority: ${ranked[0].triageScore?.priority ?? "unknown"}.`;
+				: `Fetched ${ranked.length} message(s) across ${new Set(ranked.map((m) => m.source)).size} platform(s), newest first.`;
 
 		logger.info(`[TriageMessages] ${summary}`);
 
@@ -97,8 +97,10 @@ export const triageMessagesAction: Action = {
 					from: m.from.identifier,
 					subject: m.subject ?? null,
 					snippet: m.snippet,
-					priority: m.triageScore?.priority ?? null,
-					suggestedAction: m.triageScore?.suggestedAction ?? null,
+					receivedAtMs: m.receivedAtMs,
+					isRead: m.isRead,
+					contactWeight: m.triageScore?.contactWeight ?? null,
+					userRepliedInThread: m.triageScore?.userRepliedInThread ?? null,
 				})),
 			},
 		};

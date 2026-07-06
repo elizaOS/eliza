@@ -167,32 +167,18 @@ function readString(
     : null;
 }
 
-function messageUrgency(ref: MessageRef): LifeOpsBriefingInboxItem["urgency"] {
-  switch (ref.triageScore?.priority) {
-    case "critical":
-    case "high":
-      return "high";
-    case "medium":
-      return "medium";
-    case "low":
-    case "spam":
-      return "low";
-    default:
-      return "unknown";
-  }
-}
-
 function mapMessageRefToBriefingItem(
   ref: MessageRef,
 ): LifeOpsBriefingInboxItem {
+  // Triage attaches only structural signals (#14716); urgency is judged by
+  // the compose model reading the snippet, so items arrive unclassified.
   return {
     id: ref.id,
     channel: ref.source,
     senderName: ref.from.displayName ?? ref.from.identifier,
     snippet: ref.snippet,
-    urgency: messageUrgency(ref),
-    classification:
-      ref.triageScore?.suggestedAction ?? (ref.isRead ? "read" : "unread"),
+    urgency: "unknown",
+    classification: ref.isRead ? "read" : "unread",
   };
 }
 
