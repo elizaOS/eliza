@@ -1159,7 +1159,6 @@
   "cloud.billing.loading": "Naglo-load ng billing",
   "cloud.billing.metaDescription": "Mag-dagdag ng pondo at i-manage ang billing",
   "cloud.billing.metaTitle": "Pagsingil",
-  "cloud.billing.noOrganization": "Walang organization na naka-associate sa account na ito",
   "cloud.billing.pageTitle": "Pagsingil",
   "cloud.billing.paymentCanceled": "Cancelled ang payment. Walang sinisingil.",
   "cloud.billing.success.backToBilling": "Bumalik sa Billing",

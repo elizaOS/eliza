@@ -4,11 +4,11 @@
  * take their medication and ask how they slept"), never user-facing copy —
  * hosts author it explicitly as a model prompt (see PA's
  * `default-packs/persona-packs.ts`). Every dispatcher that emits to a
- * user-visible surface (assistant stream, notification body, connector channel
- * send) must call {@link renderScheduledDispatchMessage} first so the owner
- * receives the model's composed message, not the instruction itself. Consumers:
- * the spine's default notification dispatcher (`runner-service.ts`) and PA's
- * production dispatcher (`plugin-personal-assistant` runtime-wiring).
+ * user-visible surface (assistant stream, notification body/title, connector
+ * channel send) must render through the model first so the owner receives the
+ * model's composed copy, not instruction text or a generic system label.
+ * Consumers: the spine's default notification dispatcher (`runner-service.ts`)
+ * and PA's production dispatcher (`plugin-personal-assistant` runtime-wiring).
  *
  * Same model seam as PA's `CheckinService.renderSummary`:
  * `runWithTrajectoryPurpose` + `runtime.useModel(TEXT_LARGE)`. Fail-fast by
@@ -76,6 +76,38 @@ export function buildScheduledDispatchRenderPrompt(
 }
 
 /**
+ * Build the notification-title prompt from the already-rendered body. The title
+ * is a visible owner-facing surface too, so it must preserve the same assistant
+ * voice instead of collapsing scheduled output to generic chrome such as
+ * "Reminder" or "Approval needed".
+ */
+export function buildScheduledDispatchTitlePrompt(
+  record: Pick<ScheduledTaskDispatchRecord, "intensity" | "firedAtIso">,
+  body: string,
+): string {
+  const lines: string[] = [
+    "You are the owner's personal assistant. Write a concise notification title for the scheduled message below.",
+    "Write only the title. Do not mention scheduled tasks, automation, instructions, or reminders as system concepts.",
+    "Use natural assistant voice and keep it under 8 words.",
+  ];
+  if (record.intensity === "urgent") {
+    lines.push("This is urgent: make the title direct and action-oriented.");
+  } else if (record.intensity === "soft") {
+    lines.push("Keep the title gentle.");
+  }
+  lines.push(
+    "",
+    "Message body:",
+    body,
+    "",
+    `Fired at: ${record.firedAtIso}`,
+    "",
+    "Title:",
+  );
+  return lines.join("\n");
+}
+
+/**
  * Render the user-facing message for a dispatch through the runtime's model.
  * Throws `ElizaError` (ephemeral) when the model surface is missing, the model
  * call fails, or the model returns blank output — callers must translate the
@@ -116,6 +148,56 @@ export async function renderScheduledDispatchMessage(
       "Model returned empty output for the scheduled dispatch message.",
       {
         code: "SCHEDULED_DISPATCH_RENDER_EMPTY",
+        context: { taskId: record.taskId, channelKey: record.channelKey },
+        severity: "ephemeral",
+      },
+    );
+  }
+  return text;
+}
+
+/**
+ * Render the user-facing notification title for a dispatch through the model.
+ * The body is rendered first by the caller so the title follows the final
+ * owner-facing wording, not the task instruction payload.
+ */
+export async function renderScheduledDispatchTitle(
+  runtime: IAgentRuntime,
+  record: ScheduledTaskDispatchRecord,
+  body: string,
+): Promise<string> {
+  if (typeof runtime.useModel !== "function") {
+    throw new ElizaError(
+      "Runtime has no model surface; cannot render the scheduled dispatch title.",
+      {
+        code: "SCHEDULED_DISPATCH_TITLE_MODEL_UNAVAILABLE",
+        context: { taskId: record.taskId, channelKey: record.channelKey },
+        severity: "ephemeral",
+      },
+    );
+  }
+  const prompt = buildScheduledDispatchTitlePrompt(record, body);
+  let response: unknown;
+  try {
+    response = await runWithTrajectoryPurpose(
+      "scheduled-dispatch-title-render",
+      () => runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+    );
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow
+    throw new ElizaError("Scheduled dispatch title rendering failed.", {
+      code: "SCHEDULED_DISPATCH_TITLE_RENDER_FAILED",
+      cause: error,
+      context: { taskId: record.taskId, channelKey: record.channelKey },
+      severity: "ephemeral",
+    });
+  }
+  const text = typeof response === "string" ? response.trim() : "";
+  if (text.length === 0) {
+    throw new ElizaError(
+      "Model returned empty output for the scheduled dispatch title.",
+      {
+        code: "SCHEDULED_DISPATCH_TITLE_RENDER_EMPTY",
         context: { taskId: record.taskId, channelKey: record.channelKey },
         severity: "ephemeral",
       },

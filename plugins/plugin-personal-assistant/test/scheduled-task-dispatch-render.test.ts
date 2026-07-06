@@ -7,7 +7,10 @@
  * Deterministic: the model is stubbed at the runtime boundary (`useModel`).
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { buildScheduledDispatchRenderPrompt } from "@elizaos/plugin-scheduling";
+import {
+  buildScheduledDispatchRenderPrompt,
+  buildScheduledDispatchTitlePrompt,
+} from "@elizaos/plugin-scheduling";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ChannelContribution } from "../src/lifeops/channels/contract.js";
 import {
@@ -26,6 +29,7 @@ import {
 const INSTRUCTION =
   "Remind the owner to take their medication and ask how they slept.";
 const RENDERED = "Time for your medication — and how did you sleep last night?";
+const RENDERED_TITLE = "Medication and sleep check";
 
 interface ReportedErrorCapture {
   scope: string;
@@ -101,11 +105,12 @@ beforeEach(() => {
 });
 
 describe("scheduled dispatch renders promptInstructions through the model", () => {
-  it("delivers the model output — never the raw instruction — to the assistant stream and notification body", async () => {
+  it("delivers model output — never raw or generic copy — to the assistant stream and notification", async () => {
     enableAgentEventServiceStub();
     const notified: Record<string, unknown>[] = [];
     const { runtime, modelPrompts } = makeRuntime({
-      model: () => RENDERED,
+      model: ({ prompt }) =>
+        prompt.includes("notification title") ? RENDERED_TITLE : RENDERED,
       notifier: {
         notify: async (input) => {
           notified.push(input);
@@ -119,8 +124,10 @@ describe("scheduled dispatch renders promptInstructions through the model", () =
 
     expect(result).toMatchObject({ ok: true });
     // The instruction fed the model as prompt payload...
-    expect(modelPrompts).toHaveLength(1);
+    expect(modelPrompts).toHaveLength(2);
     expect(modelPrompts[0]).toContain(INSTRUCTION);
+    expect(modelPrompts[1]).toContain(RENDERED);
+    expect(modelPrompts[1]).not.toContain(INSTRUCTION);
     // ...and only the model's rendering reached the user-visible surfaces.
     const events = getAgentEventServiceStubEvents();
     expect(events).toHaveLength(1);
@@ -129,6 +136,9 @@ describe("scheduled dispatch renders promptInstructions through the model", () =
       "Remind the owner to take",
     );
     expect(notified).toHaveLength(1);
+    expect(notified[0]?.title).toBe(RENDERED_TITLE);
+    expect(notified[0]?.title).not.toBe("Reminder");
+    expect(notified[0]?.title).not.toBe("Approval needed");
     expect(notified[0]?.body).toBe(RENDERED);
     expect(String(notified[0]?.body)).not.toContain("Remind the owner to take");
   });
@@ -153,7 +163,7 @@ describe("scheduled dispatch renders promptInstructions through the model", () =
       }),
     );
 
-    expect(result).toEqual({ ok: true, messageId: "m1" });
+    expect(result).toMatchObject({ ok: true, messageId: "m1" });
     expect(modelPrompts).toHaveLength(1);
     expect(sent).toHaveLength(1);
     expect(sent[0]?.message).toBe(RENDERED);
@@ -315,5 +325,20 @@ describe("buildScheduledDispatchRenderPrompt", () => {
       firedAtIso: "2026-07-05T09:00:00.000Z",
     });
     expect(soft).toContain("gentle");
+  });
+});
+
+describe("buildScheduledDispatchTitlePrompt", () => {
+  it("uses the rendered body, not the instruction payload, as notification title context", () => {
+    const prompt = buildScheduledDispatchTitlePrompt(
+      {
+        intensity: "normal",
+        firedAtIso: "2026-07-05T09:00:00.000Z",
+      },
+      RENDERED,
+    );
+    expect(prompt).toContain(RENDERED);
+    expect(prompt).toContain("under 8 words");
+    expect(prompt).not.toContain(INSTRUCTION);
   });
 });

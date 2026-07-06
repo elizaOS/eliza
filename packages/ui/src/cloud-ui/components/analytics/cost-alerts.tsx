@@ -27,7 +27,7 @@ export function CostAlerts({ costTrending }: CostAlertsProps) {
     alerts.push({
       type: "error",
       title: "Low Balance",
-      description: `Your organization will run out of balance in ${costTrending.daysUntilBalanceZero} days at current burn rate. Consider adding funds.`,
+      description: `You will run out of balance in ${costTrending.daysUntilBalanceZero} days at current burn rate. Consider adding funds.`,
     });
   }
 

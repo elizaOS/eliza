@@ -1159,7 +1159,6 @@
   "cloud.billing.loading": "결제 정보 불러오는 중",
   "cloud.billing.metaDescription": "결제 정보를 관리하고 충전해요",
   "cloud.billing.metaTitle": "결제",
-  "cloud.billing.noOrganization": "이 계정에 연결된 조직이 없어요",
   "cloud.billing.pageTitle": "결제",
   "cloud.billing.paymentCanceled": "결제가 취소됐어요. 청구된 금액은 없어요.",
   "cloud.billing.success.backToBilling": "결제로 돌아가기",
