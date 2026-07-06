@@ -282,8 +282,20 @@ export class PiiScrubService extends Service {
 				itemRef: item.itemRef,
 				rulesetVersion: item.rulesetVersion,
 			});
-		} catch {
+		} catch (reportError) {
 			// reportError is best-effort; never let it mask the failure event.
+			this.runtime.logger.warn(
+				{
+					src: SRC,
+					agentId: this.runtime.agentId,
+					itemRef: item.itemRef,
+					error:
+						reportError instanceof Error
+							? reportError.message
+							: String(reportError),
+				},
+				"Failed to report exhausted PII scrub error",
+			);
 		}
 		await this.runtime.emitEvent(EventType.PII_SCRUB_FAILED, {
 			runtime: this.runtime,
