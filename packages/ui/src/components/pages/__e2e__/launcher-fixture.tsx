@@ -2,12 +2,12 @@
 // Launcher with a single curated page of deterministic mock ViewEntry items,
 // composed inside the REAL HomeLauncherSurface rail (the production shape) so
 // the runner can drive the outer-rail back-to-home swipe exactly like a finger
-// on device. A couple of entries carry an `imageUrl` data-URI so an image tile
-// renders; the rest fall back to the Lucide glyph. Tap-launch is wired to a
-// stub surfaced on `window.__launcherCalls` so the runner can assert the real
-// interaction handlers fired. No app server, no network — fully self-contained
-// (mirrors background-fixture's self-containment). Paired with
-// run-launcher-e2e.mjs.
+// on device. A couple of entries carry an `imageUrl` data-URI to prove the
+// launcher ignores hero images and still renders glyph-only app icons.
+// Tap-launch is wired to a stub surfaced on `window.__launcherCalls` so the
+// runner can assert the real interaction handlers fired. No app server, no
+// network - fully self-contained (mirrors background-fixture's
+// self-containment). Paired with run-launcher-e2e.mjs.
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
@@ -23,8 +23,8 @@ type Win = typeof window & {
   };
 };
 
-// A deterministic gradient SVG data-URI so an image tile renders without any
-// network fetch. Two entries use this; the rest render the glyph fallback.
+// A deterministic gradient SVG data-URI kept on two entries to verify launcher
+// tiles do not composite hero imagery from `imageUrl`.
 function tileImage(a: string, b: string): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160">
@@ -36,8 +36,9 @@ function tileImage(a: string, b: string): string {
   )}`;
 }
 
-// Stable id list — the launcher is a single scrolling page (no pagination), two
-// entries carry a hero image. Uniform tiles, read-only.
+// Stable id list - the launcher is a single scrolling page (no pagination).
+// Two entries carry a hero image URL that the launcher must ignore. Uniform
+// tiles, read-only.
 const SPECS: Array<{
   id: string;
   label: string;

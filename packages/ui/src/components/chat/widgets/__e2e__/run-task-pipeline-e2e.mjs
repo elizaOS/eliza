@@ -11,50 +11,19 @@
  *
  * Run: bun run --cwd packages/ui test:task-pipeline-e2e
  */
-import { mkdir, writeFile } from "node:fs/promises";
-import { builtinModules } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
 import { chromium } from "playwright";
+import {
+  stubElizaCore,
+  stubNodeBuiltins,
+  writeFixturePage,
+} from "../../../../testing/e2e-runner/index.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output");
 await mkdir(outDir, { recursive: true });
-
-// The only RUNTIME symbol the fixture itself pulls from @elizaos/core is
-// `toSwarmActivity` (via the store); it lives in the pure, dependency-free
-// swarm-coordinator module. But the store also reaches @elizaos/shared, whose
-// node-only modules import many OTHER core symbols (logger, ModelType,
-// resolveStateDir, …) — all dead in the browser here. A narrow core→
-// swarm-coordinator alias breaks those ("no matching export"); instead stub
-// @elizaos/core to a module that serves the real swarm-coordinator exports and
-// a no-op Proxy for everything else, so the whole graph resolves.
-const repoRoot = resolve(here, "../../../../../../..");
-const coreActivityEntry = join(
-  repoRoot,
-  "packages/core/src/types/swarm-coordinator.ts",
-);
-const stubElizaCore = {
-  name: "stub-eliza-core",
-  setup(b) {
-    b.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
-      path: "eliza-core-stub",
-      namespace: "eliza-core-stub",
-    }));
-    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
-      contents: `
-        const real = require(${JSON.stringify(coreActivityEntry)});
-        const noop = new Proxy(() => noop, { get: () => noop });
-        module.exports = new Proxy(real, {
-          get: (t, p) => (p in t ? t[p] : noop),
-        });
-      `,
-      loader: "js",
-      resolveDir: repoRoot,
-    }));
-  },
-};
 
 let failures = 0;
 function assert(cond, msg) {
@@ -63,50 +32,28 @@ function assert(cond, msg) {
   return cond;
 }
 
-// Aliasing @elizaos/core is not enough: the store also reaches @elizaos/shared /
-// @elizaos/logger, whose node-only modules (paths, cloud TTS, apps-loading
-// routes, logger os probe) import Node builtins — all dead in the browser here.
-// Stub every builtin to a no-op module so the browser bundle resolves, mirroring
-// the sibling page runners; the page-error guard would catch any that ran.
-const nodeBuiltins = new Set([
-  ...builtinModules,
-  ...builtinModules.map((m) => `node:${m}`),
-]);
-const stubNodeBuiltins = {
-  name: "stub-node-builtins",
-  setup(b) {
-    b.onResolve({ filter: /.*/ }, (args) => {
-      const bare = args.path.replace(/^node:/, "").split("/")[0];
-      if (
-        args.path.startsWith("node:") ||
-        nodeBuiltins.has(args.path) ||
-        builtinModules.includes(bare)
-      ) {
-        return { path: args.path, namespace: "node-stub" };
-      }
-      return null;
-    });
-    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-      contents:
-        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
+// ChatWidgetShell reads only the i18n function through the app-state selector.
+// Keep this screenshot fixture static/presentational instead of booting the
+// full AppProvider and its transport/agent side effects.
+const stubAppState = {
+  name: "stub-app-state",
+  setup(build) {
+    build.onResolve({ filter: /^\.\.\/\.\.\/\.\.\/state$/ }, (args) => ({
+      path: args.path,
+      namespace: "app-state-stub",
+    }));
+    build.onLoad({ filter: /.*/, namespace: "app-state-stub" }, () => ({
+      contents: `
+        const state = {
+          t: (key, options) => options?.defaultValue ?? key,
+        };
+        export const useAppSelector = (selector) => selector(state);
+        export const useAppSelectorShallow = (selector) => selector(state);
+      `,
       loader: "js",
     }));
   },
 };
-
-const result = await build({
-  entryPoints: [join(here, "task-pipeline-fixture.tsx")],
-  bundle: true,
-  format: "iife",
-  platform: "browser",
-  conditions: ["browser", "import"],
-  jsx: "automatic",
-  loader: { ".tsx": "tsx", ".ts": "ts" },
-  define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubElizaCore, stubNodeBuiltins],
-  write: false,
-});
-const js = result.outputFiles[0].text;
 
 // Map the brand tokens the widgets use (text-ok/bg-card/border-border/…) so the
 // render is faithful; the Tailwind CDN supplies the layout/animation utilities.
@@ -118,7 +65,7 @@ body{background:#0b0b0c;color:#e8e8e8;font:13px/1.45 system-ui,sans-serif;margin
 .text-muted\\/40{color:#9aa0a666}.text-muted\\/50{color:#9aa0a680}.text-muted\\/60{color:#9aa0a699}
 .text-ok{color:#34d399}.text-danger{color:#f87171}.text-warn{color:#fbbf24}
 .text-accent{color:#ff7a1a}.text-accent-hover{color:#e56a10}
-.bg-card{background:#161619}.bg-bg-hover{background:#1f1f24}
+.bg-card{background:#161619}.bg-bg{background:#101014}.bg-bg-hover{background:#1f1f24}
 .border,.border-t,.border-l{border-style:solid;border-width:0}
 .border{border-width:1px}.border-t{border-top-width:1px}.border-l{border-left-width:1px}
 .border-border{border-color:#33333a}
@@ -126,14 +73,15 @@ body{background:#0b0b0c;color:#e8e8e8;font:13px/1.45 system-ui,sans-serif;margin
 .tabular-nums{font-variant-numeric:tabular-nums}
 .line-through{text-decoration:line-through}
 `;
-const html = `<!doctype html><html><head><meta charset="utf-8"><title>task pipeline e2e</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<!-- Shim node-ish globals the dead-in-browser @elizaos/shared graph touches at module init. -->
-<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
-<style>${css}</style></head><body><div id="root"></div><script>${js}</script></body></html>`;
-const htmlPath = join(outDir, "task-pipeline.html");
-await writeFile(htmlPath, html);
-const url = `file://${htmlPath}`;
+const url = await writeFixturePage({
+  entry: join(here, "task-pipeline-fixture.tsx"),
+  outDir,
+  htmlName: "task-pipeline.html",
+  title: "task pipeline e2e",
+  plugins: [stubAppState, stubElizaCore(), stubNodeBuiltins()],
+  processShim: true,
+  headHtml: `<style>${css}</style>`,
+});
 
 const sink = { errors: [] };
 const browser = await chromium.launch();

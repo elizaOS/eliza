@@ -3,10 +3,8 @@
  * no app server. Bundles launcher-fixture.tsx with esbuild, loads it in
  * headless chromium via Playwright, and:
  *
- *   - asserts the read-only launcher renders (≥1 tile, no edit/pin/delete
- *     affordances, exactly one page). Launcher tiles are glyph-only app icons
- *     (the "icons are slop" redesign; ViewTileImage renders no <img> hero for
- *     `source="launcher"`), so there is deliberately no image-tile assertion.
+ *   - asserts the read-only launcher renders (>=1 tile, glyph-only visuals,
+ *     no hero image nodes, no edit/pin/delete affordances, exactly one page),
  *   - captures REST screenshots at desktop (1180×900) and mobile (402×874),
  *   - records a .webm walkthrough driving REAL interactions: tap-launch a tile,
  *     a stationary long-press (which must NOT enter any edit mode), and a
@@ -156,7 +154,21 @@ async function captureViewport(name, viewport, deviceScaleFactor) {
   await page.waitForTimeout(400);
 
   const tiles = await page.locator('[data-testid^="launcher-tile-"]').count();
-  assert(tiles >= 1, `${name}: ≥1 tile renders (${tiles})`);
+  assert(tiles >= 1, `${name}: >=1 tile renders (${tiles})`);
+  const visuals = await page.locator("[data-view-visual]").count();
+  assert(
+    visuals === tiles,
+    `${name}: every launcher tile has a glyph visual (${visuals}/${tiles})`,
+  );
+  const glyphs = await page.locator("[data-view-visual] svg").count();
+  assert(glyphs >= 1, `${name}: glyph-only launcher visuals render (${glyphs})`);
+  const heroImages = await page
+    .locator('[data-testid^="launcher-image-"], [data-view-visual] img')
+    .count();
+  assert(
+    heroImages === 0,
+    `${name}: no launcher hero image nodes render (${heroImages})`,
+  );
   // Read-only: no per-tile edit/pin/delete affordances anywhere.
   const editAffordances = await page
     .locator(
