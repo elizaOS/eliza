@@ -93,7 +93,7 @@ export function DashboardActionCards({
     <div className={cn("grid gap-3 sm:grid-cols-2 xl:grid-cols-5", className)}>
       <Link
         to="/dashboard/my-agents"
-        className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-[var(--accent)] p-5 text-black transition-colors hover:bg-black hover:text-white sm:col-span-2 xl:col-span-1"
+        className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-white p-5 text-black transition-colors hover:bg-black hover:text-white sm:col-span-2 xl:col-span-1"
       >
         <div className="mb-4 flex items-center justify-between">
           <Rocket className="h-5 w-5" />
@@ -109,21 +109,21 @@ export function DashboardActionCards({
           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-medium">
             <Link
               to="/dashboard/api-keys"
-              className="inline-flex items-center gap-1.5 hover:text-[var(--accent)]"
+              className="inline-flex items-center gap-1.5 hover:text-white"
             >
               <KeyRound className="h-3 w-3" />
               Keys
             </Link>
             <Link
               to="/docs"
-              className="inline-flex items-center gap-1.5 hover:text-[var(--accent)]"
+              className="inline-flex items-center gap-1.5 hover:text-white"
             >
               <BookOpen className="h-3 w-3" />
               Docs
             </Link>
             <Link
               to="/dashboard/api-explorer"
-              className="inline-flex items-center gap-1.5 hover:text-[var(--accent)]"
+              className="inline-flex items-center gap-1.5 hover:text-white"
             >
               <Bot className="h-3 w-3" />
               Explorer
@@ -138,7 +138,7 @@ export function DashboardActionCards({
       >
         <div className="flex items-center justify-between">
           <Wallet className="h-5 w-5" />
-          <span className="rounded-sm bg-[var(--accent)] px-2 py-0.5 text-xs font-semibold text-black">
+          <span className="rounded-sm border border-white/15 bg-white/10 px-2 py-0.5 text-xs font-semibold text-white">
             {formattedBalance}
           </span>
         </div>

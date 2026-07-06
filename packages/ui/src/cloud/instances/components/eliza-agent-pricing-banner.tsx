@@ -52,8 +52,8 @@ export function ElizaAgentPricingBanner({
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-7 h-7 bg-[var(--accent)]/10 border border-[var(--accent)]/20">
-              <DollarSign className="h-3.5 w-3.5 text-[var(--accent)]" />
+            <div className="flex items-center justify-center w-7 h-7 bg-white/5 border border-white/10">
+              <DollarSign className="h-3.5 w-3.5 text-white/70" />
             </div>
             <p className="text-sm font-medium text-white">
               {t("cloud.containers.pricingBanner.usageRates", {
@@ -64,7 +64,7 @@ export function ElizaAgentPricingBanner({
           {isLowBalance && hasAgents && (
             <Badge
               variant="outline"
-              className="bg-orange-500/10 border-orange-500/30 text-orange-400 text-[10px] px-2"
+              className="bg-red-500/10 border-red-500/30 text-red-400 text-[10px] px-2"
             >
               {t("cloud.containers.pricingBanner.lowBalance", {
                 defaultValue: "Low balance",
@@ -114,7 +114,7 @@ export function ElizaAgentPricingBanner({
           {/* Current burn */}
           <div className="bg-black/60 p-3.5 space-y-1.5">
             <div className="flex items-center gap-1.5">
-              <DollarSign className="h-3 w-3 text-[var(--accent)]" />
+              <DollarSign className="h-3 w-3 text-white/70" />
               <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">
                 {t("cloud.containers.pricingBanner.yourCost", {
                   defaultValue: "Your Cost",
@@ -149,7 +149,7 @@ export function ElizaAgentPricingBanner({
             </div>
             <p
               className={`text-base font-mono font-semibold tabular-nums ${
-                isLowBalance && hasAgents ? "text-orange-400" : "text-white"
+                isLowBalance && hasAgents ? "text-red-400" : "text-white"
               }`}
             >
               {hoursRemaining !== null ? formatDuration(hoursRemaining) : "—"}
