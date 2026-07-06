@@ -456,6 +456,27 @@ export async function runPlannerLoop(
 					}
 
 					terminalOnlyContinuations++;
+					if (terminalOnlyContinuations > config.maxTerminalOnlyContinuations) {
+						const relay =
+							deterministicTerminalContinuationLimitRelay(trajectory);
+						if (relay) {
+							params.runtime.logger?.warn?.(
+								{
+									iteration,
+									terminalOnlyContinuations,
+									maxTerminalOnlyContinuations:
+										config.maxTerminalOnlyContinuations,
+								},
+								"[planner-loop] terminal-only continuation limit reached; relaying the completed tool result instead of discarding the turn",
+							);
+							return {
+								status: "finished",
+								trajectory,
+								evaluator,
+								finalMessage: userSafeFinalMessage(relay, trajectory),
+							};
+						}
+					}
 					assertTrajectoryLimit({
 						kind: "terminal_only_continuations",
 						max: config.maxTerminalOnlyContinuations,
@@ -2795,6 +2816,44 @@ function deterministicSuccessfulToolRelay(
 		if (candidate) return candidate;
 	}
 	return undefined;
+}
+
+function deterministicTerminalContinuationLimitRelay(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	return (
+		deterministicSuccessfulToolRelay(trajectory) ??
+		deterministicNoopClarificationRelay(trajectory)
+	);
+}
+
+function deterministicNoopClarificationRelay(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	for (const step of [...trajectory.steps].reverse()) {
+		if (!step.toolCall || step.result?.success !== true) continue;
+		if (isTerminalToolCall(step.toolCall)) continue;
+		if (!hasNoopMarker(step.result)) continue;
+
+		const candidate = sanitizePlannerMessage(
+			step.result.userFacingText ?? step.result.text,
+		);
+		if (candidate && !isUnsafeUserVisibleText(candidate)) return candidate;
+	}
+	return undefined;
+}
+
+function hasNoopMarker(result: PlannerToolResult): boolean {
+	const data = result.data;
+	if (!data) return false;
+	if (data.noop === true) return true;
+	const values = data.values;
+	return (
+		values !== null &&
+		typeof values === "object" &&
+		!Array.isArray(values) &&
+		(values as Record<string, unknown>).noop === true
+	);
 }
 
 /**
