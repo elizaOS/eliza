@@ -13,6 +13,7 @@ import { Check, ChevronRight } from "lucide-react";
 import { memo, useCallback, useState } from "react";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
+import { ChatWidgetShell } from "./chat-widget-shell";
 import { choicePropsEqual } from "./widget-equality";
 
 export type ChoiceOption = {
@@ -89,132 +90,143 @@ export const ChoiceWidget = memo(function ChoiceWidget({
   const firstRun = isFirstRunScope(scope);
 
   return (
-    <fieldset
-      className={
-        firstRun
-          ? "my-2 flex min-w-0 flex-col items-stretch gap-2 border-0 p-0"
-          : "my-2 flex min-w-0 flex-wrap items-center gap-2 border-0 p-0"
+    <ChatWidgetShell
+      title={firstRun ? "Choose next step" : "Choose"}
+      status={
+        <span className="rounded-sm bg-bg px-2 py-0.5 text-[11px] font-medium text-muted">
+          {selected ? "Selected" : `${options.length} options`}
+        </span>
       }
-      aria-label={`Choose ${scope}`}
-      data-choice-id={id}
-      data-choice-scope={scope}
+      summary={
+        selected ? (
+          <span role="status">Selected: {selected.label}</span>
+        ) : undefined
+      }
+      complete={selected !== null}
+      testId={`choice-shell-${id}`}
     >
-      {options.map((option) => {
-        const cancel = isCancelLike(option.value, option.label);
-        const isSelected = selected?.value === option.value;
-        if (firstRun) {
-          // Prominent, obviously-tappable next-step rows. The recommended
-          // option gets the accent; the rest are prominent neutral (secondary),
-          // so exactly one orange accent appears (brand rule).
-          const recommended = isRecommended(option.label);
-          const variant = recommended ? "default" : "secondary";
+      <fieldset
+        className={
+          firstRun
+            ? "flex min-w-0 flex-col items-stretch gap-2 border-0 p-3"
+            : "flex min-w-0 flex-wrap items-center gap-2 border-0 p-3"
+        }
+        aria-label={`Choose ${scope}`}
+        data-choice-id={id}
+        data-choice-scope={scope}
+      >
+        {options.map((option) => {
+          const cancel = isCancelLike(option.value, option.label);
+          const isSelected = selected?.value === option.value;
+          if (firstRun) {
+            // Prominent, obviously-tappable next-step rows. The recommended
+            // option gets the accent; the rest are prominent neutral
+            // (secondary), so exactly one orange accent appears (brand rule).
+            const recommended = isRecommended(option.label);
+            const variant = recommended ? "default" : "secondary";
+            return (
+              <Button
+                key={option.value}
+                type="button"
+                variant={variant}
+                size="default"
+                disabled={selected !== null}
+                aria-label={option.label}
+                aria-pressed={isSelected}
+                data-testid={`choice-${option.value}`}
+                className="h-11 w-full justify-between px-4 text-sm font-medium disabled:opacity-40 aria-disabled:opacity-40"
+                onClick={() => handleChoose(option)}
+              >
+                <span className="inline-flex items-center gap-2">
+                  {isSelected ? (
+                    <Check className="h-4 w-4 shrink-0" aria-hidden />
+                  ) : null}
+                  <span>{option.label}</span>
+                </span>
+                {!isSelected ? (
+                  <ChevronRight
+                    className="h-4 w-4 shrink-0 opacity-70"
+                    aria-hidden
+                  />
+                ) : null}
+              </Button>
+            );
+          }
+          const variant = cancel ? "ghost" : "outline";
           return (
             <Button
               key={option.value}
               type="button"
               variant={variant}
-              size="default"
+              size="sm"
               disabled={selected !== null}
               aria-label={option.label}
               aria-pressed={isSelected}
               data-testid={`choice-${option.value}`}
-              className="h-11 w-full justify-between px-4 text-sm font-medium disabled:opacity-40 aria-disabled:opacity-40"
+              className={
+                cancel
+                  ? "h-7 px-3 text-xs text-muted hover:text-txt disabled:opacity-40"
+                  : "h-7 px-3 text-xs disabled:opacity-40"
+              }
               onClick={() => handleChoose(option)}
             >
-              <span className="inline-flex items-center gap-2">
-                {isSelected ? (
-                  <Check className="h-4 w-4 shrink-0" aria-hidden />
-                ) : null}
-                <span>{option.label}</span>
-              </span>
-              {!isSelected ? (
-                <ChevronRight
-                  className="h-4 w-4 shrink-0 opacity-70"
-                  aria-hidden
-                />
-              ) : null}
+              {isSelected ? (
+                <span className="inline-flex items-center gap-1">
+                  <Check className="h-3.5 w-3.5" aria-hidden />
+                  <span>{option.label}</span>
+                </span>
+              ) : (
+                option.label
+              )}
             </Button>
           );
-        }
-        const variant = cancel ? "ghost" : "outline";
-        return (
-          <Button
-            key={option.value}
-            type="button"
-            variant={variant}
-            size="sm"
-            disabled={selected !== null}
-            aria-label={option.label}
-            aria-pressed={isSelected}
-            data-testid={`choice-${option.value}`}
-            className={
-              cancel
-                ? "h-7 px-3 text-xs text-muted hover:text-txt disabled:opacity-40"
-                : "h-7 px-3 text-xs disabled:opacity-40"
-            }
-            onClick={() => handleChoose(option)}
-          >
-            {isSelected ? (
-              <span className="inline-flex items-center gap-1">
-                <Check className="h-3.5 w-3.5" aria-hidden />
-                <span>{option.label}</span>
-              </span>
-            ) : (
-              option.label
-            )}
-          </Button>
-        );
-      })}
-      {allowCustom && !selected ? (
-        customMode ? (
-          <span className="inline-flex items-center gap-1">
-            <Input
-              type="text"
-              aria-label="Your own answer"
-              data-testid="choice-custom-input"
-              value={customText}
-              placeholder="Type your answer…"
-              className="h-7 min-w-40 rounded-md border-border bg-transparent px-2 text-xs"
-              onChange={(e) => setCustomText(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  submitCustom();
-                }
-              }}
-            />
+        })}
+        {allowCustom && !selected ? (
+          customMode ? (
+            <span className="inline-flex items-center gap-1">
+              <Input
+                type="text"
+                aria-label="Your own answer"
+                data-testid="choice-custom-input"
+                value={customText}
+                placeholder="Type your answer…"
+                className="h-7 min-w-40 rounded-md border-border bg-transparent px-2 text-xs"
+                onChange={(e) => setCustomText(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    submitCustom();
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="choice-custom-send"
+                aria-label="Send your answer"
+                disabled={customText.trim().length === 0}
+                className="h-7 px-3 text-xs disabled:opacity-40"
+                onClick={submitCustom}
+              >
+                Send
+              </Button>
+            </span>
+          ) : (
             <Button
               type="button"
               variant="outline"
               size="sm"
-              data-testid="choice-custom-send"
-              aria-label="Send your answer"
-              disabled={customText.trim().length === 0}
-              className="h-7 px-3 text-xs disabled:opacity-40"
-              onClick={submitCustom}
+              data-testid="choice-custom-open"
+              aria-label="Other"
+              className="h-7 px-3 text-xs"
+              onClick={() => setCustomMode(true)}
             >
-              Send
+              Other…
             </Button>
-          </span>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="choice-custom-open"
-            aria-label="Other"
-            className="h-7 px-3 text-xs"
-            onClick={() => setCustomMode(true)}
-          >
-            Other…
-          </Button>
-        )
-      ) : null}
-      {selected ? (
-        <span className="sr-only" role="status">
-          Selected: {selected.label}
-        </span>
-      ) : null}
-    </fieldset>
+          )
+        ) : null}
+      </fieldset>
+    </ChatWidgetShell>
   );
 }, choicePropsEqual);

@@ -102,9 +102,9 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "contexts",
 	description:
-		'Routing tags. Pick from available_contexts. Use ["simple"] only for trivial direct replies needing no action/tool/provider/sub-agent; replyText is answer. Otherwise choose relevant context ids; planner engages providers/actions. Empty invalid when shouldRespond=RESPOND.',
+		'Routing tags from available_contexts. Use ["simple"] only for direct replies needing no tool/action/provider. Owner goals/habits/routines/todos/reminders are never simple; route to tasks/OWNER_* actions. Empty invalid when shouldRespond=RESPOND.',
 	descriptionCompressed:
-		'Ids from available_contexts. ["simple"]=direct reply, no tools; else relevant ids for the planner. Non-empty when RESPOND.',
+		'Ids from available_contexts. ["simple"]=direct reply, no tools; personal goals/habits/reminders route to tasks/actions.',
 	priority: 10,
 	schema: {
 		type: "array",
@@ -173,7 +173,7 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "candidateActionNames",
 	description:
-		"Likely action names for this turn. Prefer available_actions; confident unlisted names ok (planner resolves similes). Use UPPER_SNAKE_CASE canonical names. Empty when no action likely.",
+		"Likely UPPER_SNAKE_CASE action names. Prefer available_actions; confident unlisted names ok. Owner life-management: goals -> OWNER_GOALS, todos -> OWNER_TODOS, reminders -> OWNER_REMINDERS, habits/routines -> OWNER_ROUTINES. Empty when no action likely.",
 	descriptionCompressed:
 		"Likely UPPER_SNAKE_CASE action names; empty when no action likely.",
 	priority: 50,

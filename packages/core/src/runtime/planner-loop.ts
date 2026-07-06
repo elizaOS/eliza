@@ -1019,6 +1019,7 @@ const ROUTING_HINTS_MEMO = new WeakMap<
 >();
 
 const MANDATORY_PLANNER_POLICY_LINES = [
+	"messageToUser alone cannot save, schedule, send, update, remember, or complete anything",
 	"SHELL is for filesystem/process work, not a fallback for chat-message search/recall, memory queries, or agent-history lookups.",
 	"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
 	"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
@@ -1028,6 +1029,7 @@ const MANDATORY_PLANNER_POLICY_LINES = [
 
 const MANDATORY_PLANNER_POLICY = [
 	"mandatory planner policy:",
+	'- messageToUser alone cannot save, schedule, send, update, remember, or complete anything. If an exposed tool can perform the requested side effect, call it. Never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it.',
 	"- Structured chat markers are allowed in messageToUser when they are the actual user-visible interaction payload: [FORM]\\n{json}\\n[/FORM], [CHOICE:scope id=id]\\nvalue=Label\\n[/CHOICE], [FOLLOWUPS id=id]\\nvalue=Label\\n[/FOLLOWUPS], or [TASK:threadId]Title[/TASK]. The JSON inside [FORM] is form data, not a tool attempt; keep JSON inside the marker and do not emit unrelated JSON.",
 	"- SHELL is for filesystem/process work, not a fallback for chat-message search/recall, memory queries, or agent-history lookups. When the user wants chat-message search/recall, memory queries, or agent-history lookups and no dedicated search action (e.g. SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH) is exposed, do not run shell greps, echo placeholders, or simulate the search — set messageToUser explaining that the capability is not available this turn.",
 	'- candidateActions naming a tool that is not in this turn\'s exposed tools list is a dead hint — do not invent SHELL/BROWSER/TASKS workarounds to fulfill it. Either an exposed tool genuinely resolves the user\'s intent (call it), or no tool fits (set messageToUser). Never emit echo-placeholder SHELL commands such as: echo "<intent-name>" / echo "placeholder for <ACTION>" / echo "search <X>" as a way to "trigger" a missing capability — placeholder echoes burn cost and produce no progress.',
@@ -1210,7 +1212,10 @@ function parseJsonPlannerOutput(raw: string): {
 	raw: Record<string, unknown>;
 } {
 	const trimmed = raw.trim();
-	const parsed = parseJsonObject<RawPlannerOutput>(trimmed);
+	const repaired = appendMissingJsonObjectClosers(trimmed);
+	const parsed =
+		parseJsonObject<RawPlannerOutput>(trimmed) ??
+		(repaired === trimmed ? null : parseJsonObject<RawPlannerOutput>(repaired));
 	if (!parsed) {
 		// Non-JSON output: a weak model emitted prose and/or `<tool_call>` markup
 		// instead of the planner envelope. Recover the call it meant to make and
@@ -1221,13 +1226,22 @@ function parseJsonPlannerOutput(raw: string): {
 			raw: { text: trimmed },
 		};
 	}
-	const messageToUser = sanitizePlannerMessage(
+	let messageToUser = sanitizePlannerMessage(
 		parsed.messageToUser ?? parsed.text,
 	);
 	const toolCalls = normalizeToolCalls(parsed.toolCalls);
 	const bareActionCalls =
 		toolCalls.length === 0 ? normalizeBarePlannerAction(parsed) : [];
 	let resolvedCalls = toolCalls.length > 0 ? toolCalls : bareActionCalls;
+	if (resolvedCalls.length === 0) {
+		const messageToolCalls = recoverMessageFieldToolCalls(
+			parsed.messageToUser ?? parsed.text,
+		);
+		if (messageToolCalls.length > 0) {
+			resolvedCalls = messageToolCalls;
+			messageToUser = undefined;
+		}
+	}
 	// `parseJsonObject` only returns the FIRST top-level object, so a weak
 	// model that concatenated bare `{type, args}` calls — or emitted native
 	// `<tool_call>` markup — would lose every call. Recover the full set from
@@ -1241,6 +1255,38 @@ function parseJsonPlannerOutput(raw: string): {
 		messageToUser,
 		raw: parsed as Record<string, unknown>,
 	};
+}
+
+function appendMissingJsonObjectClosers(text: string): string {
+	let depth = 0;
+	let inString = false;
+	let escaped = false;
+	for (const char of text) {
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (char === "\\") {
+			escaped = inString;
+			continue;
+		}
+		if (char === '"') {
+			inString = !inString;
+			continue;
+		}
+		if (inString) {
+			continue;
+		}
+		if (char === "{") {
+			depth++;
+		} else if (char === "}") {
+			depth--;
+		}
+	}
+	if (depth <= 0 || depth > 4 || inString) {
+		return text;
+	}
+	return `${text}${"}".repeat(depth)}`;
 }
 
 async function callPlanner(params: {
@@ -1998,6 +2044,7 @@ function appendTerminalContinuationEvent(args: {
 		unsafe
 			? "The previous planner output exposed internal tool planning. Emit native toolCalls for remaining work, or a concise user-safe message only if the request is complete."
 			: "The evaluator found the previous terminal planner output partial. Emit native toolCalls for remaining work.",
+		'If the user asked you to save, schedule, send, update, remember, or complete something, do not answer with "saved", "done", or similar prose unless a tool call result proves the side effect happened.',
 	].join("\n");
 	return appendContextEvent(args.context, {
 		id: `terminal-planner-retry:${args.iteration}:${createdAt}`,
@@ -2328,6 +2375,18 @@ function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
 	return calls;
 }
 
+function recoverMessageFieldToolCalls(value: unknown): PlannerToolCall[] {
+	if (value == null || value === "") {
+		return [];
+	}
+	const parsed =
+		typeof value === "string"
+			? parseJsonObject<Record<string, unknown>>(value.trim())
+			: value;
+	const call = normalizeToolCall(parsed);
+	return call ? [call] : [];
+}
+
 /**
  * Recover tool calls from the model's native `<tool_call>` markup —
  * `<tool_call>ACTION<arg_key>k</arg_key><arg_value>v</arg_value>...</tool_call>`
@@ -2482,17 +2541,19 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 		return null;
 	}
 
-	const args = normalizeArgs(
-		record.input ??
-			record.args ??
-			record.arguments ??
-			record.params ??
-			record.parameters ??
-			rawFunction?.input ??
-			rawFunction?.args ??
-			rawFunction?.arguments ??
-			rawFunction?.params ??
-			rawFunction?.parameters,
+	const args = stripPlannerControlParams(
+		normalizeArgs(
+			record.input ??
+				record.args ??
+				record.arguments ??
+				record.params ??
+				record.parameters ??
+				rawFunction?.input ??
+				rawFunction?.args ??
+				rawFunction?.arguments ??
+				rawFunction?.params ??
+				rawFunction?.parameters,
+		),
 	);
 
 	if (name.toUpperCase() === "PLAN_ACTIONS" && args) {
@@ -2501,7 +2562,7 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 			return {
 				id: typeof record.id === "string" ? record.id : undefined,
 				name: actionName,
-				params: normalizeArgs(args.parameters) ?? {},
+				params: stripPlannerControlParams(normalizeArgs(args.parameters)) ?? {},
 			};
 		}
 	}
@@ -2511,6 +2572,16 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 		name,
 		params: args,
 	};
+}
+
+function stripPlannerControlParams(
+	args: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+	if (!args || typeof args.thought !== "string") {
+		return args;
+	}
+	const { thought: _thought, ...rest } = args;
+	return rest;
 }
 
 function normalizeToolCallName(value: unknown): string {
@@ -2605,7 +2676,8 @@ function handleRequiredToolPlannerMiss(params: {
 		content:
 			"The previous planner response was not valid because this turn is tool-required and no non-terminal tool has run yet. " +
 			"Retry by calling one exposed non-terminal tool that can attempt the current request. " +
-			"After that tool returns, use its result to decide whether to continue or answer the user.",
+			"After that tool returns, use its result to decide whether to continue or answer the user. " +
+			'If the user asked you to save, schedule, send, update, remember, or complete something, do not answer with "saved", "done", or similar prose unless a tool call result proves the side effect happened.',
 		metadata: {
 			iteration: params.iteration,
 			reason: params.reason,
@@ -2985,6 +3057,9 @@ function preferredFinalMessageFromToolOrModel(
 	modelMessage?: unknown,
 	fallback?: unknown,
 ): string | undefined {
+	const modelText = getNonEmptyString(modelMessage);
+	const usableModelText =
+		modelText && !isToolMetaNarration(modelText) ? modelText : undefined;
 	// Precedence:
 	//   1. A single successful tool whose result was explicitly marked
 	//      `verifiedUserFacing: true` — used for structured outputs
@@ -3006,9 +3081,26 @@ function preferredFinalMessageFromToolOrModel(
 	//     opts in via `verifiedUserFacing: true`.
 	return (
 		singleVerifiedUserFacingToolResultText(trajectory) ??
-		getNonEmptyString(modelMessage) ??
+		usableModelText ??
 		latestToolResultText(trajectory) ??
 		getNonEmptyString(fallback)
+	);
+}
+
+function isToolMetaNarration(text: string): boolean {
+	const normalized = text.trim().toLowerCase();
+	return (
+		normalized.startsWith("the tool executed successfully") ||
+		normalized.startsWith("tool executed successfully") ||
+		normalized.startsWith("the tool returned") ||
+		/^[a-z0-9_]+(?:\s+[a-z0-9_]+)?\s+was\s+called\b/.test(normalized) ||
+		/^[a-z0-9_]+(?:\s+[a-z0-9_]+)?\s+action\s+executed\b/.test(normalized) ||
+		/^planner\s+(?:drafted|called|routed|selected)\b/.test(normalized) ||
+		normalized.includes(" via owner_goals") ||
+		normalized.includes("tool's user-visible") ||
+		normalized.includes("planner's user-visible message") ||
+		normalized.includes("surface that question") ||
+		normalized.includes("surface the draft")
 	);
 }
 

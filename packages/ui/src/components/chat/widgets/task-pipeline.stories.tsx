@@ -4,11 +4,13 @@
  * both inside a task card and for a standalone `[CHECKLIST]` marker.
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import { PlanChecklist } from "./task-pipeline";
+import { mockApp } from "../../../storybook/mock-providers.helpers";
+import { ChecklistWidget, PlanChecklist } from "./task-pipeline";
 
 const meta = {
   title: "Chat/Widgets/PlanChecklist",
   component: PlanChecklist,
+  decorators: [mockApp()],
 } satisfies Meta<typeof PlanChecklist>;
 
 export default meta;
@@ -33,6 +35,29 @@ export const AllDone: Story = {
     entries: [
       { content: "Back up the database", status: "completed" },
       { content: "Run the migration", status: "completed" },
+    ],
+  },
+};
+
+export const StandaloneChecklistShell: Story = {
+  render: (args) => <ChecklistWidget {...args} />,
+  args: {
+    title: "Checklist",
+    entries: [
+      { content: "Confirm the appointment time", status: "completed" },
+      { content: "Send the reminder to Telegram", status: "in_progress" },
+      { content: "Archive the old task", status: "pending" },
+    ],
+  },
+};
+
+export const StandaloneChecklistComplete: Story = {
+  render: (args) => <ChecklistWidget {...args} />,
+  args: {
+    title: "Checklist",
+    entries: [
+      { content: "Confirm the appointment time", status: "completed" },
+      { content: "Send the reminder to Telegram", status: "completed" },
     ],
   },
 };

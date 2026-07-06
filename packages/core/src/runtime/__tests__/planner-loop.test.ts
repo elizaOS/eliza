@@ -65,6 +65,43 @@ describe("v5 planner loop skeleton", () => {
 		]);
 	});
 
+	it("recovers action JSON emitted inside messageToUser", () => {
+		const output = parsePlannerOutput(`{
+  "thought": "save the owner goal",
+  "messageToUser": "{\\"action\\":\\"OWNER_GOALS\\",\\"parameters\\":{\\"action\\":\\"create\\",\\"title\\":\\"Leave the apartment more\\",\\"confirmed\\":true}}",
+  "toolCalls": []
+}`);
+
+		expect(output.toolCalls).toEqual([
+			{
+				name: "OWNER_GOALS",
+				params: {
+					action: "create",
+					title: "Leave the apartment more",
+					confirmed: true,
+				},
+			},
+		]);
+		expect(output.messageToUser).toBeUndefined();
+	});
+
+	it("repairs a bare action envelope with a missing closing brace", () => {
+		const output = parsePlannerOutput(
+			`{"action":"OWNER_GOALS","parameters":{"action":"create","title":"Leave the apartment more","confirmed":false,"thought":"route to owner goals"}`,
+		);
+
+		expect(output.toolCalls).toEqual([
+			{
+				name: "OWNER_GOALS",
+				params: {
+					action: "create",
+					title: "Leave the apartment more",
+					confirmed: false,
+				},
+			},
+		]);
+	});
+
 	it("preserves primitive planner parameters for enum short-form expansion", () => {
 		const output = parsePlannerOutput(
 			`{"action":"SET_MODE","parameters":"fast","thought":"switching"}`,
@@ -175,6 +212,18 @@ describe("v5 planner loop skeleton", () => {
 		);
 		expect(plannerTemplate).toContain(
 			"attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now",
+		);
+		expect(plannerTemplate).toContain(
+			"messageToUser alone cannot save, schedule, send, update, remember, or complete anything",
+		);
+		expect(plannerTemplate).toContain(
+			'never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it',
+		);
+		expect(plannerTemplate).toContain(
+			'return exactly {"action":"TOOL_NAME","parameters":{...},"thought":"short reason"}',
+		);
+		expect(plannerTemplate).toContain(
+			"owner goal save/create/update/review when OWNER_GOALS is exposed",
 		);
 	});
 
@@ -305,6 +354,9 @@ describe("v5 planner loop skeleton", () => {
 		);
 		expect(systemContent).toContain(
 			"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
+		);
+		expect(systemContent).toContain(
+			"messageToUser alone cannot save, schedule, send, update, remember, or complete anything",
 		);
 		expect(systemContent).toContain(
 			"messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening",
@@ -815,11 +867,172 @@ describe("v5 planner loop skeleton", () => {
 		expect(retryParams.messages?.[1]?.content).toContain(
 			"previous planner response was not valid",
 		);
+		expect(retryParams.messages?.[1]?.content).toContain(
+			'do not answer with "saved", "done", or similar prose unless a tool call result proves the side effect happened',
+		);
 		expect(executeToolCall).toHaveBeenCalledWith(
 			{ id: "call-1", name: "LOOKUP", params: { query: "status" } },
 			expect.objectContaining({ iteration: 2 }),
 		);
 		expect(result.finalMessage).toBe("Checked.");
+	});
+
+	it("falls back to tool text when evaluator message is tool meta-narration", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "OWNER_GOALS",
+						arguments: { action: "create", title: "Leave the apartment more" },
+					},
+				],
+			})),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: "Draft goal: Leave the apartment more. Not saved yet — what would count as success?",
+			userFacingText:
+				"Draft goal: Leave the apartment more. Not saved yet — what would count as success?",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Awaiting confirmation.",
+			messageToUser:
+				"The tool executed successfully and returned a draft goal awaiting user confirmation.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "OWNER_GOALS", description: "Manage owner goals." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe(
+			"Draft goal: Leave the apartment more. Not saved yet — what would count as success?",
+		);
+	});
+
+	it("falls back to tool text when evaluator names an action execution", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "OWNER_GOALS",
+						arguments: { action: "create", title: "Save for Lisbon" },
+					},
+				],
+			})),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: "Here's the draft — nothing saved yet. Want me to save it?",
+			userFacingText:
+				"Here's the draft — nothing saved yet. Want me to save it?",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Awaiting confirmation.",
+			messageToUser:
+				"OWNER_GOALS create action executed and returned a draft preview requiring owner confirmation. Route FINISH with the tool's user-visible confirmation prompt.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "OWNER_GOALS", description: "Manage owner goals." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe(
+			"Here's the draft — nothing saved yet. Want me to save it?",
+		);
+	});
+
+	it("falls back to tool text when evaluator says the action was called", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "OWNER_GOALS",
+						arguments: { action: "create", title: "Learn Spanish" },
+					},
+				],
+			})),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: "What would count as success for that goal?",
+			userFacingText: "What would count as success for that goal?",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Awaiting clarification.",
+			messageToUser:
+				"OWNER_GOALS create was called and returned a deferred draft asking the owner to confirm cadence/success evidence. The tool result's user-facing text is an appropriate clarifying question. Finish and surface that question.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "OWNER_GOALS", description: "Manage owner goals." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe(
+			"What would count as success for that goal?",
+		);
+	});
+
+	it("falls back to tool text when evaluator narrates a planner draft", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "OWNER_GOALS",
+						arguments: { action: "create", title: "Save for Lisbon" },
+					},
+				],
+			})),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: "Here's the draft — not saved yet. Want me to save it?",
+			userFacingText: "Here's the draft — not saved yet. Want me to save it?",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Awaiting confirmation.",
+			messageToUser:
+				"Planner drafted the Lisbon savings goal via OWNER_GOALS and returned a confirmation prompt to the owner. This is an expected owner-approval step; surface the draft summary and the confirmation question as the final message.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "OWNER_GOALS", description: "Manage owner goals." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe(
+			"Here's the draft — not saved yet. Want me to save it?",
+		);
 	});
 
 	it("surfaces captured REPLY refusal text when required-tool cap is hit, instead of throwing", async () => {
@@ -1619,7 +1832,11 @@ describe("v5 planner loop skeleton", () => {
 			useModel: vi.fn(async () => ({
 				text: "",
 				toolCalls: [
-					{ id: "call-1", name: "SCHEDULED_TASKS", arguments: { action: "create" } },
+					{
+						id: "call-1",
+						name: "SCHEDULED_TASKS",
+						arguments: { action: "create" },
+					},
 				],
 			})),
 		};
@@ -1662,7 +1879,11 @@ describe("v5 planner loop skeleton", () => {
 			useModel: vi.fn(async () => ({
 				text: "",
 				toolCalls: [
-					{ id: "call-1", name: "SCHEDULED_TASKS", arguments: { action: "create" } },
+					{
+						id: "call-1",
+						name: "SCHEDULED_TASKS",
+						arguments: { action: "create" },
+					},
 				],
 			})),
 		};

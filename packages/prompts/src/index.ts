@@ -737,7 +737,7 @@ Never simple when message:
 - names person/place/file/document/data source, or asks schedules/past interactions ("what did I say earlier", "what's on my calendar", "how many X")
 - searches/browses/current facts; runs shell; inspects files/logs/repos/services/disk; builds/deploys apps; creates PRs; spawns coding/task agents; sends messages; schedules tasks
 - benefits from tool call even if plausible answer exists
-- owner life-management: todos/habits/routines/goals/reminders/alarms/check-ins/blocks/calls/travel/device delivery/desktop actions/approvals; route owner context, action asks missing detail
+- owner life-management: todos/habits/routines/goals/reminders/alarms/check-ins/blocks/calls/travel/device delivery/desktop actions/approvals; route owner context, action asks missing detail. Goal phrases like "I want a goal", "track this goal", and "count it if" route to tasks + OWNER_GOALS; do not create work threads for owner goals.
 - changes/persists/updates/remembers settings/preferences/identity/persona/response style/future behavior; select settings + relevant context
 
 Domain routing (when context is available):
@@ -839,7 +839,11 @@ rules:
 - use only tools in current context object
 - smallest grounded useful tool queue
 - args only from user request or prior tool results
-- task complete or next step is user speech => no toolCalls, set messageToUser
+- if an exposed tool can perform the requested side effect, call it; messageToUser alone does not save, schedule, send, update, remember, or complete anything
+- task already complete from prior tool result or next step truly needs user speech => no toolCalls, set messageToUser
+- never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless an actual tool result this turn proves it
+- to call a tool, return exactly {"action":"TOOL_NAME","parameters":{...},"thought":"short reason"} or native toolCalls; never prose
+- owner goal save/create/update/review when OWNER_GOALS is exposed => return {"action":"OWNER_GOALS","parameters":{"action":"create|update|review","intent":"...","title":"...","confirmed":true|false,"details":{"description":"...","successCriteria":{"summary":"..."},"supportStrategy":{"summary":"..."} } },"thought":"..."} rather than messageToUser
 - never invent tool names, connector names, providers, ids, benchmark ids
 
 return:
