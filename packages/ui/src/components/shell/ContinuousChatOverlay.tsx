@@ -243,9 +243,11 @@ type MotionControls = { stop: () => void };
 
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
 // Restore-from-maximized grab zone (#13531): while full-bleed, a downward pull
-// that STARTS within this fraction of the panel height from the top animates
-// back to the inset overlay. 0.2 = the "top 20%" per the product spec.
-const MAXIMIZE_RESTORE_ZONE_VH = 0.2;
+// that STARTS within this fraction of the panel height from the top drops
+// full-bleed and tracks the finger. 0.9 = "top 90%" — nearly the whole panel is
+// grabbable (only the bottom composer strip is excluded), and it sits UNDER the
+// top bar whose empty space is pointer-transparent so pulls there reach it too.
+const MAXIMIZE_RESTORE_ZONE_VH = 0.9;
 // The panel's top clearance + max height (which decide where the header buttons
 // land relative to the notch) live in the pure, unit-tested
 // `resolveChatPanelLayout` — see chat-panel-layout.ts.
@@ -1152,6 +1154,18 @@ export function ContinuousChatOverlay({
   // login/first-run chat opens edge-to-edge full-screen (kept in sync by the
   // first-run pin effect below), then the falling edge collapses it to half.
   const [maximized, setMaximized] = React.useState(firstRunOpen);
+  // A restore drag is in flight (pull-down out of full-bleed). Declared up here
+  // (not by the restore binding) because `fullBleedFrame` below — the layout that
+  // must stay full-screen-framed for the DURATION of the drag so nothing pops —
+  // reads it, and that feeds `panelMaxH`/padding computed before the binding.
+  // Keeping the strip mounted while true also preserves the pointer capture
+  // across the un-maximize (the "can't collapse" bug). See the restore binding.
+  const [restoreDragging, setRestoreDragging] = React.useState(false);
+  // Whether the in-flight restore drag has turned downward and dropped
+  // full-bleed. A ref (not the `maximized` state) because the release handler
+  // runs in the SAME event as the drop and would otherwise read the stale,
+  // pre-re-render `maximized` and snap back instead of resting where released.
+  const restoreDidUnmaximizeRef = React.useRef(false);
   // Reactive composer-focus flag. Only the short-landscape compact resting
   // affordance reads it (#14173): focusing the field lifts the compact treatment
   // so the composer widens to full BEFORE the first keystroke, and blurring an
@@ -2205,6 +2219,13 @@ export function ContinuousChatOverlay({
   // a stale flag can never leak into half/collapsed/pill. Drives the edge-to-edge
   // panel styles + a zero top margin.
   const fullBleed = maximized && expanded && sheetOpen && !pilled;
+  // The LAYOUT FRAME stays full-screen for the whole restore drag, not just while
+  // `maximized`: the vertical framing (panel max-height, bottom padding, safe-area
+  // top bleed, opaque bg/border) holds steady so pulling down only SHRINKS the
+  // height instead of also popping those. The horizontal inset + corner radius
+  // still morph continuously (demax* motion values below) so it visibly eases out
+  // of full screen as the finger tracks down.
+  const fullBleedFrame = fullBleed || restoreDragging;
 
   // #14173: on a wide-but-short landscape viewport the bottom-anchored composer
   // spans nearly the full width (max-w-3xl, centered) as a ~full-width band, and
@@ -2281,7 +2302,10 @@ export function ContinuousChatOverlay({
     keyboardInset,
     effectiveKeyboardInset,
     safeAreaTopPx: safeAreaTop,
-    fullBleed,
+    // Use the frame (not just `maximized`) so the max-height stays full for the
+    // whole restore drag — otherwise frame 1 clamps the panel to the inset height
+    // and it pops shorter before the finger has moved.
+    fullBleed: fullBleedFrame,
   });
 
   // History-height detents: COLLAPSED (0) → HALF → FULL — the thread's ideal
@@ -2371,6 +2395,23 @@ export function ContinuousChatOverlay({
   const panelRadius = useTransform(threadHeight, [0, 160], [32, 24], {
     clamp: true,
   });
+  // De-maximize morph (#restore-drag): while a restore drag shrinks the panel
+  // from its full-bleed height, the edge-to-edge look eases back into the inset
+  // sheet — the corners round (0 → 24px) in lockstep with the finger, so a
+  // pull-down animates OUT of full screen instead of popping the inset radius in
+  // on the first frame. Driven by the live height against the full-bleed
+  // reference height; only consulted while `restoreDragging` (below), where the
+  // panel is un-maximized but still full-screen-framed. The breakpoints are
+  // clamped to stay strictly ascending on tiny/unmeasured viewports (viewportH
+  // can be 0 before the first measure).
+  const demaxFullH = Math.max(320, viewportH);
+  const demaxInsetH = Math.max(160, demaxFullH - 160);
+  const demaxRadius = useTransform(
+    threadHeight,
+    [demaxInsetH, demaxFullH],
+    [24, 0],
+    { clamp: true },
+  );
   // --- Liquid-glass pill → input morph (driven by openProgress) ---------------
   // The panel is ONE persistent element; the pill capsule and the full
   // input crossfade by opacity (compositor-cheap) while the whole panel scales
@@ -3703,18 +3744,6 @@ export function ContinuousChatOverlay({
     if (firstRunOpen) return;
     restoreFromMaximized();
   }, [firstRunOpen, restoreFromMaximized]);
-  // Whether the in-flight restore drag has turned downward and dropped
-  // full-bleed. A ref (not the `maximized` state) because the release handler
-  // runs in the SAME event as the drop and would otherwise read the stale,
-  // pre-re-render `maximized` and snap back instead of resting where released.
-  const restoreDidUnmaximizeRef = React.useRef(false);
-  // Keep the top grab strip mounted for the DURATION of a restore drag even after
-  // it drops full-bleed. Without this the strip's JSX (gated on `fullBleed`)
-  // unmounts on the first downward frame, DESTROYING the pointer capture and
-  // freezing the gesture — the "can't collapse the maximized chat" bug. While
-  // true, the strip stays mounted and the (inset) grabber is suppressed, so
-  // exactly one grab element owns the pointer through the whole drag.
-  const [restoreDragging, setRestoreDragging] = React.useState(false);
   // Live drag: reuse the shared drag math (onDragOffset) so the panel tracks the
   // finger identically to a grabber pull down from FULL. The only extra step is
   // dropping full-bleed the moment the pull turns downward, so the inset panel is
@@ -3844,8 +3873,11 @@ export function ContinuousChatOverlay({
         // Direction-aware: `items-end` is inline-end, so it lands bottom-left in
         // RTL. Full-width children (banners) are unaffected (they stay `w-full`).
         compactLanding ? "items-end" : "items-center",
-        // Full-bleed (maximized) removes the side inset so the chat is edge-to-edge.
-        fullBleed ? "px-0" : "px-3 sm:px-4",
+        // Full-bleed (maximized) removes the side inset so the chat is edge-to-edge;
+        // the FRAME keeps it edge-to-edge for the whole restore drag (the inset
+        // returns on settle) while the corners round live, so pulling down reads as
+        // a smooth de-maximize rather than a first-frame width pop.
+        fullBleedFrame ? "px-0" : "px-3 sm:px-4",
       )}
       // Lift the whole overlay above the on-screen keyboard (`bottom`); padding
       // below the composer is conditional on an actual keyboard lift, not focus
@@ -3886,7 +3918,7 @@ export function ContinuousChatOverlay({
         // true bottom, the full inset + gap is the right, native-app clearance.)
         // The same holds for Android gesture pills. Everything below the composer
         // is the full-bleed wallpaper / app floor — no cosmetic strip repaints it.
-        paddingBottom: fullBleed
+        paddingBottom: fullBleedFrame
           ? 0
           : keyboardLiftActive
             ? "0.75rem"
@@ -4015,7 +4047,7 @@ export function ContinuousChatOverlay({
           // 13rem composer whose overlap with view controls stays under the
           // audit's clearance threshold. The grabber + pill are positioned
           // relative to THIS wrapper, so they shrink and re-corner with it.
-          fullBleed
+          fullBleedFrame
             ? "max-w-none"
             : compactLanding
               ? "max-w-[13rem]"
@@ -4064,8 +4096,9 @@ export function ContinuousChatOverlay({
             maxHeight: panelMaxH,
             // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
             // bottom transform-origin would drop the top edge below the status
-            // bar (the "gap at the top when maximized" bug).
-            scale: fullBleed ? 1 : panelScale,
+            // bar (the "gap at the top when maximized" bug). The frame holds scale
+            // 1 through the restore drag too (the height, not a scale, shrinks).
+            scale: fullBleedFrame ? 1 : panelScale,
             // Grow UP out of the pill at the bottom.
             transformOrigin: "bottom center",
             // GPU-promote the panel ONLY while a drag/settle is live (#swipe-
@@ -4105,13 +4138,21 @@ export function ContinuousChatOverlay({
               // by the inline backgroundColor below (inline wins over this
               // class); this class supplies the edge. Flat system: depth =
               // border, not a drop shadow (all shadow tokens are none).
-              fullBleed
+              fullBleedFrame
                 ? "border-0 bg-card"
                 : "border border-border-strong bg-card",
             )}
             style={{
               opacity: glassOpacity,
-              borderRadius: fullBleed ? 0 : panelRadius,
+              // Corners: pinned square at full-bleed; during a restore drag they
+              // round LIVE from 0 as the height shrinks (demaxRadius); otherwise
+              // the normal pill→sheet radius. This is the visible "easing out of
+              // full screen" cue.
+              borderRadius: fullBleed
+                ? 0
+                : restoreDragging
+                  ? demaxRadius
+                  : panelRadius,
               // SOLID warm-dark fill (no translucency) so the ember field / home
               // widgets can't bleed through the open thread (the #1 "too
               // transparent" complaint this fixes). Kept inline (not just the
@@ -4122,7 +4163,7 @@ export function ContinuousChatOverlay({
               // glass. The collapsed pill stays chrome-free via glassOpacity fade.
               // `--card` / `--bg` are scoped by CHAT_PANEL_THEME on the fieldset,
               // not inherited from the orange app theme behind the overlay.
-              backgroundColor: fullBleed ? "var(--bg)" : "var(--card)",
+              backgroundColor: fullBleedFrame ? "var(--bg)" : "var(--card)",
               backgroundImage:
                 "linear-gradient(180deg, var(--surface) 0%, transparent 24%)",
               // Full-bleed: extend the glass UP through the safe-area-top so the
@@ -4133,7 +4174,7 @@ export function ContinuousChatOverlay({
               // (the "safe-area gap" above maximized chat). overflow-visible on the
               // panel lets it bleed up; content (header, with its own safe-area
               // padding) is untouched. Harmless when the inset is 0.
-              ...(fullBleed
+              ...(fullBleedFrame
                 ? { top: "calc(-1 * env(safe-area-inset-top, 0px))" }
                 : null),
             }}
@@ -4175,7 +4216,13 @@ export function ContinuousChatOverlay({
             style={{
               opacity: glassOpacity,
               pointerEvents: pilled ? "none" : "auto",
-              borderRadius: fullBleed ? 0 : panelRadius,
+              // Mirror the surface radius so the content clip rounds in lockstep
+              // during the de-maximize drag (see the surface borderRadius above).
+              borderRadius: fullBleed
+                ? 0
+                : restoreDragging
+                  ? demaxRadius
+                  : panelRadius,
             }}
             // Drag-and-drop attachment intake (#10722). The old ChatView chat
             // surface accepted file drops; the overlay replaced it with only
@@ -4210,17 +4257,17 @@ export function ContinuousChatOverlay({
               className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-surface to-transparent"
             />
 
-            {/* Top-20% pull-down-to-restore grab zone (#13531). Mounted while
+            {/* Top-90% pull-down-to-restore grab zone (#13531). Mounted while
                 full-bleed AND for the duration of a restore drag (`restoreDragging`)
                 so it keeps the pointer capture after the drag drops full-bleed —
-                a downward pull starting in the top 20% insets and tracks the
-                finger down. NOT during onboarding (it pins full-bleed and keeps
-                the inert grabber). `z-[15]` sits UNDER the header (`z-20`) but
-                above the transcript so the launcher button keeps its taps while
-                real pulls still hit the zone; this strip catches pulls on the
-                surrounding empty header space. Keyboard-operable (Enter/Space/
-                ArrowDown restore) so the gesture-only affordance stays WCAG
-                2.1.1 operable. */}
+                a downward pull starting anywhere in the top 90% (all but the
+                bottom composer strip) drops full-bleed and tracks the finger
+                down. NOT during onboarding (it pins full-bleed and keeps the
+                inert grabber). `z-[15]` sits UNDER the header (`z-20`), but the
+                bar's empty space is `pointer-events-none`, so pulls that START
+                over the top bar fall THROUGH to this strip (only the button
+                clusters keep their taps). Keyboard-operable (Enter/Space/ArrowDown
+                restore) so the gesture-only affordance stays WCAG 2.1.1 operable. */}
             {(fullBleed || restoreDragging) && !firstRunOpen ? (
               <button
                 {...maximizeRestoreBinding}
@@ -4262,7 +4309,11 @@ export function ContinuousChatOverlay({
                   // 0.5rem) plus the button row exceeds that, so a 100px cap
                   // clipped the buttons — uncap it edge-to-edge.
                   opacity: fullBleed ? 1 : headerOpacity,
-                  maxHeight: fullBleed ? "none" : headerMaxH,
+                  // Keep the header height uncapped for the whole restore drag
+                  // (frame, not just `maximized`) — the full-bleed header holds
+                  // its safe-area padding + button row, and re-capping to
+                  // `headerMaxH` on frame 1 would clip the buttons.
+                  maxHeight: fullBleedFrame ? "none" : headerMaxH,
                   // Collapsed → 0 top padding (no leaked margin above the
                   // composer); opens to ~10px as the header reveals. Maximized
                   // goes edge-to-edge under the status bar, so the header insets
@@ -4271,12 +4322,17 @@ export function ContinuousChatOverlay({
                   // arbitrary class, whose env(...,0px) comma breaks the parser
                   // so no padding was generated and the buttons sat under the
                   // status bar).
-                  paddingTop: fullBleed
+                  paddingTop: fullBleedFrame
                     ? "calc(var(--safe-area-top, 0px) + 0.5rem)"
                     : headerPadTop,
                 }}
                 className={cn(
-                  "relative z-20 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
+                  // `pointer-events-none` on the bar itself so a pull-down that
+                  // starts over the EMPTY top-bar space falls through to the
+                  // restore strip beneath it (the "should work over the top bar"
+                  // fix); the button clusters below re-enable pointer events so
+                  // taps on search/voice/home still land.
+                  "pointer-events-none relative z-20 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
                 )}
               >
                 {/* Left cluster: search is the ONLY left control. The thread is
@@ -4284,7 +4340,7 @@ export function ContinuousChatOverlay({
                     new-chat/refresh button (scroll-up pages older turns, search
                     jumps anywhere). Locked while onboarding pins the sheet so
                     the chat stays front and center. */}
-                <div className="flex items-center gap-1.5">
+                <div className="pointer-events-auto flex items-center gap-1.5">
                   <HeaderButton
                     icon={Search}
                     label="search messages"
@@ -4302,7 +4358,7 @@ export function ContinuousChatOverlay({
                     Transcribing — say “exit transcription mode” to stop
                   </div>
                 ) : null}
-                <div className="flex items-center gap-1.5">
+                <div className="pointer-events-auto flex items-center gap-1.5">
                   {/* Voice on/off: the top-bar master control for bidirectional
                       voice. Same semantics as a composer-mic tap (hands-free
                       conversation on/off; ends transcription when live), so
