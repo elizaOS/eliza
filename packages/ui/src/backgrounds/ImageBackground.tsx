@@ -4,10 +4,41 @@
  */
 import type * as React from "react";
 import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim";
+import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url";
 
 export interface ImageBackgroundProps {
   /** Cover-image source — a data URL or a served `/api/media/…` URL. */
   imageUrl: string;
+}
+
+/**
+ * Resolve a wallpaper `imageUrl` into one reachable from the renderer in every
+ * shell (web, packaged desktop `file://`, native `capacitor://`). The stored URL
+ * is one of three same-origin classes and each resolves against a DIFFERENT
+ * runtime base:
+ *  - `data:` / `blob:` / already-absolute `http(s)` — pass through untouched.
+ *  - `/api/media/<hash>` (a re-hosted upload/generation) — an AGENT-API path, so
+ *    resolve it against the runtime API base (`resolveApiUrl`); a bare `/api/…`
+ *    on `file://` would point at the SPA, not the backend, and 404.
+ *  - `/bg-sunset.jpg` / `/wallpapers/<id>.webp` (curated static assets in
+ *    `packages/app/public`) — a PUBLIC ASSET path, so resolve it against the SPA
+ *    asset base (`resolveAppAssetUrl`); on packaged `file://` a bare `/wallpapers`
+ *    would resolve to `file:///wallpapers` and fail. This is the same
+ *    URL-resolution trap `resolveTileImageUrl` handles for launcher hero art.
+ */
+function resolveWallpaperUrl(url: string): string {
+  if (
+    url.startsWith("data:") ||
+    url.startsWith("blob:") ||
+    /^[a-z][a-z0-9+.-]*:/i.test(url) ||
+    url.startsWith("//")
+  ) {
+    return url;
+  }
+  if (url.startsWith("/api/") || url.startsWith("api/")) {
+    return resolveApiUrl(url);
+  }
+  return resolveAppAssetUrl(url);
 }
 
 /**
@@ -61,7 +92,7 @@ export function ImageBackground({
         // BOTH lvh and dvh to the same collapsed box (delta 0) — the reason the
         // strip survived 5 CSS-only fixes. The var is a hard 0 off-standalone.
         bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET,
-        backgroundImage: `url("${imageUrl}")`,
+        backgroundImage: `url("${resolveWallpaperUrl(imageUrl)}")`,
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",

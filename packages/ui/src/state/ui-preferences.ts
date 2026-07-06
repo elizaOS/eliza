@@ -105,6 +105,32 @@ export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
 const SUNSET_WALLPAPER_URL = "/bg-sunset.jpg";
 
 /**
+ * The curated photo wallpapers (#14 default-wallpapers): five painterly scenes
+ * shipped as compressed WebP static assets from `packages/app/public/
+ * wallpapers/`, referenced by a root-relative same-origin URL keyed by catalog
+ * id. Same served-asset class as {@link SUNSET_WALLPAPER_URL}: a code-free,
+ * same-origin image the apply channel already trusts (no GLSL source, no preset
+ * id), so the confinement invariants (#11088 / #13523) hold and the multi-MB
+ * bytes live in `public/`, never in the JS bundle (#13538). The renderer routes
+ * these through `resolveAppAssetUrl` at paint time (see `ImageBackground`) so a
+ * native/standalone shell serving off `file://` / `capacitor://` resolves the
+ * same-origin public-asset path against the SPA asset base, not the agent API
+ * base (the same URL-resolution trap `resolveTileImageUrl` handles for hero art).
+ */
+function photoWallpaperUrl(id: string): string {
+  return `/wallpapers/${id}.webp`;
+}
+
+/** The catalog ids that resolve to a served `/wallpapers/<id>.webp` asset. */
+const PHOTO_WALLPAPER_IDS: ReadonlySet<string> = new Set([
+  "dusk-dunes",
+  "reef",
+  "slate",
+  "ember-dunes",
+  "canopy",
+]);
+
+/**
  * The boot default background. #13538 asks the app to boot to "a nice natural
  * (or interesting curated) default, not a flat color." We ship the curated
  * "Ember Night" sunset-in-the-clouds wallpaper (a served same-origin image); the
@@ -226,16 +252,20 @@ export const BACKGROUND_CATALOG: readonly BackgroundCatalogEntry[] =
         author: "curated",
       };
     }
-    // image: a served same-origin asset for the default (the sunset wallpaper),
-    // a code-free gradient data URL from the palette for the rest. Ember Night
-    // reuses the shared boot-default URL so the default and its catalog tile
-    // match ({@link DEFAULT_BACKGROUND_CONFIG}).
+    // image: a served same-origin asset for the default (the sunset wallpaper)
+    // and for each curated photo wallpaper (a `/wallpapers/<id>.webp` static
+    // asset); a code-free gradient data URL from the palette for the rest. Ember
+    // Night reuses the shared boot-default URL so the default and its catalog
+    // tile match ({@link DEFAULT_BACKGROUND_CONFIG}).
+    const source =
+      meta.id === SHARED_DEFAULT_BACKGROUND_CATALOG_ID
+        ? SUNSET_WALLPAPER_URL
+        : PHOTO_WALLPAPER_IDS.has(meta.id)
+          ? photoWallpaperUrl(meta.id)
+          : gradientDataUrl(meta.palette);
     return {
       ...meta,
-      source:
-        meta.id === SHARED_DEFAULT_BACKGROUND_CATALOG_ID
-          ? SUNSET_WALLPAPER_URL
-          : gradientDataUrl(meta.palette),
+      source,
       author: "curated",
     };
   });

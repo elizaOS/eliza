@@ -91,6 +91,67 @@ export const NATURAL_BACKGROUND_META: readonly BackgroundCatalogMeta[] = [
 ];
 
 /**
+ * The curated PHOTO-wallpaper metadata (#14 default-wallpapers): five painterly
+ * scenes shipped as compressed WebP static assets from `packages/app/public/
+ * wallpapers/`, distinct from {@link NATURAL_BACKGROUND_META}'s tiny gradient
+ * data-URL entries. The renderer (`@elizaos/ui`) attaches the served,
+ * same-origin `/wallpapers/<id>.webp` URL to each of these by id — a code-free
+ * image the apply channel already trusts (same class as the Ember Night default
+ * and the `/api/media/<hash>` uploads), so the confinement invariants
+ * (#11088 / #13523) hold and nothing large lands in the JS bundle. Palettes are
+ * sampled from the source art (dark / mid / highlight) for the tile thumbnail,
+ * the FOUC seed, and theme-color harmony.
+ */
+export const PHOTO_BACKGROUND_META: readonly BackgroundCatalogMeta[] = [
+  {
+    id: "dusk-dunes",
+    label: "Dusk Dunes",
+    description: "Near-black rolling dunes catching a thin warm rim of light.",
+    kind: "image",
+    mood: "still",
+    palette: ["#010208", "#04070f", "#101625"],
+    tags: ["nature", "dunes", "dark", "night"],
+  },
+  {
+    id: "reef",
+    label: "Reef",
+    description: "A deep teal underwater reef, fish drifting through the blue.",
+    kind: "image",
+    mood: "cool",
+    palette: ["#000b1f", "#001d32", "#015260"],
+    tags: ["nature", "ocean", "reef", "teal", "cool"],
+  },
+  {
+    id: "slate",
+    label: "Slate",
+    description: "A dark stone macro texture in cool graphite greys.",
+    kind: "image",
+    mood: "neutral",
+    palette: ["#090c11", "#141920", "#2e343e"],
+    tags: ["texture", "stone", "slate", "grey", "dark"],
+  },
+  {
+    id: "ember-dunes",
+    label: "Ember Dunes",
+    description:
+      "Ember-orange dunes under a warm amber sky, birds on the wing.",
+    kind: "image",
+    mood: "warm",
+    palette: ["#2d0700", "#4a0e00", "#741c00"],
+    tags: ["nature", "dunes", "warm", "ember", "amber"],
+  },
+  {
+    id: "canopy",
+    label: "Canopy",
+    description: "A misty jungle river valley in deep, layered greens.",
+    kind: "image",
+    mood: "lush",
+    palette: ["#000404", "#03110f", "#0e302f"],
+    tags: ["nature", "jungle", "forest", "green", "misty"],
+  },
+];
+
+/**
  * The named GLSL-preset metadata, mirrored as catalog entries. `id` doubles as
  * the shader preset id the renderer resolves to source (never GLSL text here).
  */
@@ -143,12 +204,25 @@ export const GLSL_BACKGROUND_META: readonly BackgroundCatalogMeta[] = [
 ];
 
 /**
- * The full catalog name index: natural images first, then the animated GLSL
- * presets. Both the gallery (via `@elizaos/ui`) and the agent action read this.
+ * The full catalog name index: natural gradient images, then the curated photo
+ * wallpapers, then the animated GLSL presets. Both the gallery (via
+ * `@elizaos/ui`) and the agent action read this.
  */
 export const BACKGROUND_CATALOG_INDEX: readonly BackgroundCatalogMeta[] = [
   ...NATURAL_BACKGROUND_META,
+  ...PHOTO_BACKGROUND_META,
   ...GLSL_BACKGROUND_META,
+];
+
+/**
+ * The curated IMAGE metadata the agent name-select routes to: the gradient
+ * natural entries plus the photo wallpapers (both `kind: "image"`). Excludes the
+ * GLSL presets, which keep their dedicated shader-preset path in the BACKGROUND
+ * action.
+ */
+export const IMAGE_BACKGROUND_META: readonly BackgroundCatalogMeta[] = [
+  ...NATURAL_BACKGROUND_META,
+  ...PHOTO_BACKGROUND_META,
 ];
 
 /** The boot-default catalog id (the curated "Ember Night" gradient). */
@@ -183,17 +257,18 @@ export function matchCatalogId(ref: string | undefined): string | undefined {
 }
 
 /**
- * Detect whether free text names a curated NATURAL (image) catalog background,
- * returning the matched id. Only the natural entries are matched here: the GLSL
- * presets (aurora/lava/…) already have a dedicated shader-preset path in the
- * BACKGROUND action, so routing them through name-select would change their
- * reply/behavior. Requires a distinctive label/id token to appear (not a generic
- * tag like "warm"/"green"), so a plain color request is never hijacked. Used by
- * the action to route "use the misty-forest background" to a name-select.
+ * Detect whether free text names a curated IMAGE catalog background (a gradient
+ * natural entry OR a photo wallpaper), returning the matched id. Only image
+ * entries are matched here: the GLSL presets (aurora/lava/…) already have a
+ * dedicated shader-preset path in the BACKGROUND action, so routing them through
+ * name-select would change their reply/behavior. Requires a distinctive label/id
+ * token to appear (not a generic tag like "warm"/"green"), so a plain color
+ * request is never hijacked. Used by the action to route "use the misty-forest
+ * background" or "set the reef background" to a name-select.
  */
 export function detectCatalogId(text: string): string | undefined {
   const lower = text.toLowerCase();
-  for (const entry of NATURAL_BACKGROUND_META) {
+  for (const entry of IMAGE_BACKGROUND_META) {
     const slug = entry.id; // e.g. "misty-forest"
     const spaced = slug.replace(/-/g, " "); // "misty forest"
     const label = entry.label.toLowerCase(); // "misty forest"
