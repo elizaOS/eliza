@@ -4564,10 +4564,7 @@ export class ElizaSandboxService {
     // The reconciler already selects them by digest drift; the blue/green swap
     // re-provisions on the target image+digest, so moving a fleet-managed agent
     // to the current default is safe regardless of its current tag.
-    if (
-      agent.docker_image &&
-      imageRepo(agent.docker_image) !== imageRepo(dockerImage)
-    ) {
+    if (agent.docker_image && imageRepo(agent.docker_image) !== imageRepo(dockerImage)) {
       return {
         success: false,
         error: "Agent uses a custom docker image; refusing fleet upgrade",
@@ -4866,10 +4863,7 @@ export class ElizaSandboxService {
     // Same fleet-managed-vs-custom distinction as the upgrade path (#15101):
     // a rollback of a default-family agent must not be refused just because its
     // tag differs from the target.
-    if (
-      agent.docker_image &&
-      imageRepo(agent.docker_image) !== imageRepo(dockerImage)
-    ) {
+    if (agent.docker_image && imageRepo(agent.docker_image) !== imageRepo(dockerImage)) {
       return {
         success: false,
         error: "Agent uses a custom docker image; refusing fleet rollback",
