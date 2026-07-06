@@ -364,6 +364,64 @@ describe("aggregate builders", () => {
     // Latest message wins the group headline.
     expect(discordGroup?.latestMessage.snippet).toBe("second in thread");
   });
+
+  it("does not fabricate small-group priority scores when LLM scores are missing", () => {
+    const now = Date.now();
+    const inbox = buildInbox(
+      [
+        inboundChat({
+          id: "group-1",
+          text: "Ada, can you review this tomorrow at 3pm?",
+          threadId: "group-thread",
+          timestamp: now - 1000,
+          chatType: "group",
+          participantCount: 4,
+        }),
+      ],
+      {
+        limit: 10,
+        allowed: new Set<LifeOpsInboxChannel>(["discord"]),
+        sources: [{ source: "chat", state: "ok", degradations: [] }],
+        groupByThread: true,
+        ownerName: "Ada",
+        sortByPriority: true,
+      },
+    );
+
+    const group = inbox.threadGroups?.[0];
+    expect(group?.maxPriorityScore).toBeUndefined();
+    expect(group?.priorityCategory).toBeUndefined();
+    expect(group?.latestMessage.priorityScore).toBeUndefined();
+    expect(inbox.messages[0]?.priorityScore).toBeUndefined();
+  });
+
+  it("missedOnly requires a real priority score instead of keyword fallback", () => {
+    const old = Date.now() - 25 * 60 * 60 * 1000;
+    const inbox = buildInbox(
+      [
+        inboundChat({
+          id: "missed-group-1",
+          text: "Ada, are you free tomorrow at 3pm?",
+          threadId: "missed-group-thread",
+          timestamp: old,
+          chatType: "group",
+          participantCount: 5,
+        }),
+      ],
+      {
+        limit: 10,
+        allowed: new Set<LifeOpsInboxChannel>(["discord"]),
+        sources: [{ source: "chat", state: "ok", degradations: [] }],
+        groupByThread: true,
+        ownerName: "Ada",
+        missedOnly: true,
+        sortByPriority: true,
+      },
+    );
+
+    expect(inbox.messages).toEqual([]);
+    expect(inbox.threadGroups).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------

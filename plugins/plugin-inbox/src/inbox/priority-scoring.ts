@@ -3,16 +3,16 @@
  *
  * The scorer asks a small, fast model to rate each message on a 0–100
  * importance scale and to bucket it into one of three categories
- * (`important` / `planning` / `casual`). The v1 small-group keyword heuristic
- * in `aggregate.ts:scoreSmallGroupThread` is the fallback path.
+ * (`important` / `planning` / `casual`). Missing scores stay missing so callers
+ * can distinguish an unavailable scorer from a genuinely low-priority message.
  *
  * Behavior:
  * - Batches up to ~10 messages per call to keep prompts small.
  * - Caches results in-memory keyed by `(messageId, contentHash, model)` so
  *   re-fetches inside a single runtime are free.
  * - Concurrency-capped to 4 parallel batches.
- * - If the LLM call or parser fails, returns `null` per message so the caller
- *   can fall back to the v1 heuristic.
+ * - If the LLM call or parser fails, reports the failure and returns `null` per
+ *   message instead of fabricating priorities.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
@@ -431,6 +431,10 @@ export async function scoreInboxMessages(
               },
               "[lifeops] priority scoring batch failed; leaving entries null",
             );
+            runtime.reportError("lifeops.priority-scoring", error, {
+              count: indices.length,
+              modelId,
+            });
           }
         }
       })(),

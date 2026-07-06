@@ -4,9 +4,8 @@
  * Owns the read-side pipeline that turns raw `InboundMessage`s (chat memories
  * + Gmail + X DMs via `message-fetcher.ts`) into the `LifeOpsInbox` DTO the
  * dashboard renders: channel normalization, filtering, thread grouping, LLM
- * priority scoring (`priority-scoring.ts`) with a v1 small-group heuristic
- * fallback, the missed-message filter, and the cached read-through spine
- * (`InboxDomain`).
+ * priority scoring (`priority-scoring.ts`), the missed-message filter, and the
+ * cached read-through spine (`InboxDomain`).
  *
  * Source health is part of the DTO: every response carries a required
  * `sources` array (`LifeOpsInboxSourceStatus`) describing chat/gmail/x_dm
@@ -249,6 +248,7 @@ interface InboxBuildOptions {
   maxParticipants?: number;
   gmailAccountId?: string;
   phoneAccountIds?: ReadonlySet<string>;
+  /** User identity hint for LLM scoring; structural aggregation never ranks by name substrings. */
   ownerName?: string | null;
   missedOnly?: boolean;
   /**
@@ -260,57 +260,6 @@ interface InboxBuildOptions {
   sortByPriority?: boolean;
   /** Optional precomputed score map keyed by message id. */
   llmScores?: ReadonlyMap<string, PriorityScore>;
-}
-
-/**
- * Compute a v1 small-group importance score for a thread group. Used as the
- * fallback path when LLM priority scoring is disabled or fails. Returns a
- * number in [0, 100].
- */
-function scoreSmallGroupThread(
-  members: LifeOpsInboxMessage[],
-  ownerNameLower: string | null,
-  isMostRecentGroupActivity: boolean,
-): number {
-  let score = 0;
-  let mentionsOwner = false;
-  let hasQuestion = false;
-  let hasDateLike = false;
-  for (const member of members) {
-    const text = `${member.subject ?? ""} ${member.snippet}`;
-    if (!mentionsOwner) {
-      if (
-        ownerNameLower &&
-        ownerNameLower.length > 0 &&
-        text.toLowerCase().includes(ownerNameLower)
-      ) {
-        mentionsOwner = true;
-      } else if (/@me\b/i.test(text)) {
-        mentionsOwner = true;
-      }
-    }
-    if (!hasQuestion && text.includes("?")) {
-      hasQuestion = true;
-    }
-    if (!hasDateLike) {
-      // Catches "3pm", "3:30", "tomorrow", "Mon"-"Sun", "Jan-Dec".
-      if (
-        /\b(?:[01]?\d|2[0-3])(?::[0-5]\d)?\s*(?:am|pm)\b/i.test(text) ||
-        /\b(?:tomorrow|tonight|today|tmr|tmrw)\b/i.test(text) ||
-        /\b(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)\b/i.test(text) ||
-        /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i.test(
-          text,
-        )
-      ) {
-        hasDateLike = true;
-      }
-    }
-  }
-  if (mentionsOwner) score += 30;
-  if (hasQuestion) score += 20;
-  if (hasDateLike) score += 15;
-  if (isMostRecentGroupActivity) score += 10;
-  return Math.min(score, 100);
 }
 
 function applyLlmScores(
@@ -328,7 +277,6 @@ function applyLlmScores(
 
 function buildThreadGroups(
   messages: LifeOpsInboxMessage[],
-  ownerName: string | null,
   llmScores?: ReadonlyMap<string, PriorityScore>,
   sortByPriority = false,
 ): LifeOpsInboxThreadGroup[] {
@@ -339,25 +287,6 @@ function buildThreadGroups(
     bucket.push(message);
     buckets.set(key, bucket);
   }
-
-  // Identify the group thread with the most-recent activity to award the
-  // "most-recent group activity" heuristic point in the fallback path.
-  let mostRecentGroupKey: string | null = null;
-  let mostRecentGroupTs = -Infinity;
-  for (const [key, members] of buckets) {
-    const latest = members[0];
-    if (latest?.chatType !== "group") continue;
-    const ts = Date.parse(latest.receivedAt);
-    if (Number.isFinite(ts) && ts > mostRecentGroupTs) {
-      mostRecentGroupTs = ts;
-      mostRecentGroupKey = key;
-    }
-  }
-
-  const ownerNameLower =
-    typeof ownerName === "string" && ownerName.trim().length > 0
-      ? ownerName.trim().toLowerCase()
-      : null;
 
   const groups: LifeOpsInboxThreadGroup[] = [];
   for (const [key, members] of buckets) {
@@ -370,7 +299,7 @@ function buildThreadGroups(
       (m) => typeof m.participantCount === "number",
     )?.participantCount;
 
-    let priorityScores = members
+    const priorityScores = members
       .map((m) => m.priorityScore)
       .filter((value): value is number => typeof value === "number");
 
@@ -418,29 +347,6 @@ function buildThreadGroups(
           }
         }
         priorityCategory = topCategory;
-      }
-    }
-
-    // Fallback: only run the v1 heuristic for small groups when the LLM
-    // produced nothing for the latest message.
-    const latestHasLlmScore = llmScores?.has(latestMessage.id) === true;
-    if (
-      !latestHasLlmScore &&
-      latestMessage.chatType === "group" &&
-      typeof participantCount === "number" &&
-      participantCount <= 15
-    ) {
-      const heuristicScore = scoreSmallGroupThread(
-        members,
-        ownerNameLower,
-        key === mostRecentGroupKey,
-      );
-      if (heuristicScore > 0) {
-        latestMessage.priorityScore = Math.max(
-          latestMessage.priorityScore ?? 0,
-          heuristicScore,
-        );
-        priorityScores = [...priorityScores, heuristicScore];
       }
     }
 
@@ -578,7 +484,6 @@ export function buildInboxFromMessages(
   if (options.groupByThread) {
     threadGroups = buildThreadGroups(
       trimmed,
-      options.ownerName ?? null,
       options.llmScores,
       options.sortByPriority === true,
     );
