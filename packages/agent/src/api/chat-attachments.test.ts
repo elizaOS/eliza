@@ -55,6 +55,29 @@ describe("serializeMessageAttachments", () => {
     expect(out?.map((a) => a.id)).toEqual(["s", "d", "b"]);
   });
 
+  it("round-trips the notProcessed enrichment reason", () => {
+    const out = serializeMessageAttachments({
+      attachments: [
+        {
+          id: "aud",
+          url: "/api/media/abc.mp3",
+          contentType: "audio",
+          notProcessed: "Audio transcription unavailable: no provider",
+        },
+      ],
+    });
+    expect(out?.[0].notProcessed).toBe(
+      "Audio transcription unavailable: no provider",
+    );
+  });
+
+  it("omits notProcessed when the attachment was enriched cleanly", () => {
+    const out = serializeMessageAttachments({
+      attachments: [{ id: "img", url: "/api/media/abc.png", text: "OCR" }],
+    });
+    expect(out?.[0]).not.toHaveProperty("notProcessed");
+  });
+
   it("drops non-renderable placeholder URLs (unpersisted uploads)", () => {
     expect(
       serializeMessageAttachments({

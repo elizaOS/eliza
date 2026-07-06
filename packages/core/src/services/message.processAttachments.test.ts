@@ -241,7 +241,9 @@ describe("DefaultMessageService.processAttachments", () => {
 		expect(out[0].text).toBeUndefined();
 		expect(out[0].url).toBe("/api/media/abc.mp3");
 		expect(out[0].notProcessed).toMatch(/audio transcription unavailable/i);
-		expect(out[0].notProcessed).toContain("no transcription provider configured");
+		expect(out[0].notProcessed).toContain(
+			"no transcription provider configured",
+		);
 	});
 
 	it("marks notProcessed when audio transcription returns empty text", async () => {

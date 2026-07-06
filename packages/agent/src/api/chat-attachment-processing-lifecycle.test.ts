@@ -130,7 +130,10 @@ function bytesForMime(mimeType: string): Buffer {
     return Buffer.from("# Lifecycle\n\n- upload\n- process", "utf8");
   }
   if (mimeType === "application/json") {
-    return Buffer.from('{"lifecycle":true,"items":["upload","process"]}', "utf8");
+    return Buffer.from(
+      '{"lifecycle":true,"items":["upload","process"]}',
+      "utf8",
+    );
   }
   return Buffer.from(`binary fixture for ${mimeType}`, "utf8");
 }
@@ -316,10 +319,7 @@ describe("chat attachment upload -> store -> processing lifecycle (#10714)", () 
       const disposition = String(head.headers["Content-Disposition"]);
       // Only image/audio/video/pdf render inline; text/* and application/json
       // are forced to download (attachment) by the serve-path security policy.
-      if (
-        mimeType.startsWith("text/") ||
-        mimeType === "application/json"
-      ) {
+      if (mimeType.startsWith("text/") || mimeType === "application/json") {
         expect(disposition, mimeType).toContain("attachment");
       } else {
         expect(disposition, mimeType).toBe("inline");

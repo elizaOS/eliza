@@ -52,12 +52,13 @@ describe("chatUploadKind", () => {
 });
 
 describe("isSupportedChatUpload", () => {
-  it("accepts images, audio, video, pdf, and text", () => {
+  it("accepts images, audio, video, pdf, text, and json", () => {
     expect(isSupportedChatUpload(file("image/jpeg"))).toBe(true);
     expect(isSupportedChatUpload(file("audio/wav"))).toBe(true);
     expect(isSupportedChatUpload(file("video/webm"))).toBe(true);
     expect(isSupportedChatUpload(file("application/pdf"))).toBe(true);
     expect(isSupportedChatUpload(file("text/csv"))).toBe(true);
+    expect(isSupportedChatUpload(file("application/json"))).toBe(true);
   });
 
   it("rejects unsupported types", () => {
@@ -128,6 +129,8 @@ describe("CHAT_UPLOAD_ACCEPT", () => {
     expect(CHAT_UPLOAD_ACCEPT).toContain("audio/*");
     expect(CHAT_UPLOAD_ACCEPT).toContain("video/*");
     expect(CHAT_UPLOAD_ACCEPT).toContain("application/pdf");
+    expect(CHAT_UPLOAD_ACCEPT).toContain("text/csv");
+    expect(CHAT_UPLOAD_ACCEPT).toContain("application/json");
   });
 });
 

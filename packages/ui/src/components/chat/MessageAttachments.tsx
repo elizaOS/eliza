@@ -92,7 +92,12 @@ function resolveKind(att: MessageAttachment): MessageAttachmentContentType {
   if (mime.startsWith("image/")) return "image";
   if (mime.startsWith("video/")) return "video";
   if (mime.startsWith("audio/")) return "audio";
-  if (mime === "application/pdf" || mime.startsWith("text/")) return "document";
+  if (
+    mime === "application/pdf" ||
+    mime === "application/json" ||
+    mime.startsWith("text/")
+  )
+    return "document";
   const u = att.url.toLowerCase();
   if (IMAGE_EXT.test(u) || u.startsWith("data:image/")) return "image";
   if (VIDEO_EXT.test(u) || u.startsWith("data:video/")) return "video";
@@ -225,10 +230,12 @@ export function attachmentPreviewKind(
     return "model3d";
   }
 
-  // Text/code: a text-* MIME, a known code/text extension, an inline
-  // text data: URL, or an attachment that already carries extracted text.
+  // Text/code: a text-* MIME, application/json (an uploadable text document), a
+  // known code/text extension, an inline text data: URL, or an attachment that
+  // already carries extracted text.
   if (
     mime.startsWith("text/") ||
+    mime === "application/json" ||
     CODE_EXT.test(path) ||
     url.trim().toLowerCase().startsWith("data:text/") ||
     (typeof att.text === "string" && att.text.trim().length > 0)
