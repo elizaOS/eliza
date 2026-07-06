@@ -723,6 +723,8 @@ reports/
 docs/*
 !docs/ELIZA_1_BUNDLE_EXTRAS.json
 !docs/automation-glossary.md
+!docs/design/
+!docs/design/**
 !docs/tee-architecture-implementation-plan.md
 !docs/security/
 !docs/security/**
