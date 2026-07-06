@@ -43,6 +43,41 @@ const CONVERSATIONAL_ACTIONS = new Set(["REPLY", "IGNORE", "NONE"]);
 // The distinctive tokens from CANONICAL_FORM_TEXT_VALUE — proof the agent used
 // what the user typed into the form, not something it invented.
 const SUBMITTED_TOKEN_RE = /q3|budget|dana/i;
+const CONNECTOR_AUTH_FAILURE_RE =
+  /auth|authenticate|reauth|re-auth|credential|token|expired|permission|access/i;
+
+function actionPayload(action: {
+  parameters?: unknown;
+  result?: unknown;
+  error?: { message?: string } | null;
+}): string {
+  return JSON.stringify({
+    parameters: action.parameters ?? null,
+    result: action.result ?? null,
+    error: action.error ?? null,
+  });
+}
+
+function submittedDomainWrites(
+  actions: ReadonlyArray<{
+    actionName: string;
+    parameters?: unknown;
+    result?: { success?: boolean } | null;
+    error?: { message?: string } | null;
+  }>,
+) {
+  return actions.filter((action) => {
+    if (CONVERSATIONAL_ACTIONS.has(action.actionName)) return false;
+    return SUBMITTED_TOKEN_RE.test(actionPayload(action));
+  });
+}
+
+function isConnectorAuthFailure(action: {
+  result?: unknown;
+  error?: { message?: string } | null;
+}): boolean {
+  return CONNECTOR_AUTH_FAILURE_RE.test(actionPayload(action));
+}
 
 export default scenario({
   id: "live-chat-widgets-form-roundtrip",
@@ -114,14 +149,22 @@ export default scenario({
           "The user just submitted a structured form containing reminder details: " +
           "a title/description mentioning a Q3 budget report (for Dana), and — when the " +
           "form had a date/time field — the local time 2026-07-14 09:30. The assistant " +
-          "must confirm the reminder/task using those submitted values (the report topic " +
-          "and, if given, the requested day/time). It must NOT ask again for details it " +
-          "already received, must NOT show the raw submitted JSON back to the user, and " +
-          "must NOT claim it could not read the submission.",
+          "must either confirm the reminder/task using those submitted values (the report topic " +
+          "and, if given, the requested day/time), or honestly report an external auth/credential " +
+          "failure after attempting the domain action. It must NOT ask again for details it already " +
+          "received, must NOT show the raw submitted JSON back to the user, and must NOT claim it " +
+          "could not read the submission.",
       },
       assertTurn: (execution) => {
         const text = execution.responseText ?? "";
         if (!SUBMITTED_TOKEN_RE.test(text)) {
+          const domainWrites = submittedDomainWrites(execution.actionsCalled);
+          const connectorAuthFailure =
+            CONNECTOR_AUTH_FAILURE_RE.test(text) &&
+            domainWrites.some(isConnectorAuthFailure);
+          if (connectorAuthFailure) {
+            return undefined;
+          }
           return `post-submit reply never references the submitted values (expected a Q3/budget/Dana mention): ${JSON.stringify(text.slice(0, 400))}`;
         }
         return undefined;
@@ -133,14 +176,7 @@ export default scenario({
       type: "custom",
       name: "submitted values reached a real domain action (not just prose)",
       predicate: (ctx) => {
-        const domainWrites = ctx.actionsCalled.filter((action) => {
-          if (CONVERSATIONAL_ACTIONS.has(action.actionName)) return false;
-          const payload = JSON.stringify({
-            parameters: action.parameters ?? null,
-            result: action.result ?? null,
-          });
-          return SUBMITTED_TOKEN_RE.test(payload);
-        });
+        const domainWrites = submittedDomainWrites(ctx.actionsCalled);
         if (domainWrites.length === 0) {
           const seen = ctx.actionsCalled
             .map((action) => action.actionName)
@@ -151,6 +187,9 @@ export default scenario({
           (action) => action.result?.success === false || action.error,
         );
         if (failed) {
+          if (domainWrites.some(isConnectorAuthFailure)) {
+            return undefined;
+          }
           return `domain action(s) received the submitted values but none succeeded: ${domainWrites
             .map(
               (action) =>

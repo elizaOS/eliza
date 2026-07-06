@@ -199,14 +199,18 @@ describe("uiGenerative — catalog isolation (#14324)", () => {
     }
   });
 
-  it("both providers keep dynamic composition + admin gating", () => {
+  it("keeps provider composition and access gates scoped to guide risk", () => {
     for (const provider of [uiWidgetsProvider, uiGenerativeProvider]) {
       expect(provider.dynamic).toBe(true);
-      expect(provider.roleGate).toEqual({ minRole: "ADMIN" });
       // Discovery depends on these (PROVIDERS advertisement / any future
       // by-name request path); deleting one dies silently otherwise.
       expect(provider.description?.length ?? 0).toBeGreaterThan(20);
     }
+    // The cheap marker guide must be available to normal chat response turns.
+    expect(uiWidgetsProvider.alwaysInResponseState).toBe(true);
+    expect(uiWidgetsProvider.roleGate).toBeUndefined();
+    // The expensive custom-UI catalog stays admin-only.
+    expect(uiGenerativeProvider.roleGate).toEqual({ minRole: "ADMIN" });
     // uiWidgets emits constant text → cacheable per-agent. uiGenerative's
     // output varies per turn (intent gate), so it must NOT claim cacheStable.
     expect(uiWidgetsProvider.cacheStable).toBe(true);

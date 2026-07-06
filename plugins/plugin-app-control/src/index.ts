@@ -24,6 +24,7 @@ import {
 	viewsAction,
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
+import { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
 import { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
 import { viewContextEvaluator } from "./evaluators/view-context.js";
 import { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
@@ -100,6 +101,7 @@ export type { ViewSummary } from "./actions/views-client.js";
 export { INTENT_VIEW_IDS, resolveIntentView } from "./actions/views-show.js";
 export type { AppControlClient } from "./client/api.js";
 export { createAppControlClient } from "./client/api.js";
+export { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
 export { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
 export {
 	CONTEXT_VIEWS,
@@ -187,6 +189,7 @@ export const appControlPlugin: Plugin = {
 	evaluators: [viewContextEvaluator],
 	responseHandlerEvaluators: [
 		viewCommandShortcutEvaluator,
+		createChoiceShortcutEvaluator,
 		viewFollowupRoutingEvaluator,
 	],
 	providers: [availableAppsProvider, currentViewProvider],

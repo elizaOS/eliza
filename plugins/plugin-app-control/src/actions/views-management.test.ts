@@ -3015,4 +3015,52 @@ describe("view management actions", () => {
 		});
 		expect(runtime.createTask).not.toHaveBeenCalled();
 	});
+
+	it("returns create choice blocks as verified user-facing payloads", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const appClient = {
+			listInstalledApps: vi.fn(async () => [
+				{
+					name: "notes",
+					displayName: "Notes",
+					pluginName: "@local/app-notes",
+				},
+			]),
+		};
+
+		const appResult = await runCreate({
+			runtime: runtime as never,
+			client: appClient as never,
+			message: message("Create a notes app for me") as never,
+			callback,
+			repoRoot: "/tmp/no-app-create",
+		});
+
+		expect(appResult).toMatchObject({
+			success: true,
+			text: expect.stringContaining("[CHOICE:app-create"),
+			userFacingText: expect.stringContaining("[CHOICE:app-create"),
+			verifiedUserFacing: true,
+			values: { mode: "create", subMode: "choice", matchCount: 1 },
+		});
+		expect(appResult.text).toContain("cancel = Cancel");
+
+		const viewResult = await runViewsCreate({
+			runtime: runtime as never,
+			message: message("create a remote ledger view") as never,
+			views: [view()],
+			callback,
+			repoRoot: "/tmp/no-view-create",
+		});
+
+		expect(viewResult).toMatchObject({
+			success: true,
+			text: expect.stringContaining("[CHOICE:views-create"),
+			userFacingText: expect.stringContaining("[CHOICE:views-create"),
+			verifiedUserFacing: true,
+			values: { mode: "create", subMode: "choice", matchCount: 1 },
+		});
+		expect(viewResult.text).toContain("cancel = Cancel");
+	});
 });

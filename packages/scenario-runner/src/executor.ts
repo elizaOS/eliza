@@ -475,6 +475,7 @@ async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
       "../../../plugins/plugin-app-control/src/index.ts"
     )) as {
       appAction?: Action;
+      appControlPlugin?: Plugin;
       backgroundAction?: Action;
       viewsAction?: Action;
     };
@@ -484,6 +485,8 @@ async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
       name: "app-control",
       description: "App control deterministic scenario actions",
       actions: [mod.appAction, mod.backgroundAction, mod.viewsAction],
+      responseHandlerEvaluators:
+        mod.appControlPlugin?.responseHandlerEvaluators,
     };
   }
   if (pkg === "@elizaos/plugin-hyperliquid") {

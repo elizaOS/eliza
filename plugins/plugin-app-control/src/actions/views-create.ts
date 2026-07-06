@@ -1022,7 +1022,9 @@ export async function runViewsCreate({
 
 	return {
 		success: true,
-		text: "Picking next step...",
+		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
 		values: { mode: "create", subMode: "choice", matchCount: matches.length },
 		data: { choices, intent },
 	};
