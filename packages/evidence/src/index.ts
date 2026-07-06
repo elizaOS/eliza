@@ -3,14 +3,14 @@
 export {
   type AddArtifactOptions,
   type BundleProvenance,
-  createBundle,
   type CreateBundleOptions,
+  createBundle,
   EvidenceBundle,
   type FinalizeResult,
   formatRunId,
-  verifyBundle,
   type VerifyIssue,
   type VerifyReport,
+  verifyBundle,
 } from "./bundle.ts";
 export { canonicalJson, canonicalJsonBytes } from "./canonical.ts";
 export {
@@ -20,9 +20,9 @@ export {
   type ValidationIssue,
 } from "./errors.ts";
 export {
+  type IngestResult,
   ingestAllSilos,
   ingestNamedSilo,
-  type IngestResult,
   SILO_NAMES,
 } from "./ingest.ts";
 export {
@@ -43,6 +43,6 @@ export {
   parseMeta,
   RUNNER_KINDS,
   type RunnerKind,
-  type Tier,
   TIERS,
+  type Tier,
 } from "./schema.ts";

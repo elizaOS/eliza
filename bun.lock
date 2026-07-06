@@ -894,6 +894,16 @@
         "vitest": "^4.0.17",
       },
     },
+    "packages/evidence": {
+      "name": "@elizaos/evidence",
+      "version": "0.0.0",
+      "dependencies": {
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@types/node": "^24.0.0",
+      },
+    },
     "packages/examples/_plugin": {
       "name": "@elizaos/plugin-starter",
       "version": "2.0.0-beta.0",
@@ -5541,6 +5551,7 @@
     "@elizaos/plugin-starter",
     "utf-8-validate",
     "@swc/core",
+    "tesseract.js",
     "protobufjs",
     "keccak",
     "secp256k1",
@@ -5552,7 +5563,6 @@
     "electron",
     "nx",
     "bigint-buffer",
-    "tesseract.js",
   ],
   "patchedDependencies": {
     "@solana/rpc-subscriptions-spec@5.5.1": "patches/@solana%2Frpc-subscriptions-spec@5.5.1.patch",
@@ -6279,6 +6289,8 @@
     "@elizaos/docs-elizacloud-redirect": ["@elizaos/docs-elizacloud-redirect@workspace:packages/cloud/docs-redirect"],
 
     "@elizaos/electrobun": ["@elizaos/electrobun@workspace:packages/app-core/platforms/electrobun"],
+
+    "@elizaos/evidence": ["@elizaos/evidence@workspace:packages/evidence"],
 
     "@elizaos/example-a2a-server": ["@elizaos/example-a2a-server@workspace:packages/examples/a2a"],
 

@@ -89,12 +89,10 @@ export function isBundleRelativePath(value: string): boolean {
     .every((segment) => segment !== "" && segment !== "." && segment !== "..");
 }
 
-const bundleRelativePath = z
-  .string()
-  .refine(isBundleRelativePath, {
-    message:
-      "must be a bundle-relative posix path with no empty, `.`, or `..` segments",
-  });
+const bundleRelativePath = z.string().refine(isBundleRelativePath, {
+  message:
+    "must be a bundle-relative posix path with no empty, `.`, or `..` segments",
+});
 
 const sha256Hex = z
   .string()
@@ -153,7 +151,11 @@ const bundleMetaSchema = z.strictObject({
 
 // Compile-time drift guards: the zod schemas must stay mutually assignable
 // with the frozen contract interfaces above.
-type MutuallyAssignable<A, B> = A extends B ? (B extends A ? true : never) : never;
+type MutuallyAssignable<A, B> = A extends B
+  ? B extends A
+    ? true
+    : never
+  : never;
 const _entryContract: MutuallyAssignable<
   z.infer<typeof artifactEntrySchema>,
   ArtifactEntry
@@ -189,7 +191,10 @@ function throwInvalid(
 }
 
 /** Validate an untrusted value as a schema-1 manifest; throws typed invalid. */
-export function parseManifest(value: unknown, described: string): BundleManifest {
+export function parseManifest(
+  value: unknown,
+  described: string,
+): BundleManifest {
   const result = bundleManifestSchema.safeParse(value);
   if (!result.success) throwInvalid("bundle manifest", described, result.error);
   return result.data;

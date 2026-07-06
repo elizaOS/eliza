@@ -62,7 +62,9 @@ const KIND_BY_EXTENSION: Record<string, ArtifactKind> = {
 };
 
 function classifyByExtension(relPath: string): ArtifactKind {
-  return KIND_BY_EXTENSION[path.posix.extname(relPath).toLowerCase()] ?? "other";
+  return (
+    KIND_BY_EXTENSION[path.posix.extname(relPath).toLowerCase()] ?? "other"
+  );
 }
 
 function* walkSiloFiles(root: string, relBase = ""): Generator<string> {

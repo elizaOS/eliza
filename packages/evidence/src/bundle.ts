@@ -100,7 +100,11 @@ export interface VerifyReport {
 }
 
 /** Files at the bundle root that are part of the envelope, not artifacts. */
-const ENVELOPE_FILES = new Set(["manifest.json", "meta.json", "certification.json"]);
+const ENVELOPE_FILES = new Set([
+  "manifest.json",
+  "meta.json",
+  "certification.json",
+]);
 
 function utcStamp(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -115,7 +119,9 @@ export function formatRunId(date: Date, commit: string, tier: Tier): string {
   return `${utcStamp(date)}-${commit.slice(0, 7)}-${tier}`;
 }
 
-async function sha256File(filePath: string): Promise<{ sha256: string; bytes: number }> {
+async function sha256File(
+  filePath: string,
+): Promise<{ sha256: string; bytes: number }> {
   const hash = createHash("sha256");
   let bytes = 0;
   for await (const chunk of fs.createReadStream(filePath)) {
@@ -161,9 +167,13 @@ function familyPath(options: AddArtifactOptions, rel: string): string {
     case "html-tree":
       return `html-trees/${rel}`;
     case "log":
-      return lane !== undefined ? `lanes/${lane}/logs/${rel}` : `misc/${source}/${rel}`;
+      return lane !== undefined
+        ? `lanes/${lane}/logs/${rel}`
+        : `misc/${source}/${rel}`;
     case "report":
-      return lane !== undefined ? `lanes/${lane}/${rel}` : `misc/${source}/${rel}`;
+      return lane !== undefined
+        ? `lanes/${lane}/${rel}`
+        : `misc/${source}/${rel}`;
     default:
       return `misc/${source}/${rel}`;
   }
@@ -229,7 +239,10 @@ export class EvidenceBundle {
     options: AddArtifactOptions,
   ): Promise<ArtifactEntry> {
     this.assertOpen("addArtifact");
-    if (options.relativePath !== undefined && options.bundlePath !== undefined) {
+    if (
+      options.relativePath !== undefined &&
+      options.bundlePath !== undefined
+    ) {
       throw new EvidenceError(
         "addArtifact accepts relativePath or bundlePath, not both",
         { code: "ARTIFACT_PLACEMENT_AMBIGUOUS", context: { filePath } },
@@ -290,9 +303,9 @@ export class EvidenceBundle {
    * Sort artifacts, write canonical `manifest.json` and `meta.json`, and seal
    * the bundle. Returns the sha256 of the manifest bytes for signing.
    */
-  async finalize(options: {
-    timings?: Record<string, number>;
-  } = {}): Promise<FinalizeResult> {
+  async finalize(
+    options: { timings?: Record<string, number> } = {},
+  ): Promise<FinalizeResult> {
     this.assertOpen("finalize");
     this.finalized = true;
     const artifacts = [...this.entries].sort((a, b) =>
@@ -374,11 +387,14 @@ export async function verifyBundle(dir: string): Promise<VerifyReport> {
   } catch (error) {
     // error-policy:J3 untrusted disk input — malformed JSON is a typed
     // invalid-manifest failure, never a silently-empty manifest.
-    throw new EvidenceError(`bundle manifest is not valid JSON: ${manifestPath}`, {
-      code: "MANIFEST_INVALID",
-      cause: error,
-      context: { dir },
-    });
+    throw new EvidenceError(
+      `bundle manifest is not valid JSON: ${manifestPath}`,
+      {
+        code: "MANIFEST_INVALID",
+        cause: error,
+        context: { dir },
+      },
+    );
   }
   const manifest = parseManifest(parsed, manifestPath);
 

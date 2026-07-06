@@ -67,7 +67,9 @@ function parseCreateArgs(argv: string[]): {
     } else if (arg === "--repo-root") {
       repoRoot = value();
     } else {
-      throw new EvidenceError(`unknown argument: ${arg}`, { code: "CLI_USAGE" });
+      throw new EvidenceError(`unknown argument: ${arg}`, {
+        code: "CLI_USAGE",
+      });
     }
   }
   if (tier === undefined) {
@@ -107,7 +109,9 @@ async function runCreate(argv: string[], io: CliIo): Promise<number> {
 
   const siloWidth = Math.max(...results.map((result) => result.silo.length));
   io.out(`bundle ${bundle.runId}`);
-  io.out(`  commit ${git.commit} (${git.branch}) runner=${runner} tier=${args.tier}`);
+  io.out(
+    `  commit ${git.commit} (${git.branch}) runner=${runner} tier=${args.tier}`,
+  );
   io.out("");
   for (const result of results) {
     io.out(

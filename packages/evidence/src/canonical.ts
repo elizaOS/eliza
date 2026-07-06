@@ -52,7 +52,10 @@ function canonicalize(value: unknown, path: string): string {
     default:
       throw new EvidenceError(
         `canonical JSON cannot represent ${typeof value} at ${path}`,
-        { code: "CANONICAL_UNSERIALIZABLE", context: { path, kind: typeof value } },
+        {
+          code: "CANONICAL_UNSERIALIZABLE",
+          context: { path, kind: typeof value },
+        },
       );
   }
 }

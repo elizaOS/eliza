@@ -32,7 +32,11 @@ function gitOutput(repoRoot: string, args: string[]): string {
     // provenance exists; the bundle must not be created with fabricated facts.
     throw new EvidenceError(
       `git provenance unavailable: \`git ${args.join(" ")}\` failed in ${repoRoot}`,
-      { code: "GIT_PROVENANCE_UNAVAILABLE", cause: error, context: { repoRoot } },
+      {
+        code: "GIT_PROVENANCE_UNAVAILABLE",
+        cause: error,
+        context: { repoRoot },
+      },
     );
   }
 }
