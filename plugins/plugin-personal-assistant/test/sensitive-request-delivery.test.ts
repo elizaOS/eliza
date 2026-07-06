@@ -3,6 +3,9 @@
  * status-only public text, a typed DM-failure with public fallback text, and the production
  * scheduled-task dispatcher path. Deterministic.
  */
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { ScheduledTask } from "@elizaos/plugin-scheduling";
 import {
@@ -83,6 +86,35 @@ const request: LifeOpsSensitiveRequestDeliveryRecord = {
   },
   expiresAt: "2026-05-10T13:00:00.000Z",
 };
+
+async function withOwnerContactsConfig(
+  ownerContacts: Record<
+    string,
+    { entityId?: string; channelId?: string; roomId?: string }
+  >,
+  run: () => Promise<void>,
+): Promise<void> {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "lifeops-contacts-"));
+  const configPath = path.join(tempDir, "eliza.json");
+  const priorConfigPath = process.env.ELIZA_CONFIG_PATH;
+  const priorPersistPath = process.env.ELIZA_PERSIST_CONFIG_PATH;
+  fs.writeFileSync(
+    configPath,
+    JSON.stringify({ agents: { defaults: { ownerContacts } } }),
+  );
+  process.env.ELIZA_CONFIG_PATH = configPath;
+  process.env.ELIZA_PERSIST_CONFIG_PATH = configPath;
+  try {
+    await run();
+  } finally {
+    if (priorConfigPath === undefined) delete process.env.ELIZA_CONFIG_PATH;
+    else process.env.ELIZA_CONFIG_PATH = priorConfigPath;
+    if (priorPersistPath === undefined)
+      delete process.env.ELIZA_PERSIST_CONFIG_PATH;
+    else process.env.ELIZA_PERSIST_CONFIG_PATH = priorPersistPath;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
 
 const baseTask = (
   overrides: Partial<Omit<ScheduledTask, "taskId" | "state">> = {},
@@ -297,6 +329,79 @@ describe("scheduled task production dispatcher", () => {
     ).resolves.toEqual(failure);
   });
 
+  it("resolves a bare connector channel target through owner contact config", async () => {
+    const runtime = makeDispatchRuntime();
+    const sent: unknown[] = [];
+    const registry = createChannelRegistry();
+    registry.register(
+      sendCapableChannel(async (payload) => {
+        sent.push(payload);
+        return { ok: true, messageId: "msg_owner_contact" };
+      }),
+    );
+    registerChannelRegistry(runtime, registry);
+    const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
+
+    await withOwnerContactsConfig(
+      { telegram: { channelId: "123456789" } },
+      async () => {
+        await expect(
+          dispatcher.dispatch({
+            taskId: "task_owner_target",
+            firedAtIso: "2026-05-10T12:00:00.000Z",
+            channelKey: "telegram",
+            promptInstructions: "internal owner reminder instructions",
+            contextRequest: undefined,
+            output: { destination: "channel", target: "telegram" },
+            metadata: {
+              packKey: "daily-rhythm",
+              recordKey: "checkin-followup",
+            },
+          }),
+        ).resolves.toEqual({
+          ok: true,
+          messageId: "msg_owner_contact",
+        });
+      },
+    );
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      target: "123456789",
+      message: RENDERED_MESSAGE,
+    });
+  });
+
+  it("fails typed instead of sending a bare connector channel name when owner target is missing", async () => {
+    const runtime = {
+      ...(makeDispatchRuntime() as unknown as Record<string, unknown>),
+      character: { name: "Test Agent" },
+      getRoomsForParticipant: vi.fn(async () => []),
+    } as unknown as IAgentRuntime;
+    const send = vi.fn(async () => ({ ok: true as const }));
+    const registry = createChannelRegistry();
+    registry.register(sendCapableChannel(send));
+    registerChannelRegistry(runtime, registry);
+
+    await expect(
+      createProductionScheduledTaskDispatcher({ runtime }).dispatch({
+        taskId: "task_missing_owner_target",
+        firedAtIso: "2026-05-10T12:00:00.000Z",
+        channelKey: "telegram",
+        promptInstructions: "owner reminder",
+        contextRequest: undefined,
+        output: { destination: "channel", target: "telegram" },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "disconnected",
+      userActionable: true,
+      message:
+        'Channel "telegram" has no resolvable owner target for scheduled task delivery.',
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("evaluates send policy before channel send", async () => {
     const runtime = makeDispatchRuntime();
     const registry = createChannelRegistry();
@@ -355,6 +460,10 @@ describe("scheduled task production dispatcher", () => {
     const task = await runner.schedule(
       baseTask({
         output: { destination: "channel", target: "telegram:owner-dm" },
+        metadata: {
+          packKey: "daily-rhythm",
+          recordKey: "checkin-followup",
+        },
       }),
     );
     const fired = await runner.fire(task.taskId);

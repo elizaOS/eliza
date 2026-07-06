@@ -3,6 +3,8 @@
  * plus a mutable agent-backup state, so PA tests run without pulling in the full agent
  * package.
  */
+
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -255,14 +257,98 @@ export function loadElizaConfig(): Record<string, unknown> {
   return {};
 }
 
-export function loadOwnerContactsConfig(): Record<string, unknown> {
-  return {};
+function readTestElizaConfig(): Record<string, unknown> {
+  const configPath = process.env.ELIZA_CONFIG_PATH?.trim();
+  if (!configPath) return {};
+  try {
+    return JSON.parse(fs.readFileSync(configPath, "utf-8")) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    return {};
+  }
 }
 
-export async function loadOwnerContactRoutingHints(): Promise<
-  Record<string, unknown>
+export function loadOwnerContactsConfig(): Record<
+  string,
+  { entityId?: string; channelId?: string; roomId?: string }
 > {
-  return {};
+  const config = readTestElizaConfig();
+  const agents = config.agents as
+    | { defaults?: { ownerContacts?: Record<string, unknown> } }
+    | undefined;
+  return (agents?.defaults?.ownerContacts ?? {}) as Record<
+    string,
+    { entityId?: string; channelId?: string; roomId?: string }
+  >;
+}
+
+export async function loadOwnerContactRoutingHints(
+  _runtime: unknown,
+  ownerContacts: Record<
+    string,
+    { entityId?: string; channelId?: string; roomId?: string }
+  >,
+): Promise<Record<string, unknown>> {
+  return Object.fromEntries(
+    Object.entries(ownerContacts).map(([source, contact]) => [
+      source,
+      {
+        source,
+        entityId: contact.entityId ?? null,
+        channelId: contact.channelId ?? null,
+        roomId: contact.roomId ?? null,
+        preferredCommunicationChannel: null,
+        platformIdentities: [],
+        lastResponseAt: null,
+        lastResponseChannel: null,
+        resolvedFrom: "config",
+      },
+    ]),
+  );
+}
+
+export function resolveOwnerContactWithFallback(args: {
+  ownerContacts: Record<
+    string,
+    { entityId?: string; channelId?: string; roomId?: string }
+  >;
+  source: string | null | undefined;
+  ownerEntityId: string | null | undefined;
+}): {
+  source: string;
+  contact: { entityId?: string; channelId?: string; roomId?: string };
+  resolvedFrom: "config" | "owner_entity";
+} | null {
+  const source = typeof args.source === "string" ? args.source.trim() : "";
+  const candidates =
+    source === "telegram"
+      ? ["telegram", "telegram-account", "telegramAccount"]
+      : source === "telegram-account"
+        ? ["telegram-account", "telegramAccount", "telegram"]
+        : source
+          ? [source]
+          : [];
+  for (const candidate of candidates) {
+    const contact = args.ownerContacts[candidate];
+    if (contact) {
+      return {
+        source:
+          candidate === "telegramAccount" ? "telegram-account" : candidate,
+        contact,
+        resolvedFrom: "config",
+      };
+    }
+  }
+  if (source === "discord" && args.ownerEntityId) {
+    return {
+      source,
+      contact: { entityId: args.ownerEntityId },
+      resolvedFrom: "owner_entity",
+    };
+  }
+  return null;
 }
 
 export function saveElizaConfig(): void {}

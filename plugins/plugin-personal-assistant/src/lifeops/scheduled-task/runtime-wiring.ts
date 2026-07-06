@@ -9,7 +9,14 @@
  */
 
 import crypto from "node:crypto";
-import { createLocalAgentBackup, getAgentEventService } from "@elizaos/agent";
+import {
+  createLocalAgentBackup,
+  getAgentEventService,
+  loadOwnerContactRoutingHints,
+  loadOwnerContactsConfig,
+  resolveOwnerContactWithFallback,
+  resolveOwnerEntityId,
+} from "@elizaos/agent";
 import { getHostExecutionCapabilities } from "@elizaos/app-core/services/task-host-capabilities";
 import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";
 import type {
@@ -360,11 +367,86 @@ async function composeOwnerFacingScheduledTaskText(
 }
 
 const LOCAL_AGENT_BACKUP_OPERATION = "agent.localBackup";
+const LIFEOPS_OWNER_CONTACTS_LOAD_CONTEXT = {
+  boundary: "lifeops.owner_contacts",
+  operation: "load_owner_contacts",
+  message:
+    "[lifeops] Failed to load owner contacts; using empty owner contacts config.",
+} as const;
 
 function isLocalAgentBackupDispatch(
   record: ScheduledTaskDispatchRecord,
 ): boolean {
   return record.metadata?.systemOperation === LOCAL_AGENT_BACKUP_OPERATION;
+}
+
+function targetNeedsOwnerResolution(
+  channelKey: string,
+  target: string | undefined,
+): boolean {
+  const normalized = normalizeChannelTarget(channelKey, target);
+  return !normalized || normalized === channelKey;
+}
+
+async function resolveOwnerChannelTarget(
+  runtime: IAgentRuntime,
+  channelKey: string,
+): Promise<string | null> {
+  const ownerContacts = loadOwnerContactsConfig(
+    LIFEOPS_OWNER_CONTACTS_LOAD_CONTEXT,
+  );
+  const hints = await loadOwnerContactRoutingHints(runtime, ownerContacts);
+  const hint = hints[channelKey] ?? null;
+  let contactResolution =
+    resolveOwnerContactWithFallback({
+      ownerContacts,
+      source: hint?.source ?? channelKey,
+      ownerEntityId: null,
+    }) ??
+    resolveOwnerContactWithFallback({
+      ownerContacts,
+      source: channelKey,
+      ownerEntityId: null,
+    });
+  if (!contactResolution) {
+    const ownerEntityId = await resolveOwnerEntityId(runtime);
+    contactResolution =
+      resolveOwnerContactWithFallback({
+        ownerContacts,
+        source: hint?.source ?? channelKey,
+        ownerEntityId,
+      }) ??
+      resolveOwnerContactWithFallback({
+        ownerContacts,
+        source: channelKey,
+        ownerEntityId,
+      });
+  }
+  const contact =
+    contactResolution?.contact ??
+    (hint?.source ? ownerContacts[hint.source] : undefined) ??
+    ownerContacts[channelKey];
+  return (
+    hint?.channelId ??
+    contact?.channelId ??
+    hint?.roomId ??
+    contact?.roomId ??
+    hint?.entityId ??
+    contact?.entityId ??
+    null
+  );
+}
+
+async function resolveScheduledTaskChannelTarget(
+  runtime: IAgentRuntime,
+  record: ScheduledTaskDispatchRecord,
+): Promise<string | null> {
+  if (!targetNeedsOwnerResolution(record.channelKey, record.output?.target)) {
+    return (
+      normalizeChannelTarget(record.channelKey, record.output?.target) ?? null
+    );
+  }
+  return resolveOwnerChannelTarget(runtime, record.channelKey);
 }
 
 function deniedDecisionToDispatchResult(
@@ -570,11 +652,21 @@ export function createProductionScheduledTaskDispatcher(opts: {
         };
       }
 
+      const target = await resolveScheduledTaskChannelTarget(
+        opts.runtime,
+        record,
+      );
+      if (!target) {
+        return applyDispatchPolicy({
+          ok: false,
+          reason: "disconnected",
+          userActionable: true,
+          message: `Channel "${record.channelKey}" has no resolvable owner target for scheduled task delivery.`,
+        });
+      }
+
       const payload = {
-        target: normalizeChannelTarget(
-          record.channelKey,
-          record.output?.target ?? record.channelKey,
-        ),
+        target,
         message,
         metadata: {
           taskId: record.taskId,
