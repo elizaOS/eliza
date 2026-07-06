@@ -267,6 +267,26 @@ export default defineConfig({
           "index.ts",
         ),
       },
+      {
+        find: /^@elizaos\/contracts\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "contracts",
+          "src",
+          "$1.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/contracts$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "contracts",
+          "src",
+          "index.ts",
+        ),
+      },
       // These packages are imported by @elizaos/core while this suite inlines
       // core. Resolve them through Bun's real package-store path so their own
       // nested dependencies remain visible with preserveSymlinks enabled.
@@ -464,6 +484,16 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/plugin-reminders\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-reminders",
+          "src",
+          "$1.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/plugin-reminders$/,
         replacement: path.join(
           elizaRoot,
@@ -575,6 +605,16 @@ export default defineConfig({
           "plugin-browser",
           "src",
           "password-manager-bridge.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-browser\/schema$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-browser",
+          "src",
+          "schema.ts",
         ),
       },
       {

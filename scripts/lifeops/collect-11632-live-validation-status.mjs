@@ -75,7 +75,14 @@ export const CONNECTOR_GROUPS = [
   {
     id: "x",
     label: "X",
-    requiredAny: ["X_API_KEY", "TWITTER_API_KEY", "TWITTER_BEARER_TOKEN"],
+    // plugin-x live tests use env-mode OAuth 1.0a; bearer-only cannot satisfy
+    // users/me and is not enough to mark the lane ready.
+    requiredAll: [
+      "TWITTER_API_KEY",
+      "TWITTER_API_SECRET_KEY",
+      "TWITTER_ACCESS_TOKEN",
+      "TWITTER_ACCESS_TOKEN_SECRET",
+    ],
   },
   {
     id: "twilio",
