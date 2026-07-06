@@ -11,6 +11,7 @@
   "scripts": {
     "bundle:create": "bun src/cli.ts create",
     "bundle:verify": "bun src/cli.ts verify",
+    "vision-qa": "bun src/vision-qa/cli.ts",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src",
@@ -19,9 +20,9 @@
     "format:check": "bunx @biomejs/biome format src"
   },
   "dependencies": {
-    "zod": "^4.4.3",
     "pixelmatch": "^7.2.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^24.0.0"
