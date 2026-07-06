@@ -7,13 +7,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { logger } from "../../../logger.ts";
 import type {
+	Entity,
 	EvaluatorProcessorContext,
 	IAgentRuntime,
 	Memory,
 	UUID,
 } from "../../../types/index.ts";
 import { parseExtractorOutputTolerant } from "./factExtractor.schema.ts";
-import { factMemoryEvaluator } from "./reflection-items.ts";
+import {
+	factMemoryEvaluator,
+	REFLECTION_ENTITY_LIMIT,
+	relationshipEvaluator,
+} from "./reflection-items.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000aa" as UUID;
 const entityId = "00000000-0000-0000-0000-0000000000bb" as UUID;
@@ -361,5 +366,119 @@ describe("factExtractor tolerant parsing (#11235)", () => {
 		expect(parseExtractorOutputTolerant(null)).toBeNull();
 		// An empty ops array is a VALID (zero-op) turn, not a parse failure.
 		expect(parseExtractorOutputTolerant({ ops: [] })).toEqual({ ops: [] });
+	});
+});
+
+describe("reflection context bounds the room entity slice (#15087)", () => {
+	const authorId = "00000000-0000-0000-0000-0000000000cf" as UUID;
+
+	function subAgentEntityId(index: number): UUID {
+		return `00000000-0000-0000-0001-${String(index).padStart(12, "0")}` as UUID;
+	}
+
+	// Names are chosen so the human participants sort AFTER every sub-agent
+	// entity — getEntityDetails returns the room alphabetically, so a naive
+	// slice would drop exactly the entities the extractors need.
+	function roomEntities(subAgentCount: number): Entity[] {
+		const entities: Entity[] = [
+			{ id: agentId, agentId, names: ["zed-agent"], metadata: {} },
+			{ id: entityId, agentId, names: ["zoe-sender"], metadata: {} },
+			{ id: authorId, agentId, names: ["yuki-author"], metadata: {} },
+		];
+		for (let index = 0; index < subAgentCount; index += 1) {
+			entities.push({
+				id: subAgentEntityId(index),
+				agentId,
+				names: [
+					`sub-agent: Build and deploy web app number ${index} — ${"with detailed task requirements ".repeat(16)}`,
+				],
+				metadata: {},
+			});
+		}
+		return entities;
+	}
+
+	function contextRuntime(entities: Entity[]): IAgentRuntime {
+		return {
+			agentId,
+			getMemories: vi.fn(async () => [
+				{
+					id: "00000000-0000-0000-0000-0000000000d1" as UUID,
+					entityId,
+					agentId,
+					roomId,
+					content: { text: "can you check the weather for me?" },
+					createdAt: 1,
+				},
+				{
+					id: "00000000-0000-0000-0000-0000000000d2" as UUID,
+					entityId: authorId,
+					agentId,
+					roomId,
+					content: { text: "ping me when it's done" },
+					createdAt: 2,
+				},
+			]),
+			getRelationships: vi.fn(async () => []),
+			getRoom: vi.fn(async () => null),
+			getEntitiesForRoom: vi.fn(async () => entities),
+		} as unknown as IAgentRuntime;
+	}
+
+	async function prepareContext(runtime: IAgentRuntime) {
+		const prepared = await relationshipEvaluator.prepare?.({
+			runtime,
+			message: message(),
+			state: { values: {}, data: {}, text: "" },
+			options: {},
+		});
+		if (!prepared) throw new Error("relationship prepare returned nothing");
+		return prepared;
+	}
+
+	it("keeps conversation participants and caps the remainder in an entity-flooded room", async () => {
+		// 850 sub-agent entities observed live; 400 is just as far past the cap.
+		const runtime = contextRuntime(roomEntities(400));
+		const prepared = await prepareContext(runtime);
+
+		expect(prepared.entities).toHaveLength(REFLECTION_ENTITY_LIMIT);
+		const keptIds = new Set(prepared.entities.map((entity) => entity.id));
+		expect(keptIds.has(agentId)).toBe(true);
+		expect(keptIds.has(entityId)).toBe(true);
+		expect(keptIds.has(authorId)).toBe(true);
+		// Participants lead the slice; the sub-agent flood fills the remainder.
+		expect(
+			prepared.entities
+				.slice(0, 3)
+				.map((entity) => entity.id)
+				.sort(),
+		).toEqual([agentId, entityId, authorId].sort());
+	});
+
+	it("renders a bounded Entities-in-Room block into the relationships prompt", async () => {
+		const runtime = contextRuntime(roomEntities(400));
+		const prepared = await prepareContext(runtime);
+
+		const prompt = relationshipEvaluator.prompt({
+			runtime,
+			message: message(),
+			state: { values: {}, data: {}, text: "" },
+			options: {},
+			evaluatorName: "relationships",
+			prepared,
+		});
+		// Pre-fix, 400 entities with ~550-char task-description names rendered a
+		// ~220KB block; the slice cap + per-line name bound keep the whole section
+		// prompt-sized for the TEXT_SMALL tier.
+		expect(prompt.length).toBeLessThan(20_000);
+		expect(prompt).toContain("…[truncated]");
+		expect(prompt).toContain(entityId);
+	});
+
+	it("passes rooms under the cap through untouched", async () => {
+		const entities = roomEntities(3);
+		const runtime = contextRuntime(entities);
+		const prepared = await prepareContext(runtime);
+		expect(prepared.entities).toHaveLength(entities.length);
 	});
 });
