@@ -17,6 +17,7 @@ import {
   clearPendingCloudHandoff,
   loadPendingCloudHandoff,
   type PendingCloudHandoff,
+  savePendingCloudHandoff,
 } from "./pending-handoff-store";
 import { runCloudAgentHandoff } from "./run-cloud-agent-handoff";
 import { silentlyRepointToDedicated } from "./silent-repoint";
@@ -246,6 +247,13 @@ async function runFreshDedicatedHandoff(
       return;
     }
     const dedicatedAgentId = created.data.agentId;
+    savePendingCloudHandoff({
+      sharedAgentId: pending.sharedAgentId,
+      dedicatedAgentId,
+      sharedApiBase: pending.sharedApiBase,
+      cloudApiBase: pending.cloudApiBase,
+      startedAt: Date.now(),
+    });
     runCloudAgentHandoff(
       pending.sharedAgentId,
       () =>

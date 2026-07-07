@@ -268,7 +268,7 @@ describe("resumePendingCloudHandoff", () => {
     // Control-plane lookup reports the target no longer exists.
     mocks.getCloudCompatAgent.mockResolvedValue({
       success: false,
-      data: { id: "dedicated-1" },
+      data: { id: "dedicated-1", status: "deleted" },
     });
 
     // A resume DECISION is initiated (probe in flight).
@@ -339,7 +339,7 @@ describe("resumePendingCloudHandoff", () => {
     });
     mocks.getCloudCompatAgent.mockResolvedValue({
       success: false,
-      data: { id: uniqueDedicated },
+      data: { id: uniqueDedicated, status: "deleted" },
     });
 
     expect(resumePendingCloudHandoff()).toBe(true);
@@ -366,6 +366,12 @@ describe("resumePendingCloudHandoff", () => {
     expect(mocks.startCloudAgentHandoff.mock.calls[0][0]).toMatchObject({
       agentId: uniqueShared,
       dedicatedAgentId: "dedicated-fresh",
+    });
+    expect(loadPendingCloudHandoff()).toMatchObject({
+      sharedAgentId: uniqueShared,
+      dedicatedAgentId: "dedicated-fresh",
+      sharedApiBase: SHARED_BASE,
+      cloudApiBase: "https://elizacloud.ai",
     });
   });
 });
