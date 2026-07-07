@@ -319,11 +319,7 @@ function sharedRestMessageTimestamp(
   index: number,
   total: number,
 ): number {
-  if (
-    typeof turn.createdAt === "number" &&
-    Number.isFinite(turn.createdAt) &&
-    turn.createdAt > 0
-  ) {
+  if (typeof turn.createdAt === "number" && Number.isFinite(turn.createdAt) && turn.createdAt > 0) {
     return turn.createdAt;
   }
   // Legacy shared-runtime history rows predate createdAt. Keep them finite but
