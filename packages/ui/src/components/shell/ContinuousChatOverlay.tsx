@@ -65,6 +65,7 @@ import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
+import { useConversationRenderWindow } from "../../hooks/useConversationRenderWindow";
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { usePushToTalk } from "../../hooks/usePushToTalk";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
@@ -134,13 +135,7 @@ import {
 } from "./chat-panel-layout";
 import { LIQUID_GLASS_EDGE_SHADOW, LIQUID_GLASS_SHEEN } from "./liquid-glass";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
-import {
-  filterRenderableShellMessages,
-  MAX_LOADED_SHELL_WINDOW,
-  MAX_RENDERED_SHELL_MESSAGES,
-  planScrollTopLoadOlder,
-  type ShellMessage,
-} from "./shell-state";
+import { filterRenderableShellMessages, type ShellMessage } from "./shell-state";
 import { TopicChipsBar } from "./TopicChipsBar";
 import { TopicGroup } from "./TopicGroup";
 import {
@@ -1548,14 +1543,6 @@ export function ContinuousChatOverlay({
   // after the user has moved on.
   const pendingExpandOnRevealRef = React.useRef(false);
   const focusThreadRef = React.useRef(false);
-  // The render window slides UP as the reader scrolls into history (#14329):
-  // it starts at MAX_RENDERED_SHELL_MESSAGES (lean idle/drag DOM) and grows a
-  // page per scroll-to-top — first revealing already-loaded turns, then paging
-  // older ones in — bounded by MAX_LOADED_SHELL_WINDOW so a long thread never
-  // unbounds the DOM. Reset when the active conversation changes (below).
-  const [renderWindowSize, setRenderWindowSize] = React.useState(
-    MAX_RENDERED_SHELL_MESSAGES,
-  );
   // Recomputed only when the thread or phase changes — NOT on every drag/draft
   // re-render. Pure windowing (empty-turn filter, with the streaming-assistant
   // exception) lives in shell-state so it's unit-tested; the count of renderable
@@ -1564,12 +1551,42 @@ export function ContinuousChatOverlay({
     () => filterRenderableShellMessages(messages, phase),
     [messages, phase],
   );
+  // Mirror the active id so an async older-page result is dropped after a
+  // mid-flight conversation switch: a page fetched for the previous thread must
+  // never prepend into the newly active one.
+  const loadOlderConversationIdRef = React.useRef(activeConversationId);
+  loadOlderConversationIdRef.current = activeConversationId;
+  const fetchOlder = React.useCallback(async () => {
+    const conversationId = activeConversationId;
+    if (!conversationId) return { hasMore: false, prependedCount: 0 };
+    return await loadOlderConversationMessages({
+      client,
+      conversationId,
+      currentMessages: conversationMessages,
+      prependMessages: (older) => {
+        if (loadOlderConversationIdRef.current === conversationId) {
+          prependConversationMessages(older);
+        }
+      },
+    });
+  }, [activeConversationId, conversationMessages, prependConversationMessages]);
+  // The render window slides UP as the reader scrolls into history (#14329,
+  // #15281): it opens at MAX_RENDERED_SHELL_MESSAGES (lean idle/drag DOM) and
+  // grows a page per scroll-to-top — first revealing already-loaded turns, then
+  // paging older ones in — bounded by MAX_LOADED_SHELL_WINDOW so a long thread
+  // never unbounds the DOM. The one shared engine (also drives ChatView),
+  // reset when the active conversation changes.
+  const renderWindow = useConversationRenderWindow({
+    renderableCount: renderableMessages.length,
+    conversationKey: activeConversationId,
+    fetchOlder,
+  });
   const visibleMessages = React.useMemo(
     () =>
-      renderableMessages.length > renderWindowSize
-        ? renderableMessages.slice(-renderWindowSize)
+      renderableMessages.length > renderWindow.windowSize
+        ? renderableMessages.slice(-renderWindow.windowSize)
         : renderableMessages,
-    [renderableMessages, renderWindowSize],
+    [renderableMessages, renderWindow.windowSize],
   );
   const lastId = visibleMessages.at(-1)?.id ?? null;
   const lastContent = visibleMessages.at(-1)?.content ?? "";
@@ -1634,84 +1651,22 @@ export function ContinuousChatOverlay({
     [visibleMessages],
   );
 
-  // ── Infinite upward scroll (#13532), wired into the overlay per #14279 ────
-  // The overlay is the primary mobile/PWA chat surface, but until now only the
-  // desktop ChatView wired load-older. Share the SAME scroller (`threadRef`,
-  // owned by useThreadAutoScroll for bottom-follow) plus a top sentinel so a
-  // scroll toward the oldest line seamlessly prepends an older page — with the
-  // reader's viewport anchored (no jump) by useLoadOlderOnScroll.
+  // ── Infinite upward scroll (#13532/#14329), wired into the overlay per #14279
+  // The overlay is the primary mobile/PWA chat surface. Share the SAME scroller
+  // (`threadRef`, owned by useThreadAutoScroll for bottom-follow) plus a top
+  // sentinel so a scroll toward the oldest line seamlessly reveals/prepends an
+  // older page — viewport anchored (no jump) by useLoadOlderOnScroll. Paging +
+  // windowing state lives in the shared useConversationRenderWindow above.
   const topSentinelRef = React.useRef<HTMLDivElement>(null);
-  const [hasMoreOlder, setHasMoreOlder] = React.useState(true);
-  // The active id captured for the async load-older result, so a page fetched
-  // for the previous conversation can't prepend into (or re-arm paging for) the
-  // newly active one after a mid-flight switch.
-  const loadOlderConversationIdRef = React.useRef(activeConversationId);
-  loadOlderConversationIdRef.current = activeConversationId;
-  // Live copies for the scroll-up handler so its identity stays stable across
-  // window growth / message churn (the observer captures it through a ref).
-  const renderWindowSizeRef = React.useRef(renderWindowSize);
-  renderWindowSizeRef.current = renderWindowSize;
-  const renderableCountRef = React.useRef(renderableMessages.length);
-  renderableCountRef.current = renderableMessages.length;
-  const hasMoreOlderRef = React.useRef(hasMoreOlder);
-  hasMoreOlderRef.current = hasMoreOlder;
-  const loadOlderMessages = React.useCallback(async () => {
-    const conversationId = activeConversationId;
-    if (!conversationId) return;
-    // Reveal-before-fetch: grow the render window a page to surface
-    // already-loaded older turns before hitting the network. Only when the
-    // window has consumed every loaded turn do we page the next older server
-    // window (and grow to render it). Both grows go through the SAME
-    // scrollHeight-delta anchor in useLoadOlderOnScroll, so the reader stays put.
-    const plan = planScrollTopLoadOlder(
-      renderWindowSizeRef.current,
-      renderableCountRef.current,
-      hasMoreOlderRef.current,
-    );
-    if (plan.nextWindowSize !== renderWindowSizeRef.current) {
-      setRenderWindowSize(plan.nextWindowSize);
-    }
-    if (!plan.shouldFetch) return;
-    const result = await loadOlderConversationMessages({
-      client,
-      conversationId,
-      currentMessages: conversationMessages,
-      prependMessages: (older) => {
-        if (loadOlderConversationIdRef.current === conversationId) {
-          prependConversationMessages(older);
-        }
-      },
-    });
-    if (loadOlderConversationIdRef.current === conversationId) {
-      setHasMoreOlder(result.hasMore);
-      if (result.prependedCount > 0) {
-        setRenderWindowSize((n) =>
-          Math.min(n + result.prependedCount, MAX_LOADED_SHELL_WINDOW),
-        );
-      }
-    }
-  }, [activeConversationId, conversationMessages, prependConversationMessages]);
-  // A fresh/switched conversation may have older history — re-arm the loader and
-  // collapse the render window back to the lean initial size.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: activeConversationId is the intentional re-arm trigger; the body only calls stable setters.
-  React.useEffect(() => {
-    setHasMoreOlder(true);
-    setRenderWindowSize(MAX_RENDERED_SHELL_MESSAGES);
-  }, [activeConversationId]);
   useLoadOlderOnScroll<HTMLDivElement>({
     scrollRef: threadRef,
     sentinelRef: topSentinelRef,
-    onLoadOlder: loadOlderMessages,
+    onLoadOlder: renderWindow.onLoadOlder,
     // Topic grouping wraps rows in collapsible segments, which breaks the
     // sentinel's flat-prepend anchor math; restrict load-older to the flat
     // transcript (the common case). A topic-grouped thread still shows its
-    // recent window; scroll-up paging there is a follow-up. The observer stays
-    // armed while older turns can still be revealed (window below the loaded
-    // count) OR paged (server has more), and latches off at the DOM bound.
-    hasMore:
-      !hasTopics &&
-      renderWindowSize < MAX_LOADED_SHELL_WINDOW &&
-      (renderWindowSize < renderableMessages.length || hasMoreOlder),
+    // recent window; scroll-up paging there is a follow-up.
+    hasMore: !hasTopics && renderWindow.canLoadOlder,
     topItemKey: visibleMessages[0]?.id ?? "",
     enabled: threadPresented && !hasTopics,
   });
@@ -1800,12 +1755,15 @@ export function ContinuousChatOverlay({
         let el = await waitForSearchAnchor(anchorId, 20);
         if (!el) {
           // The hit predates the loaded recent window: load a window CENTERED on
-          // it, let the thread re-render, then scroll.
+          // it, then reveal the full loaded set so the centered pivot is not
+          // sliced out of the render window (#15281) — without the reveal a
+          // windowed transcript drops the anchor and the jump silently no-ops.
           const loaded = await loadConversationMessagesAround(
             result.conversationId,
             result.messageId,
           );
           if (loaded) {
+            renderWindow.revealFullWindow();
             el = await waitForSearchAnchor(anchorId, 20);
           }
         }
@@ -1817,6 +1775,7 @@ export function ContinuousChatOverlay({
       loadConversationMessagesAround,
       waitForSearchAnchor,
       scrollAndFlashSearchAnchor,
+      renderWindow.revealFullWindow,
     ],
   );
 
@@ -5304,7 +5263,7 @@ export function ContinuousChatOverlay({
                         Only meaningful in the flat (non-topic) transcript. */}
                     {!firstRunOpen &&
                     !hasTopics &&
-                    hasMoreOlder &&
+                    renderWindow.canLoadOlder &&
                     visibleMessages.length > 0 ? (
                       <div
                         ref={topSentinelRef}
