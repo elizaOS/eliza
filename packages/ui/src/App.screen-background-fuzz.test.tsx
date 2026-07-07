@@ -416,7 +416,7 @@ vi.mock("three", () => {
 });
 
 import { App } from "./App";
-import { shellHistory } from "./surface-realm-broker";
+import { shellHistory } from "./surface-realm-channel";
 
 // ── The full builtin tab universe (mirrors navigation/index.ts BuiltinTab). ──
 // Each entry: the tab id + the route path it activates.

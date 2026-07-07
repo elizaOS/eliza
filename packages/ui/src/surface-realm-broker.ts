@@ -51,6 +51,17 @@ import type { ResolvedSurfaceManifest } from "@elizaos/core";
 import { surfaceGrants } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import { THEME_CSS_VAR_MAP, THEME_FONT_CSS_VARS } from "@elizaos/shared";
+import { isPrivilegedShellActive } from "./surface-realm-channel";
+
+// Re-export the shell-privileged channel so existing importers of the broker
+// (App.tsx, the bridge barrel) keep working; the definitions live in the
+// dependency-free `surface-realm-channel` leaf so shell writers don't drag this
+// heavy module in. New leaf writers should import from the channel directly.
+export {
+  runAsPrivilegedShell,
+  shellHistory,
+  shellLocalStorage,
+} from "./surface-realm-channel";
 
 /**
  * Raised when a view attempts a host-realm mutation its manifest does not grant.
@@ -443,54 +454,12 @@ export function getActiveSurfaceRealmScope(): SurfaceRealmScope | null {
 
 // ── Raw-global guards ────────────────────────────────────────────────────────
 
-// Reentrancy depth, not a boolean: privileged shell paths nest (e.g. the
-// navigation reducer persisting the last tab while pushing a route).
-let privilegedShellDepth = 0;
-
-/**
- * Run `fn` with the raw-global guards disarmed. This is the shell's caller
- * identity: one JS realm has no way to distinguish shell code from view code at
- * a `localStorage.setItem` call site, so shell code declares itself by routing
- * its reserved-key writes and router navigation through this channel. Shell
- * internals only — a view that imports this defeats the accident-guard on
- * itself (the adversarial boundary is the sandboxed-iframe/native-webview
- * tier, not this flag).
- */
-export function runAsPrivilegedShell<T>(fn: () => T): T {
-  privilegedShellDepth += 1;
-  try {
-    return fn();
-  } finally {
-    privilegedShellDepth -= 1;
-  }
-}
-
-/**
- * The shell's own localStorage writer. Same-signature stand-in for the raw
- * calls it replaces, so migrating a shell write site is a one-token edit. Reads
- * are never guarded, so no `getItem` is provided — read the global directly.
- */
-export const shellLocalStorage = {
-  setItem(key: string, value: string): void {
-    runAsPrivilegedShell(() => window.localStorage.setItem(key, value));
-  },
-  removeItem(key: string): void {
-    runAsPrivilegedShell(() => window.localStorage.removeItem(key));
-  },
-  clear(): void {
-    runAsPrivilegedShell(() => window.localStorage.clear());
-  },
-};
-
-/** The shell router/chrome's history writer (guard-exempt, DOM signatures). */
-export const shellHistory = {
-  pushState(data: unknown, unused: string, url?: string | URL | null): void {
-    runAsPrivilegedShell(() => window.history.pushState(data, unused, url));
-  },
-  replaceState(data: unknown, unused: string, url?: string | URL | null): void {
-    runAsPrivilegedShell(() => window.history.replaceState(data, unused, url));
-  },
-};
+// The shell-privileged channel (`shellLocalStorage`/`shellHistory`/
+// `runAsPrivilegedShell` + the depth flag the guards read) lives in the
+// dependency-free `surface-realm-channel` leaf so the ~30 shell writers that
+// migrated to it don't each pull this heavy module (core/shared/logger). The
+// guards below consume the channel's `isPrivilegedShellActive`; this module
+// re-exports the channel for back-compat (App.tsx, the bridge barrel).
 
 // Marker so a re-publish can tell "window.localStorage is already my proxy"
 // from "a test (or the platform) swapped in a fresh backing that needs
@@ -498,7 +467,7 @@ export const shellHistory = {
 const STORAGE_GUARD_TARGET = Symbol("surface-realm-storage-guard-target");
 
 function assertRawStorageWriteAllowed(op: string, key: string): void {
-  if (privilegedShellDepth > 0) return;
+  if (isPrivilegedShellActive()) return;
   const scope = activeScope;
   if (scope === null) return;
   if (!isShellReservedStorageKey(key)) return;
@@ -514,7 +483,7 @@ function assertRawStorageWriteAllowed(op: string, key: string): void {
 
 function guardedLocalStorage(backing: Storage): Storage {
   const guardedClear = (): void => {
-    if (privilegedShellDepth > 0 || activeScope === null) {
+    if (isPrivilegedShellActive() || activeScope === null) {
       backing.clear();
       return;
     }
@@ -568,7 +537,7 @@ function assertRawHistoryMutationAllowed(
   op: "pushState" | "replaceState",
   url: string | URL | null | undefined,
 ): void {
-  if (privilegedShellDepth > 0) return;
+  if (isPrivilegedShellActive()) return;
   const scope = activeScope;
   if (scope === null) return;
   // State-only mutation (no URL) cannot move the shell route.

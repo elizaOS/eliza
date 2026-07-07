@@ -4,7 +4,7 @@
  */
 import type { PermissionId } from "@elizaos/shared/contracts/permissions";
 import { getFrontendPlatform } from "../../platform/platform-guards";
-import { shellLocalStorage } from "../../surface-realm-broker";
+import { shellLocalStorage } from "../../surface-realm-channel";
 
 /**
  * Permission-priming logic for the post-login onboarding modal.

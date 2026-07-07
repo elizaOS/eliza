@@ -11,7 +11,7 @@
 import { PanelLeftClose } from "lucide-react";
 import * as React from "react";
 import { useCallback, useMemo, useState } from "react";
-import { shellLocalStorage } from "../../surface-realm-broker";
+import { shellLocalStorage } from "../../surface-realm-channel";
 import { Sidebar } from "../composites/sidebar/sidebar-root";
 import type { SidebarProps } from "../composites/sidebar/sidebar-types";
 import { Button } from "../ui/button";

@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useSyncExternalStore } from "react";
+import { shellLocalStorage } from "../surface-realm-channel";
 import type { HomeWidgetSunset } from "./types";
 
 const STORAGE_KEY = "eliza:home-dismissed:v1";
@@ -66,7 +67,7 @@ const seenThisSession = new Set<string>();
 function persist(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    shellLocalStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
     // Storage full / disabled — the in-memory state still drives this session.
   }
@@ -165,7 +166,7 @@ export function __resetHomeDismissalsForTests(): void {
   listeners.clear();
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.removeItem(STORAGE_KEY);
+      shellLocalStorage.removeItem(STORAGE_KEY);
     } catch {
       // ignore
     }

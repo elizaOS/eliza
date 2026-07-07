@@ -24,7 +24,7 @@ import {
 import { useRafCoalescer } from "../../gestures";
 import type { ActivityEvent } from "../../hooks/useActivityEvents";
 import { useAppSelector } from "../../state";
-import { shellLocalStorage } from "../../surface-realm-broker";
+import { shellLocalStorage } from "../../surface-realm-channel";
 // Direct sub-path import for WidgetHost to avoid the widgets/index.ts ↔
 // WidgetHost.tsx chunk-level cycle. The barrel still works fine for
 // resolveWidgetsForSlot — only WidgetHost participates in the cycle.

@@ -2,6 +2,7 @@
  * Helper for the Settings > Runtime panel "Switch runtime" action.
  */
 
+import { shellLocalStorage } from "../surface-realm-channel";
 import {
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
   persistMobileRuntimeModeForServerTarget,
@@ -39,7 +40,7 @@ export function reloadIntoFirstRunRuntime(target?: FirstRunReloadTarget): void {
   if (typeof window === "undefined") return;
   persistMobileRuntimeModeForServerTarget("");
   try {
-    window.localStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
+    shellLocalStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
   } catch {
     // error-policy:J6 best-effort cleanup — the query navigation below still
     // forces first-run when storage is unavailable

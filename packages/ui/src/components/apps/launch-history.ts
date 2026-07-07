@@ -4,7 +4,7 @@
  */
 
 import type { AppLaunchDiagnostic } from "../../api";
-import { shellLocalStorage } from "../../surface-realm-broker";
+import { shellLocalStorage } from "../../surface-realm-channel";
 
 export interface LaunchAttemptRecord {
   timestamp: number;

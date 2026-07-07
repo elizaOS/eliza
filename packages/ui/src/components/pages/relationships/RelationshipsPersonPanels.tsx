@@ -47,7 +47,7 @@ import {
   type TranslationContextValue,
   useTranslation,
 } from "../../../state/TranslationContext.hooks";
-import { shellHistory } from "../../../surface-realm-broker";
+import { shellHistory } from "../../../surface-realm-channel";
 import { formatDateTime, formatShortDate } from "../../../utils/format";
 import { PagePanel } from "../../composites/page-panel";
 import { MetaPill } from "../../composites/page-panel/page-panel-header";

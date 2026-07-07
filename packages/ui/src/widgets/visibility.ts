@@ -2,6 +2,8 @@
  * User-controlled per-slot widget visibility overrides, layered on top of the
  * two-stage capability/declaration gate (see block below).
  */
+
+import { shellLocalStorage } from "../surface-realm-channel";
 import type { WidgetSlot } from "./types";
 
 /**
@@ -97,10 +99,10 @@ export function saveWidgetVisibility(
     const sanitized = sanitizeOverrides(state.overrides);
     const key = widgetVisibilityStorageKey(slot);
     if (Object.keys(sanitized).length === 0) {
-      localStorage.removeItem(key);
+      shellLocalStorage.removeItem(key);
       return;
     }
-    localStorage.setItem(key, JSON.stringify(sanitized));
+    shellLocalStorage.setItem(key, JSON.stringify(sanitized));
   }, undefined);
 }
 

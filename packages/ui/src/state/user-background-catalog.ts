@@ -23,7 +23,7 @@
  * for the undo stack. So a data-URL upload simply isn't saved to the catalog.
  */
 
-import { shellLocalStorage } from "../surface-realm-broker";
+import { shellLocalStorage } from "../surface-realm-channel";
 import type { BackgroundCatalogEntry } from "./ui-preferences";
 
 const USER_BACKGROUND_CATALOG_KEY = "eliza:ui-background-user-catalog";

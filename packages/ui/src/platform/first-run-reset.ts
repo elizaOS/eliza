@@ -2,7 +2,7 @@
  * First-run reset flow: clears persisted onboarding state and navigates back to
  * the setup surface via the injected storage/history/client shims.
  */
-import { runAsPrivilegedShell } from "../surface-realm-broker";
+import { runAsPrivilegedShell } from "../surface-realm-channel";
 import type {
   FirstRunClientLike as ClientLike,
   HistoryLike,

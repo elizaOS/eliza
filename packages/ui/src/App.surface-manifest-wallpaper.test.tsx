@@ -377,7 +377,7 @@ vi.mock("three", () => {
 });
 
 import { App } from "./App";
-import { shellHistory } from "./surface-realm-broker";
+import { shellHistory } from "./surface-realm-channel";
 
 // Read the single painted background layer + assert exactly one exists.
 function readBackgroundLayer(container: HTMLElement): {

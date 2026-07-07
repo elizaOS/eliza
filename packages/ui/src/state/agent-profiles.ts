@@ -5,6 +5,7 @@
  * localStorage so users can manage and switch between multiple agents.
  */
 
+import { shellLocalStorage } from "../surface-realm-channel";
 import type { AgentProfile, AgentProfileRegistry } from "./agent-profile-types";
 import type { PersistedActiveServer } from "./persistence";
 
@@ -66,7 +67,7 @@ function migrateFromPersistedActiveServer(): AgentProfileRegistry | null {
   };
 
   // Persist immediately so migration only runs once.
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(registry));
+  shellLocalStorage.setItem(STORAGE_KEY, JSON.stringify(registry));
   // Leave elizaos:active-server intact for rollback.
   return registry;
 }
@@ -89,7 +90,7 @@ export function loadAgentProfileRegistry(): AgentProfileRegistry {
 
 export function saveAgentProfileRegistry(registry: AgentProfileRegistry): void {
   tryLocalStorage(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(registry));
+    shellLocalStorage.setItem(STORAGE_KEY, JSON.stringify(registry));
   }, undefined);
 }
 

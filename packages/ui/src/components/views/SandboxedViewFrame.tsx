@@ -27,7 +27,7 @@ import {
 import { logger } from "@elizaos/logger";
 import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import { useEffect, useMemo, useRef } from "react";
-import { shellLocalStorage } from "../../surface-realm-broker";
+import { shellLocalStorage } from "../../surface-realm-channel";
 import { resolveSandboxTokens } from "./sandbox-policy";
 import {
   brokerSandboxedViewRequest,

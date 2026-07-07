@@ -6,7 +6,7 @@
  */
 
 import type { RegistryAppInfo } from "@elizaos/shared";
-import { shellLocalStorage } from "../../surface-realm-broker";
+import { shellLocalStorage } from "../../surface-realm-channel";
 
 const CACHE_KEY = "eliza:apps:catalog:v1";
 

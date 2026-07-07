@@ -14,7 +14,7 @@ import { Capacitor } from "@capacitor/core";
 import { logger } from "@elizaos/logger";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
-import { runAsPrivilegedShell } from "../surface-realm-broker";
+import { runAsPrivilegedShell } from "../surface-realm-channel";
 
 /**
  * Lazy-load the @capacitor/preferences module on demand. Keeping it out of the

@@ -23,6 +23,7 @@ import {
   useState,
 } from "react";
 import type { ImageAttachment } from "../api";
+import { shellLocalStorage } from "../surface-realm-channel";
 
 /**
  * The message the composer is currently replying to. Set by the per-row Reply
@@ -137,9 +138,9 @@ export function writeChatDraft(
   const key = chatDraftStorageKey(conversationId);
   try {
     if (draft.length > 0) {
-      window.localStorage.setItem(key, draft);
+      shellLocalStorage.setItem(key, draft);
     } else {
-      window.localStorage.removeItem(key);
+      shellLocalStorage.removeItem(key);
     }
   } catch {
     // Storage quota / sandbox errors are non-fatal — the draft is just
@@ -152,7 +153,7 @@ export function clearChatDraft(conversationId: string | null): void {
   if (!conversationId) return;
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(chatDraftStorageKey(conversationId));
+    shellLocalStorage.removeItem(chatDraftStorageKey(conversationId));
   } catch {
     /* noop */
   }
@@ -173,7 +174,7 @@ export function clearAllChatDrafts(): void {
       }
     }
     for (const key of toRemove) {
-      window.localStorage.removeItem(key);
+      shellLocalStorage.removeItem(key);
     }
   } catch {
     /* noop */

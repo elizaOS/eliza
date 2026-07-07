@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "../../state/TranslationContext.hooks";
-import { shellHistory } from "../../surface-realm-broker";
+import { shellHistory } from "../../surface-realm-channel";
 import { Button } from "../ui/button.tsx";
 
 /**

@@ -6,7 +6,7 @@
  * change notifications via the `storage` event so multiple windows stay in
  * sync.
  */
-import { shellLocalStorage } from "../../surface-realm-broker";
+import { shellLocalStorage } from "../../surface-realm-channel";
 
 export type AppLaunchMode = "window" | "inline";
 

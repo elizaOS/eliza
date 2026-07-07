@@ -37,13 +37,8 @@ import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BuiltinTab } from "./navigation";
 import type { BackgroundConfig } from "./state/ui-preferences";
-import {
-  getActiveSurfaceRealmScope,
-  shellHistory,
-  shellLocalStorage,
-  SurfaceRealmDeniedError,
-  surfaceViewStoragePrefix,
-} from "./surface-realm-broker";
+import { SurfaceRealmDeniedError, getActiveSurfaceRealmScope, surfaceViewStoragePrefix } from "./surface-realm-broker";
+import { shellHistory, shellLocalStorage } from "./surface-realm-channel";
 
 const appState = vi.hoisted(() => ({
   setTab: vi.fn(),
@@ -395,6 +390,11 @@ vi.mock("three", () => {
 });
 
 import { App } from "./App";
+import {
+  chatDraftStorageKey,
+  readChatDraft,
+  writeChatDraft,
+} from "./state/ChatComposerContext.hooks";
 
 // A shell-owned storage key that must never be writable through a view path.
 const SHELL_STORAGE_KEY = "eliza:ui-theme";
@@ -696,6 +696,33 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     expect(window.location.pathname).toBe("/shell-owned-route");
   }, 60_000);
 
+  it("real shell persisters keep working under an active view scope (regression guard for missed migrations)", async () => {
+    // The raw-global guard is a Proxy over window.localStorage installed for the
+    // whole realm — so EVERY shell writer of a reserved key, not just the ones
+    // the walk drives, must route through the privileged channel or it throws on
+    // every write while a view is foreground and its own try/catch swallows the
+    // failure into silent data loss. This drives a REAL shell persister
+    // (`writeChatDraft`, a `eliza:chat:draft:*` reserved-key writer whose own
+    // catch would hide a regression) end-to-end while a no-grant view owns the
+    // foreground, and asserts the draft actually persisted. If writeChatDraft
+    // (or any peer) reverts to raw `window.localStorage`, the write is denied,
+    // swallowed, and the read-back is null → red.
+    const { rerender } = render(<App />);
+    await navigate(rerender, "views", "/iso-nogrant");
+    expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-nogrant");
+
+    const conversationId = "conv-under-scope";
+    writeChatDraft(conversationId, "half-typed message");
+    expect(readChatDraft(conversationId)).toBe("half-typed message");
+    // It landed under the real reserved key, not a view-namespaced fallback.
+    expect(window.localStorage.getItem(chatDraftStorageKey(conversationId))).toBe(
+      "half-typed message",
+    );
+    // Clearing (removeItem on the reserved key) also works under the scope.
+    writeChatDraft(conversationId, "");
+    expect(readChatDraft(conversationId)).toBeNull();
+  }, 60_000);
+
   it("raw guards disarm when no view scope is active", async () => {
     const { rerender, unmount } = render(<App />);
     await navigate(rerender, "views", "/iso-nogrant");
@@ -731,3 +758,9 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
 //   (d-raw) make `assertRawHistoryMutationAllowed` return unconditionally →
 //           raw pushState/replaceState moves the route under a no-`navigate`
 //           view → the raw denial toThrows and "route not hijacked" fail.
+//   (persist) revert any shell reserved-key writer (e.g. `writeChatDraft`) to
+//           raw `window.localStorage` → under an active view scope the write is
+//           denied, its own catch swallows it, and "real shell persisters keep
+//           working under an active view scope" reads back null → red. This is
+//           the positive counterpart that catches a MISSED migration, which a
+//           denial-only assertion cannot.

@@ -6,7 +6,7 @@ import { logger } from "@elizaos/logger";
 import type { NavigateViewDetail } from "@elizaos/shared/events";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { type Tab, tabFromPath } from "./navigation";
-import { shellHistory } from "./surface-realm-broker";
+import { shellHistory } from "./surface-realm-channel";
 
 export type { NavigateViewDetail };
 

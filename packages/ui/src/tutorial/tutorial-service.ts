@@ -18,7 +18,7 @@
  */
 import { logger } from "@elizaos/logger";
 import * as React from "react";
-import { shellLocalStorage } from "../surface-realm-broker";
+import { shellLocalStorage } from "../surface-realm-channel";
 import { TUTORIAL_STEP_IDS } from "./tutorial-script";
 
 const STATE_KEY = "eliza:tutorial-state";

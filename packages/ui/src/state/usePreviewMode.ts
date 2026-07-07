@@ -3,7 +3,7 @@
  * Always opt-in; mirrors useDeveloperMode apart from its default.
  */
 import { useSyncExternalStore } from "react";
-import { shellLocalStorage } from "../surface-realm-broker";
+import { shellLocalStorage } from "../surface-realm-channel";
 
 /**
  * Preview Mode state — when on, the shell renders apps, widgets, nav tabs, and

@@ -3,7 +3,7 @@
  * resolves the pathname/target tab for a popped-out surface.
  */
 import { pathForTab } from "../navigation";
-import { runAsPrivilegedShell } from "../surface-realm-broker";
+import { runAsPrivilegedShell } from "../surface-realm-channel";
 import type { HistoryLike } from "./types";
 
 export type DetachedSurfaceTab =

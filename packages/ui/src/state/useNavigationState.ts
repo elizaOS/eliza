@@ -15,7 +15,7 @@ import {
   useState,
 } from "react";
 import { pathForTab, shouldUseHashNavigation, type Tab } from "../navigation";
-import { shellHistory } from "../surface-realm-broker";
+import { shellHistory } from "../surface-realm-channel";
 import {
   loadLastNativeTab,
   type ShellView,

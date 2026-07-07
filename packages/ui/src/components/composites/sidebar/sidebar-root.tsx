@@ -10,7 +10,7 @@ import { cva } from "class-variance-authority";
 import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../../lib/utils";
-import { shellLocalStorage } from "../../../surface-realm-broker";
+import { shellLocalStorage } from "../../../surface-realm-channel";
 import { Button } from "../../ui/button";
 import {
   buildSidebarAutoRailItems,

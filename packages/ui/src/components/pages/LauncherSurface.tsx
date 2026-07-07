@@ -14,7 +14,7 @@ import { isAospShellEnabled } from "../../navigation";
 import { getActiveViewModality } from "../../platform/platform-guards";
 import { useAppSelectorShallow } from "../../state";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
-import { shellHistory } from "../../surface-realm-broker";
+import { shellHistory } from "../../surface-realm-channel";
 import { Launcher } from "./Launcher";
 import { curateLauncherPages } from "./launcher-curation";
 

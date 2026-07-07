@@ -1,6 +1,7 @@
 /**
  * Return-to plumbing for the app-authorize flow: the path and the persisted return target.
  */
+import { shellLocalStorage } from "../../../surface-realm-channel";
 export const APP_AUTHORIZE_PATH = "/app-auth/authorize";
 export const APP_AUTH_RETURN_TO_KEY = "eliza_app_auth_return_to";
 
@@ -51,7 +52,7 @@ export function buildAppAuthorizeCancelRedirect(input: {
 export function storeCurrentAppAuthorizeReturnTo(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(APP_AUTH_RETURN_TO_KEY, window.location.href);
+    shellLocalStorage.setItem(APP_AUTH_RETURN_TO_KEY, window.location.href);
   } catch {
     // Best effort. Browsers can deny storage; callers should still handle
     // missing app-auth context explicitly.
@@ -61,7 +62,7 @@ export function storeCurrentAppAuthorizeReturnTo(): void {
 export function clearStoredAppAuthorizeReturnTo(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(APP_AUTH_RETURN_TO_KEY);
+    shellLocalStorage.removeItem(APP_AUTH_RETURN_TO_KEY);
   } catch {
     // Best effort. A stale value is harmless because reads validate origin
     // and path, but clearing avoids surprising later email callbacks.

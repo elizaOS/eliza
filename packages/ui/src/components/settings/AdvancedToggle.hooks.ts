@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { shellLocalStorage } from "../../surface-realm-broker";
+import { shellLocalStorage } from "../../surface-realm-channel";
 
 export const ADVANCED_TOGGLE_STORAGE_KEY = "eliza:settings-advanced";
 

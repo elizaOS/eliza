@@ -25,7 +25,7 @@ import {
 } from "../i18n";
 import { detectClientLanguage } from "../i18n/region";
 import type { Tab } from "../navigation";
-import { shellLocalStorage } from "../surface-realm-broker";
+import { shellLocalStorage } from "../surface-realm-channel";
 import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
 import {

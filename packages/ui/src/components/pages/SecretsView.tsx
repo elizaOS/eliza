@@ -12,7 +12,7 @@ import { client } from "../../api";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useAppSelector } from "../../state";
-import { shellLocalStorage } from "../../surface-realm-broker";
+import { shellLocalStorage } from "../../surface-realm-channel";
 import type { TranslateFn } from "../../types";
 import { Button } from "../ui/button";
 import {

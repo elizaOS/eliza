@@ -37,7 +37,7 @@ import { CHAT_MESSAGE_SEARCH_EVENT } from "../../events";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useAppSelectorShallow } from "../../state";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
-import { shellLocalStorage } from "../../surface-realm-broker";
+import { shellLocalStorage } from "../../surface-realm-channel";
 import { errorMessage } from "../../utils/errors";
 import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { ChatConversationItem } from "../composites/chat/chat-conversation-item";
