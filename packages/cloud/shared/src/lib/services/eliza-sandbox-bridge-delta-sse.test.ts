@@ -17,9 +17,16 @@ import { ElizaSandboxBridgeService } from "./eliza-sandbox-bridge";
 type Normalizer = { normalizeBridgeSseResponse(response: Response): Response };
 
 function sseResponse(body: string): Response {
+  return sseResponseChunks([body]);
+}
+
+function sseResponseChunks(chunks: string[]): Response {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(new TextEncoder().encode(body));
+      const encoder = new TextEncoder();
+      for (const chunk of chunks) {
+        controller.enqueue(encoder.encode(chunk));
+      }
       controller.close();
     },
   });
@@ -118,6 +125,27 @@ for (const [label, make] of normalizers) {
       expect(chunks.map((event) => event.data.fullText)).toEqual(["Hel", "Hello"]);
       const done = events.find((event) => event.event === "done");
       expect(done?.data.text).toBe("Hello");
+    });
+
+    test("buffers split SSE frames before parsing and accumulating", async () => {
+      const events = await readEvents(
+        make().normalizeBridgeSseResponse(
+          sseResponseChunks([
+            'data: {"type":"token","text":"Hel',
+            'lo "}\n',
+            "\n",
+            'data: {"type":"token","text":"world"}\r\n',
+            "\r\n",
+            'data: {"type":"done"}\n\n',
+          ]),
+        ),
+      );
+
+      const chunks = events.filter((event) => event.event === "chunk");
+      expect(chunks.map((event) => event.data.chunk)).toEqual(["Hello ", "world"]);
+      expect(chunks.map((event) => event.data.fullText)).toEqual(["Hello ", "Hello world"]);
+      const done = events.find((event) => event.event === "done");
+      expect(done?.data.text).toBe("Hello world");
     });
   });
 }
