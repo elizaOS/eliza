@@ -123,7 +123,7 @@ describe("deferred boot registry (single-flight)", () => {
 
   it("keeps the registration after a failed boot so a retry can re-attempt", async () => {
     const boot = vi
-      .fn<[], Promise<void>>()
+      .fn<() => Promise<void>>()
       .mockRejectedValueOnce(new Error("pglite open failed"))
       .mockResolvedValueOnce(undefined);
     registerDeferredRuntimeBoot(boot);
