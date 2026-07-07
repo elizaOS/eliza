@@ -22,6 +22,7 @@ import {
 export interface UseWebPushResult {
   state: WebPushState;
   busy: boolean;
+  error: string | null;
   /** True once the first state probe has resolved. */
   ready: boolean;
   /** Prompt + subscribe. Call from a user-gesture handler. */
@@ -37,16 +38,58 @@ export function useWebPush(
 ): UseWebPushResult {
   const [state, setState] = useState<WebPushState>("unsupported");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const mountedRef = useRef(true);
 
   const refresh = useCallback(async () => {
-    const next = await getWebPushState(deps);
-    if (mountedRef.current) {
-      setState(next);
-      setReady(true);
+    try {
+      const next = await getWebPushState(deps);
+      if (mountedRef.current) {
+        setError(null);
+        setState(next);
+        setReady(true);
+      }
+    } catch (_error) {
+      // error-policy:J4 settings must distinguish push-probe failures from unsupported/empty states.
+      if (mountedRef.current) {
+        setError("Could not read push notification settings.");
+        setReady(true);
+      }
     }
   }, [deps]);
+
+  const runMutation = useCallback(
+    async (operation: () => Promise<WebPushState>) => {
+      if (mountedRef.current) {
+        setBusy(true);
+        setError(null);
+      }
+      try {
+        const next = await operation();
+        if (mountedRef.current) setState(next);
+      } catch (_error) {
+        // error-policy:J4 settings must render failed subscribe/unsubscribe operations explicitly.
+        if (mountedRef.current) {
+          setError("Could not update push notifications. Try again.");
+        }
+      } finally {
+        if (mountedRef.current) setBusy(false);
+      }
+    },
+    [],
+  );
+
+  const subscribe = useCallback(async () => {
+    await runMutation(async () => {
+      const { state: next } = await subscribeWebPush(deps);
+      return next;
+    });
+  }, [deps, runMutation]);
+
+  const unsubscribe = useCallback(async () => {
+    await runMutation(() => unsubscribeWebPush(deps));
+  }, [deps, runMutation]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -63,25 +106,5 @@ export function useWebPush(
     };
   }, [refresh]);
 
-  const subscribe = useCallback(async () => {
-    if (mountedRef.current) setBusy(true);
-    try {
-      const { state: next } = await subscribeWebPush(deps);
-      if (mountedRef.current) setState(next);
-    } finally {
-      if (mountedRef.current) setBusy(false);
-    }
-  }, [deps]);
-
-  const unsubscribe = useCallback(async () => {
-    if (mountedRef.current) setBusy(true);
-    try {
-      const next = await unsubscribeWebPush(deps);
-      if (mountedRef.current) setState(next);
-    } finally {
-      if (mountedRef.current) setBusy(false);
-    }
-  }, [deps]);
-
-  return { state, busy, ready, subscribe, unsubscribe, refresh };
+  return { state, busy, error, ready, subscribe, unsubscribe, refresh };
 }

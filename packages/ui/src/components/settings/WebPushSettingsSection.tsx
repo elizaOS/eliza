@@ -63,7 +63,7 @@ function describeState(state: ReturnType<typeof useWebPush>["state"]): {
 }
 
 export function WebPushSettingsSection() {
-  const { state, busy, ready, subscribe, unsubscribe } = useWebPush();
+  const { state, busy, error, ready, subscribe, unsubscribe } = useWebPush();
   const view = describeState(state);
 
   const onToggle = useCallback(
@@ -82,7 +82,7 @@ export function WebPushSettingsSection() {
         <SettingsRow
           icon={BellRing}
           label={view.label}
-          description={view.description}
+          description={error ?? view.description}
           control={
             <Switch
               checked={view.on}

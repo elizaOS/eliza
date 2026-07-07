@@ -222,6 +222,23 @@ describe("unsubscribeWebPush", () => {
     expect(state).toBe("default");
   });
 
+  it("rejects when the browser fails to unsubscribe", async () => {
+    const unsubscribe = vi
+      .fn()
+      .mockRejectedValue(new Error("unsubscribe failed"));
+    const getSubscription = vi.fn().mockResolvedValue({
+      endpoint: "https://push/x",
+      unsubscribe,
+    });
+    const reg = {
+      pushManager: { getSubscription },
+    } as unknown as ServiceWorkerRegistration;
+
+    await expect(
+      unsubscribeWebPush(makeDeps({ getRegistration: async () => reg })),
+    ).rejects.toThrow("unsubscribe failed");
+  });
+
   it("is a no-op returning unsupported off-platform", async () => {
     globalWithPush.PushManager = undefined;
     expect(await unsubscribeWebPush(makeDeps())).toBe("unsupported");

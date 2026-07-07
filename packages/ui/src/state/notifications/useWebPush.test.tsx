@@ -46,9 +46,16 @@ function makeDeps(overrides: Partial<WebPushDeps> = {}): WebPushDeps {
   // Mutable subscription so a post-subscribe re-probe reflects the new state,
   // mirroring real PushManager semantics (getSubscription returns the created
   // subscription on the next read).
-  let current: unknown = null;
+  let current: {
+    endpoint: string;
+    unsubscribe: ReturnType<typeof vi.fn>;
+  } | null = null;
+  const unsubscribe = vi.fn().mockImplementation(async () => {
+    current = null;
+    return true;
+  });
   const subscribe = vi.fn().mockImplementation(async () => {
-    current = { endpoint: "https://push/new" };
+    current = { endpoint: "https://push/new", unsubscribe };
     return current;
   });
   const getSubscription = vi.fn().mockImplementation(async () => current);
@@ -102,5 +109,65 @@ describe("useWebPush", () => {
       await result.current.subscribe();
     });
     await waitFor(() => expect(result.current.state).toBe("denied"));
+  });
+
+  it("unsubscribe() moves subscribed state back to 'default'", async () => {
+    const deps = makeDeps();
+    const { result } = renderHook(() => useWebPush(deps));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => {
+      await result.current.subscribe();
+    });
+    await waitFor(() => expect(result.current.state).toBe("subscribed"));
+
+    await act(async () => {
+      await result.current.unsubscribe();
+    });
+
+    await waitFor(() => expect(result.current.state).toBe("default"));
+    expect(result.current.error).toBeNull();
+  });
+
+  it("surfaces subscription failures without changing state", async () => {
+    const deps = makeDeps({
+      getRegistration: async () =>
+        ({
+          pushManager: {
+            getSubscription: vi.fn().mockResolvedValue(null),
+            subscribe: vi
+              .fn()
+              .mockRejectedValue(new Error("browser subscribe failed")),
+          },
+        }) as unknown as ServiceWorkerRegistration,
+    });
+    const { result } = renderHook(() => useWebPush(deps));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    await act(async () => {
+      await result.current.subscribe();
+    });
+
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        "Could not update push notifications. Try again.",
+      ),
+    );
+    expect(result.current.state).toBe("default");
+  });
+
+  it("surfaces probe failures as a distinct error state", async () => {
+    const deps = makeDeps({
+      getRegistration: async () => {
+        throw new Error("service worker readiness failed");
+      },
+    });
+    const { result } = renderHook(() => useWebPush(deps));
+
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        "Could not read push notification settings.",
+      ),
+    );
+    expect(result.current.ready).toBe(true);
   });
 });

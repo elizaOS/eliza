@@ -40,11 +40,11 @@ export interface WebPushDeps {
 }
 
 /** Base64url → Uint8Array for `applicationServerKey`. */
-export function urlBase64ToUint8Array(base64: string): Uint8Array {
+export function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
   const normalized = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
   const raw = atob(normalized);
-  const output = new Uint8Array(raw.length);
+  const output = new Uint8Array(new ArrayBuffer(raw.length));
   for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i);
   return output;
 }
@@ -71,12 +71,8 @@ export const defaultWebPushDeps: WebPushDeps = {
     ) {
       return null;
     }
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      return reg ?? null;
-    } catch {
-      return null;
-    }
+    const reg = await navigator.serviceWorker.ready;
+    return reg ?? null;
   },
   getVapidPublicKey: () => {
     const key = getBootConfig().webPushVapidPublicKey;
@@ -184,11 +180,7 @@ export async function unsubscribeWebPush(
   const reg = await deps.getRegistration();
   const existing = reg ? await reg.pushManager.getSubscription() : null;
   if (existing) {
-    try {
-      await existing.unsubscribe();
-    } catch {
-      // Best-effort — a failed unsubscribe still reports the current state.
-    }
+    await existing.unsubscribe();
   }
   return getWebPushState(deps);
 }
