@@ -298,6 +298,15 @@ jobs:
         with:
           submodules: false
 
+      # The full-Bun on-device engine builds the MTP-forked llama.cpp kernels
+      # (run-mobile-build.mjs ios-local with ELIZA_IOS_FULL_BUN_ENGINE=1), which
+      # requires the llama.cpp fork checkout. `submodules: false` above keeps the
+      # checkout source-clean, so init just that submodule (not the full recursive
+      # tree) before the build — build-llama-cpp-mtp.mjs otherwise aborts with
+      # "no llama.cpp fork checkout found".
+      - name: Initialize llama.cpp fork submodule (full-Bun MTP kernels)
+        run: git submodule update --init --recursive plugins/plugin-local-inference/native/llama.cpp
+
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:

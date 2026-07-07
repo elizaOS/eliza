@@ -259,7 +259,7 @@ const forbiddenWorkflowSnippets = [
 const requiredElectrobunPrWorkflowSnippets = [
   "name: Validate Electrobun Release Workflow",
   "pull_request:",
-  "branches: [main, develop]",
+  "branches: [main]",
   "workflow_dispatch:",
   "permissions:",
   "contents: read",
