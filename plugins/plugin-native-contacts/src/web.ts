@@ -1,3 +1,8 @@
+/**
+ * Web/node fallback bridge (`ContactsWeb`) for the Android-only contacts
+ * plugin: `listContacts` returns an empty list, `createContact` and
+ * `importVCard` reject, since no contacts store exists off Android.
+ */
 import { WebPlugin } from "@capacitor/core";
 
 import type {

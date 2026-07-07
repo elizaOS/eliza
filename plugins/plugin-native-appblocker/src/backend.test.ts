@@ -1,3 +1,8 @@
+/**
+ * Exercises `createNativeAppBlockerBackend`'s mapping logic against a
+ * hand-built fake `AppBlockerPlugin` — there is no real Capacitor bridge or
+ * device in this harness, only the adapter's own forwarding/shape-trimming.
+ */
 import { describe, expect, it, vi } from "vitest";
 
 import { createNativeAppBlockerBackend } from "./backend";

@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+
+/**
+ * Unit tests for `CameraWeb`, the browser fallback implementation of the
+ * camera plugin API, against a jsdom DOM with `navigator.mediaDevices` and
+ * `MediaRecorder` mocked — no real camera/microphone hardware involved.
+ */
 import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

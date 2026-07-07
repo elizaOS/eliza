@@ -1,3 +1,11 @@
+/**
+ * Candidate-path policy for locating the Electrobun EventKit dylib that
+ * macOS desktop hosts — not this Capacitor plugin — load to reach Apple
+ * Calendar. Host plugins try candidates in order (env override, packaged,
+ * local dev build) and use the first path that exists; the candidate list
+ * and expected dylib basename are owned here so host code and packaging
+ * stay in sync.
+ */
 export interface AppleCalendarMacosBridgeCandidate {
   label: string;
   path: string;

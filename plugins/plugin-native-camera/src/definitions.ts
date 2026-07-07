@@ -1,3 +1,9 @@
+/**
+ * Shared TypeScript contract for the camera plugin: the `CameraPlugin`
+ * interface plus every options/result/event type it uses. Implemented by
+ * `CameraWeb` (web.ts) and the native Swift/Kotlin bridges; kept
+ * dependency-free so it can be imported from either side.
+ */
 import type { PluginListenerHandle } from "@capacitor/core";
 
 export type CameraDirection = "front" | "back" | "external";

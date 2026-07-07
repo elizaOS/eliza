@@ -1,3 +1,8 @@
+/**
+ * Rollup config bundling the compiled `dist/esm/index.js` into the browser
+ * IIFE (`dist/plugin.js`) and CommonJS (`dist/plugin.cjs.js`) distributables;
+ * `@capacitor/core` is left external for the host app to resolve.
+ */
 import nodeResolve from "@rollup/plugin-node-resolve";
 
 const external = ["@capacitor/core"];

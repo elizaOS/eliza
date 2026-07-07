@@ -1,3 +1,9 @@
+/**
+ * Web/Electrobun bridge surface for the ElizaBunRuntime Capacitor plugin:
+ * every method reports the runtime as unavailable rather than throwing, since
+ * no browser host can run the on-device Bun-shape JSContext runtime this
+ * plugin bridges to on iOS/Android.
+ */
 import { WebPlugin } from "@capacitor/core";
 import type {
   CallOptions,

@@ -1,3 +1,10 @@
+/**
+ * Shared type contract for the Desktop Capacitor plugin: the `DesktopPlugin`
+ * interface both the Electrobun native host and the `DesktopWeb` browser
+ * fallback (`./web.ts`) implement, plus the option/result/event shapes each
+ * method uses. `index.ts` re-exports this module so renderer code importing
+ * `Desktop` gets these types without a separate import path.
+ */
 import type { PluginListenerHandle } from "@capacitor/core";
 
 export interface TrayMenuItemBase {

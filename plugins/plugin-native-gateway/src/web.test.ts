@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the browser `GatewayWeb` bridge implementation, covering
+ * connect/hello handshake, RPC send, and malformed/dropped inbound frames.
+ * The harness stubs `WebSocket` with an in-process `FakeWebSocket` — no real
+ * socket or gateway server is involved.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GatewayWeb } from "./web";

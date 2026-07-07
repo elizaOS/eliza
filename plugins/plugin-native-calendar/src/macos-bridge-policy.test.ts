@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `appleCalendarMacosBridgeCandidates`: candidate ordering
+ * (env override, packaged, local) and omission of the env candidate when
+ * unset.
+ */
 import { describe, expect, it } from "vitest";
 import {
   APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME,

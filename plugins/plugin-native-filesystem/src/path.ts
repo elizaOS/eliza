@@ -1,3 +1,9 @@
+/**
+ * Path sanitisation for the device filesystem bridge (`services/device-filesystem-bridge.ts`).
+ * Every relative path from a caller passes through `normalizeDevicePath()` before either
+ * backend touches it; rejecting absolute paths, `..` segments, and NUL bytes here closes off
+ * traversal outside the backend root ahead of the Node backend's separate real-path check.
+ */
 import * as posix from "node:path/posix";
 
 export interface NormalizedPath {

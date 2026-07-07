@@ -1,5 +1,13 @@
 // @vitest-environment jsdom
 
+/**
+ * Input-validation tests for `CanvasWeb` — malformed size/layer/quality
+ * arguments must reject before mutating canvas state or the DOM. Runs
+ * against a real `CanvasWeb` instance in jsdom with only the 2D rendering
+ * context (`getContext`/`toDataURL`) stubbed, since jsdom has no canvas
+ * renderer.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CanvasWeb } from "./web";

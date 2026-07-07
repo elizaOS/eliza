@@ -1,3 +1,9 @@
+/**
+ * Static contract test that greps `CalendarPlugin.swift` source text for the
+ * guard clauses TS callers depend on — event-window/timezone validation,
+ * blocked recurrence/attendee edits, string-length bounds — since this suite
+ * cannot execute Swift/EventKit directly.
+ */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 

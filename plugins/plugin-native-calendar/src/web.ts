@@ -1,3 +1,9 @@
+/**
+ * Browser/web implementation of `AppleCalendarPlugin`, loaded by the
+ * Capacitor web fallback when no native bridge is registered. EventKit is
+ * unavailable outside iOS/macOS, so every method returns a fixed
+ * `not_supported` result rather than fabricating calendar data.
+ */
 import { WebPlugin } from "@capacitor/core";
 import type {
   AppleCalendarBaseResult,

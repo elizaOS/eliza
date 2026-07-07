@@ -1,9 +1,11 @@
 /**
- * Native activity-tracker driver.
+ * TypeScript host for the native macOS activity-tracker library.
  *
- * Spawns the compiled macOS `activity-collector` helper and exposes a typed
- * event stream of window/app focus transitions. Non-Darwin platforms are
- * unsupported — callers must check {@link isSupportedPlatform} and degrade.
+ * Spawns the compiled Swift `activity-collector` binary, line-parses its
+ * newline-delimited stdout JSON protocol, and re-emits typed focus-transition
+ * and HID idle-sample events to the caller. A plain library export, not a
+ * registered elizaOS `Plugin` — Darwin-only; callers must check
+ * {@link isSupportedPlatform} before calling {@link startActivityCollector}.
  */
 
 import { spawn } from "node:child_process";
@@ -44,7 +46,7 @@ export interface ActivityCollectorOptions {
   onIdleSample?: (sample: ActivityCollectorIdleSample) => void;
   /** Called when the collector exits without a fatal failure. */
   onExit?: (exit: ActivityCollectorExit) => void;
-  /** Called once per fatal collector error (process exit with non-zero, failed spawn, parse failure >5). */
+  /** Called once per fatal collector error: spawn failure or an unclean process exit. */
   onFatal?: (reason: string) => void;
 }
 
@@ -220,7 +222,7 @@ export function startActivityCollector(
   };
 }
 
-// Exposed for tests.
+// Internal parsing helpers exposed only for unit tests; not part of the public API.
 export const __internal = {
   parseEventLine,
   parseCollectorLine,

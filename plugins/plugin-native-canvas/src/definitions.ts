@@ -1,3 +1,11 @@
+/**
+ * Shared type contract for the `ElizaCanvas` Capacitor plugin: the
+ * `CanvasPlugin` interface plus every argument/result/event shape it uses.
+ * Both the web bridge (`web.ts`) and the native iOS/Android implementations
+ * must satisfy this surface, so a new method or event is added here first
+ * and then implemented on each side.
+ */
+
 import type { PluginListenerHandle } from "@capacitor/core";
 
 export interface CanvasSize {

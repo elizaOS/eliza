@@ -1,3 +1,8 @@
+/**
+ * Vitest config for this plugin's Node-only test suite: forces `node` resolution
+ * conditions (for `@elizaos/core`'s dual ESM/CJS entry points) and inlines it into
+ * the SSR module graph so the forked-pool transform can process the workspace package.
+ */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

@@ -1,3 +1,8 @@
+/**
+ * Browser/Electrobun implementation of the location bridge, backed by
+ * `navigator.geolocation`. Loaded lazily via index.ts's `web` factory; the
+ * iOS/Android bridges implement the same `LocationPlugin` interface natively.
+ */
 import { WebPlugin } from "@capacitor/core";
 
 import type {
@@ -184,8 +189,8 @@ export class LocationWeb extends WebPlugin {
   }
 
   async requestPermissions(): Promise<LocationPermissionStatus> {
-    // On web, permissions are requested implicitly when calling getCurrentPosition
-    // Try to get current position to trigger permission request
+    // No Permissions API entry for geolocation on web, so the only way to
+    // trigger the browser's permission prompt is to request a position.
     try {
       await this.getCurrentPosition({ timeout: 5000 });
       return { location: "granted" };

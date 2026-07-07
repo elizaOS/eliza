@@ -1,3 +1,11 @@
+/**
+ * Shared type contract for the `Gateway` Capacitor plugin: the `GatewayPlugin`
+ * interface implemented identically by the web, iOS, and Android bridges, plus
+ * the DTOs (endpoints, connect options/results, RPC send, and event payloads)
+ * that cross the JS-to-native boundary. `docgen` regenerates README.md from
+ * the JSDoc here, so keep it accurate for the consuming app, not just the
+ * plugin implementations.
+ */
 import type { PluginListenerHandle } from "@capacitor/core";
 
 export type JsonPrimitive = string | number | boolean | null;

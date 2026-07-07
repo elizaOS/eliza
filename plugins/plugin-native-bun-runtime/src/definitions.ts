@@ -1,14 +1,11 @@
 /**
- * @elizaos/capacitor-bun-runtime — iOS embedded Bun-shape JS runtime.
- *
- * Hosts a JavaScriptCore JSContext on a dedicated worker thread. The native
- * plugin either starts a bundled full Bun engine framework or installs the
- * `__ELIZA_BRIDGE__` host functions for the compatibility JSContext path.
- * The full-engine ABI lives in packages/native/bun-runtime/BRIDGE_CONTRACT.md.
- *
- * The plugin exposes a tiny surface to the React UI: start the runtime,
- * send messages, check status, and stop it. Everything else flows over the
- * `ui_post_message` / `ui_register_handler` channel inside the native side.
+ * Shared TypeScript contract for the ElizaBunRuntime Capacitor plugin — the
+ * interfaces that `web.ts`, the iOS Swift plugin, and the Android Kotlin
+ * plugin must all satisfy so the React UI can start/message/stop the
+ * on-device agent runtime the same way regardless of platform. This is the
+ * TS mirror of the native bridge ABI documented in
+ * packages/native/bun-runtime/BRIDGE_CONTRACT.md; breaking changes here
+ * should bump `__ELIZA_BRIDGE_VERSION__` on the native side too.
  */
 
 export interface StartOptions {

@@ -1,3 +1,12 @@
+/**
+ * Browser fallback implementation of the camera plugin, backed by the
+ * `MediaDevices`/`MediaRecorder` Web APIs instead of native camera hardware.
+ * Loaded lazily by `index.ts` when Capacitor has no native binding (e.g. in a
+ * desktop browser or Electron shell). Several capabilities the native
+ * implementations expose — torch/flash control, precise device-capability
+ * probing — have no Web API equivalent and are approximated or reported
+ * unsupported here; see the plugin's CLAUDE.md for the specific gaps.
+ */
 import { WebPlugin } from "@capacitor/core";
 
 import type {
@@ -554,7 +563,6 @@ export class CameraWeb extends WebPlugin {
     const track = this.mediaStream.getVideoTracks()[0];
     if (!track) throw new Error("No video track available");
 
-    // Check if focus control is supported
     const caps = track.getCapabilities ? track.getCapabilities() : {};
     type ExtendedCaps = MediaTrackCapabilities & { focusMode?: string[] };
     if (!(caps as ExtendedCaps).focusMode?.includes("manual")) {
@@ -585,7 +593,6 @@ export class CameraWeb extends WebPlugin {
     const track = this.mediaStream.getVideoTracks()[0];
     if (!track) throw new Error("No video track available");
 
-    // Check if exposure control is supported
     const caps = track.getCapabilities ? track.getCapabilities() : {};
     type ExtendedCaps = MediaTrackCapabilities & { exposureMode?: string[] };
     if (!(caps as ExtendedCaps).exposureMode?.includes("manual")) {

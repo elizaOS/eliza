@@ -1,3 +1,8 @@
+/**
+ * Exercises the real `AppleCalendarWeb` fallback class directly (no mocks):
+ * every method must degrade to a stable `not_supported` result and never
+ * reflect hostile or fuzzed input back to the caller.
+ */
 import { describe, expect, it } from "vitest";
 
 import { AppleCalendarWeb } from "./web";

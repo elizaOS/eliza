@@ -1,3 +1,7 @@
+/**
+ * Unit tests for `normalizeDevicePath`, plus integration tests exercising the Node
+ * backend's traversal/symlink-escape guards against a real temp directory on disk (no mocks).
+ */
 import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

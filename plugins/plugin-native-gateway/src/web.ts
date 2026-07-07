@@ -1,3 +1,11 @@
+/**
+ * Browser implementation of the `Gateway` plugin: a hand-rolled WebSocket
+ * client speaking the gateway's `req`/`res`/`event` JSON protocol (connect
+ * handshake, RPC send with per-request timeout, reconnect with exponential
+ * backoff). Bonjour/mDNS discovery has no browser API, so discovery methods
+ * here are stubs that always report an empty result — only the iOS and
+ * Android implementations perform real LAN discovery.
+ */
 import { WebPlugin } from "@capacitor/core";
 
 import type {
@@ -13,18 +21,12 @@ import type {
   JsonValue,
 } from "./definitions";
 
-/**
- * Pending request waiting for a response
- */
 interface PendingRequest {
   resolve: (value: GatewaySendResult) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
 }
 
-/**
- * Generate a UUID v4
- */
 function generateUUID(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -107,12 +109,6 @@ function assertRpcMethod(method: unknown): string {
   return normalized;
 }
 
-/**
- * Web implementation of the Gateway Plugin
- *
- * Uses browser WebSocket API for connectivity.
- * Note: Web platform cannot perform Bonjour/mDNS discovery.
- */
 export class GatewayWeb extends WebPlugin {
   private ws: WebSocket | null = null;
   private pending = new Map<string, PendingRequest>();
@@ -162,12 +158,8 @@ export class GatewayWeb extends WebPlugin {
     };
   }
 
-  /**
-   * Connect to a Gateway server
-   */
   async connect(options: GatewayConnectOptions): Promise<GatewayConnectResult> {
     const url = assertGatewayUrl(options.url);
-    // Close existing connection if any
     if (this.ws) {
       this.closed = true;
       this.ws.close();
@@ -185,9 +177,6 @@ export class GatewayWeb extends WebPlugin {
     });
   }
 
-  /**
-   * Establish WebSocket connection
-   */
   private establishConnection(): void {
     if (this.closed || !this.options) {
       return;
@@ -215,9 +204,6 @@ export class GatewayWeb extends WebPlugin {
     });
   }
 
-  /**
-   * Send the connect frame to authenticate
-   */
   private sendConnectFrame(): void {
     if (!this.ws || !this.options || this.ws.readyState !== WebSocket.OPEN) {
       return;
@@ -255,7 +241,6 @@ export class GatewayWeb extends WebPlugin {
 
     this.ws.send(JSON.stringify(frame));
 
-    // Set up timeout for connect response
     const timeout = setTimeout(() => {
       if (this.connectReject) {
         this.connectReject(new Error("Connection timeout"));
@@ -291,9 +276,6 @@ export class GatewayWeb extends WebPlugin {
     });
   }
 
-  /**
-   * Handle successful hello response
-   */
   private handleHelloOk(hello: JsonObject): void {
     const protocol = getNumber(hello.protocol);
     const auth = isJsonObject(hello.auth) ? hello.auth : null;
@@ -322,9 +304,6 @@ export class GatewayWeb extends WebPlugin {
     }
   }
 
-  /**
-   * Handle incoming WebSocket message
-   */
   private handleMessage(raw: string): void {
     let parsedValue: JsonValue;
     try {
@@ -354,7 +333,6 @@ export class GatewayWeb extends WebPlugin {
       return;
     }
 
-    // Handle response frames
     if (frameType === "res") {
       const id = getString(parsedValue.id);
       if (!id) {
@@ -380,7 +358,6 @@ export class GatewayWeb extends WebPlugin {
       return;
     }
 
-    // Handle event frames
     if (frameType === "event") {
       const event = getString(parsedValue.event);
       if (!event) {
@@ -392,7 +369,6 @@ export class GatewayWeb extends WebPlugin {
       const payload = parsedValue.payload;
       const seq = getNumber(parsedValue.seq);
 
-      // Check for sequence gap
       if (
         seq !== undefined &&
         this.lastSeq !== null &&
@@ -406,7 +382,6 @@ export class GatewayWeb extends WebPlugin {
         this.lastSeq = seq;
       }
 
-      // Emit the event
       this.notifyListeners("gatewayEvent", {
         event,
         payload,
@@ -420,13 +395,9 @@ export class GatewayWeb extends WebPlugin {
     console.warn(`[Gateway] Dropped frame with unhandled type: ${frameType}`);
   }
 
-  /**
-   * Handle WebSocket close
-   */
   private handleClose(code: number, reason: string): void {
     this.ws = null;
 
-    // Reject all pending requests
     for (const [id, pending] of this.pending) {
       clearTimeout(pending.timeout);
       pending.reject(new Error(`Connection closed: ${reason}`));
@@ -438,7 +409,6 @@ export class GatewayWeb extends WebPlugin {
       return;
     }
 
-    // Attempt reconnection
     this.notifyStateChange("reconnecting", reason);
     this.notifyListeners("error", {
       message: `Connection lost: ${reason}`,
@@ -449,9 +419,6 @@ export class GatewayWeb extends WebPlugin {
     this.scheduleReconnect();
   }
 
-  /**
-   * Schedule a reconnection attempt
-   */
   private scheduleReconnect(): void {
     if (this.closed || this.reconnectTimer) {
       return;
@@ -464,9 +431,6 @@ export class GatewayWeb extends WebPlugin {
     }, this.backoffMs);
   }
 
-  /**
-   * Notify state change listeners
-   */
   private notifyStateChange(
     state: GatewayStateEvent["state"],
     reason?: string,
@@ -477,9 +441,6 @@ export class GatewayWeb extends WebPlugin {
     } as GatewayStateEvent);
   }
 
-  /**
-   * Get platform identifier
-   */
   private getPlatform(): string {
     if (typeof navigator !== "undefined") {
       return navigator.platform || "web";
@@ -487,9 +448,6 @@ export class GatewayWeb extends WebPlugin {
     return "web";
   }
 
-  /**
-   * Disconnect from the Gateway
-   */
   async disconnect(): Promise<void> {
     this.closed = true;
     if (this.reconnectTimer) {
@@ -505,18 +463,12 @@ export class GatewayWeb extends WebPlugin {
     this.notifyStateChange("disconnected", "Client disconnect");
   }
 
-  /**
-   * Check if connected
-   */
   async isConnected(): Promise<{ connected: boolean }> {
     return {
       connected: this.ws !== null && this.ws.readyState === WebSocket.OPEN,
     };
   }
 
-  /**
-   * Send an RPC request
-   */
   async send(options: GatewaySendOptions): Promise<GatewaySendResult> {
     const method = assertRpcMethod(options.method);
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
@@ -559,9 +511,6 @@ export class GatewayWeb extends WebPlugin {
     });
   }
 
-  /**
-   * Get connection info
-   */
   async getConnectionInfo(): Promise<{
     url: string | null;
     sessionId: string | null;

@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the `AgentWeb` HTTP fallback — `window` and `fetch` are
+ * fully stubbed; no real API server is involved.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AgentWeb } from "./web";

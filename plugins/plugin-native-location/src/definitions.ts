@@ -1,3 +1,9 @@
+/**
+ * Shared TypeScript surface for the location plugin: the `LocationPlugin`
+ * interface plus its option/result/event types, implemented identically by
+ * `LocationWeb` (web.ts) and the native iOS/Android bridges. JSDoc here is the
+ * source for the generated README (`bun run docgen`) — keep it accurate.
+ */
 import type { PluginListenerHandle } from "@capacitor/core";
 
 /**
