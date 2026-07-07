@@ -56,6 +56,32 @@ export type WalletWhaleSummary = {
   reasons: string[];
 };
 
+export type WalletDeFiProtocol = {
+  programId: string;
+  protocol: string;
+  category:
+    | "dex"
+    | "dex_aggregator"
+    | "lending"
+    | "staking"
+    | "liquidity"
+    | "bridge"
+    | "nft"
+    | "other";
+  interactionCount: number;
+};
+
+export type WalletDeFiSummary = {
+  protocolCount: number;
+  protocols: WalletDeFiProtocol[];
+  profile:
+    | "none"
+    | "casual_user"
+    | "active_defi_user"
+    | "power_user";
+  notes: string[];
+};
+
 export type WalletActivitySummary = {
   recentTransactionCount: number;
   failedTransactionCount: number;
@@ -119,6 +145,7 @@ export type WalletInvestigationResult = {
   tokenHoldings?: WalletTokenHolding[];
   portfolio?: WalletPortfolioSummary;
   whale?: WalletWhaleSummary;
+  defi?: WalletDeFiSummary;
   recentTransactions?: WalletRecentTransaction[];
   transactionCountSample?: number;
   activity?: WalletActivitySummary;
