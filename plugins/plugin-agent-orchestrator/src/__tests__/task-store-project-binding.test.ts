@@ -167,6 +167,50 @@ describe("task store project binding (real PGlite)", () => {
     await expect(store.listTasks()).resolves.toEqual([]);
   });
 
+  it("retries schema init after a transient failure instead of replaying the cached rejection (#15199)", {
+    timeout: PGLITE_TIMEOUT,
+  }, async () => {
+    // A boot-time init failure (vault mid-recovery, lock contention, watch-mode
+    // restart race) used to be memoized forever: every later store access —
+    // every supervisor tick, every /api/orchestrator/* call — replayed the same
+    // rejection until process restart. Simulate one transient DDL failure, then
+    // a healthy DB: the first read must reject (fail-fast, not fabricate), the
+    // NEXT read must re-run init and succeed, and the full cause chain must be
+    // logged (the Drizzle wrapper's message alone hides the driver error).
+    const raw = pgliteAdapter(db);
+    let failuresLeft = 1;
+    const flaky = {
+      async run(sql: string, params: unknown[] = []) {
+        if (failuresLeft > 0 && sql.startsWith("CREATE TABLE")) {
+          failuresLeft -= 1;
+          throw new Error(`Failed query: ${sql}\nparams: `, {
+            cause: Object.assign(new Error("database is locked mid-recovery"), {
+              code: "57P03",
+            }),
+          });
+        }
+        await raw.run(sql, params);
+      },
+      async all(sql: string, params: unknown[] = []) {
+        return raw.all(sql, params);
+      },
+    };
+    const warns: string[] = [];
+    const store = new RuntimeDbTaskStore(flaky, {
+      warn: (message: string) => {
+        warns.push(message);
+      },
+    });
+
+    await expect(store.listTasks()).rejects.toThrow(/Failed query/);
+    // The failure names its real cause, not just the wrapper message.
+    expect(warns.join("\n")).toContain("database is locked mid-recovery");
+    expect(warns.join("\n")).toContain("57P03");
+
+    // The DB is healthy now — a fresh access must retry init and succeed.
+    await expect(store.listTasks()).resolves.toEqual([]);
+  });
+
   it("persists project_id and filters listTasks by projectId", {
     timeout: PGLITE_TIMEOUT,
   }, async () => {

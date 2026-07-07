@@ -105,6 +105,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+/**
+ * Flatten an error's `cause` chain into one line. Drizzle-backed adapters
+ * wrap driver failures as DrizzleQueryError whose own message is just
+ * "Failed query: <sql>" — the actual reason (lock, corrupt vault, type
+ * mismatch, …) lives on `cause`, and a log line without it is undiagnosable
+ * (#15199: the dev-server supervisor warned the wrapper message every tick
+ * for hours with no way to tell WHY the DDL failed).
+ */
+function describeErrorCauseChain(error: unknown): string {
+  const parts: string[] = [];
+  for (let depth = 0; error != null && depth < 8; depth++) {
+    if (isRecord(error)) {
+      const message =
+        typeof error.message === "string" && error.message
+          ? error.message
+          : String(error);
+      const code = typeof error.code === "string" ? ` (${error.code})` : "";
+      parts.push(`${message}${code}`);
+      error = error.cause;
+    } else {
+      parts.push(String(error));
+      break;
+    }
+  }
+  return parts.join(" <- ") || String(error);
+}
+
 function isDuplicateColumnError(error: unknown): boolean {
   // Drizzle-backed adapters surface driver failures wrapped in
   // DrizzleQueryError ("Failed query: …") with the real duplicate-column
@@ -889,6 +916,7 @@ export class RuntimeDbTaskStore {
 
   constructor(
     private readonly adapter: RawSqlDatabaseAdapter | ElizaDrizzleAdapter,
+    private readonly logger?: Logger,
   ) {}
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -901,21 +929,39 @@ export class RuntimeDbTaskStore {
   }
 
   private async ensureInitialized(): Promise<void> {
-    this.initPromise ??= (async () => {
-      this.executor = await resolveSqlExecutor(this.adapter);
-      await this.executor.run(TASK_TABLE_SQL);
-      for (const sql of TASK_MIGRATION_SQL) {
-        try {
-          await this.executor.run(sql);
-        } catch (err) {
-          // error-policy:J6 idempotent DDL — ADD COLUMN throws on a table that
-          // already has the column (every boot after the first); the desired
-          // post-state is identical, so a duplicate-column failure is success.
-          if (!isDuplicateColumnError(err)) throw err;
+    if (!this.initPromise) {
+      const attempt = (async () => {
+        this.executor = await resolveSqlExecutor(this.adapter);
+        await this.executor.run(TASK_TABLE_SQL);
+        for (const sql of TASK_MIGRATION_SQL) {
+          try {
+            await this.executor.run(sql);
+          } catch (err) {
+            // error-policy:J6 idempotent DDL — ADD COLUMN throws on a table that
+            // already has the column (every boot after the first); the desired
+            // post-state is identical, so a duplicate-column failure is success.
+            if (!isDuplicateColumnError(err)) throw err;
+          }
         }
-      }
-      for (const sql of TASK_INDEX_SQL) await this.executor.run(sql);
-    })();
+        for (const sql of TASK_INDEX_SQL) await this.executor.run(sql);
+      })().catch((error: unknown) => {
+        // A rejected init must NOT stay memoized: every later store access
+        // (every supervisor tick, every orchestrator API call) would replay
+        // this same rejection until process restart, turning one transient
+        // boot-time failure into a permanently dead orchestrator surface
+        // (#15199). Reset so the next access retries, and log the FULL cause
+        // chain — the wrapper message alone ("Failed query: …") hides the
+        // driver error that actually explains the failure.
+        if (this.initPromise === attempt) {
+          this.initPromise = undefined;
+        }
+        this.logger?.warn?.(
+          `[RuntimeDbTaskStore] schema init failed (will retry on next access): ${describeErrorCauseChain(error)}`,
+        );
+        throw error;
+      });
+      this.initPromise = attempt;
+    }
     await this.initPromise;
   }
 
@@ -1207,7 +1253,7 @@ export class OrchestratorTaskStore {
       isPersistableAdapter(adapter)
     ) {
       this.backend = "runtime-db";
-      this.delegate = new RuntimeDbTaskStore(adapter);
+      this.delegate = new RuntimeDbTaskStore(adapter, logger);
       return;
     }
     if (options.backend === "memory") {
