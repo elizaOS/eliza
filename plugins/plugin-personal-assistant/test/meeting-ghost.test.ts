@@ -1,16 +1,38 @@
 /**
  * Tests for the post-meeting transcript producer.
  *
- * The harness uses a seeded transcript rather than a live meeting bridge so the
- * LifeOps shape is deterministic: care-about hits, decisions, commitments,
- * approval-queued follow-ups, and calendar deadline intents all have exact
- * assertions before the live joiner path is wired in.
+ * The fixture is a realistic diarized `TranscriptSegment[]` — natural spoken
+ * utterances ("We decided to…", "Ava will send… by Friday", "I'll confirm…"),
+ * NOT pre-formatted "Decision:"/"Action:" lines — so the assertions prove the
+ * extractor actually reads meeting language rather than a shape authored to
+ * match its own regexes. Extraction is deterministic (pure function), so
+ * decisions, care-about hits, commitments, and the canonical
+ * `ApprovalEnqueueInput` follow-ups/calendar deadlines all have exact
+ * assertions. The `.integration.test.ts` sibling proves the consumer drives a
+ * real approval queue.
  */
 
+import type { TranscriptSegment } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { analyzeMeetingGhostTranscript } from "../src/lifeops/meeting-ghost/index.js";
 
 const approvalExpiresAt = new Date("2026-07-06T20:00:00.000Z");
+
+/** A diarized span with no per-word timing (segment-level highlighting). */
+function seg(
+  speakerLabel: string,
+  startMs: number,
+  text: string,
+): TranscriptSegment {
+  return {
+    id: `${speakerLabel}-${startMs}`,
+    speakerLabel,
+    startMs,
+    endMs: startMs + 8_000,
+    text,
+    words: [],
+  };
+}
 
 function analyzeSeededTranscript() {
   return analyzeMeetingGhostTranscript({
@@ -18,7 +40,7 @@ function analyzeSeededTranscript() {
       ownerUserId: "owner-1",
       ownerDisplayName: "Shaw",
       requestedBy: "meeting-ghost",
-      careAbouts: ["launch date moves"],
+      careAbouts: ["launch date"],
       calendarId: "primary",
       approvalExpiresAt,
     },
@@ -33,72 +55,81 @@ function analyzeSeededTranscript() {
         { name: "Priya", email: "priya@example.com" },
       ],
       segments: [
-        {
-          speaker: "Mira",
-          offsetMs: 30_000,
-          text: "Budget is unchanged and the support rotation is fine.",
-        },
-        {
-          speaker: "Ava",
-          offsetMs: 120_000,
-          text: "Decision: launch date moves from July 18 to July 22 because QA found a payments blocker.",
-        },
-        {
-          speaker: "Ben",
-          offsetMs: 180_000,
-          text: "Decision: keep the pricing announcement embargoed until partner sign-off.",
-        },
-        {
-          speaker: "Ava",
-          offsetMs: 240_000,
-          text: "Action: Ava will send the launch-date rollback plan by Friday.",
-        },
-        {
-          speaker: "Ben",
-          offsetMs: 300_000,
-          text: "Action: Ben to update the public calendar by 2026-07-10.",
-        },
-        {
-          speaker: "Priya",
-          offsetMs: 360_000,
-          text: "I will confirm partner sign-off by tomorrow.",
-        },
+        seg(
+          "Mira",
+          30_000,
+          "Budget is unchanged and the support rotation is fine.",
+        ),
+        seg(
+          "Ava",
+          120_000,
+          "We decided to move the launch date from July 18 to July 22 because QA found a payments blocker.",
+        ),
+        seg(
+          "Ben",
+          180_000,
+          "The team agreed to keep the pricing announcement embargoed until partner sign-off.",
+        ),
+        seg(
+          "Mira",
+          240_000,
+          "Ava will send the launch-date rollback plan by Friday.",
+        ),
+        seg(
+          "Mira",
+          300_000,
+          "Ben is going to update the public calendar by 2026-07-10.",
+        ),
+        seg("Priya", 360_000, "I'll confirm partner sign-off by tomorrow."),
       ],
     },
   });
 }
 
 describe("meeting ghost transcript analysis", () => {
-  it("fires care-about hits for launch-date movement while ignoring unrelated transcript", () => {
+  it("fires care-about hits on every launch-date mention while ignoring unrelated transcript", () => {
     const analysis = analyzeSeededTranscript();
 
-    expect(analysis.careHits).toHaveLength(1);
+    // "launch date" surfaces in the reprioritization decision and in the
+    // rollback-plan action item; the owner cares about both.
+    expect(analysis.careHits.map((hit) => hit.speaker)).toEqual(["Ava", "Mira"]);
     expect(analysis.careHits[0]).toMatchObject({
-      careAbout: "launch date moves",
+      careAbout: "launch date",
       speaker: "Ava",
-      text: "Decision: launch date moves from July 18 to July 22 because QA found a payments blocker.",
+      text: "We decided to move the launch date from July 18 to July 22 because QA found a payments blocker.",
     });
+    // The word-order-shifted phrase ("move the launch date") still matches the
+    // care-about token set — extraction reads meaning, not a canned prefix.
     expect(analysis.careHits.map((hit) => hit.text).join("\n")).not.toContain(
       "support rotation",
     );
   });
 
-  it("keeps the digest to three lines and retains the seeded decisions first", () => {
+  it("extracts spoken decisions without an authored 'Decision:' prefix", () => {
+    const analysis = analyzeSeededTranscript();
+
+    expect(analysis.decisions.map((d) => d.text)).toEqual([
+      "move the launch date from July 18 to July 22 because QA found a payments blocker",
+      "keep the pricing announcement embargoed until partner sign-off",
+    ]);
+    expect(analysis.decisions[0].speaker).toBe("Ava");
+    expect(analysis.decisions[0].sourceOffsetMs).toBe(120_000);
+  });
+
+  it("keeps the digest to three lines and retains the decisions first", () => {
     const analysis = analyzeSeededTranscript();
 
     expect(analysis.digestLines).toHaveLength(3);
     expect(analysis.digestLines[0]).toBe(
-      "Decision: launch date moves from July 18 to July 22 because QA found a payments blocker.",
+      "Decision: move the launch date from July 18 to July 22 because QA found a payments blocker",
     );
     expect(analysis.digestLines[1]).toBe(
-      "Decision: keep the pricing announcement embargoed until partner sign-off.",
+      "Decision: keep the pricing announcement embargoed until partner sign-off",
     );
-    expect(analysis.digestLines[2]).toContain(
-      "Care-about hit (launch date moves)",
-    );
+    expect(analysis.digestLines[2]).toContain("Care-about hit (launch date)");
   });
 
-  it("extracts exact who/what/when commitments from explicit transcript language", () => {
+  it("extracts exact who/what/when commitments from natural transcript language", () => {
     const analysis = analyzeSeededTranscript();
 
     expect(analysis.commitments).toEqual([
@@ -108,6 +139,7 @@ describe("meeting ghost transcript analysis", () => {
         what: "send the launch-date rollback plan",
         dueText: "Friday",
         dueDate: "2026-07-10",
+        sourceOffsetMs: 240_000,
       }),
       expect.objectContaining({
         who: "Ben",
@@ -115,6 +147,7 @@ describe("meeting ghost transcript analysis", () => {
         what: "update the public calendar",
         dueText: "2026-07-10",
         dueDate: "2026-07-10",
+        sourceOffsetMs: 300_000,
       }),
       expect.objectContaining({
         who: "Priya",
@@ -122,27 +155,34 @@ describe("meeting ghost transcript analysis", () => {
         what: "confirm partner sign-off",
         dueText: "tomorrow",
         dueDate: "2026-07-07",
+        sourceOffsetMs: 360_000,
       }),
     ]);
   });
 
-  it("queues follow-up drafts under owner approval with recipients and deadlines", () => {
+  it("emits canonical ApprovalEnqueueInput follow-ups ready for the approval queue", () => {
     const analysis = analyzeSeededTranscript();
 
     expect(analysis.followUpApprovals).toHaveLength(3);
-    expect(analysis.followUpApprovals[0]).toMatchObject({
+    // Shape matches ApprovalEnqueueInput exactly (feeds ApprovalQueue.enqueue).
+    expect(analysis.followUpApprovals[0]).toEqual({
       requestedBy: "meeting-ghost",
       subjectUserId: "owner-1",
       action: "send_email",
       channel: "email",
+      reason: "Queue owner-approved follow-up for Ava from Ops Sync",
       expiresAt: approvalExpiresAt,
       payload: {
         action: "send_email",
         to: ["ava@example.com"],
+        cc: [],
+        bcc: [],
         subject: "Follow-up from Ops Sync",
         body: expect.stringContaining(
           "please send the launch-date rollback plan by Friday",
         ),
+        threadId: null,
+        replyToMessageId: null,
       },
     });
   });
@@ -178,5 +218,36 @@ describe("meeting ghost transcript analysis", () => {
         }),
       }),
     ]);
+  });
+
+  it("ignores small talk and unassignable chatter (no false commitments)", () => {
+    const analysis = analyzeMeetingGhostTranscript({
+      owner: {
+        ownerUserId: "owner-1",
+        ownerDisplayName: "Shaw",
+        requestedBy: "meeting-ghost",
+        careAbouts: ["launch date"],
+        calendarId: "primary",
+        approvalExpiresAt,
+      },
+      transcript: {
+        meetingId: "chatter-only",
+        title: "Standup",
+        startedAt: "2026-07-06T16:00:00.000Z",
+        attendees: [{ name: "Mira", email: "mira@example.com" }],
+        segments: [
+          seg("Mira", 0, "Morning everyone, how was the weekend?"),
+          seg("Mira", 5_000, "The coffee machine is broken again."),
+          seg("Mira", 10_000, "Anyway, nothing blocking on my side."),
+        ],
+      },
+    });
+
+    expect(analysis.decisions).toHaveLength(0);
+    expect(analysis.commitments).toHaveLength(0);
+    expect(analysis.careHits).toHaveLength(0);
+    expect(analysis.followUpApprovals).toHaveLength(0);
+    expect(analysis.calendarIntents).toHaveLength(0);
+    expect(analysis.digestLines).toHaveLength(0);
   });
 });

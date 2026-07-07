@@ -160,11 +160,42 @@ export interface OptimizedPromptLineageEntry {
 	notes?: string;
 }
 
+export interface OptimizedPromptFrontierEntry {
+	prompt: string;
+	score: number;
+	promptTokenCount: number;
+	origin: string;
+	feedback?: string;
+}
+
 export interface OptimizedPromptContextConfig {
 	providerSet?: readonly string[];
 	providerOrder?: readonly string[];
 	renderTemplates?: Readonly<Record<string, string>>;
 	budgetVector?: Readonly<Record<string, number>>;
+}
+
+/**
+ * Snapshot of the noise-gate promotion decision that accepted this artifact,
+ * mirrored from `PromotionDecision` in
+ * `plugins/plugin-training/src/core/promotion-gate.ts` plus the two provenance
+ * fields the write site adds (`incumbentSource` / `gateSource`). Persisted for
+ * diagnostics — every field is optional because older artifacts predate it.
+ */
+export interface PromotionDecisionSummary {
+	promote?: boolean;
+	incumbentMeanScore?: number;
+	incumbentStdDev?: number;
+	candidateScore?: number;
+	delta?: number;
+	promotionMargin?: number;
+	noiseThreshold?: number;
+	incumbentReseeds?: number;
+	examplesPerPass?: number;
+	reason?: string;
+	incumbentScores?: number[];
+	incumbentSource?: string;
+	gateSource?: string;
 }
 
 export interface OptimizedPromptArtifact {
@@ -179,6 +210,8 @@ export interface OptimizedPromptArtifact {
 	generatedAt: string;
 	fewShotExamples?: OptimizedPromptFewShotExample[];
 	lineage: OptimizedPromptLineageEntry[];
+	frontier?: OptimizedPromptFrontierEntry[];
+	promotionDecision?: PromotionDecisionSummary;
 	contextConfig?: OptimizedPromptContextConfig;
 }
 
@@ -382,6 +415,11 @@ export function parseOptimizedPromptArtifact(
 	)
 		? coerceFewShot(raw.fewShotExamples)
 		: undefined;
+	const frontier: OptimizedPromptFrontierEntry[] | undefined = Array.isArray(
+		raw.frontier,
+	)
+		? coerceFrontier(raw.frontier)
+		: undefined;
 	return {
 		task: raw.task,
 		optimizer: raw.optimizer,
@@ -394,9 +432,71 @@ export function parseOptimizedPromptArtifact(
 		generatedAt: raw.generatedAt,
 		lineage,
 		fewShotExamples: fewShot,
+		frontier,
+		promotionDecision: coercePromotionDecision(raw.promotionDecision),
 		contextConfig: coerceContextConfig(raw.contextConfig),
 	};
 }
+
+function coerceFrontier(
+	value: unknown[],
+): OptimizedPromptFrontierEntry[] | undefined {
+	const out: OptimizedPromptFrontierEntry[] = [];
+	for (const entry of value) {
+		if (!isStringRecord(entry)) continue;
+		if (
+			typeof entry.prompt !== "string" ||
+			typeof entry.score !== "number" ||
+			typeof entry.promptTokenCount !== "number" ||
+			typeof entry.origin !== "string"
+		) {
+			continue;
+		}
+		out.push({
+			prompt: entry.prompt,
+			score: entry.score,
+			promptTokenCount: entry.promptTokenCount,
+			origin: entry.origin,
+			feedback: typeof entry.feedback === "string" ? entry.feedback : undefined,
+		});
+	}
+	return out.length > 0 ? out : undefined;
+}
+
+function coercePromotionDecision(
+	value: unknown,
+): PromotionDecisionSummary | undefined {
+	if (!isStringRecord(value)) return undefined;
+	const num = (v: unknown): number | undefined =>
+		typeof v === "number" && Number.isFinite(v) ? v : undefined;
+	const str = (v: unknown): string | undefined =>
+		typeof v === "string" ? v : undefined;
+	const numbers = Array.isArray(value.incumbentScores)
+		? value.incumbentScores.filter(
+				(entry): entry is number =>
+					typeof entry === "number" && Number.isFinite(entry),
+			)
+		: undefined;
+	const summary: PromotionDecisionSummary = {
+		promote: typeof value.promote === "boolean" ? value.promote : undefined,
+		incumbentMeanScore: num(value.incumbentMeanScore),
+		incumbentStdDev: num(value.incumbentStdDev),
+		candidateScore: num(value.candidateScore),
+		delta: num(value.delta),
+		promotionMargin: num(value.promotionMargin),
+		noiseThreshold: num(value.noiseThreshold),
+		incumbentReseeds: num(value.incumbentReseeds),
+		examplesPerPass: num(value.examplesPerPass),
+		reason: str(value.reason),
+		incumbentScores: numbers && numbers.length > 0 ? numbers : undefined,
+		incumbentSource: str(value.incumbentSource),
+		gateSource: str(value.gateSource),
+	};
+	return Object.values(summary).some((entry) => entry !== undefined)
+		? summary
+		: undefined;
+}
+
 
 function coerceStringArray(value: unknown): string[] | undefined {
 	if (!Array.isArray(value)) return undefined;

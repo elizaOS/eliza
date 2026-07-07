@@ -83,11 +83,41 @@ export interface OptimizerLineageEntry {
   notes?: string;
 }
 
+export interface OptimizerFrontierEntry {
+  prompt: string;
+  score: number;
+  promptTokenCount: number;
+  origin: string;
+  feedback?: string;
+}
+
 export interface OptimizedPromptContextConfig {
   providerSet?: readonly string[];
   providerOrder?: readonly string[];
   renderTemplates?: Readonly<Record<string, string>>;
   budgetVector?: Readonly<Record<string, number>>;
+}
+
+/**
+ * Snapshot of the noise-gate promotion decision persisted on the artifact for
+ * diagnostics. Mirrors `PromotionDecision` (`../core/promotion-gate.ts`) plus
+ * the `incumbentSource` / `gateSource` provenance fields the write site adds;
+ * every field is optional so older artifacts stay parseable.
+ */
+export interface PromotionDecisionSummary {
+  promote?: boolean;
+  incumbentMeanScore?: number;
+  incumbentStdDev?: number;
+  candidateScore?: number;
+  delta?: number;
+  promotionMargin?: number;
+  noiseThreshold?: number;
+  incumbentReseeds?: number;
+  examplesPerPass?: number;
+  reason?: string;
+  incumbentScores?: number[];
+  incumbentSource?: string;
+  gateSource?: string;
 }
 
 /** Common shape returned by all native optimizers. */
@@ -96,6 +126,8 @@ export interface OptimizerResult {
   score: number;
   baseline: number;
   lineage: OptimizerLineageEntry[];
+  /** Final non-dominated quality-vs-token frontier, when the optimizer tracks one. */
+  frontier?: OptimizerFrontierEntry[];
   /** Demonstrations injected into the prompt (bootstrap-fewshot only). */
   fewShotExamples?: OptimizationExample[];
 }
@@ -126,5 +158,7 @@ export interface OptimizedPromptArtifact {
   generatedAt: string;
   fewShotExamples?: OptimizationExample[];
   lineage: OptimizerLineageEntry[];
+  frontier?: OptimizerFrontierEntry[];
+  promotionDecision?: PromotionDecisionSummary;
   contextConfig?: OptimizedPromptContextConfig;
 }
