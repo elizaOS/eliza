@@ -13,7 +13,67 @@
  * module does not launch a browser — `main()` is guarded behind import.meta.
  */
 import { describe, expect, it } from "vitest";
-import { classifyStoryGateFailures } from "./run-story-gate.mjs";
+import {
+  classifyStoryGateFailures,
+  deriveNetworkFailureIssues,
+  isCatalogResourceFailure,
+} from "./run-story-gate.mjs";
+
+const ORIGIN = "http://127.0.0.1:65000";
+
+describe("isCatalogResourceFailure — only real catalog-bundle 404s escalate", () => {
+  it("escalates a same-origin bundle resource 404 (broken build)", () => {
+    expect(
+      isCatalogResourceFailure(`${ORIGIN}/assets/vite-app.abc123.js`, ORIGIN),
+    ).toBe(true);
+  });
+  it("ignores /api/* — the static catalog has no backend", () => {
+    expect(isCatalogResourceFailure(`${ORIGIN}/api/accounts`, ORIGIN)).toBe(
+      false,
+    );
+    expect(
+      isCatalogResourceFailure(`${ORIGIN}/api/media/aaaa.glb`, ORIGIN),
+    ).toBe(false);
+  });
+  it("ignores absolute public assets not emitted into storybook-static", () => {
+    for (const p of [
+      "/brand/logos/eliza_text_white.svg",
+      "/logos/anthropic-icon.png",
+      "/bg-sunset.webp",
+    ]) {
+      expect(isCatalogResourceFailure(`${ORIGIN}${p}`, ORIGIN)).toBe(false);
+    }
+  });
+  it("ignores external hosts (sandbox-blocked / third-party)", () => {
+    expect(
+      isCatalogResourceFailure("https://example.com/clip.mp3", ORIGIN),
+    ).toBe(false);
+  });
+});
+
+describe("deriveNetworkFailureIssues scoping", () => {
+  it("does not escalate /api + external + public-asset failures", () => {
+    const cap = {
+      failedResponses: [
+        { status: 404, url: `${ORIGIN}/api/accounts` },
+        { status: 404, url: `${ORIGIN}/logos/openai-icon.png` },
+      ],
+      requestFailures: [
+        { failure: "net::ERR_BLOCKED_BY_ORB", url: "https://example.com/x.mp3" },
+      ],
+    };
+    expect(deriveNetworkFailureIssues(cap, "good", ORIGIN).escalate).toBe(false);
+  });
+  it("still escalates a real same-origin bundle 404", () => {
+    const cap = {
+      failedResponses: [{ status: 404, url: `${ORIGIN}/assets/chunk.js` }],
+      requestFailures: [],
+    };
+    const r = deriveNetworkFailureIssues(cap, "good", ORIGIN);
+    expect(r.escalate).toBe(true);
+    expect(r.issues[0]).toContain("chunk.js");
+  });
+});
 
 /** Minimal per-story result shape the classifier consumes. */
 function story(overrides = {}) {

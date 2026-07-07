@@ -305,10 +305,57 @@ function normalizeConsole(text) {
  * @param {string} verdict the story's current verdict.
  * @returns {{ escalate: boolean, issues: string[] }}
  */
-export function deriveNetworkFailureIssues(cap, verdict) {
+/**
+ * Is a failed request a REAL fault of the static Storybook catalog, or an
+ * expected-absent runtime resource?
+ *
+ * The gate serves only the built `storybook-static` bundle — there is no API
+ * backend, no app `public/` dir, and the sandbox blocks external hosts. So a
+ * component that fetches `/api/*`, references an absolute public asset
+ * (`/brand/*`, `/logos/*`, `/bg-sunset.webp`, any image/media/font/model file),
+ * or loads an external URL (`https://example.com/clip.mp3`) ALWAYS 404s or is
+ * ORB-blocked here — those surfaces are exercised live by `audit:app`, not this
+ * catalog. Treating them as `broken` made the gate un-passable (every mock/data
+ * story red) while signalling nothing about render health.
+ *
+ * A same-origin request for a bundle resource the static server SHOULD serve
+ * (a code chunk / stylesheet / document / sourcemap) that still 404s IS a real
+ * broken-catalog fault — keep escalating those. Everything else is expected
+ * absent and must not red the gate.
+ */
+export function isCatalogResourceFailure(url, staticOrigin) {
+  let parsed;
+  try {
+    parsed = new URL(url, staticOrigin);
+  } catch {
+    return false;
+  }
+  // External host (sandbox-blocked, or a real third-party asset the component
+  // points at) — never a fault of the catalog build.
+  if (staticOrigin && parsed.origin !== staticOrigin) return false;
+  const path = parsed.pathname;
+  // Data/media endpoints have no backend in the static catalog.
+  if (path.startsWith("/api/")) return false;
+  // Absolute public assets live in the app's `public/` dir at runtime and are
+  // not emitted into `storybook-static`; a 404 here is by design.
+  if (
+    /\.(png|jpe?g|webp|gif|svg|avif|ico|bmp|mp3|mp4|wav|ogg|webm|mov|glb|gltf|pdf|woff2?|ttf|otf|eot)$/i.test(
+      path,
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export function deriveNetworkFailureIssues(cap, verdict, staticOrigin = null) {
   if (verdict === "needs-runtime") return { escalate: false, issues: [] };
-  const failedResponses = cap?.failedResponses ?? [];
-  const requestFailures = cap?.requestFailures ?? [];
+  const failedResponses = (cap?.failedResponses ?? []).filter((r) =>
+    isCatalogResourceFailure(r.url, staticOrigin),
+  );
+  const requestFailures = (cap?.requestFailures ?? []).filter((r) =>
+    isCatalogResourceFailure(r.url, staticOrigin),
+  );
   const raw = [
     ...failedResponses.map((r) => `net-response ${r.status}: ${r.url}`),
     ...requestFailures.map((r) => `net-request ${r.failure}: ${r.url}`),
@@ -585,7 +632,11 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
 
     // Failed / erroring network responses + request failures during render are
     // a real fault signal the reduced inline capture missed. #13624
-    const netFailure = deriveNetworkFailureIssues(cap, result.verdict);
+    const netFailure = deriveNetworkFailureIssues(
+      cap,
+      result.verdict,
+      new URL(baseUrl).origin,
+    );
     if (netFailure.escalate) {
       result.verdict = "broken";
       result.issues.push(...netFailure.issues);

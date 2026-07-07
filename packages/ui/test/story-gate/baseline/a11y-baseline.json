@@ -1,68 +1,141 @@
 {
-  "accounts-accountlist--anthropic-provider": ["button-name", "color-contrast"],
-  "accounts-accountlist--constrained": ["button-name", "color-contrast"],
-  "accounts-accountlist--default": ["button-name", "color-contrast"],
-  "agentsurface-agentelementoverlay--highlighting": ["color-contrast"],
-  "agentsurface-agentelementoverlay--idle": ["color-contrast"],
-  "apps-appssidebar--empty": ["color-contrast"],
-  "apps-surfaces-gameoperatorshell--default": ["color-contrast"],
-  "apps-surfaces-gameoperatorshell--empty": ["color-contrast"],
-  "apps-surfaces-gameoperatorshell--error-tone": ["color-contrast"],
-  "apps-surfaces-gameoperatorshell--live-variant": ["color-contrast"],
-  "chat-accountrequiredcard--default": ["color-contrast"],
-  "chat-accountrequiredcard--reauth-needed": ["color-contrast"],
-  "chat-messageattachments--text-code": ["color-contrast"],
-  "chat-messagecontent--inline-form": ["color-contrast"],
-  "chat-messagecontent--no-provider-gate": ["color-contrast"],
-  "chat-messagecontent--rate-limited-retry": ["color-contrast"],
-  "chat-widgets-browserlaunchwidget--idle": ["color-contrast"],
-  "chat-widgets-browserstatuswidget--long-titles": ["color-contrast"],
-  "chat-widgets-browserstatuswidget--many-tabs": ["color-contrast"],
-  "chat-widgets-browserstatuswidget--populated": ["color-contrast"],
-  "chat-widgets-browserstatuswidget--single-tab": ["color-contrast"],
-  "chat-widgets-browserstatuswidget--unicode-titles": ["color-contrast"],
-  "chat-widgets-browserstatuswidget--untitled-tab": ["color-contrast"],
-  "chat-widgets-credentialrequestwidget--oauth-link": ["color-contrast"],
-  "chat-widgets-formrequest--default": ["color-contrast"],
-  "chat-widgets-formrequest--minimal": ["color-contrast"],
-  "chat-widgets-formrequest--required-fields-only": ["color-contrast"],
-  "chat-widgets-formrequest--select-and-checkbox-only": ["color-contrast"],
-  "chat-widgets-formrequest--title-only": ["color-contrast"],
-  "chat-widgets-musicplayerwidget--idle": ["color-contrast"],
-  "chat-widgets-musicplayerwidget--long-title": ["color-contrast"],
-  "chat-widgets-musicplayerwidget--paused": ["color-contrast"],
-  "chat-widgets-musicplayerwidget--playing": ["color-contrast"],
-  "chat-widgets-musicplayerwidget--unicode-title": ["color-contrast"],
-  "chat-widgets-musicplayerwidget--unreachable": ["color-contrast"],
-  "chat-widgets-orchestratoraccounts--accounts-only": ["color-contrast"],
-  "chat-widgets-orchestratoraccounts--empty": ["color-contrast"],
-  "chat-widgets-orchestratoraccounts--with-assignments": ["color-contrast"],
-  "chat-widgets-orchestratoraccounts--with-room-roster": ["color-contrast"],
-  "chat-widgets-shared-widgetsection--empty-state": ["color-contrast"],
+  "accounts-accountlist--anthropic-provider": [
+    "button-name",
+    "color-contrast"
+  ],
+  "accounts-accountlist--constrained": [
+    "button-name",
+    "color-contrast"
+  ],
+  "accounts-accountlist--default": [
+    "button-name",
+    "color-contrast"
+  ],
+  "agentsurface-agentelementoverlay--highlighting": [
+    "color-contrast"
+  ],
+  "agentsurface-agentelementoverlay--idle": [
+    "color-contrast"
+  ],
+  "apps-appssidebar--empty": [
+    "color-contrast"
+  ],
+  "chat-accountrequiredcard--default": [
+    "color-contrast"
+  ],
+  "chat-accountrequiredcard--reauth-needed": [
+    "color-contrast"
+  ],
+  "chat-messagecontent--account-connect": [
+    "color-contrast"
+  ],
+  "chat-messagecontent--no-provider-gate": [
+    "color-contrast"
+  ],
+  "chat-messagecontent--rate-limited-retry": [
+    "color-contrast"
+  ],
+  "chat-widgets-browserlaunchwidget--idle": [
+    "color-contrast"
+  ],
+  "chat-widgets-musicplayerwidget--idle": [
+    "color-contrast"
+  ],
+  "chat-widgets-musicplayerwidget--long-title": [
+    "color-contrast"
+  ],
+  "chat-widgets-musicplayerwidget--paused": [
+    "color-contrast"
+  ],
+  "chat-widgets-musicplayerwidget--playing": [
+    "color-contrast"
+  ],
+  "chat-widgets-musicplayerwidget--unicode-title": [
+    "color-contrast"
+  ],
+  "chat-widgets-musicplayerwidget--unreachable": [
+    "color-contrast"
+  ],
+  "chat-widgets-orchestratoraccounts--accounts-only": [
+    "color-contrast"
+  ],
+  "chat-widgets-orchestratoraccounts--empty": [
+    "color-contrast"
+  ],
+  "chat-widgets-orchestratoraccounts--with-assignments": [
+    "color-contrast"
+  ],
+  "chat-widgets-orchestratoraccounts--with-room-roster": [
+    "color-contrast"
+  ],
+  "chat-widgets-orchestratorrooms--empty": [
+    "color-contrast"
+  ],
+  "chat-widgets-orchestratorrooms--live-rooms": [
+    "color-contrast"
+  ],
+  "chat-widgets-orchestratorrooms--multi-party-room": [
+    "color-contrast"
+  ],
+  "chat-widgets-shared-widgetsection--empty-state": [
+    "color-contrast"
+  ],
   "chat-widgets-shared-widgetsection--empty-state-with-action": [
     "color-contrast"
   ],
-  "chat-widgetvisibilitypanel--default": ["color-contrast"],
-  "chat-widgetvisibilitypanel--empty": ["color-contrast"],
-  "chat-widgetvisibilitypanel--single-candidate": ["color-contrast"],
-  "chat-widgetvisibilitypanel--with-overrides": ["color-contrast"],
-  "cloud-cloudsourcecontrols-modetoggle--cloud-selected": ["color-contrast"],
-  "cloud-cloudsourcecontrols-modetoggle--custom-labels": ["color-contrast"],
-  "cloud-cloudsourcecontrols-modetoggle--interactive": ["color-contrast"],
-  "cloud-cloudsourcecontrols-modetoggle--own-key-selected": ["color-contrast"],
-  "cloudui-aielements-memoizedchatmessage--streaming-response": [
+  "chat-widgets-subagentblock--done": [
     "color-contrast"
   ],
-  "cloudui-aielements-memoizedchatmessage--thinking-with-reasoning": [
+  "chat-widgets-subagentblock--failed": [
     "color-contrast"
   ],
-  "cloudui-aielements-memoizedchatmessage--with-audio-playing": ["button-name"],
-  "cloudui-analytics-costalerts--all-alerts-triggered": ["color-contrast"],
-  "cloudui-analytics-costalerts--low-balance": ["color-contrast"],
+  "chat-widgets-subagentblock--running": [
+    "color-contrast"
+  ],
+  "chat-widgetvisibilitypanel--default": [
+    "color-contrast"
+  ],
+  "chat-widgetvisibilitypanel--empty": [
+    "color-contrast"
+  ],
+  "chat-widgetvisibilitypanel--single-candidate": [
+    "color-contrast"
+  ],
+  "chat-widgetvisibilitypanel--with-overrides": [
+    "color-contrast"
+  ],
+  "cloud-cloudsourcecontrols-modetoggle--cloud-selected": [
+    "color-contrast"
+  ],
+  "cloud-cloudsourcecontrols-modetoggle--custom-labels": [
+    "color-contrast"
+  ],
+  "cloud-cloudsourcecontrols-modetoggle--interactive": [
+    "color-contrast"
+  ],
+  "cloud-cloudsourcecontrols-modetoggle--own-key-selected": [
+    "color-contrast"
+  ],
+  "cloudui-analytics-costalerts--all-alerts-triggered": [
+    "color-contrast"
+  ],
+  "cloudui-analytics-costalerts--burn-rate-spiked": [
+    "color-contrast"
+  ],
+  "cloudui-analytics-costalerts--high-projected-monthly-cost": [
+    "color-contrast"
+  ],
+  "cloudui-analytics-costalerts--low-balance": [
+    "color-contrast"
+  ],
   "cloudui-analytics-costinsightscard--burn-rate-spiking": [
-    "aria-progressbar-name"
+    "aria-progressbar-name",
+    "color-contrast"
   ],
-  "cloudui-analytics-costinsightscard--healthy": ["aria-progressbar-name"],
+  "cloudui-analytics-costinsightscard--healthy": [
+    "aria-progressbar-name",
+    "color-contrast"
+  ],
   "cloudui-analytics-costinsightscard--low-balance-critical": [
     "aria-progressbar-name",
     "color-contrast"
@@ -72,28 +145,69 @@
     "color-contrast"
   ],
   "cloudui-analytics-costinsightscard--projected-overspend": [
-    "aria-progressbar-name"
+    "aria-progressbar-name",
+    "color-contrast"
   ],
-  "cloudui-brand-brandbutton--large": ["color-contrast"],
-  "cloudui-brand-brandbutton--primary": ["color-contrast"],
-  "cloudui-brand-brandbutton--small": ["color-contrast"],
-  "cloudui-brand-dashboardsection--with-action": ["color-contrast"],
-  "cloudui-brand-lockonbutton--primary": ["color-contrast"],
-  "cloudui-brand-lockonbutton--sizes": ["color-contrast"],
-  "cloudui-brand-lockonbutton--with-icon": ["color-contrast"],
-  "cloudui-components-apikeyemptystate--default": ["color-contrast"],
-  "cloudui-components-apikeyemptystate--in-card": ["color-contrast"],
-  "cloudui-components-apikeyemptystate--narrow-container": ["color-contrast"],
-  "cloudui-components-apikeyemptystate--without-handler": ["color-contrast"],
-  "cloudui-components-connectioncard--connected": ["color-contrast"],
-  "cloudui-components-connectioncard--disconnected": ["color-contrast"],
-  "cloudui-components-connectioncard--not-configured": ["color-contrast"],
-  "cloudui-components-connectioncard--telegram-connected": ["color-contrast"],
-  "cloudui-components-logviewer--empty": ["color-contrast"],
-  "cloudui-components-logviewer--error-state": ["color-contrast"],
-  "cloudui-components-logviewer--raw-lines": ["color-contrast"],
-  "cloudui-components-logviewer--streaming": ["button-name"],
-  "cloudui-components-logviewer--structured-entries": ["color-contrast"],
+  "cloudui-brand-brandbutton--large": [
+    "color-contrast"
+  ],
+  "cloudui-brand-brandbutton--primary": [
+    "color-contrast"
+  ],
+  "cloudui-brand-brandbutton--small": [
+    "color-contrast"
+  ],
+  "cloudui-brand-dashboardsection--with-action": [
+    "color-contrast"
+  ],
+  "cloudui-brand-lockonbutton--primary": [
+    "color-contrast"
+  ],
+  "cloudui-brand-lockonbutton--sizes": [
+    "color-contrast"
+  ],
+  "cloudui-brand-lockonbutton--with-icon": [
+    "color-contrast"
+  ],
+  "cloudui-components-apikeyemptystate--default": [
+    "color-contrast"
+  ],
+  "cloudui-components-apikeyemptystate--in-card": [
+    "color-contrast"
+  ],
+  "cloudui-components-apikeyemptystate--narrow-container": [
+    "color-contrast"
+  ],
+  "cloudui-components-apikeyemptystate--without-handler": [
+    "color-contrast"
+  ],
+  "cloudui-components-connectioncard--connected": [
+    "color-contrast"
+  ],
+  "cloudui-components-connectioncard--disconnected": [
+    "color-contrast"
+  ],
+  "cloudui-components-connectioncard--not-configured": [
+    "color-contrast"
+  ],
+  "cloudui-components-connectioncard--telegram-connected": [
+    "color-contrast"
+  ],
+  "cloudui-components-logviewer--empty": [
+    "color-contrast"
+  ],
+  "cloudui-components-logviewer--error-state": [
+    "color-contrast"
+  ],
+  "cloudui-components-logviewer--raw-lines": [
+    "color-contrast"
+  ],
+  "cloudui-components-logviewer--streaming": [
+    "button-name"
+  ],
+  "cloudui-components-logviewer--structured-entries": [
+    "color-contrast"
+  ],
   "cloudui-components-logviewer--with-search-and-filter": [
     "button-name",
     "color-contrast"
@@ -101,58 +215,145 @@
   "cloudui-dashboard-clouddashboardcomponents--apps-empty-with-action": [
     "color-contrast"
   ],
-  "cloudui-datalist-appslistview--default": ["color-contrast"],
-  "cloudui-datalist-appslistview--deleting": ["color-contrast"],
-  "cloudui-datalist-appslistview--inactive-only": ["color-contrast"],
-  "cloudui-datalist-appslistview--single-active-app": ["color-contrast"],
-  "cloudui-datalist-dashboarddatalist--default": ["color-contrast"],
-  "cloudui-datalist-dashboarddatalist--empty-state": ["color-contrast"],
-  "cloudui-datalist-dashboarddatalist--filtered-count-only": ["color-contrast"],
-  "cloudui-datalist-datalistemptystate--with-action": ["color-contrast"],
-  "cloudui-docs-apiparameterselect--default": ["button-name"],
-  "cloudui-docs-apiparameterselect--few-options": ["button-name"],
-  "cloudui-docs-apiparameterselect--interactive": ["button-name"],
-  "cloudui-docs-apiparameterselect--response-format": ["button-name"],
-  "cloudui-docs-apiparameterselect--with-selected-value": ["button-name"],
-  "cloudui-docs-endpointcard--default": ["color-contrast"],
-  "cloudui-docs-endpointcard--deprecated": ["color-contrast"],
-  "cloudui-docs-endpointcard--free-endpoint": ["color-contrast"],
-  "cloudui-docs-endpointcard--many-tags": ["color-contrast"],
-  "cloudui-docs-endpointcard--variable-pricing": ["color-contrast"],
-  "cloudui-docs-openapiviewer--constrained": ["scrollable-region-focusable"],
-  "cloudui-icons--accent-tinted": ["color-contrast"],
-  "cloudui-imagegen-imagepromptinput--fantasy-art-portrait": ["color-contrast"],
-  "cloudui-imagegen-imagepromptinput--interactive": ["color-contrast"],
-  "cloudui-imagegen-imagepromptinput--with-prompt": ["color-contrast"],
-  "cloudui-layout-dashboardheader--anonymous": ["color-contrast"],
+  "cloudui-datalist-appslistview--default": [
+    "color-contrast"
+  ],
+  "cloudui-datalist-appslistview--deleting": [
+    "color-contrast"
+  ],
+  "cloudui-datalist-appslistview--inactive-only": [
+    "color-contrast"
+  ],
+  "cloudui-datalist-appslistview--single-active-app": [
+    "color-contrast"
+  ],
+  "cloudui-datalist-dashboarddatalist--default": [
+    "color-contrast"
+  ],
+  "cloudui-datalist-dashboarddatalist--empty-state": [
+    "color-contrast"
+  ],
+  "cloudui-datalist-dashboarddatalist--filtered-count-only": [
+    "color-contrast"
+  ],
+  "cloudui-datalist-datalistemptystate--with-action": [
+    "color-contrast"
+  ],
+  "cloudui-docs-apiparameterselect--default": [
+    "button-name"
+  ],
+  "cloudui-docs-apiparameterselect--few-options": [
+    "button-name"
+  ],
+  "cloudui-docs-apiparameterselect--interactive": [
+    "button-name"
+  ],
+  "cloudui-docs-apiparameterselect--response-format": [
+    "button-name"
+  ],
+  "cloudui-docs-apiparameterselect--with-selected-value": [
+    "button-name"
+  ],
+  "cloudui-docs-endpointcard--default": [
+    "color-contrast"
+  ],
+  "cloudui-docs-endpointcard--deprecated": [
+    "color-contrast"
+  ],
+  "cloudui-docs-endpointcard--free-endpoint": [
+    "color-contrast"
+  ],
+  "cloudui-docs-endpointcard--many-tags": [
+    "color-contrast"
+  ],
+  "cloudui-docs-endpointcard--variable-pricing": [
+    "color-contrast"
+  ],
+  "cloudui-docs-openapiviewer--constrained": [
+    "scrollable-region-focusable"
+  ],
+  "cloudui-icons--accent-tinted": [
+    "color-contrast"
+  ],
+  "cloudui-layout-dashboardheader--anonymous": [
+    "color-contrast"
+  ],
   "cloudui-layout-dashboardheader--anonymous-with-custom-cta": [
     "color-contrast"
   ],
-  "cloudui-layout-dashboardheader--long-title": ["color-contrast"],
+  "cloudui-layout-dashboardheader--long-title": [
+    "color-contrast"
+  ],
   "cloudui-layout-dashboardheader--with-actions": [
     "button-name",
     "color-contrast"
   ],
-  "cloudui-layout-dashboardheader--with-right-content": ["button-name"],
-  "cloudui-layout-dashboardpage--default": ["color-contrast"],
-  "cloudui-layout-dashboardpage--narrow-width": ["color-contrast"],
-  "cloudui-layout-dashboardsidebar--admin-view": ["color-contrast"],
-  "cloudui-layout-dashboardsidebar--default": ["color-contrast"],
-  "cloudui-layout-dashboardsidebar--mobile-open": ["color-contrast"],
-  "cloudui-layout-dashboardsidebar--unauthenticated": ["color-contrast"],
-  "cloudui-layout-dashboardsidebaritem--collapsed": ["link-name"],
-  "cloudui-layout-dashboardsidebaritem--collapsed-active": ["link-name"],
-  "cloudui-layout-dashboardsidebaritem--coming-soon": ["color-contrast"],
+  "cloudui-layout-dashboardheader--with-right-content": [
+    "button-name"
+  ],
+  "cloudui-layout-dashboardpage--default": [
+    "color-contrast"
+  ],
+  "cloudui-layout-dashboardpage--narrow-width": [
+    "color-contrast"
+  ],
+  "cloudui-layout-dashboardsidebar--admin-view": [
+    "color-contrast"
+  ],
+  "cloudui-layout-dashboardsidebar--default": [
+    "color-contrast"
+  ],
+  "cloudui-layout-dashboardsidebar--mobile-open": [
+    "color-contrast"
+  ],
+  "cloudui-layout-dashboardsidebar--unauthenticated": [
+    "color-contrast"
+  ],
+  "cloudui-layout-dashboardsidebaritem--collapsed": [
+    "link-name"
+  ],
+  "cloudui-layout-dashboardsidebaritem--collapsed-active": [
+    "link-name"
+  ],
+  "cloudui-layout-dashboardsidebaritem--coming-soon": [
+    "color-contrast"
+  ],
   "cloudui-layout-dashboardsidebarsection--admin-with-super-admin": [
     "color-contrast"
   ],
-  "cloudui-layout-dashboardsidebarsection--collapsed": ["link-name"],
-  "cloudui-layout-pageheadercontext--empty": ["color-contrast"],
-  "cloudui-layout-pageheadercontext--imperative-setter": ["color-contrast"],
-  "cloudui-layout-pageheadercontext--title-and-description": ["color-contrast"],
-  "cloudui-layout-pageheadercontext--with-actions": ["color-contrast"],
-  "cloudui-monetization-animatedcounter--dashboard-grid": ["color-contrast"],
-  "cloudui-monetization-animatedcounter--with-label": ["color-contrast"],
+  "cloudui-layout-dashboardsidebarsection--collapsed": [
+    "link-name"
+  ],
+  "cloudui-layout-pageheadercontext--empty": [
+    "color-contrast"
+  ],
+  "cloudui-layout-pageheadercontext--imperative-setter": [
+    "color-contrast"
+  ],
+  "cloudui-layout-pageheadercontext--title-and-description": [
+    "color-contrast"
+  ],
+  "cloudui-layout-pageheadercontext--with-actions": [
+    "color-contrast"
+  ],
+  "cloudui-layout-pagetransition--fade": [
+    "color-contrast"
+  ],
+  "cloudui-layout-pagetransition--interactive": [
+    "color-contrast"
+  ],
+  "cloudui-layout-pagetransition--scale": [
+    "color-contrast"
+  ],
+  "cloudui-layout-pagetransition--slide": [
+    "color-contrast"
+  ],
+  "cloudui-monetization-animatedcounter--dashboard-grid": [
+    "color-contrast"
+  ],
+  "cloudui-monetization-animatedcounter--with-label": [
+    "color-contrast"
+  ],
   "cloudui-monetization-animatedcounter--with-label-negative-trend": [
     "color-contrast"
   ],
@@ -176,35 +377,81 @@
     "aria-input-field-name",
     "color-contrast"
   ],
-  "cloudui-monetization-milestoneprogress--as-card": ["color-contrast"],
+  "cloudui-monetization-milestoneprogress--as-card": [
+    "color-contrast"
+  ],
   "cloudui-monetization-milestoneprogress--as-card-complete": [
     "color-contrast"
   ],
-  "cloudui-monetization-milestoneprogress--complete": ["color-contrast"],
-  "cloudui-monetization-milestoneprogress--default": ["color-contrast"],
-  "cloudui-monetization-milestoneprogress--just-started": ["color-contrast"],
-  "cloudui-monetization-milestoneprogress--near-complete": ["color-contrast"],
-  "cloudui-monetization-milestoneprogress--without-amount": ["color-contrast"],
-  "cloudui-monetization-revenueflowdiagram--default": ["color-contrast"],
-  "cloudui-monetization-revenueflowdiagram--high-markup": ["color-contrast"],
-  "cloudui-monetization-revenueflowdiagram--low-markup": ["color-contrast"],
-  "cloudui-monetization-revenueflowdiagram--no-markup": ["color-contrast"],
-  "cloudui-monetization-revenueflowdiagram--premium-tier": ["color-contrast"],
-  "cloudui-productswitcher--agents-active": ["color-contrast"],
-  "cloudui-productswitcher--default": ["color-contrast"],
-  "cloudui-productswitcher--many-items": ["color-contrast"],
-  "cloudui-productswitcher--two-items": ["color-contrast"],
-  "cloudui-productswitcher--with-external-links": ["color-contrast"],
-  "cloudui-promotion-socialconnectionhint--default": ["color-contrast"],
+  "cloudui-monetization-milestoneprogress--complete": [
+    "color-contrast"
+  ],
+  "cloudui-monetization-milestoneprogress--default": [
+    "color-contrast"
+  ],
+  "cloudui-monetization-milestoneprogress--just-started": [
+    "color-contrast"
+  ],
+  "cloudui-monetization-milestoneprogress--near-complete": [
+    "color-contrast"
+  ],
+  "cloudui-monetization-milestoneprogress--without-amount": [
+    "color-contrast"
+  ],
+  "cloudui-monetization-revenueflowdiagram--default": [
+    "color-contrast"
+  ],
+  "cloudui-monetization-revenueflowdiagram--high-markup": [
+    "color-contrast"
+  ],
+  "cloudui-monetization-revenueflowdiagram--low-markup": [
+    "color-contrast"
+  ],
+  "cloudui-monetization-revenueflowdiagram--no-markup": [
+    "color-contrast"
+  ],
+  "cloudui-monetization-revenueflowdiagram--premium-tier": [
+    "color-contrast"
+  ],
+  "cloudui-productswitcher--agents-active": [
+    "color-contrast"
+  ],
+  "cloudui-productswitcher--default": [
+    "color-contrast"
+  ],
+  "cloudui-productswitcher--many-items": [
+    "color-contrast"
+  ],
+  "cloudui-productswitcher--two-items": [
+    "color-contrast"
+  ],
+  "cloudui-productswitcher--with-external-links": [
+    "color-contrast"
+  ],
+  "cloudui-promotion-socialconnectionhint--default": [
+    "color-contrast"
+  ],
   "cloudui-promotion-socialconnectionhint--discord-automation-enabled": [
     "color-contrast"
   ],
-  "cloudui-promotion-socialconnectionhint--discord-only": ["color-contrast"],
-  "cloudui-promotion-socialconnectionhint--telegram-only": ["color-contrast"],
-  "cloudui-resizable--constrained-sizes": ["color-contrast"],
-  "cloudui-resizable--horizontal-split": ["color-contrast"],
-  "cloudui-resizable--vertical-split": ["color-contrast"],
-  "cloudui-resizable--with-visible-handle": ["color-contrast"],
+  "cloudui-promotion-socialconnectionhint--discord-only": [
+    "color-contrast"
+  ],
+  "cloudui-promotion-socialconnectionhint--telegram-only": [
+    "color-contrast"
+  ],
+  "cloudui-resizable--constrained-sizes": [
+    "color-contrast"
+  ],
+  "cloudui-resizable--horizontal-split": [
+    "color-contrast"
+  ],
+  "cloudui-resizable--vertical-split": [
+    "color-contrast"
+  ],
+  "cloudui-resizable--with-visible-handle": [
+    "color-contrast"
+  ],
   "cloudui-voice-voiceaudioplayer--compact": [
     "aria-input-field-name",
     "button-name"
@@ -225,21 +472,75 @@
     "aria-input-field-name",
     "button-name"
   ],
-  "cloudui-voice-voiceemptystate--dark-backdrop": ["color-contrast"],
-  "cloudui-voice-voiceemptystate--default": ["color-contrast"],
-  "cloudui-voice-voiceemptystate--in-container": ["color-contrast"],
-  "companion-chatavatar--static-interface": ["color-contrast"],
-  "composites-chat-chatcomposer--game-modal": ["button-name"],
-  "composites-chat-chatconversationitem--confirming-delete": ["color-contrast"],
-  "composites-chat-chatemptystate--with-action-and-hint": ["color-contrast"],
-  "composites-chat-chatthreadlayout--default": ["color-contrast"],
+  "cloudui-voice-voiceemptystate--dark-backdrop": [
+    "color-contrast"
+  ],
+  "cloudui-voice-voiceemptystate--default": [
+    "color-contrast"
+  ],
+  "cloudui-voice-voiceemptystate--in-container": [
+    "color-contrast"
+  ],
+  "cockpit-cockpitmodepicker--eliza-cloud": [
+    "color-contrast"
+  ],
+  "cockpit-cockpitmodepicker--experimental-armed": [
+    "color-contrast"
+  ],
+  "cockpit-cockpitnewsessionform--default": [
+    "color-contrast"
+  ],
+  "cockpit-cockpitnewsessionform--experimental-armed": [
+    "color-contrast"
+  ],
+  "cockpit-cockpitview--empty": [
+    "color-contrast"
+  ],
+  "cockpit-cockpitview--experimental-armed": [
+    "color-contrast"
+  ],
+  "cockpit-cockpitview--with-error": [
+    "color-contrast"
+  ],
+  "cockpit-cockpitview--with-sessions": [
+    "color-contrast"
+  ],
+  "cockpit-myruntimessection--cloud-active": [
+    "color-contrast"
+  ],
+  "composites-chat-chatcomposer--game-modal": [
+    "button-name"
+  ],
+  "composites-chat-chatconversationitem--confirming-delete": [
+    "color-contrast"
+  ],
+  "composites-chat-chatemptystate--with-action-and-hint": [
+    "color-contrast"
+  ],
+  "composites-chat-chatmessage--interrupted": [
+    "color-contrast"
+  ],
+  "composites-chat-chatthreadlayout--default": [
+    "color-contrast"
+  ],
   "composites-chat-chatthreadlayout--game-modal-variant": [
     "scrollable-region-focusable"
   ],
-  "composites-chat-chatthreadlayout--image-drag-over": ["color-contrast"],
-  "composites-chat-chatthreadlayout--with-footer-stack": ["color-contrast"],
-  "composites-chat-continuouschattoggle--disabled": ["color-contrast"],
-  "composites-chat-permissioncard--denied": ["color-contrast"],
+  "composites-chat-chatthreadlayout--image-drag-over": [
+    "color-contrast"
+  ],
+  "composites-chat-chatthreadlayout--with-footer-stack": [
+    "color-contrast"
+  ],
+  "composites-chat-chattranscript--game-modal-variant": [
+    "color-contrast"
+  ],
+  "composites-chat-continuouschattoggle--disabled": [
+    "color-contrast"
+  ],
+  "composites-chat-permissioncard--denied": [
+    "color-contrast"
+  ],
   "composites-pagepanel-pagepanelcollapsiblesection--collapsed": [
     "aria-allowed-attr"
   ],
@@ -252,18 +553,29 @@
   "composites-pagepanel-pagepanelcollapsiblesection--with-actions": [
     "aria-allowed-attr"
   ],
-  "composites-pagepanel-pagepanelempty--with-action": ["color-contrast"],
+  "composites-pagepanel-pagepanelempty--with-action": [
+    "color-contrast"
+  ],
   "composites-pagepanel-pagepanelframe--with-scrollable-content": [
     "scrollable-region-focusable"
   ],
-  "composites-pagepanel-pagepanelheader--with-actions": ["color-contrast"],
-  "composites-pagepanel-pagepanelheader--with-eyebrow": ["color-contrast"],
-  "composites-pagepanel-pagepaneltoolbar--default": ["color-contrast"],
+  "composites-pagepanel-pagepanelheader--with-actions": [
+    "color-contrast"
+  ],
+  "composites-pagepanel-pagepanelheader--with-eyebrow": [
+    "color-contrast"
+  ],
+  "composites-pagepanel-pagepaneltoolbar--default": [
+    "color-contrast"
+  ],
   "composites-pagepanel-pagepaneltoolbar--search-with-actions": [
     "color-contrast"
   ],
   "composites-sidebar-sidebarbody--with-scrollable-list": [
     "scrollable-region-focusable"
+  ],
+  "composites-sidebar-sidebarcontent--section-with-items": [
+    "color-contrast"
   ],
   "composites-skills-skillsidebaritem--active": [
     "aria-required-parent",
@@ -277,6 +589,7 @@
   ],
   "composites-skills-skillsidebaritem--disabled": [
     "aria-required-parent",
+    "color-contrast",
     "list"
   ],
   "composites-skills-skillsidebaritem--no-description": [
@@ -289,12 +602,18 @@
     "color-contrast",
     "list"
   ],
-  "composites-trajectories-trajectorycachestats--default": ["color-contrast"],
-  "composites-trajectories-trajectorycachestats--empty": ["color-contrast"],
+  "composites-trajectories-trajectorycachestats--default": [
+    "color-contrast"
+  ],
+  "composites-trajectories-trajectorycachestats--empty": [
+    "color-contrast"
+  ],
   "composites-trajectories-trajectorycachestats--empty-custom-label": [
     "color-contrast"
   ],
-  "composites-trajectories-trajectorycachestats--no-meta": ["color-contrast"],
+  "composites-trajectories-trajectorycachestats--no-meta": [
+    "color-contrast"
+  ],
   "composites-trajectories-trajectorycachestats--single-metric": [
     "color-contrast"
   ],
@@ -322,18 +641,24 @@
   "composites-trajectories-trajectoryeventtimeline--default": [
     "color-contrast"
   ],
-  "composites-trajectories-trajectoryeventtimeline--empty": ["color-contrast"],
+  "composites-trajectories-trajectoryeventtimeline--empty": [
+    "color-contrast"
+  ],
   "composites-trajectories-trajectoryeventtimeline--single-info-event": [
     "color-contrast"
   ],
   "composites-trajectories-trajectoryeventtimeline--with-failure": [
     "color-contrast"
   ],
-  "composites-trajectories-trajectoryllmcallcard--default": ["color-contrast"],
+  "composites-trajectories-trajectoryllmcallcard--default": [
+    "color-contrast"
+  ],
   "composites-trajectories-trajectoryllmcallcard--long-response": [
     "color-contrast"
   ],
-  "composites-trajectories-trajectoryllmcallcard--no-tags": ["color-contrast"],
+  "composites-trajectories-trajectoryllmcallcard--no-tags": [
+    "color-contrast"
+  ],
   "composites-trajectories-trajectoryllmcallcard--small-model": [
     "color-contrast"
   ],
@@ -346,8 +671,19 @@
   "composites-trajectories-trajectorypipelinegraph--with-skipped-stages": [
     "color-contrast"
   ],
-  "configui-configfield--readonly": ["color-contrast"],
-  "configui-configrenderer--default": ["button-name", "color-contrast"],
+  "composites-trajectories-trajectorysidebaritem--active": [
+    "color-contrast"
+  ],
+  "composites-trajectories-trajectorysidebaritem--list": [
+    "color-contrast"
+  ],
+  "configui-configfield--readonly": [
+    "color-contrast"
+  ],
+  "configui-configrenderer--default": [
+    "button-name",
+    "color-contrast"
+  ],
   "configui-configrenderer--fully-configured": [
     "button-name",
     "color-contrast"
@@ -360,211 +696,441 @@
     "button-name",
     "color-contrast"
   ],
-  "configui-uirenderer--form": ["button-name", "color-contrast"],
+  "configui-uirenderer--form": [
+    "button-name",
+    "color-contrast"
+  ],
   "configui-uirenderer--unauthenticated-visibility": [
     "button-name",
     "color-contrast"
   ],
-  "connectors-connectoraccountcard--busy-states": ["button-name"],
-  "connectors-connectoraccountcard--default": ["button-name"],
+  "connectors-connectoraccountcard--busy-states": [
+    "button-name"
+  ],
+  "connectors-connectoraccountcard--default": [
+    "button-name"
+  ],
   "connectors-connectoraccountcard--disconnected-and-disabled": [
     "button-name",
     "color-contrast"
   ],
-  "connectors-connectoraccountcard--needs-reauth": ["button-name"],
-  "connectors-connectoraccountcard--pending-no-avatar": ["button-name"],
-  "connectors-connectoraccountcard--selectable": ["button-name"],
-  "connectors-connectoraccountprivacyselector--disabled": ["button-name"],
-  "connectors-connectoraccountprivacyselector--interactive": ["button-name"],
-  "connectors-connectoraccountprivacyselector--owner-only": ["button-name"],
-  "connectors-connectoraccountprivacyselector--public": ["button-name"],
-  "connectors-connectoraccountprivacyselector--team-visible": ["button-name"],
-  "connectors-connectoraccountpurposeselector--agent-role": ["button-name"],
+  "connectors-connectoraccountcard--needs-reauth": [
+    "button-name"
+  ],
+  "connectors-connectoraccountcard--pending-no-avatar": [
+    "button-name"
+  ],
+  "connectors-connectoraccountcard--selectable": [
+    "button-name"
+  ],
+  "connectors-connectoraccountprivacyselector--disabled": [
+    "button-name"
+  ],
+  "connectors-connectoraccountprivacyselector--interactive": [
+    "button-name"
+  ],
+  "connectors-connectoraccountprivacyselector--owner-only": [
+    "button-name"
+  ],
+  "connectors-connectoraccountprivacyselector--public": [
+    "button-name"
+  ],
+  "connectors-connectoraccountprivacyselector--team-visible": [
+    "button-name"
+  ],
+  "connectors-connectoraccountpurposeselector--agent-role": [
+    "button-name"
+  ],
   "connectors-connectoraccountpurposeselector--async-on-change": [
     "button-name"
   ],
-  "connectors-connectoraccountpurposeselector--disabled": ["button-name"],
-  "connectors-connectoraccountpurposeselector--owner-role": ["button-name"],
-  "connectors-connectoraccountpurposeselector--team-role": ["button-name"],
-  "conversations-conversationssidebar--default": ["aria-valid-attr-value"],
-  "conversations-conversationssidebar--game-modal": ["aria-valid-attr-value"],
-  "conversations-conversationssidebar--mobile": ["aria-valid-attr-value"],
-  "customactions-customactionspanel--open": ["color-contrast"],
-  "desktop-desktoptabbar--default": ["aria-required-children"],
-  "desktop-desktoptabbar--many-tabs": ["aria-required-children"],
-  "desktop-desktoptabbar--no-active-tab": ["aria-required-children"],
-  "desktop-desktoptabbar--single-tab": ["aria-required-children"],
-  "localinference-downloadprogress--completed": ["aria-progressbar-name"],
-  "localinference-downloadprogress--downloading": ["aria-progressbar-name"],
-  "localinference-downloadprogress--just-started": ["aria-progressbar-name"],
-  "localinference-downloadprogress--nearly-done": ["aria-progressbar-name"],
-  "localinference-downloadprogress--unknown-total": ["aria-progressbar-name"],
+  "connectors-connectoraccountpurposeselector--disabled": [
+    "button-name"
+  ],
+  "connectors-connectoraccountpurposeselector--owner-role": [
+    "button-name"
+  ],
+  "connectors-connectoraccountpurposeselector--team-role": [
+    "button-name"
+  ],
+  "customactions-customactionspanel--open": [
+    "color-contrast"
+  ],
+  "desktop-desktoptabbar--default": [
+    "aria-required-children"
+  ],
+  "desktop-desktoptabbar--many-tabs": [
+    "aria-required-children"
+  ],
+  "desktop-desktoptabbar--no-active-tab": [
+    "aria-required-children"
+  ],
+  "desktop-desktoptabbar--single-tab": [
+    "aria-required-children"
+  ],
+  "localinference-downloadprogress--completed": [
+    "aria-progressbar-name"
+  ],
+  "localinference-downloadprogress--downloading": [
+    "aria-progressbar-name"
+  ],
+  "localinference-downloadprogress--just-started": [
+    "aria-progressbar-name"
+  ],
+  "localinference-downloadprogress--nearly-done": [
+    "aria-progressbar-name"
+  ],
+  "localinference-downloadprogress--unknown-total": [
+    "aria-progressbar-name"
+  ],
   "localinference-downloadqueue--queued-and-downloading": [
     "aria-progressbar-name"
   ],
-  "localinference-downloadqueue--single-downloading": ["aria-progressbar-name"],
-  "localinference-downloadqueue--unknown-model-id": ["aria-progressbar-name"],
-  "localinference-firstrunoffer--needs-download": ["color-contrast"],
-  "localinference-modelcard--default": ["color-contrast"],
-  "localinference-modelcard--download-failed": ["color-contrast"],
-  "localinference-modelcard--downloading": ["aria-progressbar-name"],
-  "localinference-modelcard--installed": ["color-contrast"],
-  "pages-appdetailsview--default": ["color-contrast"],
-  "pages-appdetailsview--plugin-viewer": ["color-contrast"],
-  "pages-appdetailsview--with-active-runs": ["color-contrast"],
-  "pages-automationsfeed--default": ["color-contrast"],
-  "pages-automationsfeed--with-connected-creds": ["color-contrast"],
-  "pages-browserworkspaceview--default": ["color-contrast"],
-  "pages-browserworkspaceview--with-browser-bridge-plugin": ["color-contrast"],
-  "pages-browserworkspaceview--with-connected-wallet": ["color-contrast"],
-  "pages-chatview--game-modal": ["button-name"],
-  "pages-configpageview--cloud-connected": ["color-contrast"],
-  "pages-configpageview--cloud-connecting": ["color-contrast"],
-  "pages-configpageview--cloud-signed-out": ["button-name", "color-contrast"],
-  "pages-configpageview--custom-providers": ["color-contrast"],
-  "pages-configpageview--embedded": ["color-contrast"],
-  "pages-configpageview--saving": ["color-contrast"],
-  "pages-databasepageview--media": [
-    "aria-required-children",
-    "scrollable-region-focusable"
+  "localinference-downloadqueue--single-downloading": [
+    "aria-progressbar-name"
   ],
-  "pages-databasepageview--no-content-header": ["aria-required-children"],
-  "pages-databasepageview--tables": ["aria-required-children"],
-  "pages-databasepageview--vectors": ["color-contrast"],
-  "pages-documentsview--controlled-selection": ["color-contrast"],
-  "pages-documentsview--default": ["color-contrast"],
-  "pages-documentsview--embedded": [
-    "color-contrast",
-    "scrollable-region-focusable"
+  "localinference-downloadqueue--unknown-model-id": [
+    "aria-progressbar-name"
   ],
-  "pages-documentsview--in-modal": ["color-contrast"],
-  "pages-elizaclouddashboard--auth-rejected": ["color-contrast"],
-  "pages-elizaclouddashboard--billing-view": ["color-contrast"],
-  "pages-elizaclouddashboard--disconnected": ["button-name", "color-contrast"],
-  "pages-elizaclouddashboard--low-credits": ["color-contrast"],
-  "pages-elizaclouddashboard--overview": ["color-contrast"],
-  "pages-elizaosappsview--contacts": ["color-contrast"],
-  "pages-elizaosappsview--messages": ["color-contrast"],
-  "pages-elizaosappsview--phone": ["color-contrast"],
-  "pages-filesview--populated": ["color-contrast"],
-  "pages-logsview--default": ["button-name"],
-  "pages-logsview--empty": ["button-name"],
-  "pages-logsview--filtered-by-level": ["button-name"],
-  "pages-logsview--load-error": ["button-name"],
-  "pages-mediagalleryview--default": ["scrollable-region-focusable"],
-  "pages-mediagalleryview--with-content-header": [
-    "scrollable-region-focusable"
+  "localinference-firstrunoffer--needs-download": [
+    "color-contrast"
   ],
-  "pages-mediagalleryview--with-left-nav": ["scrollable-region-focusable"],
-  "pages-mediagalleryview--with-nav-and-header": [
-    "scrollable-region-focusable"
+  "localinference-modelcard--default": [
+    "color-contrast"
   ],
-  "permissions-streamingpermissions--mobile": ["color-contrast"],
-  "permissions-streamingpermissions--voice-only": ["color-contrast"],
-  "permissions-streamingpermissions--web": ["color-contrast"],
-  "policycontrols-approvedaddressessection--blocklist": ["button-name"],
-  "policycontrols-approvedaddressessection--empty-allowlist": [
+  "localinference-modelcard--download-failed": [
+    "color-contrast"
+  ],
+  "localinference-modelcard--downloading": [
+    "aria-progressbar-name"
+  ],
+  "localinference-modelcard--installed": [
+    "color-contrast"
+  ],
+  "localinference-modelcard--wont-fit": [
+    "color-contrast"
+  ],
+  "pages-browserworkspaceview--default": [
+    "color-contrast"
+  ],
+  "pages-browserworkspaceview--with-browser-bridge-plugin": [
+    "color-contrast"
+  ],
+  "pages-browserworkspaceview--with-connected-wallet": [
+    "color-contrast"
+  ],
+  "pages-chatview--game-modal": [
+    "button-name"
+  ],
+  "pages-configpageview--cloud-connected": [
+    "color-contrast"
+  ],
+  "pages-configpageview--cloud-connecting": [
+    "color-contrast"
+  ],
+  "pages-configpageview--cloud-signed-out": [
     "button-name",
     "color-contrast"
   ],
-  "policycontrols-approvedaddressessection--populated": ["button-name"],
-  "policycontrols-policytoggle--disabled": ["color-contrast"],
-  "policycontrols-ratelimitsection--conservative": ["aria-input-field-name"],
-  "policycontrols-ratelimitsection--default": ["aria-input-field-name"],
-  "policycontrols-ratelimitsection--high-throughput": ["aria-input-field-name"],
-  "policycontrols-timewindowsection--all-week": [
-    "color-contrast",
-    "select-name"
+  "pages-configpageview--custom-providers": [
+    "color-contrast"
   ],
-  "policycontrols-timewindowsection--business-hours": [
-    "color-contrast",
-    "select-name"
+  "pages-configpageview--embedded": [
+    "color-contrast"
   ],
-  "policycontrols-timewindowsection--weekends-only": [
-    "color-contrast",
-    "select-name"
+  "pages-configpageview--saving": [
+    "color-contrast"
   ],
-  "primitives-alertdialog--destructive": ["color-contrast"],
-  "primitives-avatar--default": ["color-contrast"],
-  "primitives-avatar--fallback": ["color-contrast"],
-  "primitives-avatar--group": ["color-contrast"],
-  "primitives-avatar--large": ["color-contrast"],
-  "primitives-badge--all-variants": ["color-contrast"],
-  "primitives-badge--default": ["color-contrast"],
-  "primitives-badge--destructive": ["color-contrast"],
-  "primitives-button--all-variants": ["color-contrast"],
-  "primitives-button--default": ["color-contrast"],
-  "primitives-button--destructive": ["color-contrast"],
-  "primitives-button--large": ["color-contrast"],
-  "primitives-button--small": ["color-contrast"],
-  "primitives-checkbox--checked": ["button-name"],
-  "primitives-checkbox--default": ["button-name"],
-  "primitives-checkbox--disabled": ["button-name"],
-  "primitives-checkbox--disabled-checked": ["button-name"],
-  "primitives-confirmdialog--with-trigger": ["color-contrast"],
-  "primitives-dialog--destructive": ["color-contrast"],
-  "primitives-dropdownmenu--checkboxes": ["aria-hidden-focus"],
-  "primitives-dropdownmenu--default": ["aria-hidden-focus"],
-  "primitives-dropdownmenu--radio-group": ["aria-hidden-focus"],
-  "primitives-dropdownmenu--with-group": ["aria-hidden-focus"],
-  "primitives-emptystate--with-action": ["color-contrast"],
-  "primitives-form--default": ["color-contrast"],
-  "primitives-form--with-error": ["color-contrast"],
-  "primitives-formselect--default": ["button-name"],
-  "primitives-formselect--disabled": ["button-name"],
-  "primitives-formselect--open": ["aria-hidden-focus"],
-  "primitives-formselect--with-value": ["button-name"],
-  "primitives-inputgroup--textarea": ["color-contrast"],
-  "primitives-inputgroup--with-button": ["color-contrast"],
-  "primitives-progress--complete": ["aria-progressbar-name"],
-  "primitives-progress--default": ["aria-progressbar-name"],
-  "primitives-progress--empty": ["aria-progressbar-name"],
-  "primitives-progress--quarter": ["aria-progressbar-name"],
-  "primitives-progress--three-quarters": ["aria-progressbar-name"],
-  "primitives-savefooter--default": ["color-contrast"],
-  "primitives-savefooter--error-state": ["color-contrast"],
-  "primitives-savefooter--saved": ["color-contrast"],
-  "primitives-scrollarea--horizontal": ["scrollable-region-focusable"],
-  "primitives-scrollarea--long-text": ["scrollable-region-focusable"],
-  "primitives-scrollarea--vertical": ["scrollable-region-focusable"],
-  "primitives-select--default": ["button-name"],
-  "primitives-select--disabled": ["button-name"],
-  "primitives-select--open": ["aria-hidden-focus"],
-  "primitives-select--with-groups-and-labels": ["button-name"],
-  "primitives-settingscontrols--segmented-group": ["color-contrast"],
-  "primitives-settingscontrols--textarea": ["label"],
-  "primitives-slider--default": ["aria-input-field-name"],
-  "primitives-slider--disabled": ["aria-input-field-name"],
-  "primitives-slider--stepped": ["aria-input-field-name"],
-  "primitives-stack--default": ["color-contrast"],
-  "primitives-stack--row": ["color-contrast"],
-  "primitives-stack--row-centered": ["color-contrast"],
-  "primitives-stack--space-between": ["color-contrast"],
-  "primitives-stack--tight-spacing": ["color-contrast"],
-  "primitives-switch--default": ["button-name"],
-  "primitives-switch--disabled": ["button-name"],
-  "primitives-switch--disabled-on": ["button-name"],
-  "primitives-switch--on": ["button-name"],
-  "primitives-toggle--pressed": ["color-contrast"],
-  "settings-advancedsection--default": ["color-contrast"],
-  "settings-advancedsection--export-busy": ["color-contrast"],
-  "settings-advancedsection--export-error": ["color-contrast"],
-  "settings-advancedsection--export-primed": ["color-contrast"],
-  "settings-advancedsection--import-in-progress": ["color-contrast"],
-  "settings-apikeyconfig--configured": ["color-contrast"],
-  "settings-apikeyconfig--needs-setup": ["color-contrast"],
-  "settings-apikeyconfig--saved": ["color-contrast"],
-  "settings-apikeyconfig--with-validation-issues": ["color-contrast"],
-  "settings-appearancesettingssection--dark-mode-selected": ["color-contrast"],
-  "settings-appearancesettingssection--default": ["color-contrast"],
-  "settings-appearancesettingssection--light-mode-selected": ["color-contrast"],
-  "settings-appearancesettingssection--spanish-language": ["color-contrast"],
-  "settings-appsmanagementsection--agent-running": ["color-contrast"],
-  "settings-appsmanagementsection--default": ["color-contrast"],
-  "settings-appsmanagementsection--narrow": ["color-contrast"],
-  "settings-capabilitiessection--all-capabilities-disabled": ["color-contrast"],
-  "settings-capabilitiessection--all-capabilities-enabled": ["color-contrast"],
-  "settings-capabilitiessection--computer-use-enabled": ["color-contrast"],
+  "pages-databasepageview--media": [
+    "aria-required-children"
+  ],
+  "pages-databasepageview--no-content-header": [
+    "aria-required-children"
+  ],
+  "pages-databasepageview--tables": [
+    "aria-required-children"
+  ],
+  "pages-databasepageview--vectors": [
+    "color-contrast"
+  ],
+  "pages-elizaclouddashboard--auth-rejected": [
+    "color-contrast"
+  ],
+  "pages-elizaclouddashboard--billing-view": [
+    "color-contrast"
+  ],
+  "pages-elizaclouddashboard--disconnected": [
+    "button-name",
+    "color-contrast"
+  ],
+  "pages-elizaclouddashboard--low-credits": [
+    "color-contrast"
+  ],
+  "pages-elizaclouddashboard--overview": [
+    "color-contrast"
+  ],
+  "pages-elizaosappsview--contacts": [
+    "color-contrast"
+  ],
+  "pages-elizaosappsview--messages": [
+    "color-contrast"
+  ],
+  "pages-elizaosappsview--phone": [
+    "color-contrast"
+  ],
+  "pages-filesview--populated": [
+    "color-contrast"
+  ],
+  "pages-logsview--default": [
+    "button-name"
+  ],
+  "pages-logsview--empty": [
+    "button-name"
+  ],
+  "pages-logsview--filtered-by-level": [
+    "button-name"
+  ],
+  "pages-logsview--load-error": [
+    "button-name"
+  ],
+  "permissions-streamingpermissions--mobile": [
+    "color-contrast"
+  ],
+  "permissions-streamingpermissions--voice-only": [
+    "color-contrast"
+  ],
+  "permissions-streamingpermissions--web": [
+    "color-contrast"
+  ],
+  "primitives-alertdialog--destructive": [
+    "color-contrast"
+  ],
+  "primitives-avatar--fallback": [
+    "color-contrast"
+  ],
+  "primitives-avatar--group": [
+    "color-contrast"
+  ],
+  "primitives-badge--all-variants": [
+    "color-contrast"
+  ],
+  "primitives-badge--default": [
+    "color-contrast"
+  ],
+  "primitives-badge--destructive": [
+    "color-contrast"
+  ],
+  "primitives-button--all-variants": [
+    "color-contrast"
+  ],
+  "primitives-button--default": [
+    "color-contrast"
+  ],
+  "primitives-button--destructive": [
+    "color-contrast"
+  ],
+  "primitives-button--large": [
+    "color-contrast"
+  ],
+  "primitives-button--small": [
+    "color-contrast"
+  ],
+  "primitives-checkbox--checked": [
+    "button-name"
+  ],
+  "primitives-checkbox--default": [
+    "button-name"
+  ],
+  "primitives-checkbox--disabled": [
+    "button-name"
+  ],
+  "primitives-checkbox--disabled-checked": [
+    "button-name"
+  ],
+  "primitives-confirmdialog--with-trigger": [
+    "color-contrast"
+  ],
+  "primitives-dialog--destructive": [
+    "color-contrast"
+  ],
+  "primitives-dropdownmenu--checkboxes": [
+    "aria-hidden-focus"
+  ],
+  "primitives-dropdownmenu--default": [
+    "aria-hidden-focus"
+  ],
+  "primitives-dropdownmenu--radio-group": [
+    "aria-hidden-focus"
+  ],
+  "primitives-dropdownmenu--with-group": [
+    "aria-hidden-focus"
+  ],
+  "primitives-emptystate--with-action": [
+    "color-contrast"
+  ],
+  "primitives-form--default": [
+    "color-contrast"
+  ],
+  "primitives-form--with-error": [
+    "color-contrast"
+  ],
+  "primitives-formselect--default": [
+    "button-name"
+  ],
+  "primitives-formselect--disabled": [
+    "button-name"
+  ],
+  "primitives-formselect--open": [
+    "aria-hidden-focus"
+  ],
+  "primitives-formselect--with-value": [
+    "button-name"
+  ],
+  "primitives-inputgroup--textarea": [
+    "color-contrast"
+  ],
+  "primitives-inputgroup--with-button": [
+    "color-contrast"
+  ],
+  "primitives-progress--complete": [
+    "aria-progressbar-name"
+  ],
+  "primitives-progress--default": [
+    "aria-progressbar-name"
+  ],
+  "primitives-progress--empty": [
+    "aria-progressbar-name"
+  ],
+  "primitives-progress--quarter": [
+    "aria-progressbar-name"
+  ],
+  "primitives-progress--three-quarters": [
+    "aria-progressbar-name"
+  ],
+  "primitives-savefooter--default": [
+    "color-contrast"
+  ],
+  "primitives-savefooter--error-state": [
+    "color-contrast"
+  ],
+  "primitives-savefooter--saved": [
+    "color-contrast"
+  ],
+  "primitives-scrollarea--horizontal": [
+    "scrollable-region-focusable"
+  ],
+  "primitives-scrollarea--long-text": [
+    "scrollable-region-focusable"
+  ],
+  "primitives-scrollarea--vertical": [
+    "scrollable-region-focusable"
+  ],
+  "primitives-select--default": [
+    "button-name"
+  ],
+  "primitives-select--disabled": [
+    "button-name"
+  ],
+  "primitives-select--open": [
+    "aria-hidden-focus"
+  ],
+  "primitives-select--with-groups-and-labels": [
+    "button-name"
+  ],
+  "primitives-settingscontrols--segmented-group": [
+    "color-contrast"
+  ],
+  "primitives-settingscontrols--textarea": [
+    "label"
+  ],
+  "primitives-slider--default": [
+    "aria-input-field-name"
+  ],
+  "primitives-slider--disabled": [
+    "aria-input-field-name"
+  ],
+  "primitives-slider--stepped": [
+    "aria-input-field-name"
+  ],
+  "primitives-stack--default": [
+    "color-contrast"
+  ],
+  "primitives-stack--row": [
+    "color-contrast"
+  ],
+  "primitives-stack--row-centered": [
+    "color-contrast"
+  ],
+  "primitives-stack--space-between": [
+    "color-contrast"
+  ],
+  "primitives-stack--tight-spacing": [
+    "color-contrast"
+  ],
+  "primitives-switch--default": [
+    "button-name"
+  ],
+  "primitives-switch--disabled": [
+    "button-name"
+  ],
+  "primitives-switch--disabled-on": [
+    "button-name"
+  ],
+  "primitives-switch--on": [
+    "button-name"
+  ],
+  "primitives-toggle--pressed": [
+    "color-contrast"
+  ],
+  "settings-advancedsection--default": [
+    "color-contrast"
+  ],
+  "settings-advancedsection--export-busy": [
+    "color-contrast"
+  ],
+  "settings-advancedsection--export-error": [
+    "color-contrast"
+  ],
+  "settings-advancedsection--export-primed": [
+    "color-contrast"
+  ],
+  "settings-advancedsection--import-in-progress": [
+    "color-contrast"
+  ],
+  "settings-appearancesettingssection--dark-mode-selected": [
+    "button-name",
+    "color-contrast"
+  ],
+  "settings-appearancesettingssection--default": [
+    "button-name",
+    "color-contrast"
+  ],
+  "settings-appearancesettingssection--light-mode-selected": [
+    "button-name",
+    "color-contrast"
+  ],
+  "settings-appearancesettingssection--spanish-language": [
+    "button-name",
+    "color-contrast"
+  ],
+  "settings-appsmanagementsection--agent-running": [
+    "color-contrast"
+  ],
+  "settings-appsmanagementsection--default": [
+    "color-contrast"
+  ],
+  "settings-appsmanagementsection--narrow": [
+    "color-contrast"
+  ],
+  "settings-capabilitiessection--all-capabilities-disabled": [
+    "color-contrast"
+  ],
+  "settings-capabilitiessection--all-capabilities-enabled": [
+    "color-contrast"
+  ],
+  "settings-capabilitiessection--computer-use-enabled": [
+    "color-contrast"
+  ],
   "settings-capabilitiessection--default": [
     "aria-required-attr",
     "color-contrast"
@@ -585,57 +1151,113 @@
     "color-contrast",
     "nested-interactive"
   ],
-  "settings-desktopworkspacedisplay--default": ["color-contrast"],
-  "settings-desktopworkspacedisplay--empty": ["color-contrast"],
-  "settings-desktopworkspacedisplay--long-wrapping": [
-    "color-contrast",
-    "scrollable-region-focusable"
+  "settings-desktopworkspacedisplay--default": [
+    "color-contrast"
   ],
-  "settings-desktopworkspacedisplay--short-output": ["color-contrast"],
-  "settings-identitysettingssection--cloud-connected": ["color-contrast"],
-  "settings-identitysettingssection--default": ["color-contrast"],
-  "settings-identitysettingssection--dirty": ["color-contrast"],
-  "settings-identitysettingssection--loading": ["color-contrast"],
-  "settings-identitysettingssection--populated": ["color-contrast"],
-  "settings-permissionssection--default": ["color-contrast"],
-  "settings-permissionssection--in-settings-card": ["color-contrast"],
-  "settings-permissionssection--narrow": ["color-contrast"],
-  "setup-bootstrapstep--default": ["color-contrast"],
-  "setup-bootstrapstep--invalid-token": ["color-contrast"],
-  "setup-bootstrapstep--rate-limited": ["color-contrast"],
-  "setup-bootstrapstep--server-not-ready": ["color-contrast"],
-  "setup-bootstrapstep--verifying": ["color-contrast"],
-  "setup-setupfield--centered": ["color-contrast"],
-  "setup-setupfield--default": ["color-contrast"],
-  "setup-setupfield--no-label": ["color-contrast", "label-title-only"],
-  "setup-setupfield--with-error": ["color-contrast"],
-  "setup-setupfield--with-success": ["color-contrast"],
-  "shell-connectionfailedbanner--failed": ["color-contrast"],
-  "shell-connectionfailedbanner--reconnecting": ["color-contrast"],
-  "shell-connectionfailedbanner--reconnecting-late": ["color-contrast"],
-  "shell-home-dashboard--empty": ["color-contrast"],
-  "shell-home-dashboard--home-with-widgets": ["color-contrast"],
-  "shell-loadingscreen--initializing-agent": ["color-contrast"],
-  "shell-loadingscreen--ready": ["color-contrast"],
-  "shell-loadingscreen--starting-backend": ["color-contrast"],
-  "shell-loadingscreen--with-avatar-prefetch": ["color-contrast"],
-  "shell-restartbanner--multiple-reasons": ["color-contrast"],
-  "shell-restartbanner--no-reason": ["color-contrast"],
-  "shell-restartbanner--single-reason": ["color-contrast"],
-  "shell-startupscreen--default": ["color-contrast"],
-  "shell-startupscreen--error-state": ["color-contrast"],
-  "shell-startupscreen--first-run": ["color-contrast"],
-  "shell-startupscreen--loading": ["color-contrast"],
-  "shell-systemwarningbanner--default": ["color-contrast"],
-  "shell-systemwarningbanner--long-message": ["color-contrast"],
-  "shell-systemwarningbanner--multiple": ["color-contrast"],
-  "steward-injected--approval-queue-injected": ["color-contrast"],
-  "steward-injected--transaction-history-injected": ["color-contrast"],
-  "toolevents-toolcalleventlog--failure": ["color-contrast"],
-  "toolevents-toolcalleventlog--long-args-and-result": ["color-contrast"],
-  "toolevents-toolcalleventlog--minimal-fields": ["color-contrast"],
-  "toolevents-toolcalleventlog--running": ["color-contrast"],
-  "toolevents-toolcalleventlog--success": ["color-contrast"],
-  "views-dynamicviewloader--failed-to-load": ["color-contrast"],
-  "views-shellviewagentsurface--character-view": ["color-contrast"]
+  "settings-desktopworkspacedisplay--empty": [
+    "color-contrast"
+  ],
+  "settings-desktopworkspacedisplay--long-wrapping": [
+    "color-contrast"
+  ],
+  "settings-desktopworkspacedisplay--short-output": [
+    "color-contrast"
+  ],
+  "settings-identitysettingssection--cloud-connected": [
+    "color-contrast"
+  ],
+  "settings-identitysettingssection--default": [
+    "color-contrast"
+  ],
+  "settings-permissionssection--default": [
+    "color-contrast"
+  ],
+  "settings-permissionssection--in-settings-card": [
+    "color-contrast"
+  ],
+  "settings-permissionssection--narrow": [
+    "color-contrast"
+  ],
+  "setup-bootstrapstep--default": [
+    "color-contrast"
+  ],
+  "setup-bootstrapstep--invalid-token": [
+    "color-contrast"
+  ],
+  "setup-bootstrapstep--rate-limited": [
+    "color-contrast"
+  ],
+  "setup-bootstrapstep--server-not-ready": [
+    "color-contrast"
+  ],
+  "setup-bootstrapstep--verifying": [
+    "color-contrast"
+  ],
+  "setup-setupfield--centered": [
+    "color-contrast"
+  ],
+  "setup-setupfield--default": [
+    "color-contrast"
+  ],
+  "setup-setupfield--no-label": [
+    "color-contrast",
+    "label-title-only"
+  ],
+  "setup-setupfield--with-error": [
+    "color-contrast"
+  ],
+  "setup-setupfield--with-success": [
+    "color-contrast"
+  ],
+  "shared-languagedropdown--titlebar-variant": [
+    "color-contrast"
+  ],
+  "shell-home-widgets-model-download--download-failed": [
+    "color-contrast"
+  ],
+  "shell-loadingscreen--initializing-agent": [
+    "color-contrast"
+  ],
+  "shell-loadingscreen--ready": [
+    "color-contrast"
+  ],
+  "shell-loadingscreen--starting-backend": [
+    "color-contrast"
+  ],
+  "shell-loadingscreen--with-avatar-prefetch": [
+    "color-contrast"
+  ],
+  "shell-restartbanner--multiple-reasons": [
+    "color-contrast"
+  ],
+  "shell-restartbanner--no-reason": [
+    "color-contrast"
+  ],
+  "shell-restartbanner--single-reason": [
+    "color-contrast"
+  ],
+  "shell-startupscreen--error-state": [
+    "color-contrast"
+  ],
+  "toolevents-toolcalleventlog--failure": [
+    "color-contrast"
+  ],
+  "toolevents-toolcalleventlog--long-args-and-result": [
+    "color-contrast"
+  ],
+  "toolevents-toolcalleventlog--minimal-fields": [
+    "color-contrast"
+  ],
+  "toolevents-toolcalleventlog--running": [
+    "color-contrast"
+  ],
+  "toolevents-toolcalleventlog--success": [
+    "color-contrast"
+  ],
+  "views-dynamicviewloader--failed-to-load": [
+    "color-contrast"
+  ],
+  "views-shellviewagentsurface--character-view": [
+    "color-contrast"
+  ]
 }
