@@ -1488,9 +1488,33 @@ export class ElizaSandboxService {
         // 5. Restore from backup (reconstructs incrementals back to a full).
         const backup = await agentSandboxesRepository.getLatestBackup(rec.id);
         if (backup) {
-          const restoreState = await agentSandboxesRepository.getReconstructedBackupState(
-            backup.id,
-          );
+          // RECONSTRUCTING the snapshot (decrypt + incremental replay) can fail
+          // independently of the container's health: a snapshot encrypted under
+          // a KMS key the current worker process no longer holds (e.g. after a
+          // restart) throws AEAD decrypt HERE, before we ever push to the
+          // container. An unreconstructable backup is functionally identical to
+          // NO backup — boot fresh rather than dead-ending the resume at a
+          // "Backend Unreachable" card. error-policy:J4 restore is additive; a
+          // reconstruct failure degrades to a working fresh agent (the loss of
+          // unrecoverable in-memory history is logged, never fabricated).
+          // NOTE: this deliberately does NOT swallow a pushState failure below —
+          // a push the container REJECTS means the container itself is broken,
+          // which must still fail the provision (invariant test (9)).
+          let restoreState: Awaited<
+            ReturnType<typeof agentSandboxesRepository.getReconstructedBackupState>
+          > | null = null;
+          try {
+            restoreState = await agentSandboxesRepository.getReconstructedBackupState(backup.id);
+          } catch (reconstructError) {
+            const message =
+              reconstructError instanceof Error
+                ? reconstructError.message
+                : String(reconstructError);
+            logger.warn(
+              "[agent-sandbox] Backup reconstruct failed — booting fresh (container is healthy, prior in-memory state not restored)",
+              { agentId: rec.id, backupId: backup.id, reason: message },
+            );
+          }
           if (restoreState) {
             try {
               await this.pushState(handle.bridgeUrl, restoreState, { trusted: true });

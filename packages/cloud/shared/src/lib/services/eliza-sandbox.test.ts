@@ -1826,6 +1826,109 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       getProviderSpy.mockRestore();
     }
   });
+
+  test("(10) an UNDECRYPTABLE snapshot degrades to a fresh boot — never bricks the provision", async () => {
+    // Distinct from (9): here the RECONSTRUCT (decrypt) fails — a snapshot
+    // encrypted under a KMS key the worker no longer holds after a restart —
+    // BEFORE any push to the container. The container is healthy; the snapshot
+    // is simply unrecoverable, which is identical to having no backup. The
+    // provision must SUCCEED (fresh boot), never markError, so a resume can't
+    // dead-end at "Backend Unreachable". (A pushState failure — container
+    // rejecting a decryptable snapshot — still fails, per (9).)
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const row: AgentSandbox = {
+      ...provisioningReadyRow(),
+      execution_tier: "dedicated-lazy",
+    };
+    const backup: AgentSandboxBackup = {
+      id: "55555555-5555-4555-8555-555555555555",
+      sandbox_record_id: row.id,
+      snapshot_type: "pre-upgrade",
+      state_data: { memories: [], config: {}, workspaceFiles: {} },
+      state_data_storage: "inline",
+      state_data_key: null,
+      size_bytes: 2,
+      backup_kind: "full",
+      parent_backup_id: null,
+      content_hash: null,
+      created_at: new Date("2026-07-07T02:30:00.000Z"),
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const findByIdSpy = spyOn(agentSandboxesRepository, "findById").mockResolvedValue({
+      ...row,
+      status: "running",
+    });
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+      ...row,
+      status: "provisioning",
+    });
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(backup);
+    // The failing seam: reconstruct/decrypt throws AEAD.
+    const reconstructedSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockRejectedValue(
+      new Error("AEAD decrypt failed: Unsupported state or unable to authenticate data"),
+    );
+    let runningWrites = 0;
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => {
+        if (data.status === "running") runningWrites += 1;
+        return { ...row, ...data };
+      },
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const svc = new ElizaSandboxService();
+    const markErrorSpy = spyOn(
+      svc as unknown as { markError: (rec: AgentSandbox, msg: string) => Promise<void> },
+      "markError",
+    ).mockResolvedValue(undefined);
+    const ensureStartedSpy = spyOn(
+      svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
+      "ensureRuntimeAgentStarted",
+    ).mockResolvedValue(null);
+    const pushStateSpy = spyOn(
+      svc as unknown as { pushState: () => Promise<unknown> },
+      "pushState",
+    ).mockResolvedValue(undefined);
+    const stop = mock(async () => {});
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({
+      create: mock(async () => providerHandle()),
+      stop,
+      checkHealth: async () => true,
+    } as SandboxProvider);
+    try {
+      const res = await svc.provision(AGENT, ORG);
+      // Fresh boot succeeds despite the dead snapshot.
+      expect(res.success).toBe(true);
+      expect(runningWrites).toBeGreaterThanOrEqual(1);
+      // The undecryptable snapshot is NOT a provision failure.
+      expect(markErrorSpy).not.toHaveBeenCalled();
+      // Nothing was pushed — there was no decryptable state to restore.
+      expect(pushStateSpy).not.toHaveBeenCalled();
+      // Container was not torn down as a ghost.
+      expect(stop).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      findByIdSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      reconstructedSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      markErrorSpy.mockRestore();
+      ensureStartedSpy.mockRestore();
+      pushStateSpy.mockRestore();
+      getProviderSpy.mockRestore();
+    }
+  });
 });
 
 // LARP H3 — executeUpgrade() blue/green rollback, digest-mismatch, and the
