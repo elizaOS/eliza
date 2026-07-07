@@ -451,6 +451,8 @@ function Harness(): React.JSX.Element {
     visionCapturing: false,
     toggleRecording,
     toggleHandsFree,
+    micPermission: "unknown",
+    recheckMicPermission: async () => "unknown",
     setDictationSink,
     setTranscriptSessionSink,
     setComposerHasDraft: (hasDraft: boolean) =>

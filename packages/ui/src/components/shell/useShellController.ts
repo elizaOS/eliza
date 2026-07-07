@@ -48,6 +48,10 @@ import {
 import { goHome } from "../../state/shell-surface-store";
 import { deriveAgentReady } from "../../state/types";
 import { TurnAggregator } from "../../voice/end-of-turn";
+import {
+  type MicrophonePermissionState,
+  queryMicrophonePermission,
+} from "../../voice/local-asr-capture";
 import { shouldRespondToVoiceTurn } from "../../voice/should-respond";
 import { TranscriptSessionAccumulator } from "../../voice/transcript-session";
 import {
@@ -169,6 +173,20 @@ export interface ShellController {
   handsFree: boolean;
   /** Toggle the hands-free conversation loop (mic ↔ spoken reply ↔ mic). */
   toggleHandsFree: () => void;
+  /** Proactive microphone-permission state, probed via
+   *  `navigator.permissions.query({ name: "microphone" })` on boot and on every
+   *  hands-free engage. `"denied"` means the OS revoked the grant to the
+   *  installed PWA, so shell surfaces should render a "re-enable mic" affordance
+   *  instead of a mic button that fails at capture time. `"unknown"` means the
+   *  Permissions API or the `"microphone"` descriptor is unsupported
+   *  (Safari-iOS); treat it like `"granted"`/`"prompt"` and let getUserMedia
+   *  decide. */
+  micPermission: MicrophonePermissionState;
+  /** Re-probe the microphone permission without opening the mic, updating
+   *  {@link micPermission} and surfacing a "re-enable mic" notice when denied.
+   *  Backs a "re-enable mic" affordance's tap so the user can re-check after
+   *  granting permission in browser/system settings. Resolves to the new state. */
+  recheckMicPermission: () => Promise<MicrophonePermissionState>;
   /** True while transcription mode is active — the mic records continuously into
    *  one recording session (the agent does not reply) until the user says an exit
    *  phrase ("exit transcription mode"), then the session becomes a Transcript. */
@@ -248,12 +266,30 @@ export interface ShellController {
  * `send` handler. The phase drives the pill glow and waveform mode.
  */
 /**
- * Turn a mic-capture start failure into a clear, actionable notice. Reads the
- * DOMException `name` (getUserMedia rejects with `NotAllowedError` on a denied
- * permission, `NotFoundError` when no device exists) and its message so we
- * distinguish "denied" vs "no device" vs a generic failure, instead of
- * swallowing the rejection and leaving a mic tap silent.
+ * True when a mic-capture rejection is specifically a permission DENIAL
+ * (`getUserMedia` rejects with a `NotAllowedError` / "permission denied" on a
+ * revoked or refused grant) as opposed to a no-device or generic failure. Used
+ * both to word the failure notice and to flip the proactive `micPermission`
+ * state to "denied" so the "re-enable mic" affordance lights up.
  */
+function isMicPermissionDenialError(err: unknown): boolean {
+  const name =
+    typeof err === "object" &&
+    err !== null &&
+    "name" in err &&
+    typeof (err as { name: unknown }).name === "string"
+      ? (err as { name: string }).name
+      : "";
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  const haystack = `${name} ${message}`.toLowerCase();
+  return (
+    haystack.includes("notallowed") ||
+    haystack.includes("permissiondenied") ||
+    haystack.includes("permission denied") ||
+    haystack.includes("not-allowed")
+  );
+}
+
 function describeCaptureFailure(err: unknown): string {
   const name =
     typeof err === "object" &&
@@ -264,12 +300,7 @@ function describeCaptureFailure(err: unknown): string {
       : "";
   const message = err instanceof Error ? err.message : String(err ?? "");
   const haystack = `${name} ${message}`.toLowerCase();
-  if (
-    haystack.includes("notallowed") ||
-    haystack.includes("permissiondenied") ||
-    haystack.includes("permission denied") ||
-    haystack.includes("not-allowed")
-  ) {
+  if (isMicPermissionDenialError(err)) {
     return "Microphone access was denied. Enable microphone permission in your browser or system settings to use voice.";
   }
   if (
@@ -528,6 +559,19 @@ export function useShellController(): ShellController {
   const [handsFree, setHandsFree] = React.useState(false);
   const handsFreeRef = React.useRef(false);
   handsFreeRef.current = handsFree;
+  // Proactive microphone-permission state. Populated by a
+  // `navigator.permissions.query({ name: "microphone" })` probe on boot and on
+  // every hands-free engage, without opening the mic. When the OS has revoked
+  // the grant to the installed PWA, `getUserMedia` would otherwise reject with
+  // a capture failure the moment the always-on loop re-opens the mic; instead
+  // the shell can render a "re-enable mic" affordance the user can act on.
+  // `"unknown"` (Permissions API absent / the
+  // `"microphone"` descriptor unsupported on Safari-iOS) is treated exactly
+  // like `"granted"`/`"prompt"`: proceed and let getUserMedia decide.
+  const [micPermission, setMicPermission] =
+    React.useState<MicrophonePermissionState>("unknown");
+  const micPermissionRef = React.useRef<MicrophonePermissionState>("unknown");
+  micPermissionRef.current = micPermission;
   // Transcription mode (long-form record-only): the mic stays open and every
   // utterance is sent silently (metadata.transcriptionMode) until an exit
   // phrase. A ref mirrors the state for the re-listen timer + capture closures.
@@ -1023,6 +1067,14 @@ export function useShellController(): ShellController {
         .then(() => {
           // A clean start clears the failure latch so a later denial re-notifies.
           captureFailureNoticedRef.current = false;
+          // A successful getUserMedia call proves the grant is live. Clear a
+          // stale `micPermission: "denied"` so the "re-enable mic" affordance
+          // does not linger after push-to-talk, transcription, or conversation
+          // capture has already opened.
+          if (micPermissionRef.current === "denied") {
+            setMicPermission("granted");
+            micPermissionRef.current = "granted";
+          }
           if (captureRef.current === handle) setAnalyser(handle.getAnalyser());
         })
         .catch((err: unknown) => {
@@ -1040,11 +1092,17 @@ export function useShellController(): ShellController {
             setHandsFree(false);
             handsFreeRef.current = false;
           }
-          // Mic permission denial / capture failure was previously swallowed —
-          // the user tapped the mic and nothing happened with no feedback.
-          // Surface a clear, actionable notice through the shell's toast channel
-          // (denied vs no-device distinguished where possible). Guarded so the
-          // hands-free re-listen loop's retries don't spam it.
+          // Reconcile the proactive permission state with the getUserMedia
+          // result. A `NotAllowedError`/permission-denied rejection is the
+          // ground truth that the grant is revoked, even when an earlier
+          // permissions query reported "prompt"/"unknown".
+          if (isMicPermissionDenialError(err)) {
+            setMicPermission("denied");
+            micPermissionRef.current = "denied";
+          }
+          // Surface one actionable notice per grant epoch; the hands-free
+          // re-listen loop may retry capture, but repeated toasts make recovery
+          // harder rather than clearer.
           if (!captureFailureNoticedRef.current) {
             captureFailureNoticedRef.current = true;
             setActionNotice(describeCaptureFailure(err), "error", 6000);
@@ -1052,6 +1110,108 @@ export function useShellController(): ShellController {
         });
     },
     [send, stopCapture, finalizeTranscriptSession, setActionNotice],
+  );
+
+  // Proactive microphone-permission recheck. Reads the OS grant via
+  // `navigator.permissions.query({ name: "microphone" })` without opening the
+  // mic, mirrors it into `micPermission`, and — when the grant has been revoked
+  // (`"denied"`) — surfaces an actionable "re-enable mic" notice instead of
+  // letting the subsequent `getUserMedia` fail at capture time. Returns the resolved
+  // state so callers (boot auto-engage, hands-free tap) can decide whether to
+  // proceed. `"unknown"` (Permissions API / descriptor unsupported — Safari-iOS)
+  // and `"prompt"`/`"granted"` all mean "proceed normally": we never block
+  // capture on a probe that can't answer; only a known denial short-circuits.
+  const recheckMicPermission =
+    React.useCallback(async (): Promise<MicrophonePermissionState> => {
+      const state = await queryMicrophonePermission();
+      setMicPermission(state);
+      micPermissionRef.current = state;
+      if (state === "denied") {
+        // Guard against spamming the toast on the hands-free re-listen loop's
+        // repeated engages — reuse the same latch startCapture's failure path
+        // uses so a single denial notice shows once per resolved-grant epoch.
+        if (!captureFailureNoticedRef.current) {
+          captureFailureNoticedRef.current = true;
+          setActionNotice(
+            "Microphone access is off. Re-enable microphone permission in your browser or system settings to use voice.",
+            "error",
+            6000,
+          );
+        }
+        // A background refresh that discovers the grant is revoked must not
+        // leave the shell in a phantom always-on state: if
+        // hands-free is engaged but no capture is actually in flight (e.g. the
+        // user engaged while a reply was responding, so the mic hasn't opened
+        // yet), roll it back to rest and restore the prior mode. If a capture
+        // is in flight, leave it because its own getUserMedia lifecycle handles
+        // a mid-session revocation.
+        if (handsFreeRef.current && !captureRef.current) {
+          saveContinuousChatMode(priorContinuousModeRef.current);
+          setHandsFree(false);
+          handsFreeRef.current = false;
+        }
+      } else {
+        // A recovered/unknown grant clears the latch so a later denial notifies.
+        captureFailureNoticedRef.current = false;
+      }
+      return state;
+    }, [setActionNotice]);
+
+  // Engage-time surfacing of a known-denied grant: rolls hands-free back to
+  // rest and shows the actionable "re-enable mic" notice (once per grant epoch)
+  // instead of opening a mic getUserMedia would reject.
+  const surfaceMicDeniedAtEngage = React.useCallback(() => {
+    if (!captureFailureNoticedRef.current) {
+      captureFailureNoticedRef.current = true;
+      setActionNotice(
+        "Microphone access is off. Re-enable microphone permission in your browser or system settings to use voice.",
+        "error",
+        6000,
+      );
+    }
+  }, [setActionNotice]);
+
+  // Engage-time mic-permission gate for the user-tap path. Returns a
+  // decision the caller acts on: whether to proceed to open the mic.
+  //
+  // FAST PATH (last-known state is not "denied"): decide synchronously against
+  // the ref the boot/prior probes seeded — keeps "tap → mic opens" raceless and
+  // synchronous. "unknown"/"prompt"/"granted" proceed; a background refresh
+  // keeps the ref fresh, and if the grant was revoked since the last probe,
+  // startCapture's getUserMedia-denial catch is the authoritative backstop.
+  //
+  // RECOVERY PATH (last-known state is "denied"): await a fresh probe before
+  // blocking, because a denied→retry tap is exactly when the user has just
+  // re-enabled permission in settings — treating the stale "denied" as
+  // authoritative would make that first retry a dead no-op. If the fresh probe
+  // still reports "denied" we surface the affordance; otherwise (recovered /
+  // now-unknown) we proceed to open the mic.
+  //
+  // `onProceed` is invoked (sync on the fast path, post-await on the recovery
+  // path) only when the mic should open.
+  const gateEngageOnMicPermission = React.useCallback(
+    (onProceed: () => void): void => {
+      if (micPermissionRef.current !== "denied") {
+        // Fast path: proceed now, refresh the ref for next time in the
+        // background.
+        void recheckMicPermission();
+        onProceed();
+        return;
+      }
+      // Recovery path: the last-known grant is denied, so re-probe before
+      // deciding. A just-re-enabled grant should engage on this tap.
+      void recheckMicPermission().then((state) => {
+        if (state === "denied") {
+          surfaceMicDeniedAtEngage();
+          return;
+        }
+        // Recovered (or now-unknown): guard against a capture that opened via
+        // another path during the await, then open the mic.
+        if (captureRef.current) return;
+        onProceed();
+      });
+    },
+    [recheckMicPermission, surfaceMicDeniedAtEngage],
   );
 
   const toggleRecording = React.useCallback(() => {
@@ -1077,10 +1237,52 @@ export function useShellController(): ShellController {
     if (loadContinuousChatMode() !== "always-on") return;
     autoEngagedHandsFreeRef.current = true;
     priorContinuousModeRef.current = "off";
-    setHandsFree(true);
-    setIsOpen(true);
-    startCapture("converse");
-  }, [ready, recording, handsFree, chatSending, startCapture]);
+    // Proactive mic-permission recheck on boot: before re-opening the mic for a
+    // persisted always-on session, await the fresh grant. Unlike the
+    // user-tap path (which reads the already-seeded ref synchronously so
+    // tap->mic stays raceless), boot fires on the same tick as the initial
+    // probe, so the ref would still be the default "unknown". If the grant is
+    // known-revoked, surface the "re-enable mic"
+    // affordance and stay disengaged (roll back to the prior non-always-on
+    // mode) instead of letting startCapture's getUserMedia reject.
+    // Unknown/prompt/granted proceed (getUserMedia re-prompts on "prompt").
+    void recheckMicPermission().then((state) => {
+      if (state === "denied") {
+        // Don't light a phantom always-on loop against a revoked grant.
+        saveContinuousChatMode(priorContinuousModeRef.current);
+        return;
+      }
+      // The probe is async: re-check the gating state so a capture that opened
+      // via another path (or a hands-free toggle) during the await isn't
+      // double-opened / overridden.
+      if (captureRef.current || handsFreeRef.current) return;
+      setHandsFree(true);
+      setIsOpen(true);
+      startCapture("converse");
+    });
+  }, [
+    ready,
+    recording,
+    handsFree,
+    chatSending,
+    startCapture,
+    recheckMicPermission,
+  ]);
+
+  // Populate the mic-permission state once on mount so a shell surface can
+  // render the correct mic affordance immediately — independent of always-on.
+  // This does not toast on denial (no notice on a passive boot probe): it only
+  // seeds `micPermission` for the UI. The always-on boot effect above and the
+  // hands-free tap below are the paths that surface the actionable notice.
+  const bootPermissionProbedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (bootPermissionProbedRef.current) return;
+    bootPermissionProbedRef.current = true;
+    void queryMicrophonePermission().then((state) => {
+      setMicPermission(state);
+      micPermissionRef.current = state;
+    });
+  }, []);
 
   const open = React.useCallback(() => {
     setIsOpen(true);
@@ -1253,15 +1455,44 @@ export function useShellController(): ShellController {
       const prior = loadContinuousChatMode();
       if (prior !== "always-on") priorContinuousModeRef.current = prior;
       saveContinuousChatMode("always-on");
-      setHandsFree(true);
-      setIsOpen(true);
+      // Proactive mic-permission gate on hands-free engage. The tap is the
+      // audio-unlock gesture, so unlock regardless of the mic decision. The
+      // gate opens the mic via the onProceed callback only when the grant is
+      // not freshly denied; a known-denied grant surfaces the
+      // "re-enable mic" notice and rolls the persisted mode back so a reload
+      // doesn't re-engage a mic the user can't grant. (A denied→retry tap
+      // re-probes authoritatively, so re-enabling permission engages on the
+      // very next tap.)
       voiceOutput.unlockAudio();
-      // Voice is gated while a reply is in flight: open the mic now only if
-      // nothing is responding; otherwise the hands-free loop opens it the
-      // instant the reply finishes.
-      if (!responding) startCapture("converse");
+      // We optimistically persisted "always-on" above. On the denied recovery
+      // path the gate is async and may block, so roll the persisted mode back
+      // to the prior value up front; onProceed re-persists "always-on" if the
+      // fresh probe clears the denial and we actually engage. On the fast
+      // (non-denied) path onProceed runs synchronously and re-persists
+      // immediately, so the rollback+re-save is a no-op net change.
+      const wasDeniedBeforeGate = micPermissionRef.current === "denied";
+      if (wasDeniedBeforeGate) {
+        saveContinuousChatMode(priorContinuousModeRef.current);
+      }
+      gateEngageOnMicPermission(() => {
+        // Committing to engage: (re-)persist always-on so a reload restores it.
+        saveContinuousChatMode("always-on");
+        setHandsFree(true);
+        handsFreeRef.current = true;
+        setIsOpen(true);
+        // Voice is gated while a reply is in flight: open the mic now only if
+        // nothing is responding; otherwise the hands-free loop opens it the
+        // instant the reply finishes.
+        if (!responding) startCapture("converse");
+      });
     }
-  }, [responding, startCapture, stopCapture, voiceOutput]);
+  }, [
+    responding,
+    startCapture,
+    stopCapture,
+    voiceOutput,
+    gateEngageOnMicPermission,
+  ]);
 
   useViewEvent(
     VOICE_SETTINGS_APPLY_EVENT,
@@ -1604,6 +1835,8 @@ export function useShellController(): ShellController {
     stopRecording: stopCapture,
     handsFree,
     toggleHandsFree,
+    micPermission,
+    recheckMicPermission,
     transcriptionMode,
     toggleTranscriptionMode,
     stopTranscriptionAndMic,

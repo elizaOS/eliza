@@ -168,6 +168,8 @@ function Harness(): React.JSX.Element {
     send: () => {},
     toggleRecording: () => {},
     toggleHandsFree: () => {},
+    micPermission: "unknown",
+    recheckMicPermission: async () => "unknown",
     toggleTranscriptionMode: () => {},
     stopTranscriptionAndMic: () => {},
     setDictationSink: () => {},
