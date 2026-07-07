@@ -49,6 +49,24 @@ const localOnly = new Set([
   // not exposed over the capability-router remote boundary (RemotePluginModuleManifest
   // has no shortcuts key and no remote-manifest builder reads it).
   "shortcuts",
+  // Pre-action dispatch hooks drained at the top of the chat loop; registered
+  // into the runtime ChatPreHandlerRegistry in-process, never mirrored over the
+  // remote wire (no manifest key, no builder reads it).
+  "chatPreHandlers",
+  // Package-dir resolution hint for the in-process view/hero/frame registry;
+  // the host resolves a remote plugin's bundles from its worker manifest, so
+  // this never crosses the remote boundary.
+  "packageName",
+  // Load-time preparation hook the plugin resolver runs before init on the host
+  // that owns the module; a remote worker prepares its own dependencies, so the
+  // hook is not part of the mirrored surface.
+  "preflight",
+  // Handler-free display/routing facts attached to `models`; consumed in-process
+  // by the model registry and not carried as its own manifest key.
+  "modelMetadata",
+  // Connector source names/aliases registered into the in-process runtime source
+  // map; connector plugins run direct, so this is not a remote-mirrored surface.
+  "connectorSources",
   "mode",
   "remote",
 ]);

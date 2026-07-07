@@ -234,8 +234,14 @@ describe("LifeOps scheduled-task simulation harness", () => {
     });
     expect(h.modelPrompts).toHaveLength(1);
     expect(h.modelPrompts[0]).toContain(reminder.promptInstructions);
-    expect(h.connectorSends[0]?.result).toEqual(
-      fired.metadata?.lastDispatchResult,
-    );
+    // The runner records the connector's raw result enriched with the
+    // delivering channel + resolved target (#14885, fix #14724): the connector
+    // itself only sees `{ ok, messageId }`, so lastDispatchResult is that plus
+    // the routing fields the dispatcher stamps ("discord:owner-room" → owner-room).
+    expect(fired.metadata?.lastDispatchResult).toEqual({
+      ...(h.connectorSends[0]?.result as object),
+      channelKey: "discord",
+      target: "owner-room",
+    });
   });
 });

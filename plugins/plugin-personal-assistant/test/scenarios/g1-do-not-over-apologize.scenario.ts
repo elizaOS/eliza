@@ -9,7 +9,7 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
   lane: "live-only",
-  id: "g1.overdue_comms.do_not_over_apologize",
+  id: "g1-do-not-over-apologize",
   title: "G1 overdue reply draft avoids guilt and therapy framing",
   domain: "lifeops.relationships",
   tags: ["lifeops", "gmail", "G1", "tone", "no-therapy", "outcome"],

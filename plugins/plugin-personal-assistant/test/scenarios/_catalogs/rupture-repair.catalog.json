@@ -21,7 +21,7 @@
       "status": "authored"
     },
     {
-      "id": "i1.rupture_repair.grounded_apology_draft",
+      "id": "i1-grounded-apology-draft",
       "pack": "I1",
       "tier": "T2",
       "surface": "scenario-runner",
@@ -35,7 +35,7 @@
       "status": "authored"
     },
     {
-      "id": "i1.rupture_repair.approval_before_send",
+      "id": "i1-approval-before-send",
       "pack": "I1",
       "tier": "T4",
       "surface": "scenario-runner",
@@ -49,7 +49,7 @@
       "status": "authored"
     },
     {
-      "id": "i1.rupture_repair.wrong_recipient_guard",
+      "id": "i1-wrong-recipient-guard",
       "pack": "I1",
       "tier": "T4",
       "surface": "scenario-runner",
@@ -63,7 +63,7 @@
       "status": "authored"
     },
     {
-      "id": "i1.rupture_repair.owner_declines_no_side_effect",
+      "id": "i1-owner-declines-no-side-effect",
       "pack": "I1",
       "tier": "T4",
       "surface": "scenario-runner",
@@ -77,7 +77,7 @@
       "status": "authored"
     },
     {
-      "id": "i1.rupture_repair.sensitive_event_defer",
+      "id": "i1-sensitive-event-defer",
       "pack": "I1",
       "tier": "T3",
       "surface": "scenario-runner",

@@ -128,7 +128,7 @@ describe("App standalone chat-overlay wiring", () => {
     expect(USE_NAVIGATION_STATE_TS).toContain('params.get("shellMode")');
     expect(USE_NAVIGATION_STATE_TS).toContain('params.get("shell-mode")');
     expect(USE_NAVIGATION_STATE_TS).toContain(
-      'window.history.pushState(null, "", pathWithCurrentShellMode(path))',
+      'shellHistory.pushState(null, "", pathWithCurrentShellMode(path))',
     );
   });
 

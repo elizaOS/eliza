@@ -7,7 +7,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
-  id: "h2.kg_capture.identity_merge_uses_engine",
+  id: "h2-identity-merge-uses-engine",
   title: "H2 duplicate identity capture uses ENTITY merge",
   domain: "lifeops.kg",
   tags: ["lifeops", "H2", "entity", "merge", "identity"],

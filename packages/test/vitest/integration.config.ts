@@ -97,6 +97,28 @@ const appControlSubpathAliases: ModuleAlias[] = existsSync(
       },
     ]
   : [];
+// plugin-app-manager was extracted from @elizaos/agent in #14459 but is not a
+// dependency of plugin-personal-assistant, so this lane's
+// `--filter='@elizaos/plugin-personal-assistant...'` build never emits its
+// dist. The agent source (which this lane aliases to src) imports it by its
+// bare `.` entry — resolvable only under the `eliza-source` exports condition
+// vite's SSR resolver ignores — so the whole PA plugin graph fails to boot.
+// Pin the package to its TS source, matching the discord/app-control pins.
+const appManagerSource = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-app-manager",
+  "src",
+  "index.ts",
+);
+const appManagerAliases: ModuleAlias[] = existsSync(appManagerSource)
+  ? [
+      {
+        find: /^@elizaos\/plugin-app-manager$/,
+        replacement: appManagerSource,
+      },
+    ]
+  : [];
 // Include/exclude globs are cwd-relative, but the eliza workspace sits at
 // `eliza/` in the nested eliza layout and at the repo root in a flat eliza
 // checkout (#11047). Derive the prefix instead of hardcoding `eliza/` so the
@@ -124,6 +146,7 @@ const integrationResolveAlias: ModuleAlias[] = [
   ...getOptionalPluginSdkAliases(repoRoot),
   ...discordSubpathAliases,
   ...appControlSubpathAliases,
+  ...appManagerAliases,
   ...(elizaCoreEntry
     ? [
         // Subpath aliases must precede the bare specifier. A bare-string

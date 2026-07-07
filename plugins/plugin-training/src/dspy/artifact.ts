@@ -28,6 +28,7 @@ export type DspyArtifactTask =
   | "morning_brief"
   | "health_checkin"
   | "screentime_recap"
+  | "creative_draft"
   | "action_descriptions"
   | "autonomy";
 

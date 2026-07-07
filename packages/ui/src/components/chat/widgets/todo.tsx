@@ -207,7 +207,7 @@ function TodayTodoRow({
       data-testid="today-todo-row"
       aria-label={`Complete todo "${todo.title}"`}
       onClick={onComplete}
-      className="flex min-h-11 w-full items-start gap-2 rounded-sm border border-white/15 bg-white/10 p-3 text-left text-white"
+      className="flex min-h-11 w-full items-start gap-2 rounded-sm border border-white/15 p-3 text-left text-white"
     >
       <Circle
         className={`mt-0.5 h-4 w-4 shrink-0 ${overdue ? "text-accent" : "text-white/70"}`}
@@ -259,9 +259,7 @@ function GoalAttentionRow({
       aria-label={`Goal "${goal.title}" ${status}. Open Goals.`}
       onClick={onOpen}
       className={`flex min-h-11 w-full items-start gap-2 rounded-sm border p-3 text-left ${
-        isHome
-          ? "border-white/15 bg-white/10 text-white"
-          : "border-border/50 bg-bg/70"
+        isHome ? "border-white/15 text-white" : "border-border/50 bg-bg/70"
       }`}
     >
       <Target

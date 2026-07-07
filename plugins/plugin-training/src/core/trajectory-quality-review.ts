@@ -42,6 +42,8 @@ export const LIFEOPS_QUALITY_RUBRICS: Record<LifeOpsTrainingTask, string> = {
     "The output is an appropriate health/sleep check-in for the input data: grounded in the numbers provided, empathetic but direct, with at most small actionable suggestions and no medical overreach.",
   screentime_recap:
     "The output accurately recaps the screen-time data in the input and proposes a proportionate focus adjustment. Numbers match the input; recommendations follow from them.",
+  creative_draft:
+    "The output drafts in the owner's voice from the supplied memos and style card: it preserves each memo's argument and affect, sounds like the owner rather than a consultant, respects any standing draft's accepted/vetoed edits, and invents no claims the memos do not support.",
 };
 
 /** One sampled model-boundary call queued for judging. */

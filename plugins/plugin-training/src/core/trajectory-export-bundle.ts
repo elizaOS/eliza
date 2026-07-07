@@ -145,6 +145,7 @@ function taskPathMap(
     morning_brief: paths.morningBriefPath,
     health_checkin: paths.healthCheckinPath,
     screentime_recap: paths.screentimeRecapPath,
+    creative_draft: paths.creativeDraftPath,
   };
 }
 

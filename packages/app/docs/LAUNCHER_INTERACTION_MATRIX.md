@@ -107,14 +107,16 @@ covered per-lane here.
 
 ## Gesture-handler source sites
 
-Every home↔launcher gesture originates in one of these two `packages/ui/src`
-handlers. The enforcement gate requires each to be mapped here — a new launcher
+Every home↔launcher gesture originates in the rail pager engine and its surface;
+a companion store carries the live "mid-gesture" signal the pager arms. The
+enforcement gate requires each source site to be mapped here — a new launcher
 gesture handler must land with its row.
 
 | Source site | Drives | Rows |
 |---|---|---|
 | `packages/ui/src/hooks/useHorizontalPager.ts` | The rail pager pointer-capture drag/flick engine | 1–8 |
 | `packages/ui/src/components/shell/HomeLauncherSurface.tsx` | Rail composition, inert/focus management, edge buttons | 1–10, 17–20 |
+| `packages/ui/src/state/rail-gesture-store.ts` | Live "rail is mid-gesture" freeze signal armed at the pager's rail-promotion window (`armRailPromotion`) and released on settle/axis-commit/unmount, so render work parks until the swipe settles | 1–8 |
 
 Tap-to-launch (rows 11–13) is a plain `onClick` on the launcher grid
 (`packages/ui/src/components/pages/Launcher.tsx`), not a pointer/touch gesture,

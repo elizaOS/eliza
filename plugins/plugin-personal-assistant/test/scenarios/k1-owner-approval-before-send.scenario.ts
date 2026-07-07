@@ -7,7 +7,7 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
   lane: "live-only",
-  id: "k1.third_party_support.owner_approval_before_send",
+  id: "k1-owner-approval-before-send",
   title: "K1 supportive friend draft waits for owner approval",
   domain: "lifeops.relationships",
   tags: ["lifeops", "K1", "third-party-support", "approval", "message-draft"],

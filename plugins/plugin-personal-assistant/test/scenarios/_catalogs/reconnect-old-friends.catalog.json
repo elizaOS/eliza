@@ -21,7 +21,7 @@
       "status": "authored"
     },
     {
-      "id": "g2.reconnect.grounded_reconnect_draft",
+      "id": "g2-grounded-reconnect-draft",
       "pack": "G2",
       "tier": "T2",
       "surface": "scenario-runner",
@@ -35,7 +35,7 @@
       "status": "authored"
     },
     {
-      "id": "g2.reconnect.cadence_watcher_due",
+      "id": "g2-cadence-watcher-due",
       "pack": "G2",
       "tier": "T3",
       "surface": "scenario-runner",
@@ -49,7 +49,7 @@
       "status": "authored"
     },
     {
-      "id": "g2.reconnect.ask_before_sensitive_memory",
+      "id": "g2-ask-before-sensitive-memory",
       "pack": "G2",
       "tier": "T4",
       "surface": "scenario-runner",
@@ -63,7 +63,7 @@
       "status": "authored"
     },
     {
-      "id": "g2.reconnect.post_send_followup",
+      "id": "g2-post-send-followup",
       "pack": "G2",
       "tier": "T3",
       "surface": "scenario-runner",

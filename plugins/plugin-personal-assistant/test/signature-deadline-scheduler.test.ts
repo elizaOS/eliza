@@ -105,27 +105,84 @@ describe("signature deadline scheduler", () => {
       },
     });
 
-    const result = await processDueScheduledTasks({
+    const repo = new LifeOpsRepository(runtime);
+
+    // First completion timeout does NOT skip: the no-reply retry ladder
+    // (#14459/#15055/#12284) snoozes the reminder for one 60-minute retry
+    // (`reminder` default policy: maxRetries 1, cadence [60], terminal skip →
+    // `no_reply_reminder_expired`) before giving up. `onSkip` only runs on the
+    // TERMINAL skip, so the SMS escalation is deferred until the ladder is
+    // exhausted — it is not scheduled on this first tick.
+    const firstTick = await processDueScheduledTasks({
       runtime,
       agentId: runtime.agentId,
       now: tickAt,
       limit: 5,
     });
 
-    expect(result.errors).toEqual([]);
-    expect(result.completionTimeouts).toEqual([
+    expect(firstTick.errors).toEqual([]);
+    expect(firstTick.completionTimeouts).toEqual([
       {
         taskId: seed.taskId,
-        status: "skipped",
-        reason: "completion_timeout_due",
+        status: "scheduled",
+        reason: "no_reply_retry_1",
         occurrenceAtIso: "2026-05-09T12:00:00.000Z",
       },
     ]);
+    const afterRetry = await repo.getScheduledTask(
+      runtime.agentId,
+      seed.taskId,
+    );
+    expect(afterRetry?.state.status).toBe("scheduled");
+    expect(afterRetry?.state.lastDecisionLog).toBe(
+      "no_reply_retry_1: completion_timeout_due",
+    );
+    expect(
+      (
+        await repo.listScheduledTasks(runtime.agentId, {
+          status: ["scheduled"],
+          subjectKind: "document",
+          subjectId: "doc_nda_123",
+        })
+      ).find((task) => task.state.pipelineParentId === seed.taskId),
+    ).toBeUndefined();
 
-    const repo = new LifeOpsRepository(runtime);
+    // The snooze re-fires the reminder at the retry instant (60 min later), so
+    // it is `fired` again and its completion window restarts.
+    const refireAt = new Date("2026-05-09T13:01:30.000Z");
+    await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: refireAt,
+      limit: 5,
+    });
+    const refired = await repo.getScheduledTask(runtime.agentId, seed.taskId);
+    expect(refired?.state.status).toBe("fired");
+
+    // Second completion timeout (240 min past the re-fire) exhausts the ladder:
+    // retryCount now equals maxRetries, so the reminder terminally skips and the
+    // `onSkip` SMS escalation follow-up is finally scheduled.
+    const terminalTick = new Date("2026-05-09T17:05:00.000Z");
+    const finalResult = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: terminalTick,
+      limit: 5,
+    });
+
+    expect(finalResult.errors).toEqual([]);
+    expect(finalResult.completionTimeouts).toEqual([
+      {
+        taskId: seed.taskId,
+        status: "skipped",
+        reason: "no_reply_reminder_expired",
+        occurrenceAtIso: "2026-05-09T17:01:30.000Z",
+      },
+    ]);
+
     const parent = await repo.getScheduledTask(runtime.agentId, seed.taskId);
     expect(parent?.state.status).toBe("skipped");
-    expect(parent?.state.lastDecisionLog).toBe("completion_timeout_due");
+    expect(parent?.state.lastDecisionLog).toBe("no_reply_reminder_expired");
 
     const tasks = await repo.listScheduledTasks(runtime.agentId, {
       status: ["scheduled"],

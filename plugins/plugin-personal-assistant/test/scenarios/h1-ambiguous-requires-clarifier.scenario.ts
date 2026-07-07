@@ -8,7 +8,7 @@ import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action
 
 export default scenario({
   lane: "live-only",
-  id: "h1.relationship_type.ambiguous_requires_clarifier",
+  id: "h1-ambiguous-requires-clarifier",
   title: "H1 ambiguous relationship signal asks instead of asserting",
   domain: "lifeops.relationships",
   tags: ["lifeops", "H1", "relationships", "uncertainty", "no-fabrication"],

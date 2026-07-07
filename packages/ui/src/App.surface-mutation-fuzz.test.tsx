@@ -37,7 +37,11 @@ import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BuiltinTab } from "./navigation";
 import type { BackgroundConfig } from "./state/ui-preferences";
-import { SurfaceRealmDeniedError, getActiveSurfaceRealmScope, surfaceViewStoragePrefix } from "./surface-realm-broker";
+import {
+  SurfaceRealmDeniedError,
+  getActiveSurfaceRealmScope,
+  surfaceViewStoragePrefix,
+} from "./surface-realm-broker";
 import { shellHistory, shellLocalStorage } from "./surface-realm-channel";
 
 const appState = vi.hoisted(() => ({
@@ -715,9 +719,9 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     writeChatDraft(conversationId, "half-typed message");
     expect(readChatDraft(conversationId)).toBe("half-typed message");
     // It landed under the real reserved key, not a view-namespaced fallback.
-    expect(window.localStorage.getItem(chatDraftStorageKey(conversationId))).toBe(
-      "half-typed message",
-    );
+    expect(
+      window.localStorage.getItem(chatDraftStorageKey(conversationId)),
+    ).toBe("half-typed message");
     // Clearing (removeItem on the reserved key) also works under the scope.
     writeChatDraft(conversationId, "");
     expect(readChatDraft(conversationId)).toBeNull();

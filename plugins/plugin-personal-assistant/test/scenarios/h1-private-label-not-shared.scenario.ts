@@ -7,7 +7,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
-  id: "h1.relationship_type.private_label_not_shared",
+  id: "h1-private-label-not-shared",
   title: "H1 ex-partner label is stored structurally without commentary",
   domain: "lifeops.relationships",
   tags: ["lifeops", "H1", "relationships", "privacy", "no-therapy"],

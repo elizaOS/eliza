@@ -19,11 +19,12 @@ const DEV_SMOKE_WORKFLOW = path.join(
 const ROOT_PACKAGE_JSON = path.join(REPO_ROOT, "package.json");
 const APP_PACKAGE_JSON = path.join(REPO_ROOT, "packages/app/package.json");
 
-const EXPECTED_NON_WORKSPACE_HMR_PROBES = new Set([
-  "shopify plugins/plugin-shopify/src/ShopifyView.tsx",
-  "social-alpha plugins/plugin-social-alpha/src/frontend/SocialAlphaView.tsx",
-  "trajectory-logger plugins/plugin-trajectory-logger/src/components/TrajectoryLoggerView.tsx",
-]);
+// Documented non-workspace HMR probes: entries whose source file lives outside
+// the workspace tree (so `probePathExists` legitimately fails) but that stay in
+// the matrix. Empty now — the shopify + social-alpha plugin views were removed
+// from the workspace (their probe levels dropped with them), and
+// plugin-trajectory-logger's view source is back in the workspace tree.
+const EXPECTED_NON_WORKSPACE_HMR_PROBES = new Set<string>([]);
 
 type GuiViewCase = {
   id: string;

@@ -17,6 +17,7 @@ import {
 } from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { isMobileLocalAgentIpcUrl } from "../first-run/mobile-runtime-mode";
+import { shellLocalStorage } from "../surface-realm-channel";
 import {
   clearElizaApiBase,
   getElizaApiBase,
@@ -763,10 +764,17 @@ export class ElizaClient {
       clearElizaApiBase();
     }
     if (typeof window !== "undefined") {
+      // `elizaos_api_base` is a shell-reserved key (the `elizaos_` prefix), so a
+      // RAW localStorage write is denied by the surface-realm guard whenever a
+      // view surface scope is foreground (#15247/#15307) — and this runs from the
+      // startup restore phase while the chat view is already mounted. The API
+      // client is shell infrastructure writing its own reserved key, so it routes
+      // through the privileged `shellLocalStorage` channel, same as the other
+      // shell writers. (sessionStorage is unguarded; the legacy cleanup stays raw.)
       if (normalized) {
-        window.localStorage.setItem(LOCAL_STORAGE_API_BASE_KEY, normalized);
+        shellLocalStorage.setItem(LOCAL_STORAGE_API_BASE_KEY, normalized);
       } else {
-        window.localStorage.removeItem(LOCAL_STORAGE_API_BASE_KEY);
+        shellLocalStorage.removeItem(LOCAL_STORAGE_API_BASE_KEY);
       }
       // Clean up legacy sessionStorage entry (same key was used historically)
       window.sessionStorage.removeItem(LOCAL_STORAGE_API_BASE_KEY);

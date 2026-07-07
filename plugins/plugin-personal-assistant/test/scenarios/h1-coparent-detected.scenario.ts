@@ -7,7 +7,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
-  id: "h1.relationship_type.coparent_detected",
+  id: "h1-coparent-detected",
   title: "H1 co-parent history lands as co_parent_of",
   domain: "lifeops.relationships",
   tags: ["lifeops", "H1", "relationships", "co-parenting", "entity"],

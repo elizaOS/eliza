@@ -57,7 +57,7 @@ function expectRelationshipFollowupCreatedAndListed() {
 
 export default scenario({
   lane: "live-only",
-  id: "g1.overdue_comms.followup_cadence_reset",
+  id: "g1-followup-cadence-reset",
   title: "G1 overdue communication cadence uses relationship follow-up tasks",
   domain: "lifeops.relationships",
   tags: ["lifeops", "G1", "followup", "scheduled-task", "outcome"],

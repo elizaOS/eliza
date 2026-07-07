@@ -129,6 +129,10 @@ vi.mock("@elizaos/ui/utils", () => ({
   parsePositiveInteger: (value: string) => Number.parseInt(value, 10),
 }));
 
+// FineTuningView pulls Textarea and the Select family straight from the barrel
+// (its own AgentTextAreaField/AgentNativeSelect), so every referenced barrel
+// symbol must be present — a missing one makes vitest's mock proxy throw
+// "No <name> export" and abort the render before any assertion runs.
 vi.mock("@elizaos/ui/components", () => ({
   Button: ({
     children,
@@ -138,6 +142,21 @@ vi.mock("@elizaos/ui/components", () => ({
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
     React.createElement("input", props),
   registerDetailExtension: vi.fn(),
+  Select: ({ children }: { children: React.ReactNode }) =>
+    React.createElement("select", {}, children),
+  SelectContent: ({ children }: { children: React.ReactNode }) =>
+    React.createElement(React.Fragment, {}, children),
+  SelectItem: ({
+    value,
+    children,
+  }: {
+    value: string;
+    children: React.ReactNode;
+  }) => React.createElement("option", { value }, children),
+  SelectTrigger: () => null,
+  SelectValue: () => null,
+  Textarea: (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) =>
+    React.createElement("textarea", props),
 }));
 
 vi.mock("@elizaos/ui/components/ui/select", () => ({

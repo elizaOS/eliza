@@ -308,6 +308,7 @@ export const LIFEOPS_SCORER_TASKS = [
   "morning_brief",
   "health_checkin",
   "screentime_recap",
+  "creative_draft",
 ] as const;
 
 /** LifeOps tasks whose output is a structured JSON object (exact-field match). */

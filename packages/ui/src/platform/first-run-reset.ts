@@ -126,7 +126,13 @@ export function applyForceFreshFirstRunReset(args?: {
 
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.removeItem("elizaos_api_base");
+      // `elizaos_api_base` is a shell-reserved key (`elizaos_` prefix): the
+      // raw-global guard denies a plain localStorage.removeItem while a view is
+      // foreground (#15307), so this shell cleanup goes through the privileged
+      // channel. sessionStorage is unguarded and stays raw.
+      runAsPrivilegedShell(() =>
+        window.localStorage.removeItem("elizaos_api_base"),
+      );
       window.sessionStorage.removeItem("elizaos_api_base");
     } catch {
       // Ignore storage failures during startup.

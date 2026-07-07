@@ -9,7 +9,7 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
   lane: "live-only",
-  id: "g2.reconnect.grounded_reconnect_draft",
+  id: "g2-grounded-reconnect-draft",
   title: "G2 reconnect draft is grounded in shared history and held",
   domain: "lifeops.relationships",
   tags: ["lifeops", "G2", "relationships", "reconnect", "approval"],

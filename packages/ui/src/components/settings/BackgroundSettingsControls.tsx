@@ -98,9 +98,9 @@ function TileFrame({
     <span
       className={cn(
         "group/tile relative flex aspect-[3/4] w-full min-h-touch flex-col justify-end overflow-hidden rounded-2xl text-left transition-transform duration-200 ease-out",
-        "ring-1 ring-inset ring-border/50 group-hover/btn:-translate-y-0.5 group-active/btn:scale-[0.98]",
+        "border border-border/50 group-hover/btn:-translate-y-0.5 group-active/btn:scale-[0.98]",
         selected &&
-          "ring-2 ring-inset ring-accent shadow-[0_8px_28px_-14px_var(--color-scrim)]",
+          "border-2 border-accent shadow-[0_8px_28px_-14px_var(--color-scrim)]",
         className,
       )}
       style={style}
@@ -156,7 +156,7 @@ function CatalogTile({
       aria-label={`Set background to ${entry.label}`}
       aria-pressed={selected}
       title={`${entry.label}. ${entry.description}`}
-      className="group/btn block w-full rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+      className="group/btn block w-full rounded-2xl outline-none"
       {...agentProps}
     >
       <TileFrame

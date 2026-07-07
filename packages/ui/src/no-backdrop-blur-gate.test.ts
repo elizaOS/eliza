@@ -71,6 +71,22 @@ const ALLOWED_BLUR = new Set<string>([
   "packages/ui/src/components/shell/NotificationBanners.tsx",
   "packages/ui/src/components/shell/BuildBadge.tsx",
   "packages/ui/src/components/chat/widgets/home-widget-card.tsx",
+  // The unified liquid-glass system (GlassSurface + its tokens/native bridge).
+  // The blur is the CSS-tier material for stable chrome (sheets at rest, pills,
+  // menus, headers) and is switched OFF entirely on the ios26-native tier
+  // (`data-glass-tier="ios26-native"` → `backdrop-filter: none`, a real
+  // UIGlassEffect replaces it). Same product direction as the shell
+  // liquid-glass surfaces above; this generalizes them into one primitive.
+  "packages/ui/src/glass/GlassSurface.tsx",
+  "packages/ui/src/glass/tokens.ts",
+  "packages/ui/src/glass/useNativeGlass.ts",
+  // The theme-aware wallpaper readability scrim (`app-background-scrim`): a
+  // frosted veil (bg/75 + blur) applied ONLY on text-dense shared-background
+  // views (`wallpaperScrimActive`), so agent copy stays legible over any
+  // wallpaper. Immersive surfaces (chat, /background, launcher roots) render
+  // unscrimmed, so the blur is not on the hottest scroll paths. Explicit
+  // product direction for legibility (fix: theme-aware frosted wallpaper scrim).
+  "packages/ui/src/App.tsx",
   // Comment-only reference (documents the notification-stack blur it mirrors);
   // no runtime backdrop-filter of its own.
   "packages/ui/src/hooks/useHorizontalPager.ts",

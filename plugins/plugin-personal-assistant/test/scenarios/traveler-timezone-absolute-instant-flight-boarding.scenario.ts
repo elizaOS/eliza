@@ -2,7 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
-  id: "traveler.timezone.absolute-instant-flight-boarding",
+  id: "traveler-timezone-absolute-instant-flight-boarding",
   title:
     "Traveler: absolute-instant reminder survives a timezone-change signal",
   domain: "executive.travel",

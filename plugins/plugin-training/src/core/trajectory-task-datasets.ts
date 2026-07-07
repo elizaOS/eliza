@@ -50,6 +50,7 @@ export const ALL_TRAJECTORY_TRAINING_TASKS = [
   "morning_brief",
   "health_checkin",
   "screentime_recap",
+  "creative_draft",
 ] as const;
 
 export type TrajectoryTrainingTask =
@@ -65,6 +66,7 @@ export const LIFEOPS_TRAINING_TASKS = [
   "morning_brief",
   "health_checkin",
   "screentime_recap",
+  "creative_draft",
 ] as const satisfies readonly TrajectoryTrainingTask[];
 
 export type LifeOpsTrainingTask = (typeof LIFEOPS_TRAINING_TASKS)[number];
@@ -95,6 +97,7 @@ export interface TrajectoryTaskDatasetPaths {
   morningBriefPath: string;
   healthCheckinPath: string;
   screentimeRecapPath: string;
+  creativeDraftPath: string;
   summaryPath: string;
 }
 
@@ -147,6 +150,7 @@ const TASK_FILE_NAMES: Record<TrajectoryTrainingTask, string> = {
   morning_brief: "morning_brief_trajectories.jsonl",
   health_checkin: "health_checkin_trajectories.jsonl",
   screentime_recap: "screentime_recap_trajectories.jsonl",
+  creative_draft: "creative_draft_trajectories.jsonl",
 };
 
 const NATIVE_MODEL_BOUNDARIES = new Set<string>(ELIZA_NATIVE_MODEL_BOUNDARIES);
@@ -761,6 +765,7 @@ export async function exportTrajectoryTaskDatasets(
     morningBriefPath: join(outputDir, TASK_FILE_NAMES.morning_brief),
     healthCheckinPath: join(outputDir, TASK_FILE_NAMES.health_checkin),
     screentimeRecapPath: join(outputDir, TASK_FILE_NAMES.screentime_recap),
+    creativeDraftPath: join(outputDir, TASK_FILE_NAMES.creative_draft),
     summaryPath: join(outputDir, "trajectory_dataset_summary.json"),
   };
   const summary: TrajectoryTaskDatasetSummary = {

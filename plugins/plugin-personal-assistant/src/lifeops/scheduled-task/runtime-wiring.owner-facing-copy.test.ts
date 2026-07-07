@@ -118,8 +118,12 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
     });
 
     expect(result?.ok).toBe(true);
-    // The instruction fed the model as opaque prompt payload...
-    expect(modelPrompts).toHaveLength(1);
+    // The instruction fed the model as opaque prompt payload... Two model calls
+    // fire for an in_app dispatch with a notifier: [0] renders the owner-facing
+    // message body, [1] renders the notification title from that body
+    // (renderScheduledDispatchTitle). The instruction only ever reaches the
+    // first (message) prompt.
+    expect(modelPrompts).toHaveLength(2);
     expect(modelPrompts[0]).toContain(record.promptInstructions);
     // ...and only the model's rendering reached the user-visible surfaces.
     expect(agentMocks.eventService.emit).toHaveBeenCalledTimes(1);
@@ -158,8 +162,11 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
     });
 
     expect(morningBriefMocks.assembleMorningBrief).toHaveBeenCalledTimes(1);
-    // Delegated assembly supplies the real brief; the render seam is not used.
-    expect(modelPrompts).toHaveLength(0);
+    // Delegated assembly supplies the real brief, so the message-render seam is
+    // never used. The single model call is the notification-title render
+    // (renderScheduledDispatchTitle), which derives the title from the already
+    // assembled summaryText — never from raw promptInstructions.
+    expect(modelPrompts).toHaveLength(1);
     expect(agentMocks.eventService.emit).toHaveBeenCalledTimes(1);
     const emitted = agentMocks.eventService.emit.mock.calls[0]?.[0];
     if (!emitted) throw new Error("assistant event missing");
@@ -321,7 +328,10 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
     });
 
     expect(result?.ok).toBe(true);
-    expect(modelPrompts).toHaveLength(0);
+    // The message-render seam stays unused on the degrade path (the honest
+    // "couldn't assemble" copy is a fixed string, not a model render). The one
+    // model call is the notification-title render over that fixed body.
+    expect(modelPrompts).toHaveLength(1);
     const emitted = agentMocks.eventService.emit.mock.calls[0]?.[0];
     if (!emitted) throw new Error("assistant event missing");
     expect(emitted.data.text).toBe(

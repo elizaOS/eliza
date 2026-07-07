@@ -9,7 +9,7 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
   lane: "live-only",
-  id: "i1.rupture_repair.owner_declines_no_side_effect",
+  id: "i1-owner-declines-no-side-effect",
   title: "I1 declines adjudication and produces no side effect",
   domain: "lifeops.relationships",
   tags: ["lifeops", "I1", "boundary", "no-send", "relationships"],

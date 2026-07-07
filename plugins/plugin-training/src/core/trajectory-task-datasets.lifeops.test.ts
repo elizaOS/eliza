@@ -99,6 +99,6 @@ describe("LifeOps trajectory task datasets", () => {
     for (const task of LIFEOPS_TRAINING_TASKS) {
       expect(ALL_TRAJECTORY_TRAINING_TASKS).toContain(task);
     }
-    expect(ALL_TRAJECTORY_TRAINING_TASKS).toHaveLength(14);
+    expect(ALL_TRAJECTORY_TRAINING_TASKS).toHaveLength(15);
   });
 });

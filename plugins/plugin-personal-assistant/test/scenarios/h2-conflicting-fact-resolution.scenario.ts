@@ -7,7 +7,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
-  id: "h2.kg_capture.conflicting_fact_resolution",
+  id: "h2-conflicting-fact-resolution",
   title: "H2 owner correction supersedes captured relationship fact",
   domain: "lifeops.kg",
   tags: ["lifeops", "H2", "entity", "correction", "relationship"],

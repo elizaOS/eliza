@@ -90,8 +90,12 @@ export const SURFACE_VIEW_STORAGE_PREFIX = "surface:view:";
 // the owner's theme, background, wallet, or server records.
 const SHELL_RESERVED_STORAGE_PREFIXES = [
   "eliza:",
-  "elizaos:",
+  "eliza.",
+  "eliza-",
   "eliza_",
+  "elizaos:",
+  "elizaos.",
+  "elizaos_",
 ] as const;
 
 /** Whether a storage key belongs to the shell's own reserved namespace. */
@@ -483,16 +487,24 @@ function assertRawStorageWriteAllowed(op: string, key: string): void {
 
 function guardedLocalStorage(backing: Storage): Storage {
   const guardedClear = (): void => {
-    if (isPrivilegedShellActive() || activeScope === null) {
+    const scope = activeScope;
+    if (isPrivilegedShellActive() || scope === null) {
       backing.clear();
       return;
     }
     // Facade parity with hostScopedStorage.clear(): a view-path clear may wipe
-    // its own reach, never the shell's reserved keys.
+    // exactly its own REACH. A `storage`-granted view reaches every
+    // non-reserved key; an ungranted view reaches only its own
+    // `surface:view:<id>:` namespace — never the shell's reserved keys and
+    // never another view's namespace.
+    const granted = surfaceGrants(scope.manifest, "storage");
+    const ownPrefix = surfaceViewStoragePrefix(scope.viewId);
     const removable: string[] = [];
     for (let i = 0; i < backing.length; i += 1) {
       const key = backing.key(i);
-      if (key !== null && !isShellReservedStorageKey(key)) removable.push(key);
+      if (key === null) continue;
+      if (granted ? !isShellReservedStorageKey(key) : key.startsWith(ownPrefix))
+        removable.push(key);
     }
     for (const key of removable) backing.removeItem(key);
   };
@@ -552,9 +564,15 @@ function assertRawHistoryMutationAllowed(
     return;
   }
   const current = window.location;
-  // Hash/query-only mutation stays within the view's own page — the shell
-  // route (origin + path) is what the `navigate` grant protects.
-  if (next.origin === current.origin && next.pathname === current.pathname) {
+  // Hash-only mutation stays within the view's own page. The QUERY STRING is
+  // shell routing state (`?runtime=first-run`, `?enableRuntimeChooser`,
+  // assistant-launch payloads are consumed by shell boot paths), so it is
+  // protected by the `navigate` grant exactly like the pathname.
+  if (
+    next.origin === current.origin &&
+    next.pathname === current.pathname &&
+    next.search === current.search
+  ) {
     return;
   }
   throw new SurfaceRealmDeniedError(

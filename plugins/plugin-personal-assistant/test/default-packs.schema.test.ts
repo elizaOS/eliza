@@ -357,10 +357,20 @@ describe("W1-D default escalation ladders", () => {
   });
 
   it("priority_high_default has connected-channel candidates ending in in_app", () => {
+    // #14881 (fix #14714) expanded the high-priority ladder to the full
+    // connector-backed candidate set in urgency-fit order; the runner skips
+    // disconnected channels at fire time and keeps in_app as the guaranteed
+    // final rung (see escalation-ladders.ts).
     expect(DEFAULT_ESCALATION_LADDERS.priority_high_default.steps).toEqual([
-      { delayMinutes: 0, channelKey: "in_app", intensity: "soft" },
       { delayMinutes: 15, channelKey: "push", intensity: "normal" },
+      { delayMinutes: 45, channelKey: "telegram", intensity: "urgent" },
+      { delayMinutes: 45, channelKey: "signal", intensity: "urgent" },
+      { delayMinutes: 45, channelKey: "whatsapp", intensity: "urgent" },
+      { delayMinutes: 45, channelKey: "discord", intensity: "urgent" },
+      { delayMinutes: 45, channelKey: "sms", intensity: "urgent" },
+      { delayMinutes: 45, channelKey: "voice", intensity: "urgent" },
       { delayMinutes: 45, channelKey: "imessage", intensity: "urgent" },
+      { delayMinutes: 45, channelKey: "in_app", intensity: "urgent" },
     ]);
   });
 });

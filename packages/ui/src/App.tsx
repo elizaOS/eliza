@@ -135,7 +135,10 @@ import {
   firstRunOwnsLoginSurface,
 } from "./state/top-level-auth-gate";
 import { isLoopbackGatewayHost } from "./state/use-startup-shell-controller";
-import { SurfaceRealmScope, setActiveSurfaceRealmScope } from "./surface-realm-broker";
+import {
+  SurfaceRealmScope,
+  setActiveSurfaceRealmScope,
+} from "./surface-realm-broker";
 import { shellHistory } from "./surface-realm-channel";
 import { TutorialConductorMount } from "./tutorial/TutorialConductor";
 import { confirmDesktopAction } from "./utils/desktop-dialogs";

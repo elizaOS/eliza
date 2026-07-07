@@ -588,6 +588,25 @@ export default defineConfig({
           "index.ts",
         ),
       },
+      // The scenario-corpus gate dynamically imports every scenario file, and the
+      // first-run onboarding helper (test/scenarios/_helpers/first-run-onboarding.ts)
+      // pulls PA's OWN deep modules through the package specifier
+      // (`@elizaos/plugin-personal-assistant/lifeops/first-run/*`). PA is not in
+      // build:core and this lane has no eliza-source condition, so the package
+      // `exports` `./*` wildcard would send those subpaths to a `./dist/*.js` that
+      // never gets built. Anchor PA self-subpaths to source (the base workspace-app
+      // config only source-aliases the barrel, and the exports-alias builder skips
+      // the wildcard entry).
+      {
+        find: /^@elizaos\/plugin-personal-assistant\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-personal-assistant",
+          "src",
+          "$1.ts",
+        ),
+      },
       // The scenario-corpus gate (test/executive-assistant-scenarios.test.ts)
       // imports the real scenario loader from source; loader.ts references its
       // own package via `@elizaos/scenario-runner/schema`, a self-referencing
@@ -700,6 +719,23 @@ export default defineConfig({
           "plugin-elizacloud",
           "src",
           "cloud",
+          "$1.ts",
+        ),
+      },
+      // PA's barrel re-exports the travel-provider relay route from
+      // `@elizaos/plugin-elizacloud/routes/*`. elizacloud is stubbed at the
+      // barrel and not in build:core, so — exactly like the `/cloud/` subpath
+      // above — this deep subpath must be anchored to source; without it the
+      // package `exports` map sends it to a `./dist/*.js` that never gets built
+      // in this lane.
+      {
+        find: /^@elizaos\/plugin-elizacloud\/routes\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-elizacloud",
+          "src",
+          "routes",
           "$1.ts",
         ),
       },

@@ -63,10 +63,10 @@ const VALIDATED: Readonly<
  * CONTRACT_TESTED — a recorded-real contract test only (the parser is proven
  * against a captured real response; no live-drift test yet). Maps each api to its
  * specific contract test file. Promote to VALIDATED by adding a live-drift test.
+ * Empty for now (plugin-shopify was removed from the workspace); a newly
+ * contract-tested API is added here.
  */
-const CONTRACT_TESTED: Readonly<Record<string, string>> = {
-  shopify: "plugins/plugin-shopify/src/routes.contract.test.ts",
-};
+const CONTRACT_TESTED: Readonly<Record<string, string>> = {};
 
 /**
  * UNVALIDATED — inline fixtures only, no recorded-real tie. RATCHET: this set may

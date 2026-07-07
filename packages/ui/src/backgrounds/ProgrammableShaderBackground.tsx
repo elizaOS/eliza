@@ -36,7 +36,7 @@ import {
 
 /** Present cap while the home↔launcher rail is mid-gesture (#15282): the
  * compositor is already translating the promoted rail layer (plus, on one half,
- * a backdrop-blur notification stack), so the wallpaper drops to ~15fps to free
+ * a blurred notification stack), so the wallpaper drops to ~15fps to free
  * GPU/main-thread budget for the swipe. u_time stays wall-clock derived, so a
  * skipped present never desyncs shader time — resume needs no fix-up. */
 const RAIL_GESTURE_FRAME_INTERVAL_MS = 66;

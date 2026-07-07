@@ -9,7 +9,7 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
   lane: "live-only",
-  id: "i1.rupture_repair.grounded_apology_draft",
+  id: "i1-grounded-apology-draft",
   title: "I1 sister-fight apology draft is grounded and approval-gated",
   domain: "lifeops.relationships",
   tags: ["lifeops", "I1", "rupture-repair", "approval", "relationships"],

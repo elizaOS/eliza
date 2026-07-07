@@ -22,7 +22,7 @@
       "notes": "Live Cerebras gpt-oss-120b passed (judge 1.00): explained the urgency-vs-importance distinction clearly as separate axes."
     },
     {
-      "id": "comms-flood.injection-via-forwarded-email",
+      "id": "comms-flood-injection-via-forwarded-email",
       "pack": "D1",
       "tier": "T4",
       "surface": "scenario-runner",

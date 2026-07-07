@@ -23,10 +23,13 @@ import {
   shouldPassAfterBaselineUpdate,
 } from "./check-startup-budget.mjs";
 
-const SCRIPT_PATH = path.resolve(
-  process.cwd(),
-  "packages/app/scripts/check-startup-budget.mjs",
-);
+// Resolve the CLI relative to this test file (a sibling .mjs), not
+// process.cwd(): the client test lane runs vitest from packages/app, so a
+// cwd-relative "packages/app/..." path doubles into
+// packages/app/packages/app/... and the spawned Node can't find the module.
+// import.meta.dirname is a plain filesystem string, so it sidesteps jsdom's
+// http base-URL override that breaks fileURLToPath(import.meta.url) here.
+const SCRIPT_PATH = path.join(import.meta.dirname, "check-startup-budget.mjs");
 
 function traceRun(kind: string, marks: Array<[string, number]>, extra = {}) {
   return {

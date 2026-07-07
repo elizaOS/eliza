@@ -388,7 +388,12 @@ describe("decideDispatchPolicy (W1-F dispatch policy)", () => {
     });
   });
 
-  it("user-actionable failure on the last step → fail (terminal beats degraded)", () => {
+  it("user-actionable failure on the last step → surface_degraded (owner still sees the fix)", () => {
+    // #14881 (fix #14714) reordered the policy so a user-actionable failure such
+    // as auth_expired surfaces the connector-degradation even on the final rung:
+    // the owner must still be told what to re-auth rather than have the
+    // degradation surface swallowed by a terminal fail. The userActionable check
+    // now precedes the isLastStep terminal check by design.
     const result: DispatchResult = {
       ok: false,
       reason: "auth_expired",
@@ -397,7 +402,7 @@ describe("decideDispatchPolicy (W1-F dispatch policy)", () => {
     expect(
       decideDispatchPolicy(result, { currentStepIndex: 0, totalSteps: 1 }),
     ).toEqual({
-      kind: "fail",
+      kind: "surface_degraded",
       reason: "auth_expired",
       message: undefined,
     });

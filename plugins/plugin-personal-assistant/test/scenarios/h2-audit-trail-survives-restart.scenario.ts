@@ -7,7 +7,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
-  id: "h2.kg_capture.audit_trail_survives_restart",
+  id: "h2-audit-trail-survives-restart",
   title: "H2 captured relationship carries stable source evidence",
   domain: "lifeops.kg",
   tags: ["lifeops", "H2", "entity", "provenance", "audit"],

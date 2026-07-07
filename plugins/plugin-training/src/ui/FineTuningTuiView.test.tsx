@@ -116,13 +116,34 @@ vi.mock("../../../../packages/ui/src/api/index.ts", () => ({
   client: trainingClient,
 }));
 
+// The real FineTuningView pulls Button/Input/Textarea and the Select family
+// straight from this barrel (its AgentTextField/AgentTextAreaField/
+// AgentNativeSelect). Every referenced symbol must be present or vitest's mock
+// proxy throws "No <name> export" and aborts the render before any assertion.
 vi.mock("@elizaos/ui/components", () => ({
   Button: ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
     React.createElement("button", { type: "button", ...props }, children),
+  Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
+    React.createElement("input", props),
   registerDetailExtension: uiExtensionMocks.registerDetailExtension,
+  Select: ({ children }: { children: React.ReactNode }) =>
+    React.createElement("select", {}, children),
+  SelectContent: ({ children }: { children: React.ReactNode }) =>
+    React.createElement(React.Fragment, {}, children),
+  SelectItem: ({
+    value,
+    children,
+  }: {
+    value: string;
+    children: React.ReactNode;
+  }) => React.createElement("option", { value }, children),
+  SelectTrigger: () => null,
+  SelectValue: () => null,
+  Textarea: (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) =>
+    React.createElement("textarea", props),
 }));
 
 // FineTuningView reads useApp/useAppSelector from @elizaos/ui/state (not the

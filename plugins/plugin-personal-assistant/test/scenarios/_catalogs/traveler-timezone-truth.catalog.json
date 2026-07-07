@@ -22,7 +22,7 @@
       "notes": "Live-only. Original live report flagged the 3am JST conflict, but the persisted definition stored dueAt 2026-07-05T13:00:00.000Z (22:00 JST), so this awaits recapture with expectedDueLocalTimes passing. Live-verify deferred to the key boundary (#12781). Live Cerebras gpt-oss-120b passed 2026-07-04 (TZ=UTC, judge 1.00): converted 2pm US Eastern to 3am Tokyo (DST-correct), flagged the biological-night conflict, offered an alternate slot, and stored the once reminder at 03:00 Asia/Tokyo. (First attempt stored 04:00 JST — an EST-vs-EDT slip — so this bar is sensitive to model DST handling.)"
     },
     {
-      "id": "traveler.timezone.absolute-instant-flight-boarding",
+      "id": "traveler-timezone-absolute-instant-flight-boarding",
       "pack": "C1",
       "tier": "T2",
       "surface": "scenario-runner",

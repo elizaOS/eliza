@@ -771,7 +771,10 @@ async function writeIosPreferenceSmokeResult(
     updatedAt: new Date().toISOString(),
   });
   try {
-    Storage.prototype.setItem.call(window.localStorage, key, value);
+    // shellLocalStorage, not Storage.prototype.call: the surface-realm guard
+    // Proxy does not forward Storage internal slots, so a prototype-bound call
+    // throws "Illegal invocation" once any view has mounted.
+    shellLocalStorage.setItem(key, value);
   } catch {
     // error-policy:J6 best-effort echo — Preferences is the simulator
     // harness source of truth

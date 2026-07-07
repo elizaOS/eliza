@@ -8,7 +8,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
-  id: "k1.third_party_support.no_988_without_danger",
+  id: "k1-no-988-without-danger",
   title: "K1 crisis-adjacent friend support does not fabricate a guard",
   domain: "lifeops.relationships",
   tags: ["lifeops", "K1", "third-party-support", "safety-boundary"],

@@ -781,19 +781,33 @@ test.describe("assistant home app flow", () => {
 
     await page.unroute("**/api/first-run/status");
     await seedAssistantFlowStorage(page);
-    await page.evaluate(() => {
-      localStorage.removeItem("elizaos:first-run:force-fresh");
-      localStorage.setItem("eliza:first-run-complete", "1");
-      localStorage.setItem("eliza:setup:step", "activate");
-      localStorage.setItem("eliza:ui-shell-mode", "native");
-      localStorage.setItem(
-        "elizaos:active-server",
-        JSON.stringify({
-          id: "local:embedded",
-          kind: "local",
-          label: "This device",
-        }),
-      );
+    // Advance to the ready phase by seeding the "first-run complete" shell state.
+    // These are all shell-reserved keys (`eliza:`/`elizaos:`), so the
+    // surface-realm raw-global guard (#15247) denies a raw `localStorage` write
+    // from the page while the first-run chat surface scope is active — the same
+    // rule production shell code satisfies via `shellLocalStorage`. Seed them
+    // through `addInitScript` instead: it runs on the next `page.goto`
+    // (openReadyChat) before any view mounts and installs the guard, so the
+    // writes land in the pre-guard shell context, matching how the other ready-
+    // state gates here (seedAssistantFlowStorage / installReadyDesktopStatusBridge)
+    // are seeded.
+    await page.addInitScript(() => {
+      try {
+        localStorage.removeItem("elizaos:first-run:force-fresh");
+        localStorage.setItem("eliza:first-run-complete", "1");
+        localStorage.setItem("eliza:setup:step", "activate");
+        localStorage.setItem("eliza:ui-shell-mode", "native");
+        localStorage.setItem(
+          "elizaos:active-server",
+          JSON.stringify({
+            id: "local:embedded",
+            kind: "local",
+            label: "This device",
+          }),
+        );
+      } catch {
+        // Sandboxed or opaque-origin frames can deny Web Storage access.
+      }
     });
     await installReadyDesktopStatusBridge(page);
     await installAssistantFlowRoutes(page);
