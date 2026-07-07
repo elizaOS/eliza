@@ -49,10 +49,6 @@
       "@elizaos/capacitor-screencapture": [
         "../../plugins/plugin-native-screencapture/dist/esm/index.d.ts"
       ],
-      "@elizaos/capacitor-*": ["../native-plugins/*/dist/index.d.ts"],
-      "@elizaos/native-activity-tracker": [
-        "../native-plugins/activity-tracker/dist/index.d.ts"
-      ],
       "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
       "react": ["./node_modules/@types/react/index.d.ts"],
@@ -60,8 +56,7 @@
       "react/jsx-dev-runtime": [
         "./node_modules/@types/react/jsx-dev-runtime.d.ts"
       ],
-      "react-dom": ["./node_modules/@types/react-dom/index.d.ts"],
-      "lucide-react": ["./node_modules/lucide-react"]
+      "react-dom": ["./node_modules/@types/react-dom/index.d.ts"]
     }
   },
   "exclude": [

@@ -4,7 +4,7 @@
   "description": "NEAR AI Cloud TEE inference provider via an OpenAI-compatible API.",
   "npmName": "@elizaos/plugin-nearai",
   "version": "2.0.3",
-  "source": "bundled",
+  "source": "store",
   "tags": ["ai-provider", "llm", "nearai", "near-ai", "tee", "chat"],
   "config": {
     "NEARAI_API_KEY": {

@@ -11,9 +11,6 @@
     "declaration": false,
     "noEmit": true,
     "paths": {
-      "@elizaos/plugin-personal-assistant-browser": [
-        "../../plugins/plugin-personal-assistant-browser/src/index.ts"
-      ],
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-streaming": [
         "../../plugins/plugin-streaming/src/index.ts"
@@ -153,10 +150,6 @@
       "@elizaos/capacitor-screencapture": [
         "../../plugins/plugin-native-screencapture/src/index.ts"
       ],
-      "@elizaos/capacitor-*": ["../native-plugins/*/src/index.ts"],
-      "@elizaos/native-activity-tracker": [
-        "../native-plugins/activity-tracker/src/index.ts"
-      ],
       "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
       "react": ["./node_modules/@types/react/index.d.ts"],
@@ -164,8 +157,7 @@
       "react/jsx-dev-runtime": [
         "./node_modules/@types/react/jsx-dev-runtime.d.ts"
       ],
-      "react-dom": ["./node_modules/@types/react-dom/index.d.ts"],
-      "lucide-react": ["./node_modules/lucide-react"]
+      "react-dom": ["./node_modules/@types/react-dom/index.d.ts"]
     }
   },
   "exclude": ["src/cli/**", "src/**/*.stories.ts", "src/**/*.stories.tsx"],

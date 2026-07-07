@@ -89,7 +89,6 @@
       "@elizaos/ui/api/client-types-cloud": [
         "../ui/src/api/client-types-cloud.ts"
       ],
-      "@elizaos/app-knowledge": ["../../plugins/app-knowledge/src/index.ts"],
       "@elizaos/plugin-training": [
         "../../plugins/plugin-training/src/index.ts"
       ],
@@ -182,7 +181,6 @@
         "../../plugins/plugin-discord-local/src/*"
       ],
       "@elizaos/*": ["../../node_modules/@elizaos/*"],
-      "puppeteer-core": ["./node_modules/puppeteer-core"],
       "drizzle-orm": ["../app-core/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../app-core/node_modules/drizzle-orm/*"]
     }
