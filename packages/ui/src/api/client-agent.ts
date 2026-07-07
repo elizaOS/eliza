@@ -33,6 +33,7 @@ import {
   type WebsiteBlockerStatusResult,
 } from "../bridge/native-plugins";
 import { TERMINAL_STATUSES } from "../chat/coding-agent-session-state";
+import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { openEventSource } from "../utils/event-source";
 import { androidNativeAgentLifecycleForUrl } from "./android-native-agent-transport";
 import { ElizaClient } from "./client-base";
@@ -145,6 +146,7 @@ import {
   mapAcpSessionsToCodingAgentSessions,
   mapTaskThreadsToCodingAgentSessions,
 } from "./client-types";
+import { isApiError } from "./client-types-core";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 
 // ---------------------------------------------------------------------------
@@ -1306,10 +1308,55 @@ async function fetchStatusWithResumeProgress(
   // untouched so `on202` can map the cloud resume-progress body ourselves
   // instead of blocking on the resume loop + throwing `agent_resuming`
   // (#14040 sub-defect 2).
-  return client.fetch<AgentStatus>("/api/status", undefined, {
-    skipResume: true,
-    on202: map202ToResumeProgressStatus,
-  });
+  try {
+    return await client.fetch<AgentStatus>("/api/status", undefined, {
+      skipResume: true,
+      on202: map202ToResumeProgressStatus,
+    });
+  } catch (err) {
+    // A DEDICATED cloud agent (its own <id>.elizacloud.ai subdomain) is bound
+    // and RUNNING, but the cloud agent-router proxies its `/api/status` through
+    // the shared-runtime resolver, which answers 404 `Not a shared-runtime
+    // agent` for a dedicated agent (see
+    // cloud/shared/.../shared-runtime/resolve-shared-agent.ts). Before this,
+    // that 404 threw here, the readiness poll swallowed it, and the launcher
+    // wedged on "Initializing agent…" FOREVER for a returning user whose
+    // existing agent is dedicated (#15310 failure #4). A dedicated base that
+    // 404s the shared-resolver is provisioned + serving chat over REST (its
+    // /api/conversations passthrough is the authoritative readiness gate the
+    // cloud-managed warmup polls) — report it running so startup proceeds to
+    // chat instead of stranding. Any OTHER error (500/503/network/timeout, or a
+    // 404 that is NOT the shared-resolver signal) still propagates so a truly
+    // broken agent surfaces honestly.
+    if (
+      isDedicatedCloudAgentBase(client.getBaseUrl()) &&
+      isSharedResolverMissForDedicatedAgent(err)
+    ) {
+      return {
+        state: "running",
+        agentName: "Eliza",
+        model: undefined,
+        // The dedicated container serves chat over REST; first-turn capability
+        // is confirmed by the provision/select flow, so the composer is live.
+        canRespond: true,
+        uptime: undefined,
+        startedAt: undefined,
+      };
+    }
+    throw err;
+  }
+}
+
+/**
+ * True when an `/api/status` failure is the cloud shared-runtime resolver's
+ * `404 Not a shared-runtime agent` — the honest signal that the bound agent is
+ * DEDICATED (not shared), reached via a path the shared-resolver rejects. Kept
+ * narrow (status 404 + message match) so it never masks a genuine
+ * agent-unreachable / broken-backend 404.
+ */
+function isSharedResolverMissForDedicatedAgent(err: unknown): boolean {
+  if (!isApiError(err) || err.status !== 404) return false;
+  return /not a shared-runtime agent/i.test(err.message);
 }
 
 // ---------------------------------------------------------------------------
