@@ -2498,6 +2498,7 @@ export async function handleConversationRoutes(
         type: "done",
         fullText: "",
         agentName: state.agentName,
+        noResponseReason: "ignored",
       });
       finishStreamResponse();
       return true;
