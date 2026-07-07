@@ -73,6 +73,18 @@ const OPENER_PATTERNS: readonly RegExp[] = [
 	/"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*(?::\s*(?:"[^"]*(?:"[^\s]*)?)?)?$/i,
 	// Authorization Bearer/Basic header, token still arriving.
 	/(?:Authorization\s*[:=]\s*)?(?:Bearer|Basic)\s+[A-Za-z0-9._+/=-]*$/i,
+	// `Authorization` anchor held through the ENTIRE streaming header, from before
+	// the scheme discriminator arrives (`Authorization:`), across a partial scheme
+	// (`Authorization: B`), and through the value (`Authorization: Basic <b64>`).
+	// The `basic-auth-header` detector needs the `Authorization:` anchor to fire;
+	// without this hold `snapToWhitespace` releases `"Authorization: "` the moment it
+	// ends in a space — orphaning the later `"Basic <b64>"`, which has no anchor and
+	// is emitted in the clear. The scheme is optional and the value charclass is
+	// letter-inclusive, so a partial scheme is covered; a trailing whitespace ends
+	// the value and releases the whole header contiguously for detection. (redact.ts
+	// carries a standalone `\bBearer …` pattern, so Bearer survives without an
+	// anchor; Basic has none — hence the anchored hold rather than a Basic pattern.)
+	/\bAuthorization\s*[:=]?\s*(?:Bearer|Basic)?\s*[A-Za-z0-9._+/=-]*$/i,
 	// CLI credential flag, value still arriving.
 	/--(?:api[-_]?key|token|secret|password|passwd)(?:[=\s]+(?:["']?[^\s"']*)?)?$/i,
 ];
@@ -207,6 +219,7 @@ export class GuardedStreamScanner {
 		for (let iterations = 0; iterations <= n + 2; iterations += 1) {
 			let next = this.snapToWhitespace(cut);
 			next = Math.min(next, this.groupedNumberRunStart(next));
+			next = Math.min(next, this.phoneRunStart(next));
 			next = Math.min(next, this.bip39RunStart(next));
 			next = Math.min(next, this.openerTailStart());
 			next = Math.min(next, this.openArmorStart(next));
@@ -281,6 +294,80 @@ export class GuardedStreamScanner {
 			if (cut - runStart > GROUPED_RUN_SCAN_LIMIT) return 0;
 		}
 		return groups >= 1 && hasDigitGroup ? runStart : cut;
+	}
+
+	/**
+	 * Hold a trailing in-progress NANP phone number whose area code is
+	 * parenthesised — the one whitespace-spanning phone shape
+	 * {@link groupedNumberRunStart} misses, because the `)`/`(` around the area
+	 * code are non-alnum and break its left-walk (leaking e.g. `"(555) "` before the
+	 * local number `"123-4567"` arrives). Only a SPACE/TAB separator can fall on a
+	 * chunk boundary (dash/dot never split a token, so `snapToWhitespace` already
+	 * holds `123-4567`); this walks the space-separated `(\d{2,4})` area-code group
+	 * plus any following digit groups, and — when a parenthesised group is present —
+	 * pulls the hold left over an optional `+?1` / `+` dialing prefix so the whole
+	 * number matches the buffered detector in one emitted piece. Runs with no
+	 * parenthesised group are left to `groupedNumberRunStart` (no double-holding).
+	 */
+	private phoneRunStart(cut: number): number {
+		const p = this.pending;
+		let i = cut;
+		let runStart = cut;
+		let groups = 0;
+		let hasParen = false;
+		for (;;) {
+			let sepEnd = i;
+			if (sepEnd > 0 && isGroupSeparator(p.charCodeAt(sepEnd - 1))) {
+				sepEnd -= 1;
+			} else if (i !== cut) {
+				break;
+			}
+			let k = sepEnd;
+			let paren = false;
+			// A parenthesised area-code group `(\d{2,4})` ending at `sepEnd`.
+			if (k > 0 && p.charCodeAt(k - 1) === 41 /* ) */) {
+				let j = k - 1;
+				let digits = 0;
+				while (j > 0 && isDigit(p.charCodeAt(j - 1)) && digits < 4) {
+					j -= 1;
+					digits += 1;
+				}
+				if (digits >= 2 && j > 0 && p.charCodeAt(j - 1) === 40 /* ( */) {
+					k = j - 1;
+					paren = true;
+				}
+			}
+			if (!paren) {
+				let j = sepEnd;
+				let digits = 0;
+				while (j > 0 && isDigit(p.charCodeAt(j - 1)) && digits < 7) {
+					j -= 1;
+					digits += 1;
+				}
+				if (digits === 0) break;
+				// A neighbouring alnum char means a longer token, not a phone group.
+				if (j > 0 && isAlnum(p.charCodeAt(j - 1))) break;
+				k = j;
+			}
+			groups += 1;
+			if (paren) hasParen = true;
+			runStart = k;
+			i = k;
+			if (cut - runStart > GROUPED_RUN_SCAN_LIMIT) return cut;
+		}
+		if (groups === 0 || !hasParen) return cut;
+		// Pull left over an optional `+?1` / `+` dialing prefix so the emitted span
+		// begins where the buffered phone detector's match begins (byte equivalence).
+		let s = runStart;
+		while (s > 0 && isSpaceOrTab(p.charCodeAt(s - 1))) s -= 1;
+		if (s > 0 && p.charCodeAt(s - 1) === 49 /* 1 */) {
+			let t = s - 1;
+			if (t > 0 && p.charCodeAt(t - 1) === 43 /* + */) t -= 1;
+			if (t === 0 || !isAlnum(p.charCodeAt(t - 1))) runStart = t;
+		} else if (s > 0 && p.charCodeAt(s - 1) === 43 /* + */) {
+			runStart = s - 1;
+		}
+		return runStart;
 	}
 
 	/**

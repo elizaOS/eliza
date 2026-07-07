@@ -106,6 +106,38 @@ const VALID_SSN = "123 45 6789";
 const PEM_KEY =
 	"-----BEGIN PRIVATE KEY-----\nMIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4w\nggE6AgEAAkEAqwArU3\n-----END PRIVATE KEY-----";
 
+// HTTP Basic auth: base64("user:password123"). redact.ts covers Bearer but not
+// Basic, so this only redacts via the `basic-auth-header` detector's
+// `Authorization:` anchor — the anchor the streaming guard must hold intact.
+const BASIC_B64 = "dXNlcjpwYXNzd29yZDEyMw==";
+
+// A single valid NANP number in every separator format the detector accepts.
+// Every form except the paren/`+1` prefix is already held by the grouped-number
+// walk; the parenthesised and prefixed forms are the ones #15348 fixes. Each is a
+// distinct raw value (the phone detector extracts the whole match), so the
+// every-split matrix asserts none survives streaming in any chunk boundary.
+const PHONE_FORMS: readonly string[] = [
+	"+1 (555) 123-4567", // +1 prefix + parenthesised area code
+	"(555) 123-4567", // parenthesised area code, no prefix
+	"(555) 123 4567", // parenthesised area code, space-separated local
+	"+1 555 123 4567", // +1 prefix, fully space-separated
+	"1 555 123 4567", // leading-1 prefix, space-separated
+	"555 123 4567", // bare space-separated
+	"555.123.4567", // dot-separated
+	"555-123-4567", // dash-separated
+];
+
+const JWT_TOKEN =
+	"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
+const URL_CREDENTIALS = "postgres://user:secretpass@db.example.com:5432/mydb";
+// Assembled from fragments so no contiguous webhook-URL literal sits in source —
+// GitHub's push-protection secret scanner flags the literal shape (it does not
+// consult .gitleaks.toml); the runtime value still exercises `slack-webhook-url`.
+const SLACK_WEBHOOK_URL = `https://hooks.slack.com/${"services"}/T00000000/B00000000/ABCDEFGHIJ1234567890abcd`;
+// A canonical valid Bitcoin WIF (base58check, version 0x80) — the widely-published
+// test key; the `wif-private-key` detector accepts it via checksum validation.
+const WIF_KEY = "5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVqvbTLvyTJ";
+
 async function buildFixtures(): Promise<Fixture[]> {
 	// Compute the deterministic surrogate the model would have emitted for a name.
 	const probe = await piiSessionLearning([
@@ -261,6 +293,69 @@ async function buildFixtures(): Promise<Fixture[]> {
 			rawPii: ["Dana Whitfield"],
 			equivalence: true,
 		},
+		{
+			name: "HTTP Basic auth header (anchor split from scheme+value)",
+			text: `Header Authorization: Basic ${BASIC_B64} end of line.`,
+			factory: async () => ({ secret: secretSessionWith(), pii: null }),
+			rawSecrets: [BASIC_B64],
+			rawPii: [],
+			equivalence: true,
+		},
+		...PHONE_FORMS.map((phone) => ({
+			name: `NANP phone (${phone})`,
+			text: `Please call ${phone} tomorrow morning.`,
+			factory: async () => ({ secret: secretSessionWith(), pii: null }),
+			rawSecrets: [phone],
+			rawPii: [],
+			equivalence: true,
+		})),
+		{
+			name: "credit card, dash-separated groups",
+			text: "Charge 4111-1111-1111-1111 today please.",
+			factory: async () => ({ secret: secretSessionWith(), pii: null }),
+			rawSecrets: ["4111-1111-1111-1111"],
+			rawPii: [],
+			equivalence: true,
+		},
+		{
+			name: "SSN, dash-separated",
+			text: "SSN 123-45-6789 on file.",
+			factory: async () => ({ secret: secretSessionWith(), pii: null }),
+			rawSecrets: ["123-45-6789"],
+			rawPii: [],
+			equivalence: true,
+		},
+		// One instance of every remaining detector kind, each a whitespace-free
+		// single token (so snapToWhitespace holds it) — proves the streamed pipeline
+		// redacts the full class registry, not just the whitespace-spanning shapes.
+		...(
+			[
+				["email", "dana.whitfield@example.com"],
+				["ipv4", "192.168.1.100"],
+				["mac-address", "3D:F2:C9:A6:B3:4F"],
+				["jwt", JWT_TOKEN],
+				["url-credentials", URL_CREDENTIALS],
+				["slack-webhook-url", SLACK_WEBHOOK_URL],
+				["anthropic-key", "sk-ant-api03-ABCDEFGHIJ1234567890abcd"],
+				["stripe-webhook-secret", "whsec_ABCDEFGHIJ1234567890abcd"],
+				["aws-access-key", "AKIAABCDEFGH12345678"],
+				["github-token", "ghp_ABCDEFGHIJ1234567890abcdefghij123456"],
+				["openai-key", "sk-ABCDEFGHIJ1234567890abcd"],
+				["slack-token", "xoxb-123456789012-abcdefghij"],
+				["telegram-bot-token", "1234567890:AAABCDEFGHIJ1234567890abcdefghij12"],
+				["google-api-key", "AIzaABCDEFGHIJ1234567890abcdefghij12345"],
+				["google-oauth-refresh-token", "1//0ABCDEFGHIJ1234567890abcd"],
+				["wif-private-key", WIF_KEY],
+				["hex-secret", `0x${"a".repeat(64)}`],
+			] as const
+		).map(([kind, value]) => ({
+			name: `single-token secret (${kind})`,
+			text: `The ${kind} value is ${value} in the config.`,
+			factory: async () => ({ secret: secretSessionWith(), pii: null }),
+			rawSecrets: [value],
+			rawPii: [],
+			equivalence: true,
+		})),
 	];
 }
 

@@ -38,6 +38,7 @@ paths = [
   '''packages/core/src/security/secret-swap\.redteam\.test\.ts$''',
   '''packages/core/src/security/secret-swap\.fuzz\.test\.ts$''',
   '''packages/core/src/security/secret-swap\.bench\.ts$''',
+  '''packages/core/src/security/guarded-stream\.test\.ts$''',
   '''test-results/evidence/10469-live-model/.*''',
 ]
 
