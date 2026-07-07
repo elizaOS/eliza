@@ -104,7 +104,7 @@ export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
  * fails to load the shell falls back to the shader field
  * ({@link DEFAULT_SHADER_BACKGROUND_CONFIG}).
  */
-const SUNSET_WALLPAPER_URL = "/bg-sunset.jpg";
+const SUNSET_WALLPAPER_URL = "/bg-sunset.webp";
 
 /**
  * The curated photo wallpapers (#14 default-wallpapers): five painterly scenes

@@ -58,7 +58,7 @@ import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url";
  * the box image reference identical bytes (no double-fetch of a different URL).
  *  - `data:` / `blob:` / absolute `http(s):` / protocol-relative — pass through.
  *  - `/api/media/<hash>` — an agent-API path, resolve against the API base.
- *  - `/wallpapers/<id>.webp` / `/bg-sunset.jpg` — a public static asset, resolve
+ *  - `/wallpapers/<id>.webp` / `/bg-sunset.webp` — a public static asset, resolve
  *    against the SPA asset base (correct on packaged `file://` / `capacitor://`).
  */
 function resolveWallpaperUrl(url: string): string {

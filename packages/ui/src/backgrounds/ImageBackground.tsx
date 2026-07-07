@@ -19,7 +19,7 @@ export interface ImageBackgroundProps {
  *  - `/api/media/<hash>` (a re-hosted upload/generation) — an AGENT-API path, so
  *    resolve it against the runtime API base (`resolveApiUrl`); a bare `/api/…`
  *    on `file://` would point at the SPA, not the backend, and 404.
- *  - `/bg-sunset.jpg` / `/wallpapers/<id>.webp` (curated static assets in
+ *  - `/bg-sunset.webp` / `/wallpapers/<id>.webp` (curated static assets in
  *    `packages/app/public`) — a PUBLIC ASSET path, so resolve it against the SPA
  *    asset base (`resolveAppAssetUrl`); on packaged `file://` a bare `/wallpapers`
  *    would resolve to `file:///wallpapers` and fail. This is the same

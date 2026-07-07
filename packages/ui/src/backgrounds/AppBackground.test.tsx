@@ -176,10 +176,10 @@ describe("AppBackground", () => {
     // fixed-body ICB. Mounting AppBackground with an image config must mirror
     // that image onto documentElement so the bottom strip paints the wallpaper.
     document.documentElement.style.backgroundImage = "";
-    seed({ mode: "image", color: "#160d07", imageUrl: "/bg-sunset.jpg" });
+    seed({ mode: "image", color: "#160d07", imageUrl: "/bg-sunset.webp" });
     render(<AppBackground />);
     const bg = document.documentElement.style.backgroundImage;
-    expect(bg).toContain("bg-sunset.jpg");
+    expect(bg).toContain("bg-sunset.webp");
     expect(document.documentElement.style.backgroundSize).toBe("cover");
     expect(document.documentElement.style.backgroundPosition).toBe(
       "center bottom",

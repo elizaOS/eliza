@@ -157,10 +157,10 @@ describe("applyRootCanvasPaint — writes onto document.documentElement", () => 
     applyRootCanvasPaint({
       mode: "image",
       color: "#160d07",
-      imageUrl: "/bg-sunset.jpg",
+      imageUrl: "/bg-sunset.webp",
     });
     expect(document.documentElement.style.backgroundImage).toBe(
-      'url("ASSET:/bg-sunset.jpg")',
+      'url("ASSET:/bg-sunset.webp")',
     );
   });
 });

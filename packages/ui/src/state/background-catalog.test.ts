@@ -96,7 +96,7 @@ describe("background catalog (#13538)", () => {
       (e) => e.id === DEFAULT_BACKGROUND_CATALOG_ID,
     );
     expect(def?.kind).toBe("image");
-    expect(def?.source).toBe("/bg-sunset.jpg");
+    expect(def?.source).toBe("/bg-sunset.webp");
   });
 
   it("resolveCatalogEntry matches by id, label, and fuzzy name", () => {
