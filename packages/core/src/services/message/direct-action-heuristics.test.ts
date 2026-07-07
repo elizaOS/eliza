@@ -15,6 +15,7 @@ import {
 	findShellDirectActionName,
 	hasActionTags,
 	inferDirectCurrentRequestCandidateActions,
+	inferDirectCurrentRequestCandidateInference,
 	isShellDirectActionName,
 	looksLikeLocalShellRequest,
 	looksLikeWebSearchRequest,
@@ -211,5 +212,80 @@ describe("shell-direct coupling grep guard (#12636)", () => {
 		// And it routes through the tag-aware resolver/classifier.
 		expect(src).toContain("findShellDirectActionName");
 		expect(src).toContain("isShellDirectActionName");
+	});
+});
+
+// The inference KIND is the load-bearing signal for the answered-simple-turn
+// escalation valve in services/message.ts (VIEWS hijack, tj-501e594bfb23a7):
+// only "view-capability" — an incidental token overlap with a views action's
+// tag/simile vocabulary — is suppressible; every stronger detector keeps its
+// escalation. Fence the classification so a refactor cannot silently widen or
+// narrow the valve.
+describe("inferDirectCurrentRequestCandidateInference kinds", () => {
+	const viewsAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "VIEWS",
+		similes: ["VIEW", "SHOW_VIEW", "OPEN_VIEW", "OPEN_SETTINGS"],
+		tags: [
+			"views",
+			"ui",
+			"panel",
+			"view-capability",
+			"screen-time",
+			"settings",
+		],
+	};
+
+	it("classifies the live hijack message as weak view-capability evidence", () => {
+		// "whats" bypasses the instructional-question guard ("what is" does not)
+		// and "times" singularizes to TIME, matching the "screen-time" tag.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction],
+				"whats 17 times 23?",
+			),
+		).toEqual({ names: ["VIEWS"], kind: "view-capability" });
+	});
+
+	it("classifies explicit surface asks and bare-noun navigation as strong evidence", () => {
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction],
+				"open the settings panel",
+			),
+		).toEqual({ names: ["VIEWS"], kind: "view-surface" });
+		expect(
+			inferDirectCurrentRequestCandidateInference([viewsAction], "settings"),
+		).toEqual({ names: ["VIEWS"], kind: "view-navigation" });
+	});
+
+	it("classifies shell and web detections under their own kinds", () => {
+		const shellAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "SHELL",
+			similes: [],
+			tags: [],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[shellAction],
+				"show me disk usage on this server",
+			),
+		).toEqual({ names: ["SHELL"], kind: "shell" });
+		const webAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "WEB_FETCH",
+			similes: [],
+			tags: [],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[webAction],
+				"what is btc at rn?",
+			),
+		).toEqual({ names: ["WEB_FETCH"], kind: "web" });
+	});
+
+	it("returns a null kind when nothing matches", () => {
+		expect(
+			inferDirectCurrentRequestCandidateInference([viewsAction], "hello"),
+		).toEqual({ names: [], kind: null });
 	});
 });

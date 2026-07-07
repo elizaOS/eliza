@@ -28,6 +28,7 @@ import {
 	inferDirectCurrentRequestCandidateActions,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
+	messageHandlerFromFieldResult,
 	shouldPreferDirectCurrentCandidateActions,
 	shouldPromoteExplicitReplyToOwnedAction,
 	stripReplyWhenActionOwnsTurn,
@@ -1042,5 +1043,189 @@ describe("bare view-name voice navigation inference (#9950)", () => {
 				"settings",
 			),
 		).toEqual([]);
+	});
+});
+
+// Regression fence for the VIEWS hijack of answered simple turns (live
+// trajectories tj-501e594bfb23a7 app REST surface, tj-5d1c9601f33e8d Discord):
+// Stage 1 answered "whats 17 times 23?" with contexts=["simple"],
+// replyText="391", candidateActionNames=[] — done. The text-derived candidate
+// backstop then matched the views action's "screen-time" tag via the TIME
+// token ("times"), injected VIEWS, escalated the turn to a tool-REQUIRED
+// planner surface, rejected the planner's correct terminal answer
+// maxRequiredToolMisses times, and shipped the generic transient-failure
+// apology while discarding "391". The fix suppresses ONLY the weak
+// view-capability inference on that exact Stage-1 shape; model-emitted
+// candidates, shell/coding/web inferences, explicit-surface view asks, and
+// bare-noun voice navigation keep today's escalation.
+describe("VIEWS hijack of answered simple turns (tj-501e594bfb23a7)", () => {
+	// Mirrors the real plugin-app-control VIEWS action metadata (subset): the
+	// "screen-time" tag is what collides with "times" in ordinary chat text.
+	const viewsAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "VIEWS",
+		similes: ["VIEW", "SHOW_VIEW", "OPEN_VIEW", "WHAT_VIEWS", "OPEN_SETTINGS"],
+		tags: [
+			"views",
+			"ui",
+			"window",
+			"panel",
+			"app",
+			"layout",
+			"view-capability",
+			"calendar",
+			"screen-time",
+			"todos",
+			"settings",
+		],
+	};
+	const replyAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "REPLY",
+		similes: [],
+		tags: [],
+	};
+	const stageOneAnswered = (replyText: string, candidates: string[] = []) => ({
+		shouldRespond: "RESPOND" as const,
+		contexts: ["simple"],
+		intents: [],
+		replyText,
+		candidateActionNames: candidates,
+		facts: [],
+		relationships: [],
+		addressedTo: [],
+	});
+
+	it("keeps an answered simple turn direct when VIEWS arrives only by capability-token overlap", () => {
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("391"),
+			undefined,
+			{
+				actions: [replyAction, viewsAction],
+				messageText: "whats 17 times 23?",
+			},
+		);
+
+		expect(routed.plan.simple).toBe(true);
+		expect(routed.plan.requiresTool).toBe(false);
+		expect(routed.plan.candidateActions ?? []).toEqual([]);
+		expect(routed.plan.reply).toBe("391");
+	});
+
+	it("still plans when the MODEL itself emitted the VIEWS candidate on the same shape", () => {
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("391", ["VIEWS"]),
+			undefined,
+			{
+				actions: [replyAction, viewsAction],
+				messageText: "whats 17 times 23?",
+			},
+		);
+
+		expect(routed.plan.simple).toBe(false);
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("VIEWS");
+	});
+
+	it("suppression is keyed on the answered shape — an unanswered turn still escalates", () => {
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered(""),
+			undefined,
+			{
+				actions: [replyAction, viewsAction],
+				messageText: "whats 17 times 23?",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("VIEWS");
+	});
+
+	it("the simple_registered_action_request evaluator does not re-promote the answered turn", () => {
+		const gate = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(evaluator) => evaluator.name === "core.simple_registered_action_request",
+		);
+		expect(gate).toBeDefined();
+		const contextFor = (text: string, reply: string) =>
+			({
+				message: messageWithText(text, { source: "app" }),
+				messageHandler: {
+					processMessage: "RESPOND",
+					plan: { requiresTool: false, contexts: ["simple"], reply },
+				},
+				runtime: { actions: [replyAction, viewsAction] },
+			}) as never;
+
+		// The answered math turn must stay direct…
+		expect(gate?.shouldRun(contextFor("whats 17 times 23?", "391"))).toBe(
+			false,
+		);
+		// …while bare-noun voice navigation (#9950) keeps promoting even though
+		// Stage 1 "answered" it with a clarifying question.
+		expect(
+			gate?.shouldRun(contextFor("settings", "Which settings do you mean?")),
+		).toBe(true);
+		// An ack-shaped replyText is a delegation commitment, not an answer —
+		// suppressing on it would ship "On it." as the whole turn with nothing
+		// behind it (the ack-rescue paths cover shell/web/coding, never views).
+		// A view-capability overlap with an ack reply must keep promoting.
+		expect(gate?.shouldRun(contextFor("show my screen time", "On it."))).toBe(
+			true,
+		);
+		expect(
+			gate?.shouldRun(
+				contextFor("whats my screen time", "Let me pull that up."),
+			),
+		).toBe(true);
+	});
+
+	it("leaves the web backstop untouched: a live-info ack still forces the fetch", () => {
+		const webAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "WEB_FETCH",
+			similes: [],
+			tags: [],
+		};
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("Checking the price now."),
+			undefined,
+			{
+				actions: [replyAction, webAction],
+				messageText: "what is btc at rn?",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("WEB_FETCH");
+	});
+
+	it("leaves the shell backstop untouched: a shell-inspection ask still plans", () => {
+		const shellAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "SHELL",
+			similes: ["RUN_COMMAND", "TERMINAL"],
+			tags: [],
+		};
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("Checking."),
+			undefined,
+			{
+				actions: [replyAction, shellAction],
+				messageText: "show me disk usage on this server",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("SHELL");
+	});
+
+	it("explicit-surface view asks still escalate on an answered-looking shape", () => {
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("Opening the settings panel."),
+			undefined,
+			{
+				actions: [replyAction, viewsAction],
+				messageText: "open the settings panel",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("VIEWS");
 	});
 });

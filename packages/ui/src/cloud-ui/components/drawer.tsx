@@ -67,7 +67,7 @@ function DrawerContent({
         data-slot="drawer-content"
         className={cn(
           // SOLID warm-dark surface so the sheet is fully opaque over the field
-          // (no see-through). `bg-card` resolves to --surface-1 (#1d130c) in the
+          // (no see-through). `bg-card` resolves to --surface-1 (--surface-1) in the
           // dark theme — same value, now a token instead of a hardcode.
           //
           // min-h-0 is load-bearing: it lets a `DrawerBody` flex child shrink
