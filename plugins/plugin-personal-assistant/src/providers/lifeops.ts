@@ -30,6 +30,10 @@ import { hasLifeOpsAccess } from "../lifeops/access.js";
 import type { ConnectorStatus } from "../lifeops/connectors/contract.js";
 import { getConnectorRegistry } from "../lifeops/connectors/registry.js";
 import {
+  type OwnerFacts,
+  resolveOwnerFactStore,
+} from "../lifeops/owner/fact-store.js";
+import {
   type LifeOpsOwnerProfile,
   readLifeOpsOwnerProfile,
 } from "../lifeops/owner-profile.js";
@@ -248,6 +252,38 @@ function summarizeOwnerProfile(profile: LifeOpsOwnerProfile): string[] {
   ];
 }
 
+function summarizeOwnerTimingFacts(facts: OwnerFacts): string[] {
+  const timezone = facts.timezone?.value;
+  const morning = facts.morningWindow?.value;
+  const evening = facts.eveningWindow?.value;
+  const quiet = facts.quietHours?.value;
+  const parts: string[] = [];
+  if (timezone) {
+    parts.push(`timezone=${timezone}`);
+  }
+  if (morning) {
+    parts.push(`morningWindow=${morning.startLocal}-${morning.endLocal}`);
+  }
+  if (evening) {
+    parts.push(`eveningWindow=${evening.startLocal}-${evening.endLocal}`);
+  }
+  if (quiet) {
+    parts.push(
+      `protected quiet/sleep window=${quiet.startLocal}-${quiet.endLocal} ${quiet.timezone}`,
+    );
+  }
+  if (parts.length === 0) {
+    return [];
+  }
+  const lines = [`Owner timing facts: ${parts.join(" | ")}`];
+  if (quiet) {
+    lines.push(
+      "Calendar creates inside the protected quiet/sleep window are conflicts: do not book silently; ask for explicit owner override and propose alternatives outside the protected window.",
+    );
+  }
+  return lines;
+}
+
 export const lifeOpsProvider: Provider = {
   name: "lifeops",
   description:
@@ -300,6 +336,7 @@ export const lifeOpsProvider: Provider = {
     try {
       const service = new LifeOpsService(runtime);
       const ownerProfile = await readLifeOpsOwnerProfile(runtime);
+      const ownerFacts = await resolveOwnerFactStore(runtime).read();
       const overview = await service.getOverview();
       const egressContext = createLifeOpsEgressContext({
         isOwner: true,
@@ -591,6 +628,7 @@ export const lifeOpsProvider: Provider = {
           "When the owner asks about their stable personal details for LifeOps, answer from the stored owner profile values below. If a field is not n/a, treat it as known instead of saying it is missing.",
           "Owner life-ops are private to the owner and the agent. Agent ops are internal and should stay separated unless explicitly requested.",
           ...summarizeOwnerProfile(ownerProfile),
+          ...summarizeOwnerTimingFacts(ownerFacts),
           formatCount(
             "Owner open occurrences",
             overview.owner.summary.activeOccurrenceCount,

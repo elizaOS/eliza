@@ -58,10 +58,14 @@ const TEST_FILE_PATHSPECS = [
 ];
 
 // Focused-test forms. `it/describe/test/suite/bench/context` are unambiguously
-// test-runner globals inside a test file, so `<runner>.only` is always a focused
-// test. `fdescribe`/`fit` are the jasmine-style focus aliases (require a call).
+// test-runner globals inside a test file, so `<runner>.only` is a focused test —
+// but ONLY as a call (`it.only(`) or a parameterized chain (`it.only.each(` /
+// `.for(`). Requiring the `(`/chain (like SKIP_PATTERNS require `(`) is what
+// keeps a `.only` that merely appears inside a STRING or property value from
+// tripping the gate — e.g. `id: "test.only"` (an app-page id) is data, not a
+// focused test. `fdescribe`/`fit` are the jasmine-style focus aliases.
 const FOCUSED_PATTERNS = [
-  /\b(?:describe|it|test|suite|bench|context)\.only\b/,
+  /\b(?:describe|it|test|suite|bench|context)\.only\s*(?:\.(?:each|for)\b|\()/,
   /\bf(?:describe|it)\s*\(/,
 ];
 
@@ -334,6 +338,11 @@ function selfTest() {
     {
       name: "ignores unrelated .only property",
       src: 'const readonly = { only: true }; it("a", () => { expect(cfg.only).toBe(true); });',
+      expect: [],
+    },
+    {
+      name: "ignores a runner-name.only inside a string literal (page id, etc.)",
+      src: 'registerAppShellPage({ id: "test.only", label: "Solo" });\nit("a", () => {});',
       expect: [],
     },
     {

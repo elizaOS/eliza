@@ -1130,6 +1130,12 @@ let started = startAt.length === 0;
 // subset through a worker pool instead of the historical strictly-serial loop.
 const tasks = [];
 const skippedPlanEntries = [];
+// Count of real, runnable tasks the lane's filters matched across the WHOLE
+// lane — before TEST_SHARD carves out this shard's slice. The vacuous-green
+// floor is a lane-level property ("did a filter/glob collapse the lane?"), so
+// it must be measured here and not against `tasks.length`, which only holds
+// this shard's ~1/M share once sharding is active.
+let laneMatchedTaskCount = 0;
 
 for (const packageJsonPath of packageJsonPaths) {
   const cwd = path.dirname(packageJsonPath);
@@ -1174,25 +1180,35 @@ for (const packageJsonPath of packageJsonPaths) {
     if (scriptFilter && !scriptFilter.test(scriptName)) {
       continue;
     }
-    // Shard filtering: deterministic by relative package dir hash. Keeps a
-    // package's `test` + `test:e2e` tasks colocated in the same shard.
-    if (!taskBelongsToShard(relativeDir, shardConfig)) {
+    const belongsToShard = taskBelongsToShard(relativeDir, shardConfig);
+    if (shouldSkipEmptyVitestScript(cwd, scriptName, scripts)) {
+      // Scope the skip log/plan entry to this shard so per-shard output stays
+      // readable; the empty-script check itself runs for every task because it
+      // decides what counts as real lane work below.
+      if (belongsToShard) {
+        if (planEnabled) {
+          skippedPlanEntries.push({
+            label,
+            packageName,
+            relativeDir,
+            scriptName,
+            reason: "no local test files for vitest script",
+          });
+        } else {
+          console.log(
+            `[eliza-test] SKIP ${label} (no local test files for vitest script)`,
+          );
+        }
+      }
       continue;
     }
-    if (shouldSkipEmptyVitestScript(cwd, scriptName, scripts)) {
-      if (planEnabled) {
-        skippedPlanEntries.push({
-          label,
-          packageName,
-          relativeDir,
-          scriptName,
-          reason: "no local test files for vitest script",
-        });
-      } else {
-        console.log(
-          `[eliza-test] SKIP ${label} (no local test files for vitest script)`,
-        );
-      }
+
+    // Real runnable task for the lane. Count it before sharding narrows the set.
+    laneMatchedTaskCount += 1;
+
+    // Shard filtering: deterministic by relative package dir hash. Keeps a
+    // package's `test` + `test:e2e` tasks colocated in the same shard.
+    if (!belongsToShard) {
       continue;
     }
 
@@ -1204,10 +1220,23 @@ const laneEnv = buildLaneEnv();
 
 // Collection-time vacuous-green floor. Evaluated before any task runs so a lane
 // that matched nothing fails immediately instead of "passing" with no work.
-if (minTasks > 0 && tasks.length < minTasks) {
+// The floor is measured against the lane-wide matched total, not this shard's
+// slice: TEST_SHARD intentionally splits a healthy lane into M parts, so a
+// shard legitimately owning 1/M of the work is not a collapsed glob. When
+// sharded we still fail an empty shard, which signals broken shard math rather
+// than an intentional split.
+if (minTasks > 0 && laneMatchedTaskCount < minTasks) {
   console.error(
-    `[eliza-test] VACUOUS-GREEN GUARD collected ${tasks.length} task(s) < required ${minTasks}. ` +
-      "A filter/shard/glob collapsed this lane to (near-)zero work. Failing loudly instead of reporting green.",
+    `[eliza-test] VACUOUS-GREEN GUARD lane matched ${laneMatchedTaskCount} task(s) < required ${minTasks}` +
+      (shardConfig ? ` (this shard: ${tasks.length})` : "") +
+      ". A filter/shard/glob collapsed this lane to (near-)zero work. Failing loudly instead of reporting green.",
+  );
+  process.exit(3);
+}
+if (minTasks > 0 && shardConfig && tasks.length === 0) {
+  console.error(
+    `[eliza-test] VACUOUS-GREEN GUARD shard ${TEST_SHARD} collected 0 of ${laneMatchedTaskCount} lane task(s). ` +
+      "The shard split assigned this shard no work. Failing loudly instead of reporting green.",
   );
   process.exit(3);
 }

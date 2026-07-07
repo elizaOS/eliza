@@ -72,4 +72,37 @@ describe("pruneStalePluginInstances", () => {
       pruneStalePluginInstances(missing, 3),
     ).resolves.toBeUndefined();
   });
+
+  it("deletes .tmp-* orphans past the grace window, keeps fresh in-flight ones", async () => {
+    // Crash debris: an abandoned atomic-publish build dir well past the 1h grace.
+    await createInstance(".tmp-crashed", 2 * 60 * 60 * 1000);
+    // A live concurrent staging: young .tmp dir must never be swept.
+    await createInstance(".tmp-inflight", 1 * 60 * 1000);
+    await createInstance("content-aaaa", 5 * 60 * 1000);
+
+    await pruneStalePluginInstances(tmpDir, 3);
+
+    const remaining = (await fsp.readdir(tmpDir)).sort();
+    expect(remaining).toEqual([".tmp-inflight", "content-aaaa"]);
+  });
+
+  it("excludes .tmp-* dirs from the keep budget", async () => {
+    // Three young tmp dirs must not crowd real instances out of the keep set.
+    await createInstance(".tmp-a", 1 * 60 * 1000);
+    await createInstance(".tmp-b", 2 * 60 * 1000);
+    await createInstance(".tmp-c", 3 * 60 * 1000);
+    await createInstance("content-old", 30 * 60 * 1000);
+    await createInstance("content-new", 5 * 60 * 1000);
+
+    await pruneStalePluginInstances(tmpDir, 2);
+
+    const remaining = (await fsp.readdir(tmpDir)).sort();
+    expect(remaining).toEqual([
+      ".tmp-a",
+      ".tmp-b",
+      ".tmp-c",
+      "content-new",
+      "content-old",
+    ]);
+  });
 });

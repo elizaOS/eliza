@@ -130,10 +130,6 @@ import {
 import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
 import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
 import {
-  applyForceFreshFirstRunReset,
-  installForceFreshFirstRunClientPatch,
-} from "@elizaos/ui/platform/first-run-reset";
-import {
   clearStandaloneBottomReclaim,
   installStandaloneBottomReclaim,
   shouldInstallStandaloneBottomReclaim,
@@ -184,6 +180,7 @@ import {
 } from "./deep-link-routing";
 import { decideChatOverlayToggle } from "./desktop-hotkey";
 import { runEmbedHandshake } from "./embed-bootstrap";
+import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
 import { registerAppHostExternalImporters } from "./host-externals";
 import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
 import {
@@ -475,23 +472,23 @@ if (shouldEnableElectrobunMacWindowDrag()) {
   );
 }
 
-// Dev escape hatch: ?reset forces a truly fresh first-run session by clearing
-// persisted state and temporarily suppressing stale backend resume config.
-if (shouldInstallMainWindowFirstRunPatches(windowShellRoute)) {
-  applyForceFreshFirstRunReset();
-  installForceFreshFirstRunClientPatch(client);
-}
+// Dev escape hatches: ?reset forces a truly fresh first-run session by
+// clearing persisted state; ?onboarding-replay=1 (dev builds only, #14382)
+// re-runs onboarding as a non-destructive client overlay on the SAME agent —
+// no reset endpoint, no active-server clear, no storage wipe. Ordering between
+// the two lives in first-run-boot-patches.ts and is regression-tested.
+installMainWindowFirstRunBootPatches(client, windowShellRoute);
 installLocalProviderCloudPreferencePatch(client);
 installDesktopPermissionsClientPatch(client);
 applyCloudPairSessionToken();
 applyRuntimeChooserOverrideFromUrl();
 
-// NOTE: do not gate on isElizaOS() here — that requires the `ElizaOS/` UA
-// marker which only AOSP/branded device images carry, so it excluded the
-// stock-phone local sideload build (the on-device-agent APK) and left it stuck
-// on cloud onboarding. preSeedAndroidLocalRuntimeIfFresh() self-gates to the
-// local Android build (native android + non-cloud build), so it's safe to call
-// unconditionally here; it no-ops on iOS/desktop/web and cloud builds.
+// Branded AOSP/ElizaOS device images ARE the agent: pre-seed the on-device
+// agent as the startup target on first frame. Stock-phone sideload builds
+// self-exclude inside preSeedAndroidLocalRuntimeIfFresh (#14390): a fresh
+// install lands in onboarding, whose runtime chooser (enabled by default on
+// those builds) starts the local agent on demand only after the user picks
+// it. No-op on iOS/desktop/web and cloud builds.
 if (!hasFirstRunRuntimeOverride()) {
   preSeedAndroidLocalRuntimeIfFresh();
 }

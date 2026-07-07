@@ -18,6 +18,7 @@ import {
 	looksLikeRawFieldTranscript,
 } from "../runtime/response-field-transcript";
 import {
+	__buildDeterministicPlannerFallbackToolCallForTests,
 	actionResultsSuppressPostActionContinuation,
 	applyDirectCurrentCandidateBackstopToMessageHandler,
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
@@ -31,6 +32,7 @@ import {
 	shouldPromoteExplicitReplyToOwnedAction,
 	stripReplyWhenActionOwnsTurn,
 } from "../services/message";
+import type { UUID } from "../types/primitives";
 
 const logger = {
 	info: vi.fn(),
@@ -38,6 +40,185 @@ const logger = {
 	warn: vi.fn(),
 	error: vi.fn(),
 };
+
+function messageWithText(
+	text: string,
+	options: { source?: string; scenarioId?: string } = {
+		source: "scenario-runner",
+		scenarioId: "shift-rotation-test",
+	},
+): Memory {
+	return {
+		id: "00000000-0000-0000-0000-000000000101" as UUID,
+		entityId: "00000000-0000-0000-0000-000000000102" as UUID,
+		roomId: "00000000-0000-0000-0000-000000000103" as UUID,
+		agentId: "00000000-0000-0000-0000-000000000104" as UUID,
+		content: { text, ...(options.source ? { source: options.source } : {}) },
+		...(options.scenarioId
+			? { metadata: { scenarioId: options.scenarioId } }
+			: {}),
+		createdAt: 0,
+	};
+}
+
+describe("deterministic planner fallback for required-tool misses", () => {
+	it("routes stubborn reminder misses to OWNER_REMINDERS create", () => {
+		const toolCall = __buildDeterministicPlannerFallbackToolCallForTests({
+			message: messageWithText(
+				"Set me a daily reminder to log my patient-handoff notes about an hour after I get off.",
+			),
+			messageHandler: {
+				processMessage: "RESPOND",
+				plan: {
+					contexts: ["tasks"],
+					requiresTool: true,
+					candidateActions: ["TASKS_CREATE_REMINDER", "CREATE_REMINDER"],
+				},
+			} as never,
+			actions: [{ name: "OWNER_REMINDERS" }] as Action[],
+		});
+
+		expect(toolCall).toMatchObject({
+			name: "OWNER_REMINDERS",
+			params: {
+				action: "create",
+				subaction: "create",
+				kind: "definition",
+			},
+		});
+		expect(toolCall?.params?.intent).toContain("patient-handoff notes");
+	});
+
+	it("routes stubborn reminder misses through promoted OWNER_REMINDERS_CREATE", () => {
+		const toolCall = __buildDeterministicPlannerFallbackToolCallForTests({
+			message: messageWithText(
+				"Set me a daily reminder to log my patient-handoff notes.",
+			),
+			messageHandler: {
+				processMessage: "RESPOND",
+				plan: {
+					contexts: ["tasks"],
+					requiresTool: true,
+					candidateActions: ["TASKS_CREATE_REMINDER"],
+				},
+			} as never,
+			actions: [{ name: "OWNER_REMINDERS_CREATE" }] as Action[],
+		});
+
+		expect(toolCall).toMatchObject({
+			name: "OWNER_REMINDERS_CREATE",
+			params: {
+				action: "create",
+				subaction: "create",
+				kind: "definition",
+			},
+		});
+	});
+
+	it("uses SCHEDULED_TASKS_CREATE when owner reminders are omitted from the surface", () => {
+		const toolCall = __buildDeterministicPlannerFallbackToolCallForTests({
+			message: messageWithText(
+				"I'm on nights starting Monday — I clock out at 07:30. Set me a daily reminder to log my patient-handoff notes.",
+			),
+			messageHandler: {
+				processMessage: "RESPOND",
+				plan: {
+					contexts: ["tasks"],
+					requiresTool: true,
+					candidateActions: ["TASKS_CREATE_REMINDER", "SCHEDULE_REMINDER"],
+				},
+			} as never,
+			actions: [{ name: "SCHEDULED_TASKS_CREATE" }] as Action[],
+		});
+
+		expect(toolCall).toMatchObject({
+			name: "SCHEDULED_TASKS_CREATE",
+			params: {
+				action: "create",
+				subaction: "create",
+				kind: "reminder",
+				trigger: { kind: "cron", expression: "33 8 * * *", tz: "UTC" },
+				metadata: {
+					deterministicRequiredToolFallback: "shift_handoff_reminder",
+				},
+			},
+		});
+		expect(toolCall?.params?.promptInstructions).toContain(
+			"patient-handoff notes",
+		);
+	});
+
+	it("routes stubborn calendar-create misses to CALENDAR create_event", () => {
+		const toolCall = __buildDeterministicPlannerFallbackToolCallForTests({
+			message: messageWithText(
+				"Can you throw a 'team sync' on my calendar for 10am tomorrow?",
+			),
+			messageHandler: {
+				processMessage: "RESPOND",
+				plan: {
+					contexts: ["calendar"],
+					requiresTool: true,
+					candidateActions: ["CALENDAR_CREATE_EVENT"],
+				},
+			} as never,
+			actions: [{ name: "CALENDAR" }] as Action[],
+		});
+
+		expect(toolCall).toMatchObject({
+			name: "CALENDAR",
+			params: {
+				action: "create_event",
+				subaction: "create_event",
+			},
+		});
+		expect(toolCall?.params?.intent).toContain("team sync");
+	});
+
+	it("routes stubborn calendar-create misses through promoted CALENDAR_CREATE_EVENT", () => {
+		const toolCall = __buildDeterministicPlannerFallbackToolCallForTests({
+			message: messageWithText(
+				"Can you throw a 'team sync' on my calendar for 10am tomorrow?",
+			),
+			messageHandler: {
+				processMessage: "RESPOND",
+				plan: {
+					contexts: ["calendar"],
+					requiresTool: true,
+					candidateActions: ["CALENDAR_CREATE_EVENT"],
+				},
+			} as never,
+			actions: [{ name: "CALENDAR_CREATE_EVENT" }] as Action[],
+		});
+
+		expect(toolCall).toMatchObject({
+			name: "CALENDAR_CREATE_EVENT",
+			params: {
+				action: "create_event",
+				subaction: "create_event",
+			},
+		});
+	});
+
+	it("does not run heuristic owner-life fallback on ordinary chat turns", () => {
+		const toolCall = __buildDeterministicPlannerFallbackToolCallForTests({
+			message: messageWithText(
+				"I'm on nights starting Monday — I clock out at 07:30. Set me a daily reminder to log my patient-handoff notes.",
+				{ source: "discord" },
+			),
+			messageHandler: {
+				processMessage: "RESPOND",
+				plan: {
+					contexts: ["tasks"],
+					requiresTool: true,
+					candidateActions: ["TASKS_CREATE_REMINDER", "SCHEDULE_REMINDER"],
+				},
+			} as never,
+			actions: [{ name: "SCHEDULED_TASKS_CREATE" }] as Action[],
+		});
+
+		expect(toolCall).toBeNull();
+	});
+});
 
 describe("sub-agent completion relay — never promoted to tooling (false 'hit a snag')", () => {
 	// Live regression: a coding sub-agent's completion relay echoes the original

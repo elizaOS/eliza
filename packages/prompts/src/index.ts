@@ -840,6 +840,7 @@ rules:
 - smallest grounded useful tool queue
 - args only from user request or prior tool results
 - if an exposed tool can perform the requested side effect, call it; messageToUser alone does not save, schedule, send, update, remember, or complete anything
+- matching owner life-management tool exists => call it before terminal answer. Calendar creates/updates/conflict checks -> CALENDAR; reminders/alarms/todos/routines/goals/scheduled tasks -> OWNER_REMINDERS/OWNER_ALARMS/OWNER_TODOS/OWNER_ROUTINES/OWNER_GOALS/SCHEDULED_TASKS. A conflict, clarification, preview, confirmation request, or fail-closed no-op belongs in the tool result, not bare messageToUser.
 - task already complete from prior tool result or next step truly needs user speech => no toolCalls, set messageToUser
 - never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless an actual tool result this turn proves it
 - to call a tool, return exactly {"action":"TOOL_NAME","parameters":{...},"thought":"short reason"} or native toolCalls; never prose

@@ -921,15 +921,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
     // types it as `LifeOpsWorkflowEvent`. The two are runtime-compatible; a
     // localized structural cast reconciles the cross-domain payload types.
     runDueEventWorkflows: (...args) =>
-      (
-        this as unknown as {
-          runDueEventWorkflows(args: {
-            now: string;
-            limit: number;
-            lifeOpsEvents?: LifeOpsDerivedEvent[];
-          }): Promise<LifeOpsWorkflowRun[]>;
-        }
-      ).runDueEventWorkflows(...args),
+      this.runDueDerivedEventWorkflows(...args),
     snoozeOccurrence: (...args) => this.snoozeOccurrence(...args),
     checkinSource: this,
   });
@@ -1535,6 +1527,16 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.workflowsDomain.runDueEventWorkflows(args);
   }
 
+  runDueDerivedEventWorkflows(args: {
+    now: string;
+    limit: number;
+    lifeOpsEvents?: LifeOpsDerivedEvent[];
+  }): Promise<LifeOpsWorkflowRun[]> {
+    return this.workflowsDomain.runDueEventWorkflows(
+      args as Parameters<WorkflowsDomain["runDueEventWorkflows"]>[0],
+    );
+  }
+
   // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.
   // Public (not private) to avoid TS4094 on the re-exported mixin class.
   readonly definitionsDomain = new DefinitionsDomain(this, {
@@ -1609,12 +1611,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
     // The reminders domain re-declares a structurally-narrower local
     // `LifeOpsGoalRecord`; GoalsDeps expects the shared contracts record. A
     // localized structural cast reconciles the two record shapes.
-    getGoalRecord: (...args) =>
-      (
-        this as unknown as {
-          getGoalRecord(goalId: string): Promise<LifeOpsGoalRecord>;
-        }
-      ).getGoalRecord(...args),
+    getGoalRecord: (...args) => this.getSharedGoalRecord(...args),
     getDefinitionRecord: (...args) => this.getDefinitionRecord(...args),
     listActivitySignals: (...args) => this.listActivitySignals(...args),
     inspectReminder: (...args) => this.inspectReminder(...args),
@@ -1634,6 +1631,10 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   async listGoals(): Promise<LifeOpsGoalRecord[]> {
     return this.goalsDomain.listGoals();
+  }
+
+  getSharedGoalRecord(goalId: string): Promise<LifeOpsGoalRecord> {
+    return this.getGoalRecord(goalId) as Promise<LifeOpsGoalRecord>;
   }
 
   async getGoal(goalId: string): Promise<LifeOpsGoalRecord> {

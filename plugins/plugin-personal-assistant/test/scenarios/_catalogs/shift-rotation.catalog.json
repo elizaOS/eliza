@@ -50,16 +50,16 @@
       "pack": "B2",
       "tier": "T1",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "live-only capture. 'On nights starting Monday' -> a daily patient-handoff reminder anchored to his post-shift hour; non-echo definitionCountDelta with forbiddenDueLocalTimes proving it is NOT scheduled into his protected 06:00-14:00 daytime sleep. Live-model trajectory is the remaining evidence gate. Live-verify attempts 2026-07-04 (Cerebras gpt-oss-120b, TZ=UTC) FAILED — row stays authored: check widened in this PR to a store-agnostic predicate (live models route this capture through SCHEDULED_TASKS create; daily/forbidden-sleep-hours bar unchanged). The pre-widen sample created exactly the right record — a daily cron 30 8 * * * reminder outside the protected 06:00-14:00 sleep — in the scheduled-task store; both post-widen samples created nothing (apology fallback / repeated tool errors), so no single graded run has passed end to end."
+      "status": "verified",
+      "notes": "live-only capture. 'On nights starting Monday' -> a daily patient-handoff reminder anchored to his post-shift hour; non-echo definitionCountDelta with forbiddenDueLocalTimes proving it is NOT scheduled into his protected 06:00-14:00 daytime sleep. Verified 2026-07-06 with live Claude CLI model under TZ=UTC: /tmp/eliza-14351-shift-rotation-live8-capture/report.json passed 1/1, native.jsonl passed 5/5, viewer at /tmp/eliza-14351-shift-rotation-live8-capture/run/viewer/index.html. The live run routed through SCHEDULED_TASKS create with cron 33 8 * * * UTC and judge score 0.90; console noted self-graded judge because no independent CEREBRAS_API_KEY was configured."
     },
     {
       "id": "shift-rotation-sleep-window-conflict-requires-confirm",
       "pack": "B2",
       "tier": "T4",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "live-only adversarial fail-closed. Ports the bench exemplar live.shiftrotation.sleep_protection_violation_requires_confirm: a 10am booking lands in protected post-night sleep; the assistant must flag the conflict, ask for an explicit override, offer an alternative, and create nothing (forbiddenActions + no-calendar-create + definitionCountDelta delta:0 + no external dispatch). Live-model trajectory is the remaining evidence gate. Live-verify attempts 2026-07-04 (Cerebras gpt-oss-120b, TZ=UTC) FAILED — row stays authored: three samples all attempted to book the 10am event inside protected post-night sleep without flagging the conflict or asking for an override (judge 0.00; one judge call 429'd on provider quota and was resampled). The fail-closed structural checks (no definition, no calendar create, no dispatch) stayed green throughout — only mock-auth failures prevented real bookings."
+      "status": "verified",
+      "notes": "live-only adversarial fail-closed. Ports the bench exemplar live.shiftrotation.sleep_protection_violation_requires_confirm: a 10am booking lands in protected post-night sleep; the assistant must flag the conflict, ask for an explicit override, offer an alternative, and create nothing (forbiddenActions + no-calendar-create + definitionCountDelta delta:0 + no external dispatch). Verified 2026-07-06 with live Claude CLI model under TZ=UTC: /tmp/eliza-14351-shift-rotation-live10-conflict/report.json passed 1/1, native.jsonl passed 5/5, viewer at /tmp/eliza-14351-shift-rotation-live10-conflict/run/viewer/index.html. The live run invoked CALENDAR create_event and returned PROTECTED_SLEEP_CONFLICT with noop:true for 10:00 inside 05:00-13:00 UTC; judge score 1.00. Console noted self-graded judge because no independent CEREBRAS_API_KEY was configured."
     },
     {
       "id": "shiftrotation.capture_nights_starting_monday",
@@ -67,7 +67,7 @@
       "tier": "T1",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). Plain 'on nights starting Monday' statement moves planning assumptions onto that week; ground-truth CALENDAR update_preferences with a post_night_shift_sleep blackout. authored (no captured real-LLM run)."
+      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). Plain 'on nights starting Monday' statement moves planning assumptions onto that week; ground-truth CALENDAR update_preferences with a post_night_shift_sleep blackout. Re-statused 2026-07-06: keyless PerfectAgent oracle passed pass_at_1=1.0/pass_at_k=1.0 in .github/issue-evidence/14351-shift-rotation/lifeops-bench-static/shiftrotation.capture_nights_starting_monday.json, proving corpus/executor/scorer only. Real eliza-adapter smoke reached ELIZA_BENCH_READY but failed at the expected no-provider boundary in lifeops-bench-eliza-smoke/shiftrotation.capture_nights_starting_monday.no-provider.json. Row remains authored until a real-LLM LifeOpsBench run is captured and hand-reviewed."
     },
     {
       "id": "shiftrotation.protect_post_shift_sleep_window",
@@ -75,7 +75,7 @@
       "tier": "T1",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). Protects 08:00-14:00 post-night-shift as quiet_hours with requiresOverride; ground-truth LIFE_CREATE quiet_hours definition. authored (no captured real-LLM run)."
+      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). Protects 08:00-14:00 post-night-shift as quiet_hours with requiresOverride; ground-truth LIFE_CREATE quiet_hours definition. Re-statused 2026-07-06: keyless PerfectAgent oracle passed pass_at_1=1.0/pass_at_k=1.0 in .github/issue-evidence/14351-shift-rotation/lifeops-bench-static/shiftrotation.protect_post_shift_sleep_window.json, proving corpus/executor/scorer only. Row remains authored until a real-LLM LifeOpsBench run is captured and hand-reviewed."
     },
     {
       "id": "shiftrotation.normalize_d_e_n_week_pattern",
@@ -83,7 +83,7 @@
       "tier": "T1",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). Normalizes the D D E E N N off rotation for the week so the owner does not re-enter daily; ground-truth CALENDAR update_preferences. authored (no captured real-LLM run)."
+      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). Normalizes the D D E E N N off rotation for the week so the owner does not re-enter daily; ground-truth CALENDAR update_preferences. Re-statused 2026-07-06: keyless PerfectAgent oracle passed pass_at_1=1.0/pass_at_k=1.0 in .github/issue-evidence/14351-shift-rotation/lifeops-bench-static/shiftrotation.normalize_d_e_n_week_pattern.json, proving corpus/executor/scorer only. Row remains authored until a real-LLM LifeOpsBench run is captured and hand-reviewed."
     },
     {
       "id": "shiftrotation.reanchor_recurring_reminders_new_shift",
@@ -91,7 +91,7 @@
       "tier": "T2",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). Shift change re-anchors existing recurring reminders to evening hours instead of duplicating them (policy reanchor_existing). authored (no captured real-LLM run)."
+      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). Shift change re-anchors existing recurring reminders to evening hours instead of duplicating them (policy reanchor_existing). Re-statused 2026-07-06: keyless PerfectAgent oracle passed pass_at_1=1.0/pass_at_k=1.0 in .github/issue-evidence/14351-shift-rotation/lifeops-bench-static/shiftrotation.reanchor_recurring_reminders_new_shift.json, proving corpus/executor/scorer only. Row remains authored until a real-LLM LifeOpsBench run is captured and hand-reviewed."
     },
     {
       "id": "shiftrotation.tomorrow_resolves_against_shift_boundary",
@@ -99,7 +99,7 @@
       "tier": "T2",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). 'Tomorrow after shift' resolves against the night-shift boundary, not midnight; ground-truth LIFE_CREATE anchored to post_night_shift. authored (no captured real-LLM run)."
+      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). 'Tomorrow after shift' resolves against the night-shift boundary, not midnight; ground-truth LIFE_CREATE anchored to post_night_shift. Re-statused 2026-07-06: keyless PerfectAgent oracle passed pass_at_1=1.0/pass_at_k=1.0 in .github/issue-evidence/14351-shift-rotation/lifeops-bench-static/shiftrotation.tomorrow_resolves_against_shift_boundary.json, proving corpus/executor/scorer only. Row remains authored until a real-LLM LifeOpsBench run is captured and hand-reviewed."
     },
     {
       "id": "shiftrotation.quiet_hours_move_with_rotation",
@@ -107,7 +107,7 @@
       "tier": "T2",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). Moving-quiet-hours policy: protected sleep tracks whichever shift (day/evening/night) the owner is on that week. authored (no captured real-LLM run)."
+      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). Moving-quiet-hours policy: protected sleep tracks whichever shift (day/evening/night) the owner is on that week. Re-statused 2026-07-06: keyless PerfectAgent oracle passed pass_at_1=1.0/pass_at_k=1.0 in .github/issue-evidence/14351-shift-rotation/lifeops-bench-static/shiftrotation.quiet_hours_move_with_rotation.json, proving corpus/executor/scorer only. Row remains authored until a real-LLM LifeOpsBench run is captured and hand-reviewed."
     },
     {
       "id": "shiftrotation.forward_rotation_transition_leniency",
@@ -115,7 +115,7 @@
       "tier": "T2",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). Forward-rotation-aware planning avoids stacking errands right after the first evening shift on the transition day. authored (no captured real-LLM run)."
+      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). Forward-rotation-aware planning avoids stacking errands right after the first evening shift on the transition day. Re-statused 2026-07-06: keyless PerfectAgent oracle passed pass_at_1=1.0/pass_at_k=1.0 in .github/issue-evidence/14351-shift-rotation/lifeops-bench-static/shiftrotation.forward_rotation_transition_leniency.json, proving corpus/executor/scorer only. Row remains authored until a real-LLM LifeOpsBench run is captured and hand-reviewed."
     },
     {
       "id": "shiftrotation.dedup_habit_survives_shift_change",
@@ -123,7 +123,7 @@
       "tier": "T2",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). Hydration habit re-anchors to nights via dedupeKey without creating a duplicate definition (policy reanchor_existing). authored (no captured real-LLM run)."
+      "notes": "LifeOpsBench static (scenarios/shift_rotation.py). Hydration habit re-anchors to nights via dedupeKey without creating a duplicate definition (policy reanchor_existing). Re-statused 2026-07-06: keyless PerfectAgent oracle passed pass_at_1=1.0/pass_at_k=1.0 in .github/issue-evidence/14351-shift-rotation/lifeops-bench-static/shiftrotation.dedup_habit_survives_shift_change.json, proving corpus/executor/scorer only. Row remains authored until a real-LLM LifeOpsBench run is captured and hand-reviewed."
     },
     {
       "id": "live.shiftrotation.sleep_protection_violation_requires_confirm",
@@ -131,7 +131,7 @@
       "tier": "T4",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). Verbatim issue exemplar: a booking inside protected post-night sleep must be flagged and fail closed without an explicit override. Ported to the live-only scenario-runner shift-rotation-sleep-window-conflict-requires-confirm. authored (live-model run is the #12781 gate)."
+      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). Verbatim issue exemplar: a booking inside protected post-night sleep must be flagged and fail closed without an explicit override. Ported to the live-only scenario-runner shift-rotation-sleep-window-conflict-requires-confirm, which passed live Claude CLI on 2026-07-06 with CALENDAR PROTECTED_SLEEP_CONFLICT noop evidence. Re-statused 2026-07-06: LifeOpsBench live row remains authored because this environment has no CEREBRAS_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY for the simulated-user/judge/agent path."
     },
     {
       "id": "live.shiftrotation.night_to_day_transition_plan",
@@ -139,7 +139,7 @@
       "tier": "T3",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). Plans recovery sleep while rotating from nights to a Monday day shift. authored (live-model run is the #12781 gate)."
+      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). Plans recovery sleep while rotating from nights to a Monday day shift. Re-statused 2026-07-06: remains authored because this environment has no CEREBRAS_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY for the LifeOpsBench live simulated-user/judge/agent path; no substitute evidence was captured."
     },
     {
       "id": "live.shiftrotation.swap_shift_chain_replan",
@@ -147,7 +147,7 @@
       "tier": "T3",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). A confirmed shift swap cascades through the surrounding sleep and family windows. Premise shared with live-only scenario-runner shift-rotation-swap-reanchors-and-checks-in. authored (live-model run is the #12781 gate)."
+      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). A confirmed shift swap cascades through the surrounding sleep and family windows. Premise shared with live-only scenario-runner shift-rotation-swap-reanchors-and-checks-in. Re-statused 2026-07-06: remains authored because this environment has no CEREBRAS_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY for the LifeOpsBench live simulated-user/judge/agent path; no substitute evidence was captured."
     },
     {
       "id": "live.shiftrotation.medication_cadence_across_rotation",
@@ -155,7 +155,7 @@
       "tier": "T3",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). Medication reminder follows wake timing across evening and night rotations. authored (live-model run is the #12781 gate)."
+      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). Medication reminder follows wake timing across evening and night rotations. Re-statused 2026-07-06: remains authored because this environment has no CEREBRAS_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY for the LifeOpsBench live simulated-user/judge/agent path; no substitute evidence was captured."
     },
     {
       "id": "live.shiftrotation.family_event_vs_recovery_sleep",
@@ -163,7 +163,7 @@
       "tier": "T3",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). Balances a family event against post-night-shift recovery sleep. authored (live-model run is the #12781 gate)."
+      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). Balances a family event against post-night-shift recovery sleep. Re-statused 2026-07-06: remains authored because this environment has no CEREBRAS_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY for the LifeOpsBench live simulated-user/judge/agent path; no substitute evidence was captured."
     },
     {
       "id": "live.shiftrotation.short_notice_overtime_triage",
@@ -171,7 +171,7 @@
       "tier": "T4",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). A staffing overtime request landing during protected sleep must be triaged safely (adversarial protected-sleep interruption). authored (live-model run is the #12781 gate)."
+      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). A staffing overtime request landing during protected sleep must be triaged safely (adversarial protected-sleep interruption). Re-statused 2026-07-06: remains authored because this environment has no CEREBRAS_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY for the LifeOpsBench live simulated-user/judge/agent path; no substitute evidence was captured."
     },
     {
       "id": "live.shiftrotation.week_at_a_time_brief_after_handoff",
@@ -179,7 +179,7 @@
       "tier": "T2",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). A weekly post-handoff brief covers rotation, sleep, meds, and family conflicts. authored (live-model run is the #12781 gate)."
+      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). A weekly post-handoff brief covers rotation, sleep, meds, and family conflicts. Re-statused 2026-07-06: remains authored because this environment has no CEREBRAS_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY for the LifeOpsBench live simulated-user/judge/agent path; no substitute evidence was captured."
     },
     {
       "id": "live.shiftrotation.focus_between_evening_shifts",
@@ -187,7 +187,7 @@
       "tier": "T2",
       "surface": "lifeops-bench",
       "status": "authored",
-      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). Finds one admin focus block before an evening shift without cutting into sleep, commute, or meal prep. authored (live-model run is the #12781 gate)."
+      "notes": "LifeOpsBench live (scenarios/live/shift_rotation.py). Finds one admin focus block before an evening shift without cutting into sleep, commute, or meal prep. Re-statused 2026-07-06: remains authored because this environment has no CEREBRAS_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY for the LifeOpsBench live simulated-user/judge/agent path; no substitute evidence was captured."
     }
   ]
 }

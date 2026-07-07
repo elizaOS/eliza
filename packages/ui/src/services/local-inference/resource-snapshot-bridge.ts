@@ -41,6 +41,8 @@ export interface DeviceResourceSnapshot {
   residentMemoryMb: number | null;
   /** Device-wide available RAM in MB before memory pressure. */
   availableRamMb: number | null;
+  /** Device total physical RAM in MB (feeds RAM-tier gating, #14390). */
+  totalRamMb: number | null;
   /** Cumulative process CPU time in ms. */
   cpuTimeMs: number | null;
   batteryLevelPct: number | null;
@@ -94,6 +96,7 @@ export function normalizeResourceSnapshot(
     lowPowerMode: boolOrNull(r.lowPowerMode),
     residentMemoryMb: finiteOrNull(r.residentMemoryMb),
     availableRamMb: finiteOrNull(r.availableRamMb),
+    totalRamMb: finiteOrNull(r.totalRamMb),
     cpuTimeMs: finiteOrNull(r.cpuTimeMs),
     batteryLevelPct: finiteOrNull(r.batteryLevelPct),
     batteryChargeMicroAmpHours: finiteOrNull(r.batteryChargeMicroAmpHours),

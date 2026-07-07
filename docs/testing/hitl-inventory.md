@@ -47,7 +47,45 @@ headless runner can't fake:
 | Provider / model selection | catalog correctness + visual density | 🟡 frame — first-run options e2e | screenshot of the provider grid at each viewport |
 | Boot-trouble-speaks-in-chat (no banners) | tone / does the copy read right | 🟡 frame — `App.chat-overlay-first-run.test.tsx`, #14168 detent work | staged error card frame |
 | Onboarding **persists** across restart | correctness (not visual) | ✅ auto — `first-run-persistence.restart.test.ts` (real `saveElizaConfig`/`loadElizaConfig`) | n/a (already machine-decided) |
-| Onboarding **re-runnable** on a real agent | can't reset without nuking memories | ⛔ none → **#14382 slice in this PR** | dev-gated `?onboarding-replay=1` client overlay (no server wipe) |
+| Onboarding **re-runnable** on a real agent | can't reset without nuking memories | 🟡 frame — dev-gated `?onboarding-replay=1`, wired on the app boot path (`packages/app/src/first-run-boot-patches.ts`; regression test `packages/app/test/first-run-boot-patches.test.ts`); steps below | dev-gated `?onboarding-replay=1` client overlay (no server wipe) |
+
+### Onboarding replay / reset steps (#14382)
+
+Two dev query params re-run onboarding. Both are wired on the main-window boot
+path in `packages/app/src/first-run-boot-patches.ts` (called from
+`packages/app/src/main.tsx`; the arm-before-patch order is load-bearing and
+locked by `packages/app/test/first-run-boot-patches.test.ts`).
+
+**Non-destructive replay — the default for QA on a real, memory-laden agent:**
+
+1. Boot the dev app (`bun run dev` at the repo root, or
+   `bun run --cwd packages/app dev:shared` on a parallel lane).
+2. Append `?onboarding-replay=1` to the URL and reload. Onboarding renders
+   again: a client overlay (`packages/ui/src/platform/onboarding-replay.ts`)
+   makes the client *report* fresh while the real agent, its config, the
+   persisted `elizaos:active-server`, and all server state (PGlite data dir,
+   conversations, knowledge, trajectories) stay untouched.
+3. Walk the steps for QA/screenshots. Submitting the replayed onboarding
+   re-applies the chosen onboarding *config* to the same agent (that is the
+   full-path exercise); it never deletes data.
+4. To leave without applying anything: drop the param and reload — the agent
+   is exactly as it was.
+
+Headless proof/capture driver (screenshots + non-destruction assertions
+against a running dev stack):
+`node packages/app/scripts/onboarding-replay-evidence.mjs --out <dir>`.
+
+**`?reset` — genuinely fresh client session (stateful, still no server wipe):**
+clears the client's persisted session (active server, setup step,
+first-run-complete) and sets the durable force-fresh flag so the next boot
+lands on onboarding as a new client. Use it for "new device" QA; unlike the
+replay it forgets which server/agent the client was attached to.
+
+**Safeguards** (so the test path cannot be confused with a destructive
+production account reset): `?onboarding-replay=1` is compiled inert outside
+dev builds (`import.meta.env.DEV`); neither param can reach
+`POST /api/agent/reset` — the only path that wipes agent memories — and the
+module tests assert no delete/reset/clear method ever fires during a replay.
 
 ### First chat
 

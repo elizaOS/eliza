@@ -339,12 +339,19 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         let charging = device.batteryState == .charging || device.batteryState == .full
         device.isBatteryMonitoringEnabled = priorMonitoring
 
+        // Device total physical RAM: feeds the renderer's RAM-tier gating
+        // (#14390) alongside the marketed-GB figure in getDeviceCapabilities.
+        let totalRamMb: Any = info.physicalMemory > 0
+            ? Double(info.physicalMemory) / 1_048_576.0
+            : NSNull()
+
         call.resolve([
             "platform": "ios",
             "thermalState": thermal,
             "lowPowerMode": info.isLowPowerModeEnabled,
             "residentMemoryMb": residentMb,
             "availableRamMb": availableMb,
+            "totalRamMb": totalRamMb,
             "cpuTimeMs": cpuMs,
             "batteryLevelPct": batteryPct,
             "isCharging": charging,

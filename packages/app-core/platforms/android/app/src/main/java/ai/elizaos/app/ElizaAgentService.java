@@ -3772,50 +3772,63 @@ public class ElizaAgentService extends Service {
      * - On AOSP / ElizaOS-branded devices (`ro.elizaos.product` set or any
      *   white-label fork's `ro.<brand>os.product`), the device IS the
      *   agent: always start.
-     * - On stock Android, start when the user picked the Local runtime in
-     *   the onboarding picker (mobile-runtime-mode == "local"), or when no
-     *   mode has been chosen yet on a build that ships the agent payload.
-     *   The renderer's pre-seed (pre-seed-local-runtime.ts) commits the
-     *   on-device agent as the startup target on the first frame of every
-     *   payload-shipping build — but it runs after this gate has already
-     *   been evaluated in MainActivity.onCreate, so waiting for the
-     *   persisted choice deadlocks the first-ever launch: the WebView polls
-     *   an abstract socket no one is serving until the startup timeout card
-     *   (#15189). Matching the pre-seed's build truth here closes that gap;
-     *   the cloud-thinned Play-Store build and UI-only debug builds carry no
-     *   payload and keep the cloud-first fresh-install behavior.
+     * - On stock Android, start ONLY when the user picked the Local runtime
+     *   in onboarding (mobile-runtime-mode == "local") AND the device clears
+     *   the {@link DeviceRamTierPolicy} 8 GB marketed-RAM floor. A persisted
+     *   "local" survives reinstalls via Capacitor Preferences, so the RAM
+     *   check re-runs every boot — a low-RAM device carrying a stale "local"
+     *   must not wedge boot for the 180 s startup budget (#14390).
+     * - No persisted mode (a fresh install) never auto-starts: onboarding
+     *   owns the runtime decision, and the renderer starts this service on
+     *   demand through the Agent Capacitor plugin the moment the user commits
+     *   to the local runtime (first-run-finish.ts startMobileLocalAgent) — no
+     *   app restart involved. That renderer-driven start replaces the old
+     *   fresh-install auto-start of payload-shipping builds (#15189), which
+     *   booted the agent on 4 GB phones before the user had chosen anything.
      * - An explicit cloud, hybrid cloud, remote, or tunnel choice never
      *   auto-starts this service.
      */
     public static boolean shouldAutoStart(Context context) {
-        return shouldAutoStartForRuntimeMode(
-            isBrandedDevice(), readRuntimeMode(context), apkBundlesAgentPayload(context));
+        String mode = readRuntimeMode(context);
+        long totalMemBytes = readDeviceTotalMemBytes(context);
+        boolean deviceAllowsLocalAgent = DeviceRamTierPolicy.allowsLocalAgent(totalMemBytes);
+        boolean start = shouldAutoStartForRuntimeMode(
+            isBrandedDevice(), mode, deviceAllowsLocalAgent);
+        String trimmed = mode == null ? null : mode.trim();
+        if (!start && "local".equals(trimmed) && !deviceAllowsLocalAgent) {
+            // Fail loud (#14390): a persisted local choice on a device below the
+            // RAM floor is refused, not silently attempted-and-wedged. The
+            // renderer heals the stale mode back to onboarding at boot
+            // (device-ram-tier.ts enforceDeviceRamPolicyOnPersistedRuntimeMode).
+            Log.w(TAG, "refusing to auto-start the on-device agent: persisted local"
+                + " runtime mode on a device below the "
+                + DeviceRamTierPolicy.LOCAL_AGENT_MIN_MARKETED_RAM_GB
+                + " GB RAM floor (marketed "
+                + DeviceRamTierPolicy.marketedRamGb(totalMemBytes) + " GB)");
+        }
+        return start;
     }
 
     static boolean shouldAutoStartForRuntimeMode(
-            boolean brandedDevice, String mode, boolean bundlesAgentPayload) {
+            boolean brandedDevice, String mode, boolean deviceAllowsLocalAgent) {
         if (brandedDevice) return true;
         String trimmed = mode == null ? null : mode.trim();
-        if ("local".equals(trimmed)) return true;
-        return (trimmed == null || trimmed.isEmpty()) && bundlesAgentPayload;
+        return "local".equals(trimmed) && deviceAllowsLocalAgent;
     }
 
     /**
-     * Whether this APK ships the on-device agent payload. Native mirror of the
-     * renderer's isAndroidLocalSideloadBuild() build truth: the cloud-thinning
-     * build step strips assets/agent/** from the Play-Store APK, so probing the
-     * bundle asset distinguishes the local-sideload/system builds (payload
-     * present) from cloud-thinned and UI-only WebView-debug builds.
+     * Device total RAM from {@code ActivityManager.MemoryInfo.totalMem}, or
+     * -1 when unreadable — the tier policy treats an unreadable total as
+     * "unknown", never as zero RAM.
      */
-    static boolean apkBundlesAgentPayload(Context context) {
-        if (context == null) return false;
-        try (InputStream probe = context.getAssets().open("agent/" + AGENT_BUNDLE_NAME)) {
-            return true;
-        } catch (IOException missing) {
-            // error-policy:J3 asset probe — absence of the bundle IS the negative
-            // signal (thinned build), not a failure to report.
-            return false;
-        }
+    private static long readDeviceTotalMemBytes(Context context) {
+        if (context == null) return -1L;
+        ActivityManager am =
+            (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        if (am == null) return -1L;
+        ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
+        am.getMemoryInfo(info);
+        return info.totalMem > 0 ? info.totalMem : -1L;
     }
 
     /**
@@ -3860,8 +3873,26 @@ public class ElizaAgentService extends Service {
         }
     }
 
-    /** Start the foreground service (safe to call repeatedly). */
+    /**
+     * Start the foreground service (safe to call repeatedly).
+     *
+     * <p>Throws {@link IllegalStateException} on a stock device below the
+     * {@link DeviceRamTierPolicy} RAM floor (#14390): every start affordance
+     * — the onboarding finish via the Agent Capacitor plugin, the startup
+     * poll's revive request, the boot receiver — funnels here, so this is the
+     * one fail-loud backstop against a disallowed mode wedging boot. The
+     * renderer surfaces the rejection as the onboarding/startup error it
+     * already renders; branded devices ARE the agent and are exempt.
+     */
     public static void start(Context context) {
+        long totalMemBytes = readDeviceTotalMemBytes(context);
+        if (!isBrandedDevice() && !DeviceRamTierPolicy.allowsLocalAgent(totalMemBytes)) {
+            throw new IllegalStateException(
+                "This device (~" + DeviceRamTierPolicy.marketedRamGb(totalMemBytes)
+                + " GB RAM) is below the "
+                + DeviceRamTierPolicy.LOCAL_AGENT_MIN_MARKETED_RAM_GB
+                + " GB floor for the on-device agent; use cloud mode");
+        }
         Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_START);
         try {

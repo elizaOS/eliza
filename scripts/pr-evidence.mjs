@@ -101,6 +101,12 @@ function attach(pr, files) {
   const staged = [];
   for (const file of files) {
     if (!existsSync(file)) fail(`no such file: ${file}`);
+    // GitHub rejects zero-byte release assets with an opaque 400
+    // (Bad Content-Length) that aborts the whole batch — fail per-file with
+    // the actual reason instead. An empty artifact is never real evidence.
+    if (readFileSync(file).length === 0) {
+      fail(`refusing to upload empty file (0 bytes): ${file}`);
+    }
     const name = `${pr}-${basename(file).replace(new RegExp(`^${pr}-`), "")}`;
     const url = `${ASSET_BASE}/${name}`;
     urls.set(name, url);

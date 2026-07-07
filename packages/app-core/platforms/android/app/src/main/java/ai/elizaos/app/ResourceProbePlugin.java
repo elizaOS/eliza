@@ -35,7 +35,9 @@ import java.nio.file.Paths;
  *   <li><b>battery</b> — {@link BatteryManager} level (%), charge counter (µAh),
  *       instantaneous current (µA), and charging flag.</li>
  *   <li><b>memory</b> — {@link Debug#getMemoryInfo} total PSS (the app's real
- *       footprint) plus {@link ActivityManager.MemoryInfo} device available RAM.</li>
+ *       footprint) plus {@link ActivityManager.MemoryInfo} device available
+ *       and total RAM (the latter feeds the renderer's RAM-tier gating,
+ *       #14390).</li>
  *   <li><b>cpuTimeMs</b> — process user+system jiffies from {@code /proc/self/stat}
  *       converted via {@code sysconf(_SC_CLK_TCK)}.</li>
  *   <li><b>lowPowerMode</b> — {@link PowerManager#isPowerSaveMode()}.</li>
@@ -66,6 +68,7 @@ public class ResourceProbePlugin extends Plugin {
 
         result.put("residentMemoryMb", readTotalPssMb());
         result.put("availableRamMb", readAvailableRamMb(context));
+        result.put("totalRamMb", readTotalRamMb(context));
         result.put("cpuTimeMs", readProcessCpuTimeMs());
 
         result.put("capturedAtMs", System.currentTimeMillis());
@@ -132,6 +135,21 @@ public class ResourceProbePlugin extends Plugin {
         ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
         am.getMemoryInfo(info);
         return info.availMem / 1_048_576.0;
+    }
+
+    /**
+     * Device total physical RAM in MB. Feeds the renderer's RAM-tier gating
+     * (#14390) on paths where the synchronous {@code ElizaNativeBridge} read
+     * is unavailable; JSON null when the OS cannot provide it.
+     */
+    private static Object readTotalRamMb(Context context) {
+        ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        if (am == null) {
+            return JSONObject.NULL;
+        }
+        ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
+        am.getMemoryInfo(info);
+        return info.totalMem > 0 ? info.totalMem / 1_048_576.0 : JSONObject.NULL;
     }
 
     /**

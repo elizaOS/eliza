@@ -125,6 +125,22 @@ function setVisibility(state: "visible" | "hidden"): void {
   document.dispatchEvent(new Event("visibilitychange"));
 }
 
+function stubDisplayMode(mode: "standalone" | "fullscreen" | "browser"): void {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn((query: string) => ({
+      matches: query.includes(`display-mode: ${mode}`),
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
+
 function fireNetworkEvent(eventName: string, payload: unknown): void {
   for (const handler of networkListeners.get(eventName) ?? []) handler(payload);
 }
@@ -157,6 +173,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   historyBackSpy.mockRestore();
+  delete (window as { matchMedia?: unknown }).matchMedia;
+  delete (navigator as { standalone?: unknown }).standalone;
 });
 
 describe("createMobileLifecycle — app lifecycle", () => {
@@ -236,6 +254,46 @@ describe("createMobileLifecycle — app lifecycle", () => {
     setVisibility("visible");
 
     expect(resume).toHaveBeenCalledTimes(1);
+    document.removeEventListener(APP_RESUME_EVENT, resume);
+  });
+
+  it("does not dispatch app lifecycle events from a normal browser tab visibilitychange", () => {
+    stubDisplayMode("browser");
+    const lifecycle = createMobileLifecycle(
+      makeContext({ isNative: false, isIOS: false, isAndroid: false }),
+    );
+    const pause = vi.fn();
+    const resume = vi.fn();
+    document.addEventListener(APP_PAUSE_EVENT, pause);
+    document.addEventListener(APP_RESUME_EVENT, resume);
+
+    lifecycle.initializeAppLifecycle();
+    setVisibility("hidden");
+    setVisibility("visible");
+
+    expect(pause).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
+    document.removeEventListener(APP_PAUSE_EVENT, pause);
+    document.removeEventListener(APP_RESUME_EVENT, resume);
+  });
+
+  it("dispatches app lifecycle events from an installed web PWA visibilitychange", () => {
+    stubDisplayMode("standalone");
+    const lifecycle = createMobileLifecycle(
+      makeContext({ isNative: false, isIOS: false, isAndroid: false }),
+    );
+    const pause = vi.fn();
+    const resume = vi.fn();
+    document.addEventListener(APP_PAUSE_EVENT, pause);
+    document.addEventListener(APP_RESUME_EVENT, resume);
+
+    lifecycle.initializeAppLifecycle();
+    setVisibility("hidden");
+    setVisibility("visible");
+
+    expect(pause).toHaveBeenCalledTimes(1);
+    expect(resume).toHaveBeenCalledTimes(1);
+    document.removeEventListener(APP_PAUSE_EVENT, pause);
     document.removeEventListener(APP_RESUME_EVENT, resume);
   });
 

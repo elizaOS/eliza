@@ -10,54 +10,63 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 /**
- * JVM unit tests for the stock-Android local-agent autostart policy. The gate
- * must mirror the renderer's pre-seed build truth (pre-seed-local-runtime.ts):
- * a build that ships the agent payload boots it even before onboarding records
- * a choice — the renderer already committed to it as the startup target, and
- * waiting for the persisted choice deadlocks the first-ever launch (#15189).
- * Builds without the payload (cloud-thinned Play Store, UI-only debug) stay
- * cloud-first, and an explicit non-local user choice is always respected.
+ * JVM unit tests for the stock-Android local-agent autostart policy (#14390).
+ * Only two things may auto-start the bundled agent: a branded device (the
+ * device IS the agent) or an explicit onboarding "local" choice on a device
+ * that clears the RAM-tier floor. A fresh install (no persisted mode) never
+ * auto-starts — onboarding owns the decision and the renderer starts the
+ * service on demand through the Agent Capacitor plugin — and a persisted
+ * "local" on a RAM-blocked device is refused instead of wedging boot.
  */
 public class ElizaAgentAutostartPolicyTest {
 
+    private static final boolean RAM_OK = true;
+    private static final boolean RAM_BLOCKED = false;
+
     @Test
     public void brandedDevicesAlwaysStartTheBundledAgent() {
-        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(true, null, true));
-        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(true, null, false));
-        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(true, "cloud", false));
-        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(true, "remote-mac", false));
+        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(true, null, RAM_OK));
+        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(true, null, RAM_BLOCKED));
+        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(true, "cloud", RAM_OK));
+        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(true, "remote-mac", RAM_BLOCKED));
     }
 
     @Test
-    public void stockFreshInstallStartsTheAgentWhenTheBuildShipsIt() {
-        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(false, null, true));
-        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "", true));
-        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "   ", true));
+    public void stockFreshInstallNeverAutoStarts() {
+        // The runtime decision belongs to onboarding: with no persisted mode the
+        // renderer must land in first-run, then start the service explicitly
+        // once the user commits to the local runtime.
+        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, null, RAM_OK));
+        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "", RAM_OK));
+        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "   ", RAM_OK));
+        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, null, RAM_BLOCKED));
     }
 
     @Test
-    public void stockFreshInstallStaysCloudFirstWithoutThePayload() {
-        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, null, false));
-        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "", false));
-        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "   ", false));
-    }
-
-    @Test
-    public void stockCloudModesStayCloudFirstEvenWithThePayload() {
-        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "cloud", true));
-        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "cloud-hybrid", true));
+    public void stockCloudModesStayCloudFirst() {
+        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "cloud", RAM_OK));
+        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "cloud-hybrid", RAM_OK));
     }
 
     @Test
     public void stockExternalModesDoNotStartTheBundledAgent() {
-        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "remote-mac", true));
-        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "tunnel-to-mobile", true));
+        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "remote-mac", RAM_OK));
+        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "tunnel-to-mobile", RAM_OK));
     }
 
     @Test
-    public void stockLocalModeStartsTheBundledAgent() {
-        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "local", true));
-        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(false, " local ", false));
+    public void stockLocalModeStartsTheBundledAgentWhenRamAllows() {
+        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "local", RAM_OK));
+        assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(false, " local ", RAM_OK));
+    }
+
+    @Test
+    public void stockLocalModeIsRefusedBelowTheRamFloor() {
+        // A persisted "local" survives reinstalls via Capacitor Preferences, so
+        // a low-RAM device can carry one it can no longer honor — refusing here
+        // is what keeps a 4 GB phone from wedging boot for the 180 s budget.
+        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, "local", RAM_BLOCKED));
+        assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, " local ", RAM_BLOCKED));
     }
 
     /**

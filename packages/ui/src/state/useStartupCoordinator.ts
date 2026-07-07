@@ -18,6 +18,7 @@ import { logger } from "@elizaos/logger";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { client } from "../api";
 import { isElectrobunRuntime } from "../bridge";
+import { enforceDeviceRamPolicyOnPersistedRuntimeModeAtBoot } from "../first-run/device-ram-gate";
 import { reconcilePersistedMobileRuntimeModeAtBoot } from "../first-run/reconcile-mobile-runtime-mode";
 import { isAndroid, isElizaOS, isIOS, isNative } from "../platform";
 import {
@@ -213,6 +214,12 @@ export function useStartupCoordinator(
     // local-agent transports stay policy-locked and boot hangs. No-op on
     // web/desktop and whenever the persisted mode is still usable.
     reconcilePersistedMobileRuntimeModeAtBoot();
+    // RAM-tier enforcement (#14390) runs AFTER the build reconcile so a mode
+    // the reconcile just adopted is also policy-checked: a persisted/adopted
+    // "local" on a device below the 8 GB floor is reverted here, landing the
+    // boot in onboarding instead of polling an agent the native gate refuses
+    // to start. No-op on web/desktop and on capable devices.
+    enforceDeviceRamPolicyOnPersistedRuntimeModeAtBoot();
     // error-policy:J5 expected failures are dispatched to the state machine
     // inside the runner; this catch only keeps an unexpected runner bug from
     // becoming an unhandled rejection, logged so a wedged boot phase is

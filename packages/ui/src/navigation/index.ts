@@ -1,8 +1,15 @@
 /**
  * Navigation — tabs + first-run setup.
+ *
+ * Re-exported by the `@elizaos/ui` barrel, which server-side plugins import
+ * under plain node inside the production Docker image — so this module must
+ * not statically import `@capacitor/core` (not shipped in the server image; a
+ * static import made `plugin-task-coordinator` unloadable there). Platform
+ * detection reads the bridge-injected `globalThis.Capacitor` instead, which is
+ * exactly what the npm module's `getPlatform()`/`isNativePlatform()` consult:
+ * present on native WebViews, absent on web and node (→ "web", not native).
  */
 
-import { Capacitor } from "@capacitor/core";
 import type { LucideIcon } from "lucide-react";
 import {
   Clock3,
@@ -136,6 +143,19 @@ function hasAndroidTestFlag(search: string, hash: string): boolean {
   return new URLSearchParams(hashQuery).get("android") === "true";
 }
 
+/** The Capacitor bridge's injected global — the same object the npm module
+ *  reads. Present only inside native WebViews; `null` on web and node. */
+interface CapacitorBridgeGlobal {
+  getPlatform?: () => string;
+  isNativePlatform?: () => boolean;
+}
+
+function capacitorBridge(): CapacitorBridgeGlobal | null {
+  const bridge = (globalThis as { Capacitor?: CapacitorBridgeGlobal })
+    .Capacitor;
+  return bridge ?? null;
+}
+
 export function isAndroidPhoneSurfaceEnabled(
   detection: AndroidPhoneSurfaceDetection = {},
 ): boolean {
@@ -147,8 +167,10 @@ export function isAndroidPhoneSurfaceEnabled(
     (typeof window === "undefined" ? "" : window.location.hash);
   if (hasAndroidTestFlag(search, hash)) return true;
 
-  const platform = detection.platform ?? Capacitor.getPlatform();
-  const isNative = detection.isNative ?? Capacitor.isNativePlatform();
+  const platform =
+    detection.platform ?? capacitorBridge()?.getPlatform?.() ?? "web";
+  const isNative =
+    detection.isNative ?? capacitorBridge()?.isNativePlatform?.() ?? false;
   return isNative && platform === "android";
 }
 

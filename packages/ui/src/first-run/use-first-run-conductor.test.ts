@@ -56,6 +56,12 @@ const mocks = vi.hoisted(() => ({
   refreshCloudStewardSession: vi.fn(
     async (): Promise<{ token?: string } | null> => null,
   ),
+  // The device RAM probe is a native boundary like the client: tests inject a
+  // tier here (null = jsdom's honest "unknown"); the gate's own probe path is
+  // covered in device-ram-gate.test.ts against the real bridge seam.
+  deviceRamTier: null as
+    | import("./device-ram-tier").DeviceRamTierAssessment
+    | null,
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -76,6 +82,32 @@ vi.mock("./auto-download-recommended", () => ({
     mocks.autoDownloadRecommendedLocalModelInBackground,
 }));
 
+vi.mock("./device-ram-gate", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./device-ram-gate")>();
+  return {
+    ...actual,
+    peekDeviceRamTierAssessment: () => mocks.deviceRamTier,
+    resolveDeviceRamTierAssessment: async () =>
+      mocks.deviceRamTier ?? actual.peekDeviceRamTierAssessment(),
+    // Mirrors the real backstop contract against the injected tier so the
+    // finish path enforces the same policy the conductor gates on.
+    assertDeviceRamTierAllowsLocalRuntime: async (localInference: string) => {
+      const tier = mocks.deviceRamTier;
+      if (!tier) return;
+      if (!tier.allowsLocalAgent) {
+        throw new Error(
+          `This device can't run the on-device agent: ${tier.reason}.`,
+        );
+      }
+      if (localInference === "all-local" && !tier.allowsLocalModels) {
+        throw new Error(
+          `This device can't run on-device models: ${tier.reason}.`,
+        );
+      }
+    },
+  };
+});
+
 import type { ConversationMessage, LocalAgentBackupMetadata } from "../api";
 import { __setAppValueForTests } from "../state/app-store";
 import {
@@ -83,6 +115,7 @@ import {
   type ConversationMessagesValue,
 } from "../state/ConversationMessagesContext.hooks";
 import type { AppContextValue } from "../state/internal";
+import { classifyDeviceRamTier } from "./device-ram-tier";
 import {
   tryHandleFirstRunAction,
   tryHandleFirstRunText,
@@ -98,6 +131,7 @@ import {
   resetFirstRunPersistGuard,
   runFirstRunFinish,
 } from "./first-run-finish";
+import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "./mobile-runtime-mode";
 import {
   surfaceCloudLoginRetryTurn,
   useFirstRunConductor,
@@ -217,6 +251,7 @@ async function waitForTurn(
 beforeEach(() => {
   ensureLocalStorage().clear();
   vi.clearAllMocks();
+  mocks.deviceRamTier = null;
   mocks.client.listLocalAgentBackups.mockResolvedValue([]);
   // `clearAllMocks` resets call history but NOT implementations, so restore the
   // default resolved implementations that individual tests override (a leaked
@@ -1697,6 +1732,213 @@ describe("useFirstRunConductor — free-text replies (#12178 composer unlock)", 
     await waitForTurn(turn, "first-run:greeting");
     const before = transcript.current.length;
     expect(tryHandleFirstRunText("   ")).toBe(true);
+    expect(transcript.current.length).toBe(before);
+    unmount();
+  });
+});
+
+describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
+  it("labels the local option unavailable on a sub-8 GB device and refuses the pick with the reason", async () => {
+    mocks.deviceRamTier = classifyDeviceRamTier(4);
+    seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+
+    // The greeting's local option is visibly gated — never silently hidden.
+    const greeting = await waitForTurn(turn, "first-run:greeting");
+    expect(greeting.text).toContain("__first_run__:runtime:local=");
+    expect(greeting.text).toContain("unavailable — needs 8 GB+ RAM");
+    expect(greeting.text).toContain("~4 GB detected");
+
+    // The tap is refused at the decision point: a refusal turn with the
+    // reason and a FRESH runtime choice — no provider step, no finish.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) =>
+          m.id.startsWith("first-run:runtime-blocked:"),
+        ),
+      ).toBe(true);
+    });
+    const blocked = transcript.current.find((m) =>
+      m.id.startsWith("first-run:runtime-blocked:"),
+    );
+    expect(blocked?.text).toContain("~4 GB RAM");
+    expect(blocked?.text).toContain("[CHOICE:first-run id=runtime]");
+    expect(turn("first-run:provider")).toBeUndefined();
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
+
+    // Cloud remains a live way forward from the re-offered choice.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitForTurn(turn, "first-run:cloud-oauth");
+    unmount();
+  });
+
+  it("blocks on-device models on a sub-12 GB device but finishes the hybrid local runtime", async () => {
+    mocks.deviceRamTier = classifyDeviceRamTier(8);
+    seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    // The local AGENT is allowed on this band; only on-device models gate.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    const provider = await waitForTurn(turn, "first-run:provider");
+    expect(provider.text).toContain("unavailable — needs 12 GB+ RAM");
+    expect(provider.text).toContain(
+      "__first_run__:provider:elizacloud=Eliza Cloud inference (recommended)",
+    );
+    expect(provider.text).toContain("__first_run__:back:runtime=");
+
+    // The blocked on-device pick is refused with a fresh provider choice.
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) =>
+          m.id.startsWith("first-run:provider:retry:"),
+        ),
+      ).toBe(true);
+    });
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
+    expect(
+      mocks.autoDownloadRecommendedLocalModelInBackground,
+    ).not.toHaveBeenCalled();
+
+    // Eliza Cloud inference (hybrid) is the allowed local path here and
+    // completes the REAL finish: exactly one POST, no model download, and the
+    // hybrid runtime mode persisted.
+    expect(tryHandleFirstRunAction("__first_run__:provider:elizacloud")).toBe(
+      true,
+    );
+    await waitForTurn(turn, "first-run:tutorial");
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.autoDownloadRecommendedLocalModelInBackground,
+    ).not.toHaveBeenCalled();
+    expect(localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBe(
+      "cloud-hybrid",
+    );
+    unmount();
+  });
+
+  it("annotates (but allows) on-device models on the 12-15 GB warn band", async () => {
+    mocks.deviceRamTier = classifyDeviceRamTier(12);
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    const provider = await waitForTurn(turn, "first-run:provider");
+    expect(provider.text).toContain("Heads up:");
+    expect(provider.text).toContain("can be slow and run warm");
+    expect(provider.text).toContain(
+      "__first_run__:provider:on-device=On this device (recommended)",
+    );
+    unmount();
+  });
+
+  it("goes back from the provider step to a fresh, unlocked runtime choice", async () => {
+    seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    const provider = await waitForTurn(turn, "first-run:provider");
+    expect(provider.text).toContain("__first_run__:back:runtime=");
+
+    expect(tryHandleFirstRunAction("__first_run__:back:runtime")).toBe(true);
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) =>
+          m.id.startsWith("first-run:greeting:retry:"),
+        ),
+      ).toBe(true);
+    });
+    const reoffer = transcript.current.find((m) =>
+      m.id.startsWith("first-run:greeting:retry:"),
+    );
+    expect(reoffer?.text).toContain("__first_run__:runtime:cloud=");
+    // Nothing was committed or POSTed by the abandoned local path.
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
+    expect(localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBeNull();
+
+    // The re-offered choice is live: cloud proceeds normally.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitForTurn(turn, "first-run:cloud-oauth");
+    unmount();
+  });
+
+  it("offers a back affordance under the remote connect form", async () => {
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:remote")).toBe(true);
+    const connect = await waitForTurn(turn, "first-run:remote-connect");
+    expect(connect.secretRequest?.form?.kind).toBe("remote_connect");
+    expect(connect.text).toContain("__first_run__:back:runtime=");
+    unmount();
+  });
+
+  it("unwinds a partially-committed local finish when the user switches to cloud (restart)", async () => {
+    seedAppStore();
+    // The local finish gets as far as persisting the runtime mode + active
+    // server, then its POST fails — the exact partial-commitment shape the
+    // reversal must clean up.
+    mocks.client.submitFirstRun.mockRejectedValueOnce(
+      new Error("first-run persist failed"),
+    );
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitForTurn(turn, "first-run:provider");
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) => m.id.startsWith("first-run:error:")),
+      ).toBe(true);
+    });
+    // The failed local path left real committed state behind.
+    expect(localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBe("local");
+    expect(localStorage.getItem("elizaos:active-server")).toContain("local:");
+
+    // "Choose a different way to run" reverts the commitment before
+    // re-offering, so switching to cloud leaves nothing local behind.
+    expect(tryHandleFirstRunAction("__first_run__:error:restart")).toBe(true);
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) =>
+          m.id.startsWith("first-run:greeting:retry:"),
+        ),
+      ).toBe(true);
+    });
+    expect(localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem("elizaos:active-server")).toBeNull();
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitForTurn(turn, "first-run:cloud-oauth");
+    unmount();
+  });
+
+  it("consumes back picks as stale no-ops in cloud-only mode", async () => {
+    localStorage.removeItem("eliza:enable-runtime-chooser");
+    localStorage.removeItem("steward_session_token");
+    seedAppStore({ elizaCloudConnected: false });
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    const before = transcript.current.length;
+    expect(tryHandleFirstRunAction("__first_run__:back:runtime")).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    // No re-offered runtime chooser exists in cloud-only mode.
+    expect(
+      transcript.current.some((m) =>
+        m.id.startsWith("first-run:greeting:retry:"),
+      ),
+    ).toBe(false);
     expect(transcript.current.length).toBe(before);
     unmount();
   });

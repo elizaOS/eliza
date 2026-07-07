@@ -1604,30 +1604,20 @@ function liveEmbeddingFallbackVector(): number[] {
 }
 `,
     );
-    // Accept both the inline `ELIZA_DISABLE_LOCAL_EMBEDDINGS` check (older
-    // shape) and the post-refactor `isLocalEmbeddingDisabledByEnv()` call.
-    const inlineCheck = `export function shouldWarmupLocalEmbeddingModel(): boolean {
-\tif (isTruthyEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) {
-\t\treturn false;
-\t}
+    // Inject the live-fallback short-circuit right after the function's
+    // opening brace. Earlier revisions anchored on the function's ENTIRE
+    // leading check sequence, which broke every time the plugin inserted or
+    // reordered a check upstream of the disable test (the exact drift that
+    // re-reddened the nightly while this pipeline was unreachable). The
+    // fallback check is order-independent, so the signature is the only
+    // anchor this patch actually needs; `isTruthyEnv` is a module-local
+    // helper of embedding-warmup-policy.ts, present in every shape so far.
+    const warmupSignature = `export function shouldWarmupLocalEmbeddingModel(): boolean {
 `;
-    const helperCheck = `export function shouldWarmupLocalEmbeddingModel(): boolean {
-\tif (isLocalEmbeddingDisabledByEnv()) {
-\t\treturn false;
-\t}
-`;
-    if (content.includes(inlineCheck)) {
+    if (content.includes(warmupSignature)) {
       content = content.replace(
-        inlineCheck,
-        `${inlineCheck}\tif (isTruthyEnv("ELIZAOS_LIVE_EMBEDDING_FALLBACK")) {
-\t\treturn false;
-\t}
-`,
-      );
-    } else if (content.includes(helperCheck)) {
-      content = content.replace(
-        helperCheck,
-        `${helperCheck}\tif (isTruthyEnv("ELIZAOS_LIVE_EMBEDDING_FALLBACK")) {
+        warmupSignature,
+        `${warmupSignature}\tif (isTruthyEnv("ELIZAOS_LIVE_EMBEDDING_FALLBACK")) {
 \t\treturn false;
 \t}
 `,
@@ -1765,36 +1755,26 @@ function liveEmbeddingFallbackVector() {
 }
 `,
   );
-  content = content.replace(
-    `function shouldWarmupLocalEmbeddingModel() {
-  if (isTruthyEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) {
+  // Inject the live-fallback short-circuit right after the compiled function's
+  // opening brace. The bundler preserves the source signature but the leading
+  // check sequence drifts whenever the plugin inserts a new check ahead of the
+  // disable test — the exact drift (a new `ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP`
+  // check landing first) that re-reddened this ISO stage. The fallback check is
+  // order-independent, so the signature is the only stable anchor; `isTruthyEnv`
+  // is bundled alongside this function from embedding-warmup-policy.ts. This
+  // mirrors the source-shape patch above so both compiled and TS overlays honor
+  // the flag instead of silently no-opping the warmup skip.
+  const distWarmupSignature = `function shouldWarmupLocalEmbeddingModel() {
+`;
+  if (content.includes(distWarmupSignature)) {
+    content = content.replace(
+      distWarmupSignature,
+      `${distWarmupSignature}  if (isTruthyEnv("ELIZAOS_LIVE_EMBEDDING_FALLBACK")) {
     return false;
   }
 `,
-    `function shouldWarmupLocalEmbeddingModel() {
-  if (isTruthyEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) {
-    return false;
+    );
   }
-  if (isTruthyEnv("ELIZAOS_LIVE_EMBEDDING_FALLBACK")) {
-    return false;
-  }
-`,
-  );
-  content = content.replace(
-    `function shouldWarmupLocalEmbeddingModel() {
-  if (isLocalEmbeddingDisabledByEnv()) {
-    return false;
-  }
-`,
-    `function shouldWarmupLocalEmbeddingModel() {
-  if (isLocalEmbeddingDisabledByEnv()) {
-    return false;
-  }
-  if (isTruthyEnv("ELIZAOS_LIVE_EMBEDDING_FALLBACK")) {
-    return false;
-  }
-`,
-  );
   content = content.replace(
     `    const service = requireService(runtime, ModelType.TEXT_EMBEDDING);
     if (typeof service.embed !== "function") {

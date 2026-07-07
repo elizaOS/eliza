@@ -1,30 +1,20 @@
 // @vitest-environment jsdom
 
 /**
- * Unit coverage for the decision matrix in `preSeedAndroidLocalRuntimeIfFresh`:
- * it seeds the on-device local agent only when the device IS the local agent
- * and nothing has already chosen a server/runtime. Capacitor + platform mocked,
- * no real device.
+ * Unit coverage for the decision matrix in `preSeedAndroidLocalRuntimeIfFresh`
+ * (#14390): only a branded ElizaOS device image (the device IS the agent) is
+ * pre-seeded, and only while nothing has already chosen a server/runtime.
+ * Stock-phone sideload builds are never pre-seeded — their fresh install lands
+ * in onboarding, which starts the local agent on demand after the user picks
+ * it. UA detection mocked, no real device.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  capacitorPlatform: "web" as string,
-  isAndroidCloudBuild: vi.fn(() => false),
   isAospElizaUserAgent: vi.fn(() => false),
   readPersistedMobileRuntimeMode: vi.fn(() => null as string | null),
   persistMobileRuntimeModeForServerTarget: vi.fn(),
-}));
-
-vi.mock("@capacitor/core", () => ({
-  Capacitor: {
-    getPlatform: () => mocks.capacitorPlatform,
-  },
-}));
-
-vi.mock("../platform/android-runtime", () => ({
-  isAndroidCloudBuild: mocks.isAndroidCloudBuild,
 }));
 
 vi.mock("../platform/aosp-user-agent", () => ({
@@ -99,8 +89,6 @@ function readSeededActiveServer(): unknown {
 describe("preSeedAndroidLocalRuntimeIfFresh", () => {
   beforeEach(() => {
     ensureLocalStorage().clear();
-    mocks.capacitorPlatform = "web";
-    mocks.isAndroidCloudBuild.mockReturnValue(false);
     mocks.isAospElizaUserAgent.mockReturnValue(false);
     mocks.readPersistedMobileRuntimeMode.mockReturnValue(null);
     mocks.persistMobileRuntimeModeForServerTarget.mockClear();
@@ -127,30 +115,12 @@ describe("preSeedAndroidLocalRuntimeIfFresh", () => {
     });
   });
 
-  it("seeds the local agent on the stock-phone local sideload build", () => {
-    // The `android` sideload build ships the on-device agent as its backend, so
-    // a fresh launch should default to it instead of falling back to cloud.
-    // Gating only on the branded `ElizaOS/<tag>` UA marker excluded this build
-    // and left it stuck on cloud onboarding.
-    mocks.capacitorPlatform = "android";
-    mocks.isAndroidCloudBuild.mockReturnValue(false);
-    setUserAgent(STOCK_WEBVIEW_UA);
-
-    expect(preSeedAndroidLocalRuntimeIfFresh()).toBe(true);
-    expect(mocks.persistMobileRuntimeModeForServerTarget).toHaveBeenCalledWith(
-      "local",
-    );
-    expect(readSeededActiveServer()).toEqual({
-      id: ANDROID_LOCAL_AGENT_SERVER_ID,
-      kind: "remote",
-      label: ANDROID_LOCAL_AGENT_LABEL,
-      apiBase: ANDROID_LOCAL_AGENT_IPC_BASE,
-    });
-  });
-
-  it("does not seed the cloud-locked Android build", () => {
-    mocks.capacitorPlatform = "android";
-    mocks.isAndroidCloudBuild.mockReturnValue(true);
+  it("does not seed the stock-phone sideload build (onboarding owns the choice, #14390)", () => {
+    // Pre-#14390 this build was pre-seeded, which committed "local" before
+    // any user choice and auto-booted the bundled agent on phones that cannot
+    // sustain it. The sideload now defaults the runtime chooser ON
+    // (first-run-runtime-flag.ts) and starts the agent from the finish path
+    // only after the user picks "On this device".
     setUserAgent(STOCK_WEBVIEW_UA);
 
     expect(preSeedAndroidLocalRuntimeIfFresh()).toBe(false);
@@ -160,9 +130,8 @@ describe("preSeedAndroidLocalRuntimeIfFresh", () => {
     expect(readSeededActiveServer()).toBeNull();
   });
 
-  it("does not seed when an active server is already persisted", () => {
-    mocks.capacitorPlatform = "android";
-    setUserAgent(STOCK_WEBVIEW_UA);
+  it("does not seed a branded device when an active server is already persisted", () => {
+    mocks.isAospElizaUserAgent.mockReturnValue(true);
     localStorage.setItem(
       ACTIVE_SERVER_STORAGE_KEY,
       JSON.stringify({
@@ -179,10 +148,9 @@ describe("preSeedAndroidLocalRuntimeIfFresh", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("does not seed when an explicit non-local runtime mode is persisted", () => {
-    mocks.capacitorPlatform = "android";
+  it("does not seed a branded device with an explicit non-local runtime mode", () => {
+    mocks.isAospElizaUserAgent.mockReturnValue(true);
     mocks.readPersistedMobileRuntimeMode.mockReturnValue("cloud");
-    setUserAgent(STOCK_WEBVIEW_UA);
 
     expect(preSeedAndroidLocalRuntimeIfFresh()).toBe(false);
     expect(
@@ -191,8 +159,7 @@ describe("preSeedAndroidLocalRuntimeIfFresh", () => {
     expect(readSeededActiveServer()).toBeNull();
   });
 
-  it("does not seed a stock Android browser (no WebView marker, no brand UA)", () => {
-    mocks.capacitorPlatform = "web";
+  it("does not seed a stock Android browser (no brand UA)", () => {
     setUserAgent(STOCK_BROWSER_UA);
 
     expect(preSeedAndroidLocalRuntimeIfFresh()).toBe(false);

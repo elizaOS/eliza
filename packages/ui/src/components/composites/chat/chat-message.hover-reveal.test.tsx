@@ -108,8 +108,6 @@ describe("ChatMessage desktop hover-chrome delete control (#13533)", () => {
     );
     expect(screen.queryByTestId("chat-message-action-rail")).toBeNull();
     expect(deleteControl()).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Reply" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reply" })).toBeNull();
   });
 });

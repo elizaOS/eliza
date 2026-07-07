@@ -33,6 +33,21 @@ import {
   handleAccountsRoutes,
 } from "../../../agent/src/api/accounts-routes.ts";
 import type { ElizaConfig } from "../../../agent/src/config/types.eliza.ts";
+import {
+  defaultAgentHostBridge,
+  setAgentHostBridge,
+} from "../../../agent/src/runtime/host-bridge.ts";
+
+// This process IS the host: the accounts routes read the pool through the
+// agent host-bridge seam (`getPool()` → `getAgentHostBridge()`), which the
+// real dashboard installs in its boot funnel. Without this injection the
+// routes see the no-op bridge's `null` pool and every pool-touching request
+// 500s — validation-only paths (e.g. the zod reject) still worked, which is
+// how the gap stayed invisible until scenario 04 exercised a successful add.
+setAgentHostBridge({
+  ...defaultAgentHostBridge,
+  getDefaultAccountPool,
+});
 
 const HOME = process.env.ELIZA_HOME?.trim();
 if (!HOME) {

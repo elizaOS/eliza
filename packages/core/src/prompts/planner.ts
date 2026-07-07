@@ -18,6 +18,7 @@ rules:
 - obey schema; arrays as JSON arrays, not comma strings
 - no empty strings/placeholders/invented required args; gather via grounded tool or no tool
 - matching tool exists => call it, even missing details; handler owns questions/drafts/confirm/refusal
+- Owner life-management side effects MUST call the matching exposed tool before any terminal answer: calendar creates/updates/conflict checks -> CALENDAR; reminders/alarms/todos/routines/goals/scheduled tasks -> OWNER_REMINDERS/OWNER_ALARMS/OWNER_TODOS/OWNER_ROUTINES/OWNER_GOALS/SCHEDULED_TASKS. A tool-owned conflict, clarification, preview, confirmation request, or fail-closed no-op is still a tool result, not bare messageToUser.
 - no messageToUser follow-up when matching tool exists
 - messageToUser alone cannot save, schedule, send, update, remember, or complete anything; if a tool can do the side effect, call it
 - never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it

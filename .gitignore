@@ -370,6 +370,9 @@ tasks/
 # Benchmark fixture data is vendored, not generated.
 !packages/benchmarks/qwen-claw-bench/data/
 !packages/benchmarks/qwen-claw-bench/data/**
+!packages/benchmarks/lifeops-bench/data/
+!packages/benchmarks/lifeops-bench/data/snapshots/
+!packages/benchmarks/lifeops-bench/data/snapshots/**
 !packages/benchmarks/tau-bench/elizaos_tau_bench/upstream/envs/airline/data/
 !packages/benchmarks/tau-bench/elizaos_tau_bench/upstream/envs/airline/data/**
 !packages/benchmarks/tau-bench/elizaos_tau_bench/upstream/envs/retail/data/

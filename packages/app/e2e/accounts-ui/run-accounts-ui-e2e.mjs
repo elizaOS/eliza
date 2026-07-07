@@ -193,9 +193,16 @@ const child = spawn(
     stdio: ["ignore", "pipe", "pipe"],
   },
 );
+// Mirror the API child's output live (prefixed) AND collect it for the
+// evidence log — a boot crash must print its own stack, not a bare
+// "exited early (code 1)" with the cause buried in a file that the
+// early-rejection path never wrote.
 child.stderr.on("data", (d) => {
   for (const line of String(d).split("\n")) {
-    if (line.trim()) serverLog.push(line.trim());
+    if (line.trim()) {
+      serverLog.push(line.trim());
+      console.error(`[api] ${line.trim()}`);
+    }
   }
 });
 
@@ -207,7 +214,11 @@ const port = await new Promise((resolvePort, rejectPort) => {
   let buffer = "";
   child.stdout.on("data", (d) => {
     buffer += String(d);
-    for (const line of buffer.split("\n")) {
+    // Consume completed lines only: a chunk boundary can't split the
+    // readiness JSON, and repeated chunks can't re-mirror earlier lines.
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
       try {
         const parsed = JSON.parse(line);
         if (parsed.ready && parsed.port) {
@@ -216,7 +227,12 @@ const port = await new Promise((resolvePort, rejectPort) => {
           return;
         }
       } catch {
-        // not the readiness line
+        // Not the readiness line — mirror it like stderr so nothing the
+        // server prints is invisible.
+        if (line.trim()) {
+          serverLog.push(line.trim());
+          console.error(`[api] ${line.trim()}`);
+        }
       }
     }
   });

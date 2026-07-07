@@ -21,8 +21,8 @@
    * sane rather than throwing inside the `push` event (which would drop it).
    */
   const DEFAULT_TITLE = "New message";
-  const DEFAULT_ICON = "/logos/icon-192.png";
-  const DEFAULT_BADGE = "/logos/badge-72.png";
+  const DEFAULT_ICON = "/brand/favicons/android-chrome-192x192.png";
+  const DEFAULT_BADGE = "/brand/favicons/android-chrome-192x192.png";
   const DEFAULT_TAG = "eliza-message";
 
   /**
@@ -147,7 +147,10 @@
    */
   function isSafeAppPath(path) {
     return (
-      typeof path === "string" && path.startsWith("/") && !path.startsWith("//")
+      typeof path === "string" &&
+      path.startsWith("/") &&
+      !path.startsWith("//") &&
+      !path.includes("\\")
     );
   }
 
@@ -236,7 +239,8 @@
   function safeAbsolute(path, origin) {
     if (!isSafeAppPath(path)) return `${origin}/`;
     try {
-      return new URL(path, `${origin}/`).toString();
+      const resolved = new URL(path, `${origin}/`);
+      return resolved.origin === origin ? resolved.toString() : `${origin}/`;
     } catch {
       return `${origin}/`;
     }

@@ -5026,40 +5026,66 @@ export async function startEliza(
     ]);
 
     const timeoutMs = 30_000;
-    await Promise.all(
-      deferredPluginsForRuntime.map(async (plugin) => {
-        const startedAt = Date.now();
-        try {
-          logger.info(
-            `[eliza] deferred: Registering plugin: ${plugin.name}...`,
-          );
-          await Promise.race([
-            runtime.registerPlugin(plugin),
-            new Promise<never>((_resolve, reject) =>
-              setTimeout(
-                () => reject(new Error(`Timed out after ${timeoutMs / 1000}s`)),
-                timeoutMs,
-              ),
+    const registerDeferredPlugin = async (plugin: Plugin): Promise<void> => {
+      const startedAt = Date.now();
+      try {
+        logger.info(`[eliza] deferred: Registering plugin: ${plugin.name}...`);
+        await Promise.race([
+          runtime.registerPlugin(plugin),
+          new Promise<never>((_resolve, reject) =>
+            setTimeout(
+              () => reject(new Error(`Timed out after ${timeoutMs / 1000}s`)),
+              timeoutMs,
             ),
-          ]);
-          logger.info(
-            `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms)`,
-          );
-        } catch (err) {
-          // error-policy:#14415 — a deferred plugin that fails to register
-          // silently drops every capability it provides (its actions,
-          // providers, connectors). Report it so the failure is agent-visible
-          // via RECENT_ERRORS and escalates when a plugin fails repeatedly,
-          // rather than only landing in a boot-log warning the user never sees.
-          logger.warn(
-            `[eliza] deferred: Plugin ${plugin.name} registration failed: ${formatError(err)}`,
-          );
-          runtime.reportError("eliza.deferredPluginRegistration", err, {
-            plugin: plugin.name,
-            phase: "deferred-boot",
-          });
-        }
-      }),
+          ),
+        ]);
+        logger.info(
+          `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms)`,
+        );
+      } catch (err) {
+        // error-policy:#14415 — a deferred plugin that fails to register
+        // silently drops every capability it provides (its actions,
+        // providers, connectors). Report it so the failure is agent-visible
+        // via RECENT_ERRORS and escalates when a plugin fails repeatedly,
+        // rather than only landing in a boot-log warning the user never sees.
+        logger.warn(
+          `[eliza] deferred: Plugin ${plugin.name} registration failed: ${formatError(err)}`,
+        );
+        runtime.reportError("eliza.deferredPluginRegistration", err, {
+          plugin: plugin.name,
+          phase: "deferred-boot",
+        });
+      }
+    };
+    // Deferred registrations run behind an already-listening server. Launching
+    // every registerPlugin at once floods the event loop with CPU-bound init
+    // work and starves the bound HTTP server of I/O turns for the whole wave
+    // (loadperf F3). A small worker pool with a setImmediate yield between
+    // registrations lets /api/* interleave, while enough concurrency remains
+    // that one hung plugin (bounded by the 30s race above) cannot serialize
+    // the wave. Mirrors the yield-between-imports loop in the deferred static
+    // import phase.
+    const registrationConcurrency = 4;
+    let nextPluginIndex = 0;
+    await Promise.all(
+      Array.from(
+        {
+          length: Math.min(
+            registrationConcurrency,
+            deferredPluginsForRuntime.length,
+          ),
+        },
+        async () => {
+          while (nextPluginIndex < deferredPluginsForRuntime.length) {
+            const plugin = deferredPluginsForRuntime[nextPluginIndex];
+            nextPluginIndex += 1;
+            await registerDeferredPlugin(plugin);
+            await new Promise<void>((resolve) => {
+              setImmediate(resolve);
+            });
+          }
+        },
+      ),
     );
   };
 

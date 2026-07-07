@@ -275,6 +275,8 @@ export interface AgentPluginLike extends NativePlugin {
     body?: string | null;
   }>;
   start?: (options?: { apiBase?: string; mode?: string }) => Promise<unknown>;
+  /** Stop the on-device agent service (reversal cleanup, #14390). */
+  stop?: () => Promise<unknown>;
 }
 
 export interface MobileSignalsPermissionStatus {
