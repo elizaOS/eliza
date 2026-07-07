@@ -444,6 +444,15 @@ const HEALTH_CHECK_POLL_INTERVAL_MS = 3_000;
  */
 export const HEALTH_CHECK_TIMEOUT_MS = 360_000;
 
+/**
+ * Budget for the node-side SSH fallback probe that runs after the tailnet
+ * poll has already burned the full HEALTH_CHECK_TIMEOUT_MS. Short on purpose:
+ * by then the container has had the whole tailnet window to boot, so docker
+ * health has settled — the fallback only needs to survive a couple of SSH
+ * round-trips, not a cold boot.
+ */
+const HEALTH_CHECK_SSH_FALLBACK_TIMEOUT_MS = 30_000;
+
 /** SSH command timeout for docker pull (can be slow on first pull). */
 export const PULL_TIMEOUT_MS = 300_000; // 5 min
 
@@ -1883,17 +1892,38 @@ export class DockerSandboxProvider implements SandboxProvider {
     const deadline = Date.now() + HEALTH_CHECK_TIMEOUT_MS;
 
     // When the agent is reachable over the headscale mesh, validate THAT
-    // ingress: the agent-router and the post-create runtime calls reach the
-    // agent over the tailnet, and the daemon is itself on the mesh. The SSH host
-    // probe below only proves the app bound the container's docker bridge, which
-    // happens before the tailnet/DERP path is warm — gating on it would let the
-    // first racing tailnet fetch tear the agent down despite it being healthy.
+    // ingress first: the agent-router and the post-create runtime calls reach
+    // the agent over the tailnet, and the daemon is itself on the mesh. The SSH
+    // host probe only proves the app bound the container's docker bridge, which
+    // happens before the tailnet/DERP path is warm — gating on it alone would
+    // let the first racing tailnet fetch tear the agent down despite it being
+    // healthy.
     const headscaleIp =
       typeof handle.metadata?.headscaleIp === "string" ? handle.metadata.headscaleIp : undefined;
     if (headscaleIp) {
-      return this.pollTailnetHealth(handle, meta, deadline);
+      if (await this.pollTailnetHealth(handle, meta, deadline)) return true;
+      // A cold CP-side mesh socket at provision time can miss every tailnet
+      // probe while the container is demonstrably healthy on its node; without
+      // this fallback the provision path ghost-kills that healthy container.
+      // Node-side docker health is NOT proof of tailnet reachability — the
+      // heartbeat cycle owns reconciling/escalating a stale tailnet IP — but at
+      // provision time it is enough evidence to avoid tearing down a container
+      // the node can prove is up. A container that fails BOTH probes still
+      // reports unhealthy, so a dead provision still times out and self-heals.
+      return this.pollSshDockerHealth(meta, Date.now() + HEALTH_CHECK_SSH_FALLBACK_TIMEOUT_MS);
     }
 
+    return this.pollSshDockerHealth(meta, deadline);
+  }
+
+  /**
+   * Node-side health: SSH to the docker node and pass when either the
+   * host-published ports answer or docker reports the container healthy. This
+   * is the only ingress evidence available without a headscale route, and the
+   * fallback that keeps a provision alive when the CP-side mesh socket is cold
+   * while the container itself is healthy.
+   */
+  private async pollSshDockerHealth(meta: ContainerMeta, deadline: number): Promise<boolean> {
     const ssh = DockerSSHClient.getClient(
       meta.hostname,
       meta.sshPort,
@@ -1910,8 +1940,11 @@ export class DockerSandboxProvider implements SandboxProvider {
       ].join(" "),
     )}`;
 
+    // The budget varies by caller (full window standalone, short window as the
+    // tailnet fallback), so log the actual one instead of a constant.
+    const budgetMs = Math.max(0, deadline - Date.now());
     logger.info(
-      `[docker-sandbox] Polling Docker health for ${meta.containerName} on ${meta.nodeId} (${meta.hostname}) (timeout: ${HEALTH_CHECK_TIMEOUT_MS / 1000}s)`,
+      `[docker-sandbox] Polling Docker health for ${meta.containerName} on ${meta.nodeId} (${meta.hostname}) (timeout: ${Math.round(budgetMs / 1000)}s)`,
     );
 
     while (Date.now() < deadline) {
@@ -1961,7 +1994,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     logger.warn(
-      `[docker-sandbox] Docker health check timed out after ${HEALTH_CHECK_TIMEOUT_MS / 1000}s for ${meta.containerName} on ${meta.hostname}`,
+      `[docker-sandbox] Docker health check timed out after ${Math.round(budgetMs / 1000)}s for ${meta.containerName} on ${meta.hostname}`,
     );
     try {
       const diagnostics = await ssh.exec(
