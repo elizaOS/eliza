@@ -18,6 +18,7 @@ import { analyzeWalletCaseSummary } from "./analyzers/caseSummary";
 import { analyzeWalletEvidence } from "./analyzers/evidence";
 import { analyzeWalletExposure } from "./analyzers/exposure";
 import { analyzeWalletRelationships } from "./analyzers/relationships";
+import { analyzeWalletTrust } from "./analyzers/trust";
 import {
   SupportedChain,
   WalletBalance,
@@ -139,6 +140,14 @@ const relationships = analyzeWalletRelationships(
   funding,
 );
 
+const trust = analyzeWalletTrust(
+  age,
+  activity,
+  funding,
+  exposure,
+  risk,
+);
+
 const caseSummary = analyzeWalletCaseSummary(
   age,
   risk,
@@ -171,6 +180,7 @@ behavior,
 exposure,
 relationships,
 caseSummary,
+trust,
 evidence,
 recentTransactions,
 transactionCountSample: recentTransactions.length,
