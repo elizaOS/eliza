@@ -7,6 +7,7 @@
  */
 
 export * from "./access-context";
+export * from "./access-control/artifact-disclosure";
 export * from "./access-control/filter";
 // Export all core modules
 export * from "./account-pool-bridge";

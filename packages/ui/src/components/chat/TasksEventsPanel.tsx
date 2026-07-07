@@ -14,7 +14,14 @@
 
 import { PanelRightClose, PanelRightOpen, Pencil } from "lucide-react";
 import type React from "react";
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { useRafCoalescer } from "../../gestures";
 import type { ActivityEvent } from "../../hooks/useActivityEvents";
 import { useAppSelector } from "../../state";
 // Direct sub-path import for WidgetHost to avoid the widgets/index.ts ↔
@@ -88,7 +95,10 @@ export function TasksEventsPanel({
     }
     return WIDGETS_DEFAULT_WIDTH;
   });
-  const applyWidgetsWidth = useCallback((next: number) => {
+  // Release-time commit: React state (re-renders the WidgetHost subtree) and
+  // localStorage exactly once per drag. Per-event commits at pointer rates
+  // (up to ~1000Hz) re-rendered and re-persisted hundreds of times per drag.
+  const commitWidgetsWidth = useCallback((next: number) => {
     setWidgetsWidth(next);
     try {
       window.localStorage.setItem(WIDGETS_WIDTH_KEY, String(next));
@@ -97,6 +107,21 @@ export function TasksEventsPanel({
       // this session; private-mode storage may reject writes
     }
   }, []);
+  // During the drag the width is written straight onto the panel element, at
+  // most once per animation frame. React re-renders mid-drag (e.g. streaming
+  // activity events) keep the same `widgetsWidth` state, so the style prop
+  // diff is a no-op and never clobbers this direct write.
+  const asideRef = useRef<HTMLElement | null>(null);
+  const {
+    schedule: scheduleWidthWrite,
+    flush: flushWidthWrite,
+    cancel: cancelWidthWrite,
+  } = useRafCoalescer<number>((next) => {
+    const el = asideRef.current;
+    if (!el) return;
+    el.style.width = `${next}px`;
+    el.style.minWidth = `${next}px`;
+  });
   const collapseThreshold = Math.max(WIDGETS_MIN_WIDTH - 40, 80);
   const handleResizePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -111,40 +136,58 @@ export function TasksEventsPanel({
         // error-policy:J6 pointer capture is an enhancement — the drag still
         // works via the window listeners below
       }
+      // Last clamped width of this drag; null until the pointer actually moves
+      // so a no-move click never commits or persists anything.
+      let lastApplied: number | null = null;
+      const removeListeners = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onEnd);
+        window.removeEventListener("pointercancel", onEnd);
+      };
       const onMove = (ev: PointerEvent) => {
         const delta = ev.clientX - startX;
         // Dragging left increases width (handle is on the left edge of the right sidebar).
         const nextRaw = startWidth - delta;
         if (nextRaw < collapseThreshold && onToggleCollapsed) {
+          // Commit the last applied width (the min-width floor on the way
+          // down) so re-expanding restores the width the drag passed through.
+          cancelWidthWrite();
+          if (lastApplied !== null) commitWidgetsWidth(lastApplied);
           onToggleCollapsed(true);
-          window.removeEventListener("pointermove", onMove);
-          window.removeEventListener("pointerup", onUp);
+          removeListeners();
           return;
         }
-        const clamped = Math.min(
+        lastApplied = Math.min(
           Math.max(nextRaw, WIDGETS_MIN_WIDTH),
           WIDGETS_MAX_WIDTH,
         );
-        applyWidgetsWidth(clamped);
+        scheduleWidthWrite(lastApplied);
       };
-      const onUp = () => {
+      const onEnd = () => {
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
           // error-policy:J6 teardown — capture may already be released
         }
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
+        removeListeners();
+        // Flush (not cancel) so the element shows the final width even when
+        // the state commit below bails as a no-op (width back at its start).
+        flushWidthWrite();
+        if (lastApplied !== null) commitWidgetsWidth(lastApplied);
       };
       window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointerup", onEnd);
+      window.addEventListener("pointercancel", onEnd);
     },
     [
-      applyWidgetsWidth,
+      cancelWidthWrite,
       collapseThreshold,
       collapsed,
+      commitWidgetsWidth,
+      flushWidthWrite,
       mobile,
       onToggleCollapsed,
+      scheduleWidthWrite,
       widgetsWidth,
     ],
   );
@@ -214,6 +257,7 @@ export function TasksEventsPanel({
 
   return (
     <aside
+      ref={asideRef}
       className={rootClassName}
       data-testid="chat-widgets-bar"
       style={rootStyle}

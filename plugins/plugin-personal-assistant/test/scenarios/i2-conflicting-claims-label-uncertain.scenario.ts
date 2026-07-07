@@ -51,7 +51,10 @@ export default scenario({
       name: "summarize-without-verdict",
       room: "main",
       text: "Summarize the Uma/Zane projector issue for me without deciding who is right.",
-      responseIncludesAny: ["Uma", "Zane", "uncertain", "projector"],
+      // Seeded-token grounding: "promised"/"venue" exist only in the seeded
+      // positions, so a passing reply must read the claims back from memory
+      // — parroting the user turn cannot satisfy this (echo-ratchet).
+      responseIncludesAny: ["promised", "venue"],
       responseExcludes: [
         "Uma is right",
         "Zane is right",

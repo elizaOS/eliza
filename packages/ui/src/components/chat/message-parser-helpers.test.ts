@@ -14,9 +14,13 @@ import {
   looksLikePatch,
   normalizeDisplayText,
   parseFormSubmitDisplay,
+  parseSegments,
   sanitizePatchValue,
   tryParsePatch,
 } from "./message-parser-helpers";
+// Side-effect import: registers the built-in inline widgets (choice/followups/
+// form/workflow/background/checklist) the pre-gate tests below parse through.
+import "./widgets/inline-builtins";
 
 describe("sanitizePatchValue (prototype-pollution guard)", () => {
   it("drops __proto__/constructor/prototype keys at every nesting level", () => {
@@ -208,5 +212,79 @@ describe("normalizeDisplayText", () => {
     // A chunk that ends mid-tag during streaming must not leak the fragment.
     expect(normalizeDisplayText("Hello<thi")).toBe("Hello");
     expect(normalizeDisplayText("  spaced  ")).toBe("spaced");
+  });
+});
+
+describe("parseSegments trigger-character pre-gate", () => {
+  it("returns one text segment for plain streamed prose (no trigger chars)", () => {
+    // The common streaming shape: growing prose with none of ` [ { < — the
+    // pre-gate must short-circuit to a single text segment whose content is
+    // exactly the normalized text (identical to the full-scan result).
+    const prose =
+      "Sure — I checked the calendar and you have three meetings tomorrow. " +
+      "The first starts at 9am, then a design review after lunch.";
+    expect(parseSegments(prose, false)).toEqual([
+      { kind: "text", text: prose },
+    ]);
+  });
+
+  it("still returns a single text segment when trigger chars appear in plain prose", () => {
+    // The gate only skips work; text that CONTAINS a trigger char but no real
+    // region must come out identical to before (one text segment).
+    const prose = "Set the value to {something} in [brackets] with a < sign.";
+    expect(parseSegments(prose, false)).toEqual([
+      { kind: "text", text: prose },
+    ]);
+  });
+
+  it("parses a [CONFIG:…] marker (gated on '[')", () => {
+    const segments = parseSegments("Set it up: [CONFIG:openai]", false);
+    expect(segments).toEqual([
+      { kind: "text", text: "Set it up: " },
+      { kind: "config", pluginId: "openai" },
+    ]);
+  });
+
+  it("parses an inline widget marker (gated on '[')", () => {
+    const segments = parseSegments(
+      "[CHOICE:pick]\none=One\ntwo=Two\n[/CHOICE]",
+      false,
+    );
+    expect(segments.some((s) => s.kind === "widget")).toBe(true);
+  });
+
+  it("parses a fenced UiSpec (gated on '`')", () => {
+    const spec = '{"root":"a","elements":{"a":{"type":"text"}}}';
+    const segments = parseSegments(`\`\`\`json\n${spec}\n\`\`\``, false);
+    expect(segments.some((s) => s.kind === "ui-spec")).toBe(true);
+  });
+
+  it("parses a JSONL patch block (gated on '{')", () => {
+    const patches = [
+      '{"op":"add","path":"/root","value":"a"}',
+      '{"op":"add","path":"/elements/a","value":{"type":"text"}}',
+    ].join("\n");
+    const segments = parseSegments(patches, false);
+    expect(segments.some((s) => s.kind === "ui-spec")).toBe(true);
+  });
+
+  it("parses a fenced code block (gated on '`')", () => {
+    const segments = parseSegments("```ts\nconst x = 1;\n```", false);
+    expect(segments).toEqual([
+      { kind: "code", code: "const x = 1;", inline: false, lang: "ts" },
+    ]);
+  });
+
+  it("parses a permission request card (gated on '{' / '`')", () => {
+    const payload =
+      '{"action":"permission_request","permission":"camera",' +
+      '"reason":"to scan the QR code","feature":"QR scan"}';
+    const segments = parseSegments(`May I use the camera?\n${payload}`, false);
+    expect(segments.some((s) => s.kind === "permission")).toBe(true);
+  });
+
+  it("parses analysis-mode XML blocks (gated on '<')", () => {
+    const segments = parseSegments("<thought>weighing options</thought>", true);
+    expect(segments.some((s) => s.kind === "analysis-xml")).toBe(true);
   });
 });

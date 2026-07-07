@@ -229,8 +229,13 @@ export function ConversationsSidebar({
     }
     return CHAT_SIDEBAR_DEFAULT_WIDTH;
   });
+  // Fires per frame during a resize drag: state only. Persistence happens
+  // once per drag in the commit handler below — a synchronous localStorage
+  // write per frame stalls the drag on high-rate pointer devices.
   const handleSidebarWidthChange = useCallback((next: number) => {
     setSidebarWidth(next);
+  }, []);
+  const handleSidebarWidthCommit = useCallback((next: number) => {
     try {
       window.localStorage.setItem(CHAT_SIDEBAR_WIDTH_KEY, String(next));
     } catch {
@@ -903,6 +908,7 @@ export function ConversationsSidebar({
         minWidth={CHAT_SIDEBAR_MIN_WIDTH}
         maxWidth={CHAT_SIDEBAR_MAX_WIDTH}
         onWidthChange={handleSidebarWidthChange}
+        onWidthCommit={handleSidebarWidthCommit}
         onCollapseRequest={() => setSidebarCollapsed(true)}
         contentIdentity={
           mobile ? "chat-mobile" : isGameModal ? "chat-modal" : "chat"

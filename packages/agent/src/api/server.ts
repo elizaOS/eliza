@@ -1531,6 +1531,9 @@ import {
   resolveWebSocketUpgradeRejection as _resolveWebSocketUpgradeRejection,
 } from "./server-helpers-auth.ts";
 
+// Importing the artifact share-viewer scheme self-registers its resolver with
+// the trunk boundary-role registry (#14781) — same pattern as WaifuChat above.
+export { issueArtifactShareViewerToken } from "./artifact-share-role-resolver.ts";
 export {
   ensureApiTokenForBindHost,
   extractAuthToken,
@@ -1544,11 +1547,12 @@ export {
   type TerminalRunRejection,
   type WebSocketUpgradeRejection,
 } from "./server-helpers-auth.ts";
-
 // Back-compat re-export: the WaifuChat scheme now lives in its own resolver
 // module. Importing it here also self-registers the resolver with the trunk
 // boundary-role registry (#12087 item 12).
 export { isWaifuChatAuthorized } from "./waifu-chat-role-resolver.ts";
+
+import { resolveHttpAccessContext } from "./http-access-context.ts";
 
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
@@ -2305,6 +2309,11 @@ async function handleRequest(
       error,
       json,
       readJsonBody,
+      // Lets POST /api/agent/start boot a runtime from the runtime-less state
+      // (fresh-install deferred boot / stopped host) instead of fake-flipping
+      // the reported state to "running" with nothing behind it.
+      onRestart: ctx?.onRestart ?? undefined,
+      onRuntimeSwapped: ctx?.onRuntimeSwapped,
     })
   ) {
     return;
@@ -3538,8 +3547,19 @@ async function handleRequest(
       req,
       res,
       runtime: state.runtime,
-      isAuthorized: () => isAuthorized(req),
+      // Mirror the outer 401 gate: a registered boundary-role viewer (e.g. an
+      // artifact share-viewer token, #14781) is authorized for its in-scope
+      // routes, so the dispatch-level re-check must accept it too — otherwise
+      // resolver-authorized requests pass the outer gate and 401 in dispatch.
+      isAuthorized: () =>
+        isAuthorized(req) || isBoundaryRoleAuthorized(req, method, pathname),
       isTrustedLocal: () => isTrustedLocalRequest(req),
+      // Per-viewer principal for DTO selection (#14781). Trunk-authorized
+      // callers stay on the single-owner boundary (no context → routes serve
+      // unfiltered, unchanged); only resolver-recognized viewer tokens
+      // (WaifuChat, artifact share-viewer) carry a principal into dispatch.
+      accessContext: () =>
+        isAuthorized(req) ? undefined : resolveHttpAccessContext(req),
     })
   ) {
     return;

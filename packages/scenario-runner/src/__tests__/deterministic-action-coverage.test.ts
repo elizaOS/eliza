@@ -69,7 +69,14 @@ const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
 
 /** Expected action names for each imported core plugin (verified against live imports). */
 const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
-  "@elizaos/plugin-app-control": ["APP", "BACKGROUND", "VIEWS"],
+  "@elizaos/plugin-app-control": [
+    "AGENT_SWITCH",
+    "APP",
+    "BACKGROUND",
+    "MODEL_SWITCH",
+    "SETTINGS",
+    "VIEWS",
+  ],
   "@elizaos/plugin-coding-tools": ["FILE", "SHELL", "WORKTREE"],
   "@elizaos/plugin-commands": [
     "COMMANDS_COMMAND",
@@ -103,6 +110,7 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
   "@elizaos/plugin-local-inference": [
     "GENERATE_MEDIA",
     "IDENTIFY_SPEAKER",
+    "LOCAL_INFERENCE",
     "START_TRANSCRIPTION",
     "STOP_TRANSCRIPTION",
   ],
@@ -207,6 +215,13 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "STOP_TRANSCRIPTION",
   // New workflow code-eval action (#8914); no deterministic keyless scenario yet.
   "EVAL_CODE",
+  // App-control agent/model switchers + settings surface; dispatched through
+  // dashboard affordances, no deterministic keyless scenarios yet.
+  "AGENT_SWITCH",
+  "MODEL_SWITCH",
+  "SETTINGS",
+  // Local-inference management action; no deterministic keyless scenario yet.
+  "LOCAL_INFERENCE",
   // Facewear owns XR plus smartglasses/connection/runtime actions. The XR view
   // actions are covered; the device-facing actions need dedicated keyless
   // scenarios before they can leave this baseline.
@@ -672,6 +687,13 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
     actionNames: ["VIEWS"],
     minMessageTurns: 2,
   },
+  // live-only lane, but it pins ACTION_PLANNER fixtures for its VIEWS turn, so
+  // it satisfies the strict fixture contract and is classified here rather
+  // than the no-deterministic-fixture bucket.
+  "live-active-view-agent-surface": {
+    actionNames: ["VIEWS"],
+    minMessageTurns: 1,
+  },
   "deterministic-agent-skills-actions": {
     actionNames: [
       "SKILL",
@@ -781,6 +803,24 @@ const PROSE_ONLY_LLM_SCENARIOS: Record<string, string> = {
     "live-only real-LLM counterpart of deterministic-background-actions (#10694); a real model routes set/undo/redo/reset to BACKGROUND from natural phrasing, NOT a deterministic ACTION_PLANNER fixture, so it cannot satisfy STRICT_LLM_ROUTING's fixture contract and is classified here (the no-deterministic-fixture bucket). Its keyless gating proof is deterministic-background-actions in the pr-deterministic lane.",
   "live-background-actions":
     "live-only real-LLM counterpart of deterministic-background-actions (#10694); the live model routes BACKGROUND (color set, GLSL preset, undo) with no deterministic ACTION_PLANNER fixture, so it cannot satisfy STRICT_LLM_ROUTING's fixture contract. The deterministic twin pins the exact payload ledger on the keyless lane.",
+  "live-chat-widgets-choice-roundtrip":
+    "live-only real-LLM chat-widget choice roundtrip; widget emission/interaction is judged from the live reply with no deterministic ACTION_PLANNER fixture. Keyless gating proof: the chat-widget unit + fixture e2e suites in packages/ui.",
+  "live-chat-widgets-config-emission":
+    "live-only real-LLM chat-widget config emission; prose+widget reply, routes no deterministic fixture action. Keyless gating proof: the chat-widget unit + fixture e2e suites in packages/ui.",
+  "live-chat-widgets-followups-restraint":
+    "live-only real-LLM followups-restraint check; asserts the live reply withholds widgets, routing no action. Keyless gating proof: the chat-widget unit + fixture e2e suites in packages/ui.",
+  "live-chat-widgets-form-roundtrip":
+    "live-only real-LLM chat-widget form roundtrip; widget emission/interaction is judged from the live reply with no deterministic ACTION_PLANNER fixture. Keyless gating proof: the chat-widget unit + fixture e2e suites in packages/ui.",
+  "live-experience-delete-by-topic":
+    "live-only real-LLM EXPERIENCE deletion flow; the live model routes EXPERIENCE with no deterministic ACTION_PLANNER fixture, so it cannot satisfy STRICT_LLM_ROUTING's fixture contract. Keyless gating proof: the experience service unit suites.",
+  "live-help-knowledge":
+    "live-only real-LLM help-knowledge lane (#14360); the model answers from bundled help documents in prose, routing no action.",
+  "live-lifeops-task-filter-due-window":
+    "live-only real-LLM counterpart of the deterministic lifeops scheduled-task lanes; the live model routes SCHEDULED_TASKS with no deterministic ACTION_PLANNER fixture. The deterministic twins gate the keyless lane.",
+  "live-plugin-enable-toggle-verb":
+    "live-only real-LLM plugin enable/toggle verb routing; no deterministic ACTION_PLANNER fixture. Keyless gating proof: plugin-manager action unit suites in core.",
+  "live-workflow-action-executions":
+    "live-only real-LLM counterpart of deterministic-workflow-actions-routes; the live model routes WORKFLOW with no deterministic ACTION_PLANNER fixture. The deterministic twin gates the keyless lane.",
 };
 
 /**

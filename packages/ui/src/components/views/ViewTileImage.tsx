@@ -165,6 +165,9 @@ export function ViewTileImage({
           draggable={false}
           loading="lazy"
           decoding="async"
+          // Decorative hero art must never compete with interactive work
+          // (gesture frames, chat streaming) for network/decode bandwidth.
+          fetchPriority="low"
           onError={() => {
             emitViewInteraction({
               source,

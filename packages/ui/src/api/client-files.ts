@@ -5,7 +5,10 @@
  * `client-*` domain modules.
  *
  * Backend contract (already implemented on the agent server):
- *  - `GET /api/files` → `{ files: StoredFile[] }` (newest first; authenticated).
+ *  - `GET /api/files` → `{ files: StoredFile[], restricted: boolean }`
+ *    (newest first; authenticated; `restricted: true` means the viewer's role
+ *    cannot see the store listing — a designed state, not an empty store,
+ *    #14781. Optional in the client type for older backends that predate it.)
  *  - `DELETE /api/files/:filename` → `{ deleted: boolean }` (authenticated).
  */
 
@@ -29,7 +32,7 @@ export interface StoredFile {
 
 declare module "./client-base" {
   interface ElizaClient {
-    listFiles(): Promise<{ files: StoredFile[] }>;
+    listFiles(): Promise<{ files: StoredFile[]; restricted?: boolean }>;
     deleteFile(fileName: string): Promise<{ deleted: boolean }>;
   }
 }

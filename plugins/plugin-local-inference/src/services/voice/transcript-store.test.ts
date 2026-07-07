@@ -187,4 +187,185 @@ describe("TranscriptStore", () => {
 	it("exposes the partition name", () => {
 		expect(TRANSCRIPTS_TABLE).toBe("transcripts");
 	});
+
+	describe("per-viewer disclosure selection (#14781)", () => {
+		const VIEWER = "44444444-4444-4444-4444-444444444444" as UUID;
+		const STRANGER = "55555555-5555-5555-5555-555555555555" as UUID;
+		const ORIGINAL_ID = "00000000-0000-0000-0000-00000000or11";
+		const VARIANT_ID = "00000000-0000-0000-0000-00000000va22";
+
+		/** Original (owner-private, with audio) + linked redacted variant. */
+		async function seed(rt: ReturnType<typeof fakeRuntime>) {
+			const store = new TranscriptStore(rt);
+			const original = makeTranscript({
+				id: ORIGINAL_ID,
+				title: "Payroll sync",
+				createdAt: 1000,
+				segments: [
+					{
+						id: "s1",
+						speakerLabel: "Alice",
+						startMs: 0,
+						endMs: 2000,
+						text: "Bob's SSN is 123-45-6789",
+						words: [],
+					},
+				],
+			});
+			const variant = makeTranscript({
+				id: VARIANT_ID,
+				title: "Payroll sync (redacted)",
+				createdAt: 1500,
+				audioUrl: undefined,
+				segments: [
+					{
+						id: "s1",
+						speakerLabel: "Alice",
+						startMs: 0,
+						endMs: 2000,
+						text: "Bob's SSN is [REDACTED]",
+						words: [],
+					},
+				],
+			});
+			await store.create({
+				roomId: ROOM,
+				entityId: ENTITY,
+				transcript: original,
+			});
+			await store.create({
+				roomId: ROOM,
+				entityId: ENTITY,
+				transcript: variant,
+			});
+			// Read contract this issue owns; the write path is PERM-REDACT's
+			// (#14779): original links its variant, variant backlinks its original,
+			// and the redacted grant for VIEWER sits on the original's row.
+			const originalRow = rt.rows.get(ORIGINAL_ID) as Memory;
+			rt.rows.set(ORIGINAL_ID, {
+				...originalRow,
+				metadata: {
+					...(originalRow.metadata as Record<string, unknown>),
+					redactedVariantId: VARIANT_ID,
+					share: { grants: [{ entityId: VIEWER, mode: "redacted" }] },
+				} as Memory["metadata"],
+			});
+			const variantRow = rt.rows.get(VARIANT_ID) as Memory;
+			rt.rows.set(VARIANT_ID, {
+				...variantRow,
+				metadata: {
+					...(variantRow.metadata as Record<string, unknown>),
+					redactionOf: ORIGINAL_ID,
+				} as Memory["metadata"],
+			});
+			return { store, original, variant };
+		}
+
+		it("OWNER boundary (no context) and ADMIN rank see the full original", async () => {
+			const rt = fakeRuntime();
+			const { store, original } = await seed(rt);
+
+			// No access context: single-owner boundary, full record.
+			expect(await store.get(ORIGINAL_ID as UUID)).toEqual(original);
+
+			// ADMIN rank context: full record with audio.
+			const admin = { requesterEntityId: STRANGER, role: "ADMIN" as const };
+			const got = await store.get(ORIGINAL_ID as UUID, admin);
+			expect(got).toEqual(original);
+			const list = await store.list(ROOM, 100, admin);
+			expect(list).toHaveLength(1);
+			expect(list[0]).toMatchObject({ id: ORIGINAL_ID, hasAudio: true });
+			expect(list[0].redacted).toBeUndefined();
+		});
+
+		it("USER with a redacted grant gets the variant under the ORIGINAL id, flagged, audio withheld", async () => {
+			const rt = fakeRuntime();
+			const { store } = await seed(rt);
+			const viewer = { requesterEntityId: VIEWER, role: "USER" as const };
+
+			const got = await store.get(ORIGINAL_ID as UUID, viewer);
+			expect(got).not.toBeNull();
+			expect(got?.id).toBe(ORIGINAL_ID);
+			expect(got?.redacted).toBe(true);
+			expect(got?.audioUrl).toBeUndefined();
+			expect(got?.audioContentType).toBeUndefined();
+			expect(got?.segments[0]?.text).toBe("Bob's SSN is [REDACTED]");
+			expect(got?.title).toBe("Payroll sync (redacted)");
+			// Identity comes from the original, content from the variant.
+			expect(got?.createdAt).toBe(1000);
+
+			const list = await store.list(ROOM, 100, viewer);
+			expect(list).toHaveLength(1);
+			expect(list[0]).toMatchObject({
+				id: ORIGINAL_ID,
+				redacted: true,
+				hasAudio: false,
+			});
+			expect(list[0].preview).toContain("[REDACTED]");
+			expect(list[0].preview).not.toContain("123-45-6789");
+		});
+
+		it("USER with a full grant sees the original in full", async () => {
+			const rt = fakeRuntime();
+			const { store, original } = await seed(rt);
+			const originalRow = rt.rows.get(ORIGINAL_ID) as Memory;
+			rt.rows.set(ORIGINAL_ID, {
+				...originalRow,
+				metadata: {
+					...(originalRow.metadata as Record<string, unknown>),
+					share: { grants: [{ entityId: VIEWER, mode: "full" }] },
+				} as Memory["metadata"],
+			});
+			const viewer = { requesterEntityId: VIEWER, role: "USER" as const };
+			expect(await store.get(ORIGINAL_ID as UUID, viewer)).toEqual(original);
+		});
+
+		it("ungranted USER and GUEST see nothing: omitted from list, null on get", async () => {
+			const rt = fakeRuntime();
+			const { store } = await seed(rt);
+			for (const role of ["USER", "GUEST"] as const) {
+				const ctx = { requesterEntityId: STRANGER, role };
+				expect(await store.get(ORIGINAL_ID as UUID, ctx)).toBeNull();
+				expect(await store.get(VARIANT_ID as UUID, ctx)).toBeNull();
+				expect(await store.list(ROOM, 100, ctx)).toEqual([]);
+			}
+		});
+
+		it("variant rows never appear as standalone list rows", async () => {
+			const rt = fakeRuntime();
+			const { store } = await seed(rt);
+			const list = await store.list(ROOM);
+			expect(list.map((s) => s.id)).toEqual([ORIGINAL_ID]);
+		});
+
+		it("a redacted grant with a missing variant discloses NOTHING (fail closed)", async () => {
+			const rt = fakeRuntime();
+			const { store } = await seed(rt);
+			rt.rows.delete(VARIANT_ID);
+			const viewer = { requesterEntityId: VIEWER, role: "USER" as const };
+			expect(await store.get(ORIGINAL_ID as UUID, viewer)).toBeNull();
+			expect(await store.list(ROOM, 100, viewer)).toEqual([]);
+		});
+
+		it("share grants and variant links survive a text edit (update preserves metadata)", async () => {
+			const rt = fakeRuntime();
+			const { store, original } = await seed(rt);
+			await store.update({
+				...original,
+				title: "Payroll sync (edited)",
+				editedAt: 9000,
+			});
+			const row = rt.rows.get(ORIGINAL_ID) as Memory;
+			const meta = row.metadata as Record<string, unknown>;
+			expect(meta.redactedVariantId).toBe(VARIANT_ID);
+			expect(meta.share).toEqual({
+				grants: [{ entityId: VIEWER, mode: "redacted" }],
+			});
+			// The redacted-grant viewer still gets the variant after the edit.
+			const viewer = { requesterEntityId: VIEWER, role: "USER" as const };
+			expect((await store.get(ORIGINAL_ID as UUID, viewer))?.redacted).toBe(
+				true,
+			);
+		});
+	});
 });

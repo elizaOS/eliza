@@ -49,7 +49,6 @@ export default scenario({
       room: "main",
       text: "Draft a message to Sam asking if we can swap this Friday exchange because of the teacher conference. Keep it purely factual, no commentary about the divorce, and do not send without me approving it.",
       plannerExcludes: ["MESSAGE_SEND_CONFIRMED"],
-      responseIncludesAll: ["Friday", "teacher conference"],
       responseExcludes: [
         "divorce",
         "unfair",

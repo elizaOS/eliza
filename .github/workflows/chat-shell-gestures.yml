@@ -119,15 +119,12 @@ jobs:
         run: bun run --cwd packages/ui test -- src/components/chat/render-parity.contract.test.tsx
 
       # Conversation-nav interleaving fuzz (jsdom) — the pure most-recent-first
-      # invariants across swipe / new / select sequences (#10042).
+      # invariants across new / select sequences (#10042). Chat-to-chat swipe
+      # was removed by the single-infinite-thread redesign (#13531), so the swipe
+      # e2e + its jank hook were retired in #13826; the remaining overlay gesture
+      # cost is now covered by the maximize/restore perf gate below.
       - name: Conversation-nav unit + interleaving
-        run: bun run --cwd packages/ui test -- src/components/shell/conversation-nav.test.ts src/hooks/useConversationSwipeJank.test.ts
-
-      # Real-overlay conversation-swipe interleaving (headless chromium, real
-      # pointer gestures): swipe-back → new → swipe-forward → new → forward →
-      # swipe-back with per-step interleaving invariants + swipe-jank telemetry.
-      - name: Conversation-swipe interleaving e2e
-        run: bun run --cwd packages/ui test:conversation-swipe-e2e
+        run: bun run --cwd packages/ui test -- src/components/shell/conversation-nav.test.ts
 
       # The iOS-style chat-sheet detent/gesture state machine (mouse + touch).
       - name: Chat-sheet gesture e2e
@@ -221,7 +218,6 @@ jobs:
           name: chat-shell-gesture-artifacts
           path: |
             packages/ui/src/components/shell/__e2e__/output/
-            packages/ui/src/components/shell/__e2e__/output-conversation-swipe/
             packages/ui/src/components/shell/__e2e__/output-chatux/
             packages/ui/src/components/shell/__e2e__/output-home/
             packages/ui/src/components/shell/__e2e__/output-launcher-loop/

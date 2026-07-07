@@ -28,6 +28,7 @@ import {
 	enforceVerbosity,
 } from "../features/advanced-capabilities/personality";
 import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
+import { embedRecallQuery } from "../features/documents/recall-embed";
 import { runShouldRespondInjectionGate } from "../features/trust/should-respond-risk-gate";
 import {
 	emitInferenceTiming,
@@ -9406,6 +9407,30 @@ export class DefaultMessageService implements IMessageService {
 			};
 		}
 
+		// Prefetch the shared per-turn recall-query embed now that every cheap
+		// short-circuit gate (self, LLM-off, mute, personality reply-gate,
+		// bot-noise triage) has passed — so a dropped turn never issues a wasted
+		// embed and the "muted room = zero model calls" invariant holds. Placed
+		// before the remaining serial pre-compose work (room fetch, attachment
+		// processing, incoming hooks, composeState) so this embed round-trip
+		// overlaps it instead of gating the Stage-1 model call: the
+		// relevant-conversations provider, document recall, experience recall,
+		// and the FACTS path all route the same text through `embedRecallQuery`
+		// (keyed by this run), so they await this in-flight result rather than
+		// starting a fresh round-trip. Fire-and-forget; the value is re-read from
+		// the per-run cache by its normalized-text key.
+		// error-policy:J7 diagnostics-must-not-kill-the-loop — a warm failure only
+		// forfeits the overlap; the compose-time caller re-embeds and fails open.
+		const recallWarmText = message.content?.text;
+		if (typeof recallWarmText === "string" && recallWarmText.trim() !== "") {
+			void embedRecallQuery(runtime, recallWarmText).catch((error) =>
+				runtime.reportError("MessageService.recallEmbedPrefetch", error, {
+					roomId: message.roomId,
+					runId,
+				}),
+			);
+		}
+
 		// Room context for shouldRespond (fetch before compose so providers see
 		// post-attachment and post-incoming-hook message state).
 		const room = await runtime.getRoom(message.roomId);
@@ -9591,10 +9616,11 @@ export class DefaultMessageService implements IMessageService {
 		// conditional v5 stage) so a slash command can
 		// never be pre-empted by another handler.
 		if (!strategyResult) {
-			const shortcutSenderRole = await resolveStage1SenderRole(
-				runtime,
-				message,
-			);
+			// Reuse the role resolved once per turn in handleMessage (stamped on the
+			// trajectory context) — resolving again here costs a room+world lookup.
+			const shortcutSenderRole =
+				getTrajectoryContext()?.userRole ??
+				(await resolveStage1SenderRole(runtime, message));
 			const shortcutOutcome = await runShortcutGate({
 				runtime,
 				message,
@@ -9796,7 +9822,11 @@ export class DefaultMessageService implements IMessageService {
 			const injectionGate = await runShouldRespondInjectionGate({
 				runtime,
 				message,
-				resolveSenderRole: () => resolveStage1SenderRole(runtime, message),
+				// Per-turn role already resolved in handleMessage; fall back to a
+				// fresh lookup only outside a trajectory scope.
+				resolveSenderRole: () =>
+					getTrajectoryContext()?.userRole ??
+					resolveStage1SenderRole(runtime, message),
 			});
 			if (injectionGate.blocked) {
 				shouldRespondToMessage = false;

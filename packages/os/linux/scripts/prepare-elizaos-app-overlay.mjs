@@ -1691,31 +1691,28 @@ function liveEmbeddingFallbackVector(): number[] {
     return content;
   }
 
-  content = content.replace(
-    `function requireService(runtime, modelType) {
-  const service = serviceFromRuntime(runtime);
-  if (!service) {
-    throw unavailable(
-      modelType,
-      "backend_unavailable",
-      \`[local-inference] \${modelType} requires an active Eliza-1 local inference backend. Activate an Eliza-1 bundle or enable an AOSP/device local loader.\`
-    );
-  }
-  return service;
-}
-`,
-    `function requireService(runtime, modelType) {
-  const service = serviceFromRuntime(runtime);
-  if (!service) {
-    throw unavailable(
-      modelType,
-      "backend_unavailable",
-      \`[local-inference] \${modelType} requires an active Eliza-1 local inference backend. Activate an Eliza-1 bundle or enable an AOSP/device local loader.\`
-    );
-  }
-  return service;
-}
-function liveEmbeddingFallbackEnabled() {
+  // The remaining shapes are the bundler's compiled output (dist/index.js and
+  // dist/runtime/index.js). Local variable names are NOT a usable anchor here:
+  // esbuild/Bun.build rename `service` -> `service2` and `ModelType` ->
+  // `ModelType2` whenever those identifiers collide across the bundle, and the
+  // exact suffix shifts with bundler version and bundle contents. So anchor
+  // only on seams the bundler never rewrites — the `requireService` signature
+  // and the embedding handler's throw-message string literals — and tolerate
+  // the ModelType suffix with a capture group. `dist/index.js` tree-shakes the
+  // warmup helper out entirely (index.ts never calls it), so there the
+  // embedding-handler fallback is what carries the flag; `dist/runtime/index.js`
+  // re-exports the warmup helper and gets both.
+
+  // Live-launcher fallback helpers, injected ahead of `requireService` so they
+  // sit at module scope (function declarations hoist, so the embedding handler
+  // below resolves them). The signature is bundler-stable; the renamed body is
+  // deliberately not part of the anchor.
+  const distRequireServiceSignature =
+    "function requireService(runtime, modelType) {";
+  if (content.includes(distRequireServiceSignature)) {
+    content = content.replace(
+      distRequireServiceSignature,
+      `function liveEmbeddingFallbackEnabled() {
   const value = process.env.ELIZAOS_LIVE_EMBEDDING_FALLBACK?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
 }
@@ -1725,45 +1722,14 @@ function liveEmbeddingFallbackVector() {
   const safeDimension = Number.isFinite(dimension) && dimension > 0 && dimension <= 8192 ? dimension : 384;
   return Array.from({ length: safeDimension }, () => 0);
 }
-`,
-  );
-  content = content.replace(
-    `function requireService(runtime, modelType) {
-  const service = serviceFromRuntime(runtime);
-  if (!service) {
-    throw unavailable(modelType, "backend_unavailable", \`[local-inference] \${modelType} requires an active Eliza-1 local inference backend. Activate an Eliza-1 bundle or enable an AOSP/device local loader.\`);
+${distRequireServiceSignature}`,
+    );
   }
-  return service;
-}
-`,
-    `function requireService(runtime, modelType) {
-  const service = serviceFromRuntime(runtime);
-  if (!service) {
-    throw unavailable(modelType, "backend_unavailable", \`[local-inference] \${modelType} requires an active Eliza-1 local inference backend. Activate an Eliza-1 bundle or enable an AOSP/device local loader.\`);
-  }
-  return service;
-}
-function liveEmbeddingFallbackEnabled() {
-  const value = process.env.ELIZAOS_LIVE_EMBEDDING_FALLBACK?.trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes";
-}
-function liveEmbeddingFallbackVector() {
-  const raw = process.env.EMBEDDING_DIMENSION ?? process.env.LOCAL_EMBEDDING_DIMENSIONS ?? "384";
-  const dimension = Number.parseInt(raw, 10);
-  const safeDimension = Number.isFinite(dimension) && dimension > 0 && dimension <= 8192 ? dimension : 384;
-  return Array.from({ length: safeDimension }, () => 0);
-}
-`,
-  );
-  // Inject the live-fallback short-circuit right after the compiled function's
-  // opening brace. The bundler preserves the source signature but the leading
-  // check sequence drifts whenever the plugin inserts a new check ahead of the
-  // disable test — the exact drift (a new `ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP`
-  // check landing first) that re-reddened this ISO stage. The fallback check is
-  // order-independent, so the signature is the only stable anchor; `isTruthyEnv`
-  // is bundled alongside this function from embedding-warmup-policy.ts. This
-  // mirrors the source-shape patch above so both compiled and TS overlays honor
-  // the flag instead of silently no-opping the warmup skip.
+
+  // Warmup short-circuit. Signature-only anchor (order-independent): the leading
+  // check sequence drifts, but the signature does not. `isTruthyEnv` is bundled
+  // from the same source module as this function, so it is present wherever the
+  // function is. Absent from dist/index.js (tree-shaken) -> no-op there.
   const distWarmupSignature = `function shouldWarmupLocalEmbeddingModel() {
 `;
   if (content.includes(distWarmupSignature)) {
@@ -1775,54 +1741,21 @@ function liveEmbeddingFallbackVector() {
 `,
     );
   }
+
+  // Embedding handler: return the fallback vector instead of throwing when no
+  // local embedding backend is available and the live launcher opted in. Anchor
+  // on the two unique throw-message literals (the bundler never rewrites string
+  // contents); the `(ModelType\d*)` capture re-emits whatever alias the bundle
+  // chose. Each message occurs exactly once, so the un-flagged String.replace
+  // patches only the embedding handler and leaves requireService's own
+  // backend_unavailable throw (a different message) untouched.
   content = content.replace(
-    `    const service = requireService(runtime, ModelType.TEXT_EMBEDDING);
-    if (typeof service.embed !== "function") {
-      throw unavailable(
-        ModelType.TEXT_EMBEDDING,
-        "capability_unavailable",
-        "[local-inference] Active local backend does not implement TEXT_EMBEDDING"
-      );
-    }
-`,
-    `    const service = serviceFromRuntime(runtime);
-    if (!service) {
-      if (liveEmbeddingFallbackEnabled()) return liveEmbeddingFallbackVector();
-      throw unavailable(
-        ModelType.TEXT_EMBEDDING,
-        "backend_unavailable",
-        "[local-inference] TEXT_EMBEDDING requires an active Eliza-1 local inference backend. Activate an Eliza-1 bundle or enable an AOSP/device local loader."
-      );
-    }
-    if (typeof service.embed !== "function") {
-      if (liveEmbeddingFallbackEnabled()) return liveEmbeddingFallbackVector();
-      throw unavailable(
-        ModelType.TEXT_EMBEDDING,
-        "capability_unavailable",
-        "[local-inference] Active local backend does not implement TEXT_EMBEDDING"
-      );
-    }
-`,
+    /throw unavailable\((ModelType\d*)\.TEXT_EMBEDDING, "backend_unavailable", "\[local-inference\] TEXT_EMBEDDING requires an active Eliza-1 backend or another embedding provider; refusing to synthesize zero-vectors\."\);/,
+    'if (liveEmbeddingFallbackEnabled()) return liveEmbeddingFallbackVector();\n      throw unavailable($1.TEXT_EMBEDDING, "backend_unavailable", "[local-inference] TEXT_EMBEDDING requires an active Eliza-1 backend or another embedding provider; refusing to synthesize zero-vectors.");',
   );
   content = content.replace(
-    `    const service = serviceFromRuntime(runtime);
-    if (!service) {
-      throw unavailable(ModelType2.TEXT_EMBEDDING, "backend_unavailable", "[local-inference] TEXT_EMBEDDING requires an active Eliza-1 backend or another embedding provider; refusing to synthesize zero-vectors.");
-    }
-    if (typeof service.embed !== "function") {
-      throw unavailable(ModelType2.TEXT_EMBEDDING, "capability_unavailable", "[local-inference] Active local backend does not implement TEXT_EMBEDDING");
-    }
-`,
-    `    const service = serviceFromRuntime(runtime);
-    if (!service) {
-      if (liveEmbeddingFallbackEnabled()) return liveEmbeddingFallbackVector();
-      throw unavailable(ModelType2.TEXT_EMBEDDING, "backend_unavailable", "[local-inference] TEXT_EMBEDDING requires an active Eliza-1 backend or another embedding provider; refusing to synthesize zero-vectors.");
-    }
-    if (typeof service.embed !== "function") {
-      if (liveEmbeddingFallbackEnabled()) return liveEmbeddingFallbackVector();
-      throw unavailable(ModelType2.TEXT_EMBEDDING, "capability_unavailable", "[local-inference] Active local backend does not implement TEXT_EMBEDDING");
-    }
-`,
+    /throw unavailable\((ModelType\d*)\.TEXT_EMBEDDING, "capability_unavailable", "\[local-inference\] Active local backend does not implement TEXT_EMBEDDING"\);/,
+    'if (liveEmbeddingFallbackEnabled()) return liveEmbeddingFallbackVector();\n      throw unavailable($1.TEXT_EMBEDDING, "capability_unavailable", "[local-inference] Active local backend does not implement TEXT_EMBEDDING");',
   );
   return content;
 }

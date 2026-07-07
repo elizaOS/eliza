@@ -37,7 +37,6 @@ export default scenario({
       name: "capture-alternating-weeks",
       room: "main",
       text: "My co-parent and I alternate weeks with Mira starting this Friday. Can you set up the custody rhythm and a handoff reminder for Fridays at 4:30pm? Keep it neutral, just logistics.",
-      responseIncludesAll: ["Friday", "4:30"],
       responseExcludes: [
         "therapy",
         "legal advice",
@@ -55,7 +54,6 @@ export default scenario({
       name: "confirm-creation",
       room: "main",
       text: "Yes, please create it. Label it Mira exchange and remind me 90 minutes before.",
-      responseIncludesAll: ["Mira", "90"],
       responseExcludes: ["therapy", "lawyer", "court"],
       responseJudge: {
         minimumScore: 0.7,

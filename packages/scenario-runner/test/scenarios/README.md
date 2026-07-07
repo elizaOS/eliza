@@ -25,8 +25,8 @@ catalog with `SCENARIO_USE_LLM_PROXY=1` and
 - `deterministic-streaming-actions` covers the real `STREAM` action and stream
   route handler for start, status, stop, provider status rendering, exact
   loopback route responses, and stream destination lifecycle side effects.
-- `deterministic-xr-view-actions` covers the real plugin-facewear
-  XRSessionService WebSocket,
+- `deterministic-xr-view-actions` covers plugin-facewear's
+  real XRSessionService WebSocket,
   XR view catalog/route surface, `XR_LIST_VIEWS`, `XR_OPEN_VIEW`,
   `XR_SWITCH_VIEW`, `XR_RESIZE_VIEW`, `XR_CLOSE_VIEW`, and `XR_QUERY_VISION`
   with a deterministic image-description model and binary camera frame.

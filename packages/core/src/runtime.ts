@@ -1483,11 +1483,34 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.hasNativeRuntimeFeature("trajectories");
 	}
 
+	/**
+	 * Per-phase, position-sorted hook lists, cached because the
+	 * `model_stream_chunk` phase is consulted once per streamed token — a
+	 * filter+sort over all registered hooks per token dominated the zero-hook
+	 * stream path. Invalidated wholesale on register/unregister (rare,
+	 * boot-time operations). Callers must treat the returned array as
+	 * read-only.
+	 */
+	private pipelineHooksByPhase = new Map<
+		PipelineHookPhase,
+		ResolvedPipelineHook[]
+	>();
+
 	private hooksForPhase(phase: PipelineHookPhase): ResolvedPipelineHook[] {
-		return this.pipelineHookEntries.filter((e) => e.phase === phase);
+		let hooks = this.pipelineHooksByPhase.get(phase);
+		if (!hooks) {
+			hooks = sortPipelineHooksByPosition(
+				this.pipelineHookEntries.filter((e) => e.phase === phase),
+			);
+			this.pipelineHooksByPhase.set(phase, hooks);
+		}
+		return hooks;
 	}
 
 	private upsertPipelineHook(entry: ResolvedPipelineHook): void {
+		// A re-registered id may change phase, so drop every phase's cache rather
+		// than tracking which two lists are stale.
+		this.pipelineHooksByPhase.clear();
 		const existing = this.pipelineHookIdToIndex.get(entry.id);
 		if (existing !== undefined) {
 			this.pipelineHookEntries[existing] = entry;
@@ -1503,7 +1526,7 @@ export class AgentRuntime implements IAgentRuntime {
 		logLabel: string,
 		pipelineHookTelemetry = true,
 	): Promise<void> {
-		const hooks = sortPipelineHooksByPosition(this.hooksForPhase(phase));
+		const hooks = this.hooksForPhase(phase);
 		if (!hooks.length) {
 			return;
 		}
@@ -1638,6 +1661,7 @@ export class AgentRuntime implements IAgentRuntime {
 		if (idx === undefined) {
 			return;
 		}
+		this.pipelineHooksByPhase.clear();
 		this.pipelineHookEntries.splice(idx, 1);
 		this.pipelineHookIdToIndex.clear();
 		for (let i = 0; i < this.pipelineHookEntries.length; i++) {
@@ -5562,26 +5586,34 @@ export class AgentRuntime implements IAgentRuntime {
 						markInference(INFERENCE_MARKS.firstToken);
 					}
 					streamedText += safeChunk;
-					const trajStream = getTrajectoryContext();
-					await this.invokePipelineHooks(
-						"model_stream_chunk",
-						modelStreamChunkPipelineHookContext({
-							source: "use_model",
-							chunk: safeChunk,
-							messageId: msgId,
-							roomId:
-								(trajStream?.roomId as UUID | undefined) ??
-								this.currentRoomId ??
-								this.agentId,
-							runId: this.getCurrentRunId(),
-							...(trajStream?.messageId
-								? { responseId: trajStream.messageId as UUID }
-								: {}),
-							accumulated: streamedText,
-						}),
-						"Model stream chunk (useModel)",
-						false,
-					);
+					// Per-token hook dispatch: skip the whole ceremony (trajectory
+					// lookup, context-object build, awaited invoke) when nothing is
+					// registered for the phase — the common zero-hook stream would
+					// otherwise pay it for every token. The length check reads the
+					// cached per-phase list, so a hook registered mid-stream is still
+					// picked up on the next chunk.
+					if (this.hooksForPhase("model_stream_chunk").length > 0) {
+						const trajStream = getTrajectoryContext();
+						await this.invokePipelineHooks(
+							"model_stream_chunk",
+							modelStreamChunkPipelineHookContext({
+								source: "use_model",
+								chunk: safeChunk,
+								messageId: msgId,
+								roomId:
+									(trajStream?.roomId as UUID | undefined) ??
+									this.currentRoomId ??
+									this.agentId,
+								runId: this.getCurrentRunId(),
+								...(trajStream?.messageId
+									? { responseId: trajStream.messageId as UUID }
+									: {}),
+								accumulated: streamedText,
+							}),
+							"Model stream chunk (useModel)",
+							false,
+						);
+					}
 					await runInsideModelStreamChunkDelivery(async () => {
 						if (structuredExtractor) {
 							structuredExtractor.push(visibleChunk);

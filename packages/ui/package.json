@@ -42,6 +42,7 @@
     "test:chat-sheet-frame-glitch-e2e": "node src/components/shell/__e2e__/run-chat-sheet-frame-glitch-e2e.mjs",
     "test:chatux-gesture-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chatux-gesture-e2e.mjs",
     "test:chat-perf-gate": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-perf-gate.mjs",
+    "test:divider-drag-perf-gate": "bun run --cwd ../.. packages/ui/src/components/composites/__e2e__/run-divider-drag-perf-gate.mjs",
     "test:perf-gate-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-perf-gate-e2e.mjs",
     "test:home-screen-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-home-screen-e2e.mjs",
     "test:launcher-loop-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-launcher-loop-e2e.mjs",

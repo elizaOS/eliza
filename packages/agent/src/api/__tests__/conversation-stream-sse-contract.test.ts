@@ -4,9 +4,12 @@
  * Drives the real `/api/conversations/:id/messages/stream` handler
  * (`handleConversationRoutes` → `generateChatResponse`) with a deterministic
  * mock `runtime.useModel`, and asserts the frame contract the dashboard client
- * consumes: `status` frames in thinking → streaming order, ordered `token`
- * frames with cumulative `fullText`, and a terminal `done` frame carrying the
- * full text plus the model `thought`.
+ * consumes: the SSE channel (headers + `thinking` status + heartbeat) opens
+ * before any model work, `status` frames arrive in thinking → streaming order,
+ * `token` frames are ordered with cumulative `fullText`, a terminal `done`
+ * frame carries the full text plus the model `thought`, and failures after the
+ * SSE channel opened surface as structured `error` data frames (never as a
+ * late HTTP status rewrite).
  *
  * Scope note — this layer is provider-agnostic BY DESIGN. The route never
  * branches on which model-provider plugin resolves `runtime.useModel`
@@ -81,6 +84,7 @@ vi.mock("../server-helpers.ts", async () => {
   };
 });
 
+import { persistConversationMemory } from "../chat-routes.ts";
 import type {
   ConversationRouteContext,
   ConversationRouteState,
@@ -331,13 +335,35 @@ describe("conversation stream SSE contract (#10712)", () => {
   it("emits thinking→streaming status, ordered cumulative token frames, then a terminal done frame with thought", async () => {
     const { ctx, record, useModel } = createCtx();
 
+    // Snapshot the wire at the moment the model is first invoked: the SSE
+    // channel (headers + `thinking` status + heartbeat) must already be open
+    // BEFORE any model work, so the client renders a live indicator during
+    // the pre-model steps instead of staring at zero bytes.
+    let writesAtModelCall: string[] | null = null;
+    const streamImpl = useModel.getMockImplementation();
+    if (!streamImpl) throw new Error("useModel fixture lost implementation");
+    useModel.mockImplementation(async (modelType, params) => {
+      if (writesAtModelCall === null) writesAtModelCall = [...record.writes];
+      return streamImpl(modelType, params);
+    });
+
     await handleConversationRoutes(ctx);
 
     expect(record.headers["Content-Type"]).toBe("text/event-stream");
     expect(record.ended).toBe(true);
     expect(useModel).toHaveBeenCalledTimes(1);
 
+    const preModelFrames = parseSsePayloads(writesAtModelCall ?? []);
+    expect(
+      preModelFrames.some(
+        (frame) => frame.type === "status" && frame.kind === "thinking",
+      ),
+    ).toBe(true);
+    expect((writesAtModelCall ?? []).join("")).toContain(": heartbeat");
+
     const payloads = parseSsePayloads(record.writes);
+    // The opening `thinking` status is the very first data frame on the wire.
+    expect(payloads[0]).toMatchObject({ type: "status", kind: "thinking" });
     const tokens = payloads.filter((payload) => payload.type === "token");
     expect(tokens.map((payload) => payload.text)).toEqual(TOKENS);
     expect(tokens.map((payload) => payload.fullText)).toEqual([
@@ -367,6 +393,9 @@ describe("conversation stream SSE contract (#10712)", () => {
     const statusKinds = payloads
       .filter((payload) => payload.type === "status")
       .map((payload) => payload.kind);
+    // Exactly one `thinking` on the wire: the route emits it when the SSE
+    // channel opens and collapses the identical opening status
+    // generateChatResponse re-emits.
     expect(statusKinds).toEqual(["thinking", "streaming"]);
     // Both status frames precede the first token frame.
     const firstTokenIndex = payloads.findIndex(
@@ -376,5 +405,44 @@ describe("conversation stream SSE contract (#10712)", () => {
       (payload) => payload.type === "status" && payload.kind === "streaming",
     );
     expect(streamingStatusIndex).toBeLessThan(firstTokenIndex);
+  });
+
+  it("delivers a post-SSE-init failure as a structured SSE error frame, not an HTTP error", async () => {
+    const { ctx, record, useModel } = createCtx();
+    // First failure point past the SSE init: storing the user message.
+    vi.mocked(persistConversationMemory).mockRejectedValueOnce(
+      new Error("db write failed"),
+    );
+
+    await handleConversationRoutes(ctx);
+
+    // Headers were already flushed as SSE — the failure may not rewrite them.
+    expect(record.headers.status).toBe("200");
+    expect(record.headers["Content-Type"]).toBe("text/event-stream");
+
+    const payloads = parseSsePayloads(record.writes);
+    expect(payloads[0]).toMatchObject({ type: "status", kind: "thinking" });
+    const errorFrame = payloads.find((payload) => payload.type === "error");
+    expect(errorFrame).toBeDefined();
+    expect(String(errorFrame?.message)).toContain("db write failed");
+    // The turn never reached the model, the stream was closed, and the
+    // HTTP-mode error helper was never used.
+    expect(useModel).not.toHaveBeenCalled();
+    expect(record.ended).toBe(true);
+    expect(record.writes.join("")).not.toContain("error 500");
+  });
+
+  it("keeps pre-SSE validation failures on plain HTTP (conversation not found → 404)", async () => {
+    const { ctx, record } = createCtx();
+    const brokenCtx = {
+      ...ctx,
+      pathname: "/api/conversations/missing-conv/messages/stream",
+    } as ConversationRouteContext;
+
+    await handleConversationRoutes(brokenCtx);
+
+    // The ctx error helper writes `error <status>: <message>` — no SSE header.
+    expect(record.headers["Content-Type"]).toBeUndefined();
+    expect(record.writes.join("")).toContain("error 404");
   });
 });

@@ -164,8 +164,16 @@ describe("advertisingService bid controls persistence", () => {
     const provider = stubProvider();
     const createOnProvider = track(spyOn(provider, "createCampaign"));
     track(spyOn(advertisingService, "getProvider").mockReturnValue(provider));
+    // createCampaign persists via the spend-cap-checked atomic create, not the
+    // bare create(); mock that variant with its { status, campaign } result.
     const createRow = track(
-      spyOn(adCampaignsRepository, "create").mockImplementation(async (data) => data as never),
+      spyOn(adCampaignsRepository, "createWithAccountSpendCapCheck").mockImplementation(
+        async (data) =>
+          ({
+            status: "created",
+            campaign: { ...(data as Record<string, unknown>), id: "campaign-row-1" },
+          }) as never,
+      ),
     );
     track(spyOn(adTransactionsRepository, "create").mockResolvedValue({} as never));
 

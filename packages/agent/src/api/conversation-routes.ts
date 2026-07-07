@@ -48,6 +48,10 @@ import {
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
+import {
+  type SerializedMessageAttachment,
+  selectAttachmentsForViewer,
+} from "./attachment-disclosure.ts";
 import type {
   AccountConnectRequest,
   ChatGenerationResult,
@@ -77,6 +81,7 @@ import {
   buildConversationRoomMetadata,
   sanitizeConversationMetadata,
 } from "./conversation-metadata.ts";
+import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
 import { generateMessageCorpus, seedMessageCorpus } from "./message-corpus.ts";
 import {
@@ -1202,57 +1207,10 @@ function extractConversationMetaString(
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-type SerializedMessageAttachment = {
-  id: string;
-  url: string;
-  contentType?: string;
-  title?: string;
-  description?: string;
-  source?: string;
-  text?: string;
-  mimeType?: string;
-  thumbnailUrl?: string;
-  /** Reason enrichment could not extract text/description (see Media.notProcessed). */
-  notProcessed?: string;
-};
-
-/**
- * Only URLs the browser can actually load are renderable. Inline-upload
- * placeholders (e.g. `attachment:img-0`) whose bytes were never persisted are
- * dropped here so the client never paints a broken image — real uploads and
- * generated media carry a served `/api/media/...`, remote https, or inline
- * `data:`/`blob:` URL.
- */
-const RENDERABLE_ATTACHMENT_URL = /^(?:https?:|data:|blob:|\/)/i;
-
-export function serializeMessageAttachments(
-  content: Record<string, unknown> | undefined,
-): SerializedMessageAttachment[] | undefined {
-  const raw = content?.attachments;
-  if (!Array.isArray(raw) || raw.length === 0) return undefined;
-  const out: SerializedMessageAttachment[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== "object") continue;
-    const a = item as Record<string, unknown>;
-    const url = typeof a.url === "string" ? a.url : "";
-    if (!url || !RENDERABLE_ATTACHMENT_URL.test(url)) continue;
-    const str = (v: unknown): string | undefined =>
-      typeof v === "string" && v.length > 0 ? v : undefined;
-    out.push({
-      id: str(a.id) ?? `att-${out.length}`,
-      url,
-      ...(str(a.contentType) ? { contentType: str(a.contentType) } : {}),
-      ...(str(a.title) ? { title: str(a.title) } : {}),
-      ...(str(a.description) ? { description: str(a.description) } : {}),
-      ...(str(a.source) ? { source: str(a.source) } : {}),
-      ...(str(a.text) ? { text: str(a.text) } : {}),
-      ...(str(a.mimeType) ? { mimeType: str(a.mimeType) } : {}),
-      ...(str(a.thumbnailUrl) ? { thumbnailUrl: str(a.thumbnailUrl) } : {}),
-      ...(str(a.notProcessed) ? { notProcessed: str(a.notProcessed) } : {}),
-    });
-  }
-  return out.length > 0 ? out : undefined;
-}
+// Attachment DTO shaping + per-viewer disclosure selection live in the
+// use-case module (#14781); the serializer is re-exported for existing
+// importers of this route module.
+export { serializeMessageAttachments } from "./attachment-disclosure.ts";
 
 type ConversationRouteMessageRecord = {
   id: string;
@@ -1956,6 +1914,11 @@ export async function handleConversationRoutes(
       // Sort by createdAt ascending
       memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
       const agentId = runtime.agentId;
+      // Per-viewer attachment disclosure (#14781): a boundary-role viewer
+      // token (WaifuChat, artifact share-viewer) carries a principal; trunk
+      // owner tokens match no resolver, so the local dashboard resolves no
+      // context and serves the full DTO unchanged.
+      const viewerAccessContext = resolveHttpAccessContext(req);
       const messages = memories
         .map((m) => {
           const contentSource = (m.content as Record<string, unknown>)?.source;
@@ -2013,7 +1976,11 @@ export async function handleConversationRoutes(
             role === "assistant"
               ? normalizeChatResponseText(rawText, state.logBuffer, runtime)
               : rawText;
-          const attachments = serializeMessageAttachments(content);
+          const attachments = selectAttachmentsForViewer(
+            m,
+            viewerAccessContext,
+            agentId,
+          );
           const topics =
             Array.isArray(meta?.topics) && meta.topics.length > 0
               ? (meta.topics as unknown[]).filter(
@@ -2512,15 +2479,36 @@ export async function handleConversationRoutes(
       metadata: chatMetadata,
     } = chatPayload;
 
+    // The SSE channel opens as soon as the request is validated — before
+    // runtime resolution, room setup, and user-message persistence — so the
+    // client sees headers, an immediate `thinking` status, and heartbeats
+    // during the pre-model work (runtime warming alone can take seconds; the
+    // pre-model DB steps add serial round-trips). Everything past this point
+    // reports failure as a structured SSE `error` event (the client maps
+    // `type:"error"` data lines to StreamGenerationError); only the validation
+    // above may answer with plain HTTP status codes.
+    initSse(res);
+    writeChatStatusSse(res, { kind: "thinking" });
+    writeConversationStreamHeartbeat(res, disconnectTracker);
+    const heartbeatInterval = setInterval(() => {
+      if (disconnectTracker.checkConnectionClosed()) {
+        return;
+      }
+      writeConversationStreamHeartbeat(res, disconnectTracker);
+    }, 5000);
+    const failStream = (message: string): true => {
+      writeSse(res, { type: "error", message });
+      clearInterval(heartbeatInterval);
+      finishStreamResponse();
+      return true;
+    };
+
     // Hold the streaming turn through the warming window instead of dropping it
     // — the client already shows the optimistic bubble + typing indicator, and
     // the response streams the instant first-turn capability comes online.
     const runtime = await resolveRuntimeForChatTurn(state);
     if (!runtime) {
-      disconnectTracker.markCompleted();
-      disconnectTracker.dispose();
-      error(res, "Agent is not running", 503);
-      return true;
+      return failStream("Agent is not running");
     }
 
     const caller = resolveConversationCaller(req, state);
@@ -2530,14 +2518,9 @@ export async function handleConversationRoutes(
     try {
       await ensureConversationRoom(state, conv, caller);
     } catch (err) {
-      error(
-        res,
+      return failStream(
         `Failed to initialize conversation room: ${getErrorMessage(err)}`,
-        500,
       );
-      disconnectTracker.markCompleted();
-      disconnectTracker.dispose();
-      return true;
     }
 
     const { userMessage, messageToStore } = await buildUserMessages({
@@ -2554,16 +2537,14 @@ export async function handleConversationRoutes(
     try {
       await persistConversationMemory(runtime, messageToStore);
     } catch (err) {
-      disconnectTracker.markCompleted();
-      disconnectTracker.dispose();
-      error(res, `Failed to store user message: ${getErrorMessage(err)}`, 500);
-      return true;
+      return failStream(
+        `Failed to store user message: ${getErrorMessage(err)}`,
+      );
     }
 
     const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
     if (walletModeGuidance) {
       const endActiveChatTurn = beginActiveChatTurn(state);
-      initSse(res);
       try {
         if (!disconnectTracker.isAborted()) {
           writeChatTokenSse(res, walletModeGuidance, walletModeGuidance);
@@ -2590,6 +2571,7 @@ export async function handleConversationRoutes(
           });
         }
       } finally {
+        clearInterval(heartbeatInterval);
         finishStreamResponse();
         endActiveChatTurn();
       }
@@ -2599,18 +2581,13 @@ export async function handleConversationRoutes(
     // ── Local runtime path (streaming) ───────────────────────
 
     const endActiveChatTurn = beginActiveChatTurn(state);
-    initSse(res);
-    writeConversationStreamHeartbeat(res, disconnectTracker);
-
-    // SSE heartbeat to keep connection alive during long generation
-    const heartbeatInterval = setInterval(() => {
-      if (disconnectTracker.checkConnectionClosed()) {
-        return;
-      }
-      writeConversationStreamHeartbeat(res, disconnectTracker);
-    }, 5000);
 
     let streamedText = "";
+    // The route already wrote a `thinking` status when the SSE channel opened;
+    // collapse the identical opening status generateChatResponse re-emits so
+    // the wire carries each phase transition once. Distinct consecutive phases
+    // (thinking → running_action → thinking) still pass through.
+    let lastStatusSignature = "thinking::";
     // When the success path emits `done` BEFORE running persistence (latency
     // optimization), we hand off the persistence work as a detached promise so
     // the `finally` block can `res.end()` immediately and still observe failures.
@@ -2631,6 +2608,11 @@ export async function handleConversationRoutes(
             ) {
               return;
             }
+            const signature = `${status.kind}:${status.actionName ?? ""}:${status.toolName ?? ""}`;
+            if (signature === lastStatusSignature) {
+              return;
+            }
+            lastStatusSignature = signature;
             writeChatStatusSse(res, status);
           },
           onToolEvent: (event) => {

@@ -310,7 +310,7 @@ describe("TasksEventsPanel widgets-bar resize handle", () => {
     const clamped = await boxOf(page, "chat-widgets-bar");
     expect(Math.round(clamped.width)).toBe(560);
 
-    // Width persists to localStorage on every applied change.
+    // Width persists to localStorage once on drag release (mouse.up above).
     const persisted = await page.evaluate(() =>
       localStorage.getItem("eliza:chat:widgets-bar:width"),
     );

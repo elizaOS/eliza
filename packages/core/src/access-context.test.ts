@@ -20,6 +20,11 @@ const DISCORD_SERVER_ID = "discord-server-7788";
 function runtimeWithRoles(
 	roles: Record<string, string>,
 	roomWorldId: UUID | undefined,
+	// Since #14707, a stored OWNER grant resolves OWNER only when it was made
+	// deliberately through the role-management gate (roleSources "manual");
+	// sourceless/legacy grants fold to GUEST. Fixtures granting OWNER must
+	// model the deliberate shape.
+	roleSources?: Record<string, string>,
 ): IAgentRuntime {
 	return {
 		agentId: AGENT,
@@ -28,7 +33,7 @@ function runtimeWithRoles(
 			id,
 			agentId: AGENT,
 			serverId: "server-1",
-			metadata: { roles },
+			metadata: { roles, ...(roleSources ? { roleSources } : {}) },
 		}),
 		getSetting: () => undefined,
 		getCache: async () => undefined,
@@ -55,7 +60,7 @@ const discordMessage = (): Memory =>
 describe("buildAccessContext", () => {
 	it("resolves an OWNER requester with world + source", async () => {
 		const ctx = await buildAccessContext(
-			runtimeWithRoles({ [USER]: "OWNER" }, WORLD),
+			runtimeWithRoles({ [USER]: "OWNER" }, WORLD, { [USER]: "manual" }),
 			message("discord"),
 		);
 
@@ -64,6 +69,16 @@ describe("buildAccessContext", () => {
 		expect(ctx.role).toBe("OWNER");
 		expect(ctx.isOwner).toBe(true);
 		expect(ctx.source).toBe("discord");
+	});
+
+	it("folds a sourceless (legacy/connector-written) OWNER grant to GUEST (#14707)", async () => {
+		const ctx = await buildAccessContext(
+			runtimeWithRoles({ [USER]: "OWNER" }, WORLD),
+			message("discord"),
+		);
+
+		expect(ctx.role).toBe("GUEST");
+		expect(ctx.isOwner).toBe(false);
 	});
 
 	it("resolves a plain USER (not owner)", async () => {
@@ -95,7 +110,9 @@ describe("buildAccessContext", () => {
 		// so worldId MUST be that same world — never undefined. This is the case a
 		// separate room lookup got wrong: role OWNER with worldId undefined, an
 		// elevated role with no tenant scope.
-		const runtime = runtimeWithRoles({ [USER]: "OWNER" }, undefined);
+		const runtime = runtimeWithRoles({ [USER]: "OWNER" }, undefined, {
+			[USER]: "manual",
+		});
 		const expectedWorldId = createUniqueUuid(runtime, DISCORD_SERVER_ID);
 
 		const ctx = await buildAccessContext(runtime, discordMessage());

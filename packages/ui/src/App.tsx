@@ -2656,6 +2656,9 @@ export function App() {
   // unmounted until /api/auth/me resolves for returning sessions.
   // "unauthenticated": render LoginView. "authenticated": proceed.
   // "server_unavailable": show a retryable startup failure.
+  // Restored sessions usually arrive here already decided: the restore phase
+  // primes the probe (primeAuthStatusProbe) so it overlaps backend polling /
+  // hydration instead of serializing an extra round-trip after first paint.
   if (
     isShellPaintableNow &&
     !isPopout &&

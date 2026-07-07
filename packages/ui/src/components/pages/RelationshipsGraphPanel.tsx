@@ -35,7 +35,11 @@ import type {
   RelationshipsGraphSnapshot,
   RelationshipsPersonSummary,
 } from "../../api/client-types-relationships";
-import { GRAPH_PAN_ENGAGE_SLOP, useClickSuppression } from "../../gestures";
+import {
+  GRAPH_PAN_ENGAGE_SLOP,
+  useClickSuppression,
+  useRafCoalescer,
+} from "../../gestures";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import {
@@ -796,6 +800,10 @@ export function RelationshipsGraphPanel({
   const pinchStateRef = useRef<{
     startDistance: number;
     startZoom: number;
+    // Container rect captured once at pinch start: getBoundingClientRect in
+    // the move handler forces a layout per pointer event. The container does
+    // not move/resize mid-pinch, so the cached rect stays valid.
+    rect: DOMRect;
   } | null>(null);
 
   const activePointerPoints = (): Array<{ x: number; y: number }> =>
@@ -825,8 +833,14 @@ export function RelationshipsGraphPanel({
     };
   };
 
+  // `containerRect` lets gesture code that already measured the container
+  // (the pinch path caches it at gesture start) skip the per-call layout read.
   const zoomTo = useCallback(
-    (nextZoom: number, focalPoint: { x: number; y: number } | null = null) => {
+    (
+      nextZoom: number,
+      focalPoint: { x: number; y: number } | null = null,
+      containerRect?: DOMRect,
+    ) => {
       const container = containerRef.current;
       const clampedZoom = Number(
         clamp(nextZoom, MIN_ZOOM, MAX_ZOOM).toFixed(3),
@@ -837,7 +851,7 @@ export function RelationshipsGraphPanel({
         return;
       }
 
-      const rect = container.getBoundingClientRect();
+      const rect = containerRect ?? container.getBoundingClientRect();
       const offsetX = focalPoint.x - rect.left;
       const offsetY = focalPoint.y - rect.top;
 
@@ -853,6 +867,17 @@ export function RelationshipsGraphPanel({
     },
     [],
   );
+
+  // Pinch moves arrive per pointer event (up to ~1000Hz, two pointers); only
+  // the last update per painted frame matters, so setZoom is coalesced to one
+  // application per frame using the rect cached at gesture start.
+  const { schedule: schedulePinchZoom, flush: flushPinchZoom } =
+    useRafCoalescer<{
+      zoom: number;
+      center: { x: number; y: number } | null;
+    }>(({ zoom: nextZoom, center }) => {
+      zoomTo(nextZoom, center, pinchStateRef.current?.rect);
+    });
 
   const cancelPan = () => {
     panStateRef.current = null;
@@ -882,6 +907,7 @@ export function RelationshipsGraphPanel({
       pinchStateRef.current = {
         startDistance: distanceBetweenPointers(),
         startZoom: zoom,
+        rect: container.getBoundingClientRect(),
       };
       hideTooltip();
     }
@@ -899,10 +925,10 @@ export function RelationshipsGraphPanel({
     if (pinch && pointersRef.current.size >= 2) {
       const distance = distanceBetweenPointers();
       if (pinch.startDistance > 0 && distance > 0) {
-        zoomTo(
-          pinch.startZoom * (distance / pinch.startDistance),
-          pointerCenter(),
-        );
+        schedulePinchZoom({
+          zoom: pinch.startZoom * (distance / pinch.startDistance),
+          center: pointerCenter(),
+        });
       }
       return;
     }
@@ -926,7 +952,10 @@ export function RelationshipsGraphPanel({
 
   const endPan = (event: ReactPointerEvent<HTMLDivElement>) => {
     pointersRef.current.delete(event.pointerId);
-    if (pointersRef.current.size < 2) {
+    if (pointersRef.current.size < 2 && pinchStateRef.current) {
+      // Deliver the last coalesced pinch update while the cached rect is
+      // still in place, so the gesture's final zoom is never dropped.
+      flushPinchZoom();
       pinchStateRef.current = null;
     }
     const state = panStateRef.current;

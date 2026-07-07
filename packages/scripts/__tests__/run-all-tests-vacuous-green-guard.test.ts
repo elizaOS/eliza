@@ -56,6 +56,7 @@ function run(args, env = {}) {
 }
 
 const NOWHERE_FILTER = "__no_such_package_zzz__";
+const ZERO_TASK_DIAGNOSTIC = "lane matched 0 task(s)";
 const TEMP_PACKAGE_DIR = join(
   repoRoot,
   "packages",
@@ -107,7 +108,7 @@ describe("run-all-tests --min-tasks vacuous-green guard", () => {
       });
       expect(result.status).toBe(3);
       expect(`${result.stdout}${result.stderr}`).toContain(
-        "collected 0 task(s)",
+        ZERO_TASK_DIAGNOSTIC,
       );
     },
     SPAWN_TIMEOUT_MS,
@@ -123,7 +124,7 @@ describe("run-all-tests --min-tasks vacuous-green guard", () => {
         "--min-tasks=1",
       ]);
       expect(result.status).toBe(3);
-      expect(result.stderr).toContain("collected 0 task(s)");
+      expect(result.stderr).toContain(ZERO_TASK_DIAGNOSTIC);
       expect(result.stdout).toBe("");
     },
     SPAWN_TIMEOUT_MS,

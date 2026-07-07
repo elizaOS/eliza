@@ -601,9 +601,15 @@ describe("advertisingService with the LinkedIn provider", () => {
         "getCredentials",
       ).mockResolvedValue({ accessToken: "linkedin-token" } as never),
     );
+    // createCampaign persists via the spend-cap-checked atomic create, not the
+    // bare create(); mock that variant with its { status, campaign } result.
     const createRow = track(
-      spyOn(adCampaignsRepository, "create").mockImplementation(
-        async (data) => ({ ...(data as Record<string, unknown>), id: "campaign-row-1" }) as never,
+      spyOn(adCampaignsRepository, "createWithAccountSpendCapCheck").mockImplementation(
+        async (data) =>
+          ({
+            status: "created",
+            campaign: { ...(data as Record<string, unknown>), id: "campaign-row-1" },
+          }) as never,
       ),
     );
     track(spyOn(adTransactionsRepository, "create").mockResolvedValue({} as never));

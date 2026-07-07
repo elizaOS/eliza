@@ -9,6 +9,7 @@
  */
 
 export * from "./access-context";
+export * from "./access-control/artifact-disclosure";
 export * from "./access-control/filter";
 export * from "./account-pool-bridge";
 export * from "./action-names";

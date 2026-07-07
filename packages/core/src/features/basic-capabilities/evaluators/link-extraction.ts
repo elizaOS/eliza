@@ -145,6 +145,28 @@ function stripTags(html: string): string {
 		.trim();
 }
 
+/**
+ * DNS + transport injection for the guarded preview fetch — the deterministic-test
+ * seam. On a Node-like runtime `fetchWithSsrfGuard` defaults to the node-pinned
+ * transport (its DNS-rebinding defense), which bypasses a stubbed `globalThis.fetch`
+ * by design; tests therefore inject the pinned pair here to drive the REAL guard
+ * over a deterministic wire rather than stubbing a fetch the guard never calls.
+ * Undefined in production — the guard uses its node defaults.
+ */
+type LinkPreviewTransport = Pick<
+	Parameters<typeof fetchWithSsrfGuard>[0],
+	"fetchImpl" | "lookupFn" | "pinnedFetchImpl"
+>;
+
+let linkPreviewTransportForTests: LinkPreviewTransport | undefined;
+
+/** Test seam — inject (or clear with `undefined`) the guarded preview transport. */
+export function _setLinkPreviewTransportForTests(
+	transport: LinkPreviewTransport | undefined,
+): void {
+	linkPreviewTransportForTests = transport;
+}
+
 async function fetchLinkPreview(
 	url: string,
 ): Promise<{ title: string; bodyChunk: string } | null> {
@@ -163,6 +185,7 @@ async function fetchLinkPreview(
 					"user-agent": "Mozilla/5.0 (compatible; ElizaLinkPreview/1.0)",
 				},
 			},
+			...linkPreviewTransportForTests,
 		});
 		release = guarded.release;
 		const { response } = guarded;

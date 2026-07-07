@@ -114,6 +114,12 @@ import {
 
 const _require = createRequire(import.meta.url);
 
+import {
+  isRuntimeBootDeferred,
+  registerDeferredRuntimeBoot,
+  shouldDeferRuntimeBootUntilOnboarding,
+  triggerDeferredRuntimeBoot,
+} from "../api/deferred-runtime-boot.js";
 import { invalidateCorsAllowedPorts } from "../api/server-cors.js";
 import { bootLap } from "../boot-profile.js";
 import { isRuntimeAutonomyEnabled } from "./autonomy-policy.js";
@@ -1678,6 +1684,15 @@ export async function startEliza(
       return repaired;
     };
 
+    // Fresh-install gate, decided BEFORE the API binds so the onRestart
+    // closure below can never race an in-flight deferral decision: on a
+    // genuinely-fresh install (the GUI will run onboarding; no provider env
+    // keys, not cloud-provisioned) the runtime a server-only boot would build
+    // is pure waste — onboarding discards it. Defer it and boot on the
+    // first-run commit instead (see ../api/deferred-runtime-boot.ts).
+    const deferRuntimeBootUntilOnboarding =
+      shouldDeferRuntimeBootUntilOnboarding();
+
     // Desktop launcher sets ELIZA_API_PORT (default 31337) to match the
     // renderer's hardcoded API base; honor it when present. CLI/server-only
     // mode (no ELIZA_API_PORT) keeps the legacy `resolveServerOnlyPort`
@@ -1709,12 +1724,44 @@ export async function startEliza(
         "[eliza] Local-agent IPC mode: initializing route kernel without a TCP listener (set ELIZA_API_EXPOSE_PORT=1 to re-open the port)",
       );
     }
+    // The deferred fresh-install boot: exactly the post-bind boot sequence
+    // below (boot → updateRuntime → "running"), reachable from the first-run
+    // commit handler and the agent start/restart endpoints. Registered BEFORE
+    // the API binds so every HTTP trigger finds it; `updateRuntime` /
+    // `updateStartup` are assigned by the bind below, before any request can
+    // arrive. A failed boot flips the reported state to "error" (the client's
+    // designed error state) and rethrows — the registration is kept so an
+    // explicit start/restart can retry.
+    if (deferRuntimeBootUntilOnboarding) {
+      registerDeferredRuntimeBoot(async () => {
+        updateStartup?.({ phase: "starting", state: "starting" });
+        try {
+          currentRuntime = await bootServerOnlyRuntime();
+        } catch (err) {
+          // error-policy:J2 context-adding rethrow — flip the reported agent
+          // state to "error" first so /api/status never reads healthy.
+          updateStartup?.({ phase: "error", state: "error" });
+          throw new Error("Runtime boot after onboarding failed", {
+            cause: err,
+          });
+        }
+        if (!currentRuntime) {
+          updateStartup?.({ phase: "error", state: "error" });
+          throw new Error("Runtime boot after onboarding returned no runtime");
+        }
+        updateRuntime?.(currentRuntime);
+        updateStartup?.({ phase: "running", attempt: 0, state: "running" });
+        bootLap("startEliza:deferred runtime booted + ready:true");
+      });
+    }
+
     bootLap(
       "startEliza:before startApiServer (config/registry/embedding setup done)",
     );
     try {
-      // Bind the API server FIRST with no runtime yet (state "starting"), so
-      // the desktop webview connects + hydrates in PARALLEL with the heavier
+      // Bind the API server FIRST with no runtime yet (state "starting", or
+      // "not_started" when the fresh-install gate deferred the boot), so the
+      // desktop webview connects + hydrates in PARALLEL with the heavier
       // agent boot instead of waiting the full boot. The runtime is wired in
       // via updateRuntime once it finishes booting below. Mirrors the
       // dev-server's bind-first orchestration. In local-agent IPC mode
@@ -1723,8 +1770,18 @@ export async function startEliza(
       const startedApiServer = await startApiServer({
         port: apiPort,
         skipListen: skipApiListen,
-        initialAgentState: "starting",
+        initialAgentState: deferRuntimeBootUntilOnboarding
+          ? "not_started"
+          : "starting",
         onRestart: async () => {
+          // Before the deferred first boot has succeeded, a restart request
+          // IS the boot request — funnel it into the single-flight trigger so
+          // it can never race the first-run commit into a second concurrent
+          // PGlite open.
+          if (isRuntimeBootDeferred()) {
+            await triggerDeferredRuntimeBoot("agent start requested via API");
+            return currentRuntime ?? null;
+          }
           if (currentRuntime) {
             await upstreamShutdownRuntime(
               currentRuntime,
@@ -1778,17 +1835,33 @@ export async function startEliza(
       bootLap("startEliza:route kernel ready (IPC mode, no TCP bind)");
     }
 
-    // Now boot the runtime; the API is already reachable (state "starting"),
-    // so the UI is connecting + hydrating while this runs, then flips to
-    // "running" once the agent is ready.
-    currentRuntime = await bootServerOnlyRuntime();
-    if (!currentRuntime) {
-      updateStartup?.({ phase: "error", state: "error" });
-      return currentRuntime;
+    if (deferRuntimeBootUntilOnboarding) {
+      // Fresh install: no runtime until onboarding commits. The API server
+      // already serves everything onboarding needs (first-run status/options,
+      // auth, config); /api/status reports the designed awaiting state
+      // (state "not_started", startup.phase "awaiting-onboarding") — never a
+      // fake "running". The boot fires from POST /api/first-run (local-target
+      // commit) or POST /api/agent/start|restart, whichever comes first; a
+      // cloud/remote-target commit leaves this process runtime-less on
+      // purpose (#13377 — the client binds the cloud agent instead).
+      updateStartup?.({ phase: "awaiting-onboarding", state: "not_started" });
+      logger.info(
+        "[eliza] Fresh install — agent runtime boot deferred until onboarding commits (onboarding API routes are live)",
+      );
+      bootLap("startEliza:runtime boot deferred (awaiting onboarding)");
+    } else {
+      // Now boot the runtime; the API is already reachable (state "starting"),
+      // so the UI is connecting + hydrating while this runs, then flips to
+      // "running" once the agent is ready.
+      currentRuntime = await bootServerOnlyRuntime();
+      if (!currentRuntime) {
+        updateStartup?.({ phase: "error", state: "error" });
+        return currentRuntime;
+      }
+      updateRuntime?.(currentRuntime);
+      updateStartup?.({ phase: "running", attempt: 0, state: "running" });
+      bootLap("startEliza:runtime booted + ready:true");
     }
-    updateRuntime?.(currentRuntime);
-    updateStartup?.({ phase: "running", attempt: 0, state: "running" });
-    bootLap("startEliza:runtime booted + ready:true");
 
     console.log("[eliza] Server running. Press Ctrl+C to stop.");
 

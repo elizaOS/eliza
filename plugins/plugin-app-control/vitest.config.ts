@@ -8,6 +8,10 @@ import { defineConfig } from "vitest/config";
 
 const sharedSrc = path.resolve(__dirname, "../../packages/shared/src");
 const coreSrc = path.resolve(__dirname, "../../packages/core/src");
+const cloudRoutingSrc = path.resolve(
+	__dirname,
+	"../../packages/cloud/routing/src",
+);
 const loggerSrc = path.resolve(__dirname, "../../packages/logger/src");
 const tuiSrc = path.resolve(__dirname, "../../packages/tui/src");
 const uiSrc = path.resolve(__dirname, "../../packages/ui/src");
@@ -138,6 +142,15 @@ export default defineConfig({
 			{
 				find: "@elizaos/core",
 				replacement: path.join(coreSrc, "index.node.ts"),
+			},
+			// Core's src re-exports the cloud routing surface from
+			// `@elizaos/cloud-routing`, which ships no dist. With @elizaos/core
+			// pinned to source above, that re-export only resolves when
+			// cloud-routing is source-aliased too — otherwise vite falls through
+			// to its missing `dist/index.js` and fails to resolve the entry.
+			{
+				find: "@elizaos/cloud-routing",
+				replacement: path.join(cloudRoutingSrc, "index.ts"),
 			},
 			{
 				find: "@elizaos/logger",

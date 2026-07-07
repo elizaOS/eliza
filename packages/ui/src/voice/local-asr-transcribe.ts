@@ -20,6 +20,50 @@ export interface TranscribeWavOptions {
   signal?: AbortSignal;
 }
 
+/** Default per-attempt client-side STT timeout (#voice-V4). */
+export const DEFAULT_CLOUD_STT_TIMEOUT_MS = 15_000;
+
+export interface TranscribeCloudWavOptions extends TranscribeWavOptions {
+  /**
+   * Per-attempt client-side timeout (#voice-V4). A flaky-cellular POST that
+   * never resolves would otherwise hang the turn in "processing" forever
+   * (fetch has no default timeout). Each attempt gets its own AbortController
+   * armed to this deadline; on a network-class failure the helper retries ONCE
+   * before surfacing the error. Defaults to {@link DEFAULT_CLOUD_STT_TIMEOUT_MS}.
+   */
+  timeoutMs?: number;
+}
+
+/**
+ * Error thrown by {@link transcribeCloudWav} carrying the HTTP status (when the
+ * failure was an HTTP response) so callers / the retry logic can distinguish a
+ * retryable transport hiccup (timeout, 5xx, 429) from a terminal client error
+ * (401/402/413 — retrying won't help).
+ */
+export class CloudSttError extends Error {
+  /** HTTP status when the failure was a response; `undefined` for transport/timeout. */
+  readonly status?: number;
+  /** True when this failure class is safe to retry once (network/timeout/5xx/429). */
+  readonly retryable: boolean;
+  constructor(
+    message: string,
+    opts: { status?: number; retryable: boolean; cause?: unknown },
+  ) {
+    super(
+      message,
+      opts.cause !== undefined ? { cause: opts.cause } : undefined,
+    );
+    this.name = "CloudSttError";
+    this.status = opts.status;
+    this.retryable = opts.retryable;
+  }
+}
+
+/** HTTP statuses worth one automatic retry (transient upstream/transport). */
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 429 || (status >= 500 && status <= 599);
+}
+
 export interface TranscribeWavResult {
   /** Trimmed transcript text. Never empty — the helper throws instead. */
   text: string;
@@ -108,37 +152,112 @@ function bytesToBase64(bytes: Uint8Array): string {
  *
  * Fails loud: a non-2xx response or an empty transcript throws, so the capture
  * surface renders an error state rather than silently substituting browser STT.
+ *
+ * Resilient (#voice-V4): each attempt is bounded by a client-side timeout
+ * (`timeoutMs`, default 15s) and a single automatic retry covers a network-class
+ * failure (transport error, timeout, 5xx, 429) so a flaky-cellular STT doesn't
+ * hard-fail the turn on the first hiccup. Terminal client errors (401/402/413)
+ * and an empty transcript are NOT retried — retrying won't change the outcome.
+ * A caller-initiated abort (`options.signal`) is honored immediately and never
+ * retried.
  */
 export async function transcribeCloudWav(
   audio: Uint8Array,
-  options?: TranscribeWavOptions,
+  options?: TranscribeCloudWavOptions,
 ): Promise<string> {
-  const res = await fetchWithCsrf(resolveApiUrl("/api/asr/cloud"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "audio/wav",
-      Accept: "application/json",
-    },
-    // A Uint8Array is a valid BufferSource body; the cast bridges the DOM lib's
-    // stricter `ArrayBuffer` generic on BodyInit (the runtime accepts it as-is).
-    body: audio as BodyInit,
-    signal: options?.signal,
-  });
-  if (!res.ok) {
-    // error-policy:J6 the error body is diagnostic-only; a failed read must not
-    // mask the real signal (the HTTP status the throw below already carries).
-    const body = await res.text().catch(() => "");
-    throw new Error(`Cloud ASR ${res.status}: ${body.slice(0, 200)}`);
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_CLOUD_STT_TIMEOUT_MS;
+  const callerSignal = options?.signal;
+
+  // One attempt: arm a per-attempt timeout AbortController, compose it with the
+  // caller's signal, POST, and classify any failure as retryable or terminal.
+  const attempt = async (): Promise<string> => {
+    const timeoutController = new AbortController();
+    const timer = setTimeout(() => {
+      timeoutController.abort();
+    }, timeoutMs);
+    // Chain the caller's abort into this attempt so an outer cancel still
+    // aborts the in-flight fetch (and is distinguishable from a timeout below).
+    const onCallerAbort = () => timeoutController.abort();
+    if (callerSignal) {
+      if (callerSignal.aborted) timeoutController.abort();
+      else
+        callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+    }
+    try {
+      const res = await fetchWithCsrf(resolveApiUrl("/api/asr/cloud"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "audio/wav",
+          Accept: "application/json",
+        },
+        // A Uint8Array is a valid BufferSource body; the cast bridges the DOM
+        // lib's stricter `ArrayBuffer` generic on BodyInit (runtime accepts it).
+        body: audio as BodyInit,
+        signal: timeoutController.signal,
+      });
+      if (!res.ok) {
+        // error-policy:J6 the error body is diagnostic-only; a failed read must
+        // not mask the HTTP status the error below already carries.
+        const body = await res.text().catch(() => "");
+        throw new CloudSttError(
+          `Cloud ASR ${res.status}: ${body.slice(0, 200)}`,
+          { status: res.status, retryable: isRetryableStatus(res.status) },
+        );
+      }
+      // error-policy:J3 unparseable body falls through to the empty-transcript
+      // throw (terminal — a bad body won't parse on a retry either).
+      const parsed = (await res.json().catch(() => null)) as {
+        text?: unknown;
+      } | null;
+      const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
+      if (!text) {
+        throw new CloudSttError("Cloud ASR returned an empty transcript", {
+          retryable: false,
+        });
+      }
+      return text;
+    } catch (err) {
+      if (err instanceof CloudSttError) throw err;
+      // A caller-initiated abort is terminal + must surface as the caller's
+      // cancel, not a timeout retry.
+      if (callerSignal?.aborted) {
+        throw new CloudSttError("Cloud ASR request was cancelled", {
+          retryable: false,
+          cause: err,
+        });
+      }
+      // Our own timeout fired — retryable transport-class failure.
+      if (timeoutController.signal.aborted) {
+        throw new CloudSttError(`Cloud ASR timed out after ${timeoutMs}ms`, {
+          retryable: true,
+          cause: err,
+        });
+      }
+      // Any other throw (fetch TypeError = DNS/offline/connection reset) is a
+      // network-class failure — retry once.
+      throw new CloudSttError(
+        `Cloud ASR request failed: ${err instanceof Error ? err.message : String(err)}`,
+        { retryable: true, cause: err },
+      );
+    } finally {
+      clearTimeout(timer);
+      callerSignal?.removeEventListener("abort", onCallerAbort);
+    }
+  };
+
+  try {
+    return await attempt();
+  } catch (err) {
+    // One auto-retry on a network-class failure, unless the caller cancelled.
+    if (
+      err instanceof CloudSttError &&
+      err.retryable &&
+      !callerSignal?.aborted
+    ) {
+      return await attempt();
+    }
+    throw err;
   }
-  // error-policy:J3 unparseable body falls through to the empty-transcript throw
-  const parsed = (await res.json().catch(() => null)) as {
-    text?: unknown;
-  } | null;
-  const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
-  if (!text) {
-    throw new Error("Cloud ASR returned an empty transcript");
-  }
-  return text;
 }
 
 export async function transcribeLocalInferenceWav(

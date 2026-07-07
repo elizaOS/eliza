@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRafCoalescer } from "../../gestures";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useAppSelectorShallow } from "../../state";
 import { Button } from "../ui/button";
@@ -46,9 +47,21 @@ export function GameViewOverlay() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
-  const dragFrameRef = useRef(0);
+  // Viewport position of the overlay when the drag began — the base the
+  // per-frame translate3d delta is measured from.
+  const dragBaseRef = useRef({ x: 0, y: 0 });
   const dragPendingPosRef = useRef<{ x: number; y: number } | null>(null);
   const [dragging, setDragging] = useState(false);
+  // During a drag the overlay is moved with a compositor-only translate3d
+  // written straight onto the element, at most once per frame — not a
+  // per-frame setPos, whose left/top style write re-lays-out the overlay
+  // (iframe included) every frame. State commits once on release.
+  const { schedule: scheduleDragWrite, cancel: cancelDragWrite } =
+    useRafCoalescer<{ x: number; y: number }>((next) => {
+      const el = containerRef.current;
+      if (!el) return;
+      el.style.transform = `translate3d(${next.x - dragBaseRef.current.x}px, ${next.y - dragBaseRef.current.y}px, 0)`;
+    });
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const authSentRef = useRef(false);
   const viewerSessionRef = useRef("");
@@ -79,49 +92,58 @@ export function GameViewOverlay() {
     [activeGamePostMessagePayload, activeGameViewerUrl],
   );
 
-  const handleDragStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    setDragging(true);
-
-    const onMove = (ev: MouseEvent) => {
-      dragPendingPosRef.current = {
-        x: ev.clientX - dragOffset.current.x,
-        y: ev.clientY - dragOffset.current.y,
+  const handleDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      // One rect read at drag start (never in the move handler): it is both
+      // the grab offset and the translate3d base. The overlay's absolute
+      // container fills the viewport, so rect coordinates ARE left/top values.
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      dragOffset.current = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
       };
-      if (dragFrameRef.current) return;
-      dragFrameRef.current = requestAnimationFrame(() => {
-        dragFrameRef.current = 0;
-        if (dragPendingPosRef.current) setPos(dragPendingPosRef.current);
-      });
-    };
-    const onUp = () => {
-      setDragging(false);
-      if (dragFrameRef.current) {
-        cancelAnimationFrame(dragFrameRef.current);
-        dragFrameRef.current = 0;
-      }
-      if (dragPendingPosRef.current) {
-        setPos(dragPendingPosRef.current);
-        dragPendingPosRef.current = null;
-      }
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }, []);
+      dragBaseRef.current = { x: rect.left, y: rect.top };
+      setDragging(true);
 
-  useEffect(() => {
-    return () => {
-      if (dragFrameRef.current) {
-        cancelAnimationFrame(dragFrameRef.current);
-        dragFrameRef.current = 0;
-      }
-    };
-  }, []);
+      const onMove = (ev: MouseEvent) => {
+        const next = {
+          x: ev.clientX - dragOffset.current.x,
+          y: ev.clientY - dragOffset.current.y,
+        };
+        dragPendingPosRef.current = next;
+        scheduleDragWrite(next);
+      };
+      const onUp = () => {
+        setDragging(false);
+        // Commit: drop any pending frame, write the final left/top directly
+        // (the anchor moves from right/bottom to left/top on first drag),
+        // clear the drag transform, then sync state for the next render.
+        cancelDragWrite();
+        const last = dragPendingPosRef.current;
+        const el = containerRef.current;
+        if (el) {
+          el.style.transform = "";
+          if (last) {
+            el.style.left = `${last.x}px`;
+            el.style.top = `${last.y}px`;
+            el.style.right = "auto";
+            el.style.bottom = "auto";
+          }
+        }
+        if (last) {
+          setPos(last);
+          dragPendingPosRef.current = null;
+        }
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [cancelDragWrite, scheduleDragWrite],
+  );
 
   const handleClose = useCallback(() => {
     setState("gameOverlayEnabled", false);

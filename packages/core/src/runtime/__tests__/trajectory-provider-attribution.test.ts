@@ -2,7 +2,7 @@
  * Unit coverage for trajectory provider attribution: hash-first provider
  * records, ordered prompt spans, and exact prompt-slice round trips.
  */
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import type { State } from "../../types/state";
 import {
 	buildProviderAttributionsFromState,

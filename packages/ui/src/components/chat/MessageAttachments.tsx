@@ -33,6 +33,7 @@ import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { isSafeAttachmentUrl } from "../../utils/attachment-url";
+import { RedactedBadge } from "../RedactedBadge";
 import { Button } from "../ui/button";
 import { CodeBlock } from "../ui/code-block";
 import { TranscriptViewerOverlay } from "./TranscriptViewerOverlay";
@@ -1031,13 +1032,23 @@ export function MessageAttachments({
       {attachments.map((att) => {
         // A stored-but-unreadable attachment shows its tile PLUS a "Not
         // processed: <reason>" notice so the failed enrichment is visible on
-        // reload, never silently missing text.
+        // reload, never silently missing text. A server-redacted attachment
+        // (#14781) shows the shared redacted badge above its tile — the flag
+        // is server-stamped; the client only displays it.
         const notProcessed = att.notProcessed?.trim();
         const withNotice = (tile: React.ReactNode): React.ReactNode =>
-          notProcessed ? (
+          notProcessed || att.redacted ? (
             <div key={att.id} className="flex flex-col gap-1">
+              {att.redacted ? (
+                <RedactedBadge
+                  className="self-start"
+                  testId={`attachment-redacted-${att.id}`}
+                />
+              ) : null}
               {tile}
-              <NotProcessedNotice reason={notProcessed} />
+              {notProcessed ? (
+                <NotProcessedNotice reason={notProcessed} />
+              ) : null}
             </div>
           ) : (
             tile

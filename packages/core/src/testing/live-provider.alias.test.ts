@@ -61,7 +61,7 @@ async function freshSelectLiveProvider() {
 
 describe("live-provider alias-aware config resolution (#13422)", () => {
 	beforeEach(() => {
-		for (const key of [...CLEARED_KEYS, "HOME"]) {
+		for (const key of [...CLEARED_KEYS, "HOME", "USERPROFILE"]) {
 			saved.set(key, process.env[key]);
 		}
 		for (const key of CLEARED_KEYS) delete process.env[key];
@@ -85,7 +85,10 @@ describe("live-provider alias-aware config resolution (#13422)", () => {
 	it("resolves MILADY_NAMESPACE via the reader to derive the config path", async () => {
 		// No CONFIG_PATH set: the path is derived from the namespace, so this
 		// exercises resolveAliasedEnvValue("ELIZA_NAMESPACE") picking up MILADY_.
+		// os.homedir() reads $HOME on POSIX but %USERPROFILE% on Windows — set
+		// both so the redirect works on every CI platform.
 		process.env.HOME = tmpDir;
+		process.env.USERPROFILE = tmpDir;
 		process.env.MILADY_NAMESPACE = "miladytest";
 		writeConfig(
 			path.join(tmpDir, ".miladytest", "miladytest.json"),
