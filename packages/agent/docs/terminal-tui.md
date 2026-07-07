@@ -73,6 +73,13 @@ and do **not** add an `sshd` to the agent.
 
 ## How a registered terminal view reaches the screen
 
+> **Shipped inventory note (#15269):** no plugin currently ships a TUI view —
+> the shipped plugin view inventory is GUI-only. The registration pipeline
+> below is retained as the compatibility contract for deliberately
+> reintroducing terminal views later; with an empty registry the shell lists
+> no plugin views and `GET /api/views?viewType=tui` returns an empty inventory
+> (a designed empty result, not an error).
+
 1. A plugin authors one spatial view and registers it for the terminal with
    `registerSpatialTerminalView(id, () => <View … />)`
    (`@elizaos/ui/spatial/tui`), which adapts the React tree to an `@elizaos/tui`
