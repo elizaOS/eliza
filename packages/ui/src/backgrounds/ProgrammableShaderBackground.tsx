@@ -13,6 +13,10 @@
  *   5. prefers-reduced-motion renders a single static frame (no rAF).
  * Any failure calls onFallback and the parent (AppBackground) paints the plain
  * color field instead — a hostile shader can never white-screen or hang the app.
+ *
+ * While the home↔launcher rail is mid-gesture the loop keeps ticking but skips
+ * the GL present to free GPU budget for the swipe (#15282); it never pauses the
+ * rAF, which would fabricate a slow frame for the watchdog on resume.
  */
 
 import type * as React from "react";
@@ -20,11 +24,27 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim";
 import {
+  isRailGestureActive,
+  railGestureActiveMs,
+} from "../state/rail-gesture-store";
+import {
   hexToRgb,
   normalizeUniforms,
   type ShaderUniformValues,
   uniformsEqual,
 } from "./shader-schema";
+
+/** Present cap while the home↔launcher rail is mid-gesture (#15282): the
+ * compositor is already translating the promoted rail layer (plus, on one half,
+ * a backdrop-blur notification stack), so the wallpaper drops to ~15fps to free
+ * GPU/main-thread budget for the swipe. u_time stays wall-clock derived, so a
+ * skipped present never desyncs shader time — resume needs no fix-up. */
+const RAIL_GESTURE_FRAME_INTERVAL_MS = 66;
+
+/** Self-heal valve mirroring useActivityEvents' RAIL_GESTURE_PARK_MAX_MS: if a
+ * gesture-release edge is ever missed, the throttle lifts after this window so a
+ * stuck signal can never wedge the wallpaper below full rate indefinitely. */
+const RAIL_GESTURE_PARK_MAX_MS = 5_000;
 
 /** RawShaderMaterial gets no three.js injection, so the vertex stage is explicit.
  * A single fullscreen triangle covers clip space with one primitive. */
@@ -236,6 +256,9 @@ export function ProgrammableShaderBackground({
     // (3) frame-time watchdog: a shader that stalls the GPU makes frames huge;
     // after several consecutive slow frames, stop and fall back.
     let last = start;
+    // Seed one interval in the past so the first tick always presents — a
+    // gesture already in flight at mount never shows a blank/stale frame.
+    let lastPresented = start - RAIL_GESTURE_FRAME_INTERVAL_MS;
     const loop = () => {
       const now =
         typeof performance !== "undefined" ? performance.now() : last + 16;
@@ -250,6 +273,19 @@ export function ProgrammableShaderBackground({
       } else if (slowFrames > 0) {
         slowFrames -= 1;
       }
+      // Mid-gesture, cap the present rate but keep the rAF ticking: the watchdog
+      // dt above stays per-tick honest (throttling can never trip a false
+      // gpu-stall) and the first tick after settle presents within one frame.
+      // The park-max valve lifts the throttle if a release edge is missed.
+      if (
+        isRailGestureActive() &&
+        railGestureActiveMs() < RAIL_GESTURE_PARK_MAX_MS &&
+        now - lastPresented < RAIL_GESTURE_FRAME_INTERVAL_MS
+      ) {
+        raf = requestAnimationFrame(loop);
+        return;
+      }
+      lastPresented = now;
       renderAt((now - start) / 1000);
       raf = requestAnimationFrame(loop);
     };
