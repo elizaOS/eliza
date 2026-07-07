@@ -451,8 +451,18 @@ async function importUiAppNavigateViewCompat(): Promise<
 async function importUiBridgeCompat(): Promise<Record<string, unknown>> {
   const bridge = await import("../../bridge/index.ts");
   const boundScope = getActiveSurfaceRealmScope();
+  // The bridge barrel carries the shell-privileged raw-global channel for shell
+  // code outside packages/ui; handing it to a view bundle would let the view
+  // disarm the raw-global guards on itself. Views get the scoped storage
+  // overrides below and nothing privileged.
+  const {
+    runAsPrivilegedShell: _runAsPrivilegedShell,
+    shellHistory: _shellHistory,
+    shellLocalStorage: _shellLocalStorage,
+    ...viewSafeBridge
+  } = bridge;
   return {
-    ...bridge,
+    ...viewSafeBridge,
     async getStorageValue(key: string): Promise<string | null> {
       const scope = resolveSurfaceRealmScopeForHostExternal(
         boundScope,

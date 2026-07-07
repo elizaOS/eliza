@@ -23,6 +23,13 @@
  * agent-surface split in `view-capability-broker.test.tsx`. Deleting the shell's
  * `resetHostRealm()` / broker gates turns these assertions red (mutation-check
  * in the file's trailing comment).
+ *
+ * The walk also drives the RAW globals (#13452 criterion-1 remainder): the view
+ * bypasses the facade with `window.localStorage.setItem/removeItem/clear`, an
+ * indexed `localStorage[key] =` write, and raw `history.pushState/replaceState`.
+ * The raw-global guards must deny the reserved-key writes for every view (grant
+ * or not) and deny path-changing history mutation without the `navigate` grant,
+ * while hash-only mutation and the shell's privileged channel keep working.
  */
 
 import { act, cleanup, render } from "@testing-library/react";
@@ -32,6 +39,8 @@ import type { BuiltinTab } from "./navigation";
 import type { BackgroundConfig } from "./state/ui-preferences";
 import {
   getActiveSurfaceRealmScope,
+  shellHistory,
+  shellLocalStorage,
   SurfaceRealmDeniedError,
   surfaceViewStoragePrefix,
 } from "./surface-realm-broker";
@@ -496,7 +505,9 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
   ): Promise<void> {
     await act(async () => {
       appState.tab = tab;
-      window.history.pushState(null, "", path);
+      // Browser-chrome navigation (address bar / user), which never passes
+      // through the page's guarded History API — hence the privileged channel.
+      shellHistory.pushState(null, "", path);
       window.dispatchEvent(new PopStateEvent("popstate"));
       rerender(<App />);
     });
@@ -553,12 +564,57 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
           `${route.path}: shell storage key intact`,
         ).toBe(SHELL_STORAGE_VALUE);
 
+        // (c-raw) the view bypasses the facade and hits the raw global. The
+        // reserved shell key is denied for EVERY view — grant or not — via
+        // setItem, removeItem, and the legacy indexed-assignment path.
+        expect(
+          () => window.localStorage.setItem(SHELL_STORAGE_KEY, "pwn"),
+          `${route.path}: raw reserved setItem denied`,
+        ).toThrow(SurfaceRealmDeniedError);
+        expect(
+          () => window.localStorage.removeItem(SHELL_STORAGE_KEY),
+          `${route.path}: raw reserved removeItem denied`,
+        ).toThrow(SurfaceRealmDeniedError);
+        expect(() => {
+          (window.localStorage as Record<string, unknown>)[SHELL_STORAGE_KEY] =
+            "pwn";
+        }, `${route.path}: raw indexed reserved write denied`).toThrow(
+          SurfaceRealmDeniedError,
+        );
+        expect(
+          window.localStorage.getItem(SHELL_STORAGE_KEY),
+          `${route.path}: shell storage key intact after raw attack`,
+        ).toBe(SHELL_STORAGE_VALUE);
+        // A raw clear() from a view path wipes its own reach, never shell keys.
+        window.localStorage.setItem("junk-non-reserved", "x");
+        window.localStorage.clear();
+        expect(
+          window.localStorage.getItem("junk-non-reserved"),
+          `${route.path}: raw clear removed non-reserved keys`,
+        ).toBeNull();
+        expect(
+          window.localStorage.getItem(SHELL_STORAGE_KEY),
+          `${route.path}: raw clear spared reserved shell keys`,
+        ).toBe(SHELL_STORAGE_VALUE);
+
         // (d) navigation: a non-`navigate` view is denied; the route never moves.
         const grantsNavigate = route.path === "/iso-navigate";
         if (!grantsNavigate) {
           expect(() => scope.navigate("/rogue-route")).toThrow(
             SurfaceRealmDeniedError,
           );
+          // (d-raw) the raw History API is guarded the same way: path-changing
+          // pushState/replaceState is denied, hash-only mutation stays allowed
+          // (it cannot move the shell route).
+          expect(
+            () => window.history.pushState(null, "", "/rogue-raw"),
+            `${route.path}: raw pushState denied`,
+          ).toThrow(SurfaceRealmDeniedError);
+          expect(
+            () => window.history.replaceState(null, "", "/rogue-raw"),
+            `${route.path}: raw replaceState denied`,
+          ).toThrow(SurfaceRealmDeniedError);
+          window.history.replaceState(null, "", `${route.path}#in-view-hash`);
           expect(
             window.location.pathname,
             `${route.path}: route not hijacked`,
@@ -611,6 +667,48 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     // The grant admits the navigation the un-granted twin was denied.
     expect(window.location.pathname).toBe("/iso-storage");
   }, 60_000);
+
+  it("the navigate grant is a real switch on the RAW history guard too", async () => {
+    const { rerender } = render(<App />);
+    await navigate(rerender, "views", "/iso-navigate");
+    expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-navigate");
+    await act(async () => {
+      window.history.pushState(null, "", "/raw-but-granted");
+    });
+    expect(window.location.pathname).toBe("/raw-but-granted");
+  }, 60_000);
+
+  it("the privileged shell channel stays writable while a no-grant view is active", async () => {
+    const { rerender } = render(<App />);
+    await navigate(rerender, "views", "/iso-nogrant");
+    expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-nogrant");
+    // The shell's own writers (persistence.ts, storage-bridge, the router) run
+    // while arbitrary views are foreground; the channel must not be gated.
+    shellLocalStorage.setItem(SHELL_STORAGE_KEY, "shell-updated");
+    expect(window.localStorage.getItem(SHELL_STORAGE_KEY)).toBe(
+      "shell-updated",
+    );
+    shellLocalStorage.removeItem(SHELL_STORAGE_KEY);
+    expect(window.localStorage.getItem(SHELL_STORAGE_KEY)).toBeNull();
+    await act(async () => {
+      shellHistory.replaceState(null, "", "/shell-owned-route");
+    });
+    expect(window.location.pathname).toBe("/shell-owned-route");
+  }, 60_000);
+
+  it("raw guards disarm when no view scope is active", async () => {
+    const { rerender, unmount } = render(<App />);
+    await navigate(rerender, "views", "/iso-nogrant");
+    expect(getActiveSurfaceRealmScope()).not.toBeNull();
+    unmount();
+    expect(getActiveSurfaceRealmScope()).toBeNull();
+    // Outside any surface (boot, teardown, tests) the raw globals behave
+    // natively — the guard is a policy on views, not a global lockdown.
+    window.localStorage.setItem(SHELL_STORAGE_KEY, "boot-write");
+    expect(window.localStorage.getItem(SHELL_STORAGE_KEY)).toBe("boot-write");
+    window.history.pushState(null, "", "/boot-route");
+    expect(window.location.pathname).toBe("/boot-route");
+  }, 60_000);
 });
 
 // ── Mutation-check (red→green proof) ─────────────────────────────────────────
@@ -626,3 +724,10 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
 //   (d)     make `brokerSurfaceNavigate` always call through (drop the grant
 //           check) → the non-`navigate` view moves the route → "route not
 //           hijacked" fails (and the denial `toThrow` fails).
+//   (c-raw) make `ensureHostRealmGuards` skip the localStorage Proxy (or make
+//           `assertRawStorageWriteAllowed` return unconditionally) → the raw
+//           setItem/removeItem/indexed writes land → every "raw … denied"
+//           toThrow and "intact after raw attack" assertion fails.
+//   (d-raw) make `assertRawHistoryMutationAllowed` return unconditionally →
+//           raw pushState/replaceState moves the route under a no-`navigate`
+//           view → the raw denial toThrows and "route not hijacked" fail.

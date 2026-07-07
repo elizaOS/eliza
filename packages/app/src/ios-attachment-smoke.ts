@@ -13,6 +13,7 @@
  */
 import { Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
+import { shellLocalStorage } from "@elizaos/ui/bridge";
 
 const IOS_ATTACHMENT_SMOKE_REQUEST_KEY = "eliza:ios-attachment-smoke:request";
 const IOS_ATTACHMENT_SMOKE_RESULT_KEY = "eliza:ios-attachment-smoke:result";
@@ -506,7 +507,7 @@ export async function runIosAttachmentSmokeIfRequested({
     });
   } finally {
     try {
-      window.localStorage.removeItem(IOS_ATTACHMENT_SMOKE_REQUEST_KEY);
+      shellLocalStorage.removeItem(IOS_ATTACHMENT_SMOKE_REQUEST_KEY);
     } catch {
       // error-policy:J6 best-effort cleanup — Preferences removal below is
       // authoritative for the simulator harness

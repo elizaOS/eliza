@@ -4,6 +4,7 @@
  * global, so a user-controlled URL cannot flip local runtime selection in the
  * normal web app.
  */
+import { shellLocalStorage } from "@elizaos/ui/bridge";
 
 const RUNTIME_CHOOSER_OVERRIDE_PARAM = "enableRuntimeChooser";
 const RUNTIME_CHOOSER_OVERRIDE_STORAGE_KEY = "eliza:enable-runtime-chooser";
@@ -37,7 +38,7 @@ export function applyRuntimeChooserOverrideFromUrl(win = window): boolean {
   }
 
   try {
-    win.localStorage.setItem(RUNTIME_CHOOSER_OVERRIDE_STORAGE_KEY, "1");
+    shellLocalStorage.setItem(RUNTIME_CHOOSER_OVERRIDE_STORAGE_KEY, "1");
     win.history.replaceState(
       win.history.state,
       "",
