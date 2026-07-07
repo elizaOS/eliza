@@ -1041,6 +1041,7 @@ export function useCloudState({
           }
         }, ELIZA_CLOUD_LOGIN_POLL_INTERVAL_MS);
       } catch (err) {
+        closePrePoppedWindow();
         removeCloudAuthMessageListener();
         setElizaCloudLoginError(
           err instanceof Error ? err.message : "Eliza Cloud login failed",

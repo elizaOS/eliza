@@ -130,6 +130,30 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
   });
 
+  it("closes a pre-opened popup when direct cloud login startup throws", async () => {
+    const popup = {
+      closed: false,
+      close: vi.fn(() => {
+        (popup as { closed: boolean }).closed = true;
+      }),
+      location: { href: "" },
+      opener: {},
+    } as unknown as Window;
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
+    cloudLoginDirectSpy.mockRejectedValue(new Error("network down"));
+
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      await result.current.handleCloudLogin(popup);
+    });
+
+    expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
+    expect(popup.close).toHaveBeenCalled();
+    expect(openSpy).toHaveBeenCalledWith("", CLOUD_LOGIN_POPUP_NAME);
+    expect(result.current.elizaCloudLoginError).toBe("network down");
+    expect(result.current.elizaCloudLoginBusy).toBe(false);
+  });
+
   it("resumes a direct cloud login when the auth tab returns with a CLI session", async () => {
     const search =
       "?elizaCloudLogin=complete&elizaCloudLoginSession=sess-return";
