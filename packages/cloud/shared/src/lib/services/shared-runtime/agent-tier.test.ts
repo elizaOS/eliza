@@ -51,6 +51,8 @@ describe("runSharedAgentTurn (degraded path — no model configured)", () => {
   const MODEL_KEYS = [
     "CEREBRAS_API_KEY",
     "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "ANTHROPIC_API_KEY",
     "BITROUTER_API_KEY",
     "AI_GATEWAY_API_KEY",
     "AIGATEWAY_API_KEY",
