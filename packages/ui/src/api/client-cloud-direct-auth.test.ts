@@ -71,12 +71,15 @@ describe("ElizaClient direct Cloud auth on native", () => {
         data: expect.objectContaining({ sessionId: expect.any(String) }),
       }),
     );
+    // The browser URL normalizes the configured www base to the apex host: the
+    // opened window must never ride the www 308 edge (#15143 — the extra hop
+    // is where mobile Safari attributed its "document.txt" download).
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
         apiBase: "https://api.elizacloud.ai",
         browserUrl: expect.stringMatching(
-          /^https:\/\/www\.elizacloud\.ai\/auth\/cli-login\?session=/,
+          /^https:\/\/elizacloud\.ai\/auth\/cli-login\?session=/,
         ),
       }),
     );

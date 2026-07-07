@@ -29,8 +29,25 @@ const cloudMock = vi.hoisted(() => ({
   getCloudAuthToken: vi.fn(() => null as string | null),
 }));
 
+const androidBootStateMock = vi.hoisted(() => ({
+  getAndroidLocalAgentBootStateForUrl: vi.fn(
+    async (): Promise<{
+      state: "unknown" | "booting" | "dead" | "listening" | "restarting";
+      reason?: string;
+      ageMs?: number;
+    }> => ({
+      state: "unknown",
+    }),
+  ),
+}));
+
 vi.mock("../api", () => ({
   client: clientMock,
+}));
+
+vi.mock("../api/android-native-agent-transport", () => ({
+  getAndroidLocalAgentBootStateForUrl:
+    androidBootStateMock.getAndroidLocalAgentBootStateForUrl,
 }));
 
 vi.mock("../api/client-cloud", () => ({
@@ -127,6 +144,9 @@ beforeEach(() => {
   });
   clientMock.hasToken.mockReturnValue(false);
   clientMock.getBaseUrl.mockReturnValue("");
+  androidBootStateMock.getAndroidLocalAgentBootStateForUrl.mockResolvedValue({
+    state: "unknown",
+  });
   cloudMock.getCloudAuthToken.mockReturnValue(null);
 });
 
@@ -1384,6 +1404,84 @@ describe("runPollingBackend bounded native boot (#11030)", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
   });
 
+  it("keeps Android cold boots in progress when native boot-state says booting", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installNativeWindow();
+    clientMock.getBaseUrl.mockReturnValue(mobileLocalServer.apiBase);
+    androidBootStateMock.getAndroidLocalAgentBootStateForUrl.mockResolvedValue({
+      state: "booting",
+      reason: "launcher is still within boot grace",
+    });
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Local agent request failed"), {
+        kind: "network",
+        path: "/api/auth/status",
+      }),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        ...nativePolicy,
+        backendTimeoutMs: 600,
+        nativeConsecutiveFailureBudgetMs: 150,
+      },
+      nativeCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(androidBootStateMock.getAndroidLocalAgentBootStateForUrl).toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(deps.setStartupError).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining("consecutive failures"),
+      }),
+    );
+  });
+
+  it("burns the Android native failure budget when boot-state says dead", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installNativeWindow();
+    clientMock.getBaseUrl.mockReturnValue(mobileLocalServer.apiBase);
+    androidBootStateMock.getAndroidLocalAgentBootStateForUrl.mockResolvedValue({
+      state: "dead",
+      reason: "agent exited: exit 127",
+    });
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Local agent request failed"), {
+        kind: "network",
+        path: "/api/auth/status",
+      }),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      { ...nativePolicy, nativeConsecutiveFailureBudgetMs: 150 },
+      nativeCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "backend-timeout",
+        message: expect.stringContaining("consecutive failures"),
+      }),
+    );
+  });
+
   it("bounds the native boot: consecutive failures past the native budget surface the last failure", async () => {
     const deps = createDeps();
     const dispatch = vi.fn();
@@ -2024,7 +2122,12 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
         },
         {
           persistedActiveServer: null,
-          restoredActiveServer: null,
+          restoredActiveServer: {
+            id: "local:desktop",
+            kind: "local",
+            label: "Local agent",
+            apiBase: "http://127.0.0.1:34137",
+          },
           shouldPreserveCompletedFirstRun: false,
           hadPriorFirstRun: false,
         },

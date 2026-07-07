@@ -33,6 +33,7 @@ import {
 } from "@elizaos/core";
 import { FinancesService } from "@elizaos/plugin-finances/finances-service";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
+import { buildBriefEditorialContract } from "../lifeops/briefing/editorial-judgment.js";
 import {
   BRIEF_NARRATIVE_INSTRUCTIONS,
   MEETING_PREP_INSTRUCTIONS,
@@ -40,6 +41,7 @@ import {
 import type {
   LifeOpsBriefing,
   LifeOpsBriefingCalendarItem,
+  LifeOpsBriefingEditorialContract,
   LifeOpsBriefingInboxItem,
   LifeOpsBriefingKind,
   LifeOpsBriefingLifeItem,
@@ -470,6 +472,7 @@ export function buildNarrativePrompt(args: {
   kind: LifeOpsBriefingKind;
   period: LifeOpsBriefingPeriod;
   sections: LifeOpsBriefingSections;
+  editorial?: LifeOpsBriefingEditorialContract;
   runtime?: IAgentRuntime;
   optimizationTask?: BriefOptimizationTask;
 }): string {
@@ -478,6 +481,7 @@ export function buildNarrativePrompt(args: {
       kind: args.kind,
       period: args.period,
       sections: args.sections,
+      editorial: args.editorial,
     },
     null,
     2,
@@ -512,6 +516,7 @@ async function composeNarrative(args: {
   kind: LifeOpsBriefingKind;
   period: LifeOpsBriefingPeriod;
   sections: LifeOpsBriefingSections;
+  editorial: LifeOpsBriefingEditorialContract;
   optimizationTask: BriefOptimizationTask;
 }): Promise<string | undefined> {
   if (typeof args.runtime.useModel !== "function") {
@@ -521,6 +526,7 @@ async function composeNarrative(args: {
     kind: args.kind,
     period: args.period,
     sections: args.sections,
+    editorial: args.editorial,
     runtime: args.runtime,
     optimizationTask: args.optimizationTask,
   });
@@ -580,6 +586,7 @@ async function assembleBriefing(args: {
   };
 
   const kind = SUBACTION_TO_KIND[args.subaction];
+  const editorial = buildBriefEditorialContract({ sections });
   let narrative: string | undefined;
   if (args.format === "narrative") {
     narrative = await composeNarrative({
@@ -587,6 +594,7 @@ async function assembleBriefing(args: {
       kind,
       period: args.period,
       sections,
+      editorial,
       optimizationTask: args.optimizationTask,
     });
   }
@@ -597,6 +605,7 @@ async function assembleBriefing(args: {
     period: args.period,
     generatedAt: new Date().toISOString(),
     sections,
+    editorial,
     ...(narrative ? { narrative } : {}),
   };
   return briefing;

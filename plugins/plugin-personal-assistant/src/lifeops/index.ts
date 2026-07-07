@@ -1,8 +1,11 @@
 /** Barrel for the LifeOps core: owner state, policies, scheduling, connectors, and the assistant engine. */
 export * from "./app-state.js";
 export * from "./apple-reminders.js";
+export * from "./briefing/editorial-judgment.js";
 export * from "./bulk-review.js";
+export * from "./commitments/index.js";
 export * from "./defaults.js";
+export * from "./delegation-contracts/index.js";
 export * from "./document-review.js";
 export * from "./email-curation.js";
 export * from "./enforcement-windows.js";
@@ -10,7 +13,9 @@ export * from "./engine.js";
 export * from "./goal-grounding.js";
 export * from "./goal-semantic-evaluator.js";
 export * from "./google-plugin-delegates.js";
+export * from "./implicit-referents/index.js";
 export * from "./intent-sync.js";
+export * from "./meeting-ghost/index.js";
 export * from "./owner-profile.js";
 export * from "./policy-memory.js";
 export * from "./repository.js";

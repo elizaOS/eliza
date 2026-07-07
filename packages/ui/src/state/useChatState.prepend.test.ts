@@ -106,3 +106,76 @@ describe("useChatState prependConversationMessages", () => {
     expect(result.current.conversationMessagesRef.current).toEqual(kept);
   });
 });
+
+// ── Single-greeting invariant across pagination (duplicate-greeting defect) ──
+// A poisoned thread's duplicated greeting pair sits at the very HEAD, so both
+// rows arrive in the same load-older batch and would bypass the
+// setConversationMessages dedupe seam entirely.
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
+
+function greetingRow(id: string, timestamp: number): ConversationMessage {
+  return {
+    id,
+    role: "assistant",
+    text: "Hey, I'm Agent. What can I help you with?",
+    timestamp,
+    source: MESSAGE_SOURCE_AGENT_GREETING,
+  };
+}
+
+describe("prependConversationMessages single-greeting invariant", () => {
+  it("keeps ONE greeting when a batch carries a duplicated pair", () => {
+    const { result } = renderHook(() => useChatState());
+    act(() => {
+      result.current.setConversationMessages([msg("tail", 100)]);
+    });
+    act(() => {
+      result.current.prependConversationMessages([
+        greetingRow("g1", 1),
+        greetingRow("g2", 2),
+        msg("old", 50),
+      ]);
+    });
+    const greetings = result.current.state.conversationMessages.filter(
+      (m) => m.source === MESSAGE_SOURCE_AGENT_GREETING,
+    );
+    expect(greetings).toHaveLength(1);
+    expect(greetings[0].id).toBe("g1");
+    expect(ids(result.current.state.conversationMessages)).toEqual([
+      "g1",
+      "old",
+      "tail",
+    ]);
+  });
+
+  it("drops an older greeting when the window already carries one", () => {
+    const { result } = renderHook(() => useChatState());
+    act(() => {
+      result.current.setConversationMessages([
+        greetingRow("kept", 10),
+        msg("m1", 20),
+      ]);
+    });
+    act(() => {
+      result.current.prependConversationMessages([greetingRow("dupe", 1)]);
+    });
+    expect(ids(result.current.state.conversationMessages)).toEqual([
+      "kept",
+      "m1",
+    ]);
+  });
+
+  it("passes a healthy single greeting through untouched", () => {
+    const { result } = renderHook(() => useChatState());
+    act(() => {
+      result.current.setConversationMessages([msg("m1", 20)]);
+    });
+    act(() => {
+      result.current.prependConversationMessages([greetingRow("g1", 1)]);
+    });
+    expect(ids(result.current.state.conversationMessages)).toEqual([
+      "g1",
+      "m1",
+    ]);
+  });
+});

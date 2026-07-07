@@ -8,7 +8,12 @@ import type { HandlerCallback } from "./components";
 import type { Entity, Room, World } from "./environment";
 import type { Memory } from "./memory";
 import type { ControlMessage } from "./messaging";
-import type { ModelRegistrationMetadata, ModelTypeName } from "./model";
+import type {
+	LocalInferencePriority,
+	ModelRegistrationMetadata,
+	ModelTypeName,
+	PiiPseudonymAssignment,
+} from "./model";
 import type { PipelineHookPhase } from "./pipeline-hooks";
 import type { Content, JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
@@ -79,6 +84,13 @@ export enum EventType {
 	EMBEDDING_GENERATION_REQUESTED = "EMBEDDING_GENERATION_REQUESTED",
 	EMBEDDING_GENERATION_COMPLETED = "EMBEDDING_GENERATION_COMPLETED",
 	EMBEDDING_GENERATION_FAILED = "EMBEDDING_GENERATION_FAILED",
+
+	// PII scrub job events (#14808). Trigger event for the async scrub rails -
+	// `PiiScrubService` listens for PII_SCRUB_REQUESTED and drains a priority
+	// BatchQueue on the core task scheduler (mirrors EMBEDDING_GENERATION_*).
+	PII_SCRUB_REQUESTED = "PII_SCRUB_REQUESTED",
+	PII_SCRUB_COMPLETED = "PII_SCRUB_COMPLETED",
+	PII_SCRUB_FAILED = "PII_SCRUB_FAILED",
 
 	// Error reporting (#12263) — the general-purpose failure event emitted by
 	// `runtime.reportError` for failures outside the action path (providers,
@@ -285,6 +297,57 @@ export interface EmbeddingGenerationPayload extends EventPayload {
 	runId?: UUID;
 	retryCount?: number;
 	maxRetries?: number;
+}
+
+/**
+ * Payload for {@link EventType.PII_SCRUB_REQUESTED}: one enqueue of content onto
+ * the async scrub rails (#14808). The service hashes `content` into the
+ * content-addressed done-marker (`pii:<sha256(content)>:v<rulesetVersion>`) and
+ * skips the item entirely when that marker is already present (idempotent
+ * re-scrub no-op). `candidateSpans` are the model-judgment residue the caller
+ * mined; when empty the seam runs tier-0 only and never invokes a model.
+ */
+export interface PiiScrubRequestPayload extends EventPayload {
+	/** The exact content to scrub. Its sha256 is the idempotency handle. */
+	content: string;
+	/** Active ruleset version: the `v<...>` half of the done-marker key. */
+	rulesetVersion: string;
+	/** Model-judgment candidate spans (residue tier-0 cannot decide). */
+	candidateSpans?: readonly string[];
+	/** Optional retrieval context for the model. Never the secret vault. */
+	contextPack?: string;
+	/** Per-chunk cluster->surrogate slice (never the whole map). */
+	pseudonymAssignments?: readonly PiiPseudonymAssignment[];
+	/**
+	 * Drain priority in the BatchQueue. Defaults to `low`: the scrub is
+	 * deferred autonomous work. Distinct from the local-inference priority
+	 * (which is always `background` for the model call itself).
+	 */
+	priority?: "high" | "normal" | "low";
+	/**
+	 * Local-lane inference priority forwarded to the seam. Defaults to
+	 * `background` so the scrub never preempts an interactive turn.
+	 */
+	inferencePriority?: LocalInferencePriority;
+	/** Correlates all items belonging to one scrub job (progress/observability). */
+	jobId?: UUID;
+	/** Opaque caller ref (e.g. the memory/document id) for write-back. */
+	itemRef?: string;
+}
+
+/**
+ * Payload for {@link EventType.PII_SCRUB_COMPLETED} / {@link EventType.PII_SCRUB_FAILED}.
+ * `tier0Only` is true when the deterministic detectors covered everything and
+ * no model call was made. `error` is set only on the FAILED variant.
+ */
+export interface PiiScrubResultPayload extends EventPayload {
+	content: string;
+	rulesetVersion: string;
+	jobId?: UUID;
+	itemRef?: string;
+	tier0Only?: boolean;
+	modelId?: string;
+	error?: Error | string;
 }
 
 /**
@@ -652,6 +715,9 @@ export interface EventPayloadMap {
 	[EventType.EMBEDDING_GENERATION_REQUESTED]: EmbeddingGenerationPayload;
 	[EventType.EMBEDDING_GENERATION_COMPLETED]: EmbeddingGenerationPayload;
 	[EventType.EMBEDDING_GENERATION_FAILED]: EmbeddingGenerationPayload;
+	[EventType.PII_SCRUB_REQUESTED]: PiiScrubRequestPayload;
+	[EventType.PII_SCRUB_COMPLETED]: PiiScrubResultPayload;
+	[EventType.PII_SCRUB_FAILED]: PiiScrubResultPayload;
 	[EventType.ERROR_REPORTED]: ErrorReportedPayload;
 	[EventType.CONTROL_MESSAGE]: ControlMessagePayload;
 	[EventType.FORM_FIELD_CONFIRMED]: FormFieldEventPayload;

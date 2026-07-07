@@ -15,11 +15,11 @@ import { useEffect, useRef, useState } from "react";
 import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
+import { useNotifications } from "../../state/notifications/notification-store";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { Button } from "../ui/button";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
-import { HomeGestureHint } from "./HomeGestureHint";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 
@@ -174,6 +174,13 @@ export function HomeScreen({
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
 
+  // When the inbox has notifications it becomes the home's primary content and
+  // grows to fill the column down to the chat; the ranked widget host then sits
+  // below it at natural height. With an empty inbox the widget host reclaims the
+  // `flex-1` breathing region (centred), so a quiet home stays calmly centred.
+  const { notifications } = useNotifications();
+  const hasNotifications = notifications.length > 0;
+
   return (
     <>
       <div
@@ -226,25 +233,31 @@ export function HomeScreen({
 
           {/* Notifications live inline on the SAME layer as the widgets, in the
             band between the time/weather header above and the chat below —
-            self-hiding when the inbox is empty. It fades in (Apple-style) on
-            first appearance; its rows carry their own staggered slide-in. */}
-          <div className={enterClass} style={{ animationDelay: "90ms" }}>
-            <NotificationsHomeCenter />
-          </div>
-
-          {/* The prioritized data widgets (#9143) live in the breathing region:
-            a `flex-1` block that grows to fill the space between the header and
-            the bottom tiles, so the column always spans the full height. Its
-            content is vertically centred within that region - when widgets are
-            present they sit in the visual middle (no top-heavy clustering with a
-            void beneath); when the host self-hides everything, the empty region
-            simply reads as calm, intentional space rather than a dead gap. A
-            little top padding sets the stack apart from the editorial header as
-            its own section. */}
+            self-hiding when the inbox is empty. A small `mt-4` sets it apart
+            from the editorial header. When present it grows (`flex-1 min-h-0`)
+            to fill the column down to the chat, its list scrolling internally;
+            it fades in (Apple-style) on first appearance. */}
           <div
             className={cn(
               enterClass,
-              "flex flex-1 flex-col justify-center py-6",
+              "mt-4",
+              hasNotifications && "flex min-h-0 flex-1 flex-col",
+            )}
+            style={{ animationDelay: "90ms" }}
+          >
+            <NotificationsHomeCenter />
+          </div>
+
+          {/* The prioritized data widgets (#9143). With notifications present
+            they sit at natural height directly beneath the (grown) inbox. With
+            an EMPTY inbox this reclaims the `flex-1` breathing region and centres
+            its content, so a quiet home reads as calm airiness rather than a
+            broken gap. A little padding sets the stack apart as its own section. */}
+          <div
+            className={cn(
+              enterClass,
+              "flex flex-col py-6",
+              !hasNotifications && "flex-1 justify-center",
             )}
             style={{ animationDelay: "110ms" }}
           >
@@ -254,34 +267,6 @@ export function HomeScreen({
               events={events}
               clearEvents={clearEvents}
             />
-          </div>
-
-          {/* GESTURE-HINT OVERLAP FIX (#14945 follow-up): the one-time hint used
-            to sit as an ordinary flow item with only a `pb-2` gutter. When it
-            was the terminal content item (the common no-AOSP-tiles home) it
-            landed at the very bottom of the `min-h-full` column — exactly the
-            top edge of the scroller's reserved composer-clearance pad. On device
-            the floating composer (resting a full safe-area inset off the true
-            bottom, standing its measured pill height tall) overlapped that edge,
-            so only the top few pixels of the hint peeked above the composer.
-
-            Fix: pin the hint STICKY to the bottom of the scroller, offset up by
-            the exact composer footprint (published pill-height var) + bottom
-            safe area + a small gap. Sticky keeps it in normal flow (so a tall
-            widget stack still pushes it down and it scrolls with content) while
-            GUARANTEEING it never descends into the composer's zone — it always
-            rests fully ABOVE the floating composer, never behind it. The gap
-            matches the scroller's own composer pad math so the hint tracks the
-            live pill height, not a stale guess. */}
-          <div
-            className={cn(
-              enterClass,
-              "sticky z-[2] pb-2",
-              "bottom-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+0.75rem)]",
-            )}
-            style={{ animationDelay: "130ms" }}
-          >
-            <HomeGestureHint />
           </div>
 
           {tiles.length > 0 ? (

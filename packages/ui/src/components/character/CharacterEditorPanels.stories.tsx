@@ -23,6 +23,9 @@ const meta = {
     ),
   ],
   args: {
+    nameText: "Aria",
+    systemText:
+      "You are Aria, a thoughtful research assistant. Speak clearly and encouragingly.",
     bioText:
       "I'm a thoughtful assistant who helps with research, scheduling, and bringing structure to messy projects.",
     handleFieldEdit: noop,
@@ -37,6 +40,8 @@ export const Identity: Story = {};
 
 export const IdentityEmpty: Story = {
   args: {
+    nameText: "",
+    systemText: "",
     bioText: "",
   },
 };

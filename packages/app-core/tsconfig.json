@@ -111,6 +111,10 @@
       ],
       "@elizaos/plugin-workflow/*": ["../../plugins/plugin-workflow/src/*"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
+      "@elizaos/plugin-sql/__tests__/test-helpers": [
+        "../../plugins/plugin-sql/src/__tests__/test-helpers.ts"
+      ],
+      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/auth": ["../auth/src/index.ts"],
       "@elizaos/auth/*": ["../auth/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
@@ -164,10 +168,6 @@
       "lucide-react": ["./node_modules/lucide-react"]
     }
   },
-  "exclude": [
-    "src/cli/**",
-    "src/**/*.stories.ts",
-    "src/**/*.stories.tsx"
-  ],
+  "exclude": ["src/cli/**", "src/**/*.stories.ts", "src/**/*.stories.tsx"],
   "include": ["src", "../agent/src/external-modules.d.ts", "vite-env.d.ts"]
 }

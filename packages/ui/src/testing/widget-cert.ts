@@ -42,6 +42,8 @@ import {
   type WidgetCertReport,
 } from "./scroll-cert";
 
+export type { WidgetCertReport } from "./scroll-cert";
+
 /** A measured box in the layout viewport (px). */
 export interface Box {
   top: number;

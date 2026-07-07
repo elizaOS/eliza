@@ -96,13 +96,24 @@ function buildMergedSchema(active: PreparedEntry[]): JSONSchema {
 	};
 }
 
+// Every input to the merged prompt is count- and render-bounded upstream
+// (recent-message window, fact lookback, reflection entity slice, relationship
+// render), so a healthy merged prompt stays far under this cap. A prompt beyond
+// it means some section regressed to unbounded growth, and the TEXT_SMALL tier
+// this call targets cannot hold it anyway — the call is guaranteed to fail
+// (observed live: a 310KB merged prompt 400-ing 3× per turn, every turn, in a
+// room whose entity table had grown to 861 rows, #15087). The guard turns that
+// failure mode into one diagnosable log line with per-section sizes instead of
+// three doomed model round-trips per turn.
+export const EVALUATOR_PROMPT_MAX_CHARS = 120_000;
+
 function buildPrompt(params: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
 	active: PreparedEntry[];
 	options: EvaluatorRunOptions;
-}): string {
+}): { prompt: string; sectionChars: Record<string, number> } {
 	const { runtime, message, state, active, options } = params;
 	const agentName = runtime.character.name ?? "Agent";
 	const latestMessage = message.content.text ?? "";
@@ -117,27 +128,31 @@ function buildPrompt(params: {
 		: undefined;
 	const providerContext = state.text.trim() || "(none)";
 
-	const evaluatorSections = active
-		.map(({ evaluator, prepared }) => {
-			const section = evaluator.prompt({
-				runtime,
-				message,
-				state,
-				options,
-				prepared,
-			});
-			return [
+	const sections = active.map(({ evaluator, prepared }) => {
+		const section = evaluator.prompt({
+			runtime,
+			message,
+			state,
+			options,
+			prepared,
+		});
+		return {
+			name: evaluator.name,
+			text: [
 				`### ${evaluator.name}`,
 				evaluator.description,
 				"",
 				section,
 				"",
 				`Put result under "${evaluator.name}".`,
-			].join("\n");
-		})
+			].join("\n"),
+		};
+	});
+	const evaluatorSections = sections
+		.map((section) => section.text)
 		.join("\n\n");
 
-	return `# Task: Post-turn evaluation
+	const prompt = `# Task: Post-turn evaluation
 
 Evaluate just-finished turn for ${agentName}.
 
@@ -169,6 +184,16 @@ ${providerContext}
 
 ${evaluatorSections}
 `;
+	// The shared entry covers everything outside the evaluator sections (latest
+	// message, agent responses, action results, provider context) so a blowup
+	// there is attributable too.
+	const sectionChars: Record<string, number> = {
+		shared: prompt.length - evaluatorSections.length,
+	};
+	for (const section of sections) {
+		sectionChars[section.name] = section.text.length;
+	}
+	return { prompt, sectionChars };
 }
 
 // Schema-SPECIFIC rejection tokens: a HIGH-CONFIDENCE signal that the provider
@@ -718,13 +743,29 @@ export class EvaluatorService extends BaseService {
 				}),
 			);
 
-		const prompt = buildPrompt({
+		const { prompt, sectionChars } = buildPrompt({
 			runtime: this.runtime,
 			message,
 			state: composedState,
 			active: preparedEntries,
 			options,
 		});
+		if (prompt.length > EVALUATOR_PROMPT_MAX_CHARS) {
+			const failure = `Merged evaluator prompt is ${prompt.length} chars and exceeds the ${EVALUATOR_PROMPT_MAX_CHARS}-char cap; skipped the doomed TEXT_SMALL call`;
+			this.runtime.logger.error(
+				{
+					src: "service:evaluator",
+					agentId: this.runtime.agentId,
+					roomId: message.roomId,
+					promptChars: prompt.length,
+					maxChars: EVALUATOR_PROMPT_MAX_CHARS,
+					sectionChars,
+				},
+				"Merged evaluator prompt exceeds the size cap — a section has grown unbounded; post-turn evaluation skipped for this turn",
+			);
+			await this.emitEvaluatorCompleted(evaluatorId, false, new Error(failure));
+			return this.failedResult({ preparedEntries, errors, error: failure });
+		}
 		const schema = buildMergedSchema(preparedEntries);
 		const { output, error } = await this.readEvaluatorOutput({
 			evaluatorId,

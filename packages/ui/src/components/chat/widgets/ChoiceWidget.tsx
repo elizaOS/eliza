@@ -89,11 +89,59 @@ export const ChoiceWidget = memo(function ChoiceWidget({
 
   const firstRun = isFirstRunScope(scope);
 
+  // A single-action first-run prompt ("Sign in to Eliza Cloud") is a CTA, not
+  // a choice: wrapped in the collapsible shell it read as a dropdown with one
+  // entry (header + "1 options" chip + chevron) and its secondary chip washed
+  // out on the dark cloud surface (#15144). Render it as one full-width
+  // primary button — no shell, no count chip, no chevron — keeping the same
+  // testids, aria state, and role=status line the shell path exposes.
+  const soleOption =
+    firstRun && !allowCustom && options.length === 1 ? options[0] : null;
+  if (soleOption) {
+    const isSelected = selected?.value === soleOption.value;
+    return (
+      <div
+        className="my-2 flex min-w-0 flex-col items-stretch gap-2"
+        data-choice-id={id}
+        data-choice-scope={scope}
+        data-testid={`choice-shell-${id}`}
+      >
+        <Button
+          type="button"
+          variant="default"
+          size="default"
+          disabled={selected !== null}
+          aria-label={soleOption.label}
+          aria-pressed={isSelected}
+          data-testid={`choice-${soleOption.value}`}
+          // The locked (selected) state stays at full opacity: it is the
+          // confirmation the user just acted on, not a faded leftover.
+          className="h-11 w-full justify-center px-4 text-sm font-medium disabled:opacity-100"
+          onClick={() => handleChoose(soleOption)}
+        >
+          <span className="inline-flex items-center gap-2">
+            {isSelected ? (
+              <Check className="h-4 w-4 shrink-0" aria-hidden />
+            ) : null}
+            <span>{soleOption.label}</span>
+          </span>
+        </Button>
+        {selected ? (
+          <span role="status" className="px-1 text-xs text-muted">
+            Selected: {selected.label}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <ChatWidgetShell
       title={firstRun ? "Choose next step" : "Choose"}
       status={
-        <span className="rounded-sm bg-bg px-2 py-0.5 text-[11px] font-medium text-muted">
+        // bg-surface, not bg-bg: on the dark cloud/os themes bg-bg is a
+        // near-transparent alpha that left this chip unreadable (#15144).
+        <span className="rounded-sm bg-surface px-2 py-0.5 text-[11px] font-medium text-muted">
           {selected ? "Selected" : `${options.length} options`}
         </span>
       }
@@ -122,8 +170,13 @@ export const ChoiceWidget = memo(function ChoiceWidget({
             // Prominent, obviously-tappable next-step rows. The recommended
             // option gets the accent; the rest are prominent neutral
             // (secondary), so exactly one orange accent appears (brand rule).
+            // Once a pick locks the fieldset, ONLY the non-selected rows fade:
+            // the selected row is promoted to the accent tokens at full
+            // opacity — the blanket 40% wash on a low-alpha secondary chip
+            // rendered the user's own pick white-on-white on the dark cloud
+            // surface (#15144).
             const recommended = isRecommended(option.label);
-            const variant = recommended ? "default" : "secondary";
+            const variant = isSelected || recommended ? "default" : "secondary";
             return (
               <Button
                 key={option.value}
@@ -134,7 +187,11 @@ export const ChoiceWidget = memo(function ChoiceWidget({
                 aria-label={option.label}
                 aria-pressed={isSelected}
                 data-testid={`choice-${option.value}`}
-                className="h-11 w-full justify-between px-4 text-sm font-medium disabled:opacity-40 aria-disabled:opacity-40"
+                className={
+                  isSelected
+                    ? "h-11 w-full justify-between px-4 text-sm font-medium disabled:opacity-100 aria-disabled:opacity-100"
+                    : "h-11 w-full justify-between px-4 text-sm font-medium disabled:opacity-40 aria-disabled:opacity-40"
+                }
                 onClick={() => handleChoose(option)}
               >
                 <span className="inline-flex items-center gap-2">

@@ -19,6 +19,7 @@
  */
 
 import type { Memory, MessageSearchHit, UUID } from "@elizaos/core";
+import { ChannelType } from "@elizaos/core";
 import { beforeAll, describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../../core/src/database/inMemoryAdapter.ts";
 import {
@@ -52,7 +53,7 @@ function makeRuntimeShim(
           agentId: AGENT_ID,
           name: params.roomName,
           source: params.source ?? "test",
-          type: "dm",
+          type: ChannelType.DM,
           worldId: params.worldId,
           channelId: params.channelId,
         } as Parameters<InMemoryDatabaseAdapter["createRooms"]>[0][number],

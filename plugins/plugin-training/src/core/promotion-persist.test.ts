@@ -42,16 +42,23 @@ interface StubServiceState {
   storeRoot: string;
   currentPrompt: string | null;
   promotedWrites: number;
+  lastArtifact: Parameters<
+    typeof gatedPersistNativeResult
+  >[0]["result"]["result"] &
+    Record<string, unknown>;
 }
 
 function makeStubService(state: StubServiceState) {
   return {
     setPrompt: async (
       task: string,
-      artifact: { prompt: string; generatedAt: string },
+      artifact: Parameters<
+        Parameters<typeof gatedPersistNativeResult>[0]["service"]["setPrompt"]
+      >[1],
     ) => {
       state.promotedWrites += 1;
       state.currentPrompt = artifact.prompt;
+      state.lastArtifact = artifact;
       const dir = join(state.storeRoot, task);
       await mkdir(dir, { recursive: true });
       const stamp = artifact.generatedAt.replace(/[^0-9]/g, "");
@@ -123,6 +130,7 @@ describe("gatedPersistNativeResult", () => {
       storeRoot: tempRoot,
       currentPrompt: null,
       promotedWrites: 0,
+      lastArtifact: {},
     };
   });
 
@@ -154,6 +162,50 @@ describe("gatedPersistNativeResult", () => {
     // No rejected file should be written.
     const rejectedDir = join(tempRoot, "action_planner", REJECTED_DIRNAME);
     expect(existsSync(rejectedDir)).toBe(false);
+  });
+
+  it("persists contextConfig on promoted artifacts", async () => {
+    const scorer = fixedScorer({
+      [baselinePrompt]: 0.5,
+      [goodCandidatePrompt]: 0.9,
+    });
+    const service = makeStubService(state);
+    await gatedPersistNativeResult({
+      task: "context_routing",
+      datasetPath: "/tmp/context-routing.jsonl",
+      runId: "run-test-context-config",
+      baselinePrompt,
+      result: {
+        ...makeNativeResult(goodCandidatePrompt, scorer),
+        result: {
+          optimizedPrompt: goodCandidatePrompt,
+          lineage: [{ round: 0, variant: 0, score: 0.5, notes: "baseline" }],
+          contextConfig: {
+            providerSet: ["time", "recentMessages", "facts"],
+            providerOrder: ["facts", "time"],
+            renderTemplates: {
+              facts: "{{facts}}",
+            },
+            budgetVector: {
+              facts: 1200,
+            },
+          },
+        },
+      },
+      service,
+      notesPrefix: [],
+    });
+
+    expect(state.lastArtifact.contextConfig).toEqual({
+      providerSet: ["time", "recentMessages", "facts"],
+      providerOrder: ["facts", "time"],
+      renderTemplates: {
+        facts: "{{facts}}",
+      },
+      budgetVector: {
+        facts: 1200,
+      },
+    });
   });
 
   it("rejects a candidate that regresses and writes candidate_rejected_<ts>.json", async () => {

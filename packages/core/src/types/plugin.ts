@@ -1339,6 +1339,18 @@ export interface Plugin {
 	description: string;
 
 	/**
+	 * The plugin's npm package name, when it differs from `name`. Some plugins
+	 * keep a runtime identity that is not their package name (e.g. a
+	 * model-provider name like "elizaOSCloud" that other subsystems key on), so
+	 * the view registry cannot derive the package directory from `name` alone —
+	 * `pluginPackageNameCandidates("elizaOSCloud")` resolves nothing and any
+	 * declared view bundle silently serves 404. Declaring `packageName` lets
+	 * package-dir resolution (view bundles, heroes, frames) target the real
+	 * package without renaming the runtime identity.
+	 */
+	packageName?: string;
+
+	/**
 	 * Execution mode. Default `"direct"` — i.e., the plugin is loaded in-process
 	 * and registered with the runtime exactly as plugins have always been.
 	 * Setting `"remote"` requires a {@link Plugin.remote} block; the host

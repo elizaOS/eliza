@@ -272,6 +272,81 @@ describe("ChoiceWidget — pick an option", () => {
     expect(onChoose).toHaveBeenCalledTimes(1);
     expect(onChoose).toHaveBeenCalledWith("__first_run__:runtime:cloud");
   });
+
+  it("single-option first-run CTA is a bare primary button — no collapsible shell, no '1 options' chip, no chevron (#15144)", () => {
+    const onChoose = vi.fn();
+    render(
+      <ChoiceWidget
+        id="runtime"
+        scope="first-run"
+        options={[
+          {
+            value: "__first_run__:runtime:cloud",
+            label: "Sign in to Eliza Cloud",
+          },
+        ]}
+        onChoose={onChoose}
+      />,
+    );
+
+    // Not wrapped in ChatWidgetShell: no dropdown-like header/chevron/chip.
+    expect(screen.queryByText("Choose next step")).toBeNull();
+    expect(screen.queryByText("1 options")).toBeNull();
+    expect(screen.queryByLabelText("Collapse")).toBeNull();
+
+    // Primary (accent) button, full width — the one obvious CTA. Exact class
+    // match: "bg-bg-accent" (the washed secondary token) contains the
+    // substring "bg-accent", so a toContain would false-pass.
+    const signIn = screen.getByTestId("choice-__first_run__:runtime:cloud");
+    expect(signIn.className.split(/\s+/)).toContain("bg-accent");
+    expect(signIn.className.split(/\s+/)).toContain("w-full");
+
+    // After the tap: locked but NOT washed out, with the status line intact.
+    fireEvent.click(signIn);
+    expect((signIn as HTMLButtonElement).disabled).toBe(true);
+    expect(signIn.className).toContain("disabled:opacity-100");
+    expect(signIn.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("status").textContent).toMatch(
+      /Sign in to Eliza Cloud/,
+    );
+    // Locked = one decision per prompt; a second tap is a no-op.
+    fireEvent.click(signIn);
+    expect(onChoose).toHaveBeenCalledTimes(1);
+  });
+
+  it("multi-option first-run: the SELECTED row keeps full-opacity accent tokens; only the non-selected locked rows fade (#15144)", () => {
+    const onChoose = vi.fn();
+    render(
+      <ChoiceWidget
+        id="runtime"
+        scope="first-run"
+        options={[
+          { value: "cloud", label: "Eliza Cloud (managed)" },
+          { value: "local", label: "On this device" },
+        ]}
+        onChoose={onChoose}
+      />,
+    );
+
+    // Multi-option keeps the shell (title + count chip), chip on a readable
+    // surface token rather than the near-transparent bg-bg.
+    expect(screen.getByText("Choose next step")).toBeTruthy();
+    const chip = screen.getByText("2 options");
+    expect(chip.className).toContain("bg-surface");
+
+    fireEvent.click(screen.getByTestId("choice-cloud"));
+
+    const picked = screen.getByTestId("choice-cloud");
+    const other = screen.getByTestId("choice-local");
+    // The pick is promoted to the primary tokens at full opacity… (exact
+    // class match — the secondary token "bg-bg-accent" contains "bg-accent")
+    expect(picked.className.split(/\s+/)).toContain("bg-accent");
+    expect(picked.className).toContain("disabled:opacity-100");
+    expect(picked.className).not.toContain("disabled:opacity-40");
+    // …while the rows the user did NOT pick fade behind it.
+    expect(other.className).toContain("disabled:opacity-40");
+    expect(onChoose).toHaveBeenCalledWith("cloud");
+  });
 });
 
 describe("ChoiceWidget — put their own in (allowCustom)", () => {

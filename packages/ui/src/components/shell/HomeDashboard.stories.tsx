@@ -14,7 +14,6 @@ import {
   seedHomeWidgetNotifications,
 } from "../../widgets/__fixtures__/home-widget-mock-data";
 import { Launcher } from "../pages/Launcher";
-import { allAppsZone } from "../pages/launcher-curation";
 import { HomeLauncherSurface } from "./HomeLauncherSurface";
 import { HomeScreen } from "./HomeScreen";
 
@@ -98,12 +97,7 @@ function HomeDashboard({
           <HomeLauncherSurface
             initialPage={initialPage}
             home={<HomeScreen onOpenTile={() => {}} showNativeOsTiles />}
-            launcher={
-              <Launcher
-                zones={allAppsZone(LAUNCHER_TILES)}
-                onLaunch={() => {}}
-              />
-            }
+            launcher={<Launcher entries={LAUNCHER_TILES} onLaunch={() => {}} />}
           />
         </div>
       </HomeWidgetData>

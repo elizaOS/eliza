@@ -24,6 +24,8 @@ import {
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
+  CloudApiKeySummary,
+  CloudApiKeys,
   CloudBillingCheckoutRequest,
   CloudBillingCheckoutResponse,
   CloudBillingCryptoQuoteRequest,
@@ -79,9 +81,19 @@ const DIRECT_ELIZA_CLOUD_API_BY_HOST = new Map([
   ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
   ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
 ]);
-const DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST = new Map([
+// Also normalizes non-API site hosts (www/app/dev -> apex): a browser
+// navigation must never be pointed through the API worker or www redirect edge.
+// The former serves JSON that mobile Safari can download as document.txt; the
+// latter adds the redirect hop the owner capture attributed to www (#15143).
+const DIRECT_ELIZA_CLOUD_WEB_BY_HOST = new Map([
   ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["app.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
   ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
+  ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
+  ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
 ]);
 
 type DirectCloudAgent = {
@@ -262,11 +274,18 @@ function resolveBrowserCloudApiRequestUrl(url: string): string {
   }
 }
 
-function resolveDirectCloudWebBase(cloudBase: string): string {
+/**
+ * The browser-navigable Eliza Cloud WEB base for a configured cloud base URL
+ * (API hosts map to their site host; www maps to the apex). Every URL handed
+ * to a browser window/tab must be built on this — never on the raw configured
+ * base, which can be an API host whose JSON responses mobile browsers download
+ * as files instead of rendering (#15143).
+ */
+export function resolveDirectCloudWebBase(cloudBase: string): string {
   const normalized = cloudBase.replace(/\/+$/, "");
   try {
     const host = new URL(normalized).hostname.toLowerCase();
-    return DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST.get(host) ?? normalized;
+    return DIRECT_ELIZA_CLOUD_WEB_BY_HOST.get(host) ?? normalized;
   } catch {
     // Fall back to the provided base below.
   }
@@ -1018,6 +1037,7 @@ declare module "./client-base" {
   interface ElizaClient {
     getCloudStatus(): Promise<CloudStatus>;
     getCloudCredits(): Promise<CloudCredits>;
+    listCloudApiKeys(): Promise<CloudApiKeys>;
     getCloudBillingSummary(): Promise<CloudBillingSummary>;
     getCloudBillingSettings(): Promise<CloudBillingSettings>;
     updateCloudBillingSettings(
@@ -1525,6 +1545,48 @@ ElizaClient.prototype.getCloudCredits = async function (this: ElizaClient) {
     }
   }
   return this.fetch("/api/cloud/credits");
+};
+
+// API-key inventory for the in-app Cloud view (keys count + manage link).
+// Direct-cloud only: `GET /api/v1/api-keys` is session-gated upstream
+// (requireUserWithOrg) and has no /api/cloud/* agent-host proxy, so when the
+// client has no direct cloud base — or the credential is an API key rather
+// than a steward session — the result degrades to `keys: null` with a reason
+// instead of throwing or fabricating an empty list.
+ElizaClient.prototype.listCloudApiKeys = async function (this: ElizaClient) {
+  const manageUrl = `${DEFAULT_DIRECT_CLOUD_BASE_URL}/dashboard/api-keys`;
+  const directBase = resolveDirectCloudClientApiBase(this);
+  if (!directBase || !readDirectCloudToken(this)) {
+    return { keys: null, manageUrl, reason: "not-connected" as const };
+  }
+  try {
+    const data = await directCloudRequest<Record<string, unknown>>(
+      this,
+      "/api/v1/api-keys",
+    );
+    const rawKeys = Array.isArray(data?.keys) ? data.keys : [];
+    const keys: CloudApiKeySummary[] = rawKeys.flatMap((raw) => {
+      if (typeof raw !== "object" || raw === null) return [];
+      const record = raw as Record<string, unknown>;
+      const id = stringOrNull(record.id);
+      const name = stringOrNull(record.name);
+      if (!id || !name) return [];
+      return [
+        {
+          id,
+          name,
+          keyPrefix: stringOrNull(record.key_prefix),
+          createdAt: stringOrNull(record.created_at),
+        },
+      ];
+    });
+    return { keys, manageUrl };
+  } catch (err) {
+    if (isDirectCloudAuthError(err)) {
+      return { keys: null, manageUrl, reason: "session-required" as const };
+    }
+    throw err;
+  }
 };
 
 ElizaClient.prototype.getCloudBillingSummary = async function (
@@ -3131,7 +3193,11 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // is the fix for "a new cloud agent is created on every sign-in" — the create
   // path only runs when the user has no agent yet.
   if (!forceCreate) {
-    onProgress?.("creating", "Finding your agents...");
+    // "listing", not "creating": this is the reuse LOOKUP, and downstream
+    // consumers (the first-run silent cloud entry, #15133) distinguish real
+    // provisioning phases from bookkeeping by this code. Display consumers
+    // render the detail text, so the rename is invisible to them.
+    onProgress?.("listing", "Finding your agents...");
     // A failed agent-list lookup must NOT fall through to provisioning. A
     // transient error (expired token, network blip, or a success:false body)
     // previously collapsed to an empty list and minted a brand-new billed agent

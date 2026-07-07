@@ -143,6 +143,36 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		expect(parsed?.promotionDecision).toMatchObject({
 			promote: true,
 			delta: 0.2,
+			incumbentScores: [0.5, 0.5, 0.5],
+		});
+	});
+
+	it("strict parser preserves a valid contextConfig channel", () => {
+		const parsed = parseOptimizedPromptArtifact({
+			...makeArtifact(1),
+			contextConfig: {
+				providerSet: ["RECENT_MESSAGES", "", "FACTS"],
+				providerOrder: ["FACTS", "RECENT_MESSAGES"],
+				renderTemplates: {
+					RECENT_MESSAGES: "{{role}}: {{text}}",
+					EMPTY: "",
+				},
+				budgetVector: {
+					RECENT_MESSAGES: 1200,
+					NEGATIVE: -1,
+				},
+			},
+		});
+
+		expect(parsed?.contextConfig).toEqual({
+			providerSet: ["RECENT_MESSAGES", "FACTS"],
+			providerOrder: ["FACTS", "RECENT_MESSAGES"],
+			renderTemplates: {
+				RECENT_MESSAGES: "{{role}}: {{text}}",
+			},
+			budgetVector: {
+				RECENT_MESSAGES: 1200,
+			},
 		});
 	});
 

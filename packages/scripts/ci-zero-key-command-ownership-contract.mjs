@@ -8,7 +8,11 @@
  * This is a static YAML census: it does not run workflows. It scans only the
  * zero-key/keyless workflow surface listed below, extracts shell commands from
  * zero-key job blocks, normalizes them, and fails when the same non-setup
- * command appears more than once.
+ * command is owned by more than one workflow job. Ownership is counted per
+ * workflow#job: a job may deliberately re-run its own suite under a different
+ * env parameterization (e.g. an ENGINE=webkit cross-engine pass) - that is
+ * still a single owner, while the same suite surfacing in two jobs or two
+ * workflows fails even when the invocations differ only by env prefixes.
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -53,8 +57,14 @@ const STATIC_DELEGATION_JOBS = new Set([
 const ALLOWED_DUPLICATE_COMMANDS = new Set([
   "node packages/app-core/scripts/ensure-shared-i18n-data.mjs",
   "bunx playwright install --with-deps chromium",
+  // Browser install is per-runner setup, not a suite: every job that drives a
+  // WebKit lane must install its own browsers, so the chromium+webkit variant
+  // is shared setup exactly like the chromium-only line above.
+  "bunx playwright install --with-deps chromium webkit",
   "node packages/scripts/ci-zero-key-command-ownership-contract.mjs",
 ]);
+
+const OWNERSHIP_RELEVANT_ENV = new Set(["ENGINE"]);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -70,13 +80,21 @@ function stripInlineComment(line) {
 
 function stripLeadingEnvAssignments(line) {
   let command = line.trim();
+  const preserved = [];
   if (command.startsWith("env ")) {
     command = command.slice(4).trimStart();
   }
   for (;;) {
-    const next = command.replace(LEADING_ENV_ASSIGNMENT, "").trimStart();
-    if (next === command) return command;
-    command = next;
+    const match = command.match(LEADING_ENV_ASSIGNMENT);
+    if (!match) {
+      return preserved.length > 0
+        ? `${preserved.join(" ")} ${command}`.trim()
+        : command;
+    }
+    const assignment = match[0].trim();
+    const name = assignment.slice(0, assignment.indexOf("="));
+    if (OWNERSHIP_RELEVANT_ENV.has(name)) preserved.push(assignment);
+    command = command.slice(match[0].length).trimStart();
   }
 }
 
@@ -84,6 +102,10 @@ function normalizeCommand(line) {
   return stripLeadingEnvAssignments(stripInlineComment(line))
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function commandExecutable(command) {
+  return command.replace(LEADING_ENV_ASSIGNMENT, "").trimStart();
 }
 
 function extractJobBlocks(workflowText) {
@@ -137,7 +159,7 @@ function extractCommands(jobText) {
       const command = normalizeCommand(rawLine);
       if (!command || command.startsWith("#")) continue;
       if (IGNORED_LINE.test(command)) continue;
-      if (!COMMAND_PREFIX.test(command)) continue;
+      if (!COMMAND_PREFIX.test(commandExecutable(command))) continue;
       commands.push(command);
     }
   }
@@ -175,7 +197,11 @@ export function findDuplicateOwnedCommands(rows) {
     byCommand.set(row.command, existing);
   }
   return [...byCommand.entries()]
-    .filter(([, locations]) => locations.length > 1)
+    .filter(
+      ([, locations]) =>
+        new Set(locations.map(({ workflow, job }) => `${workflow}#${job}`))
+          .size > 1,
+    )
     .map(([command, locations]) => ({ command, locations }));
 }
 

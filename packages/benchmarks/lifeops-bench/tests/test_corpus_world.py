@@ -9,6 +9,7 @@ import pytest
 from eliza_lifeops_bench.lifeworld.corpus import (
     CorpusLoadOptions,
     CorpusSelector,
+    _chat_channel,
     generate_corpus_world,
     load_corpus_rows,
 )
@@ -52,6 +53,19 @@ def test_local_mode_requires_directory() -> None:
 def test_huggingface_mode_requires_token() -> None:
     with pytest.raises(ValueError, match="requires HF_TOKEN"):
         load_corpus_rows(CorpusLoadOptions(mode="huggingface", token=None))
+
+
+def test_chat_channel_maps_known_platforms() -> None:
+    assert _chat_channel("x") == "telegram"
+    assert _chat_channel("telegram") == "telegram"
+    assert _chat_channel("discord") == "discord"
+    assert _chat_channel("imessage") == "imessage"
+    assert _chat_channel("signal") == "signal"
+
+
+def test_chat_channel_rejects_unknown_platform() -> None:
+    with pytest.raises(ValueError, match="unknown corpus platform"):
+        _chat_channel("myspace")
 
 
 def test_local_mode_reads_sample_directory() -> None:

@@ -10,6 +10,8 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { logger } from "@elizaos/core";
+import type { PromotionDecisionSummary } from "../optimizers/types.js";
 import { trainingStateRoot } from "./training-config.js";
 import type { TrainingRunRecord } from "./training-orchestrator.js";
 
@@ -90,7 +92,7 @@ interface ArtifactLike {
   baselineScore?: unknown;
   lineage?: unknown;
   frontier?: unknown;
-  promotionDecision?: unknown;
+  promotionDecision?: PromotionDecisionSummary;
   scores?: unknown;
   reason?: unknown;
 }
@@ -125,7 +127,18 @@ async function readArtifact(
 ): Promise<ArtifactLike | null> {
   if (!path || !existsSync(path)) return null;
   const raw = await readFile(path, "utf-8");
-  const parsed: unknown = JSON.parse(raw);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    // error-policy:J3 corrupt on-disk artifact is untrusted input; degrade the
+    // report to "unavailable" rather than failing the run-record write.
+    const detail = error instanceof Error ? error.message : String(error);
+    logger.warn(
+      `[optimization-report] skipping unparseable artifact at ${path}: ${detail}`,
+    );
+    return null;
+  }
   return parsed && typeof parsed === "object" && !Array.isArray(parsed)
     ? (parsed as ArtifactLike)
     : null;
@@ -187,24 +200,22 @@ export function buildPromptDiff(
 
 function coerceLineage(value: unknown): OptimizationRunReport["lineage"] {
   if (!Array.isArray(value)) return [];
-  return value
-    .map((entry) => {
-      const record = objectValue(entry);
-      if (!record) return null;
-      const round = numberValue(record.round);
-      const variant = numberValue(record.variant);
-      const score = numberValue(record.score);
-      if (round === null || variant === null || score === null) return null;
-      return {
+  return value.flatMap((entry): OptimizationRunReport["lineage"][number][] => {
+    const record = objectValue(entry);
+    if (!record) return [];
+    const round = numberValue(record.round);
+    const variant = numberValue(record.variant);
+    const score = numberValue(record.score);
+    if (round === null || variant === null || score === null) return [];
+    return [
+      {
         round,
         variant,
         score,
         notes: stringValue(record.notes) ?? undefined,
-      };
-    })
-    .filter((entry): entry is OptimizationRunReport["lineage"][number] =>
-      Boolean(entry),
-    );
+      },
+    ];
+  });
 }
 
 function coerceFrontier(
@@ -212,29 +223,27 @@ function coerceFrontier(
   optimizedPrompt: string | null,
 ): OptimizationRunReport["frontier"] {
   if (!Array.isArray(value)) return [];
-  return value
-    .map((entry) => {
-      const record = objectValue(entry);
-      if (!record) return null;
-      const prompt = stringValue(record.prompt);
-      const score = numberValue(record.score);
-      const promptTokenCount = numberValue(record.promptTokenCount);
-      const origin = stringValue(record.origin);
-      if (!prompt || score === null || promptTokenCount === null || !origin) {
-        return null;
-      }
-      return {
+  return value.flatMap((entry): OptimizationRunReport["frontier"][number][] => {
+    const record = objectValue(entry);
+    if (!record) return [];
+    const prompt = stringValue(record.prompt);
+    const score = numberValue(record.score);
+    const promptTokenCount = numberValue(record.promptTokenCount);
+    const origin = stringValue(record.origin);
+    if (!prompt || score === null || promptTokenCount === null || !origin) {
+      return [];
+    }
+    return [
+      {
         prompt,
         score,
         promptTokenCount,
         origin,
         feedback: stringValue(record.feedback) ?? undefined,
         promoted: optimizedPrompt ? prompt === optimizedPrompt : undefined,
-      };
-    })
-    .filter((entry): entry is OptimizationRunReport["frontier"][number] =>
-      Boolean(entry),
-    );
+      },
+    ];
+  });
 }
 
 function round(value: number | null): number | null {

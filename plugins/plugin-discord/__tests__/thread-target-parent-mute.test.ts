@@ -87,10 +87,7 @@ describe("thread targets — parent-channel mute inheritance in listings", () =>
 				thread: true,
 			}),
 		);
-		guild.channels.cache.set(
-			"chan-2",
-			fakeChannel("chan-2", "random", guild),
-		);
+		guild.channels.cache.set("chan-2", fakeChannel("chan-2", "random", guild));
 		// Same persisted state the ROOM action writes and the inbound gate reads
 		// when it drops the thread's messages.
 		const parentRoomId = createUniqueUuid(runtime, "parent-1");

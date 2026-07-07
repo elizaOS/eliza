@@ -18,8 +18,8 @@ import type { Buffer } from "node:buffer";
 import { logger } from "@elizaos/core";
 import type { MeetingParticipant, TranscriptSegment } from "@elizaos/shared";
 import {
-  MEETING_AUDIO_SAMPLE_RATE,
   isMeetingInsufficientCreditsError,
+  MEETING_AUDIO_SAMPLE_RATE,
   type MeetingPipelineOptions,
   type MeetingTranscriptionPipeline,
   type PipelineTranscriptUpdate,

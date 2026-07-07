@@ -62,46 +62,46 @@ function makeIface(extra: Partial<ComputerInterfaceDeps> = {}): {
     listDisplays: () => fakeDisplays(),
     driver: {
       click: async (x, y) => {
-        calls.click!.push([x, y]);
+        calls.click?.push([x, y]);
       },
       doubleClick: async (x, y) => {
-        calls.doubleClick!.push([x, y]);
+        calls.doubleClick?.push([x, y]);
       },
       rightClick: async (x, y) => {
-        calls.rightClick!.push([x, y]);
+        calls.rightClick?.push([x, y]);
       },
       mouseMove: async (x, y) => {
-        calls.mouseMove!.push([x, y]);
+        calls.mouseMove?.push([x, y]);
       },
       mouseDown: async (x, y, button) => {
-        calls.mouseDown!.push([x, y, button]);
+        calls.mouseDown?.push([x, y, button]);
       },
       mouseUp: async (x, y, button) => {
-        calls.mouseUp!.push([x, y, button]);
+        calls.mouseUp?.push([x, y, button]);
       },
       drag: async (x1, y1, x2, y2) => {
-        calls.drag!.push([x1, y1, x2, y2]);
+        calls.drag?.push([x1, y1, x2, y2]);
       },
       dragPath: async (path) => {
-        calls.dragPath!.push([path]);
+        calls.dragPath?.push([path]);
       },
       scroll: async (x, y, dir, amt) => {
-        calls.scroll!.push([x, y, dir, amt]);
+        calls.scroll?.push([x, y, dir, amt]);
       },
       type: async (t) => {
-        calls.type!.push([t]);
+        calls.type?.push([t]);
       },
       keyPress: async (k) => {
-        calls.keyPress!.push([k]);
+        calls.keyPress?.push([k]);
       },
       keyCombo: async (c) => {
-        calls.keyCombo!.push([c]);
+        calls.keyCombo?.push([c]);
       },
       keyDown: async (k) => {
-        calls.keyDown!.push([k]);
+        calls.keyDown?.push([k]);
       },
       keyUp: async (k) => {
-        calls.keyUp!.push([k]);
+        calls.keyUp?.push([k]);
       },
     },
     ...extra,

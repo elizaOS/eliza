@@ -151,7 +151,11 @@ export function buildTrackedPrePullCommand(
     "status=$?",
     'rm -f "$pidfile"',
     'exit "$status"',
-  ].join("; ");
+    // Join with newlines, NOT "; ": one line ends in `&` (the backgrounded
+    // pull). The node's /bin/sh is dash, where `&` immediately followed by `;`
+    // ("&;") is a hard syntax error ("Syntax error: ";" unexpected"), so every
+    // pull would fail at parse time. Newlines are valid separators after `&`.
+  ].join("\n");
   return { command: `sh -c ${shellQuote(script)}`, pidFile };
 }
 
@@ -168,7 +172,9 @@ export function buildPrePullReapCommand(pidFile: string, image: string): string 
     "fi",
     'rm -f "$pidfile"',
     "fi",
-  ].join("; ");
+    // Newlines, NOT "; ": `if …; then` joined with "; " yields `then;`, which
+    // is a dash syntax error. Newlines compose correctly with if/case/&/fi.
+  ].join("\n");
   return `sh -c ${shellQuote(script)}`;
 }
 

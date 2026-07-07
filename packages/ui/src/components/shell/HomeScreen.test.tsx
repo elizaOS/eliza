@@ -69,7 +69,8 @@ function makeNotification(
     id: "11111111-1111-1111-1111-111111111111" as AgentNotification["id"],
     title: "Build finished",
     category: "task",
-    priority: "normal",
+    // High so the row renders in the rested (interrupt-tier-only) shade.
+    priority: "high",
     source: "test",
     createdAt: Date.now() - 60_000,
     readAt: null,
@@ -144,8 +145,24 @@ describe("HomeScreen", () => {
     expect(
       header.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeGreaterThan(0);
+    // The wrapper grows to fill the column down to the chat (flex-1) and keeps a
+    // small margin below the header (mt-4).
+    const wrapper = card.parentElement;
+    expect(wrapper?.className).toContain("flex-1");
+    expect(wrapper?.className).toContain("mt-4");
+    // The inbox itself fills its wrapper and scrolls internally.
+    expect(card.className).toContain("flex-1");
     // Rows are grouped by view.
     expect(screen.getByTestId("notification-group-label")).toBeTruthy();
+  });
+
+  it("does NOT grow the notification region when the inbox is empty (calm centred home)", () => {
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    // Empty inbox self-hides; the widget breathing region keeps the flex-1 fill.
+    expect(screen.queryByTestId("home-notification-center")).toBeNull();
+    const hostWrapper = screen.getByTestId("home-widget-host").parentElement;
+    expect(hostWrapper?.className).toContain("flex-1");
+    expect(hostWrapper?.className).toContain("justify-center");
   });
 
   // GESTURE-HINT OVERLAP FIX (#14945 follow-up): the one-time gesture hint
@@ -172,13 +189,14 @@ describe("HomeScreen", () => {
     expect(cls).toMatch(/safe-area-bottom|android-gesture-inset-bottom/);
   });
 
-  it("tapping an inline row follows its safe deep link", () => {
+  it("tapping an inline row expands options; Open follows its safe deep link", () => {
     __ingestNotificationForTests(
       makeNotification({ deepLink: "/settings", title: "Open settings" }),
     );
     render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.getByTestId("home-notification-center")).toBeTruthy();
     fireEvent.click(screen.getByTestId("notification-row"));
+    fireEvent.click(screen.getByTestId("notification-option-open"));
     expect(navigateDeepLink).toHaveBeenCalledWith("/settings");
   });
 });

@@ -100,7 +100,9 @@ export function AppWindowRenderer({
   }, []);
 
   const exitToApps = useCallback(() => {
-    window.location.href = "/apps";
+    // Exit a running overlay app back to the launcher grid, which lives at
+    // `/views` (`/apps` is now the My Apps management view).
+    window.location.href = "/views";
   }, []);
 
   // Stable identity so embedded apps can use React.memo: only changes when a

@@ -150,13 +150,23 @@ describe("scrub pipeline llm stage", () => {
     );
     expect(llmReport?.piiSpanCount).toBe(400);
     expect(result.report.piiSweepArtifacts?.classificationPath).toBeTruthy();
-    const artifact = JSON.parse(
-      await fs.readFile(
-        result.report.piiSweepArtifacts?.classificationPath ?? "",
-        "utf8",
-      ),
-    ) as { rows: { replacements: unknown[] }[] };
+    const artifactRaw = await fs.readFile(
+      result.report.piiSweepArtifacts?.classificationPath ?? "",
+      "utf8",
+    );
+    const artifact = JSON.parse(artifactRaw) as {
+      rows: { replacements: Record<string, unknown>[] }[];
+    };
     expect(artifact.rows).toHaveLength(100);
+    // The on-disk artifact must never carry raw PII cleartext.
+    expect(artifactRaw).not.toContain("Maple Street");
+    for (const row of artifact.rows) {
+      for (const replacement of row.replacements) {
+        expect(replacement).not.toHaveProperty("text");
+        expect(replacement).toHaveProperty("valueHash");
+        expect(replacement).toHaveProperty("replacement");
+      }
+    }
     expect(
       result.messages.every(
         (row) =>

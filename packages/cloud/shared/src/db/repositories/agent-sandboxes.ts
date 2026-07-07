@@ -32,6 +32,7 @@ import {
   WARM_POOL_USER_ID,
 } from "../schemas/agent-sandboxes";
 import { jobs } from "../schemas/jobs";
+import { imageRepo, imageRepoSql } from "../utils/docker-image-ref";
 
 export type {
   AgentBackupSnapshotType,
@@ -376,8 +377,11 @@ export class AgentSandboxesRepository {
           sql`${agentSandboxes.image_digest} IS DISTINCT FROM ${targetDigest}`,
           // Only reconcile agents on the configured default image. Per-agent
           // image overrides are intentional and must not be rolled onto the
-          // global fleet tag.
-          sql`(${agentSandboxes.docker_image} IS NULL OR ${agentSandboxes.docker_image} = ${targetImage})`,
+          // global fleet tag. Match on the REPO, not the full ref: a fleet agent
+          // pinned to an older tag or a digest (`…:sha-abc`, `…@sha256:…`) is
+          // still the default image and must be selected, otherwise sha-pinned
+          // default agents never drift back to the current default (#15101).
+          sql`(${agentSandboxes.docker_image} IS NULL OR ${imageRepoSql(agentSandboxes.docker_image)} = ${imageRepo(targetImage)})`,
           // Skip pool-owned rows (warm pool entries) — they get the new
           // image naturally on next claim, no need to disrupt them.
           sql`${agentSandboxes.pool_status} IS NULL`,
@@ -431,7 +435,10 @@ export class AgentSandboxesRepository {
           sql`${agentSandboxes.deleted_at} IS NULL`,
           eq(agentSandboxes.image_digest, currentDigest),
           isNotNull(agentSandboxes.previous_image_digest),
-          sql`(${agentSandboxes.docker_image} IS NULL OR ${agentSandboxes.docker_image} = ${targetImage})`,
+          // Match the default image by REPO, not full ref — same rationale as
+          // listRunningWithDigestOtherThan (#15101): a rollback-eligible fleet
+          // agent may be pinned to a different tag/digest of the same repo.
+          sql`(${agentSandboxes.docker_image} IS NULL OR ${imageRepoSql(agentSandboxes.docker_image)} = ${imageRepo(targetImage)})`,
           sql`${agentSandboxes.pool_status} IS NULL`,
           sql`${agentSandboxes.node_id} IS NOT NULL`,
           sql`${agentSandboxes.container_name} IS NOT NULL`,
