@@ -123,6 +123,14 @@ export interface ProvisioningWorkerConfig {
    * armed deliberately.
    */
   orphanReconcilerEnabled: boolean;
+  /**
+   * DB liveness threshold (#15160): when the newest `jobs` row is older than
+   * this many hours, the worker logs a loud error naming the DB host —
+   * "this database looks abandoned; check DATABASE_URL points where the API
+   * writes". Warn-only, never fatal: an idle env legitimately has old jobs.
+   * Tunable via `CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS` (default 24).
+   */
+  dbLivenessMaxAgeHours: number;
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
@@ -141,6 +149,14 @@ const DEFAULT_NODE_HEALTH_INTERVAL_MS = 5 * 60_000;
  * good cycle (the watchdog window plus one extra 15s tick), not ~2x the window.
  */
 const DEFAULT_WATCHDOG_CONSECUTIVE_TICKS = 2;
+
+/**
+ * Default DB liveness threshold. 24h is far above any healthy env's
+ * inter-job gap (agent creates, upgrades, and heartbeat-driven retries all
+ * insert jobs) but small enough to flag an abandoned database within a day
+ * instead of the 3 weeks it took to notice #15160.
+ */
+const DEFAULT_DB_LIVENESS_MAX_AGE_HOURS = 24;
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -183,6 +199,10 @@ export function readWorkerConfig(
       DEFAULT_WATCHDOG_CONSECUTIVE_TICKS,
     ),
     orphanReconcilerEnabled: env.ORPHAN_RECONCILER_ENABLED === "1",
+    dbLivenessMaxAgeHours: parsePositiveInt(
+      env.CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS,
+      DEFAULT_DB_LIVENESS_MAX_AGE_HOURS,
+    ),
   };
 }
 
@@ -319,6 +339,110 @@ export async function assertProvisioningWorkerPreflight(
         `Cause: ${message}`,
     );
   }
+}
+
+export interface JobsTableLivenessAssessment {
+  /** True when the newest jobs row is older than the threshold, or the table is empty. */
+  stale: boolean;
+  /** Hours since the newest jobs row was created; null when the table is empty. */
+  ageHours: number | null;
+  maxAgeHours: number;
+  latestJobCreatedAt: Date | null;
+}
+
+/**
+ * Pure threshold decision behind the DB liveness check (#15160). The staging
+ * outage happened because this daemon silently polled a database the API had
+ * stopped writing to for 3 weeks — zero errors, just an eternally empty
+ * queue, while every agent create sat `pending` in ANOTHER database. A jobs
+ * table whose newest row is older than the threshold (or that is empty) is
+ * treated as stale: probably not the database the API writes to. A
+ * created_at in the future (clock skew) is fresh, not stale. Exported for
+ * unit testing, mirroring `evaluateSelfRestart`.
+ */
+export function evaluateJobsTableLiveness(deps: {
+  latestJobCreatedAt: Date | null;
+  maxAgeHours: number;
+  now?: Date;
+}): JobsTableLivenessAssessment {
+  const { latestJobCreatedAt, maxAgeHours } = deps;
+  if (!latestJobCreatedAt) {
+    return {
+      stale: true,
+      ageHours: null,
+      maxAgeHours,
+      latestJobCreatedAt: null,
+    };
+  }
+  const now = deps.now ?? new Date();
+  const ageHours = (now.getTime() - latestJobCreatedAt.getTime()) / 3_600_000;
+  return {
+    stale: ageHours > maxAgeHours,
+    ageHours,
+    maxAgeHours,
+    latestJobCreatedAt,
+  };
+}
+
+/**
+ * Host portion of a database URL for log messages — never the credentials.
+ * `new URL` drops user:pass with `.host`; pglite:// URLs have no host, so
+ * fall back to the pathname (the local data dir). Exported for unit testing.
+ */
+export function databaseHostForLogs(databaseUrl: string | undefined): string {
+  if (!databaseUrl) return "<DATABASE_URL not set>";
+  try {
+    const parsed = new URL(databaseUrl);
+    return parsed.host || parsed.pathname || "<no host in DATABASE_URL>";
+  } catch {
+    return "<unparseable DATABASE_URL>";
+  }
+}
+
+/** Query side of the DB liveness check: newest jobs row → threshold decision. */
+async function processDbLivenessCheckCycle(
+  config: ProvisioningWorkerConfig,
+): Promise<JobsTableLivenessAssessment> {
+  const { jobsRepository } = await loadDeps();
+  const latestJobCreatedAt = await jobsRepository.findLatestCreatedAt();
+  return evaluateJobsTableLiveness({
+    latestJobCreatedAt,
+    maxAgeHours: config.dbLivenessMaxAgeHours,
+  });
+}
+
+/**
+ * WARN LOUDLY — level error, DB host named — when the jobs table looks
+ * abandoned, but never crash: an idle env legitimately has old jobs, so this
+ * is a signal for a human, not a fail-stop. Re-emitted on every infra
+ * maintenance sweep so the signal is unmissable in the logs, not a one-shot
+ * scrolled away at boot.
+ */
+function logJobsTableLiveness(
+  logger: WorkerLogger,
+  assessment: JobsTableLivenessAssessment,
+): void {
+  if (!assessment.stale) return;
+  const databaseHost = databaseHostForLogs(process.env.DATABASE_URL);
+  const newestRow =
+    assessment.ageHours === null
+      ? "the table is EMPTY"
+      : `the newest row is ${assessment.ageHours.toFixed(1)}h old`;
+  logger.error(
+    `[provisioning-worker] DB LIVENESS: the jobs table on ${databaseHost} looks abandoned — ` +
+      `${newestRow}, threshold ${assessment.maxAgeHours}h (CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS). ` +
+      "Check that this daemon's DATABASE_URL points at the SAME database the cloud-api " +
+      "writes jobs to: a split pair polls an eternally empty queue with zero errors while " +
+      "every provision hangs pending forever (#15160). If this env is intentionally idle, " +
+      "raise the threshold.",
+    {
+      event: "worker.db_liveness_stale",
+      databaseHost,
+      latestJobCreatedAt: assessment.latestJobCreatedAt?.toISOString() ?? null,
+      ageHours: assessment.ageHours,
+      maxAgeHours: assessment.maxAgeHours,
+    },
+  );
 }
 
 async function processProvisioningWorkerCycle(
@@ -1124,6 +1248,20 @@ async function runInfraMaintenanceCycle(
 ): Promise<void> {
   // Every phase is bounded by PHASE_TIMEOUT_MS via runBoundedPhase so an
   // unresponsive node's SSH probe can never stall the whole sweep.
+
+  // #15160 guard, periodic half: re-assert DB liveness on every infra
+  // maintenance sweep (default every 5min ≈ every 10th poll cycle) so a
+  // worker polling an abandoned database keeps screaming instead of logging
+  // once at boot and going silent. First so a dragging SSH sweep can't
+  // starve it. Runs BEFORE the health check touches docker_nodes, so it is
+  // a pure read.
+  await runBoundedPhase(
+    logger,
+    "db liveness check cycle",
+    () => processDbLivenessCheckCycle(config),
+    (assessment) => logJobsTableLiveness(logger, assessment),
+  );
+
   await runBoundedPhase(
     logger,
     "node health check cycle",
@@ -1313,6 +1451,7 @@ async function main(): Promise<void> {
     selfRestartEnabled: config.selfRestartEnabled,
     watchdogConsecutiveTicks: config.watchdogConsecutiveTicks,
     orphanReconcilerEnabled: config.orphanReconcilerEnabled,
+    dbLivenessMaxAgeHours: config.dbLivenessMaxAgeHours,
   });
 
   await assertProvisioningWorkerPreflight();
@@ -1333,6 +1472,20 @@ async function main(): Promise<void> {
 
   preflightOk = true;
   logger.info("[provisioning-worker] startup preflight passed");
+
+  // #15160 guard, startup half: right after the preflight, check that the
+  // jobs table this DATABASE_URL points at has been written to recently.
+  // The KMS/SSH preflights above prove THIS worker can run jobs; this one
+  // flags the failure mode where there are simply never any jobs to run
+  // because the API writes to a different database. Bounded + caught by
+  // runBoundedPhase: a slow or unreachable DB logs an error here and the
+  // work cycles surface it properly — startup must not crash on it.
+  await runBoundedPhase(
+    logger,
+    "db liveness preflight",
+    () => processDbLivenessCheckCycle(config),
+    (assessment) => logJobsTableLiveness(logger, assessment),
+  );
 
   // Apps (Product 2): arm the deploy backend when enabled (gated; no-op by default).
   await armAppsDeployBackendIfEnabled(logger);
