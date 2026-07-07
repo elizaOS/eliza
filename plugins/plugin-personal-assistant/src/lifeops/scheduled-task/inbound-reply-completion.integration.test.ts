@@ -247,7 +247,7 @@ describe("inbound-reply completion — production wiring", () => {
   }, 180_000);
 
   it("an owner reply in a connector room completes a connector-fired task from output.target", async () => {
-    runtimeResult = await createLifeOpsTestRuntime();
+    runtimeResult = await createOwnerScopedRuntime();
     const { runtime } = runtimeResult;
     const chatId = "telegram-chat-1";
     const roomId = stringToUuid(`${chatId}:${runtime.agentId}`);

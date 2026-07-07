@@ -34,7 +34,8 @@ export function detachInboundScan(
   fn: (payload: MessagePayload) => Promise<void>,
 ): (payload: MessagePayload) => Promise<void> {
   return (payload: MessagePayload): Promise<void> => {
-    const scan: Promise<void> = fn(payload)
+    const scan: Promise<void> = Promise.resolve()
+      .then(() => fn(payload))
       .catch((error: unknown) => {
         // error-policy:J7 diagnostics-must-not-kill-the-loop — the turn has
         // already moved on off the awaited edge; surface the failure through

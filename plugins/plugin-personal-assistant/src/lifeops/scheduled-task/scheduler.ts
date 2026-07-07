@@ -17,6 +17,7 @@
  */
 import { hasOwnerAccess } from "@elizaos/agent";
 import {
+  ElizaError,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -863,31 +864,35 @@ export async function processScheduledTaskInboundMessage(
 export async function handleScheduledTaskInboundMessage(
   payload: MessagePayload,
 ): Promise<void> {
-  try {
-    const runtime = payload.runtime;
-    if (!runtime || !payload.message) return;
-    const result = await processScheduledTaskInboundMessage({
-      runtime,
-      agentId: runtime.agentId,
-      message: payload.message,
-    });
-    if (result.completions.length > 0) {
-      logger.info(
-        {
-          src: "lifeops:scheduled-task",
-          agentId: runtime.agentId,
-          taskIds: result.completions.map((entry) => entry.taskId),
-        },
-        "[lifeops-scheduled-task] Completed fired scheduled task(s) from owner inbound reply",
-      );
-    }
-  } catch (error) {
-    logger.warn(
+  const runtime = payload.runtime;
+  if (!runtime || !payload.message) return;
+  const result = await processScheduledTaskInboundMessage({
+    runtime,
+    agentId: runtime.agentId,
+    message: payload.message,
+  });
+  if (result.completions.length > 0) {
+    logger.info(
       {
         src: "lifeops:scheduled-task",
-        error,
+        agentId: runtime.agentId,
+        taskIds: result.completions.map((entry) => entry.taskId),
       },
-      "[lifeops-scheduled-task] Inbound completion handler failed",
+      "[lifeops-scheduled-task] Completed fired scheduled task(s) from owner inbound reply",
+    );
+  }
+  if (result.errors.length > 0) {
+    throw new ElizaError(
+      "[lifeops-scheduled-task] inbound completion scan failed",
+      {
+        code: "LIFEOPS_INBOUND_COMPLETION_SCAN_FAILED",
+        context: {
+          agentId: runtime.agentId,
+          roomId: payload.message.roomId,
+          errors: result.errors,
+        },
+        severity: "ephemeral",
+      },
     );
   }
 }
