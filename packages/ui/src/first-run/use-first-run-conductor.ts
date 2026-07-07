@@ -805,7 +805,8 @@ export function useFirstRunConductor(): void {
       if (!preOpenedAuthWindow) return;
       try {
         preOpenedAuthWindow.close();
-      } catch {
+      } catch (error) {
+        void error;
         // error-policy:J6 best-effort cleanup for an auth popup we no longer need.
       }
     };
@@ -1451,7 +1452,8 @@ export function useFirstRunConductor(): void {
             writeStoredStewardToken(refreshed.token);
             try {
               window.dispatchEvent(new CustomEvent("steward-token-sync"));
-            } catch {
+            } catch (error) {
+              void error;
               // error-policy:J6 best-effort nudge — consumers re-read the
               // stored token on their next tick regardless.
             }

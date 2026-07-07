@@ -131,7 +131,8 @@ function isTrustedCloudAuthMessageOrigin(
       new URL(origin).origin ===
       new URL(resolveDirectCloudWebBase(cloudApiBase)).origin
     );
-  } catch {
+  } catch (error) {
+    void error;
     return false;
   }
 }
@@ -159,7 +160,8 @@ function readCloudLoginReturnSessionId(): string | null {
       .get(ELIZA_CLOUD_LOGIN_SESSION_PARAM)
       ?.trim();
     return sessionId || null;
-  } catch {
+  } catch (error) {
+    void error;
     return null;
   }
 }
@@ -182,7 +184,8 @@ function clearCloudLoginReturnParams(): void {
       const next = `${url.pathname}${url.search}${url.hash}`;
       window.history.replaceState(window.history.state, "", next);
     }
-  } catch {
+  } catch (error) {
+    void error;
     // error-policy:J3 URL cleanup is cosmetic; auth polling can still proceed.
   }
 }
@@ -201,7 +204,8 @@ function openNamedCloudLoginPopup(url: string): Window | null {
     const popup = window.open(url, CLOUD_LOGIN_POPUP_NAME);
     rememberCloudLoginPopup(popup);
     return popup && !popup.closed ? popup : null;
-  } catch {
+  } catch (error) {
+    void error;
     // error-policy:J4 popup launch can be blocked; caller owns fallback.
     return null;
   }
@@ -211,7 +215,8 @@ function closePopupWindow(popup: Window | null): void {
   if (!popup || popup.closed) return;
   try {
     popup.close();
-  } catch {
+  } catch (error) {
+    void error;
     // error-policy:J6 best-effort popup teardown after auth return.
   }
   try {
@@ -220,12 +225,14 @@ function closePopupWindow(popup: Window | null): void {
       globalThis.setTimeout(() => {
         try {
           popup.close();
-        } catch {
+        } catch (error) {
+          void error;
           // error-policy:J6 best-effort delayed close after blanking the popup.
         }
       }, 0);
     }
-  } catch {
+  } catch (error) {
+    void error;
     // error-policy:J6 cross-origin window policies can reject navigation.
   }
 }
@@ -247,7 +254,8 @@ function closeCloudLoginPopup(popup: Window | null): void {
   ) {
     try {
       addCandidate(window.open("", CLOUD_LOGIN_POPUP_NAME));
-    } catch {
+    } catch (error) {
+      void error;
       // error-policy:J6 reclaiming a named popup is opportunistic cleanup.
     }
   }
@@ -265,7 +273,8 @@ function closeReturnedAuthTabIfOpenerStillExists(): void {
     if (opener && !opener.closed) {
       window.close();
     }
-  } catch {
+  } catch (error) {
+    void error;
     // error-policy:J6 best-effort close; a normal tab simply remains open.
   }
 }

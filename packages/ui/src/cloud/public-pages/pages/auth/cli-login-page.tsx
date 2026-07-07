@@ -74,9 +74,10 @@ function sanitizeCliLoginReturnTo(value: string | null): string | null {
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
     if (!isAllowedCliReturnHost(url.hostname)) return null;
     return url.toString();
-  } catch {
-    return null;
-  }
+    } catch (error) {
+      void error;
+      return null;
+    }
 }
 
 function getPageState({
@@ -197,7 +198,8 @@ export default function CliLoginPage() {
           setCompletion({ status: "redirecting" });
           try {
             window.close();
-          } catch {
+          } catch (error) {
+            void error;
             // Some browsers reject script-close for normal tabs; redirect below
             // still lands the user back in the app that started sign-in.
           }
@@ -272,7 +274,8 @@ export default function CliLoginPage() {
     }
     try {
       sessionStorage.setItem(autoSignInKey, "1");
-    } catch {
+    } catch (error) {
+      void error;
       // sessionStorage unavailable — fall through to the manual sign-in button.
     }
     navigate(signInHref, { replace: true });
