@@ -132,7 +132,13 @@ describe("node-aware diff (#15228 — reap the stale twin a re-provision left be
     nodeId,
     updatedAtMs: NOW - ageMs,
   });
-  const c = (id: string): NodeContainerRef => ({ name: `agent-${id}`, id: `docker-${id}` });
+  // Containers default to OLD (past grace) so each test isolates the row-side
+  // condition; the container-age race has its own cases below.
+  const c = (id: string, containerAgeMs = 60 * 60_000): NodeContainerRef => ({
+    name: `agent-${id}`,
+    id: `docker-${id}`,
+    createdAtMs: NOW - containerAgeMs,
+  });
 
   test("live row points at a DIFFERENT node, stable past grace → reap as wrong_node", () => {
     // container observed on nodeA; the agent's live row says it lives on nodeB.
@@ -143,7 +149,33 @@ describe("node-aware diff (#15228 — reap the stale twin a re-provision left be
       "nodeA",
       NOW,
     );
-    expect(orphans).toEqual([{ name: "agent-x", id: "docker-x", key: "x", reason: "wrong_node" }]);
+    expect(orphans).toEqual([{ name: "agent-x", id: `docker-x`, key: "x", reason: "wrong_node" }]);
+  });
+
+  test("FRESH container + stale wrong-node row → keep (re-placement in flight)", () => {
+    // The worker creates the container on the new node BEFORE updating the row,
+    // so mid-provision the old row (old timestamp, old node) is exactly what a
+    // legitimate re-placement looks like. Caught live: a 29-second-old container
+    // drew a wrong_node verdict against a 12-day-old row.
+    const orphans = computeOrphanContainersToReap(
+      [c("x", 29_000)],
+      [onNode("x", "running", "nodeB", 12 * 24 * 60 * 60_000)],
+      cfg,
+      "nodeA",
+      NOW,
+    );
+    expect(orphans).toEqual([]);
+  });
+
+  test("container age unknown → never wrong_node-reaped (fail safe)", () => {
+    const orphans = computeOrphanContainersToReap(
+      [{ name: "agent-x", id: "docker-x" }],
+      [onNode("x", "running", "nodeB", 10 * 60_000)],
+      cfg,
+      "nodeA",
+      NOW,
+    );
+    expect(orphans).toEqual([]);
   });
 
   test("live row points at THIS node → keep (this is the canonical container)", () => {
