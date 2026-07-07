@@ -244,6 +244,14 @@ export function parseSegmentsStreaming(
   if (text === cache.raw) return { segments: cache.segments, cache };
   if (analysisMode) return fullRebuild(text, analysisMode);
 
+  // The full display normalizer truncates the raw input before every other pass.
+  // When a stream crosses that boundary, a cached stable prefix may already hold
+  // bytes from before the cut; rebuild once so the incremental target stays
+  // byte-identical to the full parser's frozen 200k window.
+  if (text.length >= MAX_DISPLAY_LEN) {
+    return fullRebuild(text, analysisMode);
+  }
+
   // Past MAX_DISPLAY_LEN the normalized target is frozen (the core slices first),
   // so nothing downstream changes — reuse verbatim.
   if (cache.raw.length >= MAX_DISPLAY_LEN) {

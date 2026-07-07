@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  MAX_DISPLAY_LEN,
   normalizeDisplayCore,
   parserWork,
   parseSegments,
@@ -357,6 +358,31 @@ describe("prefix-change fallback", () => {
     const shorter = "Reply\n\n```ts\nco";
     const { segments } = parseSegmentsStreaming(shorter, false, cache);
     expect(segments).toEqual(parseSegments(shorter, false));
+  });
+
+  it("full-rebuilds on the frame that crosses the display normalizer cap", () => {
+    const seed = "seed line\nnext line\n";
+    const before =
+      seed +
+      "stable line\n".repeat(
+        Math.floor(
+          (MAX_DISPLAY_LEN - seed.length - 64) / "stable line\n".length,
+        ),
+      );
+    const after = `${before}${"tail ".repeat(40)}`;
+
+    let cache: StreamingParseCache | null = null;
+    cache = parseSegmentsStreaming(seed, false, cache).cache;
+    cache = parseSegmentsStreaming(before, false, cache).cache;
+
+    const { segments } = parseSegmentsStreaming(after, false, cache);
+
+    expect(after.length).toBeGreaterThanOrEqual(MAX_DISPLAY_LEN);
+    expect(segments).toEqual(parseSegments(after, false));
+    expect(segments[0]).toMatchObject({
+      kind: "text",
+      text: after.slice(0, MAX_DISPLAY_LEN).trim(),
+    });
   });
 });
 
