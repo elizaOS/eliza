@@ -90,17 +90,16 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-todos/src/index.ts",
   "plugins/plugin-phone/src/plugin.ts",
   "plugins/plugin-polymarket/src/plugin.ts",
-  "plugins/plugin-shopify/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
   "plugins/plugin-vector-browser/src/plugin.ts",
   "plugins/plugin-feed/src/index.ts",
+  "plugins/plugin-scheduling/src/plugin.ts",
+  "plugins/plugin-elizacloud/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
-  "plugins/plugin-social-alpha/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/plugin.ts",
   "plugins/plugin-training/src/setup-routes.ts",
-  "plugins/plugin-facewear/src/index.ts",
 ] as const;
 
 const APP_SHELL_REGISTRATION_SOURCES = [
@@ -133,8 +132,10 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
     "Relationships is the entity/relationship knowledge-graph viewer; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
   "plugins/plugin-screenshare/src/index.ts":
     "Screenshare is registered by runtime capability loading, not the app boot side-effect loader.",
-  "plugins/plugin-social-alpha/src/index.ts":
-    "Social Alpha is an opt-in agent runtime plugin; its leaderboard view registers when the agent enables the plugin, not via the app boot loader.",
+  "plugins/plugin-scheduling/src/plugin.ts":
+    "Scheduling's lifeops-live-test view registers through the agent runtime plugin, not the app boot side-effect loader.",
+  "plugins/plugin-elizacloud/src/index.ts":
+    "Eliza Cloud's view registers through the agent runtime plugin, not the app boot side-effect loader.",
   "plugins/plugin-todos/src/index.ts":
     "Todos is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
 };
@@ -142,7 +143,9 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-contacts": "plugins/plugin-contacts/src/plugin.ts",
   "@elizaos/plugin-native-settings": null,
-  "@elizaos/plugin-facewear": "plugins/plugin-facewear/src/index.ts",
+  // Facewear no longer declares plugin views (#15269 removed its xr/tui-only
+  // inventory); the boot module remains for the Settings wearables section.
+  "@elizaos/plugin-facewear": null,
   "@elizaos/plugin-feed": "plugins/plugin-feed/src/index.ts",
   "@elizaos/plugin-hyperliquid": "plugins/plugin-hyperliquid/src/plugin.ts",
   // PA no longer declares a view (the LifeOps overview was removed); it is a
@@ -151,7 +154,6 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-messages": "plugins/plugin-messages/src/plugin.ts",
   "@elizaos/plugin-phone": "plugins/plugin-phone/src/plugin.ts",
   "@elizaos/plugin-polymarket": "plugins/plugin-polymarket/src/plugin.ts",
-  "@elizaos/plugin-shopify": "plugins/plugin-shopify/src/plugin.ts",
   "@elizaos/plugin-task-coordinator":
     "plugins/plugin-task-coordinator/src/index.ts",
   "@elizaos/plugin-task-coordinator/register":
@@ -172,11 +174,9 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
 // classification), which keeps this ratchet as the reintroduction gate.
 const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [];
 
-const ALL_MODALITIES: ReadonlyArray<"gui" | "tui" | "xr"> = [
-  "gui",
-  "xr",
-  "tui",
-];
+// Shipped operator views are GUI-only (#15269); reintroducing xr/tui means
+// widening this constant deliberately.
+const ALL_MODALITIES: ReadonlyArray<"gui" | "tui" | "xr"> = ["gui"];
 
 const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
   [

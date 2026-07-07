@@ -46,6 +46,12 @@ function launcherTileTestId(viewId: string): string {
 
 export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
+    name: "my-apps app window",
+    path: "/apps/my-apps",
+    readyChecks: [{ text: "My Apps" }],
+    timeoutMs: 90_000,
+  },
+  {
     name: "plugins app window",
     path: "/apps/plugins",
     readyChecks: [{ text: "Browser Workspace" }, { text: "AI Providers" }],
@@ -240,10 +246,10 @@ const managerVisibleViewTileCases = [
   { viewId: "messages", path: "/messages" },
   { viewId: "model-tester", path: "/model-tester" },
   { viewId: "orchestrator", path: "/orchestrator" },
+  { viewId: "cloud", path: "/cloud" },
   { viewId: "phone", path: "/phone" },
   { viewId: "relationships", path: "/relationships" },
   { viewId: "screenshare", path: "/screenshare" },
-  { viewId: "social-alpha", path: "/social-alpha" },
   { viewId: "task-coordinator", path: "/task-coordinator" },
   { viewId: "todos", path: "/todos" },
   { viewId: "training", path: "/apps/fine-tuning" },

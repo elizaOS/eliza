@@ -25,6 +25,7 @@ export const VIEW_CASES: ViewCase[] = (
     // shipped case declares it.
     ["birdclaw", "gui", "/birdclaw"],
     ["contacts", "gui", "/contacts"],
+    ["cloud", "gui", "/cloud"],
     ["hyperliquid", "gui", "/hyperliquid"],
     ["focus", "gui", "/focus"],
     ["calendar", "gui", "/calendar"],
@@ -40,7 +41,6 @@ export const VIEW_CASES: ViewCase[] = (
     ["model-tester", "gui", "/model-tester"],
     ["phone", "gui", "/phone"],
     ["polymarket", "gui", "/polymarket"],
-    ["shopify", "gui", "/shopify"],
     ["wallet", "gui", "/wallet"],
     ["vector-browser", "gui", "/vector-browser"],
     ["feed", "gui", "/feed"],

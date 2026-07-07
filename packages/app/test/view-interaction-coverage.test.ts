@@ -346,6 +346,9 @@ const GUI_INTERACTION_OWNERS: Readonly<
 // hijacks the `/character/documents` route. It stays tracked debt until that
 // view path is disambiguated.
 const INTERACTION_DEBT: Readonly<Record<string, string>> = {
+  "cloud:gui":
+    "Eliza Cloud's view fronts the hosted cloud dashboard (external auth); " +
+    "newly ratchet-tracked by the #15269 sweep, no keyless interaction spec yet.",
   "lifeops-live-test:gui":
     "HITL live-validation view (needs real connector credentials + a human in " +
     "the loop, #11632); no keyless interaction spec can drive it yet.",
@@ -356,7 +359,7 @@ const INTERACTION_DEBT: Readonly<Record<string, string>> = {
     "disambiguated view path before a keyless interaction spec can drive it.",
 };
 
-const MAX_INTERACTION_DEBT = 2;
+const MAX_INTERACTION_DEBT = 3;
 
 const KEYLESS_INTERACTION_OWNER_DEBT = new Set([
   "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",

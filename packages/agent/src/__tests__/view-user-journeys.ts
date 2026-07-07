@@ -46,6 +46,7 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   // derives one journey per case below.
   { id: "birdclaw", viewType: "gui", path: "/birdclaw" },
   { id: "contacts", viewType: "gui", path: "/contacts" },
+  { id: "cloud", viewType: "gui", path: "/cloud" },
   { id: "hyperliquid", viewType: "gui", path: "/hyperliquid" },
   { id: "focus", viewType: "gui", path: "/focus" },
   { id: "calendar", viewType: "gui", path: "/calendar" },
@@ -65,7 +66,6 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   { id: "model-tester", viewType: "gui", path: "/model-tester" },
   { id: "phone", viewType: "gui", path: "/phone" },
   { id: "polymarket", viewType: "gui", path: "/polymarket" },
-  { id: "shopify", viewType: "gui", path: "/shopify" },
   { id: "wallet", viewType: "gui", path: "/wallet" },
   { id: "vector-browser", viewType: "gui", path: "/vector-browser" },
   { id: "feed", viewType: "gui", path: "/feed" },
