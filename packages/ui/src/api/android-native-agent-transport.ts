@@ -376,6 +376,36 @@ export async function androidNativeAgentLifecycleForUrl(
   return resolveNativeAgentPlugin();
 }
 
+/**
+ * Ask the native service to start the on-device agent that `url` targets.
+ * The startup coordinator fires this for the local-agent base it polls: the
+ * poll itself cannot wake the agent (an abstract-socket connect just blocks
+ * while nobody listens), and on a fresh install nothing else will — the
+ * MainActivity auto-start gate is evaluated before the renderer pre-seeds
+ * local mode, and onboarding (the only other `Agent.start()` caller) is
+ * skipped on the pre-seeded path (#15189). Native start is idempotent — a
+ * START_AGENT delivery to a running/booting service is absorbed by the
+ * socket-adopt and cold-boot guards — so callers may fire this once per
+ * polled base without coordinating with service state. Returns whether a
+ * start request actually reached the native plugin.
+ */
+export async function requestAndroidLocalAgentStartForUrl(
+  url: string | null | undefined,
+): Promise<boolean> {
+  if (!url || !shouldAttemptNativeAgentTransport(url)) return false;
+  if (!isNativeAndroid()) return false;
+  const agent = await resolveNativeAgentPlugin();
+  if (!agent?.start) return false;
+  try {
+    await agent.start();
+    return true;
+  } catch {
+    // error-policy:J4 a failed start request leaves the poll on its existing
+    // budget/timeout paths, which surface the failure with full context.
+    return false;
+  }
+}
+
 export async function getAndroidLocalAgentBootStateForUrl(
   url: string | null | undefined,
 ): Promise<AndroidLocalAgentBootState> {

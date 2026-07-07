@@ -4,6 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FirstRunOptions } from "../api";
+import { ANDROID_LOCAL_AGENT_IPC_BASE } from "../first-run/mobile-runtime-mode";
 import { clearPersistedActiveServer } from "./persistence";
 import {
   isRecoverableRemoteBase,
@@ -39,6 +40,7 @@ const androidBootStateMock = vi.hoisted(() => ({
       state: "unknown",
     }),
   ),
+  requestAndroidLocalAgentStartForUrl: vi.fn(async () => false),
 }));
 
 vi.mock("../api", () => ({
@@ -48,6 +50,8 @@ vi.mock("../api", () => ({
 vi.mock("../api/android-native-agent-transport", () => ({
   getAndroidLocalAgentBootStateForUrl:
     androidBootStateMock.getAndroidLocalAgentBootStateForUrl,
+  requestAndroidLocalAgentStartForUrl:
+    androidBootStateMock.requestAndroidLocalAgentStartForUrl,
 }));
 
 vi.mock("../api/client-cloud", () => ({
@@ -147,6 +151,9 @@ beforeEach(() => {
   androidBootStateMock.getAndroidLocalAgentBootStateForUrl.mockResolvedValue({
     state: "unknown",
   });
+  androidBootStateMock.requestAndroidLocalAgentStartForUrl.mockResolvedValue(
+    false,
+  );
   cloudMock.getCloudAuthToken.mockReturnValue(null);
 });
 
@@ -257,6 +264,71 @@ describe("runPollingBackend", () => {
       firstRunComplete: false,
     });
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
+  it("requests a native local-agent start exactly once for the polled base", async () => {
+    // #15189: on a fresh install the native auto-start gate ran before the
+    // renderer pre-seeded the local target, so the agent the poll waits for
+    // was never asked to start. The poll must fire the start request for the
+    // base it polls — and only once per base, even across retry iterations.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    const ipcBase = ANDROID_LOCAL_AGENT_IPC_BASE;
+    clientMock.getBaseUrl.mockReturnValue(ipcBase);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus
+      .mockRejectedValueOnce(
+        Object.assign(new Error("socket not accepting"), {
+          kind: "network",
+          path: "/api/auth/status",
+        }),
+      )
+      .mockResolvedValue({
+        required: false,
+        pairingEnabled: false,
+        expiresAt: null,
+      });
+
+    const localServer = {
+      id: "android:local-agent",
+      kind: "remote" as const,
+      label: "On-device agent",
+      apiBase: ipcBase,
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: localServer,
+      restoredActiveServer: localServer,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: false,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(
+      androidBootStateMock.requestAndroidLocalAgentStartForUrl,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      androidBootStateMock.requestAndroidLocalAgentStartForUrl,
+    ).toHaveBeenCalledWith(ipcBase);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
   });
 
   it("routes a DEV-UI-shell (port 2138) same-origin proxy outage to offline first-run instead of waiting for timeout", async () => {
