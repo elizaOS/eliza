@@ -8,6 +8,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { access } from "node:fs/promises";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -87,6 +88,21 @@ describe("parsePushData", () => {
 });
 
 describe("buildNotification", () => {
+  it("defaults to notification image assets that exist in public/", async () => {
+    expect(push.DEFAULT_ICON).toBe(
+      "/brand/favicons/android-chrome-192x192.png",
+    );
+    expect(push.DEFAULT_BADGE).toBe(
+      "/brand/favicons/android-chrome-192x192.png",
+    );
+    await expect(
+      access(join(__dirname, "..", "public", push.DEFAULT_ICON)),
+    ).resolves.toBeUndefined();
+    await expect(
+      access(join(__dirname, "..", "public", push.DEFAULT_BADGE)),
+    ).resolves.toBeUndefined();
+  });
+
   it("applies sane defaults for an empty payload", () => {
     const { title, options } = push.buildNotification({});
     expect(title).toBe(push.DEFAULT_TITLE);
@@ -214,6 +230,9 @@ describe("resolveClickTarget", () => {
       ),
     ).toBe("/?conversation=c1");
     expect(push.resolveClickTarget({ deepLink: "//evil" }, origin)).toBe("/");
+    expect(push.resolveClickTarget({ deepLink: "/\\evil.com" }, origin)).toBe(
+      "/",
+    );
   });
 
   it("builds a conversation url with agent when present", () => {
@@ -258,6 +277,16 @@ describe("focusOrOpen", () => {
     };
     await push.focusOrOpen(clientsLike, "/?conversation=c2", origin);
     expect(openWindow).toHaveBeenCalledWith(`${origin}/?conversation=c2`);
+  });
+
+  it("never opens a foreign origin after URL normalization", async () => {
+    const openWindow = vi.fn().mockResolvedValue({});
+    const clientsLike = {
+      matchAll: vi.fn().mockResolvedValue([]),
+      openWindow,
+    };
+    await push.focusOrOpen(clientsLike, "/\\evil.com", origin);
+    expect(openWindow).toHaveBeenCalledWith(`${origin}/`);
   });
 
   it("ignores a cross-origin client and opens a fresh window", async () => {
