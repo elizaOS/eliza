@@ -524,9 +524,6 @@ export async function runPollingBackend(
   // launch records WHICH base the poll hit and HOW it failed.
   let tracedPollFailures = 0;
   let tracedFirstSuccess = false;
-  // Local-agent start requests already fired this phase entry, keyed by base
-  // so a mid-phase base change (recoverToOnDeviceLocalAgent) gets its own.
-  const nativeStartRequestedBases = new Set<string>();
   appendIosBootTrace("polling-backend-start", {
     baseUrl: client.getBaseUrl(),
     backendTimeoutMs: policy.backendTimeoutMs,
@@ -616,13 +613,16 @@ export async function runPollingBackend(
     // install nobody else asks: the native auto-start gate was evaluated
     // before the renderer pre-seeded the local target, and onboarding (the
     // only other Agent.start() caller) is skipped on the pre-seeded path
-    // (#15189). Request the start explicitly, once per polled base, so the
-    // fresh boot, the Retry button, and a mid-phase recoverToOnDeviceLocalAgent
-    // all revive the agent instead of timing out against a service that was
-    // never started. Non-local bases no-op inside the helper.
+    // (#15189). Request the start on EVERY iteration, not once per base: a
+    // single request can be lost (service teardown race, FGS-window denial,
+    // a child that dies right after starting), and native start is idempotent
+    // — a START_AGENT delivery to a running/booting service is absorbed by
+    // the socket-adopt and cold-boot guards. Re-asking each retry makes the
+    // revive self-healing for the whole phase, covering the fresh boot, the
+    // Retry button, and a mid-phase recoverToOnDeviceLocalAgent base switch.
+    // Non-local bases no-op inside the helper.
     const polledBase = client.getBaseUrl();
-    if (polledBase && !nativeStartRequestedBases.has(polledBase)) {
-      nativeStartRequestedBases.add(polledBase);
+    if (polledBase) {
       void requestAndroidLocalAgentStartForUrl(polledBase).then((requested) => {
         if (requested) {
           logger.info(

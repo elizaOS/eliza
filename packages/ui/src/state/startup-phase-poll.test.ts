@@ -40,7 +40,9 @@ const androidBootStateMock = vi.hoisted(() => ({
       state: "unknown",
     }),
   ),
-  requestAndroidLocalAgentStartForUrl: vi.fn(async () => false),
+  requestAndroidLocalAgentStartForUrl: vi.fn(
+    async (_url: string | null | undefined) => false,
+  ),
 }));
 
 vi.mock("../api", () => ({
@@ -266,11 +268,13 @@ describe("runPollingBackend", () => {
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
   });
 
-  it("requests a native local-agent start exactly once for the polled base", async () => {
+  it("requests a native local-agent start on every poll iteration for the polled base", async () => {
     // #15189: on a fresh install the native auto-start gate ran before the
     // renderer pre-seeded the local target, so the agent the poll waits for
     // was never asked to start. The poll must fire the start request for the
-    // base it polls — and only once per base, even across retry iterations.
+    // base it polls on EVERY iteration — one request can be lost to a service
+    // teardown race or a child death, and native start is idempotent, so
+    // re-asking each retry is what makes the revive self-healing.
     const deps = createDeps();
     const dispatch = vi.fn();
     const ipcBase = ANDROID_LOCAL_AGENT_IPC_BASE;
@@ -319,12 +323,17 @@ describe("runPollingBackend", () => {
       { current: null },
     );
 
+    // Two iterations ran (one rejected probe, one success) → two requests,
+    // both for the polled base. The per-iteration re-ask is deliberate: it is
+    // what revives the agent when an earlier request was lost.
     expect(
       androidBootStateMock.requestAndroidLocalAgentStartForUrl,
-    ).toHaveBeenCalledTimes(1);
+    ).toHaveBeenCalledTimes(2);
     expect(
-      androidBootStateMock.requestAndroidLocalAgentStartForUrl,
-    ).toHaveBeenCalledWith(ipcBase);
+      androidBootStateMock.requestAndroidLocalAgentStartForUrl.mock.calls.map(
+        (call) => call[0],
+      ),
+    ).toEqual([ipcBase, ipcBase]);
     expect(dispatch).toHaveBeenCalledWith({
       type: "BACKEND_REACHED",
       firstRunComplete: false,
