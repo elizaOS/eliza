@@ -107,8 +107,14 @@ export default scenario({
     },
     {
       // Effect proof (#11381): the list op really read the per-agent
-      // EntityStore — a fresh graph must surface an empty entities array in
-      // the result payload, not just handler success.
+      // EntityStore, not a fabricated empty array. The scenario runtime is
+      // seeded at boot with the benchmark LifeOps contact fixture
+      // (`seedBenchmarkLifeOpsFixtures` in runtime-factory.ts: David Park,
+      // Marcus Walters, Jane Patel, Downtown Dental, Comet Cable Support, plus
+      // the simulator's contacts), so a real read surfaces those rows. Asserting
+      // a distinctive seeded contact appears — rather than an exact count —
+      // keeps this green in the shared corpus where earlier scenarios may add
+      // their own entities.
       type: "custom",
       name: "entity-store-read-effect",
       predicate: (ctx) => {
@@ -122,8 +128,22 @@ export default scenario({
         if (!Array.isArray(data.entities)) {
           return `expected result.data.entities array from the EntityStore, saw ${JSON.stringify(data.entities ?? null)}`;
         }
-        if (data.entities.length !== 0) {
-          return `fresh knowledge graph must have no entities; saw ${data.entities.length}`;
+        const preferredNames = new Set(
+          data.entities
+            .map((entity) =>
+              entity !== null &&
+              typeof entity === "object" &&
+              typeof (entity as { preferredName?: unknown }).preferredName ===
+                "string"
+                ? (entity as { preferredName: string }).preferredName
+                : null,
+            )
+            .filter((name): name is string => name !== null),
+        );
+        // A guaranteed benchmark-fixture contact seeded at runtime boot; its
+        // presence proves the list op read the real per-agent EntityStore.
+        if (!preferredNames.has("Downtown Dental")) {
+          return `expected the seeded EntityStore contact "Downtown Dental" in the list result; saw ${data.entities.length} entities: ${JSON.stringify([...preferredNames])}`;
         }
       },
     },

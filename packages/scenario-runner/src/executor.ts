@@ -289,6 +289,33 @@ function resetScenarioLlmFixtures(runtime: AgentRuntime): void {
   registry?.resetConsumption?.();
 }
 
+/**
+ * Wipe the shared LifeOps scheduling + owner-fact state before a scenario runs.
+ *
+ * The CLI reuses ONE runtime + PGLite DB across the whole corpus, so scheduling
+ * state (scheduled-task rows, persisted circadian/schedule state) and owner
+ * facts (timezone, windows, quiet hours, active travel) survive scenario
+ * boundaries. A scenario that ticks at a future `now` (persona packs run days
+ * ahead) leaves a `sleeping` circadian state that a later scenario reads at its
+ * own earlier clock and wrongly suppresses reminders as "probable_sleep". Reset
+ * it here so every scenario starts from a clean profile regardless of run order.
+ * Only runs when plugin-personal-assistant (which owns that state and its
+ * `app_lifeops` tables) is loaded; otherwise there is nothing to reset.
+ */
+async function resetSharedSchedulingState(
+  runtime: AgentRuntime,
+): Promise<void> {
+  if (!pluginIsRegistered(runtime, "@elizaos/plugin-personal-assistant")) {
+    return;
+  }
+  const { resetLifeOpsScenarioState } = (await import(
+    "@elizaos/plugin-personal-assistant/plugin"
+  )) as {
+    resetLifeOpsScenarioState: (runtime: AgentRuntime) => Promise<void>;
+  };
+  await resetLifeOpsScenarioState(runtime);
+}
+
 function assertScenarioLlmFixturesConsumed(
   runtime: AgentRuntime,
 ): string | undefined {
@@ -2200,6 +2227,7 @@ export async function runScenario(
 
   try {
     resetScenarioLlmFixtures(runtime);
+    await resetSharedSchedulingState(runtime);
 
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", primaryRoom.userId, false);
     (
