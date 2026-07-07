@@ -362,10 +362,9 @@ export class AgentSandboxesRepository {
    * Find running, non-deleted agents whose stored `image_digest` differs from
    * `targetDigest` (treating NULL as different). Used by the fleet-upgrade
    * reconciler to enqueue blue/green swaps onto the currently-deployed image.
-   * Rows with an explicit `error_message` are skipped because an exhausted
-   * upgrade records its terminal retry state there without marking the still-live
-   * sandbox non-running. Capped by `limit` so a single cycle doesn't try to
-   * enqueue the whole fleet at once.
+   * Rollback-safe exhausted upgrades are skipped only for the exact target digest
+   * they already failed, so a later target digest re-arms the agent. Capped by
+   * `limit` so a single cycle doesn't try to enqueue the whole fleet at once.
    */
   async listRunningWithDigestOtherThan(
     targetDigest: string,
