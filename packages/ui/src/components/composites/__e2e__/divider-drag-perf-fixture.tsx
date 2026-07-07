@@ -48,8 +48,8 @@ window.__DIVIDER_METRICS__ = {
 function persist(key: string, value: number, which: "legacy" | "shipped") {
   try {
     window.localStorage.setItem(key, String(value));
-  } catch {
-    /* ignore */
+  } catch (error) {
+    void error;
   }
   if (which === "legacy") window.__DIVIDER_METRICS__.legacyStorageWrites += 1;
   else window.__DIVIDER_METRICS__.shippedStorageWrites += 1;
