@@ -82,8 +82,8 @@ jobs:
 
   unit-tests:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    # PR #15311 repeatedly reached the old 15m ceiling while the cloud suite was still passing.
-    timeout-minutes: 25
+    # Cloud unit tests can run past 25m on saturated self-hosted runners while still passing.
+    timeout-minutes: 40
     env:
       NODE_ENV: test
     steps:
