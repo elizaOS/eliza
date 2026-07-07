@@ -41,6 +41,17 @@ Package: python3-aiorpcx python3-electrum-aionostr python3-electrum-ecc libsecp2
 Pin: release o=Debian,n=trixie-backports
 Pin-Priority: 999
 
+Explanation: rocm-opencl-icd (ROCm compute) is an unintended provider of the
+Explanation: virtual `opencl-icd` on this mesa-graphics distro, and it carries
+Explanation: `Breaks: mesa-opencl-icd`. In the multi-suite snapshot the apt
+Explanation: solver selects both it and mesa-opencl-icd (the intended provider),
+Explanation: deadlocking the chroot package install ("Reached two conflicting
+Explanation: decisions"). Pin it out so `opencl-icd` resolves to mesa-opencl-icd
+Explanation: alone. Nothing in our package lists depends on rocm directly.
+Package: rocm-opencl-icd
+Pin: release *
+Pin-Priority: -1
+
 Explanation: weirdness in chroot_apt install-binary
 Package: *
 Pin: release o=chroot_local-packages

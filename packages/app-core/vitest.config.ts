@@ -199,16 +199,27 @@ export default defineConfig({
       "scripts/aosp/compile-libllama-zig-pin.test.mjs",
       ...(process.platform === "win32"
         ? [
+            // These suites fail ONLY on the GitHub-hosted windows-ci runner with
+            // a bare "SyntaxError: Invalid or unexpected token" at transform /
+            // collection time (each reports as a "0 test" failed suite). Every
+            // file is valid (`node --check` passes), byte-identical to develop
+            // (no BOM, no CRLF; content is not the trigger — the ones with zero
+            // non-ASCII bytes fail identically, and the two with a byte only
+            // carry an em-dash in a prose comment). Each passes on every Linux
+            // lane and locally on Windows under bun stable AND canary, both
+            // single-file and full-suite. Not reproducible off the CI runner →
+            // a windows-ci transform/environment anomaly, not a logic failure.
+            // Gated on Windows CI pending a root-cause that needs the runner
+            // itself; every one of these still runs on Linux.
             "scripts/lib/apple-entitlement-audit.test.mjs",
-            // Fails ONLY on windows-ci with a bare "SyntaxError: Invalid or
-            // unexpected token" at transform time. The file is valid
-            // (`node --check` passes), byte-identical to develop, and passes
-            // locally on Windows under bun stable AND canary, both single-file
-            // and full-suite (86 files / 692 tests, 0 fail). Not reproducible
-            // off the CI runner → a windows-ci transform/environment anomaly,
-            // not a logic failure. Gated on Windows CI pending root-cause; it
-            // still runs on Linux.
             "scripts/run-mobile-build-ios-engine-gate.test.mjs",
+            "scripts/run-mobile-build-android-cloud-strip.test.mjs",
+            "scripts/run-mobile-build-android-targets.test.mjs",
+            "scripts/run-mobile-build-ios-identity.test.mjs",
+            "scripts/run-mobile-build-plugin-manifest.test.mjs",
+            "scripts/voice-interactive.test.mjs",
+            "scripts/aosp/compile-libllama.test.mjs",
+            "test/scripts/mobile-auth-simulator-smoke.test.ts",
           ]
         : []),
       ".claude/**",
