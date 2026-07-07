@@ -13,6 +13,7 @@ import { getSolanaTokenPrices } from "./providers/priceProvider";
 import { analyzeWalletRisk } from "./analyzers/risk";
 import { analyzeWalletWhaleStatus } from "./analyzers/whale";
 import { analyzeWalletDeFi } from "./analyzers/defi";
+import { analyzeWalletBehavior } from "./analyzers/behavior";
 import {
   SupportedChain,
   WalletBalance,
@@ -117,6 +118,14 @@ const whale = analyzeWalletWhaleStatus(
 
 const defi = analyzeWalletDeFi(parsedTransactions);
 
+const behavior = analyzeWalletBehavior(
+  activity,
+  age,
+ defi,
+  whale,
+  risk,
+);
+
         return {
           chain,
           address: walletAddress,
@@ -126,6 +135,7 @@ tokenHoldings,
 portfolio,
 whale,
 defi,
+behavior,
 recentTransactions,
 transactionCountSample: recentTransactions.length,
 activity,
