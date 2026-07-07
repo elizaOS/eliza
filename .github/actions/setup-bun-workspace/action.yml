@@ -368,7 +368,7 @@ runs:
         fi
         # Final fallback: scan the whole node_modules tree (slower but
         # exhaustive). Skip if we already found one above.
-        if [ -z "$install_js" ] || [ ! -f "$install_js" ]; then
+        if { [ -z "$install_js" ] || [ ! -f "$install_js" ]; } && [ -d node_modules ]; then
           install_js="$(find node_modules -path '*/bun/install.js' -print -quit 2>/dev/null)"
         fi
         if [ -n "$install_js" ] && [ -f "$install_js" ]; then
