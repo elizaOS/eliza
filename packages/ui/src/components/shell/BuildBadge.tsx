@@ -21,6 +21,7 @@
 import { X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Z_BUILD_BADGE } from "../../lib/floating-layers";
+import { getStandaloneBottomReclaimState } from "../../platform/standalone-bottom-reclaim";
 
 const BUILD_INFO_URL = "/build-info.json";
 const DISMISS_KEY = "eliza.buildBadge.dismissed";
@@ -115,14 +116,22 @@ function probeRootUnit(value: string): number | null {
 /**
  * The compact single-line geometry readout the mandate asks for so a screenshot
  * is ground truth: innerHeight / visualViewport.height /
- * documentElement.clientHeight / screen.height / `100lvh` vs `100dvh` probes. Rendered ON the
- * badge (no tap needed) so the NEXT device screenshot reveals the exact
+ * documentElement.clientHeight / screen.height / measured
+ * `--standalone-bottom-reclaim` / reclaim wiring state / `100lvh` vs `100dvh`
+ * probes. Rendered ON the badge (no tap needed) so the NEXT device screenshot reveals the exact
  * viewport geometry — ending the blind hypothesis cycle (do the three
  * candidate "true screen" heights agree at the collapsed layout viewport, which
  * would explain a measurement no-op, or does one exceed clientHeight?).
  *
- * Format e.g. `ih932 vv932 ce873 sh932 lv932 dv873`. Stamped-builds only
- * (this whole component renders nothing without `/build-info.json`).
+ * Format e.g. `ih932 vv932 ce873 sh932 rc59 rcw:on lv932 dv873`. The `rcw`
+ * (reclaim-wiring) token is the #15178 device-debug witness: `rcw:off` means the
+ * bottom-reclaim install gate NEVER ran on this boot path (installer not wired
+ * into the live entry — the exact regression that shipped `rc?`), `rcw:on` means
+ * the installer armed, `rcw:clear` means it was explicitly zeroed on a
+ * non-standalone surface. `rc?`+`rcw:off` together = smoking gun for an orphaned
+ * installer; `rc0`+`rcw:on` = installer ran and simply measured no collapse.
+ * Stamped-builds only (this whole component renders nothing without
+ * `/build-info.json`).
  */
 function collectGeometryLine(): string {
   try {
@@ -135,6 +144,8 @@ function collectGeometryLine(): string {
       typeof window.screen?.height === "number"
         ? Math.round(window.screen.height)
         : null;
+    const rc = readReclaimVarPx();
+    const rcw = getStandaloneBottomReclaimState();
     const lv = probeRootUnit("100lvh");
     const dv = probeRootUnit("100dvh");
     const part = (k: string, n: number | null) => `${k}${n ?? "?"}`;
@@ -143,11 +154,31 @@ function collectGeometryLine(): string {
       part("vv", vv),
       part("ce", ce),
       part("sh", sh),
+      part("rc", rc),
+      `rcw:${rcw}`,
       part("lv", lv),
       part("dv", dv),
     ].join(" ");
   } catch {
     return "geom?";
+  }
+}
+
+/**
+ * Read the live `--standalone-bottom-reclaim` var off the root as an integer px
+ * so the geometry line reports the reclaim value the layers are actually using.
+ * `?` means the variable was absent or unreadable.
+ */
+function readReclaimVarPx(): number | null {
+  try {
+    const raw = getComputedStyle(document.documentElement)
+      .getPropertyValue("--standalone-bottom-reclaim")
+      .trim();
+    if (!raw) return null;
+    const n = Number.parseFloat(raw);
+    return Number.isFinite(n) ? Math.round(n) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -218,6 +249,10 @@ function collectDiagnostics(): DiagRow[] {
         typeof window.screen?.height === "number"
           ? `${Math.round(window.screen.height)}px`
           : "n/a",
+    },
+    {
+      k: "reclaim-var",
+      v: `${readReclaimVarPx() ?? "?"}px`,
     },
     { k: "100dvh", v: `${measureCssHeight("100dvh") ?? "?"}px` },
     { k: "100lvh", v: `${measureCssHeight("100lvh") ?? "?"}px` },
@@ -331,7 +366,7 @@ export function BuildBadge() {
           {geom ? (
             <span
               data-testid="build-badge-geom"
-              title="Live viewport geometry (ih=innerHeight vv=visualViewport ce=docEl.clientHeight sh=screen.height lv=100lvh dv=100dvh)"
+              title="Live viewport geometry (ih=innerHeight vv=visualViewport ce=docEl.clientHeight sh=screen.height rc=reclaim-var rcw=reclaim-wiring lv=100lvh dv=100dvh)"
               className="font-mono tracking-tight text-3xs text-muted/80"
             >
               {geom}

@@ -122,6 +122,20 @@ body.pwa-standalone {
   touch-action: pan-y;
 }
 
+/* Installed iOS PWAs can report a large viewport (`100lvh`) that reaches the
+   physical screen while `100dvh` and `innerHeight` remain collapsed above the
+   home indicator. Size `html` to the large viewport so its overflow clip and
+   canvas do not truncate the reclaimed wallpaper/composer bottom paint. The
+   100vh->100dvh->100lvh stack keeps older engines on the best supported unit. */
+html:has(body.native),
+html:has(body.pwa-standalone) {
+  height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
+  height: 100dvh;
+  height: 100lvh;
+  background: transparent;
+}
+
 /* Native Capacitor build only: the WKWebView is the app window, so a fixed body's
    initial containing block IS the full screen — `inset: 0` fills it. */
 body.native {
@@ -129,22 +143,14 @@ body.native {
   inset: 0;
 }
 
-/* iOS Safari standalone PWA + native mobile: fill the viewport, full-bleed to
-   the physical bottom.
-
-   The body is scroll-locked WITHOUT `position: fixed` (base.css: exact-height,
-   overflow-clipped, `overscroll-behavior: none`), so the containing block for
-   `position: fixed` descendants equals the true visual viewport and the
-   `fixed inset-0` wallpaper reaches the real screen bottom on its own — no ICB
-   collapse, no reclaim math. `#root` and the app-shell column simply fill the
-   viewport (`100dvh` = the full screen in standalone, the full window on
-   native); `100vh` is the progressive fallback for engines without `dvh`. The
-   home-indicator safe area is padding INSIDE the app (the composer respects
-   env(safe-area-inset-bottom) via --safe-area-bottom), so controls stay above
-   the indicator while the wallpaper bleeds under it, lock-screen style. */
+/* iOS Safari standalone PWA + native mobile: `html` owns the physical-bottom
+   clip, while `#root` and the app-shell column stay constrained to the dynamic
+   viewport. Safe-area padding stays inside the app so controls remain tappable
+   above the home indicator while the wallpaper can bleed underneath. */
 body.native #root,
 body.pwa-standalone #root {
   min-height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh). */
   min-height: 100dvh;
   max-height: 100vh;
   max-height: 100dvh;
@@ -164,22 +170,25 @@ body.pwa-standalone textarea {
   resize: none;
 }
 
-/* ─── CSS-FIRST installed-PWA geometry (detection-independent) ───
-   Mirror of the `body.pwa-standalone` rules above, gated on the standalone/
-   fullscreen display-mode + a coarse pointer instead of the JS-added class.
-   This is the SOURCE OF TRUTH for the installed iOS PWA because the class does
-   not land on device (app/main.tsx runs a local setupPlatformStyles that never
-   tags the body — see base.css note + issue): `pan-y` hands horizontal drags to
-   the app rail/grabber, and `#root`/the shell column fill the viewport so the
-   app paints full-bleed to the physical bottom. The body scroll-lock (non-fixed:
-   exact height + clipped overflow + `overscroll-behavior: none`) lives in the
-   base.css `@media` block; keeping the body NON-fixed is what lets the
-   fixed-descendant wallpaper reach the true bottom with no reclaim. Desktop
-   fullscreen (fine pointer) is excluded by `(pointer: coarse)`. */
+/* CSS-first installed-PWA geometry mirrors the class-path rules through
+   display-mode media queries because the JS-added `body.pwa-standalone` class is
+   not available early enough on every installed-web path. Coarse pointer keeps
+   desktop fullscreen outside this mobile shell contract. */
 @media all and (display-mode: standalone) and (pointer: coarse),
   all and (display-mode: fullscreen) and (pointer: coarse) {
   body {
     touch-action: pan-y;
+  }
+
+  /* Media-query twin of the class-path html rule. It protects the installed PWA
+     before runtime classes settle, using the large viewport for the root clip and
+     transparent root paint so the wallpaper owns the physical bottom edge. */
+  html {
+    height: 100vh;
+    /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
+    height: 100dvh;
+    height: 100lvh;
+    background: transparent;
   }
 
   body #root {
@@ -190,13 +199,8 @@ body.pwa-standalone textarea {
     max-height: 100dvh;
     padding: 0;
     box-sizing: border-box;
-    /* BOTTOM-BAR FIX (r10): transparent #root so its #160d07 launch-bg never
-       paints the collapsed-ICB strip. On device #root renders 873px tall (the
-       collapsed fixed-body ICB), painting #160d07 across it, and the 59px below
-       (873→932) is html/body #160d07 — together the recurring strip. Going
-       transparent lets the fixed AppBackground wallpaper plus the mirrored html
-       canvas be the ONLY paint at the bottom edge. Folded into this geometry rule to
-       avoid a descending-specificity split. */
+    /* Keep launch paint out of the collapsed dynamic viewport so the fixed
+       AppBackground layer is the only visual owner of the bottom edge. */
     background: transparent;
   }
 
