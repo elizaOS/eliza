@@ -21,6 +21,8 @@
  * cannot try to provision an on-device agent that physically isn't there.
  */
 
+import { getFrontendPlatform } from "./platform-guards";
+
 export type AndroidRuntimeMode = "cloud" | "local";
 
 type RuntimeEnv = Record<string, string | boolean | undefined>;
@@ -62,4 +64,16 @@ export function isAndroidCloudBuild(): boolean {
       ? ((import.meta as { env: RuntimeEnv }).env as RuntimeEnv)
       : {};
   return resolveAndroidRuntimeMode(env) === "cloud";
+}
+
+/**
+ * True on the Android builds that ship the on-device agent runtime
+ * (`android` sideload / `android-system`): a native Android shell that is not
+ * the cloud-locked Play-Store variant. These builds' whole point is the local
+ * agent, so onboarding must offer the local runtime path
+ * (first-run-runtime-flag.ts) — but never auto-start it before the user picks
+ * it (#14390).
+ */
+export function isAndroidLocalSideloadBuild(): boolean {
+  return getFrontendPlatform() === "android" && !isAndroidCloudBuild();
 }

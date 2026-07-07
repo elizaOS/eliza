@@ -132,20 +132,22 @@ public class MainActivity extends BridgeActivity {
 
         // Auto-start the local Eliza agent runtime as a foreground service.
         // shouldAutoStart() returns true on branded devices (AOSP/ElizaOS —
-        // the device IS the agent), on stock Android when the user picked
-        // Local mode in onboarding, and on a fresh install of any build that
-        // ships the agent payload — the renderer pre-seeds the on-device
-        // agent as its backend on first paint, so the payload build must
-        // start it here or the first launch polls a socket no one serves
-        // (#15189). Explicit Cloud/Remote choices skip this so we don't burn
-        // battery on a service they never call. The boot receiver covers the
-        // cold-boot path; this is the fast path when the user opens the app.
+        // the device IS the agent) and on stock Android ONLY when the user
+        // picked Local mode in onboarding AND the device clears the 8 GB RAM
+        // floor (DeviceRamTierPolicy, #14390). A fresh install never
+        // auto-starts: onboarding owns the runtime decision, and the renderer
+        // starts this service on demand through the Agent Capacitor plugin
+        // when the user commits to the local runtime — starting a 4 GB phone's
+        // bundled agent before any choice wedged boot for the full 180 s
+        // startup budget. Explicit Cloud/Remote choices skip this so we don't
+        // burn battery on a service they never call. The boot receiver covers
+        // the cold-boot path; this is the fast path when the user opens the
+        // app.
         if (ElizaAgentService.shouldAutoStart(this)) {
             ElizaAgentService.start(this);
             // Ask for notification consent only once the user (or the device
-            // image) has actually committed to running the on-device agent.
-            // A fresh install runs the pre-seeded agent before any recorded
-            // choice — keep first paint free of a cold permission ask and let
+            // image) has actually committed to running the on-device agent —
+            // keep first paint free of a cold permission ask and let
             // onboarding own that moment.
             if (ElizaAgentService.hasCommittedRuntimeChoice(this)) {
                 requestPostNotificationsIfNeeded();

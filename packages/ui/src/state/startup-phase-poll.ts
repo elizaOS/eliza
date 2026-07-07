@@ -617,18 +617,16 @@ export async function runPollingBackend(
       return;
     }
     // The poll cannot wake the agent it is waiting for — an Android local-IPC
-    // probe just blocks while nobody serves the socket — and on a fresh
-    // install nobody else asks: the native auto-start gate was evaluated
-    // before the renderer pre-seeded the local target, and onboarding (the
-    // only other Agent.start() caller) is skipped on the pre-seeded path
-    // (#15189). Request the start on EVERY iteration, not once per base: a
-    // single request can be lost (service teardown race, FGS-window denial,
-    // a child that dies right after starting), and native start is idempotent
-    // — a START_AGENT delivery to a running/booting service is absorbed by
-    // the socket-adopt and cold-boot guards. Re-asking each retry makes the
-    // revive self-healing for the whole phase, covering the fresh boot, the
-    // Retry button, and a mid-phase recoverToOnDeviceLocalAgent base switch.
-    // Non-local bases no-op inside the helper.
+    // probe just blocks while nobody serves the socket. A branded device
+    // auto-starts the agent at boot and a stock device starts it from the
+    // onboarding finish (#14390), but that one START_AGENT can be lost to a
+    // service teardown race, an FGS-window denial, or a child that dies right
+    // after starting. Request the start on EVERY iteration, not once per base:
+    // native start is idempotent — a START_AGENT delivery to a running/booting
+    // service is absorbed by the socket-adopt and cold-boot guards. Re-asking
+    // each retry makes the revive self-healing for the whole phase, covering
+    // the boot, the Retry button, and a mid-phase recoverToOnDeviceLocalAgent
+    // base switch. Non-local bases no-op inside the helper.
     const polledBase = client.getBaseUrl();
     if (polledBase) {
       void requestAndroidLocalAgentStartForUrl(polledBase).then((requested) => {

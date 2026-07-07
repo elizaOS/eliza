@@ -33,6 +33,16 @@
  * - needs-cloud-login re-offers an UNLOCKED runtime choice and arms a
  *   connect-and-resume continuation (`pendingCloudResumeRef`).
  *
+ * Device RAM-tier gating + reversibility (#14390): the runtime and provider
+ * CHOICE blocks are built per-seed against the device's RAM-tier assessment
+ * (`device-ram-gate.ts`) — a sub-8 GB phone sees "On this device" labeled
+ * unavailable and its tap refused with the reason; a sub-12 GB phone gets
+ * on-device models blocked the same way (never silently hidden). Every
+ * sub-step CHOICE carries a "← Back" option whose handler unwinds any
+ * partially-committed local runtime (persisted mode, local active server,
+ * started service) before re-offering a fresh runtime choice, so onboarding
+ * is never forward-only and switching local→cloud leaves nothing running.
+ *
  * Cloud-only mode (#13377): the runtime chooser (local / remote) is gated by
  * `isRuntimeChooserEnabled()` and OFF by default. With the chooser off,
  * onboarding is a single "sign in to Eliza Cloud" step — the greeting IS the
@@ -71,6 +81,11 @@ import {
 } from "../state/cloud-login-launch";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
 import { startTutorial } from "../tutorial/tutorial-service";
+import {
+  peekDeviceRamTierAssessment,
+  resolveDeviceRamTierAssessment,
+} from "./device-ram-gate";
+import type { DeviceRamTierAssessment } from "./device-ram-tier";
 import { normalizeFirstRunName } from "./first-run";
 import {
   FIRST_RUN_ACTION_PREFIX,
@@ -92,6 +107,7 @@ import {
   runFirstRunFinish,
 } from "./first-run-finish";
 import { isRuntimeChooserEnabled } from "./first-run-runtime-flag";
+import { revertLocalRuntimeCommitment } from "./revert-local-runtime-commitment";
 
 const GREETING =
   "Hi — I'm Eliza. Let's get you set up. First, where should your agent run?";
@@ -194,6 +210,13 @@ function newestLocalBackup(
   );
 }
 
+// The "go back and change an earlier pick" option appended to every sub-step
+// CHOICE (#14390): onboarding must never be forward-only. Its handler runs the
+// reversal cleanup (revert-local-runtime-commitment.ts) before re-offering a
+// fresh runtime choice, so backing out of a partially-committed local pick
+// leaves no persisted mode, no local active server, and no running service.
+const BACK_TO_RUNTIME_OPTION = `${FIRST_RUN_ACTION_PREFIX}back:runtime=← Back — change where your agent runs`;
+
 // The first-run location chooser: Cloud (managed), On this device, or Remote
 // (connect to an existing agent elsewhere). "Bring your own keys" is NOT a
 // location — it lives one step later on the provider sub-choice as
@@ -201,13 +224,26 @@ function newestLocalBackup(
 // runtime with `configure-later` and hands off provider setup to Settings via
 // the finish path's banner. Remote picks an already-running agent by URL +
 // token; it owns its own provider, so it skips the provider sub-step.
-const RUNTIME_CHOICE = [
-  "[CHOICE:first-run id=runtime]",
-  `${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Eliza Cloud (managed)`,
-  `${FIRST_RUN_ACTION_PREFIX}runtime:local=On this device`,
-  `${FIRST_RUN_ACTION_PREFIX}runtime:remote=Connect to a remote agent`,
-  "[/CHOICE]",
-].join("\n");
+//
+// Built per-render because the local option is RAM-tier-gated (#14390): on a
+// device below the 8 GB floor it stays VISIBLE but labeled unavailable (never
+// silently hidden), and its tap is refused with the reason. The tier probe is
+// synchronous on Android; when it has not resolved yet (iOS first frames) the
+// plain label renders and the pick handler + finish backstop still enforce.
+function runtimeChoiceBlock(): string {
+  const tier = peekDeviceRamTierAssessment();
+  const localLabel =
+    tier && !tier.allowsLocalAgent
+      ? `On this device (unavailable — needs 8 GB+ RAM, ~${tier.marketedRamGb} GB detected)`
+      : "On this device";
+  return [
+    "[CHOICE:first-run id=runtime]",
+    `${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Eliza Cloud (managed)`,
+    `${FIRST_RUN_ACTION_PREFIX}runtime:local=${localLabel}`,
+    `${FIRST_RUN_ACTION_PREFIX}runtime:remote=Connect to a remote agent`,
+    "[/CHOICE]",
+  ].join("\n");
+}
 
 const BACKUP_RESTORE_CHOICE = [
   "[CHOICE:first-run id=backup-restore]",
@@ -216,15 +252,33 @@ const BACKUP_RESTORE_CHOICE = [
   "[/CHOICE]",
 ].join("\n");
 
-function providerChoice(opts: { defaultId: "on-device" | "other" }): string {
-  const onDevice = `${FIRST_RUN_ACTION_PREFIX}provider:on-device=On this device (recommended)`;
-  const cloud = `${FIRST_RUN_ACTION_PREFIX}provider:elizacloud=Eliza Cloud inference`;
+// RAM-tier-gated (#14390): below the 12 GB on-device-model floor the
+// on-device option stays visible but labeled unavailable (its tap is refused
+// with the reason) and the recommendation moves to Eliza Cloud inference —
+// the local agent remains allowed in cloud-inference mode on that band.
+function providerChoice(opts: {
+  defaultId: "on-device" | "other";
+  tier: DeviceRamTierAssessment | null;
+}): string {
+  const modelsBlocked = opts.tier != null && !opts.tier.allowsLocalModels;
+  const onDevice = modelsBlocked
+    ? `${FIRST_RUN_ACTION_PREFIX}provider:on-device=On this device (unavailable — needs 12 GB+ RAM, ~${opts.tier?.marketedRamGb} GB detected)`
+    : `${FIRST_RUN_ACTION_PREFIX}provider:on-device=On this device (recommended)`;
+  const cloud = modelsBlocked
+    ? `${FIRST_RUN_ACTION_PREFIX}provider:elizacloud=Eliza Cloud inference (recommended)`
+    : `${FIRST_RUN_ACTION_PREFIX}provider:elizacloud=Eliza Cloud inference`;
   const other = `${FIRST_RUN_ACTION_PREFIX}provider:other=Other / configure in Settings`;
-  const ordered =
-    opts.defaultId === "on-device"
+  const ordered = modelsBlocked
+    ? [cloud, onDevice, other]
+    : opts.defaultId === "on-device"
       ? [onDevice, cloud, other]
       : [other, onDevice, cloud];
-  return ["[CHOICE:first-run id=provider]", ...ordered, "[/CHOICE]"].join("\n");
+  return [
+    "[CHOICE:first-run id=provider]",
+    ...ordered,
+    BACK_TO_RUNTIME_OPTION,
+    "[/CHOICE]",
+  ].join("\n");
 }
 
 const TUTORIAL_CHOICE = [
@@ -364,7 +418,7 @@ export function surfaceCloudLoginRetryTurn(writer: FirstRunTurnWriter): void {
   // runtime to re-pick: the retry turn re-offers the single sign-in button
   // (whose tap re-enters the cloud flow with a fresh user gesture).
   const retryText = isRuntimeChooserEnabled()
-    ? `Connect your Eliza Cloud account to continue — I'll pick up where we left off. You can also pick how to run your agent again.\n\n${RUNTIME_CHOICE}`
+    ? `Connect your Eliza Cloud account to continue — I'll pick up where we left off. You can also pick how to run your agent again.\n\n${runtimeChoiceBlock()}`
     : `Sign in to Eliza Cloud to continue — I'll pick up where we left off.\n\n${CLOUD_SIGN_IN_CHOICE}`;
   const connectTurn = makeTurn("first-run:cloud-oauth", retryText, {
     secretRequest: cloudOAuthSecretRequest("failed"),
@@ -497,7 +551,7 @@ export function useFirstRunConductor(): void {
 
   const seedRuntimeChoice = React.useCallback(() => {
     seedTurn(
-      makeTurn("first-run:greeting", `${GREETING}\n\n${RUNTIME_CHOICE}`),
+      makeTurn("first-run:greeting", `${GREETING}\n\n${runtimeChoiceBlock()}`),
     );
   }, [seedTurn]);
 
@@ -645,6 +699,11 @@ export function useFirstRunConductor(): void {
       lines.push(
         `${FIRST_RUN_ACTION_PREFIX}cloud-agent:new=Create a new agent`,
       );
+      // Cloud-only mode has no runtime to go back to; only offer the back
+      // affordance when the chooser owns this flow.
+      if (isRuntimeChooserEnabled()) {
+        lines.push(BACK_TO_RUNTIME_OPTION);
+      }
       seedFreshChoiceTurn(
         "first-run:cloud-agent",
         `Which Eliza Cloud agent should I use?\n\n[CHOICE:first-run id=cloud-agent]\n${lines.join("\n")}\n[/CHOICE]`,
@@ -896,11 +955,18 @@ export function useFirstRunConductor(): void {
       // every further first-run pick is a stale-widget no-op.
       if (completedRef.current) return true;
       // Cloud-only mode: runtime:cloud is the live "Sign in to Eliza Cloud"
-      // button; every other runtime / provider / backup-restore pick can only
-      // be a stale widget from a chooser-mode transcript (or garbage) —
-      // consume those untouched so they can't start a local/remote flow.
+      // button; every other runtime / provider / backup-restore / back pick
+      // can only be a stale widget from a chooser-mode transcript (or
+      // garbage) — consume those untouched so they can't start a local/remote
+      // flow (there is no runtime chooser to go "back" to).
       if (!isRuntimeChooserEnabled()) {
-        if (group === "provider" || group === "backup-restore") return true;
+        if (
+          group === "provider" ||
+          group === "backup-restore" ||
+          group === "back"
+        ) {
+          return true;
+        }
         if (group === "runtime" && id !== "cloud") return true;
       }
       // A fresh pick supersedes any armed connect-and-resume continuation —
@@ -913,6 +979,13 @@ export function useFirstRunConductor(): void {
 
       if (group === "runtime") {
         if (id !== "cloud" && id !== "local" && id !== "remote") return true;
+        // Switching AWAY from a previously-picked (possibly partially
+        // committed) local runtime must unwind it: clear the persisted mode +
+        // local active server and stop a service a failed finish may have
+        // started (#14390). No-op when nothing local was committed.
+        if (id !== "local") {
+          void revertLocalRuntimeCommitment();
+        }
         if (id === "cloud") {
           draftRef.current = {
             ...draftRef.current,
@@ -945,27 +1018,48 @@ export function useFirstRunConductor(): void {
           // its own provider, so there is no provider sub-step — and it never
           // routes through runFirstRunFinish, so draftRef (a FirstRunFinishDraft,
           // which excludes "remote") is intentionally left untouched.
+          // The back CHOICE rides in the same turn's text, under the inline
+          // connect form — the form comes from `secretRequest`, the widget
+          // from the text, and both render (#14390 reversibility).
           const connect = makeTurn(
             "first-run:remote-connect",
-            "Enter your remote agent's URL and access token to connect.",
+            `Enter your remote agent's URL and access token to connect.\n\n[CHOICE:first-run id=remote-back]\n${BACK_TO_RUNTIME_OPTION}\n[/CHOICE]`,
             { secretRequest: remoteConnectSecretRequest() },
           );
           seedTurn(connect);
           replaceTurn("first-run:remote-connect", connect);
           return true;
         }
-        // On this device: run the local backend, then ask which model provider.
-        // BYOK is the provider:other sub-choice ("Other / configure in
-        // Settings"), which finishes with `configure-later` and defers provider
-        // setup to Settings.
+        // On this device: RAM-tier gate first (#14390). A device below the
+        // 8 GB floor is refused with the reason and re-offered a fresh
+        // runtime choice — enforced at the decision point, not just labeled.
+        const tier = peekDeviceRamTierAssessment();
+        if (tier && !tier.allowsLocalAgent) {
+          seedTurn(
+            makeTurn(
+              `first-run:runtime-blocked:${Date.now()}`,
+              `I can't run on this device — ${tier.reason}. Eliza Cloud runs your agent with nothing to install, or you can connect to an agent running somewhere else.\n\n${runtimeChoiceBlock()}`,
+            ),
+          );
+          return true;
+        }
+        // Run the local backend, then ask which model provider. BYOK is the
+        // provider:other sub-choice ("Other / configure in Settings"), which
+        // finishes with `configure-later` and defers provider setup to
+        // Settings. Sub-16 GB devices get the perf warning inline; sub-12 GB
+        // devices get the on-device option blocked inside providerChoice.
         draftRef.current = {
           ...draftRef.current,
           runtime: "local",
           localInference: "all-local",
         };
+        const modelWarning =
+          tier?.localModelsWarning || (tier && !tier.allowsLocalModels)
+            ? ` Heads up: ${tier.reason}.`
+            : "";
         seedFreshChoiceTurn(
           "first-run:provider",
-          `Which model provider should ${draftRef.current.agentName} use?\n\n${providerChoice({ defaultId: "on-device" })}`,
+          `Which model provider should ${draftRef.current.agentName} use?${modelWarning}\n\n${providerChoice({ defaultId: "on-device", tier })}`,
         );
         return true;
       }
@@ -1020,6 +1114,19 @@ export function useFirstRunConductor(): void {
         if (id !== "on-device" && id !== "elizacloud" && id !== "other") {
           return true;
         }
+        // RAM-tier gate (#14390): below the 12 GB floor on-device models are
+        // refused at the decision point with the reason and a fresh provider
+        // choice; the finish backstop enforces the same rule for any caller.
+        if (id === "on-device") {
+          const tier = peekDeviceRamTierAssessment();
+          if (tier && !tier.allowsLocalModels) {
+            seedFreshChoiceTurn(
+              "first-run:provider",
+              `On-device models won't work here — ${tier.reason}. Eliza Cloud inference keeps the agent on this device and runs the models in the cloud.\n\n${providerChoice({ defaultId: "on-device", tier })}`,
+            );
+            return true;
+          }
+        }
         if (id === "other") {
           // "Other / configure in Settings" (bring your own keys): finish the
           // LOCAL runtime with no provider wired and no model download.
@@ -1062,6 +1169,25 @@ export function useFirstRunConductor(): void {
         return true;
       }
 
+      if (group === "back") {
+        if (id !== "runtime") return true;
+        // Reversal (#14390): unwind anything the abandoned path committed —
+        // the persisted local mode/server and a service a partial finish may
+        // have started — then re-offer a FRESH (unlocked) runtime choice.
+        void revertLocalRuntimeCommitment();
+        draftRef.current = {
+          ...draftRef.current,
+          runtime: "cloud",
+          localInference: "all-local",
+        };
+        cloudPrefsRef.current = {};
+        seedFreshChoiceTurn(
+          "first-run:greeting",
+          `${GREETING}\n\n${runtimeChoiceBlock()}`,
+        );
+        return true;
+      }
+
       if (group === "error") {
         if (id !== "retry" && id !== "restart" && id !== "settings") {
           return true;
@@ -1072,14 +1198,18 @@ export function useFirstRunConductor(): void {
         }
         if (id === "restart" && isRuntimeChooserEnabled()) {
           // Re-offer a FRESH (unlocked) runtime choice so the user can switch
-          // how their agent runs after a failed finish. seedFreshChoiceTurn
-          // seeds a retry turn when the greeting already exists (the original
-          // runtime widget locked itself on its first pick). Cloud-only mode
-          // never offers restart; a stale restart tap falls through to retry
-          // below — the only other way to run doesn't exist there.
+          // how their agent runs after a failed finish — unwinding whatever
+          // the failed local path committed first (#14390), so switching to
+          // cloud can't leave a half-started local agent behind.
+          // seedFreshChoiceTurn seeds a retry turn when the greeting already
+          // exists (the original runtime widget locked itself on its first
+          // pick). Cloud-only mode never offers restart; a stale restart tap
+          // falls through to retry below — the only other way to run doesn't
+          // exist there.
+          void revertLocalRuntimeCommitment();
           seedFreshChoiceTurn(
             "first-run:greeting",
-            `${GREETING}\n\n${RUNTIME_CHOICE}`,
+            `${GREETING}\n\n${runtimeChoiceBlock()}`,
           );
           return true;
         }
@@ -1188,6 +1318,12 @@ export function useFirstRunConductor(): void {
       return;
     }
     resetFirstRunPersistGuard();
+    // Warm the RAM-tier probe (#14390) so the pick handlers' synchronous
+    // `peek` has an answer by the time a human can tap: Android resolves
+    // synchronously inside peek anyway; this covers the iOS async path. Never
+    // gates the greeting — the finish backstop enforces the policy even when
+    // a pick lands before the probe settles.
+    void resolveDeviceRamTierAssessment();
     // A fresh activation decides silence for itself below — a stale `true`
     // from a previous mount (silent entry unmounted mid-flight, user signed
     // out, conductor re-entered) must not suppress this run's turns.

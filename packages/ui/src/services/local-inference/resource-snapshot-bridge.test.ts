@@ -14,6 +14,7 @@ describe("normalizeResourceSnapshot", () => {
         lowPowerMode: false,
         residentMemoryMb: 812.5,
         availableRamMb: 2048,
+        totalRamMb: 7654,
         cpuTimeMs: 12345,
         batteryLevelPct: 73,
         batteryChargeMicroAmpHours: 2_900_000,
@@ -29,6 +30,7 @@ describe("normalizeResourceSnapshot", () => {
       lowPowerMode: false,
       residentMemoryMb: 812.5,
       availableRamMb: 2048,
+      totalRamMb: 7654,
       cpuTimeMs: 12345,
       batteryLevelPct: 73,
       batteryChargeMicroAmpHours: 2_900_000,
@@ -54,6 +56,7 @@ describe("normalizeResourceSnapshot", () => {
       5_555,
     );
     expect(s.availableRamMb).toBeNull();
+    expect(s.totalRamMb).toBeNull();
     expect(s.cpuTimeMs).toBeNull();
     expect(s.batteryLevelPct).toBeNull();
     expect(s.batteryChargeMicroAmpHours).toBeNull();

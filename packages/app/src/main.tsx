@@ -476,12 +476,12 @@ installDesktopPermissionsClientPatch(client);
 applyCloudPairSessionToken();
 applyRuntimeChooserOverrideFromUrl();
 
-// NOTE: do not gate on isElizaOS() here — that requires the `ElizaOS/` UA
-// marker which only AOSP/branded device images carry, so it excluded the
-// stock-phone local sideload build (the on-device-agent APK) and left it stuck
-// on cloud onboarding. preSeedAndroidLocalRuntimeIfFresh() self-gates to the
-// local Android build (native android + non-cloud build), so it's safe to call
-// unconditionally here; it no-ops on iOS/desktop/web and cloud builds.
+// Branded AOSP/ElizaOS device images ARE the agent: pre-seed the on-device
+// agent as the startup target on first frame. Stock-phone sideload builds
+// self-exclude inside preSeedAndroidLocalRuntimeIfFresh (#14390): a fresh
+// install lands in onboarding, whose runtime chooser (enabled by default on
+// those builds) starts the local agent on demand only after the user picks
+// it. No-op on iOS/desktop/web and cloud builds.
 if (!hasFirstRunRuntimeOverride()) {
   preSeedAndroidLocalRuntimeIfFresh();
 }

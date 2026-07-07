@@ -1,10 +1,21 @@
 /**
  * Pre-seed the AOSP ElizaOS APK when the device itself is the local agent.
+ *
+ * Branded device images (`ElizaOS/<tag>` UA marker) ARE the agent: their
+ * native shell auto-starts the on-device service unconditionally
+ * (ElizaAgentService.shouldAutoStart), so the renderer commits it as the
+ * startup target on first frame instead of falling back to cloud-connect.
+ *
+ * Stock-phone sideload builds are deliberately NOT pre-seeded (#14390): a
+ * fresh install must land in onboarding and pick a runtime — the runtime
+ * chooser is enabled by default on those builds (first-run-runtime-flag.ts)
+ * and the finish path starts the service on demand once the user commits to
+ * the local runtime. Pre-committing "local" here booted the bundled agent on
+ * phones that cannot sustain it (a 4 GB device wedges boot for the full 180 s
+ * startup budget) before the user had chosen anything.
  */
 
-import { isAndroidCloudBuild } from "../platform/android-runtime";
 import { isAospElizaUserAgent } from "../platform/aosp-user-agent";
-import { getFrontendPlatform } from "../platform/platform-guards";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
   ANDROID_LOCAL_AGENT_LABEL,
@@ -64,38 +75,11 @@ function isBrandedAndroidDevice(): boolean {
   return isAospElizaUserAgent(navigator.userAgent);
 }
 
-/**
- * The stock-phone local sideload build (`android` / `android-system`, renderer
- * mode `local`) ships the on-device agent — that IS its backend. The
- * `android-cloud` Play-Store build is a thin cloud client with no on-device
- * agent, so it must never seed local. iOS/desktop/web are not android and
- * resolve to a non-cloud mode by default, so gate on the native platform too.
- */
-function isAndroidLocalSideloadBuild(): boolean {
-  return getFrontendPlatform() === "android" && !isAndroidCloudBuild();
-}
-
-/**
- * Whether to pre-seed the on-device local agent as the active server.
- *
- * Fires for branded ElizaOS device images AND the stock-phone local sideload
- * build (the on-device-agent APK). Both run the on-device agent as their
- * backend, so a fresh launch should default to it instead of falling back to
- * cloud-connect. Gating only on the branded `ElizaOS/<tag>` UA marker (as
- * before) excluded the stock sideload and left it stuck on cloud onboarding —
- * which is exactly the bug the caller in `main.tsx` documents. The explicit
- * cloud/remote-choice and existing-active-server guards in
- * `preSeedAndroidLocalRuntimeIfFresh` still respect a user who picked cloud.
- */
-function shouldPreSeedLocalRuntime(): boolean {
-  return isBrandedAndroidDevice() || isAndroidLocalSideloadBuild();
-}
-
 export function preSeedAndroidLocalRuntimeIfFresh(): boolean {
-  if (!shouldPreSeedLocalRuntime()) return false;
+  if (!isBrandedAndroidDevice()) return false;
   // Respect an explicit cloud/remote choice, but treat null or "local" as
-  // seedable: a stock-phone sideload may carry a "local" mode with no active
-  // server yet (so the dashboard would otherwise fall back to cloud-connect).
+  // seedable: a branded image may carry a "local" mode with no active server
+  // yet (so the dashboard would otherwise fall back to cloud-connect).
   const persistedMode = readPersistedMobileRuntimeMode();
   if (persistedMode != null && persistedMode !== "local") return false;
   if (hasPersistedActiveServer()) return false;
