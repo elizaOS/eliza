@@ -1958,12 +1958,23 @@ async function initializePlatform(): Promise<void> {
     );
   }
 
+  // Foreground/background lifecycle + connectivity are wired on EVERY surface,
+  // including the installed **web** PWA — not only native Capacitor (#PWA-D1).
+  // `createMobileLifecycle` guards every Capacitor call and falls back to
+  // `document.visibilitychange` (pause/resume) and window `online`/`offline`
+  // (network) so it degrades cleanly with no plugins. Before this, the web PWA
+  // never dispatched APP_RESUME_EVENT/APP_PAUSE_EVENT, so a backgrounded PWA
+  // came back with a dead WS + stale transcript and nothing forced a
+  // reconnect/refetch (the exact iOS daily-driver jank). `setAppActive` in the
+  // factory dedupes so a working Capacitor `appStateChange` never double-fires
+  // alongside the visibilitychange fallback on native.
+  getMobileLifecycle().initializeAppLifecycle();
+  void getMobileLifecycle().initializeNetworkListener();
+
   if (isIOS || isAndroid) {
     await initializeStatusBar();
     await initializeKeyboard();
-    getMobileLifecycle().initializeAppLifecycle();
     initializeMobileRuntimeModeListener();
-    void getMobileLifecycle().initializeNetworkListener();
     void initializeMobileDeviceBridge();
     void initializeMobileAgentTunnel();
     void registerMobileBlockerBackends();
@@ -2075,7 +2086,7 @@ async function initializeKeyboard(): Promise<void> {
 }
 
 /**
- * Live Android/Capacitor lifecycle helper. `main.tsx` keeps its own
+ * Live cross-platform lifecycle helper. `main.tsx` keeps its own
  * status-bar / keyboard wiring, but the app-lifecycle path (foreground/
  * background events + the `visibilitychange` fallback, the hardware-back
  * contract — `dispatchBackIntent()` first, then `history.back()` /
