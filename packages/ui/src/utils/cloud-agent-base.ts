@@ -152,3 +152,54 @@ export function dedicatedCloudAgentIdFromBase(
   const label = host.slice(0, host.length - ".elizacloud.ai".length);
   return label.includes(".") ? label.slice(label.lastIndexOf(".") + 1) : label;
 }
+
+/** Production Eliza *app* origin — where the agent-app (chat / create-agent)
+ * lives. The console (elizacloud.ai / dashboard) is NOT the app; the app is
+ * served from `app.elizacloud.ai`. */
+export const PROD_ELIZA_APP_ORIGIN = "https://app.elizacloud.ai";
+/** Staging Eliza *app* origin. The staging console lives at
+ * `staging.elizacloud.ai`; its paired app is `app-staging.elizacloud.ai`
+ * (a DIFFERENT tenant/session from prod). */
+export const STAGING_ELIZA_APP_ORIGIN = "https://app-staging.elizacloud.ai";
+
+/** Console hostnames that belong to the STAGING environment. Derived from the
+ * same control-plane host knowledge used elsewhere (client-cloud.ts /
+ * steward-url.ts): the staging console apex, its API origins, and the staging
+ * app host itself all point back to the staging app. */
+const STAGING_CONSOLE_HOSTS = new Set([
+  "staging.elizacloud.ai",
+  "api-staging.elizacloud.ai",
+  "app-staging.elizacloud.ai",
+]);
+
+/**
+ * Resolve the Eliza *app* origin (the create-agent / "Open Eliza app" target)
+ * for the CURRENT console host. The console dashboard has no create-agent flow
+ * of its own and links out to the app; that link must stay within the SAME
+ * environment or a signed-in staging user bounces to the PROD app (different
+ * tenant, different session — #15161).
+ *
+ * Fail-safe: a staging console host resolves to the staging app; every other
+ * host (prod apex/api, per-agent subdomains, localhost, unknown) resolves to
+ * the prod app origin — the historical default, so prod + local behavior is
+ * unchanged and only staging is corrected.
+ */
+export function resolveElizaAppOrigin(
+  hostname: string | null | undefined,
+): string {
+  const host = hostname?.trim().toLowerCase();
+  if (host && STAGING_CONSOLE_HOSTS.has(host)) {
+    return STAGING_ELIZA_APP_ORIGIN;
+  }
+  return PROD_ELIZA_APP_ORIGIN;
+}
+
+/**
+ * Browser-safe wrapper: resolve the Eliza app origin from the live
+ * `window.location.hostname`. Falls back to the prod app origin when there is
+ * no DOM (SSR / tests without a window).
+ */
+export function currentElizaAppOrigin(): string {
+  if (typeof window === "undefined") return PROD_ELIZA_APP_ORIGIN;
+  return resolveElizaAppOrigin(window.location.hostname);
+}

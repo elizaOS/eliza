@@ -42,6 +42,12 @@ vi.mock("../../bridge/native-notifications", () => ({
     showNativeNotification(...args),
 }));
 
+const pushNotificationBanner = vi.fn();
+vi.mock("./notification-banner-store", () => ({
+  pushNotificationBanner: (...args: unknown[]) =>
+    pushNotificationBanner(...args),
+}));
+
 import {
   __getStateForTests,
   __ingestNotificationForTests,
@@ -50,7 +56,6 @@ import {
   initNotifications,
   markAllNotificationsRead,
   markNotificationRead,
-  registerNotificationToastSink,
   removeNotification,
   seedDevNotificationsIfEmpty,
 } from "./notification-store";
@@ -90,7 +95,7 @@ describe("notification-store", () => {
     onWsEvent.mockReset();
     invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
     showNativeNotification.mockReset().mockResolvedValue("none");
-    registerNotificationToastSink(null);
+    pushNotificationBanner.mockReset();
     // Default: window focused.
     vi.spyOn(document, "hasFocus").mockReturnValue(true);
     Object.defineProperty(document, "visibilityState", {
@@ -148,29 +153,25 @@ describe("notification-store", () => {
     expect(showNativeNotification).not.toHaveBeenCalled();
   });
 
-  it("keeps silent-tier notifications out of the toast sink", () => {
-    const sink = vi.fn();
-    registerNotificationToastSink(sink);
+  it("keeps silent-tier notifications out of the banner queue", () => {
     __ingestNotificationForTests(makeNotification({ priority: "low" }));
-    expect(sink).not.toHaveBeenCalled();
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
-  it("routes a toast through the registered sink", () => {
-    const sink = vi.fn();
-    registerNotificationToastSink(sink);
+  it("pushes an arriving notification to the top banner queue", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Deploy done", body: "Build #42" }),
       1,
     );
-    expect(sink).toHaveBeenCalledTimes(1);
-    expect(sink.mock.calls[0][0]).toContain("Deploy done");
+    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
+    expect(pushNotificationBanner.mock.calls[0][0].title).toBe("Deploy done");
   });
 
-  it("uses an error toast tone for urgent notifications", () => {
-    const sink = vi.fn();
-    registerNotificationToastSink(sink);
+  it("banners an urgent notification even when the window is blurred", () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
     __ingestNotificationForTests(makeNotification({ priority: "urgent" }), 1);
-    expect(sink.mock.calls[0][1]).toBe("error");
+    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
+    expect(pushNotificationBanner.mock.calls[0][0].priority).toBe("urgent");
   });
 
   it("initNotifications hydrates and subscribes to the WS stream once", async () => {
@@ -191,10 +192,8 @@ describe("notification-store", () => {
     const handler = onWsEvent.mock.calls[0][1] as (
       d: Record<string, unknown>,
     ) => void;
-    const sink = vi.fn();
-    registerNotificationToastSink(sink);
     handler({ stream: "assistant", payload: { text: "hi" } });
-    expect(sink).not.toHaveBeenCalled();
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
   it("WS handler ingests a notification-stream event", () => {
@@ -202,8 +201,6 @@ describe("notification-store", () => {
     const handler = onWsEvent.mock.calls[0][1] as (
       d: Record<string, unknown>,
     ) => void;
-    const sink = vi.fn();
-    registerNotificationToastSink(sink);
     handler({
       stream: "notification",
       payload: {
@@ -212,8 +209,8 @@ describe("notification-store", () => {
         unreadCount: 1,
       },
     });
-    expect(sink).toHaveBeenCalledTimes(1);
-    expect(sink.mock.calls[0][0]).toContain("From WS");
+    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
+    expect(pushNotificationBanner.mock.calls[0][0].title).toBe("From WS");
   });
 
   it("WS handler drops a payload missing id or title (validated, not cast)", () => {
@@ -221,8 +218,6 @@ describe("notification-store", () => {
     const handler = onWsEvent.mock.calls[0][1] as (
       d: Record<string, unknown>,
     ) => void;
-    const sink = vi.fn();
-    registerNotificationToastSink(sink);
     // No title → unrenderable → dropped.
     handler({
       stream: "notification",
@@ -233,7 +228,7 @@ describe("notification-store", () => {
       stream: "notification",
       payload: { notification: { title: "no id" } },
     });
-    expect(sink).not.toHaveBeenCalled();
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
     expect(__getStateForTests().notifications).toHaveLength(0);
   });
 
@@ -268,8 +263,6 @@ describe("notification-store", () => {
     const handler = onWsEvent.mock.calls[0][1] as (
       d: Record<string, unknown>,
     ) => void;
-    const sink = vi.fn();
-    registerNotificationToastSink(sink);
     handler({
       stream: "notification",
       payload: {
@@ -288,7 +281,7 @@ describe("notification-store", () => {
     );
     expect(stored?.readAt).toBe(123);
     expect(__getStateForTests().unreadCount).toBe(0);
-    expect(sink).not.toHaveBeenCalled();
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
     expect(showNativeNotification).not.toHaveBeenCalled();
   });
 

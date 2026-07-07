@@ -73,8 +73,16 @@ export interface FirstRunFinishPorts {
   setTab: (tab: string) => void;
   /** Injected client-side finalizer (flips firstRunComplete; never POSTs). */
   completeFirstRun: (landingTab?: string) => void;
-  /** Status text (e.g. "Starting local agent") surfaced into the chat transcript. */
-  onStatus?: (text: string | null) => void;
+  /**
+   * Status text (e.g. "Starting local agent") surfaced into the chat
+   * transcript. `code` is the machine-readable phase behind the text: this
+   * module's own "setup" / "persist" phases plus the cloud client's
+   * `onProgress` status vocabulary ("listing" / "creating" / "provisioning" /
+   * "starting" / "ready") forwarded verbatim. The conductor's silent cloud
+   * entry (#15133) keys off it to tell a REAL provisioning wait apart from
+   * reuse narration; text-only consumers ignore it.
+   */
+  onStatus?: (text: string | null, code?: string) => void;
 }
 
 type FirstRunRuntimeStateKey =
@@ -356,7 +364,7 @@ async function finishLocal(
   );
   persistMobileRuntimeModeForServerTarget(serverTarget);
   ports.setRuntimeState("firstRunRuntimeTarget", serverTarget);
-  ports.onStatus?.("Starting local agent");
+  ports.onStatus?.("Starting local agent", "setup");
   const apiBase = resolveFirstRunLocalAgentApiBase();
   const clientBase = localAgentClientBase(apiBase);
   client.setBaseUrl(clientBase);
@@ -397,7 +405,7 @@ async function finishLocal(
     });
     addAgentProfile({ kind: "local", label: "Local agent" });
   }
-  ports.onStatus?.("Saving first-run profile");
+  ports.onStatus?.("Saving first-run profile", "persist");
   const plan = buildFirstRunSubmitPlan({
     draft: { ...sourceDraft, runtime: "local" },
     uiLanguage: ports.uiLanguage,
@@ -434,7 +442,7 @@ export async function bindCloudAgent(
   opts: { preferAgentId?: string | null; forceCreate?: boolean },
   ports: FirstRunFinishPorts,
 ): Promise<FirstRunFinishOutcome> {
-  ports.onStatus?.("Setting up your cloud agent");
+  ports.onStatus?.("Setting up your cloud agent", "setup");
   const plan = buildFirstRunSubmitPlan({
     draft: { ...sourceDraft, runtime: "cloud" },
     uiLanguage: ports.uiLanguage,
@@ -456,7 +464,7 @@ export async function bindCloudAgent(
     ...(getBootConfig().preferSharedCloudTier
       ? { preferSharedTier: true }
       : {}),
-    onProgress: (status, detail) => ports.onStatus?.(detail ?? status),
+    onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
   });
   const cloudAgentApiBase = selectedAgent.apiBase;
   client.setBaseUrl(cloudAgentApiBase);
@@ -477,7 +485,7 @@ export async function bindCloudAgent(
       : {}),
   });
   persistMobileRuntimeModeForServerTarget("elizacloud");
-  ports.onStatus?.("Saving first-run profile");
+  ports.onStatus?.("Saving first-run profile", "persist");
   // Direct Cloud agent bases are chat runtimes, not full app-shell setup
   // servers — they do not own /api/first-run. Only persist when the bound base
   // owns the app-shell routes.

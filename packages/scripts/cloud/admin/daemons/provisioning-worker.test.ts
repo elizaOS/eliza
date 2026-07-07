@@ -2,9 +2,12 @@
 import { describe, expect, it, mock } from "bun:test";
 import {
   assertProvisioningWorkerPreflight,
+  closeOpenHandles,
   evaluateSelfRestart,
   maybePublishHeartbeat,
+  pollSleep,
   readWorkerConfig,
+  requestShutdown,
   WORKER_TIMING,
 } from "./provisioning-worker";
 
@@ -289,5 +292,43 @@ describe("readWorkerConfig (resilience knobs)", () => {
         [],
       ).watchdogConsecutiveTicks,
     ).toBe(2);
+  });
+});
+
+describe("graceful shutdown (stop-sigterm → SIGKILL fix)", () => {
+  it("requestShutdown wakes a pending poll sleep instead of waiting out the interval", async () => {
+    const exit = mock((_code: number) => {}) as unknown as (
+      code: number,
+    ) => never;
+    const sleeping = pollSleep(60_000);
+    requestShutdown("SIGTERM", exit);
+    // Resolves promptly; without the wake this would run the test into its
+    // timeout (the sleep is 60s).
+    await sleeping;
+    // The force-exit backstop must not have fired on the clean path.
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it("closeOpenHandles closes every handle and never rejects when one closer fails", async () => {
+    const logger = makeLogger();
+    const sshPool = mock(async () => {});
+    const dbPools = mock(async () => {
+      throw new Error("pool.end() exploded");
+    });
+
+    await closeOpenHandles(logger, { sshPool, dbPools });
+
+    expect(sshPool).toHaveBeenCalledTimes(1);
+    expect(dbPools).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("closeOpenHandles is silent when every closer succeeds", async () => {
+    const logger = makeLogger();
+    await closeOpenHandles(logger, {
+      sshPool: async () => {},
+      dbPools: async () => {},
+    });
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });

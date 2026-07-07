@@ -110,6 +110,8 @@ export function registerMcpsSettingsSection(): void {
     group: "system",
     titleKey: "settings.sections.mcps.title",
     defaultTitle: "MCP Servers",
+    // Hidden for MVP (kept registered so its route/deep-link still resolves).
+    developerOnly: true,
     Component: McpsSection,
   });
 }

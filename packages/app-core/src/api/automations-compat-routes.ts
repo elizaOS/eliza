@@ -104,7 +104,7 @@ async function buildAutomationNodeCatalog(
   const agentName = resolveAgentName(runtime, config);
   const adminEntityId = resolveAdminEntityId(config, agentName);
 
-  const runtimeActionNodes: AutomationNodeDescriptor[] = (runtime.actions ?? [])
+  const runtimeActionNodes: AutomationNodeDescriptor[] = runtime.actions
     .slice()
     .sort((left, right) => left.name.localeCompare(right.name))
     .map((action) => ({

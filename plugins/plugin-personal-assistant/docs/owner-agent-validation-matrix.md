@@ -147,7 +147,7 @@ native-permission states are captured manually against the §3 identities.
 Stage session artifacts under the local scratch dir
 `reports/lifeops-live-validation/<session>/` (gitignored — evidence is never
 committed to the repo) and attach the redacted screenshots / logs **inline in
-the PR/issue** per [`PR_EVIDENCE.md`](../../../PR_EVIDENCE.md).
+the PR/issue** per [`CONTRIBUTING.md`](../../../CONTRIBUTING.md).
 
 | Connector family | Owner evidence | Agent evidence | Status |
 |---|---|---|---|

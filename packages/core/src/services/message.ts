@@ -252,7 +252,10 @@ import {
 	parseContextRoutingMetadata,
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
-import { getUserMessageText } from "../utils/message-text";
+import {
+	getUserMessageText,
+	stripAugmentationForPersistence,
+} from "../utils/message-text";
 import { readEnv } from "../utils/read-env";
 import {
 	extractFirstSentence,
@@ -8993,6 +8996,15 @@ export class DefaultMessageService implements IMessageService {
 		);
 		let memoryToQueue: Memory;
 
+		// The document augmentation envelope
+		// (`<contextual_documents>...</contextual_documents>` + `<user_request>`)
+		// is a model-facing wrapper added just for this turn's LLM prompt. Persist
+		// and embed the clean user text so the stored memory does not echo raw
+		// wrapper XML back into the user's chat bubble or re-enter context as
+		// history on later turns. `message` (used downstream this turn) keeps its
+		// wrap.
+		const persistableMessage = stripAugmentationForPersistence(message);
+
 		if (message.id) {
 			const existingMemory = await runtime.getMemoryById(message.id);
 			if (existingMemory) {
@@ -9002,14 +9014,17 @@ export class DefaultMessageService implements IMessageService {
 				);
 				memoryToQueue = existingMemory;
 			} else {
-				const createdMemoryId = await runtime.createMemory(message, "messages");
-				memoryToQueue = { ...message, id: createdMemoryId };
+				const createdMemoryId = await runtime.createMemory(
+					persistableMessage,
+					"messages",
+				);
+				memoryToQueue = { ...persistableMessage, id: createdMemoryId };
 			}
 			await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
 		} else {
-			const memoryId = await runtime.createMemory(message, "messages");
+			const memoryId = await runtime.createMemory(persistableMessage, "messages");
 			message.id = memoryId;
-			memoryToQueue = { ...message, id: memoryId };
+			memoryToQueue = { ...persistableMessage, id: memoryId };
 			await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
 		}
 

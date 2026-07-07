@@ -7,6 +7,7 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RuntimeDbTaskStore } from "../services/orchestrator-task-store.ts";
 
@@ -121,6 +122,51 @@ describe("task store project binding (real PGlite)", () => {
     await expect(store2.getTask("legacy-1")).resolves.not.toBeNull();
   });
 
+  it("swallows a Drizzle-WRAPPED duplicate-column error on the ADD COLUMN backfill (#13776)", {
+    timeout: PGLITE_TIMEOUT,
+  }, async () => {
+    // The runtime's eliza Drizzle adapter rethrows the driver error wrapped as
+    // `Error("Failed query: <sql>", { cause: <pgError> })`, so the duplicate
+    // signal (SQLSTATE 42701 / "already exists") is on the CAUSE, not the top
+    // level. The raw pglite adapter above never exercised that wrapping, which
+    // is exactly why the idempotent backfill re-threw and 500'd every
+    // /api/orchestrator/* read on the real server. Reproduce the wrapper here.
+    await db.query(`CREATE TABLE orchestrator_tasks (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0,
+      priority TEXT,
+      title TEXT,
+      project_id TEXT,
+      search_text TEXT,
+      updated_at TEXT NOT NULL,
+      last_activity_at BIGINT NOT NULL,
+      document TEXT NOT NULL
+    )`);
+    const raw = pgliteAdapter(db);
+    const drizzleLike = {
+      async run(sql: string, params: unknown[] = []) {
+        try {
+          await raw.run(sql, params);
+        } catch (cause) {
+          throw new Error(`Failed query: ${sql}\nparams: `, { cause });
+        }
+      },
+      async all(sql: string, params: unknown[] = []) {
+        try {
+          return await raw.all(sql, params);
+        } catch (cause) {
+          throw new Error(`Failed query: ${sql}\nparams: `, { cause });
+        }
+      },
+    };
+    // The table already has project_id, so ensureInitialized's ADD COLUMN throws
+    // a wrapped duplicate-column error on the FIRST init — it must be recognized
+    // and swallowed, leaving a working, queryable store (not a rejected read).
+    const store = new RuntimeDbTaskStore(drizzleLike);
+    await expect(store.listTasks()).resolves.toEqual([]);
+  });
+
   it("persists project_id and filters listTasks by projectId", {
     timeout: PGLITE_TIMEOUT,
   }, async () => {
@@ -157,5 +203,33 @@ describe("task store project binding (real PGlite)", () => {
       ["proj-A"],
     );
     expect(rows.rows).toHaveLength(1);
+  });
+
+  it("initializes through a REAL drizzle adapter, where duplicate-column arrives wrapped in DrizzleQueryError", {
+    timeout: PGLITE_TIMEOUT,
+  }, async () => {
+    // On a fresh database the CREATE TABLE already includes project_id, so the
+    // idempotent ADD COLUMN backfill ALWAYS throws duplicate-column. Through a
+    // drizzle-backed adapter (the dev-server/pglite production path) that error
+    // arrives wrapped in DrizzleQueryError ("Failed query: …") with the real
+    // driver error on `cause`. If the store doesn't unwrap the cause chain,
+    // init caches a rejected promise and every orchestrator API call 500s.
+    const drizzleDb = drizzle(db);
+    const store = new RuntimeDbTaskStore({ db: drizzleDb });
+    const created = await store.createTask({
+      title: "born on drizzle",
+      goal: "g",
+      projectId: "proj-drizzle",
+    });
+    expect(created.task.title).toBe("born on drizzle");
+
+    const listed = await store.listTasks({ projectId: "proj-drizzle" });
+    expect(listed.map((t) => t.title)).toEqual(["born on drizzle"]);
+
+    // A second store over the same DB re-runs the migration (column now
+    // genuinely present) — the wrapped duplicate-column must be swallowed
+    // here too, not only on the fresh-table boot.
+    const store2 = new RuntimeDbTaskStore({ db: drizzleDb });
+    await expect(store2.getTask(created.task.id)).resolves.not.toBeNull();
   });
 });

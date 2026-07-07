@@ -19,8 +19,13 @@ import { buildPlugin } from "../plugin-build";
 // flattened up into dist/ by the driver's `flatten` step.
 const subpathEntries = Array.from(new Bun.Glob("src/**/*.{ts,tsx}").scanSync("."))
   .filter((entry) => {
-    if (entry.includes("__tests__/") || entry.endsWith(".test.ts")) return false;
+    if (entry.includes("__tests__/") || entry.endsWith(".test.ts") || entry.endsWith(".test.tsx"))
+      return false;
     if (entry === "src/index.node.ts" || entry === "src/index.browser.ts") return false;
+    // View components are vite-only (React/JSX against host-external
+    // @elizaos/ui); the per-file bun bundle has no react external and would
+    // choke on them. They ship exclusively via `build:views` → dist/views.
+    if (entry.startsWith("src/components/")) return false;
     return true;
   })
   .sort();

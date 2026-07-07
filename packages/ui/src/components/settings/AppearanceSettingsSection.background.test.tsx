@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
 /**
- * Pins that AppearanceSettingsSection does NOT render the wallpaper controls —
- * they live in the dedicated Background settings section. jsdom render with the
- * app store seeded via `__setAppValueForTests`.
+ * Pins that AppearanceSettingsSection renders the wallpaper controls inline —
+ * the standalone Background settings section was consolidated into Appearance
+ * for MVP. jsdom render with the app store seeded via `__setAppValueForTests`.
  */
 
 import { cleanup, render, screen } from "@testing-library/react";
@@ -53,12 +53,11 @@ afterEach(() => {
 });
 
 describe("AppearanceSettingsSection background controls", () => {
-  it("keeps background controls in the dedicated Background settings section", () => {
+  it("renders the consolidated background controls inline in Appearance", () => {
     seed();
 
     render(<AppearanceSettingsSection />);
 
-    expect(screen.queryByTestId("background-settings-controls")).toBeNull();
-    expect(screen.queryByLabelText("Set background to Green")).toBeNull();
+    expect(screen.getByTestId("background-settings-controls")).toBeTruthy();
   });
 });

@@ -111,7 +111,11 @@ function contactGazetteerEntries(
 function redactPatternMatches(text: string): RawCandidate[] {
   const candidates: RawCandidate[] = [];
   for (const rawPattern of getDefaultRedactPatterns()) {
-    const pattern = new RegExp(rawPattern, "gi");
+    // Do not force the `i` flag: case-insensitive matching corrupts
+    // case-sensitive secret patterns (base64/hex/prefixed keys). Any pattern
+    // that genuinely needs case-insensitivity must encode `(?i)`-style intent
+    // in its own source string.
+    const pattern = new RegExp(rawPattern, "g");
     for (const match of text.matchAll(pattern)) {
       const value = match[match.length - 1] || match[0];
       if (!value) continue;

@@ -45,6 +45,10 @@ import {
 } from "../utils";
 import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import {
+  navigateToSameTabCloudLogin,
+  shouldUseSameTabCloudLogin,
+} from "./cloud-login-launch";
+import {
   getInjectedEthereumProvider,
   siweLoginWithInjectedWallet,
 } from "./cloud-siwe-login";
@@ -648,6 +652,26 @@ export function useCloudState({
           completeLogin();
           return loginCompletion;
         }
+      }
+
+      // #15143 mobile-web sign-in: when the popup path cannot work — the
+      // pre-opened handle came back null (popup blocked; the runtime signal on
+      // any browser) or this is a touch-primary browser where even a popup
+      // that opens is a disorienting tab switch — navigate THIS tab to the
+      // same-origin Steward /login page instead of starting a device-code
+      // session whose browser window would never open. The returnTo round
+      // trip lands back here and the stored Steward token completes the login
+      // (first-run resumes via its marker + mount-time token poll). Direct
+      // cloud targets only: an agent-proxied (hasBackend) login stays on the
+      // device-code flow, whose copyable fallback link is the designed
+      // degrade for blocked popups there.
+      if (useDirectAuth && shouldUseSameTabCloudLogin(prePoppedWindow)) {
+        closePrePoppedWindow();
+        navigateToSameTabCloudLogin();
+        elizaCloudLoginBusyRef.current = false;
+        setElizaCloudLoginBusy(false);
+        completeLogin();
+        return loginCompletion;
       }
 
       try {

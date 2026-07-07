@@ -20,6 +20,8 @@ import type { WorkflowSpec } from "../../message-workflow-parser";
 import { PlanChecklist, SubagentBlock } from "../task-pipeline";
 import { WorkflowSteps } from "../workflow-steps";
 
+// ChatWidgetShell's i18n selector is supplied by the runner's esbuild state
+// stub. Keep this render fixture data-only so it never mutates the app store.
 const T = 1_748_779_200_000;
 
 function step(

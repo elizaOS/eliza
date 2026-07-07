@@ -40,6 +40,41 @@ describe("detectHostCapabilities", () => {
     });
   });
 
+  it("does NOT classify the Capacitor web shim as a mobile host (desktop/web local agent)", () => {
+    // Every browser tab carries the Capacitor web shim (getPlatform() === "web",
+    // isNativePlatform() === false). A desktop/web app running a local agent must
+    // be a browser host, not `capacitor-foreground-only` — otherwise long-running
+    // workflows + scheduled tasks wrongly refuse to start (the /api/lifeops 404s).
+    const host = detectHostCapabilities({
+      capacitor: {
+        Plugins: {},
+        getPlatform: () => "web",
+        isNativePlatform: () => false,
+      },
+      hasWindow: true,
+      hasProcess: false,
+    });
+    expect(host.isMobile).toBe(false);
+    expect(host.kind).not.toBe("capacitor-foreground-only");
+    expect(host.kind).toBe("browser");
+  });
+
+  it("still classifies a real native iOS/Android Capacitor shell as mobile", () => {
+    expect(
+      detectHostCapabilities({
+        capacitor: {
+          Plugins: {},
+          getPlatform: () => "ios",
+          isNativePlatform: () => true,
+        },
+      }),
+    ).toMatchObject({
+      kind: "capacitor-foreground-only",
+      isMobile: true,
+      label: "Mobile (Capacitor, foreground-only)",
+    });
+  });
+
   it("detects Capacitor hosts with BackgroundRunner", () => {
     expect(
       detectHostCapabilities({

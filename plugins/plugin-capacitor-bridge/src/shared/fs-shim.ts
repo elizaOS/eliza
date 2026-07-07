@@ -81,6 +81,7 @@ import {
 let _installed = false;
 let _workspaceRoot = "";
 let _workspaceRootReal = "";
+let _workspaceRootAlias = "";
 let _readOnlyRoots: string[] = [];
 let _readOnlyRootReals: string[] = [];
 const rawExistsSync = nodeFs.existsSync.bind(nodeFs);
@@ -142,6 +143,26 @@ function realpathIfPossible(pathname: string): string {
 	}
 }
 
+/**
+ * Android spells one app-data directory two ways: `/data/data/<pkg>` and
+ * `/data/user/0/<pkg>` (one is a symlink to the other; WHICH one is the link
+ * varies by OS build). Paths reach the shim in both spellings — Java-side env
+ * vars, `run-as` shells, and `import.meta.url` each pick their own — and
+ * relying on realpath alone to unify them fails when resolving the alias is
+ * denied (observed on-device: the agent died at startEliza because
+ * `ELIZA_STATE_DIR` arrived `/data/data`-spelled against a `/data/user/0`
+ * root, and the fatal-diagnostics write was rejected the same way, making the
+ * crash silent). Returns the sibling spelling, or null for non-Android paths.
+ * Accepting both spellings widens nothing: they are the same directory.
+ */
+export function androidAliasSibling(pathname: string): string | null {
+	const dataData = pathname.match(/^\/data\/data\/([^/]+)((?:\/.*)?)$/);
+	if (dataData) return `/data/user/0/${dataData[1]}${dataData[2]}`;
+	const dataUser = pathname.match(/^\/data\/user\/0\/([^/]+)((?:\/.*)?)$/);
+	if (dataUser) return `/data/data/${dataUser[1]}${dataUser[2]}`;
+	return null;
+}
+
 function nearestExistingParent(pathname: string): string | null {
 	let current = nodePath.resolve(pathname);
 	for (;;) {
@@ -163,6 +184,8 @@ function validateResolvedRealPath(
 		const real = realpathIfPossible(resolved);
 		if (isInsideRoot(real, _workspaceRootReal || _workspaceRoot))
 			return resolved;
+		if (_workspaceRootAlias && isInsideRoot(real, _workspaceRootAlias))
+			return resolved;
 		if (
 			allowedReadOnly &&
 			_readOnlyRootReals.some((root) => isInsideRoot(real, root))
@@ -179,6 +202,8 @@ function validateResolvedRealPath(
 	if (!existing) return resolved;
 	const real = realpathIfPossible(existing);
 	if (isInsideRoot(real, _workspaceRootReal || _workspaceRoot)) return resolved;
+	if (_workspaceRootAlias && isInsideRoot(real, _workspaceRootAlias))
+		return resolved;
 	throw accessError(
 		inputPath,
 		`mobile-fs-shim: write parent escapes workspace root: ${real}`,
@@ -235,6 +260,14 @@ function resolveSandboxed(
 	// Use a trailing-sep check to prevent a root like /data/workspace being
 	// accepted as a prefix for /data/workspace-escape.
 	if (isInsideRoot(resolved, _workspaceRoot)) {
+		return validateResolvedRealPath(inputPath, resolved, mode, false);
+	}
+
+	// Android alias spelling of the same directory (/data/data/<pkg> ↔
+	// /data/user/0/<pkg>) — see androidAliasSibling. Checked BEFORE the
+	// realpath second-chance because resolving the alias link itself can be
+	// denied on some devices, which silently killed the agent at boot.
+	if (_workspaceRootAlias && isInsideRoot(resolved, _workspaceRootAlias)) {
 		return validateResolvedRealPath(inputPath, resolved, mode, false);
 	}
 
@@ -913,6 +946,7 @@ export function installMobileFsShim(workspaceRoot: string): void {
 
 	_workspaceRoot = canonical;
 	_workspaceRootReal = realpathIfPossible(canonical);
+	_workspaceRootAlias = androidAliasSibling(canonical) ?? "";
 	_readOnlyRoots = envReadOnlyRoots().filter(
 		(root) => !isInsideRoot(root, canonical),
 	);

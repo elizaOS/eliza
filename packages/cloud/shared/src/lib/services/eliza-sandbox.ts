@@ -29,6 +29,7 @@ import {
   type NewAgentSandboxBackup,
 } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
+import { imageRepo } from "../../db/utils/docker-image-ref";
 import { InsufficientCreditsError as InsufficientCreditsApiError } from "../api/errors";
 import { containersEnv } from "../config/containers-env";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
@@ -4540,7 +4541,15 @@ export class ElizaSandboxService {
         error: "Agent has no node_id or container_name to upgrade from",
       };
     }
-    if (agent.docker_image && agent.docker_image !== dockerImage) {
+    // Refuse a fleet upgrade only for a genuinely CUSTOM image (a different
+    // repo than the fleet-managed default), NOT for a stale default-family
+    // image pinned to an older tag. Comparing the full ref (`docker_image !==
+    // dockerImage`) refused every agent on an older `ghcr.io/elizaos/eliza:sha-*`
+    // tag, so sha-pinned default agents never received fleet upgrades (#15101).
+    // The reconciler already selects them by digest drift; the blue/green swap
+    // re-provisions on the target image+digest, so moving a fleet-managed agent
+    // to the current default is safe regardless of its current tag.
+    if (agent.docker_image && imageRepo(agent.docker_image) !== imageRepo(dockerImage)) {
       return {
         success: false,
         error: "Agent uses a custom docker image; refusing fleet upgrade",
@@ -4836,7 +4845,10 @@ export class ElizaSandboxService {
         error: "Agent has no node_id or container_name to roll back from",
       };
     }
-    if (agent.docker_image && agent.docker_image !== dockerImage) {
+    // Same fleet-managed-vs-custom distinction as the upgrade path (#15101):
+    // a rollback of a default-family agent must not be refused just because its
+    // tag differs from the target.
+    if (agent.docker_image && imageRepo(agent.docker_image) !== imageRepo(dockerImage)) {
       return {
         success: false,
         error: "Agent uses a custom docker image; refusing fleet rollback",

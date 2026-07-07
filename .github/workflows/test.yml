@@ -60,7 +60,11 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.event.pull_request.base.ref }}
-          fetch-depth: 1
+          # The guard disables lazy promisor fetches while it runs. Fetch the
+          # same bounded history window up front so merge commits can resolve
+          # their parents without network fallback.
+          fetch-depth: 1500
+          filter: blob:none
           submodules: false
 
       - name: Setup Node.js for stale-base guard

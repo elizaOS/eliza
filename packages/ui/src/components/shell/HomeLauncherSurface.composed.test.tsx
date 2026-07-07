@@ -343,7 +343,7 @@ describe("Home ↔ Launcher composed surface", () => {
     expect(getShellSurface().page).toBe("home");
   });
 
-  it("launcher tiles render DISTINCT generated app-icon imagery (#5)", () => {
+  it("launcher tiles render distinct glyph-only app icons (#5)", () => {
     renderComposed();
     openLauncher();
 
@@ -355,8 +355,10 @@ describe("Home ↔ Launcher composed surface", () => {
     );
     expect(settingsVisual).toBeTruthy();
     expect(browserVisual).toBeTruthy();
-    expect(screen.getByTestId("launcher-image-settings")).toBeTruthy();
-    expect(screen.getByTestId("launcher-image-browser")).toBeTruthy();
+    expect(screen.queryByTestId("launcher-image-settings")).toBeNull();
+    expect(screen.queryByTestId("launcher-image-browser")).toBeNull();
+    expect(settingsVisual?.querySelector("img")).toBeNull();
+    expect(browserVisual?.querySelector("img")).toBeNull();
     expect(settingsVisual?.getAttribute("style")).toContain("linear-gradient");
     expect(browserVisual?.getAttribute("style")).toContain("linear-gradient");
 

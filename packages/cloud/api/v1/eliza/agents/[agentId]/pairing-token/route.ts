@@ -99,13 +99,47 @@ function resolveDirectWebUiUrlFromHealthUrl(
   }
 }
 
+/**
+ * Hosts a user's BROWSER can never reach: RFC1918, CGNAT (100.64/10 — the
+ * tailnet our containers live on), and link-local. The direct-URL rungs below
+ * derive origins from bridge_url / health_url / headscale_ip, which on
+ * production are tailnet addresses — handing one to the browser produced the
+ * dead "http://100.64.x.x:port/pair" redirect. Loopback stays allowed: local
+ * Docker dev really is browser-reachable on the same machine.
+ */
+function isBrowserUnreachableHost(hostname: string): boolean {
+  const h = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (h === "localhost" || h === "::1" || h.startsWith("127.")) return false;
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    if (a === 169 && b === 254) return true;
+    return false;
+  }
+  return /^f[cd]/.test(h) || h.startsWith("fe80");
+}
+
+function browserReachableOrigin(origin: string | null): string | null {
+  if (!origin) return null;
+  try {
+    return isBrowserUnreachableHost(new URL(origin).hostname) ? null : origin;
+  } catch {
+    return null;
+  }
+}
+
 function resolveManagedWebUiUrl(sandbox: PairingSandbox): string | null {
   if (sandbox.execution_tier === "shared") return null;
 
   return (
-    resolveDirectWebUiUrlFromBridgeHost(sandbox) ??
-    resolveDirectWebUiUrlFromHealthUrl(sandbox) ??
-    getElizaAgentDirectWebUiUrl(sandbox) ??
+    browserReachableOrigin(resolveDirectWebUiUrlFromBridgeHost(sandbox)) ??
+    browserReachableOrigin(resolveDirectWebUiUrlFromHealthUrl(sandbox)) ??
+    browserReachableOrigin(getElizaAgentDirectWebUiUrl(sandbox)) ??
     getElizaAgentPublicWebUiUrl(sandbox, {
       baseDomain: containersEnv.publicBaseDomain(),
     })

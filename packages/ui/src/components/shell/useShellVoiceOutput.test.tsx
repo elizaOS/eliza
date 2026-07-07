@@ -9,7 +9,13 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 const hoisted = vi.hoisted(() => ({
   queueAssistantSpeech: vi.fn(),
   stopSpeaking: vi.fn(),
-  cfg: { isSpeaking: false, voiceBootstrapTick: 1 },
+  cfg: {
+    isSpeaking: false,
+    voiceBootstrapTick: 1,
+    // Full voice config the useVoiceConfig mock returns; tests vary `asr` to
+    // check the hook surfaces the resolved ASR provider for the capture path.
+    voiceConfig: { provider: "local-inference" } as Record<string, unknown>,
+  },
 }));
 
 // The single TTS engine — mocked to capture the output calls the overlay makes.
@@ -36,7 +42,7 @@ vi.mock("../../hooks/useVoiceChat", () => ({
 
 vi.mock("../../voice/useVoiceConfig", () => ({
   useVoiceConfig: () => ({
-    voiceConfig: { provider: "local-inference" },
+    voiceConfig: hoisted.cfg.voiceConfig,
     voiceBootstrapTick: hoisted.cfg.voiceBootstrapTick,
     reloadVoiceConfig: () => {},
   }),
@@ -86,6 +92,7 @@ beforeEach(() => {
   hoisted.stopSpeaking.mockClear();
   hoisted.cfg.isSpeaking = false;
   hoisted.cfg.voiceBootstrapTick = 1;
+  hoisted.cfg.voiceConfig = { provider: "local-inference" };
 });
 
 afterEach(cleanup);
@@ -301,6 +308,25 @@ describe("useShellVoiceOutput", () => {
     hoisted.cfg.isSpeaking = true;
     const { result } = render(BASE);
     expect(result.current.speaking).toBe(true);
+  });
+
+  // Regression: the overlay's mic capture (useShellController → createVoiceCapture)
+  // reads the resolved ASR provider from here. Without it the factory only ever
+  // saw `undefined` and could never reach the eliza-cloud / openai cloud STT
+  // path, silently degrading to local-inference-or-browser.
+  it("surfaces the resolved ASR provider from the voice config", () => {
+    hoisted.cfg.voiceConfig = {
+      provider: "eliza-cloud",
+      asr: { provider: "eliza-cloud" },
+    };
+    const { result } = render(BASE);
+    expect(result.current.asrProvider).toBe("eliza-cloud");
+  });
+
+  it("surfaces undefined ASR provider when the config has no asr block", () => {
+    hoisted.cfg.voiceConfig = { provider: "local-inference" };
+    const { result } = render(BASE);
+    expect(result.current.asrProvider).toBeUndefined();
   });
 
   // #8792: proactive interaction comments are text-only by default.

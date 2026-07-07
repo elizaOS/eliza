@@ -176,7 +176,7 @@ describe("steward-refresh browser cookie cleanup", () => {
     }
   });
 
-  test("staging invalid refresh clears only staging cookies", async () => {
+  test("invalid refresh clears NO cookies (rotation-race safety, #13728 env-scoping holds trivially)", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = mock(async () => {
       return new Response(
@@ -204,13 +204,16 @@ describe("steward-refresh browser cookie cleanup", () => {
       );
 
       expect(response.status).toBe(401);
+      // A Steward 401 also fires for the LOSER of a refresh-rotation race
+      // (single-use tokens, one domain-wide cookie shared by console + app
+      // tabs). Clearing cookies here nuked the whole session on every lost
+      // race — the winner's fresh cookies included. The route now clears
+      // NOTHING on 401: the race self-heals from the winner's Set-Cookie,
+      // and a genuinely dead token keeps 401ing into the login surface.
+      // The #13728 env-scoping invariant (staging must never clear prod
+      // cookies) holds trivially.
       const cleared = deletedCookieNames(response);
-      expect(cleared).toContain("steward-token-staging");
-      expect(cleared).toContain("steward-refresh-token-staging");
-      expect(cleared).toContain("steward-authed-staging");
-      expect(cleared).not.toContain("steward-token");
-      expect(cleared).not.toContain("steward-refresh-token");
-      expect(cleared).not.toContain("steward-authed");
+      expect(cleared).toHaveLength(0);
     } finally {
       globalThis.fetch = originalFetch;
     }

@@ -21,6 +21,7 @@ import {
   parseBooleanFromText,
   type Room,
   type State,
+  stripAugmentationForPersistence,
   truncateToCompleteSentence,
   type UUID,
 } from "@elizaos/core";
@@ -250,21 +251,28 @@ export class CloudBootstrapMessageService implements IMessageService {
       `[CloudBootstrap] Processing: ${truncateToCompleteSentence(message.content.text || "", 50)}...`,
     );
 
-    // Save incoming message to memory
+    // Save incoming message to memory. The document augmentation envelope
+    // (`<contextual_documents>...</contextual_documents>` + `<user_request>`)
+    // is a model-facing wrapper added just for this turn's LLM prompt; strip it
+    // before persisting/embedding so the stored memory holds the clean user
+    // text. Otherwise the raw wrapper XML echoes back into the user's own chat
+    // bubble and re-enters context as history on later turns. `message` (used
+    // downstream for this turn's generation) keeps its wrap.
+    const persistableMessage = stripAugmentationForPersistence(message);
     let memoryToQueue: Memory;
     if (message.id) {
       const existingMemory = await runtime.getMemoryById(message.id);
       if (existingMemory) {
         memoryToQueue = existingMemory;
       } else {
-        const createdMemoryId = await runtime.createMemory(message, "messages");
-        memoryToQueue = { ...message, id: createdMemoryId };
+        const createdMemoryId = await runtime.createMemory(persistableMessage, "messages");
+        memoryToQueue = { ...persistableMessage, id: createdMemoryId };
       }
       await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
     } else {
-      const memoryId = await runtime.createMemory(message, "messages");
+      const memoryId = await runtime.createMemory(persistableMessage, "messages");
       message.id = memoryId;
-      memoryToQueue = { ...message, id: memoryId };
+      memoryToQueue = { ...persistableMessage, id: memoryId };
       await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
     }
 

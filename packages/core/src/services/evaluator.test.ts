@@ -14,7 +14,7 @@ import {
 	type Memory,
 	ModelType,
 } from "../types";
-import { EvaluatorService } from "./evaluator";
+import { EVALUATOR_PROMPT_MAX_CHARS, EvaluatorService } from "./evaluator";
 
 function makeRuntime(): AgentRuntime {
 	const runtime = new AgentRuntime({
@@ -520,5 +520,58 @@ describe("EvaluatorService", () => {
 		expect(useModel).toHaveBeenCalledTimes(5);
 		expect(useModel.mock.calls[2]?.[1]).toHaveProperty("responseSchema");
 		expect(useModel.mock.calls[3]?.[1]).toHaveProperty("responseSchema");
+	});
+
+	it("fails fast without any model call when the merged prompt exceeds the size cap (#15087)", async () => {
+		const runtime = makeRuntime();
+
+		runtime.registerEvaluator({
+			name: "small",
+			description: "well-behaved section",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Extract small.",
+			parse: (output) => output as never,
+			processors: [
+				{ name: "storeSmall", process: async () => ({ success: true }) },
+			],
+		});
+		runtime.registerEvaluator({
+			name: "runaway",
+			description: "section with an unbounded context block",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "x".repeat(EVALUATOR_PROMPT_MAX_CHARS + 1),
+			parse: (output) => output as never,
+			processors: [
+				{ name: "storeRunaway", process: async () => ({ success: true }) },
+			],
+		});
+
+		const useModel = vi.fn();
+		runtime.useModel = useModel as AgentRuntime["useModel"];
+
+		const result = await new EvaluatorService(runtime).run(makeMessage());
+
+		// The oversized prompt is guaranteed to fail on the TEXT_SMALL tier —
+		// the guard must spend zero model round-trips (the pre-guard behavior
+		// burned three: schema, json_object, plain).
+		expect(useModel).not.toHaveBeenCalled();
+		expect(result.skipped).toBe(false);
+		expect(result.processedEvaluators).toEqual([]);
+		expect(result.results).toEqual([]);
+		expect(result.errors).toEqual([
+			{
+				evaluatorName: "post_turn",
+				error: expect.stringContaining("exceeds") as unknown as string,
+			},
+		]);
+		expect(runtime.emitEvent).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({
+				evaluatorName: "post_turn",
+				completed: false,
+			}),
+		);
 	});
 });

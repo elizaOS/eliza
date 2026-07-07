@@ -33,22 +33,24 @@ function isNotifier(value: unknown): value is NotifierLike {
 }
 
 /**
- * The seed set. Deep links are plain root-relative paths so they pass the
- * client's `isSafeDeepLink` allowlist: `/chat` (the tour and help both live in
- * the conversation — the chat-native tour starts when the user asks, and the
- * agent answers help questions from its bundled help knowledge), `/connectors`
- * (Settings → Connectors, where calendar linking lives). Stable groupKeys make
- * re-seeding idempotent even if the guard flag is ever lost — a duplicate
- * collapses onto the existing row.
+ * The seed set. Deep links are root-relative paths so they pass the client's
+ * `isSafeDeepLink` allowlist. All three live in the conversation: `/chat`
+ * opens the floating chat, and `/chat?prefill=<text>` additionally seeds the
+ * composer with a ready-to-send ask (never auto-sent), so tapping a row lands
+ * the user IN the flow — the tour row with the tour ask, the calendar row with
+ * a connect-my-calendar ask the agent answers with its connector flow — rather
+ * than dumping them on a settings page. Stable groupKeys make re-seeding
+ * idempotent even if the guard flag is ever lost — a duplicate collapses onto
+ * the existing row.
  */
 export const ONBOARDING_NOTIFICATIONS: readonly NotificationInput[] = [
   {
     title: "Take the tour",
-    body: "New here? A one-minute tour runs right in the chat — open the chat and tap “Take a quick tour” to walk through messaging, voice, and navigating by asking.",
+    body: "New here? A one-minute tour runs right in the chat — walk through messaging, voice, and navigating by asking.",
     category: "general",
     priority: "normal",
     source: "system",
-    deepLink: "/chat",
+    deepLink: "/chat?prefill=Take%20a%20quick%20tour",
     groupKey: "onboarding:tutorial",
   },
   {
@@ -66,7 +68,8 @@ export const ONBOARDING_NOTIFICATIONS: readonly NotificationInput[] = [
     category: "general",
     priority: "low",
     source: "system",
-    deepLink: "/connectors",
+    deepLink:
+      "/chat?prefill=Connect%20my%20calendar%20so%20you%20can%20brief%20me%20on%20my%20day",
     groupKey: "onboarding:calendar",
   },
 ];

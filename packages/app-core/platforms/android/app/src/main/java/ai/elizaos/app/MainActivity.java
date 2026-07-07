@@ -88,6 +88,17 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ResourceProbePlugin.class);
         super.onCreate(savedInstanceState);
 
+        // Replace the auto-registered community PushNotifications plugin with
+        // the Firebase-guarded subclass. Must run AFTER super.onCreate: the
+        // bridge exists, auto-registration has happened, and
+        // Bridge.registerPlugin is a plain map.put — last one wins. Without
+        // this, any build lacking google-services.json hard-crashes the
+        // process the moment the renderer calls PushNotifications.register()
+        // with notification permission already granted.
+        if (getBridge() != null) {
+            getBridge().registerPlugin(SafePushNotificationsPlugin.class);
+        }
+
         // Keep the screen on while the agent app is in the foreground.
         // Voice turns (ASR → LLM → TTS) on local-runtime builds regularly
         // take 1-5 seconds; screen-off mid-turn breaks the "is the agent

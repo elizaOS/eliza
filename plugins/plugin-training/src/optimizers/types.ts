@@ -83,6 +83,13 @@ export interface OptimizerLineageEntry {
   notes?: string;
 }
 
+export interface OptimizedPromptContextConfig {
+  providerSet?: readonly string[];
+  providerOrder?: readonly string[];
+  renderTemplates?: Readonly<Record<string, string>>;
+  budgetVector?: Readonly<Record<string, number>>;
+}
+
 /** Common shape returned by all native optimizers. */
 export interface OptimizerResult {
   optimizedPrompt: string;
@@ -119,4 +126,5 @@ export interface OptimizedPromptArtifact {
   generatedAt: string;
   fewShotExamples?: OptimizationExample[];
   lineage: OptimizerLineageEntry[];
+  contextConfig?: OptimizedPromptContextConfig;
 }

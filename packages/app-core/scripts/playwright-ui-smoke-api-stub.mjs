@@ -5058,6 +5058,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/tts/local-inference/status"
+  ) {
+    // Symmetric with ASR: the /chat overlay polls TTS readiness before the
+    // spoken-reply loop. Without this the catch-all 501 below surfaces as a
+    // console.error the e2e diagnostics treat as a bug.
+    sendJson(req, res, 200, { ready: true, provider: "local-inference" });
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/asr/local-inference") {
     // The WAV body is real captured audio; we don't transcribe it, we return a
     // fixed phrase so the spoken turn resolves to a known message.

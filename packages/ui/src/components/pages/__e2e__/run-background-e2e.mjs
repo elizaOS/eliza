@@ -30,11 +30,15 @@
  *
  * Run: bun run --cwd packages/ui test:background-e2e
  */
-import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
 import { chromium } from "playwright";
+import {
+  stubElizaCore,
+  stubNodeBuiltins,
+  writeFixturePage,
+} from "../../../testing/e2e-runner/index.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-background");
@@ -56,41 +60,69 @@ const uploadSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="
   <circle cx="900" cy="240" r="160" fill="#f4f4f5" opacity="0.85"/>
 </svg>`;
 
-const result = await build({
-  entryPoints: [join(here, "background-fixture.tsx")],
-  bundle: true,
-  format: "iife",
-  platform: "browser",
-  jsx: "automatic",
-  loader: { ".tsx": "tsx", ".ts": "ts" },
-  define: { "process.env.NODE_ENV": '"production"' },
-  write: false,
+const url = await writeFixturePage({
+  entry: join(here, "background-fixture.tsx"),
+  outDir,
+  htmlName: "background.html",
+  title: "background e2e",
+  plugins: [stubElizaCore(), stubNodeBuiltins()],
+  processShim: true,
 });
-const js = result.outputFiles[0].text;
-const html = `<!doctype html><html><head><meta charset="utf-8"><title>background e2e</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<style>html,body{margin:0;height:100%}</style>
-</head><body><div id="root"></div><script>${js}</script></body></html>`;
-const htmlPath = join(outDir, "background.html");
-await writeFile(htmlPath, html);
-const url = `file://${htmlPath}`;
 
 let shot = 0;
 async function snap(p, name) {
   shot += 1;
   const file = `bg-${String(shot).padStart(2, "0")}-${name}.png`;
-  await p.screenshot({ path: join(outDir, file) });
-  console.log(`  📸 ${file}`);
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await p.screenshot({
+        path: join(outDir, file),
+        animations: "disabled",
+        timeout: 60_000,
+      });
+      console.log(`  📸 ${file}`);
+      return;
+    } catch (err) {
+      lastErr = err;
+      await p.waitForTimeout(500);
+    }
+  }
+  assert(false, `screenshot ${file} failed after retries: ${lastErr}`);
 }
 
 const shaderColor = (p) =>
-  p.evaluate(
-    () =>
-      document.querySelector('[data-testid="app-background-shader"]')?.style
-        .backgroundColor ?? null,
-  );
+  p.evaluate(() => {
+    const el = document.querySelector('[data-testid="app-background-shader"]');
+    if (!(el instanceof HTMLElement)) return null;
+    const style = getComputedStyle(el);
+    if (
+      style.backgroundColor &&
+      style.backgroundColor !== "rgba(0, 0, 0, 0)" &&
+      style.backgroundColor !== "transparent"
+    ) {
+      return style.backgroundColor;
+    }
+    return style.backgroundImage.match(/rgba?\([^)]+\)/)?.[0] ?? null;
+  });
+const bgState = (p) => p.evaluate(() => window.__getBgState?.() ?? null);
 const count = (p, sel) => p.locator(sel).count();
 const settle = (p) => p.waitForTimeout(350);
+
+async function glslCanvasOrColorFallback(p) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const liveCanvas = await count(p, '[data-testid="app-background-glsl"] canvas');
+    const colorFallback = await count(p, '[data-testid="app-background-shader"]');
+    if (liveCanvas === 1 || colorFallback === 1) {
+      return { liveCanvas, colorFallback };
+    }
+    await p.waitForTimeout(250);
+  }
+  return {
+    liveCanvas: await count(p, '[data-testid="app-background-glsl"] canvas'),
+    colorFallback: await count(p, '[data-testid="app-background-shader"]'),
+  };
+}
 
 /**
  * Pixel-probe the COMPOSITED page (screenshot → decode in-page → sample a grid
@@ -333,24 +365,55 @@ try {
   );
   await snap(p, "glsl-recolor-green");
 
-  // 12. Unknown preset id → ignored; the running shader is never wedged.
+  // 12. Unknown preset id → ignored; the background config is unchanged. The
+  // rendered GLSL canvas may already have taken the deliberate watchdog fallback
+  // to a plain color field on a loaded CI box, so assert the store/history
+  // contract and then require either the canvas or that color-field fallback.
+  const beforeUnknownPreset = await bgState(p);
+  assert(Boolean(beforeUnknownPreset?.config), "__getBgState hook is live");
   await p.evaluate(() =>
     window.__emitBgApply?.({ op: "set", mode: "glsl", presetId: "nope" }),
   );
   await settle(p);
+  const afterUnknownPreset = await bgState(p);
   assert(
-    (await count(p, '[data-testid="app-background-glsl"] canvas')) === 1,
-    "an unknown GLSL preset id is ignored (canvas still live)",
+    JSON.stringify({
+      config: afterUnknownPreset?.config,
+      history: afterUnknownPreset?.history,
+    }) ===
+      JSON.stringify({
+        config: beforeUnknownPreset?.config,
+        history: beforeUnknownPreset?.history,
+      }),
+    "an unknown GLSL preset id is ignored (config/history unchanged)",
+  );
+  const afterUnknownVisual = await glslCanvasOrColorFallback(p);
+  assert(
+    afterUnknownPreset?.config?.mode === "glsl" &&
+      (afterUnknownVisual.liveCanvas === 1 ||
+        afterUnknownVisual.colorFallback === 1),
+    `unknown GLSL preset remains visually covered (canvas=${afterUnknownVisual.liveCanvas}, fallback=${afterUnknownVisual.colorFallback})`,
   );
 
   // 13. Undo from GLSL: history integrates the shader configs. First undo
-  // steps green-plasma → teal-plasma (still GLSL); second undo pops the shader
-  // entirely, restoring the prior plain teal field. #0891b2 = rgb(8,145,178).
+  // steps green-plasma → teal-plasma (still a GLSL config); second undo pops
+  // the shader entirely, restoring the prior plain teal field.
+  // #0891b2 = rgb(8,145,178).
   await p.evaluate(() => window.__emitBgApply?.({ op: "undo" }));
   await settle(p);
+  const afterFirstGlslUndo = await bgState(p);
   assert(
-    (await count(p, '[data-testid="app-background-glsl"] canvas')) === 1,
-    "first undo steps back to the previous GLSL config (still rendering)",
+    afterFirstGlslUndo?.config?.mode === "glsl" &&
+      afterFirstGlslUndo.config.shader?.presetId === "plasma" &&
+      afterFirstGlslUndo.config.color === "#0891b2" &&
+      Array.isArray(afterFirstGlslUndo.history) &&
+      afterFirstGlslUndo.history.length > 0,
+    "first undo steps back to the previous GLSL config (state/history)",
+  );
+  const firstUndoVisual = await glslCanvasOrColorFallback(p);
+  assert(
+    firstUndoVisual.liveCanvas === 1 || firstUndoVisual.colorFallback === 1,
+    `first undo remains visually covered (canvas=${firstUndoVisual.liveCanvas}, fallback=${firstUndoVisual.colorFallback})`,
   );
   await p.evaluate(() => window.__emitBgApply?.({ op: "undo" }));
   await settle(p);

@@ -631,6 +631,13 @@ let running = true;
 let lastInfraMaintenanceAt = 0;
 
 /**
+ * Resolver for the in-flight poll sleep, so `requestShutdown` can cut it short
+ * and a SIGTERM that lands mid-interval drains immediately instead of waiting
+ * out up to `pollIntervalMs` first. Null while no sleep is pending.
+ */
+let wakePollSleep: (() => void) | null = null;
+
+/**
  * Heartbeat cadence — independent of the work cycle. The liveness key lives
  * 60s in Redis (PROVISIONING_WORKER_HEARTBEAT_TTL_S); publishing every 15s
  * leaves room for 3 missed publishes before the gate trips. Decoupling this
@@ -766,8 +773,22 @@ export function evaluateSelfRestart(deps: {
   return { nextConsecutiveTicks, shouldRestart };
 }
 
-async function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Poll-loop sleep that `requestShutdown` wakes early on SIGTERM/SIGINT.
+ * Exported for unit testing the wake path.
+ */
+export async function pollSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      wakePollSleep = null;
+      resolve();
+    }, ms);
+    wakePollSleep = () => {
+      clearTimeout(timer);
+      wakePollSleep = null;
+      resolve();
+    };
+  });
 }
 
 async function publishHeartbeat(logger: WorkerLogger): Promise<void> {
@@ -1306,6 +1327,7 @@ async function main(): Promise<void> {
     // single cycle. No interval needed for the one-shot path.
     await publishHeartbeat(logger);
     await pollCycle(logger, config);
+    await closeOpenHandles(logger);
     return;
   }
 
@@ -1320,13 +1342,14 @@ async function main(): Promise<void> {
     while (running) {
       await pollCycle(logger, config);
       if (running) {
-        await sleep(config.pollIntervalMs);
+        await pollSleep(config.pollIntervalMs);
       }
     }
   } finally {
     clearInterval(heartbeatTimer);
   }
 
+  await closeOpenHandles(logger);
   logger.info("[provisioning-worker] stopped");
 }
 
@@ -1335,13 +1358,92 @@ function isMainModule(): boolean {
   return entry ? path.resolve(entry) === fileURLToPath(import.meta.url) : false;
 }
 
-process.on("SIGINT", () => {
-  running = false;
-});
+/**
+ * Close the long-lived handles the daemon owns before exiting: the static
+ * docker-ssh connection pool and the process-level pg pools. Best-effort — a
+ * failed close is logged and never blocks the exit (the force-exit timer in
+ * `requestShutdown` backstops a wedged teardown). Closers are injectable for
+ * unit tests, mirroring `maybePublishHeartbeat`.
+ */
+export async function closeOpenHandles(
+  logger: WorkerLogger,
+  close: {
+    sshPool?: () => Promise<void>;
+    dbPools?: () => Promise<void>;
+  } = {},
+): Promise<void> {
+  const closers: [string, () => Promise<void>][] = [
+    [
+      "ssh pool",
+      close.sshPool ??
+        (async () => {
+          const { DockerSSHClient } = await import(
+            "@elizaos/cloud-shared/lib/services/docker-ssh"
+          );
+          await DockerSSHClient.disconnectAll();
+        }),
+    ],
+    [
+      "db pools",
+      close.dbPools ??
+        (async () => {
+          // Despite the suffix, this is THE process-level pool closer
+          // (`connectionManager.closeAll()` → `pool.end()` per cached pool).
+          const { closeDatabaseConnectionsForTests } = await import(
+            "@elizaos/cloud-shared/db/client"
+          );
+          await closeDatabaseConnectionsForTests();
+        }),
+    ],
+  ];
+  const results = await Promise.allSettled(closers.map(([, fn]) => fn()));
+  results.forEach((result, i) => {
+    if (result.status === "rejected") {
+      logger.warn("[provisioning-worker] shutdown cleanup failed", {
+        handle: closers[i][0],
+        error:
+          result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason),
+      });
+    }
+  });
+}
 
-process.on("SIGTERM", () => {
+/**
+ * Bounded shutdown grace. SIGTERM flips `running` and lets the in-flight cycle
+ * drain, but a cycle can legitimately run for minutes (WORK_CYCLE_TIMEOUT_MS is
+ * 240s) while systemd escalates stop-sigterm to SIGKILL at 90s. Force-exiting
+ * ourselves at 60s keeps every stop/restart under systemd's window; the timer
+ * is unref'd so it never keeps a clean drain alive.
+ */
+const SHUTDOWN_FORCE_EXIT_MS = 60_000;
+
+/**
+ * SIGTERM/SIGINT path: stop the loop, cut the poll sleep short, and arm the
+ * force-exit backstop. The clean path is `main()` resolving — drain the
+ * in-flight cycle, close handles, `process.exit(0)` at the entrypoint.
+ * `exit` is injectable for unit tests, mirroring `triggerSelfRestart`.
+ */
+export function requestShutdown(
+  signal: NodeJS.Signals,
+  exit: (code: number) => never = process.exit,
+): void {
+  process.stderr.write(`[provisioning-worker] ${signal} received; draining\n`);
   running = false;
-});
+  wakePollSleep?.();
+  const timer = setTimeout(() => {
+    process.stderr.write(
+      `[provisioning-worker] drain exceeded ${SHUTDOWN_FORCE_EXIT_MS}ms after ${signal}; forcing exit\n`,
+    );
+    exit(0);
+  }, SHUTDOWN_FORCE_EXIT_MS);
+  timer.unref();
+}
+
+process.on("SIGINT", () => requestShutdown("SIGINT"));
+
+process.on("SIGTERM", () => requestShutdown("SIGTERM"));
 
 process.on("unhandledRejection", (reason) => {
   void loadDeps().then(({ logger }) => {
@@ -1352,10 +1454,22 @@ process.on("unhandledRejection", (reason) => {
 });
 
 if (isMainModule()) {
-  main().catch((error) => {
-    process.stderr.write(
-      `[provisioning-worker] fatal: ${error instanceof Error ? error.message : String(error)}\n`,
-    );
-    process.exitCode = 1;
-  });
+  main().then(
+    () => {
+      // Exit explicitly: the dependency graph holds live handles the daemon
+      // can't enumerate (a fresh Redis socket per heartbeat publish, module-
+      // level intervals in shared libs), so the event loop never drains on its
+      // own — systemd was escalating every stop to SIGKILL after 90s.
+      process.exit(0);
+    },
+    (error) => {
+      process.stderr.write(
+        `[provisioning-worker] fatal: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      // Same open-handles reasoning as the clean path: `process.exitCode = 1`
+      // alone leaves a dead worker hanging instead of letting Restart=always
+      // relaunch it.
+      process.exit(1);
+    },
+  );
 }

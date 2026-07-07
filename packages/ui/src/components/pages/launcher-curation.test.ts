@@ -14,7 +14,6 @@ import {
 import {
   canonicalLauncherId,
   curateLauncherPages,
-  curateLauncherZones,
   normalizeLauncherLabel,
 } from "./launcher-curation";
 
@@ -122,9 +121,11 @@ describe("curateLauncherPages", () => {
     expect(ids(page)).toEqual(["settings", "wallet"]);
   });
 
-  it("hides relationships by default, shows it only in Developer Mode (#14479)", () => {
+  it("never tiles relationships — it is a Character section, not an app", () => {
     const views = [entry("wallet"), entry("relationships"), entry("settings")];
-    // Default (no developer/preview): relationships is developer-gated → hidden.
+    // The character family is ONE launcher tile; Relationships is reached via
+    // the Character section strip (CharacterSectionNav), so no standalone tile
+    // in any profile — including Developer Mode.
     expect(
       ids(
         curateLauncherPages(views, {
@@ -134,7 +135,6 @@ describe("curateLauncherPages", () => {
         }),
       ),
     ).toEqual(["settings", "wallet"]);
-    // Developer Mode on: relationships reappears (kept, not deleted).
     expect(
       ids(
         curateLauncherPages(views, {
@@ -143,7 +143,7 @@ describe("curateLauncherPages", () => {
           cloudActive: true,
         }),
       ),
-    ).toContain("relationships");
+    ).not.toContain("relationships");
   });
 
   it("keeps wallet-group sub-pages out of the launcher", () => {
@@ -407,8 +407,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       "browser",
       "character",
       "documents",
-      "character-skills",
-      "experience",
       "memories",
       "feed",
       "stream",
@@ -419,8 +417,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       "skills",
       "plugins",
       "fine-tuning",
-      // relationships is developer-gated (#14479) — shows in the dev section.
-      "relationships",
     ]);
   });
 
@@ -442,8 +438,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       "browser",
       "character",
       "documents",
-      "character-skills",
-      "experience",
       "memories",
     ]);
   });
@@ -475,7 +469,8 @@ describe("curateLauncherPages — full realistic view set", () => {
       }),
     );
     expect(developerOnly).toContain("fine-tuning");
-    expect(developerOnly).toContain("relationships");
+    // relationships is a Character section, never a tile — even developer-on.
+    expect(developerOnly).not.toContain("relationships");
     for (const id of ["feed", "stream"]) {
       expect(developerOnly).not.toContain(id);
     }
@@ -500,18 +495,17 @@ describe("curateLauncherPages — full realistic view set", () => {
 });
 
 describe("launcher dead-tile guard", () => {
-  it("collapses the legacy 'rolodex' alias into relationships (no standalone dead tile)", () => {
-    // `rolodex` is a routable tab with a launcher tile but no
-    // renderStaticViewRouterTab branch, so a standalone tile bounced the user
-    // back to the launcher fallback. The canonical dedup rewrites it onto
-    // `relationships` (the real contact surface) before it can tile on its own.
+  it("collapses the legacy 'rolodex' alias into relationships and neither tiles", () => {
+    // `rolodex` canonicalizes onto `relationships`, and relationships itself
+    // is hidden (a Character section, not an app) — so the alias produces NO
+    // tile at all instead of a dead standalone one.
     expect(canonicalLauncherId("rolodex")).toBe("relationships");
     const page = curateLauncherPages(
       [entry("chat"), entry("rolodex"), entry("relationships")],
       { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
     expect(ids(page)).not.toContain("rolodex");
-    expect(ids(page)).toContain("relationships");
+    expect(ids(page)).not.toContain("relationships");
   });
 });
 
@@ -716,55 +710,5 @@ describe("launcher label-duplication lint", () => {
     expect(() => assertNoDuplicateVisibleLabels(clash)).toThrow(
       /Duplicate launcher label/,
     );
-  });
-});
-
-describe("curateLauncherZones", () => {
-  const PAGE = curateLauncherPages(
-    [
-      entry("chat"),
-      entry("settings"),
-      entry("wallet"),
-      entry("browser"),
-      entry("documents", { viewKind: "system" }),
-    ],
-    { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
-  );
-
-  it("projects Favorites over the curated page and keeps All Apps exhaustive (no Recents zone)", () => {
-    const zones = curateLauncherZones(PAGE, {
-      favoriteIds: ["settings"],
-    });
-    // Recents was removed as duplicate noise (#13453): only Favorites + All Apps.
-    expect(zones.map((z) => z.key)).toEqual(["favorites", "all"]);
-    expect(zones[0].entries.map((e) => e.id)).toEqual(["settings"]);
-    // All Apps is the whole page (a tile is not removed for being pinned).
-    expect(zones[1].entries).toBe(PAGE);
-    expect(zones[1].entries.map((e) => e.id)).toContain("browser");
-  });
-
-  it("returns an empty Favorites zone for a first-run launcher", () => {
-    const zones = curateLauncherZones(PAGE, {
-      favoriteIds: [],
-    });
-    expect(zones[0].entries).toEqual([]);
-    expect(zones[1].entries).toBe(PAGE);
-  });
-
-  it("skips favorite ids that are no longer visible tiles (no resurrection)", () => {
-    // A stale favorite for a now-hidden/uninstalled surface must not add a tile
-    // the curated page dropped; a still-visible one survives.
-    const zones = curateLauncherZones(PAGE, {
-      favoriteIds: ["also-gone", "wallet"],
-    });
-    expect(zones[0].entries.map((e) => e.id)).toEqual(["wallet"]);
-  });
-
-  it("canonicalizes + de-dupes favorite ids", () => {
-    const zones = curateLauncherZones(PAGE, {
-      // `inventory` canonicalizes to `wallet`; the duplicate must collapse.
-      favoriteIds: ["inventory", "wallet", "browser"],
-    });
-    expect(zones[0].entries.map((e) => e.id)).toEqual(["wallet", "browser"]);
   });
 });

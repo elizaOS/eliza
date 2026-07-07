@@ -8,6 +8,7 @@
  * row for other surfaces. Section body lazy-loaded via settings-sections.ts.
  */
 
+import { Mic } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
 import {
@@ -202,19 +203,51 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     />
   );
 
+  // The two top-level choices earn a one-line explanation each so first-run
+  // setup is "pick one of two cards", not "decode a chip cloud".
+  const intelligenceDescription = (entry: ProviderListEntry) =>
+    entry.category === "cloud"
+      ? t("providerswitcher.cloudTileDescription", {
+          defaultValue:
+            "Managed models through your Eliza Cloud account. No setup — sign in and it works.",
+        })
+      : t("providerswitcher.localTileDescription", {
+          defaultValue:
+            "Runs entirely on this device with the bundled local model. Private and works offline.",
+        });
+
   return (
     <SettingsStack>
       <SettingsGroup
         title={t("providerswitcher.intelligenceGroupTitle", {
           defaultValue: "Intelligence",
         })}
+        description={t("providerswitcher.intelligenceGroupDescription", {
+          defaultValue: "Choose what powers your agent's replies.",
+        })}
         bare
       >
-        {activeEntry ? (
+        {/* Subscription-active needs the honesty clarifier (it does NOT route
+            chat); a Cloud/Local active state is already shown on its tile. */}
+        {activeEntry && activeEntry.category === "subscription" ? (
           <ActiveProviderSummary entry={activeEntry} t={t} />
         ) : null}
-        <div className="flex flex-wrap gap-2">
-          {intelligenceEntries.map(renderChip)}
+        <div className="grid gap-2 sm:grid-cols-2">
+          {intelligenceEntries.map((entry) => (
+            <ProviderCard
+              key={entry.id}
+              id={entry.id}
+              icon={entry.icon}
+              label={entry.label}
+              category={entry.category}
+              status={entry.status}
+              current={entry.current}
+              selected={visibleProviderPanelId === entry.id}
+              onSelect={selection.handleProviderPanelSelect}
+              variant="tile"
+              description={intelligenceDescription(entry)}
+            />
+          ))}
         </div>
 
         {visibleProviderPanelId === "__local__" ? (
@@ -272,6 +305,37 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           ) : null}
         </SettingsGroup>
       ) : null}
+
+      {/* Voice folds into this section for MVP (the standalone Voice tab is
+          developer-only): speech is pinned to the bundled Kokoro TTS, so a
+          read-only status row is the whole story. */}
+      <SettingsGroup
+        title={t("providerswitcher.voiceGroupTitle", { defaultValue: "Voice" })}
+        bare
+      >
+        <SettingsRow
+          label={
+            <span className="flex items-center gap-2">
+              <Mic
+                className="h-[18px] w-[18px] shrink-0 text-accent"
+                aria-hidden
+              />
+              {t("providerswitcher.voiceRowLabel", {
+                defaultValue: "Kokoro (on-device)",
+              })}
+            </span>
+          }
+          description={t("providerswitcher.voiceRowDescription", {
+            defaultValue:
+              "Speech uses the bundled Kokoro voice — nothing to configure. Voice selection moves to your character.",
+          })}
+          control={
+            <span className="text-xs text-accent">
+              {t("providerswitcher.activeProvider", { defaultValue: "Active" })}
+            </span>
+          }
+        />
+      </SettingsGroup>
 
       <SettingsGroup
         title={t("providerswitcher.advancedGroupTitle", {

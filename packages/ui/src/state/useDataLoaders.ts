@@ -350,6 +350,15 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         conversationMessagesRef.current = cached;
         loadedConversationIdRef.current = convId;
         setConversationMessages(cached);
+      } else if (loadedConversationIdRef.current !== convId) {
+        // No cache means the visible transcript still belongs to the previous
+        // active conversation until the fetch resolves. Clear it immediately so
+        // the home overlay cannot render old-room context under the newly
+        // selected conversation while the network request is in flight.
+        greetingFiredRef.current = false;
+        conversationMessagesRef.current = [];
+        loadedConversationIdRef.current = null;
+        setConversationMessages([]);
       }
 
       try {

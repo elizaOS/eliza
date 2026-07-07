@@ -12,6 +12,7 @@
  */
 
 import type { Memory, UUID } from "@elizaos/core";
+import { ChannelType } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../../core/src/database/inMemoryAdapter.ts";
 import {
@@ -40,7 +41,7 @@ function makeRuntime(adapter: InMemoryDatabaseAdapter): unknown {
           agentId: AGENT_ID,
           name: params.roomName,
           source: params.source ?? "test",
-          type: "dm",
+          type: ChannelType.DM,
           worldId: params.worldId,
           channelId: params.channelId,
         } as Parameters<InMemoryDatabaseAdapter["createRooms"]>[0][number],

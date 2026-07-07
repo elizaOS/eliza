@@ -28,7 +28,8 @@ import {
 import { useBranding } from "../../config/branding";
 import { isElizaCloudRuntimeLocked } from "../../first-run/mobile-runtime-mode";
 import { useAppSelectorShallow } from "../../state";
-import { openExternalUrl, preOpenWindow } from "../../utils";
+import { preOpenCloudLoginWindow } from "../../state/cloud-login-launch";
+import { openExternalUrl } from "../../utils";
 import { StripeEmbeddedCheckout } from "../cloud/StripeEmbeddedCheckout";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -621,7 +622,7 @@ export function CloudDashboard() {
             variant="default"
             size="sm"
             className="h-8 rounded-sm px-3 text-xs font-semibold"
-            onClick={() => void handleCloudLogin(preOpenWindow())}
+            onClick={() => void handleCloudLogin(preOpenCloudLoginWindow())}
             disabled={elizaCloudLoginBusy}
           >
             {elizaCloudLoginBusy ? (

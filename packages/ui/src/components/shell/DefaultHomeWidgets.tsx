@@ -70,18 +70,10 @@ const WEATHER_ICON: Record<WeatherKind, LucideIcon> = {
   storm: CloudLightning,
 };
 
-function greeting(hour: number): string {
-  if (hour < 5) return "Good night";
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  if (hour < 21) return "Good evening";
-  return "Good night";
-}
-
 /**
  * The weather half of the time/weather pair - a naked 2×2 tile that mirrors the
  * time tile's footprint (bottom-aligned so the reading settles against the same
- * baseline band as the greeting, giving the pair a shared horizon).
+ * baseline band as the date, giving the pair a shared horizon).
  */
 function WeatherTile(): React.JSX.Element {
   const weather = useWeather();
@@ -125,13 +117,20 @@ function WeatherTile(): React.JSX.Element {
         </button>
       ) : (
         <>
-          <div className="flex items-center gap-2">
-            <Icon className="h-7 w-7 text-accent" aria-hidden />
-            <div className="text-4xl font-semibold leading-none tabular-nums tracking-tighter">
-              {weather.temp}
+          {/* Temperature row. The unit is a flex sibling top-aligned with a
+              fixed optical offset — NOT an inline `align-top` span, whose line
+              box collides with the `leading-none` digits — and the row never
+              wraps, so the icon can't fold onto the number at narrow tile
+              widths. No letter-space tightening on numerals: it crammed the
+              digits into the degree unit; tabular-nums already keeps the
+              width stable across minute ticks. */}
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <Icon className="h-7 w-7 shrink-0 text-accent" aria-hidden />
+            <div className="flex items-start text-4xl font-semibold leading-none tabular-nums">
+              <span>{weather.temp}</span>
               <span
                 className={cn(
-                  "align-top text-base font-medium",
+                  "ml-0.5 mt-0.5 text-base font-medium leading-none",
                   WALLPAPER_TEXT.muted,
                 )}
               >
@@ -198,9 +197,6 @@ const HomeClock = memo(function HomeClock(): React.JSX.Element {
       <div className={cn("mt-3 text-base font-medium", WALLPAPER_TEXT.primary)}>
         {dateLabel}
       </div>
-      <div className="mt-1 text-sm font-medium text-accent/90">
-        {greeting(hours)}
-      </div>
     </div>
   );
 });
@@ -224,9 +220,9 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
       className="grid grid-cols-4 items-start gap-x-4 gap-y-2"
     >
       {/* Time, the editorial header. Big, left-aligned, with a tight tracking
-          display feel; the date + greeting sit beneath as a quiet stack so the
-          hierarchy is unmistakable (hero numeral, supporting line, soft
-          greeting). White on the ember field with a legibility shadow.
+          display feel; the date sits beneath as a quiet supporting line so the
+          hierarchy is unmistakable (hero numeral, supporting line). White on the
+          ember field with a legibility shadow.
 
           Hideable from Appearance settings (#10706): only render when the user
           hasn't hidden the time tile. The tile footprint is reserved immediately;

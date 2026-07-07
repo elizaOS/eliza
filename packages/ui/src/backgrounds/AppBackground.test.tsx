@@ -42,42 +42,31 @@ describe("AppBackground", () => {
     ).toBeNull();
   });
 
-  it("extends the shader wallpaper past the collapsed-ICB bottom via the JS-MEASURED reclaim var (standalone PWA)", () => {
-    // BOTTOM-BAR ROOT CAUSE (device r6): the wallpaper is `fixed inset-0`, so
-    // its `bottom: 0` anchors to the fixed-descendant initial containing block.
-    // On the installed iOS standalone PWA that ICB COLLAPSES to the small/layout
-    // viewport (~59px short of the true bottom), so the wallpaper stops ABOVE
-    // the home-indicator zone and the dimmed launch-bg shows through as the
-    // near-black strip. The OLD `-1 * max(0px, 100lvh - 100dvh)` CSS-unit calc
-    // was a NO-OP on device (the collapsed ICB resolves lvh === dvh), which is
-    // why the strip survived 5 fixes. The reclaim now references the
-    // JS-MEASURED `--standalone-bottom-reclaim` var so it reflects the ACTUAL
-    // device gap. No-op everywhere the two viewports agree (var = 0).
+  it("renders wallpaper layers as full-bleed `fixed inset-0` with no bottom-reclaim override", () => {
+    // The wallpaper is `fixed inset-0`; with the mobile/PWA body scroll-locked
+    // WITHOUT `position: fixed` (styles/base.css), a fixed layer's containing
+    // block is the true viewport, so `inset-0` reaches the physical screen
+    // bottom on its own — no `bottom` reclaim offset, no `--standalone-bottom-reclaim`.
     seed({ mode: "shader", color: "#ef5a1f" });
     const { container } = render(<AppBackground />);
     const shader = container.querySelector<HTMLElement>(
       '[data-testid="app-background-shader"]',
     );
-    // jsdom's CSS parser preserves var()/calc() literally; assert the reclaim
-    // references the MEASURED var, not the useless lvh/dvh CSS-unit delta.
-    const bottom = shader?.style.bottom ?? "";
-    expect(bottom).toContain("calc");
-    expect(bottom).toContain("--standalone-bottom-reclaim");
-    expect(bottom).not.toContain("100dvh");
-    expect(bottom).not.toContain("100lvh");
+    expect(shader?.className).toContain("fixed");
+    expect(shader?.className).toContain("inset-0");
+    // No inline bottom override, and specifically no reclaim var.
+    expect(shader?.style.bottom ?? "").toBe("");
   });
 
-  it("extends the image wallpaper past the collapsed-ICB bottom via the JS-MEASURED reclaim var (standalone PWA)", () => {
+  it("renders the image wallpaper as full-bleed `fixed inset-0` with no bottom-reclaim override", () => {
     seed({ mode: "image", color: "#000000", imageUrl: "/api/media/x.png" });
     const { container } = render(<AppBackground />);
     const image = container.querySelector<HTMLElement>(
       '[data-testid="app-background-image"]',
     );
-    const bottom = image?.style.bottom ?? "";
-    expect(bottom).toContain("calc");
-    expect(bottom).toContain("--standalone-bottom-reclaim");
-    expect(bottom).not.toContain("100dvh");
-    expect(bottom).not.toContain("100lvh");
+    expect(image?.className).toContain("fixed");
+    expect(image?.className).toContain("inset-0");
+    expect(image?.style.bottom ?? "").toBe("");
   });
 
   it("renders a cover image when configured for image mode", () => {

@@ -15,12 +15,13 @@ import { goLauncher } from "../../state/shell-surface-store";
  * The global corner back button was removed (#11876); each view now owns its
  * own header + back control (this module). Back always lands on the launcher
  * surface: set the shell-surface rail to its launcher half, then route to
- * `/apps` (which mounts the launcher). One helper so every view agrees.
+ * `/views` (which mounts the launcher grid — `/apps` is now the My Apps
+ * management view). One helper so every view agrees.
  */
 export function navigateBackToLauncher(): void {
   goLauncher();
   if (typeof window === "undefined") return;
-  const path = "/apps";
+  const path = "/views";
   try {
     if (shouldUseHashNavigation()) {
       window.location.hash = path;

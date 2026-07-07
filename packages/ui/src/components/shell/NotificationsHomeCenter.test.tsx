@@ -3,8 +3,21 @@
 // Dashboard notification center behavior against the real notification store
 // (driven via the test-only ingest; HTTP mutations mocked at the API client).
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Haptics is a native bridge; stub it so the row's long-press path
+// (`void haptics.light()`) doesn't leave a real pending promise under fake
+// timers in the touch-interaction tests.
+vi.mock("../../bridge/capacitor-bridge", () => ({
+  haptics: { light: vi.fn(async () => {}), medium: vi.fn(async () => {}) },
+}));
 
 // Mutations are optimistic writes through the API client - mock the transport,
 // not the store, so mark-read/dismiss/clear exercise the real store paths.
@@ -35,7 +48,9 @@ import {
   __resetNotificationStoreForTests,
 } from "../../state/notifications/notification-store";
 import {
+  isInterruptPriority,
   NotificationsHomeCenter,
+  notificationRowOptions,
   orderDashboardNotifications,
 } from "./NotificationsHomeCenter";
 
@@ -49,7 +64,9 @@ function makeNotification(
     id: `00000000-0000-4000-8000-${hex}` as AgentNotification["id"],
     title: `Notification ${seq}`,
     category: "general",
-    priority: "normal",
+    // High by default so fixtures render in the rested (interrupt-only) shade;
+    // filter tests override to normal/low explicitly.
+    priority: "high",
     source: "test",
     createdAt: 1_700_000_000_000 + seq * 1000,
     readAt: null,
@@ -91,6 +108,61 @@ describe("orderDashboardNotifications", () => {
     const twice = orderDashboardNotifications([b, a]).map((n) => n.id);
     expect(once).toEqual(twice);
   });
+
+  it("time mode is pure recency, ignoring priority buckets", () => {
+    const urgentOld = makeNotification({
+      priority: "urgent",
+      createdAt: 1_600_000_000_000,
+    });
+    const lowNew = makeNotification({ priority: "low" });
+    const ordered = orderDashboardNotifications([urgentOld, lowNew], "time");
+    expect(ordered.map((n) => n.id)).toEqual([lowNew.id, urgentOld.id]);
+  });
+});
+
+describe("notificationRowOptions", () => {
+  it("every notification exposes at least one action plus Dismiss", () => {
+    const plain = makeNotification({ deepLink: undefined });
+    const ids = notificationRowOptions(plain).map((o) => o.id);
+    expect(ids).toEqual(["dismiss"]);
+    const linked = makeNotification({ deepLink: "/settings" });
+    expect(notificationRowOptions(linked).map((o) => o.id)).toEqual([
+      "open",
+      "dismiss",
+    ]);
+  });
+
+  it("a message offers Suggest a reply as a chat prefill", () => {
+    const msg = makeNotification({
+      category: "message",
+      title: "New message from Alice",
+      body: "design doc?",
+      deepLink: "/chat",
+    });
+    const opts = notificationRowOptions(msg);
+    const suggest = opts.find((o) => o.id === "suggest-reply");
+    expect(suggest?.kind).toBe("prefill");
+    expect(suggest?.prefill).toContain("New message from Alice");
+    expect(opts.map((o) => o.id)).toEqual(["suggest-reply", "open", "dismiss"]);
+  });
+
+  it("labels the open action by category (Review / Open task / View run)", () => {
+    const label = (category: AgentNotification["category"]) =>
+      notificationRowOptions(
+        makeNotification({ category, deepLink: "/x" }),
+      ).find((o) => o.id === "open")?.label;
+    expect(label("approval")).toBe("Review");
+    expect(label("task")).toBe("Open task");
+    expect(label("workflow")).toBe("View run");
+    expect(label("reminder")).toBe("Open");
+  });
+
+  it("an unsafe deepLink yields no open option", () => {
+    const n = makeNotification({ deepLink: "javascript:alert(1)" });
+    expect(
+      notificationRowOptions(n).find((o) => o.id === "open"),
+    ).toBeUndefined();
+  });
 });
 
 describe("NotificationsHomeCenter", () => {
@@ -99,7 +171,7 @@ describe("NotificationsHomeCenter", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders the inbox rows with unread badge once notifications arrive", () => {
+  it("renders the inbox rows once notifications arrive — no unread count badge", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Reminder fired", category: "reminder" }),
     );
@@ -112,84 +184,126 @@ describe("NotificationsHomeCenter", () => {
     render(<NotificationsHomeCenter />);
     expect(screen.getByTestId("home-notification-center")).toBeTruthy();
     expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
-    // One unread → badge shows 1.
-    expect(screen.getByTestId("notifications-unread-badge").textContent).toBe(
-      "1",
-    );
+    // The header is a bare eyebrow: no numeric unread badge next to the label.
+    expect(screen.queryByTestId("notifications-unread-badge")).toBeNull();
     expect(screen.getByText("Reminder fired")).toBeTruthy();
   });
 
-  it("styles urgent rows with the danger tone and unread dot", () => {
+  it("carries no read-state chrome — no unread dot, no data-unread attribute", () => {
     __ingestNotificationForTests(
       makeNotification({ priority: "urgent", title: "Disk almost full" }),
     );
     render(<NotificationsHomeCenter />);
+    // Platform-shade model: presence in the list IS the state; rows never
+    // restyle on read.
     const row = screen.getByTestId("notification-row");
-    expect(row.getAttribute("data-unread")).toBe("true");
-    expect(screen.getByTestId("notification-unread-dot")).toBeTruthy();
+    expect(row.getAttribute("data-unread")).toBeNull();
+    expect(screen.queryByTestId("notification-unread-dot")).toBeNull();
   });
 
-  it("marks a row read on tap and follows a safe deep link", () => {
+  it("tap expands contextual options; Open follows the deep link and clears the row", () => {
     __ingestNotificationForTests(
       makeNotification({ deepLink: "/settings", title: "Open settings" }),
     );
     render(<NotificationsHomeCenter />);
-    fireEvent.click(screen.getByTestId("notification-row"));
+    const row = screen.getByTestId("notification-row");
+    // First tap: expand, don't navigate.
+    fireEvent.click(row);
+    expect(navigateDeepLink).not.toHaveBeenCalled();
+    expect(row.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(screen.getByTestId("notification-option-open"));
     expect(navigateDeepLink).toHaveBeenCalledWith("/settings");
-    expect(__getStateForTests().unreadCount).toBe(0);
+    // Shade acknowledgement: acting on a notification removes it.
+    expect(__getStateForTests().notifications).toHaveLength(0);
   });
 
-  it("never navigates an unsafe deep link (tap still marks read)", () => {
+  it("tap again collapses the options without acting", () => {
+    __ingestNotificationForTests(makeNotification({ deepLink: "/settings" }));
+    render(<NotificationsHomeCenter />);
+    const row = screen.getByTestId("notification-row");
+    fireEvent.click(row);
+    fireEvent.click(row);
+    expect(row.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByTestId("notification-row-options")).toBeNull();
+    expect(__getStateForTests().notifications).toHaveLength(1);
+  });
+
+  it("an unsafe deep link exposes no Open option; Dismiss still clears", () => {
     __ingestNotificationForTests(
       makeNotification({ deepLink: "javascript:alert(1)" }),
     );
     render(<NotificationsHomeCenter />);
     fireEvent.click(screen.getByTestId("notification-row"));
+    expect(screen.queryByTestId("notification-option-open")).toBeNull();
+    fireEvent.click(screen.getByTestId("notification-option-dismiss"));
     expect(navigateDeepLink).not.toHaveBeenCalled();
-    expect(__getStateForTests().unreadCount).toBe(0);
+    expect(__getStateForTests().notifications).toHaveLength(0);
   });
 
-  it("dismisses a single row via its X", () => {
+  it("a message row's Suggest a reply prefills the chat and clears the row", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        category: "message",
+        title: "New message from Alice",
+        deepLink: "/chat",
+      }),
+    );
+    render(<NotificationsHomeCenter />);
+    const prefillEvents: string[] = [];
+    const onPrefill = (e: Event) =>
+      prefillEvents.push((e as CustomEvent<{ text: string }>).detail.text);
+    window.addEventListener("eliza:chat:prefill", onPrefill);
+    try {
+      fireEvent.click(screen.getByTestId("notification-row"));
+      fireEvent.click(screen.getByTestId("notification-option-suggest-reply"));
+    } finally {
+      window.removeEventListener("eliza:chat:prefill", onPrefill);
+    }
+    expect(prefillEvents[0]).toContain("New message from Alice");
+    expect(__getStateForTests().notifications).toHaveLength(0);
+  });
+
+  it("dismisses a single row via its expanded Dismiss option (no corner X)", () => {
     __ingestNotificationForTests(makeNotification({ title: "Keep me" }));
     __ingestNotificationForTests(makeNotification({ title: "Dismiss me" }));
     render(<NotificationsHomeCenter />);
     const rows = screen.getAllByTestId("notification-row");
     expect(rows).toHaveLength(2);
+    // The hover-X is gone entirely.
+    expect(screen.queryByTestId("notification-row-dismiss")).toBeNull();
     const target = screen.getByText("Dismiss me").closest("li") as HTMLElement;
     fireEvent.click(
+      target.querySelector('[data-testid="notification-row"]') as HTMLElement,
+    );
+    fireEvent.click(
       target.querySelector(
-        '[data-testid="notification-row-dismiss"]',
+        '[data-testid="notification-option-dismiss"]',
       ) as HTMLElement,
     );
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.queryByText("Dismiss me")).toBeNull();
   });
 
-  it("marks all read from the header, and has no clear-all trash button", () => {
+  it("has no header bulk actions — no mark-all checkmark, no clear-all trash", () => {
     __ingestNotificationForTests(makeNotification());
     __ingestNotificationForTests(makeNotification());
     render(<NotificationsHomeCenter />);
-    // The bulk delete/trash affordance is gone: rows are dismissed one at a
-    // time (hover X / swipe / row menu), never nuked wholesale from the header.
+    // Rows manage their own state one at a time (tap to read, hover X / swipe
+    // / row menu to dismiss); the header carries no bulk affordances at all.
     expect(screen.queryByTestId("notifications-clear-all")).toBeNull();
-    fireEvent.click(screen.getByTestId("notifications-mark-all-read"));
-    expect(__getStateForTests().unreadCount).toBe(0);
-    // With nothing unread, mark-all disappears.
     expect(screen.queryByTestId("notifications-mark-all-read")).toBeNull();
   });
 
-  it("opens a contextual menu on right-click with dismiss + mark-read actions", () => {
+  it("right-click expands the same contextual options (no floating menu)", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Menu me", deepLink: "/x" }),
     );
     render(<NotificationsHomeCenter />);
     const li = screen.getByText("Menu me").closest("li") as HTMLElement;
     fireEvent.contextMenu(li);
-    expect(screen.getByTestId("notification-row-menu")).toBeTruthy();
-    // Unread + safe deep link → open, mark-read, and dismiss are all present.
-    expect(screen.getByTestId("notification-menu-open")).toBeTruthy();
-    expect(screen.getByTestId("notification-menu-mark-read")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("notification-menu-dismiss"));
+    expect(screen.queryByTestId("notification-row-menu")).toBeNull();
+    expect(screen.getByTestId("notification-row-options")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("notification-option-dismiss"));
     expect(screen.queryByText("Menu me")).toBeNull();
   });
 
@@ -201,7 +315,7 @@ describe("NotificationsHomeCenter", () => {
     expect(card.className).not.toMatch(/border|bg-black|backdrop-blur/);
   });
 
-  it("keeps a tapped (now read) row in place - order ignores read state", () => {
+  it("acting on a row removes it; surviving rows keep their stable order", () => {
     const urgent = makeNotification({ priority: "urgent", title: "First" });
     __ingestNotificationForTests(makeNotification({ title: "Second" }));
     __ingestNotificationForTests(urgent);
@@ -212,42 +326,95 @@ describe("NotificationsHomeCenter", () => {
         .map((el) => el.textContent ?? "");
     expect(titles()[0]).toContain("First");
     fireEvent.click(screen.getAllByTestId("notification-row")[0]);
-    // Still first after being marked read.
-    expect(titles()[0]).toContain("First");
+    fireEvent.click(screen.getByTestId("notification-option-dismiss"));
+    expect(titles()).toHaveLength(1);
+    expect(titles()[0]).toContain("Second");
+  });
+
+  it("rests compressed to interrupt-tier rows with an 'N more' affordance", () => {
+    __ingestNotificationForTests(
+      makeNotification({ priority: "urgent", title: "Urgent thing" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ priority: "normal", title: "Normal thing" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ priority: "low", title: "Low thing" }),
+    );
+    render(<NotificationsHomeCenter />);
+    // Rested: only the interrupt-tier row renders.
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.getByText("Urgent thing")).toBeTruthy();
+    const more = screen.getByTestId("notifications-show-all");
+    expect(more.textContent).toContain("2 more");
+    // Expand: everything renders; the affordance flips to Show less.
+    fireEvent.click(more);
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
+    fireEvent.click(screen.getByTestId("notifications-show-less"));
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+  });
+
+  it("sort toggle flips priority ⇄ time, defaults to priority, and persists", () => {
+    window.localStorage.removeItem("eliza:notifications:sort-mode");
+    const urgentOld = makeNotification({
+      priority: "urgent",
+      title: "Urgent old",
+      createdAt: 1_600_000_000_000,
+    });
+    const highNew = makeNotification({ priority: "high", title: "High new" });
+    __ingestNotificationForTests(urgentOld);
+    __ingestNotificationForTests(highNew);
+    render(<NotificationsHomeCenter />);
+    const titles = () =>
+      screen
+        .getAllByTestId("notification-row")
+        .map((el) => el.textContent ?? "");
+    // Default: priority mode (urgent outranks high despite being older).
+    expect(
+      screen
+        .getByTestId("notifications-sort-priority")
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(titles()[0]).toContain("Urgent old");
+    fireEvent.click(screen.getByTestId("notifications-sort-time"));
+    expect(titles()[0]).toContain("High new");
+    expect(window.localStorage.getItem("eliza:notifications:sort-mode")).toBe(
+      "time",
+    );
+    window.localStorage.removeItem("eliza:notifications:sort-mode");
+  });
+
+  it("has no Notifications header — view-group eyebrows carry the structure", () => {
+    __ingestNotificationForTests(makeNotification());
+    render(<NotificationsHomeCenter />);
+    expect(screen.queryByText("Notifications")).toBeNull();
+    expect(
+      screen.getAllByTestId("notification-group-label").length,
+    ).toBeGreaterThan(0);
   });
 
   it("caps rendering at 100 rows", () => {
     for (let i = 0; i < 120; i++) {
-      __ingestNotificationForTests(makeNotification());
+      __ingestNotificationForTests(makeNotification({ priority: "high" }));
     }
     render(<NotificationsHomeCenter />);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(100);
   });
 
-  it("renders a normal row with no priority rail (lock-screen restraint)", () => {
-    __ingestNotificationForTests(
-      makeNotification({ priority: "normal", title: "Quiet one" }),
-    );
-    render(<NotificationsHomeCenter />);
-    // A normal notification is just its line + time - no leading accent rail,
-    // no per-row icon chip (the box-in-a-box slop is gone).
-    expect(screen.queryByTestId("notification-row-accent")).toBeNull();
-    expect(screen.queryByTestId("notification-row-icon")).toBeNull();
-  });
-
-  it("shows a priority rail only for urgent/high rows", () => {
+  it("renders rows with no accent rail at any priority (lock-screen restraint)", () => {
     __ingestNotificationForTests(
       makeNotification({ priority: "urgent", title: "Urgent" }),
     );
     __ingestNotificationForTests(
-      makeNotification({ priority: "high", title: "High" }),
-    );
-    __ingestNotificationForTests(
-      makeNotification({ priority: "low", title: "Low" }),
+      makeNotification({ priority: "normal", title: "Quiet one" }),
     );
     render(<NotificationsHomeCenter />);
-    // Two elevated rows carry the rail; the low row does not.
-    expect(screen.getAllByTestId("notification-row-accent")).toHaveLength(2);
+    fireEvent.click(screen.getByTestId("notifications-show-all"));
+    // A notification is just its line + time - no leading edge highlight even
+    // for urgent rows, no per-row icon chip (the box-in-a-box slop is gone).
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
+    expect(screen.queryByTestId("notification-row-accent")).toBeNull();
+    expect(screen.queryByTestId("notification-row-icon")).toBeNull();
   });
 
   it("carries no glass/blur/border chrome — the shade owns the surface", () => {
@@ -278,5 +445,115 @@ describe("NotificationsHomeCenter", () => {
     __ingestNotificationForTests(makeNotification({ title: "plain" }));
     render(<NotificationsHomeCenter />);
     expect(screen.queryByTestId("notification-count-chip")).toBeNull();
+  });
+});
+
+// ── Touch interaction: the row's OWN pointer handlers (device r8) ──────────
+// #15080 moved the inbox inline BELOW the chat glass; "interacting is cooked"
+// on device. These tests drive the row's real pointer sequence (not just a
+// synthetic click) so tap-to-open and swipe-to-dismiss fire their handlers, and
+// pin the exemption markers that keep the ContinuousChatOverlay outside-tap
+// collapse-swallower off the notification surface.
+describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
+  function pointer(
+    el: Element,
+    type: string,
+    {
+      x = 0,
+      y = 0,
+      pointerId = 1,
+    }: { x?: number; y?: number; pointerId?: number } = {},
+  ): void {
+    // jsdom has no PointerEvent ctor; fireEvent.pointerX carries clientX/Y +
+    // pointerId + pointerType onto the synthetic event the row handlers read.
+    (fireEvent as unknown as Record<string, (e: Element, i: unknown) => void>)[
+      type
+    ](el, {
+      clientX: x,
+      clientY: y,
+      pointerId,
+      pointerType: "touch",
+      button: 0,
+    });
+  }
+
+  it("tap (pointerdown → pointerup, no move) expands the row's options on TOUCH", () => {
+    __ingestNotificationForTests(
+      makeNotification({ deepLink: "/settings", title: "Tap me" }),
+    );
+    render(<NotificationsHomeCenter />);
+    const swipe = screen.getByTestId("notification-row-swipe");
+    const button = screen.getByTestId("notification-row");
+    // A real touch tap: down then up on the swipe surface, no movement, then the
+    // button's synthetic click. suppressClick must NOT be set (no swipe / long
+    // press), so the tap expands the row.
+    pointer(swipe, "pointerDown", { x: 10, y: 10 });
+    pointer(swipe, "pointerUp", { x: 10, y: 10 });
+    fireEvent.click(button);
+    expect(screen.getByTestId("notification-row-options")).toBeTruthy();
+    expect(navigateDeepLink).not.toHaveBeenCalled();
+  });
+
+  it("horizontal swipe past the threshold dismisses the row (and swallows the click)", () => {
+    __ingestNotificationForTests(makeNotification({ title: "Keep" }));
+    __ingestNotificationForTests(makeNotification({ title: "Swipe away" }));
+    render(<NotificationsHomeCenter />);
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
+    const li = screen.getByText("Swipe away").closest("li") as HTMLElement;
+    const swipe = li.querySelector(
+      '[data-testid="notification-row-swipe"]',
+    ) as HTMLElement;
+    const button = li.querySelector(
+      '[data-testid="notification-row"]',
+    ) as HTMLElement;
+    // Drag left well past SWIPE_DISMISS_PX (88): down at 120, move to 10 (dx=-110
+    // → axis locks x, past threshold), release → commitDismiss(left).
+    pointer(swipe, "pointerDown", { x: 120, y: 20 });
+    pointer(swipe, "pointerMove", { x: 60, y: 22 });
+    pointer(swipe, "pointerMove", { x: 10, y: 22 });
+    pointer(swipe, "pointerUp", { x: 10, y: 22 });
+    // The synthetic click a swipe emits must be swallowed (suppressClick) so the
+    // gesture doesn't ALSO open the row.
+    fireEvent.click(button);
+    expect(navigateDeepLink).not.toHaveBeenCalled();
+    // Fling-out transition then store removal (180ms timeout).
+    vi.useFakeTimers();
+    // (already released; the remove was scheduled synchronously via setTimeout)
+    vi.useRealTimers();
+    // The row is on its way out (dismissing transform applied); the store
+    // removal fires on the 180ms timer. Assert the swipe surface committed.
+    expect(swipe.style.transform).toContain("translateX(-120%)");
+  });
+
+  it("a long-press expands the row's options on TOUCH", () => {
+    vi.useFakeTimers();
+    try {
+      __ingestNotificationForTests(
+        makeNotification({ title: "Hold me", deepLink: "/x" }),
+      );
+      render(<NotificationsHomeCenter />);
+      const swipe = screen.getByTestId("notification-row-swipe");
+      pointer(swipe, "pointerDown", { x: 10, y: 10 });
+      // Hold past LONG_PRESS_MS (420) with no movement → options expand. Wrap
+      // the timer flush in act() so the setExpanded(true) render commits before
+      // the query reads the DOM.
+      act(() => {
+        vi.advanceTimersByTime(450);
+      });
+      expect(screen.getByTestId("notification-row-options")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("marks the row + its center with the overlay-exemption hooks the collapse-swallower reads", () => {
+    __ingestNotificationForTests(makeNotification({ title: "Exempt" }));
+    render(<NotificationsHomeCenter />);
+    // The ContinuousChatOverlay outside-tap collapse-swallower exempts anything
+    // under [data-testid="home-notification-center"] or [data-notif-row]; both
+    // must be present or a row tap gets eaten (the r8 "cooked" bug).
+    expect(screen.getByTestId("home-notification-center")).toBeTruthy();
+    const row = screen.getByText("Exempt").closest("li") as HTMLElement;
+    expect(row.hasAttribute("data-notif-row")).toBe(true);
   });
 });

@@ -120,7 +120,7 @@ export function resolveBrowserWorkspaceIframeDocument(
   frameElement: Element | null,
   baseUrl: string,
 ): Document | null {
-  if (!frameElement || frameElement.tagName !== "IFRAME") {
+  if (frameElement?.tagName !== "IFRAME") {
     return null;
   }
 
