@@ -328,24 +328,22 @@ export function resetKmsBackendLogForTests(): void {
 
 /**
  * Log the active KMS backend exactly once (#15310, behavior 1: "log the active
- * KMS backend at startup"). The preflight has no logger in scope (it runs
- * before/independently of loadDeps), and @elizaos/security itself only has
- * `console` as a diagnostic channel, so we mirror that here. `console.warn` for
- * `memory` (about to be refused outside test) so it stands out; `console.info`
- * otherwise.
+ * KMS backend at startup"). Runtime callers pass the already-loaded worker
+ * logger; unit tests that exercise the pure preflight without a logger simply do
+ * not consume the one-shot latch.
  */
 function logKmsBackendOnce(
   backend: "memory" | "local" | "steward",
   env: NodeJS.ProcessEnv,
+  logger?: Pick<WorkerLogger, "info" | "warn">,
 ): void {
+  if (!logger) return;
   if (kmsBackendLogged) return;
   kmsBackendLogged = true;
   const nodeEnv = env.NODE_ENV ?? "<unset>";
   const line = `[provisioning-worker] active KMS backend: ${backend} (NODE_ENV=${nodeEnv})`;
-  // eslint-disable-next-line no-console
-  if (backend === "memory") console.warn(line);
-  // eslint-disable-next-line no-console
-  else console.info(line);
+  if (backend === "memory") logger.warn(line);
+  else logger.info(line);
 }
 
 /**
@@ -392,16 +390,23 @@ export async function assertProvisioningWorkerPreflight(
     env?: NodeJS.ProcessEnv;
     createKmsClient?: PreflightCreateKmsClient;
     resolveKmsBackend?: PreflightResolveKmsBackend;
+    logger?: Pick<WorkerLogger, "info" | "warn">;
   } = {},
 ): Promise<void> {
   const env = opts.env ?? process.env;
-  const kmsModule =
-    opts.createKmsClient && opts.resolveKmsBackend
-      ? null
-      : await import("@elizaos/security/kms");
-  const createKmsClient = opts.createKmsClient ?? kmsModule!.createKmsClient;
-  const resolveKmsBackend =
-    opts.resolveKmsBackend ?? kmsModule!.resolveKmsBackend;
+  let createKmsClient = opts.createKmsClient;
+  let resolveKmsBackend = opts.resolveKmsBackend;
+  if (!createKmsClient || !resolveKmsBackend) {
+    const kmsModule = await import("@elizaos/security/kms");
+    createKmsClient ??= kmsModule.createKmsClient;
+    resolveKmsBackend ??= (backendOpts) =>
+      kmsModule.resolveKmsBackend(backendOpts);
+  }
+  if (!createKmsClient || !resolveKmsBackend) {
+    throw new Error(
+      "Provisioning worker preflight dependencies were not initialized",
+    );
+  }
 
   // Config preflight (#15310, behavior 1): resolve the active backend, log it
   // once, and REFUSE to start on the ephemeral `memory` backend outside
@@ -411,7 +416,7 @@ export async function assertProvisioningWorkerPreflight(
   // which point the backups are already lost. A loud, actionable, fail-fast is
   // the only prevention.
   const backend = resolveKmsBackend({ env });
-  logKmsBackendOnce(backend, env);
+  logKmsBackendOnce(backend, env, opts.logger);
   assertKmsBackendDurable(backend, env);
 
   try {
@@ -1283,7 +1288,7 @@ async function pollCycle(
   // publishes while `preflightOk` is true, so this is what keeps a KMS-dead
   // worker from advertising healthy. Set true ONLY immediately after success.
   try {
-    await assertProvisioningWorkerPreflight();
+    await assertProvisioningWorkerPreflight({ logger });
     preflightOk = true;
   } catch (error) {
     preflightOk = false;
@@ -1547,7 +1552,7 @@ async function main(): Promise<void> {
     dbLivenessMaxAgeHours: config.dbLivenessMaxAgeHours,
   });
 
-  await assertProvisioningWorkerPreflight();
+  await assertProvisioningWorkerPreflight({ logger });
 
   // Fail-fast on a missing SSH key BEFORE the first heartbeat: key resolution is
   // otherwise lazy (first node SSH, ~30s in), so a misconfigured key would let

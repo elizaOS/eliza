@@ -223,6 +223,36 @@ describe("assertProvisioningWorkerPreflight (#15310 memory-backend refusal)", ()
     );
   });
 
+  it("logs the active backend once through the worker logger", async () => {
+    resetKmsBackendLogForTests();
+    const logger = makeLogger();
+    const getOrCreateKey = mock(async () => ({ keyId: "ok", version: 1 }));
+    const createKmsClient = mock(() => ({ getOrCreateKey }));
+    const env = {
+      ELIZA_KMS_BACKEND: "local",
+      NODE_ENV: "production",
+    } as NodeJS.ProcessEnv;
+
+    await assertProvisioningWorkerPreflight({
+      env,
+      createKmsClient,
+      resolveKmsBackend: () => "local",
+      logger,
+    });
+    await assertProvisioningWorkerPreflight({
+      env,
+      createKmsClient,
+      resolveKmsBackend: () => "local",
+      logger,
+    });
+
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenCalledWith(
+      "[provisioning-worker] active KMS backend: local (NODE_ENV=production)",
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   it("tolerates memory backend when NODE_ENV=test (existing tests must keep working)", async () => {
     resetKmsBackendLogForTests();
     const getOrCreateKey = mock(async () => ({ keyId: "ok", version: 1 }));
