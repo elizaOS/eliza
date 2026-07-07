@@ -559,3 +559,109 @@ describe("Composer bottom geometry — full-bleed, keyboard-lift preserved", () 
     expect(overlaySrc).toContain("shouldInstallStandaloneBottomReclaim");
   });
 });
+
+// ===================================================================
+// THE CONSUMPTION CONTRACT (#15178, third blind spot). The chain so far pins:
+// module EXISTS (durable-contract block) → installer runs on the REAL boot path
+// (real-chain block) → var MEASURES correctly on device (chip rc59). But a
+// measured var that NOTHING consumes is still a black strip: shaw's WIP rewrite
+// (f903c59) dropped the `bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET` from the
+// fixed wallpaper/shader background layers, so the var was written (59px) yet
+// zero shipped style referenced it — the box wallpaper laid out inside the
+// collapsed 873px ICB and the bottom 59px stayed unpainted (device: rc59 +
+// rcw:on but the strip PERSISTS). Every jsdom test above stayed green because
+// none asserted a CONSUMER. These source-level assertions pin that the visual
+// bottom layers (backgrounds + composer offset) REFERENCE the offset, so a
+// future style sweep dropping all consumers turns CI RED instead of silently
+// re-shipping the strip. Chain now pinned end-to-end:
+// exists → installed on real boot path → measured → CONSUMED by shipped styles.
+describe("Bottom-reclaim CONSUMPTION contract — the measured var actually paints the strip", () => {
+  const uiSrc = resolve(process.cwd(), "src");
+
+  it("the wallpaper (image) background layer consumes the reclaim offset on its bottom (extends past the collapsed ICB)", () => {
+    const src = readFileSync(
+      resolve(uiSrc, "backgrounds/ImageBackground.tsx"),
+      "utf8",
+    );
+    expect(
+      src,
+      "ImageBackground must import STANDALONE_BOTTOM_RECLAIM_OFFSET",
+    ).toContain(
+      'import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim"',
+    );
+    // The fixed `inset-0` wallpaper must override `bottom` with the measured
+    // offset so it reaches the TRUE physical bottom (else the wallpaper stops
+    // ~59px short on device and the dead band paints as the recurring strip).
+    expect(
+      src,
+      "ImageBackground's fixed wallpaper must set bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET (consume the measured var)",
+    ).toContain("bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET");
+  });
+
+  it("the default shader background layer consumes the reclaim offset on its bottom", () => {
+    const src = readFileSync(
+      resolve(uiSrc, "backgrounds/ShaderBackground.tsx"),
+      "utf8",
+    );
+    expect(
+      src,
+      "ShaderBackground must import STANDALONE_BOTTOM_RECLAIM_OFFSET",
+    ).toContain(
+      'import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim"',
+    );
+    expect(
+      src,
+      "ShaderBackground's fixed ember field must set bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET (the ember pool must reach the true bottom, not stop at the collapsed ICB)",
+    ).toContain("bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET");
+  });
+
+  it("the programmable (GLSL) shader background layer consumes the reclaim offset on its bottom", () => {
+    const src = readFileSync(
+      resolve(uiSrc, "backgrounds/ProgrammableShaderBackground.tsx"),
+      "utf8",
+    );
+    expect(
+      src,
+      "ProgrammableShaderBackground must import STANDALONE_BOTTOM_RECLAIM_OFFSET",
+    ).toContain(
+      'import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim"',
+    );
+    expect(
+      src,
+      "ProgrammableShaderBackground's fixed GLSL field must set bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET",
+    ).toContain("bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET");
+  });
+
+  it("AT LEAST ONE background layer consumes the offset (a total sweep of all consumers goes RED)", () => {
+    // Belt-and-suspenders: even if a refactor renames the individual files, the
+    // set of background layers must collectively still consume the var. If ALL
+    // consumers vanish (shaw's f903c59 regression) this fails loudly.
+    const bgFiles = [
+      "backgrounds/ImageBackground.tsx",
+      "backgrounds/ShaderBackground.tsx",
+      "backgrounds/ProgrammableShaderBackground.tsx",
+    ];
+    const consumers = bgFiles.filter((f) =>
+      readFileSync(resolve(uiSrc, f), "utf8").includes(
+        "bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET",
+      ),
+    );
+    expect(
+      consumers.length,
+      "the measured --standalone-bottom-reclaim var must be CONSUMED by the visual bottom layers; zero consumers = the #15178 black strip re-ships silently",
+    ).toBeGreaterThan(0);
+  });
+
+  it("the composer overlay ALSO consumes the reclaim offset at rest (the full visual bottom set: backgrounds + composer)", () => {
+    // Mirror of the real-chain composer assertion, grouped here so the whole
+    // CONSUMPTION set (paints + interactive bottom) is pinned in one contract.
+    const overlaySrc = readFileSync(
+      resolve(uiSrc, "components/shell/ContinuousChatOverlay.tsx"),
+      "utf8",
+    );
+    expect(
+      overlaySrc,
+      "the resting composer must seat at the reclaim offset (consume the var so the composer + wallpaper agree on the true bottom)",
+    ).toContain(": STANDALONE_BOTTOM_RECLAIM_OFFSET");
+  });
+});
