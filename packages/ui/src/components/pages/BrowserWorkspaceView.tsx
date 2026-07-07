@@ -25,6 +25,7 @@ import {
   type BrowserWorkspaceTab,
   client,
 } from "../../api";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { resolveBuiltinSurfaceManifest } from "../../builtin-tab-registry";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
@@ -32,6 +33,8 @@ import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibilit
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
 import { useAppSelectorShallow } from "../../state";
+import { deriveSurfacePlacement } from "../../surface/native-surface-shell";
+import { useMobileNativeTabSurfaces } from "../../surface/use-mobile-native-tab-surfaces";
 import { resolveBrowserTabRenderPath } from "../../surface-embedding";
 import { openExternalUrl } from "../../utils";
 import {
@@ -73,6 +76,11 @@ const POLL_INTERVAL_MS = 2_500;
 const BROWSER_BRIDGE_POLL_INTERVAL_MS = 4_000;
 const BROWSER_WORKSPACE_AGENT_PARTITION = "persist:eliza-browser-agent";
 const BROWSER_WORKSPACE_APP_PARTITION = "persist:eliza-browser-app";
+// Concrete partition for a client-side "user" tab on the native mobile shell,
+// where `resolveBrowserWorkspaceTabPartition("user")` is `undefined` (the
+// server-default sentinel). Cosmetic on mobile — the native surface's storage
+// isolation is governed by its explicit NativeSurfacePolicy, not this string.
+const BROWSER_WORKSPACE_DEFAULT_PARTITION = "persist:eliza-browser";
 // Default URL when the user opens a fresh tab via "+". The docs site
 // respects prefers-color-scheme so the OS theme drives light/dark.
 const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://docs.elizaos.ai/";
@@ -84,8 +92,25 @@ const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://docs.elizaos.ai/";
 // this resolves to `native-webview`. If the registry ever dropped the browser
 // manifest, `resolveBuiltinSurfaceManifest` throws at import — a loud failure,
 // not a silent fall-back to the host-realm DOM.
-const BROWSER_SURFACE_ISOLATION =
-  resolveBuiltinSurfaceManifest("browser").isolation;
+const BROWSER_SURFACE_MANIFEST = resolveBuiltinSurfaceManifest("browser");
+const BROWSER_SURFACE_ISOLATION = BROWSER_SURFACE_MANIFEST.isolation;
+// The placement the mobile native tab surfaces are created with, derived from
+// the same manifest — process is always isolated; storage is isolated because
+// the Browser grants no `storage` capability. Throwing here (not defaulting)
+// keeps the loud-failure contract: if the manifest ever stopped declaring
+// `native-webview`, the native mobile path could not silently create a
+// mis-policied surface.
+const BROWSER_NATIVE_SURFACE_PLACEMENT = deriveSurfacePlacement(
+  BROWSER_SURFACE_MANIFEST,
+);
+const BROWSER_NATIVE_SURFACE_POLICY =
+  BROWSER_NATIVE_SURFACE_PLACEMENT.target === "native-surface"
+    ? BROWSER_NATIVE_SURFACE_PLACEMENT.policy
+    : (() => {
+        throw new Error(
+          "Browser surface manifest must declare native-webview isolation to host native mobile tab surfaces",
+        );
+      })();
 // Selectors handed to `<electrobun-webview masks=…>` so the native OOPIF
 // surface doesn't paint over (or capture clicks within) React overlays
 // stacked on the same rect. Covers Radix Dialog/AlertDialog content
@@ -312,6 +337,31 @@ function inferBrowserWorkspaceTitle(url: string, t: TranslateFn): string {
       defaultValue: "Browser",
     });
   }
+}
+
+/**
+ * Build a client-side tab for the native mobile shell. Unlike desktop/web, the
+ * mobile agent server does not manage Browser tabs (its tab API returns 503), so
+ * on the native-mobile-webview path the tab record lives entirely in React state
+ * and the isolated native surface is what actually loads the page.
+ */
+function buildLocalBrowserWorkspaceTab(
+  url: string,
+  title: string,
+  partition: string,
+): BrowserWorkspaceTab {
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    title,
+    url,
+    partition,
+    kind: "standard",
+    visible: true,
+    createdAt: now,
+    updatedAt: now,
+    lastFocusedAt: now,
+  };
 }
 
 function getBrowserWorkspaceTabKind(
@@ -559,16 +609,26 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     }
   }
 
-  // Which embedding each browser tab renders into, DRIVEN by the view's
-  // declared isolation level (not the raw mode string): `native-webview` on the
-  // desktop shell resolves to the native child web-content surface (a separate
-  // renderer process — the `<electrobun-webview renderer="cef">` OOPIF below);
-  // web resolves to a sandboxed iframe; cloud to a server snapshot. Reading the
-  // manifest here is what makes `isolation: "native-webview"` authoritative
-  // (#14181) — a view without that level could never reach the native surface.
+  // A Capacitor native shell (iOS/Android), distinct from the mobile web browser
+  // which also reports `mode: "web"` — so the resolver cannot infer it from mode
+  // and we pass it explicitly. Electrobun is desktop, not a mobile shell.
+  const nativeMobileShell = useMemo(
+    () => Capacitor.isNativePlatform() && !isElectrobunRuntime(),
+    [],
+  );
+
+  // Which embedding each browser tab renders into, DRIVEN by the view's declared
+  // isolation level (not the raw mode string): `native-webview` resolves to the
+  // desktop native child surface (the `<electrobun-webview renderer="cef">`
+  // OOPIF below) or, on a native mobile shell, a layered `WKWebView` /
+  // `WebView`; plain web resolves to a sandboxed iframe; cloud to a server
+  // snapshot. Reading the manifest here is what makes `isolation:
+  // "native-webview"` authoritative (#14181/#15245) — a view without that level
+  // could never reach a native surface.
   const browserTabRenderPath = resolveBrowserTabRenderPath({
     isolation: BROWSER_SURFACE_ISOLATION,
     mode: workspace.mode,
+    nativeMobileShell,
   });
 
   const selectedTab = useMemo(
@@ -821,28 +881,45 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           }),
         );
       }
-      const request = {
+      const partition = resolveBrowserWorkspaceTabPartition(sectionKey);
+      // Native mobile shell: the server manages no tabs (its API 503s), so the
+      // tab lives in client state and the isolated native surface loads the page.
+      if (browserTabRenderPath === "native-mobile-webview") {
+        const tab = buildLocalBrowserWorkspaceTab(
+          url,
+          inferBrowserWorkspaceTitle(url, t),
+          partition ?? BROWSER_WORKSPACE_DEFAULT_PARTITION,
+        );
+        setWorkspace((prev) => ({ ...prev, tabs: [...prev.tabs, tab] }));
+        setSelectedTabId(tab.id);
+        setLocationInput(tab.url);
+        setLocationDirty(false);
+        return;
+      }
+      const { tab } = await client.openBrowserWorkspaceTab({
         url,
         title: inferBrowserWorkspaceTitle(url, t),
-        partition: resolveBrowserWorkspaceTabPartition(sectionKey),
+        partition,
         show: true,
-      };
-      const { tab } = await client.openBrowserWorkspaceTab(request);
+      });
       await loadWorkspace({ preferTabId: tab.id, silent: true });
       setSelectedTabId(tab.id);
       setLocationInput(tab.url);
       setLocationDirty(false);
     },
-    [loadWorkspace, t],
+    [browserTabRenderPath, loadWorkspace, t],
   );
 
   const activateBrowserWorkspaceTab = useCallback(
     async (tabId: string) => {
       setSelectedTabId(tabId);
+      // Native mobile shell: selection is client-side (the hook foregrounds the
+      // matching native surface); there is no server tab to show.
+      if (browserTabRenderPath === "native-mobile-webview") return;
       const { tab } = await client.showBrowserWorkspaceTab(tabId);
       await loadWorkspace({ preferTabId: tab.id, silent: true });
     },
-    [loadWorkspace],
+    [browserTabRenderPath, loadWorkspace],
   );
 
   const navigateSelectedBrowserWorkspaceTab = useCallback(
@@ -866,6 +943,22 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         await openNewBrowserWorkspaceTab(url);
         return;
       }
+      // Native mobile shell: navigation is client-side. Updating the tab's URL
+      // in state re-drives the native surface (the hook navigates the existing
+      // WKWebView/WebView on a URL change rather than recreating it).
+      if (browserTabRenderPath === "native-mobile-webview") {
+        setWorkspace((prev) => ({
+          ...prev,
+          tabs: prev.tabs.map((tab) =>
+            tab.id === selectedTabId
+              ? { ...tab, url, updatedAt: new Date().toISOString() }
+              : tab,
+          ),
+        }));
+        setLocationInput(url);
+        setLocationDirty(false);
+        return;
+      }
       const { tab } = await client.navigateBrowserWorkspaceTab(
         selectedTabId,
         url,
@@ -887,6 +980,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       setLocationDirty(false);
     },
     [
+      browserTabRenderPath,
       loadWorkspace,
       openNewBrowserWorkspaceTab,
       selectedTab,
@@ -1292,6 +1386,25 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const browserWorkspaceConfirmOpen =
     walletActionModalProps.open || vaultAutofillModalProps.open;
 
+  // Mobile native tab surfaces: on the native-mobile-webview path each Browser
+  // tab is layered as its own isolated WKWebView/Android WebView (own renderer
+  // process + storage partition). Surfaces are backgrounded while the tab
+  // switcher or any confirm dialog is open so the native layer never paints over
+  // those React overlays — the mobile analogue of the desktop `masks=`.
+  const nativeSurfaceTabs = useMemo(
+    () => workspace.tabs.map((tab) => ({ id: tab.id, url: tab.url })),
+    [workspace.tabs],
+  );
+  const nativeMobileTabPath = browserTabRenderPath === "native-mobile-webview";
+  const nativeTabSurfaces = useMobileNativeTabSurfaces({
+    active: nativeMobileTabPath,
+    tabs: nativeSurfaceTabs,
+    selectedTabId,
+    overlayOpen: switcherOpen || browserWorkspaceConfirmOpen,
+    policy: BROWSER_NATIVE_SURFACE_POLICY,
+    lifecycle: BROWSER_SURFACE_MANIFEST.lifecycle,
+  });
+
   const handleTabVaultAutofillRequest = useCallback(
     async (req: {
       tabId: string;
@@ -1687,6 +1800,18 @@ export function BrowserWorkspaceView(): React.JSX.Element {
 
   const closeBrowserWorkspaceTabById = useCallback(
     async (tabId: string) => {
+      // Native mobile shell: tabs are client-side. Drop the tab from state (the
+      // hook tears down its native surface) and select a neighbour.
+      if (browserTabRenderPath === "native-mobile-webview") {
+        setWorkspace((prev) => {
+          const remaining = prev.tabs.filter((tab) => tab.id !== tabId);
+          if (tabId === selectedTabId) {
+            setSelectedTabId(remaining[0]?.id ?? null);
+          }
+          return { ...prev, tabs: remaining };
+        });
+        return;
+      }
       await client.closeBrowserWorkspaceTab(tabId);
       const snapshot = await client.getBrowserWorkspace();
       const nextId =
@@ -1701,7 +1826,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         silent: true,
       });
     },
-    [loadWorkspace, selectedTabId],
+    [browserTabRenderPath, loadWorkspace, selectedTabId],
   );
 
   const closeAllBrowserWorkspaceTabs = useCallback(async () => {
@@ -2420,6 +2545,27 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               passthrough={active ? undefined : ""}
               className={`absolute inset-0 ${visibilityClass}`}
               style={{ display: "block" }}
+            />
+          );
+        })
+      ) : browserTabRenderPath === "native-mobile-webview" ? (
+        workspace.tabs.map((tab) => {
+          const active = tab.id === selectedTabId;
+          const visibilityClass = active
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0";
+          return (
+            // The native WKWebView / Android WebView is layered over this
+            // placeholder by `useMobileNativeTabSurfaces`; the div only reserves
+            // and reports the on-screen rect (via the ref) the native surface
+            // tracks — it renders no page content itself. `bg-bg` keeps the slot
+            // themed during the gap before the native layer paints.
+            <div
+              key={tab.id}
+              ref={(el) => nativeTabSurfaces.registerSurfaceElement(tab.id, el)}
+              aria-hidden={!active}
+              className={`absolute inset-0 h-full w-full bg-bg transition-opacity ${visibilityClass}`}
+              style={{ colorScheme: uiTheme }}
             />
           );
         })

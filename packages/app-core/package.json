@@ -220,6 +220,7 @@
   },
   "optionalDependencies": {
     "@elizaos/capacitor-appblocker": "workspace:*",
+    "@elizaos/capacitor-browser-surface": "workspace:*",
     "@elizaos/capacitor-bun-runtime": "workspace:*",
     "@elizaos/capacitor-camera": "workspace:*",
     "@elizaos/capacitor-canvas": "workspace:*",

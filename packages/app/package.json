@@ -156,6 +156,7 @@
     "@elizaos/capacitor-agent": "workspace:*",
     "@elizaos/capacitor-appblocker": "workspace:*",
     "@elizaos/capacitor-calendar": "workspace:*",
+    "@elizaos/capacitor-browser-surface": "workspace:*",
     "@elizaos/capacitor-camera": "workspace:*",
     "@elizaos/capacitor-canvas": "workspace:*",
     "@elizaos/capacitor-contacts": "workspace:*",
