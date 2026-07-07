@@ -5082,8 +5082,19 @@ export function ContinuousChatOverlay({
                 // scrolls) instead of pushing the panel off-screen. paddingTop
                 // insets the scroll viewport below the floating grabber while the
                 // header is hidden (0 once the header reveals at half+).
+                // Onboarding (firstRunOpen) mounts locked at the FULL detent and
+                // never drags, but the `threadHeight` MotionValue that feeds
+                // `threadFlexBasis` starts at 0, so the FIRST paint renders the
+                // thread at 0 height and the composer stacks at the top — then a
+                // post-commit effect grows it to `openH` and the composer drops a
+                // full viewport to the bottom (~0.9 CLS on the first frame a new
+                // user sees, #15214). During onboarding there is no drag to track,
+                // so pin the flex-basis to the settled open height statically at
+                // render time — first paint already matches the resting layout, no
+                // reflow. Reverts to the live MotionValue the moment onboarding
+                // ends and the sheet becomes interactive.
                 style={{
-                  flexBasis: threadFlexBasis,
+                  flexBasis: firstRunOpen ? `${openH}px` : threadFlexBasis,
                   paddingTop: threadGrabberClearance,
                 }}
               >
