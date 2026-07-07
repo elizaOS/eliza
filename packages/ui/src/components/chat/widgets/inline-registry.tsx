@@ -48,12 +48,25 @@ export interface InlineWidgetDefinition<TData = unknown> {
   /** Unique marker kind, e.g. `"task"`, `"choice"`. */
   readonly kind: string;
   /**
+   * The literal prefix every occurrence of this widget's opening marker starts
+   * with, e.g. `"[FORM"` for `[FORM]…[/FORM]`. Defaults to `"[" + kind.toUpperCase()`,
+   * which is correct for all seven built-ins. The incremental streaming parser
+   * (`message-parser-incremental.ts`) uses it to detect an as-yet-unclosed
+   * marker sitting in prose before the stable cut — a future close token could
+   * retroactively claim that prose into a widget region, so the cut must not
+   * advance past an open marker. A plugin whose opening marker does NOT start
+   * with the default token must set this, or it forfeits ONLY the incremental
+   * fast path (correctness is unaffected — the parser falls back to a full parse).
+   */
+  readonly openToken?: string;
+  /**
    * Scan a reply for this widget's regions, left to right.
    *
    * Marker contract: the text form MUST be a bracketed `[…]` marker (like all
-   * built-ins). `parseSegments` pre-gates the whole widget scan on the message
-   * containing one of `` ` `` `[` `{` `<`, so a marker without any of those
-   * characters would never reach this parser on plain-prose messages.
+   * built-ins), and its opening text MUST start with {@link openToken}.
+   * `parseSegments` pre-gates the whole widget scan on the message containing
+   * one of `` ` `` `[` `{` `<`, so a marker without any of those characters
+   * would never reach this parser on plain-prose messages.
    */
   parse(text: string): InlineWidgetMatch<TData>[];
   /** Render one matched payload. `key` is React-stable; `ctx` drives chat. */
@@ -81,4 +94,20 @@ export function getInlineWidget(
   kind: string,
 ): InlineWidgetDefinition | undefined {
   return REGISTRY.get(kind);
+}
+
+/** The default opening-marker prefix for a widget kind (`[KIND`). */
+export function defaultOpenToken(kind: string): string {
+  return `[${kind.toUpperCase()}`;
+}
+
+/**
+ * The opening-marker prefixes of every registered widget, for the incremental
+ * streaming parser's open-marker guard. Uses each definition's `openToken`,
+ * falling back to `[KIND`.
+ */
+export function getInlineWidgetOpenTokens(): string[] {
+  return [...REGISTRY.values()].map(
+    (widget) => widget.openToken ?? defaultOpenToken(widget.kind),
+  );
 }

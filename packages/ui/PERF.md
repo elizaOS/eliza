@@ -11,10 +11,13 @@ suite that locks it.
 
 Two things run on every streamed token:
 
-1. **`MessageContent` re-parses the whole message body** (`parseSegments`). It
-   scans the growing text for code fences, `[CONFIG]`/`[CHOICE]`/`[FORM]`/
-   `[WORKFLOW]`/`[TASK]` markers, UiSpec JSON, and permission cards. This is
-   pure string work and must scale ~linearly with message length.
+1. **`MessageContent` re-parses the message body.** It scans the growing text
+   for code fences, `[CONFIG]`/`[CHOICE]`/`[FORM]`/`[WORKFLOW]`/`[TASK]` markers,
+   UiSpec JSON, and permission cards. `parseSegments` is a pure full-text scan
+   that must be ~linear in message length; the render surfaces call it through
+   the incremental wrapper `useParsedSegments`, which re-parses only the changed
+   **tail** each frame so a streaming turn stays O(delta), not O(len²) (see
+   *Incremental streaming parse* below).
 2. **The transcript re-renders.** `ChatMessage` is memoized per row
    (`arePropsEqual`, issue #9141), so only the tail row's body re-runs. Inside
    that body, the inline widgets are memoized on their data props
@@ -65,6 +68,33 @@ iterations after 20 warm-up:
 the 50 KB median exceeds 30× the 5 KB median (an accidental O(n²) parser lands
 near 100×) or if the 50 KB median exceeds an absolute 50 ms.
 
+### Incremental streaming parse — `message-parser-incremental.test.ts`
+
+`parseSegments` is linear per call, but it runs on **every** rAF flush over the
+**whole** accumulated turn, so a turn of *N* frames over a reply of length *L*
+is O(N·L) ≈ O(L²). The render surfaces call it through `useParsedSegments`
+(`message-parser-incremental.ts`), which caches the last parse and, on a
+tail-append frame, re-normalizes and re-parses only the changed tail spliced
+onto a verified-stable prefix. Every uncertain seam falls back to a full parse,
+so output is **byte-identical** to `parseSegments` at every frame (the
+frame-by-frame differential across 1/3/random chunkings proves it).
+
+Streaming a ~100 KB mixed reply (prose + fences + CHOICE widgets) in 64-byte
+chunks (1 601 frames):
+
+| Path | Chars scanned | vs final length |
+| --- | --- | --- |
+| Full parse each frame (baseline) | 163 625 508 | 1 597× |
+| Incremental (`parseSegmentsStreaming`) | 417 937 | **4.1×** |
+
+**391× fewer characters scanned** — O(L) instead of O(L²) — with a single full
+parse (frame 1) and 1 600 incremental frames. The work counters
+(`parserWork` in `message-parser-helpers.ts`) make this mechanically checkable;
+the test asserts `regionScanChars + normalizedChars < 20 × L` and
+`fullParses < 20`. A degenerate input (a single 200 KB line, an unclosed
+marker) pins the cut and degrades gracefully back toward the per-frame full
+scan — never toward wrong output.
+
 ### Transcript scale — `chat-transcript.scale.bench.test.tsx`
 
 Streaming one token into the tail, with the whole transcript mounted:
@@ -103,6 +133,7 @@ surrounding page around — zero is the only pass.
 | --- | --- |
 | `chat/widgets/inline-widget.render-count.test.tsx` | each widget is a `react.memo` wired to its exported comparator; a payload-equal re-parse does not re-render; a real change renders exactly once; `ChoiceWidget`/`FormRequest` state survives an equal re-parse |
 | `chat/message-parser.bench.test.ts` | `parseSegments` absolute budget + linear-scaling ratio |
+| `chat/message-parser-incremental.test.ts` | streaming parse stays byte-identical to a full parse frame-by-frame (differential + seam locality) and scans O(delta), not O(N·L) (work-counter bound) |
 | `composites/chat/chat-transcript.scale.bench.test.tsx` | bounded per-token re-render at 500/1000 messages |
 | `composites/chat/chat-transcript.render-count.test.tsx` (#9141) | fixed-size per-row memoization |
 | `shell/__e2e__/run-chat-perf-gate.mjs` | live frame budget + layout stability for scroll/maximize/restore **and** streaming; no-reflow-outside-chat guard |
@@ -112,6 +143,7 @@ Run them:
 ```bash
 bun run --cwd packages/ui test src/components/chat/widgets/inline-widget.render-count.test.tsx
 bun run --cwd packages/ui test src/components/chat/message-parser.bench.test.ts
+bun run --cwd packages/ui test src/components/chat/message-parser-incremental.test.ts
 bun run --cwd packages/ui test src/components/composites/chat/chat-transcript.scale.bench.test.tsx
 bun run --cwd packages/ui test:chat-perf-gate   # Playwright — boots the real overlay
 ```

@@ -13,6 +13,12 @@
  * prototype-pollution keys (`__proto__`/`constructor`/`prototype`) and return
  * null-prototype containers. See `message-parser-helpers.fuzz.test.ts` for the
  * hardening invariants.
+ *
+ * `parseSegments` is a pure full-text parse. `collectSegmentRegions` and
+ * `interleaveSegments` are the two halves it is built from, exported so the
+ * streaming wrapper in `message-parser-incremental.ts` can re-run the identical
+ * passes over just the changed tail of a growing turn (O(delta) per frame
+ * instead of O(len) — #15280) while producing byte-identical output.
  */
 import { stripAssistantStageDirections } from "@elizaos/shared";
 import type { ConversationMessage } from "../../api/client-types-chat";
@@ -104,9 +110,41 @@ export const HIDDEN_TAG_BLOCK_RE =
  */
 export const TRAILING_PARTIAL_TAG_RE = /<\/?[a-zA-Z][^>]*$|<\/?$/s;
 
-export function normalizeDisplayText(text: string): string {
-  // Bound input length to keep the regex passes linear in adversarial cases.
-  const MAX_DISPLAY_LEN = 200_000;
+/**
+ * Longest input the display normalizer will consider; beyond this the passes
+ * are truncated so an adversarial 1 MB single line can't make the regexes
+ * super-linear. Exported so the streaming wrapper knows the frozen-target point.
+ */
+export const MAX_DISPLAY_LEN = 200_000;
+
+/**
+ * Test-only accounting of how many characters the parse pipeline scans, so the
+ * streaming-parse regression test can assert O(delta) work instead of O(N·L).
+ * Plain integer adds — negligible in production, never read by render code.
+ */
+export const parserWork = {
+  normalizedChars: 0,
+  regionScanChars: 0,
+  fullParses: 0,
+  incrementalParses: 0,
+};
+
+export function resetParserWork(): void {
+  parserWork.normalizedChars = 0;
+  parserWork.regionScanChars = 0;
+  parserWork.fullParses = 0;
+  parserWork.incrementalParses = 0;
+}
+
+/**
+ * The display normalization WITHOUT the final trim. Split out from
+ * {@link normalizeDisplayText} so the incremental streaming wrapper
+ * (`message-parser-incremental.ts`) can re-normalize only the changed tail and
+ * concatenate it onto a stable prefix — trimming happens once on the joined
+ * result, never on the stable prefix.
+ */
+export function normalizeDisplayCore(text: string): string {
+  parserWork.normalizedChars += text.length;
   let normalized =
     text.length > MAX_DISPLAY_LEN ? text.slice(0, MAX_DISPLAY_LEN) : text;
 
@@ -119,7 +157,11 @@ export function normalizeDisplayText(text: string): string {
   normalized = normalized.replace(TRAILING_PARTIAL_TAG_RE, "");
 
   normalized = stripAssistantStageDirections(normalized);
-  return normalized.trim();
+  return normalized;
+}
+
+export function normalizeDisplayText(text: string): string {
+  return normalizeDisplayCore(text).trim();
 }
 
 export interface FormSubmitDisplay {
@@ -385,33 +427,32 @@ export function splitInlineCode(text: string): InlineTextPart[] {
  *     bare-JSON tail → `{`
  *   - analysis-mode XML blocks (<thought>/<action>/…) → `<`
  */
-const SEGMENT_TRIGGER_RE = /[`[{<]/;
+export const SEGMENT_TRIGGER_RE = /[`[{<]/;
 
-export function parseSegments(text: string, analysisMode: boolean): Segment[] {
-  // If analysis mode is enabled, we parse the raw text to extract XML blocks,
-  // otherwise we use the normalized text which strips them.
-  const targetText = analysisMode ? text : normalizeDisplayText(text);
-  if (!targetText) return [{ kind: "text", text: "" }];
+/** A matched non-text region with its absolute char bounds in the target text. */
+export interface SegmentRegion {
+  start: number;
+  end: number;
+  segment: Segment;
+}
 
-  // Plain prose (no trigger character anywhere) → one text segment, no scans.
-  if (!SEGMENT_TRIGGER_RE.test(targetText)) {
-    return [{ kind: "text", text: targetText }];
-  }
-
-  const permissionRequest = analysisMode
-    ? null
-    : parsePermissionRequestFromText(targetText);
-  if (permissionRequest) {
-    const segments: Segment[] = [];
-    if (permissionRequest.display.trim()) {
-      segments.push({ kind: "text", text: permissionRequest.display });
-    }
-    segments.push({ kind: "permission", payload: permissionRequest.payload });
-    return segments;
-  }
-
-  // Build a list of match regions sorted by position
-  const regions: Array<{ start: number; end: number; segment: Segment }> = [];
+/**
+ * Run every region-producing pass over `targetText` and return the matched
+ * regions UNSORTED, with the same cross-pass overlap-drop the full parser
+ * applies (patch regions drop against fenced blocks; fenced code drops against
+ * any already-claimed region). Extracted from {@link parseSegments} so the
+ * streaming wrapper can run the identical passes over just the changed tail.
+ *
+ * `targetText` is the already-normalized display text (or raw text in analysis
+ * mode); callers that scan a tail slice must shift the returned offsets by the
+ * slice start themselves.
+ */
+export function collectSegmentRegions(
+  targetText: string,
+  analysisMode: boolean,
+): SegmentRegion[] {
+  parserWork.regionScanChars += targetText.length;
+  const regions: SegmentRegion[] = [];
 
   if (analysisMode) {
     const XML_RE =
@@ -521,21 +562,28 @@ export function parseSegments(text: string, analysisMode: boolean): Segment[] {
     m = FENCED_CODE_RE.exec(targetText);
   }
 
-  // No special content found — return plain text
-  if (regions.length === 0) {
-    return [{ kind: "text", text: targetText }];
-  }
+  return regions;
+}
 
-  // Sort by start position, then interleave with text segments
-  regions.sort((a, b) => a.start - b.start);
+/**
+ * Sort `regions` by start position and interleave them with the plain-text gaps
+ * of `targetText`, dropping whitespace-only gaps. `startCursor` seeds the walk:
+ * the streaming wrapper passes the stable-cut offset so the tail interleave
+ * emits prose from the cut forward, exactly where the full parser's cursor would
+ * be after consuming the stable prefix's regions. Regions starting before the
+ * cursor are skipped (the same overlap guard the full parser uses).
+ */
+export function interleaveSegments(
+  targetText: string,
+  regions: SegmentRegion[],
+  startCursor = 0,
+): Segment[] {
+  const sorted = [...regions].sort((a, b) => a.start - b.start);
   const segments: Segment[] = [];
-  let cursor = 0;
+  let cursor = startCursor;
 
-  for (const r of regions) {
-    // Skip overlapping regions
+  for (const r of sorted) {
     if (r.start < cursor) continue;
-
-    // Push preceding text
     if (r.start > cursor) {
       const t = targetText.slice(cursor, r.start);
       if (t.trim()) segments.push({ kind: "text", text: t });
@@ -544,13 +592,46 @@ export function parseSegments(text: string, analysisMode: boolean): Segment[] {
     cursor = r.end;
   }
 
-  // Trailing text
   if (cursor < targetText.length) {
     const t = targetText.slice(cursor);
     if (t.trim()) segments.push({ kind: "text", text: t });
   }
 
   return segments;
+}
+
+export function parseSegments(text: string, analysisMode: boolean): Segment[] {
+  parserWork.fullParses += 1;
+  // If analysis mode is enabled, we parse the raw text to extract XML blocks,
+  // otherwise we use the normalized text which strips them.
+  const targetText = analysisMode ? text : normalizeDisplayText(text);
+  if (!targetText) return [{ kind: "text", text: "" }];
+
+  // Plain prose (no trigger character anywhere) → one text segment, no scans.
+  if (!SEGMENT_TRIGGER_RE.test(targetText)) {
+    return [{ kind: "text", text: targetText }];
+  }
+
+  const permissionRequest = analysisMode
+    ? null
+    : parsePermissionRequestFromText(targetText);
+  if (permissionRequest) {
+    const segments: Segment[] = [];
+    if (permissionRequest.display.trim()) {
+      segments.push({ kind: "text", text: permissionRequest.display });
+    }
+    segments.push({ kind: "permission", payload: permissionRequest.payload });
+    return segments;
+  }
+
+  const regions = collectSegmentRegions(targetText, analysisMode);
+
+  // No special content found — return plain text
+  if (regions.length === 0) {
+    return [{ kind: "text", text: targetText }];
+  }
+
+  return interleaveSegments(targetText, regions, 0);
 }
 
 // ── Conversation transcript ─────────────────────────────────────────

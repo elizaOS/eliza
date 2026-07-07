@@ -15,7 +15,7 @@
 // composer contexts, so callers just render
 // `<InlineWidgetText content={msg.content} />`.
 
-import { type ReactNode, useMemo } from "react";
+import type { ReactNode } from "react";
 import { useAppSelectorShallow } from "../../state";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { CodeBlock } from "../ui/code-block";
@@ -27,9 +27,8 @@ import {
 import {
   isSafeNormalizedPluginId,
   normalizePluginId,
-  parseSegments,
-  type Segment,
 } from "./message-parser-helpers";
+import { useParsedSegments } from "./use-parsed-segments";
 // Side effect: register the built-in inline widgets (choice/followups/form/task).
 import "./widgets/inline-builtins";
 import { getInlineWidget } from "./widgets/inline-registry";
@@ -49,14 +48,9 @@ export function InlineWidgetText({ content }: { content: string }): ReactNode {
 
   // The overlay shows clean display text (no raw analysis view), so parse in
   // non-analysis mode — hidden reasoning/tool tags are stripped, not leaked.
-  const segments = useMemo<Segment[]>(() => {
-    try {
-      return parseSegments(content, false);
-    } catch {
-      // error-policy:J3 malformed markup — render the raw text as-is
-      return [{ kind: "text", text: content }];
-    }
-  }, [content]);
+  // Incremental prefix-cached parse so a streaming overlay bubble re-parses only
+  // its changed tail (#15280); byte-identical to parseSegments.
+  const segments = useParsedSegments(content, false);
 
   // Fast path: a single plain-text segment (most replies) renders as-is.
   if (segments.length === 1 && segments[0].kind === "text") {

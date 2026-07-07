@@ -63,12 +63,12 @@ import {
   isSafeNormalizedPluginId,
   normalizePluginId,
   parseFormSubmitDisplay,
-  parseSegments,
   sensitiveRequestStatusLabel,
   sensitiveRequestTitleLabel,
   splitInlineCode,
 } from "./message-parser-helpers";
 import { ThinkingBlock } from "./ThinkingBlock";
+import { useParsedSegments } from "./use-parsed-segments";
 import { ChatWidgetShell } from "./widgets/chat-widget-shell";
 // Side effect: registers the built-in inline widgets (choice/followups/form/task).
 import "./widgets/inline-builtins";
@@ -1304,16 +1304,10 @@ export function MessageContent({
     null,
   );
 
-  // Parse segments — memoize to avoid re-parsing on every render
-  const segments = useMemo(() => {
-    try {
-      return parseSegments(message.text, analysisMode);
-    } catch {
-      // error-policy:J3 malformed message markup — render the raw text as-is
-      // rather than dropping the message
-      return [{ kind: "text" as const, text: message.text }];
-    }
-  }, [message.text, analysisMode]);
+  // Incremental prefix-cached parse: a streaming turn re-parses only its changed
+  // tail instead of the whole buffer every rAF flush (#15280). Byte-identical to
+  // parseSegments; falls back to raw text if the markup is malformed.
+  const segments = useParsedSegments(message.text, analysisMode);
 
   // Handlers handed to every inline widget at render: the SAME shared contract
   // the overlay surface (InlineWidgetText) uses, so a CHOICE pick / FOLLOWUPS
