@@ -13,6 +13,7 @@
  * cleared by `silentlyRepointToDedicated` (repointed ⇒ nothing pending) and by
  * the TTL (a marker that never resolves must not outlive the handoff story).
  */
+import { runAsPrivilegedShell } from "../../surface-realm-channel";
 
 export interface PendingCloudHandoff {
   sharedAgentId: string;
@@ -41,11 +42,17 @@ function storage(): Storage | null {
 }
 
 export function savePendingCloudHandoff(pending: PendingCloudHandoff): void {
-  storage()?.setItem(STORAGE_KEY, JSON.stringify(pending));
+  // Reserved shell key (`eliza:`) — privileged so the raw-global guard admits it
+  // while a view scope is active (#13452); `storage()` keeps the SSR/no-window
+  // guard. This write is intentionally not swallowed: a lost marker strands the
+  // user on the shared adapter after reload.
+  runAsPrivilegedShell(() =>
+    storage()?.setItem(STORAGE_KEY, JSON.stringify(pending)),
+  );
 }
 
 export function clearPendingCloudHandoff(): void {
-  storage()?.removeItem(STORAGE_KEY);
+  runAsPrivilegedShell(() => storage()?.removeItem(STORAGE_KEY));
 }
 
 /** Load the marker; malformed or expired entries are cleared and reported null. */
@@ -68,16 +75,16 @@ export function loadPendingCloudHandoff(
       !parsed.cloudApiBase ||
       typeof parsed.startedAt !== "number"
     ) {
-      store.removeItem(STORAGE_KEY);
+      runAsPrivilegedShell(() => store.removeItem(STORAGE_KEY));
       return null;
     }
     if (now - parsed.startedAt > PENDING_HANDOFF_TTL_MS) {
-      store.removeItem(STORAGE_KEY);
+      runAsPrivilegedShell(() => store.removeItem(STORAGE_KEY));
       return null;
     }
     return parsed as PendingCloudHandoff;
   } catch {
-    store.removeItem(STORAGE_KEY);
+    runAsPrivilegedShell(() => store.removeItem(STORAGE_KEY));
     return null;
   }
 }

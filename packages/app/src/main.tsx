@@ -69,8 +69,8 @@ import { client } from "@elizaos/ui/api";
 import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
 import {
   isElectrobunRuntime,
-  subscribeDesktopBridgeEvent,
   shellLocalStorage,
+  subscribeDesktopBridgeEvent,
 } from "@elizaos/ui/bridge";
 import { initializeCapacitorBridge } from "@elizaos/ui/bridge/capacitor-bridge";
 import {
@@ -1204,7 +1204,7 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
   } finally {
     firstRunCounter.restore();
     try {
-      window.localStorage.removeItem(IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY);
+      shellLocalStorage.removeItem(IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY);
     } catch (error) {
       // error-policy:J6 best-effort cleanup — Preferences removal below is
       // authoritative for the simulator harness

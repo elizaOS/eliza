@@ -14,6 +14,7 @@
  */
 
 import { isRenderTelemetryEnabled } from "../hooks/useRenderGuard";
+import { runAsPrivilegedShell } from "../surface-realm-channel";
 
 /** Dispatched on `window` whenever the perf-HUD flag flips. */
 export const PERF_TOGGLE_EVENT = "eliza:perf-toggle";
@@ -44,7 +45,11 @@ export function setPerfHud(enabled: boolean): void {
   if (!win) return;
   win.__ELIZA_PERF_HUD__ = enabled;
   try {
-    win.localStorage?.setItem(PERSIST_KEY, enabled ? "1" : "0");
+    // Reserved `eliza:` key — privileged so the raw-global guard admits it while
+    // a view scope is active (#13452); the `?.` keeps the no-storage guard.
+    runAsPrivilegedShell(() =>
+      win.localStorage?.setItem(PERSIST_KEY, enabled ? "1" : "0"),
+    );
   } catch {
     // private mode / storage disabled: the in-memory flag is still authoritative.
   }
