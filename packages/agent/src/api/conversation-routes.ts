@@ -67,6 +67,7 @@ import {
   initSse,
   isDuplicateChatMessage,
   normalizeAccountConnectRequest,
+  releaseChatMessageId,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
   persistConversationMemory,
@@ -2782,6 +2783,11 @@ export async function handleConversationRoutes(
           { conversationId: conv.id, roomId: conv.roomId },
           "[ConversationStream] generation aborted",
         );
+        // The aborted turn persisted no assistant reply — release the
+        // idempotency key so the client's blip-retry re-runs the turn
+        // instead of being suppressed into dead air (the iOS-suspend →
+        // disconnect-abort → retry-eaten scenario).
+        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
       } else if (!disconnectTracker.isAborted()) {
         // If text was already streamed to the client (e.g. the initial
         // response succeeded but planner follow-up failed), use the
@@ -2870,6 +2876,12 @@ export async function handleConversationRoutes(
             });
           }
         }
+      } else {
+        // Error after the client already disconnected: no fallback reply is
+        // persisted (the gate above skips it), so nothing was delivered for
+        // this turn — release the idempotency key so the client's
+        // reconnect-retry re-runs it instead of being eaten.
+        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
       }
     } finally {
       clearInterval(heartbeatInterval);
