@@ -1,7 +1,8 @@
-// Verifies countAllocatedWorkloadsOnNode counts LIVE slots only — a sandbox in a
-// terminal status (its container should not be running) must not inflate a
-// node's allocated_count, or the autoscaler reads bare-metal robots as full and
-// bills new Hetzner-cloud nodes instead (#15378).
+/**
+ * Live-slot accounting coverage for Docker node allocation counts. Terminal
+ * agent sandbox rows must not inflate allocated_count, or the autoscaler reads
+ * bare-metal robots as full and bills new Hetzner-cloud nodes instead (#15378).
+ */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
