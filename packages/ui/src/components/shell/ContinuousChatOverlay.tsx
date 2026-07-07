@@ -1467,34 +1467,34 @@ export function ContinuousChatOverlay({
   // sheet to its content (grow-from-the-bottom) instead of a tall empty panel.
   const threadContentRef = React.useRef<HTMLDivElement>(null);
   const layoutShiftIntentTimerRef = React.useRef<number | null>(null);
-  const layoutShiftIntentArmedAtRef = React.useRef(0);
+  const layoutShiftIntentLastMotionRef = React.useRef(0);
   const markLayoutShiftIntent = React.useCallback(() => {
     const overlay = overlayRef.current;
     if (!overlay || typeof window === "undefined") return;
-    // Throttle the re-arm: this fires on EVERY threadHeight tick (60+/s for
-    // the whole of a drag or settle spring), and an unconditional
-    // setAttribute + clearTimeout + setTimeout per frame is pure churn. While
-    // a timer is already pending, re-arm at most every 100ms — the intent
-    // window still clears within ~280ms of the last motion.
-    const now = performance.now();
-    if (
-      layoutShiftIntentTimerRef.current !== null &&
-      now - layoutShiftIntentArmedAtRef.current < 100
-    ) {
-      return;
-    }
-    layoutShiftIntentArmedAtRef.current = now;
+    // Arm ONCE per motion burst (#15257): this fires on EVERY threadHeight
+    // tick (60+/s across a whole drag or settle spring). While armed, a tick
+    // only refreshes the last-motion timestamp — no attribute write, no timer
+    // churn. The single clear timer extends itself while motion continues and
+    // removes the marker ~180ms after the last tick.
+    layoutShiftIntentLastMotionRef.current = performance.now();
+    if (layoutShiftIntentTimerRef.current !== null) return;
     overlay.setAttribute(
       LAYOUT_SHIFT_INTENT_ATTR,
       LAYOUT_SHIFT_INTENT_TRANSIENT,
     );
-    if (layoutShiftIntentTimerRef.current !== null) {
-      window.clearTimeout(layoutShiftIntentTimerRef.current);
-    }
-    layoutShiftIntentTimerRef.current = window.setTimeout(() => {
-      layoutShiftIntentTimerRef.current = null;
-      overlayRef.current?.removeAttribute(LAYOUT_SHIFT_INTENT_ATTR);
-    }, 180);
+    const scheduleClear = (delay: number) => {
+      layoutShiftIntentTimerRef.current = window.setTimeout(() => {
+        const since =
+          performance.now() - layoutShiftIntentLastMotionRef.current;
+        if (since < 180) {
+          scheduleClear(180 - since);
+          return;
+        }
+        layoutShiftIntentTimerRef.current = null;
+        overlayRef.current?.removeAttribute(LAYOUT_SHIFT_INTENT_ATTR);
+      }, delay);
+    };
+    scheduleClear(180);
   }, []);
   // Publish the RESTING composer footprint to --eliza-continuous-chat-clearance
   // so content below (home widgets, launcher tiles) always reserves exactly the

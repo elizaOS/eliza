@@ -240,6 +240,84 @@ describe("resolveSandboxContainerLaunchConfig", () => {
   });
 });
 
+describe("ElizaSandboxService state restore auth", () => {
+  test("attaches the agent token when restoring to a trusted bridge URL string", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const requests: Array<{
+      url: string;
+      headers: Record<string, string>;
+      body: string;
+    }> = [];
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        url: fetchUrl(input),
+        headers: fetchHeaders(init?.headers),
+        body: String(init?.body ?? ""),
+      });
+      return Response.json({ ok: true });
+    });
+
+    const sandbox = customSandbox();
+    await (
+      new ElizaSandboxService() as unknown as {
+        pushState: (
+          bridgeUrl: string,
+          state: { memories: unknown[]; config: Record<string, unknown>; workspaceFiles: object },
+          options: { trusted: true; authRec: Pick<AgentSandbox, "id" | "environment_vars"> },
+        ) => Promise<void>;
+      }
+    ).pushState(
+      "https://runtime.example",
+      { memories: [], config: { restored: true }, workspaceFiles: {} },
+      { trusted: true, authRec: sandbox },
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toBe("https://runtime.example/api/restore");
+    expect(requests[0].headers).toMatchObject({
+      "Content-Type": "application/json",
+      Authorization: "Bearer agent-token",
+      "X-Api-Key": "agent-token",
+      "X-Eliza-Token": "agent-token",
+    });
+    expect(JSON.parse(requests[0].body)).toEqual({
+      memories: [],
+      config: { restored: true },
+      workspaceFiles: {},
+    });
+  });
+
+  test("keeps legacy bridge URL restores unauthenticated when no sandbox record is supplied", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const requests: Array<{ headers: Record<string, string> }> = [];
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ headers: fetchHeaders(init?.headers) });
+      return Response.json({ ok: true });
+    });
+
+    await (
+      new ElizaSandboxService() as unknown as {
+        pushState: (
+          bridgeUrl: string,
+          state: { memories: unknown[]; config: Record<string, unknown>; workspaceFiles: object },
+          options?: { trusted?: boolean },
+        ) => Promise<void>;
+      }
+    ).pushState(
+      "https://runtime.example",
+      {
+        memories: [],
+        config: {},
+        workspaceFiles: {},
+      },
+      { trusted: true },
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].headers).toEqual({ "Content-Type": "application/json" });
+  });
+});
+
 describe("ElizaSandboxService bridge status", () => {
   test("reports web-only custom agents as running through the router origin in Workers", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");

@@ -1637,7 +1637,10 @@ export class ElizaSandboxService {
         }
         if (restoreState) {
           try {
-            await this.pushState(handle.bridgeUrl, restoreState, { trusted: true });
+            await this.pushState(handle.bridgeUrl, restoreState, {
+              trusted: true,
+              authRec: rec,
+            });
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             if (
@@ -5337,7 +5340,10 @@ export class ElizaSandboxService {
       );
       if (restoreState) {
         try {
-          await this.pushState(blueHandle.bridgeUrl, restoreState, { trusted: true });
+          await this.pushState(blueHandle.bridgeUrl, restoreState, {
+            trusted: true,
+            authRec: agent,
+          });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
@@ -5760,7 +5766,17 @@ export class ElizaSandboxService {
         >
       | string,
     state: AgentBackupStateData,
-    options?: { trusted?: boolean },
+    options?: {
+      trusted?: boolean;
+      // Bridge-URL callers pass a bare string, so `pushState` cannot derive the
+      // agent's ELIZA_API_TOKEN from it and the trusted branch used to send no
+      // auth header. That worked while `/api/restore` exempted trusted-bridge
+      // requests, but the cloud agent image now requires the token even over the
+      // tailnet (server-helpers-auth `isCloudProvisionedContainer()` disables the
+      // local-trust exemption) — so an unauthenticated restore deterministically
+      // 401s (#15261). Pass the sandbox record here to attach the token.
+      authRec?: Pick<AgentSandbox, "id" | "environment_vars">;
+    },
   ) {
     const restoreEndpoint =
       typeof sandboxOrBridgeUrl === "string"
@@ -5770,7 +5786,9 @@ export class ElizaSandboxService {
       method: "POST",
       headers:
         typeof sandboxOrBridgeUrl === "string"
-          ? { "Content-Type": "application/json" }
+          ? options?.authRec
+            ? this.getAgentJsonHeaders(options.authRec)
+            : { "Content-Type": "application/json" }
           : this.getAgentJsonHeaders(sandboxOrBridgeUrl),
       body: JSON.stringify(state),
       signal: AbortSignal.timeout(SNAPSHOT_RESTORE_TIMEOUT_MS),
