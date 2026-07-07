@@ -376,6 +376,13 @@
       "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
     },
     {
+      "plugin": "plugin-native-browser-surface",
+      "issues": [
+        "missing-deterministic-e2e"
+      ],
+      "reason": "Deterministic E2E coverage is device-bound: the plugin's real behavior is native webview isolation exercised by the Android connectedAndroidTest instrumented suite (android/src/androidTest) and the iOS WKWebView-pool XCUITest, neither of which runs as deterministic JS E2E in CI. JS-side surface is covered by src/web.test.ts. See #15245 (mobile native-webview isolation) and #13452."
+    },
+    {
       "plugin": "plugin-native-bun-runtime",
       "issues": [
         "missing-deterministic-e2e"
