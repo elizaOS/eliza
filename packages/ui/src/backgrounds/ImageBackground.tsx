@@ -3,6 +3,7 @@
  * /api/media URL.
  */
 import type * as React from "react";
+import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim";
 import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url";
 
 export interface ImageBackgroundProps {
@@ -56,14 +57,19 @@ function resolveWallpaperUrl(url: string): string {
  * filter work) is also the cheapest possible treatment: one plain composited
  * layer, gate-safe, GPU-trivial.
  *
- * BOTTOM EDGE: the wallpaper is a `fixed inset-0` cover-fit layer. With the
- * mobile/PWA body scroll-locked WITHOUT `position: fixed` (styles/base.css), a
- * fixed layer's containing block is the true viewport, so `inset-0` reaches the
- * physical screen bottom on its own — the wallpaper owns the whole screen down
- * to the home-indicator edge, lock-screen style. No cosmetic bottom-floor
- * gradient is needed (the prior warm-ember lift strip existed only to disguise
- * the launch-bg band that showed when a `position: fixed` body collapsed the
- * ICB and the wallpaper stopped short); we mount ONLY the legibility scrim. */
+ * BOTTOM EDGE: the wallpaper is a `fixed inset-0` cover-fit layer. On the
+ * installed iOS standalone PWA the `fixed` containing block does NOT resolve to
+ * the true 932px screen — it collapses to the small ICB (`ce873` while the
+ * physical screen is `sh932`, device-verified), so a bare `inset-0`
+ * (`bottom: 0`) stops the wallpaper ~59px SHORT of the home-indicator edge and
+ * that dead band paints as the recurring black strip. We reclaim it by dropping
+ * this layer's `bottom` by the JS-MEASURED gap `--standalone-bottom-reclaim`
+ * (#15036) so the wallpaper genuinely owns the whole screen down to the
+ * home-indicator edge, lock-screen style. The var is a hard 0 off the
+ * iOS-standalone/native surface, so this is a true no-op on desktop/web/Android.
+ * No cosmetic bottom-floor gradient is needed (the prior warm-ember lift strip
+ * existed only to disguise that launch-bg band); we mount ONLY the legibility
+ * scrim. */
 export function ImageBackground({
   imageUrl,
 }: ImageBackgroundProps): React.JSX.Element {
@@ -75,6 +81,11 @@ export function ImageBackground({
       className="pointer-events-none fixed inset-0"
       style={{
         zIndex: 0,
+        // BOTTOM-BAR FIX (consume #15036 reclaim): extend the fixed wallpaper
+        // DOWN past the collapsed ICB to the TRUE physical bottom by the
+        // JS-MEASURED `--standalone-bottom-reclaim`, overriding the `inset-0`
+        // `bottom: 0` from the class. See the BOTTOM EDGE note above.
+        bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET,
         backgroundImage: `url("${resolveWallpaperUrl(imageUrl)}")`,
         backgroundSize: "cover",
         backgroundPosition: "center",
