@@ -1,30 +1,40 @@
 /**
  * Transcript-side producer for meetings the owner skipped.
  *
- * The live meeting joiner and diarization path can hand this module a normalized
- * transcript; this code owns the deterministic post-meeting shape that LifeOps
- * needs before it writes ledger rows, queues owner-approved follow-ups, or
- * creates calendar deadline intents. It is deliberately pure so tests can pin
- * care-about filtering and commitment extraction without mocking connectors.
+ * Given a finalized, diarized meeting transcript (the canonical
+ * `TranscriptSegment[]` that `@elizaos/plugin-meetings`' pipeline `finalize()`
+ * produces) plus owner context, this module derives the deterministic
+ * post-meeting shape LifeOps acts on: decisions, care-about hits, extracted
+ * commitments, a short digest, and — the part that leaves the module —
+ * owner-approval requests as `ApprovalEnqueueInput[]` that feed
+ * `ApprovalQueue.enqueue()` directly (no re-mapping at the call site). The
+ * scheduled-task consumer that runs this on a real transcript and routes the
+ * approvals lives in `./consumer.ts`.
+ *
+ * It is deliberately pure so tests can pin care-about filtering and commitment
+ * extraction against a realistic diarized fixture without mocking connectors.
+ * Extraction is heuristic (regex over natural utterances); a model-driven pass
+ * is out of scope here (tracked by #14870 for ASR that these rules miss).
  */
+
+import type { TranscriptSegment } from "@elizaos/shared";
+import type {
+  ApprovalEnqueueInput,
+  ApprovalPayload,
+} from "../approval-queue.types.js";
 
 export interface MeetingGhostAttendee {
   readonly name: string;
   readonly email?: string;
 }
 
-export interface MeetingGhostTranscriptSegment {
-  readonly speaker: string;
-  readonly text: string;
-  readonly offsetMs?: number;
-}
-
+/** Meeting metadata wrapping the canonical diarized segments. */
 export interface MeetingGhostTranscript {
   readonly meetingId: string;
   readonly title: string;
   readonly startedAt: string;
   readonly attendees: readonly MeetingGhostAttendee[];
-  readonly segments: readonly MeetingGhostTranscriptSegment[];
+  readonly segments: readonly TranscriptSegment[];
 }
 
 export interface MeetingGhostOwnerContext {
@@ -62,47 +72,10 @@ export interface MeetingGhostCareHit {
   readonly sourceOffsetMs: number | null;
 }
 
-export type MeetingGhostApprovalIntent =
-  | {
-      readonly requestedBy: string;
-      readonly subjectUserId: string;
-      readonly action: "send_email";
-      readonly channel: "email";
-      readonly reason: string;
-      readonly expiresAt: Date;
-      readonly payload: {
-        readonly action: "send_email";
-        readonly to: readonly string[];
-        readonly cc: readonly string[];
-        readonly bcc: readonly string[];
-        readonly subject: string;
-        readonly body: string;
-        readonly threadId: string | null;
-        readonly replyToMessageId: string | null;
-      };
-    }
-  | {
-      readonly requestedBy: string;
-      readonly subjectUserId: string;
-      readonly action: "schedule_event";
-      readonly channel: "google_calendar";
-      readonly reason: string;
-      readonly expiresAt: Date;
-      readonly payload: {
-        readonly action: "schedule_event";
-        readonly calendarId: string;
-        readonly title: string;
-        readonly startsAtMs: number;
-        readonly endsAtMs: number;
-        readonly attendees: readonly string[];
-        readonly location: string | null;
-        readonly description: string | null;
-      };
-    };
-
+/** A calendar-deadline approval bound back to the commitment that produced it. */
 export interface MeetingGhostCalendarIntent {
   readonly commitmentId: string;
-  readonly approval: MeetingGhostApprovalIntent;
+  readonly approval: ApprovalEnqueueInput;
 }
 
 export interface MeetingGhostAnalysis {
@@ -110,19 +83,31 @@ export interface MeetingGhostAnalysis {
   readonly decisions: readonly MeetingGhostDecision[];
   readonly commitments: readonly MeetingGhostCommitment[];
   readonly careHits: readonly MeetingGhostCareHit[];
-  readonly followUpApprovals: readonly MeetingGhostApprovalIntent[];
+  /** Ready to feed `ApprovalQueue.enqueue()` directly. */
+  readonly followUpApprovals: readonly ApprovalEnqueueInput[];
   readonly calendarIntents: readonly MeetingGhostCalendarIntent[];
   readonly digestLines: readonly string[];
 }
 
+// A diarized commitment reads as a natural utterance, so the extractor keys on
+// the speaker + a commitment verb ("will send the plan by Friday"), not on a
+// literal "Action:" prefix a human would never say aloud. The prefixed forms
+// are still accepted for transcripts that carry structured annotations.
 const DECISION_PREFIX_RE =
   /^(?:decision|decided|we decided|decision is)\s*[:-]\s*(.+)$/i;
+// A leading "we/the team decided (to)? X" spoken sentence.
+const SPOKEN_DECISION_RE =
+  /^(?:we|the team|everyone|the group)\s+(?:agreed|decided|settled|concluded)\s+(?:that\s+|to\s+|on\s+)?(?<body>.+?)[.;]?$/i;
 const COMMITMENT_PREFIX_RE =
   /^(?:action|commitment|follow-up)\s*[:-]\s*(?<body>.+)$/i;
+// "Mira will send the deck by Friday" / "Ben is taking the calendar update"
 const NAMED_COMMITMENT_RE =
-  /^(?<who>[A-Z][A-Za-z .'-]{1,60}?)\s+(?:will|to|owns|is taking|committed to)\s+(?<what>.+?)(?:\s+by\s+(?<due>[^.;]+))?[.;]?$/;
+  /^(?<who>[A-Z][A-Za-z .'-]{1,60}?)\s+(?:will|to|owns|is taking|committed to|is going to|can)\s+(?<what>.+?)(?:\s+by\s+(?<due>[^.;]+))?[.;]?$/;
+// First-person, who = the speaker. Requires an explicit commitment verb
+// ("I will…", "I'll…", "we can…", "I am going to…") so a bare first-person
+// remark ("I think…") is not mistaken for an action item.
 const SPEAKER_COMMITMENT_RE =
-  /^(?:i|we)\s+(?:will|can|am going to|are going to)\s+(?<what>.+?)(?:\s+by\s+(?<due>[^.;]+))?[.;]?$/i;
+  /^(?:i|we)\s*(?:'ll\s+|will\s+|can\s+|am going to\s+|are going to\s+)(?<what>.+?)(?:\s+by\s+(?<due>[^.;]+))?[.;]?$/i;
 
 const WEEKDAYS = new Map([
   ["sunday", 0],
@@ -152,18 +137,9 @@ function stableId(parts: readonly string[]): string {
     .join(":");
 }
 
-function stripSpeakerPrefix(text: string): string {
-  const trimmed = compact(text);
-  const match = trimmed.match(/^[A-Z][A-Za-z .'-]{1,60}:\s*(.+)$/);
-  if (
-    match &&
-    /^(?:action|commitment|decision|decided|follow-up)$/i.test(
-      trimmed.slice(0, trimmed.indexOf(":")).trim(),
-    )
-  ) {
-    return trimmed;
-  }
-  return match?.[1] ? compact(match[1]) : trimmed;
+/** Speaker label for a diarized segment; falls back to the entity id. */
+function speakerOf(segment: TranscriptSegment): string {
+  return segment.speakerLabel ?? segment.speakerEntityId ?? "Unknown";
 }
 
 function careAboutMatches(text: string, careAbout: string): boolean {
@@ -193,19 +169,21 @@ function findAttendeeEmail(
 }
 
 function parseDecision(
-  segment: MeetingGhostTranscriptSegment,
+  segment: TranscriptSegment,
   index: number,
 ): MeetingGhostDecision | null {
-  const text = stripSpeakerPrefix(segment.text);
-  const match = text.match(DECISION_PREFIX_RE);
-  if (!match?.[1]) return null;
-  const decision = compact(match[1]);
-  if (!decision) return null;
+  const text = compact(segment.text);
+  const decision =
+    text.match(DECISION_PREFIX_RE)?.[1] ??
+    text.match(SPOKEN_DECISION_RE)?.groups?.body ??
+    null;
+  const compacted = decision ? compact(decision) : "";
+  if (!compacted) return null;
   return {
-    id: stableId(["decision", String(index), decision]),
-    text: decision,
-    speaker: segment.speaker,
-    sourceOffsetMs: segment.offsetMs ?? null,
+    id: stableId(["decision", String(index), compacted]),
+    text: compacted,
+    speaker: speakerOf(segment),
+    sourceOffsetMs: segment.startMs,
   };
 }
 
@@ -272,13 +250,13 @@ function parseDueDate(
 
 function parseCommitment(
   transcript: MeetingGhostTranscript,
-  segment: MeetingGhostTranscriptSegment,
+  segment: TranscriptSegment,
   index: number,
 ): MeetingGhostCommitment | null {
-  const text = stripSpeakerPrefix(segment.text);
+  const text = compact(segment.text);
   const parsed = parseCommitmentBody(text);
   if (!parsed) return null;
-  const who = parsed.who ?? segment.speaker;
+  const who = parsed.who ?? speakerOf(segment);
   const dueDate = parseDueDate(parsed.dueText, transcript.startedAt);
   return {
     id: stableId(["commitment", String(index), who, parsed.what]),
@@ -288,7 +266,7 @@ function parseCommitment(
     dueText: parsed.dueText,
     dueDate,
     sourceText: text,
-    sourceOffsetMs: segment.offsetMs ?? null,
+    sourceOffsetMs: segment.startMs,
   };
 }
 
@@ -296,10 +274,20 @@ function buildFollowUpApproval(
   transcript: MeetingGhostTranscript,
   owner: MeetingGhostOwnerContext,
   commitment: MeetingGhostCommitment,
-): MeetingGhostApprovalIntent | null {
+): ApprovalEnqueueInput | null {
   if (!commitment.recipientEmail) return null;
   const subject = `Follow-up from ${transcript.title}`;
   const due = commitment.dueText ? ` by ${commitment.dueText}` : "";
+  const payload: ApprovalPayload = {
+    action: "send_email",
+    to: [commitment.recipientEmail],
+    cc: [],
+    bcc: [],
+    subject,
+    body: `${commitment.who},\n\nFollowing up from ${transcript.title}: please ${commitment.what}${due}.\n\n${owner.ownerDisplayName}`,
+    threadId: null,
+    replyToMessageId: null,
+  };
   return {
     requestedBy: owner.requestedBy,
     subjectUserId: owner.ownerUserId,
@@ -307,16 +295,7 @@ function buildFollowUpApproval(
     channel: "email",
     reason: `Queue owner-approved follow-up for ${commitment.who} from ${transcript.title}`,
     expiresAt: owner.approvalExpiresAt,
-    payload: {
-      action: "send_email",
-      to: [commitment.recipientEmail],
-      cc: [],
-      bcc: [],
-      subject,
-      body: `${commitment.who},\n\nFollowing up from ${transcript.title}: please ${commitment.what}${due}.\n\n${owner.ownerDisplayName}`,
-      threadId: null,
-      replyToMessageId: null,
-    },
+    payload,
   };
 }
 
@@ -330,6 +309,16 @@ function buildCalendarIntent(
   }
   const startsAtMs = Date.parse(`${commitment.dueDate}T09:00:00.000Z`);
   if (Number.isNaN(startsAtMs)) return null;
+  const payload: ApprovalPayload = {
+    action: "schedule_event",
+    calendarId: owner.calendarId,
+    title: `Deadline: ${commitment.what}`,
+    startsAtMs,
+    endsAtMs: startsAtMs + 30 * 60 * 1000,
+    attendees: [commitment.recipientEmail],
+    location: null,
+    description: `Commitment from ${transcript.title}: ${commitment.sourceText}`,
+  };
   return {
     commitmentId: commitment.id,
     approval: {
@@ -339,16 +328,7 @@ function buildCalendarIntent(
       channel: "google_calendar",
       reason: `Place deadline for ${commitment.who}'s commitment from ${transcript.title}`,
       expiresAt: owner.approvalExpiresAt,
-      payload: {
-        action: "schedule_event",
-        calendarId: owner.calendarId,
-        title: `Deadline: ${commitment.what}`,
-        startsAtMs,
-        endsAtMs: startsAtMs + 30 * 60 * 1000,
-        attendees: [commitment.recipientEmail],
-        location: null,
-        description: `Commitment from ${transcript.title}: ${commitment.sourceText}`,
-      },
+      payload,
     },
   };
 }
@@ -384,7 +364,12 @@ export function analyzeMeetingGhostTranscript(input: {
     const decision = parseDecision(segment, index);
     if (decision) decisions.push(decision);
 
-    const commitment = parseCommitment(input.transcript, segment, index);
+    // A group decision ("We decided to…", "The team agreed to…") is not an
+    // individual's action item — skip commitment extraction on the same
+    // segment so a collective verb never becomes a per-person follow-up.
+    const commitment = decision
+      ? null
+      : parseCommitment(input.transcript, segment, index);
     if (commitment) commitments.push(commitment);
 
     for (const careAbout of input.owner.careAbouts) {
@@ -392,9 +377,9 @@ export function analyzeMeetingGhostTranscript(input: {
         careHits.push({
           id: stableId(["care", String(index), careAbout]),
           careAbout,
-          speaker: segment.speaker,
-          text: stripSpeakerPrefix(segment.text),
-          sourceOffsetMs: segment.offsetMs ?? null,
+          speaker: speakerOf(segment),
+          text: compact(segment.text),
+          sourceOffsetMs: segment.startMs,
         });
       }
     }
@@ -404,7 +389,7 @@ export function analyzeMeetingGhostTranscript(input: {
     .map((commitment) =>
       buildFollowUpApproval(input.transcript, input.owner, commitment),
     )
-    .filter((entry): entry is MeetingGhostApprovalIntent => entry !== null);
+    .filter((entry): entry is ApprovalEnqueueInput => entry !== null);
   const calendarIntents = commitments
     .map((commitment) =>
       buildCalendarIntent(input.transcript, input.owner, commitment),

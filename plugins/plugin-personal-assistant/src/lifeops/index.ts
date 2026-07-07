@@ -15,6 +15,7 @@ export * from "./goal-semantic-evaluator.js";
 export * from "./google-plugin-delegates.js";
 export * from "./implicit-referents/index.js";
 export * from "./intent-sync.js";
+export * from "./meeting-ghost/consumer.js";
 export * from "./meeting-ghost/index.js";
 export * from "./owner-profile.js";
 export * from "./policy-memory.js";
