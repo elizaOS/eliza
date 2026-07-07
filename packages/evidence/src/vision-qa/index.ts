@@ -25,6 +25,14 @@ export {
 } from "./cache.ts";
 export { runVisionQaCli, type VisionQaCliIo } from "./cli.ts";
 export {
+  CliVisionBackend,
+  type ProcessResult,
+  type ProcessRunner,
+  parseClaudeEnvelope,
+  parseCodexUsage,
+  type VisionCli,
+} from "./cli-backend.ts";
+export {
   createBackendClient,
   ENV as VISION_QA_ENV,
   resolveBackend,

@@ -18,6 +18,18 @@ const ALLOWED = new Set<string>([
   // The sidebar slide/scale animation (transform+opacity+filter, per frame).
   "components/composites/sidebar/sidebar-body.tsx",
   "components/composites/sidebar/sidebar-root.tsx",
+  // The continuous-chat sheet: DRAG-SCOPED `will-change: transform` on the
+  // panel/thread only while a finger-driven morph (pill↔input↔maximize) or its
+  // release spring is live, dropped the instant it settles. Promotes the
+  // per-frame transform morph onto its own compositor layer so the frosted
+  // glass composites instead of repainting each frame (the installed-PWA
+  // micro-stutter) — exactly the justified, non-permanent case.
+  "components/shell/ContinuousChatOverlay.tsx",
+  // The horizontal home pager rail: the same drag-scoped playbook (#14501) on
+  // the horizontal axis — `will-change: transform` set on pointerdown, cleared
+  // on settle — so the paged rail transform composites without repainting the
+  // notification stack behind it.
+  "hooks/useHorizontalPager.ts",
 ]);
 
 const SRC_ROOT = import.meta.dirname;

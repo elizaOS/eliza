@@ -84,16 +84,17 @@ gate's `sites`). `Coverage` = the levels with a real test today.
 | 15 | Graph pan/pinch/wheel-zoom | RelationshipsGraphPanel | `RelationshipsGraphPanel.tsx` | **gap** — L3 planned (app-side `touchPinch`/`touchPan`) |
 | 16 | Slash menu open/dismiss (incl. outside pointerdown) | composer | _composer_ | L2 `ContinuousChatOverlay.slash.test.tsx` + `composer-core.test.tsx` + `MessageContent.slash-command.test.tsx` |
 | 17 | Pinch/dblclick on chat surface (should NOT zoom/break layout) | overlay | `ContinuousChatOverlay.tsx` | **gap** — L3 negative test planned |
+| 18 | Notification row swipe-dismiss / long-press menu; shade pull-expand | home notification center | `NotificationsHomeCenter.tsx` | L2 `NotificationsHomeCenter.test.tsx`; L3 `gesture-matrix.spec.ts` (list-pan + row-swipe legs) |
 
 Notifications live in `NotificationsHomeCenter`, a widget pinned on the home
-dashboard — not behind a pull gesture. Its rows are plain buttons and its list
-a native scroll container — no gesture-handler site — so it is covered by
-`NotificationsHomeCenter.test.tsx` (jsdom) and `gesture-matrix.spec.ts` (booted
-app) rather than a row here.
+dashboard. Since the inline-inbox rework (#15180) it is a real gesture site:
+rows are pointer-captured swipe-to-dismiss surfaces with a long-press menu, and
+the shade expands via a touch pan at the list top (desktop: wheel pull) — row
+18 governs it.
 
 ## Coverage gaps
 
-Every one of the 12 discovered gesture-handler sites is in a matrix row (the
+Every one of the 13 discovered gesture-handler sites is in a matrix row (the
 gate proves it). Two rows are honest **gaps** with no automated test yet:
 
 - **Row 15 (graph pan/pinch/wheel-zoom)** — `RelationshipsGraphPanel.tsx` has no

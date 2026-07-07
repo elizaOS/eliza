@@ -43,8 +43,12 @@ export const schedulingPlugin: Plugin = {
       surface: { capabilities: ["agent-surface"] },
       componentExport: "LifeOpsLiveTestView",
       tags: ["lifeops", "scheduling", "test", "hitl"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
+      // Developer/QA validation surface, not a user destination: gate it behind
+      // Developer Mode and keep it off the launcher grid, the view manager, and
+      // desktop tabs. The route stays reachable for the live-test workflow.
+      developerOnly: true,
+      visibleInManager: false,
+      desktopTabEnabled: false,
     },
   ],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {

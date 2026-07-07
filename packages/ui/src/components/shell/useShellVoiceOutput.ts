@@ -3,8 +3,8 @@
  * controls share one playback signal.
  */
 import * as React from "react";
-
 import type { ConversationMessage } from "../../api/client-types-chat";
+import type { AsrProvider } from "../../api/client-types-config";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { useVoiceConfig } from "../../voice/useVoiceConfig";
 
@@ -42,6 +42,15 @@ export interface ShellVoiceOutput {
   needsAudioUnlock: boolean;
   /** Resume the audio context in response to a user gesture (enable sound). */
   unlockAudio: () => void;
+  /**
+   * The resolved speech-to-text provider from the loaded voice config, or
+   * `undefined` while the config has not loaded yet. Surfaced so the overlay's
+   * mic capture ({@link useShellController} → {@link createVoiceCapture}) can
+   * route to the SAME backend the config selects — without it the factory only
+   * ever saw `undefined` and could never reach the `eliza-cloud` / `openai`
+   * cloud STT path, silently degrading to local-inference-or-browser instead.
+   */
+  asrProvider: AsrProvider | undefined;
 }
 
 export interface ShellVoiceOutputOptions {
@@ -181,5 +190,6 @@ export function useShellVoiceOutput(
     // coalesce to keep this hook's (and ShellController's) non-optional contract.
     needsAudioUnlock: needsAudioUnlock ?? false,
     unlockAudio: unlockAudio ?? (() => {}),
+    asrProvider: voiceConfig.asr?.provider,
   };
 }

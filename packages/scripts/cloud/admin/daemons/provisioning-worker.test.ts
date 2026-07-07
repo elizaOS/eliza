@@ -2,9 +2,15 @@
 import { describe, expect, it, mock } from "bun:test";
 import {
   assertProvisioningWorkerPreflight,
+  closeOpenHandles,
+  databaseHostForLogs,
+  evaluateJobsTableLiveness,
   evaluateSelfRestart,
+  formatErrorWithCause,
   maybePublishHeartbeat,
+  pollSleep,
   readWorkerConfig,
+  requestShutdown,
   WORKER_TIMING,
 } from "./provisioning-worker";
 
@@ -18,6 +24,44 @@ function makeLogger(): WorkerLogger {
     debug: mock(() => {}),
   } as unknown as WorkerLogger;
 }
+
+describe("formatErrorWithCause (cycle-failure observability)", () => {
+  it("surfaces the pg error hidden behind a Drizzle query-failure wrapper", () => {
+    const pgError = new Error("self-signed certificate in certificate chain");
+    const drizzleError = new Error(
+      'Failed query: select "id" from "provisioning_jobs"',
+      { cause: pgError },
+    );
+
+    expect(formatErrorWithCause(drizzleError)).toBe(
+      'Failed query: select "id" from "provisioning_jobs"; caused by: self-signed certificate in certificate chain',
+    );
+  });
+
+  it("walks nested causes and stringifies non-Error links", () => {
+    const error = new Error("outer", {
+      cause: new Error("middle", { cause: "ECONNREFUSED" }),
+    });
+
+    expect(formatErrorWithCause(error)).toBe(
+      "outer; caused by: middle; caused by: ECONNREFUSED",
+    );
+  });
+
+  it("leaves plain errors and non-Error throws unchanged, bounding deep chains", () => {
+    expect(formatErrorWithCause(new Error("boom"))).toBe("boom");
+    expect(formatErrorWithCause("boom")).toBe("boom");
+
+    let chained: Error = new Error("depth-0");
+    for (let i = 1; i <= 8; i++) {
+      chained = new Error(`depth-${i}`, { cause: chained });
+    }
+    // Top message plus at most 5 causes — a self-referencing chain can't loop.
+    expect(formatErrorWithCause(chained)).toBe(
+      "depth-8; caused by: depth-7; caused by: depth-6; caused by: depth-5; caused by: depth-4; caused by: depth-3",
+    );
+  });
+});
 
 describe("assertProvisioningWorkerPreflight", () => {
   it("verifies KMS can create or load the preflight key", async () => {
@@ -289,5 +333,171 @@ describe("readWorkerConfig (resilience knobs)", () => {
         [],
       ).watchdogConsecutiveTicks,
     ).toBe(2);
+  });
+});
+
+describe("evaluateJobsTableLiveness (#15160 — abandoned-database signal)", () => {
+  const now = new Date("2026-07-06T12:00:00Z");
+
+  it("a recent jobs row is fresh", () => {
+    const assessment = evaluateJobsTableLiveness({
+      latestJobCreatedAt: new Date("2026-07-06T11:00:00Z"),
+      maxAgeHours: 24,
+      now,
+    });
+    expect(assessment.stale).toBe(false);
+    expect(assessment.ageHours).toBeCloseTo(1, 5);
+    expect(assessment.maxAgeHours).toBe(24);
+  });
+
+  it("a row older than the threshold is stale (the #15160 shape: weeks-old queue)", () => {
+    const assessment = evaluateJobsTableLiveness({
+      latestJobCreatedAt: new Date("2026-06-17T05:08:00Z"),
+      maxAgeHours: 24,
+      now,
+    });
+    expect(assessment.stale).toBe(true);
+    expect(assessment.ageHours).toBeGreaterThan(24 * 19);
+  });
+
+  it("an EMPTY jobs table is stale — the API has never written here", () => {
+    const assessment = evaluateJobsTableLiveness({
+      latestJobCreatedAt: null,
+      maxAgeHours: 24,
+      now,
+    });
+    expect(assessment.stale).toBe(true);
+    expect(assessment.ageHours).toBeNull();
+    expect(assessment.latestJobCreatedAt).toBeNull();
+  });
+
+  it("exactly at the threshold is still fresh; one hour past is stale", () => {
+    expect(
+      evaluateJobsTableLiveness({
+        latestJobCreatedAt: new Date("2026-07-05T12:00:00Z"),
+        maxAgeHours: 24,
+        now,
+      }).stale,
+    ).toBe(false);
+    expect(
+      evaluateJobsTableLiveness({
+        latestJobCreatedAt: new Date("2026-07-05T11:00:00Z"),
+        maxAgeHours: 24,
+        now,
+      }).stale,
+    ).toBe(true);
+  });
+
+  it("a created_at in the future (clock skew) is fresh, not stale", () => {
+    const assessment = evaluateJobsTableLiveness({
+      latestJobCreatedAt: new Date("2026-07-06T13:00:00Z"),
+      maxAgeHours: 24,
+      now,
+    });
+    expect(assessment.stale).toBe(false);
+    expect(assessment.ageHours).toBeLessThan(0);
+  });
+
+  it("honors a tightened threshold", () => {
+    const assessment = evaluateJobsTableLiveness({
+      latestJobCreatedAt: new Date("2026-07-06T09:00:00Z"),
+      maxAgeHours: 2,
+      now,
+    });
+    expect(assessment.stale).toBe(true);
+    expect(assessment.maxAgeHours).toBe(2);
+  });
+});
+
+describe("databaseHostForLogs (#15160 — name the DB host, never the credentials)", () => {
+  it("extracts host:port from a Neon-style URL without leaking user or password", () => {
+    const host = databaseHostForLogs(
+      "postgresql://neondb_owner:sup3rs3cret@ep-wild-dawn-a4c7r311-pooler.us-east-1.aws.neon.tech:5432/neondb?sslmode=require",
+    );
+    expect(host).toBe(
+      "ep-wild-dawn-a4c7r311-pooler.us-east-1.aws.neon.tech:5432",
+    );
+    expect(host).not.toContain("sup3rs3cret");
+    expect(host).not.toContain("neondb_owner");
+  });
+
+  it("falls back to the data-dir path for host-less pglite URLs", () => {
+    expect(databaseHostForLogs("pglite:///home/eliza/.eliza/.pgdata")).toBe(
+      "/home/eliza/.eliza/.pgdata",
+    );
+  });
+
+  it("labels missing and unparseable URLs instead of throwing", () => {
+    expect(databaseHostForLogs(undefined)).toBe("<DATABASE_URL not set>");
+    expect(databaseHostForLogs("not a url at all")).toBe(
+      "<unparseable DATABASE_URL>",
+    );
+  });
+});
+
+describe("readWorkerConfig (db liveness threshold)", () => {
+  it("defaults to 24h", () => {
+    expect(
+      readWorkerConfig({} as NodeJS.ProcessEnv, []).dbLivenessMaxAgeHours,
+    ).toBe(24);
+  });
+
+  it("CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS overrides; garbage falls back to 24", () => {
+    expect(
+      readWorkerConfig(
+        { CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS: "72" } as NodeJS.ProcessEnv,
+        [],
+      ).dbLivenessMaxAgeHours,
+    ).toBe(72);
+    expect(
+      readWorkerConfig(
+        { CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS: "-3" } as NodeJS.ProcessEnv,
+        [],
+      ).dbLivenessMaxAgeHours,
+    ).toBe(24);
+    expect(
+      readWorkerConfig(
+        { CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS: "soon" } as NodeJS.ProcessEnv,
+        [],
+      ).dbLivenessMaxAgeHours,
+    ).toBe(24);
+  });
+});
+
+describe("graceful shutdown (stop-sigterm → SIGKILL fix)", () => {
+  it("requestShutdown wakes a pending poll sleep instead of waiting out the interval", async () => {
+    const exit = mock((_code: number) => {}) as unknown as (
+      code: number,
+    ) => never;
+    const sleeping = pollSleep(60_000);
+    requestShutdown("SIGTERM", exit);
+    // Resolves promptly; without the wake this would run the test into its
+    // timeout (the sleep is 60s).
+    await sleeping;
+    // The force-exit backstop must not have fired on the clean path.
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it("closeOpenHandles closes every handle and never rejects when one closer fails", async () => {
+    const logger = makeLogger();
+    const sshPool = mock(async () => {});
+    const dbPools = mock(async () => {
+      throw new Error("pool.end() exploded");
+    });
+
+    await closeOpenHandles(logger, { sshPool, dbPools });
+
+    expect(sshPool).toHaveBeenCalledTimes(1);
+    expect(dbPools).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("closeOpenHandles is silent when every closer succeeds", async () => {
+    const logger = makeLogger();
+    await closeOpenHandles(logger, {
+      sshPool: async () => {},
+      dbPools: async () => {},
+    });
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });

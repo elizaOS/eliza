@@ -31,10 +31,12 @@ jobs:
           HEAD_SHA=$(jq -r '.pull_request.head.sha' "$GITHUB_EVENT_PATH")
           git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA"
           git diff --name-only --diff-filter=ACMRT "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/pr-changed-files.txt"
+          git diff --name-only --diff-filter=A "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/pr-added-files.txt"
           node scripts/check-pr-evidence.mjs \
             --body-file "$RUNNER_TEMP/pr-body.md" \
             --labels "$PR_LABELS" \
-            --changed-files-file "$RUNNER_TEMP/pr-changed-files.txt"
+            --changed-files-file "$RUNNER_TEMP/pr-changed-files.txt" \
+            --added-files-file "$RUNNER_TEMP/pr-added-files.txt"
 
   check-pr-title:
     runs-on: ubuntu-latest

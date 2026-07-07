@@ -22,5 +22,23 @@
         "noArrayIndexKey": "warn"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/styles/styles.css"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noDuplicateProperties": "off"
+          },
+          "style": {
+            "noDescendingSpecificity": "off"
+          },
+          "complexity": {
+            "noImportantStyles": "off"
+          }
+        }
+      }
+    }
+  ]
 }

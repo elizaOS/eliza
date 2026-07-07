@@ -259,7 +259,7 @@
       "description": "Autonomous trading plugin with LLM-powered strategies for Solana",
       "npmName": "@elizaos/plugin-auto-trader",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": [
         "trading",
         "solana",
@@ -499,7 +499,7 @@
       "description": "Integrates Blooio iMessage/SMS messaging into elizaOS with signed webhooks and outbound message sending.",
       "npmName": "@elizaos/plugin-blooio",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": [
         "connector",
         "social",
@@ -1095,7 +1095,7 @@
       "description": "File-based memory storage plugin for ElizaOS - persistent notes and clipboard",
       "npmName": "@elizaos/plugin-clipboard",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": ["clipboard", "memory", "notes", "storage"],
       "config": {
         "CLIPBOARD_BASE_PATH": {
@@ -1392,7 +1392,7 @@
       "description": "ElizaOS Copilot Proxy Model Provider - TypeScript implementation",
       "npmName": "@elizaos/plugin-copilot-proxy",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": ["copilot-proxy", "copilot", "proxy"],
       "config": {
         "COPILOT_PROXY_MODEL": {
@@ -1511,50 +1511,12 @@
       }
     },
     {
-      "id": "deepseek",
-      "name": "DeepSeek",
-      "description": "DeepSeek model provider.",
-      "npmName": "@elizaos/plugin-deepseek",
-      "version": "2.0.0-beta.0",
-      "source": "store",
-      "tags": ["ai-provider", "llm", "deepseek"],
-      "config": {
-        "DEEPSEEK_API_KEY": {
-          "type": "secret",
-          "required": true,
-          "sensitive": true,
-          "label": "DeepSeek API Key",
-          "help": "API key for DeepSeek model requests.",
-          "advanced": false,
-          "autoEnableProvider": true
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Brain",
-        "group": "models",
-        "groupOrder": 30,
-        "actions": ["install", "configure"]
-      },
-      "resources": {
-        "homepage": "https://deepseek.com",
-        "repository": "https://github.com/elizaOS/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "kind": "plugin",
-      "subtype": "ai-provider"
-    },
-    {
       "id": "directives",
       "name": "Directives",
       "description": "Inline directive parsing for Eliza agents (@think, @model, @verbose, etc.)",
       "npmName": "@elizaos/plugin-directives",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": ["directives"],
       "config": {
         "ALLOW_EXEC": {
@@ -3082,7 +3044,7 @@
       "description": "Gmail Pub/Sub watcher – spawns gog gmail watch serve and auto-renews",
       "npmName": "@elizaos/plugin-gmail-watch",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": ["gmail-watch", "gmail", "watch"],
       "config": {},
       "render": {
@@ -3616,7 +3578,7 @@
       "name": "Hedera",
       "description": "ElizaOS plugin for Hedera blockchain",
       "npmName": "@elizaos/plugin-hedera",
-      "source": "bundled",
+      "source": "store",
       "tags": ["hedera", "hedera-agent-kit", "llm"],
       "config": {
         "HEDERA_NETWORK": {
@@ -3889,32 +3851,6 @@
         "kind": "token",
         "credentialKeys": []
       }
-    },
-    {
-      "id": "lens",
-      "name": "Lens",
-      "description": "Lens connector for elizaOS.",
-      "npmName": "@elizaos/plugin-lens",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": ["connector", "social", "messaging", "lens"],
-      "config": {},
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "group": "connectors",
-        "actions": ["enable", "configure"]
-      },
-      "resources": {
-        "homepage": "https://elizaos.ai",
-        "repository": "https://github.com/elizaos/elizaos"
-      },
-      "dependsOn": [],
-      "channels": ["lens"],
-      "shortIds": [],
-      "kind": "connector",
-      "subtype": "social"
     },
     {
       "id": "line",
@@ -4406,7 +4342,7 @@
       "description": "Mattermost integration plugin for elizaOS agents - TypeScript implementation",
       "npmName": "@elizaos/plugin-mattermost",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": ["connector", "social", "social-chat", "messaging", "mattermost"],
       "config": {
         "MATTERMOST_ENABLED": {
@@ -4564,7 +4500,7 @@
       "description": "Agent memory",
       "npmName": "@elizaos/plugin-memory",
       "version": "2.0.1",
-      "source": "bundled",
+      "source": "store",
       "tags": ["memory", "summarization"],
       "config": {
         "MEMORY_ENABLE_BM25": {
@@ -4714,44 +4650,6 @@
       }
     },
     {
-      "id": "mistral",
-      "name": "Mistral",
-      "description": "Mistral AI model provider.",
-      "npmName": "@elizaos/plugin-mistral",
-      "version": "2.0.0-beta.0",
-      "source": "store",
-      "tags": ["ai-provider", "llm", "mistral"],
-      "config": {
-        "MISTRAL_API_KEY": {
-          "type": "secret",
-          "required": true,
-          "sensitive": true,
-          "label": "Mistral API Key",
-          "help": "API key for Mistral model requests.",
-          "advanced": false,
-          "autoEnableProvider": true
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Brain",
-        "group": "models",
-        "groupOrder": 31,
-        "actions": ["install", "configure"]
-      },
-      "resources": {
-        "homepage": "https://mistral.ai",
-        "repository": "https://github.com/elizaOS/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "kind": "plugin",
-      "subtype": "ai-provider"
-    },
-    {
       "id": "model-tester",
       "name": "Model Tester",
       "description": "Run end-to-end probes for Eliza-1 text, voice, transcription, VAD, and vision models.",
@@ -4790,7 +4688,7 @@
       "description": "Moltbook social plugin for Eliza agents - Reddit-style platform for AI agents",
       "npmName": "@elizaos/plugin-moltbook",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": ["moltbook", "social", "reddit", "agents", "autonomous"],
       "config": {
         "MOLTBOOK_MODEL": {
@@ -4875,7 +4773,7 @@
       "description": "Microsoft Teams integration for ElizaOS",
       "npmName": "@elizaos/plugin-msteams",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": ["connector", "social", "social-chat", "messaging", "msteams"],
       "config": {
         "MSTEAMS_APP_ID": {
@@ -5138,7 +5036,7 @@
       "description": "NEAR AI Cloud TEE inference provider via an OpenAI-compatible API.",
       "npmName": "@elizaos/plugin-nearai",
       "version": "2.0.3",
-      "source": "bundled",
+      "source": "store",
       "tags": ["ai-provider", "llm", "nearai", "near-ai", "tee", "chat"],
       "config": {
         "NEARAI_API_KEY": {
@@ -5223,7 +5121,7 @@
       "description": "Nextcloud Talk plugin for elizaOS - TypeScript implementation",
       "npmName": "@elizaos/plugin-nextcloud-talk",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": [
         "connector",
         "social",
@@ -6112,7 +6010,7 @@
       "description": "Plugin discovery, install, eject, sync, registry search, and creation",
       "npmName": "@elizaos/plugin-plugin-manager",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": ["plugins", "registry", "install", "create", "agents"],
       "config": {},
       "render": {
@@ -6166,7 +6064,7 @@
       "description": "OpenProse VM integration for ElizaOS - a programming language for AI sessions",
       "npmName": "@elizaos/plugin-prose",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": ["openprose", "prose", "llm", "vm", "workflow", "orchestration"],
       "config": {
         "PROSE_SKILLS_DIR": {
@@ -6245,7 +6143,7 @@
       "description": "news and feed support",
       "npmName": "@elizaos/plugin-rss",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": ["rss", "atom", "feed", "news", "syndication"],
       "config": {
         "RSS_FEEDS": {
@@ -6340,7 +6238,7 @@
       "description": "S3-compatible object storage plugin for saving files, media, and generated artifacts.",
       "npmName": "@elizaos/plugin-s3-storage",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": ["storage", "files", "s3", "s3-storage"],
       "config": {
         "AWS_REGION": {
@@ -6593,44 +6491,6 @@
       "subtype": "devtools"
     },
     {
-      "id": "shopify",
-      "name": "Shopify",
-      "description": "Storefront and admin tools for agent-driven commerce.",
-      "npmName": "@elizaos/plugin-shopify",
-      "source": "bundled",
-      "tags": [],
-      "config": {},
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "hero-card",
-        "icon": "Briefcase",
-        "group": "Curated",
-        "groupOrder": 7,
-        "actions": ["launch", "configure"]
-      },
-      "resources": {},
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "curatedApp": {
-        "slug": "shopify",
-        "order": 8,
-        "aliases": ["@elizaos/plugin-shopify-ui"]
-      },
-      "kind": "app",
-      "subtype": "marketplace",
-      "launch": {
-        "type": "server-launch",
-        "capabilities": [],
-        "curatedSlug": "shopify",
-        "routePlugin": {
-          "specifier": "@elizaos/plugin-shopify/plugin",
-          "exportName": "shopifyPlugin"
-        }
-      }
-    },
-    {
       "id": "signal",
       "name": "Signal",
       "description": "Signal messaging integration plugin for ElizaOS agents",
@@ -6859,7 +6719,7 @@
       "description": "Social Alpha Plugin — Tracks token recommendations (shills/FUD), builds trust scores based on P&L outcomes, and exposes a Social Alpha Provider with win rate, rank, and recommender analytics.",
       "npmName": "@elizaos/plugin-social-alpha",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": [
         "social-alpha",
         "trust-score",
@@ -7149,7 +7009,7 @@
       "description": "Tlon connector for Urbit chat and social interactions.",
       "npmName": "@elizaos/plugin-tlon",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": [
         "connector",
         "social",
@@ -7266,44 +7126,6 @@
       "shortIds": [],
       "kind": "plugin",
       "subtype": "devtools"
-    },
-    {
-      "id": "together",
-      "name": "Together AI",
-      "description": "Together AI model provider.",
-      "npmName": "@elizaos/plugin-together",
-      "version": "2.0.0-beta.0",
-      "source": "store",
-      "tags": ["ai-provider", "llm", "together"],
-      "config": {
-        "TOGETHER_API_KEY": {
-          "type": "secret",
-          "required": true,
-          "sensitive": true,
-          "label": "Together API Key",
-          "help": "API key for Together AI model requests.",
-          "advanced": false,
-          "autoEnableProvider": true
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Brain",
-        "group": "models",
-        "groupOrder": 32,
-        "actions": ["install", "configure"]
-      },
-      "resources": {
-        "homepage": "https://together.ai",
-        "repository": "https://github.com/elizaOS/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "kind": "plugin",
-      "subtype": "ai-provider"
     },
     {
       "id": "training",
@@ -7481,7 +7303,7 @@
       "description": "A plugin for generating text-to-speech using FAL.ai API within the ElizaOS ecosystem, featuring automatic language detection and voice selection.",
       "npmName": "@elizaos/plugin-tts",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": ["llm", "text-to-speech"],
       "config": {
         "TTS_AUTO_MODE": {
@@ -7601,7 +7423,7 @@
       "description": "A Twilio plugin for ElizaOS that enables SMS and voice call capabilities.",
       "npmName": "@elizaos/plugin-twilio",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": ["llm", "twilio", "sms", "voice"],
       "config": {
         "TWILIO_AUTH_TOKEN": {
@@ -7883,7 +7705,7 @@
       "description": "Vercel AI Gateway provider for routing model requests through a single endpoint.",
       "npmName": "@elizaos/plugin-vercel-ai-gateway",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": [
         "ai-provider",
         "llm",
@@ -8085,7 +7907,7 @@
       "description": "HTTP webhook ingress for external triggers (wake, agent, mapped hooks)",
       "npmName": "@elizaos/plugin-webhooks",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": ["webhooks"],
       "config": {},
       "render": {
@@ -8727,7 +8549,7 @@
       "description": "Zalo connector for official account messaging and support workflows.",
       "npmName": "@elizaos/plugin-zalo",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": [
         "connector",
         "messaging",
@@ -8848,7 +8670,7 @@
       "description": "Zalo personal-account connector for one-to-one messaging workflows.",
       "npmName": "@elizaos/plugin-zalouser",
       "version": "2.0.0-beta.0",
-      "source": "bundled",
+      "source": "store",
       "tags": [
         "connector",
         "messaging",

@@ -4,7 +4,7 @@
   "description": "Gmail Pub/Sub watcher – spawns gog gmail watch serve and auto-renews",
   "npmName": "@elizaos/plugin-gmail-watch",
   "version": "2.0.0-beta.0",
-  "source": "bundled",
+  "source": "store",
   "tags": ["gmail-watch", "gmail", "watch"],
   "config": {},
   "render": {

@@ -1,0 +1,178 @@
+/**
+ * Meeting-ghost consumer integration test.
+ *
+ * Drives `runMeetingGhostForTranscript` against the REAL `PgApprovalQueue` on a
+ * PGlite-backed runtime (same harness as approval-queue.integration.test.ts) —
+ * no mocked queue. Proves the dead-code gap is closed: a realistic diarized
+ * `TranscriptSegment[]` flows through the pure analyzer and every derived
+ * follow-up/calendar approval lands as a real, resolvable `pending` row the
+ * owner can approve.
+ *
+ * Run: bunx vitest run plugins/plugin-personal-assistant/test/meeting-ghost.integration.test.ts
+ */
+
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { AgentRuntime } from "@elizaos/core";
+import { AgentEventService } from "@elizaos/core";
+import { schedulingPlugin } from "@elizaos/plugin-scheduling";
+import type { TranscriptSegment } from "@elizaos/shared";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";
+import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
+import type { ApprovalQueue } from "../src/lifeops/approval-queue.types.js";
+import { runMeetingGhostForTranscript } from "../src/lifeops/meeting-ghost/consumer.js";
+import { personalAssistantPlugin } from "../src/plugin.js";
+
+let runtime: AgentRuntime;
+let cleanup: () => Promise<void>;
+let queue: ApprovalQueue;
+let isolatedStateDir: string;
+let isolatedConfigPath: string;
+
+const isolatedEnvKeys = [
+  "ELIZA_STATE_DIR",
+  "ELIZA_CONFIG_PATH",
+  "ELIZA_PERSIST_CONFIG_PATH",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+] as const;
+
+const previousEnv = new Map<string, string | undefined>();
+
+function setIsolatedEnv(): void {
+  isolatedStateDir = mkdtempSync(join(tmpdir(), "meeting-ghost-state-"));
+  isolatedConfigPath = join(isolatedStateDir, "eliza.json");
+  writeFileSync(
+    isolatedConfigPath,
+    JSON.stringify({ logging: { level: "error" } }),
+    "utf8",
+  );
+  for (const key of isolatedEnvKeys) {
+    previousEnv.set(key, process.env[key]);
+    delete process.env[key];
+  }
+  process.env.ELIZA_STATE_DIR = isolatedStateDir;
+  process.env.ELIZA_CONFIG_PATH = isolatedConfigPath;
+  process.env.ELIZA_PERSIST_CONFIG_PATH = isolatedConfigPath;
+}
+
+function restoreEnv(): void {
+  for (const key of isolatedEnvKeys) {
+    const value = previousEnv.get(key);
+    if (value === undefined) {
+      delete process.env[key];
+      continue;
+    }
+    process.env[key] = value;
+  }
+}
+
+function seg(
+  speakerLabel: string,
+  startMs: number,
+  text: string,
+): TranscriptSegment {
+  return {
+    id: `${speakerLabel}-${startMs}`,
+    speakerLabel,
+    startMs,
+    endMs: startMs + 8_000,
+    text,
+    words: [],
+  };
+}
+
+beforeAll(async () => {
+  setIsolatedEnv();
+  const result = await createRealTestRuntime({
+    plugins: [schedulingPlugin, personalAssistantPlugin],
+  });
+  runtime = result.runtime;
+  cleanup = result.cleanup;
+  if (!runtime.getService(AgentEventService.serviceType)) {
+    await runtime.registerService(AgentEventService);
+    await runtime.getServiceLoadPromise(AgentEventService.serviceType);
+  }
+  queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+}, 180_000);
+
+afterAll(async () => {
+  await cleanup();
+  restoreEnv();
+  rmSync(isolatedStateDir, { recursive: true, force: true });
+});
+
+describe("meeting-ghost consumer (real approval queue)", () => {
+  it("enqueues follow-up + calendar approvals from a diarized transcript, resolvable by the owner", async () => {
+    const approvalExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const result = await runMeetingGhostForTranscript(runtime, {
+      agentId: runtime.agentId,
+      owner: {
+        ownerUserId: "owner-mtg-1",
+        ownerDisplayName: "Shaw",
+        requestedBy: "meeting-ghost",
+        careAbouts: ["launch date"],
+        calendarId: "primary",
+        approvalExpiresAt,
+      },
+      transcript: {
+        meetingId: "ops-sync-integration",
+        title: "Ops Sync",
+        startedAt: "2026-07-06T16:00:00.000Z",
+        attendees: [
+          { name: "Ava", email: "ava@example.com" },
+          { name: "Ben", email: "ben@example.com" },
+        ],
+        segments: [
+          seg("Ava", 0, "Morning, nothing blocking on my side."),
+          seg(
+            "Mira",
+            60_000,
+            "Ava will send the launch-date rollback plan by 2026-07-10.",
+          ),
+          seg(
+            "Mira",
+            120_000,
+            "Ben is going to update the public calendar by 2026-07-10.",
+          ),
+        ],
+      },
+    });
+
+    // Two commitments → two follow-up emails + two dated calendar deadlines.
+    expect(result.analysis.commitments).toHaveLength(2);
+    expect(result.enqueued).toHaveLength(4);
+    expect(result.enqueued.every((r) => r.state === "pending")).toBe(true);
+
+    const actions = result.enqueued.map((r) => r.action).sort();
+    expect(actions).toEqual([
+      "schedule_event",
+      "schedule_event",
+      "send_email",
+      "send_email",
+    ]);
+
+    // The rows are real, listable, and resolvable — not a fire-and-forget stub.
+    const pending = await queue.list({
+      subjectUserId: "owner-mtg-1",
+      state: "pending",
+      action: null,
+      limit: 20,
+    });
+    expect(pending.length).toBeGreaterThanOrEqual(4);
+
+    const firstEmail = result.enqueued.find((r) => r.action === "send_email");
+    if (!firstEmail) throw new Error("expected a send_email approval");
+    const approved = await queue.approve(firstEmail.id, {
+      resolvedBy: "owner-mtg-1",
+      resolutionReason: "send it",
+    });
+    expect(approved.state).toBe("approved");
+    if (approved.payload.action !== "send_email") {
+      throw new Error("expected send_email payload");
+    }
+    expect(approved.payload.to).toEqual(["ava@example.com"]);
+  }, 60_000);
+});

@@ -18,70 +18,70 @@
       "pack": "I1",
       "tier": "T1",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i1.rupture_repair.grounded_apology_draft",
       "pack": "I1",
       "tier": "T2",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i1.rupture_repair.no_coaching_or_diagnosis",
       "pack": "I1",
       "tier": "T4",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i1.rupture_repair.approval_before_send",
       "pack": "I1",
       "tier": "T4",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i1.rupture_repair.repair_followup_cadence",
       "pack": "I1",
       "tier": "T3",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i1.rupture_repair.wrong_recipient_guard",
       "pack": "I1",
       "tier": "T4",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i1.rupture_repair.private_context_minimized",
       "pack": "I1",
       "tier": "T3",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i1.rupture_repair.owner_declines_no_side_effect",
       "pack": "I1",
       "tier": "T4",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i1.rupture_repair.rewrite_same_themes",
       "pack": "I1",
       "tier": "T2",
       "surface": "lifeops-bench",
-      "status": "planned"
+      "status": "authored"
     },
     {
       "id": "i1.rupture_repair.sensitive_event_defer",
       "pack": "I1",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "planned"
+      "status": "authored"
     }
   ]
 }

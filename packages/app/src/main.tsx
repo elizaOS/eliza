@@ -2822,13 +2822,21 @@ function setupPlatformStyles(): void {
     document.body.classList.add("pwa-standalone");
   }
 
-  // JS-MEASURED BOTTOM RECLAIM (cure for the recurring iOS home-indicator
-  // "bottom bar"): the fixed-body ICB collapses on the installed standalone
-  // PWA so `100lvh - 100dvh` resolves to 0 and every CSS-unit reclaim is a
-  // no-op. Measure the true-vs-layout viewport delta in JS and expose it as
-  // `--standalone-bottom-reclaim`; the fixed layers reclaim by the MEASURED
-  // gap. Standalone/iOS-native only; elsewhere (desktop/web/Android) the var is
-  // a hard 0 with no listeners.
+  // JS-MEASURED BOTTOM RECLAIM — THE LOAD-BEARING INSTALL POINT ON THE REAL
+  // PWA BOOT PATH (#15103/#15136/#15178). This local `setupPlatformStyles` is
+  // the function `main()` actually calls on the installed standalone PWA (the
+  // `@elizaos/ui` init.ts `setupPlatformStyles` is NOT on this entry graph — it
+  // is only reachable from unit tests). If the installer is not called HERE it
+  // never runs on device: the layout viewport collapses to the small box
+  // (`documentElement.clientHeight` = 873 while `screen.height` = 932) so every
+  // pure-CSS reclaim (`100lvh - 100dvh`) resolves to 0 and is a device no-op,
+  // leaving the black home-indicator strip. #15178's WIP (f903c59) dropped this
+  // block and the restore landed only in the orphaned ui copy, reproducing the
+  // regression (device chip read `rc?` = var never set). The platform gate lives
+  // INSIDE `shouldInstallStandaloneBottomReclaim` (standalone + iOS only), so
+  // this is a hard 0 no-op everywhere else and a future refactor of this entry
+  // cannot silently orphan the installer without turning the app-entry lockdown
+  // contract test RED. See standalone-bottom-reclaim.ts + standalone-pwa-lockdown.test.ts.
   if (
     shouldInstallStandaloneBottomReclaim({
       standalonePwa: isStandalonePwa(),

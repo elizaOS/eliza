@@ -58,8 +58,8 @@ export function BillingSectionBody() {
   if (!user) {
     return (
       <DashboardErrorState
-        message={t("cloud.billing.noOrganization", {
-          defaultValue: "No organization associated with this account",
+        message={t("cloud.billing.noAccount", {
+          defaultValue: "No account found for billing",
         })}
       />
     );

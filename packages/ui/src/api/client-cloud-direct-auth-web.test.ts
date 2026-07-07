@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
+// @vitest-environment-options { "url": "https://app.elizacloud.ai/" }
 
 /**
  * Unit coverage for direct-Cloud auth on hosted web (non-native path). Capacitor
  * forced to web + CapacitorHttp mocked, fetch stubbed, no live cloud.
+ *
+ * Two origins are exercised because the same-origin collapse in
+ * `resolveBrowserCloudApiRequestUrl` is only valid when the page is served from a
+ * cloud host: the file default (`app.elizacloud.ai`) proves the co-hosted proxy
+ * path, and the `localhost` block proves the dev path, where the request must
+ * stay an absolute cloud URL on shifted Vite ports.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,7 +36,31 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-describe("ElizaClient direct Cloud auth on hosted web", () => {
+const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
+  window,
+  "location",
+);
+
+function stubPageHostname(hostname: string, port: string): void {
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: {
+      ...window.location,
+      hostname,
+      port,
+      host: `${hostname}:${port}`,
+      origin: `http://${hostname}:${port}`,
+    },
+  });
+}
+
+function restorePageLocation(): void {
+  if (originalLocationDescriptor) {
+    Object.defineProperty(window, "location", originalLocationDescriptor);
+  }
+}
+
+describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
   beforeEach(() => {
     setBootConfig({
       branding: {},
@@ -125,5 +156,77 @@ describe("ElizaClient direct Cloud auth on hosted web", () => {
         organizationId: "org-1",
       }),
     );
+  });
+});
+
+describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)", () => {
+  beforeEach(() => {
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://staging.elizacloud.ai",
+    });
+    // The orchestrator shifts the Vite UI port when the default is taken; cloud
+    // auth must still reach the cloud worker.
+    stubPageHostname("localhost", "2160");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    restorePageLocation();
+  });
+
+  it("creates CLI sessions against the absolute cloud URL, not the local agent", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ ok: true }));
+
+    const client = new ElizaClient("http://localhost:31337");
+    const result = await client.cloudLoginDirect(
+      "https://staging.elizacloud.ai",
+    );
+
+    // The bug: a same-origin "/api/auth/cli-session" gets proxied to the local
+    // agent API, whose default-deny gate 401s the unlisted /api/auth/* path.
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://api-staging.elizacloud.ai/api/auth/cli-session",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchSpy).not.toHaveBeenCalledWith(
+      "/api/auth/cli-session",
+      expect.anything(),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        apiBase: "https://api-staging.elizacloud.ai",
+      }),
+    );
+  });
+
+  it("polls CLI sessions against the absolute cloud URL", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        status: "authenticated",
+        apiKey: "cloud-api-key",
+        organizationId: "org-1",
+        userId: "user-1",
+      }),
+    );
+
+    const client = new ElizaClient("http://localhost:31337");
+    const result = await client.cloudLoginPollDirect(
+      "https://api-staging.elizacloud.ai",
+      "session-1",
+    );
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://api-staging.elizacloud.ai/api/auth/cli-session/session-1",
+    );
+    expect(result).toEqual({
+      status: "authenticated",
+      organizationId: "org-1",
+      token: "cloud-api-key",
+      userId: "user-1",
+    });
   });
 });

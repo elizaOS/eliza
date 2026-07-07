@@ -5,7 +5,7 @@
     <!-- Launch surface: matches the default home-background orange (#ef5a1f)
          so the native splash + launch status bar flow into the React home with
          no orange flash (issue #9565). -->
-    <color name="splash_background">#ef5a1f</color>
+    <color name="splash_background">#000000</color>
     <color name="colorPrimary">#FF5800</color>
     <color name="colorPrimaryDark">#FF5800</color>
     <color name="colorAccent">#FF5800</color>

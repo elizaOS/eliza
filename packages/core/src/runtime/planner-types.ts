@@ -14,6 +14,7 @@ import type {
 	ToolChoice,
 	ToolDefinition,
 } from "../types/model";
+import type { State } from "../types/state";
 import type { ChainingLoopConfig } from "./limits";
 import type { TrajectoryRecorder } from "./trajectory-recorder";
 
@@ -205,6 +206,7 @@ export interface PlannerLoopParams {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
+	providerAttributionState?: State;
 }
 
 export interface RunEvaluatorParams {

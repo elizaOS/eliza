@@ -27,6 +27,7 @@ import {
 	type JsonValue,
 	type Trajectory,
 } from "./features/trajectories/types";
+import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution";
 import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types";
 import {
 	getTrajectoryContext,
@@ -92,12 +93,19 @@ export type TrajectoryLlmCallDetails = {
 	completionTokens?: number;
 	cacheReadInputTokens?: number;
 	cacheCreationInputTokens?: number;
+	providerOrder?: string[];
+	providerAttributions?: TrajectoryProviderAttribution[];
 };
 
 export type TrajectoryProviderAccessParams = {
 	stepId: string;
 	providerName: string;
 	data: Record<string, string | number | boolean | null>;
+	sha256?: string;
+	tokenCount?: number;
+	position?: number;
+	spanStart?: number;
+	spanEnd?: number;
 	purpose: string;
 	query?: Record<string, string | number | boolean | null>;
 	runId?: string;
@@ -117,6 +125,8 @@ export type TrajectoryRuntimeLlmCallParams = {
 	roomId?: string;
 	messageId?: string;
 	executionTraceId?: string;
+	providerOrder?: string[];
+	providerAttributions?: TrajectoryProviderAttribution[];
 } & TrajectoryLlmCallDetails;
 
 export type TrajectoryRuntimeLlmCallLogger = {

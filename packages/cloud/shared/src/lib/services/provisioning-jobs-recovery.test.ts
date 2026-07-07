@@ -1,10 +1,12 @@
 /**
- * processDisconnectedRecovery — the self-heal cycle for `disconnected` always-on
+ * processDisconnectedRecovery — the self-heal cycle for recoverable always-on
  * (paid) agents. The heartbeat cycle only touches RUNNING agents, so without
  * this a `dedicated-always` agent that briefly dropped past the grace window
  * would stay `disconnected` forever (agent-router routes only `running` → its
- * subdomain 404s). This guards the orchestration seam: listRecoverable →
- * recoverDisconnected → enqueueAgentProvisionOnce only for the still-unreachable.
+ * subdomain 404s). Blue/green status drift can similarly leave a healthy
+ * container behind an `error` row. This guards the orchestration seam:
+ * listRecoverable → recoverDisconnected → enqueueAgentProvisionOnce only for
+ * the still-unreachable.
  */
 
 import { describe, expect, spyOn, test } from "bun:test";
@@ -13,7 +15,12 @@ import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes"
 import { elizaSandboxService } from "./eliza-sandbox";
 import { provisioningJobService } from "./provisioning-jobs";
 
-function recoverable(id: string, orgId: string, bridge: string | null) {
+function recoverable(
+  id: string,
+  orgId: string,
+  bridge: string | null,
+  status: "disconnected" | "error" = "disconnected",
+) {
   return {
     id,
     organization_id: orgId,
@@ -21,6 +28,7 @@ function recoverable(id: string, orgId: string, bridge: string | null) {
     agent_name: `Agent ${id}`,
     bridge_url: bridge,
     updated_at: new Date("2026-06-19T00:00:00Z"),
+    status,
   };
 }
 

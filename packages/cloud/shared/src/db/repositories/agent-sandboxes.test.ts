@@ -222,6 +222,17 @@ describe("AgentSandboxesRepository", () => {
     expect(sql).toContain("node_id");
     expect(sql).toContain("container_name");
     expect(sql).toContain("is not null");
+
+    // The default-image predicate normalizes docker_image to its REPO before
+    // comparing (#15101), so a fleet agent pinned to an older tag/digest of the
+    // same repo is still a candidate. It must NOT compare the full ref — assert
+    // the normalization (split_part strips @digest; reverse locates the tag
+    // colon) is present and the bound value is the target REPO, not its tag.
+    const { params } = new PgDialect().sqlToQuery(capturedWhere);
+    expect(sql).toContain("split_part");
+    expect(sql).toContain("reverse");
+    expect(params).toContain("ghcr.io/elizaos/eliza-agent");
+    expect(params).not.toContain("ghcr.io/elizaos/eliza-agent:prod");
   });
 
   test("backup inserts encrypt state_data at rest and hydration returns plaintext", async () => {

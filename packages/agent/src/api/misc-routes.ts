@@ -3,10 +3,12 @@
  * process restart (POST /api/restart), the share-sheet ingest queue
  * (POST | GET /api/ingest/share), agent event-stream ingestion into the WS
  * broadcast buffer (POST /api/agent/event and the per-agent
- * /api/agents/:id/event variant), authorized single-line terminal command
- * execution (POST /api/terminal/run), and custom-action CRUD + NL generation +
- * test (/api/custom-actions...). Terminal runs and shell/code custom actions
- * sit behind the local-code-execution gate and terminal-authorization checks.
+ * /api/agents/:id/event variant), coarse IP-based coordinates for the weather
+ * widget's no-permission fallback (GET /api/location/approximate), authorized
+ * single-line terminal command execution (POST /api/terminal/run), and
+ * custom-action CRUD + NL generation + test (/api/custom-actions...). Terminal
+ * runs and shell/code custom actions sit behind the local-code-execution gate
+ * and terminal-authorization checks.
  */
 import crypto from "node:crypto";
 import type http from "node:http";
@@ -16,6 +18,7 @@ import {
   composePrompt,
   customActionGenerateTemplate,
   isLocalCodeExecutionAllowed,
+  logger,
   ModelType,
 } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
@@ -59,6 +62,98 @@ type TerminalRunRequestBody = {
   clientId?: unknown;
   terminalToken?: string;
 };
+
+// ---------------------------------------------------------------------------
+// Approximate (IP-based) location
+// ---------------------------------------------------------------------------
+
+// Server-side IP-geolocation for the weather widget's no-permission fallback.
+// The lookup runs here rather than in the browser because the public geo
+// services CORS-fail on hosted app origins and would each need a CSP carve-out
+// per app shell; the agent process has neither constraint. Mirrors the
+// Electrobun desktop LocationManager's provider set and its coarse-accuracy
+// contract: IP resolution is a city centroid (~5 km median), surfaced as
+// `accuracyMeters` so no consumer can mistake it for a GPS reading.
+const DEFAULT_IP_GEO_SERVICES = ["https://ipapi.co/json/", "https://ipwho.is/"];
+const IP_GEO_ACCURACY_METERS = 5000;
+const IP_GEO_TIMEOUT_MS = 5_000;
+// A public IP's city doesn't move minute-to-minute; the cache keeps repeated
+// widget revalidations from hammering the free-tier providers.
+const IP_GEO_CACHE_TTL_MS = 15 * 60_000;
+
+export interface ApproximateLocation {
+  lat: number;
+  lon: number;
+  accuracyMeters: number;
+  source: string;
+}
+
+let ipGeoCache: { value: ApproximateLocation; fetchedAt: number } | null = null;
+let ipGeoInFlight: Promise<ApproximateLocation | null> | null = null;
+
+/** Test seam + self-hoster override: comma-separated lookup URLs. */
+function ipGeoServiceUrls(): string[] {
+  const raw = process.env.ELIZA_IP_GEO_SERVICES;
+  if (!raw) return DEFAULT_IP_GEO_SERVICES;
+  const urls = raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  return urls.length > 0 ? urls : DEFAULT_IP_GEO_SERVICES;
+}
+
+/** Exported for tests: drop the module-level cache between cases. */
+export function resetIpGeoCacheForTests(): void {
+  ipGeoCache = null;
+  ipGeoInFlight = null;
+}
+
+async function lookupApproximateLocation(): Promise<ApproximateLocation | null> {
+  for (const url of ipGeoServiceUrls()) {
+    try {
+      const resp = await fetch(url, {
+        signal: AbortSignal.timeout(IP_GEO_TIMEOUT_MS),
+      });
+      if (!resp.ok) {
+        logger.warn(
+          `[MiscRoutes] IP geolocation provider returned ${resp.status} (${url})`,
+        );
+        continue;
+      }
+      const data = (await resp.json()) as Record<string, unknown>;
+      // ipapi.co uses latitude/longitude; ipwho.is and ip-api.com use lat/lon.
+      const lat = typeof data.lat === "number" ? data.lat : data.latitude;
+      const lon = typeof data.lon === "number" ? data.lon : data.longitude;
+      if (
+        typeof lat !== "number" ||
+        typeof lon !== "number" ||
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lon)
+      ) {
+        logger.warn(
+          `[MiscRoutes] IP geolocation provider returned no usable coordinates (${url})`,
+        );
+        continue;
+      }
+      return {
+        lat,
+        lon,
+        accuracyMeters: IP_GEO_ACCURACY_METERS,
+        source: new URL(url).hostname,
+      };
+    } catch (err) {
+      // error-policy:J4 multi-provider fallback chain — each provider failure
+      // is logged and the next provider is tried; exhausting the list yields
+      // an explicit null that the route turns into a 502, never fabricated
+      // coordinates.
+      logger.warn(
+        { err },
+        `[MiscRoutes] IP geolocation provider failed (${url})`,
+      );
+    }
+  }
+  return null;
+}
 
 function resolveTerminalShellCommand(): {
   command: string;
@@ -149,6 +244,26 @@ export async function handleMiscRoutes(
 ): Promise<boolean> {
   const { req, res, method, pathname, url, state, json, error, readJsonBody } =
     ctx;
+
+  // ── GET /api/location/approximate ───────────────────────────────────
+  if (method === "GET" && pathname === "/api/location/approximate") {
+    if (ipGeoCache && Date.now() - ipGeoCache.fetchedAt < IP_GEO_CACHE_TTL_MS) {
+      json(res, ipGeoCache.value);
+      return true;
+    }
+    // Concurrent widget revalidations share one upstream lookup.
+    ipGeoInFlight ??= lookupApproximateLocation().finally(() => {
+      ipGeoInFlight = null;
+    });
+    const value = await ipGeoInFlight;
+    if (!value) {
+      error(res, "IP geolocation unavailable", 502);
+      return true;
+    }
+    ipGeoCache = { value, fetchedAt: Date.now() };
+    json(res, value);
+    return true;
+  }
 
   // ── POST /api/restart ───────────────────────────────────────────────
   if (method === "POST" && pathname === "/api/restart") {

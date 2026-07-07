@@ -55,12 +55,45 @@ export interface LifeOpsBriefingSections {
   readonly money?: readonly LifeOpsBriefingMoneyItem[];
 }
 
+export interface LifeOpsBriefingEditorialItem {
+  readonly itemId: string;
+  readonly source: "calendar" | "inbox" | "life" | "money";
+  readonly kind:
+    | "meeting"
+    | "message"
+    | "todo"
+    | "reminder"
+    | "habit"
+    | "goal"
+    | "recurring_charge";
+  readonly sourceId: string;
+  readonly itemClass: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly consequenceScore: number;
+}
+
+export interface LifeOpsBriefingEditorialDecision {
+  readonly itemId: string;
+  readonly action: "lead" | "include" | "demote" | "omit";
+  readonly reason: string;
+}
+
+export interface LifeOpsBriefingEditorialContract {
+  readonly maxItems: number;
+  readonly items: readonly LifeOpsBriefingEditorialItem[];
+  readonly decisions: readonly LifeOpsBriefingEditorialDecision[];
+  readonly demotedItemClasses: readonly string[];
+  readonly pushback: string | null;
+}
+
 export interface LifeOpsBriefing {
   readonly id: string;
   readonly kind: LifeOpsBriefingKind;
   readonly period: LifeOpsBriefingPeriod;
   readonly generatedAt: string;
   readonly sections: LifeOpsBriefingSections;
+  readonly editorial: LifeOpsBriefingEditorialContract;
   /** Free-form narrative composed by the LLM compose pass. */
   readonly narrative?: string;
 }

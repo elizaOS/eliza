@@ -3,9 +3,11 @@
 /**
  * `registerCloudSettingsSections` populates the shared settings-section
  * registry: the Cloud group lands between System and Security and Developer
- * between Cloud and Security, plain users see the cloud sections while the
- * developer sections stay gated, and the cloud Security additions merge into
- * the security group with non-colliding ids.
+ * between Cloud and Security, the MVP IA keeps every sub-section (account,
+ * billing, organization, developer, security additions) registered but gated
+ * behind developer mode — the single "Eliza Cloud" overview tab is the one
+ * plain-user Cloud surface — and the cloud Security additions merge into the
+ * security group with non-colliding ids.
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
@@ -60,18 +62,17 @@ describe("register-cloud-settings", () => {
     expect(developer?.order).toBeLessThan(2);
   });
 
-  it("registers every Cloud-group section with group=cloud, visible to a plain user", () => {
+  it("registers every Cloud-group section with group=cloud, gated behind developer mode for MVP", () => {
     const byId = new Map(listSettingsSections().map((s) => [s.id, s]));
     for (const id of CLOUD_SECTION_IDS) {
       const section = byId.get(id);
       expect(section, `missing section ${id}`).toBeDefined();
       expect(section?.group).toBe(CLOUD_SETTINGS_GROUP_ID);
       expect(section?.Component).toBeTypeOf("function");
-      // Account / Billing / Organization stay in normal Settings — no developer
-      // gate, so a plain USER role sees them.
-      expect(section?.viewKind).not.toBe("developer");
-      expect(section?.viewKind).not.toBe("preview");
-      expect(section?.developerOnly).not.toBe(true);
+      // MVP settings IA: the single "Eliza Cloud" overview tab is the one Cloud
+      // surface a plain user sees; Account / Billing / Organization stay
+      // registered (deep-links resolve) but hidden behind the developer gate.
+      expect(section?.developerOnly).toBe(true);
     }
   });
 

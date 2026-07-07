@@ -103,6 +103,48 @@ describe("goalCountDelta finalCheck", () => {
     expect(result).toMatchObject({ status: "passed" });
   });
 
+  it("passes when grounding state is stored in canonical nested goal metadata", async () => {
+    const result = await runFinalCheck(
+      {
+        type: "goalCountDelta",
+        title: "Leave the apartment more",
+        delta: 1,
+        expectedGroundingState: "grounded",
+        requireDescription: true,
+        requireSuccessCriteria: true,
+        requireSupportStrategy: true,
+      } as ScenarioFinalCheck,
+      {
+        runtime,
+        ctx: createContext({
+          actionsCalled: [
+            {
+              actionName: "OWNER_GOALS",
+              result: {
+                success: true,
+                data: {
+                  goal: {
+                    title: "Leave the apartment more",
+                    description: "Walk around the block after lunch.",
+                    successCriteria: { walksPerWeek: 3 },
+                    supportStrategy: { approach: "low_pressure" },
+                    metadata: {
+                      goalGrounding: {
+                        groundingState: "grounded",
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        }),
+      },
+    );
+
+    expect(result).toMatchObject({ status: "passed" });
+  });
+
   it("fails when the matching goal lacks required fields", async () => {
     const result = await runFinalCheck(
       {

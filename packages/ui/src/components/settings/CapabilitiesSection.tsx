@@ -2,9 +2,10 @@
  * Settings → Capabilities section (the `capabilities` section id). Toggles the
  * wallet / browser / computer-use capabilities on the App state, sets the
  * proactive-interaction chattiness (persisted to `config.env` under
- * ELIZA_PROACTIVE_INTERACTIONS), manages auto-training config, and hosts the
- * Capability Router connect form for endpoint- or cloud-hosted capability
- * providers.
+ * ELIZA_PROACTIVE_INTERACTIONS), hosts the device-location permission row (the
+ * weather widget's approximate-location notification deep-links here), manages
+ * auto-training config, and hosts the Capability Router connect form for
+ * endpoint- or cloud-hosted capability providers.
  */
 
 import {
@@ -13,6 +14,7 @@ import {
   Globe,
   GraduationCap,
   Loader2,
+  MapPin,
   MessageCircle,
   MonitorCog,
   PlugZap,
@@ -21,6 +23,7 @@ import {
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
+import { invalidateWeatherCache } from "../../hooks/useWeather";
 import { useAppSelector, useAppSelectorShallow } from "../../state";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
@@ -517,6 +520,8 @@ export function CapabilitiesSection() {
         />
       </SettingsGroup>
 
+      <DeviceLocationGroup />
+
       {advancedEnabled ? (
         <form onSubmit={handleCapabilityConnect}>
           <SettingsGroup
@@ -795,6 +800,148 @@ export function CapabilitiesSection() {
         </form>
       ) : null}
     </SettingsStack>
+  );
+}
+
+type LocationPermission =
+  | "loading"
+  | "granted"
+  | "prompt"
+  | "denied"
+  | "unsupported";
+
+/**
+ * Device-location permission row. Weather (and any location-aware surface)
+ * uses precise device coordinates only while the browser permission is
+ * granted; otherwise it runs on the server's coarse IP-based fallback. This
+ * row is where that fallback's notification deep-links: it shows the live
+ * permission state and hosts the explicit user-initiated prompt (settings and
+ * the weather tile tap are the only places allowed to trigger the OS dialog).
+ */
+function DeviceLocationGroup() {
+  const t = useAppSelector((s) => s.t);
+  const [permission, setPermission] = useState<LocationPermission>("loading");
+  const [requesting, setRequesting] = useState(false);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setPermission("unsupported");
+      return;
+    }
+    let disposed = false;
+    let status: PermissionStatus | null = null;
+    const apply = (state: PermissionState) => {
+      if (!disposed) setPermission(state);
+    };
+    const perms = navigator.permissions;
+    if (!perms?.query) {
+      // No Permissions API (older WebKit): the state can't be read, but the
+      // prompt button still works — render the not-granted affordance.
+      setPermission("prompt");
+      return;
+    }
+    perms
+      .query({ name: "geolocation" })
+      .then((s) => {
+        status = s;
+        apply(s.state);
+        s.onchange = () => apply(s.state);
+      })
+      .catch(() => {
+        // error-policy:J3 geolocation not a queryable permission here — same
+        // designed degrade as the missing-API path above.
+        apply("prompt");
+      });
+    return () => {
+      disposed = true;
+      if (status) status.onchange = null;
+    };
+  }, []);
+
+  const requestPrecise = useCallback(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    setRequesting(true);
+    navigator.geolocation.getCurrentPosition(
+      () => {
+        setRequesting(false);
+        setPermission("granted");
+        // Drop the cached (approximate) reading so the widget refetches
+        // precise conditions on its next revalidate instead of after the TTL.
+        invalidateWeatherCache();
+      },
+      () => {
+        setRequesting(false);
+        // Denied (or timed out): re-render from the live permission state —
+        // a hard "denied" means the browser will no longer re-prompt and the
+        // description below tells the user where to unblock it.
+        navigator.permissions
+          ?.query({ name: "geolocation" })
+          .then((s) => setPermission(s.state))
+          .catch(() => setPermission("prompt")); // error-policy:J3 unreadable state renders the prompt affordance
+      },
+      { timeout: 10_000 },
+    );
+  }, []);
+
+  const statusLabel =
+    permission === "granted"
+      ? t("settings.sections.capabilities.locationGranted", {
+          defaultValue: "Precise location is on",
+        })
+      : permission === "denied"
+        ? t("settings.sections.capabilities.locationDenied", {
+            defaultValue:
+              "Blocked — allow location for this app in your browser or OS settings",
+          })
+        : permission === "unsupported"
+          ? t("settings.sections.capabilities.locationUnsupported", {
+              defaultValue: "Not available on this device",
+            })
+          : t("settings.sections.capabilities.locationOff", {
+              defaultValue:
+                "Off — weather uses your approximate (network-based) location",
+            });
+
+  return (
+    <SettingsGroup
+      title={t("settings.sections.capabilities.locationGroupTitle", {
+        defaultValue: "Device Location",
+      })}
+    >
+      <SettingsRow
+        icon={MapPin}
+        label={t("settings.sections.capabilities.locationLabel", {
+          defaultValue: "Precise location",
+        })}
+        description={statusLabel}
+        control={
+          permission === "prompt" || permission === "loading" ? (
+            <SettingsActionButton
+              agentId="capability-location-enable"
+              agentGroup="capabilities"
+              agentLabel={t(
+                "settings.sections.capabilities.locationEnableLabel",
+                { defaultValue: "Enable precise location" },
+              )}
+              agentStatus={requesting ? "loading" : undefined}
+              disabled={requesting || permission === "loading"}
+              onClick={requestPrecise}
+              className="h-9 gap-2 rounded-md text-sm"
+              data-testid="settings-location-enable"
+            >
+              {requesting ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <MapPin className="h-4 w-4" aria-hidden />
+              )}
+              {t("settings.sections.capabilities.locationEnable", {
+                defaultValue: "Enable",
+              })}
+            </SettingsActionButton>
+          ) : undefined
+        }
+      />
+    </SettingsGroup>
   );
 }
 

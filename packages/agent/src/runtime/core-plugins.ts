@@ -409,7 +409,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-personal-assistant", // LifeOps: personal ops - tasks, goals, calendar, inbox, website blocking (requires @capacitor/core + plugin-google); enable explicitly
   "@elizaos/plugin-finances", // Owner finances dashboard (app_finances schema); auto-registered by plugin-personal-assistant, also enablable standalone
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)
-  "@elizaos/plugin-cua", // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration
   "@elizaos/plugin-repoprompt", // RepoPrompt CLI integration and workflow orchestration
   "@elizaos/plugin-computeruse", // computer use automation (requires platform-specific binaries)

@@ -22,7 +22,10 @@
 
 import { memo } from "react";
 import { useSharedNow } from "../../hooks/useSharedNow";
-import { formatRelativeTime } from "../../utils/format";
+import {
+  formatRelativeTime,
+  formatRelativeTimeShort,
+} from "../../utils/format";
 
 type RelativeTimeTranslator = (
   key: string,
@@ -34,6 +37,8 @@ export interface RelativeTimeProps {
   ts: string | number | Date;
   /** Optional i18n translator forwarded to `formatRelativeTime`. */
   t?: RelativeTimeTranslator;
+  /** Compact form: bare `5m` / `3h` / `2d`, no "ago" suffix, "now" under 1m. */
+  short?: boolean;
   /** Extra classes for the `<time>` element. */
   className?: string;
   /** Test hook / a11y hook passthrough. */
@@ -52,6 +57,7 @@ export interface RelativeTimeProps {
 function RelativeTimeImpl({
   ts,
   t,
+  short,
   className,
   "data-testid": testId,
 }: RelativeTimeProps): React.JSX.Element {
@@ -66,7 +72,7 @@ function RelativeTimeImpl({
 
   return (
     <time className={className} dateTime={iso} data-testid={testId}>
-      {formatRelativeTime(ts, t)}
+      {short ? formatRelativeTimeShort(ts) : formatRelativeTime(ts, t)}
     </time>
   );
 }

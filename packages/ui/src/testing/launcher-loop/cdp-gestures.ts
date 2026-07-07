@@ -25,9 +25,7 @@ export const LAUNCHER_SELECTORS = {
   launcherPage: '[data-testid="home-launcher-launcher-page"]',
   launcherScroll: '[data-testid="launcher-page-window"]',
   homeScreen: '[data-testid="home-screen"]',
-  // The notification inbox card — rendered inside the pull-up
-  // NotificationsShade (hidden at rest), observed only to confirm it never
-  // leaks onto the resting home.
+  // The inline notification inbox on the home column (self-hidden when empty).
   notificationCenter: '[data-testid="home-notification-center"]',
   railPrevButton: '[data-testid="rail-pager-edge-prev"]',
   railNextButton: '[data-testid="rail-pager-edge-next"]',

@@ -1,0 +1,38 @@
+{
+  "name": "@elizaos/corpus-tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Private personal-corpus interchange schema, validators, and mock-shape mappers for the LifeOps corpus program.",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "corpus": "./src/cli.ts"
+  },
+  "scripts": {
+    "validate": "bun src/cli.ts validate",
+    "corpus:scrub": "bun src/cli.ts scrub",
+    "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check src fixtures",
+    "lint:fix": "bunx @biomejs/biome check --write src fixtures",
+    "format": "bunx @biomejs/biome format --write src fixtures",
+    "format:check": "bunx @biomejs/biome format src fixtures"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  }
+}

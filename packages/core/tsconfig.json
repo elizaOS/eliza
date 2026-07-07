@@ -22,6 +22,8 @@
 		"paths": {
 			"@elizaos/contracts": ["../contracts/src/index.ts"],
 			"@elizaos/contracts/*": ["../contracts/src/*"],
+			"@elizaos/cloud-routing": ["../cloud/routing/src/index.ts"],
+			"@elizaos/cloud-routing/*": ["../cloud/routing/src/*"],
 			"@elizaos/prompts": ["../prompts/src/index.ts"],
 			"@elizaos/prompts/*": ["../prompts/src/*"],
 			"@elizaos/logger": ["../logger/src/index.ts"],

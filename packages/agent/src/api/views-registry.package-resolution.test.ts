@@ -67,3 +67,38 @@ describe("registerPluginViews package-dir resolution", () => {
     expect(pluginDir).toContain("plugins/plugin-birdclaw");
   });
 });
+
+describe("registerPluginViews packageName override", () => {
+  const PLUGIN_NAME = "elizaOSCloud";
+
+  afterEach(() => {
+    unregisterPluginViews(PLUGIN_NAME);
+  });
+
+  it("resolves via plugin.packageName when the runtime name is not the npm package name", async () => {
+    // "elizaOSCloud" is a runtime/model-provider identity: its name-derived
+    // candidates (@elizaos/plugin-elizaOSCloud, elizaOSCloud) resolve nothing,
+    // so without the packageName seam its views would register unavailable.
+    const plugin: Plugin = {
+      name: PLUGIN_NAME,
+      packageName: "@elizaos/plugin-elizacloud",
+      description: "packageName resolution fixture",
+      views: [
+        {
+          id: "elizacloud-resolution-fixture",
+          label: "Cloud fixture",
+          bundlePath: "dist/views/bundle.js",
+        },
+      ],
+    } as Plugin;
+
+    await registerPluginViews(plugin);
+
+    const entry = listViews({ includeAllKinds: true }).find(
+      (view) => view.id === "elizacloud-resolution-fixture",
+    );
+    expect(entry).toBeDefined();
+    const pluginDir = (entry?.pluginDir ?? "").split("\\").join("/");
+    expect(pluginDir).toContain("plugins/plugin-elizacloud");
+  });
+});

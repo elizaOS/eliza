@@ -23,6 +23,26 @@ type RelativeTimeTranslator = (
  * keyed under `conversations.*`; callers without i18n omit it and receive the
  * English defaults. Past one week the value falls back to a locale date.
  */
+/**
+ * Compact "time ago" formatter for dense surfaces (notification rows/banners):
+ * bare `5m` / `3h` / `2d` with no "ago" suffix, `now` under a minute, and the
+ * same locale-date fallback past one week as {@link formatRelativeTime}.
+ */
+export function formatRelativeTimeShort(value: string | number | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  const time = date.getTime();
+  if (!Number.isFinite(time)) return "now";
+  const diffMs = Date.now() - time;
+  const diffMins = Math.floor(diffMs / 60_000);
+  if (diffMins < 1) return "now";
+  if (diffMins < 60) return `${diffMins}m`;
+  const diffHours = Math.floor(diffMs / 3_600_000);
+  if (diffHours < 24) return `${diffHours}h`;
+  const diffDays = Math.floor(diffMs / 86_400_000);
+  if (diffDays < 7) return `${diffDays}d`;
+  return date.toLocaleDateString();
+}
+
 export function formatRelativeTime(
   value: string | number | Date,
   t?: RelativeTimeTranslator,

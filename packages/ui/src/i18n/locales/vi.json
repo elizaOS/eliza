@@ -1159,7 +1159,6 @@
   "cloud.billing.loading": "Đang tải thanh toán",
   "cloud.billing.metaDescription": "Nạp tiền và quản lý thanh toán",
   "cloud.billing.metaTitle": "Thanh toán",
-  "cloud.billing.noOrganization": "Không có tổ chức nào gắn với tài khoản này",
   "cloud.billing.pageTitle": "Thanh toán",
   "cloud.billing.paymentCanceled": "Đã hủy thanh toán. Không có khoản phí nào.",
   "cloud.billing.success.backToBilling": "Quay lại Thanh toán",

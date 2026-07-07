@@ -50,6 +50,32 @@ type LifeOpsScheduledTask = Record<string, unknown> & {
   metadata?: Record<string, unknown>;
 };
 
+type LifeOpsBrowserSessionSeedInput = {
+  id: string;
+  agentId: string;
+  domain: string;
+  subjectType: string;
+  subjectId: string;
+  visibilityScope: string;
+  contextPolicy: string;
+  workflowId: string | null;
+  browser: string | null;
+  companionId: string | null;
+  profileId: string | null;
+  windowId: string | null;
+  tabId: string | null;
+  title: string;
+  status: string;
+  actions: Record<string, unknown>[];
+  currentActionIndex: number;
+  awaitingConfirmationForActionId: string | null;
+  result: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+};
+
 type LifeOpsReminderAttempt = Record<string, unknown> & {
   id: string;
   agentId: string;
@@ -95,6 +121,12 @@ type LifeOpsCalendarEventSeedInput = {
   accountEmail?: string;
 };
 
+type LifeOpsCalendarEvent = {
+  id: string;
+  externalId: string;
+  startAt: string;
+};
+
 type LifeOpsRepositoryInstance = {
   createDefinition: (definition: LifeOpsTaskDefinition) => Promise<unknown>;
   upsertOccurrence: (occurrence: LifeOpsOccurrence) => Promise<unknown>;
@@ -112,10 +144,23 @@ type LifeOpsRepositoryInstance = {
     agentId: string,
     options?: Record<string, unknown>,
   ) => Promise<LifeOpsReminderAttempt[]>;
+  createBrowserSession: (
+    session: LifeOpsBrowserSessionSeedInput,
+  ) => Promise<unknown>;
+  listBrowserSessions: (
+    agentId: string,
+  ) => Promise<LifeOpsBrowserSessionSeedInput[]>;
   upsertCalendarEvent: (
     event: LifeOpsCalendarEventSeedInput,
     side?: LifeOpsCalendarEventSeedInput["side"],
   ) => Promise<unknown>;
+  listCalendarEvents: (
+    agentId: string,
+    provider: LifeOpsCalendarEventSeedInput["provider"],
+    timeMin?: string,
+    timeMax?: string,
+    side?: LifeOpsCalendarEventSeedInput["side"],
+  ) => Promise<LifeOpsCalendarEvent[]>;
 };
 
 type LifeOpsRepositoryConstructor = {
@@ -310,6 +355,58 @@ type ReminderAttemptMemorySeed = {
   result?: unknown;
   statusCode?: unknown;
   topic?: unknown;
+};
+
+type ScheduledPushLadderSeed = {
+  kind?: unknown;
+  type?: unknown;
+  eventId?: unknown;
+  rungs?: unknown;
+};
+
+type ScheduledPushLadderRungSeed = {
+  offsetMin?: unknown;
+  channel?: unknown;
+  status?: unknown;
+};
+
+type AppointmentMemorySeed = CalendarEventMemorySeed & {
+  provider?: unknown;
+  requiresSignature?: unknown;
+  signatureCompleted?: unknown;
+  cancellationPolicy?: unknown;
+};
+
+type BrowserTaskStateMemorySeed = {
+  kind?: unknown;
+  type?: unknown;
+  task?: unknown;
+  blockedBy?: unknown;
+  attempts?: unknown;
+};
+
+type FollowupMemorySeed = {
+  kind?: unknown;
+  type?: unknown;
+  title?: unknown;
+  name?: unknown;
+  topic?: unknown;
+  counterparty?: unknown;
+  platformOfOrigin?: unknown;
+  sentProposal?: unknown;
+  sentAt?: unknown;
+  response?: unknown;
+  firstAskedAt?: unknown;
+  blockedPeople?: unknown;
+  options?: unknown;
+  bumpedTimes?: unknown;
+  overdueAt?: unknown;
+  priority?: unknown;
+  scheduledAt?: unknown;
+  attendee?: unknown;
+  reason?: unknown;
+  channelsTried?: unknown;
+  urgency?: unknown;
 };
 
 type LadderStateMemorySeed = {
@@ -855,7 +952,14 @@ function normalizeScheduledTaskPriority(
   if (text === "low" || text === "medium" || text === "high") {
     return text;
   }
-  if (text === "urgent") return "high";
+  if (
+    text === "urgent" ||
+    text === "critical" ||
+    text === "vip" ||
+    text === "board"
+  ) {
+    return "high";
+  }
   return "medium";
 }
 
@@ -1172,6 +1276,63 @@ async function seedQueuedPushMemory(
   return undefined;
 }
 
+function scenarioTaskId(
+  ctx: ScenarioContext,
+  seedKind: string,
+  discriminator: string,
+): string {
+  return `scenario-${seedKind}:${ctx.scenarioId ?? "unknown"}:${discriminator}`;
+}
+
+async function upsertScenarioScheduledTask(
+  ctx: ScenarioContext,
+  args: {
+    seedKind: string;
+    title: string;
+    taskKind?: string;
+    dueAt?: Date;
+    priority?: unknown;
+    status?: string;
+    subjectKind?: string;
+    subjectId?: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<string | undefined> {
+  const runtime = requireRuntime(ctx);
+  const dueAt = args.dueAt ?? readScenarioNow(ctx);
+  const { LifeOpsRepository } = await loadLifeOps();
+  await LifeOpsRepository.bootstrapSchema(runtime);
+  const repository = new LifeOpsRepository(runtime);
+  const taskId = scenarioTaskId(ctx, args.seedKind, args.title);
+  await repository.upsertScheduledTask(
+    String(runtime.agentId),
+    {
+      taskId,
+      kind: args.taskKind ?? "reminder",
+      promptInstructions: args.title,
+      trigger: { kind: "once", atIso: dueAt.toISOString() },
+      priority: normalizeScheduledTaskPriority(args.priority),
+      respectsGlobalPause: true,
+      state: { status: args.status ?? "scheduled", followupCount: 0 },
+      source: "scenario_seed",
+      createdBy: String(runtime.agentId),
+      ownerVisible: true,
+      subject:
+        args.subjectKind && args.subjectId
+          ? { kind: args.subjectKind, id: args.subjectId }
+          : undefined,
+      metadata: {
+        source: "scenario-seed",
+        scenarioId: ctx.scenarioId ?? null,
+        seedKind: args.seedKind,
+        ...(args.metadata ?? {}),
+      },
+    },
+    { nextFireAtIso: dueAt.toISOString() },
+  );
+  return undefined;
+}
+
 function normalizeDeviceIntentTargets(value: unknown): string[] {
   const targets = readStringArray(value);
   return targets.length > 0 ? targets : ["all"];
@@ -1400,6 +1561,73 @@ async function seedLadderStateMemory(
   return undefined;
 }
 
+async function seedScheduledPushLadderMemory(
+  ctx: ScenarioContext,
+  seed: ScheduledPushLadderSeed,
+): Promise<string | undefined> {
+  const eventId = readNonEmptyString(seed.eventId);
+  if (!eventId) {
+    return "scheduled-push-ladder seed requires an eventId";
+  }
+  if (!Array.isArray(seed.rungs) || seed.rungs.length === 0) {
+    return "scheduled-push-ladder seed requires a non-empty rungs array";
+  }
+  const eventStartAt = await resolveScenarioCalendarEventStart(ctx, eventId);
+  if (!eventStartAt) {
+    return `scheduled-push-ladder seed requires a previously seeded calendar event matching eventId "${eventId}"`;
+  }
+  for (const [index, entry] of seed.rungs.entries()) {
+    const rung =
+      entry && typeof entry === "object" && !Array.isArray(entry)
+        ? (entry as ScheduledPushLadderRungSeed)
+        : null;
+    if (!rung) {
+      return "scheduled-push-ladder rungs must be objects";
+    }
+    const offsetMin = readOptionalNumber(rung.offsetMin) ?? 0;
+    const channel = normalizeReminderAttemptChannel(rung.channel);
+    const status = readNonEmptyString(rung.status) ?? "pending";
+    const dueAt = new Date(eventStartAt.getTime() + offsetMin * 60_000);
+    const result = await upsertScenarioScheduledTask(ctx, {
+      seedKind: "scheduled-push-ladder",
+      title: `${eventId}:${index}:${channel}`,
+      taskKind: "reminder",
+      dueAt,
+      priority: "medium",
+      status: status === "cancelled" ? "cancelled" : "scheduled",
+      subjectKind: "calendar_event",
+      subjectId: eventId,
+      metadata: {
+        eventId,
+        rung: { offsetMin, channel, status, index },
+      },
+    });
+    if (result) return result;
+  }
+  return undefined;
+}
+
+async function resolveScenarioCalendarEventStart(
+  ctx: ScenarioContext,
+  eventId: string,
+): Promise<Date | null> {
+  const runtime = requireRuntime(ctx);
+  const { LifeOpsRepository } = await loadLifeOps();
+  await LifeOpsRepository.bootstrapSchema(runtime);
+  const repository = new LifeOpsRepository(runtime);
+  const events = await repository.listCalendarEvents(
+    String(runtime.agentId),
+    "google",
+    undefined,
+    undefined,
+    "owner",
+  );
+  const event = events.find(
+    (candidate) => candidate.id === eventId || candidate.externalId === eventId,
+  );
+  return event ? readIsoDate(event.startAt) : null;
+}
+
 function normalizeCalendarProvider(
   value: unknown,
 ): LifeOpsCalendarEventSeedInput["provider"] | null {
@@ -1548,6 +1776,248 @@ async function seedCalendarEventMemory(
   const repository = new LifeOpsRepository(runtime);
   await repository.upsertCalendarEvent(event, event.side);
   return undefined;
+}
+
+async function seedAppointmentMemory(
+  ctx: ScenarioContext,
+  seed: AppointmentMemorySeed,
+): Promise<string | undefined> {
+  const provider = readNonEmptyString(seed.provider);
+  const startAt = readNonEmptyString(seed.startAt);
+  if (!provider || !startAt) {
+    return "appointment memory seed requires provider and startAt";
+  }
+  const result = await seedCalendarEventMemory(ctx, {
+    ...seed,
+    kind: "calendar-event",
+    provider: "google",
+    title:
+      readNonEmptyString(seed.title) ??
+      `${provider}${provider.toLowerCase().includes("appointment") ? "" : " appointment"}`,
+    description:
+      readNonEmptyString(seed.description) ??
+      [
+        readNonEmptyString(seed.cancellationPolicy)
+          ? `Cancellation policy: ${readNonEmptyString(seed.cancellationPolicy)}`
+          : null,
+        readOptionalBoolean(seed.requiresSignature) !== undefined
+          ? `Requires signature: ${readOptionalBoolean(seed.requiresSignature)}`
+          : null,
+        readOptionalBoolean(seed.signatureCompleted) !== undefined
+          ? `Signature completed: ${readOptionalBoolean(seed.signatureCompleted)}`
+          : null,
+      ]
+        .filter((entry): entry is string => entry !== null)
+        .join("\n"),
+    metadata: {
+      ...(readOptionalRecord(seed.metadata) ?? {}),
+      appointment: {
+        provider,
+        cancellationPolicy: readNonEmptyString(seed.cancellationPolicy),
+        requiresSignature: readOptionalBoolean(seed.requiresSignature),
+        signatureCompleted: readOptionalBoolean(seed.signatureCompleted),
+      },
+    },
+  });
+  if (result) return result;
+  return writeDurableFact(
+    ctx,
+    formatStructuredMemoryFact("appointment", seed),
+    {
+      seedKind: "appointment",
+    },
+  );
+}
+
+async function seedBrowserTaskStateMemory(
+  ctx: ScenarioContext,
+  seed: BrowserTaskStateMemorySeed,
+): Promise<string | undefined> {
+  const task = readNonEmptyString(seed.task);
+  if (!task) {
+    return "browser-task-state seed requires a task";
+  }
+  const runtime = requireRuntime(ctx);
+  const blockedBy = readNonEmptyString(seed.blockedBy);
+  const attempts = readOptionalNumber(seed.attempts);
+  const now = readScenarioNow(ctx).toISOString();
+  const { LifeOpsRepository } = await loadLifeOps();
+  await LifeOpsRepository.bootstrapSchema(runtime);
+  const repository = new LifeOpsRepository(runtime);
+  await repository.createBrowserSession({
+    id: scenarioTaskId(ctx, "browser-task-state", task),
+    agentId: String(runtime.agentId),
+    domain: "user_lifeops",
+    subjectType: "owner",
+    subjectId: String(runtime.agentId),
+    visibilityScope: "owner_only",
+    contextPolicy: "allowed_in_private_chat",
+    workflowId: scenarioTaskId(ctx, "browser-workflow", task),
+    browser: null,
+    companionId: null,
+    profileId: null,
+    windowId: null,
+    tabId: null,
+    title: task,
+    status: blockedBy ? "failed" : "running",
+    actions: [],
+    currentActionIndex: 0,
+    awaitingConfirmationForActionId: null,
+    result: {
+      browserTask: {
+        task,
+        blockedBy,
+        attempts,
+        state: blockedBy ? "blocked" : "running",
+      },
+    },
+    metadata: {
+      source: "scenario-seed",
+      scenarioId: ctx.scenarioId ?? null,
+      seedKind: "browser-task-state",
+      task,
+      blockedBy,
+      attempts,
+    },
+    createdAt: now,
+    updatedAt: now,
+    finishedAt: blockedBy ? now : null,
+  });
+  return writeDurableFact(
+    ctx,
+    formatStructuredMemoryFact("browser-task-state", seed),
+    { seedKind: "browser-task-state" },
+  );
+}
+
+function followupTitle(seed: FollowupMemorySeed, fallback: string): string {
+  return (
+    readNonEmptyString(seed.title) ??
+    readNonEmptyString(seed.name) ??
+    readNonEmptyString(seed.topic) ??
+    fallback
+  );
+}
+
+function followupDueAt(ctx: ScenarioContext, seed: FollowupMemorySeed): Date {
+  return (
+    readIsoDate(seed.overdueAt) ??
+    readIsoDate(seed.firstAskedAt) ??
+    readIsoDate(seed.sentAt) ??
+    readIsoDate(seed.scheduledAt) ??
+    readScenarioNow(ctx)
+  );
+}
+
+async function seedFollowupMemory(
+  ctx: ScenarioContext,
+  seed: FollowupMemorySeed,
+  seedKind: string,
+): Promise<string | undefined> {
+  const title = followupTitle(seed, seedKind);
+  const status = seedKind === "missed-event" ? "fired" : "scheduled";
+  const result = await upsertScenarioScheduledTask(ctx, {
+    seedKind,
+    title,
+    taskKind:
+      seedKind === "open-decision"
+        ? "approval"
+        : seedKind === "missed-event"
+          ? "checkin"
+          : "reminder",
+    dueAt: followupDueAt(ctx, seed),
+    priority:
+      readNonEmptyString(seed.priority) ?? readNonEmptyString(seed.urgency),
+    status,
+    subjectKind: seedKind.includes("thread") ? "thread" : "owner",
+    subjectId:
+      readNonEmptyString(seed.counterparty) ??
+      readNonEmptyString(seed.attendee) ??
+      readNonEmptyString(seed.topic) ??
+      String(requireRuntime(ctx).agentId),
+    metadata: {
+      followup: {
+        kind: seedKind,
+        topic: readNonEmptyString(seed.topic),
+        counterparty:
+          readNonEmptyString(seed.counterparty) ??
+          readNonEmptyString(seed.attendee),
+        platformOfOrigin: readNonEmptyString(seed.platformOfOrigin),
+        sentProposal: readNonEmptyString(seed.sentProposal),
+        sentAt: readNonEmptyString(seed.sentAt),
+        firstAskedAt: readNonEmptyString(seed.firstAskedAt),
+        blockedPeople: readStringArray(seed.blockedPeople),
+        options: Array.isArray(seed.options) ? seed.options : [],
+        bumpedTimes: readOptionalNumber(seed.bumpedTimes),
+        overdueAt: readNonEmptyString(seed.overdueAt),
+        reason: readNonEmptyString(seed.reason),
+        channelsTried: readStringArray(seed.channelsTried),
+        urgency: readNonEmptyString(seed.urgency),
+      },
+    },
+  });
+  if (result) return result;
+  return writeDurableFact(ctx, formatStructuredMemoryFact(seedKind, seed), {
+    seedKind,
+  });
+}
+
+async function seedPendingLowUrgencyPushesMemory(
+  ctx: ScenarioContext,
+  seed: Record<string, unknown>,
+): Promise<string | undefined> {
+  const items = Array.isArray(seed.items) ? seed.items : [];
+  if (items.length === 0) {
+    return "pending-low-urgency-pushes seed requires a non-empty items array";
+  }
+  const titles: string[] = [];
+  for (const item of items) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const title = readNonEmptyString((item as { title?: unknown }).title);
+    if (title) titles.push(title);
+  }
+  if (titles.length === 0) {
+    return "pending-low-urgency-pushes seed items require titles";
+  }
+  const result = await upsertScenarioScheduledTask(ctx, {
+    seedKind: "pending-low-urgency-pushes",
+    title: "Low-urgency digest",
+    taskKind: "reminder",
+    dueAt: readScenarioNow(ctx),
+    priority: "low",
+    metadata: {
+      digest: {
+        items,
+        titles,
+      },
+    },
+  });
+  if (result) return result;
+  return writeDurableFact(
+    ctx,
+    formatStructuredMemoryFact("pending-low-urgency-pushes", seed),
+    { seedKind: "pending-low-urgency-pushes" },
+  );
+}
+
+async function seedVoiceCallAttemptMemory(
+  ctx: ScenarioContext,
+  seed: ReminderAttemptMemorySeed & Record<string, unknown>,
+): Promise<string | undefined> {
+  const outcome = readNonEmptyString(seed.outcome);
+  return seedReminderAttemptMemory(ctx, {
+    ...seed,
+    kind: "voice-call-attempt",
+    channel: "voice",
+    result:
+      outcome === "voicemail" || outcome === "failed" || outcome === "missed"
+        ? "failed"
+        : outcome,
+    title:
+      readNonEmptyString(seed.reason) ??
+      readNonEmptyString(seed.title) ??
+      "Voice call attempt",
+  });
 }
 
 function inboundMessageSenderName(seed: InboundMessageMemorySeed): string {
@@ -1786,6 +2256,43 @@ async function seedMemory(
   if (memoryType === "ladder-state") {
     return seedLadderStateMemory(ctx, content as LadderStateMemorySeed);
   }
+  if (memoryType === "scheduled-push-ladder") {
+    return seedScheduledPushLadderMemory(
+      ctx,
+      content as ScheduledPushLadderSeed,
+    );
+  }
+  if (memoryType === "appointment") {
+    return seedAppointmentMemory(ctx, content as AppointmentMemorySeed);
+  }
+  if (memoryType === "browser-task-state") {
+    return seedBrowserTaskStateMemory(
+      ctx,
+      content as BrowserTaskStateMemorySeed,
+    );
+  }
+  if (
+    memoryType === "missed-event" ||
+    memoryType === "open-decision" ||
+    memoryType === "open-followup" ||
+    memoryType === "open-thread" ||
+    memoryType === "overdue-followup" ||
+    memoryType === "stalled-thread"
+  ) {
+    return seedFollowupMemory(ctx, content as FollowupMemorySeed, memoryType);
+  }
+  if (memoryType === "pending-low-urgency-pushes") {
+    return seedPendingLowUrgencyPushesMemory(
+      ctx,
+      content as Record<string, unknown>,
+    );
+  }
+  if (memoryType === "voice-call-attempt") {
+    return seedVoiceCallAttemptMemory(
+      ctx,
+      content as ReminderAttemptMemorySeed & Record<string, unknown>,
+    );
+  }
   if (memoryType && TRAVEL_FACT_MEMORY_KINDS.has(memoryType)) {
     const text = formatStructuredMemoryFact(memoryType, content);
     return writeDurableFact(ctx, text, { seedKind: memoryType });
@@ -1800,7 +2307,7 @@ async function seedMemory(
     // A seed the runner cannot land must fail the scenario, never no-op:
     // a silently dropped seed fabricates the premise the checks grade
     // against (#14631 — the "seeded VIP fact" the model never received).
-    return `unsupported memory seed kind "${memoryType}" — supported: contact/rolodex-entity/merged-entity/calendar-event/inbound-message/user-state/focus-window-active/queued-push/device-intent/push-delivery-attempt/outbound-push-attempt/ladder-state, travel profile/trip/booking/upgrade-offer/calendar-focus-window, or plain { text } for a durable owner fact`;
+    return `unsupported memory seed kind "${memoryType}" — supported: contact/rolodex-entity/merged-entity/calendar-event/appointment/inbound-message/user-state/focus-window-active/queued-push/device-intent/push-delivery-attempt/outbound-push-attempt/voice-call-attempt/ladder-state/scheduled-push-ladder/browser-task-state/follow-up state kinds, travel profile/trip/booking/upgrade-offer/calendar-focus-window, or plain { text } for a durable owner fact`;
   }
   const text = readNonEmptyString((content as { text?: unknown }).text);
   if (!text) {
@@ -1875,6 +2382,10 @@ const GMAIL_FIXTURE_MESSAGE_IDS: Readonly<Record<string, readonly string[]>> = {
   // must flag, never execute.
   "injection-fake-wire-instruction": ["msg-injection-wire"],
 };
+
+interface GmailFixtureManifestResponse {
+  fixtures?: Record<string, readonly string[]>;
+}
 
 function gmailSeedFixtureNames(seed: GmailInboxSeed): string[] {
   const explicit = readNonEmptyString(seed.fixture);
@@ -1998,6 +2509,17 @@ async function requireMockGmailMessage(
   return `Gmail mock fixture message ${messageId} unavailable (HTTP ${response.status})`;
 }
 
+async function gmailFixtureMessageIds(
+  baseUrl: string,
+): Promise<Record<string, readonly string[]>> {
+  const response = await fetch(`${baseUrl}/__mock/google/gmail/fixtures`);
+  if (!response.ok) {
+    return GMAIL_FIXTURE_MESSAGE_IDS;
+  }
+  const manifest = (await response.json()) as GmailFixtureManifestResponse;
+  return manifest.fixtures ?? GMAIL_FIXTURE_MESSAGE_IDS;
+}
+
 async function seedGmailInbox(
   seed: GmailInboxSeed,
 ): Promise<string | undefined> {
@@ -2013,9 +2535,10 @@ async function seedGmailInbox(
 
   await clearGmailMockFault(mockBaseUrl);
 
+  const fixtureMessageIds = await gmailFixtureMessageIds(mockBaseUrl);
   const requiredIds = new Set(readStringArray(seed.requiredMessageIds));
   for (const fixture of gmailSeedFixtureNames(seed)) {
-    const fixtureIds = GMAIL_FIXTURE_MESSAGE_IDS[fixture];
+    const fixtureIds = fixtureMessageIds[fixture];
     if (!fixtureIds) {
       return `unsupported gmailInbox fixture "${fixture}"`;
     }

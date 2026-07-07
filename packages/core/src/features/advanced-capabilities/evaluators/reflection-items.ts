@@ -425,12 +425,60 @@ export function formatRecentMessages(memories: Memory[]): string {
 	return lines.length > 0 ? lines.join("\n") : "(none)";
 }
 
+// A room's entity table grows without bound — the sub-agent orchestration path
+// registers one permanent entity per spawned coding session, and busy rooms
+// accumulate hundreds (850 of 861 observed live, #15087). The relationships and
+// identities sections each render this list into the ONE merged post-turn
+// TEXT_SMALL call, so an unbounded list eventually exceeds the small model's
+// context and every evaluation in the room 400s (~220KB of a 310KB failing
+// prompt was the entity list, twice). Extraction only needs entities that can
+// be evidenced in the recent-message window, so conversation participants are
+// kept first and the remainder (name-only reference candidates) is capped. The
+// main-context entities provider (entities.ts) applies the same display-cap
+// discipline.
+export const REFLECTION_ENTITY_LIMIT = 50;
+// An entity name is name-scale; a sub-agent session entity carries its whole
+// task description as its name. Bound each rendered line so one entity cannot
+// dominate the prompt.
+const ENTITY_NAMES_RENDER_MAX_CHARS = 240;
+
+function boundRender(text: string, maxChars: number): string {
+	if (text.length <= maxChars) return text;
+	return `${text.slice(0, maxChars)}…[truncated]`;
+}
+
+function boundReflectionEntities(params: {
+	entities: Entity[];
+	agentId: UUID;
+	message: Memory;
+	recentMessages: Memory[];
+}): Entity[] {
+	const { entities, agentId, message, recentMessages } = params;
+	if (entities.length <= REFLECTION_ENTITY_LIMIT) return entities;
+	const participantIds = new Set<string>([agentId]);
+	if (message.entityId) participantIds.add(message.entityId);
+	for (const recent of recentMessages) {
+		if (recent.entityId) participantIds.add(recent.entityId);
+	}
+	const participants: Entity[] = [];
+	const others: Entity[] = [];
+	for (const entity of entities) {
+		if (entity.id && participantIds.has(entity.id)) {
+			participants.push(entity);
+		} else {
+			others.push(entity);
+		}
+	}
+	return [...participants, ...others].slice(0, REFLECTION_ENTITY_LIMIT);
+}
+
 function formatEntities(entities: Entity[]): string {
 	if (entities.length === 0) return "(none)";
 	return entities
 		.map((entity) => {
 			const names = Array.isArray(entity.names) ? entity.names.join(", ") : "";
-			return `- ${names || "unknown"} (ID: ${entity.id ?? "unknown"})`;
+			const bounded = boundRender(names, ENTITY_NAMES_RENDER_MAX_CHARS);
+			return `- ${bounded || "unknown"} (ID: ${entity.id ?? "unknown"})`;
 		})
 		.join("\n");
 }
@@ -479,7 +527,16 @@ async function prepareReflectionContext(
 	const recentMessages = recentMessagesRaw.filter(
 		(memory) => !isSyntheticConversationArtifactMemory(memory),
 	);
-	return { recentMessages, existingRelationships, entities };
+	return {
+		recentMessages,
+		existingRelationships,
+		entities: boundReflectionEntities({
+			entities,
+			agentId,
+			message,
+			recentMessages,
+		}),
+	};
 }
 
 async function prepareFacts(

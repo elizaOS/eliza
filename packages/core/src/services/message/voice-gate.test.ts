@@ -7,9 +7,9 @@
  * test); the real model path is covered by the live scenario in the PR.
  */
 import { describe, expect, it, vi } from "vitest";
+import { ModelType } from "../../types/model";
 import type { Content } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
-import { ModelType } from "../../types/model";
 import { buildVoiceGatePrompt, ensureAgentVoice } from "./voice-gate";
 
 interface FakeRuntimeOptions {
@@ -72,7 +72,9 @@ describe("ensureAgentVoice", () => {
 		const { runtime } = makeRuntime({ useModel });
 		const content: Content = { text: "   ", source: "autonomy" };
 
-		const out = await ensureAgentVoice(runtime, content, { source: "autonomy" });
+		const out = await ensureAgentVoice(runtime, content, {
+			source: "autonomy",
+		});
 
 		expect(useModel).not.toHaveBeenCalled();
 		expect(out).toBe(content);
@@ -137,7 +139,9 @@ describe("ensureAgentVoice", () => {
 		const { runtime } = makeRuntime({ useModel: undefined });
 		const content: Content = { text: "no model here", source: "autonomy" };
 
-		const out = await ensureAgentVoice(runtime, content, { source: "autonomy" });
+		const out = await ensureAgentVoice(runtime, content, {
+			source: "autonomy",
+		});
 
 		expect(out).toBe(content);
 	});

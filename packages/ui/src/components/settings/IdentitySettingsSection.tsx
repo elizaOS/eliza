@@ -1,10 +1,10 @@
 /**
- * Settings → "Basics" section (the `identity` section id). Edits the agent's
- * character identity (name/bio draft, saved via App state) and its voice
- * configuration — TTS provider, model, and voice pick, with an in-panel test
+ * Settings → "Basics" section (the `identity` section id). Owns the agent's
+ * voice pick — TTS provider, model, and voice preset with in-panel test
  * playback. When Eliza Cloud is connected (or the voice proxy is available) the
  * ElevenLabs voice groups are offered; otherwise it falls back to the edge/
- * premade voices.
+ * premade voices. The agent's name and personality (system prompt) live in the
+ * Character view, not here.
  */
 
 import { Volume2, VolumeX } from "lucide-react";
@@ -13,7 +13,6 @@ import { useAgentElement } from "../../agent-surface";
 import { client, type VoiceConfig } from "../../api";
 import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
 import { useAppSelectorShallow } from "../../state";
-import { replaceNameTokens } from "../../utils/name-tokens";
 import {
   EDGE_BACKUP_VOICES,
   hasConfiguredApiKey,
@@ -35,11 +34,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { SettingsSelectTrigger } from "../ui/settings-controls";
-import {
-  SettingsActionButton,
-  SettingsInputRow,
-  SettingsTextareaRow,
-} from "./settings-agent-rows";
+import { SettingsActionButton } from "./settings-agent-rows";
 import { useSettingsSave } from "./settings-control-primitives.hooks";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
@@ -241,27 +236,12 @@ function normalizeVoiceConfigForSave(args: {
 }
 
 export function IdentitySettingsSection() {
-  const {
-    t,
-    characterData,
-    characterDraft,
-    characterLoading,
-    handleCharacterFieldInput,
-    handleSaveCharacter,
-    loadCharacter,
-    elizaCloudConnected,
-    elizaCloudVoiceProxyAvailable,
-  } = useAppSelectorShallow((s) => ({
-    t: s.t,
-    characterData: s.characterData,
-    characterDraft: s.characterDraft,
-    characterLoading: s.characterLoading,
-    handleCharacterFieldInput: s.handleCharacterFieldInput,
-    handleSaveCharacter: s.handleSaveCharacter,
-    loadCharacter: s.loadCharacter,
-    elizaCloudConnected: s.elizaCloudConnected,
-    elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
-  }));
+  const { t, elizaCloudConnected, elizaCloudVoiceProxyAvailable } =
+    useAppSelectorShallow((s) => ({
+      t: s.t,
+      elizaCloudConnected: s.elizaCloudConnected,
+      elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
+    }));
 
   const useElevenLabs = elizaCloudConnected || elizaCloudVoiceProxyAvailable;
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>({});
@@ -269,22 +249,6 @@ export function IdentitySettingsSection() {
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [voiceTesting, setVoiceTesting] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const attemptedInitialCharacterLoadRef = useRef(false);
-
-  const hasCharacterDraft = Object.keys(characterDraft).length > 0;
-
-  useEffect(() => {
-    if (
-      attemptedInitialCharacterLoadRef.current ||
-      characterLoading ||
-      characterData ||
-      hasCharacterDraft
-    ) {
-      return;
-    }
-    attemptedInitialCharacterLoadRef.current = true;
-    void loadCharacter();
-  }, [characterData, characterLoading, hasCharacterDraft, loadCharacter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -383,25 +347,10 @@ export function IdentitySettingsSection() {
     [voiceGroups],
   );
 
-  const savedName =
-    typeof characterData?.name === "string" ? characterData.name : "";
-  const savedSystem =
-    typeof characterData?.system === "string"
-      ? replaceNameTokens(characterData.system, savedName)
-      : "";
-  const draftName =
-    typeof characterDraft.name === "string" ? characterDraft.name : "";
-  const draftSystem =
-    typeof characterDraft.system === "string" ? characterDraft.system : "";
-  const characterDirty = draftName !== savedName || draftSystem !== savedSystem;
   const voiceDirty =
     resolveEditableVoiceSelectionKey(voiceConfig) !==
     resolveEditableVoiceSelectionKey(savedVoiceConfig);
-  const dirty = characterDirty || voiceDirty;
-  const showCharacterBootstrapping =
-    !characterData &&
-    !hasCharacterDraft &&
-    (characterLoading || !attemptedInitialCharacterLoadRef.current);
+  const dirty = voiceDirty;
 
   const handleVoiceSelect = useCallback(
     (presetId: string) => {
@@ -462,34 +411,22 @@ export function IdentitySettingsSection() {
   }, [activeVoicePreset, stopVoicePreview]);
 
   const performSave = useCallback(async () => {
-    if (!dirty) return;
-    if (characterDirty) {
-      await handleSaveCharacter();
-    }
-    if (voiceDirty) {
-      const config = await client.getConfig();
-      const messages = (config.messages ?? {}) as Record<string, unknown>;
-      const normalizedVoiceConfig = normalizeVoiceConfigForSave({
-        voiceConfig,
-        useElevenLabs,
-      });
-      await client.updateConfig({
-        messages: {
-          ...messages,
-          tts: normalizedVoiceConfig,
-        },
-      });
-      dispatchWindowEvent(VOICE_CONFIG_UPDATED_EVENT, normalizedVoiceConfig);
-      setSavedVoiceConfig(normalizedVoiceConfig);
-    }
-  }, [
-    characterDirty,
-    dirty,
-    handleSaveCharacter,
-    useElevenLabs,
-    voiceConfig,
-    voiceDirty,
-  ]);
+    if (!voiceDirty) return;
+    const config = await client.getConfig();
+    const messages = (config.messages ?? {}) as Record<string, unknown>;
+    const normalizedVoiceConfig = normalizeVoiceConfigForSave({
+      voiceConfig,
+      useElevenLabs,
+    });
+    await client.updateConfig({
+      messages: {
+        ...messages,
+        tts: normalizedVoiceConfig,
+      },
+    });
+    dispatchWindowEvent(VOICE_CONFIG_UPDATED_EVENT, normalizedVoiceConfig);
+    setSavedVoiceConfig(normalizedVoiceConfig);
+  }, [useElevenLabs, voiceConfig, voiceDirty]);
 
   const { saving, saveError, saveSuccess, handleSave } = useSettingsSave({
     onSave: performSave,
@@ -500,30 +437,9 @@ export function IdentitySettingsSection() {
 
   return (
     <SettingsStack>
-      {showCharacterBootstrapping ? (
-        <SettingsGroup bare>
-          <p className="py-6 text-center text-xs text-muted">
-            {t("settings.identity.loading", {
-              defaultValue: "Loading identity settings…",
-            })}
-          </p>
-        </SettingsGroup>
-      ) : null}
-
       <SettingsGroup
         title={t("settings.identity.groupTitle", { defaultValue: "Identity" })}
       >
-        <SettingsInputRow
-          agentId="identity-name"
-          label={t("common.name", { defaultValue: "Name" })}
-          value={draftName}
-          onValueChange={(value) => handleCharacterFieldInput("name", value)}
-          placeholder={t("startupshell.AgentName", {
-            defaultValue: "Agent name",
-          })}
-          inputClassName="w-full"
-        />
-
         <VoiceSelectRow
           label={t("common.voice", { defaultValue: "Voice" })}
           placeholder={t("charactereditor.SelectAVoice", {
@@ -542,20 +458,6 @@ export function IdentitySettingsSection() {
           previewing={voiceTesting}
           previewDisabled={!activeVoicePreset?.previewUrl || voiceLoading}
           onPreviewToggle={voiceTesting ? stopVoicePreview : handlePreviewVoice}
-        />
-
-        <SettingsTextareaRow
-          agentId="identity-system-prompt"
-          label={t("settings.identity.systemPromptLabel", {
-            defaultValue: "System prompt",
-          })}
-          value={draftSystem}
-          onValueChange={(value) => handleCharacterFieldInput("system", value)}
-          rows={10}
-          placeholder={t("charactereditor.SystemPromptPlaceholder", {
-            defaultValue: "Write in first person...",
-          })}
-          textareaClassName="min-h-[14rem] leading-relaxed"
         />
       </SettingsGroup>
 

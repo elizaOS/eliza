@@ -1,8 +1,12 @@
 /**
  * Current-conditions weather for the home weather widget, sourced from Open-Meteo
- * with permission-gated geolocation and all network/clock work in effects.
+ * with permission-gated geolocation, an IP-based approximate fallback, and all
+ * network/clock work in effects.
  */
+
+import { logger } from "@elizaos/logger";
 import * as React from "react";
+import { client } from "../api/client";
 import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";
 
 /**
@@ -10,10 +14,17 @@ import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";
  *
  * Source: Open-Meteo (https://open-meteo.com) — free, no API key, and reachable
  * under the app CSP. Location comes from the browser/Capacitor Geolocation API
- * only when permission is already granted; first-run/home load never triggers a
- * location prompt or noisy third-party IP lookup. All network + clock work
- * happens in effects (never the render path) so the home's determinism gate
- * stays clean.
+ * when permission is already granted; without permission the widget falls back
+ * to the agent server's coarse IP-based coordinates (GET
+ * /api/location/approximate — server-side because the public IP-geo services
+ * CORS-fail on hosted app origins), flagged `approximate` end-to-end. First-run
+ * /home load never triggers a location prompt. All network + clock work happens
+ * in effects (never the render path) so the home's determinism gate stays clean.
+ *
+ * The first time a session lands on the approximate path it files ONE
+ * dismissible notification (stable groupKey; posted-once localStorage flag)
+ * deep-linking to Settings → Capabilities, where precise location can be
+ * enabled.
  *
  * The result is cached in localStorage for {@link WEATHER_TTL_MS} so remounts
  * (every home visit) paint instantly from cache and only refetch when stale.
@@ -40,11 +51,19 @@ export interface Weather {
   condition: string;
   /** Coarse bucket for icon selection. */
   kind: WeatherKind;
+  /** True when coords came from the IP fallback (city-level), not the device. */
+  approximate: boolean;
 }
 
 const WEATHER_TTL_MS = 30 * 60_000; // refetch at most every 30 min
-const WEATHER_CACHE_KEY = "eliza:weather:v1";
+// v2: cache entries carry `approximate`; the bump discards v1 entries that lack it.
+const WEATHER_CACHE_KEY = "eliza:weather:v2";
 const GEO_TIMEOUT_MS = 8_000;
+/** Posted-once guard for the approximate-location notification. A stable
+ *  groupKey makes a duplicate POST collapse server-side, but after the user
+ *  DISMISSES the row a re-post would resurrect it — this flag makes the nag
+ *  once-per-browser instead. */
+const LOCATION_NOTICE_FLAG_KEY = "eliza:weather:location-notice:v1";
 
 interface CachedWeather extends Weather {
   fetchedAt: number;
@@ -133,6 +152,7 @@ function readCache(): CachedWeather | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CachedWeather;
     if (typeof parsed.fetchedAt !== "number") return null;
+    if (typeof parsed.approximate !== "boolean") return null;
     if (parsed.unit !== TEMPERATURE_UNIT.label) return null;
     return parsed;
   } catch {
@@ -153,8 +173,8 @@ function writeCache(value: CachedWeather): void {
 
 /** Has the user ALREADY granted geolocation? We never trigger the OS permission
  *  prompt from the home — precise device location is used only when it's already
- *  allowed; otherwise the widget degrades to its unavailable state (no prompt,
- *  and no IP-lookup fallback — see {@link resolveCoords}). */
+ *  allowed; otherwise {@link resolveCoords} falls back to the server's coarse
+ *  IP-based coordinates. */
 async function geolocationAlreadyGranted(): Promise<boolean> {
   try {
     const perms = navigator.permissions;
@@ -163,37 +183,64 @@ async function geolocationAlreadyGranted(): Promise<boolean> {
     return status.state === "granted";
   } catch {
     // error-policy:J3 Permissions API unsupported (older WebKit) reads as
-    // "not granted" — the widget degrades to its unavailable state (the
-    // designed no-prompt path; no IP-lookup fallback).
+    // "not granted" — the widget uses the IP-based approximate fallback
+    // instead of prompting.
     return false;
   }
 }
 
+interface ResolvedCoords extends Coords {
+  approximate: boolean;
+}
+
+/** Server-side coarse IP-geolocation (city centroid). Same-origin/agent-API
+ *  call, so it works on hosted origins where a browser-side lookup CORS-fails. */
+async function fetchApproximateCoords(): Promise<ResolvedCoords> {
+  const data = await client.fetch<{ lat: number; lon: number }>(
+    "/api/location/approximate",
+  );
+  if (
+    typeof data.lat !== "number" ||
+    typeof data.lon !== "number" ||
+    !Number.isFinite(data.lat) ||
+    !Number.isFinite(data.lon)
+  ) {
+    throw new Error("approximate-location: no usable coordinates");
+  }
+  return { lat: data.lat, lon: data.lon, approximate: true };
+}
+
 /**
- * Resolve coordinates with precise device location ONLY if already granted.
- * Without existing permission, degrade to unavailable instead of making a
- * browser-side IP lookup that can CORS-fail on hosted app origins.
+ * Resolve coordinates: precise device location if permission is ALREADY
+ * granted (never prompting from the home), otherwise the agent server's
+ * IP-based approximate coordinates. Only when both paths fail does the widget
+ * degrade to its unavailable state.
  */
-async function resolveCoords(): Promise<Coords> {
+async function resolveCoords(): Promise<ResolvedCoords> {
   const canUseDevice =
     typeof navigator !== "undefined" &&
     !!navigator.geolocation &&
     (await geolocationAlreadyGranted());
-  if (!canUseDevice) throw new Error("no-location");
 
-  const deviceCoords = await new Promise<Coords | null>((resolve) => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-      () => resolve(null),
-      { timeout: GEO_TIMEOUT_MS, maximumAge: WEATHER_TTL_MS },
-    );
-  });
+  if (canUseDevice) {
+    const deviceCoords = await new Promise<Coords | null>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) =>
+          resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+        () => resolve(null),
+        { timeout: GEO_TIMEOUT_MS, maximumAge: WEATHER_TTL_MS },
+      );
+    });
+    if (deviceCoords) return { ...deviceCoords, approximate: false };
+  }
 
-  if (deviceCoords) return deviceCoords;
-  throw new Error("no-location");
+  return fetchApproximateCoords();
 }
 
-async function fetchWeatherAt(coords: Coords): Promise<Weather> {
+async function fetchWeatherAt(
+  coords: Coords,
+  approximate: boolean,
+): Promise<Weather> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,weather_code&temperature_unit=${TEMPERATURE_UNIT.param}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`open-meteo ${res.status}`);
@@ -210,11 +257,54 @@ async function fetchWeatherAt(coords: Coords): Promise<Weather> {
     unit: TEMPERATURE_UNIT.label,
     condition,
     kind,
+    approximate,
   };
 }
 
 async function fetchWeather(): Promise<Weather> {
-  return fetchWeatherAt(await resolveCoords());
+  const resolved = await resolveCoords();
+  return fetchWeatherAt(resolved, resolved.approximate);
+}
+
+/**
+ * One-time (per browser) dismissible notification telling the user weather is
+ * running on approximate location, deep-linking to Settings → Capabilities
+ * where precise location can be enabled. The localStorage flag — not the
+ * notification's groupKey — is the once-guard, so a user who dismisses the row
+ * is never re-nagged by a later approximate fetch (see
+ * {@link LOCATION_NOTICE_FLAG_KEY}).
+ */
+function noteApproximateLocationOnce(): void {
+  try {
+    if (localStorage.getItem(LOCATION_NOTICE_FLAG_KEY) === "posted") return;
+  } catch {
+    // error-policy:J3 storage denied (private mode) reads as "already
+    // posted": without a durable flag the nag would re-file on every visit,
+    // which is worse than not filing it.
+    return;
+  }
+  client
+    .createNotification({
+      title: "Weather is using approximate location",
+      body: "Location access is off, so weather is estimated from your network address (city-level). Enable precise location in Settings → Capabilities for accurate conditions.",
+      category: "system",
+      priority: "low",
+      source: "system",
+      deepLink: "/settings#capabilities",
+      groupKey: "weather:approximate-location",
+    })
+    .then(() => {
+      localStorage.setItem(LOCATION_NOTICE_FLAG_KEY, "posted");
+    })
+    .catch((err: unknown) => {
+      // error-policy:J7 the notice is a side diagnostic of the weather path —
+      // a failed POST must not break the widget; the unset flag retries on
+      // the next approximate fetch, and the failure is logged.
+      logger.warn(
+        { err },
+        "[useWeather] approximate-location notification post failed",
+      );
+    });
 }
 
 /**
@@ -235,12 +325,28 @@ async function promptForCoords(): Promise<Coords> {
   });
 }
 
+/**
+ * Drop the cached reading so the next revalidate refetches immediately — used
+ * by Settings → Capabilities right after precise location is granted, so the
+ * widget doesn't keep showing the approximate reading for the rest of the TTL.
+ */
+export function invalidateWeatherCache(): void {
+  try {
+    localStorage.removeItem(WEATHER_CACHE_KEY);
+  } catch (err) {
+    // error-policy:J6 best-effort cache drop; a surviving stale entry only
+    // delays the precise refetch until the TTL lapses.
+    logger.debug({ err }, "[useWeather] weather cache invalidation failed");
+  }
+}
+
 const LOADING: Weather = {
   status: "loading",
   temp: null,
   unit: TEMPERATURE_UNIT.label,
   condition: "",
   kind: "cloudy",
+  approximate: false,
 };
 
 export interface WeatherState extends Weather {
@@ -275,6 +381,7 @@ export function useWeather(): WeatherState {
       .then((next) => {
         setWeather(next);
         writeCache({ ...next, fetchedAt: Date.now() });
+        if (next.approximate) noteApproximateLocationOnce();
       })
       .catch(() => {
         // error-policy:J4 stale/no-location/weather failure renders the
@@ -296,7 +403,7 @@ export function useWeather(): WeatherState {
 
   const requestLocation = React.useCallback(() => {
     void promptForCoords()
-      .then((coords) => fetchWeatherAt(coords))
+      .then((coords) => fetchWeatherAt(coords, false))
       .then((next) => {
         setWeather(next);
         writeCache({ ...next, fetchedAt: Date.now() });

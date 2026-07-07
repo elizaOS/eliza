@@ -49,6 +49,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
+import { currentElizaAppOrigin } from "../../../utils/cloud-agent-base";
 import { api, apiWithStatus } from "../../lib/api-client";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
@@ -160,7 +161,11 @@ function mergeSandboxRow(
  * that a delete that never took only hides the billed agent for ~a minute.
  */
 const TOMBSTONE_GRACE_MS = 60_000;
-const ELIZA_APP_AGENT_CREATE_URL = "https://app.elizacloud.ai";
+// Derive the create-agent / "Open Eliza app" target from the CURRENT console
+// host so a signed-in staging user isn't bounced to the PROD app (different
+// tenant/session) — #15161. Resolved once at module load: the console host is
+// stable for the lifetime of the page.
+const ELIZA_APP_AGENT_CREATE_URL = currentElizaAppOrigin();
 
 /**
  * Retire delete-tombstones by TIME only — the single retirement clock for both

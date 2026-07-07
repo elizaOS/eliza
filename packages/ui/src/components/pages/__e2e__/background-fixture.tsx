@@ -30,13 +30,29 @@ import { __setAppValueForTests } from "../../../state/app-store";
 import {
   BACKGROUND_PRESETS,
   type BackgroundConfig,
-  DEFAULT_BACKGROUND_CONFIG,
 } from "../../../state/ui-preferences";
 import { emitViewEvent } from "../../../views/view-event-bus";
 import { fileToBackgroundDataUrl } from "../background-image";
 
 type Win = typeof window & {
   __emitBgApply?: (payload: Record<string, unknown>) => void;
+  __getBgState?: () => {
+    config: BackgroundConfig;
+    history: BackgroundConfig[];
+    redo: BackgroundConfig[];
+  };
+};
+
+// This e2e exercises shader, image, undo/redo, and GLSL transitions over
+// file://. Keep the starting point as an explicit shader so the served-image
+// production default does not depend on app public assets in the fixture.
+const ORANGE_PRESET = BACKGROUND_PRESETS.find((preset) => preset.id === "orange");
+if (!ORANGE_PRESET) {
+  throw new Error('Missing "orange" background preset for background e2e');
+}
+const INITIAL_BACKGROUND_CONFIG: BackgroundConfig = {
+  mode: "shader",
+  color: ORANGE_PRESET.color,
 };
 
 function seed(
@@ -60,11 +76,11 @@ function seed(
 }
 
 // Seed before first paint so store-backed selectors never read an empty store.
-seed(DEFAULT_BACKGROUND_CONFIG, [], [], () => {}, () => {}, () => {});
+seed(INITIAL_BACKGROUND_CONFIG, [], [], () => {}, () => {}, () => {});
 
 function Harness(): React.JSX.Element {
   const [config, setConfig] = useState<BackgroundConfig>(
-    DEFAULT_BACKGROUND_CONFIG,
+    INITIAL_BACKGROUND_CONFIG,
   );
   const [history, setHistory] = useState<BackgroundConfig[]>([]);
   const [redoStack, setRedoStack] = useState<BackgroundConfig[]>([]);
@@ -131,6 +147,14 @@ function Harness(): React.JSX.Element {
     (window as Win).__emitBgApply = (payload) =>
       emitViewEvent(BACKGROUND_APPLY_EVENT, payload, "agent");
   }, []);
+
+  useLayoutEffect(() => {
+    (window as Win).__getBgState = () => ({
+      config: configRef.current,
+      history: historyRef.current,
+      redo: redoRef.current,
+    });
+  }, [config, history, redoStack]);
 
   const onFile = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -94,7 +94,7 @@ function discoverGestureSites(): string[] {
 }
 
 interface GestureRow {
-  /** Matrix row number (1–17), matching docs/CHAT_GESTURE_COVERAGE.md. */
+  /** Matrix row number (1–18), matching docs/CHAT_GESTURE_COVERAGE.md. */
   id: number;
   /** The interaction under test. */
   interaction: string;
@@ -273,6 +273,19 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
     sites: [OVERLAY],
     tests: [],
   },
+  {
+    id: 18,
+    // The inline home notification center (#15180) carries real gestures:
+    // pointer-captured row swipe-to-dismiss, long-press row menu, and the
+    // shade pull-expand (touch pan at list top + desktop wheel pull).
+    interaction:
+      "Notification row swipe-dismiss / long-press menu; shade pull-expand",
+    sites: [S("components/shell/NotificationsHomeCenter.tsx")],
+    tests: [
+      S("components/shell/NotificationsHomeCenter.test.tsx"),
+      GESTURE_MATRIX_SPEC,
+    ],
+  },
 ];
 
 function rosteredSites(): Set<string> {
@@ -293,6 +306,7 @@ const PINNED_GESTURE_SITES: readonly string[] = [
   "packages/ui/src/components/shell/ContinuousChatOverlay.tsx",
   "packages/ui/src/components/shell/HomeLauncherSurface.tsx",
   "packages/ui/src/components/shell/KioskViewCanvas.tsx",
+  "packages/ui/src/components/shell/NotificationsHomeCenter.tsx",
   "packages/ui/src/components/shell/TopicGroup.tsx",
   "packages/ui/src/components/shell/use-pull-gesture.ts",
   "packages/ui/src/gestures/usePressAndHold.ts",

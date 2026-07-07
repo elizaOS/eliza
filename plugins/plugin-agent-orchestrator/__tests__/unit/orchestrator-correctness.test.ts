@@ -105,6 +105,9 @@ function makeRuntime(acp: unknown, setting?: Record<string, string>) {
     createMemory: vi.fn(async () => undefined),
     createEntity: vi.fn(async () => true),
     addParticipant: vi.fn(async () => true),
+    getEntitiesForRoom: vi.fn(async () => []),
+    deleteParticipants: vi.fn(async () => true),
+    reportError: vi.fn(),
     emitEvent: vi.fn(async () => undefined),
     sendMessageToTarget: vi.fn(async (_t: unknown, content: Content) => ({
       id: "aaaaaaaa-0000-0000-0000-000000000000",

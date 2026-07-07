@@ -11,6 +11,8 @@ const meta = {
   tags: ["autodocs"],
   argTypes: {
     tone: { control: "select", options: ["assistant", "user"] },
+    variant: { control: "select", options: ["panel", "glass"] },
+    bare: { control: "boolean" },
     source: {
       control: "select",
       options: [undefined, "imessage", "telegram", "discord", "whatsapp"],
@@ -48,6 +50,14 @@ export const FromDiscord: Story = {
     tone: "assistant",
     source: "discord",
     children: "Posted it to #general and pinned the summary.",
+  },
+};
+
+export const BareGlass: Story = {
+  args: {
+    variant: "glass",
+    bare: true,
+    children: "Ready when you are.",
   },
 };
 

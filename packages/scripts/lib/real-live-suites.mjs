@@ -92,6 +92,12 @@ export const GUARDED_REAL_LIVE_SUITES = [
       "vision-qa VLM screenshot Q&A against the real Anthropic vision model; also armed by ANTHROPIC_LIVE_TEST=1",
   },
   {
+    file: "packages/evidence/src/vision-qa/cli-backend.live.test.ts",
+    optIn: "ELIZA_VISION_QA_CLI_LIVE",
+    notes:
+      "vision-qa CLI backend driving a real claude/codex CLI (ELIZA_VISION_QA_CLI selects); spends operator CLI tokens",
+  },
+  {
     file: "plugins/plugin-agent-orchestrator/__tests__/live/native-acp-smoke.live.test.ts",
     optIn: "RUN_LIVE_NATIVE_ACP",
   },

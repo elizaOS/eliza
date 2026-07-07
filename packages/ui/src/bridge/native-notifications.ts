@@ -2,16 +2,16 @@
  * Cross-platform native notification bridge: shows OS/mobile notifications and
  * routes their tap deep-links back into the app.
  *
- * Surfaces an `AgentNotification` as an OS-level notification. Resolution
- * order (first that succeeds wins):
+ * Two exports with distinct roles in the store's delivery policy (native-first,
+ * glass-fallback — see notification-store `deliver`):
  *
- *   1. `@capacitor/local-notifications` (`LocalNotifications`) — the canonical
- *      cross-platform plugin (iOS + Android channels). Used when the native
- *      build registered it.
- *   2. `ElizaIntent` (iOS) — the bespoke companion plugin already wired to
- *      `UNUserNotificationCenter`; covers iOS builds that ship the companion
- *      but not LocalNotifications.
- *   3. Web `Notification` API — desktop browsers / PWA shells.
+ *   - `showNativeNotification` — the OS-native channels, first that succeeds:
+ *     `@capacitor/local-notifications` (canonical iOS + Android channels), then
+ *     `ElizaIntent` (bespoke iOS companion wired to `UNUserNotificationCenter`).
+ *     On native platforms this IS the notification surface.
+ *   - `showWebNotification` — the browser `Notification` API, used only as the
+ *     hidden-tab fallback on platforms with no native channel (the in-app glass
+ *     banner is the visible-tab surface there).
  *
  * Plugins are read from the runtime Capacitor registry (`Capacitor.Plugins`),
  * so this module statically imports nothing optional — the web/desktop bundle
@@ -192,7 +192,12 @@ async function tryElizaIntent(
   return result.accepted === true;
 }
 
-function tryWebNotification(req: NativeNotificationRequest): boolean {
+/**
+ * Show a browser `Notification`. The web/PWA fallback surface for a hidden tab
+ * — the in-app glass banner covers the visible tab, and the native platforms
+ * never reach this. Returns whether the notification was shown.
+ */
+export function showWebNotification(req: NativeNotificationRequest): boolean {
   if (typeof Notification === "undefined") return false;
   if (Notification.permission !== "granted") return false;
   try {
@@ -220,19 +225,20 @@ function tryWebNotification(req: NativeNotificationRequest): boolean {
     return true;
   } catch {
     // error-policy:J4 constructor failure reads as "web channel unavailable";
-    // the caller's chain returns "none" and the dashboard center still has it.
+    // the caller falls back to the in-app glass surface.
     return false;
   }
 }
 
 /**
- * Show a native OS notification. Returns the channel that handled it, or
- * `"none"` if no native channel was available (the dashboard notification
- * center still has it).
+ * Show a native OS notification (Capacitor channels only — the web
+ * `Notification` API is a separate fallback, {@link showWebNotification}).
+ * Returns the channel that handled it, or `"none"` if no native channel was
+ * available; the caller decides whether the in-app glass surface takes over.
  */
 export async function showNativeNotification(
   req: NativeNotificationRequest,
-): Promise<"local" | "intent" | "web" | "none"> {
+): Promise<"local" | "intent" | "none"> {
   // error-policy:J4 documented first-that-succeeds channel chain; a failed
   // channel falls through and an all-failed dispatch returns "none" (the
   // dashboard notification center is the source of truth either way).
@@ -246,6 +252,5 @@ export async function showNativeNotification(
   } catch {
     /* fall through to next channel */
   }
-  if (tryWebNotification(req)) return "web";
   return "none";
 }

@@ -19,6 +19,7 @@ import {
   OpenAiCompatibleBackend,
   type VisionBackendClient,
 } from "./backends.ts";
+import { CliVisionBackend, type VisionCli } from "./cli-backend.ts";
 import type { AskOptions, VisionBackend } from "./types.ts";
 
 /** Env var names read for backend resolution — the whole surface, in one place. */
@@ -27,13 +28,18 @@ export const ENV = {
   baseUrl: "ELIZA_VISION_QA_BASE_URL",
   anthropicKey: "ANTHROPIC_API_KEY",
   openaiKey: "OPENAI_API_KEY",
+  cli: "ELIZA_VISION_QA_CLI",
 } as const;
 
 const VALID_BACKENDS: readonly VisionBackend[] = [
   "anthropic",
   "openai",
   "local",
+  "cli",
 ];
+
+const VALID_CLIS: readonly VisionCli[] = ["claude", "codex"];
+export const DEFAULT_CLI: VisionCli = "claude";
 
 function readEnv(env: NodeJS.ProcessEnv, key: string): string | undefined {
   const value = env[key]?.trim();
@@ -82,7 +88,7 @@ export function createBackendClient(
   backend: VisionBackend,
   options: Pick<AskOptions, "model" | "baseUrl" | "apiKey">,
   env: NodeJS.ProcessEnv = process.env,
-): VisionBackendClient {
+): VisionBackendClient | CliVisionBackend {
   switch (backend) {
     case "anthropic": {
       const apiKey = options.apiKey ?? readEnv(env, ENV.anthropicKey);
@@ -129,5 +135,27 @@ export function createBackendClient(
         baseUrl,
       );
     }
+    case "cli": {
+      const cli = resolveCli(env);
+      // The model is recorded for provenance; the CLI's own config picks the
+      // concrete model, so the id names the CLI transport honestly.
+      return new CliVisionBackend({
+        cli,
+        model: options.model ?? `${cli}-cli`,
+      });
+    }
   }
+}
+
+/** Which coding-agent CLI backs the `cli` backend: `ELIZA_VISION_QA_CLI` or claude. */
+export function resolveCli(env: NodeJS.ProcessEnv = process.env): VisionCli {
+  const raw = readEnv(env, ENV.cli);
+  if (raw === undefined) return DEFAULT_CLI;
+  if (!VALID_CLIS.includes(raw as VisionCli)) {
+    throw new EvidenceError(
+      `invalid ${ENV.cli}: '${raw}' (expected ${VALID_CLIS.join("|")})`,
+      { code: "VISION_CONFIG", context: { value: raw } },
+    );
+  }
+  return raw as VisionCli;
 }

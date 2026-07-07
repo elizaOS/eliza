@@ -91,4 +91,25 @@ describe("ChatMessage desktop hover-chrome delete control (#13533)", () => {
     // guard excludes `temp-` ids so the control never appears on it.
     expect(deleteControl()).toBeNull();
   });
+
+  it("renders a first-run greeting chromeless — no action rail at all", () => {
+    // The onboarding greeting is seeded wallpaper prose with a CTA beneath it;
+    // reply / copy / delete / play are meaningless on it and the hover rail read
+    // as a bug during first-run. Even with every action handler wired, a
+    // `first_run` source turn must render no rail.
+    render(
+      <ChatMessage
+        message={makeMessage({ source: "first_run" })}
+        onCopy={vi.fn()}
+        onDelete={vi.fn()}
+        onReply={vi.fn()}
+        onSpeak={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("chat-message-action-rail")).toBeNull();
+    expect(deleteControl()).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Reply" }),
+    ).toBeNull();
+  });
 });

@@ -90,9 +90,12 @@ function StewardRuntimeLoading() {
       aria-live="polite"
       role="status"
       style={{
+        // Pre-theme fallback (renders before the theme tree mounts, so it uses
+        // literals not vars): black to match the console, not the old beige that
+        // flashed light-on-black and read as a broken load.
         alignItems: "center",
-        background: "#f8f4ef",
-        color: "#2f261f",
+        background: "#000",
+        color: "rgba(255,255,255,0.55)",
         display: "flex",
         justifyContent: "center",
         minHeight: "100vh",

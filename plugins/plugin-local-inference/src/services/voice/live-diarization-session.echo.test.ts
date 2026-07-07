@@ -124,6 +124,30 @@ describe("LiveDiarizationSession echo reference", () => {
 		);
 	});
 
+	it("drops a malformed playback frame instead of throwing out of the transport", async () => {
+		const session = new LiveDiarizationSession(fakeRuntime());
+		// An odd PCM byte length is not a whole number of s16 samples — the device
+		// producing it is a wire glitch, not a reason to 500 the whole playback
+		// batch. The bad frame is dropped+counted; the good one still lands.
+		const oddFrame: AudioFrameEvent = {
+			pcm16: Buffer.alloc(807).toString("base64"),
+			sampleRate: SAMPLE_RATE,
+			channels: 1,
+			samples: 403,
+			rms: 0,
+			timestamp: 0,
+			frameIndex: 0,
+		};
+		expect(() =>
+			session.pushPlayback([oddFrame, playbackFrame(ramp(320), 1)]),
+		).not.toThrow();
+
+		const status = await session.status();
+		expect(status.aec.playbackFramesDropped).toBe(1);
+		expect(status.aec.playbackFramesReceived).toBe(1);
+		expect(status.aec.playbackSamplesReceived).toBe(320);
+	});
+
 	it("reports echoReferenceWired=false while the consumer is built but no playback ever arrived (#9583)", async () => {
 		const session = new LiveDiarizationSession(fakeRuntime());
 		// Simulate the on-device state where the fused consumer built fine but no

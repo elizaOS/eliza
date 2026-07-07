@@ -209,6 +209,9 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       expect(args.prompt).toContain("Approve the SOW"); // inbox
       expect(args.prompt).toContain("Send NDA"); // life
       expect(args.prompt).toContain("Netflix"); // money
+      expect(args.prompt).toContain('"editorial"');
+      expect(args.prompt).toContain('"itemId": "inbox:msg-1"');
+      expect(args.prompt).toContain('"action": "lead"');
     });
 
     it("honors include flags by suppressing whole sections", async () => {
@@ -279,7 +282,9 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       });
       expect(result.success).toBe(true);
       expect(useModel).toHaveBeenCalledTimes(1);
-      const [modelType, args] = useModel.mock.calls[0]!;
+      const modelCall = useModel.mock.calls[0];
+      expect(modelCall).toBeDefined();
+      const [modelType, args] = modelCall as [string, { prompt: string }];
       expect(modelType).toBe(ModelType.TEXT_LARGE);
       expect(args.prompt).toContain("Standup");
     });

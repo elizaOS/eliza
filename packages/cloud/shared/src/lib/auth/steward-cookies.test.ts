@@ -56,39 +56,23 @@ describe("readStewardAccessCookieFromHeader", () => {
   });
 
   it("allows a bounded read-only legacy fallback before the cutoff", () => {
-    expect(
-      readStewardAccessCookieFromHeader(
-        "steward-token=legacy",
-        "staging",
-        beforeCutoff,
-      ),
-    ).toBe("legacy");
+    expect(readStewardAccessCookieFromHeader("steward-token=legacy", "staging", beforeCutoff)).toBe(
+      "legacy",
+    );
   });
 
   it("shuts off the non-production legacy fallback at the cutoff", () => {
     expect(
-      readStewardAccessCookieFromHeader(
-        "steward-token=legacy",
-        "staging",
-        atCutoff,
-      ),
+      readStewardAccessCookieFromHeader("steward-token=legacy", "staging", atCutoff),
     ).toBeUndefined();
   });
 
   it("keeps production and unset local environments on the historical cookie", () => {
-    expect(
-      readStewardAccessCookieFromHeader(
-        "steward-token=prod",
-        "production",
-        atCutoff,
-      ),
-    ).toBe("prod");
-    expect(
-      readStewardAccessCookieFromHeader(
-        "steward-token=local",
-        undefined,
-        atCutoff,
-      ),
-    ).toBe("local");
+    expect(readStewardAccessCookieFromHeader("steward-token=prod", "production", atCutoff)).toBe(
+      "prod",
+    );
+    expect(readStewardAccessCookieFromHeader("steward-token=local", undefined, atCutoff)).toBe(
+      "local",
+    );
   });
 });

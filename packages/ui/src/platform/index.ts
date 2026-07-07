@@ -51,6 +51,7 @@ export * from "./platform-guards";
 export {
   applyStandaloneBottomReclaim,
   clearStandaloneBottomReclaim,
+  getStandaloneBottomReclaimState,
   installStandaloneBottomReclaim,
   measureStandaloneBottomGap,
   STANDALONE_BOTTOM_RECLAIM_OFFSET,

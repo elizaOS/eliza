@@ -189,14 +189,26 @@ function normalizeHexColor(value: unknown): string {
     : DEFAULT_BACKGROUND_COLOR;
 }
 
+// Renamed/recompressed curated wallpapers whose OLD URL may still sit in a
+// user's persisted background config. The asset is gone from /public, so
+// without this read-time alias every install that saved the old default 404s
+// its wallpaper after the deploy (#15184 removed bg-sunset.jpg). Normalization
+// runs on both load and save, so persisted configs self-heal on first touch.
+const LEGACY_WALLPAPER_ALIASES: Record<string, string> = {
+  "/bg-sunset.jpg": "/bg-sunset.webp",
+};
+
 export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   const record = asRecord(value);
   if (!record) return { ...DEFAULT_BACKGROUND_CONFIG };
   const color = normalizeHexColor(record.color);
-  const imageUrl =
+  const rawImageUrl =
     typeof record.imageUrl === "string" && record.imageUrl.length > 0
       ? record.imageUrl
       : undefined;
+  const imageUrl = rawImageUrl
+    ? (LEGACY_WALLPAPER_ALIASES[rawImageUrl] ?? rawImageUrl)
+    : undefined;
   // Image mode without a usable source is meaningless — fall back to the shader.
   if (record.mode === "image" && imageUrl) {
     return { mode: "image", color, imageUrl };
@@ -908,66 +920,6 @@ export function saveRecentApps(apps: string[]): void {
       JSON.stringify(apps.slice(0, RECENT_APPS_MAX)),
     );
   }, undefined);
-}
-
-/* ── Launcher recents/favorites persistence ─────────────────────────── */
-// The launcher's Recents/Favorites zones are keyed by canonical LAUNCHER VIEW
-// ID (`wallet`, `settings`, …), a different namespace from the catalog-app-name
-// keyed `recent-apps`/`favorite-apps` above (which the chat + catalog surfaces
-// own). They are kept separate so a launcher tap never rewrites the catalog's
-// app-name lists and vice versa — merging the two would conflate unlike keys.
-const LAUNCHER_RECENTS_KEY = "eliza:launcher:recents";
-const LAUNCHER_FAVORITES_KEY = "eliza:launcher:favorites";
-/** Cap on the persisted launcher recents list; older ids are evicted. */
-export const LAUNCHER_RECENTS_MAX = 8;
-
-function loadLauncherIds(key: string, max: number): string[] {
-  return tryLocalStorage(() => {
-    const stored = localStorage.getItem(key);
-    if (!stored) return [];
-    const parsed = JSON.parse(stored) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((item): item is string => typeof item === "string")
-      .slice(0, max);
-  }, []);
-}
-
-export function loadLauncherRecents(): string[] {
-  return loadLauncherIds(LAUNCHER_RECENTS_KEY, LAUNCHER_RECENTS_MAX);
-}
-
-export function saveLauncherRecents(ids: string[]): void {
-  tryLocalStorage(() => {
-    localStorage.setItem(
-      LAUNCHER_RECENTS_KEY,
-      JSON.stringify(ids.slice(0, LAUNCHER_RECENTS_MAX)),
-    );
-  }, undefined);
-}
-
-export function loadLauncherFavorites(): string[] {
-  return loadLauncherIds(LAUNCHER_FAVORITES_KEY, Number.MAX_SAFE_INTEGER);
-}
-
-export function saveLauncherFavorites(ids: string[]): void {
-  tryLocalStorage(() => {
-    localStorage.setItem(LAUNCHER_FAVORITES_KEY, JSON.stringify(ids));
-  }, undefined);
-}
-
-/**
- * Move `id` to the front of the launcher recents list and persist it. Pure
- * most-recent-first ordering with de-dup and eviction; returns the new list so
- * the caller can update React state without a second read.
- */
-export function recordLauncherRecent(id: string): string[] {
-  const next = [id, ...loadLauncherRecents().filter((x) => x !== id)].slice(
-    0,
-    LAUNCHER_RECENTS_MAX,
-  );
-  saveLauncherRecents(next);
-  return next;
 }
 
 /* ── Wallet enabled persistence ─────────────────────────────────────── */

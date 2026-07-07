@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 /**
  * The notification store (`notification-store`): list/read/remove/clear flows,
- * unread counting, and WebSocket-event ingestion. jsdom with the API client and
- * desktop bridge mocked — deterministic, no real server or WS.
+ * unread counting, WebSocket-event ingestion, and the native-first delivery
+ * policy (OS surface on desktop/mobile, glass banner as the web fallback).
+ * jsdom with the API client and bridges mocked — deterministic, no real server.
  */
 import type { AgentNotification } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +13,7 @@ const markNotificationReadApi = vi.fn();
 const markAllNotificationsReadApi = vi.fn();
 const removeNotificationApi = vi.fn();
 const clearNotificationsApi = vi.fn();
+const seedDevNotificationsApi = vi.fn();
 const onWsEvent = vi.fn();
 
 vi.mock("../../api/client", () => ({
@@ -23,6 +25,8 @@ vi.mock("../../api/client", () => ({
       markAllNotificationsReadApi(...args),
     removeNotification: (...args: unknown[]) => removeNotificationApi(...args),
     clearNotifications: (...args: unknown[]) => clearNotificationsApi(...args),
+    seedDevNotifications: (...args: unknown[]) =>
+      seedDevNotificationsApi(...args),
     onWsEvent: (...args: unknown[]) => onWsEvent(...args),
   },
 }));
@@ -34,9 +38,17 @@ vi.mock("../../bridge/electrobun-rpc", () => ({
 }));
 
 const showNativeNotification = vi.fn();
+const showWebNotification = vi.fn();
 vi.mock("../../bridge/native-notifications", () => ({
   showNativeNotification: (...args: unknown[]) =>
     showNativeNotification(...args),
+  showWebNotification: (...args: unknown[]) => showWebNotification(...args),
+}));
+
+const pushNotificationBanner = vi.fn();
+vi.mock("./notification-banner-store", () => ({
+  pushNotificationBanner: (...args: unknown[]) =>
+    pushNotificationBanner(...args),
 }));
 
 import {
@@ -47,8 +59,8 @@ import {
   initNotifications,
   markAllNotificationsRead,
   markNotificationRead,
-  registerNotificationToastSink,
   removeNotification,
+  seedDevNotificationsIfEmpty,
 } from "./notification-store";
 
 function makeNotification(
@@ -68,6 +80,14 @@ function makeNotification(
   };
 }
 
+/**
+ * Delivery is fire-and-forget async (desktop → native → glass); settle its
+ * promise chain before asserting which sink fired.
+ */
+async function flushDelivery(): Promise<void> {
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+}
+
 describe("notification-store", () => {
   beforeEach(() => {
     __resetNotificationStoreForTests();
@@ -79,10 +99,17 @@ describe("notification-store", () => {
     markAllNotificationsReadApi.mockReset().mockResolvedValue({ changed: 0 });
     removeNotificationApi.mockReset().mockResolvedValue({ ok: true });
     clearNotificationsApi.mockReset().mockResolvedValue({ ok: true });
+    seedDevNotificationsApi.mockReset().mockResolvedValue({
+      count: 0,
+      notifications: [],
+    });
     onWsEvent.mockReset();
+    // Defaults model the plain web platform: no desktop bridge (null), no
+    // Capacitor channel ("none"), web Notification unavailable (false).
     invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
     showNativeNotification.mockReset().mockResolvedValue("none");
-    registerNotificationToastSink(null);
+    showWebNotification.mockReset().mockReturnValue(false);
+    pushNotificationBanner.mockReset();
     // Default: window focused.
     vi.spyOn(document, "hasFocus").mockReturnValue(true);
     Object.defineProperty(document, "visibilityState", {
@@ -95,13 +122,6 @@ describe("notification-store", () => {
     vi.restoreAllMocks();
   });
 
-  it("ingests a notification into the inbox and updates unread count", () => {
-    __ingestNotificationForTests(makeNotification({ title: "Hello" }), 1);
-    // Access state via the mutation path is indirect; assert via toast/sink and
-    // a follow-up markAllRead which reads the live list.
-    expect(showNativeNotification).not.toHaveBeenCalled(); // focused + normal → no OS
-  });
-
   it("keeps silent-tier notifications in the inbox without badge weight", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Silent", priority: "low" }),
@@ -111,58 +131,112 @@ describe("notification-store", () => {
     expect(state.unreadCount).toBe(0);
   });
 
-  it("fires desktop + native sinks when the window is unfocused", () => {
-    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+  // ── Delivery policy: native-first, glass fallback ─────────────────────────
+
+  it("desktop bridge owns the alert: no native, web, or banner double-fire", async () => {
+    invokeDesktopBridgeRequest.mockResolvedValue({ id: "os-1" });
     __ingestNotificationForTests(makeNotification({ priority: "normal" }), 1);
+    await flushDelivery();
     expect(invokeDesktopBridgeRequest).toHaveBeenCalledTimes(1);
-    expect(showNativeNotification).toHaveBeenCalledTimes(1);
+    expect(showNativeNotification).not.toHaveBeenCalled();
+    expect(showWebNotification).not.toHaveBeenCalled();
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
-  it("fires interrupt sinks for high/urgent even when focused", () => {
+  it("desktop OS notification fires even while the window is focused", async () => {
+    invokeDesktopBridgeRequest.mockResolvedValue({ id: "os-2" });
     __ingestNotificationForTests(
       makeNotification({ priority: "urgent", title: "Urgent" }),
       1,
     );
+    await flushDelivery();
     expect(invokeDesktopBridgeRequest).toHaveBeenCalledTimes(1);
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
+  });
+
+  it("Capacitor native channel owns the alert on mobile: no banner", async () => {
+    showNativeNotification.mockResolvedValue("local");
+    __ingestNotificationForTests(makeNotification({ priority: "high" }), 1);
+    await flushDelivery();
     expect(showNativeNotification).toHaveBeenCalledTimes(1);
+    expect(showWebNotification).not.toHaveBeenCalled();
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
-  it("does NOT fire OS sinks for a quiet notification while focused", () => {
-    __ingestNotificationForTests(makeNotification({ priority: "low" }), 1);
-    expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
-    expect(showNativeNotification).not.toHaveBeenCalled();
-  });
-
-  it("keeps silent-tier notifications out of OS sinks even while unfocused", () => {
-    vi.spyOn(document, "hasFocus").mockReturnValue(false);
-    __ingestNotificationForTests(makeNotification({ priority: "low" }));
-    expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
-    expect(showNativeNotification).not.toHaveBeenCalled();
-  });
-
-  it("keeps silent-tier notifications out of the toast sink", () => {
-    const sink = vi.fn();
-    registerNotificationToastSink(sink);
-    __ingestNotificationForTests(makeNotification({ priority: "low" }));
-    expect(sink).not.toHaveBeenCalled();
-  });
-
-  it("routes a toast through the registered sink", () => {
-    const sink = vi.fn();
-    registerNotificationToastSink(sink);
+  it("web focused: the glass banner is the surface (no web Notification)", async () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Deploy done", body: "Build #42" }),
       1,
     );
-    expect(sink).toHaveBeenCalledTimes(1);
-    expect(sink.mock.calls[0][0]).toContain("Deploy done");
+    await flushDelivery();
+    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
+    expect(pushNotificationBanner.mock.calls[0][0].title).toBe("Deploy done");
+    expect(showWebNotification).not.toHaveBeenCalled();
   });
 
-  it("uses an error toast tone for urgent notifications", () => {
-    const sink = vi.fn();
-    registerNotificationToastSink(sink);
+  it("web hidden tab: browser Notification replaces the unseen glass banner", async () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    showWebNotification.mockReturnValue(true);
     __ingestNotificationForTests(makeNotification({ priority: "urgent" }), 1);
-    expect(sink.mock.calls[0][1]).toBe("error");
+    await flushDelivery();
+    expect(showWebNotification).toHaveBeenCalledTimes(1);
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
+  });
+
+  it("web hidden tab without Notification permission still queues the banner", async () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    showWebNotification.mockReturnValue(false);
+    __ingestNotificationForTests(makeNotification({ priority: "urgent" }), 1);
+    await flushDelivery();
+    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
+    expect(pushNotificationBanner.mock.calls[0][0].priority).toBe("urgent");
+  });
+
+  it("a rejecting desktop bridge falls through to the glass fallback", async () => {
+    invokeDesktopBridgeRequest.mockRejectedValue(new Error("bridge gone"));
+    __ingestNotificationForTests(makeNotification({ priority: "high" }), 1);
+    await flushDelivery();
+    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
+  });
+
+  it("a rejecting native channel falls through to the glass fallback", async () => {
+    showNativeNotification.mockRejectedValue(new Error("plugin broke"));
+    __ingestNotificationForTests(makeNotification({ priority: "high" }), 1);
+    await flushDelivery();
+    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
+  });
+
+  it("silent tier is inbox-only: no desktop, native, web, or banner", async () => {
+    __ingestNotificationForTests(makeNotification({ priority: "low" }), 1);
+    await flushDelivery();
+    expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
+    expect(showNativeNotification).not.toHaveBeenCalled();
+    expect(showWebNotification).not.toHaveBeenCalled();
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
+  });
+
+  it("silent tier stays inbox-only even while unfocused", async () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    __ingestNotificationForTests(makeNotification({ priority: "low" }));
+    await flushDelivery();
+    expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
+    expect(showNativeNotification).not.toHaveBeenCalled();
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
+  });
+
+  it("normal priority reaches the native surface regardless of focus", async () => {
+    // The old policy suppressed the OS sink for a focused normal-priority
+    // arrival; native platforms now always alert natively (the OS owns
+    // loudness via the urgency mapping).
+    invokeDesktopBridgeRequest.mockResolvedValue({ id: "os-3" });
+    __ingestNotificationForTests(makeNotification({ priority: "normal" }), 1);
+    await flushDelivery();
+    expect(invokeDesktopBridgeRequest).toHaveBeenCalledTimes(1);
+    expect(invokeDesktopBridgeRequest.mock.calls[0][0]).toMatchObject({
+      rpcMethod: "desktopShowNotification",
+      params: expect.objectContaining({ urgency: "normal", silent: false }),
+    });
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
   it("initNotifications hydrates and subscribes to the WS stream once", async () => {
@@ -178,24 +252,21 @@ describe("notification-store", () => {
     await Promise.resolve();
   });
 
-  it("WS handler ignores non-notification streams", () => {
+  it("WS handler ignores non-notification streams", async () => {
     initNotifications();
     const handler = onWsEvent.mock.calls[0][1] as (
       d: Record<string, unknown>,
     ) => void;
-    const sink = vi.fn();
-    registerNotificationToastSink(sink);
     handler({ stream: "assistant", payload: { text: "hi" } });
-    expect(sink).not.toHaveBeenCalled();
+    await flushDelivery();
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
-  it("WS handler ingests a notification-stream event", () => {
+  it("WS handler ingests a notification-stream event", async () => {
     initNotifications();
     const handler = onWsEvent.mock.calls[0][1] as (
       d: Record<string, unknown>,
     ) => void;
-    const sink = vi.fn();
-    registerNotificationToastSink(sink);
     handler({
       stream: "notification",
       payload: {
@@ -204,17 +275,16 @@ describe("notification-store", () => {
         unreadCount: 1,
       },
     });
-    expect(sink).toHaveBeenCalledTimes(1);
-    expect(sink.mock.calls[0][0]).toContain("From WS");
+    await flushDelivery();
+    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
+    expect(pushNotificationBanner.mock.calls[0][0].title).toBe("From WS");
   });
 
-  it("WS handler drops a payload missing id or title (validated, not cast)", () => {
+  it("WS handler drops a payload missing id or title (validated, not cast)", async () => {
     initNotifications();
     const handler = onWsEvent.mock.calls[0][1] as (
       d: Record<string, unknown>,
     ) => void;
-    const sink = vi.fn();
-    registerNotificationToastSink(sink);
     // No title → unrenderable → dropped.
     handler({
       stream: "notification",
@@ -225,7 +295,8 @@ describe("notification-store", () => {
       stream: "notification",
       payload: { notification: { title: "no id" } },
     });
-    expect(sink).not.toHaveBeenCalled();
+    await flushDelivery();
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
     expect(__getStateForTests().notifications).toHaveLength(0);
   });
 
@@ -255,13 +326,14 @@ describe("notification-store", () => {
     expect(typeof stored?.createdAt).toBe("number");
   });
 
-  it("WS handler applies notification_update without re-delivering sinks", () => {
+  it("WS handler applies notification_update without re-delivering sinks", async () => {
     initNotifications();
+    // Settle the boot hydrate (mocked empty) first — flushing after the ingest
+    // would let it land late and wipe the row under assertion.
+    await flushDelivery();
     const handler = onWsEvent.mock.calls[0][1] as (
       d: Record<string, unknown>,
     ) => void;
-    const sink = vi.fn();
-    registerNotificationToastSink(sink);
     handler({
       stream: "notification",
       payload: {
@@ -275,13 +347,16 @@ describe("notification-store", () => {
         unreadCount: 0,
       },
     });
+    await flushDelivery();
     const stored = __getStateForTests().notifications.find(
       (n) => n.id === "update-1",
     );
     expect(stored?.readAt).toBe(123);
     expect(__getStateForTests().unreadCount).toBe(0);
-    expect(sink).not.toHaveBeenCalled();
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
     expect(showNativeNotification).not.toHaveBeenCalled();
+    expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
+    expect(showWebNotification).not.toHaveBeenCalled();
   });
 
   it("WS handler applies notification_update without reordering existing rows", () => {
@@ -444,5 +519,46 @@ describe("notification-store", () => {
     expect(__getStateForTests().notifications.every((n) => !n.readAt)).toBe(
       true,
     );
+  });
+
+  describe("seedDevNotificationsIfEmpty (dev default-active)", () => {
+    it("seeds the demo spread when the inbox hydrates empty", async () => {
+      const seeded = [
+        makeNotification({ id: "s1", priority: "urgent" }),
+        makeNotification({ id: "s2", priority: "normal", readAt: Date.now() }),
+      ];
+      seedDevNotificationsApi.mockResolvedValueOnce({
+        count: 2,
+        notifications: seeded,
+      });
+      await seedDevNotificationsIfEmpty();
+      expect(seedDevNotificationsApi).toHaveBeenCalledTimes(1);
+      expect(__getStateForTests().notifications).toHaveLength(2);
+      // Unread count is derived from the seeded rows (one is pre-read).
+      expect(__getStateForTests().unreadCount).toBe(1);
+    });
+
+    it("never seeds over a real inbox", async () => {
+      listNotifications.mockResolvedValueOnce({
+        notifications: [makeNotification({ id: "real" })],
+        unreadCount: 1,
+      });
+      await seedDevNotificationsIfEmpty();
+      expect(seedDevNotificationsApi).not.toHaveBeenCalled();
+      expect(__getStateForTests().notifications).toHaveLength(1);
+      expect(__getStateForTests().notifications[0]?.id).toBe("real");
+    });
+
+    it("runs at most once per session", async () => {
+      await seedDevNotificationsIfEmpty();
+      await seedDevNotificationsIfEmpty();
+      expect(seedDevNotificationsApi).toHaveBeenCalledTimes(1);
+    });
+
+    it("stays data-driven when the seed route 404s (no throw)", async () => {
+      seedDevNotificationsApi.mockRejectedValueOnce(new Error("404"));
+      await expect(seedDevNotificationsIfEmpty()).resolves.toBeUndefined();
+      expect(__getStateForTests().notifications).toHaveLength(0);
+    });
   });
 });

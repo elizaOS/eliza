@@ -228,7 +228,8 @@ export async function handleInteractionsRoutes(
     return true;
   }
 
-  const request = parseShortcutBody(buffer?.toString("utf8") ?? "");
+  const shortcutBody = buffer ? buffer.toString("utf8") : null;
+  const request = shortcutBody ? parseShortcutBody(shortcutBody) : null;
   if (!request) {
     error(res, "Invalid shortcut interaction body", 400);
     return true;

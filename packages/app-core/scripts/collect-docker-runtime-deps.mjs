@@ -65,6 +65,10 @@ const LINKED_WORKSPACE_PACKAGES = [
   "packages/cloud/sdk",
   "packages/shared",
   "packages/skills",
+  // @elizaos/agent's cli imports @elizaos/tui for the bundled `tui` command
+  // (packages/agent/src/tui/agent-terminal-tui.ts); without the link the
+  // command dies in the image with "Cannot find package '@elizaos/tui'".
+  "packages/tui",
   "packages/vault",
   // Compatibility package for remote workers that still import the historical
   // @elizaos/plugin-worker-runtime entrypoint. It wraps
@@ -75,7 +79,15 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-personal-assistant",
   "plugins/plugin-task-coordinator",
   "plugins/plugin-training",
-  "plugins/plugin-shopify",
+  "packages/registry",
+  "plugins/plugin-edge-tts",
+  "plugins/plugin-agent-orchestrator",
+  "plugins/plugin-app-control",
+  "plugins/plugin-commands",
+  "packages/plugin-remote-manifest",
+  "packages/auth",
+  "packages/logger",
+  "packages/security",
   "plugins/plugin-agent-skills",
   "plugins/plugin-app-manager",
   "plugins/plugin-browser",
@@ -88,6 +100,7 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-local-inference",
   "plugins/plugin-mcp",
   "plugins/plugin-pdf",
+  "plugins/plugin-registry",
   "plugins/plugin-signal",
   "plugins/plugin-streaming",
   "plugins/plugin-native-activity-tracker",
@@ -103,8 +116,8 @@ const LINKED_WORKSPACE_PACKAGES = [
 // Native / desktop / GPU packages that the image deliberately removes or that
 // cannot install in the slim Linux runtime. Excluding them keeps `npm
 // install` from failing on optional native builds the agent never loads on
-// boot. (The image already prunes @node-llama-cpp GPU variants, storybook,
-// and the desktop-only orchestrator.)
+// boot. The image prunes @node-llama-cpp GPU variants and storybook after
+// installation.
 const EXCLUDE = new Set([
   // Desktop / Electron / Capacitor native shells (not used by the headless
   // server runtime).

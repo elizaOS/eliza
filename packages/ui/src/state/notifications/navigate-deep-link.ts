@@ -21,7 +21,11 @@
  * and the OS/web notification click handler so the two cannot diverge.
  */
 
-import { dispatchNavigateViewEvent } from "../../events";
+import {
+  dispatchChatOpen,
+  dispatchChatPrefill,
+  dispatchNavigateViewEvent,
+} from "../../events";
 
 /** Whether a deep link is a safe navigation target (see module doc). */
 export function isSafeDeepLink(deepLink: string): boolean {
@@ -39,7 +43,23 @@ export function navigateDeepLink(deepLink: string): void {
     return;
   }
   if (deepLink.startsWith("/") && !deepLink.startsWith("//")) {
-    const viewId = deepLink.slice(1).split("/")[0] || undefined;
+    const path = deepLink.split(/[?#]/)[0] ?? deepLink;
+    const viewId = path.slice(1).split("/")[0] || undefined;
+    // `/chat` targets the floating chat overlay, not a routed view: expand it,
+    // and when the link carries `?prefill=<text>` seed the composer with the
+    // text for the user to review and send (never auto-sent — the prefill is
+    // producer-supplied, so the user stays the one who talks to the agent).
+    // This is how a notification "opens into the chat" with a ready action,
+    // e.g. the onboarding calendar row prefilling a connect-my-calendar ask.
+    if (viewId === "chat") {
+      const query = deepLink.includes("?")
+        ? deepLink.slice(deepLink.indexOf("?") + 1)
+        : "";
+      const prefill = new URLSearchParams(query).get("prefill")?.trim();
+      if (prefill) dispatchChatPrefill({ text: prefill });
+      else dispatchChatOpen();
+      return;
+    }
     dispatchNavigateViewEvent({ viewId, viewPath: deepLink });
   }
   // Any other scheme (javascript:, data:, custom foo://, scheme-relative //) is

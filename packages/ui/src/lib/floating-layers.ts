@@ -21,3 +21,7 @@ export const Z_GLOBAL_EMOTE = 11000;
 
 export const CONFIG_SELECT_FLOATING_LAYER_NAME = "config-select";
 export const CONFIG_SELECT_FLOATING_LAYER_Z_INDEX = 12000;
+
+// The build/version diagnostics badge is a ground-truth screenshot marker, so
+// app chrome, banners, emotes, and config popovers must never occlude it.
+export const Z_BUILD_BADGE = 13000;

@@ -77,18 +77,15 @@ export function ShaderBackground({
       className="pointer-events-none fixed inset-0 overflow-hidden"
       style={{
         zIndex: 0,
-        // BOTTOM-BAR ROOT CAUSE (device r6, JS-MEASURED cure): this
-        // `fixed inset-0` wallpaper's `bottom: 0` anchors to the
-        // fixed-descendant ICB, which COLLAPSES to the small/layout viewport on
-        // the installed iOS standalone PWA (~59px short of the true bottom).
-        // Left alone the field stops above the home-indicator zone and the
-        // dimmed launch-bg shows through as the near-black bar. Drop the bottom
-        // edge by the MEASURED collapse gap (`--standalone-bottom-reclaim`, set
-        // in JS from window/visualViewport vs documentElement.clientHeight) so
-        // the field reaches the TRUE physical bottom. The prior
-        // `max(0px, 100lvh - 100dvh)` CSS-unit calc was a NO-OP on device (the
-        // collapsed fixed-body ICB resolves lvh === dvh, delta 0) — the reason
-        // the strip survived 5 CSS-only fixes. The var is a hard 0 off-standalone.
+        // BOTTOM-BAR FIX (consume #15036 reclaim): on the installed iOS
+        // standalone PWA the `fixed` containing block collapses to the small
+        // ICB (`ce873` while the physical screen is `sh932`), so a bare
+        // `inset-0` (`bottom: 0`) stops this shader field ~59px SHORT of the
+        // home-indicator edge — the recurring unpainted black strip. Extend the
+        // field DOWN to the TRUE physical bottom by the JS-MEASURED gap
+        // `--standalone-bottom-reclaim` (a hard 0 off the iOS-standalone/native
+        // surface, so a true no-op on desktop/web/Android). Overrides the
+        // `inset-0` `bottom` from the class.
         bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET,
         backgroundImage: `linear-gradient(to bottom, ${color} 0%, ${color} 52%, ${floor} 100%)`,
       }}

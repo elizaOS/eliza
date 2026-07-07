@@ -114,6 +114,8 @@ function getDuplicateIndices(items: string[]): Set<number> {
 /* ── Types ────────────────────────────────────────────────────────── */
 
 export interface CharacterIdentityPanelProps {
+  nameText: string;
+  systemText: string;
   bioText: string;
   handleFieldEdit: (field: string, value: unknown) => void;
   t: (key: string, opts?: { defaultValue?: string }) => string;
@@ -146,10 +148,34 @@ export interface CharacterExamplesPanelProps {
 /* ── CharacterIdentityPanel ──────────────────────────────────────── */
 
 export function CharacterIdentityPanel({
+  nameText,
+  systemText,
   bioText,
   handleFieldEdit,
   t,
 }: CharacterIdentityPanelProps) {
+  const { ref: nameRef, agentProps: nameAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "identity-name",
+      role: "text-input",
+      label: t("common.name", { defaultValue: "Name" }),
+      group: "identity",
+      description: "Edit the agent's name",
+      getValue: () => nameText,
+      onFill: (value) => handleFieldEdit("name", value),
+    });
+  const { ref: systemRef, agentProps: systemAgentProps } =
+    useAgentElement<HTMLTextAreaElement>({
+      id: "identity-system-prompt",
+      role: "textarea",
+      label: t("settings.identity.systemPromptLabel", {
+        defaultValue: "System prompt",
+      }),
+      group: "identity",
+      description: "Edit the agent's system prompt / personality",
+      getValue: () => systemText,
+      onFill: (value) => handleFieldEdit("system", value),
+    });
   const { ref: bioRef, agentProps: bioAgentProps } =
     useAgentElement<HTMLTextAreaElement>({
       id: "identity-bio",
@@ -164,19 +190,56 @@ export function CharacterIdentityPanel({
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
         <span className="text-xs font-medium text-muted">
+          {t("common.name", { defaultValue: "Name" })}
+        </span>
+        <Input
+          ref={nameRef}
+          value={nameText}
+          placeholder={t("startupshell.AgentName", {
+            defaultValue: "Agent name",
+          })}
+          onChange={(e: ChangeEvent<HTMLInputElement>) =>
+            handleFieldEdit("name", e.target.value)
+          }
+          className="h-9 w-full rounded-none border-0 border-b border-border/40 bg-transparent px-0 text-sm text-txt"
+          {...nameAgentProps}
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <span className="text-xs font-medium text-muted">
+          {t("settings.identity.systemPromptLabel", {
+            defaultValue: "System prompt",
+          })}
+        </span>
+        <Textarea
+          ref={systemRef}
+          value={systemText}
+          rows={3}
+          placeholder={t("charactereditor.SystemPromptPlaceholder", {
+            defaultValue: "Write in first person...",
+          })}
+          onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+            handleFieldEdit("system", e.target.value)
+          }
+          className="w-full resize-none min-h-[5rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt sm:min-h-[10rem] lg:min-h-[14rem]"
+          {...systemAgentProps}
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <span className="text-xs font-medium text-muted">
           {t("charactereditor.AboutMe", { defaultValue: "About Me" })}
         </span>
         <Textarea
           ref={bioRef}
           value={bioText}
-          rows={8}
+          rows={2}
           placeholder={t("charactereditor.AboutMePlaceholder", {
             defaultValue: "Describe who your agent is...",
           })}
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("bio", e.target.value)
           }
-          className="w-full resize-none min-h-[8rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt"
+          className="w-full resize-none min-h-[3.5rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt sm:min-h-[6rem] lg:min-h-[8rem]"
           {...bioAgentProps}
         />
       </div>

@@ -329,6 +329,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(String(systemMessage?.content ?? "")).toContain(
 			"prioritize syntactically valid runnable code",
 		);
+		expect(String(systemMessage?.content ?? "")).toContain(
+			"goals -> OWNER_GOALS",
+		);
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");
 		}
@@ -985,6 +988,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		).toBe(false);
 		expect(params.grammar).not.toContain(
 			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
+		);
+		const systemMessage = (
+			firstCall?.[1] as {
+				messages?: Array<{ content?: unknown }>;
+			}
+		).messages?.[0];
+		expect(String(systemMessage?.content ?? "")).toContain(
+			"goals -> tasks + OWNER_GOALS, never work threads",
 		);
 	});
 

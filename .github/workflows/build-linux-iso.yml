@@ -108,6 +108,17 @@ jobs:
         # line. Install it explicitly here so the smoke check can run.
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends just ripgrep
 
+      - name: Setup Bun
+        # `just build` depends on `just elizaos-app`, whose ELIZAOS_BUILD_APP=1
+        # in-CI path bootstraps the workspace and compiles the Electrobun
+        # desktop artifact with bun. The runner image ships no bun, so the
+        # recipe died with `bun: command not found` (exit 127) the moment the
+        # static-smoke gate stopped masking it. Same pinned action + version
+        # the test workflows use.
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
+
       - name: Register qemu-user-static binfmt (non-amd64 only)
         if: matrix.arch != 'amd64'
         # tonistiigi/binfmt is the canonical container image for registering

@@ -23,6 +23,7 @@ import type {
   ChatTurnStatus,
   ImageAttachment,
 } from "../../api/client-types-chat";
+import type { AsrProvider } from "../../api/client-types-config";
 import {
   VOICE_CONTROL_EVENT,
   type VoiceControlEventDetail,
@@ -379,6 +380,13 @@ export function useShellController(): ShellController {
   // `stopSpeaking` into a ref the clear/switch handlers can call at gesture time
   // without a definition-order/closure problem. Defaults to a no-op until wired.
   const stopSpeakingRef = React.useRef<() => void>(() => {});
+  // The resolved ASR provider is loaded by `voiceOutput` (useShellVoiceOutput)
+  // far below, but `startCapture` (which needs it to pick the STT backend) is
+  // defined above it. Mirror it into a ref at render time — same closure/order
+  // workaround as `stopSpeakingRef` — so capture reads the current provider at
+  // gesture time. `undefined` until the voice config first loads, which the
+  // capture factory treats as "local-inference-or-browser default".
+  const asrProviderRef = React.useRef<AsrProvider | undefined>(undefined);
   // Guards the capture-failure notice so the hands-free re-listen loop's retries
   // (which re-call startCapture every ~250ms) don't spam the toast; cleared on
   // the next successful start so a later failure re-notifies.
@@ -832,6 +840,15 @@ export function useShellController(): ShellController {
       // configured sensitivity. Only consumed by the local-inference backend.
       const handle = createVoiceCapture({
         localAsrAutoStop: loadVadAutoStop(),
+        // Route to the configured STT backend. Without this the factory only
+        // ever saw `undefined` and could never select the `eliza-cloud` /
+        // `openai` cloud STT path — on a cloud box with no local ASR assets it
+        // silently fell through to browser SpeechRecognition instead of
+        // `/api/asr/cloud`. Passing the resolved provider makes the documented
+        // cloud default reachable from the ambient/hands-free capture surface.
+        ...(asrProviderRef.current
+          ? { asrProvider: asrProviderRef.current }
+          : {}),
         // Push-to-talk dictation ends on release, so the native recognizer must
         // commit its running interim as the final turn even if its silence
         // window hasn't fired. Converse stops only on toggle-off, where a
@@ -1057,6 +1074,7 @@ export function useShellController(): ShellController {
   // Wire the forward ref so the conversation-switch / clear handlers (defined
   // above `voiceOutput`) can stop in-flight assistant speech at gesture time.
   stopSpeakingRef.current = voiceOutput.stopSpeaking;
+  asrProviderRef.current = voiceOutput.asrProvider;
 
   // `recording` (push-to-talk press or continuous capture) wins over an
   // in-flight response so the pill shows the red "listening" pulse the instant

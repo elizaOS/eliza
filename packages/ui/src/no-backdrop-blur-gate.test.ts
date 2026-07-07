@@ -53,22 +53,58 @@ function collectSourceFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+// The liquid-glass system reintroduced backdrop blur ON A NAMED SET OF GLASS
+// SURFACES by explicit product direction (the frosted chat sheet + notification
+// shade + home glass — #10698 revisited: the frosted look is worth the battery
+// cost on these floating surfaces, whose blur is inactive at rest and gated to
+// the open/animating state). #9141's default stands everywhere else: this gate
+// still fails the build on any NEW backdrop-filter outside this list, so an
+// accidental blur creeping onto an unrelated surface is still caught. To extend
+// the list, add the surface here WITH a reason — do not widen the regex.
+const ALLOWED_BLUR = new Set<string>([
+  "packages/ui/src/components/shell/liquid-glass.tsx",
+  "packages/ui/src/components/shell/liquid-glass.stories.tsx",
+  "packages/ui/src/components/shell/home-glass.ts",
+  "packages/ui/src/components/shell/wallpaper-idiom.ts",
+  "packages/ui/src/components/shell/ContinuousChatOverlay.tsx",
+  "packages/ui/src/components/shell/NotificationsHomeCenter.tsx",
+  "packages/ui/src/components/shell/NotificationBanners.tsx",
+  "packages/ui/src/components/shell/BuildBadge.tsx",
+  "packages/ui/src/components/chat/widgets/home-widget-card.tsx",
+  // Comment-only reference (documents the notification-stack blur it mirrors);
+  // no runtime backdrop-filter of its own.
+  "packages/ui/src/hooks/useHorizontalPager.ts",
+]);
+
 describe("no backdrop-blur gate (#9141, battery)", () => {
-  it("no backdrop-filter / backdrop-blur survives anywhere in authored app UI source", () => {
+  it("no backdrop-filter / backdrop-blur survives outside the allow-listed glass surfaces", () => {
     const offenders: string[] = [];
     for (const { label, root } of SOURCE_ROOTS) {
       if (!existsSync(root)) continue;
       for (const file of collectSourceFiles(root)) {
         if (BACKDROP_FILTER.test(readFileSync(file, "utf8"))) {
-          offenders.push(
-            `${label}/${file.slice(root.length + 1).replace(/\\/g, "/")}`,
-          );
+          const rel = `${label}/${file.slice(root.length + 1).replace(/\\/g, "/")}`;
+          if (!ALLOWED_BLUR.has(rel)) offenders.push(rel);
         }
       }
     }
     expect(
       offenders,
-      `backdrop-filter must stay removed for battery; found in: ${JSON.stringify(offenders)}`,
+      `backdrop-filter must stay removed for battery outside the allow-listed glass surfaces; found in: ${JSON.stringify(offenders)}`,
     ).toEqual([]);
+  });
+
+  it("every allow-listed blur surface still exists and still uses backdrop-filter (no stale entries)", () => {
+    for (const rel of ALLOWED_BLUR) {
+      const abs = rel.replace(
+        /^packages\/ui\/src\//,
+        `${import.meta.dirname}/`,
+      );
+      expect(existsSync(abs), `${rel} is allow-listed but missing`).toBe(true);
+      expect(
+        BACKDROP_FILTER.test(readFileSync(abs, "utf8")),
+        `${rel} is allow-listed but no longer uses backdrop-filter — remove it`,
+      ).toBe(true);
+    }
   });
 });

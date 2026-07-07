@@ -46,6 +46,7 @@ export default defineConfig({
       `${packageRootFromRepo}/test/global-pause.integration.test.ts`,
       `${packageRootFromRepo}/test/approval-queue.integration.test.ts`,
       `${packageRootFromRepo}/test/approval-queue-notify-error.integration.test.ts`,
+      `${packageRootFromRepo}/test/resolve-referent-action.integration.test.ts`,
     ],
     exclude: [
       "dist/**",

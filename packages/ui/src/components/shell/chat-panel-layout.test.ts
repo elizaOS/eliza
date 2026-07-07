@@ -217,6 +217,54 @@ describe("resolveChatPanelLayout", () => {
     expect(276 + 12 + buggyPanelMaxH).toBeGreaterThan(393);
   });
 
+  it("seats the panel between the notch and the keyboard on the measured device geometry (ih542 vv542 sh932, kbd 390)", () => {
+    // The EXACT device chip that reproduced the bug: keyboard open in the
+    // continuous-chat overlay, ih542 vv542 ce873 sh932. Post the readViewport
+    // fix the keyboard is DETECTED via screen.height - vv.height = 390, so both
+    // keyboardInset and effectiveKeyboardInset are 390 (visual viewport already
+    // reflects the shrink) and nothing extra is subtracted. The panel bounds to
+    // the 542px visual viewport, its bottom rides the keyboard top, and its top
+    // lands one notch-margin below the screen top — NO wallpaper void, composer
+    // visible above the keyboard.
+    const KB = 390;
+    const VISIBLE = 542; // visualViewport.height with the keyboard up
+    const PHYS = 932; // screen.height
+    const input: ChatPanelLayoutInput = {
+      viewportH: VISIBLE, // sizes to the visible area, not lvh/screen
+      bottomPad: 12, // keyboardLiftActive padding (0.75rem)
+      keyboardInset: KB, // now DETECTED (was 0 pre-fix -> the void)
+      effectiveKeyboardInset: KB,
+      safeAreaTopPx: NOTCH,
+      fullBleed: false,
+    };
+    const { topMargin, panelMaxH } = resolveChatPanelLayout(input);
+    // No unreported lift: keyboardInset === effectiveKeyboardInset, so the panel
+    // sizes cleanly against the visible viewport.
+    expect(panelMaxH).toBe(
+      VISIBLE - 12 - Math.max(SHEET_TOP_MARGIN, NOTCH + 8),
+    );
+    expect(PHYS - KB).toBe(VISIBLE); // the keyboard top IS the visible bottom
+    // panelTopFromBottom measures the panel TOP from the physical screen bottom
+    // (effectiveKeyboardInset + bottomPad + panelMaxH). The panel top must land
+    // topMargin below the physical screen TOP — i.e. PHYS - topMargin measured
+    // from the bottom — so it is on-screen, never above the notch, no void.
+    const topFromBottom = panelTopFromBottom(input, panelMaxH);
+    expect(topFromBottom).toBe(PHYS - topMargin);
+    // In screen-top coordinates the panel top is exactly topMargin (below the
+    // notch): PHYS - topFromBottom = 72.
+    expect(PHYS - topFromBottom).toBe(topMargin);
+    // The panel bottom sits just above the keyboard: the overlay is lifted the
+    // full keyboard height (KB) plus its own composer padding (bottomPad), so
+    // the panel bottom in screen-top coords is PHYS - KB - bottomPad, one small
+    // 0.75rem gap above the keyboard top (VISIBLE = PHYS - KB). No void.
+    const panelBottomFromTop = PHYS - (KB + input.bottomPad);
+    expect(panelBottomFromTop).toBe(VISIBLE - input.bottomPad);
+    expect(panelBottomFromTop - (PHYS - topFromBottom)).toBe(panelMaxH);
+    // The composer (overlay bottom) is lifted the full keyboard height, so it is
+    // visible above the keyboard rather than hidden behind it.
+    expect(input.effectiveKeyboardInset).toBe(KB);
+  });
+
   it("treats a non-finite safe-area measurement as zero", () => {
     const { topMargin } = resolveChatPanelLayout({
       viewportH: 800,

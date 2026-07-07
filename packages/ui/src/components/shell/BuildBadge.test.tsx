@@ -6,6 +6,7 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Z_BUILD_BADGE } from "../../lib/floating-layers";
 import { BuildBadge } from "./BuildBadge";
 
 const BUILD_INFO = {
@@ -42,8 +43,8 @@ describe("BuildBadge", () => {
     expect(badge.textContent).toContain("58f6bb3beb · Jul 03 17:42 MDT");
     const anchor = badge.closest("[data-aesthetic-overlay-ignore='true']");
     expect(anchor).not.toBeNull();
-    expect((anchor as HTMLElement).style.paddingBottom).toContain(
-      "--eliza-continuous-chat-clearance",
+    expect((anchor as HTMLElement).style.paddingTop).toContain(
+      "safe-area-inset-top",
     );
     expect(fetch).toHaveBeenCalledWith(
       "/build-info.json",
@@ -51,14 +52,15 @@ describe("BuildBadge", () => {
     );
   });
 
-  it("reserves the floating chat clearance above the bottom edge", async () => {
+  it("anchors to the top-left, clearing the top safe-area inset", async () => {
     mockFetchOk(BUILD_INFO);
     render(<BuildBadge />);
     await screen.findByTestId("build-badge");
     const anchor = screen.getByTestId("build-badge-anchor");
-    expect(anchor.getAttribute("style")).toContain(
-      "--eliza-continuous-chat-clearance",
-    );
+    expect(anchor.className).toContain("top-0");
+    expect(anchor.className).toContain("left-0");
+    expect(anchor.getAttribute("style")).toContain("safe-area-inset-top");
+    expect(anchor.style.zIndex).toBe(String(Z_BUILD_BADGE));
   });
 
   it("falls back to commit + builtAt when label is missing", async () => {
@@ -110,6 +112,37 @@ describe("BuildBadge", () => {
     expect(screen.queryByTestId("build-badge-diag")).toBeNull();
     // Badge is still present after closing diagnostics.
     expect(screen.queryByTestId("build-badge")).not.toBeNull();
+  });
+
+  it("(d) renders the live geometry probe line ON the badge (no tap needed)", async () => {
+    mockFetchOk(BUILD_INFO);
+    render(<BuildBadge />);
+    // The badge must render first (stamped build), which gates the geometry line.
+    await screen.findByTestId("build-badge");
+    const geom = await screen.findByTestId("build-badge-geom");
+    // Compact single line with every probed geometry value so the NEXT device
+    // screenshot reveals the exact viewport numbers — innerHeight (ih),
+    // visualViewport (vv), documentElement.clientHeight (ce), screen.height
+    // (sh), and the 100lvh/100dvh offsetHeight probes (lv/dv). jsdom returns 0
+    // for these, but the keys must all be present and correctly formatted.
+    for (const key of ["ih", "vv", "ce", "sh", "lv", "dv"]) {
+      expect(geom.textContent).toMatch(new RegExp(`${key}[0-9?]`));
+    }
+  });
+
+  it("(d) surfaces the lvh/dvh offset probes in the diagnostics overlay", async () => {
+    mockFetchOk(BUILD_INFO);
+    const user = userEvent.setup();
+    render(<BuildBadge />);
+    const badge = await screen.findByTestId("build-badge");
+    await user.click(badge);
+    const diag = await screen.findByTestId("build-badge-diag");
+    // The offsetHeight-based 100lvh/100dvh probes test the viewport-unit
+    // measurement hypothesis on device.
+    expect(diag.textContent).toContain("100lvh(offset)");
+    expect(diag.textContent).toContain("100dvh(offset)");
+    expect(diag.textContent).toContain("docEl.clientH");
+    expect(diag.textContent).toContain("screen.height");
   });
 
   it("renders nothing when build info is unavailable", async () => {

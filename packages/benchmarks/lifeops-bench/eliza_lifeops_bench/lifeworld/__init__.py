@@ -10,6 +10,7 @@ Public exports:
 
 from __future__ import annotations
 
+from .corpus import CorpusLoadOptions, CorpusSelector, generate_corpus_world, load_corpus_rows
 from .entities import EntityKind
 from .generators import WorldGenerator
 from .world import LifeWorld, WorldSnapshot
@@ -22,8 +23,12 @@ def world_state_hash(world: LifeWorld) -> str:
 
 __all__ = [
     "EntityKind",
+    "CorpusLoadOptions",
+    "CorpusSelector",
     "LifeWorld",
     "WorldGenerator",
     "WorldSnapshot",
+    "generate_corpus_world",
+    "load_corpus_rows",
     "world_state_hash",
 ]

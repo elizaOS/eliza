@@ -104,5 +104,4 @@ describe("shouldSkipBuildStamp", () => {
 
     expect(bundle).toEqual({ "assets/app.js": { type: "chunk" } });
   });
-
 });

@@ -132,6 +132,11 @@ export function logProviderAccess(
 	access: {
 		providerName: string;
 		data: ProviderAccessData;
+		sha256?: string;
+		tokenCount?: number;
+		position?: number;
+		spanStart?: number;
+		spanEnd?: number;
 		purpose: string;
 		query?: ProviderAccessData;
 	},

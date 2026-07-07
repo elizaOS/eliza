@@ -38,13 +38,29 @@ electrobun-wgpu {
 
 /* ── Global resets ──────────────────────────────────────────────────── */
 
+:root {
+  --eliza-large-viewport-height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --eliza-large-viewport-height: 100dvh;
+  }
+}
+
+@supports (height: 100lvh) {
+  :root {
+    --eliza-large-viewport-height: 100lvh;
+  }
+}
+
 html,
 body {
   width: 100%;
   max-width: 100%;
   height: 100%;
   margin: 0;
-  background: var(--launch-bg, #160d07);
+  background: var(--launch-bg, #000000);
   overflow: hidden;
   /* Split the axes instead of a blanket `overscroll-behavior: none`.
      `-y: none` keeps the vertical rubber-band / pull-to-refresh suppression
@@ -69,7 +85,7 @@ body {
   overflow: hidden;
   font-family: var(--font-body);
   color: var(--text);
-  background: var(--launch-bg, #160d07);
+  background: var(--launch-bg, #000000);
 }
 
 html.eliza-chat-overlay-shell,
@@ -96,105 +112,57 @@ html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
 /* `body.pwa-standalone` mirrors the native mobile lockdown for an INSTALLED
    PWA on the web platform (iOS home-screen app): `touch-action: pan-y` hands
    every horizontal drag to the app's rail/grabber gestures (only vertical pan
-   stays native), and the `#root` 100lvh lock (full-bleed to the true bottom,
-   #14411) keeps a stray drag from scrolling the whole app off-screen while the
-   React tree reaches the physical screen edge — without this the home-screen swipes are eaten by
-   iOS WebKit's own page pan. See platform/init.ts isStandalonePwa(). */
+   stays native). The body is scroll-locked via the non-fixed lock in base.css
+   (exact-viewport height + clipped overflow + `overscroll-behavior: none`), NOT
+   `position: fixed` — the fixed body was what collapsed the fixed-descendant
+   ICB and painted the home-indicator black band. See platform/init.ts
+   isStandalonePwa(). */
 body.native,
 body.pwa-standalone {
-  position: fixed;
   touch-action: pan-y;
 }
 
-/* Native Capacitor build: the WKWebView is the app window, so a fixed body's
+/* Installed iOS PWAs can report a large viewport (`100lvh`) that reaches the
+   physical screen while `100dvh` and `innerHeight` remain collapsed above the
+   home indicator. Size `html` to the large viewport so its overflow clip and
+   canvas do not truncate the reclaimed wallpaper/composer bottom paint. The
+   100vh->100dvh->100lvh stack keeps older engines on the best supported unit. */
+html:has(body.native),
+html:has(body.pwa-standalone) {
+  height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
+  height: 100dvh;
+  height: 100lvh;
+  background: transparent;
+}
+
+/* Native Capacitor build only: the WKWebView is the app window, so a fixed body's
    initial containing block IS the full screen — `inset: 0` fills it. */
 body.native {
+  position: fixed;
   inset: 0;
 }
 
-/* iOS SAFARI standalone PWA — fixed-body ICB collapse fix (kills the residual
-   bottom black band + restores the bottom flick zone).
-
-   #14293 made this body `position: fixed` for the first time on the iOS *Safari*
-   standalone PWA (not the Capacitor native build). On Safari's WKWebView a
-   `position: fixed` BODY collapses the initial containing block for descendant
-   `position: fixed` elements to the LAYOUT (small) viewport — ~59px shorter than
-   `100dvh` (the large viewport) on a home-indicator phone. So `inset: 0` on the
-   body — and every `fixed inset-0` layer inside it (the ImageBackground
-   wallpaper, the app-safe-area-floor) — anchored `bottom: 0` to that collapsed
-   box and stopped ~59px above the true screen bottom. Below them, html/body/#root
-   painted `--launch-bg` (#160d07) → the measured near-black band. The same
-   collapse seated the chat composer + its bottom flick zone ~59px high and left
-   the strip below OUTSIDE the fixed body box, where touches hit html
-   (touch-action: auto) and Safari's edge-pan ate the swipe-up.
-
-   Fix: pin the fixed body to the LARGE viewport height so its ICB fills the real
-   screen. `100lvh` is the large-viewport unit (stable regardless of the
-   fixed-body ICB collapse); `100dvh`/`100vh` are progressive-enhancement
-   fallbacks for engines without `lvh`. `top: 0; left: 0; right: 0` anchor it;
-   height (not `bottom: 0`) drives the extent so it reaches the true bottom. */
-body.pwa-standalone {
-  top: 0;
-  left: 0;
-  right: 0;
-  /* Explicitly release `bottom` (base.css's lockdown `inset: 0` sets it): with
-     top + height driving the box, a leftover `bottom: 0` would re-anchor the
-     fixed body to the collapsed layout-viewport bottom — the exact bug. */
-  bottom: auto;
-  height: 100vh;
-  height: 100dvh;
-  height: 100lvh;
-  /* BOTTOM-BAR FIX (r4): TRANSPARENT floor. The prior "defensive" warm-ember
-     color-mix(--launch-bg 82%, #ef5a1f) resolved to an OPAQUE rgb(61,27,11)
-     slab on the fixed body. It was meant only to hide a 1px sub-pixel seam, but
-     whenever the `fixed inset-0` wallpaper failed to reach the true bottom by
-     more than a hair (ICB rounding on device), that slab bled through as a
-     UNIFORM warm-brown BAR spanning the whole home-indicator zone under the
-     floating composer — the recurring "bottom bar" (r3.x). The wallpaper
-     (AppBackground, a `fixed inset-0` cover-fit layer that spans the full 100lvh
-     body) must be the ONLY thing visible at the bottom edge, lock-screen style.
-     Going transparent lets it own the edge; any residual seam falls through to
-     html/#root's near-black --launch-bg, which is ambient-consistent with a dark
-     wallpaper — never a bright warm bar. */
-  background-color: transparent;
-}
-
-/* RECLAIM THE BOTTOM STRIP (#14411): #root fills the LARGE viewport (100lvh),
-   not the small/dynamic one (100dvh). Previously #root clamped to 100dvh (the
-   collapsed layout viewport, ~873px on a home-indicator phone) and the ~59px
-   strip down to 100lvh (~932px, the true screen bottom) was only the body's
-   decorative ember floor — dead space the app never reached. Now the React
-   tree paints full-bleed to the physical bottom edge, like a native app. The
-   home-indicator safe area is handled as PADDING *inside* the app (the
-   composer + bottom rows already respect `env(safe-area-inset-bottom)` via
-   --safe-area-bottom), so interactive controls still sit above the indicator
-   while background content bleeds under it. Height stack (100vh → 100dvh →
-   100lvh) is the same progressive-enhancement trick the fixed body uses: older
-   engines without `lvh` fall back to `dvh`, then `vh`. */
+/* iOS Safari standalone PWA + native mobile: `html` owns the physical-bottom
+   clip, while `#root` and the app-shell column stay constrained to the dynamic
+   viewport. Safe-area padding stays inside the app so controls remain tappable
+   above the home indicator while the wallpaper can bleed underneath. */
 body.native #root,
 body.pwa-standalone #root {
   min-height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh). */
   min-height: 100dvh;
-  min-height: 100lvh;
   max-height: 100vh;
   max-height: 100dvh;
-  max-height: 100lvh;
   padding: 0;
   box-sizing: border-box;
 }
 
-/* RECLAIM THE BOTTOM STRIP (#14411): the app shell column (App.tsx) carries a
-   base `h-[100dvh]` that is correct for a desktop browser tab / popout, but in
-   the installed PWA it must fill the 100lvh #root above — otherwise the column
-   stops ~59px short of the true bottom and #root's own --launch-bg paints a
-   near-black band there. Pin it to the LARGE viewport (100lvh) with the same
-   100vh→100dvh→100lvh progressive-enhancement stack; height governs so the
-   column reaches the physical screen edge, full-bleed. */
 body.native [data-app-shell-root],
 body.pwa-standalone [data-app-shell-root] {
   height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh). */
   height: 100dvh;
-  height: 100lvh;
 }
 
 body.native textarea,
@@ -202,72 +170,48 @@ body.pwa-standalone textarea {
   resize: none;
 }
 
-/* ─── CSS-FIRST installed-PWA geometry (detection-independent) ───
-   Mirror of the `body.pwa-standalone` rules above, gated on the standalone/
-   fullscreen display-mode + a coarse pointer instead of the JS-added class.
-   This is the SOURCE OF TRUTH for the installed iOS PWA because the class does
-   not land on device (app/main.tsx runs a local setupPlatformStyles that never
-   tags the body — see base.css note + issue). Same three rules the class path
-   applies: `pan-y` (hand horizontal drags to the app rail/grabber), the #14319
-   large-viewport (100lvh) fixed-body geometry (kills the residual bottom black
-   band + restores the swipe-up flick zone), and the #root 100lvh lock (#14411:
-   full-bleed to the true bottom, reclaiming the ember-floor strip). Desktop
-   fullscreen (fine pointer) is excluded by `(pointer: coarse)`. */
+/* CSS-first installed-PWA geometry mirrors the class-path rules through
+   display-mode media queries because the JS-added `body.pwa-standalone` class is
+   not available early enough on every installed-web path. Coarse pointer keeps
+   desktop fullscreen outside this mobile shell contract. */
 @media all and (display-mode: standalone) and (pointer: coarse),
   all and (display-mode: fullscreen) and (pointer: coarse) {
-  /* biome-ignore lint/style/noDescendingSpecificity: intentional bare-body geometry that must apply regardless of the JS class landing. */
   body {
-    position: fixed;
     touch-action: pan-y;
-    top: 0;
-    left: 0;
-    right: 0;
-    /* Release `bottom` (base.css lockdown sets inset: 0 => bottom: 0): with
-       top + height driving the box, a leftover bottom would re-anchor the fixed
-       body to the collapsed layout-viewport bottom — the #14319 bug. */
-    bottom: auto;
-    height: 100vh;
-    height: 100dvh;
-    height: 100lvh;
-    /* BOTTOM-BAR FIX (r4): TRANSPARENT floor (mirror of the class-path rule).
-       An opaque warm-ember slab here bled through as a uniform brown bar in the
-       home-indicator zone whenever the fixed wallpaper missed the true bottom.
-       Transparent lets the full-bleed wallpaper own the bottom edge; any seam
-       falls through to html/#root's near-black --launch-bg, not a bright bar. */
-    background-color: transparent;
   }
 
-  /* biome-ignore lint/style/noDescendingSpecificity: intentional bare #root lock mirroring body.pwa-standalone #root. */
-  /* RECLAIM THE BOTTOM STRIP (#14411): #root fills the LARGE viewport (100lvh)
-     so the app paints full-bleed to the physical bottom edge instead of
-     clamping to 100dvh and leaving the ~59px lvh–dvh strip as a dead ember
-     floor. Mirror of the class-path `body.pwa-standalone #root` rule; the
-     home-indicator safe area is padded INSIDE the app (composer/bottom rows
-     use env(safe-area-inset-bottom)), not left as void below #root. Same
-     100vh→100dvh→100lvh progressive-enhancement stack the body uses. */
+  /* Media-query twin of the class-path html rule. It protects the installed PWA
+     before runtime classes settle, using the large viewport for the root clip and
+     transparent root paint so the wallpaper owns the physical bottom edge. */
+  html {
+    height: 100vh;
+    /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
+    height: 100dvh;
+    height: 100lvh;
+    background: transparent;
+  }
+
   body #root {
     min-height: 100vh;
+    /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh). */
     min-height: 100dvh;
-    min-height: 100lvh;
     max-height: 100vh;
     max-height: 100dvh;
-    max-height: 100lvh;
     padding: 0;
     box-sizing: border-box;
+    /* Keep launch paint out of the collapsed dynamic viewport so the fixed
+       AppBackground layer is the only visual owner of the bottom edge. */
+    background: transparent;
   }
 
-  /* biome-ignore lint/style/noDescendingSpecificity: intentional app-shell-column reclaim mirroring the class-path [data-app-shell-root] rule. */
-  /* RECLAIM THE BOTTOM STRIP (#14411): the app shell column (App.tsx) carries a
-     base `h-[100dvh]`; in the installed PWA it must fill the 100lvh #root or it
-     stops ~59px short and #root's --launch-bg paints a near-black band there.
-     Pin it to 100lvh (100vh→100dvh→100lvh progressive-enhancement) so the
-     column reaches the physical screen edge, full-bleed. */
+  /* biome-ignore lint/style/noDescendingSpecificity: intentional app-shell-column fill mirroring the class-path [data-app-shell-root] rule. */
   body [data-app-shell-root] {
     height: 100vh;
+    /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh). */
     height: 100dvh;
-    height: 100lvh;
   }
 
+  /* biome-ignore lint/style/noDescendingSpecificity: detection-independent mirror of the class-path `body.pwa-standalone textarea` rule; must apply on device where the JS class does not land. */
   body textarea {
     resize: none;
   }

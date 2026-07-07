@@ -48,6 +48,7 @@ import {
 } from "../voice/local-asr-capture";
 import {
   isLocalInferenceAsrReady,
+  transcribeCloudWav,
   transcribeLocalInferenceWav,
 } from "../voice/local-asr-transcribe";
 import {
@@ -193,6 +194,19 @@ function shouldUseLocalInferenceAsr(config: VoiceConfig | null): boolean {
   return config?.asr?.provider === "local-inference";
 }
 
+/**
+ * True when the config selects a cloud STT provider (`eliza-cloud` / `openai`).
+ * These capture the same WAV as the local path and POST it to `/api/asr/cloud`
+ * (the agent's cloud STT proxy) — the deterministic cloud transcriber, NOT the
+ * engine-dependent browser recognizer. Without this branch a `eliza-cloud`
+ * config silently fell through to browser SpeechRecognition, which is the wrong
+ * transcriber (and unreliable / absent on iOS PWA).
+ */
+function shouldUseCloudAsr(config: VoiceConfig | null): boolean {
+  const provider = config?.asr?.provider;
+  return provider === "eliza-cloud" || provider === "openai";
+}
+
 const ACTIVE_VOICE_SESSION_MODES = new Set<Exclude<VoiceSessionMode, "idle">>([
   "compose",
   "push-to-talk",
@@ -271,7 +285,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const localAsrRecorderRef = useRef<LocalAsrRecorder | null>(null);
   const sttBackendRef = useRef<
-    "browser" | "local-inference" | "talkmode" | null
+    "browser" | "local-inference" | "cloud" | "talkmode" | null
   >(null);
   const talkModeHandlesRef = useRef<PluginListenerHandle[]>([]);
   // In-flight talk-mode listener registration. talkModeHandlesRef is only
@@ -505,6 +519,18 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         shouldUseLocalInferenceAsr(voiceConfigRef.current) &&
         isLocalAsrCaptureSupported();
       if (localAsrSupported) {
+        if (!cancelled) {
+          setSupported(true);
+        }
+        return;
+      }
+      // Cloud STT (`eliza-cloud` / `openai`) records the same WAV as the local
+      // path, so voice is supported whenever WAV capture primitives exist —
+      // independent of the browser SpeechRecognition engine (absent on iOS PWA).
+      const cloudAsrSupported =
+        shouldUseCloudAsr(voiceConfigRef.current) &&
+        isLocalAsrCaptureSupported();
+      if (cloudAsrSupported) {
         if (!cancelled) {
           setSupported(true);
         }
@@ -794,6 +820,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     [],
   );
 
+  const transcribeCloudAudio = useCallback(
+    async (audio: Uint8Array, signal?: AbortSignal): Promise<string> => {
+      return transcribeCloudWav(audio, { signal });
+    },
+    [],
+  );
+
   const startLocalInferenceRecognition = useCallback(
     async (mode: Exclude<VoiceCaptureMode, "idle">) => {
       if (!shouldUseLocalInferenceAsr(voiceConfigRef.current)) {
@@ -813,6 +846,40 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         const recorder = await startLocalAsrRecorder();
         localAsrRecorderRef.current = recorder;
         sttBackendRef.current = "local-inference";
+        enabledRef.current = true;
+        listeningModeRef.current = mode;
+        setSupported(true);
+        setCaptureMode(mode);
+        setIsListening(true);
+        return true;
+      } catch {
+        localAsrRecorderRef.current = null;
+        return false;
+      }
+    },
+    [],
+  );
+
+  // Cloud STT: capture the SAME mono PCM16 WAV as the local-inference path and
+  // POST it to `/api/asr/cloud` on stop (see stopListening). This is the real
+  // transcriber for the `eliza-cloud` / `openai` config default — the browser
+  // recognizer is engine-dependent (and unreliable/absent on iOS PWA), so a
+  // cloud config must not fall through to it. Reuses `localAsrRecorderRef` for
+  // the mic recorder; `sttBackendRef` = "cloud" routes the stop-time transcribe.
+  const startCloudRecognition = useCallback(
+    async (mode: Exclude<VoiceCaptureMode, "idle">) => {
+      if (!shouldUseCloudAsr(voiceConfigRef.current)) {
+        return false;
+      }
+      // No WAV capture primitives (no getUserMedia / AudioContext) → there is no
+      // WAV to POST; defer to the browser recognizer as the sole client option.
+      if (!isLocalAsrCaptureSupported()) {
+        return false;
+      }
+      try {
+        const recorder = await startLocalAsrRecorder();
+        localAsrRecorderRef.current = recorder;
+        sttBackendRef.current = "cloud";
         enabledRef.current = true;
         listeningModeRef.current = mode;
         setSupported(true);
@@ -1016,6 +1083,15 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         return;
       }
 
+      // Cloud STT (`eliza-cloud` / `openai`): the deterministic transcriber for
+      // that config default. Selected ahead of talk-mode/browser so a cloud
+      // config on the PWA records a WAV for `/api/asr/cloud` instead of falling
+      // through to the engine-dependent browser recognizer.
+      const cloudStarted = await startCloudRecognition(mode);
+      if (cloudStarted) {
+        return;
+      }
+
       if (shouldPreferNativeTalkMode()) {
         const started = await startTalkModeRecognition(mode);
         if (started) {
@@ -1027,6 +1103,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [
       startBrowserRecognition,
+      startCloudRecognition,
       startLocalInferenceRecognition,
       startTalkModeRecognition,
     ],
@@ -1070,6 +1147,31 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             });
           }
         }
+      } else if (sttBackendRef.current === "cloud") {
+        // Symmetric with local-inference: stop the recorder, POST the WAV to
+        // `/api/asr/cloud`, and apply the returned transcript. A cloud failure
+        // is logged (fail-loud, no silent downgrade to browser STT) so the turn
+        // just doesn't submit rather than being transcribed by the wrong engine.
+        const recorder = localAsrRecorderRef.current;
+        localAsrRecorderRef.current = null;
+        if (recorder) {
+          try {
+            const audio = await recorder.stop();
+            const transcript = await transcribeCloudAudio(audio);
+            applyTranscriptUpdate(transcript, true, {
+              mode:
+                normalizeActiveVoiceSessionMode(mode) ??
+                normalizeActiveVoiceSessionMode(listeningModeRef.current) ??
+                "compose",
+              source: "cloud",
+              metadata: { source: "cloud" },
+            });
+          } catch (error) {
+            ttsDebug("asr:cloud:error", {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
       } else {
         recognitionRef.current?.stop();
         await new Promise((resolve) =>
@@ -1079,7 +1181,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
       finalizeRecognition(submit);
     },
-    [applyTranscriptUpdate, finalizeRecognition, transcribeLocalInferenceAudio],
+    [
+      applyTranscriptUpdate,
+      finalizeRecognition,
+      transcribeCloudAudio,
+      transcribeLocalInferenceAudio,
+    ],
   );
 
   const toggleListening = useCallback(() => {

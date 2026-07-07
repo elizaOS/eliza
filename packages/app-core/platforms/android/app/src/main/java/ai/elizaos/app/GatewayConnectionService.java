@@ -11,6 +11,7 @@ import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
+import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
@@ -26,6 +27,7 @@ import ai.elizaos.app.R;
  * connection is managed by the Capacitor gateway plugin on the JS side.
  */
 public class GatewayConnectionService extends Service {
+    private static final String TAG = "GatewayConnection";
 
     private static final String CHANNEL_ID = "gateway_connection";
     private static final int NOTIFICATION_ID = 1;
@@ -219,7 +221,19 @@ public class GatewayConnectionService extends Service {
             context.startService(intent);
             return;
         }
-        context.startForegroundService(intent);
+        try {
+            context.startForegroundService(intent);
+        } catch (IllegalStateException error) {
+            // error-policy:J1 process boundary — background FGS starts are
+            // disallowed while the app is force-stopped / freshly replaced
+            // (ForegroundServiceStartNotAllowedException extends
+            // IllegalStateException; pre-API-31 throws the base class).
+            // A boot/package-replace receiver hitting this must not crash
+            // the whole process ("Eliza has stopped" right after an APK
+            // update); the service starts on the next foreground entry via
+            // MainActivity instead.
+            Log.w(TAG, "Deferred GatewayConnectionService start; background FGS not allowed now: " + error.getMessage());
+        }
     }
 
     /** Request a graceful stop via the ACTION_STOP intent. */

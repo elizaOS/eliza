@@ -7,9 +7,15 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { elizaGlobalsMock } = vi.hoisted(() => ({
+  elizaGlobalsMock: {
+    base: "http://localhost:31337",
+    token: "test-token",
+  },
+}));
 vi.mock("../utils/eliza-globals", () => ({
-  getElizaApiBase: () => "http://localhost:31337",
-  getElizaApiToken: () => "test-token",
+  getElizaApiBase: () => elizaGlobalsMock.base,
+  getElizaApiToken: () => elizaGlobalsMock.token,
 }));
 
 import { reportComposerActivity } from "./report-composer-activity";
@@ -17,6 +23,8 @@ import { reportComposerActivity } from "./report-composer-activity";
 const fetchMock = vi.fn(() => Promise.resolve(new Response("{}")));
 
 beforeEach(() => {
+  elizaGlobalsMock.base = "http://localhost:31337";
+  elizaGlobalsMock.token = "test-token";
   fetchMock.mockClear();
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -86,5 +94,18 @@ describe("reportComposerActivity (#14679)", () => {
         draftLength: 3,
       }),
     ).not.toThrow();
+  });
+
+  it("skips direct cloud-agent bases that do not expose composer telemetry", () => {
+    elizaGlobalsMock.base =
+      "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai";
+
+    reportComposerActivity({
+      activity: "typing_started",
+      surface: "continuous_chat_overlay",
+      draftLength: 3,
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

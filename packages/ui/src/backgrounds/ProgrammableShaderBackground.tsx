@@ -295,15 +295,12 @@ export function ProgrammableShaderBackground({
       className="pointer-events-none fixed inset-0 overflow-hidden"
       style={{
         zIndex: 0,
-        // BOTTOM-BAR ROOT CAUSE (device r6, JS-MEASURED cure): drop this
-        // `fixed inset-0` GLSL wallpaper's bottom by the MEASURED
-        // fixed-descendant ICB collapse gap (`--standalone-bottom-reclaim`, set
-        // in JS from window/visualViewport vs documentElement.clientHeight) so
-        // it reaches the TRUE physical bottom on the installed iOS standalone
-        // PWA instead of stopping ~59px short and exposing the launch-bg bar.
-        // The prior `max(0px, 100lvh - 100dvh)` CSS-unit calc was a NO-OP on
-        // device (collapsed ICB resolves lvh === dvh). Var is a hard 0
-        // off-standalone. Same reclaim as the composer + other bg layers.
+        // BOTTOM-BAR FIX (consume #15036 reclaim): the installed iOS standalone
+        // PWA collapses this `fixed` layer's containing block to the small ICB
+        // (`ce873` vs physical `sh932`), so a bare `inset-0` stops the GLSL
+        // field ~59px above the home-indicator edge — the recurring black strip.
+        // Extend to the TRUE physical bottom by the JS-MEASURED
+        // `--standalone-bottom-reclaim` (hard 0, thus no-op, off native).
         bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET,
         backgroundColor: color,
       }}

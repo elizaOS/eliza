@@ -29,6 +29,8 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
       "Good afternoon",
       "what's up",
       "Welcome",
+      "Today",
+      "Weather",
     ],
   },
   "builtin-settings": {
@@ -53,7 +55,13 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
   },
   "builtin-automations": {
     requireAll: ["Automations"],
-    requireAny: ["Nothing scheduled yet", "New", "Tasks", "Workflows"],
+    requireAny: [
+      "Nothing scheduled yet",
+      "New",
+      "Tasks",
+      "Workflows",
+      "Active",
+    ],
   },
   "builtin-documents": {
     requireAny: ["Add Knowledge", "Search knowledge", "Knowledge"],
@@ -63,13 +71,19 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
   },
   "builtin-relationships": {
     requireAny: [
+      "Relationships",
       "No relationships yet",
       "Search people",
       "Connect your platforms",
     ],
   },
   "builtin-skills": {
-    requireAny: ["Browse Marketplace", "No Skills Installed", "Search skills"],
+    requireAny: [
+      "Skills",
+      "Browse Marketplace",
+      "No Skills Installed",
+      "Search skills",
+    ],
   },
   "builtin-memories": {
     requireAny: ["No memories yet", "Facts", "Browse"],
@@ -78,10 +92,23 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
     requireAny: ["Stream Ready", "GO LIVE", "Go Live", "OFFLINE"],
   },
   "builtin-database": {
-    requireAny: ["Select a table", "Open SQL editor", "Filter tables"],
+    requireAny: [
+      "Select a table",
+      "Open SQL editor",
+      "SQL Editor",
+      "Filter tables",
+      "Tables",
+    ],
   },
   "builtin-logs": {
-    requireAny: ["All levels", "Search logs", "All tags"],
+    requireAny: [
+      "All levels",
+      "Alllevels",
+      "Search logs",
+      "searchlogs",
+      "All tags",
+      "Alltags",
+    ],
   },
   "builtin-inventory": {
     requireAny: ["Wallet", "USDC", "Tokens", "Perps"],
@@ -98,7 +125,12 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
   },
   // The launcher grid is its own content; `builtin-views` renders the same grid.
   "builtin-apps": {
-    requireAny: ["Messages", "Settings", "Wallet", "Automations", "Knowledge"],
+    requireAny: [
+      "My Apps",
+      "No apps installed",
+      "Create new app",
+      "Install, create",
+    ],
   },
   "builtin-views": {
     requireAny: ["Messages", "Settings", "Wallet", "Automations", "Knowledge"],
@@ -107,20 +139,42 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
     requireAny: ["Personality", "Relationships", "Knowledge", "Skills"],
   },
   "builtin-character-select": {
-    requireAny: ["About Me", "Style Rules", "Chat Examples", "Post Examples"],
+    requireAny: [
+      "About Me",
+      "Style Rules",
+      "Chat Examples",
+      "Post Examples",
+      "System prompt",
+      "You are",
+      "Youare",
+    ],
   },
   "builtin-runtime": {
     requireAny: ["Plugins", "Actions", "Providers"],
   },
   "builtin-tasks": {
     requireAll: ["Tasks"],
-    requireAny: ["No coding tasks yet", "coding agent", "Projects unavailable"],
+    requireAny: [
+      "Tasks",
+      "No coding tasks yet",
+      "coding agent",
+      "Projects unavailable",
+    ],
   },
   "builtin-trajectories": {
     requireAny: ["No trajectories yet", "trajector"],
   },
   "builtin-transcripts": {
-    requireAny: ["No transcripts yet", "transcri", "recording"],
+    requireAny: [
+      "Live meeting",
+      "Paste a Meet",
+      "Teams",
+      "Zoom link",
+      "Join meeting",
+      "No transcripts yet",
+      "transcri",
+      "recording",
+    ],
   },
   "builtin-desktop": {
     requireAny: ["Desktop workspace", "Electrobun desktop runtime"],

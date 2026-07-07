@@ -15,8 +15,8 @@
                     <view key="view" contentMode="scaleToFill" id="snD-IY-ifK">
                         <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
                         <autoresizingMask key="autoresizingMask"/>
-                        <!-- #ef5a1f (default home-background orange) in sRGB to 3 decimals: matches the React home so the launch screen does not flash a different orange (issue #9565). -->
-                        <color key="backgroundColor" red="0.937" green="0.353" blue="0.122" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <!-- #000000 (default home-background base, black): matches the React home so the launch screen does not flash a different color (issue #9565). -->
+                        <color key="backgroundColor" red="0.0" green="0.0" blue="0.0" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                     </view>
                 </viewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="iYj-Kq-Ea1" userLabel="First Responder" sceneMemberID="firstResponder"/>

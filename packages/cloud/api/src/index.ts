@@ -55,6 +55,16 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       timestamp: Date.now(),
       region: (env as { CF_REGION?: string }).CF_REGION ?? "unknown",
       commit: env.ELIZA_DEPLOY_COMMIT ?? null,
+      // Self-identify which deployment env answered. The staging worker and the
+      // prod worker share the `*.elizacloud.ai` zone; the staging worker only
+      // owns `staging.*`/`app-staging.*`/`api-staging.*` by claiming those
+      // routes MORE specifically than prod's `*.elizacloud.ai/*` wildcard
+      // (wrangler.toml [env.staging].routes). If that claim ever lapses, a
+      // staging subdomain silently falls into the prod wildcard and starts
+      // serving prod — invisible except by asking who answered. This field is
+      // the beacon the cross-environment routing verifier probes
+      // (packages/scripts/cloud/verify-environment-routing.mjs).
+      environment: env.ENVIRONMENT ?? null,
     },
     {
       status: 200,

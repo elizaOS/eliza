@@ -7,6 +7,16 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { serveFixture } from "./fixture-server.ts";
 
+type FixtureFetchResponse = {
+  status: number;
+  headers: { get(name: string): string | null };
+  text(): Promise<string>;
+};
+
+const fixtureFetch = fetch as unknown as (
+  input: string | URL,
+) => Promise<FixtureFetchResponse>;
+
 const dir = mkdtempSync(join(os.tmpdir(), "evidence-fixture-server-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -17,15 +27,15 @@ describe("serveFixture", () => {
     writeFileSync(join(root, "data.json"), '{"ok":true}');
     const server = await serveFixture(root);
     try {
-      const index = await fetch(server.baseUrl);
+      const index = await fixtureFetch(server.baseUrl);
       expect(index.status).toBe(200);
       expect(await index.text()).toContain("hi");
 
-      const data = await fetch(new URL("data.json", server.baseUrl));
+      const data = await fixtureFetch(new URL("data.json", server.baseUrl));
       expect(data.status).toBe(200);
       expect(data.headers.get("content-type")).toContain("application/json");
 
-      const missing = await fetch(new URL("nope.txt", server.baseUrl));
+      const missing = await fixtureFetch(new URL("nope.txt", server.baseUrl));
       expect(missing.status).toBe(404);
     } finally {
       await server.stop();
@@ -38,7 +48,7 @@ describe("serveFixture", () => {
     const server = await serveFixture(root);
     try {
       // Encoded traversal that would otherwise resolve above the root.
-      const res = await fetch(
+      const res = await fixtureFetch(
         new URL("%2e%2e%2f%2e%2e%2fetc%2fpasswd", server.baseUrl),
       );
       expect([403, 404]).toContain(res.status);
@@ -54,10 +64,10 @@ describe("serveFixture", () => {
     try {
       // decodeURIComponent("%") throws URIError; before the guard this crashed
       // the whole process mid-walkthrough instead of answering the request.
-      const bad = await fetch(`${server.baseUrl}%`);
+      const bad = await fixtureFetch(`${server.baseUrl}%`);
       expect(bad.status).toBe(400);
       // The server survived and still serves the index.
-      const index = await fetch(server.baseUrl);
+      const index = await fixtureFetch(server.baseUrl);
       expect(index.status).toBe(200);
     } finally {
       await server.stop();

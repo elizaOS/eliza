@@ -66,6 +66,7 @@ export const OPTIMIZED_PROMPT_SERVICE = "optimized_prompt";
 
 export type OptimizedPromptTask =
 	| "should_respond"
+	| "context_routing"
 	| "action_planner"
 	| "response"
 	| "media_description"
@@ -84,10 +85,15 @@ export type OptimizedPromptTask =
 	| "meeting_prep"
 	| "morning_brief"
 	| "health_checkin"
-	| "screentime_recap";
+	| "screentime_recap"
+	| "creative_draft";
 
 export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"should_respond",
+	// The context-routing dataset is trained separately from should_respond;
+	// keeping it as its own artifact task lets the optimizer promote routing
+	// prompts without aliasing them onto the response gate.
+	"context_routing",
 	"action_planner",
 	"response",
 	"media_description",
@@ -105,6 +111,7 @@ export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"morning_brief",
 	"health_checkin",
 	"screentime_recap",
+	"creative_draft",
 ] as const;
 
 /**
@@ -122,6 +129,7 @@ export const LIFEOPS_OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"morning_brief",
 	"health_checkin",
 	"screentime_recap",
+	"creative_draft",
 ] as const;
 
 export type OptimizerName =
@@ -155,6 +163,44 @@ export interface OptimizedPromptLineageEntry {
 	notes?: string;
 }
 
+export interface OptimizedPromptFrontierEntry {
+	prompt: string;
+	score: number;
+	promptTokenCount: number;
+	origin: string;
+	feedback?: string;
+}
+
+export interface OptimizedPromptContextConfig {
+	providerSet?: readonly string[];
+	providerOrder?: readonly string[];
+	renderTemplates?: Readonly<Record<string, string>>;
+	budgetVector?: Readonly<Record<string, number>>;
+}
+
+/**
+ * Snapshot of the noise-gate promotion decision that accepted this artifact,
+ * mirrored from `PromotionDecision` in
+ * `plugins/plugin-training/src/core/promotion-gate.ts` plus the two provenance
+ * fields the write site adds (`incumbentSource` / `gateSource`). Persisted for
+ * diagnostics — every field is optional because older artifacts predate it.
+ */
+export interface PromotionDecisionSummary {
+	promote?: boolean;
+	incumbentMeanScore?: number;
+	incumbentStdDev?: number;
+	candidateScore?: number;
+	delta?: number;
+	promotionMargin?: number;
+	noiseThreshold?: number;
+	incumbentReseeds?: number;
+	examplesPerPass?: number;
+	reason?: string;
+	incumbentScores?: number[];
+	incumbentSource?: string;
+	gateSource?: string;
+}
+
 export interface OptimizedPromptArtifact {
 	task: OptimizedPromptTask;
 	optimizer: OptimizerName;
@@ -167,11 +213,15 @@ export interface OptimizedPromptArtifact {
 	generatedAt: string;
 	fewShotExamples?: OptimizedPromptFewShotExample[];
 	lineage: OptimizedPromptLineageEntry[];
+	frontier?: OptimizedPromptFrontierEntry[];
+	promotionDecision?: PromotionDecisionSummary;
+	contextConfig?: OptimizedPromptContextConfig;
 }
 
 export interface OptimizedPromptResolved {
 	prompt: string;
 	fewShotExamples?: OptimizedPromptFewShotExample[];
+	contextConfig?: OptimizedPromptContextConfig;
 	optimizerSource: OptimizerName;
 }
 
@@ -368,6 +418,11 @@ export function parseOptimizedPromptArtifact(
 	)
 		? coerceFewShot(raw.fewShotExamples)
 		: undefined;
+	const frontier: OptimizedPromptFrontierEntry[] | undefined = Array.isArray(
+		raw.frontier,
+	)
+		? coerceFrontier(raw.frontier)
+		: undefined;
 	return {
 		task: raw.task,
 		optimizer: raw.optimizer,
@@ -380,7 +435,122 @@ export function parseOptimizedPromptArtifact(
 		generatedAt: raw.generatedAt,
 		lineage,
 		fewShotExamples: fewShot,
+		frontier,
+		promotionDecision: coercePromotionDecision(raw.promotionDecision),
+		contextConfig: coerceContextConfig(raw.contextConfig),
 	};
+}
+
+function coerceFrontier(
+	value: unknown[],
+): OptimizedPromptFrontierEntry[] | undefined {
+	const out: OptimizedPromptFrontierEntry[] = [];
+	for (const entry of value) {
+		if (!isStringRecord(entry)) continue;
+		if (
+			typeof entry.prompt !== "string" ||
+			typeof entry.score !== "number" ||
+			typeof entry.promptTokenCount !== "number" ||
+			typeof entry.origin !== "string"
+		) {
+			continue;
+		}
+		out.push({
+			prompt: entry.prompt,
+			score: entry.score,
+			promptTokenCount: entry.promptTokenCount,
+			origin: entry.origin,
+			feedback: typeof entry.feedback === "string" ? entry.feedback : undefined,
+		});
+	}
+	return out.length > 0 ? out : undefined;
+}
+
+function coercePromotionDecision(
+	value: unknown,
+): PromotionDecisionSummary | undefined {
+	if (!isStringRecord(value)) return undefined;
+	const num = (v: unknown): number | undefined =>
+		typeof v === "number" && Number.isFinite(v) ? v : undefined;
+	const str = (v: unknown): string | undefined =>
+		typeof v === "string" ? v : undefined;
+	const numbers = Array.isArray(value.incumbentScores)
+		? value.incumbentScores.filter(
+				(entry): entry is number =>
+					typeof entry === "number" && Number.isFinite(entry),
+			)
+		: undefined;
+	const summary: PromotionDecisionSummary = {
+		promote: typeof value.promote === "boolean" ? value.promote : undefined,
+		incumbentMeanScore: num(value.incumbentMeanScore),
+		incumbentStdDev: num(value.incumbentStdDev),
+		candidateScore: num(value.candidateScore),
+		delta: num(value.delta),
+		promotionMargin: num(value.promotionMargin),
+		noiseThreshold: num(value.noiseThreshold),
+		incumbentReseeds: num(value.incumbentReseeds),
+		examplesPerPass: num(value.examplesPerPass),
+		reason: str(value.reason),
+		incumbentScores: numbers && numbers.length > 0 ? numbers : undefined,
+		incumbentSource: str(value.incumbentSource),
+		gateSource: str(value.gateSource),
+	};
+	return Object.values(summary).some((entry) => entry !== undefined)
+		? summary
+		: undefined;
+}
+
+function coerceStringArray(value: unknown): string[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const out = value.filter(
+		(entry): entry is string =>
+			typeof entry === "string" && entry.trim().length > 0,
+	);
+	return out.length > 0 ? out : undefined;
+}
+
+function coerceStringRecord(
+	value: unknown,
+): Readonly<Record<string, string>> | undefined {
+	if (!isStringRecord(value)) return undefined;
+	const out: Record<string, string> = {};
+	for (const [key, entry] of Object.entries(value)) {
+		if (typeof entry === "string" && entry.trim().length > 0) {
+			out[key] = entry;
+		}
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function coerceNumberRecord(
+	value: unknown,
+): Readonly<Record<string, number>> | undefined {
+	if (!isStringRecord(value)) return undefined;
+	const out: Record<string, number> = {};
+	for (const [key, entry] of Object.entries(value)) {
+		if (typeof entry === "number" && Number.isFinite(entry) && entry >= 0) {
+			out[key] = entry;
+		}
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function coerceContextConfig(
+	value: unknown,
+): OptimizedPromptContextConfig | undefined {
+	if (!isStringRecord(value)) return undefined;
+	const config: OptimizedPromptContextConfig = {
+		providerSet: coerceStringArray(value.providerSet),
+		providerOrder: coerceStringArray(value.providerOrder),
+		renderTemplates: coerceStringRecord(value.renderTemplates),
+		budgetVector: coerceNumberRecord(value.budgetVector),
+	};
+	return config.providerSet ||
+		config.providerOrder ||
+		config.renderTemplates ||
+		config.budgetVector
+		? config
+		: undefined;
 }
 
 function coerceFewShot(
@@ -509,6 +679,7 @@ export class OptimizedPromptService extends Service {
 		return {
 			prompt: entry.artifact.prompt,
 			fewShotExamples: entry.artifact.fewShotExamples,
+			contextConfig: entry.artifact.contextConfig,
 			optimizerSource: entry.artifact.optimizer,
 		};
 	}

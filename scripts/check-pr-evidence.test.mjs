@@ -17,12 +17,14 @@ import {
   hasArtifactReference,
   hasNaWithReason,
   hasOcrEvidenceReference,
+  hasVisualArtifactReference,
   isChecked,
   isRowSatisfied,
   isRowSatisfiedForContext,
   parseLabels,
   REQUIRED_EVIDENCE_ROWS,
   requiresSurfaceArtifacts,
+  requiresSurfaceArtifactsFromFiles,
   SURFACE_ARTIFACT_ROW_IDS,
 } from "./check-pr-evidence.mjs";
 
@@ -308,6 +310,161 @@ describe("check-pr-evidence row primitives", () => {
     assert.equal(isChecked("- [X] done"), true);
     assert.equal(isChecked("- [ ] not done"), false);
     assert.equal(isRowSatisfied("- [x] done"), false);
+  });
+
+  it("requires real media on visual rows — page links do not count", () => {
+    // The gaming vector: linking the PR itself or its /checks tab.
+    assert.equal(
+      hasVisualArtifactReference(
+        "- [ ] Before: https://github.com/elizaOS/eliza/pull/15178/checks",
+      ),
+      false,
+    );
+    assert.equal(
+      hasVisualArtifactReference(
+        "- [ ] After: https://github.com/elizaOS/eliza/pull/15178",
+      ),
+      false,
+    );
+    // Real media forms all count.
+    assert.equal(
+      hasVisualArtifactReference(
+        "https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000001",
+      ),
+      true,
+    );
+    assert.equal(
+      hasVisualArtifactReference("![after](https://example.com/x/after)"),
+      true,
+    );
+    assert.equal(
+      hasVisualArtifactReference(
+        '<img src="https://example.com/shot" width="400">',
+      ),
+      true,
+    );
+    assert.equal(
+      hasVisualArtifactReference("see https://example.com/walkthrough.mp4"),
+      true,
+    );
+  });
+
+  it("fails a UI-labeled PR whose visual rows link only to the PR/checks page", () => {
+    const { ok, findings } = evaluatePrEvidence(
+      buildBody({
+        "before-screenshots":
+          "- [ ] Before screenshots: https://github.com/elizaOS/eliza/pull/15178",
+        "after-screenshots":
+          "- [ ] After screenshots: https://github.com/elizaOS/eliza/pull/15178/checks",
+        "walkthrough-video":
+          "- [ ] Walkthrough video: https://github.com/elizaOS/eliza/pull/15178/checks",
+      }),
+      REQUIRED_EVIDENCE_ROWS,
+      { labels: "ui" },
+    );
+    assert.equal(ok, false);
+    for (const id of SURFACE_ARTIFACT_ROW_IDS) {
+      assert.equal(
+        findings.find((finding) => finding.id === id).status,
+        "artifact-required",
+      );
+    }
+  });
+
+  it("detects rendered-UI source files in the diff", () => {
+    assert.equal(
+      requiresSurfaceArtifactsFromFiles(["packages/ui/src/components/Foo.tsx"]),
+      true,
+    );
+    assert.equal(
+      requiresSurfaceArtifactsFromFiles(["packages/app/src/views/Home.css"]),
+      true,
+    );
+    assert.equal(
+      requiresSurfaceArtifactsFromFiles([
+        String.raw`apps\app\src\Panel.tsx`,
+      ]),
+      true,
+    );
+    // Tests, stories, and server code render nothing a user sees.
+    assert.equal(
+      requiresSurfaceArtifactsFromFiles([
+        "packages/ui/src/components/Foo.test.tsx",
+        "packages/ui/src/components/Foo.stories.tsx",
+        "packages/app-core/src/services/thing.ts",
+        "packages/app/README.md",
+      ]),
+      false,
+    );
+  });
+
+  it("forces surface artifacts from a UI diff even without labels", () => {
+    const body = REQUIRED_EVIDENCE_ROWS.map(
+      ({ id }) =>
+        `<!-- evidence-row:${id} -->\n- [ ] row \`N/A - not applicable to this change\`.`,
+    ).join("\n\n");
+    const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles: ["packages/ui/src/components/NotificationRow.tsx"],
+    });
+    assert.equal(ok, false);
+    for (const id of SURFACE_ARTIFACT_ROW_IDS) {
+      assert.equal(
+        findings.find((finding) => finding.id === id).status,
+        "artifact-required",
+      );
+    }
+    assert.equal(
+      findings.find((finding) => finding.id === "ocr-review").status,
+      "ocr-required",
+    );
+  });
+
+  it("allows N/A before-screenshots when the whole UI surface is newly added", () => {
+    const media = (id, n) =>
+      `- [x] ![${id}](https://github.com/user-attachments/assets/00000000-0000-0000-0000-00000000000${n})`;
+    const body = buildBody({
+      "before-screenshots":
+        "- [ ] Before screenshots `N/A - the settings section is new in this PR; no prior surface existed`.",
+      "after-screenshots": media("after", 2),
+      "walkthrough-video":
+        "- [x] https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000003",
+      "domain-artifacts":
+        "- [ ] OCR text readout: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000008",
+    });
+    const changedFiles = [
+      "packages/ui/src/components/settings/NewSection.tsx",
+      "packages/ui/src/components/settings/new-section.test.ts",
+    ];
+    // Whole surface added → before may be N/A-with-reason.
+    const allNew = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles,
+      addedFiles: changedFiles,
+    });
+    assert.equal(allNew.ok, true);
+    // Same body but the surface file was MODIFIED → before still needs media.
+    const modified = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles,
+      addedFiles: [],
+    });
+    assert.equal(modified.ok, false);
+    assert.equal(
+      modified.findings.find((f) => f.id === "before-screenshots").status,
+      "artifact-required",
+    );
+    // A bare N/A with no reason never qualifies, even for a new surface.
+    const bare = evaluatePrEvidence(
+      buildBody({
+        "before-screenshots": "- [ ] Before screenshots N/A",
+        "after-screenshots": media("after", 2),
+        "walkthrough-video":
+          "- [x] https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000003",
+        "domain-artifacts":
+          "- [ ] OCR text readout: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000008",
+      }),
+      REQUIRED_EVIDENCE_ROWS,
+      { changedFiles, addedFiles: changedFiles },
+    );
+    assert.equal(bare.ok, false);
   });
 
   it("normalizes labels and detects surface labels", () => {

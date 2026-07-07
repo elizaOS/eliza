@@ -134,11 +134,15 @@ describe("ContinuousChatOverlay first-run gating", () => {
 
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
-    expect(input.placeholder).toBe("Connect to cloud to enable chat");
+    // The placeholder must match the unlocked behavior — not read as locked.
+    // "Connect to cloud to enable chat" contradicted the typeable composer
+    // (#12178): free text is answered by the in-chat conductor locally.
+    expect(input.placeholder).toBe("Ask Eliza anything, or sign in above");
 
-    // Attach + mic have no agent to serve them yet — still inert (pre-runtime).
-    const attach = screen.getByTestId("chat-composer-attach");
-    expect(attach.getAttribute("aria-disabled")).toBe("true");
+    // The composer actions ("+") menu + mic have no agent to serve them yet —
+    // still inert (pre-runtime). The "+" trigger is natively disabled.
+    const plus = screen.getByTestId("chat-composer-plus");
+    expect((plus as HTMLButtonElement).disabled).toBe(true);
 
     const mic = screen.getByTestId("chat-composer-mic");
     expect(mic.getAttribute("aria-disabled")).toBe("true");
@@ -346,7 +350,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
     expect(cloud.getAttribute("tabindex")).not.toBe("-1");
   });
 
-  it("renders onboarding transcript turns with panel chrome over the opaque light backdrop", () => {
+  it("renders onboarding transcript turns with panel chrome over the opaque dark backdrop", () => {
     const controller = makeController({
       messages: [
         {

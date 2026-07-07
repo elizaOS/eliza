@@ -28,6 +28,7 @@ import type {
   TaskActivityStep,
 } from "../../../state/task-activity-store";
 import { ToolCallEventLog } from "../../tool-events/ToolCallEventLog";
+import { ChatWidgetShell } from "./chat-widget-shell";
 import { planChecklistPropsEqual } from "./widget-equality";
 
 const STATUS_ICON: Record<SwarmActivityStatus, LucideIcon> = {
@@ -163,6 +164,36 @@ export const PlanChecklist = memo(function PlanChecklist({
         })}
       </ul>
     </div>
+  );
+}, planChecklistPropsEqual);
+
+export const ChecklistWidget = memo(function ChecklistWidget({
+  entries,
+  title,
+}: {
+  entries: SwarmActivityPlanEntry[];
+  title?: string;
+}) {
+  if (entries.length === 0) return null;
+  const done = entries.filter((e) => e.status === "completed").length;
+  const complete = done === entries.length;
+  const resolvedTitle = title ?? "Checklist";
+  return (
+    <ChatWidgetShell
+      title={resolvedTitle}
+      status={
+        <span className="rounded-sm bg-bg px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted">
+          {done}/{entries.length}
+        </span>
+      }
+      summary={`${done}/${entries.length} complete`}
+      complete={complete}
+      testId="checklist-widget-shell"
+    >
+      <div className="px-3 py-2">
+        <PlanChecklist entries={entries} title={resolvedTitle} />
+      </div>
+    </ChatWidgetShell>
   );
 }, planChecklistPropsEqual);
 

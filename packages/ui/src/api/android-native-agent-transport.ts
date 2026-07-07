@@ -47,10 +47,18 @@ export interface NativeAgentRequestResult {
   bodyEncoding?: string;
 }
 
+export type AndroidLocalAgentBootState =
+  | { state: "booting"; reason?: string; ageMs?: number }
+  | { state: "listening"; reason?: string; ageMs?: number }
+  | { state: "restarting"; reason?: string; attempt?: number; ageMs?: number }
+  | { state: "dead"; reason?: string; ageMs?: number }
+  | { state: "unknown"; reason?: string };
+
 type NativeAgentPlugin = {
   start?: () => Promise<unknown>;
   stop?: () => Promise<unknown>;
   getStatus?: () => Promise<unknown>;
+  getLocalAgentBootState?: () => Promise<AndroidLocalAgentBootState>;
   request?: (
     options: NativeAgentRequestOptions,
   ) => Promise<NativeAgentRequestResult>;
@@ -82,11 +90,22 @@ function toNativeAgentPlugin(
   const start = plugin.start?.bind(plugin);
   const stop = plugin.stop?.bind(plugin);
   const getStatus = plugin.getStatus?.bind(plugin);
+  const getLocalAgentBootState = plugin.getLocalAgentBootState?.bind(plugin);
   const request = plugin.request?.bind(plugin);
   const requestStream = plugin.requestStream?.bind(plugin);
   const addListener = plugin.addListener?.bind(plugin);
-  if (!start && !stop && !getStatus && !request) return null;
-  return { start, stop, getStatus, request, requestStream, addListener };
+  if (!start && !stop && !getStatus && !request && !getLocalAgentBootState) {
+    return null;
+  }
+  return {
+    start,
+    stop,
+    getStatus,
+    getLocalAgentBootState,
+    request,
+    requestStream,
+    addListener,
+  };
 }
 
 function isNativeAndroid(): boolean {
@@ -355,6 +374,67 @@ export async function androidNativeAgentLifecycleForUrl(
 ): Promise<NativeAgentPlugin | null> {
   if (!url || !shouldAttemptNativeAgentTransport(url)) return null;
   return resolveNativeAgentPlugin();
+}
+
+/**
+ * Ask the native service to start the on-device agent that `url` targets.
+ * The startup coordinator fires this for the local-agent base it polls: the
+ * poll itself cannot wake the agent (an abstract-socket connect just blocks
+ * while nobody listens), and on a fresh install nothing else will — the
+ * MainActivity auto-start gate is evaluated before the renderer pre-seeds
+ * local mode, and onboarding (the only other `Agent.start()` caller) is
+ * skipped on the pre-seeded path (#15189). Native start is idempotent — a
+ * START_AGENT delivery to a running/booting service is absorbed by the
+ * socket-adopt and cold-boot guards — so callers may fire this once per
+ * polled base without coordinating with service state. Returns whether a
+ * start request actually reached the native plugin.
+ */
+export async function requestAndroidLocalAgentStartForUrl(
+  url: string | null | undefined,
+): Promise<boolean> {
+  if (!url || !shouldAttemptNativeAgentTransport(url)) return false;
+  if (!isNativeAndroid()) return false;
+  const agent = await resolveNativeAgentPlugin();
+  if (!agent?.start) return false;
+  try {
+    await agent.start();
+    return true;
+  } catch {
+    // error-policy:J4 a failed start request leaves the poll on its existing
+    // budget/timeout paths, which surface the failure with full context.
+    return false;
+  }
+}
+
+export async function getAndroidLocalAgentBootStateForUrl(
+  url: string | null | undefined,
+): Promise<AndroidLocalAgentBootState> {
+  if (!url || !shouldAttemptNativeAgentTransport(url)) {
+    return { state: "unknown", reason: "not an Android local-agent URL" };
+  }
+  const agent = await resolveNativeAgentPlugin();
+  if (!agent?.getLocalAgentBootState) {
+    return { state: "unknown", reason: "native boot-state API unavailable" };
+  }
+  try {
+    const state = await agent.getLocalAgentBootState();
+    if (
+      state?.state === "booting" ||
+      state?.state === "listening" ||
+      state?.state === "restarting" ||
+      state?.state === "dead"
+    ) {
+      return state;
+    }
+  } catch (err) {
+    // error-policy:J4 boot-state is a progress hint. A failed hint must fall
+    // back to the existing HTTP heuristic rather than make startup fatal.
+    return {
+      state: "unknown",
+      reason: `native boot-state probe failed: ${String((err as { message?: string })?.message ?? err)}`,
+    };
+  }
+  return { state: "unknown", reason: "native boot-state probe failed" };
 }
 
 export async function androidNativeAgentTransportForUrl(

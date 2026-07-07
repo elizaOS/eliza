@@ -4,7 +4,7 @@
   "description": "news and feed support",
   "npmName": "@elizaos/plugin-rss",
   "version": "2.0.0-beta.0",
-  "source": "bundled",
+  "source": "store",
   "tags": ["rss", "atom", "feed", "news", "syndication"],
   "config": {
     "RSS_FEEDS": {

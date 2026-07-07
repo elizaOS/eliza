@@ -20,6 +20,8 @@
 
 import { X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Z_BUILD_BADGE } from "../../lib/floating-layers";
+import { getStandaloneBottomReclaimState } from "../../platform/standalone-bottom-reclaim";
 
 const BUILD_INFO_URL = "/build-info.json";
 const DISMISS_KEY = "eliza.buildBadge.dismissed";
@@ -90,6 +92,96 @@ function measureCssHeight(value: string): number | null {
   }
 }
 
+/**
+ * Measure a CSS length in px via an off-screen probe on the ROOT element, using
+ * `offsetHeight` (integer layout px) as the mandate specifies for the
+ * `100lvh`/`100dvh` probe. Returns null on failure. Distinct from
+ * {@link measureCssHeight} (which reads a fractional `getBoundingClientRect`
+ * height off `document.body`): this variant is rooted on `documentElement` and
+ * rounded to the layout integer, matching how the canvas/box geometry resolves.
+ */
+function probeRootUnit(value: string): number | null {
+  try {
+    const probe = document.createElement("div");
+    probe.style.cssText = `position:fixed;top:0;left:-9999px;width:0;height:${value};visibility:hidden;pointer-events:none;`;
+    document.documentElement.appendChild(probe);
+    const px = probe.offsetHeight;
+    probe.remove();
+    return Number.isFinite(px) ? px : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The compact single-line geometry readout the mandate asks for so a screenshot
+ * is ground truth: innerHeight / visualViewport.height /
+ * documentElement.clientHeight / screen.height / measured
+ * `--standalone-bottom-reclaim` / reclaim wiring state / `100lvh` vs `100dvh`
+ * probes. Rendered ON the badge (no tap needed) so the NEXT device screenshot reveals the exact
+ * viewport geometry — ending the blind hypothesis cycle (do the three
+ * candidate "true screen" heights agree at the collapsed layout viewport, which
+ * would explain a measurement no-op, or does one exceed clientHeight?).
+ *
+ * Format e.g. `ih932 vv932 ce873 sh932 rc59 rcw:on lv932 dv873`. The `rcw`
+ * (reclaim-wiring) token is the #15178 device-debug witness: `rcw:off` means the
+ * bottom-reclaim install gate NEVER ran on this boot path (installer not wired
+ * into the live entry — the exact regression that shipped `rc?`), `rcw:on` means
+ * the installer armed, `rcw:clear` means it was explicitly zeroed on a
+ * non-standalone surface. `rc?`+`rcw:off` together = smoking gun for an orphaned
+ * installer; `rc0`+`rcw:on` = installer ran and simply measured no collapse.
+ * Stamped-builds only (this whole component renders nothing without
+ * `/build-info.json`).
+ */
+function collectGeometryLine(): string {
+  try {
+    const ih = Math.round(window.innerHeight);
+    const vv = window.visualViewport
+      ? Math.round(window.visualViewport.height)
+      : null;
+    const ce = document.documentElement?.clientHeight ?? null;
+    const sh =
+      typeof window.screen?.height === "number"
+        ? Math.round(window.screen.height)
+        : null;
+    const rc = readReclaimVarPx();
+    const rcw = getStandaloneBottomReclaimState();
+    const lv = probeRootUnit("100lvh");
+    const dv = probeRootUnit("100dvh");
+    const part = (k: string, n: number | null) => `${k}${n ?? "?"}`;
+    return [
+      part("ih", ih),
+      part("vv", vv),
+      part("ce", ce),
+      part("sh", sh),
+      part("rc", rc),
+      `rcw:${rcw}`,
+      part("lv", lv),
+      part("dv", dv),
+    ].join(" ");
+  } catch {
+    return "geom?";
+  }
+}
+
+/**
+ * Read the live `--standalone-bottom-reclaim` var off the root as an integer px
+ * so the geometry line reports the reclaim value the layers are actually using.
+ * `?` means the variable was absent or unreadable.
+ */
+function readReclaimVarPx(): number | null {
+  try {
+    const raw = getComputedStyle(document.documentElement)
+      .getPropertyValue("--standalone-bottom-reclaim")
+      .trim();
+    if (!raw) return null;
+    const n = Number.parseFloat(raw);
+    return Number.isFinite(n) ? Math.round(n) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Read a computed CSS env()/custom-property length off the root element. */
 function readRootLength(expr: string): string {
   try {
@@ -147,9 +239,26 @@ function collectDiagnostics(): DiagRow[] {
       v: typeof nav.standalone === "boolean" ? String(nav.standalone) : "n/a",
     },
     { k: "innerHeight", v: `${window.innerHeight}px` },
+    {
+      k: "docEl.clientH",
+      v: `${document.documentElement?.clientHeight ?? "?"}px`,
+    },
+    {
+      k: "screen.height",
+      v:
+        typeof window.screen?.height === "number"
+          ? `${Math.round(window.screen.height)}px`
+          : "n/a",
+    },
+    {
+      k: "reclaim-var",
+      v: `${readReclaimVarPx() ?? "?"}px`,
+    },
     { k: "100dvh", v: `${measureCssHeight("100dvh") ?? "?"}px` },
     { k: "100lvh", v: `${measureCssHeight("100lvh") ?? "?"}px` },
     { k: "100svh", v: `${measureCssHeight("100svh") ?? "?"}px` },
+    { k: "100lvh(offset)", v: `${probeRootUnit("100lvh") ?? "?"}px` },
+    { k: "100dvh(offset)", v: `${probeRootUnit("100dvh") ?? "?"}px` },
     {
       k: "visualViewport.h",
       v: vv ? `${Math.round(vv.height)}px` : "n/a",
@@ -175,6 +284,9 @@ export function BuildBadge() {
     readSessionDismissed(),
   );
   const [diag, setDiag] = useState<DiagRow[] | null>(null);
+  // The compact live-geometry line shown ON the badge (no tap needed) so a
+  // device screenshot is ground truth for the strip's exact geometry.
+  const [geom, setGeom] = useState<string | null>(null);
 
   useEffect(() => {
     if (dismissed) return;
@@ -195,6 +307,26 @@ export function BuildBadge() {
     };
   }, [dismissed]);
 
+  // Compute the compact geometry line once the badge is going to render, and
+  // re-compute on viewport resize / orientation change so a rotated / reflowed
+  // screenshot stays accurate. Gated to stamped builds (a label exists) and
+  // non-dismissed, so it never runs in production or after the tester hides it.
+  useEffect(() => {
+    if (dismissed || !label) {
+      setGeom(null);
+      return;
+    }
+    const update = () => setGeom(collectGeometryLine());
+    update();
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    return () => {
+      vv?.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+    };
+  }, [dismissed, label]);
+
   const openDiag = useCallback(() => {
     setDiag(collectDiagnostics());
   }, []);
@@ -213,11 +345,11 @@ export function BuildBadge() {
       <div
         data-testid="build-badge-anchor"
         data-aesthetic-overlay-ignore="true"
-        className="pointer-events-none fixed left-0 bottom-0 z-[9997]"
+        className="pointer-events-none fixed left-0 top-0"
         style={{
           paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.375rem)",
-          paddingBottom:
-            "calc(max(env(safe-area-inset-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + var(--eliza-mobile-nav-offset, 0px) + var(--eliza-continuous-chat-clearance, 0px) + 0.375rem)",
+          paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.375rem)",
+          zIndex: Z_BUILD_BADGE,
         }}
       >
         <span className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-surface/80 px-2 py-0.5 text-3xs leading-none text-muted opacity-70 transition-opacity hover:opacity-100">
@@ -231,6 +363,15 @@ export function BuildBadge() {
           >
             {label}
           </button>
+          {geom ? (
+            <span
+              data-testid="build-badge-geom"
+              title="Live viewport geometry (ih=innerHeight vv=visualViewport ce=docEl.clientHeight sh=screen.height rc=reclaim-var rcw=reclaim-wiring lv=100lvh dv=100dvh)"
+              className="font-mono tracking-tight text-3xs text-muted/80"
+            >
+              {geom}
+            </span>
+          ) : null}
           <button
             type="button"
             data-testid="build-badge-dismiss"
@@ -248,18 +389,20 @@ export function BuildBadge() {
           <button
             type="button"
             aria-label="Close build diagnostics"
-            className="fixed inset-0 z-[9998] cursor-default bg-transparent"
+            className="fixed inset-0 cursor-default bg-transparent"
             onClick={closeDiag}
+            style={{ zIndex: Z_BUILD_BADGE + 1 }}
           />
           <div
             data-testid="build-badge-diag"
             role="dialog"
             aria-modal="true"
             aria-label={`Build diagnostics for ${label}`}
-            className="pointer-events-auto fixed z-[9999] max-h-[70vh] w-[calc(100%-1rem)] max-w-sm overflow-auto rounded-lg border border-border bg-surface/95 p-3 text-2xs shadow-lg backdrop-blur"
+            className="pointer-events-auto fixed max-h-[70vh] w-[calc(100%-1rem)] max-w-sm overflow-auto rounded-lg border border-border bg-surface/95 p-3 text-2xs shadow-lg backdrop-blur"
             style={{
               left: "calc(env(safe-area-inset-left, 0px) + 0.5rem)",
               bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.5rem)",
+              zIndex: Z_BUILD_BADGE + 2,
             }}
           >
             <div className="mb-2 flex items-center justify-between">

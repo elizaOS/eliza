@@ -50,11 +50,25 @@ const mocks = vi.hoisted(() => ({
     }),
   },
   autoDownloadRecommendedLocalModelInBackground: vi.fn(async () => undefined),
+  // The same-origin Steward cookie refresh (POST w/ credentials) — a network
+  // boundary like the client, mocked so the silent cookie-recovery entry
+  // (#15133) is drivable without a real .elizacloud.ai session.
+  refreshCloudStewardSession: vi.fn(
+    async (): Promise<{ token?: string } | null> => null,
+  ),
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/client")>();
   return { ...actual, client: mocks.client };
+});
+
+vi.mock("../api/client-cloud", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/client-cloud")>();
+  return {
+    ...actual,
+    refreshCloudStewardSession: mocks.refreshCloudStewardSession,
+  };
 });
 
 vi.mock("./auto-download-recommended", () => ({
@@ -217,6 +231,7 @@ beforeEach(() => {
     success: true,
     data: [],
   });
+  mocks.refreshCloudStewardSession.mockResolvedValue(null);
   localStorage.setItem("steward_session_token", "cloud-token");
   // The runtime chooser (local / remote paths) is OFF by default (#13377);
   // these suites exercise the full chooser, so they opt in via the override.
@@ -228,7 +243,15 @@ afterEach(() => {
   __setAppValueForTests(null);
   resetTutorialState();
   ensureLocalStorage().clear();
+  // Drop the steward-authed marker cookie some cloud-only tests plant — a
+  // leaked cookie would flip later mounts into the silent recovery branch.
+  writeTestCookie("steward-authed=; expires=Thu, 01 Jan 1970 00:00:00 GMT");
 });
+
+function writeTestCookie(value: string): void {
+  // biome-ignore lint/suspicious/noDocumentCookie: jsdom tests drive the same browser cookie marker production reads.
+  document.cookie = value;
+}
 
 describe("useFirstRunConductor", () => {
   it("drives the LOCAL path end to end: greeting → runtime → provider → tutorial → completeFirstRun, POSTing exactly once", async () => {
@@ -1097,22 +1120,35 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     unmount();
   });
 
-  it("session injection: a usable stored session skips the sign-in ask and provisioning success completes onboarding for real", async () => {
-    // steward_session_token is present via the outer beforeEach.
+  it("silent entry (#15133): a usable stored session + one agent seeds ZERO onboarding turns — no greeting, no welcome-back, no reuse narration, no done wrap-up", async () => {
+    // steward_session_token is present via the outer beforeEach; the account
+    // already owns one running agent, so this is a pure reuse.
+    mocks.client.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          agent_id: "agent-only",
+          agent_name: "Only",
+          status: "running",
+          created_at: "2026-01-02T00:00:00.000Z",
+        },
+      ],
+    });
     const spies = seedAppStore({ elizaCloudConnected: true });
-    const { turn, unmount } = renderConductor();
+    const { transcript, unmount } = renderConductor();
 
-    await waitForTurn(turn, "first-run:cloud-signin");
     await waitFor(() => {
       expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
     });
     expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
-    // Sign-in IS onboarding: no tutorial/accent completion gate.
-    expect(turn("first-run:tutorial")).toBeUndefined();
-    expect(turn("first-run:appearance")).toBeUndefined();
-    await waitForTurn(turn, "first-run:cloud-done");
-    // The sign-in ask never appeared.
-    expect(turn("first-run:greeting")).toBeUndefined();
+    // The #15133 bar: an authenticated user's next rendered state is the
+    // agent chat itself — the transcript carries NOT ONE onboarding turn.
+    expect(transcript.current).toEqual([]);
+    // The single agent was adopted directly (no picker, no create).
+    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
+    ).toMatchObject({ preferAgentId: "agent-only", authToken: "cloud-token" });
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
     unmount();
   });
@@ -1158,7 +1194,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     unmount();
   });
 
-  it("existing cloud agents are auto-adopted — first of the list, no picker turn (#13377)", async () => {
+  it("multiple agents surface the existing in-chat selector (#15133) — newest-running first — and the pick binds + completes", async () => {
     mocks.client.getCloudCompatAgents.mockResolvedValue({
       success: true,
       data: [
@@ -1177,19 +1213,201 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       ],
     });
     const spies = seedAppStore({ elizaCloudConnected: true });
-    const { turn, unmount } = renderConductor();
+    const { transcript, turn, unmount } = renderConductor();
 
-    await waitForTurn(turn, "first-run:cloud-signin");
+    // The selector is the FIRST rendered turn: the silent entry seeds no
+    // greeting/welcome-back ahead of it.
+    const choice = await waitForTurn(turn, "first-run:cloud-agent");
+    expect(transcript.current.map((m) => m.id)).toEqual([
+      "first-run:cloud-agent",
+    ]);
+    expect(choice.text).toContain(
+      "__first_run__:cloud-agent:agent-newest-running=Newest",
+    );
+    expect(choice.text).toContain("__first_run__:cloud-agent:agent-older=");
+    expect(choice.text).toContain(
+      "__first_run__:cloud-agent:new=Create a new agent",
+    );
+    expect(choice.text.indexOf("agent-newest-running")).toBeLessThan(
+      choice.text.indexOf("agent-older"),
+    );
+    // Nothing bound before the user chose.
+    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+
+    // Picking an agent binds exactly it and completes onboarding; the
+    // selector was an interactive ask, so the done wrap-up renders again.
+    expect(
+      tryHandleFirstRunAction("__first_run__:cloud-agent:agent-older"),
+    ).toBe(true);
     await waitFor(() => {
       expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
     });
-    // No picker was interposed; the bind targeted the first listed agent.
-    expect(turn("first-run:cloud-agent")).toBeUndefined();
-    const provisionArgs = mocks.client.selectOrProvisionCloudAgent.mock
-      .calls[0]?.[0] as { preferAgentId?: string };
-    expect(provisionArgs?.preferAgentId).toBe("agent-newest-running");
+    expect(
+      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
+    ).toMatchObject({ preferAgentId: "agent-older" });
     await waitForTurn(turn, "first-run:cloud-done");
     unmount();
+  });
+
+  it("zero agents stay silent through the reuse lookup and narrate ONLY the real provisioning (#15133)", async () => {
+    // No stored agents; selectOrProvisionCloudAgent emits the REAL client's
+    // progress sequence for a create: the reuse lookup ("listing"), the actual
+    // create ("creating"), then ready.
+    mocks.client.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+    mocks.client.selectOrProvisionCloudAgent.mockImplementation(
+      async (options: Record<string, unknown>) => {
+        const onProgress = options.onProgress as (
+          status: string,
+          detail?: string,
+        ) => void;
+        onProgress("listing", "Finding your agents...");
+        onProgress("creating", "Creating Eliza...");
+        onProgress("ready", "Cloud agent ready!");
+        return {
+          apiBase: "https://agent.example.test",
+          agentId: "agent-new",
+          created: true,
+        };
+      },
+    );
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { transcript, turn, unmount } = renderConductor();
+
+    await waitFor(() => {
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    });
+    // Bookkeeping narration stays silent…
+    expect(turn("first-run:greeting")).toBeUndefined();
+    expect(turn("first-run:cloud-signin")).toBeUndefined();
+    expect(
+      turn("first-run:status:Setting up your cloud agent"),
+    ).toBeUndefined();
+    expect(turn("first-run:status:Finding your agents...")).toBeUndefined();
+    // …but the REAL create is a genuine wait, so it narrates honestly from
+    // its first "creating" code onward (including the done wrap-up).
+    await waitForTurn(turn, "first-run:status:Creating Eliza...");
+    await waitForTurn(turn, "first-run:status:Cloud agent ready!");
+    await waitForTurn(turn, "first-run:cloud-done");
+    expect(
+      transcript.current.every(
+        (m) =>
+          m.id.startsWith("first-run:status:") ||
+          m.id === "first-run:cloud-done",
+      ),
+    ).toBe(true);
+    unmount();
+  });
+
+  it("cross-subdomain cookie at mount (#15133): recovers the session BEFORE seeding anything — zero onboarding turns, straight into the single agent", async () => {
+    // First visit to the app subdomain after signing in on the console: no
+    // app-origin localStorage, but the non-HttpOnly steward-authed marker is
+    // present and the bounded refresh returns a token.
+    localStorage.removeItem("steward_session_token");
+    writeTestCookie("steward-authed=1");
+    mocks.refreshCloudStewardSession.mockResolvedValue({
+      token: "cookie-token",
+    });
+    mocks.client.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          agent_id: "agent-console",
+          agent_name: "Console",
+          status: "running",
+          created_at: "2026-01-02T00:00:00.000Z",
+        },
+      ],
+    });
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const { transcript, unmount } = renderConductor();
+
+    await waitFor(() => {
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    });
+    expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+    // The recovered token was persisted for the app origin…
+    expect(mocks.refreshCloudStewardSession).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem("steward_session_token")).toBe("cookie-token");
+    // …and the user saw NOTHING: no greeting flash, no welcome-back, no
+    // provisioning theater — the next rendered state is the agent chat.
+    expect(transcript.current).toEqual([]);
+    expect(
+      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
+    ).toMatchObject({
+      preferAgentId: "agent-console",
+      authToken: "cookie-token",
+    });
+    unmount();
+  });
+
+  it("a stale marker cookie degrades to today's sign-in greeting after the bounded refresh fails — then the token poll still upgrades to welcome-back", async () => {
+    localStorage.removeItem("steward_session_token");
+    writeTestCookie("steward-authed=1");
+    mocks.refreshCloudStewardSession.mockResolvedValue(null);
+    mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+
+    // The failed recovery falls back to EXACTLY the unauthenticated flow: the
+    // normal sign-in greeting, no fabricated session, nothing provisioned.
+    const greeting = await waitForTurn(turn, "first-run:greeting");
+    expect(greeting.text).toContain("Sign in to Eliza Cloud");
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    expect(mocks.client.getCloudCompatAgents).not.toHaveBeenCalled();
+
+    // The degrade also armed the 500ms token poll, so a session landing later
+    // (login in another tab) still upgrades — with the welcome-back turn,
+    // because a greeting was genuinely shown on this path.
+    localStorage.setItem("steward_session_token", "cloud-token");
+    mocks.client.getCloudStatus.mockResolvedValue({ connected: true });
+    await waitFor(
+      () => {
+        expect(turn("first-run:cloud-signin")).toBeTruthy();
+      },
+      { timeout: 3_000 },
+    );
+    await waitFor(
+      () => {
+        expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 3_000 },
+    );
+    unmount();
+  });
+
+  it("the silent cookie hold answers free text with the provisioning persona, and an unmount mid-refresh seeds nothing", async () => {
+    localStorage.removeItem("steward_session_token");
+    writeTestCookie("steward-authed=1");
+    let resolveRefresh: (value: { token: string } | null) => void = () => {};
+    mocks.refreshCloudStewardSession.mockImplementation(
+      () =>
+        new Promise<{ token: string } | null>((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    );
+    seedAppStore({ elizaCloudConnected: false });
+    const { transcript, turn, unmount } = renderConductor();
+
+    // During the bounded hold nothing is seeded — the shell shows the empty
+    // first-run chat. Typing gets the "hang tight" persona (there is no
+    // sign-in ask on screen for the signIn nudge to point at).
+    expect(transcript.current).toEqual([]);
+    expect(tryHandleFirstRunText("hello?")).toBe(true);
+    const reply = await waitForTurn(turn, "first-run:reply:1");
+    expect(reply.text).toContain("Hang tight");
+
+    // The effect-cleanup cancelled flag: a refresh settling after unmount
+    // must not seed the greeting into a dead transcript (or resume anything).
+    const turnsAtUnmount = transcript.current.length;
+    unmount();
+    resolveRefresh(null);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(transcript.current.length).toBe(turnsAtUnmount);
+    expect(mocks.client.getCloudCompatAgents).not.toHaveBeenCalled();
   });
 
   it("a token hydrating AFTER mount (native storage restore) auto-continues without a tap", async () => {
@@ -1246,9 +1464,10 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       error: "cloud agent list failed",
     });
     const spies = seedAppStore({ elizaCloudConnected: true });
-    const { transcript, turn, unmount } = renderConductor();
-    await waitForTurn(turn, "first-run:cloud-signin");
+    const { transcript, unmount } = renderConductor();
 
+    // The silent entry seeds no welcome-back turn; the failure surfaces as
+    // the error recovery turn directly (errors always render, silent or not).
     await waitFor(() => {
       expect(
         transcript.current.some((message) =>
