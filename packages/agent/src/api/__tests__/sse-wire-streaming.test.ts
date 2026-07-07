@@ -345,7 +345,10 @@ describe("delta-v2 chat token stream writer", () => {
       streamWriterDeps,
     );
     const legacyMock = createMockResponse();
-    const legacyWriter = createChatTokenStreamWriter("legacy", streamWriterDeps);
+    const legacyWriter = createChatTokenStreamWriter(
+      "legacy",
+      streamWriterDeps,
+    );
 
     let acc = "";
     for (let i = 0; i < chunkCount; i += 1) {

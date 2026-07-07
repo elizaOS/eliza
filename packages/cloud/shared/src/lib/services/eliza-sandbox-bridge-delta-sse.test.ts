@@ -11,9 +11,8 @@
  * service) must rebuild the full text. Real methods, no network.
  */
 import { describe, expect, test } from "bun:test";
-
-import { ElizaSandboxBridgeService } from "./eliza-sandbox-bridge";
 import { ElizaSandboxService } from "./eliza-sandbox";
+import { ElizaSandboxBridgeService } from "./eliza-sandbox-bridge";
 
 type Normalizer = { normalizeBridgeSseResponse(response: Response): Response };
 
@@ -41,8 +40,7 @@ async function readEvents(
     if (done) break;
     out += decoder.decode(value, { stream: true });
   }
-  const events: Array<{ event: string | null; data: Record<string, unknown> }> =
-    [];
+  const events: Array<{ event: string | null; data: Record<string, unknown> }> = [];
   for (const frame of out.split("\n\n")) {
     if (!frame.trim()) continue;
     const lines = frame.split("\n");
@@ -62,10 +60,7 @@ const normalizers: Array<[string, () => Normalizer]> = [
     "ElizaSandboxBridgeService",
     () => new ElizaSandboxBridgeService({} as never) as unknown as Normalizer,
   ],
-  [
-    "ElizaSandboxService",
-    () => new ElizaSandboxService() as unknown as Normalizer,
-  ],
+  ["ElizaSandboxService", () => new ElizaSandboxService() as unknown as Normalizer],
 ];
 
 for (const [label, make] of normalizers) {
@@ -80,11 +75,7 @@ for (const [label, make] of normalizers) {
       const events = await readEvents(make().normalizeBridgeSseResponse(sseResponse(body)));
 
       const chunks = events.filter((event) => event.event === "chunk");
-      expect(chunks.map((event) => event.data.chunk)).toEqual([
-        "Hello ",
-        "world",
-        "!",
-      ]);
+      expect(chunks.map((event) => event.data.chunk)).toEqual(["Hello ", "world", "!"]);
       // Each downstream chunk carries the ACCUMULATED text, not just its delta.
       expect(chunks.map((event) => event.data.fullText)).toEqual([
         "Hello ",
@@ -124,10 +115,7 @@ for (const [label, make] of normalizers) {
       const events = await readEvents(make().normalizeBridgeSseResponse(sseResponse(body)));
 
       const chunks = events.filter((event) => event.event === "chunk");
-      expect(chunks.map((event) => event.data.fullText)).toEqual([
-        "Hel",
-        "Hello",
-      ]);
+      expect(chunks.map((event) => event.data.fullText)).toEqual(["Hel", "Hello"]);
       const done = events.find((event) => event.event === "done");
       expect(done?.data.text).toBe("Hello");
     });

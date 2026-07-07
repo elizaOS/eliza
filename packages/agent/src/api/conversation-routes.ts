@@ -59,9 +59,9 @@ import type {
 } from "./chat-routes.ts";
 import {
   classifyChatFailure,
+  createChatTokenStreamWriter,
   generateChatResponse,
   generateConversationTitle,
-  createChatTokenStreamWriter,
   getChatFailureReply,
   hasRecentVisibleAssistantMemorySince,
   initSse,

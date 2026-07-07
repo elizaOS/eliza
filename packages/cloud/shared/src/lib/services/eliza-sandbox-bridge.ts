@@ -252,9 +252,7 @@ export class ElizaSandboxBridgeService {
                 if (data?.type === "token") {
                   const delta = typeof data.text === "string" ? data.text : "";
                   accumulated =
-                    typeof data.fullText === "string"
-                      ? data.fullText
-                      : accumulated + delta;
+                    typeof data.fullText === "string" ? data.fullText : accumulated + delta;
                   controller.enqueue(
                     `event: chunk\ndata: ${JSON.stringify({
                       messageId,
