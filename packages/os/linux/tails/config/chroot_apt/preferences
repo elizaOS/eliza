@@ -52,6 +52,20 @@ Package: rocm-opencl-icd
 Pin: release *
 Pin-Priority: -1
 
+Explanation: The starpu-contrib source builds an alternative StarPU that
+Explanation: provides the same virtuals as mainline StarPU (e.g.
+Explanation: libstarpu-anympi-1.4-3) while carrying `Conflicts:` against every
+Explanation: mainline counterpart (libstarpumpi, libstarpufft, ...). Identical
+Explanation: failure mode to rocm above: in the multi-suite snapshot the solver
+Explanation: selects both a contrib and a mainline StarPU provider and deadlocks
+Explanation: the chroot install. Nothing here wants StarPU at all (it is only
+Explanation: ever pulled transitively as a virtual provider), so pin the whole
+Explanation: contrib source out (src: covers libstarpu-contrib*, starpu-contrib-*)
+Explanation: and let the mainline satisfy those virtuals.
+Package: src:starpu-contrib
+Pin: release *
+Pin-Priority: -1
+
 Explanation: weirdness in chroot_apt install-binary
 Package: *
 Pin: release o=chroot_local-packages
