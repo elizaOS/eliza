@@ -741,6 +741,16 @@ let fusedEmbedHandlePromise: Promise<{
 	>;
 } | null> | null;
 
+// A null resolution is retried on the next embed rather than cached for the
+// process lifetime — the boot dimension-probe can call getFusedEmbeddingHandle
+// before the gte-small GGUF / fused lib finishes staging, and caching that miss
+// would pin embeddings to the cloud fallback forever. But bound the retry to this
+// window after the first failure so a host that genuinely cannot serve on-device
+// embeddings (no fused lib) stops re-probing every embed and quietly stays on the
+// configured fallback instead of logging + re-loading the FFI on every call.
+const FUSED_EMBED_RETRY_WINDOW_MS = 3 * 60_000;
+let fusedEmbedFirstFailureMs: number | null = null;
+
 async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 	embed: (text: string) => Float32Array;
 } | null> {
@@ -795,18 +805,18 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 			logger.warn(
 				`[local-inference] fused embed init threw: ${e instanceof Error ? e.message : String(e)}`,
 			);
-			fusedEmbedHandlePromise = null;
 			return null;
 		});
 	}
 	const handle = await fusedEmbedHandlePromise;
 	if (!handle) {
-		// A null resolution (e.g. the embedding GGUF or fused lib was not yet
-		// staged when the boot dimension-probe issued the first call) must not be
-		// cached for the process lifetime — otherwise embeddings fall to Cloud
-		// permanently even after the on-device model finishes staging. Clear the
-		// memo so the next embed retries; a real success is cached and reused.
-		fusedEmbedHandlePromise = null;
+		fusedEmbedFirstFailureMs ??= Date.now();
+		if (Date.now() - fusedEmbedFirstFailureMs < FUSED_EMBED_RETRY_WINDOW_MS) {
+			// Still within the staging window — clear the memo so the next embed
+			// retries once the on-device model finishes staging. Past the window we
+			// keep the cached miss so an unservable host stops re-probing.
+			fusedEmbedHandlePromise = null;
+		}
 		return null;
 	}
 	// gte-small / BERT bi-encoders use MEAN pooling; a decoder-as-embedder
