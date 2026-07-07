@@ -1958,16 +1958,11 @@ async function initializePlatform(): Promise<void> {
     );
   }
 
-  // Foreground/background lifecycle + connectivity are wired on EVERY surface,
-  // including the installed **web** PWA — not only native Capacitor (#PWA-D1).
-  // `createMobileLifecycle` guards every Capacitor call and falls back to
-  // `document.visibilitychange` (pause/resume) and window `online`/`offline`
-  // (network) so it degrades cleanly with no plugins. Before this, the web PWA
-  // never dispatched APP_RESUME_EVENT/APP_PAUSE_EVENT, so a backgrounded PWA
-  // came back with a dead WS + stale transcript and nothing forced a
-  // reconnect/refetch (the exact iOS daily-driver jank). `setAppActive` in the
-  // factory dedupes so a working Capacitor `appStateChange` never double-fires
-  // alongside the visibilitychange fallback on native.
+  // Foreground/background lifecycle + connectivity are wired on every surface,
+  // including installed web PWAs (#PWA-D1). `createMobileLifecycle` guards
+  // Capacitor calls and falls back to `document.visibilitychange` plus window
+  // `online`/`offline`; `setAppActive` dedupes native `appStateChange` so the
+  // browser fallback cannot double-fire resume handling.
   getMobileLifecycle().initializeAppLifecycle();
   void getMobileLifecycle().initializeNetworkListener();
 

@@ -1,12 +1,12 @@
 /**
- * Wires app lifecycle events to runtime state on EVERY surface.
+ * Wires app lifecycle events to chat runtime state on every browser and native surface.
  *
- * The shell (`packages/app/src/main.tsx`) now bridges foreground/background
- * into `APP_RESUME_EVENT` / `APP_PAUSE_EVENT` on the installed **web** PWA too,
- * not only native Capacitor: `createMobileLifecycle` registers a
- * `document.visibilitychange` fallback unconditionally, so this hook's resume
- * path runs on the exact iOS PWA surface where a backgrounded app came back
- * with a dead WebSocket and a stale transcript (#PWA-D1/D2/D3).
+ * The shell (`packages/app/src/main.tsx`) bridges foreground/background into
+ * `APP_RESUME_EVENT` / `APP_PAUSE_EVENT` with Capacitor listeners when
+ * available and browser fallbacks for installed PWAs. This hook keeps chat
+ * state coherent after OS suspension, where iOS can silently kill a WebSocket
+ * and leave the transcript stale until the renderer explicitly reconnects and
+ * reloads the active conversation tail (#PWA-D1/D2/D3).
  *
  *  - On `APP_PAUSE_EVENT`:
  *    abort any in-flight chat stream before iOS suspends the process and
@@ -27,6 +27,7 @@
  *    bfcache pageshow arriving together) do not stampede reconnects/refetches.
  */
 
+import { logger } from "@elizaos/logger";
 import type { MutableRefObject } from "react";
 import { useEffect, useRef } from "react";
 import { type ConversationMessage, client } from "../api";
@@ -91,9 +92,10 @@ async function probeAgentHealth(): Promise<boolean> {
       timeoutMs: 5_000,
     });
     return isHealthy(body);
-  } catch {
-    // error-policy:J4 resume health probe — an unreachable agent IS the
+  } catch (error) {
+    // error-policy:J4 resume health probe - an unreachable agent IS the
     // unhealthy signal; the caller reacts by rediscovering the runtime.
+    logger.debug({ error }, "[AppLifecycle] resume health probe failed");
     return false;
   }
 }
@@ -125,10 +127,14 @@ export function useAppLifecycleEvents({
           } else {
             window.localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY);
           }
-        } catch {
-          // localStorage may throw under sandbox / quota; the storage
-          // bridge already mirrors writes to Capacitor Preferences, so a
-          // failure here is not fatal.
+        } catch (error) {
+          // error-policy:J4 active-conversation persistence mirrors through
+          // the storage bridge; localStorage may be blocked by sandbox/quota.
+          // The next resume still uses the in-memory active id when present.
+          logger.debug(
+            { activeId, error },
+            "[AppLifecycle] local active conversation persistence failed",
+          );
         }
       }
     };
@@ -141,8 +147,8 @@ export function useAppLifecycleEvents({
 
   // ── APP_RESUME: reconnect + refetch tail + sweep stale placeholder ──
   //
-  // Latest refs are read at fire time so the debounced sequence and the
-  // pageshow bridge see current values without re-subscribing the listeners.
+  // Resume listeners stay subscribed while refs carry the latest values into
+  // debounced work and bfcache pageshow handling.
   const conversationMessagesRefStable = conversationMessagesRef;
   const activeConversationIdRefStable = activeConversationIdRef;
   const setConversationMessagesRef = useRef(setConversationMessages);
@@ -170,7 +176,7 @@ export function useAppLifecycleEvents({
       }
     };
 
-    // The actual resume work, run once per debounced burst.
+    // One resume burst runs at most one reconnect and one tail reload.
     const runResume = (): void => {
       resumeTimer = null;
 
@@ -186,21 +192,26 @@ export function useAppLifecycleEvents({
       // churn), so this is safe when the WS is absent.
       try {
         client.resetConnection();
-      } catch {
-        // error-policy:J4 a reconnect that throws must not strand the refetch
-        // below; the background probe loop remains a fallback.
+      } catch (error) {
+        // error-policy:J4 resume reconnect - the tail refetch below is the
+        // user-visible freshness path, and the background probe remains a
+        // retry path for the websocket.
+        logger.warn({ error }, "[AppLifecycle] resume reconnect failed");
       }
 
       // Refetch the active conversation tail so agent messages emitted while
-      // backgrounded appear. This is the ONLY re-sync path for dedicated-agent
-      // REST mode (no WS reconnect fires `onReconnect`/RESYNC_EVENT there), and
-      // a belt-and-suspenders refresh for the WS path where the socket resync
-      // reconciliation would otherwise be the only trigger.
+      // backgrounded appear. Dedicated-agent REST mode has no websocket
+      // reconnect event, so this explicit reload is its transcript re-sync
+      // path after suspension.
       const convId = activeConversationIdRefStable.current;
       if (convId) {
-        void loadConversationMessagesRef.current(convId).catch(() => {
-          // error-policy:J4 resume tail refetch — a failed reload leaves the
-          // last-known transcript in place; the next interaction/open retries.
+        void loadConversationMessagesRef.current(convId).catch((error) => {
+          // error-policy:J4 resume tail refetch - a failed reload leaves the
+          // last-known transcript visible; the next interaction/open retries.
+          logger.warn(
+            { convId, error },
+            "[AppLifecycle] resume conversation tail refetch failed",
+          );
         });
       }
 
@@ -218,7 +229,7 @@ export function useAppLifecycleEvents({
       scheduleResume();
     };
 
-    // ── D3: bfcache restore ──
+    // ── bfcache restore ──
     // iOS commonly restores an installed PWA from the back/forward cache
     // (bfcache) where `visibilitychange` alone can miss the resume trigger. A
     // `pageshow` with `persisted === true` means the page came back from
