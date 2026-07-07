@@ -3,6 +3,7 @@
  * gentle rim pulse.
  */
 import type * as React from "react";
+import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim";
 import {
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_BACKGROUND_GLOW,
@@ -76,6 +77,16 @@ export function ShaderBackground({
       className="pointer-events-none fixed inset-0 overflow-hidden"
       style={{
         zIndex: 0,
+        // BOTTOM-BAR FIX (consume #15036 reclaim): on the installed iOS
+        // standalone PWA the `fixed` containing block collapses to the small
+        // ICB (`ce873` while the physical screen is `sh932`), so a bare
+        // `inset-0` (`bottom: 0`) stops this shader field ~59px SHORT of the
+        // home-indicator edge — the recurring unpainted black strip. Extend the
+        // field DOWN to the TRUE physical bottom by the JS-MEASURED gap
+        // `--standalone-bottom-reclaim` (a hard 0 off the iOS-standalone/native
+        // surface, so a true no-op on desktop/web/Android). Overrides the
+        // `inset-0` `bottom` from the class.
+        bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET,
         backgroundImage: `linear-gradient(to bottom, ${color} 0%, ${color} 52%, ${floor} 100%)`,
       }}
     >
