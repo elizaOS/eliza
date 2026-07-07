@@ -12,8 +12,27 @@
  */
 
 import { hasBadWords, minimalBadWordsArray } from "expletives";
+import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { logger } from "../utils/logger";
 import { adminService } from "./admin";
+
+/**
+ * #9899 Tier-3: in-isolate memo of the per-user block decision. On the
+ * non-API-key inference slow path `shouldBlockUser` is an uncached
+ * cross-provider Postgres read on EVERY request (~100-400ms from a CF Worker).
+ * Block state is rare-change data, so a 60s TTL is the propagation bound for
+ * a ban reaching a warm isolate — the same worst-case bound the Tier-1
+ * inference auth-context already accepts for API-key auth (60s IAC TTL). The
+ * entry is dropped locally the moment THIS isolate records a violation
+ * (moderateAsync) or resets one; other isolates age out within the TTL.
+ */
+const SHOULD_BLOCK_CACHE_TTL_MS = 60_000;
+const shouldBlockCache = new InMemoryLRUCache<boolean>(4096, SHOULD_BLOCK_CACHE_TTL_MS);
+
+/** Test hook: reset the block-decision memo between tests. */
+export function __clearShouldBlockUserCache(): void {
+  shouldBlockCache.deleteByPrefix("");
+}
 
 // OpenAI Moderation API types
 interface ModerationCategory {
@@ -302,6 +321,9 @@ class ContentModerationService {
       scores: result.scores as Record<string, number>,
       action,
     });
+    // The violation may have crossed the block threshold — drop this isolate's
+    // memoized decision so the next check re-reads authoritatively (#9899 Tier-3).
+    shouldBlockCache.delete(userId);
 
     return { ...result, action };
   }
@@ -542,10 +564,17 @@ class ContentModerationService {
   }
 
   /**
-   * Check if user should be blocked based on violation history (from DB)
+   * Check if user should be blocked based on violation history. Memoized
+   * in-isolate for 60s (#9899 Tier-3) — see `shouldBlockCache` above for the
+   * staleness bound. A thrown DB read is NOT cached (fail closed, retry next
+   * request).
    */
   async shouldBlockUser(userId: string): Promise<boolean> {
-    return adminService.shouldBlockUser(userId);
+    const cached = shouldBlockCache.get(userId);
+    if (cached !== null) return cached;
+    const blocked = await adminService.shouldBlockUser(userId);
+    shouldBlockCache.set(userId, blocked);
+    return blocked;
   }
 
   /**
@@ -593,6 +622,7 @@ class ContentModerationService {
    */
   async resetViolations(userId: string): Promise<void> {
     await adminService.unbanUser(userId, "system");
+    shouldBlockCache.delete(userId);
   }
 
   /**
