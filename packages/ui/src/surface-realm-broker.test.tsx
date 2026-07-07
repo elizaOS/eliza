@@ -55,6 +55,14 @@ describe("isShellReservedStorageKey", () => {
       "eliza:ui-theme",
       "elizaos:active-server",
       "eliza_avatar_index",
+      // Every shell key SPELLING in the repo, not just the colon namespaces —
+      // these were admitted to view writes/deletes before the review fix
+      // (api base redirect, pinned-tab/session/payment clobbering).
+      "elizaos_api_base",
+      "elizaos.desktop.pinned-tabs",
+      "eliza-anon-session-token",
+      "eliza.pendingDirectCryptoPayment.v1",
+      "eliza.security.consent.microphone",
     ]) {
       expect(isShellReservedStorageKey(key)).toBe(true);
     }
