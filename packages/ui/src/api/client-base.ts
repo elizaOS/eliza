@@ -468,6 +468,35 @@ if (typeof document !== "undefined") {
   });
 }
 
+/**
+ * Subscribe to bridged network-status transitions (Capacitor
+ * `networkStatusChange`, re-dispatched as {@link NETWORK_STATUS_CHANGE_EVENT}).
+ * The listener fires with `true` when connectivity returns and `false` when it
+ * drops. Returns an unsubscribe fn. Module-level (not per-client) because the
+ * bridge is a single document-level event — every consumer shares the same
+ * transition source, so a chat-send auto-retry and the WS reconnect scheduler
+ * both react to the same online edge without racing separate listeners.
+ */
+export function onNetworkStatusChange(
+  listener: (connected: boolean) => void,
+): () => void {
+  networkStatusListeners.add(listener);
+  return () => {
+    networkStatusListeners.delete(listener);
+  };
+}
+
+/**
+ * Mint a stable idempotency key for one logical chat send. The send path calls
+ * this ONCE per turn and reuses the value across an auto-retry so a request that
+ * landed server-side during a network blip is de-duped rather than duplicated.
+ * Thin free-function wrapper over {@link ElizaClient.generateMessageId} so
+ * consumers don't need the class from the barrel.
+ */
+export function generateChatClientMessageId(): string {
+  return ElizaClient.generateMessageId();
+}
+
 /** Test-only: reset the cached network state. */
 export function __resetNetworkStatusForTests(): void {
   lastKnownNetworkConnected = true;
@@ -476,6 +505,16 @@ export function __resetNetworkStatusForTests(): void {
 
 /** Test-only: read the last bridged network status. */
 export function __getLastKnownNetworkConnected(): boolean {
+  return lastKnownNetworkConnected;
+}
+
+/**
+ * The last bridged connectivity state (`true` = the device reports a usable
+ * network). Public counterpart to the test-only reader so the send path can
+ * tell "we're offline" (worth waiting for reconnect to auto-retry) from "we're
+ * online but the server 503'd / was slow" (surface the manual affordance now).
+ */
+export function isNetworkCurrentlyConnected(): boolean {
   return lastKnownNetworkConnected;
 }
 
@@ -577,9 +616,11 @@ export class ElizaClient {
   /**
    * Stable id for a single logical client message. Used as an idempotency key
    * so a resend after reconnect is de-dupable server-side. Falls back to a
-   * time+random token when crypto.randomUUID is unavailable.
+   * time+random token when crypto.randomUUID is unavailable. Public so the
+   * send path can mint an id ONCE per logical turn and reuse it across an
+   * auto-retry (the retry must carry the original id or the dedupe is moot).
    */
-  private static generateMessageId(): string {
+  static generateMessageId(): string {
     if (typeof globalThis.crypto?.randomUUID === "function") {
       return globalThis.crypto.randomUUID();
     }
@@ -1664,6 +1705,11 @@ export class ElizaClient {
     /** Additive: inline tool-call steps (call → result/error) for the thread's
      *  tool rows. Omitting it leaves token/done/error behaviour unchanged. */
     onToolEvent?: (event: ChatToolCallEvent) => void,
+    /** Additive: caller-supplied idempotency key. When a send is auto-retried
+     *  after a network blip the SAME id must ride the retry so a request that
+     *  actually landed server-side is de-duped instead of double-delivered.
+     *  Omit for a fresh send — a new id is generated. */
+    clientMessageId?: string,
   ): Promise<{
     text: string;
     agentName: string;
@@ -1682,8 +1728,10 @@ export class ElizaClient {
     // Server-side dedupe by `clientMessageId` should hook there, where the
     // request body is parsed before the message is persisted/generated. The id
     // is generated here so the contract is in place regardless of when that
-    // dedupe lands.
-    const clientMessageId = ElizaClient.generateMessageId();
+    // dedupe lands. A caller-supplied id (auto-retry after a network blip)
+    // takes precedence so the retry is idempotent with the original attempt.
+    const resolvedClientMessageId =
+      clientMessageId ?? ElizaClient.generateMessageId();
     const res = await this.rawRequest(
       path,
       {
@@ -1695,7 +1743,7 @@ export class ElizaClient {
         body: JSON.stringify({
           text,
           channelType,
-          clientMessageId,
+          clientMessageId: resolvedClientMessageId,
           ...(images?.length ? { images } : {}),
           ...(metadata ? { metadata } : {}),
         }),

@@ -9,19 +9,23 @@
  */
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   CodingAgentSession,
   Conversation,
   ConversationMessage,
   ImageAttachment,
 } from "../api";
-import { StreamGenerationError } from "../api/client-base";
-import { CLOUD_HANDOFF_PHASE_EVENT } from "../events";
+import {
+  __resetNetworkStatusForTests,
+  StreamGenerationError,
+} from "../api/client-base";
+import { APP_RESUME_EVENT, CLOUD_HANDOFF_PHASE_EVENT } from "../events";
 import type { LoadConversationMessagesResult } from "./internal";
 import {
   buildSendFailureNotice,
   getSendValidationFailureMessage,
+  isRetryableSendError,
   UNDELIVERED_TURN_NOTICE,
   type UseChatSendDeps,
   useChatSend,
@@ -52,6 +56,9 @@ const mocks = vi.hoisted(() => ({
       Promise.resolve({ ok: true, deletedCount: 1 }),
     ),
     getBaseUrl: vi.fn(() => ""),
+    // Real client exposes onWsEvent(type, handler) => unsubscribe; the retry
+    // path subscribes to "ws-reconnected" through it. Default no-op unsubscribe.
+    onWsEvent: vi.fn(() => () => {}),
   },
 }));
 
@@ -671,26 +678,48 @@ describe("useChatSend non-404 send failures", () => {
     );
   });
 
-  it("keeps the connection copy for a genuine network drop", async () => {
-    mocks.client.sendConversationMessageStream.mockRejectedValue(
-      Object.assign(new Error("Failed to fetch"), { kind: "network" }),
-    );
+  it("keeps the connection copy for a genuine network drop (after the auto-retry exhausts)", async () => {
+    // A network-kind drop now first auto-retries on reconnect (E2). When the
+    // retry ALSO fails, the connection copy still surfaces — the copy contract
+    // is unchanged, it just lands after the single auto-retry is spent. Use
+    // fake timers so the reconnect-wait resolves instantly instead of hanging.
+    vi.useFakeTimers();
+    try {
+      __resetNetworkStatusForTests();
+      mocks.client.onWsEvent.mockImplementation(() => () => {});
+      mocks.client.sendConversationMessageStream.mockRejectedValue(
+        Object.assign(new Error("Failed to fetch"), { kind: "network" }),
+      );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
-    const { result } = renderHook(() => useChatSend(deps));
+      const deps = makeDeps({
+        activeConversationId: "conv-1",
+        conversations: [conversation("conv-1", "room-1")],
+      });
+      const { result } = renderHook(() => useChatSend(deps));
 
-    await act(async () => {
-      await result.current.sendChatText("hi", { conversationId: "conv-1" });
-    });
+      let sendPromise: Promise<void> | undefined;
+      await act(async () => {
+        sendPromise = result.current.sendChatText("hi", {
+          conversationId: "conv-1",
+        });
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        // Drive the reconnect edge → the single auto-retry fires and re-fails.
+        document.dispatchEvent(new Event(APP_RESUME_EVENT));
+        await vi.advanceTimersByTimeAsync(500);
+        await sendPromise;
+      });
 
-    expect(deps.setActionNotice).toHaveBeenCalledWith(
-      expect.stringContaining("check your connection"),
-      "error",
-      expect.any(Number),
-    );
+      expect(deps.setActionNotice).toHaveBeenCalledWith(
+        expect.stringContaining("check your connection"),
+        "error",
+        expect.any(Number),
+      );
+    } finally {
+      vi.runOnlyPendingTimers();
+      vi.useRealTimers();
+    }
   });
 
   it("does not reload (which could re-fail) on an auth-failure send error, and notifies", async () => {
@@ -1893,5 +1922,322 @@ describe("useChatSend reply-target attachment", () => {
       .calls[0][6] as Record<string, unknown> | undefined;
     expect(metadata?.replyToMessageId).toBeUndefined();
     expect(deps.setChatReplyTarget).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E2: auto-retry a network-failed send ONCE on reconnect (PWA dossier 2.2)
+// ---------------------------------------------------------------------------
+
+/** A transport-blip send failure (ApiError-shaped: kind:"network"). */
+function networkError(): Error {
+  return Object.assign(new Error("Failed to fetch"), { kind: "network" });
+}
+
+/** A timeout send failure (ApiError-shaped: kind:"timeout"). */
+function timeoutError(): Error {
+  return Object.assign(new Error("timed out"), { kind: "timeout" });
+}
+
+/** A non-retryable validation failure (413 payload too large). */
+function validation413(): Error {
+  return Object.assign(new Error("Attachment too large (max 5 MB)"), {
+    status: 413,
+  });
+}
+
+/** Fire the reconnect edge the auto-retry waits on, then flush its debounce. */
+async function dispatchReconnectAndSettle(): Promise<void> {
+  // APP_RESUME fires on every dispatch (unlike NETWORK_STATUS_CHANGE, which
+  // only reacts to a true transition), so it's the deterministic wake signal.
+  document.dispatchEvent(new Event(APP_RESUME_EVENT));
+  // Flush the 400ms reconnect-signal debounce.
+  await vi.advanceTimersByTimeAsync(500);
+}
+
+describe("isRetryableSendError classification", () => {
+  it("classifies network + timeout + 502/503 as retryable", () => {
+    expect(isRetryableSendError(networkError())).toBe(true);
+    expect(isRetryableSendError(timeoutError())).toBe(true);
+    expect(isRetryableSendError({ status: 502 })).toBe(true);
+    expect(isRetryableSendError({ status: 503 })).toBe(true);
+  });
+
+  it("does NOT classify auth/rate-limit/validation/404 or aborts as retryable", () => {
+    expect(isRetryableSendError({ status: 401 })).toBe(false);
+    expect(isRetryableSendError({ status: 403 })).toBe(false);
+    expect(isRetryableSendError({ status: 429 })).toBe(false);
+    expect(isRetryableSendError({ status: 413 })).toBe(false);
+    expect(isRetryableSendError({ status: 404 })).toBe(false);
+    expect(isRetryableSendError(abortError())).toBe(false);
+    expect(isRetryableSendError(null)).toBe(false);
+    expect(isRetryableSendError(new Error("plain"))).toBe(false);
+  });
+});
+
+describe("useChatSend E2 auto-retry on reconnect", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    __resetNetworkStatusForTests();
+    mocks.client.getBaseUrl.mockReturnValue("");
+    mocks.client.onWsEvent.mockImplementation(() => () => {});
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it("auto-retries once when connectivity returns, reusing the same clientMessageId", async () => {
+    // First attempt fails with a network blip; the reconnect signal drives a
+    // single retry that succeeds. The retry MUST reuse the original
+    // idempotency key so a landed-during-blip send is de-duped server-side.
+    let attempt = 0;
+    const seenIds: Array<string | undefined> = [];
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (t: string, a?: string) => void,
+        _ch?: string,
+        _sig?: AbortSignal,
+        _imgs?: unknown,
+        _meta?: unknown,
+        _onStatus?: unknown,
+        _onTool?: unknown,
+        clientMessageId?: string,
+      ) => {
+        attempt += 1;
+        seenIds.push(clientMessageId);
+        if (attempt === 1) throw networkError();
+        onToken("hi there", "hi there");
+        return { text: "hi there", completed: true };
+      },
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("hi", {
+        conversationId: "conv-1",
+      });
+      // Let the first attempt fail + arm the reconnect wait.
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // During the wait, NO manual resend notice yet — the turn still looks like
+    // it's sending.
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await dispatchReconnectAndSettle();
+      await sendPromise;
+    });
+
+    // Exactly two attempts (original + one retry), no loop.
+    expect(attempt).toBe(2);
+    // Same idempotency key on both attempts.
+    expect(seenIds).toHaveLength(2);
+    expect(seenIds[0]).toBeTruthy();
+    expect(seenIds[1]).toBe(seenIds[0]);
+    // The retry succeeded — no error notice ever surfaced.
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the manual resend affordance after the single auto-retry ALSO fails (no infinite loop)", async () => {
+    // Both attempts fail with a network blip. The auto-retry fires once, and
+    // when it also fails the turn flips to the manual resend path — it does NOT
+    // keep retrying forever.
+    let attempt = 0;
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => {
+      attempt += 1;
+      throw networkError();
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("hi", {
+        conversationId: "conv-1",
+      });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    await act(async () => {
+      await dispatchReconnectAndSettle();
+      await sendPromise;
+    });
+
+    // Original + exactly one retry.
+    expect(attempt).toBe(2);
+    // The retry failed → manual resend notice surfaced.
+    expect(deps.setActionNotice).toHaveBeenCalledTimes(1);
+    const [msg, tone] = vi.mocked(deps.setActionNotice).mock.calls[0];
+    expect(tone).toBe("error");
+    expect(msg).toMatch(/resend/i);
+  });
+
+  it("does NOT auto-retry a non-retryable (validation) failure — manual affordance immediately", async () => {
+    let attempt = 0;
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => {
+      attempt += 1;
+      throw validation413();
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    // A single attempt, no retry, and the manual notice fired right away.
+    expect(attempt).toBe(1);
+    expect(deps.setActionNotice).toHaveBeenCalledTimes(1);
+    const [msg] = vi.mocked(deps.setActionNotice).mock.calls[0];
+    expect(msg).toMatch(/couldn't accept that message/i);
+  });
+
+  it("does not retry once the single auto-retry has been spent even if another reconnect fires", async () => {
+    // Guard against a second reconnect edge re-triggering: after the one retry
+    // is consumed, a further reconnect must NOT drive a third attempt.
+    let attempt = 0;
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => {
+      attempt += 1;
+      throw networkError();
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("hi", {
+        conversationId: "conv-1",
+      });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    await act(async () => {
+      await dispatchReconnectAndSettle();
+      await sendPromise;
+    });
+
+    // A late, extra reconnect after the turn already settled must be inert.
+    await act(async () => {
+      await dispatchReconnectAndSettle();
+    });
+
+    expect(attempt).toBe(2);
+  });
+
+  it("stops waiting for reconnect (no retry) when the turn is superseded by Stop", async () => {
+    // A user Stop aborts the controller the wait listens on; the auto-retry must
+    // abandon quietly instead of firing into a torn-down turn.
+    let attempt = 0;
+    const firstAttemptStarted = deferred();
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => {
+      attempt += 1;
+      firstAttemptStarted.resolve();
+      throw networkError();
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("hi", {
+        conversationId: "conv-1",
+      });
+      await firstAttemptStarted.promise;
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Stop while the retry is waiting for reconnect.
+    await act(async () => {
+      result.current.handleChatStop();
+      await sendPromise;
+    });
+
+    // A reconnect after the stop must NOT resurrect the turn.
+    await act(async () => {
+      await dispatchReconnectAndSettle();
+    });
+
+    expect(attempt).toBe(1);
+    // Stop is intentional — no error notice.
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
+});
+
+describe("useChatSend manual resend still works after auto-retry exhausts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    __resetNetworkStatusForTests();
+    mocks.client.getBaseUrl.mockReturnValue("");
+    mocks.client.onWsEvent.mockImplementation(() => () => {});
+  });
+
+  it("handleChatRetry re-sends after the auto-retry surfaced a failed turn", async () => {
+    // After the auto-retry exhausts and the thread shows a failed assistant
+    // turn, the existing manual Retry affordance must still drive a fresh send
+    // (truncate + resend) — the auto-retry does not disable manual resend.
+    const failedAssistantId = "asst-failed";
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    deps.conversationMessagesRef.current = [
+      { id: "user-1", role: "user", text: "hello", timestamp: Date.now() },
+      {
+        id: failedAssistantId,
+        role: "assistant",
+        text: UNDELIVERED_TURN_NOTICE,
+        timestamp: Date.now(),
+        failureKind: "provider_issue",
+      },
+    ];
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (t: string, a?: string) => void,
+      ) => {
+        onToken("recovered", "recovered");
+        return { text: "recovered", completed: true };
+      },
+    );
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.handleChatRetry(failedAssistantId);
+    });
+
+    // The manual retry truncated the failed turn and re-sent the user text.
+    expect(mocks.client.truncateConversationMessages).toHaveBeenCalledWith(
+      "conv-1",
+      "user-1",
+      { inclusive: true },
+    );
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    const sentText =
+      mocks.client.sendConversationMessageStream.mock.calls[0][1];
+    expect(sentText).toBe("hello");
   });
 });

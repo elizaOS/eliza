@@ -512,6 +512,8 @@ declare module "./client-base" {
       onStatus?: (status: ChatTurnStatus) => void,
       /** Additive: inline tool-call steps (call → result/error) for the thread. */
       onToolEvent?: (event: ChatToolCallEvent) => void,
+      /** Additive: caller-supplied idempotency key reused across an auto-retry. */
+      clientMessageId?: string,
     ): Promise<{
       text: string;
       agentName: string;
@@ -1307,6 +1309,7 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
   metadata?,
   onStatus?,
   onToolEvent?,
+  clientMessageId?,
 ) {
   return this.streamChatEndpoint(
     `/api/conversations/${encodeURIComponent(id)}/messages/stream`,
@@ -1318,6 +1321,7 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
     metadata,
     onStatus,
     onToolEvent,
+    clientMessageId,
   );
 };
 
