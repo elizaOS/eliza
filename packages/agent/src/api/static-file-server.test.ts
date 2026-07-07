@@ -84,3 +84,39 @@ describe("injectApiBaseIntoHtml token embedding", () => {
     expect(out).not.toContain("__ELIZA_API_TOKEN__");
   });
 });
+
+describe("injectApiBaseIntoHtml web-push VAPID public key", () => {
+  const html = "<!doctype html><html><head></head><body></body></html>";
+  const VAPID_PUBLIC = "BExamplePublicKeyBase64Url";
+
+  it("seeds the VAPID public key into the boot config", () => {
+    const out = injectApiBaseIntoHtml(Buffer.from(html), undefined, {
+      webPushVapidPublicKey: VAPID_PUBLIC,
+    }).toString("utf-8");
+    expect(out).toContain("webPushVapidPublicKey");
+    expect(out).toContain(VAPID_PUBLIC);
+    expect(out).toContain("elizaos.app.boot-config");
+  });
+
+  it("merges apiBase + VAPID public key into a single boot-config write", () => {
+    const out = injectApiBaseIntoHtml(Buffer.from(html), "https://proxy.example", {
+      webPushVapidPublicKey: VAPID_PUBLIC,
+    }).toString("utf-8");
+    expect(out).toContain("apiBase");
+    expect(out).toContain("https://proxy.example");
+    expect(out).toContain("webPushVapidPublicKey");
+    expect(out).toContain(VAPID_PUBLIC);
+    // One merged Object.assign seed, not two racing writes.
+    const seedCount = out.split("__ELIZAOS_APP_BOOT_CONFIG__=next").length - 1;
+    expect(seedCount).toBe(1);
+  });
+
+  it("never emits the VAPID field when none is provided", () => {
+    const out = injectApiBaseIntoHtml(
+      Buffer.from(html),
+      undefined,
+      undefined,
+    ).toString("utf-8");
+    expect(out).not.toContain("webPushVapidPublicKey");
+  });
+});

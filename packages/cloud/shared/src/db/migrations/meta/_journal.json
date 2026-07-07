@@ -1198,6 +1198,13 @@
       "when": 1781742000000,
       "tag": "0171_press_release_domain",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1781828400000,
+      "tag": "0172_web_push_subscriptions",
+      "breakpoints": true
     }
   ]
 }

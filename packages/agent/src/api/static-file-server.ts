@@ -142,18 +142,27 @@ function getCachedFile(filePath: string, mtimeMs: number): Buffer {
 export function injectApiBaseIntoHtml(
   html: Buffer,
   externalBase?: string | null,
-  opts?: { apiToken?: string | null },
+  opts?: { apiToken?: string | null; webPushVapidPublicKey?: string | null },
 ): Buffer {
   const trimmedBase = externalBase?.trim();
   const trimmedToken = opts?.apiToken?.trim();
-  if (!trimmedBase && !trimmedToken) return html;
+  const trimmedVapid = opts?.webPushVapidPublicKey?.trim();
+  if (!trimmedBase && !trimmedToken && !trimmedVapid) return html;
 
   const headCloseTag = "</head>";
   const headCloseIndex = html.indexOf(headCloseTag);
   if (headCloseIndex < 0) return html;
 
   const parts: string[] = [];
-  if (trimmedBase) {
+  // Merge boot-config overrides (apiBase, webPushVapidPublicKey) into one store
+  // write so separate seed scripts do not race each other.
+  const bootOverrides: Record<string, string> = {};
+  if (trimmedBase) bootOverrides.apiBase = trimmedBase;
+  // The VAPID PUBLIC key is safe to expose to the browser (it is the
+  // applicationServerKey the client passes to pushManager.subscribe). The
+  // matching PRIVATE key stays a cloud secret and is never injected here.
+  if (trimmedVapid) bootOverrides.webPushVapidPublicKey = trimmedVapid;
+  if (Object.keys(bootOverrides).length > 0) {
     // Seed the boot-config store (the single source of truth for the API base)
     // before any renderer JS runs, mirroring the Electrobun renderer injection.
     // Writing both the `Symbol.for("elizaos.app.boot-config")` slot and its
@@ -161,7 +170,7 @@ export function injectApiBaseIntoHtml(
     // transport, and the native web shims resolve this reverse-proxy base
     // through one accessor instead of a bespoke API-base window global.
     parts.push(
-      `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${JSON.stringify(trimmedBase)}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`,
+      `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,${JSON.stringify(bootOverrides)});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`,
     );
   }
   if (trimmedToken) {
@@ -302,10 +311,22 @@ export function serveStaticUi(
   // cookie wall) can opt into the same token injection with
   // ELIZA_FORCE_INJECT_TOKEN (see resolveInjectedDashboardToken).
   const cloudToken = resolveInjectedDashboardToken();
+  // Expose the VAPID PUBLIC key (safe for the browser) so the installed PWA can
+  // subscribe to Web Push. The PRIVATE key stays a cloud secret. Absent env ⇒
+  // the client renders the "push not configured" state.
+  const webPushVapidPublicKey =
+    process.env.ELIZA_WEB_PUSH_VAPID_PUBLIC_KEY?.trim() || null;
+  const injectOpts =
+    cloudToken || webPushVapidPublicKey
+      ? {
+          ...(cloudToken ? { apiToken: cloudToken } : {}),
+          ...(webPushVapidPublicKey ? { webPushVapidPublicKey } : {}),
+        }
+      : undefined;
   const html = injectApiBaseIntoHtml(
     uiIndexHtml,
     process.env.ELIZA_EXTERNAL_BASE_URL,
-    cloudToken ? { apiToken: cloudToken } : undefined,
+    injectOpts,
   );
 
   sendStaticResponse(

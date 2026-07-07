@@ -26,6 +26,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import { notifyAgentReply } from "@/lib/web-push";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -95,6 +96,32 @@ async function __hono_POST(c: AppContext) {
       if (current.status === "completed") {
         const result = (current.result ?? {}) as Record<string, unknown>;
         const replyText = typeof result.text === "string" ? result.text : "";
+
+        // Agent-reply → Web Push: if the patron has installed the PWA and has
+        // no live foreground client, surface the reply as a push. Never throws —
+        // a push failure must not break the reply; the notify service no-ops
+        // when VAPID isn't configured. Keyed to the sending user (subscription
+        // owner) + this agent. Registered with `executionCtx.waitUntil` so the
+        // Cloudflare Worker keeps the send + dead-subscription prune alive AFTER
+        // the chat response returns (a bare fire-and-forget can be dropped when
+        // the Worker finishes the request — the exact path this feature needs).
+        if (userId && replyText) {
+          const pushWork = notifyAgentReply({
+            userId,
+            agentId,
+            replyText,
+            title: agent.agent_name ?? "New message",
+            ...(sessionId ? { conversationId: sessionId } : {}),
+          }).catch(() => {
+            // error-policy:J5 non-fatal; notify-service already logs internally.
+          });
+          if (typeof c.executionCtx?.waitUntil === "function") {
+            c.executionCtx.waitUntil(pushWork);
+          } else {
+            void pushWork;
+          }
+        }
+
         const reason =
           typeof result.reason === "string" ? result.reason : undefined;
         // Flatten so callers reading top-level `text` work directly.
