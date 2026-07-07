@@ -29,7 +29,7 @@ export const appPhonePlugin: Plugin = {
   actions: [],
   providers: [phoneCallLogProvider],
   views: [
-    // ONE declaration → GUI + XR + TUI, all drawn from the single PhoneView
+    // ONE GUI declaration, drawn from the single PhoneView
     // spatial source. `modalities` is a plain literal here (plugin.ts is not in
     // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
     // the bundle build.
@@ -39,7 +39,7 @@ export const appPhonePlugin: Plugin = {
       description: "Android dialer and recent-calls log",
       icon: "Phone",
       path: "/phone",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven

@@ -2,11 +2,7 @@
 
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
-import {
-  getTerminalView,
-  registerSpatialTerminalView,
-  renderViewToLines,
-} from "@elizaos/ui/spatial/tui";
+import { renderViewToLines } from "@elizaos/ui/spatial/tui";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
@@ -100,20 +96,6 @@ describe("InventorySpatialView one source, three modalities", () => {
     for (const html of [gui, xr]) {
       expect(html).toContain("Agent NFT");
       expect(html).toContain('data-agent-id="refresh"');
-    }
-  });
-
-  it("registers as a terminal view the agent terminal can mount and render", () => {
-    const unregister = registerSpatialTerminalView("wallet-test", () => view);
-    try {
-      const component = getTerminalView("wallet-test");
-      expect(component).toBeTruthy();
-      const lines = component?.render(50) ?? [];
-      expect(lines.length).toBeGreaterThan(0);
-      for (const line of lines) expect(visibleWidth(line)).toBe(50);
-      expect(lines.join("\n")).toContain("Agent NFT");
-    } finally {
-      unregister();
     }
   });
 });

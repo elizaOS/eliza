@@ -4,10 +4,8 @@
  * It owns the live Android data (call-log fetch, dialer state, pending-number
  * handoff, place-call / open-dialer / Contacts-link actions) and renders the
  * one presentational {@link PhoneSpatialView} inside a {@link SpatialSurface}.
- * Omitting the `modality` prop lets `SpatialSurface` auto-detect GUI vs XR via
- * `window.__elizaXRContext`, so the SAME component serves both surfaces. The
- * TUI surface renders the same `PhoneSpatialView` through the terminal registry
- * (see `register-terminal-view.tsx`).
+ * Omitting the `modality` prop lets `SpatialSurface` auto-detect the host
+ * surface, so the SAME component serves them all. The view ships GUI-only.
  */
 
 import { Phone } from "@elizaos/capacitor-phone";

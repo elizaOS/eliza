@@ -19,7 +19,7 @@ Adds two distinct surfaces to elizaOS. The Android surface provides a full-scree
   future provider/action migration.
 
 **Views** (registered in `plugin.ts` under `plugin.views`)
-- `phone` — ONE declaration (`modalities: ["gui", "xr", "tui"]`, componentExport `PhoneView`), mounted at `/phone`. `PhoneView` owns the live Android data and renders the single presentational `PhoneSpatialView` inside a `SpatialSurface`; the same `PhoneSpatialView` drives the terminal surface via `register-terminal-view.tsx`. The address book is the separate Contacts view; a "Contacts" control links to it via the `eliza:navigate:view` bus.
+- `phone` — ONE declaration (`modalities: ["gui"]`, componentExport `PhoneView`), mounted at `/phone`. `PhoneView` owns the live Android data and renders the single presentational `PhoneSpatialView` inside a `SpatialSurface`. Shipping is GUI-only; `xr`/`tui` remain compatibility modality values. The address book is the separate Contacts view; a "Contacts" control links to it via the `eliza:navigate:view` bus.
 
 **App nav tab** (registered under `plugin.app.navTabs`)
 - `phone-companion` — Mounts `PhoneCompanionApp` at `/phone-companion`; declared for hosts that do not side-effect-import `register-companion-page.ts`.
@@ -30,10 +30,8 @@ Adds two distinct surfaces to elizaOS. The Android surface provides a full-scree
 src/
   index.ts                       Package barrel — public exports
   plugin.ts                      Plugin object (appPhonePlugin / default)
-  register.ts                    Side-effect entry: registers the companion page (all
-                                 hosts) + the terminal phone view (Node agent)
+  register.ts                    Side-effect entry: registers the companion page (all hosts)
   register-companion-page.ts     Registers PhoneCompanionApp with @elizaos/ui app-shell-registry
-  register-terminal-view.tsx     Registers PhoneSpatialView for the terminal/TUI surface
   ui.ts                          Re-exports all UI components under public names
   twilio.ts                      Twilio helpers: sendTwilioSms, sendTwilioVoiceCall,
                                  readTwilioCredentialsFromEnv, billing calc

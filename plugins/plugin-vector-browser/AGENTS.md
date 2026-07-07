@@ -12,23 +12,21 @@ the component nor `three` ships in the always-loaded `@elizaos/ui` bundle.
   and the terminal registration helpers.
 - `src/plugin.ts` — `vectorBrowserPlugin` (`Plugin`). Declares the single
   `views[]` entry (`id: "vector-browser"`, `developerOnly`, modalities
-  `gui` / `xr` / `tui`, `componentExport: "VectorBrowserView"`, served at
+  `gui` (only the GUI modality ships; `tui`/`xr` remain compatibility values in
+  the manifest schema), `componentExport: "VectorBrowserView"`, served at
   `/vector-browser`).
 - `src/register.ts` (export `./register`, also `appRegister` in
   `package.json`) — side-effect module. Calls `registerAppRoutePluginLoader` so
   the agent can resolve `Plugin.views` and serve
   `/api/views/vector-browser/bundle.js`. In a terminal host (`window`
   undefined) it lazily registers the spatial terminal view.
-- `src/VectorBrowserView.tsx` — the rich GUI/XR surface
+- `src/VectorBrowserView.tsx` — the rich GUI surface
   (`VectorBrowserView`, `VectorBrowserRichView`, `VectorGraph3D`). Loads `three`
   and queries memory tables via `@elizaos/ui/api`'s `client`.
-- `src/VectorBrowserSpatialView.tsx` — purely presentational TUI/spatial
+- `src/VectorBrowserSpatialView.tsx` — purely presentational spatial
   fallback (`VectorBrowserSpatialView`) plus the `VectorBrowserPoint` /
   `VectorBrowserSnapshot` types. Imports only `@elizaos/ui/spatial` primitives,
   so it is safe to render inside the Node agent process (no three.js).
-- `src/register-terminal-view.tsx` — `registerVectorBrowserTerminalView` +
-  `setVectorBrowserTerminalSnapshot` (a module-level snapshot a host pushes the
-  live memory/embedding stats into).
 - `test/` — `VectorBrowserView.test.tsx`, `VectorGraph3D.test.tsx`, the
   `vector-browser-parser.contract.test.ts`, and `ui-stubs/` (per-specifier no-op
   stubs for `@elizaos/ui` subpaths that vitest's resolver can't resolve).
@@ -53,12 +51,10 @@ bun run --cwd plugins/plugin-vector-browser clean      # remove dist
 - **Lazy WebGL by design.** Registration adds no eager three.js cost — the view
   bundle (and `three`) is only fetched when the view is actually mounted. Don't
   import `three` or the rich view from an always-loaded path.
-- **Two modalities, one declaration.** The 3D point cloud and 2D canvas
-  projection are infeasible in a terminal and stay GUI/XR-only; the `tui`
-  modality (and the GUI `Escape` fallback) render the SAME
-  `VectorBrowserSpatialView` summary-stats + points-list. Keep the spatial view
-  free of heavy client / three.js / `@elizaos/ui` shell-host imports so it stays
-  renderable in the Node agent process.
+- **One declaration.** The GUI `Escape` fallback renders the
+  `VectorBrowserSpatialView` summary-stats + points-list when the rich WebGL
+  surface cannot mount. Keep the spatial view free of heavy client / three.js /
+  `@elizaos/ui` shell-host imports.
 - **Test resolver aliases.** `vitest.config.ts` aliases each `@elizaos/ui`
   subpath the view imports to its own distinct no-op stub (vitest dedupes mocks
   by resolved path, so stubs must be separate files); the parser/layout module

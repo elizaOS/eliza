@@ -1,14 +1,10 @@
 /**
- * TodosView — the single GUI/XR data wrapper for the owner todo board.
+ * TodosView — the GUI data wrapper for the owner todo board.
  *
  * It owns the live todos data (the fetcher seam over the single read-only
  * endpoint PA serves, the quiet background poll, wire->display mapping, lane
  * grouping, and the overdue signal) and renders the one presentational
- * {@link TodosSpatialView} inside a {@link SpatialSurface}. Omitting the
- * `modality` prop lets `SpatialSurface` auto-detect GUI vs XR, so the SAME
- * component serves both surfaces; the TUI surface renders the same
- * `TodosSpatialView` through the terminal registry (see
- * `../../register-terminal-view.tsx`).
+ * {@link TodosSpatialView} inside a {@link SpatialSurface}.
  *
  * Data source (PA owns the shared scheduled-task spine; this plugin only reads):
  *   GET {base}/api/lifeops/todos -> { todos: TodoWire[] }

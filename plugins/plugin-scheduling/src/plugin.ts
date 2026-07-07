@@ -35,7 +35,7 @@ export const schedulingPlugin: Plugin = {
         "Connect your model and accounts, then run a real LifeOps validation and watch it fire.",
       icon: "FlaskConical",
       path: "/lifeops-live-test",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven

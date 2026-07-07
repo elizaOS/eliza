@@ -848,14 +848,11 @@ const EMPTY_FINE_TUNING_SNAPSHOT: FineTuningSnapshot = {
 };
 
 /**
- * FineTuningView — the single GUI / XR / TUI componentExport.
+ * FineTuningView — the GUI componentExport.
  *
- * GUI and XR render the full rich {@link FineTuningDashboard} (its real DOM:
- * forms, panels, the live-event stream) through the spatial `Escape` hatch; TUI
- * falls back to the presentational {@link FineTuningSpatialView} summary. That
- * same `FineTuningSpatialView` is the source the agent terminal renders directly
- * via `registerFineTuningTerminalView` (see `register-terminal-view.tsx`), so
- * there is exactly one registered component and one terminal source.
+ * Renders the full rich {@link FineTuningDashboard} (its real DOM: forms,
+ * panels, the live-event stream) through the spatial `Escape` hatch, with the
+ * presentational {@link FineTuningSpatialView} summary as the escape fallback.
  */
 export function FineTuningView(props: { contentHeader?: ReactNode } = {}) {
   return (

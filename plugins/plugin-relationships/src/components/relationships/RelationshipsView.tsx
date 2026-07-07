@@ -6,10 +6,8 @@
  * the personal-assistant routes serve, the quiet background poll, and the
  * wire->display join) and renders the one presentational
  * {@link RelationshipsSpatialView} inside a {@link SpatialSurface}. Omitting the
- * `modality` prop lets `SpatialSurface` auto-detect GUI vs XR, so the SAME
- * component serves both surfaces; the TUI surface renders the same
- * `RelationshipsSpatialView` through the terminal registry (see
- * `../../register-terminal-view.tsx`).
+ * `modality` prop lets `SpatialSurface` auto-detect the host surface, so the
+ * SAME component serves them all. The view ships GUI-only.
  *
  * Data source (the runtime owns the EntityStore / RelationshipStore persistence;
  * this plugin only reads):

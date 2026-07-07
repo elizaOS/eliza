@@ -10,13 +10,13 @@ This plugin exposes the local machine's desktop as a streamable, interactable se
 
 ### Views (registered in `plugin.views`)
 
-ONE declaration drives all three modalities from a single authored source.
+ONE GUI declaration from a single authored source. Only the GUI modality ships; `tui`/`xr` remain compatibility values in the manifest schema.
 
 | id | label | modalities | componentExport | path | bundlePath |
 |----|-------|------------|-----------------|------|------------|
-| screenshare | Screen Share | gui, xr, tui | `ScreenshareView` | `/screenshare` | `dist/views/bundle.js` |
+| screenshare | Screen Share | gui | `ScreenshareView` | `/screenshare` | `dist/views/bundle.js` |
 
-`ScreenshareView` (`components/ScreenshareView.tsx`) is the single GUI/XR data wrapper — it owns the live operator data (capability fetch/poll, host start/stop/rotate, copy/open-viewer, remote connect, refresh) and renders the one presentational `ScreenshareSpatialView` (`components/ScreenshareSpatialView.tsx`) inside a `SpatialSurface`. The same `ScreenshareSpatialView` is registered for terminal/TUI rendering via `register-terminal-view.tsx`. Views are bundled via Vite into `dist/views/bundle.js` (entry `ui/screenshare-view-bundle.ts`, which re-exports `ScreenshareView` plus the `interact` TUI capability handler).
+`ScreenshareView` (`components/ScreenshareView.tsx`) is the GUI data wrapper — it owns the live operator data (capability fetch/poll, host start/stop/rotate, copy/open-viewer, remote connect, refresh) and renders the one presentational `ScreenshareSpatialView` (`components/ScreenshareSpatialView.tsx`) inside a `SpatialSurface`. Views are bundled via Vite into `dist/views/bundle.js` (entry `ui/screenshare-view-bundle.ts`, which re-exports `ScreenshareView` plus the `interact` TUI capability handler).
 
 ### HTTP routes (handled via `handleAppRoutes`)
 
@@ -59,11 +59,10 @@ src/
   index.ts                     Plugin definition; wraps raw plugin with gatePluginSessionForHostedApp
   routes.ts                    All HTTP route handlers + app lifecycle hooks (prepareLaunch, stopRun, etc.)
   session-store.ts             In-process session store (globalThis-keyed); session CRUD + capability detection
-  register-terminal-view.tsx   Registers ScreenshareSpatialView as the terminal/TUI view
   components/
-    ScreenshareView.tsx              Single GUI/XR data wrapper (owns fetch/poll + host/remote actions); renders ScreenshareSpatialView in a SpatialSurface
-    ScreenshareView.test.tsx         Unit tests for ScreenshareView (the GUI/XR surface)
-    ScreenshareSpatialView.tsx       The one presentational spatial component (GUI DOM, scaled XR DOM, terminal TUI)
+    ScreenshareView.tsx              GUI data wrapper (owns fetch/poll + host/remote actions); renders ScreenshareSpatialView in a SpatialSurface
+    ScreenshareView.test.tsx         Unit tests for ScreenshareView (the GUI surface)
+    ScreenshareSpatialView.tsx       The one presentational spatial component (GUI DOM)
     ScreenshareSpatialView.test.tsx  Unit tests for ScreenshareSpatialView
   ui/
     screenshare-view-bundle.ts                 View bundle entry: re-exports ScreenshareView + interact
@@ -102,7 +101,7 @@ The `GET /capabilities` route reports all three capability flags along with whic
 
 **Add a new TUI capability:** Add a branch in the `interact` function in `src/ui/screenshare-interact.ts`.
 
-**Add UI controls:** Edit the one presentational `ScreenshareSpatialView` (`src/components/ScreenshareSpatialView.tsx`) — it renders for GUI, XR, and TUI. Wire any new control through `ScreenshareView`'s `onAction` handler (`src/components/ScreenshareView.tsx`).
+**Add UI controls:** Edit the one presentational `ScreenshareSpatialView` (`src/components/ScreenshareSpatialView.tsx`). Wire any new control through `ScreenshareView`'s `onAction` handler (`src/components/ScreenshareView.tsx`).
 
 ## Conventions / gotchas
 
@@ -115,7 +114,7 @@ The `GET /capabilities` route reports all three capability flags along with whic
 - **Desktop primitives come from `@elizaos/plugin-computeruse`.** Do not reach into OS APIs directly. All screenshot and input calls go through that package.
 - **Views build separately from the runtime.** `build:js` (tsup) and `build:views` (Vite) are independent steps. Both must run for a complete build.
 - **Viewer HTML is inline.** `renderViewerHtml()` in `routes.ts` returns a self-contained HTML string with embedded CSS and JS — no external assets needed. It polls for frames at 500 ms intervals.
-- **One component, all modalities.** `ScreenshareView` is the single authored view: DOM in GUI, scaled DOM in XR, terminal in TUI. There is no separate operator-surface / TUI-view duplicate — `ScreenshareSpatialView` is the only presentational source, registered for TUI via `register-terminal-view.tsx`.
+- **One component.** `ScreenshareView` is the single authored view (GUI DOM). There is no separate operator-surface duplicate — `ScreenshareSpatialView` is the only presentational source.
 - **`interact` is a separate module.** The TUI capability handler lives in `ui/screenshare-interact.ts`, not in a component file, so component files export only React components (keeping them Fast-Refresh-compatible).
 - See root `AGENTS.md` for architecture rules (logger-only, ESM, naming, layer boundaries) that apply repo-wide.
 

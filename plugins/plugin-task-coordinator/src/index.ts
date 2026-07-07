@@ -208,10 +208,7 @@ const taskCoordinatorPlugin: Plugin = {
   // Deterministic handler for the registered slash command.
   actions: [orchestratorStatusCommandAction],
   views: [
-    // ONE declaration → GUI + XR + TUI, all drawn from the single
-    // TaskCoordinatorView spatial source. `modalities` is a plain literal here
-    // (index.ts is not in the view bundle), so no brand-new `@elizaos/core`
-    // runtime export reaches the bundle build.
+    // Single GUI declaration drawn from the TaskCoordinatorView spatial source.
     {
       id: "task-coordinator",
       viewKind: "preview",
@@ -219,7 +216,7 @@ const taskCoordinatorPlugin: Plugin = {
       description: "Coding agent task threads, sessions, and controls",
       icon: "SquareTerminal",
       path: "/task-coordinator",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven
@@ -272,8 +269,7 @@ const taskCoordinatorPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
-    // ONE declaration → GUI + XR + TUI, all drawn from the single
-    // OrchestratorView spatial source.
+    // Single GUI declaration drawn from the OrchestratorView spatial source.
     {
       id: "orchestrator",
       viewKind: "developer",
@@ -282,7 +278,7 @@ const taskCoordinatorPlugin: Plugin = {
       description: "Multi-agent task orchestration workbench",
       icon: "Layers",
       path: "/orchestrator",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven
@@ -306,7 +302,7 @@ const taskCoordinatorPlugin: Plugin = {
       description: "Mobile-first coding cockpit — your agents on one screen",
       icon: "TerminalSquare",
       path: "/cockpit",
-      modalities: ["gui", "xr"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven

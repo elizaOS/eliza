@@ -1,14 +1,10 @@
 /**
- * TrajectoryLoggerView - the single GUI/XR data wrapper for the Trajectory
- * Logger surface.
+ * TrajectoryLoggerView - the GUI data wrapper for the Trajectory Logger
+ * surface.
  *
  * It owns the live trajectory data (the 700ms polling hook + the selected-phase
  * drilldown state) and renders the one presentational
- * {@link TrajectoryLoggerSpatialView} inside a {@link SpatialSurface}. Omitting
- * the `modality` prop lets `SpatialSurface` auto-detect GUI vs XR via
- * `window.__elizaXRContext`, so the SAME component serves both surfaces. The TUI
- * surface renders the same `TrajectoryLoggerSpatialView` through the terminal
- * registry (see `register-terminal-view.tsx`).
+ * {@link TrajectoryLoggerSpatialView} inside a {@link SpatialSurface}.
  */
 
 import type { OverlayAppContext } from "@elizaos/ui";

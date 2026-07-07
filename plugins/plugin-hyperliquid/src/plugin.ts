@@ -2,7 +2,7 @@
  * The `@elizaos/plugin-hyperliquid` `Plugin` object: registers the
  * `PERPETUAL_MARKET` action, `PerpetualMarketService`, the read-only
  * `/api/hyperliquid/*` routes (all POST routes 501 — execution is disabled),
- * and the single Hyperliquid view rendered across GUI/XR/TUI modalities.
+ * and the single GUI Hyperliquid view.
  * Route handlers bridge the elizaOS `RouteRequest`/`RouteResponse` shape to
  * Node's `http.IncomingMessage`/`http.ServerResponse`, which is what
  * `handleHyperliquidRoute` in `routes.ts` expects.
@@ -134,7 +134,7 @@ export const hyperliquidPlugin: Plugin = {
 	services: [PerpetualMarketService],
 	routes: hyperliquidRoutes,
 	views: [
-		// ONE declaration → GUI + XR + TUI, all drawn from the single
+		// ONE GUI declaration, drawn from the single
 		// HyperliquidView spatial source. `modalities` is a plain literal here
 		// (plugin.ts is not in the view bundle), so no brand-new `@elizaos/core`
 		// runtime export reaches the bundle build.
@@ -146,7 +146,7 @@ export const hyperliquidPlugin: Plugin = {
 			icon: "TrendingUp",
 			path: "/hyperliquid",
 			group: "wallet",
-			modalities: ["gui", "xr", "tui"],
+			modalities: ["gui"],
 			bundlePath: "dist/views/bundle.js",
 			// First-party instrumented view (data-agent-id controls): grant the
 			// agent-surface capability so the view broker admits agent-driven

@@ -4,11 +4,7 @@
  */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
-import {
-  getTerminalView,
-  registerSpatialTerminalView,
-  renderViewToLines,
-} from "@elizaos/ui/spatial/tui";
+import { renderViewToLines } from "@elizaos/ui/spatial/tui";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
@@ -123,19 +119,5 @@ describe("TodosSpatialView one source, three modalities", () => {
       </SpatialSurface>,
     );
     expect(html).toContain('data-agent-id="retry"');
-  });
-
-  it("registers as a terminal view the agent terminal can mount and render", () => {
-    const unregister = registerSpatialTerminalView("todos-test", () => view);
-    try {
-      const component = getTerminalView("todos-test");
-      expect(component).toBeTruthy();
-      const lines = component?.render(50) ?? [];
-      expect(lines.length).toBeGreaterThan(0);
-      for (const line of lines) expect(visibleWidth(line)).toBe(50);
-      expect(lines.join("\n")).toContain("Overdue task");
-    } finally {
-      unregister();
-    }
   });
 });

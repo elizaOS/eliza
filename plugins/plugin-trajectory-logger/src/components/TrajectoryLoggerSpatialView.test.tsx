@@ -5,11 +5,7 @@
  */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
-import {
-  getTerminalView,
-  registerSpatialTerminalView,
-  renderViewToLines,
-} from "@elizaos/ui/spatial/tui";
+import { renderViewToLines } from "@elizaos/ui/spatial/tui";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { PhaseSummary } from "../phases.ts";
@@ -157,22 +153,6 @@ describe("TrajectoryLoggerSpatialView one source, three modalities", () => {
       expect(html).toContain("sendMessage");
       expect(html).toContain('data-agent-id="strip-now"');
       expect(html).toContain('data-agent-id="phase-now-HANDLE"');
-    }
-  });
-
-  it("registers as a terminal view the agent terminal can mount and render", () => {
-    const unregister = registerSpatialTerminalView(
-      "trajectory-logger-test",
-      () => view,
-    );
-    try {
-      const component = getTerminalView("trajectory-logger-test");
-      expect(component).toBeTruthy();
-      const lines = component?.render(50) ?? [];
-      expect(lines.length).toBeGreaterThan(0);
-      for (const line of lines) expect(visibleWidth(line)).toBe(50);
-    } finally {
-      unregister();
     }
   });
 

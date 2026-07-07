@@ -5,10 +5,8 @@
  * endpoints the host serves, the quiet background poll, the window-range state,
  * and the wire->display projection) and renders the one presentational
  * {@link HealthSpatialView} inside a {@link SpatialSurface}. Omitting the
- * `modality` prop lets `SpatialSurface` auto-detect GUI vs XR, so the SAME
- * component serves both surfaces; the TUI surface renders the same
- * `HealthSpatialView` through the terminal registry (see
- * `../../register-terminal-view.tsx`).
+ * `modality` prop lets `SpatialSurface` auto-detect the host surface, so the
+ * SAME component serves them all. The view ships GUI-only.
  *
  * Data source (three read-only sleep endpoints served by `src/routes/sleep.ts`):
  *   GET {base}/api/lifeops/sleep/history?windowDays&includeNaps   (primary)

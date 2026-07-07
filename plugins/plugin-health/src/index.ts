@@ -80,7 +80,7 @@ export const healthPlugin: Plugin = {
         "Sleep, circadian, screen-time, activity, and connector status.",
       icon: "Heart",
       path: "/health",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven
@@ -132,14 +132,6 @@ export {
   type WindowDays as HealthWindowDays,
 } from "./components/health/HealthSpatialView.js";
 export { HealthView } from "./components/health/HealthView.js";
-export {
-  registerHealthTerminalView,
-  setHealthTerminalSnapshot,
-} from "./register-terminal-view.js";
-
-// Side-effect: in a terminal host (Node agent, no DOM) this registers the health
-// terminal view. DOM-guarded so the terminal engine stays out of browser bundles.
-import "./register.js";
 
 // `./<name>.js` (without /index) is a TypeScript-only directory-shorthand
 // that Bun's runtime ESM resolver does not honor. The `./sleep`,

@@ -5,10 +5,8 @@
  * endpoints PA serves, the quiet background poll, wire->display mapping, the
  * USD-float->minor-units boundary, and the proactive signal) and renders the one
  * presentational {@link FinancesSpatialView} inside a {@link SpatialSurface}.
- * Omitting the `modality` prop lets `SpatialSurface` auto-detect GUI vs XR, so
- * the SAME component serves both surfaces; the TUI surface renders the same
- * `FinancesSpatialView` through the terminal registry (see
- * `../../register-terminal-view.tsx`).
+ * Omitting the `modality` prop lets `SpatialSurface` auto-detect the host
+ * surface, so the SAME component serves them all. The view ships GUI-only.
  *
  * Data sources (PA owns the persistence; this plugin only reads):
  *   GET {base}/api/lifeops/money/dashboard       (balance summary)

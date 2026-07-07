@@ -51,10 +51,10 @@ export const inboxPlugin: Plugin = {
       description: "Cross-channel inbox triage",
       icon: "Inbox",
       path: "/inbox",
-      // ONE declaration → GUI + XR + TUI, all drawn from the single InboxView
+      // ONE GUI declaration, drawn from the single InboxView
       // spatial source. `modalities` is a plain literal here (plugin.ts is not
       // in the view bundle).
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven

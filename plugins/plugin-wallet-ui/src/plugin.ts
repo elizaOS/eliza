@@ -30,10 +30,7 @@ export const walletAppPlugin: Plugin = {
     ],
   },
   views: [
-    // ONE declaration → GUI + XR + TUI, all drawn from the single InventoryView
-    // spatial source. `modalities` is a plain literal here (plugin.ts is not in
-    // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
-    // the bundle build.
+    // Single GUI declaration drawn from the InventoryView spatial source.
     {
       id: "wallet",
       viewKind: "system",
@@ -41,7 +38,7 @@ export const walletAppPlugin: Plugin = {
       description: "Non-custodial wallet inventory and token balances",
       icon: "Wallet",
       path: "/wallet",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven

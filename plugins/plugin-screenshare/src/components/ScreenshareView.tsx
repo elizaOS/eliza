@@ -1,13 +1,10 @@
 /**
- * ScreenshareView — the single GUI/XR data wrapper for the Screen Share surface.
+ * ScreenshareView — the GUI data wrapper for the Screen Share surface.
  *
  * It owns the live operator data (capability fetch + poll, launched-session
  * load, host start/stop/rotate, copy/open-viewer, remote connect, refresh) and
  * renders the one presentational {@link ScreenshareSpatialView} inside a
- * {@link SpatialSurface}. Omitting the `modality` prop lets `SpatialSurface`
- * auto-detect GUI vs XR via `window.__elizaXRContext`, so the SAME component
- * serves both surfaces. The TUI surface renders the same `ScreenshareSpatialView`
- * through the terminal registry (see `register-terminal-view.tsx`).
+ * {@link SpatialSurface}.
  */
 
 import { client, selectLatestRunForApp, useAppSelector } from "@elizaos/ui";

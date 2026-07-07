@@ -26,17 +26,8 @@ export {
 } from "./db/schema.js";
 export { relationshipsPlugin } from "./plugin.js";
 export { entityGraphProvider } from "./providers/entity-graph.js";
-export {
-  registerRelationshipsTerminalView,
-  setRelationshipsTerminalSnapshot,
-} from "./register-terminal-view.js";
 export * from "./types.js";
 
 import { relationshipsPlugin } from "./plugin.js";
 
 export default relationshipsPlugin;
-
-// Side-effect: in a terminal host (Node agent, no DOM) this registers the
-// relationships terminal view. DOM-guarded so the terminal engine stays out of
-// browser bundles.
-import "./register.js";

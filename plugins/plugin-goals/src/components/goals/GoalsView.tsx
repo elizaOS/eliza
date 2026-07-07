@@ -13,10 +13,8 @@
  * It owns the fetch state machine (loading / error / ready), the status-filter
  * selection, and the quiet 20s background poll, then renders the one
  * presentational {@link GoalsSpatialView} inside a {@link SpatialSurface}.
- * Omitting the `modality` prop lets `SpatialSurface` auto-detect GUI vs XR via
- * `window.__elizaXRContext`, so the SAME component serves both surfaces. The
- * TUI surface renders the same `GoalsSpatialView` through the terminal registry
- * (see `register-terminal-view.tsx`).
+ * Omitting the `modality` prop lets `SpatialSurface` auto-detect the host
+ * surface, so the SAME component serves them all. The view ships GUI-only.
  *
  * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
  * DTOs below are declared locally to match the JSON shape PA emits
