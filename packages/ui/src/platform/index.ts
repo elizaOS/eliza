@@ -48,6 +48,15 @@ export * from "./ios-runtime";
 export * from "./mobile-permissions-client";
 export * from "./onboarding-replay";
 export * from "./platform-guards";
+export {
+  applyStandaloneBottomReclaim,
+  clearStandaloneBottomReclaim,
+  installStandaloneBottomReclaim,
+  measureStandaloneBottomGap,
+  STANDALONE_BOTTOM_RECLAIM_OFFSET,
+  STANDALONE_BOTTOM_RECLAIM_VAR,
+  shouldInstallStandaloneBottomReclaim,
+} from "./standalone-bottom-reclaim";
 export type * from "./types";
 export type {
   CloudPreferenceClientLike,

@@ -70,6 +70,12 @@ import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
+import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
+import {
+  KEYBOARD_INTRUSION_THRESHOLD_PX,
+  STANDALONE_BOTTOM_RECLAIM_OFFSET,
+  shouldInstallStandaloneBottomReclaim,
+} from "../../platform/standalone-bottom-reclaim";
 import { useAppSelectorShallow } from "../../state";
 import {
   clearChatDraft,
@@ -229,6 +235,25 @@ const HANDLE_BAR_COLOR = "rgba(255, 247, 240, 0.86)";
 // opacity/translate only: animating blur/filter or scaling a scrollable
 // transcript repaints too much of the viewport and visibly janks on laptops.
 const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
+// Whether the `screen.height`-derived keyboard signal in `readViewport` is
+// trustworthy. Only on the iOS standalone PWA / iOS native WebView is
+// `window.screen.height` a valid full-viewport reference: it is the value that
+// still exposes the true keyboard-DOWN screen height (device chip `sh932`) even
+// when the fixed-body ICB collapse / the html clip-box drags `innerHeight` and
+// `visualViewport.height` down to the layout box. On desktop `screen.height` is
+// the whole monitor and on Android / non-standalone it is the full device
+// screen — both far larger than the layout viewport at REST, so a screen-vs-vv
+// delta would read a large false-positive keyboard. Mirrors the bottom-reclaim
+// install gate EXACTLY, so the two systems agree on which surface owns the
+// collapsed-viewport geometry (see standalone-bottom-reclaim.ts invariants).
+const SCREEN_KEYBOARD_SIGNAL_ACTIVE =
+  typeof window !== "undefined" &&
+  shouldInstallStandaloneBottomReclaim({
+    standalonePwa: isStandalonePwa(),
+    isNative,
+    isIOS,
+  });
 
 // Pull-sheet detents. The chat-history window is bottom-anchored just above the
 // fixed composer; its height animates between the closed composer/grabber and
@@ -2159,9 +2184,58 @@ export function ContinuousChatOverlay({
     const vv = window.visualViewport;
     const innerHeight = window.innerHeight;
     const height = vv?.height ?? innerHeight;
-    const keyboardInset = vv
-      ? Math.max(0, innerHeight - vv.height - vv.offsetTop)
-      : 0;
+    // How far the keyboard intrudes from the layout bottom. Historically this
+    // was `innerHeight - vv.height`: on iOS (`resize:"body"`, pre-#15103)
+    // innerHeight stayed at the FULL height while vv.height shrank, so the delta
+    // WAS the keyboard height; on Android (adjustResize) innerHeight shrinks
+    // with vv.height so the delta is ~0 and the native-lift path owns it.
+    //
+    // r-kbd REGRESSION (#15136): on the iOS standalone PWA the soft keyboard
+    // shrinks `innerHeight` AND `visualViewport.height` TOGETHER to the visible
+    // area (device chip `ih542 vv542 sh932`). So `innerHeight - vv.height = 0`
+    // and the keyboard is invisible to this delta: the composer never lifts and
+    // hides behind the keyboard. The value that still exposes the full
+    // keyboard-down height on the installed iOS PWA is `window.screen.height`
+    // (`sh932`), so also derive the intrusion as `screen.height - vv.height`
+    // and take the larger signal.
+    //
+    // The screen-based signal is GATED to the iOS standalone-PWA / iOS-native
+    // surface (SCREEN_KEYBOARD_SIGNAL_ACTIVE — the same gate the bottom-reclaim
+    // installs on). Everywhere else `screen.height` is NOT a viewport height:
+    // on a desktop browser it is the whole monitor (e.g. 1080 while the window
+    // is 800), and on Android Chrome / non-standalone it is the full device
+    // screen — so `screen.height - vv.height` would be a large false-positive at
+    // REST and wrongly lift the composer. Those surfaces keep the pure
+    // `innerHeight - vv.height` delta (Android adjustResize / web) untouched.
+    // The screen delta also picks up the resting fixed-body ICB collapse (~59px,
+    // NOT a keyboard) on iOS, so it is additionally gated below the intrusion
+    // threshold: a real soft keyboard eats ~250-400px, the resting collapse only
+    // ~20-80px.
+    let keyboardInset = 0;
+    if (vv) {
+      const insetFromInner = Math.max(
+        0,
+        innerHeight - vv.height - vv.offsetTop,
+      );
+      let screenKeyboard = 0;
+      if (SCREEN_KEYBOARD_SIGNAL_ACTIVE) {
+        const screenHeight =
+          typeof window.screen?.height === "number" && window.screen.height > 0
+            ? window.screen.height
+            : 0;
+        const insetFromScreen =
+          screenHeight > 0
+            ? Math.max(0, screenHeight - vv.height - vv.offsetTop)
+            : 0;
+        // Only trust the screen-based signal once it clears the resting-collapse
+        // band (so the ~59px fixed-body ICB collapse is never a keyboard).
+        screenKeyboard =
+          insetFromScreen >= KEYBOARD_INTRUSION_THRESHOLD_PX
+            ? insetFromScreen
+            : 0;
+      }
+      keyboardInset = Math.max(insetFromInner, screenKeyboard);
+    }
     // innerHeight is the LAYOUT viewport: on Android it shrinks (adjustResize)
     // when the keyboard opens, on iOS (`resize: "body"`) it does not. The lift
     // math below uses that to avoid double-counting the keyboard. innerWidth +
@@ -4581,14 +4655,25 @@ export function ContinuousChatOverlay({
       // chat low without touching that zone.
       style={{
         zIndex: Z_SHELL_OVERLAY,
-        // At rest the overlay anchors `bottom: 0`. With the body scroll-locked
-        // WITHOUT `position: fixed` (see styles/base.css), this `fixed` overlay's
-        // containing block is the true viewport, so `bottom: 0` seats it at the
-        // physical screen bottom — no ICB collapse, no reclaim offset. When the
-        // keyboard is up the visual viewport shrinks and `effectiveKeyboardInset`
-        // drives the lift instead. The home-indicator clearance is the composer
-        // row's own `paddingBottom` (below), so buttons stay above the indicator.
-        bottom: keyboardLiftActive ? effectiveKeyboardInset : 0,
+        // RECLAIM THE DEAD BAND UNDER THE HOME COMPOSER (device-proven, #15103).
+        // On the installed iOS standalone PWA the layout viewport collapses to
+        // the small box (`ce873` while the physical screen is `sh932`), so this
+        // `fixed` overlay's `bottom: 0` floats the composer ~59px UP over a dead
+        // strip down to the home indicator — the recurring "black bottom bar".
+        // Pure CSS cannot see the true screen from inside that collapsed box
+        // (`100lvh === 100dvh === 873`), so we drop the overlay by the
+        // JS-MEASURED gap `--standalone-bottom-reclaim`
+        // (`STANDALONE_BOTTOM_RECLAIM_OFFSET`, set from `screen.height` vs
+        // `documentElement.clientHeight`) to seat it at the TRUE physical bottom.
+        // The var is a hard 0 off the iOS-standalone/native surface, so this is a
+        // true no-op on desktop/web/Android. When the keyboard is up the visual
+        // viewport shrinks and `effectiveKeyboardInset` drives the lift instead
+        // (no reclaim applied) so the contract-tested keyboard geometry (#15136)
+        // is untouched. See standalone-bottom-reclaim.ts for the full mechanism
+        // + why every prior pure-CSS attempt was a device no-op.
+        bottom: keyboardLiftActive
+          ? effectiveKeyboardInset
+          : STANDALONE_BOTTOM_RECLAIM_OFFSET,
         // Full-bleed fills the screen edge-to-edge: NO overlay bottom padding,
         // so the glass panel reaches the true bottom (no orange gap). The
         // gesture-zone clearance moves INSIDE the composer row (below) so the

@@ -22,8 +22,16 @@
  *
  * These tests pin: (1) init.ts tags `pwa-standalone` only on web; (2) the CSS
  * lockdown is the NON-fixed lock for the PWA while the native build keeps
- * `position: fixed; inset: 0`; (3) the reclaim mechanism is GONE and no layer
- * references it.
+ * `position: fixed; inset: 0`; (3) the JS-measured bottom-reclaim IS PRESENT and
+ * install-guarded on the iOS standalone/native path.
+ *
+ * NOTE (3) reflects the device truth that pure CSS cannot see the true screen
+ * from inside the collapsed layout box (`100lvh === 100dvh === 873` while
+ * `screen.height === 932`). The wallpaper is painted onto the full-screen root
+ * canvas AND the composer is re-seated by the JS-measured
+ * `--standalone-bottom-reclaim` gap — removing either regressed the bottom bar
+ * on device while jsdom stayed green, so the install-guard test below makes that
+ * removal a red CI instead of a silent device regression.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -333,36 +341,67 @@ describe("App shell column contract — the shell column carries the fill hook",
   });
 });
 
-describe("Bottom-reclaim mechanism is GONE (regression guard)", () => {
-  // The JS `standalone-bottom-reclaim` measurement + `--standalone-bottom-reclaim`
-  // var were an 8-deep workaround for the fixed-body ICB collapse. With the body
-  // no longer fixed the wallpaper reaches the true bottom on its own, so the
-  // whole mechanism is deleted. These guard against it creeping back.
+describe("JS-measured bottom reclaim is PRESENT and INSTALL-GUARDED (durable device contract)", () => {
+  // DEVICE TRUTH (why this must exist — proven over N regressions): on the
+  // installed iOS standalone PWA the layout viewport collapses to the small box
+  // (`documentElement.clientHeight`/`innerHeight` = 873 while the physical
+  // `screen.height` = 932), so no pure-CSS unit reaches the true bottom
+  // (`100lvh === 100dvh === 873` inside the collapsed box). The `fixed` composer
+  // overlay's `bottom: 0` therefore floats ~59px UP over a dead strip — the
+  // recurring "black bottom bar". The ONLY runtime value that still exposes the
+  // true 932 screen is `window.screen.height`, so the reclaim is measured in JS
+  // (`screen.height - layout`) and published as `--standalone-bottom-reclaim`.
+  //
+  // These tests PIN that mechanism in place. The install-guard test below is the
+  // load-bearing one: it turns a future "just delete the JS reclaim, CSS is
+  // enough" refactor into a RED CI instead of a silent on-device regression
+  // (which is exactly how the bug came back last time — every jsdom test stayed
+  // green while the device strip returned). Regression chip for the last round:
+  // `ih873 vv873 ce873 sh932 rc? lv932 dv873` on develop tip 2fdf9dd172.
   const uiSrc = resolve(process.cwd(), "src");
 
-  it("the reclaim module no longer exists", () => {
+  it("the reclaim module EXISTS (it is the device-proven cure, not a workaround to delete)", () => {
     expect(
       existsSync(resolve(uiSrc, "platform/standalone-bottom-reclaim.ts")),
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("no fixed background layer / floor / composer references the reclaim var", () => {
-    const files = [
-      "App.tsx",
-      "backgrounds/ShaderBackground.tsx",
-      "backgrounds/ImageBackground.tsx",
-      "backgrounds/ProgrammableShaderBackground.tsx",
-      "components/shell/ContinuousChatOverlay.tsx",
-    ];
-    for (const rel of files) {
-      const src = readFileSync(resolve(uiSrc, rel), "utf8");
-      expect(src, `${rel} must not import the reclaim`).not.toContain(
-        "STANDALONE_BOTTOM_RECLAIM_OFFSET",
-      );
-      expect(src, `${rel} must not read the reclaim var`).not.toContain(
-        "--standalone-bottom-reclaim",
-      );
-    }
+  it("init.ts INSTALLS the reclaim on the iOS standalone/native path (removal => red CI, not a silent device regression)", () => {
+    // The single load-bearing invariant. platform/init.ts must (a) import the
+    // installer + its gate and (b) call installStandaloneBottomReclaim() behind
+    // shouldInstallStandaloneBottomReclaim(). If a sweep drops this call, the
+    // wallpaper/composer stop reclaiming and the bottom bar returns on device —
+    // this test fails FIRST so the removal never ships silently.
+    const initSrc = readFileSync(resolve(uiSrc, "platform/init.ts"), "utf8");
+    expect(initSrc, "init.ts must import the installer").toContain(
+      "installStandaloneBottomReclaim",
+    );
+    expect(initSrc, "init.ts must import the install gate").toContain(
+      "shouldInstallStandaloneBottomReclaim",
+    );
+    // The installer is called behind the gate (not merely imported): assert the
+    // gate wraps the install call within setupPlatformStyles.
+    const gatedInstall =
+      /shouldInstallStandaloneBottomReclaim\(\{[\s\S]*?\}\)[\s\S]*?\)\s*\{[\s\S]*?installStandaloneBottomReclaim\(\)/;
+    expect(
+      gatedInstall.test(initSrc),
+      "init.ts must call installStandaloneBottomReclaim() inside the shouldInstall gate",
+    ).toBe(true);
+  });
+
+  it("the platform barrel re-exports the reclaim API (consumers resolve it)", () => {
+    const indexSrc = readFileSync(resolve(uiSrc, "platform/index.ts"), "utf8");
+    expect(indexSrc).toContain("STANDALONE_BOTTOM_RECLAIM_OFFSET");
+    expect(indexSrc).toContain("installStandaloneBottomReclaim");
+  });
+
+  it("the composer overlay applies the measured reclaim offset at rest", () => {
+    const overlaySrc = readFileSync(
+      resolve(uiSrc, "components/shell/ContinuousChatOverlay.tsx"),
+      "utf8",
+    );
+    // The resting `bottom` uses the measured offset (keyboard-lift wins when up).
+    expect(overlaySrc).toContain("STANDALONE_BOTTOM_RECLAIM_OFFSET");
   });
 });
 
@@ -382,9 +421,12 @@ describe("Composer bottom geometry — full-bleed, keyboard-lift preserved", () 
     "utf8",
   );
 
-  it("anchors the resting composer at bottom: 0 (keyboard-lift wins when active)", () => {
+  it("anchors the resting composer at the measured reclaim offset (keyboard-lift wins when active)", () => {
+    // At rest the composer drops by the JS-measured collapse gap so it seats at
+    // the TRUE physical bottom (not 59px up over the dead strip). When the
+    // keyboard is up, effectiveKeyboardInset owns the lift instead.
     expect(overlaySrc).toContain(
-      "keyboardLiftActive ? effectiveKeyboardInset : 0",
+      "keyboardLiftActive\n          ? effectiveKeyboardInset\n          : STANDALONE_BOTTOM_RECLAIM_OFFSET",
     );
     expect(overlaySrc).toContain(
       "effectiveKeyboardInset = Math.max(keyboardInset, nativeLift)",
@@ -403,12 +445,18 @@ describe("Composer bottom geometry — full-bleed, keyboard-lift preserved", () 
     expect(layoutSrc).not.toContain("100dvh");
   });
 
-  it("lifts the composer purely from the visual-viewport keyboard inset (no screen.height reclaim signal)", () => {
-    // With the non-fixed body there is no ICB collapse to work around, so the
-    // keyboard lift comes solely from the visual-viewport delta — no
-    // `screen.height` probe and no reclaim-gated signal.
+  it("detects the keyboard via the screen.height signal, gated to the reclaim surface (#15136 keyboard geometry)", () => {
+    // Post-#15103 the soft keyboard shrinks innerHeight AND visualViewport
+    // together on the iOS standalone PWA (chip `ih542 vv542 sh932`), so the
+    // naive `innerHeight - vv.height` delta reads 0 and the composer would hide
+    // behind the keyboard. The keyboard height is recovered from
+    // `screen.height - vv.height`, gated to the iOS standalone/native surface
+    // (SCREEN_KEYBOARD_SIGNAL_ACTIVE, the same gate the reclaim installs on) and
+    // above KEYBOARD_INTRUSION_THRESHOLD_PX so the ~59px resting collapse is
+    // never misread as a keyboard.
     expect(overlaySrc).toContain("visualViewport");
-    expect(overlaySrc).not.toContain("KEYBOARD_INTRUSION_THRESHOLD_PX");
-    expect(overlaySrc).not.toContain("shouldInstallStandaloneBottomReclaim");
+    expect(overlaySrc).toContain("KEYBOARD_INTRUSION_THRESHOLD_PX");
+    expect(overlaySrc).toContain("SCREEN_KEYBOARD_SIGNAL_ACTIVE");
+    expect(overlaySrc).toContain("shouldInstallStandaloneBottomReclaim");
   });
 });
