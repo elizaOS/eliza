@@ -84,6 +84,26 @@ export const KEYBOARD_INTRUSION_THRESHOLD_PX = 140;
  */
 let lastRestingGap = 0;
 
+function isPortraitScreenOrientation(): boolean {
+  const matchMedia = window.matchMedia;
+  if (typeof matchMedia === "function") {
+    return matchMedia("(orientation: portrait)").matches;
+  }
+
+  const width = typeof window.innerWidth === "number" ? window.innerWidth : 0;
+  const height = typeof window.innerHeight === "number" ? window.innerHeight : 0;
+  if (width > 0 && height > 0) return height >= width;
+  return true;
+}
+
+function getPhysicalScreenExtent(): number {
+  const portrait = isPortraitScreenOrientation();
+  const primary = portrait ? window.screen?.height : window.screen?.width;
+  if (typeof primary === "number" && primary > 0) return primary;
+  const fallback = portrait ? window.screen?.width : window.screen?.height;
+  return typeof fallback === "number" && fallback > 0 ? fallback : 0;
+}
+
 /**
  * The measured true-vs-layout viewport delta in CSS px, clamped to a sane
  * range. Returns 0 when we can't trust the measurement (SSR, missing globals)
@@ -139,13 +159,12 @@ export function measureStandaloneBottomGap(): number {
       : (document.documentElement?.clientHeight ?? 0);
   if (layoutHeight <= 0) return 0;
 
-  // The TRUE physical screen height. Missing on SSR / ancient engines → 0 (no
-  // reclaim, no harm).
-  const screenHeight =
-    typeof window.screen?.height === "number" && window.screen.height > 0
-      ? window.screen.height
-      : 0;
-  if (screenHeight <= 0) return 0;
+  // The TRUE physical screen extent for the current orientation. iOS can keep
+  // `screen.height` as the portrait long side in landscape, so use
+  // `screen.width` there; otherwise a normal landscape viewport looks like a
+  // giant keyboard shortfall and freezes a stale portrait reclaim.
+  const screenExtent = getPhysicalScreenExtent();
+  if (screenExtent <= 0) return 0;
 
   // KEYBOARD-OPEN GUARD (the r-kbd regression): the resting reclaim measures
   // against `innerHeight`, but post-#15103 the soft keyboard shrinks BOTH
@@ -163,14 +182,14 @@ export function measureStandaloneBottomGap(): number {
     window.visualViewport.height > 0
       ? window.visualViewport.height
       : layoutHeight;
-  const keyboardShortfall = screenHeight - visualHeight;
+  const keyboardShortfall = screenExtent - visualHeight;
   if (keyboardShortfall >= KEYBOARD_INTRUSION_THRESHOLD_PX) {
     // Keyboard is up: keep serving the frozen keyboard-down reclaim (the
     // composer's own lift owns keyboard geometry). Never re-measure here.
     return lastRestingGap;
   }
 
-  const gap = screenHeight - layoutHeight;
+  const gap = screenExtent - layoutHeight;
 
   // Only a POSITIVE gap is the collapse we reclaim. Zero (web/desktop/Android,
   // where screen.height === the layout box) or negative (should not happen; a
@@ -236,7 +255,7 @@ export function shouldInstallStandaloneBottomReclaim({
   isNative: boolean;
   isIOS: boolean;
 }): boolean {
-  return standalonePwa || (isNative && isIOS);
+  return isIOS && (standalonePwa || isNative);
 }
 
 /**

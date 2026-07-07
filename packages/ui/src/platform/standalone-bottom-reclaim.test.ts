@@ -53,9 +53,12 @@ import {
 function stubViewport(opts: {
   layoutHeight: number;
   screenHeight?: number;
+  screenWidth?: number;
   innerHeight?: number;
+  innerWidth?: number;
   visualHeight?: number;
   visualOffsetTop?: number;
+  orientation?: "portrait" | "landscape";
 }): void {
   Object.defineProperty(document.documentElement, "clientHeight", {
     configurable: true,
@@ -68,10 +71,33 @@ function stubViewport(opts: {
     writable: true,
     value: opts.innerHeight ?? opts.layoutHeight,
   });
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    writable: true,
+    value: opts.innerWidth ?? 390,
+  });
   Object.defineProperty(window, "screen", {
     configurable: true,
     writable: true,
-    value: { height: opts.screenHeight ?? opts.layoutHeight },
+    value: {
+      height: opts.screenHeight ?? opts.layoutHeight,
+      width: opts.screenWidth ?? opts.layoutHeight,
+    },
+  });
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches:
+        query.includes(`orientation: ${opts.orientation ?? "portrait"}`),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
   });
   const visualHeight = opts.visualHeight ?? opts.layoutHeight;
   Object.defineProperty(window, "visualViewport", {
@@ -87,6 +113,7 @@ function stubViewport(opts: {
 }
 
 afterEach(() => {
+  clearStandaloneBottomReclaim();
   document.documentElement.style.removeProperty(STANDALONE_BOTTOM_RECLAIM_VAR);
   // Restore a benign viewport so cases don't bleed.
   Object.defineProperty(document.documentElement, "clientHeight", {
@@ -98,10 +125,20 @@ afterEach(() => {
     writable: true,
     value: 0,
   });
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    writable: true,
+    value: 0,
+  });
   Object.defineProperty(window, "screen", {
     configurable: true,
     writable: true,
-    value: { height: 0 },
+    value: { height: 0, width: 0 },
+  });
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: undefined,
   });
   Object.defineProperty(window, "visualViewport", {
     configurable: true,
@@ -149,6 +186,33 @@ describe("measureStandaloneBottomGap: the screen.height cure for the collapsed-I
       innerHeight: 900,
       visualHeight: 900,
       screenHeight: 900,
+    });
+    expect(measureStandaloneBottomGap()).toBe(0);
+  });
+
+  it("uses screen.width in landscape so the portrait long side does not fake a keyboard", () => {
+    stubViewport({
+      layoutHeight: 873,
+      innerHeight: 873,
+      innerWidth: 390,
+      visualHeight: 873,
+      screenHeight: 932,
+      screenWidth: 390,
+      orientation: "portrait",
+    });
+    expect(measureStandaloneBottomGap()).toBe(59);
+
+    // On iOS landscape, `screen.height` can remain the portrait long side. The
+    // current physical extent is `screen.width`; using the long side here would
+    // look like a 502px keyboard shortfall and freeze the stale portrait 59px.
+    stubViewport({
+      layoutHeight: 430,
+      innerHeight: 430,
+      innerWidth: 932,
+      visualHeight: 430,
+      screenHeight: 932,
+      screenWidth: 430,
+      orientation: "landscape",
     });
     expect(measureStandaloneBottomGap()).toBe(0);
   });
@@ -299,12 +363,12 @@ describe("clearStandaloneBottomReclaim — hard 0 on non-standalone surfaces", (
 });
 
 describe("shouldInstallStandaloneBottomReclaim — platform gate", () => {
-  it("installs for standalone PWAs and iOS native WebViews only", () => {
+  it("installs for iOS standalone PWAs and iOS native WebViews only", () => {
     expect(
       shouldInstallStandaloneBottomReclaim({
         standalonePwa: true,
         isNative: false,
-        isIOS: false,
+        isIOS: true,
       }),
     ).toBe(true);
     expect(
@@ -317,6 +381,13 @@ describe("shouldInstallStandaloneBottomReclaim — platform gate", () => {
   });
 
   it("does not install listeners on Android native, desktop, or browser tabs", () => {
+    expect(
+      shouldInstallStandaloneBottomReclaim({
+        standalonePwa: true,
+        isNative: false,
+        isIOS: false,
+      }),
+    ).toBe(false);
     expect(
       shouldInstallStandaloneBottomReclaim({
         standalonePwa: false,
