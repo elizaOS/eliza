@@ -34,6 +34,7 @@ import {
 } from "../bridge/native-plugins";
 import {
   isLocalAsrCaptureSupported,
+  isSilentWav,
   type LocalAsrAutoStopOptions,
   type LocalAsrRecorder,
   startLocalAsrRecorder,
@@ -442,9 +443,25 @@ export function createVoiceCapture(
       }
       try {
         const wav = await current.stop();
+        // Pre-POST silence guard (#voice-V5): an accidental / near-silent tap
+        // captured a few frames (so `stop()` didn't throw the empty-capture
+        // error) but carries no speech. POSTing it burns a cloud STT round-trip
+        // / credit and surfaces a spurious "empty transcript" error. Treat it as
+        // a quiet no-op instead: no transcript, no error toast — just settle the
+        // state machine back to idle so the next tap re-arms cleanly. (Gates the
+        // cloud path where the round-trip has a cost; the local-inference path
+        // is free/offline, so it stays unguarded to avoid clipping quiet-mic
+        // users whose real speech reads near the silence floor on-device.)
+        if (kind === "cloud" && isSilentWav(wav)) {
+          setState("stopped");
+          setState("idle");
+          return;
+        }
         if (kind === "cloud") {
           // Cloud STT returns text only (no per-word timings); the WAV is still
-          // attached so the transcript recorder can retain the audio.
+          // attached so the transcript recorder can retain the audio. A ~15s
+          // per-attempt timeout + one auto-retry (#voice-V4) rides inside
+          // transcribeCloudWav so flaky cellular doesn't hard-fail the turn.
           const text = await transcribeCloudWav(wav);
           onTranscript({
             text,

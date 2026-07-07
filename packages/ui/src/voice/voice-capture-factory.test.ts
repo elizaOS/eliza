@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getTalkModePlugin } from "../bridge/native-plugins";
 import {
   isLocalAsrCaptureSupported,
+  isSilentWav,
   type LocalAsrRecorderOptions,
   startLocalAsrRecorder,
 } from "./local-asr-capture";
@@ -18,6 +19,7 @@ import { createVoiceCapture } from "./voice-capture-factory";
 
 vi.mock("./local-asr-capture", () => ({
   isLocalAsrCaptureSupported: vi.fn(),
+  isSilentWav: vi.fn(),
   startLocalAsrRecorder: vi.fn(),
 }));
 
@@ -37,6 +39,7 @@ vi.mock("../bridge/native-plugins", async (importOriginal) => ({
 }));
 
 const isLocalAsrCaptureSupportedMock = vi.mocked(isLocalAsrCaptureSupported);
+const isSilentWavMock = vi.mocked(isSilentWav);
 const startLocalAsrRecorderMock = vi.mocked(startLocalAsrRecorder);
 const isLocalInferenceAsrReadyMock = vi.mocked(isLocalInferenceAsrReady);
 const transcribeCloudWavMock = vi.mocked(transcribeCloudWav);
@@ -70,6 +73,9 @@ function makeFakeTalkMode(overrides?: { started?: boolean; error?: string }) {
 describe("createVoiceCapture", () => {
   beforeEach(() => {
     isLocalAsrCaptureSupportedMock.mockReturnValue(true);
+    // Default: captured audio carries speech, so the V5 silence guard is a
+    // no-op and the cloud POST proceeds (individual tests flip it to silent).
+    isSilentWavMock.mockReturnValue(false);
     isLocalInferenceAsrReadyMock.mockResolvedValue(true);
     transcribeLocalInferenceWavMock.mockResolvedValue({
       text: "Ada Lovelace",
@@ -367,6 +373,41 @@ describe("createVoiceCapture", () => {
     expect(onTranscript).toHaveBeenCalledWith(
       expect.objectContaining({ backend: "cloud", text: "Grace Hopper" }),
     );
+  });
+
+  it("silent cloud capture is a quiet no-op — no POST, no transcript, no error (#voice-V5)", async () => {
+    // A near-silent accidental tap captured a few frames (so the recorder's
+    // stop() didn't throw) but carries no speech. The pre-POST silence guard
+    // must skip the cloud round-trip AND not surface an error toast — just
+    // settle back to idle so the next tap re-arms cleanly.
+    const wav = new Uint8Array([1, 2, 3, 4]);
+    startLocalAsrRecorderMock.mockResolvedValue({
+      stop: vi.fn().mockResolvedValue(wav),
+      cancel: vi.fn(),
+      analyser: null,
+    });
+    isSilentWavMock.mockReturnValue(true);
+    const onTranscript = vi.fn();
+    const onStateChange = vi.fn();
+    const capture = createVoiceCapture({
+      asrProvider: "eliza-cloud",
+      onTranscript,
+      onStateChange,
+    });
+
+    await capture.start();
+    await capture.stop();
+
+    // No cloud round-trip, no transcript emitted.
+    expect(isSilentWavMock).toHaveBeenCalledWith(wav);
+    expect(transcribeCloudWavMock).not.toHaveBeenCalled();
+    expect(onTranscript).not.toHaveBeenCalled();
+    // Not an error state — a clean settle back to idle.
+    const states = onStateChange.mock.calls.map(([s]) => s);
+    expect(states).not.toContain("error");
+    expect(onStateChange).toHaveBeenLastCalledWith("idle", undefined);
+    // The handle is no longer active (stop drained it).
+    expect(capture.isActive()).toBe(false);
   });
 
   it("cloud STT failure surfaces an error state — no silent browser downgrade", async () => {
