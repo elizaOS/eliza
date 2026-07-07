@@ -18,6 +18,7 @@
 import type * as React from "react";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim";
 import {
   hexToRgb,
   normalizeUniforms,
@@ -294,6 +295,13 @@ export function ProgrammableShaderBackground({
       className="pointer-events-none fixed inset-0 overflow-hidden"
       style={{
         zIndex: 0,
+        // BOTTOM-BAR FIX (consume #15036 reclaim): the installed iOS standalone
+        // PWA collapses this `fixed` layer's containing block to the small ICB
+        // (`ce873` vs physical `sh932`), so a bare `inset-0` stops the GLSL
+        // field ~59px above the home-indicator edge — the recurring black strip.
+        // Extend to the TRUE physical bottom by the JS-MEASURED
+        // `--standalone-bottom-reclaim` (hard 0, thus no-op, off native).
+        bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET,
         backgroundColor: color,
       }}
     />

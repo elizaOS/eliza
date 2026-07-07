@@ -765,6 +765,32 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
     }
   }, [notifications.length]);
 
+  // useCallback keeps the clock read inside a deferred (handler) context for
+  // the UI-determinism gate — the wheel handler only ever runs on user input,
+  // never during render — and gives the scroller a stable handler identity.
+  // Hook placement: MUST stay above the empty-inbox early return below.
+  const onListWheel = useCallback(
+    (e: React.WheelEvent) => {
+      const el = scrollRef.current;
+      if (!el || !canExpandRef.current) return;
+      const now = Date.now();
+      if (now < wheelCooldownUntil.current) return;
+      // Wheel-up while the list already sits at its top is the desktop pull.
+      if (el.scrollTop > 0 || e.deltaY >= 0) {
+        wheelPull.current = 0;
+        return;
+      }
+      wheelPull.current += -e.deltaY;
+      if (wheelPull.current >= PULL_COMMIT_PX) {
+        wheelPull.current = 0;
+        // Swallow trailing momentum so one flick doesn't double-toggle.
+        wheelCooldownUntil.current = now + 500;
+        toggleShade();
+      }
+    },
+    [toggleShade],
+  );
+
   if (notifications.length === 0) return null;
 
   // Cap rendered rows, filter to the rested (interrupt-tier) slice unless
@@ -814,25 +840,6 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
     pointerPull.current = null;
     commitPull();
   };
-  const onListWheel = (e: React.WheelEvent) => {
-    const el = scrollRef.current;
-    if (!el || !canExpandRef.current) return;
-    const now = Date.now();
-    if (now < wheelCooldownUntil.current) return;
-    // Wheel-up while the list already sits at its top is the desktop pull.
-    if (el.scrollTop > 0 || e.deltaY >= 0) {
-      wheelPull.current = 0;
-      return;
-    }
-    wheelPull.current += -e.deltaY;
-    if (wheelPull.current >= PULL_COMMIT_PX) {
-      wheelPull.current = 0;
-      // Swallow trailing momentum so one flick doesn't double-toggle.
-      wheelCooldownUntil.current = now + 500;
-      toggleShade();
-    }
-  };
-
   return (
     <section
       aria-label="Notifications"

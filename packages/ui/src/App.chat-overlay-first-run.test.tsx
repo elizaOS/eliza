@@ -69,6 +69,7 @@ vi.mock("./platform/init", () => ({
   isDesktopPlatform: () => false,
   isIOS: false,
   isNative: false,
+  isStandalonePwa: () => false,
   isWebPlatform: () => true,
 }));
 

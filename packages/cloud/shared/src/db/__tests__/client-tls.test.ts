@@ -1,6 +1,10 @@
 // Exercises cloud DB client tls behavior with deterministic repository fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
-import { applyIdleSessionTimeouts, enforceTlsForRemote, shouldSkipTlsVerification } from "../client";
+import {
+  applyIdleSessionTimeouts,
+  enforceTlsForRemote,
+  shouldSkipTlsVerification,
+} from "../client";
 
 const PREV = process.env.DATABASE_SSL_NO_VERIFY;
 afterEach(() => {

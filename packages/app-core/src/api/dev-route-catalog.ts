@@ -458,6 +458,7 @@ const SETTINGS_SECTIONS: DevRouteSettingsSection[] = [
   { id: "connectors", label: "Connectors" },
   { id: "appearance", label: "Appearance" },
   { id: "background", label: "Background" },
+  { id: "notifications", label: "Notifications" },
   { id: "runtime", label: "Runtime" },
   { id: "wallet-rpc", label: "Wallet & RPC" },
   { id: "remote-plugins", label: "Remote Plugins" },

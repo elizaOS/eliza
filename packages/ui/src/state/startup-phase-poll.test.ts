@@ -1243,6 +1243,19 @@ describe("shouldFallBackToLocalOrigin", () => {
       shouldFallBackToLocalOrigin({ ...eligible, pageProtocol: "views:" }),
     ).toBe(false);
   });
+
+  it("does NOT abandon a dedicated cloud agent base for the page origin (the crash-card trigger)", () => {
+    // A connection failure to <id>.elizacloud.ai means the agent is starting /
+    // transiently unreachable — keep polling IT, never repoint at
+    // app.elizacloud.ai (which serves no /api and 404s → "Backend Unreachable").
+    expect(
+      shouldFallBackToLocalOrigin({
+        ...eligible,
+        clientBaseUrl:
+          "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("runPollingBackend cancellation during options fetch", () => {

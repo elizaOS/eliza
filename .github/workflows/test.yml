@@ -47,7 +47,17 @@ permissions:
 jobs:
   stale-base-preflight:
     name: PR stale-base preflight
-    if: github.event_name == 'pull_request'
+    # PR-only in EFFECT — every step gates on github.event_name ==
+    # 'pull_request' — but the JOB itself runs (and no-op-succeeds) on every
+    # event. It used to be job-level `if: github.event_name == 'pull_request'`,
+    # which SKIPPED it on push; because `changes` needs this job and GitHub
+    # evaluates the implicit success() over the TRANSITIVE needs chain
+    # (actions/runner#491), that one skipped ancestor silently skip-cascaded
+    # every push-event lane downstream of `changes` whose `if` carries no
+    # status-check function — develop push runs went vacuously red from the
+    # moment the needs edge landed. Step-level gating keeps the PR-only
+    # contract (ci-merge-gate-contract.mjs) and the `changes` ordering while
+    # letting push/schedule/dispatch fan-outs actually run.
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     env:
@@ -57,6 +67,7 @@ jobs:
       ACK: ${{ contains(github.event.pull_request.labels.*.name, 'stale-base-ack') && '1' || '' }}
     steps:
       - name: Checkout target branch (guard logic comes from the base, not the PR)
+        if: github.event_name == 'pull_request'
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.event.pull_request.base.ref }}
@@ -68,11 +79,13 @@ jobs:
           submodules: false
 
       - name: Setup Node.js for stale-base guard
+        if: github.event_name == 'pull_request'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Fetch PR head + bounded history (blobless)
+        if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
           git fetch --quiet --no-tags --filter=blob:none --depth=1500 \
@@ -81,9 +94,11 @@ jobs:
             "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
 
       - name: Self-test the guard on fixture repos
+        if: github.event_name == 'pull_request'
         run: node packages/scripts/stale-base-guard.self-test.mjs
 
       - name: Detect silent reverts + stale base before fanning out tests
+        if: github.event_name == 'pull_request'
         env:
           GIT_NO_LAZY_FETCH: "1"
         run: |

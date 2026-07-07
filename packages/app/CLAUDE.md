@@ -105,6 +105,10 @@ bun run --cwd packages/app cap:sync:android           # Capacitor sync Android o
 # Simulator smoke tests
 bun run --cwd packages/app test:e2e:ios              # Boot sim, build, auth smoke, full-Bun local chat
 bun run --cwd packages/app test:e2e:ios:cloud        # iOS e2e plus cloud provisioning probe
+ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 bun run --cwd packages/app test:e2e:ios:cloud-onboarding
+                                                       # iOS sim fresh cloud sign-in + e2e SIWE wallet, tap + autologin
+ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 bun run --cwd packages/app test:e2e:android:cloud-onboarding
+                                                       # Android emu fresh cloud sign-in + e2e SIWE wallet, tap + autologin
 bun run --cwd packages/app test:sim:local-chat        # iOS simulator local-chat smoke; requires installed app
 bun run --cwd packages/app test:sim:local-chat:android # Android emulator local-chat smoke; requires installed app
 bun run --cwd packages/app test:sim:auth:ios         # auth/callback deep-link DELIVERY + in-app handler classification (not login)
