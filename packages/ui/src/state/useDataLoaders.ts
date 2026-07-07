@@ -72,6 +72,28 @@ function hasConversationBootstrapMessage(
   );
 }
 
+function isLocalPendingConversationMessage(
+  message: ConversationMessage,
+): boolean {
+  return message.id.startsWith("temp-");
+}
+
+function mergeLocalPendingConversationMessages(
+  serverMessages: ConversationMessage[],
+  currentMessages: ConversationMessage[],
+  loadedConversationId: string | null,
+  convId: string,
+): ConversationMessage[] {
+  if (loadedConversationId !== convId) return serverMessages;
+  const serverIds = new Set(serverMessages.map((message) => message.id));
+  const pendingMessages = currentMessages.filter(
+    (message) =>
+      isLocalPendingConversationMessage(message) && !serverIds.has(message.id),
+  );
+  if (pendingMessages.length === 0) return serverMessages;
+  return [...serverMessages, ...pendingMessages];
+}
+
 function buildLocalizedCharacterPayload(
   preset: StylePreset,
   name?: string | null,
@@ -346,10 +368,17 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       // thread never flashes empty mid-swipe; the fetch below still revalidates.
       const cached = conversationMessageCacheRef.current.get(convId);
       if (cached) {
-        greetingFiredRef.current = hasConversationBootstrapMessage(cached);
-        conversationMessagesRef.current = cached;
+        const mergedCached = mergeLocalPendingConversationMessages(
+          cached,
+          conversationMessagesRef.current,
+          loadedConversationIdRef.current,
+          convId,
+        );
+        greetingFiredRef.current =
+          hasConversationBootstrapMessage(mergedCached);
+        conversationMessagesRef.current = mergedCached;
         loadedConversationIdRef.current = convId;
-        setConversationMessages(cached);
+        setConversationMessages(mergedCached);
       } else if (loadedConversationIdRef.current !== convId) {
         // No cache means the visible transcript still belongs to the previous
         // active conversation until the fetch resolves. Clear it immediately so
@@ -368,8 +397,14 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         // Superseded by a newer load while in flight — let the newer one own the
         // thread instead of committing this stale result.
         if (signal.aborted) return { ok: true };
-        const nextMessages = filterRenderableConversationMessages(messages);
-        cacheConversationMessages(convId, nextMessages);
+        const serverMessages = filterRenderableConversationMessages(messages);
+        const nextMessages = mergeLocalPendingConversationMessages(
+          serverMessages,
+          conversationMessagesRef.current,
+          loadedConversationIdRef.current,
+          convId,
+        );
+        cacheConversationMessages(convId, serverMessages);
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
         conversationMessagesRef.current = nextMessages;

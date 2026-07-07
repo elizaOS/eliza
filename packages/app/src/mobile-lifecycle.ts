@@ -19,6 +19,7 @@ import {
   NETWORK_STATUS_CHANGE_EVENT,
   type NetworkStatusChangeDetail,
 } from "@elizaos/ui/events";
+import { isStandalonePwa } from "@elizaos/ui/platform";
 
 export interface MobileLifecycleContext {
   isNative: boolean;
@@ -40,6 +41,10 @@ const COLD_LAUNCH_URL_REPLAY_INTERVAL_MS = 1_000;
 
 function unrefTimer(timer: ReturnType<typeof setInterval>): void {
   (timer as unknown as { unref?: () => void }).unref?.();
+}
+
+function shouldBridgeVisibilityLifecycle(ctx: MobileLifecycleContext): boolean {
+  return ctx.isNative || isStandalonePwa();
 }
 
 export function createMobileLifecycle(ctx: MobileLifecycleContext) {
@@ -133,28 +138,26 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       CapacitorApp.addListener("appStateChange", ({ isActive }) => {
         setAppActive(isActive);
       }),
-      // error-policy:J4 App plugin unavailable — the visibilitychange
-      // fallback below still drives pause/resume
+      // error-policy:J4 App plugin unavailable — the visibilitychange fallback
+      // still drives pause/resume on native and installed-PWA surfaces.
     ).catch((error) => {
       logNativePluginUnavailable("App", error);
     });
 
-    // Robust pause/resume fallback. `document.visibilitychange` fires reliably on
-    // every surface (web, desktop, iOS/Android WebView) when the app is
-    // backgrounded/foregrounded — including when the Capacitor `App` plugin's
-    // `appStateChange` is delayed, missing, or (as observed on an Android
-    // device) reports the App plugin as "not implemented", in which case the
-    // listener above never registers and pause/resume would otherwise never
-    // fire — so APP_PAUSE_EVENT-driven work (e.g. pruning backgrounded views to
-    // reclaim memory) never runs on background. Deduped via `setAppActive` so it
-    // never double-fires alongside a working `appStateChange`.
     if (activeVisibilityHandler) {
       document.removeEventListener("visibilitychange", activeVisibilityHandler);
+      activeVisibilityHandler = null;
     }
-    activeVisibilityHandler = () => {
-      setAppActive(document.visibilityState !== "hidden");
-    };
-    document.addEventListener("visibilitychange", activeVisibilityHandler);
+    // Browser tab visibility is not an app suspend signal: desktop browsers keep
+    // agent requests and sockets alive in hidden tabs. Use the fallback only on
+    // native WebViews and installed PWAs, where the OS can freeze or kill the
+    // renderer without a reliable Capacitor `appStateChange`.
+    if (shouldBridgeVisibilityLifecycle(ctx)) {
+      activeVisibilityHandler = () => {
+        setAppActive(document.visibilityState !== "hidden");
+      };
+      document.addEventListener("visibilitychange", activeVisibilityHandler);
+    }
 
     void Promise.resolve(
       CapacitorApp.addListener("backButton", ({ canGoBack }) => {

@@ -1280,6 +1280,16 @@ export class ElizaClient {
       this.ws?.readyState === WebSocket.OPEN ||
       this.ws?.readyState === WebSocket.CONNECTING
     ) {
+      if (
+        this.ws.readyState === WebSocket.OPEN &&
+        this.connectionState !== "connected"
+      ) {
+        this.backoffMs = 500;
+        this.reconnectAttempt = 0;
+        this.disconnectedAt = null;
+        this.connectionState = "connected";
+        this.emitConnectionStateChange();
+      }
       return;
     }
 
@@ -1537,6 +1547,28 @@ export class ElizaClient {
 
   /** Reset connection state and restart reconnection attempts. */
   resetConnection(): void {
+    const existingReadyState = this.ws?.readyState;
+    if (
+      existingReadyState === WebSocket.OPEN ||
+      existingReadyState === WebSocket.CONNECTING
+    ) {
+      this.reconnectAttempt = 0;
+      this.disconnectedAt = null;
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+      this.backoffMs = 500;
+      if (
+        existingReadyState === WebSocket.OPEN &&
+        this.connectionState !== "connected"
+      ) {
+        this.connectionState = "connected";
+        this.emitConnectionStateChange();
+      }
+      return;
+    }
+
     this.reconnectAttempt = 0;
     this.disconnectedAt = null;
     this.connectionState = "disconnected";

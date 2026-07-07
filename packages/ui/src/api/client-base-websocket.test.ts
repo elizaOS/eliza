@@ -302,6 +302,29 @@ describe("ElizaClient websocket connection policy", () => {
     expect(instances).toHaveLength(before);
   });
 
+  it("resetConnection leaves a healthy websocket connected without a disconnected flap", () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://agent.example.test", "agent-token");
+    client.connectWs();
+    expect(instances).toHaveLength(1);
+
+    instances[0].readyState = 1; // OPEN
+    instances[0].onopen?.();
+
+    const states: string[] = [];
+    client.onConnectionStateChange((s) => states.push(s.state));
+
+    client.resetConnection();
+
+    expect(instances).toHaveLength(1);
+    expect(client.getConnectionState()).toMatchObject({
+      state: "connected",
+      reconnectAttempt: 0,
+      disconnectedAt: null,
+    });
+    expect(states).not.toContain("disconnected");
+  });
+
   it("removes a parked network-status reconnect wake on intentional disconnect", () => {
     const instances = stubWebSocketWithInstances();
     const client = new ElizaClient("https://agent.example.test", "agent-token");

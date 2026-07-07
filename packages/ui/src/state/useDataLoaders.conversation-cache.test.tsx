@@ -30,6 +30,15 @@ function userMsg(id: string): ConversationMessage {
   } as ConversationMessage;
 }
 
+function assistantMsg(id: string): ConversationMessage {
+  return {
+    id,
+    role: "assistant",
+    text: `msg-${id}`,
+    timestamp: 0,
+  } as ConversationMessage;
+}
+
 function makeDeps() {
   const conversationMessagesRef = { current: [] as ConversationMessage[] };
   const activeConversationIdRef = { current: null as string | null };
@@ -63,7 +72,12 @@ function makeDeps() {
     uiLanguage: "en",
     setOwnerNameState: noop,
   } as unknown as DataLoadersDeps;
-  return { deps, setConversationMessages, conversationMessagesRef };
+  return {
+    deps,
+    setConversationMessages,
+    conversationMessagesRef,
+    activeConversationIdRef,
+  };
 }
 
 beforeEach(() => {
@@ -181,5 +195,42 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
 
     // Only the latest selection's messages reach the thread.
     expect(conversationMessagesRef.current).toEqual([userMsg("b1")]);
+  });
+
+  it("preserves local optimistic temp turns during same-conversation revalidation", async () => {
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: [userMsg("persisted-1")] })
+      .mockResolvedValueOnce({
+        messages: [userMsg("persisted-1"), assistantMsg("server-late")],
+      });
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    conversationMessagesRef.current = [
+      userMsg("persisted-1"),
+      { ...userMsg("temp-user"), timestamp: 10 },
+      { ...assistantMsg("temp-resp-user"), text: "", timestamp: 11 },
+    ];
+    setConversationMessages.mockClear();
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(conversationMessagesRef.current.map((message) => message.id)).toEqual(
+      ["persisted-1", "server-late", "temp-user", "temp-resp-user"],
+    );
+    expect(setConversationMessages).toHaveBeenLastCalledWith(
+      conversationMessagesRef.current,
+    );
   });
 });
