@@ -9,7 +9,10 @@ import { DockerSandboxProvider } from "../docker-sandbox-provider";
 import { DockerSSHClient } from "../docker-ssh";
 
 type PollInternals = {
-  pollSshDockerHealth: (meta: ContainerMetaShape, deadline: number) => Promise<boolean>;
+  pollSshDockerHealth: (
+    meta: ContainerMetaShape,
+    deadline: number,
+  ) => Promise<{ ready: boolean; verdict: string }>;
   hydrateContainerFromDb: (sandboxId: string) => Promise<ContainerMetaShape | null>;
 };
 
@@ -96,7 +99,7 @@ describe("pollSshDockerHealth follows agent re-placement (#15203)", () => {
     const deadline = Date.now() + 60_000;
     const healthy = await internals.pollSshDockerHealth(OLD_NODE, deadline);
 
-    expect(healthy).toBe(true);
+    expect(healthy.ready).toBe(true);
     expect(hydrate.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(probedHosts).toContain(OLD_NODE.hostname);
     expect(probedHosts).toContain(NEW_NODE.hostname);
@@ -114,7 +117,7 @@ describe("pollSshDockerHealth follows agent re-placement (#15203)", () => {
 
     const healthy = await internals.pollSshDockerHealth(OLD_NODE, Date.now() + 60_000);
 
-    expect(healthy).toBe(true);
+    expect(healthy.ready).toBe(true);
     expect(new Set(probedHosts)).toEqual(new Set([OLD_NODE.hostname]));
     getClient.mockRestore();
   });
@@ -131,7 +134,7 @@ describe("pollSshDockerHealth follows agent re-placement (#15203)", () => {
 
     const healthy = await internals.pollSshDockerHealth(OLD_NODE, Date.now() + 60_000);
 
-    expect(healthy).toBe(true);
+    expect(healthy.ready).toBe(true);
     expect(probedHosts).toContain(OLD_NODE.hostname);
     getClient.mockRestore();
   });

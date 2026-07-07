@@ -1,8 +1,37 @@
 // Coordinates cloud service sandbox provider types behavior behind route handlers.
+
+/**
+ * Why a readiness probe finished the way it did.
+ *
+ *   - `ready` — the probe reached the container and it answered healthy.
+ *   - `not_ready` — the probe REACHED the container (SSH transport worked and
+ *     the remote shell ran) but it was still not answering healthy when the
+ *     budget ran out. A genuine "the container isn't up" verdict.
+ *   - `transport_unresolved` — the budget was exhausted while EVERY probe
+ *     attempt failed at the SSH transport layer (connect/exec/stream error or
+ *     command timeout). The probe never reached a verdict about the container,
+ *     so concluding "not ready" here would be a FALSE NEGATIVE — the exact
+ *     split-brain that marks a healthy container failed and wedges its row.
+ *     Callers should treat this as RETRYABLE, not terminal.
+ */
+export type SandboxHealthVerdict = "ready" | "not_ready" | "transport_unresolved";
+
+export interface SandboxHealthOutcome {
+  ready: boolean;
+  verdict: SandboxHealthVerdict;
+}
+
 export interface SandboxProvider {
   create(config: SandboxCreateConfig): Promise<SandboxHandle>;
   stop(sandboxId: string): Promise<void>;
   checkHealth(handle: SandboxHandle): Promise<boolean>;
+  /**
+   * Richer readiness probe that distinguishes a genuine `not_ready` from a
+   * `transport_unresolved` exhaustion (see {@link SandboxHealthVerdict}).
+   * Optional so providers that cannot fail at a transport layer (memory/local)
+   * need not implement it; callers fall back to `checkHealth` when absent.
+   */
+  checkHealthDetailed?(handle: SandboxHandle): Promise<SandboxHealthOutcome>;
   runCommand?(sandboxId: string, cmd: string, args?: string[]): Promise<string>;
   /** Tail container logs from the sandbox runtime (e.g. `docker logs --tail N`). */
   fetchLogs?(sandboxId: string, tail: number): Promise<string>;

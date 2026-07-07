@@ -91,6 +91,39 @@ export interface DockerSSHConfig {
   onHostKeyDiscovered?: (hostname: string, fingerprint: string) => Promise<void>;
 }
 
+/**
+ * How a failed `DockerSSHClient.exec` should be interpreted by a readiness
+ * probe.
+ *
+ *   - `"transport"` — the SSH channel itself failed: we could NOT connect,
+ *     could NOT open the exec channel, the stream errored, or the command
+ *     timed out before the remote shell reported an exit code. This proves
+ *     NOTHING about the container; the probe never reached a verdict. A probe
+ *     that only ever sees transport failures must NOT conclude "not ready" —
+ *     it must retry (and, when the budget is exhausted, surface the failure as
+ *     retryable so the job re-runs instead of wedging a healthy container).
+ *   - `"remote"` — the SSH channel worked and the remote shell RAN the command
+ *     and returned a non-zero exit code (the `[docker-ssh] Command exited with
+ *     code N` shape). For a health/host probe this is the authoritative
+ *     "container reached, container said not-ready (yet)" signal.
+ *
+ * Pure string-shape match on the messages `DockerSSHClient.exec` rejects with;
+ * unit-tested in isolation so the classification can't silently drift from the
+ * error strings it depends on.
+ */
+export type DockerSshProbeErrorKind = "transport" | "remote";
+
+export function classifyDockerSshProbeError(err: unknown): DockerSshProbeErrorKind {
+  const message = err instanceof Error ? err.message : String(err);
+  // A non-zero exit code means the remote shell RAN — the channel worked, the
+  // container was reached, and the probe command decided not-ready. Everything
+  // else `exec` can throw (connection error, exec error, stream error, or a
+  // timeout that fired before any exit code) is a transport failure that says
+  // nothing about the container.
+  if (message.includes("Command exited with code ")) return "remote";
+  return "transport";
+}
+
 // ---------------------------------------------------------------------------
 // DockerSSHClient
 // ---------------------------------------------------------------------------

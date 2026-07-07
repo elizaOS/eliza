@@ -13,7 +13,7 @@ import type { SandboxHandle } from "../sandbox-provider-types";
 type ProbeInternals = {
   resolveContainer: (sandboxId: string) => Promise<unknown>;
   pollTailnetHealth: (...args: unknown[]) => Promise<boolean>;
-  pollSshDockerHealth: (...args: unknown[]) => Promise<boolean>;
+  pollSshDockerHealth: (...args: unknown[]) => Promise<{ ready: boolean; verdict: string }>;
 };
 
 const META = {
@@ -48,7 +48,12 @@ function makeProvider(outcomes: { tailnet: boolean; sshDocker: boolean }) {
   const internals = provider as unknown as ProbeInternals;
   const resolveSpy = spyOn(internals, "resolveContainer").mockResolvedValue(META);
   const tailnetSpy = spyOn(internals, "pollTailnetHealth").mockResolvedValue(outcomes.tailnet);
-  const sshSpy = spyOn(internals, "pollSshDockerHealth").mockResolvedValue(outcomes.sshDocker);
+  // pollSshDockerHealth now returns a SandboxHealthOutcome; map the boolean
+  // fixture to a ready/not_ready verdict (transport_unresolved is covered in
+  // the dedicated readiness-probe test).
+  const sshSpy = spyOn(internals, "pollSshDockerHealth").mockResolvedValue(
+    outcomes.sshDocker ? { ready: true, verdict: "ready" } : { ready: false, verdict: "not_ready" },
+  );
   return { provider, resolveSpy, tailnetSpy, sshSpy };
 }
 

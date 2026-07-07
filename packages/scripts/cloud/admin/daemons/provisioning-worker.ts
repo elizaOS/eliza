@@ -563,6 +563,22 @@ async function processRecoveryCycle(concurrency = 5): Promise<RecoveryResult> {
   return provisioningJobService.processDisconnectedRecovery(concurrency);
 }
 
+/**
+ * Self-heal rows WEDGED in `provisioning` whose container is actually healthy
+ * — the readiness-probe false-negative split-brain (#15310 failure mode #6).
+ * The Worker-side cleanup cron can only mark these `error` (no SSH); THIS
+ * daemon can re-probe the container node-side and flip it back to `running`.
+ */
+async function processStuckProvisioningReconcileCycle(): Promise<{
+  total: number;
+  recovered: number;
+  unresolved: number;
+  failed: number;
+}> {
+  const { provisioningJobService } = await loadDeps();
+  return provisioningJobService.reconcileStuckProvisioning();
+}
+
 interface NodeHealthSummary {
   total: number;
   healthy: number;
@@ -1239,6 +1255,25 @@ async function runWorkCycle(
             reprovisioned: recovery.reprovisioned,
             failed: recovery.failed,
           });
+        }
+      },
+    );
+
+    await runBoundedPhase(
+      logger,
+      "stuck-provisioning reconcile",
+      () => processStuckProvisioningReconcileCycle(),
+      (reconcile) => {
+        if (reconcile.total > 0) {
+          logger.info(
+            "[provisioning-worker] stuck-provisioning reconcile complete",
+            {
+              total: reconcile.total,
+              recovered: reconcile.recovered,
+              unresolved: reconcile.unresolved,
+              failed: reconcile.failed,
+            },
+          );
         }
       },
     );

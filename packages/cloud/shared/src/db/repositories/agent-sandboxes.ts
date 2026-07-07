@@ -285,6 +285,60 @@ export class AgentSandboxesRepository {
   }
 
   /**
+   * Rows WEDGED in `provisioning` past `cutoff` that still carry a container
+   * to re-probe (`sandbox_id` set): a container was created but the readiness
+   * probe returned a false-negative (SSH transport blip) so the provision
+   * never flipped the row to `running` and no active job is driving it forward.
+   * These are the split-brain candidates the daemon-side reconciler re-probes
+   * and flips to `running` when the container is actually healthy (#15310 #6).
+   *
+   * Keyed on `updated_at` staleness (the provision writes bump it), and only
+   * rows with NO active `agent_provision` job — an in-flight job is still
+   * driving the provision and must not be raced. Excludes warm-pool rows
+   * (`pool_status IS NULL`), soft-deleted rows, and rows without a container.
+   */
+  async listStuckProvisioningWithContainer(
+    cutoff: Date,
+    limit = 50,
+  ): Promise<
+    Array<{
+      id: string;
+      organization_id: string;
+      user_id: string;
+      agent_name: string | null;
+      updated_at: Date | null;
+    }>
+  > {
+    await ensureAgentSandboxSchema();
+    return dbRead
+      .select({
+        id: agentSandboxes.id,
+        organization_id: agentSandboxes.organization_id,
+        user_id: agentSandboxes.user_id,
+        agent_name: agentSandboxes.agent_name,
+        updated_at: agentSandboxes.updated_at,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.status, "provisioning"),
+          lt(agentSandboxes.updated_at, cutoff),
+          sql`${agentSandboxes.sandbox_id} IS NOT NULL`,
+          sql`${agentSandboxes.pool_status} IS NULL`,
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+          sql`NOT EXISTS (
+            SELECT 1 FROM ${jobs}
+            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
+            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
+            AND    ${jobs.type} = 'agent_provision'
+            AND    ${jobs.status} IN ('pending', 'in_progress')
+          )`,
+        ),
+      )
+      .limit(limit);
+  }
+
+  /**
    * Shared-tier bridge rows old enough to be reap candidates: live (not
    * soft-deleted), `execution_tier = 'shared'`, created before `cutoff`. The
    * shared→dedicated handoff deletes the bridge on success; a timed-out/failed
@@ -714,6 +768,43 @@ export class AgentSandboxesRepository {
           sql`${agentSandboxes.bridge_url} IS NOT NULL`,
           sql`${expectedStatus} != 'error' OR (${agentSandboxes.previous_image_digest} IS NOT NULL AND ${agentSandboxes.error_message} IS NULL)`,
           sql`${agentSandboxes.deleted_at} IS NULL`,
+        ),
+      )
+      .returning();
+    return r;
+  }
+
+  /**
+   * Guarded CAS that flips a WEDGED `provisioning` row to `running` after the
+   * daemon reconciler re-probed its container and found it healthy (#15310 #6).
+   * Only fires when the row is STILL `provisioning` with a live container
+   * (`sandbox_id` set) and NO active `agent_provision` job racing it — so a
+   * concurrent job flip, delete, or stop during the multi-second re-probe is
+   * never clobbered. Returns undefined when the CAS matched nothing.
+   */
+  async markRunningFromProvisioning(id: string): Promise<AgentSandbox | undefined> {
+    await ensureAgentSandboxSchema();
+    const [r] = await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "running",
+        error_message: null,
+        last_heartbeat_at: new Date(),
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(agentSandboxes.id, id),
+          eq(agentSandboxes.status, "provisioning"),
+          sql`${agentSandboxes.sandbox_id} IS NOT NULL`,
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+          sql`NOT EXISTS (
+            SELECT 1 FROM ${jobs}
+            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
+            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
+            AND    ${jobs.type} = 'agent_provision'
+            AND    ${jobs.status} IN ('pending', 'in_progress')
+          )`,
         ),
       )
       .returning();

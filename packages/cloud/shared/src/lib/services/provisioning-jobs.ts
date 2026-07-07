@@ -2932,6 +2932,77 @@ export class ProvisioningJobService {
   }
 
   /**
+   * Reconcile rows WEDGED in `provisioning` whose container is actually healthy
+   * — the readiness-probe false-negative split-brain (#15310 failure mode #6).
+   *
+   * A dedicated agent whose readiness probe returned a transient false-negative
+   * (SSH/exec blip) never flips to `running`; its row sits `provisioning`
+   * forever while the container serves happily. The Worker-side cleanup cron
+   * can only mark such rows `error` (it has no SSH). This daemon-side pass
+   * (which CAN reach the node) re-probes each stuck container and flips it to
+   * `running` when it re-probes healthy — self-healing the split-brain instead
+   * of stranding a live agent or waiting for a human to flip the row.
+   *
+   * Mirrors `processDisconnectedRecovery`: candidate query (`minAgeMs` grace,
+   * no active provision job racing it), bounded concurrency, per-agent probe.
+   * It NEVER tears a container down — an `unresolved` probe leaves the row for
+   * the next pass (and, as a last resort, the Worker cron's error mark).
+   */
+  async reconcileStuckProvisioning(params?: {
+    minAgeMs?: number;
+    maxAgents?: number;
+    concurrency?: number;
+  }): Promise<{ total: number; recovered: number; unresolved: number; failed: number }> {
+    const minAgeMs = params?.minAgeMs ?? 5 * 60 * 1000; // 5m grace beyond normal boot
+    const maxAgents = params?.maxAgents ?? 50;
+    const concurrency = params?.concurrency ?? 5;
+    const cutoff = new Date(Date.now() - minAgeMs);
+
+    const stuck = await agentSandboxesRepository.listStuckProvisioningWithContainer(
+      cutoff,
+      maxAgents,
+    );
+    const total = stuck.length;
+    if (total === 0) return { total: 0, recovered: 0, unresolved: 0, failed: 0 };
+
+    let recovered = 0;
+    let unresolved = 0;
+    let failed = 0;
+    const queue = [...stuck];
+    const workers = Array.from({ length: Math.min(concurrency, total) }, async () => {
+      while (true) {
+        const r = queue.shift();
+        if (!r) break;
+        try {
+          const outcome = await elizaSandboxService.reconcileStuckProvisioning(
+            r.id,
+            r.organization_id,
+          );
+          if (outcome === "recovered") recovered += 1;
+          else unresolved += 1; // "gone" is a no-op, count with unresolved
+        } catch (error) {
+          failed += 1;
+          logger.warn("[provisioning-jobs] stuck-provisioning reconcile failed", {
+            agentId: r.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    });
+    await Promise.all(workers);
+
+    if (recovered > 0 || failed > 0) {
+      logger.info("[provisioning-jobs] stuck-provisioning reconcile pass", {
+        total,
+        recovered,
+        unresolved,
+        failed,
+      });
+    }
+    return { total, recovered, unresolved, failed };
+  }
+
+  /**
    * Re-arm stuck `deletion_failed` sandboxes (and orphaned `deletion_pending`
    * rows whose agent_delete job was lost mid-claim) so a delete that failed or
    * was stranded eventually completes.

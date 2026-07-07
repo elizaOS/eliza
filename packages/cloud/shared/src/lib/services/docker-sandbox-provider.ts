@@ -47,10 +47,15 @@ import {
   WEBUI_PORT_MAX,
   WEBUI_PORT_MIN,
 } from "./docker-sandbox-utils";
-import { DockerSSHClient } from "./docker-ssh";
+import { classifyDockerSshProbeError, DockerSSHClient } from "./docker-ssh";
 import { DEFAULT_REGISTRATION_TIMEOUT_MS, headscaleIntegration } from "./headscale-integration";
 import { buildKeylessOpenAIContainerEnv } from "./managed-eliza-env";
-import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
+import type {
+  SandboxCreateConfig,
+  SandboxHandle,
+  SandboxHealthOutcome,
+  SandboxProvider,
+} from "./sandbox-provider-types";
 import {
   ensureStewardTenant,
   resolveStewardTenantCredentials,
@@ -452,6 +457,20 @@ export const HEALTH_CHECK_TIMEOUT_MS = 360_000;
  * round-trips, not a cold boot.
  */
 const HEALTH_CHECK_SSH_FALLBACK_TIMEOUT_MS = 30_000;
+
+/**
+ * When the whole SSH-probe budget was spent WITHOUT ever reaching the container
+ * (every attempt failed at the SSH transport layer — connect/exec/stream error
+ * or timeout), the probe never reached a verdict. Rather than immediately
+ * concluding "not ready" (a false negative that wedges a healthy container's
+ * row), retry the probe over a short extra window with backoff — a flapping SSH
+ * pool or a briefly-unreachable node usually clears in seconds. If it STILL
+ * only sees transport failures after this, the outcome is reported as
+ * `transport_unresolved` (retryable), not `not_ready` (terminal).
+ */
+const HEALTH_CHECK_TRANSPORT_RETRY_WINDOW_MS = 20_000;
+const HEALTH_CHECK_TRANSPORT_RETRY_BASE_MS = 1_000;
+const HEALTH_CHECK_TRANSPORT_RETRY_MAX_MS = 5_000;
 
 /** SSH command timeout for docker pull (can be slow on first pull). */
 export const PULL_TIMEOUT_MS = 300_000; // 5 min
@@ -1888,6 +1907,16 @@ export class DockerSandboxProvider implements SandboxProvider {
   }
 
   async checkHealth(handle: SandboxHandle): Promise<boolean> {
+    return (await this.checkHealthDetailed(handle)).ready;
+  }
+
+  /**
+   * Readiness probe that distinguishes a genuine `not_ready` from a
+   * `transport_unresolved` exhaustion so callers can treat a probe that never
+   * reached the container as RETRYABLE rather than a terminal failure. See
+   * {@link SandboxHealthVerdict}.
+   */
+  async checkHealthDetailed(handle: SandboxHandle): Promise<SandboxHealthOutcome> {
     const meta = await this.resolveContainer(handle.sandboxId);
     const deadline = Date.now() + HEALTH_CHECK_TIMEOUT_MS;
 
@@ -1901,7 +1930,9 @@ export class DockerSandboxProvider implements SandboxProvider {
     const headscaleIp =
       typeof handle.metadata?.headscaleIp === "string" ? handle.metadata.headscaleIp : undefined;
     if (headscaleIp) {
-      if (await this.pollTailnetHealth(handle, meta, deadline)) return true;
+      if (await this.pollTailnetHealth(handle, meta, deadline)) {
+        return { ready: true, verdict: "ready" };
+      }
       // A cold CP-side mesh socket at provision time can miss every tailnet
       // probe while the container is demonstrably healthy on its node; without
       // this fallback the provision path ghost-kills that healthy container.
@@ -1923,7 +1954,10 @@ export class DockerSandboxProvider implements SandboxProvider {
    * fallback that keeps a provision alive when the CP-side mesh socket is cold
    * while the container itself is healthy.
    */
-  private async pollSshDockerHealth(meta: ContainerMeta, deadline: number): Promise<boolean> {
+  private async pollSshDockerHealth(
+    meta: ContainerMeta,
+    deadline: number,
+  ): Promise<SandboxHealthOutcome> {
     // The budget varies by caller (full window standalone, short window as the
     // tailnet fallback), so log the actual one instead of a constant.
     const budgetMs = Math.max(0, deadline - Date.now());
@@ -1932,7 +1966,15 @@ export class DockerSandboxProvider implements SandboxProvider {
       `[docker-sandbox] Polling Docker health for ${current.containerName} on ${current.nodeId} (${current.hostname}) (timeout: ${Math.round(budgetMs / 1000)}s)`,
     );
 
-    while (Date.now() < deadline) {
+    // Track whether THIS probe window ever actually reached the container. Every
+    // failure of a single iteration is classified transport-vs-remote (see
+    // classifyDockerSshProbeError): if the whole budget is spent and NOTHING
+    // ever reached the container (SSH flapping / node briefly unreachable), the
+    // verdict is `transport_unresolved` (retryable) — NOT `not_ready`, which
+    // would falsely condemn a container the probe never even reached.
+    let reachedContainer = false;
+
+    const runOneProbe = async (): Promise<"ready" | "not_ready" | "transport"> => {
       // Placement-affecting jobs can overlap the health wait, so each probe
       // reads the current node before dialing docker on that host.
       current = await this.refreshNodeMeta(current);
@@ -1952,15 +1994,23 @@ export class DockerSandboxProvider implements SandboxProvider {
         ].join(" "),
       )}`;
 
+      // A single iteration is `transport` ONLY when BOTH sub-probes fail at the
+      // SSH transport layer; if either one reaches the container (host probe
+      // exits non-zero = curl ran, or the inspect returns a status), we reached
+      // it and the iteration is `not_ready`, not `transport`.
+      let iterationReached = false;
+
       try {
         await ssh.exec(hostProbeCmd, Math.min(10_000, HEALTH_CHECK_TIMEOUT_MS));
         logger.info(
           `[docker-sandbox] Host HTTP probe passed for ${current.containerName} on ${current.nodeId}`,
         );
-        return true;
+        return "ready";
       } catch (err) {
+        const kind = classifyDockerSshProbeError(err);
+        if (kind === "remote") iterationReached = true;
         logger.debug(
-          `[docker-sandbox] Host HTTP probe failed for ${current.containerName}, retrying: ${err instanceof Error ? err.message : String(err)}`,
+          `[docker-sandbox] Host HTTP probe failed (${kind}) for ${current.containerName}, retrying: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
 
@@ -1968,22 +2018,35 @@ export class DockerSandboxProvider implements SandboxProvider {
         const status = (
           await ssh.exec(inspectCmd, Math.min(10_000, HEALTH_CHECK_TIMEOUT_MS))
         ).trim();
+        // The inspect returned a status string — we reached the container,
+        // whatever the value.
+        iterationReached = true;
 
         if (status === "healthy") {
           logger.info(
             `[docker-sandbox] Docker health check passed for ${current.containerName}: ${status}`,
           );
-          return true;
+          return "ready";
         }
 
         logger.debug(
           `[docker-sandbox] Docker health for ${current.containerName} is ${status || "unknown"}, retrying...`,
         );
       } catch (err) {
+        const kind = classifyDockerSshProbeError(err);
+        if (kind === "remote") iterationReached = true;
         logger.debug(
-          `[docker-sandbox] Docker health inspect failed for ${current.containerName}, retrying: ${err instanceof Error ? err.message : String(err)}`,
+          `[docker-sandbox] Docker health inspect failed (${kind}) for ${current.containerName}, retrying: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
+
+      if (iterationReached) reachedContainer = true;
+      return iterationReached ? "not_ready" : "transport";
+    };
+
+    while (Date.now() < deadline) {
+      const outcome = await runOneProbe();
+      if (outcome === "ready") return { ready: true, verdict: "ready" };
 
       // Wait before retrying (but don't overshoot the deadline)
       const remaining = deadline - Date.now();
@@ -1994,6 +2057,37 @@ export class DockerSandboxProvider implements SandboxProvider {
         await new Promise((resolve) => setTimeout(resolve, Math.min(remaining, 1000)));
       } else {
         break;
+      }
+    }
+
+    // The main budget is spent. If we NEVER reached the container, the whole
+    // window was transport failures — do NOT condemn the container yet. Retry
+    // over a short extra window with capped backoff; a flapping SSH pool or a
+    // briefly-unreachable node usually clears in seconds. Only if it STILL only
+    // sees transport failures do we report `transport_unresolved` (retryable).
+    if (!reachedContainer) {
+      const retryDeadline = Date.now() + HEALTH_CHECK_TRANSPORT_RETRY_WINDOW_MS;
+      let backoff = HEALTH_CHECK_TRANSPORT_RETRY_BASE_MS;
+      logger.warn(
+        `[docker-sandbox] Health probe never reached ${current.containerName} on ${current.hostname} within ${Math.round(budgetMs / 1000)}s (transport failures only); retrying transport for up to ${HEALTH_CHECK_TRANSPORT_RETRY_WINDOW_MS / 1000}s before deciding`,
+      );
+      while (Date.now() < retryDeadline) {
+        const outcome = await runOneProbe();
+        if (outcome === "ready") return { ready: true, verdict: "ready" };
+        // As soon as ANY attempt reaches the container, fall through to the
+        // normal not_ready verdict below — the split-brain is resolved.
+        if (reachedContainer) break;
+        const remaining = retryDeadline - Date.now();
+        if (remaining <= 0) break;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(backoff, remaining)));
+        backoff = Math.min(backoff * 2, HEALTH_CHECK_TRANSPORT_RETRY_MAX_MS);
+      }
+
+      if (!reachedContainer) {
+        logger.warn(
+          `[docker-sandbox] Health probe for ${current.containerName} on ${current.hostname} remained transport-unresolved — reporting retryable (NOT marking the container failed)`,
+        );
+        return { ready: false, verdict: "transport_unresolved" };
       }
     }
 
@@ -2030,7 +2124,9 @@ export class DockerSandboxProvider implements SandboxProvider {
           diagnosticsError instanceof Error ? diagnosticsError.message : String(diagnosticsError),
       });
     }
-    return false;
+    // We reached the container at least once but it never answered healthy — a
+    // genuine not-ready verdict (terminal), not a transport false-negative.
+    return { ready: false, verdict: "not_ready" };
   }
 
   // ------------------------------------------------------------------
