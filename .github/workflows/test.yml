@@ -403,7 +403,7 @@ jobs:
         run: bun run test:client
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Remote capability UI smoke
         run: bun run test:remote-capabilities:ui
@@ -460,7 +460,7 @@ jobs:
       # Playwright against the real view-host route with the IWER emulator
       # injected.
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Run facewear app-xr e2e (real view-host route + IWER emulator)
         run: bun run --cwd plugins/plugin-facewear/app-xr test:e2e
@@ -760,7 +760,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright Chromium + WebKit
-        run: bunx playwright install --with-deps chromium webkit
+        run: .github/scripts/install-playwright-browsers.sh chromium webkit
 
       - name: Actual app assistant pill browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "captures first-run, assistant home, chat suppression, and view pill states"

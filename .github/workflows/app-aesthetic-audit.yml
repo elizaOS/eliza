@@ -60,7 +60,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Run all-views aesthetic audit
         # Strict gate (#10710): a `broken` verdict fails the run, and with the
