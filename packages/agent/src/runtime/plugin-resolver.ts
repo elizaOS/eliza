@@ -793,22 +793,33 @@ export async function importPluginModuleFromPath(
   // Cold-boot fast-path: on the FIRST import of this package in this process
   // there is no ESM module record to bust, so staging's recursive `fs.cp` copy
   // is pure I/O waste + unbounded `.runtime-imports/` growth. Import in place
-  // from the real package root instead, but ONLY when a stable built `dist/`
-  // exists. Any re-import (name already in the set) falls back to staging so
-  // hot-reloads still force a fresh module evaluation. This is a single
-  // behavior for every boot — local dev and the container resolve plugins
-  // identically.
+  // from the real package root instead, when either
+  //   (a) a stable built `dist/` exists, or
+  //   (b) the package lives inside a developer workspace tree, whose ancestor
+  //       node_modules farms already provide the full resolution context that
+  //       staging would otherwise re-assemble file by file.
+  // Any re-import (name already in the set) falls back to generation staging so
+  // hot-reloads still force a fresh module evaluation; a cold import that can't
+  // go in place stages through the content-keyed cache, which is safe precisely
+  // because a fresh process has no module record for the cached URL yet. This
+  // is a single behavior for every boot — local dev and the container resolve
+  // plugins identically.
+  const isColdImport = !importedPluginPackageNames.has(packageName);
   const useColdFastPath =
-    !importedPluginPackageNames.has(packageName) &&
-    existsSync(path.join(pkgRoot, "dist"));
+    isColdImport &&
+    (existsSync(path.join(pkgRoot, "dist")) ||
+      (await isWorkspacePluginPackageRoot(pkgRoot)));
+  const stageParams = {
+    installRoot: absPath,
+    packageRoot: pkgRoot,
+    packageRelativePath,
+    packageName,
+  };
   const importRoot = useColdFastPath
     ? pkgRoot
-    : await stagePluginImportRoot({
-        installRoot: absPath,
-        packageRoot: pkgRoot,
-        packageRelativePath,
-        packageName,
-      });
+    : isColdImport
+      ? await stageColdPluginImportRoot(stageParams)
+      : await stagePluginImportRoot(stageParams);
   // Record the name BEFORE the import() can fail: if a cold in-place import
   // throws during module evaluation, the caller's retry re-enters here, finds
   // the name already recorded, and escalates to staging — a fresh staged URL
@@ -1116,13 +1127,21 @@ function pluginInstanceKeepCount(): number {
   return parsed;
 }
 
+// Grace window before an abandoned `.tmp-*` staging dir (crashed mid-build) is
+// reclaimed. Mirrors the media-store orphan-GC grace: long enough that a live
+// concurrent staging is never swept, short enough that crash debris does not
+// accumulate.
+const STAGE_TMP_MAX_AGE_MS = 60 * 60 * 1000;
+
 /**
  * Prune sibling plugin staging directories under `stagingBaseDir`, keeping
- * only the `keepCount` newest by mtime. Each call to `stagePluginImportRoot`
- * mints a new `mkdtemp` directory and the previous ones are never reused, so
- * without this cleanup the directory grows unbounded — on long-running dev
- * boxes the same plugin can accumulate thousands of stale installs (each
- * carrying its own `node_modules` copy) and consume hundreds of GB.
+ * only the `keepCount` newest by mtime. Generation dirs are minted per
+ * re-import and content-cache dirs are LRU-touched on reuse, so without this
+ * cleanup the directory grows unbounded — on long-running dev boxes the same
+ * plugin can accumulate thousands of stale installs (each carrying its own
+ * `node_modules` copy) and consume hundreds of GB. In-flight `.tmp-*` build
+ * dirs never count toward the keep budget; ones older than the grace window
+ * are crash debris and are deleted outright.
  *
  * Failures are logged but never thrown — staging the new install must not be
  * blocked by failure to clean up old ones.
@@ -1139,12 +1158,19 @@ export async function pruneStalePluginInstances(
   } catch {
     return;
   }
+  const now = Date.now();
   const candidates: { path: string; mtimeMs: number }[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const fullPath = path.join(stagingBaseDir, entry.name);
     try {
       const stat = await fs.stat(fullPath);
+      if (entry.name.startsWith(STAGE_TMP_DIR_PREFIX)) {
+        if (now - stat.mtimeMs > STAGE_TMP_MAX_AGE_MS) {
+          await fs.rm(fullPath, { recursive: true, force: true });
+        }
+        continue;
+      }
       candidates.push({ path: fullPath, mtimeMs: stat.mtimeMs });
     } catch {
       // dir vanished concurrently — fine, skip it
@@ -1245,18 +1271,43 @@ async function linkHoistedNodeModulesPackages(params: {
   }
 }
 
-async function stagePluginImportRoot(params: {
+type StagePluginParams = {
   installRoot: string;
   packageRoot: string;
   packageRelativePath: string[];
   packageName: string;
-}): Promise<string> {
-  const stagingBaseDir = path.join(
+};
+
+function pluginStagingBaseDir(packageName: string): string {
+  return path.join(
     resolveStateDir(),
     "plugins",
     ".runtime-imports",
-    sanitizePluginCacheSegment(params.packageName),
+    sanitizePluginCacheSegment(packageName),
   );
+}
+
+function stagedPackageRootPath(
+  stagingDir: string,
+  packageRelativePath: string[],
+): string {
+  const stagedInstallRoot = path.join(stagingDir, "root");
+  return packageRelativePath.length > 0
+    ? path.join(stagedInstallRoot, ...packageRelativePath)
+    : stagedInstallRoot;
+}
+
+/**
+ * Stage a fresh, process-unique import root for a plugin (re-import path).
+ * Each call mints a new generation directory, so the returned entry point has
+ * a URL the ESM loader has never seen — that is what forces a fresh module
+ * evaluation on hot-reload/retry. Cold boots must NOT come through here; they
+ * use `stageColdPluginImportRoot`, which reuses a content-keyed cache dir.
+ */
+async function stagePluginImportRoot(
+  params: StagePluginParams,
+): Promise<string> {
+  const stagingBaseDir = pluginStagingBaseDir(params.packageName);
   await fs.mkdir(stagingBaseDir, { recursive: true });
 
   // Prune BEFORE mkdtemp so concurrent stages of the same plugin can't have
@@ -1266,6 +1317,19 @@ async function stagePluginImportRoot(params: {
   const stagingDir = await fs.mkdtemp(
     path.join(stagingBaseDir, `${Date.now()}-${crypto.randomUUID()}-`),
   );
+  return populateStagedImportRoot(stagingDir, params);
+}
+
+/**
+ * Copy the plugin tree and assemble its node_modules resolution context inside
+ * `stagingDir`. Shared by generation staging (fresh dir per call) and the
+ * content-keyed cold cache (deterministic dir, atomically published).
+ * Returns the staged package root the entry point resolves from.
+ */
+async function populateStagedImportRoot(
+  stagingDir: string,
+  params: StagePluginParams,
+): Promise<string> {
   const stagedInstallRoot = path.join(stagingDir, "root");
   const stagedPackageRoot =
     params.packageRelativePath.length > 0
@@ -1346,6 +1410,299 @@ async function stagePluginImportRoot(params: {
   }
 
   return stagedPackageRoot;
+}
+
+// ---------------------------------------------------------------------------
+// Cold-boot content-keyed staging cache
+// ---------------------------------------------------------------------------
+
+const STAGE_CACHE_DIR_PREFIX = "content-";
+const STAGE_TMP_DIR_PREFIX = ".tmp-";
+const STAGE_COMPLETE_MARKER = ".eliza-staged-complete";
+// Bump when the staged-tree layout or digest inputs change shape, so caches
+// built by older code are keyed away from (and eventually pruned under) the
+// new scheme instead of being trusted.
+const STAGE_DIGEST_VERSION = "v1";
+
+/**
+ * Whether `pkgRoot` resolves (through symlinks) to a location inside a
+ * developer workspace root. A workspace tree carries its own complete
+ * node_modules resolution context (the monorepo's root + per-package farms),
+ * so a plugin there imports in place — staging would only re-assemble, file by
+ * file, a resolution context that already exists. The ancestor-node_modules
+ * check keeps the predicate honest for bare workspace-root overrides pointing
+ * at trees that were never installed (those still need staging's assembly).
+ */
+async function isWorkspacePluginPackageRoot(pkgRoot: string): Promise<boolean> {
+  let realPkgRoot: string;
+  try {
+    realPkgRoot = await fs.realpath(pkgRoot);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+
+  for (const workspaceRoot of uniquePaths([
+    process.cwd(),
+    ...resolveWorkspaceRoots(),
+  ])) {
+    let realWorkspaceRoot: string;
+    try {
+      realWorkspaceRoot = await fs.realpath(workspaceRoot);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
+    if (
+      realPkgRoot !== realWorkspaceRoot &&
+      !realPkgRoot.startsWith(`${realWorkspaceRoot}${path.sep}`)
+    ) {
+      continue;
+    }
+    if ((await findNearestNodeModulesDir(realPkgRoot)) !== null) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Stat-walk the files staging would copy from `packageRoot` (same filter as the
+ * copy itself) and emit one deterministic line per entry. Metadata
+ * (path/size/mtime) stands in for content: a full content hash would re-read
+ * every byte of the plugin tree on each boot, making a cache hit nearly as
+ * expensive as the copy it avoids, while build tools and installers reliably
+ * bump mtimes. A false mismatch merely restages (safe); stale generations are
+ * pruned by the keep-N GC.
+ */
+async function collectStageDigestEntries(
+  packageRoot: string,
+): Promise<string[]> {
+  const filter = createPluginPackageStageFilter(packageRoot);
+  const entries: string[] = [];
+  const walk = async (dir: string): Promise<void> => {
+    const dirents = await fs.readdir(dir, { withFileTypes: true });
+    for (const dirent of dirents) {
+      const fullPath = path.join(dir, dirent.name);
+      if (!filter(fullPath)) continue;
+      const relativePath = path.relative(packageRoot, fullPath);
+      if (dirent.isSymbolicLink()) {
+        entries.push(
+          `${relativePath}\u0000link\u0000${await fs.readlink(fullPath)}`,
+        );
+      } else if (dirent.isDirectory()) {
+        await walk(fullPath);
+      } else if (dirent.isFile()) {
+        const stat = await fs.stat(fullPath);
+        entries.push(
+          `${relativePath}\u0000${stat.size}\u0000${Math.trunc(stat.mtimeMs)}`,
+        );
+      }
+    }
+  };
+  await walk(packageRoot);
+  return entries.sort();
+}
+
+/**
+ * One-level generation signature of a node_modules dir (plus one level inside
+ * scoped dirs, whose direct children are the real packages). Installers
+ * add/remove/replace whole package entries, which bumps the entries seen here;
+ * nested in-place edits inside a dependency are not detected — symlinked
+ * entries (the bun isolated-linker layout) self-heal because staging preserves
+ * them as symlinks into the live store, and real-dir copies come from
+ * installer-managed trees that are replaced wholesale on update.
+ */
+async function nodeModulesGenerationSignature(
+  nodeModulesDir: string,
+): Promise<string> {
+  let dirents: Dirent[];
+  try {
+    dirents = await fs.readdir(nodeModulesDir, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "absent";
+    throw error;
+  }
+
+  const lines: string[] = [];
+  const describeEntry = async (
+    entryPath: string,
+    name: string,
+    isSymbolicLink: boolean,
+  ): Promise<string> => {
+    if (isSymbolicLink) {
+      return `${name}\u0000link\u0000${await fs.readlink(entryPath)}`;
+    }
+    const stat = await fs.stat(entryPath);
+    return `${name}\u0000${Math.trunc(stat.mtimeMs)}`;
+  };
+  for (const dirent of dirents) {
+    if (dirent.name === ".bin" || dirent.name.startsWith(".")) continue;
+    const entryPath = path.join(nodeModulesDir, dirent.name);
+    if (dirent.isDirectory() && dirent.name.startsWith("@")) {
+      const scopedDirents = await fs.readdir(entryPath, {
+        withFileTypes: true,
+      });
+      for (const scoped of scopedDirents) {
+        if (scoped.name.startsWith(".")) continue;
+        lines.push(
+          await describeEntry(
+            path.join(entryPath, scoped.name),
+            `${dirent.name}/${scoped.name}`,
+            scoped.isSymbolicLink(),
+          ),
+        );
+      }
+      continue;
+    }
+    lines.push(
+      await describeEntry(entryPath, dirent.name, dirent.isSymbolicLink()),
+    );
+  }
+  return lines.sort().join("\n");
+}
+
+async function computePluginStageDigest(
+  params: StagePluginParams,
+): Promise<string> {
+  // realpath(installRoot) is part of the key so two checkouts/worktrees sharing
+  // one ELIZA_STATE_DIR never reuse each other's staged trees (their assembled
+  // node_modules symlinks point into different source trees).
+  const realInstallRoot = await fs.realpath(params.installRoot);
+  const parts: string[] = [
+    STAGE_DIGEST_VERSION,
+    params.packageName,
+    params.packageRelativePath.join("/"),
+    `root:${realInstallRoot}`,
+    `full:${stageFullPluginPackageEnabled()}`,
+    `hoistAll:${stageAllHoistedNodeModulesEnabled()}`,
+    ...(await collectStageDigestEntries(params.packageRoot)),
+    `installNM:${await nodeModulesGenerationSignature(path.join(params.installRoot, "node_modules"))}`,
+  ];
+  if (params.packageRoot !== params.installRoot) {
+    parts.push(
+      `packageNM:${await nodeModulesGenerationSignature(path.join(params.packageRoot, "node_modules"))}`,
+    );
+  }
+  return crypto
+    .createHash("sha256")
+    .update(parts.join("\n"))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+/**
+ * A cache dir is trusted only when it was atomically published: the marker is
+ * written into the tree before the rename, so a dir missing it is a partial
+ * from a crash or a hand-made artifact and must be rebuilt.
+ */
+async function isCompleteStagedCacheDir(
+  cacheDir: string,
+  packageRelativePath: string[],
+): Promise<boolean> {
+  return (
+    (await pathEntryExists(path.join(cacheDir, STAGE_COMPLETE_MARKER))) &&
+    (await pathEntryExists(
+      path.join(
+        stagedPackageRootPath(cacheDir, packageRelativePath),
+        "package.json",
+      ),
+    ))
+  );
+}
+
+/** In-process single-flight per cache dir; cross-process races are settled by atomic rename. */
+const inflightColdStages = new Map<string, Promise<string>>();
+
+/**
+ * Stage a plugin import root for a cold boot, reusing a deterministic cache dir
+ * keyed by a digest of the staged inputs. Safe only for the first import of a
+ * package name in a process: no ESM module record exists for the cached URL
+ * yet, so reuse cannot serve a stale module graph. Re-imports must keep using
+ * `stagePluginImportRoot` (fresh generation dir) to force re-evaluation.
+ *
+ * Publication is atomic: the tree is built in a `.tmp-*` sibling and renamed
+ * into place, so a concurrent boot either wins the rename or adopts the
+ * winner's dir; a crash leaves only a `.tmp-*` orphan for the pruner.
+ *
+ * @internal Exported for testing.
+ */
+export async function stageColdPluginImportRoot(
+  params: StagePluginParams,
+): Promise<string> {
+  const stagingBaseDir = pluginStagingBaseDir(params.packageName);
+  await fs.mkdir(stagingBaseDir, { recursive: true });
+  const digest = await computePluginStageDigest(params);
+  const cacheDir = path.join(
+    stagingBaseDir,
+    `${STAGE_CACHE_DIR_PREFIX}${digest}`,
+  );
+
+  const inflight = inflightColdStages.get(cacheDir);
+  if (inflight) return inflight;
+  const flight = (async (): Promise<string> => {
+    if (await isCompleteStagedCacheDir(cacheDir, params.packageRelativePath)) {
+      // LRU-touch before pruning so the pruner (here or in a sibling process)
+      // ranks the dir we are about to import from as the newest.
+      const now = new Date();
+      await fs.utimes(cacheDir, now, now);
+      await pruneStalePluginInstances(
+        stagingBaseDir,
+        pluginInstanceKeepCount(),
+      );
+      logger.debug(
+        `[eliza] Reusing staged plugin cache for ${params.packageName} (${STAGE_CACHE_DIR_PREFIX}${digest})`,
+      );
+      return stagedPackageRootPath(cacheDir, params.packageRelativePath);
+    }
+    // Incomplete dir at the cache path (crash artifact or pre-atomic legacy) —
+    // remove it so the rename below can land.
+    await fs.rm(cacheDir, { recursive: true, force: true });
+
+    await pruneStalePluginInstances(stagingBaseDir, pluginInstanceKeepCount());
+    const tmpDir = await fs.mkdtemp(
+      path.join(stagingBaseDir, STAGE_TMP_DIR_PREFIX),
+    );
+    await populateStagedImportRoot(tmpDir, params);
+    await fs.writeFile(path.join(tmpDir, STAGE_COMPLETE_MARKER), digest);
+    try {
+      await fs.rename(tmpDir, cacheDir);
+    } catch (error) {
+      // Designed publish protocol, not a swallow: a losing rename race
+      // (another process published the same digest first) or an EXDEV mount
+      // quirk is expected; adopt the winner or fall back to our own complete
+      // tree. Every other code rethrows.
+      const code = (error as NodeJS.ErrnoException).code;
+      const raceCodes = new Set(["EEXIST", "ENOTEMPTY", "EPERM", "EACCES"]);
+      if (raceCodes.has(code ?? "")) {
+        if (
+          await isCompleteStagedCacheDir(cacheDir, params.packageRelativePath)
+        ) {
+          await fs.rm(tmpDir, { recursive: true, force: true });
+          return stagedPackageRootPath(cacheDir, params.packageRelativePath);
+        }
+      } else if (code !== "EXDEV") {
+        throw error;
+      }
+      // Publish failed but our tmp tree is complete: promote it to a normal
+      // generation dir (same parent, so this rename cannot cross devices) and
+      // import from there — correctness over cache reuse.
+      const fallbackDir = path.join(
+        stagingBaseDir,
+        `${Date.now()}-${crypto.randomUUID()}-unpublished`,
+      );
+      await fs.rename(tmpDir, fallbackDir);
+      return stagedPackageRootPath(fallbackDir, params.packageRelativePath);
+    }
+    logger.debug(
+      `[eliza] Staged plugin cache for ${params.packageName} (${STAGE_CACHE_DIR_PREFIX}${digest})`,
+    );
+    return stagedPackageRootPath(cacheDir, params.packageRelativePath);
+  })().finally(() => {
+    inflightColdStages.delete(cacheDir);
+  });
+  inflightColdStages.set(cacheDir, flight);
+  return flight;
 }
 
 /**
@@ -1951,10 +2308,12 @@ export async function resolvePlugins(
           logger.debug(
             `[eliza] Loading workspace plugin override: ${pluginName} from ${workspaceOverridePath}`,
           );
-          // Always stage workspace overrides instead of re-importing the bare
-          // package specifier from node_modules. Bun can wedge a subsequent
-          // restart when an earlier bare import of the same specifier failed
-          // during module evaluation. Staging also guarantees local edits reload.
+          // Resolve workspace overrides by path instead of re-importing the
+          // bare package specifier from node_modules. Bun can wedge a
+          // subsequent restart when an earlier bare import of the same
+          // specifier failed during module evaluation. Cold imports go in
+          // place (the workspace tree is its own resolution context);
+          // re-imports stage a fresh generation so local edits still reload.
           mod = await importPluginModuleFromPath(
             workspaceOverridePath,
             pluginName,
