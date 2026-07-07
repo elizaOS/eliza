@@ -33,6 +33,7 @@ import {
   MOBILE_LOCAL_AGENT_SERVER_ID,
   readPersistedMobileRuntimeMode,
 } from "../first-run/mobile-runtime-mode";
+import { primeAuthStatusProbe } from "../hooks/useAuthStatus";
 import type { UiLanguage } from "../i18n";
 import {
   clearForceFreshFirstRun,
@@ -438,14 +439,26 @@ export async function applyRestoredConnection(args: {
   }
 
   if (restoredActiveServer.kind === "cloud") {
-    const resolved = await backfillCloudApiBase(restoredActiveServer);
+    // The two restore fetches are independent, so they run concurrently: the
+    // Steward-token resolution reads only persisted browser state (the stored
+    // JWT / the .elizacloud.ai cookie) and the boot-config cloud base — never
+    // the backfilled apiBase — and its refresh POST goes through raw fetch,
+    // not the client singleton that backfill temporarily repoints. Client
+    // mutations still land in the original order (base, then token).
+    const backfillPromise = backfillCloudApiBase(restoredActiveServer);
+    const stewardTokenPromise = resolveRestoredStewardToken();
+    // error-policy:J5 the rejection is observed at `await stewardTokenPromise`
+    // below; this no-op handler only covers the window where backfill throws
+    // first and that await is never reached.
+    stewardTokenPromise.catch(() => {});
+    const resolved = await backfillPromise;
     clientRef.setBaseUrl(resolved.apiBase ?? null);
     // Cloud = Steward everywhere (DECISIONS.md D3): prefer the live Steward
     // session token over the token captured at provision time (which may have
     // rotated since). If that stored JWT expired while the app was closed,
     // refresh it BEFORE handing it to the client so a returning user never
     // boots into a permanently-401ing session (see resolveRestoredStewardToken).
-    const stewardToken = await resolveRestoredStewardToken();
+    const stewardToken = await stewardTokenPromise;
     clientRef.setToken(stewardToken || resolved.accessToken || null);
     return;
   }
@@ -610,6 +623,21 @@ export async function runRestoringSession(
 
   const isDesktop = isElectrobunRuntime();
 
+  // One desktop runtime-mode RPC per restore run: both consumers (the local
+  // agent autostart gate in startLocalRuntime and the embedded-local target
+  // reclassification before dispatch) share this memo instead of dialing the
+  // 5s-timeout bridge twice. Per-run — not module-scoped — because the shell's
+  // mode can change between restore retries. The mode is shell config, stable
+  // within a single startup, so sharing one result is safe.
+  let desktopRuntimeModePromise: Promise<{ mode?: string } | null> | null =
+    null;
+  const desktopRuntimeMode = (): Promise<{ mode?: string } | null> => {
+    desktopRuntimeModePromise ??= getDesktopRuntimeModeForStartup().catch(
+      () => null,
+    );
+    return desktopRuntimeModePromise;
+  };
+
   // Probe the API when there is evidence of a prior install, or when no
   // persisted server exists (covers headless/VPS setups where config was
   // set via files without going through UI firstRun).
@@ -676,14 +704,20 @@ export async function runRestoringSession(
     return;
   }
 
+  // Only a restored kind:"local" server ever consumes the runtime mode (both
+  // call sites below), so kick the RPC off for exactly that case — it then
+  // runs while the sync restore gates above settle instead of serializing
+  // inside startLocalRuntime.
+  if (isDesktop && restoredActiveServer.kind === "local") {
+    void desktopRuntimeMode();
+  }
+
   await applyRestoredConnection({
     restoredActiveServer,
     clientRef: client,
     startLocalRuntime: async () => {
       try {
-        const runtimeMode = await getDesktopRuntimeModeForStartup().catch(
-          () => null,
-        );
+        const runtimeMode = await desktopRuntimeMode();
         if (runtimeMode && runtimeMode.mode !== "local") {
           return;
         }
@@ -695,6 +729,12 @@ export async function runRestoringSession(
       }
     },
   });
+
+  // The connection is applied (base URL + token are what the post-paint auth
+  // gate will use), so start the /api/auth/me probe now — it overlaps the
+  // polling/hydration phases instead of serializing after first paint. See
+  // primeAuthStatusProbe for why a mid-boot 503 outcome is discarded.
+  primeAuthStatusProbe();
 
   ctxRef.current = {
     persistedActiveServer,
@@ -712,9 +752,7 @@ export async function runRestoringSession(
   // AND the shell reports a non-local mode, so local/cloud boots are unchanged.
   let resolvedTarget = activeServerToTarget(restoredActiveServer);
   if (resolvedTarget === "embedded-local" && isElectrobunRuntime()) {
-    const runtimeMode = await getDesktopRuntimeModeForStartup().catch(
-      () => null,
-    );
+    const runtimeMode = await desktopRuntimeMode();
     if (runtimeMode?.mode && runtimeMode.mode !== "local") {
       resolvedTarget = "remote-backend";
     }

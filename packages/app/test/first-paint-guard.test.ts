@@ -73,19 +73,23 @@ describe("first-paint critical path", () => {
 
   it("still mounts React only after initializeAppModules in the main boot path", () => {
     // Guards the ordering invariant the whole optimization rests on: the normal
-    // path awaits app modules, then mounts. (Special window-shell paths mount
-    // earlier by design and are out of scope.)
+    // path awaits app modules, then mounts, then initializes the platform.
+    // (Special window-shell paths mount earlier by design and are out of
+    // scope.) Post-mount fire-and-forget work may sit between the deferred
+    // schedule and the platform await, so only the ordering is pinned.
     const appModulesIdx = mainSrc.indexOf("await initializeAppModules();");
     const mountIdx = mainSrc.indexOf(
-      "mountReactApp();\n  scheduleDeferredAppModuleLoadsAfterPaint();\n  await initializePlatform();",
+      "mountReactApp();\n  scheduleDeferredAppModuleLoadsAfterPaint();",
     );
+    const platformIdx = mainSrc.indexOf("await initializePlatform();");
     expect(appModulesIdx).toBeGreaterThan(-1);
     expect(mountIdx).toBeGreaterThan(appModulesIdx);
+    expect(platformIdx).toBeGreaterThan(mountIdx);
   });
 
   it("schedules deferred app modules only after the main React mount", () => {
     const mountIdx = mainSrc.indexOf(
-      "mountReactApp();\n  scheduleDeferredAppModuleLoadsAfterPaint();\n  await initializePlatform();",
+      "mountReactApp();\n  scheduleDeferredAppModuleLoadsAfterPaint();",
     );
     expect(mountIdx).toBeGreaterThan(-1);
   });
