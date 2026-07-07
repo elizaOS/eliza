@@ -157,6 +157,30 @@ function drag(el: Element) {
   };
 }
 
+describe("layout-shift-intent marker (#15257)", () => {
+  it("a continuous drag arms the marker ONCE, not per height tick", async () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const el = grabber();
+    const setAttr = vi.spyOn(Element.prototype, "setAttribute");
+    try {
+      fireEvent.pointerDown(el, { clientY: 740, pointerId: 1 });
+      // 20 move ticks well inside the 180ms clear window (real clock): every
+      // tick refreshes the armed marker; only the FIRST may write the attribute.
+      for (let i = 1; i <= 20; i++) {
+        fireEvent.pointerMove(el, { clientY: 740 - i * 12, pointerId: 1 });
+      }
+      await settleFrames();
+      const markerWrites = setAttr.mock.calls.filter(
+        ([name]) => name === "data-eliza-layout-shift-intent",
+      ).length;
+      expect(markerWrites).toBeLessThanOrEqual(1);
+      fireEvent.pointerUp(el, { clientY: 500, pointerId: 1 });
+    } finally {
+      setAttr.mockRestore();
+    }
+  });
+});
+
 describe("adversarial mouse drags — up/down 200%, back-and-forth", () => {
   it("A) up ~200% above the screen then all the way back to the bottom COLLAPSES (not stranded open/maximized)", async () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
