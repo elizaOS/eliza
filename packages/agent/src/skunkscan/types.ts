@@ -197,6 +197,20 @@ export type WalletInvestigationReplayStep = {
   description: string;
 };
 
+export type WalletDisplayScore = {
+  rawScore: number;
+  displayScore: string;
+  label: string;
+  maxScore: 10;
+};
+
+export type WalletDisplaySummary = {
+  risk: WalletDisplayScore;
+  trust: WalletDisplayScore;
+  exposure: WalletDisplayScore;
+  whale: WalletDisplayScore;
+};
+
 export type WalletActivitySummary = {
   recentTransactionCount: number;
   failedTransactionCount: number;
@@ -263,6 +277,7 @@ export type WalletInvestigationResult = {
   defi?: WalletDeFiSummary;
   behavior?: WalletBehaviorSummary;
   caseSummary?: WalletCaseSummary;
+  display?: WalletDisplaySummary;
   trust?: WalletTrustSummary;
   investigationReplay?: WalletInvestigationReplayStep[];
   exposure?: WalletExposureSummary;
