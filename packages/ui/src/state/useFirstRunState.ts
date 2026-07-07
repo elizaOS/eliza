@@ -18,6 +18,7 @@ import {
   activeServerKindToFirstRunRuntimeTarget,
   type FirstRunRuntimeTarget,
 } from "../first-run/runtime-target";
+import { isOnboardingReplayRequested } from "../platform/onboarding-replay";
 import {
   loadPersistedActiveServer,
   loadPersistedFirstRunComplete,
@@ -240,7 +241,16 @@ export function useFirstRunState(cloudOnly?: boolean): FirstRunStateHook {
   // keeps a completed onboarding committed across a process restart, coherent
   // with the `hadPrior` protection the restore/poll phases read from the same
   // durable store.
-  const completionCommittedRef = useRef(loadPersistedFirstRunComplete());
+  //
+  // A dev onboarding-replay page load (#14382) must NOT seed from the durable
+  // flag: the replay overlay makes the client report first-run incomplete, but
+  // the startup coordinator ORs this ref into every completion decision, so a
+  // true seed would silently defeat the replay. The predicate is dev-gated and
+  // URL-scoped — dropping `?onboarding-replay=1` restores normal seeding on
+  // the next load, and the durable flag itself is never written.
+  const completionCommittedRef = useRef(
+    loadPersistedFirstRunComplete() && !isOnboardingReplayRequested(),
+  );
 
   return {
     state,

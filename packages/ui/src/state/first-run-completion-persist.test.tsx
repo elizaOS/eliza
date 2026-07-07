@@ -76,6 +76,34 @@ describe("useFirstRunState seeds the completion ref from durable storage", () =>
   });
 });
 
+describe("useFirstRunState seeding is onboarding-replay-aware (#14382)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("a dev ?onboarding-replay=1 load does NOT seed committed from the durable flag", () => {
+    // The startup coordinator ORs this ref into every completion decision, so
+    // seeding true during a replay would defeat the (dev-gated) replay overlay
+    // and the app would never re-show onboarding.
+    vi.stubEnv("DEV", true);
+    savePersistedFirstRunComplete(true);
+    window.history.replaceState(null, "", "/?onboarding-replay=1");
+    const { result } = renderHook(() => useFirstRunState());
+    expect(result.current.completionCommittedRef.current).toBe(false);
+    // The durable flag itself is untouched — only this session's seed differs.
+    expect(loadPersistedFirstRunComplete()).toBe(true);
+  });
+
+  it("a prod build seeds committed normally even with the replay param", () => {
+    vi.stubEnv("DEV", false);
+    savePersistedFirstRunComplete(true);
+    window.history.replaceState(null, "", "/?onboarding-replay=1");
+    const { result } = renderHook(() => useFirstRunState());
+    expect(result.current.completionCommittedRef.current).toBe(true);
+  });
+});
+
 describe("hydratePersistedFirstRunCompleteFromNativeStore is boot-safe", () => {
   it("no-ops without throwing when Capacitor is unavailable (web/test shell)", async () => {
     await expect(

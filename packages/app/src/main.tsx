@@ -130,10 +130,6 @@ import {
 import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
 import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
 import {
-  applyForceFreshFirstRunReset,
-  installForceFreshFirstRunClientPatch,
-} from "@elizaos/ui/platform/first-run-reset";
-import {
   clearStandaloneBottomReclaim,
   installStandaloneBottomReclaim,
   shouldInstallStandaloneBottomReclaim,
@@ -184,6 +180,7 @@ import {
 } from "./deep-link-routing";
 import { decideChatOverlayToggle } from "./desktop-hotkey";
 import { runEmbedHandshake } from "./embed-bootstrap";
+import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
 import { registerAppHostExternalImporters } from "./host-externals";
 import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
 import {
@@ -475,12 +472,12 @@ if (shouldEnableElectrobunMacWindowDrag()) {
   );
 }
 
-// Dev escape hatch: ?reset forces a truly fresh first-run session by clearing
-// persisted state and temporarily suppressing stale backend resume config.
-if (shouldInstallMainWindowFirstRunPatches(windowShellRoute)) {
-  applyForceFreshFirstRunReset();
-  installForceFreshFirstRunClientPatch(client);
-}
+// Dev escape hatches: ?reset forces a truly fresh first-run session by
+// clearing persisted state; ?onboarding-replay=1 (dev builds only, #14382)
+// re-runs onboarding as a non-destructive client overlay on the SAME agent —
+// no reset endpoint, no active-server clear, no storage wipe. Ordering between
+// the two lives in first-run-boot-patches.ts and is regression-tested.
+installMainWindowFirstRunBootPatches(client, windowShellRoute);
 installLocalProviderCloudPreferencePatch(client);
 installDesktopPermissionsClientPatch(client);
 applyCloudPairSessionToken();
