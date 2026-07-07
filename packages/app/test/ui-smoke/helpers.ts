@@ -1849,6 +1849,28 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // Weather IP-fallback coordinates (useWeather → GET /api/location/approximate,
+  // #15183): fires on every home load when geolocation permission is absent —
+  // always, in this harness. The zero-key smoke stack returns 501, which the
+  // diagnostics guard flags. Serve the same San Francisco fixture coords as the
+  // ipapi stub above so the widget proceeds into the stubbed Open-Meteo reading.
+  await page.route("**/api/location/approximate", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        lat: 37.7749,
+        lon: -122.4194,
+        accuracyMeters: 5000,
+        source: "fixture",
+      }),
+    });
+  });
+
   await page.route("**/api/health", async (route) => {
     await route.fulfill({
       status: 200,
@@ -1946,8 +1968,31 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
   // Notifications poller — another shell-level GET on every surface. The zero-key
   // smoke stack returns 501 for it; a fresh agent simply has no notifications, so
   // an empty list matches real zero-state and keeps the diagnostics guard clean.
+  // POST to the collection is the weather approximate-location notice (useWeather
+  // files it once right after the IP-fallback coords resolve, #15183) — accept it
+  // with the canonical created shape so the once-flag settles and the 501 stack
+  // never sees it; every other method/subpath still falls through.
   await page.route("**/api/notifications**", async (route) => {
-    if (route.request().method() !== "GET") {
+    const method = route.request().method();
+    const pathname = new URL(route.request().url()).pathname;
+    if (method === "POST" && pathname === "/api/notifications") {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          notification: {
+            id: "smoke-notification-1",
+            title: "smoke",
+            category: "system",
+            priority: "low",
+            createdAt: Date.parse(SMOKE_GENERATED_AT),
+            readAt: null,
+          },
+        }),
+      });
+      return;
+    }
+    if (method !== "GET") {
       await route.fallback();
       return;
     }

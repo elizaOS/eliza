@@ -10,20 +10,24 @@
  * ate the home-screen swipe-up (open chat) and horizontal rail flick as its own
  * page pan (pointercancel) and both gestures silently died.
  *
- * The lockdown scroll-locks the body WITHOUT `position: fixed`. Pinning the body
- * `fixed` on the iOS Safari standalone PWA collapsed the initial containing
- * block for `position: fixed` DESCENDANTS (wallpaper, composer, safe-area floor)
- * to the small/layout viewport, so those layers stopped ~59px above the physical
- * bottom and `#root`'s near-black `--launch-bg` showed through as a home-indicator
- * "black band" — the bug an 8-deep pile of reclaim workarounds chased. An
- * exact-viewport-height, overflow-clipped body with `overscroll-behavior: none`
- * scroll-locks just as hard AND leaves the fixed-descendant ICB equal to the
- * true viewport, so the wallpaper reaches the real bottom with no reclaim math.
+ * The lockdown scroll-locks the body without `position: fixed`. On the iOS
+ * Safari standalone PWA, a fixed body collapses the containing block for fixed
+ * descendants such as the wallpaper, composer, and safe-area floor; the body
+ * instead uses exact viewport height, clipped overflow, and overscroll blocking.
  *
  * These tests pin: (1) init.ts tags `pwa-standalone` only on web; (2) the CSS
  * lockdown is the NON-fixed lock for the PWA while the native build keeps
- * `position: fixed; inset: 0`; (3) the reclaim mechanism is GONE and no layer
- * references it.
+ * `position: fixed; inset: 0`; (3) `html` is sized to the LARGE viewport
+ * (`100lvh`) + transparent in the installed shell so its `overflow: hidden` clip
+ * box reaches the true screen bottom; (4) the JS-measured
+ * bottom-reclaim IS PRESENT and install-guarded on the iOS standalone/native path.
+ *
+ * Device diagnostics showed `100lvh` reaching the physical screen while
+ * `100dvh` and `innerHeight` remained collapsed above the home indicator.
+ * Therefore the root `html` element must use the large viewport unit so its
+ * overflow clip does not cut off the reclaimed bottom paint. The JS reclaim
+ * still seats fixed descendants on engines where the dynamic viewport remains
+ * collapsed.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -223,6 +227,22 @@ describe("CSS lockdown contract — base.css / styles.css cover body.pwa-standal
     expect(columnBlock?.[0]).toContain("100vh");
     expect(columnBlock?.[0]).not.toContain("100lvh");
   });
+
+  it("sizes the html clip box to 100lvh + transparent on the class path", () => {
+    // Class-path twin of the media-block rule: html owns the large-viewport clip
+    // and stays transparent so the fixed wallpaper owns the bottom edge.
+    const htmlBlock = stylesCss.match(
+      /html:has\(body\.native\),[\s\S]*?background:\s*transparent;[\s\S]*?\}/,
+    );
+    expect(htmlBlock).not.toBeNull();
+    expect(htmlBlock?.[0]).toContain("html:has(body.pwa-standalone)");
+    // The large viewport unit reaches the physical screen on installed iOS PWAs.
+    expect(htmlBlock?.[0]).toContain("100lvh");
+    // Progressive-enhancement fallback stack.
+    expect(htmlBlock?.[0]).toContain("100dvh");
+    expect(htmlBlock?.[0]).toContain("100vh");
+    expect(htmlBlock?.[0]).toMatch(/background:\s*transparent/);
+  });
 });
 
 describe("CSS-FIRST contract — media-query lockdown is detection-independent", () => {
@@ -314,13 +334,39 @@ describe("CSS-FIRST contract — media-query lockdown is detection-independent",
     );
     expect(block).not.toBeNull();
     expect(block ?? "").toContain("touch-action: pan-y");
+    // #root and the app-shell column stay on the dynamic viewport; `html` owns
+    // the physical-bottom clip above them. No fixed body geometry.
     expect(block ?? "").toMatch(/#root\s*\{[\s\S]*?max-height:\s*100dvh/);
     expect(block ?? "").toMatch(
       /\[data-app-shell-root\]\s*\{[\s\S]*?height:\s*100dvh/,
     );
-    // No obsolete large-viewport reclaim, no fixed body geometry.
-    expect(block ?? "").not.toContain("100lvh");
+    // #root must NOT itself carry the large-viewport unit (it stays 100dvh).
+    const rootRule = (block ?? "").match(/body #root\s*\{[\s\S]*?\}/);
+    expect(rootRule?.[0] ?? "").not.toContain("100lvh");
     expect(stripCssComments(block ?? "")).not.toMatch(/position:\s*fixed/);
+  });
+
+  it("styles.css media block sizes the html clip box to 100lvh + transparent", () => {
+    // Detection-independent twin for installed PWAs where runtime body classes
+    // are not available early enough to protect the first paint.
+    const block = mediaBlock(
+      stylesCss,
+      ["display-mode: standalone", "pointer: coarse"],
+      "[data-app-shell-root]",
+    );
+    expect(block).not.toBeNull();
+    // Match the `html { ... }` rule inside the media body (a leading comment may
+    // precede it). `html` here is the bare element selector, distinct from the
+    // `body #root` / `[data-app-shell-root]` rules.
+    const htmlRule = (block ?? "").match(/\bhtml\s*\{[^}]*\}/);
+    expect(htmlRule).not.toBeNull();
+    // The large viewport unit reaches the physical screen.
+    expect(htmlRule?.[0] ?? "").toContain("100lvh");
+    // Progressive-enhancement fallback stack for engines without lvh.
+    expect(htmlRule?.[0] ?? "").toContain("100dvh");
+    expect(htmlRule?.[0] ?? "").toContain("100vh");
+    // Transparent so the fixed wallpaper owns the bottom edge.
+    expect(htmlRule?.[0] ?? "").toMatch(/background:\s*transparent/);
   });
 });
 
@@ -333,46 +379,153 @@ describe("App shell column contract — the shell column carries the fill hook",
   });
 });
 
-describe("Bottom-reclaim mechanism is GONE (regression guard)", () => {
-  // The JS `standalone-bottom-reclaim` measurement + `--standalone-bottom-reclaim`
-  // var were an 8-deep workaround for the fixed-body ICB collapse. With the body
-  // no longer fixed the wallpaper reaches the true bottom on its own, so the
-  // whole mechanism is deleted. These guard against it creeping back.
+describe("JS-measured bottom reclaim is present and install-guarded", () => {
+  // Installed iOS PWAs can expose the physical screen through screen.height even
+  // when the dynamic viewport remains collapsed above the home indicator. The
+  // reclaim module publishes that gap for fixed descendants; these source-level
+  // guards keep the installer on the shipped app entry path.
   const uiSrc = resolve(process.cwd(), "src");
 
-  it("the reclaim module no longer exists", () => {
+  it("the reclaim module exists", () => {
     expect(
       existsSync(resolve(uiSrc, "platform/standalone-bottom-reclaim.ts")),
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("no fixed background layer / floor / composer references the reclaim var", () => {
-    const files = [
-      "App.tsx",
-      "backgrounds/ShaderBackground.tsx",
-      "backgrounds/ImageBackground.tsx",
-      "backgrounds/ProgrammableShaderBackground.tsx",
-      "components/shell/ContinuousChatOverlay.tsx",
-    ];
-    for (const rel of files) {
-      const src = readFileSync(resolve(uiSrc, rel), "utf8");
-      expect(src, `${rel} must not import the reclaim`).not.toContain(
-        "STANDALONE_BOTTOM_RECLAIM_OFFSET",
-      );
-      expect(src, `${rel} must not read the reclaim var`).not.toContain(
-        "--standalone-bottom-reclaim",
-      );
-    }
+  it("init.ts INSTALLS the reclaim on the iOS standalone/native path (removal => red CI, not a silent device regression)", () => {
+    // The single load-bearing invariant. platform/init.ts must (a) import the
+    // installer + its gate and (b) call installStandaloneBottomReclaim() behind
+    // shouldInstallStandaloneBottomReclaim(). If a sweep drops this call, the
+    // wallpaper/composer stop reclaiming and the bottom bar returns on device —
+    // this test fails FIRST so the removal never ships silently.
+    const initSrc = readFileSync(resolve(uiSrc, "platform/init.ts"), "utf8");
+    expect(initSrc, "init.ts must import the installer").toContain(
+      "installStandaloneBottomReclaim",
+    );
+    expect(initSrc, "init.ts must import the install gate").toContain(
+      "shouldInstallStandaloneBottomReclaim",
+    );
+    // The installer is called behind the gate (not merely imported): assert the
+    // gate wraps the install call within setupPlatformStyles.
+    const gatedInstall =
+      /shouldInstallStandaloneBottomReclaim\(\{[\s\S]*?\}\)[\s\S]*?\)\s*\{[\s\S]*?installStandaloneBottomReclaim\(\)/;
+    expect(
+      gatedInstall.test(initSrc),
+      "init.ts must call installStandaloneBottomReclaim() inside the shouldInstall gate",
+    ).toBe(true);
+  });
+
+  it("the platform barrel re-exports the reclaim API (consumers resolve it)", () => {
+    const indexSrc = readFileSync(resolve(uiSrc, "platform/index.ts"), "utf8");
+    expect(indexSrc).toContain("STANDALONE_BOTTOM_RECLAIM_OFFSET");
+    expect(indexSrc).toContain("installStandaloneBottomReclaim");
+  });
+
+  // ===================================================================
+  // The installed web PWA boots through packages/app/src/main.tsx, which has its
+  // own setupPlatformStyles() function. These source assertions keep the reclaim
+  // installer wired into that actual boot path, not only the shared ui helper.
+  const appMainPath = resolve(process.cwd(), "../app/src/main.tsx");
+
+  it("the app entry (main.tsx) EXISTS and is the file under contract", () => {
+    expect(
+      existsSync(appMainPath),
+      "packages/app/src/main.tsx must exist; it is the installed-PWA boot path",
+    ).toBe(true);
+  });
+
+  it("app/main.tsx IMPORTS the reclaim installer + gate (the real boot path resolves them)", () => {
+    const mainSrc = readFileSync(appMainPath, "utf8");
+    expect(
+      mainSrc,
+      "main.tsx must import installStandaloneBottomReclaim on the live entry path",
+    ).toContain("installStandaloneBottomReclaim");
+    expect(
+      mainSrc,
+      "main.tsx must import shouldInstallStandaloneBottomReclaim (the platform gate)",
+    ).toContain("shouldInstallStandaloneBottomReclaim");
+    expect(
+      mainSrc,
+      "main.tsx must import clearStandaloneBottomReclaim (the non-standalone hard-0 branch)",
+    ).toContain("clearStandaloneBottomReclaim");
+  });
+
+  it("app/main.tsx calls the installer behind the gate inside its local setupPlatformStyles", () => {
+    const mainSrc = readFileSync(appMainPath, "utf8");
+    // The gate must wrap the install call (not merely import it): same invariant
+    // the init.ts test pins, but on the file that actually runs on device.
+    const gatedInstall =
+      /shouldInstallStandaloneBottomReclaim\(\{[\s\S]*?\}\)[\s\S]*?\)\s*\{[\s\S]*?installStandaloneBottomReclaim\(\)/;
+    expect(
+      gatedInstall.test(mainSrc),
+      "main.tsx must call installStandaloneBottomReclaim() inside the shouldInstall gate on the real boot path",
+    ).toBe(true);
+    // ...and the else branch clears on non-standalone surfaces.
+    expect(
+      mainSrc,
+      "main.tsx must clear the reclaim var on the non-standalone branch",
+    ).toContain("clearStandaloneBottomReclaim()");
+  });
+
+  it("the installer + gate live inside the local setupPlatformStyles that main() invokes", () => {
+    const mainSrc = readFileSync(appMainPath, "utf8");
+    // Isolate the local setupPlatformStyles body so the install gate stays in
+    // the function that the boot path actually invokes.
+    const fnMatch = mainSrc.match(
+      /function setupPlatformStyles\(\)\s*:\s*void\s*\{([\s\S]*?)\n\}/,
+    );
+    expect(
+      fnMatch,
+      "main.tsx must define a local setupPlatformStyles() called on the PWA boot path",
+    ).not.toBeNull();
+    const body = fnMatch?.[1] ?? "";
+    expect(
+      body,
+      "installStandaloneBottomReclaim() must be called inside main.tsx's local setupPlatformStyles",
+    ).toContain("installStandaloneBottomReclaim(");
+    expect(
+      body,
+      "the platform gate must guard the install INSIDE setupPlatformStyles",
+    ).toContain("shouldInstallStandaloneBottomReclaim(");
+    // And that function is actually invoked on the boot path (not just defined).
+    expect(
+      mainSrc.match(/\n\s*setupPlatformStyles\(\);/g)?.length ?? 0,
+      "main() must call setupPlatformStyles() on the boot path",
+    ).toBeGreaterThan(0);
+  });
+
+  it("the reclaim module exposes the wiring witness (rcw:on/off/clear) for device diagnostics", () => {
+    const reclaimSrc = readFileSync(
+      resolve(uiSrc, "platform/standalone-bottom-reclaim.ts"),
+      "utf8",
+    );
+    // Device diagnostics must distinguish an installer that never ran from an
+    // installer that ran and measured zero reclaim.
+    expect(reclaimSrc).toContain("getStandaloneBottomReclaimState");
+    const badgeSrc = readFileSync(
+      resolve(uiSrc, "components/shell/BuildBadge.tsx"),
+      "utf8",
+    );
+    expect(
+      badgeSrc,
+      "the build-badge chip must surface the reclaim wiring state (rcw) so device debugging is unambiguous",
+    ).toContain("getStandaloneBottomReclaimState");
+  });
+
+  it("the composer overlay applies the measured reclaim offset at rest", () => {
+    const overlaySrc = readFileSync(
+      resolve(uiSrc, "components/shell/ContinuousChatOverlay.tsx"),
+      "utf8",
+    );
+    // The resting `bottom` uses the measured offset (keyboard-lift wins when up).
+    expect(overlaySrc).toContain("STANDALONE_BOTTOM_RECLAIM_OFFSET");
   });
 });
 
 describe("Composer bottom geometry — full-bleed, keyboard-lift preserved", () => {
-  // With the non-fixed body, the `position: fixed` composer overlay's containing
-  // block is the true viewport, so at rest it anchors `bottom: 0` and seats at
-  // the physical screen bottom — no reclaim offset. The home-indicator clearance
-  // is the composer row's own paddingBottom (safe-area-bottom), so buttons stay
-  // tappable above the indicator. With the keyboard up, `effectiveKeyboardInset`
-  // (visual-viewport delta) is the sole lift path.
+  // The resting composer uses the measured reclaim offset to seat at the
+  // physical screen bottom; when the keyboard is visible, visual-viewport lift
+  // owns the offset instead. Safe-area padding keeps controls tappable.
   const overlaySrc = readFileSync(
     resolve(process.cwd(), "src/components/shell/ContinuousChatOverlay.tsx"),
     "utf8",
@@ -382,9 +535,11 @@ describe("Composer bottom geometry — full-bleed, keyboard-lift preserved", () 
     "utf8",
   );
 
-  it("anchors the resting composer at bottom: 0 (keyboard-lift wins when active)", () => {
+  it("anchors the resting composer at the measured reclaim offset (keyboard-lift wins when active)", () => {
+    // At rest the composer uses the measured collapse gap; keyboard lift wins
+    // when the keyboard is active.
     expect(overlaySrc).toContain(
-      "keyboardLiftActive ? effectiveKeyboardInset : 0",
+      "keyboardLiftActive\n          ? effectiveKeyboardInset\n          : STANDALONE_BOTTOM_RECLAIM_OFFSET",
     );
     expect(overlaySrc).toContain(
       "effectiveKeyboardInset = Math.max(keyboardInset, nativeLift)",
@@ -403,12 +558,111 @@ describe("Composer bottom geometry — full-bleed, keyboard-lift preserved", () 
     expect(layoutSrc).not.toContain("100dvh");
   });
 
-  it("lifts the composer purely from the visual-viewport keyboard inset (no screen.height reclaim signal)", () => {
-    // With the non-fixed body there is no ICB collapse to work around, so the
-    // keyboard lift comes solely from the visual-viewport delta — no
-    // `screen.height` probe and no reclaim-gated signal.
+  it("detects the keyboard via the screen.height signal, gated to the reclaim surface (#15136 keyboard geometry)", () => {
+    // Post-#15103 the soft keyboard shrinks innerHeight AND visualViewport
+    // together on the iOS standalone PWA (chip `ih542 vv542 sh932`), so the
+    // naive `innerHeight - vv.height` delta reads 0 and the composer would hide
+    // behind the keyboard. The keyboard height is recovered from
+    // `screen.height - vv.height`, gated to the iOS standalone/native surface
+    // (SCREEN_KEYBOARD_SIGNAL_ACTIVE, the same gate the reclaim installs on) and
+    // above KEYBOARD_INTRUSION_THRESHOLD_PX so the ~59px resting collapse is
+    // never misread as a keyboard.
     expect(overlaySrc).toContain("visualViewport");
-    expect(overlaySrc).not.toContain("KEYBOARD_INTRUSION_THRESHOLD_PX");
-    expect(overlaySrc).not.toContain("shouldInstallStandaloneBottomReclaim");
+    expect(overlaySrc).toContain("KEYBOARD_INTRUSION_THRESHOLD_PX");
+    expect(overlaySrc).toContain("SCREEN_KEYBOARD_SIGNAL_ACTIVE");
+    expect(overlaySrc).toContain("shouldInstallStandaloneBottomReclaim");
+  });
+});
+
+// ===================================================================
+// The measured reclaim custom property must be consumed by shipped visual layers.
+// These source-level assertions pin the full chain: the module exists, the real
+// boot path installs it, the value is measured, and backgrounds/composer use it.
+describe("Bottom-reclaim CONSUMPTION contract — the measured var actually paints the strip", () => {
+  const uiSrc = resolve(process.cwd(), "src");
+
+  it("the wallpaper (image) background layer consumes the reclaim offset on its bottom (extends past the collapsed ICB)", () => {
+    const src = readFileSync(
+      resolve(uiSrc, "backgrounds/ImageBackground.tsx"),
+      "utf8",
+    );
+    expect(
+      src,
+      "ImageBackground must import STANDALONE_BOTTOM_RECLAIM_OFFSET",
+    ).toContain(
+      'import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim"',
+    );
+    // The fixed wallpaper overrides `bottom` with the measured offset so it
+    // reaches the physical bottom on collapsed dynamic viewports.
+    expect(
+      src,
+      "ImageBackground's fixed wallpaper must consume the measured reclaim var",
+    ).toContain("bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET");
+  });
+
+  it("the default shader background layer consumes the reclaim offset on its bottom", () => {
+    const src = readFileSync(
+      resolve(uiSrc, "backgrounds/ShaderBackground.tsx"),
+      "utf8",
+    );
+    expect(
+      src,
+      "ShaderBackground must import STANDALONE_BOTTOM_RECLAIM_OFFSET",
+    ).toContain(
+      'import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim"',
+    );
+    expect(
+      src,
+      "ShaderBackground's fixed ember field must consume the measured reclaim var",
+    ).toContain("bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET");
+  });
+
+  it("the programmable (GLSL) shader background layer consumes the reclaim offset on its bottom", () => {
+    const src = readFileSync(
+      resolve(uiSrc, "backgrounds/ProgrammableShaderBackground.tsx"),
+      "utf8",
+    );
+    expect(
+      src,
+      "ProgrammableShaderBackground must import STANDALONE_BOTTOM_RECLAIM_OFFSET",
+    ).toContain(
+      'import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim"',
+    );
+    expect(
+      src,
+      "ProgrammableShaderBackground's fixed GLSL field must set bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET",
+    ).toContain("bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET");
+  });
+
+  it("at least one background layer consumes the offset", () => {
+    // Even if a refactor renames individual files, the background layer set must
+    // collectively keep at least one reclaim consumer.
+    const bgFiles = [
+      "backgrounds/ImageBackground.tsx",
+      "backgrounds/ShaderBackground.tsx",
+      "backgrounds/ProgrammableShaderBackground.tsx",
+    ];
+    const consumers = bgFiles.filter((f) =>
+      readFileSync(resolve(uiSrc, f), "utf8").includes(
+        "bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET",
+      ),
+    );
+    expect(
+      consumers.length,
+      "the measured --standalone-bottom-reclaim var must be consumed by the visual bottom layers",
+    ).toBeGreaterThan(0);
+  });
+
+  it("the composer overlay also consumes the reclaim offset at rest", () => {
+    // Mirror of the real-chain composer assertion, grouped here so the visual
+    // bottom paints and the interactive bottom stay in the same contract.
+    const overlaySrc = readFileSync(
+      resolve(uiSrc, "components/shell/ContinuousChatOverlay.tsx"),
+      "utf8",
+    );
+    expect(
+      overlaySrc,
+      "the resting composer must seat at the reclaim offset (consume the var so the composer + wallpaper agree on the true bottom)",
+    ).toContain(": STANDALONE_BOTTOM_RECLAIM_OFFSET");
   });
 });

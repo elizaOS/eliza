@@ -109,6 +109,14 @@ export interface AppBootConfig {
   defaultApps?: readonly string[];
   /** API base URL — replaces window.__ELIZAOS_API_BASE__. */
   apiBase?: string;
+  /**
+   * VAPID public key (base64url, uncompressed P-256 point) for Web Push
+   * subscription. Supplied by the host/boot config; the client passes it as
+   * `applicationServerKey` to `pushManager.subscribe`. Absent/blank ⇒ push is
+   * unavailable and the settings toggle renders its "not configured" state.
+   * The matching private key + cloud sender land in the web-push cloud PR.
+   */
+  webPushVapidPublicKey?: string;
   /** API auth token used by the browser API client. */
   apiToken?: string;
   /** Cloud API base URL — replaces window.__ELIZA_CLOUD_API_BASE__. */

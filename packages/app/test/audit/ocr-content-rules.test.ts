@@ -12,6 +12,7 @@ import {
   normalize,
   type OcrResult,
 } from "../ui-smoke/ocr-content-rules";
+import { VIEW_EXPECTATIONS } from "../ui-smoke/ocr-view-expectations";
 
 function ocr(text: string, over: Partial<OcrResult> = {}): OcrResult {
   const lines = text.split("\n").filter(Boolean);
@@ -143,5 +144,52 @@ describe("evaluateOcrContent", () => {
     });
     expect(f.verdict).toBe("needs-eyeball");
     expect(f.reasons.join(" ")).toMatch(/no expectation/);
+  });
+
+  it.each([
+    [
+      "builtin-apps",
+      "< My Apps\nInstall, create, and run your elizaOS apps.\nAsk\nEliza\n+ UR",
+    ],
+    [
+      "builtin-automations",
+      "< Automations\nTora active Passe Fane\n[4] [4] [4] [4]\nS Al ©Pompts % Wordlows [> Active © Inactive\nAsk\nA @ Eliza\nC LL ar [A\n8",
+    ],
+    [
+      "builtin-character-select",
+      "hs\nEliza\nrm\nYouare za, a concise assistant for Ul smoke fests\nAsk\nEliza\n+ oi",
+    ],
+    [
+      "builtin-chat",
+      "2:57 h\n. AM Weather\nTap to enable\nTuesday, July 7 onan\no Today\n® Learn conversational Spanish | sedi attention >\n(© submit the quarterly report | bus today ile\nliza\n+ [UR\nQ J",
+    ],
+    [
+      "builtin-database",
+      "< Databases\nTables Media Vectors\nTable\nee SQL Editor\n® pglite\n= —_—\nFilter\ntabl\nar [A",
+    ],
+    [
+      "builtin-logs",
+      "< Logs\n1\n\nAlllevels ~ Alsources v Altags v\n\n25723 AM\n\nro\nsear\nch\n\nong",
+    ],
+    [
+      "builtin-relationships",
+      "< Character\npersonality Relationships skills Experience\nv al v\nsear\nch\n+ PQ\nple.",
+    ],
+    [
+      "builtin-skills",
+      "< skills\nA) on (0)\norr (0)\n— —\nSear\nch\nsls. gap\nar Op",
+    ],
+    ["builtin-tasks", "< Tasks\nox\nI)\n\\_/ E————\nAsk\nEliza\nAr (2"],
+    [
+      "builtin-transcripts",
+      "< Live meeting\nPaste a Meet, Teams, or Zoom link\not namo (option)\n(©)\n+ AskEiza [UR",
+    ],
+  ])("verifies current CI OCR text for %s", (slug, text) => {
+    const f = evaluateOcrContent({
+      ocr: ocr(text),
+      expectation: VIEW_EXPECTATIONS[slug],
+    });
+    expect(f.verdict).toBe("verified");
+    expect(f.missingRequired).toHaveLength(0);
   });
 });

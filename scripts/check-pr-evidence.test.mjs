@@ -467,6 +467,26 @@ describe("check-pr-evidence row primitives", () => {
     assert.equal(bare.ok, false);
   });
 
+  it("path detection overrides the coarse ui label when files are known", () => {
+    // The auto-labeler applies `ui` to any packages/ui path; a non-visual .ts
+    // change must not be forced to attach screenshots.
+    const body = REQUIRED_EVIDENCE_ROWS.map(
+      ({ id }) =>
+        `<!-- evidence-row:${id} -->\n- [ ] row \`N/A - non-visual .ts module change\`.`,
+    ).join("\n\n");
+    const { ok } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      labels: "ui",
+      changedFiles: ["packages/ui/src/navigation/index.ts"],
+    });
+    assert.equal(ok, true);
+    // But a rendered-UI file still forces artifacts regardless of labels.
+    const forced = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      labels: "",
+      changedFiles: ["packages/ui/src/navigation/index.ts", "packages/ui/src/components/Foo.tsx"],
+    });
+    assert.equal(forced.ok, false);
+  });
+
   it("normalizes labels and detects surface labels", () => {
     assert.deepEqual(parseLabels("bug, UI\nNative"), ["bug", "ui", "native"]);
     assert.equal(requiresSurfaceArtifacts("testing,backend"), false);

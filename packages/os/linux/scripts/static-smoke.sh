@@ -3,6 +3,11 @@
 
 set -euo pipefail
 
+# This gate is a long `set -e` assertion chain of silent test/grep commands, so
+# an unannotated failure exits with no output at all — that silence hid a red
+# nightly for over a week. Name the dying assertion on the way out.
+trap 'echo "static-smoke: FAILED at ${BASH_SOURCE[0]}:${LINENO}: ${BASH_COMMAND}" >&2' ERR
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "${ROOT}/../../.." && pwd)"
 SOURCE_ONLY="${ELIZAOS_STATIC_SOURCE_ONLY:-0}"
@@ -242,19 +247,22 @@ fi
 # StartupShell is a SHARED app-shell component (@elizaos/ui), and the elizaOS OS
 # ISO bundles it verbatim — there is no downstream OS theme override for the
 # boot splash. Per the per-surface accent system, the *app* surface owns the
-# splash and it uses the launch token with the current home-shader fallback
-# (#ef5a1f). OS chrome such as the greeter/dashboard metadata/failure shell
-# stays on the blue/white palette; first-run stays inside the launch surface.
-# So this gate asserts the splash's current intentional launch token and the
-# neutral bootstrap-gate surface, and only rejects the genuinely-stale
-# dark/gradient/glow styling from the pre-redesign shell.
+# splash and it uses the launch token whose current intentional fallback is
+# #000000 — the home shader's black base field, so boot flows seamlessly into
+# the home ember glow (#9565). OS chrome such as the greeter/dashboard
+# metadata/failure shell stays on the blue/white palette; first-run stays
+# inside the launch surface. So this gate asserts the splash's current
+# intentional launch token and the neutral bootstrap-gate surface, and only
+# rejects the genuinely-stale hardcoded dark/gradient/glow styling from the
+# pre-redesign shell (the token fallback is a host-overridable seam, not a
+# hardcoded surface).
 if rg -n 'bg-\[#08080a\]|bg-\[#0a0a0a\]|radial-gradient|blur-\[' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
 then
     echo "Startup shell must not reintroduce the old dark/gradient splash." >&2
     exit 1
 fi
-grep -Fq 'bg-[var(--launch-bg,#ef5a1f)]' \
+grep -Fq 'bg-[var(--launch-bg,#000000)]' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
 grep -q 'bg-\[#F7F6F4\]' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
@@ -272,11 +280,13 @@ grep -q 'text-destructive' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
 # First-run onboarding now renders inline in the real floating chat overlay:
 # #10302 deleted the dedicated FirstRunChat.tsx surface and seeds the onboarding
-# greeting/choices as the same inline widgets the live chat uses. Gate that
-# overlay against the stale dark/gradient/glow styling from the pre-redesign
-# first-run shell (mirrors the #10167 repoint when CompactOnboarding was removed).
+# greeting/choices as the same inline widgets the live chat uses. The overlay's
+# text runs on the `text-txt` THEME token (hardcoded `text-white` literals were
+# retokenized so the surface follows the active theme). Gate that overlay
+# against the stale dark/gradient/glow styling from the pre-redesign first-run
+# shell (mirrors the #10167 repoint when CompactOnboarding was removed).
 first_run_shell="${REPO_ROOT}/packages/ui/src/components/shell/ContinuousChatOverlay.tsx"
-grep -q 'text-white' "${first_run_shell}"
+grep -q 'text-txt' "${first_run_shell}"
 if rg -n 'bg-\[#08080a\]|bg-\[#0a0a0a\]|radial-gradient|blur-\[' \
     "${first_run_shell}"
 then
