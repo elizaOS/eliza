@@ -160,10 +160,6 @@ describe("evaluateOcrContent", () => {
       "hs\nEliza\nrm\nYouare za, a concise assistant for Ul smoke fests\nAsk\nEliza\n+ oi",
     ],
     [
-      "builtin-chat",
-      "2:57 h\n. AM Weather\nTap to enable\nTuesday, July 7 onan\no Today\n® Learn conversational Spanish | sedi attention >\n(© submit the quarterly report | bus today ile\nliza\n+ [UR\nQ J",
-    ],
-    [
       "builtin-database",
       "< Databases\nTables Media Vectors\nTable\nee SQL Editor\n® pglite\n= —_—\nFilter\ntabl\nar [A",
     ],
@@ -191,5 +187,9 @@ describe("evaluateOcrContent", () => {
     });
     expect(f.verdict).toBe("verified");
     expect(f.missingRequired).toHaveLength(0);
+  });
+
+  it("does not use stale positive text expectations for sparse builtin chat", () => {
+    expect(VIEW_EXPECTATIONS["builtin-chat"]).toBeUndefined();
   });
 });

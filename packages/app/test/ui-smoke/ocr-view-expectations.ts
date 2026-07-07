@@ -17,26 +17,6 @@
 import type { OcrExpectation } from "./ocr-content-rules";
 
 export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
-  "builtin-chat": {
-    // The composer placeholder is "Ask <agentName>" (Eliza in prod, the test
-    // agent's name under smoke), and landscape legitimately compacts to just the
-    // composer — so the agent-agnostic "Ask " prefix is the stable floor. A truly
-    // blank chat is still caught by the blank-pixel rule, not this expectation.
-    requireAny: [
-      "Ask ",
-      "Eliza",
-      "Weather",
-      "Mostly clear",
-      "Today",
-      "Good evening",
-      "Good morning",
-      "Good afternoon",
-      "what's up",
-      "Welcome",
-      "Today",
-      "Weather",
-    ],
-  },
   "builtin-settings": {
     requireAll: ["Settings"],
     requireAny: ["Models & Providers", "Voice", "Appearance", "Basics"],

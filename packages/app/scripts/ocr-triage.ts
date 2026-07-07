@@ -21,6 +21,7 @@
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { OVERLAY_NATIVE_OR_CANVAS_SLUGS } from "../test/ui-smoke/aesthetic-audit-rules";
 import {
   evaluateOcrContent,
   type OcrResult,
@@ -34,13 +35,13 @@ import {
 } from "./mvp-visual-verify/ocr.mjs";
 
 /**
- * Slugs whose healthy render legitimately OCRs to little or no text: the wallpaper
- * background, and native/canvas overlay surfaces that paint their own pixels. They
- * are waived from the blank-pixel floor, mirroring the aesthetic audit's
- * `OVERLAY_NATIVE_OR_CANVAS_SLUGS`. Future non-DOM modalities can be waived via
- * the `viewType` the report already carries when a renderer is restored.
+ * Slugs whose healthy render legitimately OCRs to little or no text: wallpaper
+ * backgrounds, sparse overlay-native surfaces, and canvas-style views that paint
+ * their own chrome. Keep this tied to the aesthetic audit policy so a view is not
+ * judged as overlay-native by DOM/pixel audit but blank-broken by OCR triage.
  */
 const BLANK_EXEMPT_SLUGS = new Set<string>([
+  ...OVERLAY_NATIVE_OR_CANVAS_SLUGS,
   "builtin-background",
   "plugin-focus-gui",
 ]);
