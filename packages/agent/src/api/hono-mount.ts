@@ -7,7 +7,7 @@
 import { Buffer } from "node:buffer";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import type { IAgentRuntime, Route } from "@elizaos/core";
+import type { AccessContext, IAgentRuntime, Route, UUID } from "@elizaos/core";
 import type { Hono } from "hono";
 
 import { buildHonoAppForRuntime } from "./hono-adapter.ts";
@@ -21,6 +21,59 @@ interface RuntimeHonoCache {
 let cached: RuntimeHonoCache | null = null;
 const INTERNAL_AUTHORIZED_HEADER = "x-eliza-internal-authorized";
 const INTERNAL_TRUSTED_LOCAL_HEADER = "x-eliza-internal-trusted-local";
+// Carries the boundary-resolved AccessContext (JSON) from the Node listener
+// into the Hono app (#14781). Like the two headers above it is INTERNAL-ONLY:
+// tryHandleHonoRuntimeRoute always overwrites/deletes it before dispatch, so a
+// client-supplied value can never smuggle a principal in.
+const INTERNAL_ACCESS_CONTEXT_HEADER = "x-eliza-internal-access-context";
+
+const ROLE_NAMES = new Set(["OWNER", "ADMIN", "USER", "GUEST"]);
+
+/**
+ * Parse the internal access-context header back into a typed AccessContext.
+ * The value is producer-controlled (set by this module's own caller), but the
+ * parse still validates every field so a malformed value yields NO principal
+ * rather than a corrupt one.
+ */
+// error-policy:J3 untrusted-input sanitizing — a malformed header resolves to
+// undefined (no principal / owner-boundary semantics are NOT granted: routes
+// only widen disclosure when a context is absent because the caller was
+// trunk-authorized, and that path never sets this header).
+function parseInternalAccessContext(
+  value: string | null,
+): AccessContext | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object") return undefined;
+    const record = parsed as Record<string, unknown>;
+    if (
+      typeof record.requesterEntityId !== "string" ||
+      record.requesterEntityId.length === 0
+    ) {
+      return undefined;
+    }
+    const role =
+      typeof record.role === "string" && ROLE_NAMES.has(record.role)
+        ? (record.role as AccessContext["role"])
+        : undefined;
+    return {
+      requesterEntityId: record.requesterEntityId as UUID,
+      ...(typeof record.worldId === "string"
+        ? { worldId: record.worldId as UUID }
+        : {}),
+      ...(role ? { role } : {}),
+      ...(typeof record.isOwner === "boolean"
+        ? { isOwner: record.isOwner }
+        : {}),
+      ...(typeof record.source === "string" ? { source: record.source } : {}),
+    };
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — a malformed header yields no
+    // principal (undefined), never a fabricated identity.
+    return undefined;
+  }
+}
 
 function getHonoApp(runtime: IAgentRuntime): Hono {
   if (cached && cached.runtime.deref() === runtime) {
@@ -30,6 +83,10 @@ function getHonoApp(runtime: IAgentRuntime): Hono {
     isAuthorized: (req) => req.headers.get(INTERNAL_AUTHORIZED_HEADER) === "1",
     isTrustedLocal: (req) =>
       req.headers.get(INTERNAL_TRUSTED_LOCAL_HEADER) === "1",
+    resolveAccessContext: (req) =>
+      parseInternalAccessContext(
+        req.headers.get(INTERNAL_ACCESS_CONTEXT_HEADER),
+      ),
   });
   cached = { runtime: new WeakRef(runtime), app };
   return app;
@@ -155,6 +212,8 @@ export async function tryHandleHonoRuntimeRoute(options: {
   runtime: IAgentRuntime | null | undefined;
   isAuthorized: () => boolean;
   isTrustedLocal?: () => boolean;
+  /** Boundary-resolved requester identity for per-viewer DTO selection (#14781). */
+  accessContext?: () => AccessContext | undefined;
 }): Promise<boolean> {
   const { req, res, runtime } = options;
   if (!runtime?.routes?.length) return false;
@@ -193,6 +252,14 @@ export async function tryHandleHonoRuntimeRoute(options: {
     INTERNAL_TRUSTED_LOCAL_HEADER,
     options.isTrustedLocal?.() ? "1" : "0",
   );
+  // Always overwrite (or drop) the internal access-context header so an
+  // inbound client value can never survive into dispatch.
+  const accessContext = options.accessContext?.();
+  if (accessContext) {
+    headers.set(INTERNAL_ACCESS_CONTEXT_HEADER, JSON.stringify(accessContext));
+  } else {
+    headers.delete(INTERNAL_ACCESS_CONTEXT_HEADER);
+  }
 
   // Hono needs a Web Request. Avoid leaking the body to GET/HEAD.
   const request = new Request(url, {

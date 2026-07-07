@@ -141,6 +141,12 @@ export interface MessageAttachment {
    * never silently indistinguishable from a genuinely empty one.
    */
   notProcessed?: string;
+  /**
+   * Present (true) when `url` is the server-selected PII-scrubbed variant of
+   * the original attachment (#14781). Display-only: the server decides
+   * redaction; the tile renders a redacted badge.
+   */
+  redacted?: true;
 }
 
 export interface ConversationMessageReaction {

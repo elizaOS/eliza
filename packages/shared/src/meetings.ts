@@ -128,6 +128,13 @@ export interface MeetingSession {
   roomId?: string;
   /** The live/final Transcript record id (source "meeting"). */
   transcriptId?: string;
+  /**
+   * Present (true) on a served session DTO when the viewer's transcript
+   * disclosure resolved to the redacted variant (#14781): `transcriptId` stays
+   * usable (the transcripts API serves that viewer the variant under the same
+   * id) and the client renders a redacted badge. Never stored.
+   */
+  transcriptRedacted?: true;
   participants: MeetingParticipant[];
   calendarEventId?: string;
   /** Maximum duration approved for this session, in milliseconds. */

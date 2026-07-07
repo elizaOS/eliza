@@ -24,6 +24,7 @@ import type {
 import { Readable } from "node:stream";
 
 import {
+  type AccessContext,
   type AgentRuntime,
   assertPublicRouteIntent,
   type IAgentRuntime,
@@ -162,6 +163,13 @@ export interface DispatchRouteArgs {
   isAuthorized: () => boolean;
   /** true when the transport verified a trusted loopback/local request. */
   isTrustedLocal?: () => boolean;
+  /**
+   * Requester identity resolved by the authenticated boundary (e.g. a
+   * registered TokenRoleResolver principal, #14781). Omitted for the
+   * single-owner local boundary, where routes must preserve their existing
+   * unfiltered behavior (see `RouteHandlerContext.accessContext`).
+   */
+  accessContext?: AccessContext;
   /** Optional host context (config, restartRuntime, etc.) — installed on the runtime for the duration of the dispatch. */
   hostContext?: RuntimeRouteHostContext;
   /**
@@ -485,6 +493,7 @@ export async function dispatchRoute(
           runtime: runtime as IAgentRuntime,
           inProcess: args.inProcess,
           isTrustedLocal: args.isTrustedLocal?.() ?? false,
+          ...(args.accessContext ? { accessContext: args.accessContext } : {}),
         };
         return await route.routeHandler(ctx);
       }

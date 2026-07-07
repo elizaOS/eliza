@@ -189,6 +189,119 @@ describe("/api/meetings routes", () => {
     ).toBeUndefined();
   });
 
+  it("selects the session DTO per viewer role x grant (#14781)", async () => {
+    const { ctx, adapter, fake } = makeHarness();
+    const post = route("POST", "/api/meetings");
+    const get = route("GET", "/api/meetings/:id");
+
+    const created = await post(ctx({ body: { meetingUrl: MEET_URL } }));
+    const session = (
+      created.body as { session: { id: string; transcriptId?: string } }
+    ).session;
+    await adapter.started;
+    const transcriptId = session.transcriptId as string;
+
+    // Attach a redacted grant for USER on the stored transcript row (the
+    // grant WRITE path is PERM-ACL's; this tests the read-side selection).
+    const row = fake.memories.get(transcriptId);
+    if (!row) throw new Error("transcript row missing");
+    fake.memories.set(transcriptId, {
+      ...row,
+      metadata: {
+        ...(row.metadata as Record<string, unknown>),
+        share: { grants: [{ entityId: USER, mode: "redacted" }] },
+      },
+    });
+
+    // OWNER boundary (no access context): full, unflagged.
+    const ownerGet = await get(ctx({ params: { id: session.id } }));
+    const ownerSession = (
+      ownerGet.body as {
+        session: { transcriptId?: string; transcriptRedacted?: true };
+      }
+    ).session;
+    expect(ownerSession.transcriptId).toBe(transcriptId);
+    expect(ownerSession.transcriptRedacted).toBeUndefined();
+
+    // ADMIN rank: full, unflagged.
+    const adminGet = await get(
+      ctx({
+        params: { id: session.id },
+        accessContext: { requesterEntityId: USER, role: "ADMIN" },
+      }),
+    );
+    const adminSession = (
+      adminGet.body as {
+        session: { transcriptId?: string; transcriptRedacted?: true };
+      }
+    ).session;
+    expect(adminSession.transcriptId).toBe(transcriptId);
+    expect(adminSession.transcriptRedacted).toBeUndefined();
+
+    // USER with a redacted grant: reference kept + flagged.
+    const userGet = await get(
+      ctx({ params: { id: session.id }, accessContext: userAccess }),
+    );
+    const userSession = (
+      userGet.body as {
+        session: { transcriptId?: string; transcriptRedacted?: true };
+      }
+    ).session;
+    expect(userSession.transcriptId).toBe(transcriptId);
+    expect(userSession.transcriptRedacted).toBe(true);
+
+    // Ungranted USER: reference withheld.
+    const strangerGet = await get(
+      ctx({
+        params: { id: session.id },
+        accessContext: {
+          requesterEntityId: "33333333-3333-3333-3333-333333333333" as UUID,
+          role: "USER",
+        },
+      }),
+    );
+    expect(
+      (strangerGet.body as { session: { transcriptId?: string } }).session
+        .transcriptId,
+    ).toBeUndefined();
+
+    // GUEST: reference withheld.
+    const guestGet = await get(
+      ctx({
+        params: { id: session.id },
+        accessContext: {
+          requesterEntityId: "44444444-4444-4444-4444-444444444444" as UUID,
+          role: "GUEST",
+        },
+      }),
+    );
+    expect(
+      (guestGet.body as { session: { transcriptId?: string } }).session
+        .transcriptId,
+    ).toBeUndefined();
+
+    // USER with a FULL grant: full, unflagged.
+    const row2 = fake.memories.get(transcriptId);
+    if (!row2) throw new Error("transcript row missing");
+    fake.memories.set(transcriptId, {
+      ...row2,
+      metadata: {
+        ...(row2.metadata as Record<string, unknown>),
+        share: { grants: [{ entityId: USER, mode: "full" }] },
+      },
+    });
+    const fullGrantGet = await get(
+      ctx({ params: { id: session.id }, accessContext: userAccess }),
+    );
+    const fullGrantSession = (
+      fullGrantGet.body as {
+        session: { transcriptId?: string; transcriptRedacted?: true };
+      }
+    ).session;
+    expect(fullGrantSession.transcriptId).toBe(transcriptId);
+    expect(fullGrantSession.transcriptRedacted).toBeUndefined();
+  });
+
   it("answers 503 when the meetings service is not running", async () => {
     const fake = makeFakeRuntime();
     const ctx: RouteHandlerContext = {

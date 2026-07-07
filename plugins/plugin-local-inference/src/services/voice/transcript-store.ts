@@ -13,10 +13,12 @@
 
 import {
 	type AccessContext,
-	actorFromAccessContext,
-	canReadScope,
+	type ArtifactDisclosure,
+	type JsonObject,
 	type Memory,
 	type MemoryMetadata,
+	parseArtifactShareGrants,
+	resolveArtifactDisclosure,
 	type UUID,
 } from "@elizaos/core";
 import type {
@@ -77,39 +79,77 @@ function rowToTranscript(row: Memory): Transcript | null {
 	}
 }
 
-export function canAccessTranscriptRecord(
-	transcript: Pick<Transcript, "scope">,
-	scopedEntityId: UUID | undefined,
-	accessContext: AccessContext | undefined,
-	agentId: UUID,
-): boolean {
-	if (!accessContext) return true;
-	if (accessContext.requesterEntityId === agentId) return true;
-	const actor = actorFromAccessContext(accessContext, agentId);
-	if (actor.role === "OWNER") return true;
-	return canReadScope(
-		normalizeTranscriptScope(transcript.scope),
-		scopedEntityId,
-		actor,
-	);
-}
-
-function canAccessTranscriptRow(
+/**
+ * The viewer's disclosure decision for one transcript row — the ONE role-aware
+ * predicate from core (#14781) fed with this store's row shape: scope from the
+ * stored record (fail-closed normalize), owning entity from
+ * `metadata.scopedToEntityId` (else the row's entity), and share grants from
+ * `metadata.share.grants`.
+ */
+export function transcriptRowDisclosure(
 	row: Memory,
 	transcript: Pick<Transcript, "scope">,
 	accessContext: AccessContext | undefined,
 	agentId: UUID,
-): boolean {
+): ArtifactDisclosure {
 	const metadata = row.metadata as Record<string, unknown> | undefined;
 	const scopedTo = metadata?.scopedToEntityId;
 	const scopedEntityId =
 		typeof scopedTo === "string" ? (scopedTo as UUID) : row.entityId;
-	return canAccessTranscriptRecord(
-		transcript,
-		scopedEntityId,
+	return resolveArtifactDisclosure(
+		{
+			scope: normalizeTranscriptScope(transcript.scope),
+			scopedEntityId,
+			grants: parseArtifactShareGrants(metadata),
+		},
 		accessContext,
 		agentId,
 	);
+}
+
+/**
+ * Whether this row stores a redacted VARIANT of another transcript (write
+ * contract for PERM-REDACT #14779): the variant row's metadata carries
+ * `redactionOf: <original id>`. Variants never appear as standalone list rows —
+ * they are served only in place of their original for redacted-grant viewers.
+ */
+function redactionOriginalId(row: Memory): UUID | null {
+	const metadata = row.metadata as Record<string, unknown> | undefined;
+	const of = metadata?.redactionOf;
+	return typeof of === "string" && of.length > 0 ? (of as UUID) : null;
+}
+
+/** The original row's link to its redacted variant record, when one exists. */
+function redactedVariantId(row: Memory): UUID | null {
+	const metadata = row.metadata as Record<string, unknown> | undefined;
+	const id = metadata?.redactedVariantId;
+	return typeof id === "string" && id.length > 0 ? (id as UUID) : null;
+}
+
+/**
+ * Project a redacted variant's content onto the ORIGINAL artifact's identity
+ * for a redacted-grant viewer: one artifact keeps one id for every viewer,
+ * with per-viewer content. Audio is always withheld (never redacted in v1),
+ * and every content field (title, segments, knowledge mirror id, metadata)
+ * comes from the variant so nothing of the original can leak through.
+ */
+function serveRedactedVariant(
+	variant: Transcript,
+	original: Pick<Transcript, "id" | "createdAt" | "endedAt" | "source">,
+): Transcript {
+	const {
+		audioUrl: _audioUrl,
+		audioContentType: _audioContentType,
+		...variantFields
+	} = variant;
+	return {
+		...variantFields,
+		id: original.id,
+		createdAt: original.createdAt,
+		...(original.endedAt !== undefined ? { endedAt: original.endedAt } : {}),
+		source: original.source,
+		redacted: true,
+	};
 }
 
 /** CRUD for transcript records over the runtime memory partition. */
@@ -150,7 +190,12 @@ export class TranscriptStore {
 		return transcript;
 	}
 
-	/** List recent transcripts (newest first) as compact summaries. */
+	/**
+	 * List recent transcripts (newest first) as compact summaries, selected per
+	 * viewer (#14781): full rows for privileged viewers, the redacted variant's
+	 * preview (flagged, audio withheld) for redacted-grant viewers, nothing for
+	 * viewers with no disclosure. Variant rows themselves never list.
+	 */
 	async list(
 		roomId?: UUID,
 		limit = 100,
@@ -166,17 +211,39 @@ export class TranscriptStore {
 		const summaries: TranscriptSummary[] = [];
 		for (const row of rows) {
 			const t = rowToTranscript(row);
-			if (
-				t &&
-				canAccessTranscriptRow(row, t, accessContext, this.runtime.agentId)
-			) {
+			if (!t || redactionOriginalId(row) !== null) continue;
+			const disclosure = transcriptRowDisclosure(
+				row,
+				t,
+				accessContext,
+				this.runtime.agentId,
+			);
+			if (disclosure === "full") {
 				summaries.push(summarizeTranscript(t));
+			} else if (disclosure === "redacted") {
+				const variant = await this.loadRedactedVariant(row);
+				// A redacted grant with no readable variant discloses NOTHING —
+				// omitting the row is the fail-closed branch, never the original.
+				if (variant) {
+					summaries.push({
+						...summarizeTranscript(serveRedactedVariant(variant, t)),
+						hasAudio: false,
+						redacted: true,
+					});
+				}
 			}
 		}
 		return summaries;
 	}
 
-	/** Load one full transcript record by id. */
+	/**
+	 * Load one transcript by id, selected per viewer (#14781): the stored record
+	 * for full disclosure, the redacted variant served under the ORIGINAL id
+	 * (flagged, audio withheld) for redacted-grant viewers, and `null` — which
+	 * the route answers as 404, keeping denied ids non-enumerable — otherwise.
+	 * Addressing a variant row directly discloses only to viewers whose
+	 * disclosure on the linked original resolves `full`.
+	 */
 	async get(
 		id: UUID,
 		accessContext?: AccessContext,
@@ -185,14 +252,44 @@ export class TranscriptStore {
 		if (!row) return null;
 		const transcript = rowToTranscript(row);
 		if (!transcript) return null;
-		return canAccessTranscriptRow(
+
+		const originalId = redactionOriginalId(row);
+		if (originalId !== null) {
+			const originalRow = await this.runtime.getMemoryById(originalId);
+			const original = originalRow ? rowToTranscript(originalRow) : null;
+			// A variant whose original is gone/corrupt is owner-tier storage only.
+			const gate = originalRow && original ? originalRow : row;
+			const gateTranscript = originalRow && original ? original : transcript;
+			const disclosure = transcriptRowDisclosure(
+				gate,
+				gateTranscript,
+				accessContext,
+				this.runtime.agentId,
+			);
+			return disclosure === "full" ? transcript : null;
+		}
+
+		const disclosure = transcriptRowDisclosure(
 			row,
 			transcript,
 			accessContext,
 			this.runtime.agentId,
-		)
-			? transcript
-			: null;
+		);
+		if (disclosure === "full") return transcript;
+		if (disclosure === "redacted") {
+			const variant = await this.loadRedactedVariant(row);
+			return variant ? serveRedactedVariant(variant, transcript) : null;
+		}
+		return null;
+	}
+
+	/** Load + parse the redacted variant linked from an original's row. */
+	private async loadRedactedVariant(row: Memory): Promise<Transcript | null> {
+		const variantId = redactedVariantId(row);
+		if (!variantId) return null;
+		const variantRow = await this.runtime.getMemoryById(variantId);
+		if (!variantRow) return null;
+		return rowToTranscript(variantRow);
 	}
 
 	/**
@@ -203,6 +300,24 @@ export class TranscriptStore {
 	 */
 	async update(transcript: Transcript): Promise<Transcript> {
 		const existing = await this.runtime.getMemoryById(transcript.id as UUID);
+		// Preserve the additive keys other writers own — share grants
+		// (`share`) and redaction links (`redactedVariantId` / `redactionOf`,
+		// #14781) — through a text edit. Narrowed at the jsonb boundary (not a
+		// whole-metadata spread) so the discriminated `MemoryMetadata` union
+		// keeps its `type: "custom"` shape and no `unknown` leaks in.
+		const preserved = existing?.metadata as Record<string, unknown> | undefined;
+		const carriedShare =
+			preserved?.share && typeof preserved.share === "object"
+				? (preserved.share as JsonObject)
+				: undefined;
+		const carriedVariantId =
+			typeof preserved?.redactedVariantId === "string"
+				? preserved.redactedVariantId
+				: undefined;
+		const carriedRedactionOf =
+			typeof preserved?.redactionOf === "string"
+				? preserved.redactionOf
+				: undefined;
 		const ok = await this.runtime.updateMemory({
 			id: transcript.id as UUID,
 			content: {
@@ -219,6 +334,13 @@ export class TranscriptStore {
 				durationMs: transcript.durationMs,
 				speakerCount: transcript.speakerCount,
 				status: transcript.status,
+				...(carriedShare !== undefined ? { share: carriedShare } : {}),
+				...(carriedVariantId !== undefined
+					? { redactedVariantId: carriedVariantId }
+					: {}),
+				...(carriedRedactionOf !== undefined
+					? { redactionOf: carriedRedactionOf }
+					: {}),
 			},
 		});
 		if (!ok) {

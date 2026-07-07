@@ -21,6 +21,7 @@ import {
   FolderOpen,
   ImageIcon,
   Loader2,
+  Lock,
   Share2,
   Trash2,
 } from "lucide-react";
@@ -41,6 +42,7 @@ import {
   shareAttachment,
 } from "../../utils/download-share";
 import { PagePanel } from "../composites/page-panel";
+import { RoleGate } from "../RoleGate";
 import { Button } from "../ui/button";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
@@ -308,28 +310,33 @@ const FileCard = memo(function FileCard({
             onShare={onShare}
           />
         ) : null}
-        <Button
-          ref={deleteControl.ref}
-          {...deleteControl.agentProps}
-          type="button"
-          variant="surfaceDestructive"
-          size="sm"
-          className="ml-auto"
-          data-testid="file-delete"
-          disabled={deleting}
-          aria-label={t("filesview.deleteFile", {
-            name: file.fileName,
-            defaultValue: "Delete {{name}}",
-          })}
-          onClick={() => onDelete(file)}
-        >
-          {deleting ? (
-            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />
-          ) : (
-            <Trash2 className="mr-1.5 h-4 w-4" aria-hidden />
-          )}
-          {t("filesview.delete", { defaultValue: "Delete" })}
-        </Button>
+        {/* Store-wide destructive affordance: ADMIN+ only (#14781). The API
+            enforces the same tier server-side; the gate keeps lower-tier
+            viewers from seeing a control that can only fail. */}
+        <RoleGate minRole="ADMIN">
+          <Button
+            ref={deleteControl.ref}
+            {...deleteControl.agentProps}
+            type="button"
+            variant="surfaceDestructive"
+            size="sm"
+            className="ml-auto"
+            data-testid="file-delete"
+            disabled={deleting}
+            aria-label={t("filesview.deleteFile", {
+              name: file.fileName,
+              defaultValue: "Delete {{name}}",
+            })}
+            onClick={() => onDelete(file)}
+          >
+            {deleting ? (
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <Trash2 className="mr-1.5 h-4 w-4" aria-hidden />
+            )}
+            {t("filesview.delete", { defaultValue: "Delete" })}
+          </Button>
+        </RoleGate>
       </div>
     </li>
   );
@@ -348,6 +355,7 @@ export function FilesView() {
 function FilesViewBody() {
   const { t } = useTranslation();
   const [files, setFiles] = useState<StoredFile[]>([]);
+  const [restricted, setRestricted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [facet, setFacet] = useState<FileFacet>("all");
@@ -373,8 +381,12 @@ function FilesViewBody() {
     setLoading(true);
     setError("");
     try {
-      const { files: list } = await client.listFiles();
+      const { files: list, restricted: restrictedFlag } =
+        await client.listFiles();
       setFiles(Array.isArray(list) ? list : []);
+      // Server-computed viewer-tier flag (#14781): restricted is a designed
+      // state distinct from an owner's empty store; the view only displays it.
+      setRestricted(restrictedFlag === true);
     } catch (err) {
       setError(
         t("filesview.loadFailed", {
@@ -548,6 +560,20 @@ function FilesViewBody() {
           >
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
             {t("filesview.loading", { defaultValue: "Loading files…" })}
+          </div>
+        ) : restricted ? (
+          <div className="flex flex-1 flex-col" data-testid="files-restricted">
+            <PagePanel.Empty
+              className="flex-1"
+              icon={<Lock className="h-6 w-6" aria-hidden />}
+              title={t("filesview.restrictedTitle", {
+                defaultValue: "Files are restricted",
+              })}
+              description={t("filesview.restrictedDescription", {
+                defaultValue:
+                  "Your role can't browse the file store. Shared items appear in their own views.",
+              })}
+            />
           </div>
         ) : files.length === 0 ? (
           <div className="flex flex-1 flex-col" data-testid="files-empty">
