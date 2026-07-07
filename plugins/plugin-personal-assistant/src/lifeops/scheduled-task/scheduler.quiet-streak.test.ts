@@ -20,6 +20,7 @@ import {
 import { resolveOwnerFactStore } from "../owner/fact-store.ts";
 import { resolvePendingPromptsStore } from "../pending-prompts/store.ts";
 import { LifeOpsRepository } from "../repository.ts";
+import { settleDeferredInboundScans } from "./deferred-inbound-scans.ts";
 import type { ScheduledTask } from "./index.ts";
 import {
   type ProcessDueScheduledTasksResult,
@@ -414,6 +415,8 @@ describe("processDueScheduledTasks — quiet streak softens the next no-reply la
         createdAt: Date.now(),
       } as unknown as Memory,
     });
+    // The completion scan runs detached off the awaited emit edge (#15255).
+    await settleDeferredInboundScans();
 
     const persisted = await repo.getScheduledTask(
       runtime.agentId,

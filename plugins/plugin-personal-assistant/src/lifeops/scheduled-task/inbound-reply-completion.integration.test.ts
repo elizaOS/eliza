@@ -22,6 +22,7 @@ import {
 import { CheckinService } from "../checkin/checkin-service.js";
 import { resolvePendingPromptsStore } from "../pending-prompts/store.js";
 import { LifeOpsRepository } from "../repository.js";
+import { settleDeferredInboundScans } from "./deferred-inbound-scans.js";
 import { completeFiredTasksOnOwnerReply } from "./inbound-reply-completion.js";
 import type { ScheduledTask, ScheduledTaskCompletionCheck } from "./index.js";
 
@@ -146,6 +147,9 @@ describe("inbound-reply completion — production wiring", () => {
     await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
       message: ownerReply(runtime, roomId),
     });
+    // The scans run detached off the awaited emit edge (#15255); drain them
+    // before asserting the store state they produce.
+    await settleDeferredInboundScans();
 
     expect(await persistedStatus(runtime, task.taskId)).toBe("completed");
     // The open prompt was forgotten so the planner stops steering at it.
@@ -190,6 +194,7 @@ describe("inbound-reply completion — production wiring", () => {
     const reply = ownerReply(runtime, roomId);
     reply.createdAt = base;
     await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { message: reply });
+    await settleDeferredInboundScans();
 
     expect(await persistedStatus(runtime, task.taskId)).toBe("completed");
     expect(await checkins.getEscalationLevel(new Date(base))).toBe(2);
@@ -236,6 +241,7 @@ describe("inbound-reply completion — production wiring", () => {
     await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
       message: ownerReply(runtime, "room-b"),
     });
+    await settleDeferredInboundScans();
 
     expect(await persistedStatus(runtime, task.taskId)).toBe("fired");
   }, 180_000);
@@ -334,6 +340,7 @@ describe("inbound-reply completion — production wiring", () => {
     await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
       message: ownerReply(runtime, roomId),
     });
+    await settleDeferredInboundScans();
     expect(await persistedStatus(runtime, task.taskId)).toBe("fired");
 
     // The subject row lands (updatedAt = now >= firedAt) → the next
@@ -353,6 +360,7 @@ describe("inbound-reply completion — production wiring", () => {
     await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
       message: ownerReply(runtime, roomId),
     });
+    await settleDeferredInboundScans();
     expect(await persistedStatus(runtime, task.taskId)).toBe("completed");
   }, 180_000);
 });
