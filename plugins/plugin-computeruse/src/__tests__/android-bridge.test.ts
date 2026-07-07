@@ -67,7 +67,15 @@ describe("Android Assistant and App Actions routing source", () => {
     expect(manifest).toContain("android.intent.action.ASSIST");
     expect(manifest).toContain("android.intent.action.VOICE_COMMAND");
     expect(manifest).not.toContain("android.app.role.ASSISTANT");
-    expect(manifest).not.toContain("android.permission.BIND_VOICE_INTERACTION");
+    // BIND_VOICE_INTERACTION is the standard binder guard the framework
+    // REQUIRES on the exported VoiceInteractionService/session services
+    // (`android:permission=` on the <service>) so only the system can bind them
+    // — not a privileged capability the app requests. "Without privileged voice
+    // permissions" means the app must never DECLARE it as a granted
+    // <uses-permission>; the service-protection attribute is correct and stays.
+    expect(manifest).not.toMatch(
+      /<uses-permission[^>]*android:name="android\.permission\.BIND_VOICE_INTERACTION"/,
+    );
   });
 
   it("declares Play-compatible App Actions BIIs and static shortcuts", () => {

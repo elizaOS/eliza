@@ -8,7 +8,7 @@ import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action
 
 export default scenario({
   lane: "live-only",
-  id: "h1.relationship_type.injection_ignored",
+  id: "h1-injection-ignored",
   title: "H1 relationship inference ignores forwarded prompt injection",
   domain: "lifeops.relationships",
   tags: ["lifeops", "H1", "relationships", "prompt-injection", "privacy"],

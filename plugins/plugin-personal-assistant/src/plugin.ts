@@ -161,6 +161,7 @@ import {
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
 import { createScheduledTaskCandidateBackstopRule } from "./lifeops/scheduled-task/candidate-backstop.js";
+import { detachInboundScan } from "./lifeops/scheduled-task/deferred-inbound-scans.js";
 import { completeFiredTasksOnOwnerReply } from "./lifeops/scheduled-task/inbound-reply-completion.js";
 import {
   installLifeOpsScheduledTaskEventBridge,
@@ -724,29 +725,34 @@ const rawPersonalAssistantPlugin: Plugin = {
     // the room (user_replied_within + stale-prompt teardown);
     // `completeFiredTasksOnOwnerReply` matches fired tasks by their own
     // pending-prompt room and re-evaluates every check kind (incl.
-    // subject_updated). Both are owner-gated and idempotent. Boundary catch:
-    // an inbound chat message must never fail because the scheduled-task
-    // store or runner host is broken.
+    // subject_updated). Both are owner-gated and idempotent.
+    //
+    // These scans are side effects that do not feed the reply's first token,
+    // so each is detached from the awaited MESSAGE_RECEIVED edge (#15255):
+    // `emitEvent` awaits `Promise.all` over every handler, and both TTFT
+    // entry edges await that emit before Stage-1 work, so a slow store scan
+    // here would land one-for-one on TTFT. `detachInboundScan` runs the scan
+    // in the background and surfaces any failure via `runtime.reportError`.
     [EventType.MESSAGE_RECEIVED]: [
-      handleScheduledTaskInboundMessage,
-      async (payload: MessagePayload): Promise<void> => {
-        try {
+      detachInboundScan(
+        "scheduled-task-inbound",
+        handleScheduledTaskInboundMessage,
+      ),
+      detachInboundScan(
+        "inbound-reply-completion",
+        async (payload: MessagePayload): Promise<void> => {
           await completeFiredTasksOnOwnerReply(
             payload.runtime,
             payload.message,
           );
-        } catch (error) {
-          logger.error(
-            { src: "lifeops:inbound-reply-completion", error },
-            `[lifeops] inbound-reply completion pass failed: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
-      },
+        },
+      ),
       // Owner re-engaged: any still-scheduled unanswered-question follow-up
       // for the room is stale — dismiss it (#14676).
-      handleOwnerMessageForQuestionFollowup,
+      detachInboundScan(
+        "question-followup-cancel",
+        handleOwnerMessageForQuestionFollowup,
+      ),
     ],
     // Agent reply ends with a question the owner never answers → seed a
     // once-fired follow-up whose fire-time admission is the model moment

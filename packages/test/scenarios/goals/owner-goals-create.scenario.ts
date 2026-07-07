@@ -17,7 +17,12 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { executeRawSql } from "../../../../plugins/plugin-goals/src/db/sql.ts";
 import { createOwnerGoalsService } from "../../../../plugins/plugin-goals/src/goals-runtime.ts";
 
-const GOAL_INPUT = "Add a goal to run a marathon next year.";
+// The create path is a preview->confirm handshake (#14459/#15055):
+// `shouldRequireLifeCreateConfirmation` commits only when the create params carry
+// `confirmed:true` AND the user's message literally contains an explicit save
+// phrase. This single-turn smoke scenario predates the gate, so the message
+// carries "save it" and the tool-call args set `confirmed:true`.
+const GOAL_INPUT = "Add a goal to run a marathon next year, and save it.";
 const OWNER_GOALS = "OWNER_GOALS";
 
 type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
@@ -54,8 +59,10 @@ function goalsRouteFixtures(): Array<Record<string, unknown>> {
       },
       response: {
         text: "",
+        // Non-empty so the planner-loop gate synthesizes a FINISH after the
+        // successful create instead of firing an (unfixtured) in-loop evaluator.
         thought: "Create the owner's marathon life goal.",
-        messageToUser: "",
+        messageToUser: "Added your goal.",
         completed: true,
         finishReason: "tool-calls",
         toolCalls: [
@@ -63,21 +70,60 @@ function goalsRouteFixtures(): Array<Record<string, unknown>> {
             id: "call-owner-goals",
             name: OWNER_GOALS,
             type: "function",
-            arguments: { action: "create", title: "Run a marathon" },
+            arguments: {
+              action: "create",
+              title: "Run a marathon",
+              confirmed: true,
+            },
           },
         ],
       },
       times: 1,
     },
     {
-      // The action's own resolveActionArgs extraction (a single TEXT_LARGE call).
+      // The action's own resolveActionArgs extraction. Excludes the grounding
+      // prompt (below) so the two TEXT_LARGE fixtures are mutually exclusive, and
+      // is optional because the planner already supplied the create args.
       name: "owner-goals-extraction-create",
-      match: { modelType: ModelType.TEXT_LARGE },
+      match: {
+        modelType: ModelType.TEXT_LARGE,
+        prompt: (v: string) => !v.includes("missingCriticalFields"),
+      },
       response: JSON.stringify({
         action: "create",
-        params: { title: "Run a marathon" },
+        params: { title: "Run a marathon", confirmed: true },
         missing: [],
         confidence: 0.95,
+      }),
+      times: { min: 0, max: 1 },
+    },
+    {
+      // #14459's second TEXT_LARGE grounding extractor
+      // (extractGoalCreatePlanWithLlm). Without a grounded plan the create is a
+      // NOOP_GOAL_UNGROUNDED and never persists. successCriteria/supportStrategy
+      // MUST be objects — a string/null re-triggers the NOOP gate.
+      name: "owner-goals-grounding-create",
+      match: {
+        modelType: ModelType.TEXT_LARGE,
+        prompt: (v: string) => v.includes("missingCriticalFields"),
+      },
+      response: JSON.stringify({
+        mode: "create",
+        response: null,
+        title: "Run a marathon",
+        description: "Train for and complete a marathon within the next year.",
+        cadence: { kind: "weekly" },
+        successCriteria: {
+          summary: "Finish a full 42.2km marathon within the next year.",
+        },
+        supportStrategy: {
+          summary: "Follow a progressive weekly long-run training plan.",
+        },
+        groundingState: "grounded",
+        missingCriticalFields: [],
+        confidence: 0.95,
+        evaluationSummary: "Completing a marathon within the next year.",
+        targetDomain: "fitness",
       }),
       times: 1,
     },

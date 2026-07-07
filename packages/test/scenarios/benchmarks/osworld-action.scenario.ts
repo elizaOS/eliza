@@ -53,7 +53,7 @@ function osworldRouteFixtures(): Array<Record<string, unknown>> {
       response: {
         text: "",
         thought: "Dispatch the OSWorld bench-side action.",
-        messageToUser: "",
+        messageToUser: "Ran the OSWorld step.",
         completed: true,
         finishReason: "tool-calls",
         toolCalls: [

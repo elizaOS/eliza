@@ -197,8 +197,8 @@ function approvalsPayload() {
         createdAt: Date.now() - 45 * 60_000,
         roomId: "11111111-1111-1111-1111-111111111111",
         options: [
-          { name: "approve", description: "Approve and send" },
-          { name: "deny", description: "Don't send", isCancel: true },
+          { id: "approve", label: "Approve and send" },
+          { id: "deny", label: "Don't send", isCancel: true },
         ],
       },
       {
@@ -230,6 +230,27 @@ export function homeWidgetTodosResponse() {
         isCompleted: false,
         isUrgent: false,
         priority: 2,
+      },
+    ],
+  };
+}
+
+/** The home "Today" card reads `GET /api/lifeops/todos` (today-todos-data.ts,
+ *  #14734), NOT the workbench client method — the payload shape is
+ *  `{ todos: [{ id, title, status, dueDate }] }` and only OPEN todos due today
+ *  or overdue render. `dueDate` is the current instant so the row is always
+ *  "due today" regardless of the CI clock. */
+export function homeWidgetLifeopsTodosResponse() {
+  if (homeWidgetMockMode() === "quiet") {
+    return { todos: [] };
+  }
+  return {
+    todos: [
+      {
+        id: "todo-groceries",
+        title: "Buy groceries",
+        status: "pending",
+        dueDate: new Date(Date.now()).toISOString(),
       },
     ],
   };
@@ -270,6 +291,10 @@ function routeTable(): RouteMatch[] {
           },
         ],
       }),
+    },
+    {
+      test: has("/api/lifeops/todos"),
+      body: homeWidgetLifeopsTodosResponse,
     },
     {
       test: has("/api/lifeops/goals"),

@@ -16,6 +16,17 @@ vi.mock("@elizaos/core", async () => {
     "../../../packages/core/src/messaging/interactions/index"
   );
 
+  // The message-triage adapter base + service are equally pure (only `logger`
+  // and type imports), so the mock delegates to the real submodules rather than
+  // re-stubbing — `triage-adapter.ts` subclasses BaseMessageAdapter at module
+  // eval, so the real class must be present or `./index` fails to load.
+  const { BaseMessageAdapter } = await import(
+    "../../../packages/core/src/features/messaging/triage/adapters/base"
+  );
+  const { getDefaultTriageService } = await import(
+    "../../../packages/core/src/features/messaging/triage/triage-service"
+  );
+
   const logger = {
     debug: vi.fn(),
     error: vi.fn(),
@@ -106,9 +117,11 @@ vi.mock("@elizaos/core", async () => {
 
   return {
     ...interactions,
+    BaseMessageAdapter,
     ChannelType,
     CommandRegistryService,
     EventType,
+    getDefaultTriageService,
     ModelType,
     Role,
     Service,

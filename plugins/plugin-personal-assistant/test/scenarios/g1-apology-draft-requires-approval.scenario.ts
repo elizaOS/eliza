@@ -10,7 +10,7 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
   lane: "live-only",
-  id: "g1.overdue_comms.apology_draft_requires_approval",
+  id: "g1-apology-draft-requires-approval",
   title: "G1 overdue reply apology draft is held for approval",
   domain: "lifeops.relationships",
   tags: ["lifeops", "gmail", "G1", "overdue-reply", "approval", "outcome"],

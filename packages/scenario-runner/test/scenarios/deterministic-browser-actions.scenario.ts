@@ -10,6 +10,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { browserPlugin } from "../../../../plugins/plugin-browser/src/plugin.ts";
 import {
   __resetBrowserWorkspaceStateForTests,
+  ensureBrowserWorkspaceDefaultTab,
   executeBrowserWorkspaceCommand,
 } from "../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
 import {
@@ -322,7 +323,7 @@ export default scenario({
       apply: async (ctx) => {
         delete process.env.ELIZA_BROWSER_WORKSPACE_URL;
         delete process.env.ELIZA_BROWSER_WORKSPACE_TOKEN;
-        __resetBrowserWorkspaceStateForTests();
+        await __resetBrowserWorkspaceStateForTests();
 
         const runtime = ctx.runtime as
           | ({
@@ -343,7 +344,14 @@ export default scenario({
           await runtime.registerPlugin(browserPlugin);
         }
 
-        __resetBrowserWorkspaceStateForTests();
+        // BrowserService.start() seeds a default search tab asynchronously.
+        // Drive that seeding to completion (idempotent — returns the existing
+        // tab if start() already ran) BEFORE the reset, so the reset clears it
+        // and the scenario's own tab deterministically lands at btab_1 instead
+        // of racing the default tab into btab_1 (which orphaned a duplicate
+        // scenario.test tab in the tab ledger).
+        await ensureBrowserWorkspaceDefaultTab();
+        await __resetBrowserWorkspaceStateForTests();
         const opened = await executeBrowserWorkspaceCommand({
           show: true,
           subaction: "open",

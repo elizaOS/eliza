@@ -4,6 +4,7 @@
  */
 
 import type { AppLaunchDiagnostic } from "../../api";
+import { shellLocalStorage } from "../../surface-realm-channel";
 
 export interface LaunchAttemptRecord {
   timestamp: number;
@@ -62,7 +63,7 @@ function saveAll(records: LaunchAttemptRecord[]): void {
   if (typeof window === "undefined") return;
   try {
     const trimmed = records.slice(0, MAX);
-    window.localStorage.setItem(KEY, JSON.stringify(trimmed));
+    shellLocalStorage.setItem(KEY, JSON.stringify(trimmed));
   } catch {
     // error-policy:J7 diagnostics write — sandboxed storage must not break
     // app launches; the in-memory history for this session is unaffected.
@@ -81,7 +82,7 @@ export function getLaunchHistoryForApp(appName: string): LaunchAttemptRecord[] {
 export function clearLaunchHistory(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(KEY);
+    shellLocalStorage.removeItem(KEY);
   } catch {
     /* ignore */
   }

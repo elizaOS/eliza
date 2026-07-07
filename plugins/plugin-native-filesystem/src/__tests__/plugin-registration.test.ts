@@ -1,3 +1,4 @@
+/** Smoke test: the plugin wires the DeviceFilesystemBridge service and exposes no actions. */
 import { describe, expect, it } from "vitest";
 
 import { deviceFilesystemPlugin } from "../index.js";

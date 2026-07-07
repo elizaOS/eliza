@@ -1,14 +1,9 @@
 /**
- * @elizaos/capacitor-agent — Agent lifecycle management for Capacitor.
- *
- * Provides a cross-platform interface for starting, stopping, and
- * communicating with the embedded Eliza agent.
- *
- * - Electrobun desktop: RPC to the main-process AgentManager
- * - Android/Web: HTTP calls to the API server or bundled loopback agent
- * - iOS: HTTP for remote/cloud endpoints; local dev/sideload foreground
- *   requests bridge into the WebView ITTP kernel until the native route-kernel
- *   backend lands
+ * Shared TypeScript contract for the `Agent` Capacitor plugin, implemented
+ * identically by the web fallback (`web.ts`) and the native iOS/Android
+ * bridges. Defines the wire shape for lifecycle control (start/stop/status),
+ * chat, the path-only HTTP proxy (`request`), and the streaming variant that
+ * relays a response to the WebView incrementally via `agentStream*` events.
  */
 
 export interface AgentStatus {

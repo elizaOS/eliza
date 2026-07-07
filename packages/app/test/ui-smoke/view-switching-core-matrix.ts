@@ -34,6 +34,9 @@ export const REQUIRED_CORE_VIEW_IDS = [
   "trajectories",
 ] as const;
 
+// Mirrors the canonical `SETTINGS_SECTION_META` order (id + group ordering is the
+// single source of truth in packages/ui/src/components/settings/settings-section-meta.ts).
+// Kept in lockstep with it — the view-switching coverage gate asserts equality.
 export const REQUIRED_SETTINGS_SECTION_IDS = [
   "identity",
   "ai-model",
@@ -41,16 +44,17 @@ export const REQUIRED_SETTINGS_SECTION_IDS = [
   "capabilities",
   "apps",
   "connectors",
-  "runtime",
   "appearance",
   "background",
-  "remote-plugins",
+  "notifications",
+  "runtime",
   "wallet-rpc",
+  "remote-plugins",
   "updates",
   "advanced",
-  "app-permissions",
-  "permissions",
   "secrets",
+  "permissions",
+  "app-permissions",
   "security",
 ] as const;
 

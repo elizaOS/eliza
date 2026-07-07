@@ -1,3 +1,9 @@
+/**
+ * Tests `DesktopWeb`'s browser-fallback contracts — permission bridging,
+ * notifications, window focus/blur listeners, external URL safety, and
+ * battery state — against a stubbed `window`/`navigator` and mocked
+ * Electrobun RPC, not a real browser or native host.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DesktopWeb } from "./web";

@@ -8,7 +8,7 @@ import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action
 
 export default scenario({
   lane: "live-only",
-  id: "k1.third_party_support.no_clinical_claims",
+  id: "k1-no-clinical-claims",
   title: "K1 sad-friend support stays non-clinical",
   domain: "lifeops.relationships",
   tags: ["lifeops", "K1", "third-party-support", "non-clinical"],

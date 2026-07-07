@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the web fallback (`ElizaTasksWeb`) — exercises the real
+ * class directly, asserting every method resolves an explicit
+ * `supported: false` result instead of throwing or masking the unsupported
+ * platform as success.
+ */
 import { describe, expect, it } from "vitest";
 
 import { ElizaTasksWeb } from "./web";

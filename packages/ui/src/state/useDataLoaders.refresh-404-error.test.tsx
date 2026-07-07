@@ -102,8 +102,20 @@ describe("useDataLoaders — 404 refresh failure surfaces instead of swallowing"
     mocks.client.getConversationMessages.mockRejectedValue(
       Object.assign(new Error("not found"), { status: 404 }),
     );
+    // A realistic list-endpoint record: normalizeConversationList validates the
+    // untrusted payload via isConversationRecord (id/title/roomId/createdAt/
+    // updatedAt all required), so a stubbed row missing those is dropped and no
+    // survivor is adopted. This mirrors the real /api/conversations wire shape.
     mocks.client.listConversations.mockResolvedValue({
-      conversations: [{ id: "conv-new", title: "New" }],
+      conversations: [
+        {
+          id: "conv-new",
+          title: "New",
+          roomId: "11111111-1111-1111-1111-111111111111",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
     });
 
     const { deps, activeConversationIdRef } = makeDeps();

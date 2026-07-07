@@ -11,6 +11,7 @@ import {
   getDefaultStylePreset,
 } from "@elizaos/shared";
 import type { UiLanguage } from "../i18n";
+import { shellLocalStorage } from "../surface-realm-channel";
 import {
   type BuildFirstRunRuntimeConfigResult,
   buildFirstRunRuntimeConfig,
@@ -73,7 +74,7 @@ export function normalizeFirstRunName(
 export function clearPersistedFirstRunState(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(FIRST_RUN_STATE_STORAGE_KEY);
+    shellLocalStorage.removeItem(FIRST_RUN_STATE_STORAGE_KEY);
   } catch {
     // error-policy:J6 best-effort cleanup of a legacy key — storage may be
     // unavailable (private mode)

@@ -1,3 +1,8 @@
+/**
+ * Shared TypeScript contract for the contacts bridge (`ContactsPlugin`) and
+ * its record/option/result shapes, implemented identically by the Android
+ * native side and the `ContactsWeb` fallback.
+ */
 import type { PermissionState } from "@capacitor/core";
 
 export interface ContactSummary {

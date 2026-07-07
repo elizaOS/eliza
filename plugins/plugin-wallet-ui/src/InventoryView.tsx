@@ -1,18 +1,12 @@
 /**
- * InventoryView — the single registered component for the wallet surface across
- * GUI, XR, and TUI.
+ * InventoryView — the single registered component for the wallet surface.
  *
- * It renders a {@link SpatialSurface} wrapping an {@link Escape} hatch:
- *
- *   - GUI / XR — `Escape` renders its real DOM children, the full multi-panel
- *     {@link InventoryAppView} dashboard (holdings rail, P&L chart, activity log,
- *     movers, LP positions, NFT grid). InventoryAppView owns its own wallet data
- *     pipeline (balances/NFTs/trading-profile fetch + poll).
- *   - TUI      — the agent terminal mounts {@link InventorySpatialView} directly
- *     through the terminal registry (`register-terminal-view.tsx`, fed live by
- *     `setWalletTerminalSnapshot`). `Escape` never renders its DOM children in a
- *     terminal, so its `tui` prop is a static fallback for the rare bundle-
- *     evaluated TUI path and gets a zeroed snapshot.
+ * It renders a {@link SpatialSurface} wrapping an {@link Escape} hatch: the GUI
+ * renders the full multi-panel {@link InventoryAppView} dashboard (holdings
+ * rail, P&L chart, activity log, movers, LP positions, NFT grid) as real DOM.
+ * InventoryAppView owns its own wallet data pipeline (balances/NFTs/
+ * trading-profile fetch + poll). The `Escape` `tui` prop is a static
+ * {@link InventorySpatialView} fallback with a zeroed snapshot.
  *
  * The wrapper therefore does NO data work — that would double-fetch
  * InventoryAppView's pipeline and feed a snapshot nothing live consumes. This

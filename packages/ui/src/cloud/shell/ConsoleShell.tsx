@@ -137,7 +137,7 @@ function ConsoleUserMenu({
       <DropdownMenu>
         <DropdownMenuTrigger
           aria-label={email ? `Account menu for ${email}` : "Account menu"}
-          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-white/70 outline-none hover:bg-white/5 hover:text-white focus-visible:ring-2 focus-visible:ring-white/55 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111]"
+          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-white/70 outline-none hover:bg-white/5 hover:text-white"
         >
           <UserRound className="h-3.5 w-3.5 md:hidden" aria-hidden />
           <span className="hidden max-w-[160px] truncate md:inline">
@@ -154,7 +154,7 @@ function ConsoleUserMenu({
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            className="text-red-400 focus:text-red-300"
+            className="text-red-400"
             onSelect={() => {
               clearStaleStewardSession();
               navigate("/login", { replace: true });

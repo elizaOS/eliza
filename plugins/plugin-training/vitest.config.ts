@@ -103,6 +103,16 @@ export default defineConfig({
         find: /^@elizaos\/agent\/(.+)$/,
         replacement: path.join(agentSrc, "$1"),
       },
+      // Production code (core/cerebras-eval-model.ts) imports the shared
+      // CerebrasJudge from scenario-runner's `cerebras-judge` subpath; the test
+      // lane never builds scenario-runner's dist, so resolve it to source.
+      {
+        find: /^@elizaos\/scenario-runner\/cerebras-judge$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/scenario-runner/src/cerebras-judge.ts",
+        ),
+      },
       {
         find: /^react-syntax-highlighter\/dist\/esm\/languages\/prism\/.+$/,
         replacement: path.join(

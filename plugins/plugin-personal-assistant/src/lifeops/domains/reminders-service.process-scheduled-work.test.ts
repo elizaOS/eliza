@@ -48,7 +48,16 @@ function makeDomain() {
     checkinSource: {},
   };
   const ctx = {
-    runtime: { emitEvent: vi.fn(async () => undefined) },
+    // The `travel_reconcile` subsystem reads the owner fact store, which narrows
+    // the runtime to its cache methods (RuntimeCacheLike: getCache/setCache/
+    // deleteCache). Provide them so that unmocked subsystem no-ops on an empty
+    // store instead of throwing `cache.getCache is not a function`.
+    runtime: {
+      emitEvent: vi.fn(async () => undefined),
+      getCache: vi.fn(async () => undefined),
+      setCache: vi.fn(async () => undefined),
+      deleteCache: vi.fn(async () => undefined),
+    },
     repository: {},
     agentId: () => "00000000-0000-0000-0000-0000000000dd",
     logLifeOpsWarn: vi.fn(),

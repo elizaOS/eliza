@@ -88,7 +88,7 @@ VECTOR_DIMS = {
 };
 ```
 
-Once an agent is initialized with a specific embedding dimension, it cannot be changed without a new agent or manual DB surgery.
+When an agent switches embedding dimensions, runtime boot deletes vectors stored in other dimension columns and queues those memories for re-embedding at the active width. Memory rows survive; stale vectors do not.
 
 ## Runtime Migrations
 

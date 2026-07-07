@@ -49,9 +49,12 @@ export const NeedsAttention: Story = {
 };
 
 /**
- * Clicking the card routes back to the handler: it prefills the floating chat
- * composer with an approval message so the agent's RESOLVE_REQUEST action
- * resolves it — the single tap-to-resolve contract for this surface.
+ * Tap-to-resolve routes back to the handler by prefilling the floating chat
+ * composer so the agent's RESOLVE_REQUEST action resolves the decision. The
+ * oldest pending item carries approve/deny options (#14737), so tapping the
+ * card expands the choice chips — tapping the approve chip is what prefills the
+ * approval message (a blind "Approve:" card prefill was semantically wrong for
+ * option-carrying items).
  */
 export const ClickPrefillsChat: Story = {
   play: async ({ canvasElement }) => {
@@ -65,11 +68,21 @@ export const ClickPrefillsChat: Story = {
       if (detail?.text) prefilled.push(detail.text);
     };
     window.addEventListener(CHAT_PREFILL_EVENT, onPrefill);
-    card.click();
-    window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
+    try {
+      // Card tap expands the chip row (choices mode); the approve chip fires the
+      // prefill synchronously.
+      card.click();
+      const approve = await waitForTestId(
+        canvasElement,
+        "needs-attention-option-approve",
+      );
+      approve.click();
+    } finally {
+      window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
+    }
     assert(
       prefilled.some((text) => text.startsWith("Approve:")),
-      `click prefills an approval (saw ${prefilled.join(",") || "nothing"})`,
+      `approve chip prefills an approval (saw ${prefilled.join(",") || "nothing"})`,
     );
   },
 };

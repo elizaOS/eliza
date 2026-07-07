@@ -1,3 +1,11 @@
+/**
+ * Shared TypeScript contract for the ElizaTasks Capacitor plugin — the
+ * interface that both `web.ts` (browser fallback) and the native Swift
+ * implementation (`ios/Sources/ElizaTasksPlugin/ElizaTasksPlugin.swift`)
+ * must satisfy. Adding a JS-callable method or wake-event kind starts here;
+ * see this package's CLAUDE.md "How to extend" section for the full
+ * checklist across both sides of the bridge.
+ */
 import type { PluginListenerHandle } from "@capacitor/core";
 
 /**

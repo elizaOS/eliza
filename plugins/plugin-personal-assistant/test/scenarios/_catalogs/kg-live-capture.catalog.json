@@ -21,7 +21,7 @@
       "status": "authored"
     },
     {
-      "id": "h2.kg_capture.relationship_update_live",
+      "id": "h2-relationship-update-live",
       "pack": "H2",
       "tier": "T2",
       "surface": "scenario-runner",
@@ -35,7 +35,7 @@
       "status": "authored"
     },
     {
-      "id": "h2.kg_capture.conflicting_fact_resolution",
+      "id": "h2-conflicting-fact-resolution",
       "pack": "H2",
       "tier": "T3",
       "surface": "scenario-runner",
@@ -49,7 +49,7 @@
       "status": "authored"
     },
     {
-      "id": "h2.kg_capture.identity_merge_uses_engine",
+      "id": "h2-identity-merge-uses-engine",
       "pack": "H2",
       "tier": "T3",
       "surface": "scenario-runner",
@@ -63,7 +63,7 @@
       "status": "authored"
     },
     {
-      "id": "h2.kg_capture.audit_trail_survives_restart",
+      "id": "h2-audit-trail-survives-restart",
       "pack": "H2",
       "tier": "T3",
       "surface": "scenario-runner",

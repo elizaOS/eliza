@@ -20,8 +20,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as pathJoin } from "node:path";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+	MissingMtpDrafterError,
 	resolveLocalInferenceLoadArgs,
 	resolveMmprojPath,
 } from "../src/services/active-model";
@@ -185,38 +186,27 @@ describe("WS2 mmproj routing", () => {
 		expect(resolved.mobileSpeculative).toBeUndefined();
 	});
 
-	it("falls back to a non-speculative load when a pre-cutover bundle is missing the drafter GGUF", async () => {
-		// Back-compat (#11517): a 2b/4b bundle installed BEFORE the Gemma-4 MTP
-		// cutover has no `mtp/drafter-<tier>.gguf` on disk even though the
-		// catalog now advertises runtime.mtp for the tier. The drafter is a
-		// perf-only speculative-decoding artifact — the text model must still
-		// load (warn + plain decode), never hard-throw and brick the install.
+	it("fails closed when a managed bundle is missing the drafter GGUF", async () => {
+		// A managed eliza-download 2b/4b bundle whose `mtp/drafter-<tier>.gguf`
+		// is absent (partial download, or a pre-Gemma-4-MTP-cutover bundle) is a
+		// broken install: the catalog advertises separate-drafter MTP for the
+		// tier, so refusing to activate a degraded greedy-decode path and prompting
+		// a re-download is the intended contract (MissingMtpDrafterError). Only
+		// external single-file scans (no bundleRoot) degrade to a plain load with a
+		// warning — asserted in load-args-drafter.fuzz.test.ts.
 		const tier = "2b";
 		expect(findCatalogModel(`eliza-1-${tier}`)?.runtime?.mtp?.specType).toBe(
 			"draft-mtp",
 		);
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-		try {
-			const bundle = makeTempBundle({ hasMmproj: true, hasMtp: false, tier });
-			const installed = installedModel({
-				id: `eliza-1-${tier}`,
-				bundleRoot: bundle.bundleRoot,
-				path: bundle.textPath,
-			});
-			const resolved = await resolveLocalInferenceLoadArgs(installed);
-			expect(resolved.modelPath).toBe(bundle.textPath);
-			expect(resolved.draftModelPath).toBeUndefined();
-			expect(resolved.draftMin).toBeUndefined();
-			expect(resolved.draftMax).toBeUndefined();
-			expect(resolved.mobileSpeculative).toBeUndefined();
-			expect(warnSpy).toHaveBeenCalledWith(
-				expect.stringContaining(
-					"Re-download the model to enable the MTP drafter",
-				),
-			);
-		} finally {
-			warnSpy.mockRestore();
-		}
+		const bundle = makeTempBundle({ hasMmproj: true, hasMtp: false, tier });
+		const installed = installedModel({
+			id: `eliza-1-${tier}`,
+			bundleRoot: bundle.bundleRoot,
+			path: bundle.textPath,
+		});
+		await expect(resolveLocalInferenceLoadArgs(installed)).rejects.toThrow(
+			MissingMtpDrafterError,
+		);
 	});
 
 	it("leaves mmprojPath undefined when bundleRoot is absent", async () => {

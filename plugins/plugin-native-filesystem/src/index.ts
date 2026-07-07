@@ -1,3 +1,8 @@
+/**
+ * Plugin entry point: registers the `DeviceFilesystemBridge` service under the
+ * `device_filesystem` service type so other plugins (e.g. `@elizaos/plugin-coding-tools`)
+ * can resolve mobile-safe file read/write/list operations. Registers no actions of its own.
+ */
 import type { Plugin } from "@elizaos/core";
 
 import { DeviceFilesystemBridge } from "./services/device-filesystem-bridge.js";

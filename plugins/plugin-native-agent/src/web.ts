@@ -1,3 +1,8 @@
+/**
+ * Web/Electrobun bridge surface for the `Agent` Capacitor plugin: implements
+ * `AgentPlugin` over HTTP against the API server, used whenever no native
+ * iOS/Android implementation is registered (see `index.ts`).
+ */
 import { WebPlugin } from "@capacitor/core";
 import type {
   AgentPlugin,
@@ -227,7 +232,6 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
-  /** True when we can reach the API via HTTP. */
   private canReachApi(): boolean {
     if (this.isLocalAgentIpcBase()) return false;
     if (readConfiguredApiBase()) return true;

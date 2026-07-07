@@ -19,7 +19,10 @@ import {
 } from "@elizaos/agent/runtime/host-bridge";
 import { getBuildVariant, isStoreBuild } from "@elizaos/core";
 import { handleCloudPairRoute } from "../api/cloud-pair-route";
-import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
+import {
+  captureWalletEnvBootBaseline,
+  hydrateWalletKeysFromNodePlatformSecureStore,
+} from "../security/hydrate-wallet-keys-from-platform-store";
 import {
   applyAccountPoolApiCredentials,
   getDefaultAccountPool,
@@ -32,6 +35,7 @@ let installed = false;
 
 export function installAgentHostBridge(): void {
   const bridge: AgentHostBridge = {
+    captureWalletEnvBootBaseline,
     hydrateWalletKeysFromNodePlatformSecureStore,
     runVaultBootstrap,
     sharedVault,

@@ -7,7 +7,7 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
   lane: "live-only",
-  id: "i2.mediation.consent_before_group_message",
+  id: "i2-consent-before-group-message",
   title: "I2 neutral drafts stay behind approval for both parties",
   domain: "lifeops.relationships",
   tags: ["lifeops", "I2", "mediation", "approval", "message-draft"],

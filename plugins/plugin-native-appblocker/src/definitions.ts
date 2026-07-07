@@ -1,3 +1,10 @@
+/**
+ * Shared TypeScript contract for the `ElizaAppBlocker` Capacitor plugin —
+ * the permission/status/result shapes and the `AppBlockerPlugin` method
+ * surface implemented by both `AppBlockerWeb` (web.ts) and the native
+ * Android/iOS bridges (`AppBlockerPlugin.kt` / `AppBlockerPlugin.swift`), and
+ * consumed by `backend.ts`'s adapter for `@elizaos/plugin-blocker`.
+ */
 export type AppBlockerPermissionStatus =
   | "granted"
   | "denied"

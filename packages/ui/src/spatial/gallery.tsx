@@ -1,8 +1,8 @@
 /**
  * Screen gallery — representative archetypes covering the app's screen families,
  * each authored ONCE with the spatial vocabulary. The gallery is the verification
- * corpus: every screen here is rendered to GUI, XR and TUI (see the stories
- * harness `stories/src/spatial-gallery.tsx` and `__tests__/gallery.test.tsx`).
+ * corpus: every screen here is rendered to the GUI DOM and to terminal lines in
+ * tests (`__tests__/gallery.test.tsx`, `__tests__/framing.test.ts`).
  *
  * These are presentational (props baked in) so they render identically and
  * deterministically on every surface with no data fetching.

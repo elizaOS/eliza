@@ -79,6 +79,9 @@ const SCHEDULED_DISPATCH_RENDER_PROMPT_PREFIX =
   "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.";
 const SCHEDULED_DISPATCH_RENDER_INSTRUCTION_MARKER = "\nInstruction:\n";
 const SCHEDULED_DISPATCH_RENDER_FIRED_AT_MARKER = "\n\nFired at:";
+const SCHEDULED_DISPATCH_TITLE_PROMPT_PREFIX =
+  "You are the owner's personal assistant. Write a concise notification title for the scheduled message below.";
+const SCHEDULED_DISPATCH_TITLE_BODY_MARKER = "\nMessage body:\n";
 
 async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
   const agentPackageName: string = "@elizaos/agent";
@@ -287,9 +290,51 @@ export function deterministicScheduledDispatchRenderText(
     .replace(/^gentle check-in:\s*/i, "")
     .replace(/\s+/g, " ")
     .trim();
-  return ownerMessage
-    ? `Quick nudge: ${ownerMessage}`
-    : "Quick nudge: checking in.";
+  // Echo the instruction (minus its "remind the owner to …" framing) as the
+  // rendered body. A deterministic stand-in for the dispatch-render model must be
+  // predictable so scenarios can assert the delivered copy exactly; a decorative
+  // "Quick nudge:" prefix only diverged the rendered message from the reminder
+  // text every scheduled-dispatch scenario checks against.
+  return ownerMessage || "checking in.";
+}
+
+// The dispatcher renders a notification TITLE through a second TEXT_LARGE call
+// after the body. Left unanswered, the strict proxy rejects it, the in_app
+// dispatcher's notify branch swallows the throw, and delivery silently drops to
+// zero surfaces — reported as `disconnected`, so the task advances without firing
+// (concurrent-day, multiday-journey, and the corpus reminder scenarios).
+export function isScheduledDispatchTitlePrompt(prompt: string): boolean {
+  return (
+    prompt.startsWith(SCHEDULED_DISPATCH_TITLE_PROMPT_PREFIX) &&
+    prompt.includes(SCHEDULED_DISPATCH_TITLE_BODY_MARKER) &&
+    prompt.includes(SCHEDULED_DISPATCH_RENDER_FIRED_AT_MARKER) &&
+    prompt.trimEnd().endsWith("Title:")
+  );
+}
+
+export function deterministicScheduledDispatchTitleText(
+  prompt: string,
+): string {
+  const bodyStart = prompt.indexOf(SCHEDULED_DISPATCH_TITLE_BODY_MARKER);
+  const firedAtStart = prompt.indexOf(
+    SCHEDULED_DISPATCH_RENDER_FIRED_AT_MARKER,
+  );
+  const body =
+    bodyStart >= 0 && firedAtStart > bodyStart
+      ? prompt
+          .slice(
+            bodyStart + SCHEDULED_DISPATCH_TITLE_BODY_MARKER.length,
+            firedAtStart,
+          )
+          .trim()
+      : "";
+  const words = body
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 6);
+  return words.length > 0 ? words.join(" ") : "Reminder";
 }
 
 type ScenarioDeterministicLlmCall = {
@@ -344,10 +389,16 @@ export function resolveScenarioDeterministicLlmCall(
   if (call.modelType !== ModelType.TEXT_LARGE) {
     return null;
   }
-  const prompt = deterministicCallTextCandidates(call).find(
-    isScheduledDispatchRenderPrompt,
-  );
-  return prompt ? deterministicScheduledDispatchRenderText(prompt) : null;
+  const candidates = deterministicCallTextCandidates(call);
+  const bodyPrompt = candidates.find(isScheduledDispatchRenderPrompt);
+  if (bodyPrompt) {
+    return deterministicScheduledDispatchRenderText(bodyPrompt);
+  }
+  const titlePrompt = candidates.find(isScheduledDispatchTitlePrompt);
+  if (titlePrompt) {
+    return deterministicScheduledDispatchTitleText(titlePrompt);
+  }
+  return null;
 }
 
 export function resolveScenarioProviderConfig(
@@ -499,6 +550,10 @@ export async function createScenarioRuntime(
       SKILLS_SYNC_CATALOG_ON_START:
         process.env.SKILLS_SYNC_CATALOG_ON_START ?? "false",
       ...(process.env.SKILLS_DIR ? { SKILLS_DIR: process.env.SKILLS_DIR } : {}),
+      // Scenarios assert the raw action-callback text; the character-voice
+      // rewrite (services/message) would spend an unfixtured TEXT_SMALL call and
+      // restyle that text, so keep it off in the deterministic harness.
+      ACTION_CALLBACK_VOICE_REWRITE: "false",
     },
   });
 

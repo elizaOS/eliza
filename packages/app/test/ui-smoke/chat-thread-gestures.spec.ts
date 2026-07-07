@@ -11,10 +11,10 @@
 //   3. ArrowDown on the restore zone → same restore path (WCAG 2.1.1 operable).
 //   4. Escape from MAXIMIZED collapses the WHOLE sheet (not a restore) — the
 //      documented back/Escape semantics.
-//   5. Header contract: the live new-chat control remains present, the removed
-//      maximize button stays absent, and a horizontal drag on the OPEN thread
-//      does NOT switch conversations (swipe-to-switch removed;
-//      `swipeEnabled: !sheetOpen`).
+//   5. Header contract (#14279): the header carries no nav buttons — search
+//      moved to the composer "+" menu and the new-chat/clear + maximize buttons
+//      stay absent — and a horizontal drag on the OPEN thread does NOT switch
+//      conversations (swipe-to-switch removed; `swipeEnabled: !sheetOpen`).
 //
 // The conversation is mocked statefully at the network layer for determinism.
 // Record a video with E2E_RECORD=1.
@@ -427,17 +427,17 @@ test("Escape from maximized collapses the whole sheet (not just restore)", async
   await expectNoPageDiagnostics(page, testInfo.title);
 });
 
-test("header controls: search only (no new-chat), maximize is removed, and open-thread swipe does not switch", async ({
+test("header controls: no header nav (search in composer + menu), maximize removed, and open-thread swipe does not switch", async ({
   page,
 }, testInfo) => {
   await openAppPath(page, "/chat");
   await openSheetToFull(page);
   const sheet = page.locator(SHEET);
 
-  // The header keeps search as the sole left control; new-chat/clear and
-  // maximize are both removed (over-pull owns full-bleed maximize, and the
-  // thread is one infinite conversation).
-  await expect(page.getByTestId("chat-full-search")).toHaveCount(1);
+  // The header carries NO nav buttons (#14279): search moved to the composer
+  // "+" menu, and new-chat/clear + maximize are both removed too (over-pull owns
+  // full-bleed maximize, and the thread is one infinite conversation).
+  await expect(page.getByTestId("chat-full-search")).toHaveCount(0);
   await expect(page.getByTestId("chat-full-clear")).toHaveCount(0);
   await expect(page.getByTestId("chat-full-maximize")).toHaveCount(0);
 
@@ -452,5 +452,13 @@ test("header controls: search only (no new-chat), maximize is removed, and open-
     "data-open",
     "true",
   );
+
+  // #14279 search entry point: search left the header and now opens from the
+  // composer "+" menu ("Search chat…"), revealing the shared MessageSearchPanel.
+  await page.getByTestId("chat-composer-plus").click();
+  await page.getByText("Search chat…", { exact: true }).click();
+  await expect(page.getByTestId("chat-message-search")).toBeVisible({
+    timeout: 10_000,
+  });
   await expectNoPageDiagnostics(page, testInfo.title);
 });

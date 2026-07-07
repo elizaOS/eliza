@@ -1,3 +1,12 @@
+/**
+ * Browser fallback for the Desktop Capacitor plugin — implements every
+ * `DesktopPlugin` method with Web APIs (Notifications, Clipboard, Fullscreen,
+ * Battery, `navigator.permissions`) or an explicit unavailable/no-op result
+ * where no browser equivalent exists. Loaded via `registerPlugin`'s `web`
+ * handler in `index.ts` whenever the Electrobun native bridge
+ * (`__ELIZA_ELECTROBUN_RPC__`) is absent, so every device capability this
+ * plugin exposes must degrade gracefully here rather than throw.
+ */
 import { WebPlugin } from "@capacitor/core";
 
 import type {
@@ -388,8 +397,6 @@ export class DesktopWeb extends WebPlugin {
     chrome: string;
     node: string;
   }> {
-    // On web platform, version info is limited. Return actual browser info where available.
-    // Note: "version" and "name" would need to come from app config - returning "unknown" to indicate unavailability
     return {
       version: "unknown", // App version not available on web - would need to be injected at build time
       name: "unknown", // App name not available on web - would need to be injected at build time
@@ -481,7 +488,6 @@ export class DesktopWeb extends WebPlugin {
       remove: async () => {
         const i = this.pluginListeners.indexOf(entry);
         if (i >= 0) {
-          // Remove window event listener if it exists
           if (entry.windowListener) {
             if (entry.eventName === "windowFocus")
               window.removeEventListener("focus", entry.windowListener);

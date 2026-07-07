@@ -57,7 +57,7 @@ function statusRouteFixtures(): Array<Record<string, unknown>> {
         text: "",
         thought:
           "Dispatch the deterministic orchestrator-status slash command.",
-        messageToUser: "",
+        messageToUser: "Here's the orchestrator status.",
         completed: true,
         finishReason: "tool-calls",
         toolCalls: [

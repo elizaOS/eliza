@@ -1,3 +1,8 @@
+/**
+ * TS host for the `Agent` Capacitor plugin: registers "Agent" with the
+ * Capacitor runtime and re-exports the shared type definitions consumed by
+ * both the web fallback and the native iOS/Android bridges.
+ */
 import { registerPlugin } from "@capacitor/core";
 import type { AgentPlugin } from "./definitions";
 

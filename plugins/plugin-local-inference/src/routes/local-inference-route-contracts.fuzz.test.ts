@@ -43,6 +43,16 @@ beforeEach(() => {
 	engineMock.canTranscribeLocally.mockResolvedValue(false);
 });
 
+// Desktop AEC verdict (#12256) attached to every WAV transcription response;
+// with no playback far-end reference pushed in this lane it is the honest
+// passthrough case. Mirrors local-inference-asr-route.test.ts.
+const AEC_NO_FAR_END = {
+	applied: false,
+	reason: "no-far-end",
+	erleDb: null,
+	confidence: null,
+};
+
 function makeRng(seed: number): () => number {
 	let s = seed >>> 0;
 	return () => {
@@ -552,7 +562,11 @@ describe("POST /api/asr/local-inference - input-contract fuzz", () => {
 			state,
 		);
 		expect(out.status()).toBe(200);
-		expect(out.bodyJson()).toEqual({ text: "hello world", words: [] });
+		expect(out.bodyJson()).toEqual({
+			text: "hello world",
+			words: [],
+			aec: AEC_NO_FAR_END,
+		});
 	});
 
 	it("502s when the transcription model misbehaves (invalid shape, empty, throw)", async () => {

@@ -274,6 +274,10 @@ describe("scheduled task production dispatcher", () => {
         ).resolves.toEqual({
           ok: true,
           messageId: "msg_owner_contact",
+          // #14885 (fix #14724) enriches a successful DispatchResult with the
+          // channel + resolved owner target that delivered it.
+          channelKey: "telegram",
+          target: "123456789",
         });
       },
     );
@@ -401,6 +405,10 @@ describe("scheduled task production dispatcher", () => {
     expect(stored?.metadata?.lastDispatchResult).toEqual({
       ok: true,
       messageId: "msg_task",
+      // #14885 (fix #14724): the recorded result carries the delivering channel
+      // and the resolved target ("telegram:owner-dm" → owner-dm).
+      channelKey: "telegram",
+      target: "owner-dm",
     });
   });
 

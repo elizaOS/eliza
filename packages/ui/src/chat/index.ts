@@ -10,6 +10,7 @@ import {
 } from "@elizaos/core";
 import type { ViewRegistryEntry } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
+import { shellLocalStorage } from "../surface-realm-channel";
 import type {
   DesktopClickAuditItem,
   DesktopWorkspaceSurface,
@@ -56,7 +57,10 @@ export function loadSavedCustomCommands(): SavedCustomCommand[] {
 }
 
 export function saveSavedCustomCommands(commands: SavedCustomCommand[]): void {
-  localStorage.setItem(CUSTOM_COMMANDS_STORAGE_KEY, JSON.stringify(commands));
+  shellLocalStorage.setItem(
+    CUSTOM_COMMANDS_STORAGE_KEY,
+    JSON.stringify(commands),
+  );
 }
 
 export function appendSavedCustomCommand(command: SavedCustomCommand): void {

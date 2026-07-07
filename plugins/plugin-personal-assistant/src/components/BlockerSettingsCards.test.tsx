@@ -42,6 +42,12 @@ vi.mock("@elizaos/ui", () => ({
       {children}
     </button>
   ),
+  // AppBlockerSettingsCard renders both the search box and the block-duration
+  // checkboxes through `<Input>`, so the mock must forward every prop (type,
+  // checked, value, onChange, id, aria-*) for the text and checkbox-role queries.
+  Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => (
+    <input {...props} />
+  ),
   client: lifeOpsClient,
   useApp: () => blockerAppState,
   useAppSelector: <T,>(selector: (s: typeof blockerAppState) => T): T =>

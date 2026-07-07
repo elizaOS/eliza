@@ -8697,6 +8697,34 @@ ${section_end}`;
 			await this.adapter.ensureEmbeddingDimension(embedding.length);
 			this.pinnedEmbeddingProvider = registration.provider;
 			this.enableEmbeddingGeneration();
+			// Reclaim any vectors left in a different dimension column, e.g. cloud
+			// 1536-dim embeddings after this agent switched to on-device gte-small
+			// (384-dim), which a same-width search can never match again, then
+			// re-embed those memories at the active width. The clear is one quick
+			// DELETE (a no-op once the store holds only active-dimension vectors);
+			// the re-embed drains through the embedding queue in the background so
+			// boot is never blocked on it.
+			try {
+				const staleMemoryIds =
+					await this.adapter.clearEmbeddingsOutsideActiveDimension();
+				if (staleMemoryIds.length > 0) {
+					this.logger.info(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							count: staleMemoryIds.length,
+							dimension: embedding.length,
+						},
+						"Reclaimed stale-dimension embeddings; re-embedding at active width",
+					);
+					void this.reembedMemoriesByIds(staleMemoryIds);
+				}
+			} catch (error) {
+				// error-policy:J7 stale embedding reconciliation is best-effort maintenance; report and keep booting.
+				this.reportError("AgentRuntime.embeddingDimensionReconcile", error, {
+					agentId: this.agentId,
+				});
+			}
 			this.logger.debug(
 				{
 					src: "agent",
@@ -8998,6 +9026,32 @@ ${section_end}`;
 	}
 
 	/**
+	 * Re-embed the given memories at the active embedding dimension after their
+	 * stale-dimension vectors were reclaimed. Runs detached from boot and drains
+	 * through the embedding queue at `low` priority so live traffic is never
+	 * starved. Fetched in chunks so a large migration never loads every memory at
+	 * once; a chunk failure is reported and the rest still proceed.
+	 */
+	private async reembedMemoriesByIds(memoryIds: UUID[]): Promise<void> {
+		const CHUNK = 200;
+		for (let i = 0; i < memoryIds.length; i += CHUNK) {
+			try {
+				const memories = await this.adapter.getMemoriesByIds(
+					memoryIds.slice(i, i + CHUNK),
+				);
+				for (const memory of memories) {
+					await this.queueEmbeddingGeneration(memory, "low");
+				}
+			} catch (error) {
+				// error-policy:J7 stale embedding requeue is best-effort maintenance; report and continue later chunks.
+				this.reportError("AgentRuntime.reembedMemoriesByIds", error, {
+					agentId: this.agentId,
+				});
+			}
+		}
+	}
+
+	/**
 	 * Queue a memory for embedding generation. If companionUrl is set, POSTs to companion
 	 * and returns without waiting (fire-and-forget). WHY: Thin runtime doesn't block on embedding.
 	 */
@@ -9138,6 +9192,10 @@ ${section_end}`;
 		accessContext?: AccessContext;
 	}): Promise<MessageSearchHit[]> {
 		return this.adapter.searchMessages(params);
+	}
+
+	clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {
+		return this.adapter.clearEmbeddingsOutsideActiveDimension();
 	}
 
 	async getCachedEmbeddings(params: {

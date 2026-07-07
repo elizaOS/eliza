@@ -136,7 +136,7 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `MODELS_DIR` | No | Override default GGUF model directory (default: `~/.eliza/models`) |
 | `LOCAL_SMALL_MODEL` | No | Filename of the small text model GGUF (Capacitor/mobile adapter) |
 | `LOCAL_LARGE_MODEL` | No | Filename of the large text model GGUF (Capacitor/mobile adapter) |
-| `ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP` | No | Set truthy to defer startup GGUF embedding prefetch until the dev/runtime server is ready (consumed by app-core) |
+| `ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP` | No | Defer is the DEFAULT: startup GGUF embedding prefetch runs after the runtime is ready. Set to `0`/`false`/`no`/`off` for the eager process-entry prefetch (consumed by app-core) |
 | `ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP` | No | Set truthy to skip GGUF embedding prefetch entirely while leaving local embedding settings intact |
 | `ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP` | No | Desktop startup opt-in that starts GGUF embedding warmup during runtime bootstrap when no skip/defer override is set (consumed by app-core/electrobun) |
 | `ELIZA_DISABLE_LOCAL_EMBEDDINGS` | No | Set `1` to disable local `TEXT_EMBEDDING` registration entirely |

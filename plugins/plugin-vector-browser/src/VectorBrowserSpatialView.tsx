@@ -3,14 +3,10 @@
  * view, authored once with the spatial vocabulary so it renders correctly
  * wherever it is displayed:
  *
- *   - GUI / XR — the adaptive `VectorBrowserView` wrapper renders the rich WebGL
- *     surface (`VectorBrowserRichView`) through a spatial `Escape`; the 3D point
- *     cloud (three.js) and the 2D canvas projection are INFEASIBLE in a
- *     terminal, so they stay GUI/XR-only.
- *   - TUI      — the terminal renders THIS view (a summary-stats + points-list
- *     fallback) via `registerSpatialTerminalView` (see
- *     `register-terminal-view.tsx`), which is also the wrapper's `Escape`
- *     fallback.
+ *   - GUI — the adaptive `VectorBrowserView` wrapper renders the rich WebGL
+ *     surface (`VectorBrowserRichView`) through a spatial `Escape`, with THIS
+ *     view (a summary-stats + points-list fallback) as the `Escape` fallback.
+ *     Only the GUI modality ships; "xr" and "tui" remain compatibility values.
  *
  * It is purely presentational (a flat snapshot + an action callback in,
  * primitives out) and imports ONLY the cross-modality primitives, so it is safe

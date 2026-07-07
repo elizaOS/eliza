@@ -4,7 +4,7 @@ Android SMS overlay plugin for elizaOS — provides an SMS inbox and compose sur
 
 ## Purpose / role
 
-Adds a Messages overlay app to elizaOS on Android. It registers three plugin views (standard, XR, TUI) that let an Eliza agent and the user read SMS threads and send text messages through the native Android SMS bridge. The plugin is opt-in; load it by including `@elizaos/plugin-messages` in the agent's plugin list. It is marked `androidOnly: true` in its elizaos app metadata, so its overlay registration is gated by the `isElizaOS()` runtime check at `src/register.ts`.
+Adds a Messages overlay app to elizaOS on Android. It registers one GUI plugin view (`xr`/`tui` remain compatibility modality values but are not shipped) that lets an Eliza agent and the user read SMS threads and send text messages through the native Android SMS bridge. The plugin is opt-in; load it by including `@elizaos/plugin-messages` in the agent's plugin list. It is marked `androidOnly: true` in its elizaos app metadata, so its overlay registration is gated by the `isElizaOS()` runtime check at `src/register.ts`.
 
 ## Plugin surface
 
@@ -12,11 +12,9 @@ This plugin registers **views only** — no actions, providers, evaluators, serv
 
 | View ID | Label | View type | Component export | Path |
 |---|---|---|---|---|
-| `messages` | Messages | (standard) | `MessagesPluginView` | `/messages` |
-| `messages` | Messages XR | `xr` | `MessagesPluginView` | `/messages` |
-| `messages` | Messages TUI | `tui` | `MessagesTuiView` | `/messages/tui` |
+| `messages` | Messages | `gui` | `MessagesView` | `/messages` |
 
-All three bundle paths point to `dist/views/bundle.js` (built by `build:views`).
+The bundle path points to `dist/views/bundle.js` (built by `build:views`).
 
 Additionally registers an **overlay app** (`messagesApp`) via `@elizaos/ui`'s `registerOverlayApp` on elizaOS-capable runtimes. The overlay lazy-loads `MessagesAppView` from `./components/MessagesAppView`.
 
@@ -24,10 +22,9 @@ Additionally registers an **overlay app** (`messagesApp`) via `@elizaos/ui`'s `r
 
 ```
 src/
-  plugin.ts              Plugin object — defines the three views registered with @elizaos/core
+  plugin.ts              Plugin object — defines the GUI view registered with @elizaos/core
   index.ts               Public package entry — re-exports plugin, register, ui
-  register.ts            Side-effect entry — calls registerMessagesApp() when isElizaOS()
-  register-terminal-view.tsx  Registers the messages view for terminal rendering via @elizaos/tui
+  register.ts            No-op appRegister entry (kept for the renderer manifest scan)
   ui.ts                  Re-exports MessagesAppView, MessagesPluginView, messagesApp, registerMessagesApp
   components/
     messages-app.ts      OverlayApp descriptor + registerMessagesApp() helper
@@ -42,7 +39,6 @@ src/
     messages-app.test.ts              Tests for overlay app descriptor/registration
     messages-bridge-contract.test.ts  Contract tests for the Capacitor bridge
     MessagesSpatialView.test.tsx      Tests for the spatial view
-    MessagesTuiView.test.ts           Vitest tests for TUI view and interact() terminal capabilities
 ```
 
 ### Key exports

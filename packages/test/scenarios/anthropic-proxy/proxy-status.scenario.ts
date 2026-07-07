@@ -55,7 +55,7 @@ export default scenario({
             response: {
               text: "",
               thought: "status",
-              messageToUser: "",
+              messageToUser: "Checked the Anthropic proxy status.",
               completed: true,
               finishReason: "tool-calls",
               toolCalls: [

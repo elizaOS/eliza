@@ -196,8 +196,29 @@ type ScenarioRoomDefinition = {
   userName: string;
 };
 
+// Mirrors the subset of the real (display-dependent) ComputerUseService that
+// scenario providers/actions read through `getService("computeruse")`: the
+// computer-state and scene providers and the COMPUTER_USE progress/CLIPBOARD
+// paths call these at compose/run time, so a stub missing any of them throws
+// mid-turn (e.g. `getApprovalSnapshot is not a function`).
 type ScenarioComputerUseService = {
   getCapabilities: () => Record<string, { available: boolean; tool: string }>;
+  getScreenDimensions: () => { width: number; height: number };
+  getDisplays: () => Array<{
+    id: number;
+    name: string;
+    bounds?: unknown;
+    scaleFactor?: number;
+    primary?: boolean;
+  }>;
+  getApprovalSnapshot: () => {
+    mode: string;
+    pendingCount: number;
+    pendingApprovals: Array<{ id: string; command?: string }>;
+  };
+  getRecentActions: () => Array<{ action: string; success: boolean }>;
+  getCurrentScene: () => null;
+  refreshScene: (reason: string) => Promise<null>;
   executeDesktopAction: (params: Record<string, unknown>) => Promise<unknown>;
   executeBrowserAction: (params: Record<string, unknown>) => Promise<unknown>;
   executeFileAction: (params: Record<string, unknown>) => Promise<unknown>;
@@ -1219,8 +1240,19 @@ function createScenarioComputerUseService(): ScenarioComputerUseService {
         browser: { available: true, tool: "scenario-browser" },
         terminal: { available: true, tool: "scenario-terminal" },
         fileSystem: { available: true, tool: "scenario-file-system" },
+        clipboard: { available: true, tool: "scenario-clipboard" },
       };
     },
+    getScreenDimensions: () => ({ width: 2560, height: 1600 }),
+    getDisplays: () => [],
+    getApprovalSnapshot: () => ({
+      mode: "full_control",
+      pendingCount: 0,
+      pendingApprovals: [],
+    }),
+    getRecentActions: () => [],
+    getCurrentScene: () => null,
+    refreshScene: async () => null,
     executeDesktopAction: run,
     executeBrowserAction: run,
     executeFileAction: run,

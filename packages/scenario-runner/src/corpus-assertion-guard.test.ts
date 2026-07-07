@@ -307,7 +307,6 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   // packages/test/scenarios/lifeops.personas and added here in the same commit.
   "persona.night-owl-anchored-day",
   "persona.night-owl-quiet-hours-sleep-protection",
-  "ainex.stand",
   "anthropic-proxy.proxy-status",
   "benchmarks.osworld-action",
   "commands.help-command",
@@ -360,7 +359,6 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "shift-rotation-reanchor-protects-new-sleep-window",
   "shift-rotation-sleep-protection-holds-low-priority-nudge",
   "shift-rotation-wake-anchor-follows-shifted-window",
-  "shopify.list-products",
   "suno.generate-music",
   "task-coordinator.orchestrator-status",
   "tunnel.status",

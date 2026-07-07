@@ -1,3 +1,12 @@
+/**
+ * Web fallback for the `ElizaAppBlocker` Capacitor plugin, loaded when the app
+ * runs outside a native Android/iOS shell where Family Controls / Usage
+ * Access are unavailable. Every method returns an explicit
+ * not-applicable/unavailable result rather than throwing, so a
+ * Capacitor-based Eliza agent app can call `AppBlocker` uniformly across
+ * platforms; input validation still runs here so malformed `blockApps`
+ * options are caught the same way on web as on the native bridges.
+ */
 import { WebPlugin } from "@capacitor/core";
 import type {
   AppBlockerPermissionResult,

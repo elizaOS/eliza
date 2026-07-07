@@ -13,8 +13,8 @@ transports populate a single SQLite DB (default `~/.birdclaw/`). Its stable
 integration surface is the CLI — "stable `--json` envelopes go to stdout,
 progress and warnings to stderr". This plugin wraps that CLI with a service,
 gives the agent an owner-gated `BIRDCLAW` action, serves `/api/birdclaw/*`
-routes, and registers the **Birdclaw** launcher view (GUI + XR + TUI from one
-spatial component).
+routes, and registers the **Birdclaw** launcher view (GUI-only shipping; `"tui"`/`"xr"` remain
+valid compatibility modality values but are not declared).
 
 Everything degrades explicitly when birdclaw is missing: the view renders a
 setup screen with install guidance, data routes return
@@ -68,7 +68,7 @@ tile never appears where it cannot work). Force with config
 ### View
 
 - `birdclaw` — `BirdclawView`, path `/birdclaw`, bundle
-  `dist/views/bundle.js`, modalities `["gui","xr","tui"]`. Tabs: Timeline /
+  `dist/views/bundle.js`, modalities `["gui"]`. Tabs: Timeline /
   Mentions / Posted / Likes / Bookmarks / Inbox; per-tab Sync button (shown
   only when a live transport is installed); needs-reply nudge; chat handoff on
   "Ask" (per the chat-first design law, free-form search lives in the floating

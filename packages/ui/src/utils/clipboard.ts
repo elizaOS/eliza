@@ -37,8 +37,17 @@ export async function copyTextToClipboard(text: string): Promise<void> {
   if (bridged !== null) return;
 
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
+    // error-policy:J4 the async API existing does NOT mean the write succeeds:
+    // permissions policy, a non-focused document, or a headless harness reject
+    // the call at write time. That is a per-call denial, not "no clipboard" —
+    // treat it as this rung failing and fall through to the legacy execCommand
+    // path (which works in exactly those environments); only when every rung
+    // fails does the caller see the throw below.
+    const wrote = await navigator.clipboard.writeText(text).then(
+      () => true,
+      () => false,
+    );
+    if (wrote) return;
   }
 
   if (copyWithLegacyDomApi(text)) return;

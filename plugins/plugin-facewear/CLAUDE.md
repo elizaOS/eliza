@@ -58,12 +58,12 @@ The **GUI config lives in Settings → Wearables**, not the top-level launcher.
 `register.ts` registers one combined `wearables` settings section
 (`WearablesSettingsSection`, group `system`) with two internal tabs:
 `FacewearView` (XR headset manager) and `SmartglassesView` (Even Realities
-pairing + diagnostics). The `facewear`/`smartglasses` view declarations in
-`index.ts` remain (`visibleInManager:false`, `desktopTabEnabled:false`,
-modalities `xr`/`tui`) only so the agent keeps serving the in-headset XR view
-host and terminal (TUI) surfaces, and `FACEWEAR_*`/`SMARTGLASSES_*`/`XR_*`
-actions still resolve. Do **not** re-add a `gui` modality or `app.navTabs` for
-these — wearable hardware is configuration.
+pairing + diagnostics). The former `facewear`/`smartglasses` XR/TUI view
+declarations are retired (#15269): the plugin ships **no** standalone view
+declarations. `"tui"`/`"xr"` remain valid modality values for compatibility
+elsewhere, but this plugin declares none. The `FACEWEAR_*`/`SMARTGLASSES_*`/
+`XR_*` actions and the `/xr/*` routes still resolve. Do **not** re-add view
+declarations or `app.navTabs` for these — wearable hardware is configuration.
 
 ## Layout
 
@@ -71,7 +71,6 @@ these — wearable hardware is configuration.
 src/
   index.ts                    Plugin object + all exports
   register.ts                 Secondary entry for view-only imports
-  register-terminal-view.tsx  Terminal (TUI) view registration
   status-format.ts            Shared status formatting utilities
   actions/
     facewear-connect.ts       FACEWEAR_CONNECT
@@ -184,7 +183,7 @@ Legacy aliases `SMARTGLASSES_TRANSPORT`, `SMARTGLASSES_SCAN_TIMEOUT_MS`, `SMARTG
 - **`@abandonware/noble` is an optional dep.** It is unavailable in browser contexts and on some CI runners. The native module is never imported at module load — `getNobleG1Transport()` (called from `SmartglassesService` transport selection) loads it lazily via a dynamic import and returns `null` when it is missing.
 - **Transport auto-selection order:** `even-bridge` → `web-bluetooth` → `noble`. Set `FACEWEAR_SMARTGLASSES_TRANSPORT` to force one.
 - **View bundles** (`build:views`) must be built before `test` — the test script runs `build:views && emulator:build` before vitest.
-- **`emulator/`** is a separate Bun workspace. `emulator:build` runs `bun install --force` inside it. Its **XR browser-harness** files (`emulator.ts`, `types.ts`, `playwright-fixture.ts`, `mock-agent.ts`) are now thin **re-exports of the canonical `@elizaos/plugin-xr` simulator** (#9941 — exactly one XR harness); do not fork them. `device-emulator.ts` + `cli.ts` (the facewear BLE/device emulator) stay local.
+- **`emulator/`** is a separate Bun workspace. `emulator:build` runs `bun install --force` inside it, then vite-bundles `emulator.ts` → `dist/emulator.js` (the IWER browser emulator the `app-xr` Playwright specs inject). Facewear is the **single canonical home** for the XR browser emulator (#9941 — exactly one XR emulator; facewear **supersedes the retired `@elizaos/plugin-xr`**), so `emulator.ts` + its `types.ts` are the real source here, not re-exports. `device-emulator.ts` + `cli.ts` (the facewear BLE/device emulator) stay local.
 - **`app-xr/`** is the WebXR browser client deployed to headsets. It is built separately and served via the view-host route. Its e2e (`app-xr/e2e/`) drives the **real `view-host.ts` route** via `route-server.ts` (bun) — the deleted `view-server.mjs` mock no longer exists — and the **real IWER emulator** (`window.__XREmulator`) for `camera-pose.spec.ts`.
 - **Backward-compat aliases**: `smartglassesPlugin`, `smartglassesControlAction`, `smartglassesStatusAction`, `displaySmartglassesTextAction`, `smartglassesMicrophoneAction` are all re-exported from `src/index.ts` pointing at the same objects.
 - **`XR_WS_PORT_DEFAULT = 31338`** is exported from `xr-session-service.ts` and must stay in sync with the `FACEWEAR_WS_PORT` default in `agentConfig`.

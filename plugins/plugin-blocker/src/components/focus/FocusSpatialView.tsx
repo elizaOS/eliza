@@ -1,14 +1,9 @@
 /**
- * FocusSpatialView — the Focus / blocker surface authored once with the spatial
- * vocabulary, so it renders correctly wherever it is displayed:
- *
- *   - GUI / XR — mounted in `<SpatialSurface>` (DOM; XR scales up).
- *   - TUI      — rendered to real terminal lines by the agent terminal, via
- *                `registerSpatialTerminalView` (see `register-terminal-view.tsx`).
+ * FocusSpatialView — the Focus / blocker surface authored with the spatial
+ * vocabulary and mounted in `<SpatialSurface>` for the GUI surface.
  *
  * It is purely presentational (a snapshot + an action callback in, primitives
- * out) and imports only the cross-modality primitives, so it is safe to render
- * in the Node agent process where the terminal lives (no DOM/runtime imports).
+ * out) and imports only the cross-modality primitives (no DOM/runtime imports).
  */
 
 import { Button, Card, Divider, HStack, List, Text } from "@elizaos/ui/spatial";

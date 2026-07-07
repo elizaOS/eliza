@@ -10,25 +10,34 @@
  *   POST /api/interactions/shortcut   → EventType.SHORTCUT_FIRED
  *   EventType.SLASH_COMMAND_INVOKED   → (policy-silent by design)
  *     → registerProactiveInteractionDecider (real debounce timers)
- *       → small-model judge (scripted output — the judge model is not under
- *         test here; a LIVE judge trajectory is captured separately in the
- *         issue evidence)
- *         → REAL ProactiveInteractionGate (observed subclass: super.tryAdmit
- *           does all the deciding; we only record its verdicts)
- *           → REAL routeAutonomyTextToUser → memory persist + broadcast
- *             {type:"proactive-message", message:{source:"proactive-interaction"}}
+ *       → REAL ProactiveInteractionGate.wouldAdmit precheck (#14678): the
+ *         text-independent rules (cap / global + per-surface cooldown) run
+ *         BEFORE the judge and short-circuit a denial, so a suppressed switch
+ *         costs zero model calls
+ *         → small-model judge (scripted output — the judge model is not under
+ *           test here; a LIVE judge trajectory is captured separately in the
+ *           issue evidence)
+ *           → gate.tryAdmit (same checks + textual dedup; records the emission)
+ *             → REAL routeAutonomyTextToUser → humanness voice gate (#14873,
+ *               a second TEXT_SMALL pass that rephrases the comment, preserving
+ *               its exact text) → memory persist + broadcast
+ *               {type:"proactive-message", message:{source:"proactive-interaction"}}
+ *
+ * The observed gate subclass records both the wouldAdmit precheck denials and
+ * the tryAdmit verdicts; judgeCalls counts JUDGE consultations only (the voice
+ * gate reuses the same model seam but is tallied as voiceCalls).
  *
  * Sequence proves the governance for real (a virtual clock is injected via the
  * decider's documented `now` seam; the debounce timers run in real time):
- *   s1 navigate wallet (user)        → ADMITTED  → frame 1
- *   s2 navigate calendar in burst    → judge runs, gate SUPPRESSES (global cooldown)
+ *   s1 navigate wallet (user)        → ADMITTED  → frame 1 (judge + voice gate)
+ *   s2 navigate calendar in burst    → SUPPRESSED pre-judge (global cooldown)
  *   s3 slash command                 → policy-silent (judge never called)
  *   s4 control shortcut (focus-composer) → policy-silent (judge never called)
  *   s5 navigate settings (agent-initiated) → skipped (already acknowledged)
- *   s6 +130s shortcut open-command-palette → ADMITTED → frame 2
- *   s7 +260s navigate wallet again   → SUPPRESSED (per-surface cooldown)
+ *   s6 +130s shortcut open-command-palette → ADMITTED → frame 2 (judge + voice)
+ *   s7 +260s navigate wallet again   → SUPPRESSED pre-judge (per-surface cooldown)
  *   s8 chattiness=off, navigate      → suppressed before the judge (kill switch)
- *   s9 +760s same shortcut, same text → SUPPRESSED (textual dedup)
+ *   s9 +760s same shortcut, same text → judge runs, tryAdmit SUPPRESSES (dedup)
  *
  * PHASE 2 (headless Chromium): feeds the REAL captured frames through the real
  * `parseProactiveMessageEvent` parser into the real ChatTranscript/ChatMessage
@@ -95,9 +104,24 @@ const CONVERSATION_ID = "conv-1";
 const T0 = Date.UTC(2026, 6, 2, 12, 0, 0);
 let vnow = T0;
 
-/** Real gate, observed: super.tryAdmit makes every decision; we just log it. */
+/**
+ * Real gate, observed: super.wouldAdmit / super.tryAdmit make every decision; we
+ * only record their verdicts. Since #14678 the decider runs the text-independent
+ * precheck (wouldAdmit: cap / global + per-surface cooldown) BEFORE the judge and
+ * short-circuits a cooldown/cap denial without ever reaching tryAdmit — so a
+ * suppressed interaction's operative verdict now comes from wouldAdmit. Record
+ * every precheck DENIAL plus every tryAdmit result; a wouldAdmit "ok" is followed
+ * by the real tryAdmit, so it is not logged (the tryAdmit result is the truth).
+ */
 const gateDecisions = [];
 class ObservedGate extends ProactiveInteractionGate {
+  wouldAdmit(surface, now) {
+    const result = super.wouldAdmit(surface, now);
+    if (!result.admitted) {
+      gateDecisions.push({ surface, text: null, atMs: now - T0, ...result });
+    }
+    return result;
+  }
   tryAdmit(input) {
     const result = super.tryAdmit(input);
     gateDecisions.push({
@@ -110,15 +134,21 @@ class ObservedGate extends ProactiveInteractionGate {
   }
 }
 
-// Scripted small-model judge outputs, consumed in call order.
+// Scripted small-model JUDGE outputs, consumed in judge-call order. The judge is
+// only consulted for interactions that clear the gate's text-independent precheck
+// (#14678): s1 (wallet), s6 (shortcut), s9 (dedup candidate). s2 (global
+// cooldown) and s7 (per-surface cooldown) are suppressed pre-judge and never
+// reach it, so they consume no output here.
 const judgeOutputs = [
   '{"comment":"Want me to pull your latest balances?","delivery":"chat","confidence":0.9,"urgency":"medium"}',
-  '{"comment":"Here is a calendar tip.","delivery":"chat","confidence":0.9,"urgency":"medium"}',
   '{"comment":"Want a hand finding something?","delivery":"chat","confidence":0.85,"urgency":"medium"}',
-  '{"comment":"Want me to refresh your wallet view?","delivery":"chat","confidence":0.9,"urgency":"medium"}',
   '{"comment":"Want a hand finding something?","delivery":"chat","confidence":0.85,"urgency":"medium"}',
 ];
 let judgeCalls = 0;
+// Deliveries that passed through the humanness voice gate (#14873) on the way
+// out. Counted separately from the judge so judgeCalls stays a clean tally of
+// judge consultations (see useModel below).
+let voiceCalls = 0;
 
 const events = {};
 const frames = [];
@@ -140,7 +170,26 @@ const runtime = {
     };
     await Promise.all(handlers.map((h) => h(payload)));
   },
-  async useModel() {
+  async useModel(_modelType, params) {
+    const prompt = typeof params?.prompt === "string" ? params.prompt : "";
+    // The humanness voice gate (#14873, core/services/message/voice-gate.ts)
+    // rephrases every admitted proactive comment on the delivery path through
+    // this SAME TEXT_SMALL seam before broadcast. It is not under test here, so
+    // return the message it was handed verbatim — a faithful no-op "voicing"
+    // that honors the gate's own "preserve every exact value verbatim" contract
+    // and keeps judgeCalls a clean count of JUDGE consultations only. The gate
+    // prompt uniquely carries the raw text between a "Message to rewrite:" line
+    // and a trailing "Rewritten message:" cue.
+    const voiceCue = "Rewritten message:";
+    if (prompt.includes(voiceCue)) {
+      voiceCalls += 1;
+      const marker = "Message to rewrite:\n";
+      const start = prompt.indexOf(marker);
+      const end = prompt.lastIndexOf(`\n\n${voiceCue}`);
+      return start >= 0 && end > start
+        ? prompt.slice(start + marker.length, end)
+        : prompt;
+    }
     judgeCalls += 1;
     return judgeOutputs[judgeCalls - 1] ?? '{"comment":null}';
   },
@@ -240,12 +289,20 @@ assert(
   createdMemories.length === 1,
   "s1: the admitted comment was persisted to the conversation",
 );
+assert(
+  voiceCalls === 1,
+  "s1: the admitted comment passed through the humanness voice gate",
+);
 
-// s2 — immediate second navigate: the judge runs but the REAL gate suppresses
-// on the global cooldown (120s at "subtle").
+// s2 — immediate second navigate: the text-independent precheck (#14678)
+// suppresses on the global cooldown (120s at "subtle") BEFORE the judge, so no
+// model call is spent and the burst produces no second frame.
 await postNavigate("calendar", { source: "user" });
 await flushDebounce();
-assert(judgeCalls === 2, "s2: burst switch still consulted the judge");
+assert(
+  judgeCalls === 1,
+  "s2: burst switch was suppressed pre-judge (no model call spent)",
+);
 assert(
   proactiveFrames().length === 1,
   "s2: burst switch was rate-limited (no second frame)",
@@ -253,7 +310,7 @@ assert(
 assert(
   gateDecisions.at(-1)?.admitted === false &&
     gateDecisions.at(-1)?.reason === "global cooldown",
-  `s2: gate recorded the suppression reason (${gateDecisions.at(-1)?.reason})`,
+  `s2: gate precheck recorded the suppression reason (${gateDecisions.at(-1)?.reason})`,
 );
 
 // s3 — explicit slash command: policy-silent, judge never called.
@@ -263,7 +320,7 @@ await runtime.emitEvent(EventType.SLASH_COMMAND_INVOKED, {
 });
 await sleep(50);
 assert(
-  judgeCalls === 2 && proactiveFrames().length === 1,
+  judgeCalls === 1 && proactiveFrames().length === 1,
   "s3: slash command stayed policy-silent (no judge call, no frame)",
 );
 
@@ -271,7 +328,7 @@ assert(
 await postShortcut("focus-composer");
 await sleep(50);
 assert(
-  judgeCalls === 2 && proactiveFrames().length === 1,
+  judgeCalls === 1 && proactiveFrames().length === 1,
   "s4: control shortcut (focus-composer) never reached the judge",
 );
 
@@ -279,7 +336,7 @@ assert(
 await postNavigate("settings", { source: "agent" });
 await flushDebounce();
 assert(
-  judgeCalls === 2 && proactiveFrames().length === 1,
+  judgeCalls === 1 && proactiveFrames().length === 1,
   "s5: agent-initiated switch produced no proactive comment",
 );
 
@@ -287,19 +344,24 @@ assert(
 vnow = T0 + 130_000;
 await postShortcut("open-command-palette");
 await flushDebounce();
-assert(judgeCalls === 3, "s6: intent-bearing shortcut reached the judge");
+assert(judgeCalls === 2, "s6: intent-bearing shortcut reached the judge");
 assert(
   proactiveFrames().length === 2 &&
     proactiveFrames()[1].message.text === "Want a hand finding something?",
   "s6: clock-advanced shortcut was admitted (second frame)",
 );
+assert(
+  voiceCalls === 2,
+  "s6: the second admitted comment also passed through the voice gate",
+);
 
 // s7 — wallet again: global cooldown has passed, but the per-surface cooldown
-// (10min at "subtle") still suppresses.
+// (10min at "subtle") still suppresses — and, being text-independent, does so at
+// the precheck BEFORE the judge (#14678).
 vnow = T0 + 260_000;
 await postNavigate("wallet", { source: "user" });
 await flushDebounce();
-assert(judgeCalls === 4, "s7: repeat wallet switch consulted the judge");
+assert(judgeCalls === 2, "s7: repeat wallet switch was suppressed pre-judge");
 assert(
   proactiveFrames().length === 2 &&
     gateDecisions.at(-1)?.admitted === false &&
@@ -314,16 +376,18 @@ vnow = T0 + 400_000;
 await postNavigate("calendar", { source: "user" });
 await flushDebounce();
 assert(
-  judgeCalls === 4 && proactiveFrames().length === 2,
+  judgeCalls === 2 && proactiveFrames().length === 2,
   "s8: chattiness=off suppressed the interaction before the judge",
 );
 chattiness = "subtle";
 
-// s9 — same shortcut, same judge text, past both cooldowns: textual dedup.
+// s9 — same shortcut, same judge text, past both cooldowns: the text-independent
+// precheck admits, so the judge IS consulted, and only then does tryAdmit reject
+// on textual dedup (the one rule that needs the candidate text).
 vnow = T0 + 760_000;
 await postShortcut("open-command-palette");
 await flushDebounce();
-assert(judgeCalls === 5, "s9: dedup candidate consulted the judge");
+assert(judgeCalls === 3, "s9: dedup candidate consulted the judge");
 assert(
   proactiveFrames().length === 2 &&
     gateDecisions.at(-1)?.admitted === false &&

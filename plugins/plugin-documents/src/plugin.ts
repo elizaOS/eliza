@@ -115,7 +115,7 @@ export const documentsPlugin: Plugin = {
       description: "Browse and search the document store.",
       icon: "FileText",
       path: "/documents",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven

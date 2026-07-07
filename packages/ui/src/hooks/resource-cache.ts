@@ -16,6 +16,7 @@
  * It is NOT a generic query library. No retries, no GC timers, no query
  * invalidation graph — just the minimum that makes navigation feel instant.
  */
+import { shellLocalStorage } from "../surface-realm-channel";
 
 interface CacheEntry<T> {
   data: T;
@@ -94,7 +95,7 @@ function readPersisted<T>(key: string): CachedSnapshot<T> | undefined {
 function writePersisted<T>(key: string, snapshot: CachedSnapshot<T>): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
+    shellLocalStorage.setItem(
       `${PERSIST_PREFIX}${key}`,
       JSON.stringify(snapshot),
     );
@@ -194,7 +195,7 @@ export function invalidate(key: string): void {
   inflight.delete(key);
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.removeItem(`${PERSIST_PREFIX}${key}`);
+      shellLocalStorage.removeItem(`${PERSIST_PREFIX}${key}`);
     } catch {
       // ignore
     }

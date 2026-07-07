@@ -147,8 +147,12 @@ vi.mock("@elizaos/ui/utils", () => ({
   parsePositiveInteger: (value: string) => Number.parseInt(value, 10),
 }));
 
-// Primitives the REAL panels (rendered by FineTuningView) import — these panels
-// are intentionally NOT mocked so the view boots with the production tree.
+// Primitives FineTuningView imports straight from the barrel — its own
+// AgentTextAreaField/AgentNativeSelect render Textarea and the Select family
+// from here (the sub-panels reach for the /ui/select and /ui/settings-controls
+// subpaths mocked below). Every barrel symbol the view references must be
+// present or vitest's mock proxy throws "No <name> export" and aborts the whole
+// render before any assertion can run.
 vi.mock("@elizaos/ui/components", () => ({
   Button: ({
     children,
@@ -158,6 +162,21 @@ vi.mock("@elizaos/ui/components", () => ({
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
     React.createElement("input", props),
   registerDetailExtension: vi.fn(),
+  Select: ({ children }: { children: React.ReactNode }) =>
+    React.createElement("select", {}, children),
+  SelectContent: ({ children }: { children: React.ReactNode }) =>
+    React.createElement(React.Fragment, {}, children),
+  SelectItem: ({
+    value,
+    children,
+  }: {
+    value: string;
+    children: React.ReactNode;
+  }) => React.createElement("option", { value }, children),
+  SelectTrigger: () => null,
+  SelectValue: () => null,
+  Textarea: (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) =>
+    React.createElement("textarea", props),
 }));
 
 vi.mock("@elizaos/ui/components/ui/select", () => ({

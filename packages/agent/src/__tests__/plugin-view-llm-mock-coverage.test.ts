@@ -64,10 +64,9 @@ function readXrRatchetCases(): PluginViewMockCase[] {
   const match = source.match(
     /const KNOWN_XR_VIEW_CASES: readonly PluginViewCase\[] = \[([\s\S]*?)\];/,
   );
-  expect(
-    match?.[1],
-    "KNOWN_XR_VIEW_CASES declaration was not found",
-  ).toBeTruthy();
+  // The captured group is the empty string while the shipped XR inventory is
+  // empty (#15269), so assert on the match itself, not on group truthiness.
+  expect(match, "KNOWN_XR_VIEW_CASES declaration was not found").toBeTruthy();
   const xrCasesSource = match?.[1] ?? "";
 
   return Array.from(
@@ -117,7 +116,7 @@ describe("plugin view LLM mock coverage", () => {
     const visualCases = readVisualMatrixCases();
     const visualMockCases = PLUGIN_VIEW_LLM_MOCK_CASES.filter(isGuiOrTui);
 
-    expect(visualCases.length).toBe(59);
+    expect(visualCases.length).toBe(28);
     expect(new Set(visualCases.map(caseKey))).toEqual(
       new Set(visualMockCases.map(caseKey)),
     );
@@ -129,7 +128,9 @@ describe("plugin view LLM mock coverage", () => {
       (view) => view.viewType === "xr",
     );
 
-    expect(xrCases.length).toBe(29);
+    // The shipped XR inventory is empty (#15269); the lockstep guard keeps the
+    // mock journey list at zero XR cases until an XR view ships again.
+    expect(xrCases.length).toBe(0);
     expect(new Set(xrCases.map(caseKey))).toEqual(
       new Set(xrMockCases.map(caseKey)),
     );
@@ -146,7 +147,7 @@ describe("plugin view LLM mock coverage", () => {
       ]),
     );
 
-    expect(PLUGIN_VIEW_LLM_MOCK_CASES.length).toBe(88);
+    expect(PLUGIN_VIEW_LLM_MOCK_CASES.length).toBe(28);
     expect(PLUGIN_VIEW_LLM_MOCK_JOURNEYS).toHaveLength(
       PLUGIN_VIEW_LLM_MOCK_CASES.length,
     );

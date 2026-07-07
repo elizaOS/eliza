@@ -29,6 +29,8 @@ type InteractionOwner = {
   signals: readonly string[];
 };
 
+// Shipped TUI inventory is empty (#15269); this owner remains as the
+// classification a reintroduced TUI case would pick up automatically.
 const DEFAULT_TUI_OWNER: InteractionOwner = {
   spec: "packages/agent/src/__tests__/plugin-tui-view-coverage.test.ts",
   proves:
@@ -203,14 +205,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["Polymarket"],
     },
   ],
-  shopify: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves:
-        "Exercises products, create product dialog, orders, inventory, customers, and search controls.",
-      signals: ["Shopify create product", "Shopify inventory increase"],
-    },
-  ],
   wallet: [
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
@@ -281,23 +275,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["host lifecycle", "capability refresh", "screen-token-1"],
     },
   ],
-  "social-alpha": [
-    {
-      spec: "packages/app/test/ui-smoke/apps-session-direct-a.spec.ts",
-      proves:
-        "Exercises the manager-visible Social Alpha route through the app-session direct smoke matrix.",
-      signals: ["DIRECT_ROUTE_CASES", "escapeRegExp"],
-    },
-    {
-      spec: "plugins/plugin-social-alpha/src/index.test.ts",
-      proves:
-        "Locks the Social Alpha leaderboard view manifest, component export, and manager visibility contract.",
-      signals: [
-        "declares the Social Alpha leaderboard view",
-        "SocialAlphaView",
-      ],
-    },
-  ],
   "task-coordinator": [
     {
       spec: "packages/app/test/ui-smoke/task-coordinator-gui-interactions.spec.ts",
@@ -361,6 +338,12 @@ const GUI_INTERACTION_OWNERS: Readonly<
 // hijacks the `/character/documents` route. It stays tracked debt until that
 // view path is disambiguated.
 const INTERACTION_DEBT: Readonly<Record<string, string>> = {
+  "cloud:gui":
+    "Eliza Cloud's view fronts the hosted cloud dashboard (external auth); " +
+    "newly ratchet-tracked by the #15269 sweep, no keyless interaction spec yet.",
+  "lifeops-live-test:gui":
+    "HITL live-validation view (needs real connector credentials + a human in " +
+    "the loop, #11632); no keyless interaction spec can drive it yet.",
   "documents:gui":
     "The decomposed documents view path `/documents` collides with the built-in " +
     "`documents` tab (/character/documents) via App.tsx findView, so it cannot be " +
@@ -368,7 +351,7 @@ const INTERACTION_DEBT: Readonly<Record<string, string>> = {
     "disambiguated view path before a keyless interaction spec can drive it.",
 };
 
-const MAX_INTERACTION_DEBT = 1;
+const MAX_INTERACTION_DEBT = 3;
 
 const KEYLESS_INTERACTION_OWNER_DEBT = new Set([
   "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",
@@ -428,7 +411,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(57);
+    expect(visualCases.length).toBe(28);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

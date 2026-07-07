@@ -14,18 +14,6 @@ import type {
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  hasOwnerAccess: vi.fn(async () => true),
-}));
-
-vi.mock("@elizaos/agent", () => ({
-  hasOwnerAccess: mocks.hasOwnerAccess,
-}));
-
-vi.mock("@elizaos/agent/security/access", () => ({
-  hasOwnerAccess: mocks.hasOwnerAccess,
-}));
-
 import {
   __resetInboxFetchersForTests,
   type InboxItem,
@@ -33,9 +21,24 @@ import {
   setInboxFetchers,
 } from "../src/actions/inbox.js";
 
+// The action gates on the canonical owner via core's fail-closed
+// `hasRoleAccess(runtime, message, "OWNER")` (#14931), which resolves the owner
+// from the `ELIZA_ADMIN_ENTITY_ID` runtime setting. The harness registers
+// OWNER_ENTITY_ID as that owner and sends messages from it so the OWNER gate
+// passes; the deny path is exercised with a non-owner connector sender below.
+const OWNER_ENTITY_ID = "owner-1" as UUID;
+
 function makeRuntime(): IAgentRuntime {
   return {
     agentId: "agent-inbox-test" as UUID,
+    getSetting: (key: string) =>
+      key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER_ENTITY_ID : undefined,
+    getRoom: async () => null,
+    getWorld: async () => null,
+    getEntityById: async () => null,
+    getComponents: async () => [],
+    getMemories: async () => [],
+    getRelationships: async () => [],
     logger: {
       info: () => undefined,
       warn: () => undefined,
@@ -45,12 +48,16 @@ function makeRuntime(): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
-function makeMessage(text = "show my inbox"): Memory {
+function makeMessage(
+  text = "show my inbox",
+  overrides: Partial<Memory> = {},
+): Memory {
   return {
     id: "msg-inbox-1" as UUID,
-    entityId: "owner-1" as UUID,
+    entityId: OWNER_ENTITY_ID,
     roomId: "room-inbox-1" as UUID,
     content: { text },
+    ...overrides,
   } as Memory;
 }
 
@@ -86,7 +93,6 @@ function makeItem(
 describe("INBOX umbrella action — cross-channel inbox", () => {
   beforeEach(() => {
     __resetInboxFetchersForTests();
-    mocks.hasOwnerAccess.mockReset().mockResolvedValue(true);
   });
 
   describe("metadata", () => {
@@ -110,8 +116,11 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
     });
 
     it("rejects callers that fail the owner-access check", async () => {
-      mocks.hasOwnerAccess.mockResolvedValueOnce(false);
-      const result = await callInbox(makeRuntime(), makeMessage(), {
+      const nonOwnerMessage = makeMessage("show my inbox", {
+        entityId: "guest-1" as UUID,
+        content: { text: "show my inbox", source: "discord" },
+      });
+      const result = await callInbox(makeRuntime(), nonOwnerMessage, {
         subaction: "list",
       });
       expect(result.success).toBe(false);

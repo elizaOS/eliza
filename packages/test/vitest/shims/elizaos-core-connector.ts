@@ -92,6 +92,18 @@ export const ModelType = {
   IMAGE_DESCRIPTION: "IMAGE_DESCRIPTION",
 } as const;
 
+// Canonical role-rank table mirroring `@elizaos/core`'s `ROLE_RANK` (roles.ts).
+// `@elizaos/ui`'s ShellRoleProvider derives its recognized role set at module
+// load via `Object.keys(ROLE_RANK)`; the real module pulls entities/logger, so
+// the shim carries the literal (matching the enum stubs above) rather than
+// re-exporting it, keeping the barrel loadable in the keyless lane.
+export const ROLE_RANK = {
+  GUEST: 1,
+  USER: 2,
+  ADMIN: 3,
+  OWNER: 4,
+} as const;
+
 export function stringToUuid(value: string): string {
   const hex = createHash("sha1").update(value).digest("hex").slice(0, 32);
   return [

@@ -1,14 +1,10 @@
 /**
- * CalendarView — the single GUI/XR data wrapper for the calendar surface.
+ * CalendarView — the GUI data wrapper for the calendar surface.
  *
  * It owns the live calendar feed (via {@link useCalendarWeek}: the event list,
  * the day/week/month view mode, prev/today/next nav, and the loading/error
  * state), derives a presentational agenda from it, and renders the one
- * {@link CalendarSpatialView} inside a {@link SpatialSurface}. Omitting the
- * `modality` prop lets `SpatialSurface` auto-detect GUI vs XR via
- * `window.__elizaXRContext`, so the SAME component serves both surfaces. The
- * TUI surface renders the same `CalendarSpatialView` through the terminal
- * registry (see `register-terminal-view.tsx`).
+ * {@link CalendarSpatialView} inside a {@link SpatialSurface}.
  *
  * Selecting an event routes a chat-about-event notice through the shared
  * `setActionNotice` affordance — the same honest behavior the previous

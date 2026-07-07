@@ -775,13 +775,19 @@ function expectViewsList(
   return (status, body) => {
     if (status !== 200) return `expected 200, saw ${status}`;
     const views = arrayOfRecords(record(body)?.views);
-    const view = views.find((candidate) => {
-      return (
-        candidate.id === "views-manager" && candidate.viewType === viewType
-      );
-    });
+    // The views-manager ships GUI-only (#15269): "tui"/"xr" stay valid
+    // compatibility modalities but are no longer declared, so no tui-typed
+    // entry is registered. `listViews` still surfaces the manager in the TUI
+    // list as its GUI fallback (it returns DEFAULT_VIEW_TYPE when the requested
+    // modality has no dedicated registration), so the entry reports
+    // viewType="gui" in both lists while its terminal capabilities remain
+    // reachable for headless server-interact.
+    const view = views.find((candidate) => candidate.id === "views-manager");
     if (!view) {
-      return `expected ${viewType} views-manager registration, saw ${JSON.stringify(body)}`;
+      return `expected views-manager in ${viewType} list, saw ${JSON.stringify(body)}`;
+    }
+    if (view.viewType !== "gui") {
+      return `expected gui-only views-manager viewType, saw ${String(view.viewType)}`;
     }
     if (view.pluginName !== appControlPlugin.name) {
       return `expected pluginName=${appControlPlugin.name}, saw ${String(view.pluginName)}`;
@@ -987,7 +993,7 @@ export default scenario({
     },
     {
       kind: "api",
-      name: "app-control TUI view is registered in the real views registry",
+      name: "app-control views-manager surfaces in the TUI list as its GUI fallback",
       method: "GET",
       path: "/api/views?viewType=tui",
       expectedStatus: 200,

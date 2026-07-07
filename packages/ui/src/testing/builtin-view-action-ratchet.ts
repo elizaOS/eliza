@@ -96,7 +96,9 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "VIEW_CHARACTER_ADD_STYLE_RULE",
       "VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE",
     ],
-    maxMutationSites: 53,
+    maxMutationSites: 57,
+    notes:
+      "Identity panel added the agent name + system-prompt fields; each carries a useAgentElement/onFill agent-surface binding (agent-drivable) covered by the CHARACTER action (+53 → +57).",
   },
   {
     viewId: "logs",

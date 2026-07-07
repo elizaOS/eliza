@@ -8,7 +8,7 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
   lane: "live-only",
-  id: "i1.rupture_repair.wrong_recipient_guard",
+  id: "i1-wrong-recipient-guard",
   title: "I1 repair context stays off the wrong recipient",
   domain: "lifeops.relationships",
   tags: ["lifeops", "I1", "privacy", "wrong-recipient", "relationships"],

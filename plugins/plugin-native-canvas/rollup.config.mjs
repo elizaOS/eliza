@@ -1,3 +1,10 @@
+/**
+ * Bundles the compiled `dist/esm/index.js` output of the `ElizaCanvas`
+ * Capacitor plugin into `dist/plugin.js` (IIFE, for `<script>`/unpkg
+ * consumption) and `dist/plugin.cjs.js` (CommonJS); the ESM build comes
+ * straight from `tsc` and isn't rolled up here.
+ */
+
 import nodeResolve from "@rollup/plugin-node-resolve";
 
 const external = ["@capacitor/core"];

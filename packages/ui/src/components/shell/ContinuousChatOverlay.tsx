@@ -2,6 +2,7 @@
  * Renders the continuous chat overlay that keeps the composer and transcript
  * available across views.
  */
+import { logger } from "@elizaos/logger";
 import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
@@ -1017,14 +1018,24 @@ export function ContinuousChatOverlay({
   const conversationLoading = controller.conversationLoading ?? false;
 
   // Copy a message (reveal-row Copy). Stable identity so the memoized row isn't
-  // re-rendered every parent tick.
+  // re-rendered every parent tick. Copy is fire-and-forget UX, but the promise
+  // must still be OBSERVED: an unhandled writeText rejection (permission-denied
+  // environments) surfaces as a pageerror, which the ui-smoke diagnostics gate
+  // rightly fails.
   const handleCopyMessage = React.useCallback((text: string) => {
-    void copyTextToClipboard(text);
+    copyTextToClipboard(text).catch((err: unknown) => {
+      // error-policy:J7 best-effort copy — the failure is logged, never thrown
+      // into the gesture handler.
+      logger.warn({ err }, "[ContinuousChatOverlay] copy to clipboard failed");
+    });
   }, []);
   // Press-and-hold copy adds a light haptic on top of the copy (the only
   // extraction affordance on touch, where there is no hover row).
   const handleLongPressCopy = React.useCallback((text: string) => {
-    void copyTextToClipboard(text);
+    copyTextToClipboard(text).catch((err: unknown) => {
+      // error-policy:J7 best-effort copy — logged, never thrown (see above).
+      logger.warn({ err }, "[ContinuousChatOverlay] copy to clipboard failed");
+    });
     detentHaptic();
   }, []);
 
@@ -1462,34 +1473,34 @@ export function ContinuousChatOverlay({
   // sheet to its content (grow-from-the-bottom) instead of a tall empty panel.
   const threadContentRef = React.useRef<HTMLDivElement>(null);
   const layoutShiftIntentTimerRef = React.useRef<number | null>(null);
-  const layoutShiftIntentArmedAtRef = React.useRef(0);
+  const layoutShiftIntentLastMotionRef = React.useRef(0);
   const markLayoutShiftIntent = React.useCallback(() => {
     const overlay = overlayRef.current;
     if (!overlay || typeof window === "undefined") return;
-    // Throttle the re-arm: this fires on EVERY threadHeight tick (60+/s for
-    // the whole of a drag or settle spring), and an unconditional
-    // setAttribute + clearTimeout + setTimeout per frame is pure churn. While
-    // a timer is already pending, re-arm at most every 100ms — the intent
-    // window still clears within ~280ms of the last motion.
-    const now = performance.now();
-    if (
-      layoutShiftIntentTimerRef.current !== null &&
-      now - layoutShiftIntentArmedAtRef.current < 100
-    ) {
-      return;
-    }
-    layoutShiftIntentArmedAtRef.current = now;
+    // Arm ONCE per motion burst (#15257): this fires on EVERY threadHeight
+    // tick (60+/s across a whole drag or settle spring). While armed, a tick
+    // only refreshes the last-motion timestamp — no attribute write, no timer
+    // churn. The single clear timer extends itself while motion continues and
+    // removes the marker ~180ms after the last tick.
+    layoutShiftIntentLastMotionRef.current = performance.now();
+    if (layoutShiftIntentTimerRef.current !== null) return;
     overlay.setAttribute(
       LAYOUT_SHIFT_INTENT_ATTR,
       LAYOUT_SHIFT_INTENT_TRANSIENT,
     );
-    if (layoutShiftIntentTimerRef.current !== null) {
-      window.clearTimeout(layoutShiftIntentTimerRef.current);
-    }
-    layoutShiftIntentTimerRef.current = window.setTimeout(() => {
-      layoutShiftIntentTimerRef.current = null;
-      overlayRef.current?.removeAttribute(LAYOUT_SHIFT_INTENT_ATTR);
-    }, 180);
+    const scheduleClear = (delay: number) => {
+      layoutShiftIntentTimerRef.current = window.setTimeout(() => {
+        const since =
+          performance.now() - layoutShiftIntentLastMotionRef.current;
+        if (since < 180) {
+          scheduleClear(180 - since);
+          return;
+        }
+        layoutShiftIntentTimerRef.current = null;
+        overlayRef.current?.removeAttribute(LAYOUT_SHIFT_INTENT_ATTR);
+      }, delay);
+    };
+    scheduleClear(180);
   }, []);
   // Publish the RESTING composer footprint to --eliza-continuous-chat-clearance
   // so content below (home widgets, launcher tiles) always reserves exactly the
@@ -3014,6 +3025,68 @@ export function ContinuousChatOverlay({
     ],
   );
 
+  // Trackpad two-finger swipe steps the sheet through its detents
+  // (pill ↔ input ↔ half ↔ full ↔ maximized) — the macOS-feel complement to
+  // the pointer drag. Wheel events accumulate with a short decay and step once
+  // per threshold with a cooldown, so a single physical swipe moves ONE detent
+  // (no accidental multi-jumps). Scoped to the sheet chrome: events that
+  // originate inside the transcript scroller belong to transcript scrolling
+  // and are ignored here, so reading history never resizes the sheet.
+  const wheelStepAccRef = React.useRef(0);
+  const wheelStepCooldownRef = React.useRef(0);
+  const wheelStepDecayRef = React.useRef<number | null>(null);
+  const onSheetWheel = React.useCallback(
+    (e: React.WheelEvent) => {
+      if (firstRunOpen || draggingRef.current) return;
+      if (
+        e.target instanceof Element &&
+        e.target.closest("#continuous-thread")
+      ) {
+        return;
+      }
+      const now = performance.now();
+      if (now < wheelStepCooldownRef.current) return;
+      if (wheelStepDecayRef.current !== null) {
+        window.clearTimeout(wheelStepDecayRef.current);
+      }
+      wheelStepDecayRef.current = window.setTimeout(() => {
+        wheelStepAccRef.current = 0;
+        wheelStepDecayRef.current = null;
+      }, 250);
+      wheelStepAccRef.current += e.deltaY;
+      const STEP_PX = 60;
+      const acc = wheelStepAccRef.current;
+      if (Math.abs(acc) < STEP_PX) return;
+      wheelStepAccRef.current = 0;
+      wheelStepCooldownRef.current = now + 450;
+      // Natural-scroll semantics: swiping UP on the trackpad (content up,
+      // deltaY > 0) grows the sheet; swiping down shrinks it.
+      const grow = acc > 0;
+      if (grow) {
+        if (pilled) goToDetent("collapsed");
+        else if (!sheetOpen) goToDetent("half");
+        else if (!expanded) goToDetent("full");
+        else if (!maximized) maximizeFromPull();
+      } else {
+        if (maximized) restoreFromMaximized();
+        else if (expanded) goToDetent("half");
+        else if (sheetOpen) goToDetent("collapsed");
+        else if (!pilled) collapseToPill();
+      }
+    },
+    [
+      firstRunOpen,
+      pilled,
+      sheetOpen,
+      expanded,
+      maximized,
+      goToDetent,
+      maximizeFromPull,
+      restoreFromMaximized,
+      collapseToPill,
+    ],
+  );
+
   // First-run onboarding pin + release. While onboarding is active the sheet
   // stays pinned FULL — a true full-screen chat (the seeded greeting/choices
   // own the screen and the chat is undismissable; every collapse path below is
@@ -3973,7 +4046,13 @@ export function ContinuousChatOverlay({
       // continuous pull reads pill → input → chat (and a flick-up no longer
       // flashes a chat sliver, since the thread only grows after the morph).
       if (pilled) {
-        let up = Math.max(0, effOffset);
+        // FLOOR consumption (mirror of the ceiling rebase below): the pill is
+        // the bottom of the continuum — travel BELOW it has nothing to shrink,
+        // so absorb it into the offset base. Without this the below-floor
+        // travel was banked and a reversal had to pay it all back before the
+        // pill responded (the "drag down, drag up, sheet lags my mouse" drift).
+        if (effOffset < 0) dragOffsetBaseRef.current = offset;
+        let up = Math.max(0, offset - dragOffsetBaseRef.current);
         // The pill sits at height 0, so the raw finger travel IS the equivalent
         // pull height. Tracking it here (like the open-sheet path below) lets a
         // single held drag from the pill clear the maximize threshold — pill →
@@ -4086,6 +4165,19 @@ export function ContinuousChatOverlay({
         maxPullRawRef.current >= insetPanelMaxH + maxOverPull / 2
       ) {
         maxPullRawRef.current = 0;
+      }
+      // FLOOR consumption (mirror of the ceiling rebase above): once the drag
+      // has consumed the whole thread AND the input→pill morph
+      // (raw < -PILL_OPEN_DISTANCE) there is nothing left to shrink — absorb
+      // further downward travel into the offset base. Banked below-floor
+      // travel meant a full-screen down-up-down-up mouse drag drifted out of
+      // sync: the sheet sat at the bottom while the pointer's banked debt was
+      // paid back pixel-for-pixel before it would rise again.
+      if (sheetOpen && raw < -PILL_OPEN_DISTANCE) {
+        const overshoot = raw + PILL_OPEN_DISTANCE; // negative
+        dragOffsetBaseRef.current += overshoot;
+        off -= overshoot;
+        raw = -PILL_OPEN_DISTANCE;
       }
       // Re-arm the maximize commit only once the pull has dropped back below the
       // inset FULL height — hysteresis so leaving a committed maximize (which
@@ -4832,6 +4924,7 @@ export function ContinuousChatOverlay({
           ref={bindPanelRef}
           aria-label="Chat composer"
           data-testid="chat-sheet"
+          onWheel={onSheetWheel}
           data-variant={sheetOpen ? "open" : "closed"}
           data-detent={detentLabel}
           data-maximized={fullBleed ? "true" : undefined}
@@ -5198,9 +5291,10 @@ export function ContinuousChatOverlay({
               >
                 {/* Message search (#14279): an in-sheet panel that covers the
                     transcript while open. Selecting a hit closes it and jumps
-                    (handleSearchJump). Only reachable via the header control,
-                    which itself only exists at half+; gate on sheetOpen so the
-                    panel never intrudes on the resting composer. */}
+                    (handleSearchJump). Reachable via the composer "+" menu
+                    ("Search chat…"), which only exists while the sheet is open;
+                    gate on sheetOpen so the panel never intrudes on the resting
+                    composer. */}
                 {searchOpen && sheetOpen ? (
                   <div
                     data-testid="chat-message-search"
@@ -5259,7 +5353,7 @@ export function ContinuousChatOverlay({
                   // horizontal scrollbar strip across the sheet on iOS — the
                   // "weird side scroll thingy." This transcript only ever scrolls
                   // vertically; pin the horizontal axis closed.
-                  className="relative flex min-h-0 w-full flex-1 touch-pan-y flex-col overflow-y-auto overflow-x-hidden overscroll-contain px-5 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[rgba(255,247,240,0.22)] [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
+                  className="scrollbar-hide relative flex min-h-0 w-full flex-1 touch-pan-y flex-col overflow-y-auto overflow-x-hidden overscroll-contain px-5 outline-none [-webkit-overflow-scrolling:touch]"
                   style={{ opacity: threadContentOpacity }}
                 >
                   {/* Empty-thread loading: a fresh/cleared chat awaiting its
@@ -5707,7 +5801,7 @@ export function ContinuousChatOverlay({
                 // blocks it cleanly like the attachment "+" (no "not-allowed"
                 // cursor on hover), and `disabled:opacity-100` keeps the
                 // placeholder legible rather than dimming it.
-                className={`max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden disabled:pointer-events-none disabled:opacity-100 ${
+                className={`scrollbar-hide max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none disabled:pointer-events-none disabled:opacity-100 ${
                   firstRunOpen
                     ? "placeholder:text-muted-strong"
                     : "placeholder:text-muted"

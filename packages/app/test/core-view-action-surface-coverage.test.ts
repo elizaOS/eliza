@@ -26,9 +26,10 @@ const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
   knowledge: {
     viewId: "documents",
     provider: "shell",
+    // The /documents route is KnowledgeView (the shell-agent-surface host) which
+    // mounts the standalone DocumentsView + its upload controls (#13594).
     files: [
-      "packages/ui/src/components/character/CharacterEditor.tsx",
-      "packages/ui/src/components/character/CharacterHubView.tsx",
+      "packages/ui/src/components/pages/KnowledgeView.tsx",
       "packages/ui/src/components/pages/DocumentsView.tsx",
       "packages/ui/src/components/pages/documents-upload.tsx",
     ],
@@ -66,9 +67,12 @@ const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
   automations: {
     viewId: "automations",
     provider: "shell",
+    // The feed has no create CTA by design (#13597 — the agent re-creates a
+    // workflow from chat instead), so its agent-addressable controls are the
+    // filter tabs, per-row open, and per-row run-workflow.
     files: ["packages/ui/src/components/pages/AutomationsFeed.tsx"],
-    minAgentElements: 4,
-    requiredSnippets: ["action-new", "run-workflow-"],
+    minAgentElements: 3,
+    requiredSnippets: ["run-workflow-"],
   },
   orchestrator: {
     viewId: "orchestrator",
@@ -159,6 +163,9 @@ const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
   },
 };
 
+// Keyed and ordered to mirror the canonical SETTINGS_SECTION_META (the
+// `settings subsection agent-surface coverage` gate asserts the keys equal
+// REQUIRED_SETTINGS_SECTION_IDS, which itself tracks that meta).
 const SETTINGS_SECTION_OWNER_FILES: Readonly<
   Record<string, readonly string[]>
 > = {
@@ -175,7 +182,6 @@ const SETTINGS_SECTION_OWNER_FILES: Readonly<
   capabilities: ["packages/ui/src/components/settings/CapabilitiesSection.tsx"],
   apps: ["packages/ui/src/components/settings/AppsManagementSection.tsx"],
   connectors: ["packages/ui/src/components/settings/ConnectorsSection.tsx"],
-  runtime: ["packages/ui/src/components/settings/RuntimeSettingsSection.tsx"],
   appearance: [
     "packages/ui/src/components/settings/AppearanceSettingsSection.tsx",
   ],
@@ -183,27 +189,31 @@ const SETTINGS_SECTION_OWNER_FILES: Readonly<
     "packages/ui/src/components/settings/BackgroundSettingsSection.tsx",
     "packages/ui/src/components/settings/BackgroundSettingsControls.tsx",
   ],
-  "remote-plugins": [
-    "packages/ui/src/components/settings/RemotePluginHostSection.tsx",
+  notifications: [
+    "packages/ui/src/components/settings/WebPushSettingsSection.tsx",
   ],
+  runtime: ["packages/ui/src/components/settings/RuntimeSettingsSection.tsx"],
   "wallet-rpc": [
     "packages/ui/src/components/settings/WalletRpcSection.tsx",
     "packages/ui/src/components/settings/WalletKeysSection.tsx",
     "packages/ui/src/components/pages/ConfigPageView.tsx",
   ],
+  "remote-plugins": [
+    "packages/ui/src/components/settings/RemotePluginHostSection.tsx",
+  ],
   updates: ["packages/ui/src/components/pages/ReleaseCenterView.tsx"],
   advanced: ["packages/ui/src/components/settings/AdvancedSection.tsx"],
-  "app-permissions": [
-    "packages/ui/src/components/settings/AppPermissionsSection.tsx",
+  secrets: [
+    "packages/ui/src/components/settings/SecretsManagerSection.tsx",
+    "packages/ui/src/components/settings/settings-agent-rows.tsx",
+    "packages/ui/src/components/settings/VaultInventoryPanel.tsx",
   ],
   permissions: [
     "packages/ui/src/components/settings/PermissionsSection.tsx",
     "packages/ui/src/components/settings/permission-controls.tsx",
   ],
-  secrets: [
-    "packages/ui/src/components/settings/SecretsManagerSection.tsx",
-    "packages/ui/src/components/settings/settings-agent-rows.tsx",
-    "packages/ui/src/components/settings/VaultInventoryPanel.tsx",
+  "app-permissions": [
+    "packages/ui/src/components/settings/AppPermissionsSection.tsx",
   ],
   security: ["packages/ui/src/components/settings/SecuritySettingsSection.tsx"],
 };

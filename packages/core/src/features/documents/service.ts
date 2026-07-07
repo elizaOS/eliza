@@ -935,6 +935,7 @@ export class DocumentService extends Service {
 		scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		searchMode?: SearchMode,
 		accessContext?: AccessContext,
+		options?: { turnMessageId?: UUID },
 	): Promise<StoredDocument[]> {
 		if (!message.content.text || message.content.text.trim().length === 0) {
 			logger.warn("Invalid or empty message content for document query");
@@ -969,11 +970,23 @@ export class DocumentService extends Service {
 		}
 
 		if (effectiveMode === "vector") {
-			return this._vectorSearch(queryText, filterScope, message, accessContext);
+			return this._vectorSearch(
+				queryText,
+				filterScope,
+				message,
+				accessContext,
+				options?.turnMessageId,
+			);
 		}
 
 		// hybrid: vector + BM25 combined
-		return this._hybridSearch(queryText, filterScope, message, accessContext);
+		return this._hybridSearch(
+			queryText,
+			filterScope,
+			message,
+			accessContext,
+			options?.turnMessageId,
+		);
 	}
 
 	/** Pure vector (cosine-similarity) search. */
@@ -982,11 +995,16 @@ export class DocumentService extends Service {
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		message?: Memory,
 		accessContext?: AccessContext,
+		turnMessageId?: UUID,
 	): Promise<StoredDocument[]> {
 		// Bound the recall embed and fail open to keyword/BM25 recall on a
 		// slow/unavailable embed (issue #47): a slow embed costs recall richness,
-		// never reply latency. `embedRecallQuery` caches + dedupes per turn.
-		const embedding = await embedRecallQuery(this.runtime, queryText);
+		// never reply latency. `embedRecallQuery` caches + dedupes per turn; the
+		// pre-run augmentation caller threads `turnMessageId` so the in-run
+		// prefetch adopts this vector instead of re-embedding (#15253).
+		const embedding = await embedRecallQuery(this.runtime, queryText, {
+			messageId: turnMessageId,
+		});
 		if (!embedding) {
 			return this._keywordSearch(
 				queryText,
@@ -1088,12 +1106,17 @@ export class DocumentService extends Service {
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		message?: Memory,
 		accessContext?: AccessContext,
+		turnMessageId?: UUID,
 	): Promise<StoredDocument[]> {
 		// Bound the recall embed and fail open to keyword/BM25 recall on a
 		// slow/unavailable embed (issue #47). `_keywordSearch` is the same BM25
 		// path hybrid would otherwise blend in, so a slow embed degrades
 		// gracefully to keyword-only recall instead of blocking the reply.
-		const embedding = await embedRecallQuery(this.runtime, queryText);
+		// `turnMessageId` lets the pre-run augmentation caller warm the per-turn
+		// cache the in-run prefetch adopts (#15253).
+		const embedding = await embedRecallQuery(this.runtime, queryText, {
+			messageId: turnMessageId,
+		});
 		if (!embedding) {
 			return this._keywordSearch(
 				queryText,

@@ -21,7 +21,7 @@
       "status": "authored"
     },
     {
-      "id": "i2.mediation.neutral_schedule_options",
+      "id": "i2-neutral-schedule-options",
       "pack": "I2",
       "tier": "T2",
       "surface": "scenario-runner",
@@ -35,7 +35,7 @@
       "status": "authored"
     },
     {
-      "id": "i2.mediation.consent_before_group_message",
+      "id": "i2-consent-before-group-message",
       "pack": "I2",
       "tier": "T4",
       "surface": "scenario-runner",
@@ -49,7 +49,7 @@
       "status": "authored"
     },
     {
-      "id": "i2.mediation.private_fact_firebreak",
+      "id": "i2-private-fact-firebreak",
       "pack": "I2",
       "tier": "T4",
       "surface": "scenario-runner",
@@ -63,7 +63,7 @@
       "status": "authored"
     },
     {
-      "id": "i2.mediation.conflicting_claims_label_uncertain",
+      "id": "i2-conflicting-claims-label-uncertain",
       "pack": "I2",
       "tier": "T3",
       "surface": "scenario-runner",

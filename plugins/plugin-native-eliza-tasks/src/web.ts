@@ -1,3 +1,8 @@
+/**
+ * Web bridge surface for the ElizaTasks Capacitor plugin — browsers have no
+ * `BGTaskScheduler` equivalent, so this fallback reports the capability as
+ * unsupported rather than scheduling anything.
+ */
 import { WebPlugin } from "@capacitor/core";
 import type {
   ElizaTasksPlugin,

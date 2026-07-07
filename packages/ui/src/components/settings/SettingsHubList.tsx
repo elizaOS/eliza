@@ -51,7 +51,7 @@ export function SettingsHubList({
                   onClick={() => onSelect(section.id)}
                   className={cn(
                     "flex min-h-11 w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-                    "hover:bg-surface/80 focus-visible:bg-surface/80 focus-visible:outline-none",
+                    "hover:bg-surface/80",
                   )}
                 >
                   <span

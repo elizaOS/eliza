@@ -18,6 +18,7 @@
  */
 import { logger } from "@elizaos/logger";
 import * as React from "react";
+import { shellLocalStorage } from "../surface-realm-channel";
 import { TUTORIAL_STEP_IDS } from "./tutorial-script";
 
 const STATE_KEY = "eliza:tutorial-state";
@@ -126,7 +127,7 @@ function store(): TutorialStore {
 
 function persist(state: TutorialState): void {
   try {
-    localStorage.setItem(
+    shellLocalStorage.setItem(
       STATE_KEY,
       JSON.stringify({
         status: state.status,
@@ -136,7 +137,7 @@ function persist(state: TutorialState): void {
       }),
     );
     if (state.status === "completed") {
-      localStorage.setItem(LEGACY_COMPLETED_KEY, "1");
+      shellLocalStorage.setItem(LEGACY_COMPLETED_KEY, "1");
     }
   } catch (err) {
     // error-policy:J4 storage unavailable (private mode) — the tour still runs,

@@ -637,7 +637,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 
 	it("fills an empty voice config's missing silence with the capture default when setting RMS", async () => {
 		// Empty `messages` — setting only the RMS must seed the missing silenceMs
-		// with the canonical capture default (900ms) so the twin stays aligned.
+		// with the canonical capture default (550ms) so the twin stays aligned.
 		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
 			if (request.method === "GET") {
 				return { ok: true, data: { messages: {} } };

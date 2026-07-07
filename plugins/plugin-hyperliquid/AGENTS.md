@@ -4,7 +4,7 @@ Native Hyperliquid perpetual-market integration for elizaOS agents: status, mark
 
 ## Purpose / role
 
-Adds Hyperliquid perpetual-market capabilities to an Eliza agent. Registers an action (`PERPETUAL_MARKET`), a service (`PerpetualMarketService`), eleven HTTP routes under `/api/hyperliquid/`, and three UI views (standard, XR, TUI). Loaded opt-in via `registerAppRoutePluginLoader`; see `src/register-routes.ts`. Execution (order placement) is intentionally disabled — only read operations are implemented.
+Adds Hyperliquid perpetual-market capabilities to an Eliza agent. Registers an action (`PERPETUAL_MARKET`), a service (`PerpetualMarketService`), eleven HTTP routes under `/api/hyperliquid/`, and one GUI view. Shipped view inventory is GUI-only; `xr`/`tui` remain compatibility modality values but are not declared. Loaded opt-in via `registerAppRoutePluginLoader`; see `src/register-routes.ts`. Execution (order placement) is intentionally disabled — only read operations are implemented.
 
 ## Plugin surface
 
@@ -36,11 +36,9 @@ All routes are `rawPath: true`. POST routes always return 501 (execution disable
 | POST | `/api/hyperliquid/tpsl` | Disabled — returns 501 |
 
 ### Views (registered in `src/plugin.ts`)
-| id | viewType | Component |
+| id | modalities | Component |
 |---|---|---|
-| `hyperliquid` | default | `HyperliquidAppView` |
-| `hyperliquid` | `xr` | `HyperliquidAppView` |
-| `hyperliquid` | `tui` | `HyperliquidTuiView` |
+| `hyperliquid` | `gui` | `HyperliquidView` |
 
 ## Layout
 
@@ -50,7 +48,6 @@ src/
   plugin.ts                 Plugin object: actions, services, routes, views, dispose
   register.ts               Side-effect: imports hyperliquid-app (registers overlay app)
   register-routes.ts        Side-effect: calls registerAppRoutePluginLoader
-  register-terminal-view.tsx  Exports registerHyperliquidTerminalView / setHyperliquidTerminalSnapshot
   hyperliquid-app.ts        Overlay app definition + registerOverlayApp call
   hyperliquid-app.test.ts   Tests for overlay app registration
   hyperliquid-app-view-bundle.ts  View bundle entry helpers
@@ -62,9 +59,6 @@ src/
   ui.ts                     Public re-export barrel (HyperliquidAppView, interact, useHyperliquidState, hyperliquidApp)
   useHyperliquidState.ts    React hook; calls all four read endpoints, manages loading/error state
   useHyperliquidState.test.ts  Tests for the hook
-  HyperliquidAppView.tsx    React UI components: HyperliquidAppView (standard + XR) and HyperliquidTuiView (TUI)
-  HyperliquidAppView.interact.ts  Interaction helpers for HyperliquidAppView
-  HyperliquidTuiView.test.tsx  Unit test for TUI view
   HyperliquidVisualCopy.test.ts  Visual copy tests
   components/
     HyperliquidSpatialView.tsx   Spatial/XR view component; exports HyperliquidSpatialView, HyperliquidSnapshot, HyperliquidStatusSnapshot
@@ -125,7 +119,6 @@ The action (`PERPETUAL_MARKET`) calls the agent's local API via `resolveDesktopA
 - **Context gating:** `PERPETUAL_MARKET` validates when `state` contains a `finance`, `crypto`, `trading`, or `payments` selected context. Relevance to the user's request is handled by semantic action retrieval (the action description), not a hardcoded keyword list (#10470).
 - **`HyperliquidClient`** is created by patching `ElizaClient.prototype` at import time (`src/client.ts`). Import `"./client"` as a side effect before calling the extended methods.
 - **Overlay app registration** (`src/hyperliquid-app.ts`) happens as a side effect when `src/register.ts` is imported. The plugin entrypoint exports `src/register.ts` so this is automatic when the plugin loads.
-- **Terminal view registration** (`src/register-terminal-view.tsx`) must be called explicitly via `registerHyperliquidTerminalView()` to wire the TUI view into the terminal registry.
 - Upstream API: `https://api.hyperliquid.xyz/info` (POST, public). No API key required for market/position reads.
 - See root `AGENTS.md` for repo-wide architecture rules, logger conventions, ESM/naming standards, and git workflow.
 

@@ -1,17 +1,24 @@
 /**
- * Guards terminal (TUI) parity for every bundled plugin view. Statically parses
- * each plugin manifest's `views:` declarations from source, asserts every
- * declared TUI component has a terminal parity-capability entry and that every
- * gui view ships a matching tui override (minus explicit GUI-only exemptions),
- * then registers the parsed declarations through the real views-registry and
- * drives navigate / interact / capability dispatch through `handleViewsRoutes`
- * in gui, tui, and xr modes. Harness realism: manifests are read off disk and
- * the registry + route dispatch are the real modules; a fake `IncomingMessage`
- * and a `resolveViewInteractResult` stub stand in for the async view-interact
+ * View-inventory ratchet + viewType infrastructure coverage (#15269).
+ *
+ * The shipped plugin-view inventory is GUI-only: every plugin manifest's
+ * `views:` declarations are statically parsed from source and asserted to
+ * declare no tui/xr surface. The viewType routing CONTRACT is preserved
+ * infrastructure — the views-registry and `handleViewsRoutes` still accept
+ * `viewType=tui|xr` requests — so this file also registers the real gui
+ * inventory through the real views-registry, drives navigate / interact
+ * dispatch in gui mode, and proves the designed degrade for tui/xr requests
+ * against a gui-only inventory: `getView` falls back to the gui declaration
+ * (the broadcast + response carry viewType "gui"), and unknown ids 404. No
+ * crash, no fabricated tui/xr success.
+ *
+ * Harness realism: manifests are read off disk and the registry + route
+ * dispatch are the real modules; a fake `IncomingMessage` and a
+ * `resolveViewInteractResult` stub stand in for the async view-interact
  * round-trip that a live shell client would complete.
  */
 import { EventEmitter } from "node:events";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import type http from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,12 +36,6 @@ import {
 } from "../api/views-routes.js";
 
 type RoutedViewType = "gui" | "tui" | "xr";
-
-function _isRoutedViewType(
-  viewType: ViewDeclaration["viewType"],
-): viewType is RoutedViewType {
-  return viewType === "gui" || viewType === "tui" || viewType === "xr";
-}
 
 const repoRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -58,188 +59,16 @@ const VIEW_MANIFESTS = [
   "plugins/plugin-facewear/src/index.ts",
 ] as const;
 
-const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
-  // Each collapsed plugin re-exports its `<Name>View` componentExport and the
-  // `interact` capability handler from a `<name>-view-bundle.ts` entry file, so
-  // that bundle entry owns the terminal parity capabilities (same pattern as
-  // phone below).
-  "plugins/plugin-contacts/src/components/contacts-view-bundle.ts": [
-    "terminal-list-contacts",
-    "terminal-create-contact",
-    "terminal-import-vcard",
-  ],
-  "plugins/plugin-hyperliquid/src/hyperliquid-app-view-bundle.ts": [
-    "terminal-hyperliquid-state",
-    "terminal-hyperliquid-market",
-    "terminal-hyperliquid-execution-check",
-  ],
-  "plugins/plugin-messages/src/components/messages-view-bundle.ts": [
-    "terminal-list-threads",
-    "terminal-send-sms",
-    "terminal-request-sms-role",
-  ],
-  "plugins/app-model-tester/src/model-tester-view-bundle.ts": [
-    "get-status",
-    "run-text-small",
-    "run-transcription",
-    "run-vision",
-    "run-vad",
-  ],
-  // The phone view collapsed to one declaration (componentExport "PhoneView",
-  // modalities gui/xr/tui). The bundle entry re-exports both PhoneView and the
-  // `interact` capability handler, so it owns the terminal parity capabilities.
-  "plugins/plugin-phone/src/components/phone-view-bundle.ts": [
-    "terminal-phone-state",
-    "terminal-place-call",
-    "terminal-open-dialer",
-    "terminal-save-call-transcript",
-  ],
-  "plugins/plugin-polymarket/src/polymarket-view-bundle.ts": [
-    "terminal-polymarket-state",
-    "terminal-polymarket-market",
-    "terminal-polymarket-orderbook",
-    "terminal-polymarket-positions",
-    "terminal-polymarket-trading-check",
-  ],
-  "plugins/plugin-wallet-ui/src/InventoryView.tsx": [
-    "terminal-wallet-state",
-    "terminal-wallet-market-overview",
-    "terminal-wallet-trading-profile",
-  ],
-  "plugins/plugin-feed/src/ui/feed-view-bundle.ts": [
-    "get-state",
-    "refresh-agent-status",
-    "open-live-dashboard",
-    "send-team-message",
-  ],
-  // app-control wires its TUI view and the terminal capabilities together in
-  // its plugin manifest (index.ts declares componentExport ViewManagerTuiView
-  // plus the terminal-list-views / terminal-open-view capability ids); the
-  // capability logic itself lives in views/viewManagerData.ts.
-  "plugins/plugin-app-control/src/index.ts": [
-    "terminal-list-views",
-    "terminal-open-view",
-  ],
-  // Screenshare collapsed to ONE declaration (componentExport "ScreenshareView",
-  // modalities gui/xr/tui). The bundle entry re-exports ScreenshareView plus the
-  // `interact` capability handler (from screenshare-interact.ts), so this bundle
-  // entry owns the terminal parity capabilities.
-  "plugins/plugin-screenshare/src/ui/screenshare-view-bundle.ts": [
-    "terminal-screenshare-state",
-    "terminal-screenshare-start",
-    "terminal-screenshare-session",
-    "terminal-screenshare-stop",
-    "terminal-screenshare-input",
-    "terminal-screenshare-viewer-url",
-  ],
-  // The task-coordinator bundle re-exports BOTH collapsed view components
-  // (`TaskCoordinatorView` and `OrchestratorView`) plus the shared `interact`
-  // handler, so this one bundle entry owns the terminal parity capabilities for
-  // both the task-coordinator and orchestrator declarations.
-  "plugins/plugin-task-coordinator/src/task-coordinator-view-bundle.ts": [
-    "list-sessions",
-    "list-task-threads",
-    "open-thread",
-    "stop-session",
-    "refresh",
-    "orchestrator-status",
-    "orchestrator-list-tasks",
-    "orchestrator-open-task",
-    "orchestrator-create-task",
-    "orchestrator-pause-task",
-    "orchestrator-resume-task",
-    "orchestrator-pause-all",
-    "orchestrator-resume-all",
-    "orchestrator-delete-task",
-    "orchestrator-fork-task",
-    "orchestrator-update-task",
-    "orchestrator-validate-task",
-    "orchestrator-add-agent",
-    "orchestrator-stop-agent",
-    "orchestrator-send-message",
-  ],
-  "plugins/plugin-trajectory-logger/src/components/TrajectoryLoggerView.tsx": [
-    "list-trajectories",
-    "open-latest",
-    "filter-phase",
-    "refresh",
-  ],
-  "plugins/plugin-training/src/ui/FineTuningView.tsx": [
-    "terminal-training-state",
-    "terminal-training-trajectory",
-    "terminal-training-build-dataset",
-    "terminal-training-start-job",
-    "terminal-training-cancel-job",
-    "terminal-training-import-model",
-    "terminal-training-activate-model",
-    "terminal-training-benchmark-model",
-    "terminal-training-build-analysis-index",
-    "terminal-training-build-readiness-report",
-    "terminal-training-ingest-hf-dataset",
-    "terminal-training-feed-generate",
-    "terminal-training-run-scenarios",
-    "terminal-training-run-eval-comparison",
-    "terminal-training-run-collection",
-    "terminal-training-write-benchmark-matrix",
-    "terminal-training-run-benchmark-vs-cerebras",
-    "terminal-training-stage-eliza1-bundle",
-    "terminal-training-run-action-benchmark",
-  ],
-  // FacewearView dispatches capabilities through the generic TerminalPluginView,
-  // so the capability ids live entirely in the plugin manifest's `capabilities`
-  // arrays (index.ts) — that file also declares the FacewearView componentExport.
-  "plugins/plugin-facewear/src/index.ts": [
-    "connect-device",
-    "manage-views",
-    "device-diagnostics",
-    "emulator",
-    "connect-headset",
-    "run-hardware-check",
-    "guided-side-tap-audio-validation",
-    "configure-wifi",
-  ],
-};
-
-// GUI-only plugin views that intentionally ship without a terminal (TUI)
-// override, keyed by `${manifestPath}:${id}`. The cockpit (#10419) is a
-// mobile-first, touch-first coding deck (mode picker + live task room) declared
-// with `modalities: ["gui"]`; it has no terminal rendering by design (the same
-// orchestrator surface is available as a TUI via the `/orchestrator` view).
-const GUI_ONLY_TUI_EXEMPTIONS = new Set<string>([
-  "plugins/plugin-task-coordinator/src/index.ts:cockpit",
-]);
+// Reintroduction contract (#15269): if a plugin ever ships a tui view again,
+// each declared TUI component must register its terminal parity capabilities
+// here, and the parity + capability-dispatch assertions that previously
+// consumed this map (see git history of this file) must be restored alongside
+// it. The shipped inventory is GUI-only today, so the map is intentionally
+// empty — the GUI-only ratchet below fails first when a tui view reappears.
+const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {};
 
 function readManifest(path: string): string {
   return readFileSync(resolve(repoRoot, path), "utf8");
-}
-
-// Capability ids may live in the component file, in a sibling `*.interact.ts`
-// dispatch module (the Fast-Refresh split pattern), or in a same-directory
-// helper that the interact module re-exports (e.g. orchestrator-capabilities.ts,
-// split out so the interact file stays a thin delegator). Gather the component
-// source plus any same-directory relative import targets it pulls in so the
-// parity surface tracks the real id locations across those refactors.
-function readCapabilitySource(path: string): string {
-  const seen = new Set<string>();
-  const collected: string[] = [];
-
-  const visit = (absolutePath: string): void => {
-    const normalized = absolutePath.replace(/\.[cm]?tsx?$/, "");
-    if (seen.has(normalized) || !existsSync(absolutePath)) return;
-    seen.add(normalized);
-    const source = readFileSync(absolutePath, "utf8");
-    collected.push(source);
-    const dir = dirname(absolutePath);
-    for (const match of source.matchAll(/from\s+"(\.[^"]+)"/g)) {
-      const specifier = match[1].replace(/\.[cm]?tsx?$/, "");
-      visit(resolve(dir, `${specifier}.ts`));
-    }
-  };
-
-  const absolutePath = resolve(repoRoot, path);
-  visit(absolutePath);
-  visit(absolutePath.replace(/\.[cm]?tsx?$/, ".interact.ts"));
-  return collected.join("\n");
 }
 
 function viewObjects(source: string): string[] {
@@ -290,10 +119,8 @@ function stringField(source: string, field: string): string | null {
 }
 
 /**
- * The surfaces a single view object draws: the `modalities: ["gui","xr","tui"]`
- * array literal when present (the collapsed one-source pattern), otherwise the
- * single `viewType` (default "gui"). One declaration drawing several surfaces
- * is equivalent to one duplicate declaration per surface for coverage purposes.
+ * The surfaces a single view object declares: the `modalities: [...]` array
+ * literal when present, otherwise the single `viewType` (default "gui").
  */
 function viewObjectModalities(object: string): RoutedViewType[] {
   const modalitiesMatch = object.match(/modalities:\s*\[([^\]]*)\]/);
@@ -306,30 +133,10 @@ function viewObjectModalities(object: string): RoutedViewType[] {
   return [(stringField(object, "viewType") ?? "gui") as RoutedViewType];
 }
 
-function coveredViewType(
-  viewType: ViewDeclaration["viewType"],
-): RoutedViewType | undefined {
-  const normalizedViewType = viewType ?? "gui";
-  return normalizedViewType === "gui" ||
-    normalizedViewType === "tui" ||
-    normalizedViewType === "xr"
-    ? normalizedViewType
-    : undefined;
-}
-
 // viewDeclarations() only ever yields declarations whose componentExport is a
 // present string (it filters out the rest), so narrow the core type — whose
 // componentExport is optional for remote plugins — for these local consumers.
 type CoveredView = ViewDeclaration & { componentExport: string };
-
-function capabilitiesForDeclaration(
-  declaration: CoveredView,
-): readonly string[] {
-  const owner = Object.entries(TUI_PARITY_CAPABILITIES).find(([sourcePath]) =>
-    readManifest(sourcePath).includes(declaration.componentExport),
-  );
-  return owner?.[1] ?? [];
-}
 
 function viewDeclarations(manifestPath: string): CoveredView[] {
   return viewObjects(readManifest(manifestPath)).flatMap(
@@ -343,8 +150,6 @@ function viewDeclarations(manifestPath: string): CoveredView[] {
       const surface = object.includes('"agent-surface"')
         ? ({ capabilities: ["agent-surface"] } as const)
         : undefined;
-      // One declaration with `modalities` expands to one CoveredView per
-      // surface — the same bundle + component routed in gui, tui, and xr.
       return viewObjectModalities(object).map((viewType) => ({
         id,
         label,
@@ -397,122 +202,68 @@ function makeCtx(
   };
 }
 
-describe("plugin TUI view coverage", () => {
-  it("requires a terminal parity capability entry for every declared TUI component", () => {
-    const paritySources = Object.keys(TUI_PARITY_CAPABILITIES).map(
-      (sourcePath) => ({
-        sourcePath,
-        source: readManifest(sourcePath),
-      }),
+async function registerAllManifests(): Promise<{
+  pluginNames: string[];
+  views: Array<{ manifestPath: string; id: string; path?: string }>;
+}> {
+  const pluginNames: string[] = [];
+  const views: Array<{ manifestPath: string; id: string; path?: string }> = [];
+  for (const manifestPath of VIEW_MANIFESTS) {
+    const declarations = viewDeclarations(manifestPath);
+    const pluginName = `test:${manifestPath}`;
+    pluginNames.push(pluginName);
+    await registerPluginViews(
+      {
+        name: pluginName,
+        description: `Test view manifest ${manifestPath}`,
+        actions: [],
+        views: declarations,
+      } satisfies Plugin,
+      undefined,
     );
-    const missing: string[] = [];
+    for (const declaration of declarations) {
+      if (declaration.viewType !== "gui") continue;
+      views.push({
+        manifestPath,
+        id: declaration.id,
+        path: declaration.path,
+      });
+    }
+  }
+  return { pluginNames, views };
+}
 
+describe("plugin view coverage", () => {
+  it("ships a GUI-only view inventory (no tui/xr declarations)", () => {
+    const nonGui: string[] = [];
     for (const manifestPath of VIEW_MANIFESTS) {
-      for (const declaration of viewDeclarations(manifestPath)) {
-        if (declaration.viewType !== "tui") continue;
-        const owner = paritySources.find(({ source }) =>
-          source.includes(declaration.componentExport),
-        );
-        if (!owner || TUI_PARITY_CAPABILITIES[owner.sourcePath].length === 0) {
-          missing.push(
-            `${manifestPath}:${declaration.id}:${declaration.componentExport}`,
-          );
+      for (const object of viewObjects(readManifest(manifestPath))) {
+        const id = stringField(object, "id") ?? "<unknown>";
+        for (const modality of viewObjectModalities(object)) {
+          if (modality !== "gui") {
+            nonGui.push(`${manifestPath}:${id}:${modality}`);
+          }
         }
       }
     }
-
-    expect(missing).toEqual([]);
+    expect(nonGui).toEqual([]);
   });
 
-  it("keeps a terminal parity capability surface for every bundled TUI", () => {
-    const failures: string[] = [];
-
-    for (const [sourcePath, capabilities] of Object.entries(
-      TUI_PARITY_CAPABILITIES,
-    )) {
-      const source = readCapabilitySource(sourcePath);
-      for (const capability of capabilities) {
-        if (!source.includes(capability)) {
-          failures.push(`${sourcePath}:${capability}`);
-        }
-      }
-    }
-
-    expect(failures).toEqual([]);
+  it("keeps the terminal parity reintroduction contract empty while no tui view ships", () => {
+    expect(Object.keys(TUI_PARITY_CAPABILITIES)).toEqual([]);
   });
 
-  it("registers a tui override for every bundled gui plugin view", () => {
-    const missing: string[] = [];
-
-    for (const manifestPath of VIEW_MANIFESTS) {
-      const objects = viewObjects(readManifest(manifestPath));
-      const guiIds = new Set<string>();
-      const tuiIds = new Set<string>();
-
-      for (const object of objects) {
-        const id = stringField(object, "id");
-        const bundlePath = stringField(object, "bundlePath");
-        if (!id || !bundlePath) continue;
-        // A `modalities` declaration draws every listed surface from one
-        // source, so it counts as both the gui view and its tui override.
-        const modalities = viewObjectModalities(object);
-        if (modalities.includes("tui")) tuiIds.add(id);
-        if (modalities.includes("gui")) guiIds.add(id);
-      }
-
-      for (const id of guiIds) {
-        if (tuiIds.has(id)) continue;
-        const identity = `${manifestPath}:${id}`;
-        if (GUI_ONLY_TUI_EXEMPTIONS.has(identity)) continue;
-        missing.push(identity);
-      }
-    }
-
-    expect(missing).toEqual([]);
-  });
-
-  it("can route-switch every bundled plugin view in gui, tui, and xr mode", async () => {
-    const pluginNames: string[] = [];
-    const views: Array<{
-      manifestPath: string;
-      id: string;
-      viewType: RoutedViewType;
-      path?: string;
-    }> = [];
-
+  it("can route-switch every bundled plugin view in gui mode", async () => {
+    const { pluginNames, views } = await registerAllManifests();
     try {
-      for (const manifestPath of VIEW_MANIFESTS) {
-        const declarations = viewDeclarations(manifestPath);
-        const pluginName = `test:${manifestPath}`;
-        pluginNames.push(pluginName);
-        await registerPluginViews(
-          {
-            name: pluginName,
-            description: `Test view manifest ${manifestPath}`,
-            actions: [],
-            views: declarations,
-          } satisfies Plugin,
-          undefined,
-        );
-        for (const declaration of declarations) {
-          const viewType = coveredViewType(declaration.viewType);
-          if (!viewType) continue;
-          views.push({
-            manifestPath,
-            id: declaration.id,
-            viewType,
-            path: declaration.path,
-          });
-        }
-      }
-
+      expect(views.length).toBeGreaterThan(0);
       const failures: string[] = [];
       for (const view of views) {
         const broadcasts: object[] = [];
         await handleViewsRoutes(
           makeCtx(
             "POST",
-            `/api/views/${encodeURIComponent(view.id)}/navigate?viewType=${view.viewType}`,
+            `/api/views/${encodeURIComponent(view.id)}/navigate?viewType=gui`,
             (payload) => broadcasts.push(payload),
           ),
         );
@@ -527,13 +278,12 @@ describe("plugin TUI view coverage", () => {
         if (
           event?.type !== "shell:navigate:view" ||
           event.viewId !== view.id ||
-          event.viewType !== view.viewType ||
+          event.viewType !== "gui" ||
           event.viewPath !== view.path
         ) {
-          failures.push(`${view.manifestPath}:${view.viewType}:${view.id}`);
+          failures.push(`${view.manifestPath}:gui:${view.id}`);
         }
       }
-
       expect(failures).toEqual([]);
     } finally {
       for (const pluginName of pluginNames) unregisterPluginViews(pluginName);
@@ -541,39 +291,10 @@ describe("plugin TUI view coverage", () => {
     }
   });
 
-  it("can dispatch standard interactions for every bundled plugin view in gui, tui, and xr mode", async () => {
-    const pluginNames: string[] = [];
-    const views: Array<{
-      manifestPath: string;
-      id: string;
-      viewType: RoutedViewType;
-    }> = [];
-
+  it("can dispatch standard interactions for every bundled plugin view in gui mode", async () => {
+    const { pluginNames, views } = await registerAllManifests();
     try {
-      for (const manifestPath of VIEW_MANIFESTS) {
-        const declarations = viewDeclarations(manifestPath);
-        const pluginName = `test:${manifestPath}`;
-        pluginNames.push(pluginName);
-        await registerPluginViews(
-          {
-            name: pluginName,
-            description: `Test view manifest ${manifestPath}`,
-            actions: [],
-            views: declarations,
-          } satisfies Plugin,
-          undefined,
-        );
-        for (const declaration of declarations) {
-          const viewType = coveredViewType(declaration.viewType);
-          if (!viewType) continue;
-          views.push({
-            manifestPath,
-            id: declaration.id,
-            viewType,
-          });
-        }
-      }
-
+      expect(views.length).toBeGreaterThan(0);
       const failures: string[] = [];
       for (const view of views) {
         const broadcasts: object[] = [];
@@ -583,7 +304,7 @@ describe("plugin TUI view coverage", () => {
         await handleViewsRoutes(
           makeCtx(
             "POST",
-            `/api/views/${encodeURIComponent(view.id)}/interact?viewType=${view.viewType}`,
+            `/api/views/${encodeURIComponent(view.id)}/interact?viewType=gui`,
             (payload) => {
               broadcasts.push(payload);
               const event = payload as {
@@ -633,16 +354,15 @@ describe("plugin TUI view coverage", () => {
           errorBody ||
           event?.type !== "view:interact" ||
           event.viewId !== view.id ||
-          event.viewType !== view.viewType ||
+          event.viewType !== "gui" ||
           event.capability !== "get-state" ||
           result?.success !== true ||
           result.result?.viewId !== view.id ||
-          result.result?.viewType !== view.viewType
+          result.result?.viewType !== "gui"
         ) {
-          failures.push(`${view.manifestPath}:${view.viewType}:${view.id}`);
+          failures.push(`${view.manifestPath}:gui:${view.id}`);
         }
       }
-
       expect(failures).toEqual([]);
     } finally {
       for (const pluginName of pluginNames) unregisterPluginViews(pluginName);
@@ -650,75 +370,142 @@ describe("plugin TUI view coverage", () => {
     }
   });
 
-  it("can dispatch every bundled TUI capability through the view interaction route", async () => {
-    const pluginNames: string[] = [];
-    const capabilities: Array<{
-      manifestPath: string;
-      viewId: string;
-      capability: string;
-    }> = [];
-
+  // The viewType routing contract survives the tui/xr inventory removal:
+  // `getView(id, { viewType })` falls back to the gui ("default") declaration
+  // when the requested modality has no entry, so tui/xr requests against the
+  // gui-only inventory resolve to the gui view — the broadcast and JSON
+  // response carry viewType "gui". This is the designed degrade, not an error.
+  it("resolves tui/xr navigate requests against the gui-only inventory to the gui view", async () => {
+    const { pluginNames, views } = await registerAllManifests();
     try {
-      for (const manifestPath of VIEW_MANIFESTS) {
-        const declarations = viewDeclarations(manifestPath);
-        const pluginName = `test:${manifestPath}`;
-        pluginNames.push(pluginName);
-        await registerPluginViews(
-          {
-            name: pluginName,
-            description: `Test view manifest ${manifestPath}`,
-            actions: [],
-            views: declarations,
-          } satisfies Plugin,
-          undefined,
-        );
-        for (const declaration of declarations) {
-          if (declaration.viewType !== "tui") continue;
-          for (const capability of capabilitiesForDeclaration(declaration)) {
-            capabilities.push({
-              manifestPath,
-              viewId: declaration.id,
-              capability,
-            });
+      const failures: string[] = [];
+      for (const viewType of ["tui", "xr"] as const) {
+        for (const view of views) {
+          const broadcasts: object[] = [];
+          let resultBody: unknown = null;
+          let errorBody: { message: string; status?: number } | null = null;
+          await handleViewsRoutes(
+            makeCtx(
+              "POST",
+              `/api/views/${encodeURIComponent(view.id)}/navigate?viewType=${viewType}`,
+              (payload) => broadcasts.push(payload),
+              undefined,
+              (_res, body) => {
+                resultBody = body;
+              },
+              (_res, message, status) => {
+                errorBody = { message, status };
+              },
+            ),
+          );
+          const event = broadcasts[0] as
+            | { type?: string; viewId?: string; viewType?: string }
+            | undefined;
+          const result = resultBody as {
+            ok?: boolean;
+            viewId?: string;
+            viewType?: string;
+          } | null;
+          if (
+            errorBody ||
+            event?.type !== "shell:navigate:view" ||
+            event.viewId !== view.id ||
+            event.viewType !== "gui" ||
+            result?.ok !== true ||
+            result.viewType !== "gui"
+          ) {
+            failures.push(`${view.manifestPath}:${viewType}:${view.id}`);
           }
         }
       }
+      expect(failures).toEqual([]);
+    } finally {
+      for (const pluginName of pluginNames) unregisterPluginViews(pluginName);
+      clearCurrentViewState();
+    }
+  });
 
+  it("dispatches tui/xr interact requests against the gui-only inventory as the gui view", async () => {
+    const { pluginNames, views } = await registerAllManifests();
+    try {
       const failures: string[] = [];
-      for (const target of capabilities) {
-        const broadcasts: object[] = [];
-        let resultBody: unknown = null;
-        let errorBody: { message: string; status?: number } | null = null;
+      for (const viewType of ["tui", "xr"] as const) {
+        for (const view of views) {
+          const broadcasts: object[] = [];
+          let resultBody: unknown = null;
+          let errorBody: { message: string; status?: number } | null = null;
+          await handleViewsRoutes(
+            makeCtx(
+              "POST",
+              `/api/views/${encodeURIComponent(view.id)}/interact?viewType=${viewType}`,
+              (payload) => {
+                broadcasts.push(payload);
+                const event = payload as {
+                  type?: string;
+                  requestId?: string;
+                  viewId?: string;
+                  viewType?: string;
+                };
+                if (
+                  event.type === "view:interact" &&
+                  typeof event.requestId === "string"
+                ) {
+                  resolveViewInteractResult({
+                    requestId: event.requestId,
+                    success: true,
+                    result: { viewId: event.viewId, viewType: event.viewType },
+                  });
+                }
+              },
+              { capability: "get-state", timeoutMs: 1_000 },
+              (_res, body) => {
+                resultBody = body;
+              },
+              (_res, message, status) => {
+                errorBody = { message, status };
+              },
+            ),
+          );
+          const event = broadcasts[0] as
+            | { type?: string; viewId?: string; viewType?: string }
+            | undefined;
+          const result = resultBody as {
+            success?: boolean;
+            result?: { viewType?: string };
+          } | null;
+          // The dispatched frame carries the resolved entry's viewType ("gui"),
+          // never a fabricated tui/xr surface.
+          if (
+            errorBody ||
+            event?.type !== "view:interact" ||
+            event.viewId !== view.id ||
+            event.viewType !== "gui" ||
+            result?.success !== true ||
+            result.result?.viewType !== "gui"
+          ) {
+            failures.push(`${view.manifestPath}:${viewType}:${view.id}`);
+          }
+        }
+      }
+      expect(failures).toEqual([]);
+    } finally {
+      for (const pluginName of pluginNames) unregisterPluginViews(pluginName);
+      clearCurrentViewState();
+    }
+  });
 
+  it("returns the designed 404 for tui/xr interact requests on unknown views", async () => {
+    const { pluginNames } = await registerAllManifests();
+    try {
+      for (const viewType of ["tui", "xr"] as const) {
+        let errorBody: { message: string; status?: number } | null = null;
+        let resultBody: unknown = null;
         await handleViewsRoutes(
           makeCtx(
             "POST",
-            `/api/views/${encodeURIComponent(target.viewId)}/interact?viewType=tui`,
-            (payload) => {
-              broadcasts.push(payload);
-              const event = payload as {
-                type?: string;
-                requestId?: string;
-                capability?: string;
-                viewId?: string;
-                viewType?: string;
-              };
-              if (
-                event.type === "view:interact" &&
-                typeof event.requestId === "string"
-              ) {
-                resolveViewInteractResult({
-                  requestId: event.requestId,
-                  success: true,
-                  result: {
-                    capability: event.capability,
-                    viewId: event.viewId,
-                    viewType: event.viewType,
-                  },
-                });
-              }
-            },
-            { capability: target.capability, timeoutMs: 1_000 },
+            `/api/views/does-not-exist/interact?viewType=${viewType}`,
+            () => {},
+            { capability: "get-state", timeoutMs: 1_000 },
             (_res, body) => {
               resultBody = body;
             },
@@ -727,41 +514,12 @@ describe("plugin TUI view coverage", () => {
             },
           ),
         );
-
-        const event = broadcasts[0] as
-          | {
-              type?: string;
-              capability?: string;
-              viewId?: string;
-              viewType?: string;
-            }
-          | undefined;
-        const result = resultBody as {
-          success?: boolean;
-          result?: {
-            capability?: string;
-            viewId?: string;
-            viewType?: string;
-          };
-        } | null;
-
-        if (
-          errorBody ||
-          event?.type !== "view:interact" ||
-          event.viewId !== target.viewId ||
-          event.viewType !== "tui" ||
-          event.capability !== target.capability ||
-          result?.success !== true ||
-          result.result?.capability !== target.capability
-        ) {
-          failures.push(
-            `${target.manifestPath}:tui:${target.viewId}:${target.capability}`,
-          );
-        }
+        expect(resultBody).toBeNull();
+        expect(errorBody).toEqual({
+          message: 'View "does-not-exist" not found',
+          status: 404,
+        });
       }
-
-      expect(capabilities.length).toBeGreaterThan(0);
-      expect(failures).toEqual([]);
     } finally {
       for (const pluginName of pluginNames) unregisterPluginViews(pluginName);
       clearCurrentViewState();

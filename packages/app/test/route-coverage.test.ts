@@ -90,17 +90,16 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-todos/src/index.ts",
   "plugins/plugin-phone/src/plugin.ts",
   "plugins/plugin-polymarket/src/plugin.ts",
-  "plugins/plugin-shopify/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
   "plugins/plugin-vector-browser/src/plugin.ts",
   "plugins/plugin-feed/src/index.ts",
+  "plugins/plugin-scheduling/src/plugin.ts",
+  "plugins/plugin-elizacloud/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
-  "plugins/plugin-social-alpha/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/plugin.ts",
   "plugins/plugin-training/src/setup-routes.ts",
-  "plugins/plugin-facewear/src/index.ts",
 ] as const;
 
 const APP_SHELL_REGISTRATION_SOURCES = [
@@ -133,16 +132,20 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
     "Relationships is the entity/relationship knowledge-graph viewer; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
   "plugins/plugin-screenshare/src/index.ts":
     "Screenshare is registered by runtime capability loading, not the app boot side-effect loader.",
-  "plugins/plugin-social-alpha/src/index.ts":
-    "Social Alpha is an opt-in agent runtime plugin; its leaderboard view registers when the agent enables the plugin, not via the app boot loader.",
   "plugins/plugin-todos/src/index.ts":
     "Todos is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
+  "plugins/plugin-elizacloud/src/index.ts":
+    "Cloud is the Eliza Cloud account view; it is discoverable through the View Manager but not registered by the app boot side-effect loader (no elizaos.appRegister marker, not imported in main.tsx).",
+  "plugins/plugin-scheduling/src/plugin.ts":
+    "LifeOps Live Test is a developer-only QA validation view gated behind Developer Mode; the route is reachable for the live-test workflow but it is not a boot-loaded renderer module.",
 };
 
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-contacts": "plugins/plugin-contacts/src/plugin.ts",
   "@elizaos/plugin-native-settings": null,
-  "@elizaos/plugin-facewear": "plugins/plugin-facewear/src/index.ts",
+  // Facewear no longer declares plugin views (#15269 removed its xr/tui-only
+  // inventory); the boot module remains for the Settings wearables section.
+  "@elizaos/plugin-facewear": null,
   "@elizaos/plugin-feed": "plugins/plugin-feed/src/index.ts",
   "@elizaos/plugin-hyperliquid": "plugins/plugin-hyperliquid/src/plugin.ts",
   // PA no longer declares a view (the LifeOps overview was removed); it is a
@@ -151,7 +154,6 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-messages": "plugins/plugin-messages/src/plugin.ts",
   "@elizaos/plugin-phone": "plugins/plugin-phone/src/plugin.ts",
   "@elizaos/plugin-polymarket": "plugins/plugin-polymarket/src/plugin.ts",
-  "@elizaos/plugin-shopify": "plugins/plugin-shopify/src/plugin.ts",
   "@elizaos/plugin-task-coordinator":
     "plugins/plugin-task-coordinator/src/index.ts",
   "@elizaos/plugin-task-coordinator/register":
@@ -166,190 +168,15 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/app-model-tester": "plugins/app-model-tester/src/plugin.ts",
 };
 
-const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
-  {
-    manifestPath: "plugins/plugin-birdclaw/src/plugin.ts",
-    id: "birdclaw",
-    viewType: "xr",
-    path: "/birdclaw",
-  },
-  {
-    manifestPath: "plugins/plugin-contacts/src/plugin.ts",
-    id: "contacts",
-    viewType: "xr",
-    path: "/contacts",
-  },
-  {
-    manifestPath: "plugins/plugin-hyperliquid/src/plugin.ts",
-    id: "hyperliquid",
-    viewType: "xr",
-    path: "/hyperliquid",
-  },
-  {
-    manifestPath: "plugins/plugin-messages/src/plugin.ts",
-    id: "messages",
-    viewType: "xr",
-    path: "/messages",
-  },
-  {
-    manifestPath: "plugins/app-model-tester/src/plugin.ts",
-    id: "model-tester",
-    viewType: "xr",
-    path: "/model-tester",
-  },
-  {
-    manifestPath: "plugins/plugin-phone/src/plugin.ts",
-    id: "phone",
-    viewType: "xr",
-    path: "/phone",
-  },
-  {
-    manifestPath: "plugins/plugin-polymarket/src/plugin.ts",
-    id: "polymarket",
-    viewType: "xr",
-    path: "/polymarket",
-  },
-  {
-    manifestPath: "plugins/plugin-shopify/src/plugin.ts",
-    id: "shopify",
-    viewType: "xr",
-    path: "/shopify",
-  },
-  {
-    manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",
-    id: "wallet",
-    viewType: "xr",
-    path: "/wallet",
-  },
-  {
-    manifestPath: "plugins/plugin-feed/src/index.ts",
-    id: "feed",
-    viewType: "xr",
-    path: "/feed",
-  },
-  {
-    manifestPath: "plugins/plugin-app-control/src/index.ts",
-    id: "views-manager",
-    viewType: "xr",
-    path: "/views",
-  },
-  {
-    manifestPath: "plugins/plugin-screenshare/src/index.ts",
-    id: "screenshare",
-    viewType: "xr",
-    path: "/screenshare",
-  },
-  {
-    manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
-    id: "task-coordinator",
-    viewType: "xr",
-    path: "/task-coordinator",
-  },
-  {
-    manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
-    id: "orchestrator",
-    viewType: "xr",
-    path: "/orchestrator",
-  },
-  {
-    manifestPath: "plugins/plugin-trajectory-logger/src/plugin.ts",
-    id: "trajectory-logger",
-    viewType: "xr",
-    path: "/trajectory-logger",
-  },
-  {
-    manifestPath: "plugins/plugin-training/src/setup-routes.ts",
-    id: "training",
-    viewType: "xr",
-    path: "/apps/fine-tuning",
-  },
-  {
-    manifestPath: "plugins/plugin-blocker/src/plugin.ts",
-    id: "focus",
-    viewType: "xr",
-    path: "/focus",
-  },
-  {
-    manifestPath: "plugins/plugin-calendar/src/plugin.ts",
-    id: "calendar",
-    viewType: "xr",
-    path: "/calendar",
-  },
-  {
-    manifestPath: "plugins/plugin-documents/src/plugin.ts",
-    id: "documents",
-    viewType: "xr",
-    path: "/documents",
-  },
-  {
-    manifestPath: "plugins/plugin-finances/src/plugin.ts",
-    id: "finances",
-    viewType: "xr",
-    path: "/finances",
-  },
-  {
-    manifestPath: "plugins/plugin-goals/src/plugin.ts",
-    id: "goals",
-    viewType: "xr",
-    path: "/goals",
-  },
-  {
-    manifestPath: "plugins/plugin-health/src/index.ts",
-    id: "health",
-    viewType: "xr",
-    path: "/health",
-  },
-  {
-    manifestPath: "plugins/plugin-inbox/src/plugin.ts",
-    id: "inbox",
-    viewType: "xr",
-    path: "/inbox",
-  },
-  {
-    manifestPath: "plugins/plugin-relationships/src/plugin.ts",
-    id: "relationships",
-    viewType: "xr",
-    path: "/relationships",
-  },
-  {
-    manifestPath: "plugins/plugin-todos/src/index.ts",
-    id: "todos",
-    viewType: "xr",
-    path: "/todos",
-  },
-  {
-    manifestPath: "plugins/plugin-vector-browser/src/plugin.ts",
-    id: "vector-browser",
-    viewType: "xr",
-    path: "/vector-browser",
-  },
-  {
-    manifestPath: "plugins/plugin-social-alpha/src/index.ts",
-    id: "social-alpha",
-    viewType: "xr",
-    path: "/social-alpha",
-  },
-  {
-    // Facewear collapsed to one declaration: gui/xr/tui all draw from the same
-    // `/apps/facewear` route (the standalone `/apps/facewear/xr` route is gone).
-    manifestPath: "plugins/plugin-facewear/src/index.ts",
-    id: "facewear",
-    viewType: "xr",
-    path: "/apps/facewear",
-  },
-  {
-    manifestPath: "plugins/plugin-facewear/src/index.ts",
-    id: "smartglasses",
-    viewType: "xr",
-    path: "/apps/smartglasses",
-  },
-];
+// Shipped XR view inventory is intentionally EMPTY (#15269): the xr
+// modality remains a valid contract value, but no plugin ships an XR view.
+// Adding one back requires an explicit entry here (runtime coverage
+// classification), which keeps this ratchet as the reintroduction gate.
+const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [];
 
-const ALL_MODALITIES: ReadonlyArray<"gui" | "tui" | "xr"> = [
-  "gui",
-  "xr",
-  "tui",
-];
+// Shipped operator views are GUI-only (#15269); reintroducing xr/tui means
+// widening this constant deliberately.
+const ALL_MODALITIES: ReadonlyArray<"gui" | "tui" | "xr"> = ["gui"];
 
 const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
   [

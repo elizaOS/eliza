@@ -1,3 +1,13 @@
+/**
+ * Device filesystem bridge service: the platform-dispatching implementation behind
+ * the `device_filesystem` service type. Routes read/write/list calls to
+ * `@capacitor/filesystem` (Directory.Documents) when running as a native iOS/Android
+ * app, or to a `node:fs/promises`-backed workspace under `resolveStateDir()` otherwise.
+ * Every relative path is sanitised by `normalizeDevicePath()` first; the Node backend
+ * additionally resolves symlinks and verifies the real path stays under the workspace
+ * root, since a string-prefix check on the unresolved path alone cannot catch a symlink
+ * that escapes after normalization.
+ */
 import {
 	mkdir,
 	readdir,

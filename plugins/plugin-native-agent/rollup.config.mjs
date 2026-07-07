@@ -1,3 +1,9 @@
+/**
+ * Bundles the tsc output (`dist/esm/index.js`) into a browser IIFE
+ * (`dist/plugin.js`, global `capacitorAgent`) and a CJS build
+ * (`dist/plugin.cjs.js`) for the Capacitor plugin registry and `require()`
+ * consumers; `@capacitor/core` is left external for both targets.
+ */
 export default {
   input: "dist/esm/index.js",
   output: [

@@ -1,7 +1,7 @@
 /**
  * Defines `modelTesterPlugin` — the `Plugin` object that mounts the Model Tester
  * dashboard surface: the three probe routes (delegated to `handleModelTesterRoute`)
- * and a single view declaration spanning the GUI, XR, and TUI modalities.
+ * and a single GUI view declaration.
  */
 
 import type http from "node:http";
@@ -98,10 +98,10 @@ export const modelTesterPlugin: Plugin = {
     "UI applet routes for end-to-end Eliza-1 text, embedding, speech, transcription, VAD, and vision probes.",
   routes: modelTesterRoutes,
   views: [
-    // ONE declaration → GUI + XR + TUI, all drawn from the single
-    // ModelTesterView spatial source. `modalities` is a plain literal here
-    // (plugin.ts is not in the view bundle), so no brand-new `@elizaos/core`
-    // runtime export reaches the bundle build.
+    // GUI-only shipping ("tui"/"xr" remain valid compatibility values but are
+    // no longer declared). `modalities` is a plain literal here (plugin.ts is
+    // not in the view bundle), so no brand-new `@elizaos/core` runtime export
+    // reaches the bundle build.
     {
       id: "model-tester",
       label: "Model Tester",
@@ -110,7 +110,7 @@ export const modelTesterPlugin: Plugin = {
         "End-to-end probes for Eliza-1 text, voice, audio, and vision models",
       icon: "TestTube2",
       path: "/model-tester",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven

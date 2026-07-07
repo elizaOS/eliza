@@ -7,7 +7,7 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
   lane: "live-only",
-  id: "i2.mediation.private_fact_firebreak",
+  id: "i2-private-fact-firebreak",
   title: "I2 confidential thread detail stays out of the other party's draft",
   domain: "lifeops.relationships",
   tags: ["lifeops", "I2", "privacy", "mediation", "message-draft"],

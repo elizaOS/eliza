@@ -391,6 +391,22 @@ rules:
 return:
 JSON object only: { recap, topApps: [{ app, minutes }], suggestion }.`;
 
+const CREATIVE_DRAFT_BASELINE = `task: Draft in the owner's voice from the supplied memos and style card.
+
+memos:
+{{memos}}
+
+styleCard:
+{{styleCard}}
+
+rules:
+- preserve each memo's argument and affect; map an affect directive to the matching section instead of smoothing it away
+- sound like the owner on a good day, not like a consultant
+- revise the standing draft artifact when one is supplied; keep accepted edits and never reintroduce vetoed phrasing
+
+return:
+Narrative text only, unless the caller requested a structured outline.`;
+
 function defaultBaselineForTask(task: TrajectoryTrainingTask): string {
   switch (task) {
     case "should_respond":
@@ -421,6 +437,8 @@ function defaultBaselineForTask(task: TrajectoryTrainingTask): string {
       return HEALTH_CHECKIN_BASELINE;
     case "screentime_recap":
       return SCREENTIME_RECAP_BASELINE;
+    case "creative_draft":
+      return CREATIVE_DRAFT_BASELINE;
   }
 }
 
@@ -528,6 +546,12 @@ async function loadLiveLifeOpsBaseline(
         ["SCREENTIME_RECAP_INSTRUCTIONS"],
         "../../../plugin-health/src/actions/optimized-prompt-instructions.ts",
       );
+    case "creative_draft":
+      return loadFirstStringExport(
+        "@elizaos/plugin-personal-assistant/lifeops/creative-draft",
+        ["CREATIVE_DRAFT_INSTRUCTIONS"],
+        "../../../plugin-personal-assistant/src/lifeops/creative-draft/index.ts",
+      );
     default:
       return null;
   }
@@ -566,6 +590,8 @@ function pathForTask(
       return paths.healthCheckinPath;
     case "screentime_recap":
       return paths.screentimeRecapPath;
+    case "creative_draft":
+      return paths.creativeDraftPath;
   }
 }
 
@@ -744,7 +770,8 @@ export async function loadBaselineForTask(
     case "meeting_prep":
     case "morning_brief":
     case "health_checkin":
-    case "screentime_recap": {
+    case "screentime_recap":
+    case "creative_draft": {
       const liveBaseline = await loadLiveLifeOpsBaseline(task);
       return liveBaseline ?? defaultBaselineForTask(task);
     }

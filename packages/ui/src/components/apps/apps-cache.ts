@@ -6,6 +6,7 @@
  */
 
 import type { RegistryAppInfo } from "@elizaos/shared";
+import { shellLocalStorage } from "../../surface-realm-channel";
 
 const CACHE_KEY = "eliza:apps:catalog:v1";
 
@@ -48,7 +49,7 @@ export function writeAppsCache(apps: RegistryAppInfo[]): void {
   if (typeof window === "undefined") return;
   try {
     const envelope: CacheEnvelope = { cachedAt: Date.now(), apps };
-    window.localStorage.setItem(CACHE_KEY, JSON.stringify(envelope));
+    shellLocalStorage.setItem(CACHE_KEY, JSON.stringify(envelope));
   } catch {
     /* sandboxed storage — drop silently */
   }
@@ -57,7 +58,7 @@ export function writeAppsCache(apps: RegistryAppInfo[]): void {
 export function clearAppsCache(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(CACHE_KEY);
+    shellLocalStorage.removeItem(CACHE_KEY);
   } catch {
     /* ignore */
   }

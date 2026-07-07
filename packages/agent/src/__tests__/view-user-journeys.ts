@@ -30,6 +30,8 @@ export interface ViewJourneyScenario {
   tags: string[];
 }
 
+// The viewType union keeps "tui" and "xr" so the reintroduction path stays
+// typed (#15269), but the shipped case list below is GUI-only.
 export interface PluginViewMockCase {
   id: string;
   viewType: "gui" | "tui" | "xr";
@@ -37,107 +39,43 @@ export interface PluginViewMockCase {
 }
 
 export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
-  // Auto-mirrors the visual smoke matrix (packages/app/test/ui-smoke/plugin-view-cases.ts,
-  // gui + tui) and the XR ratchet (KNOWN_XR_VIEW_CASES in
-  // packages/app/test/route-coverage.test.ts). Kept in exact lockstep by
-  // plugin-view-llm-mock-coverage.test.ts; PLUGIN_VIEW_LLM_MOCK_JOURNEYS derives
-  // one journey per case below.
+  // Auto-mirrors the visual smoke matrix (packages/app/test/ui-smoke/plugin-view-cases.ts)
+  // and the XR ratchet (KNOWN_XR_VIEW_CASES in packages/app/test/route-coverage.test.ts,
+  // empty since #15269 removed the shipped tui/xr inventory). Kept in exact
+  // lockstep by plugin-view-llm-mock-coverage.test.ts; PLUGIN_VIEW_LLM_MOCK_JOURNEYS
+  // derives one journey per case below.
   { id: "birdclaw", viewType: "gui", path: "/birdclaw" },
-  { id: "birdclaw", viewType: "tui", path: "/birdclaw" },
   { id: "contacts", viewType: "gui", path: "/contacts" },
-  { id: "contacts", viewType: "tui", path: "/contacts" },
+  { id: "cloud", viewType: "gui", path: "/cloud" },
   { id: "hyperliquid", viewType: "gui", path: "/hyperliquid" },
-  { id: "hyperliquid", viewType: "tui", path: "/hyperliquid" },
   { id: "focus", viewType: "gui", path: "/focus" },
-  { id: "focus", viewType: "tui", path: "/focus" },
   { id: "calendar", viewType: "gui", path: "/calendar" },
-  { id: "calendar", viewType: "tui", path: "/calendar" },
   { id: "documents", viewType: "gui", path: "/documents" },
-  { id: "documents", viewType: "tui", path: "/documents" },
   { id: "finances", viewType: "gui", path: "/finances" },
-  { id: "finances", viewType: "tui", path: "/finances" },
   { id: "goals", viewType: "gui", path: "/goals" },
-  { id: "goals", viewType: "tui", path: "/goals" },
   { id: "health", viewType: "gui", path: "/health" },
-  { id: "health", viewType: "tui", path: "/health" },
   { id: "inbox", viewType: "gui", path: "/inbox" },
-  { id: "inbox", viewType: "tui", path: "/inbox" },
   {
     id: "lifeops-live-test",
     viewType: "gui",
     path: "/lifeops-live-test",
   },
-  {
-    id: "lifeops-live-test",
-    viewType: "tui",
-    path: "/lifeops-live-test",
-  },
   { id: "relationships", viewType: "gui", path: "/relationships" },
-  { id: "relationships", viewType: "tui", path: "/relationships" },
   { id: "todos", viewType: "gui", path: "/todos" },
-  { id: "todos", viewType: "tui", path: "/todos" },
   { id: "messages", viewType: "gui", path: "/messages" },
-  { id: "messages", viewType: "tui", path: "/messages" },
   { id: "model-tester", viewType: "gui", path: "/model-tester" },
-  { id: "model-tester", viewType: "tui", path: "/model-tester" },
   { id: "phone", viewType: "gui", path: "/phone" },
-  { id: "phone", viewType: "tui", path: "/phone" },
   { id: "polymarket", viewType: "gui", path: "/polymarket" },
-  { id: "polymarket", viewType: "tui", path: "/polymarket" },
-  { id: "shopify", viewType: "gui", path: "/shopify" },
-  { id: "shopify", viewType: "tui", path: "/shopify" },
   { id: "wallet", viewType: "gui", path: "/wallet" },
-  { id: "wallet", viewType: "tui", path: "/wallet" },
   { id: "vector-browser", viewType: "gui", path: "/vector-browser" },
-  { id: "vector-browser", viewType: "tui", path: "/vector-browser" },
   { id: "feed", viewType: "gui", path: "/feed" },
-  { id: "feed", viewType: "tui", path: "/feed" },
   { id: "views-manager", viewType: "gui", path: "/views" },
-  { id: "views-manager", viewType: "tui", path: "/views" },
   { id: "screenshare", viewType: "gui", path: "/screenshare" },
-  { id: "screenshare", viewType: "tui", path: "/screenshare" },
-  { id: "social-alpha", viewType: "gui", path: "/social-alpha" },
-  { id: "social-alpha", viewType: "tui", path: "/social-alpha" },
   { id: "task-coordinator", viewType: "gui", path: "/task-coordinator" },
-  { id: "task-coordinator", viewType: "tui", path: "/task-coordinator" },
   { id: "orchestrator", viewType: "gui", path: "/orchestrator" },
-  { id: "orchestrator", viewType: "tui", path: "/orchestrator" },
   { id: "cockpit", viewType: "gui", path: "/cockpit" },
   { id: "trajectory-logger", viewType: "gui", path: "/trajectory-logger" },
-  { id: "trajectory-logger", viewType: "tui", path: "/trajectory-logger" },
   { id: "training", viewType: "gui", path: "/apps/fine-tuning" },
-  { id: "training", viewType: "tui", path: "/apps/fine-tuning" },
-  { id: "facewear", viewType: "tui", path: "/apps/facewear" },
-  { id: "smartglasses", viewType: "tui", path: "/apps/smartglasses" },
-  { id: "contacts", viewType: "xr", path: "/contacts" },
-  { id: "hyperliquid", viewType: "xr", path: "/hyperliquid" },
-  { id: "messages", viewType: "xr", path: "/messages" },
-  { id: "model-tester", viewType: "xr", path: "/model-tester" },
-  { id: "phone", viewType: "xr", path: "/phone" },
-  { id: "polymarket", viewType: "xr", path: "/polymarket" },
-  { id: "shopify", viewType: "xr", path: "/shopify" },
-  { id: "wallet", viewType: "xr", path: "/wallet" },
-  { id: "feed", viewType: "xr", path: "/feed" },
-  { id: "views-manager", viewType: "xr", path: "/views" },
-  { id: "screenshare", viewType: "xr", path: "/screenshare" },
-  { id: "task-coordinator", viewType: "xr", path: "/task-coordinator" },
-  { id: "orchestrator", viewType: "xr", path: "/orchestrator" },
-  { id: "trajectory-logger", viewType: "xr", path: "/trajectory-logger" },
-  { id: "training", viewType: "xr", path: "/apps/fine-tuning" },
-  { id: "focus", viewType: "xr", path: "/focus" },
-  { id: "calendar", viewType: "xr", path: "/calendar" },
-  { id: "documents", viewType: "xr", path: "/documents" },
-  { id: "finances", viewType: "xr", path: "/finances" },
-  { id: "goals", viewType: "xr", path: "/goals" },
-  { id: "health", viewType: "xr", path: "/health" },
-  { id: "inbox", viewType: "xr", path: "/inbox" },
-  { id: "relationships", viewType: "xr", path: "/relationships" },
-  { id: "todos", viewType: "xr", path: "/todos" },
-  { id: "vector-browser", viewType: "xr", path: "/vector-browser" },
-  { id: "social-alpha", viewType: "xr", path: "/social-alpha" },
-  { id: "facewear", viewType: "xr", path: "/apps/facewear" },
-  { id: "smartglasses", viewType: "xr", path: "/apps/smartglasses" },
-  { id: "birdclaw", viewType: "xr", path: "/birdclaw" },
 ];
 
 const formatPluginViewLabel = (id: string) =>

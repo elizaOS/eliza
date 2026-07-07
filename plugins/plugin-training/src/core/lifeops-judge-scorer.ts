@@ -1,7 +1,7 @@
 // Judge-based scorer for the prose/NL LifeOps optimization tasks (#11384).
 //
-// Four of the eight LifeOps capabilities emit narrative text
-// (reminder_dispatch, meeting_prep, morning_brief) or a prose-bearing JSON
+// Five of the LifeOps capabilities emit narrative text (reminder_dispatch,
+// meeting_prep, morning_brief, creative_draft) or a prose-bearing JSON
 // envelope (screentime_recap). The deterministic scorers in
 // `optimizers/scoring.ts` (exact structured-field match / token overlap)
 // return ~0 for any live completion of those tasks, so GEPA has no gradient
@@ -21,6 +21,7 @@ export const LIFEOPS_JUDGE_TASKS: ReadonlySet<string> = new Set([
   "meeting_prep",
   "morning_brief",
   "screentime_recap",
+  "creative_draft",
 ]);
 
 /**

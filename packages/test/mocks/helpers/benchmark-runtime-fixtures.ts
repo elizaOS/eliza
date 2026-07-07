@@ -198,6 +198,7 @@ function createBenchmarkComputerUseService() {
         browser: { available: true, tool: "fixture-browser" },
         terminal: { available: true, tool: "fixture-terminal" },
         fileSystem: { available: true, tool: "fixture-file-system" },
+        clipboard: { available: true, tool: "fixture-clipboard" },
       };
     },
     async executeDesktopAction(params: { action?: string; text?: string }) {
@@ -236,6 +237,38 @@ function createBenchmarkComputerUseService() {
         message: `Mocked terminal action completed: ${params.action ?? "terminal"}.`,
         output: params.command ?? "",
       };
+    },
+    // Read-only computer state the computer-state / scene providers and the
+    // COMPUTER_USE progress + CLIPBOARD paths consult through
+    // getService("computeruse"); the real ComputerUseService exposes these, so
+    // a stub omitting any of them throws mid-turn (getScreenDimensions /
+    // getCurrentScene / getApprovalSnapshot "is not a function").
+    getScreenDimensions() {
+      return { width: 2560, height: 1600 };
+    },
+    getDisplays() {
+      return [] as Array<{ id: number; name: string }>;
+    },
+    getApprovalSnapshot() {
+      return {
+        mode: "full_control",
+        pendingCount: 0,
+        pendingApprovals: [] as Array<{ id: string; command?: string }>,
+      };
+    },
+    // The COMPUTER_USE progress relay subscribes to approval changes; a stub
+    // returning no unsubscribe (or omitting this) throws before the action runs.
+    subscribeApprovals(_listener: (snapshot: unknown) => void): () => void {
+      return () => undefined;
+    },
+    getRecentActions() {
+      return [] as Array<{ action: string; success: boolean }>;
+    },
+    getCurrentScene() {
+      return null;
+    },
+    async refreshScene() {
+      return null;
     },
   };
 }

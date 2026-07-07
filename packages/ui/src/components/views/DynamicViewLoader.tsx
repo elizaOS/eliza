@@ -418,11 +418,24 @@ async function importUiRootCompat(): Promise<Record<string, unknown>> {
   // Overlay the SAME wrapped versions the subpath compat modules expose so the
   // sensitive nav/storage symbols route through the active surface-realm scope no
   // matter which specifier the view imports; every other root export is untouched.
-  const [root, appNavigateView, bridge] = await Promise.all([
+  const [rootModule, appNavigateView, bridge] = await Promise.all([
     import("../../index.ts"),
     importUiAppNavigateViewCompat(),
     importUiBridgeCompat(),
   ]);
+  // The bridge barrel re-exports the shell-privileged raw-global channel, and
+  // the root barrel re-exports the bridge barrel — so the channel keys are on
+  // `root` too. Object spread cannot DELETE a key `root` already carries (the
+  // stripped `bridge` spread only overrides keys it still has), so strip the
+  // channel from root explicitly here or a view importing it from `@elizaos/ui`
+  // (root) instead of `@elizaos/ui/bridge` would still get the real channel and
+  // disarm its own guard.
+  const {
+    runAsPrivilegedShell: _rootRunAsPrivilegedShell,
+    shellHistory: _rootShellHistory,
+    shellLocalStorage: _rootShellLocalStorage,
+    ...root
+  } = rootModule;
   return { ...root, ...appNavigateView, ...bridge };
 }
 
@@ -451,8 +464,18 @@ async function importUiAppNavigateViewCompat(): Promise<
 async function importUiBridgeCompat(): Promise<Record<string, unknown>> {
   const bridge = await import("../../bridge/index.ts");
   const boundScope = getActiveSurfaceRealmScope();
+  // The bridge barrel carries the shell-privileged raw-global channel for shell
+  // code outside packages/ui; handing it to a view bundle would let the view
+  // disarm the raw-global guards on itself. Views get the scoped storage
+  // overrides below and nothing privileged.
+  const {
+    runAsPrivilegedShell: _runAsPrivilegedShell,
+    shellHistory: _shellHistory,
+    shellLocalStorage: _shellLocalStorage,
+    ...viewSafeBridge
+  } = bridge;
   return {
-    ...bridge,
+    ...viewSafeBridge,
     async getStorageValue(key: string): Promise<string | null> {
       const scope = resolveSurfaceRealmScopeForHostExternal(
         boundScope,

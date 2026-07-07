@@ -6,6 +6,7 @@
 import { logger } from "@elizaos/logger";
 import { DEFAULT_DESKTOP_API_PORT } from "@elizaos/shared";
 import { dispatchAppEvent, MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../events";
+import { shellLocalStorage } from "../surface-realm-channel";
 import type { FirstRunRuntimeTarget } from "./runtime-target";
 
 export const MOBILE_RUNTIME_MODE_STORAGE_KEY = "eliza:mobile-runtime-mode";
@@ -247,9 +248,9 @@ export function persistMobileRuntimeMode(mode: MobileRuntimeMode | null): void {
   if (typeof window !== "undefined") {
     try {
       if (mode) {
-        window.localStorage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, mode);
+        shellLocalStorage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, mode);
       } else {
-        window.localStorage.removeItem(MOBILE_RUNTIME_MODE_STORAGE_KEY);
+        shellLocalStorage.removeItem(MOBILE_RUNTIME_MODE_STORAGE_KEY);
       }
     } catch (err) {
       // error-policy:J4 localStorage can be blocked in embedded shells; the

@@ -94,6 +94,7 @@ function discoverLauncherGestureSites(): string[] {
 const PINNED_LAUNCHER_GESTURE_SITES: readonly string[] = [
   "packages/ui/src/components/shell/HomeLauncherSurface.tsx",
   "packages/ui/src/hooks/useHorizontalPager.ts",
+  "packages/ui/src/state/rail-gesture-store.ts",
 ];
 
 describe("launcher interaction matrix gate", () => {

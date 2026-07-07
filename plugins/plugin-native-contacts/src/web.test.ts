@@ -1,3 +1,7 @@
+/**
+ * Tests for `ContactsWeb`, the web/node fallback used when no Android
+ * bridge is present — pure in-process assertions, no device or mock bridge.
+ */
 import { describe, expect, it } from "vitest";
 
 import { ContactsWeb } from "./web";

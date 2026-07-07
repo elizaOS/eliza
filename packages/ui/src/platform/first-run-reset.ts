@@ -2,6 +2,7 @@
  * First-run reset flow: clears persisted onboarding state and navigates back to
  * the setup surface via the injected storage/history/client shims.
  */
+import { runAsPrivilegedShell } from "../surface-realm-channel";
 import type {
   FirstRunClientLike as ClientLike,
   HistoryLike,
@@ -53,7 +54,11 @@ export function enableForceFreshFirstRun(storage?: StorageLike | null): void {
   }
 
   try {
-    resolvedStorage.setItem(FORCE_FRESH_FIRST_RUN_STORAGE_KEY, "1");
+    // Privileged: the reset escape hatch must work no matter which view is
+    // active, and these are the shell's own reserved keys.
+    runAsPrivilegedShell(() =>
+      resolvedStorage.setItem(FORCE_FRESH_FIRST_RUN_STORAGE_KEY, "1"),
+    );
   } catch {
     // Ignore storage failures during startup.
   }
@@ -82,7 +87,9 @@ export function clearForceFreshFirstRun(storage?: StorageLike | null): void {
   }
 
   try {
-    resolvedStorage.removeItem(FORCE_FRESH_FIRST_RUN_STORAGE_KEY);
+    runAsPrivilegedShell(() =>
+      resolvedStorage.removeItem(FORCE_FRESH_FIRST_RUN_STORAGE_KEY),
+    );
   } catch {
     // Ignore storage failures during startup.
   }
@@ -106,10 +113,12 @@ export function applyForceFreshFirstRunReset(args?: {
 
   if (resolvedStorage) {
     try {
-      resolvedStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
-      resolvedStorage.removeItem(SETUP_STEP_STORAGE_KEY);
-      resolvedStorage.removeItem(FIRST_RUN_COMPLETE_STORAGE_KEY);
-      resolvedStorage.setItem(FORCE_FRESH_FIRST_RUN_STORAGE_KEY, "1");
+      runAsPrivilegedShell(() => {
+        resolvedStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
+        resolvedStorage.removeItem(SETUP_STEP_STORAGE_KEY);
+        resolvedStorage.removeItem(FIRST_RUN_COMPLETE_STORAGE_KEY);
+        resolvedStorage.setItem(FORCE_FRESH_FIRST_RUN_STORAGE_KEY, "1");
+      });
     } catch {
       // Ignore storage failures during startup.
     }
@@ -117,7 +126,13 @@ export function applyForceFreshFirstRunReset(args?: {
 
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.removeItem("elizaos_api_base");
+      // `elizaos_api_base` is a shell-reserved key (`elizaos_` prefix): the
+      // raw-global guard denies a plain localStorage.removeItem while a view is
+      // foreground (#15307), so this shell cleanup goes through the privileged
+      // channel. sessionStorage is unguarded and stays raw.
+      runAsPrivilegedShell(() =>
+        window.localStorage.removeItem("elizaos_api_base"),
+      );
       window.sessionStorage.removeItem("elizaos_api_base");
     } catch {
       // Ignore storage failures during startup.

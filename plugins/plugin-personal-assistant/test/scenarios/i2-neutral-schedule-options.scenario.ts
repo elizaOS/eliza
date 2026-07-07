@@ -6,7 +6,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
-  id: "i2.mediation.neutral_schedule_options",
+  id: "i2-neutral-schedule-options",
   title: "I2 disagreement becomes neutral schedule separation options",
   domain: "lifeops.relationships",
   tags: ["lifeops", "I2", "mediation", "calendar", "neutral-logistics"],

@@ -148,6 +148,17 @@ const stubElizaCore = {
             isViewVisible: (d, enabled) =>
               isViewKindEnabled(resolveViewKind(d), enabled),
             dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
+            // The attention-mode home notification center (NotificationsHomeCenter)
+            // triages each seeded notification by tier, so it needs the REAL
+            // priority→tier mapping — a noop reads back "undefined" through
+            // esbuild's own-key __toESM interop and crashes the whole tree
+            // ("tierForPriority is not a function"). Mirror core's notification.ts.
+            tierForPriority: (priority) =>
+              priority === "urgent" || priority === "high"
+                ? "interrupt"
+                : priority === "low"
+                  ? "silent"
+                  : "digest",
           },
           { get: (t, p) => (p in t ? t[p] : noop) },
         );
@@ -167,8 +178,14 @@ const stubElizaCore = {
 // The real app's viewport meta + the shell's runtime CSS vars: without the meta,
 // a mobile page falls back to the 980px layout viewport, so CSS `vw` units (the
 // sheet's `w-[min(440px,100vw-1rem)]`) mis-measure and the overlay mis-centers.
+// The brand palette vars (`styles/base.css` :root) are seeded here too: the
+// calendar up-next card colors its text through `var(--brand-white)` /
+// `color-mix(..., var(--brand-white))`, and an undefined var resolves to black —
+// unreadable on the dark ember field, tripping the foreground-contrast gate. The
+// fixture loads no app CSS, so the handful of brand vars the home widgets read
+// must be declared inline.
 const headHtml = `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<style>:root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px}</style>`;
+<style>:root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px;--brand-white:#fdfaf7;--brand-black:#140c07;--brand-orange:#ff6a1f}</style>`;
 const url = await writeFixturePage({
   entry: join(here, "home-screen-fixture.tsx"),
   outDir,
@@ -531,74 +548,66 @@ try {
       `no home widget hit its error boundary (${errorCards.length})`,
     );
   }
-  // Notifications hide behind the bottom pull-up hint (Apple idiom): the
-  // resting home shows NO inbox card, only the hint pill. Tapping the hint
-  // opens the NotificationsShade carrying the inbox card with the seeded
-  // urgent row, the unread badge, and the inbox actions.
+  // Notifications render INLINE on the home column (NotificationsHomeCenter,
+  // #15039) — no pull-up hint, no shade, no unread/read bookkeeping. The rested
+  // inbox is priority triage: only the seeded urgent (interrupt-tier) row shows,
+  // grouped by its destination (a `system` notification with no deep link groups
+  // under "System"), as a liquid-glass card. Tapping a row expands its
+  // contextual option strip; acting on an option acknowledges (clears) the row,
+  // and the emptied inbox self-hides.
   {
-    assert(
-      (await mobile.getByTestId("home-notification-center").count()) === 0,
-      "no pinned notification center on the resting home",
-    );
-    const hint = mobile.getByTestId("home-notifications-hint");
-    await hint.waitFor({ state: "visible", timeout: 5000 });
-    await hint.click();
     const center = mobile.getByTestId("home-notification-center");
     await center.waitFor({ state: "visible", timeout: 5000 });
-    assert(
-      (await mobile
-        .getByTestId("notifications-shade")
-        .getByTestId("home-notification-center")
-        .count()) === 1,
-      "the notification inbox renders inside the pull-up shade",
-    );
-    assert(
-      (await center.getByTestId("notification-row").count()) === 1,
-      "the seeded notification renders as a row",
-    );
-    assert(
-      (await center.getByTestId("notification-group-label").count()) === 1,
-      "the row renders under its view group header",
-    );
-    assert(
-      (await center.getByText("Payment failed", { exact: false }).count()) > 0,
-      "the notification row shows the seeded title",
-    );
-    assert(
-      (await center.getByTestId("notification-unread-dot").count()) === 1 &&
-        (await center.getByTestId("notifications-unread-badge").innerText()) ===
-          "1",
-      "the unread dot + count badge reflect the seeded unread notification",
-    );
-    assert(
-      (await center.getByTestId("notification-row-dismiss").count()) === 1 &&
-        (await center.getByTestId("notifications-mark-all-read").count()) ===
-          1 &&
-        (await center.getByTestId("notifications-clear-all").count()) === 1,
-      "the inbox actions (dismiss / mark-all-read / clear) render on the card",
-    );
     assert(
       (await mobile
         .getByTestId("widget-host-home")
         .getByTestId("home-notification-center")
         .count()) === 0,
-      "the notification inbox stays outside the ranked WidgetHost",
+      "the notification inbox is inline on the home column, outside the ranked WidgetHost",
     );
-    // Scrim tap closes the shade and the resting home returns.
-    await mobile.getByTestId("notifications-shade-scrim").click();
     assert(
-      (await mobile.getByTestId("notifications-shade").count()) === 0 &&
-        (await mobile.getByTestId("home-notification-center").count()) === 0,
-      "scrim tap closes the shade and the home rests without the inbox",
+      (await center.getByTestId("notification-row").count()) === 1,
+      "the seeded notification renders as a single row",
+    );
+    assert(
+      (await center.getByTestId("notification-group-label").count()) === 1,
+      "the row renders under its destination group header",
+    );
+    assert(
+      (await center.getByText("Payment failed", { exact: false }).count()) > 0,
+      "the notification row shows the seeded title",
+    );
+    // A single interrupt notification hides nothing, so the rested inbox shows
+    // no "N more" pull hint / expand toggle (there is no shade to expand into).
+    assert(
+      (await center.getByTestId("notifications-pull-hint").count()) === 0,
+      "no pull-to-expand hint with a single interrupt notification",
+    );
+    // Tap expands the row's option strip; a `system` row with no safe deep link
+    // offers only Dismiss. Acting on it acknowledges the row → inbox self-hides.
+    await center.getByTestId("notification-row").click();
+    const options = center.getByTestId("notification-row-options");
+    await options.waitFor({ state: "visible", timeout: 5000 });
+    assert(
+      (await options.getByTestId("notification-option-dismiss").count()) === 1,
+      "the tapped row expands its Dismiss option",
+    );
+    await options.getByTestId("notification-option-dismiss").click();
+    await center.waitFor({ state: "detached", timeout: 5000 });
+    assert(
+      (await mobile.getByTestId("home-notification-center").count()) === 0,
+      "acknowledging the last notification self-hides the inline inbox",
     );
   }
-  // The legacy gesture-shell notification surfaces are GONE: no pull zone, no
-  // pull-down sheet, no anchored panel.
+  // The legacy pull-up hint / shade AND the older gesture-shell surfaces are
+  // GONE: no hint pill, no shade/scrim, no pull zone, no sheet, no panel.
   assert(
-    (await mobile.getByTestId("home-notification-pull-zone").count()) === 0 &&
+    (await mobile.getByTestId("home-notifications-hint").count()) === 0 &&
+      (await mobile.getByTestId("notifications-shade").count()) === 0 &&
+      (await mobile.getByTestId("home-notification-pull-zone").count()) === 0 &&
       (await mobile.getByTestId("notification-sheet").count()) === 0 &&
       (await mobile.getByTestId("notification-panel").count()) === 0,
-    "no legacy notification pull-zone / sheet / panel exists (shade only)",
+    "no legacy notification hint / shade / pull-zone / sheet / panel exists (inline only)",
   );
   // No general quick-access tiles anymore - Launcher is the adjacent
   // launcher. The only tiles left are the AOSP native-OS surfaces, shown here
@@ -749,20 +758,20 @@ try {
     "duplicate wallet registrations collapse to one tile",
   );
 
-  // ── Real image icons - curated tiles carry hero images, so each renders an
-  // <img> tile (not the glyph fallback). On device the agent serves the branded
-  // SVG at /api/views/:id/hero, resolved through the runtime API base so it
-  // loads on native (file://) shells too.
+  // ── Glyph-only app icons (#13453 "deslop the launcher grid"): a launcher tile
+  // is a deterministic branded gradient plate + centered Lucide glyph, never a
+  // generated hero <img> — the hero PNG painted a cartoon over the real glyph
+  // (a virus for Settings, a ladybug for Memories: the "icons are slop" report).
+  // Each curated tile exposes its `data-view-visual` plate and NO hero image.
   for (const id of ["wallet", "automations", "browser", "character"]) {
-    const img = mobile.getByTestId(`launcher-image-${id}`);
+    const visual = mobile.locator(`[data-view-visual="${id}"]`);
     assert(
-      (await img.count()) === 1 && (await img.isVisible()),
-      `curated app "${id}" renders a real image icon (hero <img>, not a glyph)`,
+      (await visual.count()) === 1 && (await visual.isVisible()),
+      `curated app "${id}" renders its glyph icon plate`,
     );
-    const src = await img.getAttribute("src");
     assert(
-      typeof src === "string" && src.startsWith("data:image/svg+xml"),
-      `curated app "${id}" image src is the branded hero (${String(src).slice(0, 24)}…)`,
+      (await mobile.getByTestId(`launcher-image-${id}`).count()) === 0,
+      `curated app "${id}" renders no hero <img> (glyph-only launcher)`,
     );
   }
 
@@ -782,34 +791,32 @@ try {
     "the inner Launcher dot strip is absent too",
   );
 
-  // ── Real per-view images - every tile shows a branded hero IMAGE (generated
-  // client-side as a data URI when no real hero exists). A deterministic glyph
-  // may sit underneath the image as a decode fallback, but no tile may be glyph
-  // only. Each view's hero is deterministic per id, so the srcs are distinct.
-  const imageSrcs = await mobile.$$eval(
-    '[data-testid^="launcher-image-"]',
-    (imgs) =>
-      Array.from(
-        new Set(imgs.map((i) => i.getAttribute("src") ?? "")),
-      ).filter(Boolean),
-  );
-  assert(
-    imageSrcs.length >= 5,
-    `launcher tiles render varied hero images, not one placeholder (${imageSrcs.length} distinct)`,
-  );
-  assert(
-    imageSrcs.every(
-      (s) => s.startsWith("data:image/") || /^(https?:|\/api\/)/.test(s),
-    ),
-    "every tile renders a real hero image (data-URI / served), not a glyph",
-  );
+  // ── Every launcher tile is a glyph-only visual (#13453): a `data-view-visual`
+  // gradient plate carrying its Lucide glyph, and never a hero <img>. The plate
+  // gradients are deterministic per id (id-hashed palette), so distinct tiles
+  // get distinct gradients — a launcher of one flat placeholder would be the
+  // regression this guards against.
   const visualCount = await mobile.locator("[data-view-visual]").count();
-  const imageCount = await mobile
-    .locator('[data-view-visual] [data-testid^="launcher-image-"]')
-    .count();
   assert(
-    imageCount === visualCount,
-    `no tile falls back to a bare glyph-only visual (${imageCount}/${visualCount} have images)`,
+    visualCount >= 5,
+    `launcher renders multiple glyph tiles (${visualCount})`,
+  );
+  assert(
+    (await mobile.locator('[data-testid^="launcher-image-"]').count()) === 0,
+    "no launcher tile renders a hero <img> (glyph-only launcher)",
+  );
+  const tileGradients = await mobile.$$eval("[data-view-visual]", (els) =>
+    Array.from(
+      new Set(
+        els
+          .map((el) => getComputedStyle(el).backgroundImage)
+          .filter((v) => Boolean(v) && v !== "none"),
+      ),
+    ),
+  );
+  assert(
+    tileGradients.length >= 3,
+    `launcher glyph plates use varied gradients, not one placeholder (${tileGradients.length} distinct)`,
   );
 
   // ── The curated launcher is READ-ONLY: a long-press never enters edit mode
@@ -965,31 +972,26 @@ try {
     (await desktop.getByTestId("home-tile-phone").count()) === 0,
     "phone tile hidden when native disabled",
   );
-  // Desktop gets the SAME pull-up shade — no pinned card, no per-surface shell
-  // (no anchored panel, no pull-down sheet). The hint pill is also a plain
-  // click target so mouse users are not gesture-gated.
-  assert(
-    (await desktop.getByTestId("home-notification-center").count()) === 0,
-    "desktop home rests without a pinned notification center",
-  );
-  await desktop
-    .getByTestId("home-notifications-hint")
-    .waitFor({ state: "visible", timeout: 5000 });
-  await desktop.getByTestId("home-notifications-hint").click();
-  assert(
-    (await desktop
-      .getByTestId("home-notification-center")
-      .getByTestId("notification-row")
-      .count()) === 1,
-    "desktop shade renders the inbox card with the seeded row",
-  );
-  await desktop.getByTestId("notifications-shade-scrim").click();
-  assert(
-    (await desktop.getByTestId("home-notification-pull-zone").count()) === 0 &&
-      (await desktop.getByTestId("notification-sheet").count()) === 0 &&
-      (await desktop.getByTestId("notification-panel").count()) === 0,
-    "desktop has no legacy notification pull-zone / sheet / panel either",
-  );
+  // Desktop gets the SAME inline notification center as mobile: the seeded
+  // urgent row shows at rest on the home column, with none of the legacy
+  // pull-up hint / shade / anchored panel / pull-down sheet chrome.
+  {
+    const center = desktop.getByTestId("home-notification-center");
+    await center.waitFor({ state: "visible", timeout: 5000 });
+    assert(
+      (await center.getByTestId("notification-row").count()) === 1,
+      "desktop home renders the inline notification inbox with the seeded row",
+    );
+    assert(
+      (await desktop.getByTestId("home-notifications-hint").count()) === 0 &&
+        (await desktop.getByTestId("notifications-shade").count()) === 0 &&
+        (await desktop.getByTestId("home-notification-pull-zone").count()) ===
+          0 &&
+        (await desktop.getByTestId("notification-sheet").count()) === 0 &&
+        (await desktop.getByTestId("notification-panel").count()) === 0,
+      "desktop has no legacy notification hint / shade / pull-zone / sheet / panel either",
+    );
+  }
   await snap(desktop, "desktop-home");
   await swipeLeft(desktop.getByTestId("home-launcher-home-page"));
   await waitForSurfacePageSettled(desktop, "launcher");

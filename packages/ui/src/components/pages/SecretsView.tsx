@@ -12,6 +12,7 @@ import { client } from "../../api";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useAppSelector } from "../../state";
+import { shellLocalStorage } from "../../surface-realm-channel";
 import type { TranslateFn } from "../../types";
 import { Button } from "../ui/button";
 import {
@@ -88,7 +89,7 @@ function loadPinnedKeys(): Set<string> {
 
 function savePinnedKeys(keys: Set<string>) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...keys]));
+    shellLocalStorage.setItem(STORAGE_KEY, JSON.stringify([...keys]));
   } catch {
     // localStorage unavailable: pin state is not persisted
   }

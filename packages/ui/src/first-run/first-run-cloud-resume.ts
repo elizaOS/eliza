@@ -15,6 +15,7 @@
  * chat instead of restarting. Cleared on completion or a fresh runtime pick.
  */
 
+import { shellLocalStorage } from "../surface-realm-channel";
 import type { FirstRunLocalInference, FirstRunProfileDraft } from "./first-run";
 
 const CLOUD_RESUME_STORAGE_KEY = "eliza:first-run:cloud-resume";
@@ -33,7 +34,7 @@ export function markCloudLoginPending(
 ): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
+    shellLocalStorage.setItem(
       CLOUD_RESUME_STORAGE_KEY,
       JSON.stringify({
         runtime: draft.runtime,
@@ -76,7 +77,7 @@ export function readCloudLoginPending(): CloudResumeMarker | null {
 export function clearCloudLoginPending(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(CLOUD_RESUME_STORAGE_KEY);
+    shellLocalStorage.removeItem(CLOUD_RESUME_STORAGE_KEY);
   } catch {
     // error-policy:J6 best-effort cleanup — a storage that rejects removeItem
     // also rejected the setItem in markCloudLoginPending, so there is no

@@ -1692,12 +1692,9 @@ export function VectorBrowserRichView({
 // ── Adaptive view (the single componentExport) ─────────────────────────
 
 /**
- * Terminal-safe summary shown when this view is evaluated on the TUI surface.
- * The rich three.js/canvas surface can't run in a terminal, so the wrapper's
- * `Escape` fallback degrades to the spatial summary. Live terminal stats come
- * from the dedicated terminal registration (`register-terminal-view.tsx`), which
- * a host can update via `setVectorBrowserTerminalSnapshot`; here the wrapper
- * fallback carries the zeroed default + the "renders in GUI/XR" note.
+ * Summary snapshot used as the wrapper's `Escape` fallback when the rich
+ * three.js/canvas surface cannot render; carries the zeroed default + the
+ * "renders in GUI/XR" note.
  */
 const TUI_FALLBACK_SNAPSHOT: VectorBrowserSnapshot = {
   vectorCount: 0,

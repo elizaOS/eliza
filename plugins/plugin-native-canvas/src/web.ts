@@ -1,3 +1,13 @@
+/**
+ * Web/Electrobun bridge for the `ElizaCanvas` Capacitor plugin — the reference
+ * implementation the iOS (Swift) and Android (Kotlin) native bridges must
+ * match behaviourally. Backs multi-layer 2D drawing with per-layer
+ * `<canvas>` elements (composited as absolute-positioned DOM siblings so
+ * z-ordering follows CSS `z-index`) and backs the embedded web view with an
+ * iframe (inline/fullscreen) or a `window.open` popup, including the
+ * `eliza://` deep-link intercept and the A2UI postMessage bridge.
+ */
+
 import { WebPlugin } from "@capacitor/core";
 
 import type {
@@ -836,7 +846,6 @@ export class CanvasWeb extends WebPlugin {
   async navigate(options: NavigateOptions): Promise<void> {
     const placement = options.placement || "inline";
 
-    // Clean up any existing web view
     this.destroyWebView();
 
     // Intercept eliza:// deep links immediately

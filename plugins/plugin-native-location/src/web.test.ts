@@ -1,3 +1,7 @@
+/**
+ * Unit tests for `LocationWeb` (web.ts) against a stubbed `navigator.geolocation` /
+ * `navigator.permissions` — no real browser geolocation hardware is exercised.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LocationWeb } from "./web";
 

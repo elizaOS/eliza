@@ -19,17 +19,18 @@ export const appContactsPlugin: Plugin = {
     "Contacts overlay: read-only Android address-book context via the @elizaos/capacitor-contacts native plugin. The Android runtime adapter gates the provider to the active Contacts app session.",
   providers: [contactsProvider],
   views: [
-    // ONE declaration → GUI + XR + TUI, all drawn from the single ContactsView
-    // spatial source. `modalities` is a plain literal here (plugin.ts is not in
-    // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
-    // the bundle build.
+    // GUI-only shipping ("tui"/"xr" remain valid compatibility values but are
+    // no longer declared), drawn from the single ContactsView spatial source.
+    // `modalities` is a plain literal here (plugin.ts is not in the view
+    // bundle), so no brand-new `@elizaos/core` runtime export reaches the
+    // bundle build.
     {
       id: "contacts",
       label: "Contacts",
       description: "Android address book — read-only contact lookup",
       icon: "Users",
       path: "/contacts",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven

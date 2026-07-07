@@ -23,6 +23,7 @@ import {
 import { createGlobalPauseStore } from "../global-pause/store.ts";
 import { resolvePendingPromptsStore } from "../pending-prompts/store.ts";
 import { LifeOpsRepository } from "../repository.ts";
+import { settleDeferredInboundScans } from "./deferred-inbound-scans.ts";
 import {
   APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
   type ScheduledTask,
@@ -513,6 +514,9 @@ describe("processDueScheduledTasks — production wiring", () => {
       message,
       source: "client_chat",
     });
+    // The completion scan runs detached off the awaited emit edge (#15255);
+    // drain it before reading the store state it produces.
+    await settleDeferredInboundScans();
 
     const repo = new LifeOpsRepository(runtime);
     const completed = await repo.getScheduledTask(

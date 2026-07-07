@@ -37,8 +37,9 @@ function clientReturning(
 }
 
 describe("LIFEOPS_JUDGE_TASKS", () => {
-  it("names exactly the four prose/NL capabilities", () => {
+  it("names exactly the five prose/NL capabilities", () => {
     expect([...LIFEOPS_JUDGE_TASKS].sort()).toEqual([
+      "creative_draft",
       "meeting_prep",
       "morning_brief",
       "reminder_dispatch",

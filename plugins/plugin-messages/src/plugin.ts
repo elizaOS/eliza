@@ -1,7 +1,7 @@
 /**
  * The `@elizaos/plugin-messages` Plugin object: declares a passive `sms`
  * connector source and registers the Android SMS "messages" surface as a single
- * view spanning the GUI, XR, and TUI modalities, all drawn from the one
+ * GUI view drawn from the one
  * MessagesView bundle export (`dist/views/bundle.js`). Registers no actions,
  * providers, evaluators, or services.
  */
@@ -21,7 +21,7 @@ export const appMessagesPlugin: Plugin = {
     },
   ],
   views: [
-    // ONE declaration → GUI + XR + TUI, all drawn from the single MessagesView
+    // ONE GUI declaration, drawn from the single MessagesView
     // spatial source. `modalities` is a plain literal here (plugin.ts is not in
     // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
     // the bundle build.
@@ -31,7 +31,7 @@ export const appMessagesPlugin: Plugin = {
       description: "SMS conversations via the Android Messages bridge",
       icon: "MessageSquare",
       path: "/messages",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven

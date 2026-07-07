@@ -27,7 +27,7 @@ export const todosPlugin: Plugin = {
       description: "Three-lane todo board: Today / Upcoming / Someday",
       icon: "ListChecks",
       path: "/todos",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven
@@ -65,10 +65,6 @@ export {
 } from "./db/schema.js";
 export { currentTodosProvider } from "./providers/current-todos.js";
 export {
-  registerTodosTerminalView,
-  setTodosTerminalSnapshot,
-} from "./register-terminal-view.js";
-export {
   type CreateTodoInput,
   getTodosService,
   type TodoFilter,
@@ -76,7 +72,3 @@ export {
   type UpdateTodoInput,
 } from "./service.js";
 export * from "./types.js";
-
-// Side-effect: in a terminal host (Node agent, no DOM) this registers the todos
-// terminal view. DOM-guarded so the terminal engine stays out of browser bundles.
-import "./register.js";

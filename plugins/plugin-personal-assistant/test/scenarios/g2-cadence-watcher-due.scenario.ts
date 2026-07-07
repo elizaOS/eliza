@@ -55,7 +55,7 @@ function expectStaleEdgeFollowup() {
 
 export default scenario({
   lane: "live-only",
-  id: "g2.reconnect.cadence_watcher_due",
+  id: "g2-cadence-watcher-due",
   title:
     "G2 cadence watcher emits a relationship follow-up for stale friend edge",
   domain: "lifeops.relationships",

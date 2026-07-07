@@ -69,6 +69,7 @@ import { client } from "@elizaos/ui/api";
 import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
 import {
   isElectrobunRuntime,
+  shellLocalStorage,
   subscribeDesktopBridgeEvent,
 } from "@elizaos/ui/bridge";
 import { initializeCapacitorBridge } from "@elizaos/ui/bridge/capacitor-bridge";
@@ -770,7 +771,10 @@ async function writeIosPreferenceSmokeResult(
     updatedAt: new Date().toISOString(),
   });
   try {
-    Storage.prototype.setItem.call(window.localStorage, key, value);
+    // shellLocalStorage, not Storage.prototype.call: the surface-realm guard
+    // Proxy does not forward Storage internal slots, so a prototype-bound call
+    // throws "Illegal invocation" once any view has mounted.
+    shellLocalStorage.setItem(key, value);
   } catch {
     // error-policy:J6 best-effort echo — Preferences is the simulator
     // harness source of truth
@@ -1203,7 +1207,7 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
   } finally {
     firstRunCounter.restore();
     try {
-      window.localStorage.removeItem(IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY);
+      shellLocalStorage.removeItem(IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY);
     } catch (error) {
       // error-policy:J6 best-effort cleanup — Preferences removal below is
       // authoritative for the simulator harness
@@ -1357,7 +1361,7 @@ async function runIosMixedContentSmokeIfRequested(options?: {
   } finally {
     window.WebSocket = originalWebSocket;
     try {
-      window.localStorage.removeItem(IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY);
+      shellLocalStorage.removeItem(IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY);
     } catch {
       // error-policy:J6 best-effort cleanup — Preferences removal below is
       // authoritative for the simulator harness
@@ -1451,7 +1455,7 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
     });
   } finally {
     try {
-      window.localStorage.removeItem(IOS_ONBOARDING_SMOKE_REQUEST_KEY);
+      shellLocalStorage.removeItem(IOS_ONBOARDING_SMOKE_REQUEST_KEY);
     } catch {
       // error-policy:J6 best-effort cleanup — Preferences removal below is
       // authoritative for the simulator harness
@@ -1531,7 +1535,7 @@ async function runIosOnboardingRelaunchSmokeIfRequested(): Promise<boolean> {
     });
   } finally {
     try {
-      window.localStorage.removeItem(IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY);
+      shellLocalStorage.removeItem(IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY);
     } catch {
       // error-policy:J6 best-effort cleanup — Preferences removal below is
       // authoritative for the simulator harness
@@ -1694,7 +1698,7 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
   if (!requested) return false;
   iosFullBunSmokeStarted = true;
   try {
-    window.localStorage.setItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY, "1");
+    shellLocalStorage.setItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY, "1");
   } catch {
     // error-policy:J6 best-effort echo — Preferences can request the smoke
     // before localStorage is hydrated
@@ -2119,7 +2123,7 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
   } finally {
     delete window.__ELIZA_IOS_LOCAL_AGENT_DEBUG__;
     try {
-      window.localStorage.removeItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY);
+      shellLocalStorage.removeItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY);
     } catch {
       // error-policy:J6 best-effort cleanup — Preferences removal below is
       // authoritative
@@ -3332,7 +3336,7 @@ async function getOrCreateDeviceBridgeId(): Promise<string> {
     // durable fallback
   }
   try {
-    globalThis.localStorage?.setItem(DEVICE_BRIDGE_ID_KEY, generated);
+    shellLocalStorage.setItem(DEVICE_BRIDGE_ID_KEY, generated);
   } catch {
     // error-policy:J6 no persistent store available — the id is still
     // usable for this session

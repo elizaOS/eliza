@@ -363,12 +363,46 @@ describe("processDueScheduledTasks — recurrence across occurrences + tick cloc
     );
     expect(stillFired?.state.status).toBe("fired");
 
-    // 14:01 tick: now the timeout is genuinely due and applies the skip.
-    const afterTimeout = await tick(runtime, "2026-05-09T14:01:00.000Z");
-    const timedOut = afterTimeout.completionTimeouts.find(
+    // 14:01 tick: the timeout (14:00) is now genuinely due. Post-#14459 a
+    // `user_acknowledged` reminder does NOT terminally skip on the FIRST
+    // timeout — the default no-reply ladder (maxRetries 1, cadence [60m])
+    // re-nudges once before giving up (see the sibling
+    // adhd-followthrough-noreply-retry-then-skip scenario). The retry is a
+    // SNOOZE whose next-fire is computed off the tick's live clock
+    // (14:01 + 60m = 15:01); a boot-frozen clock would have driven this off
+    // 12:00 instead.
+    const firstTimeout = await tick(runtime, "2026-05-09T14:01:00.000Z");
+    const retry = firstTimeout.completionTimeouts.find(
+      (t) => t.taskId === taskB.taskId,
+    );
+    expect(retry?.status).toBe("scheduled");
+    expect(retry?.reason).toBe("no_reply_retry_1");
+    const snoozed = await repo.getScheduledTask(runtime.agentId, taskB.taskId);
+    expect(snoozed?.state.status).toBe("scheduled");
+    expect(snoozed?.state.firedAt).toBe("2026-05-09T15:01:00.000Z");
+
+    // 15:02 tick: the snooze override re-fires the reminder, and the re-fire
+    // stamps THIS tick's time — the strongest anti-frozen-clock assertion, on a
+    // tick well past boot. A frozen runner clock would stamp 12:00 again.
+    const refire = await tick(runtime, "2026-05-09T15:02:00.000Z");
+    expect(refire.errors).toEqual([]);
+    expect(refire.fires.find((f) => f.taskId === taskB.taskId)?.status).toBe(
+      "fired",
+    );
+    const refired = await repo.getScheduledTask(runtime.agentId, taskB.taskId);
+    expect(refired?.state.firedAt).toBe("2026-05-09T15:02:00.000Z");
+
+    // 15:33 tick: the re-fired occurrence's timeout (15:02 + 30m = 15:32) is
+    // due and the ladder is exhausted (retryCount 1 == maxRetries 1), so the
+    // reminder finally settles terminally skipped.
+    const terminal = await tick(runtime, "2026-05-09T15:33:00.000Z");
+    const timedOut = terminal.completionTimeouts.find(
       (t) => t.taskId === taskB.taskId,
     );
     expect(timedOut?.status).toBe("skipped");
+    expect(timedOut?.reason).toBe("no_reply_reminder_expired");
+    const settled = await repo.getScheduledTask(runtime.agentId, taskB.taskId);
+    expect(settled?.state.status).toBe("skipped");
   });
 
   it("during_window: fires on two consecutive days, once per window", async () => {

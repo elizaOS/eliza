@@ -167,6 +167,19 @@ const stubElizaCore = {
             isViewVisible: (d, enabled) =>
               isViewKindEnabled(resolveViewKind(d), enabled),
             dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
+            // The fixture defaults to attention mode, so the home notification
+            // center (NotificationsHomeCenter) mounts and triages each seeded
+            // notification by tier — it needs the REAL priority→tier mapping. A
+            // noop reads back "undefined" through esbuild's own-key __toESM
+            // interop and crashes the whole tree ("tierForPriority is not a
+            // function"), so the launcher surface never renders. Mirror core's
+            // notification.ts (matches run-home-screen-e2e.mjs's stub, #15320).
+            tierForPriority: (priority) =>
+              priority === "urgent" || priority === "high"
+                ? "interrupt"
+                : priority === "low"
+                  ? "silent"
+                  : "digest",
           },
           { get: (t, p) => (p in t ? t[p] : noop) },
         );

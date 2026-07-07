@@ -149,7 +149,7 @@ bun run --cwd plugins/plugin-finances clean        # rm -rf dist
 2. For OAuth/managed bridges, follow the Plaid / PayPal pattern via
    `@elizaos/plugin-elizacloud/cloud/managed-payment-clients`.
 
-**Add a new view variant (XR / TUI):**
+**Add a new view variant:**
 1. Build the component under `src/components/finances/`.
 2. Re-export it from `finances-view-bundle.ts`.
 3. Add a view descriptor to the `views` array in `src/plugin.ts`.

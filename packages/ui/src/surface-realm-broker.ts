@@ -16,6 +16,30 @@
  * explicit view-namespaced scope, never a fabricated success. Default-deny: a
  * view with no grants gets the safe scope.
  *
+ * Two enforcement layers (#13452 acceptance criterion 1):
+ *
+ * 1. The **facade** ({@link SurfaceRealmScope}) — the sanctioned handles the
+ *    shell resolves for the active view (`scope.storage`, `scope.navigate`).
+ * 2. The **raw-global guards** ({@link ensureHostRealmGuards}, installed the
+ *    first time a scope is published) — a Proxy over `window.localStorage` and
+ *    a patch over `History.prototype.pushState`/`replaceState` that apply the
+ *    same policy to code that bypasses the facade: a raw write to a
+ *    shell-reserved storage key is denied for every view (grant or not, same
+ *    as the facade), and a raw path-changing history mutation is denied unless
+ *    the active manifest grants `navigate`. Shell code performs its own
+ *    reserved-key writes and router navigation through the privileged channel
+ *    ({@link shellLocalStorage} / {@link shellHistory} /
+ *    {@link runAsPrivilegedShell}).
+ *
+ * Honest bound: everything here shares one JS realm, so the guards are
+ * accident-hygiene for the trusted in-process tier, not an adversarial
+ * boundary. Deliberately hostile code can capture pristine globals through a
+ * same-origin iframe, assign `location.href` (a full reload, outside history),
+ * write `sessionStorage` (unguarded; the shell keeps only the transient
+ * focus-connector handoff and first-run session there), or simply import the
+ * privileged channel — adversarial content belongs in the `sandboxed-iframe` /
+ * `native-webview` isolation levels, which are real process/realm boundaries.
+ *
  * Consumed by `App.tsx`, which resolves the active view's manifest and publishes
  * one {@link SurfaceRealmScope} per active view via
  * {@link setActiveSurfaceRealmScope}; the shell resets the DOM scope on view
@@ -25,7 +49,19 @@
 
 import type { ResolvedSurfaceManifest } from "@elizaos/core";
 import { surfaceGrants } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import { THEME_CSS_VAR_MAP, THEME_FONT_CSS_VARS } from "@elizaos/shared";
+import { isPrivilegedShellActive } from "./surface-realm-channel";
+
+// Re-export the shell-privileged channel so existing importers of the broker
+// (App.tsx, the bridge barrel) keep working; the definitions live in the
+// dependency-free `surface-realm-channel` leaf so shell writers don't drag this
+// heavy module in. New leaf writers should import from the channel directly.
+export {
+  runAsPrivilegedShell,
+  shellHistory,
+  shellLocalStorage,
+} from "./surface-realm-channel";
 
 /**
  * Raised when a view attempts a host-realm mutation its manifest does not grant.
@@ -54,8 +90,12 @@ export const SURFACE_VIEW_STORAGE_PREFIX = "surface:view:";
 // the owner's theme, background, wallet, or server records.
 const SHELL_RESERVED_STORAGE_PREFIXES = [
   "eliza:",
-  "elizaos:",
+  "eliza.",
+  "eliza-",
   "eliza_",
+  "elizaos:",
+  "elizaos.",
+  "elizaos_",
 ] as const;
 
 /** Whether a storage key belongs to the shell's own reserved namespace. */
@@ -405,9 +445,199 @@ export function setActiveSurfaceRealmScope(
   scope: SurfaceRealmScope | null,
 ): void {
   activeScope = scope;
+  // Guards install lazily on the first publish (not at module load) so server
+  // consumers of the ui barrel never touch window, and so the guards wrap
+  // whatever `window.localStorage` the environment (or a test stub) provides.
+  if (scope !== null) ensureHostRealmGuards();
 }
 
 /** The scope for the active view, or `null` when no view is mounted. */
 export function getActiveSurfaceRealmScope(): SurfaceRealmScope | null {
   return activeScope;
+}
+
+// ── Raw-global guards ────────────────────────────────────────────────────────
+
+// The shell-privileged channel (`shellLocalStorage`/`shellHistory`/
+// `runAsPrivilegedShell` + the depth flag the guards read) lives in the
+// dependency-free `surface-realm-channel` leaf so the ~30 shell writers that
+// migrated to it don't each pull this heavy module (core/shared/logger). The
+// guards below consume the channel's `isPrivilegedShellActive`; this module
+// re-exports the channel for back-compat (App.tsx, the bridge barrel).
+
+// Marker so a re-publish can tell "window.localStorage is already my proxy"
+// from "a test (or the platform) swapped in a fresh backing that needs
+// wrapping". The get trap answers the symbol with the raw backing.
+const STORAGE_GUARD_TARGET = Symbol("surface-realm-storage-guard-target");
+
+function assertRawStorageWriteAllowed(op: string, key: string): void {
+  if (isPrivilegedShellActive()) return;
+  const scope = activeScope;
+  if (scope === null) return;
+  if (!isShellReservedStorageKey(key)) return;
+  // Reserved keys are denied regardless of the `storage` grant — facade parity:
+  // even a granted view may never overwrite the owner's persisted shell state.
+  throw new SurfaceRealmDeniedError(
+    scope.viewId,
+    "storage",
+    `raw localStorage ${op} on reserved shell key "${key}" — views use the ` +
+      `surface storage facade (scope.storage); shell code uses shellLocalStorage`,
+  );
+}
+
+function guardedLocalStorage(backing: Storage): Storage {
+  const guardedClear = (): void => {
+    const scope = activeScope;
+    if (isPrivilegedShellActive() || scope === null) {
+      backing.clear();
+      return;
+    }
+    // Facade parity with hostScopedStorage.clear(): a view-path clear may wipe
+    // exactly its own REACH. A `storage`-granted view reaches every
+    // non-reserved key; an ungranted view reaches only its own
+    // `surface:view:<id>:` namespace — never the shell's reserved keys and
+    // never another view's namespace.
+    const granted = surfaceGrants(scope.manifest, "storage");
+    const ownPrefix = surfaceViewStoragePrefix(scope.viewId);
+    const removable: string[] = [];
+    for (let i = 0; i < backing.length; i += 1) {
+      const key = backing.key(i);
+      if (key === null) continue;
+      if (granted ? !isShellReservedStorageKey(key) : key.startsWith(ownPrefix))
+        removable.push(key);
+    }
+    for (const key of removable) backing.removeItem(key);
+  };
+  const guardedSetItem = (key: string, value: string): void => {
+    assertRawStorageWriteAllowed("setItem", String(key));
+    backing.setItem(String(key), String(value));
+  };
+  const guardedRemoveItem = (key: string): void => {
+    assertRawStorageWriteAllowed("removeItem", String(key));
+    backing.removeItem(String(key));
+  };
+  return new Proxy(backing, {
+    get(target, prop) {
+      if (prop === STORAGE_GUARD_TARGET) return target;
+      if (prop === "setItem") return guardedSetItem;
+      if (prop === "removeItem") return guardedRemoveItem;
+      if (prop === "clear") return guardedClear;
+      // Receiver must be the target: Storage methods brand-check `this`, and a
+      // proxy receiver fails the internal-slot check.
+      const value = Reflect.get(target, prop, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+    // Indexed assignment (`localStorage["eliza:x"] = …`) and `delete` reach
+    // storage through the legacy named-property setter, not setItem — guard
+    // them too or the method guard is trivially side-stepped by accident.
+    set(target, prop, value) {
+      if (typeof prop === "string") {
+        assertRawStorageWriteAllowed("write", prop);
+      }
+      return Reflect.set(target, prop, value, target);
+    },
+    deleteProperty(target, prop) {
+      if (typeof prop === "string") {
+        assertRawStorageWriteAllowed("delete", prop);
+      }
+      return Reflect.deleteProperty(target, prop);
+    },
+  });
+}
+
+function assertRawHistoryMutationAllowed(
+  op: "pushState" | "replaceState",
+  url: string | URL | null | undefined,
+): void {
+  if (isPrivilegedShellActive()) return;
+  const scope = activeScope;
+  if (scope === null) return;
+  // State-only mutation (no URL) cannot move the shell route.
+  if (url === undefined || url === null || url === "") return;
+  if (surfaceGrants(scope.manifest, "navigate")) return;
+  let next: URL;
+  try {
+    next = new URL(String(url), window.location.href);
+  } catch {
+    // error-policy:J3 an unparsable URL is not a route escape; fall through so
+    // the native implementation raises its own SyntaxError to the caller.
+    return;
+  }
+  const current = window.location;
+  // Hash-only mutation stays within the view's own page. The QUERY STRING is
+  // shell routing state (`?runtime=first-run`, `?enableRuntimeChooser`,
+  // assistant-launch payloads are consumed by shell boot paths), so it is
+  // protected by the `navigate` grant exactly like the pathname.
+  if (
+    next.origin === current.origin &&
+    next.pathname === current.pathname &&
+    next.search === current.search
+  ) {
+    return;
+  }
+  throw new SurfaceRealmDeniedError(
+    scope.viewId,
+    "navigate",
+    `raw history.${op} to "${next.pathname}" without the "navigate" grant — ` +
+      `views use scope.navigate; shell code uses shellHistory`,
+  );
+}
+
+let historyGuardInstalled = false;
+
+function installHistoryGuard(): void {
+  if (historyGuardInstalled || typeof History === "undefined") return;
+  // Patch the prototype, not the instance: an own-property wrapper is
+  // side-stepped by `History.prototype.pushState.call(history, …)`, the
+  // prototype patch is not (an iframe's pristine prototype is a different
+  // realm — see the header's honest-bound paragraph).
+  const rawPushState = History.prototype.pushState;
+  const rawReplaceState = History.prototype.replaceState;
+  History.prototype.pushState = function pushState(
+    data: unknown,
+    unused: string,
+    url?: string | URL | null,
+  ): void {
+    assertRawHistoryMutationAllowed("pushState", url);
+    rawPushState.call(this, data, unused, url);
+  };
+  History.prototype.replaceState = function replaceState(
+    data: unknown,
+    unused: string,
+    url?: string | URL | null,
+  ): void {
+    assertRawHistoryMutationAllowed("replaceState", url);
+    rawReplaceState.call(this, data, unused, url);
+  };
+  historyGuardInstalled = true;
+}
+
+/**
+ * Install (or re-arm after a test swapped the backing) the raw-global guards.
+ * Idempotent and cheap; called on every scope publish. The guards themselves
+ * are policy-free pass-throughs while no scope is active, so installation
+ * order relative to boot code does not change boot behavior.
+ */
+export function ensureHostRealmGuards(): void {
+  if (typeof window === "undefined") return;
+  installHistoryGuard();
+  try {
+    const current = window.localStorage as Storage & {
+      [STORAGE_GUARD_TARGET]?: Storage;
+    };
+    if (current?.[STORAGE_GUARD_TARGET] !== undefined) return;
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: guardedLocalStorage(current),
+    });
+  } catch (error) {
+    // error-policy:J4 designed degrade — in storage-hostile environments
+    // (privacy modes that throw on access, non-configurable stubs) the raw
+    // guard cannot install; the facade and DOM-scope reset still enforce, so
+    // surface the loss of the defense-in-depth layer and continue.
+    logger.warn(
+      { error },
+      "[SurfaceRealmBroker] raw localStorage guard unavailable; facade enforcement only",
+    );
+  }
 }

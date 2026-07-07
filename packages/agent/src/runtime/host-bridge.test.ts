@@ -54,6 +54,7 @@ describe("agent host bridge (downward injection seam)", () => {
     const pool = { id: "installed-pool" };
     let keepAliveStarted = false;
     const installed: AgentHostBridge = {
+      captureWalletEnvBootBaseline: () => undefined,
       hydrateWalletKeysFromNodePlatformSecureStore: () => undefined,
       runVaultBootstrap: () => Promise.resolve({ migrated: 3, failed: [] }),
       sharedVault: defaultAgentHostBridge.sharedVault,

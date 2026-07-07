@@ -7,7 +7,7 @@ import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action
 
 export default scenario({
   lane: "live-only",
-  id: "i2.mediation.conflicting_claims_label_uncertain",
+  id: "i2-conflicting-claims-label-uncertain",
   title: "I2 conflicting claims stay uncertain instead of becoming a verdict",
   domain: "lifeops.relationships",
   tags: ["lifeops", "I2", "mediation", "uncertainty", "entity"],

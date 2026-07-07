@@ -22,6 +22,7 @@ import {
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.ts";
 import { createOwnerFactStore } from "../owner/fact-store.js";
+import { settleDeferredInboundScans } from "./deferred-inbound-scans.js";
 import { getScheduledTaskRunner } from "./service.js";
 import {
   cancelQuestionFollowupsOnOwnerReply,
@@ -305,6 +306,8 @@ describe("unanswered-question follow-up — real spine", () => {
       } as Memory,
       source: "test",
     });
+    // The dismissal scan runs detached off the awaited emit edge (#15255).
+    await settleDeferredInboundScans();
 
     expect(await listQuestionFollowups(runtime, room.roomId)).toHaveLength(0);
     const dismissed = await listQuestionFollowups(

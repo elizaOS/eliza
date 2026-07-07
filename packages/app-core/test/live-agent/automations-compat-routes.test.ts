@@ -171,7 +171,14 @@ function buildRuntimeStub() {
   return {
     character: { name: "Eliza" },
     actions: [
-      { name: "CODE_TASK", description: "Run a coding agent task." },
+      {
+        name: "CODE_TASK",
+        description: "Run a coding agent task.",
+        // Mirror the real coding-delegation action's classification tags
+        // (tasksAction in plugin-agent-orchestrator) so classifyRuntimeActionNode
+        // surfaces this as an "agent" node rather than a plain "action".
+        tags: ["domain:agent-orchestration", "capability:delegate"],
+      },
       {
         name: "MESSAGE",
         description: "Send, read, search, or manage messages.",

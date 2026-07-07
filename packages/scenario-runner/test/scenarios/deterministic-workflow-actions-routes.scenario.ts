@@ -9,7 +9,9 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import workflowPlugin from "../../../../plugins/plugin-workflow/src/index.ts";
+import workflowPlugin, {
+  workflowRoutePlugin,
+} from "../../../../plugins/plugin-workflow/src/index.ts";
 import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
   type EmbeddedWorkflowService,
@@ -222,7 +224,13 @@ async function ensureWorkflowPlugin(
     await runtime.registerPlugin?.(workflowPlugin);
   }
   const routes = runtime.routes ?? [];
-  const pluginRoutes = workflowPlugin.routes ?? [];
+  // Workflow CRUD (GET/POST /api/workflow/workflows/:id) is served by the
+  // canonical rawPath surface on `workflowRoutePlugin`, not the main plugin's
+  // relative `routes`. Mount both so the CRUD read below resolves.
+  const pluginRoutes = [
+    ...(workflowPlugin.routes ?? []),
+    ...(workflowRoutePlugin.routes ?? []),
+  ];
   runtime.routes = routes.filter(
     (route) => route.__scenarioWorkflowRoute !== true,
   );
@@ -307,14 +315,13 @@ function expectWorkflowRoute(
   body: unknown,
 ): string | undefined {
   if (status !== 200) return `expected status 200, saw ${status}`;
-  if (readPath(body, "success") !== true) {
-    return `expected success=true, saw ${stableStringify(body)}`;
-  }
+  // The canonical rawPath CRUD route returns the workflow object directly (no
+  // `{ success, data }` envelope), so assert the workflow fields at the top level.
   for (const [path, expected] of Object.entries({
-    "data.id": WORKFLOW_ID,
-    "data.name": WORKFLOW_NAME,
-    "data.nodes.0.type": "workflows-nodes-base.manualTrigger",
-    "data.nodes.1.type": "workflows-nodes-base.set",
+    id: WORKFLOW_ID,
+    name: WORKFLOW_NAME,
+    "nodes.0.type": "workflows-nodes-base.manualTrigger",
+    "nodes.1.type": "workflows-nodes-base.set",
   })) {
     const failure = expectEqual(readPath(body, path), expected, path);
     if (failure) return failure;
@@ -394,7 +401,7 @@ export default scenario({
       kind: "api",
       name: "GET seeded workflow route",
       method: "GET",
-      path: `/workflows/${WORKFLOW_ID}`,
+      path: `/api/workflow/workflows/${WORKFLOW_ID}`,
       expectedStatus: 200,
       assertResponse: expectWorkflowRoute,
     },

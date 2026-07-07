@@ -46,6 +46,12 @@ function launcherTileTestId(viewId: string): string {
 
 export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
+    name: "my-apps app window",
+    path: "/apps/my-apps",
+    readyChecks: [{ text: "My Apps" }],
+    timeoutMs: 90_000,
+  },
+  {
     name: "plugins app window",
     path: "/apps/plugins",
     readyChecks: [{ text: "Browser Workspace" }, { text: "AI Providers" }],
@@ -55,6 +61,12 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     name: "skills app window",
     path: "/apps/skills",
     selector: '[data-testid="skills-shell"]',
+    timeoutMs: 90_000,
+  },
+  {
+    name: "my apps app window",
+    path: "/apps/my-apps",
+    readyChecks: [{ text: "My Apps" }, { text: "Install, create, and run" }],
     timeoutMs: 90_000,
   },
   {
@@ -129,12 +141,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     name: "polymarket",
     path: "/polymarket",
     readyChecks: [{ selector: '[aria-label="Polymarket controls"]' }],
-    timeoutMs: 90_000,
-  },
-  {
-    name: "shopify",
-    path: "/shopify",
-    readyChecks: [{ selector: '[aria-label="Shopify controls"]' }],
     timeoutMs: 90_000,
   },
   {
@@ -228,6 +234,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
 const managerVisibleViewTileCases = [
   { viewId: "birdclaw", path: "/birdclaw" },
   { viewId: "calendar", path: "/calendar" },
+  { viewId: "cloud", path: "/cloud" },
   { viewId: "contacts", path: "/contacts" },
   { viewId: "cockpit", path: "/cockpit" },
   { viewId: "documents", path: "/documents" },
@@ -240,10 +247,10 @@ const managerVisibleViewTileCases = [
   { viewId: "messages", path: "/messages" },
   { viewId: "model-tester", path: "/model-tester" },
   { viewId: "orchestrator", path: "/orchestrator" },
+  { viewId: "cloud", path: "/cloud" },
   { viewId: "phone", path: "/phone" },
   { viewId: "relationships", path: "/relationships" },
   { viewId: "screenshare", path: "/screenshare" },
-  { viewId: "social-alpha", path: "/social-alpha" },
   { viewId: "task-coordinator", path: "/task-coordinator" },
   { viewId: "todos", path: "/todos" },
   { viewId: "training", path: "/apps/fine-tuning" },

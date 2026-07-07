@@ -143,4 +143,8 @@ export type {
   SetOptions,
   Vault,
 } from "./vault.js";
-export { createVault, VaultMissError } from "./vault.js";
+export {
+  createVault,
+  resolveDefaultVaultDataDir,
+  VaultMissError,
+} from "./vault.js";

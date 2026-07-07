@@ -139,6 +139,7 @@ import {
   SurfaceRealmScope,
   setActiveSurfaceRealmScope,
 } from "./surface-realm-broker";
+import { shellHistory } from "./surface-realm-channel";
 import { TutorialConductorMount } from "./tutorial/TutorialConductor";
 import { confirmDesktopAction } from "./utils/desktop-dialogs";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
@@ -711,7 +712,7 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
  */
 function exitAppShellPageToViews(): void {
   if (typeof window !== "undefined") {
-    window.history.pushState(null, "", "/views");
+    shellHistory.pushState(null, "", "/views");
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
 }
@@ -2473,7 +2474,7 @@ export function App() {
         if (window.location.protocol === "file:") {
           window.location.hash = dtab.path;
         } else {
-          window.history.pushState(null, "", dtab.path);
+          shellHistory.pushState(null, "", dtab.path);
           window.dispatchEvent(new PopStateEvent("popstate"));
         }
       } catch {

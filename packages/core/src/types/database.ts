@@ -652,6 +652,16 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	ensureEmbeddingDimension(dimension: number): Promise<void>;
 
 	/**
+	 * Delete every stored embedding whose vector width does not match the
+	 * currently-active embedding dimension, returning the ids of the memories
+	 * left without a vector so the runtime can re-embed them at the active width.
+	 * The store side of switching embedders (e.g. cloud 1536-dim → on-device
+	 * gte-small 384-dim); a no-op returning `[]` once every vector matches. In-
+	 * memory adapters, whose vectors are not schema-bound, may return `[]`.
+	 */
+	clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]>;
+
+	/**
 	 * Execute a callback within a database transaction.
 	 *
 	 * WHY: Enables cross-method atomicity. Each batch method (createEntities,

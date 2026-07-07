@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { shellHistory } from "../../surface-realm-channel";
 import { Button } from "../ui/button.tsx";
 
 /**
@@ -28,7 +29,7 @@ import { Button } from "../ui/button.tsx";
  */
 export function navigateToViews() {
   if (typeof window !== "undefined") {
-    window.history.pushState(null, "", "/views");
+    shellHistory.pushState(null, "", "/views");
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
 }

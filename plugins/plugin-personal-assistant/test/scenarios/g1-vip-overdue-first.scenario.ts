@@ -8,7 +8,7 @@ import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action
 
 export default scenario({
   lane: "live-only",
-  id: "g1.overdue_comms.vip_overdue_first",
+  id: "g1-vip-overdue-first",
   title: "G1 overdue reply backlog ranks relationship-sensitive threads first",
   domain: "lifeops.relationships",
   tags: ["lifeops", "gmail", "G1", "backlog", "priority", "outcome"],

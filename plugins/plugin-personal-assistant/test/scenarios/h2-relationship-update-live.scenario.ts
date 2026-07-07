@@ -7,7 +7,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
-  id: "h2.kg_capture.relationship_update_live",
+  id: "h2-relationship-update-live",
   title: "H2 relationship update lands in ENTITY with evidence",
   domain: "lifeops.kg",
   tags: ["lifeops", "H2", "entity", "relationship", "evidence"],

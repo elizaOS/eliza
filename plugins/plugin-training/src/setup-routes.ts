@@ -34,17 +34,6 @@ import { handleTrajectoryRoute } from "./routes/trajectory-routes.js";
 import { getActiveTrainingService } from "./services/training-service-registry.js";
 import { VastTrainingService } from "./services/training-vast-service.js";
 
-// In a terminal host (the Node agent, no DOM), register the training view so it
-// renders inline in the terminal. Lazy + DOM-guarded so the terminal engine
-// stays out of browser/mobile bundles.
-if (typeof window === "undefined") {
-  void import("./register-terminal-view.js")
-    .then((m) => m.registerFineTuningTerminalView())
-    .catch(() => {
-      // Terminal rendering is best-effort; never block plugin load.
-    });
-}
-
 const LOOPBACK_HOSTS = new Set([
   "localhost",
   "127.0.0.1",
@@ -348,13 +337,8 @@ export const trainingPlugin: Plugin = {
     "Training jobs, datasets, models, blueprints, and trajectory routes",
   routes: trainingRoutes,
   views: [
-    // ONE declaration → GUI + XR + TUI, ONE componentExport. `FineTuningView`
-    // is an adaptive wrapper: GUI/XR render the rich `FineTuningDashboard`
-    // through the spatial `Escape` hatch, TUI falls back to the presentational
-    // `FineTuningSpatialView` — the same source the agent terminal renders
-    // directly via the spatial terminal registry (see register-terminal-view.tsx).
-    // `modalities` is a plain literal here, so no brand-new `@elizaos/core`
-    // runtime export reaches the bundle build.
+    // Single GUI declaration. `FineTuningView` renders the rich
+    // `FineTuningDashboard` through the spatial `Escape` hatch.
     {
       id: "training",
       label: "Training",
@@ -362,7 +346,7 @@ export const trainingPlugin: Plugin = {
         "Fine-tuning jobs, data collection, analysis, evals, benchmarks, trained models, and trajectory management",
       icon: "BrainCircuit",
       path: "/apps/fine-tuning",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "FineTuningView",
       // FineTuningView instruments its panels with useAgentElement; without

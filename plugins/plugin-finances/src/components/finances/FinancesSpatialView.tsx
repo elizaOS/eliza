@@ -3,8 +3,9 @@
  * spatial vocabulary, so it renders correctly wherever it is displayed:
  *
  *   - GUI / XR — mounted in `<SpatialSurface>` (DOM; XR scales up).
- *   - TUI      — rendered to real terminal lines by the agent terminal, via
- *                `registerSpatialTerminalView` (see `register-terminal-view.tsx`).
+ *   - TUI      — the spatial primitives still render to terminal lines via
+ *                `@elizaos/ui/spatial/tui`, but the plugin no longer ships a
+ *                terminal registration (GUI-only view inventory).
  *
  * It is purely presentational (a snapshot + an action callback in, primitives
  * out) and imports only the cross-modality primitives, so it is safe to render

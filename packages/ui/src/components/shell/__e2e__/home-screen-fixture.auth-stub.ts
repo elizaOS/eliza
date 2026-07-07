@@ -36,3 +36,14 @@ export function useAuthStatus(): {
 } {
   return { state: AUTHENTICATED_STATE, refetch: () => undefined };
 }
+
+/**
+ * No-op prime probe. The real `useAuthStatus` module (#15249) exposes
+ * `primeAuthStatusProbe()` to overlap the auth probe with boot hydration;
+ * `startup-phase-restore.ts` calls it, and the fixture bundle aliases this stub
+ * in for that module — so the export must exist here or the e2e build fails to
+ * resolve it. There is nothing to prime: the stub is already a resolved
+ * authenticated snapshot (never the `loading` phase the real probe races), so
+ * priming is inherently a no-op.
+ */
+export function primeAuthStatusProbe(): void {}

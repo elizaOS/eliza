@@ -49,6 +49,7 @@ import type {
   ModelAssignments,
 } from "../services/local-inference/types";
 import { AGENT_MODEL_SLOTS } from "../services/local-inference/types";
+import { runAsPrivilegedShell } from "../surface-realm-channel";
 import type { MemoryBrowseItem } from "./client-types-chat";
 import type { IttpAgentRequestContext } from "./ittp-agent-transport";
 
@@ -285,7 +286,10 @@ function storage(): Storage | null {
 
 function removeStorageItem(key: string): void {
   try {
-    storage()?.removeItem(key);
+    // Reserved `eliza:ios-local-agent:*` keys — privileged so the raw-global
+    // guard admits them while a view scope is active (#13452); `storage()`
+    // keeps the embedded-shell/no-window guard.
+    runAsPrivilegedShell(() => storage()?.removeItem(key));
   } catch {
     /* localStorage unavailable */
   }
@@ -333,7 +337,7 @@ function readJson<T>(key: string, fallback: T): T {
 
 function writeJson(key: string, value: unknown): void {
   try {
-    storage()?.setItem(key, JSON.stringify(value));
+    runAsPrivilegedShell(() => storage()?.setItem(key, JSON.stringify(value)));
   } catch {
     // localStorage can be unavailable in embedded shells.
   }

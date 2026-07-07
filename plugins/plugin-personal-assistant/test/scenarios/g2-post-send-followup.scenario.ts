@@ -7,7 +7,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
-  id: "g2.reconnect.post_send_followup",
+  id: "g2-post-send-followup",
   title: "G2 approved reconnect logs interaction and creates next follow-up",
   domain: "lifeops.relationships",
   tags: ["lifeops", "G2", "relationships", "entity", "followup"],

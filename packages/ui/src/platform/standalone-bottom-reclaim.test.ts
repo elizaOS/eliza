@@ -88,8 +88,7 @@ function stubViewport(opts: {
     configurable: true,
     writable: true,
     value: (query: string) => ({
-      matches:
-        query.includes(`orientation: ${opts.orientation ?? "portrait"}`),
+      matches: query.includes(`orientation: ${opts.orientation ?? "portrait"}`),
       media: query,
       onchange: null,
       addEventListener: () => {},

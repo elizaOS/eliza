@@ -5,10 +5,8 @@
  * orders, plus a background poll via {@link useHyperliquidState}) and renders
  * the one presentational {@link HyperliquidSpatialView} inside a
  * {@link SpatialSurface}. Omitting the `modality` prop lets `SpatialSurface`
- * auto-detect GUI vs XR via `window.__elizaXRContext`, so the SAME component
- * serves both surfaces. The TUI surface renders the same
- * `HyperliquidSpatialView` through the terminal registry (see
- * `register-terminal-view.tsx`).
+ * auto-detect the host surface, so the SAME component serves them all. The
+ * view ships GUI-only.
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";

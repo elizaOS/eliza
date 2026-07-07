@@ -1,8 +1,7 @@
 /**
- * Manifest contract tests for the collapsed views-manager declaration.
+ * Manifest contract tests for the views-manager declaration.
  *
- * One manifest entry draws gui, xr, and tui surfaces from ViewManagerView while
- * terminal rendering is delegated through the spatial registry.
+ * One GUI manifest entry draws its surface from ViewManagerView.
  */
 
 import { readFileSync } from "node:fs";
@@ -28,7 +27,7 @@ function viewsArray(source: string): string {
 	throw new Error("unterminated views array");
 }
 
-describe("views-manager manifest (collapsed tri-modal declaration)", () => {
+describe("views-manager manifest (single GUI declaration)", () => {
 	const views = viewsArray(indexSource);
 
 	it("declares the views-manager view exactly once", () => {
@@ -36,8 +35,8 @@ describe("views-manager manifest (collapsed tri-modal declaration)", () => {
 		expect(ids).toHaveLength(1);
 	});
 
-	it("uses a single modalities literal of gui/xr/tui (no per-surface viewType)", () => {
-		expect(views).toContain('modalities: ["gui", "xr", "tui"]');
+	it("uses a single gui modalities literal (no per-surface viewType)", () => {
+		expect(views).toContain('modalities: ["gui"]');
 		// No `viewType:` escape hatch — the duplicate-per-surface form is gone.
 		expect(views).not.toContain("viewType:");
 		// The retired terminal-styled DOM variant is no longer referenced.
@@ -51,7 +50,7 @@ describe("views-manager manifest (collapsed tri-modal declaration)", () => {
 		expect(exports).toEqual(["ViewManagerView"]);
 	});
 
-	it("keeps the TUI capability ids on the single declaration", () => {
+	it("keeps the terminal capability ids on the single declaration", () => {
 		expect(views).toContain("terminal-open-view");
 		expect(views).toContain("terminal-list-views");
 	});

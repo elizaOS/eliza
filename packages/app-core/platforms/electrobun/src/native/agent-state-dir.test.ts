@@ -82,7 +82,7 @@ describe("desktop packaged embedding warmup policy", () => {
     expect(env.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP).toBe("1");
   });
 
-  it("allows explicit startup embedding warmup opt-in", () => {
+  it("allows explicit startup embedding warmup opt-in (disables the deferral in the child)", () => {
     const env: Record<string, string> = {
       ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP: "1",
     };
@@ -90,6 +90,8 @@ describe("desktop packaged embedding warmup policy", () => {
     applyPackagedStartupEmbeddingWarmupPolicy(env, true);
 
     expect(env.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP).toBeUndefined();
+    // Runtime warmup defers by default, so the opt-in must force it off.
+    expect(env.ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP).toBe("0");
   });
 
   it("preserves explicit startup embedding skip when opt-in is also set", () => {

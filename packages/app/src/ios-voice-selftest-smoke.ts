@@ -16,6 +16,7 @@
  */
 
 import type { ElizaClient } from "@elizaos/ui/api";
+import { shellLocalStorage } from "@elizaos/ui/bridge";
 import {
   EXPECTED_PHRASE,
   KNOWN_PHRASE_WAV_DATA_URL,
@@ -315,7 +316,7 @@ export async function runIosVoiceSelfTestSmokeIfRequested({
       });
     }
     try {
-      window.localStorage.removeItem(IOS_VOICE_SELFTEST_REQUEST_KEY);
+      shellLocalStorage.removeItem(IOS_VOICE_SELFTEST_REQUEST_KEY);
     } catch (error) {
       // error-policy:J6 best-effort cleanup — Preferences removal below is
       // authoritative for the simulator harness

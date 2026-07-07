@@ -4,10 +4,10 @@
       "type": "proactive-message",
       "conversationId": "conv-1",
       "message": {
-        "id": "26061354-6e47-426e-b653-c8cbe787e79e",
+        "id": "5492d1f9-7c62-40e0-9430-62b0de0274c5",
         "role": "assistant",
         "text": "Want me to pull your latest balances?",
-        "timestamp": 1783002182314,
+        "timestamp": 1783438828274,
         "source": "proactive-interaction"
       }
     },
@@ -15,10 +15,10 @@
       "type": "proactive-message",
       "conversationId": "conv-1",
       "message": {
-        "id": "ae9ea7fd-b4e1-446b-8f76-8215cbd77c05",
+        "id": "30ea925f-edfa-44a3-8416-a7453086f903",
         "role": "assistant",
         "text": "Want a hand finding something?",
-        "timestamp": 1783002187692,
+        "timestamp": 1783438833632,
         "source": "proactive-interaction"
       }
     }
@@ -33,7 +33,7 @@
     },
     {
       "surface": "calendar",
-      "text": "Here is a calendar tip.",
+      "text": null,
       "atMs": 3200,
       "admitted": false,
       "reason": "global cooldown"
@@ -47,7 +47,7 @@
     },
     {
       "surface": "wallet",
-      "text": "Want me to refresh your wallet view?",
+      "text": null,
       "atMs": 261600,
       "admitted": false,
       "reason": "per-surface cooldown"
@@ -60,6 +60,6 @@
       "reason": "duplicate of a recent comment"
     }
   ],
-  "judgeCalls": 5,
+  "judgeCalls": 3,
   "memories": 2
 }

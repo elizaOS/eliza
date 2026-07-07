@@ -4,11 +4,7 @@
 // Deterministic — typed snapshot in, rendered primitives out, no live model.
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
-import {
-  getTerminalView,
-  registerSpatialTerminalView,
-  renderViewToLines,
-} from "@elizaos/ui/spatial/tui";
+import { renderViewToLines } from "@elizaos/ui/spatial/tui";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
@@ -341,22 +337,5 @@ describe("OrchestratorSpatialView one source, three modalities", () => {
     }
     expect(gui).toContain('data-agent-id="reopen"');
     expect(gui).toContain('data-agent-id="copy-link"');
-  });
-
-  it("registers as a terminal view the agent terminal can mount and render", () => {
-    const unregister = registerSpatialTerminalView(
-      "orchestrator-test",
-      () => listView,
-    );
-    try {
-      const component = getTerminalView("orchestrator-test");
-      expect(component).toBeTruthy();
-      const lines = component?.render(50) ?? [];
-      expect(lines.length).toBeGreaterThan(0);
-      for (const line of lines) expect(visibleWidth(line)).toBe(50);
-      expect(lines.join("\n")).toContain("Refactor auth pipeline");
-    } finally {
-      unregister();
-    }
   });
 });

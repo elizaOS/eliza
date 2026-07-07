@@ -47,6 +47,12 @@ vi.mock("@elizaos/core", () => {
       return result;
     },
     promoteSubactionsToActions: (action: unknown) => [action],
+    // Pass-through so the real sibling suno provider (aliased to source) runs
+    // its operation and records nothing — mirrors suno's own behavior test.
+    recordLlmCall: vi.fn(
+      async (_runtime: unknown, _details: unknown, operation: () => unknown) =>
+        operation(),
+    ),
     Service,
     logger,
   };

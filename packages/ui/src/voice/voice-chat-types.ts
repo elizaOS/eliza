@@ -491,9 +491,30 @@ export function resolveEffectiveVoiceConfig(
     provider = "eliza-cloud";
   }
 
+  // Resolve the ASR (speech-to-text) provider the same way we resolve the TTS
+  // provider above. `VoiceConfig.asr` is documented as "when unset, fall back to
+  // the device+mode default", but the effective-config resolver previously left
+  // it untouched, so a cloud-connected agent whose stored config carried no
+  // explicit `asr.provider` got working cloud TTS but a NULL ASR provider.
+  // `shouldUseCloudAsr` (useVoiceChat) then read `undefined`, the composer mic's
+  // `startCloudRecognition` early-returned, and capture fell through to the
+  // browser SpeechRecognition path, which is unavailable/unreliable in an
+  // installed iOS PWA, so the mic did nothing at all. Mirroring the TTS
+  // cloud-upgrade here seeds `asr.provider = "eliza-cloud"` when cloud is
+  // connected and no explicit provider was set, so the interactive WAV to cloud
+  // STT path (`/api/asr/cloud`) is actually selected. Deliberately DOES NOT
+  // override an explicit stored provider (e.g. a user who chose
+  // `local-inference`), and stays undefined when cloud is not connected so the
+  // local/desktop defaults keep resolving through `pickDefaultVoiceProvider`.
+  const resolvedAsr: VoiceConfig["asr"] | undefined = base.asr?.provider
+    ? base.asr
+    : cloudConnected
+      ? { ...(base.asr ?? {}), provider: "eliza-cloud" }
+      : base.asr;
+
   if (!provider) return null;
   if (provider !== "elevenlabs") {
-    return { ...base, provider };
+    return { ...base, provider, asr: resolvedAsr };
   }
 
   const currentElevenLabs = base.elevenlabs ?? {};
@@ -535,6 +556,7 @@ export function resolveEffectiveVoiceConfig(
     provider,
     mode,
     elevenlabs,
+    asr: resolvedAsr,
   };
 }
 

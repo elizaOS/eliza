@@ -729,7 +729,10 @@ export default scenario({
       kind: "message",
       name: "natural language enters app create choice flow",
       text: "Create a feed dashboard app",
-      responseIncludesAny: ["Picking next step..."],
+      // The action emits a verified `[CHOICE:…]` disambiguation block, which the
+      // runtime echoes verbatim (verifiedUserFacing precedence) in place of the
+      // planner's "Picking next step…" filler ack.
+      responseIncludesAny: ["Create a new app", "Edit existing: Feed"],
       assertTurn: (execution) =>
         expectRoutedAction(execution, {
           actionName: "APP",

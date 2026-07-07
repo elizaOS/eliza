@@ -9,7 +9,7 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
   lane: "live-only",
-  id: "g2.reconnect.ask_before_sensitive_memory",
+  id: "g2-ask-before-sensitive-memory",
   title: "G2 reconnect draft asks before using sensitive memories",
   domain: "lifeops.relationships",
   tags: ["lifeops", "G2", "privacy", "relationships", "approval"],

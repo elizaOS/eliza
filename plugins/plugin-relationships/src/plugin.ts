@@ -32,7 +32,7 @@ export const relationshipsPlugin: Plugin = {
         "Entity and relationship knowledge-graph viewer: people, organizations, identities, and the typed edges between them.",
       icon: "Users",
       path: "/relationships",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven

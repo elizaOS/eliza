@@ -8,7 +8,7 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
   lane: "live-only",
-  id: "i1.rupture_repair.approval_before_send",
+  id: "i1-approval-before-send",
   title: "I1 repair draft requires approval before send",
   domain: "lifeops.relationships",
   tags: ["lifeops", "I1", "approval", "message-draft", "relationships"],

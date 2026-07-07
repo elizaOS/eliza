@@ -148,7 +148,9 @@ describe("@capacitor/ios boot-time resume/pause eval guard (issue #11030)", () =
       "utf8",
     );
     const entry = checksums
-      .split("\n")
+      // Split on \r?\n so a CRLF checkout (Windows autocrlf) doesn't leave a
+      // trailing \r that defeats the endsWith match.
+      .split(/\r?\n/)
       .find((line) =>
         line.endsWith(`./@capacitor%2Fios@${declaredVersion}.patch`),
       );

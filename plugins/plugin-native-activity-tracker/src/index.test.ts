@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the `__internal` line-parsing and exit-description helpers —
+ * pure string/JSON logic, no Swift binary or child process spawned.
+ */
+
 import { describe, expect, it } from "vitest";
 
 import { __internal } from "./index";

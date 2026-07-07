@@ -4,7 +4,7 @@ Developer tool that exposes end-to-end probes for every Eliza model type through
 
 ## Purpose / role
 
-Adds a Model Tester surface to an Eliza agent's dashboard. It registers three HTTP routes and three views (standard, XR, TUI) so developers can run live probes against text, embedding, speech synthesis, transcription, voice-activity-detection, image description, and image generation models — all from a browser or terminal. Load it by adding `modelTesterPlugin` to the agent's plugin list; it is opt-in (not default-enabled).
+Adds a Model Tester surface to an Eliza agent's dashboard. It registers three HTTP routes and a single GUI view so developers can run live probes against text, embedding, speech synthesis, transcription, voice-activity-detection, image description, and image generation models — all from a browser. Load it by adding `modelTesterPlugin` to the agent's plugin list; it is opt-in (not default-enabled).
 
 ## Plugin surface
 
@@ -16,9 +16,7 @@ Registered in `src/plugin.ts` as `modelTesterPlugin`:
 - `POST /api/model-tester/run` — runs one probe by `test` kind; accepts optional `prompt`, `imageDataUrl`, `audioDataUrl`, `pcmSamples`, and `sampleRateHz` in the JSON body.
 
 **Views** (registered via elizaOS view registry)
-- `model-tester` (standard) — `ModelTesterAppView` React component, path `/model-tester`.
-- `model-tester` (XR) — same component, `viewType: "xr"`.
-- `model-tester` (TUI) — `ModelTesterTuiView`, path `/model-tester/tui`, with capabilities `get-status`, `run-text-small`, `run-transcription`, `run-vision`, `run-vad`.
+- `model-tester` — `ModelTesterView` React component, path `/model-tester`, `modalities: ["gui"]`, with capabilities `get-status`, `run-text-small`, `run-transcription`, `run-vision`, `run-vad`. Shipping is GUI-only; `"tui"`/`"xr"` remain valid modality values for compatibility but this plugin no longer declares them.
 
 **Overlay app + shell page** (registered at module load in `src/model-tester-app.ts`)
 - `registerOverlayApp` — adds the plugin to the overlay app registry under `@elizaos/app-model-tester`.
@@ -52,9 +50,8 @@ src/
   ModelTesterAppView.tsx        — React UI: ModelTesterAppView, ModelTesterTuiView
   ModelTesterAppView.interact.ts — interact() TUI capability handler (split out for Fast Refresh compatibility)
   model-tester-view-bundle.ts   — Vite view-bundle entry: re-exports components + interact for dist/views/bundle.js
-  register-terminal-view.tsx    — registers ModelTesterSpatialView in the @elizaos/tui terminal registry
   components/
-    ModelTesterSpatialView.tsx  — cross-modality spatial view (renders in GUI, XR, and terminal)
+    ModelTesterSpatialView.tsx  — spatial presentational view (GUI-shipped)
   ui.ts                         — thin re-export of ModelTesterAppView + modelTesterApp for consumers
 scripts/
   model-tester-e2e.mjs          — Node e2e harness (used by test:e2e)
@@ -100,7 +97,7 @@ No plugin-specific env vars are read at load time. Model provider credentials (A
 - **Audio defaults:** when no audio is uploaded the transcription probe synthesises speech from the prompt using local TTS and feeds that back as the transcription input (`source: "local-tts-loopback"`). The VAD probe falls back to a 1-second 440 Hz sine tone at 16 kHz.
 - **Module-side-effect registration:** importing `src/model-tester-app.ts` (or the package root) calls `registerOverlayApp` and `registerAppShellPage` immediately. This is intentional; do not tree-shake these imports.
 - **interact() split:** `interact()` lives in `src/ModelTesterAppView.interact.ts`, not `ModelTesterAppView.tsx`, so the component file exports only React components and remains Fast Refresh-compatible. The view bundle re-exports it via `model-tester-view-bundle.ts`.
-- **Spatial view:** `components/ModelTesterSpatialView.tsx` is a cross-modality presentational component (pure snapshot + callback in, spatial primitives out). It is registered in the TUI terminal registry by `register-terminal-view.tsx` and is safe to render in the Node agent process (no browser/Capacitor imports).
+- **Spatial view:** `components/ModelTesterSpatialView.tsx` is a presentational component (pure snapshot + callback in, spatial primitives out) shipped for the GUI modality only.
 - See the root `AGENTS.md` for repo-wide conventions (logger-only, ESM, architecture rules, naming).
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->

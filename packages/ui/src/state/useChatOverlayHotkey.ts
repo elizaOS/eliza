@@ -4,6 +4,7 @@
  * handles the press. See the block below for why it is separate from the palette.
  */
 import { useSyncExternalStore } from "react";
+import { shellLocalStorage } from "../surface-realm-channel";
 
 /**
  * User-configurable global hotkey that toggles the floating chat surface
@@ -194,7 +195,7 @@ export function setChatOverlayHotkey(next: Partial<ChatOverlayHotkey>): void {
   const resolved = resolveChatOverlayHotkey({ ...cached, ...next });
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(resolved));
+      shellLocalStorage.setItem(STORAGE_KEY, JSON.stringify(resolved));
     } catch {
       // localStorage unavailable (private mode, quota, etc.) — fall through.
     }

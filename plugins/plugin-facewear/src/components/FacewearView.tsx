@@ -1,16 +1,12 @@
 /**
- * FacewearView — the single GUI/XR data wrapper for the Facewear surface.
+ * FacewearView — the data wrapper for the Facewear surface.
  *
  * It owns the live device data (status fetch + 5s poll, connect routing, XR
  * connect/status links, refresh) and renders the one presentational
- * {@link FacewearSpatialView} inside a {@link SpatialSurface}. Omitting the
- * `modality` prop lets `SpatialSurface` auto-detect GUI vs XR via
- * `window.__elizaXRContext`, so the SAME component serves both surfaces. The TUI
- * surface renders the same `FacewearSpatialView` through the terminal registry
- * (see `register-terminal-view.tsx`).
+ * {@link FacewearSpatialView} inside a {@link SpatialSurface}.
  *
- * This wrapper is the single Facewear surface: it is the `componentExport` the
- * manifest declares and the component the app-shell page (`register.ts`) mounts.
+ * This wrapper is the single Facewear surface, consumed by the Settings →
+ * Wearables section (`register.ts`).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

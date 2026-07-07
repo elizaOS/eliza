@@ -1,3 +1,9 @@
+/**
+ * Shared TypeScript contract for the AppleCalendar bridge — permission,
+ * calendar, event, and result shapes plus the `AppleCalendarPlugin`
+ * interface — implemented identically by the native Swift bridge
+ * (`ios/Sources/CalendarPlugin`) and the web fallback in `web.ts`.
+ */
 export type AppleCalendarPermissionState =
   | "granted"
   | "denied"

@@ -1,10 +1,15 @@
 /**
  * Boot-time hydration of wallet (and steward) secrets into `process.env`.
  * Wallet keys are read from the shared vault (now the source of truth), with a
- * one-shot migration of any legacy values still only in the OS keystore; steward
- * env vars stay on the OS-keystore path because that backend's lifecycle is
- * independent of the unified vault. Runs before upstream `startApiServer` merges
- * `config.env`, so persisted config only fills gaps neither store supplies.
+ * one-shot migration of any legacy values still only in the OS keystore;
+ * steward env vars stay on the OS-keystore path because that backend's
+ * lifecycle is independent of the unified vault.
+ *
+ * Precedence contract: launch env > vault/OS-keystore > persisted config.
+ * app-core's `startApiServer` still calls this before it merges `config.env`,
+ * where the contract holds by ordering alone; the agent boot path instead
+ * defers the hydrate to the post-ready wave and captures a pre-merge baseline
+ * (`captureWalletEnvBootBaseline`) so the same precedence holds there too.
  */
 import { logger } from "@elizaos/core";
 
@@ -43,6 +48,48 @@ function stewardOsPairs(): ReadonlyArray<
     ["STEWARD_API_KEY", "steward.api_key"],
     ["STEWARD_AGENT_TOKEN", "steward.agent_token"],
   ];
+}
+
+// The hydrate used to run BEFORE config.env merged into process.env, so its
+// "skip keys that already have a value" check naturally meant "skip keys the
+// LAUNCH ENV set" — vault/keystore values beat persisted config, launch env
+// beat both. Now that the agent boot defers the hydrate (it runs after the
+// merge), the baseline preserves that exact precedence: the boot path records
+// which handled keys the launch env set pre-merge, and `hasLaunchEnvValue`
+// treats a post-merge value on a key absent from the baseline as
+// overwritable. With no baseline captured (callers that still hydrate
+// pre-merge, e.g. app-core's startApiServer), any present value is respected —
+// the original semantics.
+let walletEnvBootBaseline: ReadonlySet<string> | null = null;
+
+/** Record which wallet/steward env keys currently hold values (pre-merge). */
+export function captureWalletEnvBootBaseline(): void {
+  const withValue = new Set<string>();
+  for (const envKey of walletVaultKeys()) {
+    if (process.env[envKey]?.trim()) withValue.add(String(envKey));
+  }
+  for (const [envKey] of stewardOsPairs()) {
+    if (process.env[envKey]?.trim()) withValue.add(String(envKey));
+  }
+  walletEnvBootBaseline = withValue;
+}
+
+/** Test-only: drop the captured baseline (pre-merge semantics resume). */
+export function _resetWalletEnvBootBaselineForTest(): void {
+  walletEnvBootBaseline = null;
+}
+
+/**
+ * True when `envKey`'s current process.env value must be respected: it either
+ * predates the config merge (present in the captured baseline) or no baseline
+ * was captured at all.
+ */
+function hasLaunchEnvValue(envKey: keyof NodeJS.ProcessEnv): boolean {
+  const cur = process.env[envKey];
+  if (typeof cur !== "string" || !cur.trim()) return false;
+  return walletEnvBootBaseline === null
+    ? true
+    : walletEnvBootBaseline.has(String(envKey));
 }
 
 /**
@@ -93,16 +140,16 @@ async function migrateOsStoreWalletKeysIntoVault(
  * Steward env vars stay on the OS-keystore path — the steward backend's
  * lifecycle is independent of the unified wallet vault.
  *
- * Runs before upstream `startApiServer` merges `config.env`, so persisted
- * config only fills gaps that neither vault nor OS keystore supplies.
+ * Persisted config only fills gaps that neither vault nor OS keystore
+ * supplies — by call ordering on pre-merge callers, and via the captured
+ * pre-merge baseline (see module header) on the deferred agent boot path.
  */
 export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<void> {
   // ── 1. Vault read for wallet keys ────────────────────────────────
   const vault = sharedVault();
   const missingWalletKeys: Array<keyof NodeJS.ProcessEnv> = [];
   for (const envKey of walletVaultKeys()) {
-    const cur = process.env[envKey];
-    if (typeof cur === "string" && cur.trim()) continue;
+    if (hasLaunchEnvValue(envKey)) continue;
     if (await vault.has(envKey as string)) {
       const value = await vault.reveal(envKey as string, "wallet-hydrate-boot");
       process.env[envKey] = value;
@@ -136,8 +183,7 @@ export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<vo
     if (!(await store.isAvailable())) return;
     const vaultId = deriveAgentVaultId();
     for (const [envKey, kind] of stewardOsPairs()) {
-      const cur = process.env[envKey];
-      if (typeof cur === "string" && cur.trim()) continue;
+      if (hasLaunchEnvValue(envKey)) continue;
       const got = await store.get(vaultId, kind);
       if (got.ok) process.env[envKey] = got.value;
     }

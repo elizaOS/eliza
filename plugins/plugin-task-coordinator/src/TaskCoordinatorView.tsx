@@ -1,15 +1,10 @@
 /**
- * TaskCoordinatorView — the single GUI/XR/TUI data wrapper for the Task
- * Coordinator surface.
+ * TaskCoordinatorView — the GUI data wrapper for the Task Coordinator surface.
  *
  * It owns the live coding-agent task data (the searchable thread list on a 5s
  * poll, the open thread's detail, and the archive/reopen mutations) and renders
  * the one presentational {@link TaskCoordinatorSpatialView} inside a
- * {@link SpatialSurface}. Omitting the `modality` prop lets `SpatialSurface`
- * auto-detect GUI vs XR via `window.__elizaXRContext`, so the SAME component
- * serves both surfaces. The TUI surface renders the same
- * `TaskCoordinatorSpatialView` through the terminal registry (see
- * `register-terminal-view.tsx`).
+ * {@link SpatialSurface}.
  *
  * The legacy GUI panel ({@link CodingAgentTasksPanel}) still mounts through the
  * app-core slot registry (the packages/ui Tasks page); this wrapper is the

@@ -400,30 +400,41 @@ app.delete("/", async (c) => {
             : result.error === "Agent provisioning is in progress"
               ? 409
               : 500;
-        return c.json(
+        if (status !== 500) {
+          return c.json(
+            {
+              success: false,
+              error: result.error,
+            },
+            status,
+          );
+        }
+
+        logger.warn(
+          "[agent-api] Shared-runtime agent delete failed synchronously; falling back to async delete job",
           {
-            success: false,
-            error: status === 500 ? "Failed to delete agent" : result.error,
+            agentId,
+            orgId: user.organization_id,
+            error: result.error,
           },
-          status,
         );
-      }
-
-      logger.info("[agent-api] Shared-runtime agent deleted", {
-        agentId,
-        orgId: user.organization_id,
-      });
-
-      return c.json({
-        success: true,
-        deleted: true,
-        source: "shared_runtime",
-        data: {
+      } else {
+        logger.info("[agent-api] Shared-runtime agent deleted", {
           agentId,
-          status: "deleted",
-          executionTier: result.deletedSandbox.execution_tier,
-        },
-      });
+          orgId: user.organization_id,
+        });
+
+        return c.json({
+          success: true,
+          deleted: true,
+          source: "shared_runtime",
+          data: {
+            agentId,
+            status: "deleted",
+            executionTier: result.deletedSandbox.execution_tier,
+          },
+        });
+      }
     }
 
     // Async delete via the same job-queue path agent_provision uses. This

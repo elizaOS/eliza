@@ -1,3 +1,8 @@
+/**
+ * Exercises `AppBlockerWeb` directly (no mocked bridge) — its not-applicable
+ * responses and `blockApps` input validation are plain fallback logic with
+ * no native dependency to stub.
+ */
 import { describe, expect, it } from "vitest";
 
 import { AppBlockerWeb } from "./web";

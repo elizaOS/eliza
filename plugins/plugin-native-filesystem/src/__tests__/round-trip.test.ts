@@ -1,3 +1,4 @@
+/** DeviceFilesystemBridge read/write/list round-trip against a real temp directory on disk. */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

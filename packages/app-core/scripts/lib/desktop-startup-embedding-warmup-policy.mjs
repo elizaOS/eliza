@@ -35,8 +35,11 @@ export function resolveDesktopStartupEmbeddingWarmupPolicy(env = process.env) {
 
   const optInRaw = env[OPT_IN_ENV]?.trim();
   if (isTruthyEnvValue(optInRaw)) {
+    // Runtime warmup now DEFERS by default, so opting into process-entry
+    // warmup requires an explicit `ELIZA_DEFER_...=0` in the child env —
+    // injecting nothing would leave the child on the deferred default.
     return {
-      env: {},
+      env: { [DEFER_ENV]: "0" },
       effective: "startup background",
       source: `env set - ${OPT_IN_ENV}=${optInRaw}`,
       change: `unset ${OPT_IN_ENV} for default desktop fast startup`,

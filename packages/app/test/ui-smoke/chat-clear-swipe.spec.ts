@@ -86,17 +86,25 @@ async function installConversationStore(
     await route.fallback();
   });
 
-  await page.route("**/api/conversations/*/messages", async (route) => {
+  await page.route("**/api/conversations/*/messages**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
     }
     const url = new URL(route.request().url());
     const id = url.pathname.split("/").slice(-2, -1)[0];
+    // Infinite-scroll load-older paging: a `before=<ts>` request asks for
+    // history older than the oldest shown turn. The seed is a short thread with
+    // no older history, so answer empty (the client stops paging) rather than
+    // letting the request fall through to the booted stub and 404 — a 404 the
+    // page-diagnostics guard would (correctly) flag.
+    const messages = url.searchParams.has("before")
+      ? []
+      : (store.messages[id] ?? []);
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ messages: store.messages[id] ?? [] }),
+      body: JSON.stringify({ messages }),
     });
   });
 
@@ -237,7 +245,7 @@ test.describe("real touch input (CDP dispatchTouchEvent) — #9943 item 6", () =
   });
 });
 
-test("single-thread open thread: header search exists (no new-chat), but no swipe-between-conversations", async ({
+test("single-thread open thread: search lives in the composer + menu (no header nav), and no swipe-between-conversations", async ({
   page,
 }, testInfo) => {
   await openAppPath(page, "/chat");
@@ -255,10 +263,11 @@ test("single-thread open thread: header search exists (no new-chat), but no swip
   await expect(thread).toContainText("STANDUP", { timeout: 15_000 });
   const convBefore = await sheet.getAttribute("data-conversation-id");
 
-  // Chat history UX: the header exposes a quiet search entry point as its ONLY
-  // left control — there is no new-chat/clear button (the thread is one
-  // infinite conversation). Opening the sheet to half+ reveals the header.
-  await expect(page.getByTestId("chat-full-search")).toHaveCount(1);
+  // Chat history UX (#13531 single infinite thread + #14279): the sheet header
+  // carries NO nav buttons. There is no header search control and no
+  // new-chat/clear control (the thread never resets) — search / upload / camera
+  // / transcribe all moved to the composer "+" menu.
+  await expect(page.getByTestId("chat-full-search")).toHaveCount(0);
   await expect(page.getByTestId("chat-full-clear")).toHaveCount(0);
 
   // A horizontal drag across the OPEN thread must NOT switch conversations —
@@ -269,5 +278,15 @@ test("single-thread open thread: header search exists (no new-chat), but no swip
   await expect(overlay).toHaveAttribute("data-open", "true");
   await expect(sheet).toHaveAttribute("data-conversation-id", convBefore ?? "");
   await expect(thread).toContainText("STANDUP");
+
+  // #14279 search entry point: search left the header and now lives in the
+  // composer "+" menu. Tapping "+" → "Search chat…" grows the sheet to FULL and
+  // reveals the shared MessageSearchPanel over the transcript.
+  await page.getByTestId("chat-composer-plus").click();
+  await page.getByText("Search chat…", { exact: true }).click();
+  await expect(page.getByTestId("chat-message-search")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId("message-search-panel").first()).toBeVisible();
   await expectNoPageDiagnostics(page, testInfo.title);
 });

@@ -405,41 +405,8 @@ jobs:
       - name: Install Playwright Chromium
         run: bunx playwright install --with-deps chromium
 
-      # The spatial-view XR simulator (the "X" in GUI/TUI/XR): boots the stories
-      # dev server and drives the CSS-3D headset harness in chromium. Previously
-      # ran in no workflow.
-      - name: XR sim spec (packages/ui spatial views)
-        run: bun run --cwd packages/ui test:xr-sim
-
-      - name: Upload XR sim artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: xr-sim-artifacts
-          path: /tmp/xr-shots/
-          if-no-files-found: ignore
-
       - name: Remote capability UI smoke
         run: bun run test:remote-capabilities:ui
-
-      - name: XR sim Playwright coverage
-        run: bun run --cwd packages/ui test:xr-sim
-
-      # Immersive WebGL e2e (#10722): the REAL enterImmersiveScene() production
-      # export against an IWER emulated Quest 3 in headless-chromium WebGL2 —
-      # per-eye gl.readPixels framebuffer probes at math-predicted pixels,
-      # SecurityError→solidColorTexel fallback, teardown. Previously the doc
-      # claimed this was validated but no committed test ran it anywhere.
-      - name: Immersive WebGL framebuffer e2e (#10722)
-        run: bun run --cwd packages/ui test:immersive-e2e
-
-      - name: Upload immersive e2e artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: immersive-e2e-artifacts
-          path: packages/ui/src/spatial/__e2e__/output-immersive/
-          if-no-files-found: ignore
 
       # Perf gate (#9954): drive REAL overlay thread-scroll + pull-to-maximize /
       # top-pull-restore in headless chromium, feed REAL rAF/longtask/layout-shift
@@ -484,27 +451,19 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      # The XR emulator simulator is a nested (non-workspace) package with its
-      # own lockfile; install + build the IWER emulator AND the 3D scene fixture
-      # bundle before the Playwright run.
-      - name: Install + build XR emulator + scene bundle
-        run: |
-          cd plugins/plugin-xr/simulator
-          bun install
-          bun run build:all
-          bun run typecheck
-
+      # app-xr is the surviving XR harness (facewear supersedes the retired
+      # plugin-xr — #9941). It is a nested, non-workspace package whose deps
+      # (@playwright/test, vite, @elizaos/core) resolve up to the root workspace
+      # install above — running `bun install` inside it would fail on its
+      # `workspace:*` core dep, so we only install Chromium here. `test:e2e`
+      # builds the nested emulator package (`build:emulator`), then drives
+      # Playwright against the real view-host route with the IWER emulator
+      # injected.
       - name: Install Playwright Chromium
-        run: cd plugins/plugin-xr/simulator && bunx playwright install --with-deps chromium
-
-      - name: Run XR harness e2e (flat + 3D scene → ray → hit → press → drag → capture)
-        run: bun run --cwd plugins/plugin-xr/simulator test:e2e:record
+        run: bunx playwright install --with-deps chromium
 
       - name: Run facewear app-xr e2e (real view-host route + IWER emulator)
-        run: |
-          cd plugins/plugin-facewear/app-xr
-          bun install
-          bun run test:e2e
+        run: bun run --cwd plugins/plugin-facewear/app-xr test:e2e
 
       - name: Upload XR capture artifacts
         if: always()
@@ -512,8 +471,6 @@ jobs:
         with:
           name: xr-harness-artifacts
           path: |
-            plugins/plugin-xr/simulator/e2e-artifacts/
-            plugins/plugin-xr/simulator/test-results/
             plugins/plugin-facewear/app-xr/test-results/
           if-no-files-found: ignore
 
@@ -567,8 +524,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-plugin-tests-
 
-      # plugin-xr's xr-bundle-coverage test asserts every view plugin has a
-      # built dist/views/bundle.js; build them before running plugin tests.
+      # The view-bundle coverage tests assert every view plugin has a built
+      # dist/views/bundle.js; build them before running plugin tests.
       # @elizaos/tui first: the spatial-view tests (45 plugins) import
       # @elizaos/ui/spatial/tui, whose terminal renderer externalizes
       # @elizaos/tui — without its dist, vitest fails to resolve the package.

@@ -4,6 +4,7 @@
  */
 import type { PermissionId } from "@elizaos/shared/contracts/permissions";
 import { getFrontendPlatform } from "../../platform/platform-guards";
+import { shellLocalStorage } from "../../surface-realm-channel";
 
 /**
  * Permission-priming logic for the post-login onboarding modal.
@@ -152,7 +153,7 @@ export function hasPrimedPermissions(): boolean {
 /** Record that priming has been shown so it does not reappear on next launch. */
 export function markPermissionsPrimed(): void {
   try {
-    localStorage.setItem(PERMISSION_PRIMING_STORAGE_KEY, "1");
+    shellLocalStorage.setItem(PERMISSION_PRIMING_STORAGE_KEY, "1");
   } catch {
     // Storage unavailable — the modal will show again next launch, which is a
     // benign degradation, not a failure worth surfacing.
@@ -162,7 +163,7 @@ export function markPermissionsPrimed(): void {
 /** Clear the flag so the priming modal can be re-triggered (Settings entry). */
 export function resetPermissionPriming(): void {
   try {
-    localStorage.removeItem(PERMISSION_PRIMING_STORAGE_KEY);
+    shellLocalStorage.removeItem(PERMISSION_PRIMING_STORAGE_KEY);
   } catch {
     // Same benign degradation as markPermissionsPrimed.
   }

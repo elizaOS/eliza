@@ -80,20 +80,18 @@ export default defineConfig({
     alias: [
       { find: "@ui-src", replacement: uiSrc },
       // Resolve @elizaos/ui from THIS package's source (not its built dist) so
-      // the registered-views page and the plugin register modules share ONE
-      // spatial renderer instance — the source one that captures view thunks
-      // (`getSpatialViewThunk`). With a dist resolution they'd hit two different
-      // renderer modules and the thunk registry would come up empty.
+      // every stories page and the modules it mounts share ONE spatial renderer
+      // instance; with a dist resolution they'd hit two different renderer
+      // modules and registry-backed pages would come up empty.
       { find: /^@elizaos\/ui$/, replacement: path.resolve(uiSrc, "index.ts") },
       { find: /^@elizaos\/ui\/(.+)$/, replacement: `${uiSrc}/$1` },
       { find: "@elizaos/core", replacement: coreBrowserShim },
       { find: "@elizaos/logger", replacement: loggerSrc },
       { find: /^@elizaos\/shared$/, replacement: sharedSrc },
       { find: /^@elizaos\/shared\/(.+)$/, replacement: `${sharedSrc}/$1` },
-      // The spatial views' register modules import @elizaos/ui/spatial/tui →
-      // @elizaos/tui; the full tui entry pulls a node:child_process access that
-      // throws in the browser. Shim it to the pure registry + width utils so the
-      // GUI/XR registered-views page can populate the registry and render.
+      // @elizaos/ui/spatial/tui → @elizaos/tui; the full tui entry pulls a
+      // node:child_process access that throws in the browser. Shim it to the
+      // pure registry + width utils so browser-mounted spatial pages render.
       { find: "@elizaos/tui", replacement: tuiBrowserShim },
       { find: "fast-redact", replacement: fastRedactShim },
       // The shared barrel re-exports a node-only package-root resolver

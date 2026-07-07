@@ -180,4 +180,23 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
     expect(documents.countMemories).toHaveBeenCalledTimes(1);
     expect(documents.searchDocuments).toHaveBeenCalled();
   });
+
+  it("passes the original message id as turnMessageId so the in-run recall embed adopts this pre-run embed (#15253)", async () => {
+    const message = makeMessage();
+    const documents = {
+      countMemories: vi.fn().mockResolvedValue(3),
+      searchDocuments: vi.fn().mockResolvedValue([]),
+    };
+    const runtime = makeRuntime(documents);
+
+    await maybeAugmentChatMessageWithDocuments(runtime, message);
+
+    // The turn key travels via the 5th `options` arg, NOT the search message —
+    // whose id is deliberately a fresh UUID for the scope-read coercion.
+    const [searchMessage, , , , options] =
+      documents.searchDocuments.mock.calls[0];
+    expect(options).toEqual({ turnMessageId: message.id });
+    expect(searchMessage.id).not.toBe(message.id);
+    expect(typeof searchMessage.id).toBe("string");
+  });
 });

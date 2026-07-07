@@ -8,6 +8,7 @@ import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
 import { shouldUseHashNavigation } from "../../navigation";
 import { goLauncher } from "../../state/shell-surface-store";
+import { shellHistory } from "../../surface-realm-channel";
 
 /**
  * Return to the launcher grid — the default "back" for any top-level view.
@@ -26,7 +27,7 @@ export function navigateBackToLauncher(): void {
     if (shouldUseHashNavigation()) {
       window.location.hash = path;
     } else {
-      window.history.pushState(null, "", path);
+      shellHistory.pushState(null, "", path);
       window.dispatchEvent(new PopStateEvent("popstate"));
     }
   } catch {

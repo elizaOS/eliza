@@ -23,6 +23,13 @@
  * agent-surface split in `view-capability-broker.test.tsx`. Deleting the shell's
  * `resetHostRealm()` / broker gates turns these assertions red (mutation-check
  * in the file's trailing comment).
+ *
+ * The walk also drives the RAW globals (#13452 criterion-1 remainder): the view
+ * bypasses the facade with `window.localStorage.setItem/removeItem/clear`, an
+ * indexed `localStorage[key] =` write, and raw `history.pushState/replaceState`.
+ * The raw-global guards must deny the reserved-key writes for every view (grant
+ * or not) and deny path-changing history mutation without the `navigate` grant,
+ * while hash-only mutation and the shell's privileged channel keep working.
  */
 
 import { act, cleanup, render } from "@testing-library/react";
@@ -31,10 +38,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BuiltinTab } from "./navigation";
 import type { BackgroundConfig } from "./state/ui-preferences";
 import {
-  getActiveSurfaceRealmScope,
   SurfaceRealmDeniedError,
+  getActiveSurfaceRealmScope,
   surfaceViewStoragePrefix,
 } from "./surface-realm-broker";
+import { shellHistory, shellLocalStorage } from "./surface-realm-channel";
 
 const appState = vi.hoisted(() => ({
   setTab: vi.fn(),
@@ -386,6 +394,11 @@ vi.mock("three", () => {
 });
 
 import { App } from "./App";
+import {
+  chatDraftStorageKey,
+  readChatDraft,
+  writeChatDraft,
+} from "./state/ChatComposerContext.hooks";
 
 // A shell-owned storage key that must never be writable through a view path.
 const SHELL_STORAGE_KEY = "eliza:ui-theme";
@@ -496,7 +509,9 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
   ): Promise<void> {
     await act(async () => {
       appState.tab = tab;
-      window.history.pushState(null, "", path);
+      // Browser-chrome navigation (address bar / user), which never passes
+      // through the page's guarded History API — hence the privileged channel.
+      shellHistory.pushState(null, "", path);
       window.dispatchEvent(new PopStateEvent("popstate"));
       rerender(<App />);
     });
@@ -553,12 +568,57 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
           `${route.path}: shell storage key intact`,
         ).toBe(SHELL_STORAGE_VALUE);
 
+        // (c-raw) the view bypasses the facade and hits the raw global. The
+        // reserved shell key is denied for EVERY view — grant or not — via
+        // setItem, removeItem, and the legacy indexed-assignment path.
+        expect(
+          () => window.localStorage.setItem(SHELL_STORAGE_KEY, "pwn"),
+          `${route.path}: raw reserved setItem denied`,
+        ).toThrow(SurfaceRealmDeniedError);
+        expect(
+          () => window.localStorage.removeItem(SHELL_STORAGE_KEY),
+          `${route.path}: raw reserved removeItem denied`,
+        ).toThrow(SurfaceRealmDeniedError);
+        expect(() => {
+          (window.localStorage as Record<string, unknown>)[SHELL_STORAGE_KEY] =
+            "pwn";
+        }, `${route.path}: raw indexed reserved write denied`).toThrow(
+          SurfaceRealmDeniedError,
+        );
+        expect(
+          window.localStorage.getItem(SHELL_STORAGE_KEY),
+          `${route.path}: shell storage key intact after raw attack`,
+        ).toBe(SHELL_STORAGE_VALUE);
+        // A raw clear() from a view path wipes its own reach, never shell keys.
+        window.localStorage.setItem("junk-non-reserved", "x");
+        window.localStorage.clear();
+        expect(
+          window.localStorage.getItem("junk-non-reserved"),
+          `${route.path}: raw clear removed non-reserved keys`,
+        ).toBeNull();
+        expect(
+          window.localStorage.getItem(SHELL_STORAGE_KEY),
+          `${route.path}: raw clear spared reserved shell keys`,
+        ).toBe(SHELL_STORAGE_VALUE);
+
         // (d) navigation: a non-`navigate` view is denied; the route never moves.
         const grantsNavigate = route.path === "/iso-navigate";
         if (!grantsNavigate) {
           expect(() => scope.navigate("/rogue-route")).toThrow(
             SurfaceRealmDeniedError,
           );
+          // (d-raw) the raw History API is guarded the same way: path-changing
+          // pushState/replaceState is denied, hash-only mutation stays allowed
+          // (it cannot move the shell route).
+          expect(
+            () => window.history.pushState(null, "", "/rogue-raw"),
+            `${route.path}: raw pushState denied`,
+          ).toThrow(SurfaceRealmDeniedError);
+          expect(
+            () => window.history.replaceState(null, "", "/rogue-raw"),
+            `${route.path}: raw replaceState denied`,
+          ).toThrow(SurfaceRealmDeniedError);
+          window.history.replaceState(null, "", `${route.path}#in-view-hash`);
           expect(
             window.location.pathname,
             `${route.path}: route not hijacked`,
@@ -611,6 +671,75 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     // The grant admits the navigation the un-granted twin was denied.
     expect(window.location.pathname).toBe("/iso-storage");
   }, 60_000);
+
+  it("the navigate grant is a real switch on the RAW history guard too", async () => {
+    const { rerender } = render(<App />);
+    await navigate(rerender, "views", "/iso-navigate");
+    expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-navigate");
+    await act(async () => {
+      window.history.pushState(null, "", "/raw-but-granted");
+    });
+    expect(window.location.pathname).toBe("/raw-but-granted");
+  }, 60_000);
+
+  it("the privileged shell channel stays writable while a no-grant view is active", async () => {
+    const { rerender } = render(<App />);
+    await navigate(rerender, "views", "/iso-nogrant");
+    expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-nogrant");
+    // The shell's own writers (persistence.ts, storage-bridge, the router) run
+    // while arbitrary views are foreground; the channel must not be gated.
+    shellLocalStorage.setItem(SHELL_STORAGE_KEY, "shell-updated");
+    expect(window.localStorage.getItem(SHELL_STORAGE_KEY)).toBe(
+      "shell-updated",
+    );
+    shellLocalStorage.removeItem(SHELL_STORAGE_KEY);
+    expect(window.localStorage.getItem(SHELL_STORAGE_KEY)).toBeNull();
+    await act(async () => {
+      shellHistory.replaceState(null, "", "/shell-owned-route");
+    });
+    expect(window.location.pathname).toBe("/shell-owned-route");
+  }, 60_000);
+
+  it("real shell persisters keep working under an active view scope (regression guard for missed migrations)", async () => {
+    // The raw-global guard is a Proxy over window.localStorage installed for the
+    // whole realm — so EVERY shell writer of a reserved key, not just the ones
+    // the walk drives, must route through the privileged channel or it throws on
+    // every write while a view is foreground and its own try/catch swallows the
+    // failure into silent data loss. This drives a REAL shell persister
+    // (`writeChatDraft`, a `eliza:chat:draft:*` reserved-key writer whose own
+    // catch would hide a regression) end-to-end while a no-grant view owns the
+    // foreground, and asserts the draft actually persisted. If writeChatDraft
+    // (or any peer) reverts to raw `window.localStorage`, the write is denied,
+    // swallowed, and the read-back is null → red.
+    const { rerender } = render(<App />);
+    await navigate(rerender, "views", "/iso-nogrant");
+    expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-nogrant");
+
+    const conversationId = "conv-under-scope";
+    writeChatDraft(conversationId, "half-typed message");
+    expect(readChatDraft(conversationId)).toBe("half-typed message");
+    // It landed under the real reserved key, not a view-namespaced fallback.
+    expect(
+      window.localStorage.getItem(chatDraftStorageKey(conversationId)),
+    ).toBe("half-typed message");
+    // Clearing (removeItem on the reserved key) also works under the scope.
+    writeChatDraft(conversationId, "");
+    expect(readChatDraft(conversationId)).toBeNull();
+  }, 60_000);
+
+  it("raw guards disarm when no view scope is active", async () => {
+    const { rerender, unmount } = render(<App />);
+    await navigate(rerender, "views", "/iso-nogrant");
+    expect(getActiveSurfaceRealmScope()).not.toBeNull();
+    unmount();
+    expect(getActiveSurfaceRealmScope()).toBeNull();
+    // Outside any surface (boot, teardown, tests) the raw globals behave
+    // natively — the guard is a policy on views, not a global lockdown.
+    window.localStorage.setItem(SHELL_STORAGE_KEY, "boot-write");
+    expect(window.localStorage.getItem(SHELL_STORAGE_KEY)).toBe("boot-write");
+    window.history.pushState(null, "", "/boot-route");
+    expect(window.location.pathname).toBe("/boot-route");
+  }, 60_000);
 });
 
 // ── Mutation-check (red→green proof) ─────────────────────────────────────────
@@ -626,3 +755,16 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
 //   (d)     make `brokerSurfaceNavigate` always call through (drop the grant
 //           check) → the non-`navigate` view moves the route → "route not
 //           hijacked" fails (and the denial `toThrow` fails).
+//   (c-raw) make `ensureHostRealmGuards` skip the localStorage Proxy (or make
+//           `assertRawStorageWriteAllowed` return unconditionally) → the raw
+//           setItem/removeItem/indexed writes land → every "raw … denied"
+//           toThrow and "intact after raw attack" assertion fails.
+//   (d-raw) make `assertRawHistoryMutationAllowed` return unconditionally →
+//           raw pushState/replaceState moves the route under a no-`navigate`
+//           view → the raw denial toThrows and "route not hijacked" fail.
+//   (persist) revert any shell reserved-key writer (e.g. `writeChatDraft`) to
+//           raw `window.localStorage` → under an active view scope the write is
+//           denied, its own catch swallows it, and "real shell persisters keep
+//           working under an active view scope" reads back null → red. This is
+//           the positive counterpart that catches a MISSED migration, which a
+//           denial-only assertion cannot.

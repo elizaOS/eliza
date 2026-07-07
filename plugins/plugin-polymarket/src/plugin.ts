@@ -2,7 +2,7 @@
  * The exported `polymarketPlugin` Plugin object: wires the PREDICTION_MARKET
  * action, PredictionMarketService, status provider, the seven
  * `/api/polymarket/*` REST routes, and the single adaptive view declaration
- * (GUI/XR/TUI from one spatial component) into the agent runtime. Route
+ * (a GUI view from one spatial component) into the agent runtime. Route
  * handlers here only adapt the framework's `RouteRequest`/`RouteResponse` to
  * the real Node `http.IncomingMessage`/`ServerResponse` that `routes.ts`
  * expects; all route logic itself lives in `handlePolymarketRoute`.
@@ -112,7 +112,7 @@ export const polymarketPlugin: Plugin = {
   providers: [polymarketStatusProvider],
   routes: polymarketRoutes,
   views: [
-    // ONE declaration → GUI + XR + TUI, all drawn from the single
+    // ONE GUI declaration, drawn from the single
     // PolymarketView spatial source. `modalities` is a plain literal here
     // (plugin.ts is not in the view bundle), so no brand-new `@elizaos/core`
     // runtime export reaches the bundle build.
@@ -124,7 +124,7 @@ export const polymarketPlugin: Plugin = {
       icon: "BarChart2",
       path: "/polymarket",
       group: "wallet",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven

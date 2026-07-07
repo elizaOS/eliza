@@ -59,13 +59,15 @@ src/
                               (buildPluginConfigUiSpec, evaluateVisibility, validators, catalogs)
   genui/                      Agent-generated UI (A2UI-compatible subset): validator,
                               renderer, actions, streaming. See genui/README.md
-  spatial/                    Unified tri-modal view framework: author a view ONCE
-                              with the primitives (Stack/Text/Card/Button/…); the
-                              same React tree renders to GUI + XR (DOM, dom.tsx) and
-                              TUI (terminal lines, spatial/tui via @elizaos/tui),
-                              all from one layout IR (ir.ts). See spatial/README.md.
-                              Browser barrel: @elizaos/ui/spatial; terminal renderer
-                              (Node-only): @elizaos/ui/spatial/tui
+  spatial/                    Modality-agnostic view authoring: author a view ONCE
+                              with the primitives (Stack/Text/Card/Button/…); GUI
+                              (DOM, dom.tsx) is the shipped surface, driven by one
+                              layout IR (ir.ts). "xr"/"tui" stay valid modality
+                              contract values and the terminal renderer remains as
+                              authoring/test infrastructure (the shipped XR renderer
+                              + review harnesses were removed — #15269). See
+                              spatial/README.md. Browser barrel: @elizaos/ui/spatial;
+                              terminal renderer (Node-only): @elizaos/ui/spatial/tui
   navigation/                 Tab model + default-landing resolution (resolveDefaultLandingTab)
   layouts/                    page-layout, content-layout, chat-panel-layout, workspace-layout
   services/                   Client-side services: local-inference (model catalog,

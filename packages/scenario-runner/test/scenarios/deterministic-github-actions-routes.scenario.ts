@@ -440,7 +440,11 @@ function expectGithubPreview(
   if (readPath(action.result, "raw.preview") !== ISSUE_CREATE_PREVIEW) {
     return `expected preview text ${JSON.stringify(ISSUE_CREATE_PREVIEW)}, saw ${JSON.stringify(readPath(action.result, "raw.preview"))}`;
   }
-  if (execution.responseText !== ISSUE_CREATE_PREVIEW) {
+  // The action delivers the confirmation prompt (preview + the "reply yes"
+  // follow-up) as the single user-facing bubble; the planner's shorter echo of
+  // the bare preview is a redundant prefix and is suppressed by the runtime.
+  const previewResponse = `${ISSUE_CREATE_PREVIEW} Reply yes to confirm or no to cancel.`;
+  if (execution.responseText !== previewResponse) {
     return `expected responseText preview, saw ${JSON.stringify(execution.responseText)}`;
   }
   if (githubLedger.length !== 0) {
@@ -465,7 +469,10 @@ function expectGithubCreate(
     const failure = expectEqual(readPath(action.result, path), expected, path);
     if (failure) return failure;
   }
-  const responseText = `Created issue ${REPO}#17`;
+  // The action reply carries the issue URL; the planner's URL-stripped echo is a
+  // redundant prefix the runtime suppresses, so the URL-bearing reply is what the
+  // user sees.
+  const responseText = `Created issue ${REPO}#17: ${ISSUE_URL}`;
   if (execution.responseText !== responseText) {
     return `expected create response ${JSON.stringify(responseText)}, saw ${JSON.stringify(execution.responseText)}`;
   }
@@ -554,7 +561,9 @@ function expectGithubIssueComment(
     const failure = expectEqual(readPath(action.result, path), expected, path);
     if (failure) return failure;
   }
-  const responseText = `Commented on ${REPO}#17`;
+  // As with create, the action reply carries the comment URL and the planner's
+  // URL-stripped echo is suppressed as a redundant prefix.
+  const responseText = `Commented on ${REPO}#17: ${COMMENT_URL}`;
   return execution.responseText === responseText
     ? undefined
     : `expected comment response ${JSON.stringify(responseText)}, saw ${JSON.stringify(execution.responseText)}`;

@@ -32,7 +32,7 @@ describe("birdclawPlugin registration surface", () => {
       id: "birdclaw",
       label: "Birdclaw",
       path: "/birdclaw",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "BirdclawView",
       visibleInManager: true,

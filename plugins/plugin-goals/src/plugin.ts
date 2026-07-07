@@ -29,7 +29,7 @@ export const goalsPlugin: Plugin = {
   services: [GoalsCheckinService, GoalsMigrationService],
   schema: dbSchema,
   views: [
-    // ONE declaration → GUI + XR + TUI, all drawn from the single GoalsView
+    // ONE GUI declaration, drawn from the single GoalsView
     // spatial source. `modalities` is a plain literal here (plugin.ts is not in
     // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
     // the bundle build.
@@ -40,7 +40,7 @@ export const goalsPlugin: Plugin = {
         "Life goals, routines, today's reminders and alarms, self-care check-in.",
       icon: "Target",
       path: "/goals",
-      modalities: ["gui", "xr", "tui"],
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven

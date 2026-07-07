@@ -2,10 +2,9 @@
  * FineTuningSpatialView — the training surface authored once with the spatial
  * vocabulary, so it renders correctly wherever it is displayed:
  *
- *   - GUI / XR - the rich `FineTuningView` is the catalog componentExport; this
- *                spatial view is the compact cross-modality summary.
- *   - TUI      - rendered to real terminal lines by the agent terminal, via
- *                `registerSpatialTerminalView` (see `register-terminal-view.tsx`).
+ *   - GUI - the rich `FineTuningView` is the catalog componentExport; this
+ *     spatial view is the compact cross-modality summary. Only the GUI modality
+ *     ships; "xr" and "tui" remain compatibility values in the manifest schema.
  *
  * It is purely presentational (a snapshot + an action callback in, primitives
  * out) and imports only the cross-modality primitives, so it is safe to render

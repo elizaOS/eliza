@@ -1,5 +1,3 @@
-import "./register.ts";
-
 export {
   type FocusSnapshot,
   FocusSpatialView,

@@ -8,7 +8,7 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
   lane: "live-only",
-  id: "i1.rupture_repair.sensitive_event_defer",
+  id: "i1-sensitive-event-defer",
   title: "I1 negative rupture sentiment schedules owner check-in only",
   domain: "lifeops.relationships",
   tags: ["lifeops", "I1", "sentiment", "followup", "relationships"],
