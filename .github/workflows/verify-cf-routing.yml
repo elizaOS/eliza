@@ -1,0 +1,93 @@
+name: Verify CF Routing
+
+# Regression guard for "staging is pointing at prod CF".
+#
+# The staging Worker (`eliza-cloud-api-staging`) owns staging.* / app-staging.* /
+# api-staging.* ONLY by claiming those hosts MORE specifically than the prod
+# Worker's `*.elizacloud.ai/*` wildcard (packages/cloud/api/wrangler.toml
+# [env.staging].routes); the staging Pages deployments likewise bake
+# API_UPSTREAM=api-staging.elizacloud.ai. If either claim lapses - a dropped
+# Worker route, a Pages custom-domain reattached to the wrong deployment, a
+# preview var drifted to prod - a staging subdomain silently starts serving
+# production. That drift is Cloudflare dashboard/route state, invisible from the
+# repo and from any single-origin health check, and it recurred (fixed manually
+# in CF + a wrangler update). This job asks each LIVE custom domain "which
+# environment answered you?" via the /api/health environment beacon and fails
+# when a staging domain is served by production (or vice-versa).
+#
+# This is a live MONITOR, not a deploy gate - it probes the domains as they are
+# right now, so it catches drift that no code push caused. It needs no secrets
+# (the beacon is public) and no dependency install (the verifier is pure Node).
+#
+# Beacon rollout: the `environment` field ships with the API Worker. Until BOTH
+# environments have deployed a build carrying it, a beaconless domain is reported
+# as a warning, not a failure. Once prod has promoted the beacon, set the repo
+# variable CF_ROUTING_REQUIRE_BEACON=true to make a missing beacon fatal too -
+# no code change required. A genuine cross-wire (a KNOWN wrong environment
+# answering) is ALWAYS fatal, beacon rollout notwithstanding.
+
+on:
+  schedule:
+    # Every 6h - the drift lived for hours before it was noticed; this bounds the
+    # blast radius without spamming. Offset off the top of the hour.
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      require_beacon:
+        description: Treat a domain whose build predates the /api/health environment beacon as a failure
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: verify-cf-routing-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify-routing:
+    name: Verify each custom domain serves its own environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24"
+
+      - name: Verify cross-environment routing
+        env:
+          # workflow_dispatch input OR the standing repo variable makes a missing
+          # beacon fatal; either being true is enough. Reachability is always
+          # required - these are always-up production/staging origins, so a
+          # persistent (post-retry) unreachable is itself a real signal.
+          REQUIRE_BEACON: ${{ github.event.inputs.require_beacon == 'true' || vars.CF_ROUTING_REQUIRE_BEACON == 'true' }}
+        run: |
+          args=(--environment all)
+          if [ "$REQUIRE_BEACON" = "true" ]; then
+            args+=(--require-beacon)
+          fi
+          node packages/scripts/cloud/verify-environment-routing-cli.mjs "${args[@]}"
+
+      - name: Notify Discord (Failure)
+        if: failure()
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          ack_no_webhook: true
+          title: "CF routing verification FAILED"
+          nodetail: true
+          description: |
+            A custom domain is being served by the wrong environment (staging/prod),
+            or an always-up origin is unreachable. Reconcile the Cloudflare Worker
+            routes ([env.staging].routes in packages/cloud/api/wrangler.toml) and the
+            Pages custom-domain to deployment mapping, then re-run.
+          color: 0xff0000
