@@ -273,6 +273,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
+  async clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {
+    // Ephemeral store: vectors never persist across a process restart, so there
+    // is no stale cross-boot embedding to reclaim when the active embedder (and
+    // its width) changes.
+    return [];
+  }
+
   // ── Entity CRUD ───────────────────────────────────────────────────────
 
   async createEntities(entities: Entity[]): Promise<UUID[]> {

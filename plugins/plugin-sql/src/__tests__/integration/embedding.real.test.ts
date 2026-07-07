@@ -116,5 +116,56 @@ describe("Embedding Integration Tests", () => {
       const retrieved = await adapter.getMemoryById(memoryId);
       expect(retrieved?.embedding?.length).toBe(768);
     });
+
+    it("clearEmbeddingsOutsideActiveDimension reclaims stale-dimension vectors and keeps active-dimension ones", async () => {
+      // An agent that used cloud 1536-dim embeddings, then switched to on-device
+      // gte-small (384-dim): the 1536 vector must be reclaimed (a 384-dim search
+      // can never match it) while the memory row itself survives.
+      await adapter.ensureEmbeddingDimension(1536);
+      const stale: Memory = {
+        id: uuidv4() as UUID,
+        agentId: testAgentId,
+        entityId: testEntityId,
+        roomId: testRoomId,
+        content: { text: "Embedded with the old cloud model." },
+        embedding: Array.from({ length: 1536 }, () => Math.random()),
+        createdAt: Date.now(),
+        unique: false,
+        metadata: { type: MemoryType.CUSTOM, source: "test" },
+      };
+      const staleId = await adapter.createMemory(stale, "embedding_test");
+
+      await adapter.ensureEmbeddingDimension(384);
+      const fresh: Memory = {
+        id: uuidv4() as UUID,
+        agentId: testAgentId,
+        entityId: testEntityId,
+        roomId: testRoomId,
+        content: { text: "Embedded with the new on-device model." },
+        embedding: Array.from({ length: 384 }, () => Math.random()),
+        createdAt: Date.now(),
+        unique: false,
+        metadata: { type: MemoryType.CUSTOM, source: "test" },
+      };
+      const freshId = await adapter.createMemory(fresh, "embedding_test");
+
+      const reclaimed = await adapter.clearEmbeddingsOutsideActiveDimension();
+
+      expect(reclaimed).toContain(staleId);
+      expect(reclaimed).not.toContain(freshId);
+
+      // The stale vector is gone but the memory row (its text) survives, so it
+      // can be re-embedded at the active width.
+      const staleRetrieved = await adapter.getMemoryById(staleId);
+      expect(staleRetrieved).toBeDefined();
+      expect(staleRetrieved?.embedding ?? undefined).toBeUndefined();
+
+      // The active-dimension vector is untouched.
+      const freshRetrieved = await adapter.getMemoryById(freshId);
+      expect(freshRetrieved?.embedding?.length).toBe(384);
+
+      // Idempotent: nothing left to reclaim.
+      expect(await adapter.clearEmbeddingsOutsideActiveDimension()).toEqual([]);
+    });
   });
 });

@@ -212,6 +212,7 @@ import {
   eq,
   gte,
   inArray,
+  isNull,
   lt,
   lte,
   or,
@@ -564,6 +565,29 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
 
       this.embeddingDimension = resolvedDimension;
+    });
+  }
+
+  /**
+   * Delete every embedding row whose vector lives in a dimension column other
+   * than the currently-active one, returning the ids of the memories left
+   * without a vector so the caller can re-embed them at the active width.
+   *
+   * Each row populates exactly one `dimNNN` column (the others stay null), so
+   * "not in the active dimension" is simply "active column IS NULL". This is the
+   * store side of switching embedders — e.g. an agent moving off cloud 1536-dim
+   * embeddings onto on-device gte-small (384-dim): the stale 1536 vectors would
+   * otherwise sit unreadable by a 384-dim search forever. A no-op (returns `[]`)
+   * once the store holds only active-dimension vectors, so it is safe to call on
+   * every boot.
+   */
+  async clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {
+    return this.withDatabase(async () => {
+      const cleared = await this.db
+        .delete(embeddingTable)
+        .where(isNull(embeddingTable[this.embeddingDimension]))
+        .returning();
+      return cleared.map((row) => row.memoryId).filter((id): id is UUID => id !== null);
     });
   }
 

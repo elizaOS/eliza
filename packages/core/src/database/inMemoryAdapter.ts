@@ -475,6 +475,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		// In-memory vectors are not schema-bound, so there is no dimension migration to apply.
 	}
 
+	async clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {
+		// In-memory vectors are not schema-bound to a fixed-width column, so there
+		// is no stale-dimension row to reclaim.
+		return [];
+	}
+
 	async transaction<T>(
 		callback: (tx: IDatabaseAdapter<Record<string, never>>) => Promise<T>,
 		_options?: { entityContext?: UUID },

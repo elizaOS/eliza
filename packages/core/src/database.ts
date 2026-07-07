@@ -547,6 +547,8 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	 */
 	abstract ensureEmbeddingDimension(dimension: number): Promise<void>;
 
+	abstract clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]>;
+
 	// ── Cache CRUD (batch-only) ──────────────────────────────────────────
 	abstract getCaches<T>(keys: string[]): Promise<Map<string, T>>;
 	abstract setCaches<T>(
