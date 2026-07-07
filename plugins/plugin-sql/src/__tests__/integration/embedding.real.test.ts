@@ -1,9 +1,10 @@
 /**
  * Verifies memories can be created with embeddings and read back with the vector
- * dimension preserved, including a database-wide dimension change (384 to 768).
+ * dimension preserved, including an adapter-scoped dimension change (384 to 768).
  * Runs against a real Postgres or PGlite backend via `createIsolatedTestDatabase`.
  */
 import {
+  type Agent,
   ChannelType,
   type Entity,
   type Memory,
@@ -122,6 +123,12 @@ describe("Embedding Integration Tests", () => {
       // gte-small (384-dim): the 1536 vector must be reclaimed (a 384-dim search
       // can never match it) while the memory row itself survives.
       await adapter.ensureEmbeddingDimension(1536);
+      const otherAgentId = uuidv4() as UUID;
+      await adapter.createAgent({
+        id: otherAgentId,
+        name: "Other embedding agent",
+      } as Agent);
+
       const stale: Memory = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
@@ -134,6 +141,18 @@ describe("Embedding Integration Tests", () => {
         metadata: { type: MemoryType.CUSTOM, source: "test" },
       };
       const staleId = await adapter.createMemory(stale, "embedding_test");
+      const otherStale: Memory = {
+        id: uuidv4() as UUID,
+        agentId: otherAgentId,
+        entityId: testEntityId,
+        roomId: testRoomId,
+        content: { text: "Other agent still uses the old cloud model." },
+        embedding: Array.from({ length: 1536 }, () => Math.random()),
+        createdAt: Date.now(),
+        unique: false,
+        metadata: { type: MemoryType.CUSTOM, source: "test" },
+      };
+      const otherStaleId = await adapter.createMemory(otherStale, "embedding_test");
 
       await adapter.ensureEmbeddingDimension(384);
       const fresh: Memory = {
@@ -153,6 +172,7 @@ describe("Embedding Integration Tests", () => {
 
       expect(reclaimed).toContain(staleId);
       expect(reclaimed).not.toContain(freshId);
+      expect(reclaimed).not.toContain(otherStaleId);
 
       // The stale vector is gone but the memory row (its text) survives, so it
       // can be re-embedded at the active width.
@@ -163,6 +183,14 @@ describe("Embedding Integration Tests", () => {
       // The active-dimension vector is untouched.
       const freshRetrieved = await adapter.getMemoryById(freshId);
       expect(freshRetrieved?.embedding?.length).toBe(384);
+
+      // The cleanup is scoped to this adapter's agent; another agent may still
+      // legitimately own old-width vectors until that agent boots and reclaims
+      // against its own active dimension.
+      await adapter.ensureEmbeddingDimension(1536);
+      const otherRetrieved = await adapter.getMemoryById(otherStaleId);
+      expect(otherRetrieved?.embedding?.length).toBe(1536);
+      await adapter.ensureEmbeddingDimension(384);
 
       // Idempotent: nothing left to reclaim.
       expect(await adapter.clearEmbeddingsOutsideActiveDimension()).toEqual([]);

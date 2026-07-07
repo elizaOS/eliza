@@ -583,9 +583,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {
     return this.withDatabase(async () => {
+      const agentMemoryIds = this.db
+        .select({ id: memoryTable.id })
+        .from(memoryTable)
+        .where(eq(memoryTable.agentId, this.agentId));
       const cleared = await this.db
         .delete(embeddingTable)
-        .where(isNull(embeddingTable[this.embeddingDimension]))
+        .where(
+          and(
+            isNull(embeddingTable[this.embeddingDimension]),
+            inArray(embeddingTable.memoryId, agentMemoryIds)
+          )
+        )
         .returning();
       return cleared.map((row) => row.memoryId).filter((id): id is UUID => id !== null);
     });
