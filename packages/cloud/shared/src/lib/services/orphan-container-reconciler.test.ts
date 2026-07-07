@@ -108,3 +108,110 @@ describe("shared diff — DUPLICATE-key mode (app, #9307 every-terminal fail-saf
     ]);
   });
 });
+
+describe("node-aware diff (#15228 — reap the stale twin a re-provision left behind)", () => {
+  // Agent config: node-aware, 5-min grace. keyOf parses `agent-<id>`.
+  const cfg: Pick<
+    OrphanReconcilerConfig,
+    "keyOf" | "terminalStatuses" | "nodeAware" | "nodeMoveGraceMs"
+  > = {
+    keyOf: (name) => (name.startsWith("agent-") ? name.slice("agent-".length) : null),
+    terminalStatuses: new Set(["stopped", "error"]),
+    nodeAware: true,
+    nodeMoveGraceMs: 5 * 60_000,
+  };
+  const NOW = 1_000_000_000_000;
+  const onNode = (
+    key: string,
+    status: string,
+    nodeId: string,
+    ageMs: number,
+  ): LiveContainerRef => ({
+    key,
+    status,
+    nodeId,
+    updatedAtMs: NOW - ageMs,
+  });
+  const c = (id: string): NodeContainerRef => ({ name: `agent-${id}`, id: `docker-${id}` });
+
+  test("live row points at a DIFFERENT node, stable past grace → reap as wrong_node", () => {
+    // container observed on nodeA; the agent's live row says it lives on nodeB.
+    const orphans = computeOrphanContainersToReap(
+      [c("x")],
+      [onNode("x", "running", "nodeB", 10 * 60_000)],
+      cfg,
+      "nodeA",
+      NOW,
+    );
+    expect(orphans).toEqual([{ name: "agent-x", id: "docker-x", key: "x", reason: "wrong_node" }]);
+  });
+
+  test("live row points at THIS node → keep (this is the canonical container)", () => {
+    const orphans = computeOrphanContainersToReap(
+      [c("x")],
+      [onNode("x", "running", "nodeA", 10 * 60_000)],
+      cfg,
+      "nodeA",
+      NOW,
+    );
+    expect(orphans).toEqual([]);
+  });
+
+  test("mismatch but WITHIN grace → keep (protects the mid-provision race)", () => {
+    // row just moved to nodeB 30s ago; a container still on nodeA might be the
+    // draining old one OR a race — do not reap until it is stably wrong.
+    const orphans = computeOrphanContainersToReap(
+      [c("x")],
+      [onNode("x", "running", "nodeB", 30_000)],
+      cfg,
+      "nodeA",
+      NOW,
+    );
+    expect(orphans).toEqual([]);
+  });
+
+  test("row missing nodeId → cannot prove elsewhere → keep", () => {
+    const orphans = computeOrphanContainersToReap(
+      [c("x")],
+      [{ key: "x", status: "running" }],
+      cfg,
+      "nodeA",
+      NOW,
+    );
+    expect(orphans).toEqual([]);
+  });
+
+  test("terminal row still wins over node logic (reap as terminal_db_row)", () => {
+    const orphans = computeOrphanContainersToReap(
+      [c("x")],
+      [onNode("x", "error", "nodeB", 10 * 60_000)],
+      cfg,
+      "nodeA",
+      NOW,
+    );
+    expect(orphans[0]?.reason).toBe("terminal_db_row");
+  });
+
+  test("no nodeId arg (non-node-aware call) → node logic inert, legacy behavior", () => {
+    const orphans = computeOrphanContainersToReap(
+      [c("x")],
+      [onNode("x", "running", "nodeB", 10 * 60_000)],
+      cfg,
+      undefined,
+      NOW,
+    );
+    expect(orphans).toEqual([]);
+  });
+
+  test("nodeAware off → a wrong-node container is NEVER reaped (apps semantics)", () => {
+    const appsCfg = { ...cfg, nodeAware: false };
+    const orphans = computeOrphanContainersToReap(
+      [c("x")],
+      [onNode("x", "running", "nodeB", 10 * 60_000)],
+      appsCfg,
+      "nodeA",
+      NOW,
+    );
+    expect(orphans).toEqual([]);
+  });
+});
