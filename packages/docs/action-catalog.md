@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 9
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 189
+- **Registered runtime actions:** 190
 
 ## Actions
 
@@ -452,6 +452,7 @@ section drifts from source.
 - `PROBE_PLUGIN_CONFIG_REQUIREMENTS` — `packages/core/src/features/plugin-config/actions/probe-plugin-config-requirements.ts`
 - `PROXY_STATUS` — `plugins/plugin-anthropic-proxy/src/actions/proxy-status.action.ts`
 - `REGENERATE_APP_API_KEY` — `plugins/plugin-cloud-apps/src/actions/regenerate-app-api-key.ts`
+- `RESOLVE_REFERENT` — `plugins/plugin-personal-assistant/src/actions/resolve-referent.ts`
 - `RESOLVE_REQUEST` — `plugins/plugin-personal-assistant/src/actions/resolve-request.ts`
 - `RETRIEVE_CHILD_AGENT_RESULTS` — `packages/core/src/features/sub-agent-credentials/actions/retrieve-child-agent-results.ts`
 - `REVOKE_OAUTH_CREDENTIAL` — `packages/core/src/features/oauth/actions/revoke-oauth-credential.ts`
