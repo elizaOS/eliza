@@ -174,6 +174,29 @@ export type WalletTrustSummary = {
   limitations: string[];
 };
 
+export type WalletInvestigationReplayStep = {
+  step: number;
+  stage:
+    | "validation"
+    | "balance"
+    | "transactions"
+    | "activity"
+    | "age"
+    | "funding"
+    | "portfolio"
+    | "defi"
+    | "exposure"
+    | "relationships"
+    | "risk"
+    | "whale"
+    | "behavior"
+    | "trust"
+    | "case_summary";
+  status: "completed" | "limited" | "skipped";
+  title: string;
+  description: string;
+};
+
 export type WalletActivitySummary = {
   recentTransactionCount: number;
   failedTransactionCount: number;
@@ -241,6 +264,7 @@ export type WalletInvestigationResult = {
   behavior?: WalletBehaviorSummary;
   caseSummary?: WalletCaseSummary;
   trust?: WalletTrustSummary;
+  investigationReplay?: WalletInvestigationReplayStep[];
   exposure?: WalletExposureSummary;
   relationships?: WalletRelationshipSummary;
   evidence?: WalletEvidenceItem[];
