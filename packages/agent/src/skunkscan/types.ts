@@ -100,6 +100,17 @@ export type WalletBehaviorSummary = {
   explanation: string;
 };
 
+export type WalletCaseSummary = {
+  headline: string;
+  executiveSummary: string;
+  keyFindings: string[];
+  recommendation:
+    | "allow"
+    | "review"
+    | "investigate"
+    | "high_risk";
+};
+
 export type WalletActivitySummary = {
   recentTransactionCount: number;
   failedTransactionCount: number;
@@ -165,6 +176,7 @@ export type WalletInvestigationResult = {
   whale?: WalletWhaleSummary;
   defi?: WalletDeFiSummary;
   behavior?: WalletBehaviorSummary;
+  caseSummary?: WalletCaseSummary;
   recentTransactions?: WalletRecentTransaction[];
   transactionCountSample?: number;
   activity?: WalletActivitySummary;
