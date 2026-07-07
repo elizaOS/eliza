@@ -214,14 +214,14 @@ export function CharacterIdentityPanel({
         <Textarea
           ref={systemRef}
           value={systemText}
-          rows={4}
+          rows={3}
           placeholder={t("charactereditor.SystemPromptPlaceholder", {
             defaultValue: "Write in first person...",
           })}
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("system", e.target.value)
           }
-          className="w-full resize-none min-h-[7rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt sm:min-h-[10rem] lg:min-h-[14rem]"
+          className="w-full resize-none min-h-[5rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt sm:min-h-[10rem] lg:min-h-[14rem]"
           {...systemAgentProps}
         />
       </div>
@@ -232,14 +232,14 @@ export function CharacterIdentityPanel({
         <Textarea
           ref={bioRef}
           value={bioText}
-          rows={3}
+          rows={2}
           placeholder={t("charactereditor.AboutMePlaceholder", {
             defaultValue: "Describe who your agent is...",
           })}
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("bio", e.target.value)
           }
-          className="w-full resize-none min-h-[4.5rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt sm:min-h-[6rem] lg:min-h-[8rem]"
+          className="w-full resize-none min-h-[3.5rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt sm:min-h-[6rem] lg:min-h-[8rem]"
           {...bioAgentProps}
         />
       </div>
