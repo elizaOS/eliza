@@ -14,12 +14,22 @@ interface AIUsage {
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
+  // Cache fields: only present on the streamed-usage object the AI SDK
+  // resolves after a stream finishes (`streamResult.usage`) for providers
+  // that report cache reuse (e.g. Anthropic cache_control). The non-streaming
+  // path already carried these through `buildNativeTextResult` in
+  // models/text.ts — this interface/emitter was the streaming path's gap.
+  cacheReadInputTokens?: number;
+  cachedInputTokens?: number;
+  cacheCreationInputTokens?: number;
 }
 
 export type NormalizedModelUsage = {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
 };
 
 export function emitModelUsageEvent(
@@ -34,6 +44,8 @@ export function emitModelUsageEvent(
   const outputTokens = usage.outputTokens ?? usage.completionTokens ?? 0;
   const totalTokens = usage.totalTokens ?? inputTokens + outputTokens;
   const model = modelName?.trim() || modelLabel?.trim() || String(modelType);
+  const cacheRead = usage.cacheReadInputTokens ?? usage.cachedInputTokens;
+  const cacheCreation = usage.cacheCreationInputTokens;
 
   runtime.emitEvent(EventType.MODEL_USED, {
     runtime,
@@ -47,6 +59,8 @@ export function emitModelUsageEvent(
       prompt: inputTokens,
       completion: outputTokens,
       total: totalTokens,
+      ...(typeof cacheRead === "number" ? { cacheRead } : {}),
+      ...(typeof cacheCreation === "number" ? { cacheCreation } : {}),
     },
   } as EventPayload);
 
@@ -54,5 +68,7 @@ export function emitModelUsageEvent(
     promptTokens: inputTokens,
     completionTokens: outputTokens,
     totalTokens,
+    ...(typeof cacheRead === "number" ? { cacheReadInputTokens: cacheRead } : {}),
+    ...(typeof cacheCreation === "number" ? { cacheCreationInputTokens: cacheCreation } : {}),
   };
 }
