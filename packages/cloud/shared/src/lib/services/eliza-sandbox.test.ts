@@ -2786,12 +2786,10 @@ describe("isPermanentlyLostSnapshot (prune-vs-preserve gating)", () => {
 
   test("classifies HTTP 404/410 (snapshot gone) as permanently lost — safe to prune", async () => {
     const { isPermanentlyLostSnapshot } = await import("./eliza-sandbox.ts?actual");
-    expect(
-      isPermanentlyLostSnapshot(new Error("State restore failed: HTTP 404 Not Found")),
-    ).toBe(true);
-    expect(isPermanentlyLostSnapshot(new Error("State restore failed: HTTP 410 Gone"))).toBe(
+    expect(isPermanentlyLostSnapshot(new Error("State restore failed: HTTP 404 Not Found"))).toBe(
       true,
     );
+    expect(isPermanentlyLostSnapshot(new Error("State restore failed: HTTP 410 Gone"))).toBe(true);
     expect(isPermanentlyLostSnapshot(new Error("Snapshot fetch failed: HTTP 410"))).toBe(true);
   });
 
