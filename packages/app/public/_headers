@@ -24,13 +24,12 @@
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
   Cache-Control: no-cache
 
-# Hashed assets under /assets/* are content-addressed and immutable. Pin them to
-# a long cache so they survive the no-cache rule on /* above. This pair
-# (no-cache HTML + immutable assets) is the standard cache discipline for
-# hashed-bundle SPAs: deploys propagate instantly without re-fetching unchanged
-# JS/CSS.
-/assets/*
-  Cache-Control: public, max-age=31536000, immutable
+# The no-cache rule on /* is deliberately the ONLY Cache-Control in this file.
+# Multiple matching _headers rules aggregate into one comma-joined value rather
+# than overriding (a /assets/* rule here would produce "no-cache, public,
+# max-age=..., immutable", which browsers resolve as revalidate-always), so the
+# immutable policy for /assets/* hits, the 404 for /assets/* misses, and the
+# no-store for /sw.js all live in functions/_middleware.ts instead.
 
 # OAuth/popup callback pages need a relaxed COOP so popup status remains
 # observable when a browser path is script-opened. OS-opened tabs still must not
