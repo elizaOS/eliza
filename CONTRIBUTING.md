@@ -146,6 +146,23 @@ Post videos as MP4 so GitHub renders them inline, screenshots as JPG where
 possible, and long logs in a `<details>` block. Re-capture evidence after
 rebasing when `develop` changes the behavior under review.
 
+**Headless agents (no browser, cannot drag-and-drop):** upload media to the
+dedicated [`pr-evidence` release](https://github.com/elizaOS/eliza/releases/tag/pr-evidence)
+and embed the asset URLs — they end in a media extension, render inline via
+`![](…)`, and satisfy the evidence gate:
+
+```bash
+# name files <pr-number>-<artifact>.<ext>, then:
+gh release upload pr-evidence 15171-after-desktop.jpg 15171-walkthrough.mp4
+# embed in the PR evidence rows:
+#   ![after](https://github.com/elizaOS/eliza/releases/download/pr-evidence/15171-after-desktop.jpg)
+```
+
+Never delete assets referenced by an open PR. A worked example of a fully
+evidenced PR (before/after screenshots, MP4 walkthroughs, OCR readout,
+vision-QA trajectory with the model named, pixel-diff report, zero-error
+frontend logs) is [#15171](https://github.com/elizaOS/eliza/pull/15171).
+
 ## Security Reporting
 
 The canonical security policy — reporting channel, disclosure window, and
