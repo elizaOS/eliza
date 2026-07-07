@@ -92,11 +92,29 @@ export function requiresSurfaceArtifacts(labels) {
 
 export function hasOcrEvidenceReference(rows) {
   for (const rowText of rows.values()) {
-    if (OCR_EVIDENCE_RE.test(rowText) && hasArtifactReference(rowText)) {
+    // OCR proof must reference real evidence, not a page link: either an
+    // actual media artifact or a linked report/log file next to OCR keywords.
+    if (
+      OCR_EVIDENCE_RE.test(rowText) &&
+      (hasVisualArtifactReference(rowText) ||
+        hasEvidenceFileReference(rowText))
+    ) {
       return true;
     }
   }
   return false;
+}
+
+// Linked non-media evidence file (an OCR report/JSON/log) — still stricter
+// than "any URL": the link target must look like a file, not a web page.
+const EVIDENCE_FILE_RE = /\.(json|txt|log|csv|md)(\?\S*)?(\s|$|\)|"|')/i;
+
+export function hasEvidenceFileReference(text) {
+  const value = String(text ?? "");
+  return (
+    (EVIDENCE_FILE_RE.test(value) || GITHUB_ATTACHMENT_RE.test(value)) &&
+    !RETIRED_REPO_EVIDENCE_RE.test(value)
+  );
 }
 
 export function hasNaWithReason(text) {
@@ -121,6 +139,35 @@ export function hasArtifactReference(text) {
       text,
     )
   ) {
+    return true;
+  }
+  return false;
+}
+
+// A GitHub-uploaded attachment (drag-and-drop) lands on one of these hosts;
+// these URLs are the unforgeable signal that a real image/video is embedded.
+const GITHUB_ATTACHMENT_RE =
+  /(https?:\/\/)?(github\.com\/user-attachments\/assets\/|user-images\.githubusercontent\.com\/|github\.com\/[^/\s)]+\/[^/\s)]+\/assets\/)/i;
+// A URL/path whose tail is an image or video file — a directly-linked media file.
+const MEDIA_EXT_RE =
+  /\.(png|jpe?g|gif|webp|apng|avif|bmp|svg|mp4|mov|webm|m4v|ogg)(\?\S*)?(\s|$|\)|"|')/i;
+
+/**
+ * Strict media check for the VISUAL evidence rows (screenshots, walkthrough
+ * video, OCR readout). Unlike `hasArtifactReference`, a bare link to a page —
+ * the PR itself, a `/checks` tab, a commit, a job log — does NOT count: those
+ * are how an author games the loose check while attaching no pixels. Only a
+ * real embedded/linked image or video satisfies it: a GitHub attachment-host
+ * URL, a markdown image embed `![](…)`, an `<img>`/`<video>` tag, or a URL/path
+ * ending in a known media extension. This is the difference between "here is a
+ * link" and "here is the picture".
+ */
+export function hasVisualArtifactReference(text) {
+  const value = String(text ?? "");
+  if (GITHUB_ATTACHMENT_RE.test(value)) return true;
+  if (/!\[[^\]]*\]\(\s*\S+\s*\)/.test(value)) return true; // ![alt](url) embed
+  if (/<(img|video|source|picture)\b[^>]*>/i.test(value)) return true;
+  if (MEDIA_EXT_RE.test(value) && !RETIRED_REPO_EVIDENCE_RE.test(value)) {
     return true;
   }
   return false;
@@ -219,15 +266,16 @@ export function evaluatePrEvidence(
     if (rowText.length === 0) return { id, label, status: "blank" };
     const artifactRequired =
       surfaceArtifactsRequired && SURFACE_ARTIFACT_ROW_IDS.includes(id);
-    if (artifactRequired && !hasArtifactReference(rowText)) {
+    // Visual rows on a surface PR demand REAL media (attachment/embed/media
+    // URL) — a link to the PR page or a /checks tab is not a screenshot.
+    if (artifactRequired && !hasVisualArtifactReference(rowText)) {
       return { id, label, status: "artifact-required" };
     }
     return {
       id,
       label,
-      status: isRowSatisfiedForContext(rowText, { artifactRequired })
-        ? "ok"
-        : "blank",
+      status:
+        artifactRequired || isRowSatisfied(rowText) ? "ok" : "blank",
     };
   });
   if (surfaceArtifactsRequired && !hasOcrEvidenceReference(rows)) {

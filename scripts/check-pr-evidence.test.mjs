@@ -17,6 +17,7 @@ import {
   hasArtifactReference,
   hasNaWithReason,
   hasOcrEvidenceReference,
+  hasVisualArtifactReference,
   isChecked,
   isRowSatisfied,
   isRowSatisfiedForContext,
@@ -309,6 +310,65 @@ describe("check-pr-evidence row primitives", () => {
     assert.equal(isChecked("- [X] done"), true);
     assert.equal(isChecked("- [ ] not done"), false);
     assert.equal(isRowSatisfied("- [x] done"), false);
+  });
+
+  it("requires real media on visual rows — page links do not count", () => {
+    // The gaming vector: linking the PR itself or its /checks tab.
+    assert.equal(
+      hasVisualArtifactReference(
+        "- [ ] Before: https://github.com/elizaOS/eliza/pull/15178/checks",
+      ),
+      false,
+    );
+    assert.equal(
+      hasVisualArtifactReference(
+        "- [ ] After: https://github.com/elizaOS/eliza/pull/15178",
+      ),
+      false,
+    );
+    // Real media forms all count.
+    assert.equal(
+      hasVisualArtifactReference(
+        "https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000001",
+      ),
+      true,
+    );
+    assert.equal(
+      hasVisualArtifactReference("![after](https://example.com/x/after)"),
+      true,
+    );
+    assert.equal(
+      hasVisualArtifactReference(
+        '<img src="https://example.com/shot" width="400">',
+      ),
+      true,
+    );
+    assert.equal(
+      hasVisualArtifactReference("see https://example.com/walkthrough.mp4"),
+      true,
+    );
+  });
+
+  it("fails a UI-labeled PR whose visual rows link only to the PR/checks page", () => {
+    const { ok, findings } = evaluatePrEvidence(
+      buildBody({
+        "before-screenshots":
+          "- [ ] Before screenshots: https://github.com/elizaOS/eliza/pull/15178",
+        "after-screenshots":
+          "- [ ] After screenshots: https://github.com/elizaOS/eliza/pull/15178/checks",
+        "walkthrough-video":
+          "- [ ] Walkthrough video: https://github.com/elizaOS/eliza/pull/15178/checks",
+      }),
+      REQUIRED_EVIDENCE_ROWS,
+      { labels: "ui" },
+    );
+    assert.equal(ok, false);
+    for (const id of SURFACE_ARTIFACT_ROW_IDS) {
+      assert.equal(
+        findings.find((finding) => finding.id === id).status,
+        "artifact-required",
+      );
+    }
   });
 
   it("detects rendered-UI source files in the diff", () => {
