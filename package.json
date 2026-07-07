@@ -139,6 +139,7 @@
     "test:matrix:review": "node scripts/evidence-review/run-matrix.mjs --open",
     "test:matrix": "node scripts/evidence-review/run-matrix.mjs --no-open",
     "test:watch-human": "bun run --cwd packages/app test:e2e:human",
+    "evidence:doctor": "node scripts/evidence-doctor.mjs",
     "evidence:certify": "bun packages/evidence/src/cli.ts certify",
     "evidence:review": "node scripts/evidence-review/generate.mjs --open",
     "evidence:open": "node scripts/evidence-review/generate.mjs --open",
