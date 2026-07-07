@@ -979,7 +979,6 @@ export function ContinuousChatOverlay({
   agentName = "Eliza",
   slash: slashProp,
   firstRunOpen = false,
-  dockPinned = false,
 }: {
   controller: ShellController;
   /** Name shown in the composer placeholder ("Ask {agentName}"). Defaults to Eliza. */
@@ -998,14 +997,6 @@ export function ContinuousChatOverlay({
    * revealing the home screen.
    */
   firstRunOpen?: boolean;
-  /**
-   * True while the desktop/web docked-chat idiom hosts this overlay inside the
-   * left dock pane (CHAT_DOCK_UX.md). Pins the sheet open FULL + edge-to-edge
-   * exactly like the onboarding pin: vertical sheet gestures, Escape, back
-   * intents, and every collapse path are no-ops — the vertical divider pill
-   * owns open/close on that idiom.
-   */
-  dockPinned?: boolean;
 }): React.JSX.Element {
   const {
     messages,
@@ -1250,19 +1241,17 @@ export function ContinuousChatOverlay({
   // detent are all DERIVED from it — so the impossible "open but not open" or
   // pilled-and-full combos can't exist and no transition has to hand-sync two
   // separate states (which is what bred the old stuck states).
-  // Openness pin shared by onboarding and the docked-chat idiom: while true
-  // the sheet is structurally FULL and undismissable (see firstRunOpen /
-  // dockPinned docs above).
-  const pinnedOpen = firstRunOpen || dockPinned;
+  // Onboarding openness pin: while first-run is active the sheet is
+  // structurally FULL and undismissable (see firstRunOpen docs above).
+  const pinnedOpen = firstRunOpen;
   const [mode, setMode] = React.useState<ChatMode>(
     pinnedOpen ? "full" : "input",
   );
   // The pin-at-full + auto-collapse edge effect lives below `goToDetent` (it
   // needs the detent animator); the mount state above still opens FULL first.
   //
-  // During onboarding and docked chat the sheet MUST stay open. Deriving
-  // openness from the effect alone proved raceable on a home-view boot, and the
-  // dock idiom delegates close/open to the divider pill. Pin it STRUCTURALLY:
+  // During onboarding the sheet MUST stay open. Deriving openness from the
+  // effect alone proved raceable on a home-view boot. Pin it STRUCTURALLY:
   // while pinned, the derived openness is always FULL regardless of the
   // underlying `mode` transition state. The effects still drive the real `mode`
   // so the first-run falling edge collapses correctly.
@@ -1279,8 +1268,7 @@ export function ContinuousChatOverlay({
   // (max-width, side padding, top margin, rounding) so the chat is edge-to-edge.
   // Invariant: only true while at FULL (sheetOpen && expanded && !pilled); every
   // leave-full transition resets it. Pinned sessions start here: first-run opens
-  // edge-to-edge full-screen, then its falling edge collapses to half; the dock
-  // pin stays edge-to-edge while the dock idiom owns close/open.
+  // edge-to-edge full-screen, then its falling edge collapses to half.
   const [maximized, setMaximized] = React.useState(pinnedOpen);
   // A restore drag is in flight (pull-down out of full-bleed). Declared up here
   // (not by the restore binding) because `fullBleedFrame` below reads it to keep
@@ -3128,18 +3116,8 @@ export function ContinuousChatOverlay({
       setMaximized(true);
       return;
     }
-    if (was && !dockPinned) goToDetent("half");
-  }, [firstRunOpen, dockPinned, goToDetent]);
-
-  // Dock pin: when the dock idiom mounts (or flips on at a live resize), snap
-  // the sheet to its pinned FULL + edge-to-edge shape immediately — the dock
-  // pane's geometry owns the chat's footprint from here.
-  React.useEffect(() => {
-    if (!dockPinned) return;
-    setMode("full");
-    setMaximized(true);
-    fullBleedT.set(1);
-  }, [dockPinned, fullBleedT]);
+    if (was) goToDetent("half");
+  }, [firstRunOpen, goToDetent]);
 
   // First-run opaque backdrop (#12178). While onboarding pins the sheet FULL,
   // the backdrop is an OPAQUE `bg-bg` layer that hides the launcher/home behind
@@ -3698,9 +3676,9 @@ export function ContinuousChatOverlay({
   // detector preserves the old "tap outside to collapse" behavior without
   // stealing horizontal swipes or vertical scroll from the background.
   React.useEffect(() => {
-    // While pinned (onboarding / docked idiom) the chat is undismissable, so
-    // the outside-tap swallower must not install: it capture-eats pointerup on
-    // everything outside the sheet — including the dock's divider pill.
+    // While pinned for onboarding the chat is undismissable, so the outside-tap
+    // swallower must not install: it capture-eats pointerup on everything
+    // outside the sheet.
     if (typeof document === "undefined" || !sheetOpen || pinnedOpen) {
       outsideSheetPointerRef.current = null;
       suppressNextOutsideClickRef.current = false;
