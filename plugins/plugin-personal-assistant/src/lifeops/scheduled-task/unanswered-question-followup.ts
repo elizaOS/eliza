@@ -301,25 +301,10 @@ export async function handleAgentMessageSentForQuestionFollowup(
   }
 }
 
-/**
- * `MESSAGE_RECEIVED` event handler. Boundary catch: an inbound chat message
- * must never fail because a follow-up row is broken.
- */
 export async function handleOwnerMessageForQuestionFollowup(
   payload: MessagePayload,
 ): Promise<void> {
-  try {
-    const runtime = payload.runtime;
-    if (!runtime || !payload.message) return;
-    await cancelQuestionFollowupsOnOwnerReply(runtime, payload.message);
-  } catch (error) {
-    // error-policy:J1 boundary translation — event-bus handler edge; the
-    // failure is logged and the message pipeline continues.
-    logger.warn(
-      { src: LOG_SRC, error },
-      `[UnansweredQuestionFollowup] follow-up cancellation failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-  }
+  const runtime = payload.runtime;
+  if (!runtime || !payload.message) return;
+  await cancelQuestionFollowupsOnOwnerReply(runtime, payload.message);
 }

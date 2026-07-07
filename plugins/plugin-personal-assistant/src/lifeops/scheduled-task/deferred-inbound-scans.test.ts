@@ -106,6 +106,21 @@ describe("detachInboundScan", () => {
     });
   });
 
+  it("routes a synchronous scan throw to runtime.reportError off the awaited edge", async () => {
+    const { runtime, reported } = recordingRuntime();
+    const failure = new Error("missing store");
+    const handler = detachInboundScan("sync-throw", () => {
+      throw failure;
+    });
+
+    await expect(handler(payloadFor(runtime))).resolves.toBeUndefined();
+    await settleDeferredInboundScans();
+
+    expect(reported).toHaveLength(1);
+    expect(reported[0]?.scope).toBe("lifeops:inbound-scan:sync-throw");
+    expect(reported[0]?.error).toBe(failure);
+  });
+
   it("settle drains a scan that schedules another scan while it runs", async () => {
     const { runtime } = recordingRuntime();
     let innerRan = false;

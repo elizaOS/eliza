@@ -2,15 +2,15 @@
  * REAL-browser fixture for the infinite upward scroll (#13532/#14329) — driven
  * by run-chat-infinite-scroll-e2e.mjs.
  *
- * Mounts the PRODUCTION load-older engine — the real `useLoadOlderOnScroll`
- * hook, the real `loadOlderConversationMessages` orchestration, AND the real
- * `planScrollTopLoadOlder` render-window policy — over a real scroller in a real
- * Chromium layout, so the pieces jsdom fakes (a genuine IntersectionObserver,
+ * Mounts the PRODUCTION load-older stack — the real `useLoadOlderOnScroll` hook,
+ * the real `loadOlderConversationMessages` orchestration, AND the real
+ * `useConversationRenderWindow` render-window engine — over a real scroller in a
+ * real Chromium layout, so the pieces jsdom fakes (a genuine IntersectionObserver,
  * real scrollHeight/scrollTop geometry, a real `?before=` network fetch) run for
- * real. Crucially it renders through the SAME sliding render window the overlay
- * uses (`messages.slice(-renderWindowSize)` growing via `planScrollTopLoadOlder`)
- * rather than dumping every message — so the e2e guards #14329's actual bug: a
- * fixed render cap that slices prepended older turns straight back off.
+ * real. It renders through the SAME sliding render window ChatView + the overlay
+ * use (`messages.slice(-renderWindow.windowSize)`) rather than dumping every
+ * message — so the e2e guards #14329's actual bug: a fixed render cap that slices
+ * prepended older turns straight back off.
  *
  * Query params (set by the runner): `?empty` seeds an empty thread (no fetch
  * loop); `?fail` makes the first older-page fetch reject (error path — the guard
@@ -24,16 +24,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import type { ConversationMessage } from "../../../api/client-types-chat";
+import { useConversationRenderWindow } from "../../../hooks/useConversationRenderWindow";
 import { useLoadOlderOnScroll } from "../../../hooks/useLoadOlderOnScroll";
 import {
   type LoadOlderClient,
   loadOlderConversationMessages,
 } from "../../../state/load-older-conversation-messages";
-import {
-  MAX_LOADED_SHELL_WINDOW,
-  MAX_RENDERED_SHELL_MESSAGES,
-  planScrollTopLoadOlder,
-} from "../../shell/shell-state";
 
 const CONVERSATION_ID = "conv-infinite";
 const PAGE_SIZE = 20;
@@ -113,24 +109,13 @@ function Harness(): React.JSX.Element {
   const [messages, setMessages] = useState<ConversationMessage[]>(
     initialMessages,
   );
-  const [hasMore, setHasMore] = useState(!MODE_EMPTY);
-  // The render window mirrors the overlay: start lean, grow a page per
-  // scroll-to-top (reveal-before-fetch), bounded by MAX_LOADED_SHELL_WINDOW.
-  const [renderWindowSize, setRenderWindowSize] = useState(
-    MAX_RENDERED_SHELL_MESSAGES,
-  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const clientRef = useRef<LoadOlderClient>(makeClient());
-  // Refs so the scroll-up handler reads live values without re-subscribing the
-  // observer — mirrors the overlay wiring exactly.
+  // Live messages for the fetch wrapper so the render window's stable
+  // onLoadOlder reads the current thread without re-subscribing the observer.
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
-  const windowRef = useRef(renderWindowSize);
-  windowRef.current = renderWindowSize;
-  const hasMoreRef = useRef(hasMore);
-  hasMoreRef.current = hasMore;
-  (window as Win).__renderWindow = renderWindowSize;
 
   const prependMessages = useCallback((older: ConversationMessage[]) => {
     setMessages((prev) => {
@@ -140,52 +125,51 @@ function Harness(): React.JSX.Element {
     });
   }, []);
 
+  // The PRODUCTION fetch orchestration, wrapped exactly as ChatView / the
+  // overlay wrap it — returns the LoadOlderResult so the shared render window
+  // drives its own paging state.
+  const fetchOlder = useCallback(
+    () =>
+      loadOlderConversationMessages({
+        client: clientRef.current,
+        conversationId: CONVERSATION_ID,
+        currentMessages: messagesRef.current,
+        prependMessages,
+        limit: PAGE_SIZE,
+      }),
+    [prependMessages],
+  );
+
+  // The PRODUCTION render-window engine — the same hook ChatView + the overlay
+  // use. Its reveal-before-fetch policy is what this e2e exercises in real
+  // Chromium (jsdom can't).
+  const renderWindow = useConversationRenderWindow({
+    renderableCount: messages.length,
+    conversationKey: CONVERSATION_ID,
+    fetchOlder,
+  });
+  (window as Win).__renderWindow = renderWindow.windowSize;
+
+  // Preserve the runner's instrumentation contract: count every COMPLETED
+  // older-page load (reveal or fetch) so the ?fail lane can assert "no retry
+  // storm". A rejected fetch propagates to useLoadOlderOnScroll's boundary
+  // WITHOUT bumping the counter — matching the guard's bounded re-arm.
   const onLoadOlder = useCallback(async () => {
-    // Reveal-before-fetch, identical to ContinuousChatOverlay.loadOlderMessages:
-    // grow the render window to surface already-loaded turns before any network,
-    // and only page the next older server window once the window has drained.
-    const plan = planScrollTopLoadOlder(
-      windowRef.current,
-      messagesRef.current.length,
-      hasMoreRef.current,
-    );
-    if (plan.nextWindowSize !== windowRef.current) {
-      setRenderWindowSize(plan.nextWindowSize);
-    }
-    if (!plan.shouldFetch) {
-      (window as Win).__loadResolves = ((window as Win).__loadResolves ?? 0) + 1;
-      return;
-    }
-    const result = await loadOlderConversationMessages({
-      client: clientRef.current,
-      conversationId: CONVERSATION_ID,
-      currentMessages: messagesRef.current,
-      prependMessages,
-      limit: PAGE_SIZE,
-    });
-    (window as Win).__loadResolves = ((window as Win).__loadResolves ?? 0) + 1;
-    setHasMore(result.hasMore);
-    if (result.prependedCount > 0) {
-      setRenderWindowSize((n) =>
-        Math.min(n + result.prependedCount, MAX_LOADED_SHELL_WINDOW),
-      );
-    }
-  }, [prependMessages]);
+    await renderWindow.onLoadOlder();
+    const win = window as Win;
+    win.__loadResolves = (win.__loadResolves ?? 0) + 1;
+  }, [renderWindow.onLoadOlder]);
 
   const visible =
-    messages.length > renderWindowSize
-      ? messages.slice(-renderWindowSize)
+    messages.length > renderWindow.windowSize
+      ? messages.slice(-renderWindow.windowSize)
       : messages;
 
   useLoadOlderOnScroll<HTMLDivElement>({
     scrollRef,
     sentinelRef,
     onLoadOlder,
-    // Armed while older turns can still be revealed (window below the loaded
-    // count) OR paged (server has more), and latched off at the DOM bound.
-    hasMore:
-      renderWindowSize < MAX_LOADED_SHELL_WINDOW &&
-      (renderWindowSize < messages.length || hasMore),
+    hasMore: renderWindow.canLoadOlder,
     topItemKey: visible[0]?.id ?? "",
     enabled: true,
   });
