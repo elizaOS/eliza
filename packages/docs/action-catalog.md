@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 9
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 189
+- **Registered runtime actions:** 190
 
 ## Actions
 
@@ -364,6 +364,7 @@ section drifts from source.
 - `CREATE_LINEAR_COMMENT` — `plugins/plugin-linear/src/actions/createComment.ts`
 - `CREATE_LINEAR_ISSUE` — `plugins/plugin-linear/src/actions/createIssue.ts`
 - `CREATE_OAUTH_INTENT` — `packages/core/src/features/oauth/actions/create-oauth-intent.ts`
+- `CREATIVE_DRAFT` — `plugins/plugin-personal-assistant/src/actions/creative-draft.ts`
 - `CREDENTIALS` — `plugins/plugin-personal-assistant/src/actions/credentials.ts`
 - `DATABASE` — `packages/agent/src/actions/database.ts`
 - `DECLARE_SUB_AGENT_CREDENTIAL_SCOPE` — `packages/core/src/features/sub-agent-credentials/actions/declare-sub-agent-credential-scope.ts`
