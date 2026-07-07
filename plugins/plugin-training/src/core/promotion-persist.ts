@@ -20,7 +20,10 @@
  */
 
 import type { OptimizationExample, PromptScorer } from "../optimizers/index.js";
-import type { OptimizedPromptContextConfig } from "../optimizers/types.js";
+import type {
+  OptimizedPromptContextConfig,
+  PromotionDecisionSummary,
+} from "../optimizers/types.js";
 import {
   DEFAULT_PROMOTED_ARTIFACT_RETENTION,
   prunePromotedArtifacts,
@@ -63,6 +66,14 @@ export interface PromotionArtifactInput {
     notes?: string;
   }>;
   fewShotExamples?: PromotionFewShotExample[];
+  frontier?: Array<{
+    prompt: string;
+    score: number;
+    promptTokenCount: number;
+    origin: string;
+    feedback?: string;
+  }>;
+  promotionDecision?: PromotionDecisionSummary;
   contextConfig?: OptimizedPromptContextConfig;
 }
 
@@ -101,6 +112,13 @@ export interface PromotionNativeBackendResultLike {
       notes?: string;
     }>;
     fewShotExamples?: PromotionFewShotExample[];
+    frontier?: Array<{
+      prompt: string;
+      score: number;
+      promptTokenCount: number;
+      origin: string;
+      feedback?: string;
+    }>;
     contextConfig?: OptimizedPromptContextConfig;
   };
   /** Full parsed dataset. Fallback target for the gate when no holdout exists. */
@@ -215,6 +233,22 @@ export async function gatedPersistNativeResult(
     generatedAt,
     lineage: input.result.result.lineage,
     fewShotExamples: input.result.result.fewShotExamples,
+    frontier: input.result.result.frontier,
+    promotionDecision: {
+      promote: decision.promote,
+      incumbentMeanScore: decision.incumbentMeanScore,
+      incumbentStdDev: decision.incumbentStdDev,
+      candidateScore: decision.candidateScore,
+      delta: decision.delta,
+      promotionMargin: decision.promotionMargin,
+      noiseThreshold: decision.noiseThreshold,
+      incumbentReseeds: decision.incumbentReseeds,
+      examplesPerPass: decision.examplesPerPass,
+      reason: decision.reason,
+      incumbentScores: decision.incumbentScores,
+      incumbentSource,
+      gateSource,
+    },
     contextConfig: input.result.result.contextConfig,
   });
   notes.push(`artifact written to ${writePath}`);

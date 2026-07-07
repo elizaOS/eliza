@@ -100,6 +100,27 @@ function emptyTaskCounters(): Record<TrajectoryTrainingTask, number> {
   return buildTaskRecord<number>(() => 0);
 }
 
+async function recentOptimizationReports(limit = 5): Promise<
+  Array<{
+    runId: string;
+    status: string;
+    task: TrajectoryTrainingTask | null;
+    reportJsonPath?: string;
+    reportHtmlPath?: string;
+    headline?: unknown;
+  }>
+> {
+  const runs = await listRuns(limit);
+  return runs.map((run) => ({
+    runId: run.runId,
+    status: run.status,
+    task: run.task,
+    reportJsonPath: run.reportJsonPath,
+    reportHtmlPath: run.reportHtmlPath,
+    headline: run.report?.headline,
+  }));
+}
+
 function getTriggerEntry(
   runtime: AgentRuntime | null,
 ): RegisteredTrainingTriggerEntry | null {
@@ -286,6 +307,7 @@ export async function handleTrainingRoutes(
 
   // ── Auto-training trigger surface ───────────────────────────────────────
   if (method === "GET" && pathname === "/api/training/auto/status") {
+    const reports = await recentOptimizationReports();
     const trigger = getTriggerEntry(runtime);
     if (!trigger) {
       const config = loadTrainingConfig();
@@ -297,12 +319,13 @@ export async function handleTrainingRoutes(
         lastTrain: {},
         perTaskThresholds: emptyTaskCounters(),
         perTaskCooldownMs: emptyTaskCounters(),
+        reports,
         serviceRegistered: false,
       });
       return true;
     }
     const snapshot = trigger.getStatus();
-    json(res, { ...snapshot, serviceRegistered: true });
+    json(res, { ...snapshot, reports, serviceRegistered: true });
     return true;
   }
 
@@ -1503,7 +1526,11 @@ export async function handleTrainingRoutes(
         ? createCerebrasTeacher(runtime ?? undefined)
         : anthropicKey
           ? createAnthropicTeacher(anthropicKey, runtime ?? undefined)
-          : createOpenAITeacher(openaiKey!, runtime ?? undefined);
+          : openaiKey
+            ? createOpenAITeacher(openaiKey, runtime ?? undefined)
+            : (() => {
+                throw new Error("No teacher model API key available");
+              })();
 
     const outputDir = `.tmp/training-data-${Date.now()}`;
 
@@ -1593,7 +1620,11 @@ export async function handleTrainingRoutes(
         ? createCerebrasTeacher(runtime ?? undefined)
         : anthropicKey
           ? createAnthropicTeacher(anthropicKey, runtime ?? undefined)
-          : createOpenAITeacher(openaiKey!, runtime ?? undefined);
+          : openaiKey
+            ? createOpenAITeacher(openaiKey, runtime ?? undefined)
+            : (() => {
+                throw new Error("No teacher model API key available");
+              })();
     const outputDir = `.tmp/training-roleplay-${Date.now()}`;
 
     try {

@@ -20,6 +20,7 @@ import { subsample } from "./scoring.js";
 import type {
   LlmAdapter,
   OptimizationExample,
+  OptimizerFrontierEntry,
   OptimizerLineageEntry,
   OptimizerResult,
   PromptScorer,
@@ -201,17 +202,34 @@ export async function runGepa(input: GepaInput): Promise<OptimizerResult> {
   }
 
   const finalFrontier = paretoFrontier(pool);
+  const firstCandidate = finalFrontier[0] ?? pool[0];
+  if (!firstCandidate) {
+    throw new Error("[gepa] candidate pool is empty after baseline scoring");
+  }
   const best = finalFrontier.reduce<Candidate>((acc, cur) => {
     if (cur.score > acc.score) return cur;
     if (cur.score === acc.score && cur.tokens < acc.tokens) return cur;
     return acc;
-  }, finalFrontier[0] ?? pool[0]!);
+  }, firstCandidate);
 
   return {
     optimizedPrompt: best.prompt,
     score: best.score,
     baseline: baseline.score,
     lineage,
+    frontier: finalFrontier.map(candidateToFrontierEntry),
+  };
+}
+
+function candidateToFrontierEntry(
+  candidate: Candidate,
+): OptimizerFrontierEntry {
+  return {
+    prompt: candidate.prompt,
+    score: candidate.score,
+    promptTokenCount: candidate.tokens,
+    origin: candidate.origin,
+    feedback: candidate.feedback || undefined,
   };
 }
 
@@ -277,8 +295,7 @@ async function reflect(ctx: Ctx, prompt: string): Promise<string> {
   if (ctx.heldOut.length === 0) return "";
   const batch = ctx.heldOut.slice(0, ctx.reflectionBatchSize);
   const transcripts: string[] = [];
-  for (let i = 0; i < batch.length; i += 1) {
-    const ex = batch[i]!;
+  for (const [index, ex] of batch.entries()) {
     const actual = await ctx.llm.complete({
       system: prompt,
       user: ex.input.user,
@@ -286,7 +303,7 @@ async function reflect(ctx: Ctx, prompt: string): Promise<string> {
       maxTokens: 256,
     });
     transcripts.push(
-      `Example ${i + 1}:\nUser: ${truncate(ex.input.user, 400)}\nActual: ${truncate(actual, 400)}\nExpected: ${truncate(ex.expectedOutput, 400)}`,
+      `Example ${index + 1}:\nUser: ${truncate(ex.input.user, 400)}\nActual: ${truncate(actual, 400)}\nExpected: ${truncate(ex.expectedOutput, 400)}`,
     );
   }
   const user = `Prompt:\n${prompt}\n\n${transcripts.join("\n\n")}`;
