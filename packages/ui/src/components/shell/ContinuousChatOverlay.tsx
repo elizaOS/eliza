@@ -5198,7 +5198,8 @@ export function ContinuousChatOverlay({
                         prefetches + prepends an older page a viewport early and
                         preserves the reader's anchor so the thread never jumps.
                         Only meaningful in the flat (non-topic) transcript. */}
-                    {!hasTopics &&
+                    {!firstRunOpen &&
+                    !hasTopics &&
                     hasMoreOlder &&
                     visibleMessages.length > 0 ? (
                       <div
@@ -5556,7 +5557,7 @@ export function ContinuousChatOverlay({
                 // the imageError note above.)
                 placeholder={
                   firstRunOpen
-                    ? "Connect to cloud to enable chat"
+                    ? `Ask ${agentName} anything, or sign in above`
                     : noProviderConfigured
                       ? "Connect a model provider in Settings to chat"
                       : modelBlocksSend
@@ -5578,9 +5579,9 @@ export function ContinuousChatOverlay({
                 // and only when a slash catalog is wired in — a plain message
                 // box otherwise.
                 {...comboboxAria}
-                // During onboarding the placeholder is a directive hint ("Connect
-                // to cloud to enable chat"), so brighten it from the resting
-                // 45% to 70% so it reads clearly beside the seeded choices.
+                // During onboarding the placeholder invites the unlocked
+                // composer ("Ask … anything, or sign in above"), so brighten it
+                // from the resting 45% to 70% to read clearly beside the choices.
                 className={`max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
                   firstRunOpen
                     ? "placeholder:text-muted-strong"

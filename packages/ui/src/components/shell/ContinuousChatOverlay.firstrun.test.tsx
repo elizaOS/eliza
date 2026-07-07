@@ -134,7 +134,10 @@ describe("ContinuousChatOverlay first-run gating", () => {
 
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
-    expect(input.placeholder).toBe("Connect to cloud to enable chat");
+    // The placeholder must match the unlocked behavior — not read as locked.
+    // "Connect to cloud to enable chat" contradicted the typeable composer
+    // (#12178): free text is answered by the in-chat conductor locally.
+    expect(input.placeholder).toBe("Ask Eliza anything, or sign in above");
 
     // The composer actions ("+") menu + mic have no agent to serve them yet —
     // still inert (pre-runtime). The "+" trigger is natively disabled.

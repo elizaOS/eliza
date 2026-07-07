@@ -486,6 +486,12 @@ export const ChatMessage = memo(function ChatMessage({
   const isAssistant = message.role === "assistant";
   const isRightAligned = isUser ? userMessagesOnRight : !userMessagesOnRight;
   const trimmedText = message.text.trim();
+  // First-run onboarding turns render chromeless: agent prose floats as plain
+  // wallpaper text with its CTA button directly beneath. Computed up here (not
+  // at first use) so the message-action capabilities below can suppress the
+  // hover/tap rail — replying to / copying / deleting the seeded greeting is
+  // meaningless, and the rail contradicts the chromeless intent.
+  const isFirstRun = !isUser && message.source === "first_run";
   const canEdit =
     isUser &&
     typeof onEdit === "function" &&
@@ -494,13 +500,16 @@ export const ChatMessage = memo(function ChatMessage({
     // Glass keeps the shell rule: an image-only user turn has no editable text.
     (!glass || trimmedText.length > 0);
   const canPlay = Boolean(
-    !isUser && typeof onSpeak === "function" && trimmedText,
+    !isUser && !isFirstRun && typeof onSpeak === "function" && trimmedText,
   );
   // Persistent delete (#13533): available on any real turn when the surface
   // wires onDelete. An optimistic (temp-) turn has no persisted row to delete;
-  // a proactive suggestion uses its own dismiss affordance (below), not delete.
+  // a proactive suggestion uses its own dismiss affordance (below), not delete;
+  // a first-run greeting is chromeless (no rail at all).
   const canDelete =
-    typeof onDelete === "function" && !message.id.startsWith("temp-");
+    typeof onDelete === "function" &&
+    !message.id.startsWith("temp-") &&
+    !isFirstRun;
   const normalizedSource = normalizeChatSourceKey(message.source) ?? undefined;
   // Reply targets the persisted message by id, so an optimistic (temp-) turn,
   // which has no server row yet, has nothing to reply to. A proactive
@@ -508,13 +517,11 @@ export const ChatMessage = memo(function ChatMessage({
   // Proactive interaction comments (#8792) are agent-initiated *suggestions*, not
   // replies; render them with a distinct, one-tap-dismissible affordance.
   const isSuggestion = !isUser && normalizedSource === "proactive-interaction";
-  // First-run onboarding turns render chromeless: agent prose floats as plain
-  // wallpaper text with its CTA button directly beneath.
-  const isFirstRun = !isUser && message.source === "first_run";
   const canReply =
     typeof onReply === "function" &&
     !message.id.startsWith("temp-") &&
-    !isSuggestion;
+    !isSuggestion &&
+    !isFirstRun;
   const senderDisplayName = isUser ? resolveSenderDisplayName(message) : null;
   const senderHandle = isUser
     ? resolveSenderHandle(message, senderDisplayName)
@@ -743,9 +750,12 @@ export const ChatMessage = memo(function ChatMessage({
       );
     }
 
-    const canRowCopy = !!onCopy && trimmedText.length > 0;
+    const canRowCopy = !isFirstRun && !!onCopy && trimmedText.length > 0;
     // Suggestions carry their own dismiss affordance, not the delete control.
     const canRowDelete = canDelete && !isSuggestion;
+    // A first-run greeting is chromeless — no rail, no tap-to-reveal. Every
+    // capability above already excludes it, so hasActions is false and the
+    // bubble stays a plain, non-interactive container.
     const hasActions =
       canRowCopy || canPlay || canEdit || canRowDelete || canReply;
     // An assistant turn carrying an inline choice/form/followups widget must
@@ -1202,7 +1212,7 @@ export const ChatMessage = memo(function ChatMessage({
             </div>
           ) : null}
 
-          {!isEditing ? (
+          {!isEditing && !isFirstRun ? (
             <div
               data-testid="chat-message-action-rail"
               className={cn(
