@@ -4015,6 +4015,10 @@ export class ElizaSandboxService {
     }
     await agentSandboxesRepository.update(rec.id, {
       last_heartbeat_at: new Date(),
+      // Reset the unresolvable-cycle grace counter on any clean heartbeat so the
+      // "escalate after 3 consecutive unresolvable cycles" window measures from
+      // the last healthy beat, not a stale prior error_count from an old episode.
+      error_count: 0,
     });
     return true;
   }
