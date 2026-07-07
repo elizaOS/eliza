@@ -13,8 +13,6 @@ node_modules
 packages/ui/src/components/shell/__e2e__/output-voice-recording/
 # Settings hub e2e output (screenshots + webm — regenerate via test:settings-e2e)
 packages/ui/src/components/pages/__e2e__/output-settings/
-# Chat-dock e2e output (screenshots — regenerate via test:chat-dock-e2e)
-packages/ui/src/components/shell/__e2e__/output-dock/
 # Tutorial spotlight e2e output (screenshots + webm — regenerate via test:tutorial-e2e)
 packages/ui/src/components/pages/tutorial/__e2e__/output-tutorial/
 # FTU welcome e2e output (screenshots + webm — regenerate via test:ftu-home-e2e)

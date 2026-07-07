@@ -6,7 +6,6 @@ import { logger } from "@elizaos/logger";
 import type { NavigateViewDetail } from "@elizaos/shared/events";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { type Tab, tabFromPath } from "./navigation";
-import { ensureChatDockSplitForView } from "./state/chat-dock-store";
 import { shellHistory } from "./surface-realm-channel";
 
 export type { NavigateViewDetail };
@@ -162,10 +161,6 @@ export function createNavigateViewHandler({
       setTab("chat");
       return;
     }
-    // Docked-chat idiom (CHAT_DOCK_UX.md #4): a view opening while chat is
-    // maximized auto-splits so the view lands BESIDE the conversation. No-op
-    // on touch/narrow layouts and when the user collapsed the chat.
-    ensureChatDockSplitForView();
     if (detail.action === "split-view" || detail.action === "tile-views") {
       const viewIds = layoutViewIdsForDetail(detail);
       const resolvedViewIds: string[] = [];

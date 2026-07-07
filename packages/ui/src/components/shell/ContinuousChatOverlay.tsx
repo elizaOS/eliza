@@ -995,7 +995,6 @@ export function ContinuousChatOverlay({
   agentName = "Eliza",
   slash: slashProp,
   firstRunOpen = false,
-  dockPinned = false,
 }: {
   controller: ShellController;
   /** Name shown in the composer placeholder ("Ask {agentName}"). Defaults to Eliza. */
@@ -1014,14 +1013,6 @@ export function ContinuousChatOverlay({
    * revealing the home screen.
    */
   firstRunOpen?: boolean;
-  /**
-   * True while the desktop/web docked-chat idiom hosts this overlay inside the
-   * left dock pane (CHAT_DOCK_UX.md). Pins the sheet open FULL + edge-to-edge
-   * exactly like the onboarding pin: vertical sheet gestures, Escape, back
-   * intents, and every collapse path are no-ops — the vertical divider pill
-   * owns open/close on that idiom.
-   */
-  dockPinned?: boolean;
 }): React.JSX.Element {
   const {
     messages,
@@ -3105,18 +3096,8 @@ export function ContinuousChatOverlay({
       setMaximized(true);
       return;
     }
-    if (was && !dockPinned) goToDetent("half");
-  }, [firstRunOpen, dockPinned, goToDetent]);
-
-  // Dock pin: when the dock idiom mounts (or flips on at a live resize), snap
-  // the sheet to its pinned FULL + edge-to-edge shape immediately — the dock
-  // pane's geometry owns the chat's footprint from here.
-  React.useEffect(() => {
-    if (!dockPinned) return;
-    setMode("full");
-    setMaximized(true);
-    fullBleedT.set(1);
-  }, [dockPinned, fullBleedT]);
+    if (was) goToDetent("half");
+  }, [firstRunOpen, goToDetent]);
 
   // First-run opaque backdrop (#12178). While onboarding pins the sheet FULL,
   // the backdrop is an OPAQUE `bg-bg` layer that hides the launcher/home behind
