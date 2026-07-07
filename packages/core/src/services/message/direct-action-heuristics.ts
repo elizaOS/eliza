@@ -269,18 +269,61 @@ export function isShellDirectActionName(
 	);
 }
 
+/**
+ * Which detector produced a direct-current-request candidate inference. Lets
+ * callers weigh the EVIDENCE STRENGTH of an inferred (never model-emitted)
+ * candidate:
+ * - "shell" / "coding" / "web": explicit intent phrasing in the message.
+ * - "view-surface": an operation verb PLUS an explicit UI-surface noun
+ *   (view/window/panel/app/screen/ui) — strong navigation evidence.
+ * - "view-navigation": the message is nothing but a bare registered surface
+ *   name ("settings") — the voice-transcription navigation contract (#9950).
+ * - "view-capability": only an incidental token overlap between the message
+ *   and a views action's tag/simile vocabulary (e.g. "whats 17 TIMES 23"
+ *   matching the "screen-time" tag via TIME). Weak evidence — observed live
+ *   hijacking already-answered trivial chat turns into a required-tool
+ *   planner deadlock (trajectories tj-501e594bfb23a7, tj-5d1c9601f33e8d).
+ */
+export type DirectCurrentRequestCandidateKind =
+	| "shell"
+	| "coding"
+	| "view-surface"
+	| "view-navigation"
+	| "view-capability"
+	| "web";
+
+export interface DirectCurrentRequestCandidateInference {
+	names: string[];
+	kind: DirectCurrentRequestCandidateKind | null;
+}
+
+const EMPTY_DIRECT_CANDIDATE_INFERENCE: DirectCurrentRequestCandidateInference =
+	{ names: [], kind: null };
+
 export function inferDirectCurrentRequestCandidateActions(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
 	hooks: DirectActionInferenceHooks = {},
 ): string[] {
+	return inferDirectCurrentRequestCandidateInference(
+		actions,
+		messageText,
+		hooks,
+	).names;
+}
+
+export function inferDirectCurrentRequestCandidateInference(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+	messageText: string,
+	hooks: DirectActionInferenceHooks = {},
+): DirectCurrentRequestCandidateInference {
 	if (looksLikeLocalShellRequest(messageText)) {
 		const shellAction = findShellDirectActionName(actions);
-		if (shellAction) return [shellAction];
+		if (shellAction) return { names: [shellAction], kind: "shell" };
 	}
 	if (hooks.looksLikeCodingWorkRequest?.(messageText)) {
 		const codingAction = hooks.findCodingDelegationActionName?.(actions);
-		if (codingAction) return [codingAction];
+		if (codingAction) return { names: [codingAction], kind: "coding" };
 	}
 	const viewShellAction = findViewShellActionName(actions, messageText);
 	if (viewShellAction) {
@@ -297,9 +340,12 @@ export function inferDirectCurrentRequestCandidateActions(
 			messageText,
 		);
 		if (appControlAction && appControlAction !== viewShellAction) {
-			return [viewShellAction, appControlAction];
+			return {
+				names: [viewShellAction, appControlAction],
+				kind: "view-surface",
+			};
 		}
-		return [viewShellAction];
+		return { names: [viewShellAction], kind: "view-surface" };
 	}
 	// Voice-transcription contract: a message that is nothing but a bare
 	// surface name ("settings", "wallet", "inbox") is a navigation command, not
@@ -314,17 +360,21 @@ export function inferDirectCurrentRequestCandidateActions(
 		actions,
 		messageText,
 	);
-	if (bareViewNavigationAction) return [bareViewNavigationAction];
+	if (bareViewNavigationAction) {
+		return { names: [bareViewNavigationAction], kind: "view-navigation" };
+	}
 	const viewCapabilityAction = findViewCapabilityActionName(
 		actions,
 		messageText,
 	);
-	if (viewCapabilityAction) return [viewCapabilityAction];
+	if (viewCapabilityAction) {
+		return { names: [viewCapabilityAction], kind: "view-capability" };
+	}
 	if (looksLikeWebSearchRequest(messageText)) {
 		const lookupActions = findWebLookupActionNames(actions);
-		if (lookupActions.length > 0) return lookupActions;
+		if (lookupActions.length > 0) return { names: lookupActions, kind: "web" };
 	}
-	return [];
+	return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 }
 
 // Specific web-tool action names, split by capability. A bare "SEARCH" must NOT

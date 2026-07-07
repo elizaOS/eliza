@@ -2230,6 +2230,76 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("answers a trivial math turn directly despite a views capability-token overlap (tj-501e594bfb23a7)", async () => {
+		// Full Stage-1 pipeline fence for the VIEWS hijack: Stage 1 answers
+		// "whats 17 times 23?" with contexts=["simple"] / replyText="391" /
+		// candidateActionNames=[]. The registered views action's "screen-time"
+		// tag overlaps the TIME token ("times"), which previously injected a
+		// VIEWS candidate AFTER Stage 1 (both in messageHandlerFromFieldResult
+		// and via the core.simple_registered_action_request evaluator), forced
+		// the planner into toolChoice=required, exhausted required_tool_misses
+		// rejecting the correct terminal answer, and shipped the generic
+		// apology. The answered-simple shape must stay a one-call direct reply.
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "391",
+			}),
+		]);
+		const viewsHandler = vi.fn(async () => ({
+			success: true,
+			text: "opened",
+			data: { actionName: "VIEWS" },
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				similes: ["VIEW", "SHOW_VIEW", "OPEN_VIEW", "OPEN_SETTINGS"],
+				tags: [
+					"views",
+					"ui",
+					"panel",
+					"view-capability",
+					"screen-time",
+					"settings",
+				],
+				description: "Manage and navigate UI views.",
+				parameters: [
+					{
+						name: "action",
+						description: "Operation",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: viewsHandler,
+			},
+		] as never;
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "whats 17 times 23?",
+			mentionContext: { isMention: true },
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(viewsHandler).not.toHaveBeenCalled();
+		// One HANDLE_RESPONSE call only — no planner round, no forced tool.
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("391");
+		}
+	});
+
 	it("routes progress-only coding delegation replies through the planner", () => {
 		const routed = messageHandlerFromFieldResult(
 			{

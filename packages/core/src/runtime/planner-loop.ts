@@ -240,6 +240,13 @@ export async function runPlannerLoop(
 	const requireNonTerminalToolCall =
 		(params.requireNonTerminalToolCall === true || codingMode) &&
 		hasExposedNonTerminalTool(params.tools);
+	// Stage 1's own answer for this turn, shape-guarded once up front. Consulted
+	// only when the required-tool gate exhausts without a captured refusal — the
+	// ground-truth answer Stage 1 already produced beats the caller's generic
+	// apology (see PlannerLoopParams.stageOneReplyText).
+	const stageOneAnswerText = requireNonTerminalToolCall
+		? userSafeCapturedAnswerCandidate(params.stageOneReplyText)
+		: undefined;
 
 	// Cumulative gross prompt-token counter, summed across every planner
 	// stage in this user turn. Tracked alongside the existing per-iter
@@ -287,6 +294,13 @@ export async function runPlannerLoop(
 	// `maxRequiredToolMisses`, throws `TrajectoryLimitExceeded`, and the
 	// caller surfaces a generic apology instead of the planner's real answer.
 	let lastTerminalRefusalText: string | undefined;
+	// The most recent REJECTED terminal ANSWER (non-refusal-shaped, explicit /
+	// REPLY-call sources only) across required-tool misses — e.g. the planner
+	// kept answering "391" via REPLY while the gate demanded a non-terminal
+	// tool. Last-resort fallback when the miss budget exhausts with no captured
+	// refusal and no Stage-1 replyText: the model's own discarded answer still
+	// beats the generic apology.
+	let lastRejectedTerminalAnswerText: string | undefined;
 	// Sanitized widget-bearing terminal text from the previous required-tool
 	// miss. When the model re-emits the identical widget reply after one
 	// corrective retry it is deterministically committed to that answer —
@@ -390,16 +404,32 @@ export async function runPlannerLoop(
 					lastMissWidgetText = widgetCandidate;
 					const captured = refusalCandidate ?? widgetCandidate;
 					if (captured) lastTerminalRefusalText = captured;
+					// Only the EXPLICIT messageToUser is a safe answer source in
+					// this branch — the native free-text fallback can be a pre-tool
+					// thought (#9874 item 3), so it is never captured as an answer.
+					const rejectedAnswerCandidate =
+						captured === undefined
+							? userSafeCapturedAnswerCandidate(
+									lastPlannerExplicitMessageToUser,
+								)
+							: undefined;
+					if (rejectedAnswerCandidate) {
+						lastRejectedTerminalAnswerText = rejectedAnswerCandidate;
+					}
 					requiredToolMisses++;
+					const capturedFinishText =
+						lastTerminalRefusalText ??
+						stageOneAnswerText ??
+						lastRejectedTerminalAnswerText;
 					if (
 						requiredToolMisses > config.maxRequiredToolMisses &&
-						lastTerminalRefusalText
+						capturedFinishText
 					) {
 						return finishWithCapturedRefusal({
 							trajectory,
 							iteration,
 							thought: plannerOutput.thought,
-							refusal: lastTerminalRefusalText,
+							refusal: capturedFinishText,
 						});
 					}
 					assertTrajectoryLimit({
@@ -562,16 +592,35 @@ export async function runPlannerLoop(
 					lastMissWidgetText = widgetCandidate;
 					const captured = refusalCandidate ?? widgetCandidate;
 					if (captured) lastTerminalRefusalText = captured;
+					// A REPLY tool call's OWN params text is user-directed by
+					// construction; a STOP/IGNORE-only terminal's free text is scratch
+					// reasoning (see the hasReplyCall comment below) and is never
+					// captured. Deliberately NO messageToUser fallback here: a REPLY
+					// call with empty params would otherwise capture the native
+					// free-text fallback, which can be a pre-tool thought.
+					const rejectedAnswerCandidate =
+						captured === undefined
+							? userSafeCapturedAnswerCandidate(
+									terminalMessageFromToolCalls(plannerOutput.toolCalls),
+								)
+							: undefined;
+					if (rejectedAnswerCandidate) {
+						lastRejectedTerminalAnswerText = rejectedAnswerCandidate;
+					}
 					requiredToolMisses++;
+					const capturedFinishText =
+						lastTerminalRefusalText ??
+						stageOneAnswerText ??
+						lastRejectedTerminalAnswerText;
 					if (
 						requiredToolMisses > config.maxRequiredToolMisses &&
-						lastTerminalRefusalText
+						capturedFinishText
 					) {
 						return finishWithCapturedRefusal({
 							trajectory,
 							iteration,
 							thought: plannerOutput.thought,
-							refusal: lastTerminalRefusalText,
+							refusal: capturedFinishText,
 						});
 					}
 					assertTrajectoryLimit({
@@ -3559,6 +3608,39 @@ function userSafeRefusalCandidate(
 	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
 		return undefined;
 	}
+	return candidate;
+}
+
+// Progress/ack-shaped openers that must never be surfaced as a final answer
+// from the required-tool exhaustion path: once the loop gives up, no further
+// tool work happens, so "Checking the price now." style text is a false
+// promise. Mirrors the message-service looksLikeProgressOnlyReply prefix set
+// (kept local — services/message.ts imports from this module, not vice versa).
+const PROGRESS_ONLY_ANSWER_REJECT =
+	/^(?:checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|opening|got it|okay|ok|on it|one moment|let me|i(?:'|’)ll|i will)\b/i;
+
+// Shape gate for surfacing an already-produced ANSWER — the Stage-1 replyText
+// or the planner's own explicit terminal reply the required-tool gate kept
+// rejecting — when the miss budget exhausts without a captured refusal. Same
+// safety rejects as userSafeRefusalCandidate (leaked tool-call/reasoning
+// markup, pre-tool deliberation, in-flight action claims) minus the
+// refusal-marker requirement: the text surfaced here is a real answer
+// ("391"), not an inability statement, plus a progress-only-opener reject so
+// a bare ack never ships as the whole turn. Callers must only feed it
+// user-directed sources (Stage-1 replyText, explicit messageToUser, REPLY
+// tool-call text) — never the ambiguous native free-text fallback, which can
+// be a pre-tool thought.
+function userSafeCapturedAnswerCandidate(
+	message: string | undefined,
+): string | undefined {
+	const candidate = sanitizePlannerMessage(message);
+	if (!candidate) return undefined;
+	if (isUnsafeUserVisibleText(candidate)) return undefined;
+	if (looksLikePreToolThought(candidate)) return undefined;
+	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
+		return undefined;
+	}
+	if (PROGRESS_ONLY_ANSWER_REJECT.test(candidate)) return undefined;
 	return candidate;
 }
 

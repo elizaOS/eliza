@@ -199,6 +199,17 @@ export interface PlannerLoopParams {
 	 */
 	requireNonTerminalToolCall?: boolean;
 	/**
+	 * The Stage-1 router's own replyText for this turn, when it produced one.
+	 * When the required-tool gate exhausts its miss budget without a captured
+	 * refusal, the loop finishes with this text (shape-guarded) instead of
+	 * throwing `TrajectoryLimitExceeded` — the router's real answer is
+	 * strictly better than the generic transient-failure apology the caller
+	 * would otherwise substitute for it (observed live: "whats 17 times 23?"
+	 * answered "391" by Stage 1, then discarded for the apology when an
+	 * injected VIEWS candidate deadlocked the required-tool gate).
+	 */
+	stageOneReplyText?: string;
+	/**
 	 * Trajectory recorder for v5 observability. When supplied, the planner
 	 * loop records one stage per planner call, tool execution, and evaluator
 	 * call. When omitted the loop is unaffected.

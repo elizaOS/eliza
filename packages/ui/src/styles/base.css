@@ -6,10 +6,10 @@
   /* Brand accent: warm orange (#ff6a1f). The prior #ff8a24 skewed yellow; this
      is the locked Sol accent. */
   --brand-orange: #ff6a1f;
-  /* No pure black anywhere. The brand near-black is a deep warm brown-black so
-     every dark surface carries a hint of ember warmth (pure #000 reads cold and
-     cheap, and never appears in the 2am editorial reference). */
-  --brand-black: #140c07;
+  /* True black canvas. A warm-tinted near-black (#140c07) was tried here and
+     read as brown on OLED at device brightness (owner-reverted 2026-07-07).
+     Warmth belongs in accents/gradients, never the base surface token. */
+  --brand-black: #000000;
   --brand-white: #fdfaf7;
   --brand-gray: #d1d0d4;
   --sky-0: rgba(0, 0, 0, 0.6);
@@ -190,14 +190,13 @@
   --bg-hover: rgba(255, 255, 255, 0.08);
   --bg-muted: rgba(255, 255, 255, 0.06);
 
-  /* Warm-dark SOLID surfaces. The home/chat float over a warm ember field, so a
-     translucent-black card let the field bleed through (the #1 "too
-     transparent" complaint). These are opaque warm near-blacks: an elevated
-     card tone and a hair-lighter raised tone, each tinted toward the ember so
-     they sit in the world instead of punching a cold hole in it. */
-  --surface-1: #1d130c;
-  --surface-2: #251810;
-  --surface-3: #2f1f15;
+  /* SOLID dark surfaces. Opaque (translucent-black cards let the background
+     bleed through — the #1 "too transparent" complaint) and NEUTRAL: the warm
+     ember near-blacks (#1d130c/#251810/#2f1f15) read as brown on OLED at
+     device brightness (owner-reverted 2026-07-07). */
+  --surface-1: #121212;
+  --surface-2: #1a1a1a;
+  --surface-3: #242424;
   --card: var(--surface-1);
   --card-foreground: var(--brand-white);
   --surface: rgba(255, 255, 255, 0.06);
@@ -206,10 +205,8 @@
   --text-strong: var(--brand-white);
   --chat-text: var(--brand-white);
   --txt: var(--text);
-  /* Warm-tinted muted text (toward the brand hue) reads richer than flat white
-     alpha on a warm-dark field. */
-  --muted: rgba(255, 240, 230, 0.56);
-  --muted-strong: rgba(255, 244, 236, 0.76);
+  --muted: rgba(255, 255, 255, 0.56);
+  --muted-strong: rgba(255, 255, 255, 0.76);
 
   /* shadcn token aliases */
   --foreground: var(--text);

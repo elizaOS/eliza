@@ -4,7 +4,7 @@
      palette is black + white + orange accent only. */
   --brand-blue: rgba(0, 0, 0, 0.6);
   --brand-orange: #ff6a1f;
-  --brand-black: #140c07;
+  --brand-black: #000000;
   --brand-white: #fdfaf7;
   --sky-0: rgba(0, 0, 0, 0.8);
   --sky-1: rgba(0, 0, 0, 0.6);
@@ -64,22 +64,22 @@
   --bg-elevated: rgba(255, 255, 255, 0.04);
   --bg-hover: rgba(255, 255, 255, 0.08);
   --bg-muted: rgba(255, 255, 255, 0.06);
-  --surface-1: #1d130c;
-  --surface-2: #251810;
-  --surface-3: #2f1f15;
+  --surface-1: #121212;
+  --surface-2: #1a1a1a;
+  --surface-3: #242424;
   --card: var(--surface-1);
   --card-foreground: var(--brand-white);
   --surface: rgba(255, 255, 255, 0.06);
   --text: var(--brand-white);
   --text-strong: var(--brand-white);
   --txt: var(--text);
-  --muted: rgba(255, 240, 230, 0.56);
-  --muted-strong: rgba(255, 244, 236, 0.76);
+  --muted: rgba(255, 255, 255, 0.56);
+  --muted-strong: rgba(255, 255, 255, 0.76);
   --border: rgba(255, 255, 255, 0.12);
   --border-strong: rgba(255, 255, 255, 0.22);
-  /* Modal/drawer scrim: brand black at a fixed dim so an open sheet reads as a
-     genuine backdrop (never off-palette "ember" rgba). */
-  --scrim: rgba(20, 12, 7, 0.72);
+  /* Modal/drawer scrim: neutral black at a fixed dim so an open sheet reads as
+     a genuine backdrop (warm rgb(20,12,7) cast a brown tint — owner-reverted). */
+  --scrim: rgba(0, 0, 0, 0.72);
   --accent: var(--brand-orange);
   --accent-rgb: 255, 106, 31;
   --accent-foreground: var(--brand-white);

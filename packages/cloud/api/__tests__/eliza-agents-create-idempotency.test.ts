@@ -65,7 +65,7 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
 
-// Mirror the real exported error so the route's `instanceof` check works.
+// Mirror the real exported errors so the route's `instanceof` checks work.
 class AgentQuotaExceededError extends Error {
   readonly count: number;
   readonly max: number;
@@ -79,9 +79,21 @@ class AgentQuotaExceededError extends Error {
   }
 }
 
+class AgentImageNotAllowedError extends Error {
+  readonly image: string;
+  readonly reason: "not_allowlisted" | "not_digest_pinned";
+  constructor(image: string, reason: "not_allowlisted" | "not_digest_pinned") {
+    super(`Docker image '${image}' is not allowed.`);
+    this.name = "AgentImageNotAllowedError";
+    this.image = image;
+    this.reason = reason;
+  }
+}
+
 mock.module("@/lib/services/eliza-sandbox", () => ({
   elizaSandboxService: { createAgent, updateAgentEnvironment, listAgents },
   AgentQuotaExceededError,
+  AgentImageNotAllowedError,
 }));
 
 mock.module("@/lib/services/provisioning-jobs", () => ({
