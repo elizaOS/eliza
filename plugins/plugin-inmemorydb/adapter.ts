@@ -273,6 +273,32 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
+  async clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {
+    const embeddedMemories = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (memory) => Array.isArray(memory.embedding) && memory.embedding.length > 0
+    );
+    const reclaimed: UUID[] = [];
+
+    await this.vectorIndex.clear();
+    await this.vectorIndex.init(this.embeddingDimension);
+
+    for (const memory of embeddedMemories) {
+      const id = memory.id as UUID | undefined;
+      if (!id || !memory.embedding) continue;
+      if (memory.embedding.length === this.embeddingDimension) {
+        await this.vectorIndex.add(id, memory.embedding);
+        continue;
+      }
+
+      const { embedding: _embedding, ...withoutEmbedding } = memory;
+      await this.storage.set(COLLECTIONS.MEMORIES, id, withoutEmbedding);
+      reclaimed.push(id);
+    }
+
+    return reclaimed;
+  }
+
   // ── Entity CRUD ───────────────────────────────────────────────────────
 
   async createEntities(entities: Entity[]): Promise<UUID[]> {

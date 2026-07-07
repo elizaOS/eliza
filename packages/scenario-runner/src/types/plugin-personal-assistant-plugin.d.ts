@@ -6,4 +6,7 @@ declare module "@elizaos/plugin-personal-assistant/plugin" {
     runtime: AgentRuntime,
     options: Record<string, unknown>,
   ): Promise<Record<string, unknown>>;
+  export function resetLifeOpsScenarioState(
+    runtime: AgentRuntime,
+  ): Promise<void>;
 }

@@ -33,6 +33,10 @@ import { isRoutineCodingAgentMessage } from "../../chat";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
+import {
+  CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT,
+  useConversationRenderWindow,
+} from "../../hooks/useConversationRenderWindow";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
@@ -290,10 +294,6 @@ export function ChatView({
   // `scrollRef` is wired to the transcript, the load-older observer, and the
   // ChatThreadLayout scroll region).
   const topSentinelRef = useRef<HTMLDivElement>(null);
-  // Whether the server reports older turns beyond the current top. Starts true
-  // (we don't know until the first load-older) and latches false at the true
-  // top. Reset on conversation switch below.
-  const [hasMoreOlder, setHasMoreOlder] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -469,13 +469,13 @@ export function ChatView({
   //
   // The ref mirrors the active id so the async result can be dropped after a
   // mid-flight conversation switch: a page fetched for the previous thread must
-  // never prepend into (or re-arm paging state for) the newly active one.
+  // never prepend into the newly active one.
   const loadOlderConversationIdRef = useRef(activeConversationId);
   loadOlderConversationIdRef.current = activeConversationId;
-  const loadOlderMessages = useCallback(async () => {
+  const fetchOlder = useCallback(async () => {
     const conversationId = activeConversationId;
-    if (!conversationId) return;
-    const result = await loadOlderConversationMessages({
+    if (!conversationId) return { hasMore: false, prependedCount: 0 };
+    return await loadOlderConversationMessages({
       client,
       conversationId,
       currentMessages: conversationMessages,
@@ -485,16 +485,24 @@ export function ChatView({
         }
       },
     });
-    if (loadOlderConversationIdRef.current === conversationId) {
-      setHasMoreOlder(result.hasMore);
-    }
   }, [activeConversationId, conversationMessages, prependConversationMessages]);
 
-  // A fresh conversation may have older history — re-arm the loader on switch.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: activeConversationId is the intentional re-arm trigger; the body only calls the stable setter.
-  useEffect(() => {
-    setHasMoreOlder(true);
-  }, [activeConversationId]);
+  // Bound the mounted DOM to the newest window of loaded turns (#15281): the
+  // window opens lean and grows a page per scroll-to-top (reveal-before-fetch),
+  // paging older server windows only once it has drained, capped at 400 — the
+  // same engine the overlay ships. State still holds every loaded turn.
+  const renderWindow = useConversationRenderWindow({
+    renderableCount: visibleMsgs.length,
+    conversationKey: activeConversationId,
+    fetchOlder,
+  });
+  const windowedMsgs = useMemo(
+    () =>
+      visibleMsgs.length > renderWindow.windowSize
+        ? visibleMsgs.slice(-renderWindow.windowSize)
+        : visibleMsgs,
+    [visibleMsgs, renderWindow.windowSize],
+  );
 
   const {
     companionCarryover,
@@ -508,8 +516,9 @@ export function ChatView({
   });
 
   // The exact set the transcript paints into the shared scroller (the game-modal
-  // variant renders its own windowed set + a companion carryover above it).
-  const displayedMsgs = isGameModal ? gameModalVisibleMsgs : visibleMsgs;
+  // variant renders its own carryover-cutoff window + a companion carryover
+  // above it; the default surface paints the bounded render window).
+  const displayedMsgs = isGameModal ? gameModalVisibleMsgs : windowedMsgs;
   const lastDisplayed = displayedMsgs.at(-1);
   const displayedCount =
     displayedMsgs.length +
@@ -540,10 +549,21 @@ export function ChatView({
   useLoadOlderOnScroll<HTMLDivElement>({
     scrollRef: messagesRef,
     sentinelRef: topSentinelRef,
-    onLoadOlder: loadOlderMessages,
-    hasMore: hasMoreOlder && !isGameModal,
-    topItemKey: visibleMsgs[0]?.id ?? "",
+    onLoadOlder: renderWindow.onLoadOlder,
+    hasMore: !isGameModal && renderWindow.canLoadOlder,
+    // The WINDOWED first id, not the loaded-first: a reveal-grow changes the
+    // first rendered row, which is exactly what triggers useLoadOlderOnScroll's
+    // scrollHeight-delta preservation. Keying on visibleMsgs[0] would leave pure
+    // window grows unanchored and jump the viewport by the revealed height.
+    topItemKey: windowedMsgs[0]?.id ?? "",
     enabled: !isGameModal,
+  });
+
+  // A sidebar keyword-search jump to a hit older than the render window loads a
+  // centered around-window, then signals the transcript to reveal its full
+  // loaded set so the pivot mounts and the jump can scroll to it (#9955).
+  useViewEvent(CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT, () => {
+    renderWindow.revealFullWindow();
   });
 
   useChatAvatarVoiceBridge({
@@ -783,7 +803,7 @@ export function ChatView({
           carryoverMessages={companionCarryover?.messages}
           carryoverOpacity={gameModalCarryoverOpacity}
           labels={chatMessageLabels}
-          messages={isGameModal ? gameModalVisibleMsgs : visibleMsgs}
+          messages={isGameModal ? gameModalVisibleMsgs : windowedMsgs}
           onEdit={handleEditMessage}
           onSpeak={handleSpeakMessage}
           onCopy={handleCopyMessageText}

@@ -1375,9 +1375,14 @@ describe("OrchestratorTaskService — usage telemetry", () => {
       cacheTokens: 0,
     });
     const usage = must(await service.getUsage(taskId), "usage");
-    // The default spawn framework is the vendored opencode backend, so a
-    // usage frame that omits its provider is attributed to that session.
-    expect(must(usage.byProvider[0], "provider").provider).toBe("opencode");
+    // With no ELIZA_*_AGENT setting the spawn passes no explicit agentType, so
+    // the session inherits acp-service's configured default. opencode is never
+    // that default — it is explicit-selection only (acp-service DEFAULT_AGENTS
+    // orders elizaos → codex → claude → opencode, and the fallback is
+    // native→"elizaos"/non-native→"codex"). The FakeAcp here mirrors the
+    // non-native "codex" fallback, so a provider-less usage frame is attributed
+    // to "codex".
+    expect(must(usage.byProvider[0], "provider").provider).toBe("codex");
   });
 
   it("ignores empty usage frames", async () => {

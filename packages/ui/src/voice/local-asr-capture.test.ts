@@ -224,7 +224,7 @@ describe("decodeMonoPcm16Wav / isSilentWav (#voice-V5 silence guard)", () => {
 });
 
 describe("DEFAULT_LOCAL_ASR_AUTO_STOP silence window (#voice-V6)", () => {
-  it("defaults the trailing-silence window to the snappier 550ms", () => {
-    expect(DEFAULT_LOCAL_ASR_AUTO_STOP.silenceMs).toBe(550);
+  it("defaults the trailing-silence window to the snappier 650ms", () => {
+    expect(DEFAULT_LOCAL_ASR_AUTO_STOP.silenceMs).toBe(650);
   });
 });

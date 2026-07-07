@@ -608,6 +608,15 @@ export function useHorizontalPager<
       ) {
         return;
       }
+      // A gesture that starts on a notification row belongs to the row's
+      // swipe-to-dismiss — the pager must yield it entirely, or a horizontal
+      // dismiss drags the whole launcher rail along with the card.
+      if (
+        event.target instanceof Element &&
+        event.target.closest("[data-notif-row]")
+      ) {
+        return;
+      }
       cancelScheduledOffset();
       const currentPage = clampPage(pageRef.current, pageCountRef.current);
       const width = measureWidth();

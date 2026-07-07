@@ -30,12 +30,29 @@ const mocks = vi.hoisted(() => ({
   ),
   loadPersistedActiveServer: vi.fn((): Record<string, unknown> | null => null),
   silentlyRepointToDedicated: vi.fn(),
+  getCloudCompatAgent: vi.fn(async (_id: string) => ({
+    success: true as boolean,
+    data: { id: "dedicated-1", status: "provisioning" },
+  })),
+  createCloudCompatAgent: vi.fn(async (_opts: Record<string, unknown>) => ({
+    success: true as boolean,
+    data: {
+      agentId: "dedicated-fresh",
+      agentName: "Eliza",
+      jobId: "job-fresh",
+      status: "provisioning",
+      nodeId: null,
+      message: "ok",
+    },
+  })),
 }));
 
 vi.mock("../../api", () => ({
   client: {
     startCloudAgentHandoff: mocks.startCloudAgentHandoff,
     deleteSharedBridgeAgent: mocks.deleteSharedBridgeAgent,
+    getCloudCompatAgent: mocks.getCloudCompatAgent,
+    createCloudCompatAgent: mocks.createCloudCompatAgent,
   },
 }));
 
@@ -88,6 +105,11 @@ function activeSharedServer(): Record<string, unknown> {
 }
 
 async function settle(): Promise<void> {
+  // The resume path awaits the target probe (getCloudCompatAgent) before
+  // kicking off the supervisor, then the supervisor awaits its own start(),
+  // then success/failure branches dispatch again. Two macrotask hops cover
+  // the full chain in these tests.
+  await new Promise((resolve) => setTimeout(resolve, 0));
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
@@ -106,6 +128,21 @@ describe("resumePendingCloudHandoff", () => {
       base.includes("/api/v1/eliza/agents/"),
     );
     mocks.loadPersistedActiveServer.mockReturnValue(null);
+    mocks.getCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { id: "dedicated-1", status: "provisioning" },
+    });
+    mocks.createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "dedicated-fresh",
+        agentName: "Eliza",
+        jobId: "job-fresh",
+        status: "provisioning",
+        nodeId: null,
+        message: "ok",
+      },
+    });
     window.localStorage.clear();
     __resetResumeForTests();
   });
@@ -206,7 +243,7 @@ describe("resumePendingCloudHandoff", () => {
     expect(resumePendingCloudHandoff()).toBe(true);
   });
 
-  it("attempts at most once per session when a resume was started", () => {
+  it("attempts at most once per session when a resume was started", async () => {
     savePendingCloudHandoff(pending());
     mocks.loadPersistedActiveServer.mockReturnValue(activeSharedServer());
     mocks.startCloudAgentHandoff.mockResolvedValue({
@@ -216,12 +253,126 @@ describe("resumePendingCloudHandoff", () => {
 
     expect(resumePendingCloudHandoff()).toBe(true);
     expect(resumePendingCloudHandoff()).toBe(false);
+    await settle();
     expect(mocks.startCloudAgentHandoff).toHaveBeenCalledTimes(1);
   });
 
   it("no-ops with no marker", () => {
     expect(resumePendingCloudHandoff()).toBe(false);
     expect(mocks.loadPersistedActiveServer).not.toHaveBeenCalled();
+  });
+
+  it("clears the marker and does NOT resume when the dedicated target is gone (control-plane 404)", async () => {
+    savePendingCloudHandoff(pending());
+    mocks.loadPersistedActiveServer.mockReturnValue(activeSharedServer());
+    // Control-plane lookup reports the target no longer exists.
+    mocks.getCloudCompatAgent.mockResolvedValue({
+      success: false,
+      data: { id: "dedicated-1", status: "deleted" },
+    });
+
+    // A resume DECISION is initiated (probe in flight).
+    expect(resumePendingCloudHandoff()).toBe(true);
+
+    // Capture the failed phase surfaced by the dead-target path so the tile
+    // lights up instead of silently persisting "Setting up…".
+    const seenPhases: Array<Record<string, unknown>> = [];
+    const onPhase = (event: Event) => {
+      seenPhases.push((event as CustomEvent).detail as Record<string, unknown>);
+    };
+    window.addEventListener("eliza:cloud-handoff-phase", onPhase);
+
+    await settle();
+
+    // Marker is cleared; the supervisor is never called with the dead id.
+    expect(loadPendingCloudHandoff()).toBeNull();
+    expect(mocks.startCloudAgentHandoff).not.toHaveBeenCalled();
+    expect(mocks.getCloudCompatAgent).toHaveBeenCalledWith("dedicated-1");
+
+    // A failed phase for the shared agent id is dispatched so the widget shows
+    // its failure surface (existing "Setup paused" + Retry copy).
+    const failed = seenPhases.find(
+      (d) => d.agentId === "shared-1" && d.phase === "failed",
+    );
+    expect(failed).toBeTruthy();
+    expect(failed?.error).toEqual(expect.stringContaining("no longer"));
+    window.removeEventListener("eliza:cloud-handoff-phase", onPhase);
+  });
+
+  it("still resumes normally when the target probe is inconclusive (network error, not 404) — never strand on an unprovable assumption", async () => {
+    savePendingCloudHandoff(pending());
+    mocks.loadPersistedActiveServer.mockReturnValue(activeSharedServer());
+    // A 5xx / network blip is inconclusive; treat as live so the supervisor's
+    // own retry/TTL bounds the migration.
+    mocks.getCloudCompatAgent.mockRejectedValue(
+      Object.assign(new Error("transient"), { status: 503 }),
+    );
+
+    expect(resumePendingCloudHandoff()).toBe(true);
+    await settle();
+
+    // Resume still fires against the SAME (pending) target — no fresh create.
+    expect(mocks.startCloudAgentHandoff).toHaveBeenCalledTimes(1);
+    expect(mocks.startCloudAgentHandoff.mock.calls[0][0]).toMatchObject({
+      dedicatedAgentId: "dedicated-1",
+    });
+    expect(mocks.createCloudCompatAgent).not.toHaveBeenCalled();
+  });
+
+  it("on Retry after a dead-target clear, mints a FRESH dedicated agent (forceCreate) instead of the dead id", async () => {
+    // Use unique ids so no armed retry listener from earlier tests
+    // (`runCloudAgentHandoff`'s own retry arming on failed/timed-out) can match
+    // and double-fire on our dispatched retry event.
+    const uniqueShared = "shared-retry-flow";
+    const uniqueDedicated = "dedicated-retry-flow-dead";
+    savePendingCloudHandoff(
+      pending({
+        sharedAgentId: uniqueShared,
+        dedicatedAgentId: uniqueDedicated,
+      }),
+    );
+    mocks.loadPersistedActiveServer.mockReturnValue({
+      kind: "cloud",
+      id: `cloud:${uniqueShared}`,
+      apiBase: SHARED_BASE,
+      accessToken: "cloud-token",
+    });
+    mocks.getCloudCompatAgent.mockResolvedValue({
+      success: false,
+      data: { id: uniqueDedicated, status: "deleted" },
+    });
+
+    expect(resumePendingCloudHandoff()).toBe(true);
+    await settle();
+    expect(loadPendingCloudHandoff()).toBeNull();
+    expect(mocks.startCloudAgentHandoff).not.toHaveBeenCalled();
+
+    // Simulate the widget's Retry click: dispatch the retry event for the
+    // shared agent id. The armed dead-target listener should mint a FRESH
+    // dedicated agent (forceCreate:true) and re-run the handoff against it.
+    window.dispatchEvent(
+      new CustomEvent("eliza:cloud-handoff-retry", {
+        detail: { agentId: uniqueShared },
+      }),
+    );
+    await settle();
+
+    expect(mocks.createCloudCompatAgent).toHaveBeenCalledTimes(1);
+    expect(mocks.createCloudCompatAgent.mock.calls[0][0]).toMatchObject({
+      forceCreate: true,
+    });
+    expect(mocks.startCloudAgentHandoff).toHaveBeenCalledTimes(1);
+    // Never re-uses the dead id from the cleared marker.
+    expect(mocks.startCloudAgentHandoff.mock.calls[0][0]).toMatchObject({
+      agentId: uniqueShared,
+      dedicatedAgentId: "dedicated-fresh",
+    });
+    expect(loadPendingCloudHandoff()).toMatchObject({
+      sharedAgentId: uniqueShared,
+      dedicatedAgentId: "dedicated-fresh",
+      sharedApiBase: SHARED_BASE,
+      cloudApiBase: "https://elizacloud.ai",
+    });
   });
 });
 

@@ -772,8 +772,13 @@ const VOICE_CONTINUOUS_ALIASES: ReadonlyMap<string, VoiceContinuousMode> =
 // mechanically by a test that imports the canonical constant.
 export const DEFAULT_VOICE_SETTINGS_PREFS: VoiceSettingsPrefs = {
 	continuous: "off",
+	// Must track the canonical capture default (`DEFAULT_LOCAL_ASR_AUTO_STOP` in
+	// @elizaos/ui): a chat-write that seeds a partial voice config must persist the
+	// same VAD sensitivity the running capture path uses, or the stored value
+	// diverges from what the Voice UI applies. #15267 dropped the canonical
+	// silence window 900 → 550; settings.test.ts pins these in sync.
 	vadAutoStop: {
-		silenceMs: 900,
+		silenceMs: 550,
 		speechRmsThreshold: 0.003,
 	},
 };

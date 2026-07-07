@@ -34,11 +34,13 @@ import {
   STATUS_DOT,
 } from "../../chat/coding-agent-session-state";
 import { CHAT_MESSAGE_SEARCH_EVENT } from "../../events";
+import { CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT } from "../../hooks/useConversationRenderWindow";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useAppSelectorShallow } from "../../state";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import { shellLocalStorage } from "../../surface-realm-channel";
 import { errorMessage } from "../../utils/errors";
+import { emitViewEvent } from "../../views/view-event-bus";
 import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { ChatConversationItem } from "../composites/chat/chat-conversation-item";
 import { getChatMessageAnchorId } from "../composites/chat/chat-message";
@@ -530,12 +532,17 @@ export function ConversationsSidebar({
         let el = await waitForAnchor(anchorId, 20);
         if (!el) {
           // The hit is older than the loaded recent window (#9955): load the
-          // window CENTERED on it, let the thread re-render, then scroll.
+          // window CENTERED on it, then reveal the transcript's full loaded set
+          // so the centered pivot is not sliced out of the render window
+          // (#15281) — without the reveal, a windowed ChatView/overlay drops the
+          // anchor and the jump silently no-ops. waitForAnchor's 20-frame budget
+          // covers the reveal re-render.
           const loaded = await loadConversationMessagesAround(
             result.conversationId,
             result.messageId,
           );
           if (loaded) {
+            emitViewEvent(CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT);
             el = await waitForAnchor(anchorId, 20);
           }
         }

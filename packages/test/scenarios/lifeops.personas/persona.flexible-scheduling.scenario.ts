@@ -24,10 +24,13 @@
  * fallback defers), `plugins/plugin-personal-assistant/.../activity-gates.test.ts`
  * (PA reader defers on a recent heartbeat), and
  * `plugins/plugin-personal-assistant/test/persona-packs.simulation.test.ts`
- * (a gated poke is suppressed while active and fires once quiet). Full end-to-end
- * execution of this scenario is CI-gated on a pre-existing shared-tree packaging
- * gap (`@elizaos/core/contracts/first-run-options` has no dist JS artifact); it
- * is discovered/loaded here but cannot boot the runtime in this worktree.
+ * (a gated poke is suppressed while active and fires once quiet).
+ *
+ * Runs UTC-only: the corpus lane pins `TZ=UTC` so the seeded owner timezone
+ * (UTC) matches the process default. Otherwise `reconcileTravelActive` reads
+ * the host zone as a device-timezone divergence, opens a provisional travel
+ * record, and the derived travel timezone overrides UTC — pushing the injected
+ * ticks outside the morning window so `during_window` never fires.
  */
 
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";

@@ -36,6 +36,48 @@ electrobun-wgpu {
 @source "../../../../plugins/app-lifeops/src";
 @source "../../../../plugins/plugin-social-alpha/src/frontend";
 
+/* Memories sits beside a persistent filter rail in short landscape, where the
+   default feature-empty stack falls behind the assistant overlay. Compact only
+   that empty state and spend the overlay clearance on the right edge. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .memory-feed-empty {
+    min-height: 6.5rem;
+    padding-block: 0.5rem;
+    padding-inline-end: max(
+      1rem,
+      var(--eliza-continuous-chat-side-clearance, 0px)
+    );
+  }
+
+  .memory-feed-empty > div {
+    max-width: none;
+    width: max-content;
+  }
+
+  .memory-feed-empty > div > div:first-child {
+    display: none;
+  }
+
+  .memory-feed-empty h2 {
+    margin-top: 0;
+    font-size: 1rem;
+    line-height: 1.25rem;
+    white-space: nowrap;
+  }
+
+  .memory-feed-empty > div > div:last-child {
+    margin-top: 0.5rem;
+    column-gap: 0.75rem;
+    row-gap: 0.25rem;
+    flex-wrap: nowrap;
+  }
+
+  .memory-feed-empty > div > div:last-child > div {
+    font-size: 0.6875rem;
+    line-height: 1rem;
+  }
+}
+
 /* ── Global resets ──────────────────────────────────────────────────── */
 
 :root {

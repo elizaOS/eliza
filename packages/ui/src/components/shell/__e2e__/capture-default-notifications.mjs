@@ -264,8 +264,8 @@ for (const [name, width, height] of [
   });
   console.log(`  📸 notifications-${name}-rested.png`);
 
-  // 2. PULL TO EXPAND: a real mouse drag down from the list top fans every
-  //    stack out flat and reveals all priorities.
+  // 2. PULL TO EXPAND: a real mouse drag down from the list top reveals every
+  //    priority tier — but the Z-stacks PERSIST (per-stack fan-out below).
   await pullDown(page);
   await page.waitForFunction(
     (sel) =>
@@ -275,9 +275,20 @@ for (const [name, width, height] of [
     LIST,
   );
   check("pull-down expands the shade", (await shadeMode(page)) === "expanded");
+  check(
+    "stacks persist through the shade expand",
+    (await page.locator('[data-testid="notification-stack-peek"]').count()) >
+      0,
+  );
+  // Fan every multi-row group via its eyebrow (the peek sliver taps too).
+  for (const label of await page
+    .locator('[data-testid="notification-group-label"]:not([disabled])')
+    .all()) {
+    await label.click();
+  }
   check("all seven rows visible", (await page.locator(ROW).count()) === 7);
   check(
-    "stacks fanned out (no peeks)",
+    "stacks fanned out per group (no peeks left)",
     (await page.locator('[data-testid="notification-stack-peek"]').count()) ===
       0,
   );

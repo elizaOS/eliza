@@ -94,7 +94,7 @@ function eliza1Manifest(overrides: {
 			vad: [{ path: vadPath, sha256: overrides.shaFor("vad") }],
 		},
 		kernels: {
-			required: ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
+			required: ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq", "mtp"],
 			optional: [],
 			verifiedBackends,
 		},
@@ -421,7 +421,7 @@ describe("local inference downloader status", () => {
 				vad: [{ path: vadPath, sha256: sha256(vad) }],
 			},
 			kernels: {
-				required: ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
+				required: ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq", "mtp"],
 				optional: [],
 				verifiedBackends: {
 					metal: {
@@ -636,7 +636,7 @@ describe("local inference downloader status", () => {
 				cache: [{ path: cachePath, sha256: sha256("c") }],
 			},
 			kernels: {
-				required: ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
+				required: ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq", "mtp"],
 				optional: [],
 				verifiedBackends: {
 					metal: { status: "skipped", atCommit: "t", report: "n/a" },

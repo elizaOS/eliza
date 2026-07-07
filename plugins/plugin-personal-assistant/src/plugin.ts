@@ -1287,6 +1287,7 @@ export {
   registerLifeOpsTaskWorker,
   resolveLifeOpsTaskIntervalMs,
 } from "./lifeops/runtime.js";
+export { resetLifeOpsScenarioState } from "./lifeops/scenario-reset.js";
 export type {
   AnchorConsolidationPolicy,
   AnchorContribution,

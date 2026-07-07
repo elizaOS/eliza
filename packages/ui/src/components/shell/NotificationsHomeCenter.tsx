@@ -14,8 +14,9 @@
  *    highest-priority card on top, the rest peeking out beneath it (the iOS
  *    lock-screen stack idiom, stacked by priority). A quiet "N more" hint (not
  *    a button) names what's hidden.
- *  - EXPANDED fans every stack out flat and includes all priorities; the list
- *    is height-capped and scrolls internally.
+ *  - EXPANDED includes all priorities but preserves each view-group stack until
+ *    the user fans that group out in place; the list is height-capped and
+ *    scrolls internally.
  *
  *  Pulling DOWN on the shade (touch drag / mouse drag / wheel-up) while the
  *  list sits at its top toggles between the modes: at rest the pull expands;
@@ -90,6 +91,9 @@ const PULL_SLOP_PX = 8;
 
 /** How many cards may peek out beneath a rested stack's top card. */
 const MAX_STACK_PEEKS = 2;
+
+/** Mouse travel (px) that fans a Z-stack out when swiping down over it. */
+const STACK_FAN_SWIPE_PX = 32;
 
 /** Vertical offset (px) each successive peek card protrudes beneath the top. */
 const STACK_PEEK_OFFSET_PX = 8;
@@ -640,11 +644,26 @@ NotificationRow.displayName = "NotificationRow";
 export function NotificationsHomeCenter(): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
   const { notifications } = useNotifications();
-  // Shade mode: rested (priority triage, stacked groups) vs expanded (all
-  // rows, flat). Toggled by the pull gesture — there are no more/less buttons.
+  // Shade mode: rested (priority triage) vs expanded (all priority tiers).
+  // Groups stay stacked until individually fanned out.
   const [shadeExpanded, setShadeExpanded] = useState(false);
   // Single-open option strip: expanding one row collapses the others.
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  // Per-group stack expansion (iOS-shade idiom): a group fans out in place
+  // when its stack is tapped below the top card or swiped down, and folds back
+  // on an eyebrow tap / upward swipe. Independent of the shade toggle, so the
+  // expanded shade keeps its stacks too — the pull just reveals more groups.
+  const [expandedStacks, setExpandedStacks] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const toggleStack = useCallback((key: string) => {
+    setExpandedStacks((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
   // Dampened live pull (px). State drives the rubber-band transform; the ref
   // mirrors it for the native touch listeners' commit path.
   const [pullPx, setPullPxState] = useState(0);
@@ -675,6 +694,9 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
   // Mirrors whether the shade currently has more to reveal (rested) — the
   // native touch listeners read it without re-binding on every data change.
   const canExpandRef = useRef(false);
+  // In-flight mouse swipe-down on a Z-stack (fans the stack out). Touch keeps
+  // vertical drags for the scroller; touch fans via peek taps.
+  const stackFanGesture = useRef<{ key: string; startY: number } | null>(null);
 
   const setPullPx = useCallback((px: number) => {
     pullPxRef.current = px;
@@ -684,9 +706,14 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
   const toggleShade = useCallback(() => {
     setShadeExpanded((v) => !v);
     setExpandedRowId(null);
+    if (shadeExpanded) {
+      // Folding the shade folds every fanned stack with it — the rested shade
+      // always comes back in its compact triage form.
+      setExpandedStacks(new Set());
+    }
     // Both modes start reading from the top of the shade.
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, []);
+  }, [shadeExpanded]);
 
   const commitPull = useCallback(() => {
     if (pullPxRef.current >= PULL_COMMIT_PX) toggleShade();
@@ -831,6 +858,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
   useEffect(() => {
     if (notifications.length === 0) {
       setShadeExpanded(false);
+      setExpandedStacks(new Set());
       setExpandedRowId(null);
       setPullPx(0);
     }
@@ -965,40 +993,117 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
         className={cn(
           // select-none: a mouse pull-drag must read as a gesture, not a text
           // selection sweep across the cards (platform-shade idiom).
-          "eliza-notif-scroll flex min-h-0 flex-1 select-none flex-col gap-1 overflow-y-auto overscroll-y-contain px-1.5 pb-1.5",
+          "eliza-notif-scroll flex min-h-0 flex-1 select-none flex-col gap-2 overflow-y-auto overscroll-y-contain px-1.5 pb-1.5",
         )}
       >
         {groups.map((group) => {
-          const stacked = !shadeExpanded && group.rows.length > 1;
+          const stackExpanded = expandedStacks.has(group.label);
+          const stacked = !stackExpanded && group.rows.length > 1;
           const peeks = stacked ? group.rows.slice(1, 1 + MAX_STACK_PEEKS) : [];
           const rows = stacked
             ? [group.rows[0] as AgentNotification]
             : group.rows;
+          const fanable = group.rows.length > 1;
           return (
-            <li key={group.label} className="flex flex-col gap-1">
+            <li key={group.label} className="flex flex-col gap-1.5">
               {/* View group header (Apple-shade idiom: group by destination).
-                  A quiet eyebrow, not a boxed section — restraint over chrome. */}
-              <span
+                  A quiet eyebrow — and for multi-row groups, the fold/unfold
+                  control: tap (or swipe up over it) folds a fanned group back
+                  into its stack. */}
+              <button
+                type="button"
                 data-testid="notification-group-label"
-                className="px-2 pb-0.5 pt-2 text-2xs font-medium uppercase tracking-[0.08em] text-white/55 first:pt-1"
+                data-notif-control=""
+                disabled={!fanable}
+                onClick={fanable ? () => toggleStack(group.label) : undefined}
+                aria-expanded={fanable ? stackExpanded : undefined}
+                aria-label={
+                  fanable
+                    ? stackExpanded
+                      ? `Collapse ${group.label} notifications`
+                      : `Expand ${group.label} notifications`
+                    : undefined
+                }
+                onPointerDown={(e) => {
+                  if (
+                    !fanable ||
+                    !stackExpanded ||
+                    e.pointerType !== "mouse" ||
+                    e.button !== 0
+                  ) {
+                    return;
+                  }
+                  stackFanGesture.current = {
+                    key: group.label,
+                    startY: e.clientY,
+                  };
+                }}
+                onPointerMove={(e) => {
+                  const g = stackFanGesture.current;
+                  if (!g || g.key !== group.label || !stackExpanded) return;
+                  // Mouse swipe UP over the fanned group's header folds it
+                  // back into its stack (mirror of the swipe-down fan-out).
+                  if (g.startY - e.clientY >= STACK_FAN_SWIPE_PX) {
+                    stackFanGesture.current = null;
+                    toggleStack(group.label);
+                  }
+                }}
+                onPointerUp={() => {
+                  stackFanGesture.current = null;
+                }}
+                className="flex min-h-touch items-center px-2 pb-0.5 pt-2 text-left text-2xs font-medium uppercase tracking-[0.08em] text-white/55 first:pt-1 disabled:pointer-events-none"
               >
                 {group.label}
-                {stacked ? (
-                  <span
-                    data-testid="notification-stack-count"
-                    className="pl-1.5 normal-case tracking-normal text-white/40 tabular-nums"
-                  >
-                    {group.rows.length}
-                  </span>
+                {fanable ? (
+                  <>
+                    <span
+                      data-testid="notification-stack-count"
+                      className="pl-1.5 normal-case tracking-normal text-white/40 tabular-nums"
+                    >
+                      {group.rows.length}
+                    </span>
+                    <ChevronDown
+                      aria-hidden
+                      className={cn(
+                        "ml-1 h-3 w-3 text-white/40 transition-transform",
+                        stackExpanded && "rotate-180",
+                      )}
+                    />
+                  </>
                 ) : null}
-              </span>
+              </button>
               {stacked ? (
                 // The Z-stack: the group's highest-priority card on top, the
                 // next cards peeking out beneath it — depth in Z, ordered by
                 // the same priority→recency order the fanned list uses.
+                // A mouse swipe DOWN on the stack fans it out (touch fans via
+                // a tap on the peeked cards — a touch vertical drag belongs to
+                // the shade scroller).
                 <div
                   data-testid="notification-stack"
                   className="relative"
+                  onPointerDown={(e) => {
+                    if (e.pointerType !== "mouse" || e.button !== 0) return;
+                    e.stopPropagation();
+                    stackFanGesture.current = {
+                      key: group.label,
+                      startY: e.clientY,
+                    };
+                  }}
+                  onPointerMove={(e) => {
+                    const g = stackFanGesture.current;
+                    if (!g || g.key !== group.label) return;
+                    if (e.clientY - g.startY >= STACK_FAN_SWIPE_PX) {
+                      stackFanGesture.current = null;
+                      toggleStack(group.label);
+                    }
+                  }}
+                  onPointerUp={() => {
+                    stackFanGesture.current = null;
+                  }}
+                  onPointerCancel={() => {
+                    stackFanGesture.current = null;
+                  }}
                   style={{
                     paddingBottom: peeks.length * STACK_PEEK_OFFSET_PX,
                   }}
@@ -1020,14 +1125,21 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
                     />
                   </ul>
                   {peeks.map((peek, i) => (
-                    <div
+                    // The cards behind the top one blur with depth and are
+                    // TAPPABLE: touching the visible sliver below the top card
+                    // fans the stack out in place (iOS shade idiom).
+                    <button
                       key={peek.id}
-                      aria-hidden
+                      type="button"
                       data-testid="notification-stack-peek"
-                      className="eliza-notif-glass pointer-events-none absolute inset-0 rounded-2xl"
+                      data-notif-control=""
+                      aria-label={`Show all ${group.rows.length} ${group.label} notifications`}
+                      onClick={() => toggleStack(group.label)}
+                      className="eliza-notif-glass absolute inset-0 rounded-2xl"
                       style={{
                         zIndex: 1 - i,
                         opacity: 0.75 - i * 0.25,
+                        filter: `blur(${(i + 1) * 1.25}px)`,
                         transform: `translateY(${(i + 1) * STACK_PEEK_OFFSET_PX}px) scale(${
                           1 - (i + 1) * 0.045
                         })`,
@@ -1036,7 +1148,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
                   ))}
                 </div>
               ) : (
-                <ul className="flex flex-col gap-1">
+                <ul className="flex flex-col gap-1.5">
                   {rows.map((notification) => (
                     <NotificationRow
                       key={notification.id}

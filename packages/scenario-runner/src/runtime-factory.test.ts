@@ -85,8 +85,11 @@ describe("scenario runtime deterministic LLM proxy mode", () => {
     ].join("\n");
 
     expect(isScheduledDispatchRenderPrompt(prompt)).toBe(true);
+    // The deterministic render echoes the instruction with its "remind the
+    // owner to …" framing stripped — no decorative prefix, so scenarios can
+    // assert the delivered copy against the reminder text exactly.
     expect(deterministicScheduledDispatchRenderText(prompt)).toBe(
-      "Quick nudge: stretch for five minutes.",
+      "stretch for five minutes.",
     );
     expect(deterministicScheduledDispatchRenderText(prompt)).not.toContain(
       "Remind the owner",
@@ -117,7 +120,7 @@ describe("scenario runtime deterministic LLM proxy mode", () => {
         params: { prompt },
         latestUserText: "",
       }),
-    ).toBe("Quick nudge: take a short walk.");
+    ).toBe("take a short walk.");
     expect(
       resolveScenarioDeterministicLlmCall({
         modelType: ModelType.TEXT_LARGE,
@@ -128,7 +131,7 @@ describe("scenario runtime deterministic LLM proxy mode", () => {
         },
         latestUserText: "",
       }),
-    ).toBe("Quick nudge: take a short walk.");
+    ).toBe("take a short walk.");
     expect(
       resolveScenarioDeterministicLlmCall({
         modelType: ModelType.TEXT_SMALL,

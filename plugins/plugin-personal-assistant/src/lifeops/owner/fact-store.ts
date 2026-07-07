@@ -227,6 +227,13 @@ export interface OwnerFactStore {
     patch: PolicyPatchEscalationRule,
     provenance: OwnerFactProvenance,
   ): Promise<OwnerFacts>;
+  /**
+   * Drop every stored owner fact back to empty. Scenario-runner-only: the
+   * corpus shares one runtime, so a scenario that seeds owner facts (timezone,
+   * windows, quiet hours, active travel) would otherwise leak them into a
+   * later scenario that assumes a clean profile. No production caller.
+   */
+  clear(): Promise<void>;
 }
 
 // --- Persistence ----------------------------------------------------------
@@ -798,6 +805,10 @@ class CacheBackedOwnerFactStore implements OwnerFactStore {
     };
     await this.writeRecord({ schemaVersion: 1, facts: next });
     return cloneFacts(next);
+  }
+
+  async clear(): Promise<void> {
+    await this.writeRecord({ schemaVersion: 1, facts: {} });
   }
 
   private async readRecord(): Promise<PersistedRecord> {

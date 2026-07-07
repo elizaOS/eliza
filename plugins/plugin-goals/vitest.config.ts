@@ -21,6 +21,14 @@ export default defineConfig({
     // @elizaos/core + drizzle).
     alias: [
       {
+        find: /^@elizaos\/plugin-goals\/db\/schema$/,
+        replacement: sourceOf("src/db/schema.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-reminders\/db\/schema$/,
+        replacement: sourceOf("../plugin-reminders/src/db/schema.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-inbox\/db\/schema$/,
         replacement: sourceOf("../plugin-inbox/src/db/schema.ts"),
       },

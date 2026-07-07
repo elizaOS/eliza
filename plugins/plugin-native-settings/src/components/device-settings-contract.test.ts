@@ -41,6 +41,8 @@ vi.mock("@elizaos/ui", () => ({
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
     // biome-ignore lint/a11y/useButtonType: test mock supplies an explicit default type.
     React.createElement("button", { type, ...props }, children),
+  Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
+    React.createElement("input", props),
 }));
 
 import { DeviceSettingsAppView } from "./DeviceSettingsAppView";

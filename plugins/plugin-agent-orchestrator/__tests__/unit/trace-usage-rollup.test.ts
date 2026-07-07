@@ -8,6 +8,7 @@
  * for the code under test.
  */
 
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -281,15 +282,27 @@ describeCore("getTraceUsage", () => {
       "child-agent",
     );
     await mkdir(dir, { recursive: true });
-    writeFileSync(
-      join(dir, "tj-dup.json"),
-      trajectoryJson("trace-parent", 80, 0.008),
-    );
+    const trajPath = join(dir, "tj-dup.json");
+    writeFileSync(trajPath, trajectoryJson("trace-parent", 80, 0.008));
 
-    // ingestChildTrajectories rescans the whole task dir each call, so a second
-    // completion appends a SECOND artifact row for the same file path.
+    // ingestChildTrajectories now path-dedupes at ingest time (#14110), so it
+    // attaches at most one row per file and a re-ingest is a no-op. getTraceUsage
+    // keeps its own path-dedupe to defend against duplicate rows that predate
+    // that fix (or a legacy multi-session rescan). Reproduce exactly that
+    // condition: ingest once for a genuine row, then attach a second row for the
+    // SAME file directly, the way a pre-dedupe rescan would have.
     await ingest(svc, taskId, sessionId);
-    await ingest(svc, taskId, sessionId);
+    await store.addArtifact({
+      id: randomUUID(),
+      taskId,
+      sessionId,
+      artifactType: "trajectory",
+      title: "Sub-agent trajectory tj-dup (duplicate row)",
+      path: trajPath,
+      verificationStatus: "pending",
+      metadata: {},
+      createdAt: new Date().toISOString(),
+    });
     const doc = await store.getTask(taskId);
     const trajRows = (doc?.artifacts ?? []).filter(
       (a) => a.artifactType === "trajectory",

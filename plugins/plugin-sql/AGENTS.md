@@ -129,7 +129,7 @@ Settings are read via `runtime.getSetting(key)` inside `plugin.init`.
 - **Dual-runtime exports.** The `exports` field in `package.json` conditionally resolves `index.node.js` (Bun/Node) vs `index.browser.js` (browser). The node entry has PostgreSQL support; the browser entry is PGlite-only. Do not import the node adapter directly in browser-targeted code.
 - **Schema subpath export.** Consumers that only need schema types (e.g., for drizzle queries outside the plugin) can import from `@elizaos/plugin-sql/schema` without pulling in adapters.
 - **Drizzle subpath export.** Common Drizzle query helpers (`eq`, `sql`, `and`, etc.) are re-exported from `@elizaos/plugin-sql` and `@elizaos/plugin-sql/drizzle` to avoid direct drizzle-orm version coupling in consumer code.
-- **Vector dimensions are fixed per agent.** Once an agent is initialized with a specific embedding dimension (default 384), it cannot be changed. Changing it requires a new agent or manual DB surgery.
+- **Vector dimensions are active-width scoped.** `ensureEmbeddingDimension(n)` selects the current vector column, and runtime boot calls `clearEmbeddingsOutsideActiveDimension()` to delete vectors in other dimension columns and queue those memories for re-embedding at the active width. Memory rows survive; stale vectors do not.
 - **RLS is PostgreSQL-only.** PGlite does not support Row Level Security. The `ENABLE_DATA_ISOLATION` path is silently skipped on PGlite.
 - **Tests live under `src/__tests__/`** and run via vitest configured in `src/vitest.config.ts`.
 
