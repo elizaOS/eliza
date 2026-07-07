@@ -1105,6 +1105,115 @@ describe("useFirstRunConductor", () => {
   });
 });
 
+// ── completion edge purges the synthetic onboarding transcript (#15354) ───────
+
+/**
+ * Mount the conductor with a preseedable, ref-backed transcript AND the ability
+ * to flip `firstRunComplete` between renders — so the onboarding-complete edge
+ * (`active` → false) is drivable exactly as the store flip drives it live.
+ */
+function renderConductorWithControls(initialFirstRunComplete: boolean) {
+  const transcript: { current: ConversationMessage[] } = { current: [] };
+  const value: ConversationMessagesValue = {
+    conversationMessages: [],
+    removeConversationMessage: () => {},
+    prependConversationMessages: () => {},
+    setConversationMessages: (updater) => {
+      transcript.current =
+        typeof updater === "function" ? updater(transcript.current) : updater;
+    },
+  };
+  const wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(ConversationMessagesCtx.Provider, { value }, children);
+  seedAppStore({ firstRunComplete: initialFirstRunComplete });
+  const utils = renderHook(() => useFirstRunConductor(), { wrapper });
+  const setFirstRunComplete = (complete: boolean) => {
+    seedAppStore({ firstRunComplete: complete });
+    utils.rerender();
+  };
+  return { transcript, setFirstRunComplete, ...utils };
+}
+
+describe("first-run completion clears the synthetic onboarding transcript", () => {
+  it("drops leftover first-run turns on the complete edge so one send is not shown as many (#15354)", async () => {
+    const { transcript, setFirstRunComplete, unmount } =
+      renderConductorWithControls(false);
+    // Let the mount effect register + seed its greeting (active onboarding).
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    // Reproduce the #15354 store shape at the moment onboarding completes: the
+    // conductor-seeded first-run turns (greeting + welcome-back + cloud-done)
+    // are still in the live transcript, and the user's one real optimistic send
+    // has been appended by the chat send path.
+    transcript.current = [
+      {
+        id: "first-run:greeting",
+        role: "assistant",
+        text: "Sign in to Eliza Cloud",
+        timestamp: 1,
+        source: "first_run",
+      },
+      {
+        id: "first-run:cloud-signin",
+        role: "assistant",
+        text: "Welcome back",
+        timestamp: 2,
+        source: "first_run",
+      },
+      {
+        id: "first-run:cloud-done",
+        role: "assistant",
+        text: "All set",
+        timestamp: 3,
+        source: "first_run",
+      },
+      { id: "temp-1000", role: "user", text: "hi", timestamp: 4 },
+      { id: "temp-resp-1000", role: "assistant", text: "hey!", timestamp: 5 },
+    ];
+
+    // The store flips firstRunComplete → true (onboarding done). The conductor's
+    // completion effect must purge the synthetic turns.
+    setFirstRunComplete(true);
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) => m.id.startsWith("first-run:")),
+      ).toBe(false);
+    });
+
+    // Exactly the single real turn survives: ONE user message + ONE response.
+    expect(transcript.current.map((m) => m.id)).toEqual([
+      "temp-1000",
+      "temp-resp-1000",
+    ]);
+    expect(transcript.current.filter((m) => m.role === "user")).toHaveLength(1);
+    expect(
+      transcript.current.filter((m) => m.role === "assistant"),
+    ).toHaveLength(1);
+    unmount();
+  });
+
+  it("leaves a real, already-clean thread untouched on completion (no spurious mutation)", async () => {
+    const { transcript, setFirstRunComplete, unmount } =
+      renderConductorWithControls(false);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    transcript.current = [
+      { id: "srv-user-1", role: "user", text: "hi", timestamp: 4 },
+      { id: "srv-asst-1", role: "assistant", text: "hey!", timestamp: 5 },
+    ];
+
+    setFirstRunComplete(true);
+    // Flush the completion effect.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(transcript.current.map((m) => m.id)).toEqual([
+      "srv-user-1",
+      "srv-asst-1",
+    ]);
+    unmount();
+  });
+});
+
 // ── surfaceCloudLoginRetryTurn (pure transcript seam) ────────────────────────
 
 function applyRetry(existing: ConversationMessage[]): ConversationMessage[] {

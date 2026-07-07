@@ -76,6 +76,7 @@ import { useConversationMessages } from "../state/ConversationMessagesContext.ho
 import { preOpenCloudLoginWindow } from "../state/cloud-login-launch";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
 import { startTutorial } from "../tutorial/tutorial-service";
+import { clearFirstRunTranscriptMessages } from "./clear-first-run-transcript";
 import {
   peekDeviceRamTierAssessment,
   resolveDeviceRamTierAssessment,
@@ -1341,6 +1342,17 @@ export function useFirstRunConductor(): void {
     if (!active) {
       setFirstRunActionHandler(null);
       setFirstRunTextHandler(null);
+      // Onboarding just completed: the overlay stops filtering the transcript to
+      // the current first-run card (`selectFirstRunDisplayMessages`) and renders
+      // the raw store, so every synthetic `first-run:*` turn the conductor
+      // seeded (greeting + welcome-back + cloud-done + typed reply turns) would
+      // otherwise paint as stacked real chat bubbles — the first message then
+      // looks duplicated into multiple greetings + doubled user turns until the
+      // first send's history reload full-replaces the store (#15354). Drop them
+      // now so the real chat opens on a clean thread. Pure id/source-scoped
+      // filter: it never touches a real server or optimistic `temp-*` turn, and
+      // is a no-op when onboarding seeded nothing (silent reuse, #15133).
+      setConversationMessages(clearFirstRunTranscriptMessages);
       return;
     }
     resetFirstRunPersistGuard();
@@ -1533,7 +1545,13 @@ export function useFirstRunConductor(): void {
       setFirstRunActionHandler(null);
       setFirstRunTextHandler(null);
     };
-  }, [active, seedBackupRestoreChoice, seedRuntimeChoice, seedTurn]);
+  }, [
+    active,
+    seedBackupRestoreChoice,
+    seedRuntimeChoice,
+    seedTurn,
+    setConversationMessages,
+  ]);
 }
 
 /** Mount point — call once inside the AppContext provider tree. Renders null. */
