@@ -2512,15 +2512,36 @@ export async function handleConversationRoutes(
       metadata: chatMetadata,
     } = chatPayload;
 
+    // The SSE channel opens as soon as the request is validated — before
+    // runtime resolution, room setup, and user-message persistence — so the
+    // client sees headers, an immediate `thinking` status, and heartbeats
+    // during the pre-model work (runtime warming alone can take seconds; the
+    // pre-model DB steps add serial round-trips). Everything past this point
+    // reports failure as a structured SSE `error` event (the client maps
+    // `type:"error"` data lines to StreamGenerationError); only the validation
+    // above may answer with plain HTTP status codes.
+    initSse(res);
+    writeChatStatusSse(res, { kind: "thinking" });
+    writeConversationStreamHeartbeat(res, disconnectTracker);
+    const heartbeatInterval = setInterval(() => {
+      if (disconnectTracker.checkConnectionClosed()) {
+        return;
+      }
+      writeConversationStreamHeartbeat(res, disconnectTracker);
+    }, 5000);
+    const failStream = (message: string): true => {
+      writeSse(res, { type: "error", message });
+      clearInterval(heartbeatInterval);
+      finishStreamResponse();
+      return true;
+    };
+
     // Hold the streaming turn through the warming window instead of dropping it
     // — the client already shows the optimistic bubble + typing indicator, and
     // the response streams the instant first-turn capability comes online.
     const runtime = await resolveRuntimeForChatTurn(state);
     if (!runtime) {
-      disconnectTracker.markCompleted();
-      disconnectTracker.dispose();
-      error(res, "Agent is not running", 503);
-      return true;
+      return failStream("Agent is not running");
     }
 
     const caller = resolveConversationCaller(req, state);
@@ -2530,14 +2551,9 @@ export async function handleConversationRoutes(
     try {
       await ensureConversationRoom(state, conv, caller);
     } catch (err) {
-      error(
-        res,
+      return failStream(
         `Failed to initialize conversation room: ${getErrorMessage(err)}`,
-        500,
       );
-      disconnectTracker.markCompleted();
-      disconnectTracker.dispose();
-      return true;
     }
 
     const { userMessage, messageToStore } = await buildUserMessages({
@@ -2554,16 +2570,14 @@ export async function handleConversationRoutes(
     try {
       await persistConversationMemory(runtime, messageToStore);
     } catch (err) {
-      disconnectTracker.markCompleted();
-      disconnectTracker.dispose();
-      error(res, `Failed to store user message: ${getErrorMessage(err)}`, 500);
-      return true;
+      return failStream(
+        `Failed to store user message: ${getErrorMessage(err)}`,
+      );
     }
 
     const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
     if (walletModeGuidance) {
       const endActiveChatTurn = beginActiveChatTurn(state);
-      initSse(res);
       try {
         if (!disconnectTracker.isAborted()) {
           writeChatTokenSse(res, walletModeGuidance, walletModeGuidance);
@@ -2590,6 +2604,7 @@ export async function handleConversationRoutes(
           });
         }
       } finally {
+        clearInterval(heartbeatInterval);
         finishStreamResponse();
         endActiveChatTurn();
       }
@@ -2599,18 +2614,13 @@ export async function handleConversationRoutes(
     // ── Local runtime path (streaming) ───────────────────────
 
     const endActiveChatTurn = beginActiveChatTurn(state);
-    initSse(res);
-    writeConversationStreamHeartbeat(res, disconnectTracker);
-
-    // SSE heartbeat to keep connection alive during long generation
-    const heartbeatInterval = setInterval(() => {
-      if (disconnectTracker.checkConnectionClosed()) {
-        return;
-      }
-      writeConversationStreamHeartbeat(res, disconnectTracker);
-    }, 5000);
 
     let streamedText = "";
+    // The route already wrote a `thinking` status when the SSE channel opened;
+    // collapse the identical opening status generateChatResponse re-emits so
+    // the wire carries each phase transition once. Distinct consecutive phases
+    // (thinking → running_action → thinking) still pass through.
+    let lastStatusSignature = "thinking::";
     // When the success path emits `done` BEFORE running persistence (latency
     // optimization), we hand off the persistence work as a detached promise so
     // the `finally` block can `res.end()` immediately and still observe failures.
@@ -2631,6 +2641,11 @@ export async function handleConversationRoutes(
             ) {
               return;
             }
+            const signature = `${status.kind}:${status.actionName ?? ""}:${status.toolName ?? ""}`;
+            if (signature === lastStatusSignature) {
+              return;
+            }
+            lastStatusSignature = signature;
             writeChatStatusSse(res, status);
           },
           onToolEvent: (event) => {
