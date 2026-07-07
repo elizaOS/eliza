@@ -25,9 +25,9 @@
   --muted-strong: rgba(0, 0, 0, 0.74);
   --border: rgba(0, 0, 0, 0.12);
   --border-strong: rgba(0, 0, 0, 0.22);
-  /* Modal/drawer scrim: brand black at a fixed dim so an open sheet reads as a
-     genuine backdrop (never off-palette "ember" rgba). */
-  --scrim: rgba(20, 12, 7, 0.7);
+  /* Modal/drawer scrim: a NEUTRAL dark dim (not the warm brand-black
+     rgb(20,12,7), which cast a brown tint over every scrimmed surface). */
+  --scrim: rgba(0, 0, 0, 0.7);
   --accent: var(--brand-orange);
   --accent-rgb: 255, 106, 31;
   --accent-foreground: var(--brand-white);

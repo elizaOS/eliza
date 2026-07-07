@@ -103,7 +103,7 @@ const GREETING =
 // #15143) — the OAuth secretRequest block alone only opens the cloud login
 // page and never completes an in-app login by itself.
 const CLOUD_SIGN_IN_GREETING =
-  "Hi — I'm Eliza. Sign in to Eliza Cloud and I'll get you set up.";
+  "Hi — I'm Eliza. To start chatting, sign in below.";
 const CLOUD_SIGN_IN_CHOICE = [
   "[CHOICE:first-run id=runtime]",
   `${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Sign in to Eliza Cloud`,

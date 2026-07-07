@@ -901,6 +901,12 @@ export const ChatMessage = memo(function ChatMessage({
     const bubbleExtraClassName = cn(
       // Tapping a bubble with actions reveals its row (pointer affordance).
       bubbleInteractive && "cursor-pointer",
+      // First-run greeting: normal chat messages float on the sheet's shared
+      // glass panel, but onboarding has no panel behind them, so the hairline
+      // edge alone reads as a faint line on black. Give the greeting a subtle
+      // frosted fill + slightly stronger edge so it reads as a proper, sleek
+      // bubble on the opaque onboarding backdrop.
+      isFirstRun && "border-white/25 bg-white/[0.06]",
       // Suggestion treatment (#8792): dashed accent edge + faint accent tint so
       // a proactive offer reads as a suggestion, not a normal reply. Placed
       // last so it wins over the glass hairline.
@@ -935,7 +941,7 @@ export const ChatMessage = memo(function ChatMessage({
           {bubbleInteractive ? (
             <ChatBubble
               variant="glass"
-              bare={isFirstRun}
+              bare={false}
               tone={isUser ? "user" : "assistant"}
               {...(holdHandlers ?? {})}
               role="button"
@@ -954,7 +960,7 @@ export const ChatMessage = memo(function ChatMessage({
           ) : (
             <ChatBubble
               variant="glass"
-              bare={isFirstRun}
+              bare={false}
               tone={isUser ? "user" : "assistant"}
               {...(holdHandlers ?? {})}
               className={bubbleExtraClassName}

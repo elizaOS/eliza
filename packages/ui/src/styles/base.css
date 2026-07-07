@@ -47,11 +47,12 @@
   --border-hover: var(--brand-orange);
   --input: var(--brand-white);
   --ring: var(--brand-orange);
-  /* Modal/drawer/chat scrim: brand black at a fixed dim so an open sheet reads
-     as a genuine backdrop (never off-palette "ember" rgba). Defined here in
-     base.css — the file the running app imports — so `bg-scrim` resolves at
-     runtime, not only in the e2e theme layer. */
-  --scrim: rgba(20, 12, 7, 0.7);
+  /* Modal/drawer/chat scrim: a NEUTRAL dark dim so an open sheet reads as a
+     genuine backdrop. Kept true-neutral (not the warm brand-black rgb(20,12,7),
+     which cast a visible brown tint over every scrimmed surface) for a clean,
+     Apple-sleek dark field. Defined here in base.css — the file the running app
+     imports — so `bg-scrim` resolves at runtime, not only in the e2e theme layer. */
+  --scrim: rgba(0, 0, 0, 0.7);
 
   /* Accent */
   --accent: var(--brand-orange);
@@ -220,9 +221,10 @@
   --border-hover: var(--brand-orange);
   --input: rgba(255, 255, 255, 0.08);
   --ring: var(--brand-orange);
-  /* Modal/drawer/chat scrim: brand black at a fixed dim so an open sheet reads
-     as a genuine backdrop (never off-palette "ember" rgba). See :root note. */
-  --scrim: rgba(20, 12, 7, 0.72);
+  /* Modal/drawer/chat scrim: a NEUTRAL dark dim (not the warm brand-black
+     rgb(20,12,7), which cast a brown tint over every scrimmed surface). See
+     :root note. */
+  --scrim: rgba(0, 0, 0, 0.72);
 
   --accent: var(--brand-orange);
   --accent-rgb: 255, 106, 31;

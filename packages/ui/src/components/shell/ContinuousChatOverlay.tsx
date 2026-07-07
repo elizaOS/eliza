@@ -486,7 +486,12 @@ function SoftButton({
         // Pulse the accent glyph while capture is hot; reduced-motion falls back
         // to the static accent without adding background or border chrome.
         pulse && "animate-pulse motion-reduce:animate-none",
-        disabled && "opacity-40",
+        // Blocked controls (e.g. voice/transcript during sign-in-first
+        // onboarding) read as inert: dimmed AND non-interactive to the pointer
+        // (no hover color shift, no cursor) — matching the attachment "+".
+        // Keyboard focus is unaffected, so the aria-disabled label still
+        // announces.
+        disabled && "pointer-events-none opacity-40",
       )}
     >
       {Icon ? (
@@ -1172,15 +1177,14 @@ export function ContinuousChatOverlay({
   // The pin-at-full + auto-collapse edge effect lives below `goToDetent` (it
   // needs the detent animator); the mount state above still opens FULL first.
   //
-  // During onboarding the sheet MUST stay open — the seeded greeting + choices
-  // are the only way forward and the composer is frozen behind them. Deriving
-  // openness from the effect alone proved raceable on a home-view boot (the
-  // sheet could settle collapsed with the options hidden behind the grabber and
-  // only a misleading "tap an option above" hint showing). Pin it STRUCTURALLY:
-  // while firstRunOpen, the derived openness is always FULL regardless of the
-  // underlying `mode` transition state. The effect still drives the real `mode`
-  // so the falling edge (onboarding done) collapses correctly.
-  const effectiveMode: ChatMode = firstRunOpen ? "full" : mode;
+  // During onboarding the chat rests CLOSED — the app's resting-home look: the
+  // composer sits at the bottom (locked, sign-in-first) and the seeded greeting
+  // floats above it as a sign-in prompt (see the first-run prompt overlay in the
+  // render below). The chat is NOT force-opened; after sign-in the user has the
+  // full chat and expands it themselves. Deriving onboarding's openness as a
+  // fixed "input" is `firstRunOpen`-gated, so an ordinary session is completely
+  // unaffected (it still uses the live `mode`).
+  const effectiveMode: ChatMode = firstRunOpen ? "input" : mode;
   const pilled = effectiveMode === "pill";
   const sheetOpen = effectiveMode === "half" || effectiveMode === "full";
   const expanded = effectiveMode === "full";
@@ -1192,10 +1196,12 @@ export function ContinuousChatOverlay({
   // FULL-SCREEN (maximized): at the FULL detent the user can drop the inset
   // (max-width, side padding, top margin, rounding) so the chat is edge-to-edge.
   // Invariant: only true while at FULL (sheetOpen && expanded && !pilled); every
-  // leave-full transition resets it. Onboarding (firstRunOpen) starts here — the
-  // login/first-run chat opens edge-to-edge full-screen (kept in sync by the
-  // first-run pin effect below), then the falling edge collapses it to half.
-  const [maximized, setMaximized] = React.useState(firstRunOpen);
+  // leave-full transition resets it. Onboarding (firstRunOpen) does NOT maximize:
+  // it opens as the inset glass panel (the app's contained chat surface) so the
+  // seeded greeting and the composer sit ON the panel glass — with its rounded
+  // edge and hairline border — instead of floating flat on an edge-to-edge black
+  // takeover. The first-run pin effect below keeps it FULL-but-inset.
+  const [maximized, setMaximized] = React.useState(false);
   // A restore drag is in flight (pull-down out of full-bleed). Declared up here
   // (not by the restore binding) because `fullBleedFrame` below reads it to keep
   // the panel MAX-HEIGHT full-screen-sized for the drag (so the height can track
@@ -1865,7 +1871,13 @@ export function ContinuousChatOverlay({
       return (
         <ChatMessage
           key={m.id}
-          appearance={firstRunOpen ? "panel" : "glass"}
+          // Always the app's canonical glass chrome — onboarding included. The
+          // first-run greeting used to force "panel" (a bordered card), a
+          // different, duplicate-looking bubble from the real in-app chat; glass
+          // is the chromeless bubble with the same rise/fade entrance, matching
+          // the app and the documented first-run intent (agent prose floats as
+          // plain wallpaper text with its CTA beneath).
+          appearance="glass"
           agentName={agentName}
           message={shellToChatMessageData(m)}
           reduceMotion={reduce}
@@ -2532,7 +2544,10 @@ export function ContinuousChatOverlay({
   // shape instead of popping/snapping. Only the SHAPE eases (side inset, corner
   // radius, composer bottom-inset); the height is still the finger/detent spring,
   // so the two read as one motion. Reduced-motion sets it instantly.
-  const fullBleedT = useMotionValue(firstRunOpen ? 1 : 0);
+  // Onboarding no longer opens edge-to-edge (it is the inset glass panel), so
+  // the shape starts at 0 (inset) for it too — the effect below keeps it synced
+  // to `maximized`, which is false during first-run.
+  const fullBleedT = useMotionValue(0);
   // Mirror the settled full-bleed flag so release handlers can settle the morph
   // toward the committed shape without waiting for a re-render.
   const fullBleedRef = React.useRef(fullBleed);
@@ -2967,10 +2982,12 @@ export function ContinuousChatOverlay({
     const was = wasFirstRunOpenRef.current;
     wasFirstRunOpenRef.current = firstRunOpen;
     if (firstRunOpen) {
-      // Pin FULL + edge-to-edge full-bleed: the login/first-run chat owns the
-      // whole screen (see the `maximized` initial state above).
-      setMode("full");
-      setMaximized(true);
+      // Rest CLOSED (input): onboarding is the app's resting-home look — the
+      // composer sits at the bottom (locked) and the seeded greeting floats
+      // above it as a sign-in prompt. The chat is not opened until the user
+      // signs in and expands it themselves.
+      setMode("input");
+      setMaximized(false);
       return;
     }
     if (was) goToDetent("half");
@@ -5241,6 +5258,12 @@ export function ContinuousChatOverlay({
                     className={cn(
                       "flex flex-col pb-3 pt-1",
                       !firstRunOpen && "mt-auto",
+                      // Onboarding: drop the seeded greeting down from the very
+                      // top edge so it clears the status bar and the top backdrop
+                      // glow, and reads with calm breathing room rather than
+                      // jammed under the notch.
+                      firstRunOpen &&
+                        "pt-[calc(env(safe-area-inset-top,0px)+4rem)]",
                     )}
                   >
                     {/* Top sentinel for infinite upward scroll (#13532, #14279):
@@ -5567,6 +5590,9 @@ export function ContinuousChatOverlay({
                 ref={inputRef}
                 rows={1}
                 value={draft}
+                // Onboarding is sign-in-first: lock the composer until the user
+                // signs in, so they can't type into a chat that isn't ready yet.
+                disabled={firstRunOpen}
                 onChange={(e) => {
                   const nextDraft = e.target.value;
                   if (
@@ -5601,14 +5627,15 @@ export function ContinuousChatOverlay({
                 onBlur={() => setComposerFocused(false)}
                 onPaste={handleComposerPaste}
                 onKeyDown={handleComposerKeyDown}
-                // The composer is unlocked during onboarding (#12178): typing is
-                // always allowed. Free text is answered locally by the in-chat
-                // conductor and never reaches the server (submitText routes it).
+                // The composer is LOCKED during onboarding: first-run is
+                // sign-in-first, so the input is disabled (see `disabled` above)
+                // until the user signs in, and the placeholder points them at the
+                // sign-in choice above.
                 // (This surface's strings are plain literals by design — see
                 // the imageError note above.)
                 placeholder={
                   firstRunOpen
-                    ? `Ask ${agentName} anything, or sign in above`
+                    ? "Sign in above to start chatting"
                     : noProviderConfigured
                       ? "Connect a model provider in Settings to chat"
                       : modelBlocksSend
@@ -5630,10 +5657,13 @@ export function ContinuousChatOverlay({
                 // and only when a slash catalog is wired in — a plain message
                 // box otherwise.
                 {...comboboxAria}
-                // During onboarding the placeholder invites the unlocked
-                // composer ("Ask … anything, or sign in above"), so brighten it
-                // from the resting 45% to 70% to read clearly beside the choices.
-                className={`max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+                // During onboarding the composer is locked (sign-in-first); the
+                // placeholder points at the sign-in above, brightened from the
+                // resting 45% to 70% to read clearly. `disabled:pointer-events-none`
+                // blocks it cleanly like the attachment "+" (no "not-allowed"
+                // cursor on hover), and `disabled:opacity-100` keeps the
+                // placeholder legible rather than dimming it.
+                className={`max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden disabled:pointer-events-none disabled:opacity-100 ${
                   firstRunOpen
                     ? "placeholder:text-muted-strong"
                     : "placeholder:text-muted"
