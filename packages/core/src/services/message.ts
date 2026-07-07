@@ -4622,6 +4622,12 @@ function shouldSuppressInferredCandidateEscalation(args: {
 	if (args.inference.kind !== "view-capability") return false;
 	if (args.stageOneCandidateActions.length > 0) return false;
 	if (args.stageOneReplyText.trim().length === 0) return false;
+	// An ack-shaped reply ("On it.", "Let me pull that up.") is a delegation
+	// commitment, not an answer — suppressing the candidate here would ship the
+	// ack as the whole turn with nothing behind it (the ack-rescue paths only
+	// cover shell/web/coding, never views). Only a genuinely answer-shaped
+	// replyText qualifies the turn as "already answered".
+	if (looksLikeProgressOnlyReply(args.stageOneReplyText)) return false;
 	return !args.stageOneContexts.some(
 		(context) => context.trim().toLowerCase() !== SIMPLE_CONTEXT_ID,
 	);

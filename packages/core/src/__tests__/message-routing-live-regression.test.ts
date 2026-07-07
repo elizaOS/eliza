@@ -1163,6 +1163,18 @@ describe("VIEWS hijack of answered simple turns (tj-501e594bfb23a7)", () => {
 		expect(
 			gate?.shouldRun(contextFor("settings", "Which settings do you mean?")),
 		).toBe(true);
+		// An ack-shaped replyText is a delegation commitment, not an answer —
+		// suppressing on it would ship "On it." as the whole turn with nothing
+		// behind it (the ack-rescue paths cover shell/web/coding, never views).
+		// A view-capability overlap with an ack reply must keep promoting.
+		expect(gate?.shouldRun(contextFor("show my screen time", "On it."))).toBe(
+			true,
+		);
+		expect(
+			gate?.shouldRun(
+				contextFor("whats my screen time", "Let me pull that up."),
+			),
+		).toBe(true);
 	});
 
 	it("leaves the web backstop untouched: a live-info ack still forces the fetch", () => {

@@ -592,15 +592,17 @@ export async function runPlannerLoop(
 					lastMissWidgetText = widgetCandidate;
 					const captured = refusalCandidate ?? widgetCandidate;
 					if (captured) lastTerminalRefusalText = captured;
-					// A REPLY tool call's text is user-directed by construction; a
-					// STOP/IGNORE-only terminal's free text is scratch reasoning
-					// (see the hasReplyCall comment below) and is never captured.
+					// A REPLY tool call's OWN params text is user-directed by
+					// construction; a STOP/IGNORE-only terminal's free text is scratch
+					// reasoning (see the hasReplyCall comment below) and is never
+					// captured. Deliberately NO messageToUser fallback here: a REPLY
+					// call with empty params would otherwise capture the native
+					// free-text fallback, which can be a pre-tool thought.
 					const rejectedAnswerCandidate =
-						captured === undefined &&
-						plannerOutput.toolCalls.some(
-							(toolCall) => toolCall.name.toUpperCase() === "REPLY",
-						)
-							? userSafeCapturedAnswerCandidate(terminalText)
+						captured === undefined
+							? userSafeCapturedAnswerCandidate(
+									terminalMessageFromToolCalls(plannerOutput.toolCalls),
+								)
 							: undefined;
 					if (rejectedAnswerCandidate) {
 						lastRejectedTerminalAnswerText = rejectedAnswerCandidate;
