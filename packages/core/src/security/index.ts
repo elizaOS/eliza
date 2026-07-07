@@ -43,6 +43,11 @@ export {
 	wrapWebContent,
 } from "./external-content.js";
 export {
+	type GuardedStreamOutput,
+	GuardedStreamScanner,
+	type GuardedStreamScannerOptions,
+} from "./guarded-stream.js";
+export {
 	hardenIncomingUserMessage,
 	type IncomingMessageSecurityMetadata,
 	messageHasPromptInjectionFlag,

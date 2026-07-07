@@ -488,6 +488,15 @@ export class PseudonymSession {
 	private restoreReplacer: { regex: RegExp; map: Map<string, string> } | null =
 		null;
 	private replacersDirty = true;
+	/**
+	 * Longest string in either namespace (a real value or its surrogate),
+	 * maintained as entries are minted/re-minted. The streaming guard
+	 * ({@link ./guarded-stream}) sizes its carry-over window from this so a value
+	 * or surrogate that spans a chunk boundary is never split across two emissions
+	 * (which would leak a value fragment on the safe side, or drop a restore on the
+	 * visible side). Surrogates can be longer than their value, so both count.
+	 */
+	private maxToken = 0;
 
 	constructor(options: PseudonymSessionOptions = {}) {
 		this.salt = options.salt ?? generateSessionSalt();
@@ -511,6 +520,11 @@ export class PseudonymSession {
 	/** Number of distinct entities learned this session. */
 	get size(): number {
 		return this.valueToEntry.size;
+	}
+
+	/** Length of the longest value or surrogate held (0 when empty). */
+	get maxTokenLength(): number {
+		return this.maxToken;
 	}
 
 	/**
@@ -640,6 +654,7 @@ export class PseudonymSession {
 		this.valueToEntry.set(value, entry);
 		this.surrogateToEntry.set(surrogate, entry);
 		this.usedSurrogatesLower.add(surrogate.toLowerCase());
+		this.maxToken = Math.max(this.maxToken, value.length, surrogate.length);
 		this.replacersDirty = true;
 		return entry;
 	}
@@ -658,6 +673,7 @@ export class PseudonymSession {
 		this.valueToEntry.set(entry.value, next);
 		this.surrogateToEntry.set(fresh, next);
 		this.usedSurrogatesLower.add(fresh.toLowerCase());
+		this.maxToken = Math.max(this.maxToken, fresh.length);
 		this.replacersDirty = true;
 	}
 

@@ -97,6 +97,7 @@ import { BM25 } from "./search";
 import {
 	CompositeEntityRecognizer,
 	DEFAULT_PSEUDONYM_BLOCKLIST,
+	GuardedStreamScanner,
 	PII_ENTITY_RECOGNIZER_SERVICE,
 	PII_SWAP_DISABLED_KINDS_SETTING,
 	PII_SWAP_ENABLED_SETTING,
@@ -5572,7 +5573,7 @@ export class AgentRuntime implements IAgentRuntime {
 				let handlerDeliveredStream = false;
 				let streamedText = "";
 				let secretSwapSession: SecretSwapSession | null = null;
-				let guardedStreamBuffer = "";
+				let guardScanner: GuardedStreamScanner | null = null;
 				let piiSwapSession: PseudonymSession | null = null;
 				const emitModelStreamChunk = async (
 					safeChunk: string,
@@ -5623,38 +5624,30 @@ export class AgentRuntime implements IAgentRuntime {
 						if (ctxChunk) await ctxChunk(visibleChunk, msgId, undefined);
 					});
 				};
+				// When a guard is active, route every chunk through the scanner: it
+				// emits the substituted prefix it can prove safe and holds only the
+				// still-in-progress tail, so guarded turns stream token-by-token instead
+				// of collapsing to one terminal chunk (#15256). Both sessions are assigned
+				// before the handler runs (below), so lazy construction here is ordering-safe.
 				const deliverModelStreamChunk = async (
 					chunk: string,
 				): Promise<void> => {
 					if (abortSignal?.aborted) return;
 					if (secretSwapSession || piiSwapSession) {
-						guardedStreamBuffer += chunk;
+						guardScanner ??= new GuardedStreamScanner({
+							secretSession: secretSwapSession,
+							piiSession: piiSwapSession,
+						});
+						const { safe, visible } = guardScanner.push(chunk);
+						if (safe.length > 0) await emitModelStreamChunk(safe, visible);
 						return;
 					}
 					await emitModelStreamChunk(chunk);
 				};
 				const flushGuardedStream = async (): Promise<void> => {
-					if (
-						abortSignal?.aborted ||
-						(!secretSwapSession && !piiSwapSession) ||
-						guardedStreamBuffer.length === 0
-					) {
-						return;
-					}
-					let safeText = guardedStreamBuffer;
-					guardedStreamBuffer = "";
-					if (secretSwapSession) {
-						safeText = secretSwapSession.substituteText(safeText);
-					}
-					if (piiSwapSession) {
-						safeText = piiSwapSession.substituteText(safeText);
-					}
-					if (safeText.length > 0) {
-						const visibleText = piiSwapSession
-							? piiSwapSession.restoreText(safeText)
-							: safeText;
-						await emitModelStreamChunk(safeText, visibleText);
-					}
+					if (abortSignal?.aborted || !guardScanner) return;
+					const { safe, visible } = guardScanner.flush();
+					if (safe.length > 0) await emitModelStreamChunk(safe, visible);
 				};
 				// Wire the handler-facing stream callback for registrations that declare
 				// handler streaming support, with local-provider recognition retained as

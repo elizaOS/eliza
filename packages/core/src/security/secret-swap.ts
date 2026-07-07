@@ -150,6 +150,14 @@ export class SecretSwapSession {
 	private readonly placeholderToEntry = new Map<string, SecretSwapEntry>();
 	private readonly exemptValues: ReadonlySet<string>;
 	private readonly disabledKinds: ReadonlySet<string>;
+	/**
+	 * Longest token (secret value or minted placeholder) the session holds,
+	 * maintained incrementally as entries are added. The streaming guard
+	 * ({@link ./guarded-stream}) reads this to size its carry-over window: a known
+	 * secret that arrives split across two chunks must be held whole, so the guard
+	 * never emits a chunk shorter than the longest value it might straddle.
+	 */
+	private maxToken = 0;
 	/** Per-session nonce woven into every placeholder so it is unforgeable. */
 	private readonly nonce = generateSessionNonce();
 	/**
@@ -188,6 +196,11 @@ export class SecretSwapSession {
 
 	get entries(): SecretSwapEntry[] {
 		return [...this.valueToEntry.values()];
+	}
+
+	/** Length of the longest value/placeholder held (0 when empty). */
+	get maxTokenLength(): number {
+		return this.maxToken;
 	}
 
 	substituteText(text: string): string {
@@ -312,6 +325,11 @@ export class SecretSwapSession {
 		};
 		this.valueToEntry.set(value, entry);
 		this.placeholderToEntry.set(entry.placeholder, entry);
+		this.maxToken = Math.max(
+			this.maxToken,
+			entry.value.length,
+			entry.placeholder.length,
+		);
 		return entry;
 	}
 }
