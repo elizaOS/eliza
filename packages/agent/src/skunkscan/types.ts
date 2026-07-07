@@ -67,10 +67,28 @@ export type WalletEvidenceItem = {
     | "defi"
     | "risk"
     | "whale"
-    | "behavior";
+    | "behavior"
+    | "exposure";
   severity: "info" | "low" | "medium" | "high";
   title: string;
   description: string;
+};
+
+export type WalletExposureSummary = {
+  exposureScore: number;
+  exposureLevel: "none" | "low" | "medium" | "high";
+  hasKnownScamExposure: boolean;
+  hasKnownRugPullExposure: boolean;
+  hasKnownSuspiciousExposure: boolean;
+  matches: {
+    address: string;
+    label: string;
+    category: "scam" | "rug_pull" | "suspicious" | "sanctioned" | "adverse_media";
+    confidence: "low" | "medium" | "high";
+    source: "static_registry" | "external_provider" | "manual_review";
+    relationship: "self" | "funder" | "counterparty";
+  }[];
+  notes: string[];
 };
 
 export type WalletDeFiProtocol = {
@@ -194,6 +212,7 @@ export type WalletInvestigationResult = {
   defi?: WalletDeFiSummary;
   behavior?: WalletBehaviorSummary;
   caseSummary?: WalletCaseSummary;
+  exposure?: WalletExposureSummary;
   evidence?: WalletEvidenceItem[];
   recentTransactions?: WalletRecentTransaction[];
   transactionCountSample?: number;
