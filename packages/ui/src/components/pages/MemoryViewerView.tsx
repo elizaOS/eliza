@@ -346,7 +346,7 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
   if (feed.length === 0) {
     return (
       <PagePanel.FeatureEmpty
-        className="min-h-[24rem]"
+        className="memory-feed-empty min-h-[24rem]"
         features={MEMORY_FEED_EMPTY_FEATURES.map((feature) => ({
           ...feature,
           label: t(feature.labelKey, { defaultValue: feature.defaultLabel }),
