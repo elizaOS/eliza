@@ -1,6 +1,6 @@
 // Exercises cloud DB client tls behavior with deterministic repository fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
-import { enforceTlsForRemote, shouldSkipTlsVerification } from "../client";
+import { applyIdleSessionTimeouts, enforceTlsForRemote, shouldSkipTlsVerification } from "../client";
 
 const PREV = process.env.DATABASE_SSL_NO_VERIFY;
 afterEach(() => {
@@ -78,5 +78,37 @@ describe("enforceTlsForRemote", () => {
     expect(() =>
       enforceTlsForRemote("postgresql://u:p@host.example.com/db?sslmode=disable"),
     ).toThrow(/must use TLS/i);
+  });
+});
+
+// applyIdleSessionTimeouts is the pg-pool `onConnect` hook remote non-Worker
+// pools run on every fresh connection. pg-pool AWAITS it before handing the
+// client to a waiting checkout — the previous fire-and-forget
+// `pool.on("connect")` query overlapped the checkout's first query on the same
+// client, which node-pg deprecates ("Calling client.query() when the client is
+// already executing a query…", removed in pg@9).
+describe("applyIdleSessionTimeouts", () => {
+  test("issues both idle-session timeouts in a single awaited query", async () => {
+    const statements: string[] = [];
+    await applyIdleSessionTimeouts({
+      query: async (text: string) => {
+        statements.push(text);
+      },
+    });
+    expect(statements).toHaveLength(1);
+    expect(statements[0]).toContain("SET idle_session_timeout = '10min'");
+    expect(statements[0]).toContain("SET idle_in_transaction_session_timeout = '5min'");
+  });
+
+  test("stays a no-op when the server rejects the SET (pre-PG14)", async () => {
+    // A rejecting hook would make pg-pool end the client and fail the
+    // checkout, so failure tolerance is load-bearing, not defensive.
+    await expect(
+      applyIdleSessionTimeouts({
+        query: async () => {
+          throw new Error('unrecognized configuration parameter "idle_session_timeout"');
+        },
+      }),
+    ).resolves.toBeUndefined();
   });
 });

@@ -4,6 +4,7 @@ import {
   assertProvisioningWorkerPreflight,
   closeOpenHandles,
   evaluateSelfRestart,
+  formatErrorWithCause,
   maybePublishHeartbeat,
   pollSleep,
   readWorkerConfig,
@@ -21,6 +22,44 @@ function makeLogger(): WorkerLogger {
     debug: mock(() => {}),
   } as unknown as WorkerLogger;
 }
+
+describe("formatErrorWithCause (cycle-failure observability)", () => {
+  it("surfaces the pg error hidden behind a Drizzle query-failure wrapper", () => {
+    const pgError = new Error("self-signed certificate in certificate chain");
+    const drizzleError = new Error(
+      'Failed query: select "id" from "provisioning_jobs"',
+      { cause: pgError },
+    );
+
+    expect(formatErrorWithCause(drizzleError)).toBe(
+      'Failed query: select "id" from "provisioning_jobs"; caused by: self-signed certificate in certificate chain',
+    );
+  });
+
+  it("walks nested causes and stringifies non-Error links", () => {
+    const error = new Error("outer", {
+      cause: new Error("middle", { cause: "ECONNREFUSED" }),
+    });
+
+    expect(formatErrorWithCause(error)).toBe(
+      "outer; caused by: middle; caused by: ECONNREFUSED",
+    );
+  });
+
+  it("leaves plain errors and non-Error throws unchanged, bounding deep chains", () => {
+    expect(formatErrorWithCause(new Error("boom"))).toBe("boom");
+    expect(formatErrorWithCause("boom")).toBe("boom");
+
+    let chained: Error = new Error("depth-0");
+    for (let i = 1; i <= 8; i++) {
+      chained = new Error(`depth-${i}`, { cause: chained });
+    }
+    // Top message plus at most 5 causes — a self-referencing chain can't loop.
+    expect(formatErrorWithCause(chained)).toBe(
+      "depth-8; caused by: depth-7; caused by: depth-6; caused by: depth-5; caused by: depth-4; caused by: depth-3",
+    );
+  });
+});
 
 describe("assertProvisioningWorkerPreflight", () => {
   it("verifies KMS can create or load the preflight key", async () => {
