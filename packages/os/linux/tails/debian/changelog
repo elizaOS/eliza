@@ -1,8 +1,14 @@
-tails (7.8) UNRELEASED; urgency=medium
+tails (7.8) unstable; urgency=medium
 
-  * Dummy entry for next release.
+  * elizaOS: vendor the APT closure from Tails' released 7.8 tag. The
+    package-lists, chroot_sources (live URLs, sid present) and snapshot
+    serials (debian 2026051801, debian-security latest, torproject
+    2026050704) are the self-consistent, CI-tested pairing that tag
+    shipped, replacing the UNRELEASED-dev serial guess whose 7.7.2-era
+    lists paired against a July snapshot deadlocked the chroot install on
+    cross-suite virtual-provider conflicts.
 
- -- intrigeri <intrigeri@debian.org>  Mon, 04 May 2026 09:33:33 +0000
+ -- elizaOS Live <noreply@elizaos.ai>  Tue, 07 Jul 2026 00:00:00 +0000
 
 tails (7.7.2) unstable; urgency=medium
 

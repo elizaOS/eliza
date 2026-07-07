@@ -1,33 +1,31 @@
-Explanation: The `sid` suite is intentionally NOT in our sources (see the
-Explanation: removed config/chroot_sources/sid.{chroot,binary}). Upstream Tails
-Explanation: pulls newer firmware + webext-ublock-origin-firefox from sid on its
-Explanation: stable base; on this trixie base every one of those packages is
-Explanation: already in trixie, and sid's presence only destabilized the apt
-Explanation: solver into cross-suite "two conflicting decisions" deadlocks
-Explanation: (rocm/mesa, StarPU, libpcp3/libpgpool). These firmware +
-Explanation: ublock pins therefore target trixie, not sid.
+Explanation: elizaOS vendors this APT configuration from Tails' released 7.8
+Explanation: tag so the package-lists, chroot_sources and snapshot serials form
+Explanation: the self-consistent, CI-tested pairing that tag shipped. The sid
+Explanation: suite is present as upstream ships it, and firmware + ublock are
+Explanation: pulled from it at the same priorities. The trailing rocm/starpu/nsca
+Explanation: entries are defence-in-depth: priority -1, inert on this pairing.
 Package: firmware-linux-free
-Pin: release o=Debian,n=trixie
+Pin: release o=Debian,n=sid
 Pin-Priority: 999
 
 Package: src:firmware-nonfree
-Pin: release o=Debian,n=trixie
+Pin: release o=Debian,n=sid
 Pin-Priority: 990
 
 Package: firmware-ath9k-htc
-Pin: release o=Debian,n=trixie
+Pin: release o=Debian,n=sid
 Pin-Priority: 999
 
 Package: firmware-carl9170
-Pin: release o=Debian,n=trixie
+Pin: release o=Debian,n=sid
 Pin-Priority: 999
 
 Package: firmware-sof-signed
-Pin: release o=Debian,n=trixie
+Pin: release o=Debian,n=sid
 Pin-Priority: 999
 
 Package: firmware-zd1211
-Pin: release o=Debian,n=trixie
+Pin: release o=Debian,n=sid
 Pin-Priority: 999
 
 Explanation: #15477
@@ -36,7 +34,7 @@ Pin: origin deb.tails.boum.org
 Pin-Priority: 999
 
 Package: webext-ublock-origin-firefox
-Pin: release o=Debian,n=trixie
+Pin: release o=Debian,n=sid
 Pin-Priority: 999
 
 Explanation: Upgrading to more recent version of Electrum allow us to get rid of Qt5 (tails#21085)
@@ -49,40 +47,28 @@ Package: python3-aiorpcx python3-electrum-aionostr python3-electrum-ecc libsecp2
 Pin: release o=Debian,n=trixie-backports
 Pin-Priority: 999
 
-Explanation: rocm-opencl-icd (ROCm compute) is an unintended provider of the
-Explanation: virtual `opencl-icd` on this mesa-graphics distro, and it carries
-Explanation: `Breaks: mesa-opencl-icd`. In the multi-suite snapshot the apt
-Explanation: solver selects both it and mesa-opencl-icd (the intended provider),
-Explanation: deadlocking the chroot package install ("Reached two conflicting
-Explanation: decisions"). Pin it out so `opencl-icd` resolves to mesa-opencl-icd
-Explanation: alone. Nothing in our package lists depends on rocm directly.
+Explanation: Defence-in-depth (inert on the released 7.8 pairing): rocm-opencl-icd
+Explanation: is an unintended provider of the virtual opencl-icd and Breaks
+Explanation: mesa-opencl-icd, so a multi-suite solver can select both and deadlock.
+Explanation: Nothing here depends on ROCm; pin it out so opencl-icd resolves to
+Explanation: mesa-opencl-icd alone.
 Package: rocm-opencl-icd
 Pin: release *
 Pin-Priority: -1
 
-Explanation: The starpu-contrib source builds an alternative StarPU that
-Explanation: provides the same virtuals as mainline StarPU (e.g.
-Explanation: libstarpu-anympi-1.4-3) while carrying `Conflicts:` against every
-Explanation: mainline counterpart (libstarpumpi, libstarpufft, ...). Identical
-Explanation: failure mode to rocm above: in the multi-suite snapshot the solver
-Explanation: selects both a contrib and a mainline StarPU provider and deadlocks
-Explanation: the chroot install. Nothing here wants StarPU at all (it is only
-Explanation: ever pulled transitively as a virtual provider), so pin the whole
-Explanation: contrib source out (src: covers libstarpu-contrib*, starpu-contrib-*)
-Explanation: and let the mainline satisfy those virtuals.
+Explanation: Defence-in-depth: the starpu-contrib source provides the same virtuals
+Explanation: as mainline StarPU while Conflicts-ing every mainline counterpart, so a
+Explanation: multi-suite solver can select both and deadlock. Nothing here wants
+Explanation: StarPU (only ever a transitive virtual provider); pin the contrib
+Explanation: source out (covers libstarpu-contrib*, starpu-contrib-*).
 Package: src:starpu-contrib
 Pin: release *
 Pin-Priority: -1
 
-Explanation: The two Nagios NSCA clients — nsca-client (original) and
-Explanation: nsca-ng-client (the rewrite) — Conflict with each other and neither
-Explanation: belongs on an amnesic end-user OS. Even after the snapshot serial
-Explanation: bump the resolver pulls BOTH as alternatives and deadlocks the chroot
-Explanation: install ("two conflicting decisions"). Nothing in our package lists
-Explanation: requires either (nsca-ng-client has no reverse-deps; nsca-client is
-Explanation: only pulled by the nsca server, which we do not install), so pin both
-Explanation: out. This is the last package-set conflict after #15336/#15340/#15344
-Explanation: /#15345.
+Explanation: Defence-in-depth: the two Nagios NSCA clients (nsca-client and
+Explanation: nsca-ng-client) Conflict with each other and neither belongs on an
+Explanation: amnesic OS; a solver can pull both as alternatives and deadlock.
+Explanation: Nothing here requires either, so pin both out.
 Package: nsca-client nsca-ng-client
 Pin: release *
 Pin-Priority: -1

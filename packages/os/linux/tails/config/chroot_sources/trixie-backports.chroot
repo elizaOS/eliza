@@ -1,1 +1,1 @@
-deb http://time-based.snapshots.deb.tails.boum.org/debian/2026070701 trixie-backports main contrib non-free non-free-firmware
+deb http://ftp.us.debian.org/debian/ trixie-backports main contrib non-free non-free-firmware
