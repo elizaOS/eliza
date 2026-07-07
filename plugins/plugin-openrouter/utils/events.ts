@@ -59,8 +59,8 @@ export function emitModelUsageEvent(
       prompt: inputTokens,
       completion: outputTokens,
       total: totalTokens,
-      ...(typeof cacheRead === "number" ? { cacheRead } : {}),
-      ...(typeof cacheCreation === "number" ? { cacheCreation } : {}),
+      ...(typeof cacheRead === "number" ? { cacheReadInputTokens: cacheRead } : {}),
+      ...(typeof cacheCreation === "number" ? { cacheCreationInputTokens: cacheCreation } : {}),
     },
   } as EventPayload);
 

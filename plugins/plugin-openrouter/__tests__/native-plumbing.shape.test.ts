@@ -434,6 +434,63 @@ describe("OpenRouter native text plumbing", () => {
     );
   });
 
+  it("forwards streaming cache-token usage into returned usage and MODEL_USED events", async () => {
+    const streamText = vi.fn(() => ({
+      textStream: (async function* textStream() {
+        yield "ok";
+      })(),
+      text: Promise.resolve("ok"),
+      toolCalls: Promise.resolve([]),
+      finishReason: Promise.resolve("stop"),
+      usage: Promise.resolve({
+        inputTokens: 100,
+        outputTokens: 12,
+        totalTokens: 112,
+        cachedInputTokens: 80,
+        cacheCreationInputTokens: 5,
+      }),
+    }));
+    vi.doMock("ai", () => ({
+      generateText: vi.fn(),
+      streamText,
+    }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({
+        chat: (modelName: string) => ({ modelName }),
+      }),
+    }));
+
+    const runtime = createRuntime();
+    const { handleTextSmall } = await import("../models/text");
+    const stream = (await handleTextSmall(runtime, {
+      prompt: "stream with cached prompt",
+      stream: true,
+      messages: [{ role: "user", content: "stream with cached prompt" }],
+    } as never)) as { usage: Promise<Record<string, number> | undefined> };
+
+    await expect(stream.usage).resolves.toMatchObject({
+      promptTokens: 100,
+      completionTokens: 12,
+      totalTokens: 112,
+      cacheReadInputTokens: 80,
+      cacheCreationInputTokens: 5,
+    });
+
+    const emitEvent = runtime.emitEvent as unknown as ReturnType<typeof vi.fn>;
+    expect(emitEvent).toHaveBeenCalledWith(
+      "MODEL_USED",
+      expect.objectContaining({
+        tokens: expect.objectContaining({
+          prompt: 100,
+          completion: 12,
+          total: 112,
+          cacheReadInputTokens: 80,
+          cacheCreationInputTokens: 5,
+        }),
+      })
+    );
+  });
+
   it("turns attachment-only requests into a user message", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",
