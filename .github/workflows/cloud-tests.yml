@@ -82,7 +82,8 @@ jobs:
 
   unit-tests:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 15
+    # PR #15311 repeatedly reached the old 15m ceiling while the cloud suite was still passing.
+    timeout-minutes: 25
     env:
       NODE_ENV: test
     steps:
