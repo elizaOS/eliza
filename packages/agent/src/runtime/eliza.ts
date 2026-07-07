@@ -2116,7 +2116,10 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   )
     ?.trim()
     .toLowerCase();
-  if (cloudEmbeddingsPolicy === "true") {
+  if (isTruthyEnvFlag(cloudEmbeddingsPolicy)) {
+    // Match the truthy set the router (`readBooleanEnv`) and warmup policy
+    // (`isTruthyEnv`) use for this same flag, so `=1`/`=yes`/`=true` all opt into
+    // Cloud embeddings identically at the boot, router, and warmup call sites.
     process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "true";
   } else if (cloudEmbeddingsPolicy === "false" || hasByoEmbeddingProvider) {
     process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
