@@ -111,11 +111,19 @@ function contactGazetteerEntries(
 function redactPatternMatches(text: string): RawCandidate[] {
   const candidates: RawCandidate[] = [];
   for (const rawPattern of getDefaultRedactPatterns()) {
-    // Do not force the `i` flag: case-insensitive matching corrupts
-    // case-sensitive secret patterns (base64/hex/prefixed keys). Any pattern
-    // that genuinely needs case-insensitivity must encode `(?i)`-style intent
-    // in its own source string.
-    const pattern = new RegExp(rawPattern, "g");
+    // `gi`, matching how the production redactor and secret-swap compile the
+    // IDENTICAL pattern list (core/src/security/redact.ts parsePattern and
+    // secret-swap.ts both default to "gi"). The name-based patterns
+    // (password:/token=/authorization: bearer/...) are case-divergent in the
+    // wild - compiling them case-sensitively here made this recall-oriented
+    // miner strictly less sensitive than the redactor it feeds, silently
+    // under-reporting candidates on the stage-0 human-review surface.
+    // JS RegExp has no inline (?i), so per-pattern case intent cannot live in
+    // the pattern source; a genuinely case-sensitive pattern belongs in the
+    // /pattern/flags escape-hatch form core supports. Over-matching here only
+    // adds rows to a human-review CSV - the correct failure direction for a
+    // miner.
+    const pattern = new RegExp(rawPattern, "gi");
     for (const match of text.matchAll(pattern)) {
       const value = match[match.length - 1] || match[0];
       if (!value) continue;

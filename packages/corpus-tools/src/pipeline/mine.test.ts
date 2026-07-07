@@ -90,6 +90,29 @@ describe("minePiiCandidates", () => {
     ).toBe(true);
   });
 
+  it("matches name-based redact patterns case-insensitively, like the production redactor", async () => {
+    // Regression for the gi->g flag change (#15116 follow-up): core compiles
+    // the identical pattern list with "gi" (redact.ts parsePattern,
+    // secret-swap.ts); the miner going case-sensitive silently under-reported
+    // these on the stage-0 human-review surface.
+    const rows = [
+      message("case-1", "password: hunter2"),
+      message("case-2", "token=abc4567"),
+      message("case-3", "authorization: bearer eyJhbGciOiJIUzI1NiJ9.e30.abc"),
+    ];
+
+    const artifacts = await minePiiCandidates(rows, { hashSalt: "case-v1" });
+    const byMemory = new Set(
+      artifacts.candidates
+        .filter((candidate) => candidate.kind === "redact-pattern")
+        .map((candidate) => candidate.sourceRef.memoryId),
+    );
+
+    for (const id of ["case-1", "case-2", "case-3"]) {
+      expect(byMemory.has(id), `redact-pattern miss on ${id}`).toBe(true);
+    }
+  });
+
   it("emits stable hashes and contact-gazetteer candidates", async () => {
     const contacts: CorpusContact[] = [
       {
