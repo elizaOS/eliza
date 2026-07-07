@@ -285,6 +285,14 @@ export async function maybeAugmentChatMessageWithDocuments(
   };
 
   const lookupTimeoutMs = resolveLookupTimeoutMs(options.lookupTimeoutMs);
+  // This augmentation embeds the recall query BEFORE the run starts (no runId
+  // yet), so the per-turn embed cache keys off the turn's message id instead.
+  // The in-run TTFT prefetch presents the same id and adopts this vector rather
+  // than issuing a second identical embed round-trip (#15253). The turn key
+  // travels via this option, NOT the search message (whose id is deliberately a
+  // fresh UUID for the scope-read coercion above).
+  const turnMessageId =
+    typeof message.id === "string" ? (message.id as UUID) : undefined;
   const loadMatches = async (
     scopeRoomId: UUID,
     queryText: string,
@@ -307,6 +315,7 @@ export async function maybeAugmentChatMessageWithDocuments(
           { roomId: scopeRoomId },
           undefined,
           accessContext,
+          { turnMessageId },
         )) ?? [],
     );
     return { matches: result.value, timedOut: result.timedOut };

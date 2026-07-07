@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Memory, UUID } from "../../../types";
 import { MemoryType, ModelType } from "../../../types";
 import { bm25Scores, normalizeBm25Scores, tokenize } from "../bm25";
+import { embedRecallQuery } from "../recall-embed";
 import { DocumentService } from "../service";
 
 // ── BM25 unit tests ────────────────────────────────────────────────────────
@@ -474,6 +475,70 @@ describe("DocumentService.searchDocuments", () => {
 			// Fast embed → vector search ran (searchMemories), no keyword fallback.
 			expect(rt.searchMemories).toHaveBeenCalledOnce();
 			expect(results[0].id).toBe("frag-fast");
+		});
+	});
+
+	// Proves the `turnMessageId` option threads all the way through
+	// `_vectorSearch`/`_hybridSearch` into `embedRecallQuery`, so the pre-run
+	// augmentation search and the in-run recall embed of the same query share one
+	// round-trip (#15253). Models the real run-id transition: the pre-run search
+	// embeds under a transient id, then a live run id supersedes it.
+	describe("turnMessageId threading (#15253)", () => {
+		const TURN_MESSAGE_ID = "44444444-4444-4444-4444-444444444444" as UUID;
+		const R_AUG = "aaaaaaaa-0000-0000-0000-000000000001" as UUID;
+		const RUN_ID = "bbbbbbbb-0000-0000-0000-000000000002" as UUID;
+
+		function buildEmbedCountingRuntime() {
+			const rt = buildRuntime({
+				hasEmbedding: true,
+				fragments: [],
+			}) as ReturnType<typeof buildRuntime> & { getCurrentRunId: () => string };
+			let runId: string = R_AUG;
+			rt.getCurrentRunId = () => runId;
+			rt.useModel = vi.fn(async () => [0.1, 0.2, 0.3]) as typeof rt.useModel;
+			return {
+				rt,
+				startRun: () => {
+					runId = RUN_ID;
+				},
+			};
+		}
+
+		const embedCallCount = (rt: {
+			useModel: ReturnType<typeof vi.fn>;
+		}): number =>
+			rt.useModel.mock.calls.filter(
+				([modelType]) => modelType === ModelType.TEXT_EMBEDDING,
+			).length;
+
+		it.each([
+			"vector",
+			"hybrid",
+		] as const)("%s mode threads turnMessageId so the in-run recall embed adopts the search embed — one round-trip", async (mode) => {
+			const { rt, startRun } = buildEmbedCountingRuntime();
+			const svc = buildService(rt);
+			const text = "what is the escalation policy?";
+
+			await svc.searchDocuments(
+				makeMessage(text),
+				{ roomId: "room-1" as UUID },
+				mode,
+				undefined,
+				{ turnMessageId: TURN_MESSAGE_ID },
+			);
+			expect(rt.searchMemories).toHaveBeenCalled();
+			expect(embedCallCount(rt)).toBe(1);
+
+			// In-run recall caller (prefetch) presents the same messageId → adopts
+			// the search's pre-run vector instead of re-embedding.
+			startRun();
+			const vector = await embedRecallQuery(
+				rt as unknown as Parameters<typeof embedRecallQuery>[0],
+				text,
+				{ messageId: TURN_MESSAGE_ID },
+			);
+			expect(vector).toEqual([0.1, 0.2, 0.3]);
+			expect(embedCallCount(rt)).toBe(1);
 		});
 	});
 });

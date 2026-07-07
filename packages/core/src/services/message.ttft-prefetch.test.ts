@@ -23,6 +23,10 @@ const USER_ID = "00000000-0000-0000-0000-0000000000c1" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-0000000000d1" as UUID;
 const WORLD_ID = "00000000-0000-0000-0000-0000000000e1" as UUID;
 const RUN_ID = "00000000-0000-0000-0000-0000000000f1" as UUID;
+// The transient run id `AgentRuntime.getCurrentRunId()` lazily mints during the
+// pre-run augmentation window, before `startRun` mints RUN_ID. Distinct from
+// RUN_ID so the R_aug≠R_run mismatch the fix targets is actually exercised.
+const PRERUN_ID = "00000000-0000-0000-0000-0000000000f9" as UUID;
 const MESSAGE_ID = "00000000-0000-0000-0000-0000000000e2" as UUID;
 const WARM_VECTOR = [0.11, 0.22, 0.33];
 
@@ -31,6 +35,13 @@ interface RuntimeOptions {
 	muted?: boolean;
 	/** Force LLM-off-by-default so the turn drops before compose. */
 	llmOff?: boolean;
+	/**
+	 * Model the real run lifecycle: `getCurrentRunId` lazily mints a transient
+	 * PRERUN_ID until `startRun` mints RUN_ID, reproducing the pre-run
+	 * document-augmentation window on the API chat path where the augmentation
+	 * embed caches under a run id that `startRun` then replaces.
+	 */
+	deferRunUntilStart?: boolean;
 }
 
 function makeRuntime(opts: RuntimeOptions = {}) {
@@ -57,14 +68,18 @@ function makeRuntime(opts: RuntimeOptions = {}) {
 		if (modelType === ModelType.TEXT_EMBEDDING) return WARM_VECTOR;
 		throw new Error(`unexpected non-embedding model call: ${modelType}`);
 	});
+	let runStarted = !opts.deferRunUntilStart;
 	const runtime = {
 		agentId: AGENT_ID,
 		character: { name: "Eliza" },
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 		stateCache: new Map(),
 		turnControllers: new TurnControllerRegistry(),
-		startRun: vi.fn(() => RUN_ID),
-		getCurrentRunId: vi.fn(() => RUN_ID),
+		startRun: vi.fn(() => {
+			runStarted = true;
+			return RUN_ID;
+		}),
+		getCurrentRunId: vi.fn(() => (runStarted ? RUN_ID : PRERUN_ID)),
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
 		reportError: vi.fn(),
@@ -145,6 +160,39 @@ describe("recall-query embed prefetch (per-turn cache warm)", () => {
 			([modelType]) => modelType === ModelType.TEXT_EMBEDDING,
 		);
 		expect(embedCalls).toHaveLength(1);
+	});
+
+	it("adopts the pre-run augmentation embed — one embed for the whole turn (#15253)", async () => {
+		// Reproduce the API chat sequence: document augmentation embeds the query
+		// BEFORE the run starts (getCurrentRunId mints the transient PRERUN_ID,
+		// keyed here by messageId), then handleMessage calls startRun (minting the
+		// distinct RUN_ID) and the prefetch fires. Presenting the same messageId,
+		// the prefetch adopts the pre-run vector — re-stamping the slot with
+		// RUN_ID — instead of issuing a second identical round-trip.
+		const { runtime, useModel } = makeRuntime({ deferRunUntilStart: true });
+		const service = new DefaultMessageService();
+		const text = "what is the refund policy?";
+
+		// Pre-run augmentation embed (no active run yet).
+		const preRun = await embedRecallQuery(runtime, text, {
+			messageId: MESSAGE_ID,
+		});
+		expect(preRun).toEqual(WARM_VECTOR);
+		expect(
+			useModel.mock.calls.filter(
+				([modelType]) => modelType === ModelType.TEXT_EMBEDDING,
+			),
+		).toHaveLength(1);
+
+		await service.handleMessage(runtime, userMessage(text));
+
+		// The in-run prefetch adopted the pre-run slot → still exactly one embed
+		// for the whole turn.
+		const embedCalls = useModel.mock.calls.filter(
+			([modelType]) => modelType === ModelType.TEXT_EMBEDDING,
+		);
+		expect(embedCalls).toHaveLength(1);
+		expect(embedCalls[0][1]).toEqual({ text });
 	});
 
 	it("issues no embed for a muted turn (dropped turn = zero model calls)", async () => {

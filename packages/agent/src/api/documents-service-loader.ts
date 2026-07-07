@@ -71,6 +71,7 @@ export interface DocumentsServiceLike {
     scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
     searchMode?: DocumentSearchMode,
     accessContext?: AccessContext,
+    options?: { turnMessageId?: UUID },
   ): Promise<
     Array<{
       id: UUID;

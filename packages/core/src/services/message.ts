@@ -9434,11 +9434,20 @@ export class DefaultMessageService implements IMessageService {
 		// (keyed by this run), so they await this in-flight result rather than
 		// starting a fresh round-trip. Fire-and-forget; the value is re-read from
 		// the per-run cache by its normalized-text key.
+		// Present the turn's `messageId` so this prefetch ADOPTS the pre-run cache
+		// the API chat path's document augmentation already warmed under the same
+		// id (#15253): on a no-match turn the query text is byte-identical, so the
+		// adopted vector resolves here with ZERO new embed instead of a second
+		// identical round-trip.
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — a warm failure only
 		// forfeits the overlap; the compose-time caller re-embeds and fails open.
 		const recallWarmText = message.content?.text;
 		if (typeof recallWarmText === "string" && recallWarmText.trim() !== "") {
-			void embedRecallQuery(runtime, recallWarmText).catch((error) =>
+			const recallWarmMessageId =
+				typeof message.id === "string" ? message.id : undefined;
+			void embedRecallQuery(runtime, recallWarmText, {
+				messageId: recallWarmMessageId,
+			}).catch((error) =>
 				runtime.reportError("MessageService.recallEmbedPrefetch", error, {
 					roomId: message.roomId,
 					runId,
