@@ -1290,7 +1290,50 @@ type ConversationRouteMessageRecord = {
   accountConnect?: AccountConnectRequest;
 };
 
+// Serializes concurrent greeting ensures per conversation. The body is a
+// read-check-then-write (getMemories scan → persistConversationMemory) with no
+// room-level uniqueness on (room, source): each persist mints a fresh UUID so
+// isDuplicateMemoryError never fires. Two overlapping callers — the
+// bootstrapGreeting create racing a superseding hydration's POST /greeting, the
+// new-chat fallback racing the empty-thread auto-greet, or two sessions
+// hydrating the same fresh conversation — both read an empty room and both
+// persist an identical deterministic greeting, minting the duplicate
+// "Hey, I'm <agent>" row (which also leaks into model context via getMemories).
+// Coalescing on one in-flight promise per conversation makes the second caller
+// observe the first's committed row instead of re-racing it. Sequential
+// create-then-fetch is unaffected: the entry is deleted before any later call.
+const greetingEnsureInFlight = new Map<
+  string,
+  Promise<{
+    text: string;
+    agentName: string;
+    generated: boolean;
+    persisted: boolean;
+  }>
+>();
+
 async function ensureConversationGreetingStored(
+  state: ConversationRouteState,
+  conv: ConversationMeta,
+  lang: string,
+): Promise<{
+  text: string;
+  agentName: string;
+  generated: boolean;
+  persisted: boolean;
+}> {
+  const inFlight = greetingEnsureInFlight.get(conv.id);
+  if (inFlight) return inFlight;
+  const run = ensureConversationGreetingStoredUnlocked(state, conv, lang);
+  greetingEnsureInFlight.set(conv.id, run);
+  try {
+    return await run;
+  } finally {
+    greetingEnsureInFlight.delete(conv.id);
+  }
+}
+
+async function ensureConversationGreetingStoredUnlocked(
   state: ConversationRouteState,
   conv: ConversationMeta,
   lang: string,

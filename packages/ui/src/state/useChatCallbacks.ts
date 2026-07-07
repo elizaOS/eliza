@@ -971,6 +971,13 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         let greetingText = inlineGreeting?.text?.trim() || "";
         let greetingLocalInference = inlineGreeting?.localInference;
         if (!greetingText) {
+          // Register the in-flight conversation BEFORE the request leaves. This
+          // fallback bypasses fetchGreeting, so without the ref the empty-thread
+          // auto-greet effect passes every guard during this await and fires a
+          // SECOND concurrent POST /greeting for the same fresh conversation —
+          // the overlapping pair that double-persists two identical greeting
+          // rows server-side (the other half of the duplicate-greeting defect).
+          greetingInFlightConversationRef.current = conversation.id;
           try {
             const resp = await client.requestGreeting(
               conversation.id,
@@ -980,6 +987,10 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
             greetingLocalInference = resp.localInference;
           } catch {
             // Greeting generation failed — continue without greeting
+          } finally {
+            if (greetingInFlightConversationRef.current === conversation.id) {
+              greetingInFlightConversationRef.current = null;
+            }
           }
         }
 
@@ -1094,6 +1105,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       conversationHydrationEpochRef,
       conversationMessagesRef,
       greetingFiredRef,
+      greetingInFlightConversationRef,
       loadedConversationIdRef,
       send.interruptActiveChatPipeline,
       setActiveConversationId,

@@ -15,7 +15,7 @@ import type {
 } from "../api";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
 import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
-import { dedupeGreetings } from "./greeting-dedupe";
+import { dedupeGreetings, isAgentGreetingMessage } from "./greeting-dedupe";
 import {
   loadChatAvatarVisible,
   loadChatVoiceMuted,
@@ -398,11 +398,23 @@ export function useChatState(): ChatStateHook {
     (older: ConversationMessage[]) => {
       if (older.length === 0) return;
       const current = conversationMessagesRef.current;
+      // Single-greeting invariant across pagination: on an already-poisoned
+      // thread the duplicated greeting pair sits at the very HEAD, so both rows
+      // arrive together in a load-older batch and would bypass the
+      // setConversationMessages dedupe seam. Filter the batch before BOTH
+      // commits (ref + dispatch) so the reducer's id-merge sees the same
+      // survivors and stays in lockstep. Healthy threads are untouched: a window
+      // that legitimately missed its single greeting still prepends it (current
+      // has none → dedupeGreetings(older) is a same-ref no-op).
+      const olderDeduped = current.some(isAgentGreetingMessage)
+        ? older.filter((m) => !isAgentGreetingMessage(m))
+        : dedupeGreetings(older);
+      if (olderDeduped.length === 0) return;
       const existingIds = new Set(current.map((m) => m.id));
-      const olderToAdd = older.filter((m) => !existingIds.has(m.id));
+      const olderToAdd = olderDeduped.filter((m) => !existingIds.has(m.id));
       if (olderToAdd.length === 0) return;
       conversationMessagesRef.current = [...olderToAdd, ...current];
-      dispatch({ type: "PREPEND_MESSAGES", value: older });
+      dispatch({ type: "PREPEND_MESSAGES", value: olderDeduped });
     },
     [],
   );
