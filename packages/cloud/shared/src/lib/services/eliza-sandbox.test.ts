@@ -3396,6 +3396,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     expect(res.success).toBe(true);
     expect(executedSql).toBeDefined();
     expect(sqlBoundParams(executedSql)).toContain(TO_DIGEST);
+    expect(sqlBoundParams(executedSql)).toContain(DOCKER_IMAGE);
   });
 
   test("(e2) same-repo different-tag pin → CAS admits, swap proceeds (#15358)", async () => {
@@ -3541,9 +3542,9 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
     }
   });
 
-  test("happy path → restores pre-upgrade snapshot then swaps back onto PREV_DIGEST + clears prior columns", async () => {
+  test("happy path with empty persisted image ref → restores pre-upgrade snapshot then swaps back onto PREV_DIGEST", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const agent = upgradedAgentRow();
+    const agent: AgentSandbox = { ...upgradedAgentRow(), previous_docker_image: "" };
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(curNode());
     // The pre-upgrade restore point + its reconstruction.
@@ -3608,6 +3609,9 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       expect(params).toContain("sandbox-rb-1");
       expect(params).toContain("node-rb");
       expect(params).toContain(PREV_DIGEST); // image_digest := previous
+      expect(create.mock.calls[0]?.[0]).toMatchObject({
+        dockerImage: `ghcr.io/elizaos/eliza-agent@${PREV_DIGEST}`,
+      });
       expect(create).toHaveBeenCalledTimes(1);
       expect(checkHealth).toHaveBeenCalledTimes(1);
       // The old (post-upgrade) container is torn down; blue stays.
