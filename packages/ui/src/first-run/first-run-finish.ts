@@ -25,6 +25,7 @@ import { savePendingCloudHandoff } from "../cloud/handoff/pending-handoff-store"
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
 import { getBootConfig } from "../config/boot-config";
 import type { UiLanguage } from "../i18n";
+import { clearForceFreshFirstRun } from "../platform/first-run-reset";
 import { isAndroid, isDesktopPlatform, isIOS } from "../platform/init";
 import {
   addAgentProfile,
@@ -525,6 +526,19 @@ export async function bindCloudAgent(
   if (supportsFullAppShellRoutes(cloudAgentApiBase)) {
     await persistFirstRun(plan, ports);
   }
+  // A shared/dedicated cloud agent SKIPS persistFirstRun above, so it never
+  // reaches the `client.submitFirstRun` call that clears the durable
+  // force-fresh flag via the reset client patch. Without clearing it here, a
+  // user who onboarded through the escape hatch (`?reset` / a prior in-session
+  // agent reset that armed force-fresh) completes a shared-agent onboarding but
+  // leaves `elizaos:first-run:force-fresh` armed — so the NEXT cold boot /
+  // PWA relaunch re-runs the restore-phase force-fresh consume
+  // (savePersistedFirstRunComplete(false) + clear active server) and bounces
+  // the returning user back into "Setting up your agent…" even though their
+  // agent is healthy and running. Clear it on the cloud completion path too so
+  // "completion clears force-fresh" holds for EVERY runtime (idempotent — the
+  // app-shell path's submitFirstRun already cleared it above).
+  clearForceFreshFirstRun();
   clearPersistedFirstRunState();
   ports.onStatus?.(null);
   ports.completeFirstRun("chat");
