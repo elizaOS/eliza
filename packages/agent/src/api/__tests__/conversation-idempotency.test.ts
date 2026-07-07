@@ -285,6 +285,40 @@ describe("conversation-route chat idempotency wiring", () => {
     expect(second.record.ended).toBe(true);
   });
 
+  it("SSE: a retry after a disconnect-ABORTED first attempt re-runs the turn (no dead air)", async () => {
+    // The flagship blip-retry scenario the client was built for: iOS suspend
+    // kills the socket, the server aborts generation (persisting no reply),
+    // and the client resends the SAME clientMessageId on resume. The arrival-
+    // keyed guard must be rolled back on the abort path or this retry is
+    // suppressed into a silently eaten message.
+    const { state, handleMessage, createMemory } = createHarness();
+    const abortError = Object.assign(new Error("client disconnected"), {
+      code: "TURN_ABORTED",
+    });
+    handleMessage.mockImplementationOnce(async () => {
+      throw abortError;
+    });
+    const body = { text: "hello", clientMessageId: "sse-abort-retry-1" };
+
+    const first = await runRoute("POST", STREAM_PATH, state, body);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    // Aborted turn: no assistant "done" payload with text was delivered.
+    const firstDone = parseDataFrames(first.record).find(
+      (f) => f.type === "done" && f.fullText === "ok",
+    );
+    expect(firstDone).toBeUndefined();
+
+    // The auto-retry with the same id must RUN — it is not a duplicate of any
+    // delivered outcome.
+    const second = await runRoute("POST", STREAM_PATH, state, body);
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    const secondDone = parseDataFrames(second.record).find(
+      (f) => f.type === "done",
+    );
+    expect(secondDone?.fullText).toBe("ok");
+    expect(createMemory.mock.calls.length).toBeGreaterThan(0);
+  });
+
   it("SSE: sends without a clientMessageId are never deduped", async () => {
     const { state, handleMessage } = createHarness();
     const body = { text: "hello" };
