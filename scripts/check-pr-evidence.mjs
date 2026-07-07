@@ -29,6 +29,37 @@ export const SURFACE_OCR_EVIDENCE_ROW = {
   id: "ocr-review",
   label: "OCR visual text review",
 };
+
+/**
+ * A changed file forces surface artifacts when it is a rendered-UI source file
+ * — labels are advisory and agents routinely omit them, so the gate cannot rely
+ * on them alone. Detection is deliberately narrow: a visual EXTENSION (`.tsx`,
+ * CSS family, `.svg`, `.html`, `.vue`) under a UI-bearing PACKAGE, excluding
+ * test/story/fixture files that render nothing a user sees. This is why editing
+ * a real component in `packages/ui` or `packages/app` demands screenshots while
+ * editing its `*.test.tsx` or `*.stories.tsx` does not.
+ */
+const SURFACE_PATH_RE =
+  /(^|\/)(packages\/(app|ui|tui|homepage)|apps\/app|packages\/cloud\/frontend|packages\/os\/landing)\//i;
+const SURFACE_VISUAL_EXT_RE = /\.(tsx|jsx|css|scss|sass|less|svg|html|vue)$/i;
+const SURFACE_NON_VISUAL_RE =
+  /(\.(test|spec|stories|story|bench)\.|\.d\.ts$|(^|\/)(__tests__|__e2e__|__mocks__|__fixtures__|test|tests|e2e|stories)\/)/i;
+
+/**
+ * True when any changed file is a rendered-UI source file (see `SURFACE_PATH_RE`
+ * rationale). Backslash paths from a Windows runner are normalized so the same
+ * diff classifies identically on either OS.
+ */
+export function requiresSurfaceArtifactsFromFiles(files) {
+  return parseChangedFiles(files).some((raw) => {
+    const file = raw.replaceAll("\\", "/");
+    return (
+      SURFACE_PATH_RE.test(file) &&
+      SURFACE_VISUAL_EXT_RE.test(file) &&
+      !SURFACE_NON_VISUAL_RE.test(file)
+    );
+  });
+}
 const OCR_EVIDENCE_RE =
   /\bOCR\b|ocr-triage|mvp:visual-verify|audit:app:verify|tesseract|text readout/i;
 
@@ -179,7 +210,9 @@ export function evaluatePrEvidence(
   options = {},
 ) {
   const rows = extractEvidenceRows(body ?? "");
-  const surfaceArtifactsRequired = requiresSurfaceArtifacts(options.labels);
+  const surfaceArtifactsRequired =
+    requiresSurfaceArtifacts(options.labels) ||
+    requiresSurfaceArtifactsFromFiles(options.changedFiles);
   const findings = requiredRows.map(({ id, label }) => {
     if (!rows.has(id)) return { id, label, status: "missing" };
     const rowText = rows.get(id);
@@ -245,7 +278,9 @@ Options:
   --labels <labels>   Comma-separated PR labels; ui/frontend/native require
                       concrete screenshot/video artifacts and linked OCR proof.
   --changed-files-file <path>
-                      Reject committed files under retired repo evidence paths.
+                      Reject committed files under retired repo evidence paths,
+                      AND require concrete screenshot/video/OCR artifacts when a
+                      rendered-UI source file is in the diff (labels optional).
   --json              Print machine-readable findings JSON.
   --self-test         Run the planted-fixture self-check.
   --help, -h          Show this help.
@@ -342,6 +377,40 @@ function runSelfTest() {
   }
 
   {
+    const body = REQUIRED_EVIDENCE_ROWS.map(
+      ({ id }) =>
+        `<!-- evidence-row:${id} -->\n- [ ] row \`N/A - not applicable to this change\`.`,
+    ).join("\n\n");
+    const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles: ["packages/ui/src/components/Foo.tsx"],
+    });
+    if (ok) {
+      failures.push("UI-file diff with all-N/A rows should fail (no labels)");
+    }
+    if (
+      findings.find((finding) => finding.id === "before-screenshots")
+        ?.status !== "artifact-required"
+    ) {
+      failures.push("UI-file diff should require screenshot artifacts");
+    }
+  }
+
+  {
+    const { ok } = evaluatePrEvidence(buildFixtureBody(), REQUIRED_EVIDENCE_ROWS, {
+      changedFiles: [
+        "packages/ui/src/components/Foo.test.tsx",
+        "packages/app-core/src/services/thing.ts",
+        "packages/ui/src/components/Foo.stories.tsx",
+      ],
+    });
+    if (!ok) {
+      failures.push(
+        "test/story/server-only diff should not trigger surface artifacts",
+      );
+    }
+  }
+
+  {
     const { ok } = evaluatePrEvidence(
       buildFixtureBody({ "backend-logs": "- [ ] Backend logs N/A" }),
     );
@@ -393,7 +462,7 @@ function runSelfTest() {
     for (const failure of failures) console.error(`  - ${failure}`);
     process.exit(1);
   }
-  console.log("check-pr-evidence self-test passed (9 cases).");
+  console.log("check-pr-evidence self-test passed (11 cases).");
 }
 
 function main() {
@@ -410,11 +479,11 @@ function main() {
   const body = readBody(args);
   const labelsIdx = args.indexOf("--labels");
   const labels = labelsIdx === -1 ? "" : (args[labelsIdx + 1] ?? "");
-  const retiredEvidenceFiles = findRetiredRepoEvidenceFiles(
-    readChangedFiles(args),
-  );
+  const changedFiles = readChangedFiles(args);
+  const retiredEvidenceFiles = findRetiredRepoEvidenceFiles(changedFiles);
   const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
     labels,
+    changedFiles,
   });
   const allOk = ok && retiredEvidenceFiles.length === 0;
 

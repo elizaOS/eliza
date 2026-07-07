@@ -23,6 +23,7 @@ import {
   parseLabels,
   REQUIRED_EVIDENCE_ROWS,
   requiresSurfaceArtifacts,
+  requiresSurfaceArtifactsFromFiles,
   SURFACE_ARTIFACT_ROW_IDS,
 } from "./check-pr-evidence.mjs";
 
@@ -308,6 +309,54 @@ describe("check-pr-evidence row primitives", () => {
     assert.equal(isChecked("- [X] done"), true);
     assert.equal(isChecked("- [ ] not done"), false);
     assert.equal(isRowSatisfied("- [x] done"), false);
+  });
+
+  it("detects rendered-UI source files in the diff", () => {
+    assert.equal(
+      requiresSurfaceArtifactsFromFiles(["packages/ui/src/components/Foo.tsx"]),
+      true,
+    );
+    assert.equal(
+      requiresSurfaceArtifactsFromFiles(["packages/app/src/views/Home.css"]),
+      true,
+    );
+    assert.equal(
+      requiresSurfaceArtifactsFromFiles([
+        String.raw`apps\app\src\Panel.tsx`,
+      ]),
+      true,
+    );
+    // Tests, stories, and server code render nothing a user sees.
+    assert.equal(
+      requiresSurfaceArtifactsFromFiles([
+        "packages/ui/src/components/Foo.test.tsx",
+        "packages/ui/src/components/Foo.stories.tsx",
+        "packages/app-core/src/services/thing.ts",
+        "packages/app/README.md",
+      ]),
+      false,
+    );
+  });
+
+  it("forces surface artifacts from a UI diff even without labels", () => {
+    const body = REQUIRED_EVIDENCE_ROWS.map(
+      ({ id }) =>
+        `<!-- evidence-row:${id} -->\n- [ ] row \`N/A - not applicable to this change\`.`,
+    ).join("\n\n");
+    const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles: ["packages/ui/src/components/NotificationRow.tsx"],
+    });
+    assert.equal(ok, false);
+    for (const id of SURFACE_ARTIFACT_ROW_IDS) {
+      assert.equal(
+        findings.find((finding) => finding.id === id).status,
+        "artifact-required",
+      );
+    }
+    assert.equal(
+      findings.find((finding) => finding.id === "ocr-review").status,
+      "ocr-required",
+    );
   });
 
   it("normalizes labels and detects surface labels", () => {
