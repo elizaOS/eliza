@@ -2101,24 +2101,28 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   // always-on recall hot path in ~10ms vs ~1.4s for a Cloud round-trip, so
   // routing embeddings to Cloud silently made every reply ~1.4s slower. Cloud
   // embeddings are now strictly OPT-IN: only an explicit
-  // `ELIZAOS_CLOUD_USE_EMBEDDINGS=true` (or a BYO embedding endpoint) hands the
-  // TEXT_EMBEDDING slot to Cloud — e.g. a dedicated cloud agent whose memory
-  // store is already provisioned at the cloud 1536-dim width. A fresh store
-  // provisions at gte-small's 384-dim width from first write; an existing
-  // 1536-dim store that switches degrades semantic recall to lexical/BM25
-  // (fail-open, never a dropped memory) until re-embedded. When neither the flag
-  // nor a BYO endpoint is set, the flag stays unset so plugin-local-inference
-  // warms + serves gte-small and the router prefers it (see
-  // plugin-local-inference router-handler `filterUnavailableLocalInference`).
+  // `ELIZAOS_CLOUD_USE_EMBEDDINGS=true` hands the TEXT_EMBEDDING slot to Cloud
+  // — e.g. a dedicated cloud agent whose memory store is already provisioned at
+  // the cloud 1536-dim width. A fresh store provisions at gte-small's 384-dim
+  // width from first write; an existing 1536-dim store that switches degrades
+  // semantic recall to lexical/BM25 (fail-open, never a dropped memory) until
+  // re-embedded. BYO embedding endpoints need the explicit "false" policy
+  // because plugin-elizacloud registers cloud embedding handlers when the flag
+  // is unset.
   const hasByoEmbeddingProvider = hasExplicitEmbeddingProviderConfig(config);
-  const cloudEmbeddingsExplicitlyEnabled =
-    readEffectiveEnvValue(config, "ELIZAOS_CLOUD_USE_EMBEDDINGS")
-      ?.trim()
-      .toLowerCase() === "true";
-  setCloudUsageEnv(
+  const cloudEmbeddingsPolicy = readEffectiveEnvValue(
+    config,
     "ELIZAOS_CLOUD_USE_EMBEDDINGS",
-    cloudEmbeddingsExplicitlyEnabled || hasByoEmbeddingProvider,
-  );
+  )
+    ?.trim()
+    .toLowerCase();
+  if (cloudEmbeddingsPolicy === "true") {
+    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "true";
+  } else if (cloudEmbeddingsPolicy === "false" || hasByoEmbeddingProvider) {
+    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
+  } else {
+    delete process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS;
+  }
   setCloudUsageEnv("ELIZAOS_CLOUD_USE_RPC", topology.services.rpc);
 
   if (effectivelyEnabled) {

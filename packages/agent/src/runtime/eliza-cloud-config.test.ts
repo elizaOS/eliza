@@ -17,9 +17,9 @@ import {
 } from "./eliza.ts";
 import { collectPluginNames } from "./plugin-collector.ts";
 
-// applyCloudConfigToEnv (#8769): a cloud-provisioned container MUST use cloud
-// (1536-dim) embeddings, never plugin-local-inference's 384-dim gte-small —
-// otherwise every memory insert is dropped on a dimension mismatch.
+// applyCloudConfigToEnv keeps inference cloud-routed for provisioned containers,
+// while embeddings stay on the explicitly selected provider so the runtime does
+// not silently steal the recall hot path.
 const ENV_KEYS = [
   "ELIZA_CLOUD_PROVISIONED",
   "ELIZAOS_CLOUD_USE_INFERENCE",
@@ -69,14 +69,15 @@ afterEach(() => {
 });
 
 describe("applyCloudConfigToEnv cloud-container embeddings (#8769)", () => {
-  it("a cloud-provisioned container uses cloud embeddings and clears the disabled flag", () => {
+  it("keeps cloud embeddings unset by default and clears the disabled flag", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
-    // A stale disabled flag must be cleared, not left to suppress cloud embeddings.
+    // A stale disabled flag must be cleared, not left to poison a later explicit
+    // cloud embedding opt-in.
     process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED = "true";
 
     applyCloudConfigToEnv({} as ElizaConfig);
 
-    expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("true");
+    expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
     expect(process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED).toBeUndefined();
     // Cloud inference is likewise forced on for a provisioned container.
     expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
