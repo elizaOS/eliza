@@ -4008,32 +4008,38 @@ export class ElizaSandboxService {
   }
 
   /**
-   * Reconcile a `disconnected` always-on (paid) agent back to health. A
+   * Reconcile a recoverable always-on (paid) agent back to health. A
    * `dedicated-always` agent is contractually meant to stay up, so the recovery
    * cycle calls this to self-heal a transient drop: re-probe the bridge and, if
    * the container answers, flip it straight back to `running` (the agent-router
-   * only routes `running`, so this also restores its subdomain). If it stays
-   * unreachable the caller re-provisions it. The guarded compare-and-set write
-   * (not a blind update-by-id) makes this safe to run concurrently with the
-   * heartbeat cycle AND with shutdown/delete/provision: the read -> probe -> write
-   * window spans seconds, so we only flip a row that is STILL `disconnected` at
-   * write time.
+   * only routes `running`, so this also restores its subdomain). Blue/green
+   * swaps can also leave a healthy bridge behind a stale `error` row; treat that
+   * the same as `disconnected`, but only after the live bridge answers. If it
+   * stays unreachable the caller re-provisions it. The guarded compare-and-set
+   * write (not a blind update-by-id) makes this safe to run concurrently with
+   * the heartbeat cycle AND with shutdown/delete/provision: the read -> probe ->
+   * write window spans seconds, so we only flip a row that is STILL in the
+   * probed recoverable status at write time.
    */
   async recoverDisconnected(
     agentId: string,
     orgId: string,
   ): Promise<"recovered" | "unreachable" | "gone"> {
     const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!rec || rec.status !== "disconnected") return "gone";
+    if (!rec || (rec.status !== "disconnected" && rec.status !== "error")) return "gone";
+    const recoverableStatus = rec.status;
     const reachable = await this.probeBridgeHealth(rec);
     if (!reachable) return "unreachable";
     // Guarded CAS: the row can move to deletion_pending / stopped (which nulls
     // bridge_url) / provisioning during the multi-second probe. Only flip it if
     // it is STILL disconnected with a live bridge — otherwise we'd resurrect a
     // being-deleted agent or wedge a stopped one at `running` with a dead bridge.
-    const restored = await agentSandboxesRepository.markReconnectedFromDisconnected(rec.id);
+    const restored = await agentSandboxesRepository.markReconnectedFromDisconnected(
+      rec.id,
+      recoverableStatus,
+    );
     if (!restored) return "gone";
-    logger.info("[agent-sandbox] Recovered disconnected agent back to running", {
+    logger.info("[agent-sandbox] Recovered agent back to running", {
       agentId,
     });
     return "recovered";

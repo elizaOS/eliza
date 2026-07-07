@@ -511,6 +511,37 @@ describe("ElizaSandboxService recoverDisconnected", () => {
     }
   });
 
+  test("recovers a reachable errored agent left behind by blue/green status drift", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox: AgentSandbox = {
+      ...customSandbox(),
+      status: "error",
+      error_message: null,
+      previous_image_digest: "sha256:old",
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockImplementation(
+      async () => sandbox,
+    );
+    const casSpy = spyOn(
+      agentSandboxesRepository,
+      "markReconnectedFromDisconnected",
+    ).mockImplementation(async () => ({ ...sandbox, status: "running", error_message: null }));
+    globalThis.fetch = mock(async () => new Response("ok", { status: 200 }));
+
+    try {
+      const result = await new ElizaSandboxService().recoverDisconnected(
+        sandbox.id,
+        sandbox.organization_id,
+      );
+      expect(result).toBe("recovered");
+      expect(casSpy).toHaveBeenCalledTimes(1);
+      expect(casSpy.mock.calls[0]).toEqual([sandbox.id, "error"]);
+    } finally {
+      findSpy.mockRestore();
+      casSpy.mockRestore();
+    }
+  });
+
   test("does NOT revive when the row left disconnected mid-probe (CAS loses -> gone)", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = disconnectedSandbox();
