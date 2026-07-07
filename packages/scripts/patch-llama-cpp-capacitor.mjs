@@ -301,6 +301,19 @@ for (const { label, dir: pkgDir } of candidates) {
 
     if (result.status === 0 || result.status === 1) {
       patched++;
+    } else if (process.platform === "win32") {
+      // Windows CI ships GNU patch 2.5.9 from Strawberry Perl
+      // (C:\Strawberry\c\bin\patch.exe), which aborts with an internal
+      // assertion ("patch.c, Line 354, Expression: hunk") on these hunks
+      // instead of applying them. This patch only rewrites Android build
+      // files (build.gradle / CMakeLists / LlamaCpp.java) that are never
+      // built on Windows, so a failed apply here is not fatal — the
+      // string-based repair below still runs and Windows never consumes the
+      // Android artifacts. Treat it as a skip so `bun install` stays green.
+      skipped++;
+      console.warn(
+        `[patch-llama-cpp-capacitor] \`patch\` failed on Windows for ${label}; Android build files are not consumed here, continuing.`,
+      );
     } else {
       failed++;
       console.error(
@@ -317,7 +330,10 @@ for (const { label, dir: pkgDir } of candidates) {
   }
 }
 
-if (failed > 0) {
+// Never fail the install on Windows: the only artifacts this script touches
+// are Android build files, which are not built on Windows, and the Strawberry
+// Perl `patch.exe` there is prone to aborting on otherwise-valid hunks.
+if (failed > 0 && process.platform !== "win32") {
   process.exitCode = 1;
 }
 
