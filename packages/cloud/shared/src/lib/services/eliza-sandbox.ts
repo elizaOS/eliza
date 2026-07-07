@@ -296,6 +296,12 @@ const HEARTBEAT_DISCONNECT_AFTER_MS = 120_000;
 // subdomain resolution, and therefore the public dedicated-agent proxy), so
 // the heal must REPAIR the columns, not tolerate the miss.
 const RECONCILE_SSH_CMD_TIMEOUT_MS = 15_000;
+// The agent entrypoint (cloud-agent-docker-entrypoint.sh) runs tailscaled on
+// this non-default socket (TS_SOCKET). The reconcile's in-container
+// `tailscale` CLI must be pointed at it, or it hits the default
+// /var/run/tailscale/tailscaled.sock (absent) and fails as if the daemon were
+// dead while it is actually alive here.
+const AGENT_CONTAINER_TS_SOCKET = "/tmp/tailscaled.sock";
 // Cap on consecutive heartbeat cycles a docker-healthy container may stay
 // `running` while its current tailnet IP cannot be resolved (node SSH down,
 // docker exec failing). Each such cycle ratchets error_count; hitting the cap
@@ -4127,6 +4133,12 @@ export class ElizaSandboxService {
    * `tailscale ip -4` inside the container is the same source the container
    * registered with, so it reflects the post-restart node key/IP — unlike the
    * stored headscale_ip, which is a provision-time snapshot.
+   *
+   * The CLI MUST be pointed at the container's non-default socket: the agent
+   * entrypoint (cloud-agent-docker-entrypoint.sh) starts tailscaled with
+   * `--socket=/tmp/tailscaled.sock` (TS_SOCKET), so a bare `tailscale ip` hits
+   * the default `/var/run/tailscale/tailscaled.sock`, which does not exist, and
+   * fails with "tailscaled.sock: no such file" even though the daemon is alive.
    */
   private async resolveCurrentAgentTailnetIp(rec: ReconcilableSandbox): Promise<string | null> {
     if (!rec.container_name) return null;
@@ -4136,7 +4148,7 @@ export class ElizaSandboxService {
     // positive signal), never throws; the caller ratchets toward disconnect.
     try {
       const out = await ssh.exec(
-        `docker exec ${shellQuote(rec.container_name)} tailscale ip -4`,
+        `docker exec ${shellQuote(rec.container_name)} tailscale --socket=${AGENT_CONTAINER_TS_SOCKET} ip -4`,
         RECONCILE_SSH_CMD_TIMEOUT_MS,
       );
       // First 100.64.0.0/10-shaped line; the CLI can also print IPv6 lines.

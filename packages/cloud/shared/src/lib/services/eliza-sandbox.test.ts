@@ -803,14 +803,14 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
   }
 
   // One SSH client mock serving both node-side commands the reconcile issues:
-  // docker health inspect and the in-container `tailscale ip -4`.
+  // docker health inspect and the in-container `tailscale --socket=... ip -4`.
   function mockNodeSsh(opts: { health: string | Error; tailscaleIp: string | Error }) {
     const exec = mock(async (cmd: string) => {
       if (cmd.includes("docker inspect")) {
         if (opts.health instanceof Error) throw opts.health;
         return opts.health;
       }
-      if (cmd.includes("tailscale ip")) {
+      if (cmd.includes("tailscale --socket")) {
         if (opts.tailscaleIp instanceof Error) throw opts.tailscaleIp;
         return opts.tailscaleIp;
       }
@@ -897,7 +897,7 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       expect(patch.headscale_ip).toBeUndefined();
       // A dead container short-circuits — no IP resolve is attempted on it.
       const tailscaleCalls = exec.mock.calls.filter(([cmd]) =>
-        String(cmd).includes("tailscale ip"),
+        String(cmd).includes("tailscale --socket"),
       );
       expect(tailscaleCalls).toHaveLength(0);
     } finally {
