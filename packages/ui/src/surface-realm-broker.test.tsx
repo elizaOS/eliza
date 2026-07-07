@@ -16,6 +16,7 @@ import {
   isShellReservedStorageKey,
   SurfaceRealmDeniedError,
   SurfaceRealmScope,
+  setActiveSurfaceRealmScope,
   surfaceViewStoragePrefix,
 } from "./surface-realm-broker";
 
@@ -159,6 +160,87 @@ describe("brokerSurfaceNavigate — navigation vector", () => {
       () => undefined,
     );
     expect(() => navigate("/x")).toThrow(SurfaceRealmDeniedError);
+  });
+});
+
+describe("raw-global guards", () => {
+  afterEach(() => {
+    setActiveSurfaceRealmScope(null);
+    window.localStorage.clear();
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("confines raw localStorage.clear() from an ungranted view to that view's namespace", () => {
+    window.localStorage.setItem("eliza:ui-theme", "dark");
+    window.localStorage.setItem(`${surfaceViewStoragePrefix("v1")}a`, "1");
+    window.localStorage.setItem(`${surfaceViewStoragePrefix("v2")}b`, "2");
+    window.localStorage.setItem("plugin.pref", "on");
+
+    const scope = new SurfaceRealmScope(
+      NO_GRANTS,
+      "v1",
+      window.localStorage,
+      () => undefined,
+    );
+    setActiveSurfaceRealmScope(scope);
+
+    window.localStorage.clear();
+
+    expect(window.localStorage.getItem("eliza:ui-theme")).toBe("dark");
+    expect(
+      window.localStorage.getItem(`${surfaceViewStoragePrefix("v1")}a`),
+    ).toBeNull();
+    expect(
+      window.localStorage.getItem(`${surfaceViewStoragePrefix("v2")}b`),
+    ).toBe("2");
+    expect(window.localStorage.getItem("plugin.pref")).toBe("on");
+  });
+
+  it("lets raw localStorage.clear() from a storage-granted view clear only non-reserved keys", () => {
+    window.localStorage.setItem("eliza:ui-theme", "dark");
+    window.localStorage.setItem(`${surfaceViewStoragePrefix("v1")}a`, "1");
+    window.localStorage.setItem(`${surfaceViewStoragePrefix("v2")}b`, "2");
+    window.localStorage.setItem("plugin.pref", "on");
+
+    const scope = new SurfaceRealmScope(
+      withGrants("storage"),
+      "trusted",
+      window.localStorage,
+      () => undefined,
+    );
+    setActiveSurfaceRealmScope(scope);
+
+    window.localStorage.clear();
+
+    expect(window.localStorage.getItem("eliza:ui-theme")).toBe("dark");
+    expect(
+      window.localStorage.getItem(`${surfaceViewStoragePrefix("v1")}a`),
+    ).toBeNull();
+    expect(
+      window.localStorage.getItem(`${surfaceViewStoragePrefix("v2")}b`),
+    ).toBeNull();
+    expect(window.localStorage.getItem("plugin.pref")).toBeNull();
+  });
+
+  it("denies raw query-string history mutation without navigate while allowing hash-only mutation", () => {
+    window.history.replaceState(null, "", "/surface?runtime=first-run");
+    const scope = new SurfaceRealmScope(
+      NO_GRANTS,
+      "rogue.view",
+      window.localStorage,
+      () => undefined,
+    );
+    setActiveSurfaceRealmScope(scope);
+
+    expect(() =>
+      window.history.replaceState(null, "", "/surface?runtime=changed"),
+    ).toThrow(SurfaceRealmDeniedError);
+    expect(window.location.search).toBe("?runtime=first-run");
+
+    expect(() =>
+      window.history.replaceState(null, "", "/surface?runtime=first-run#panel"),
+    ).not.toThrow();
+    expect(window.location.hash).toBe("#panel");
   });
 });
 
