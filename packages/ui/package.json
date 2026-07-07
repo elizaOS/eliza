@@ -47,12 +47,8 @@
     "test:launcher-loop-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-launcher-loop-e2e.mjs",
     "test:warmup-eviction-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-warmup-eviction-e2e.mjs",
     "test:permission-priming-e2e": "bun run --cwd ../.. packages/ui/src/components/permissions/__e2e__/run-permission-priming-e2e.mjs",
-    "test:immersive-e2e": "bun run --cwd ../.. packages/ui/src/spatial/__e2e__/run-immersive-e2e.mjs",
     "test:chat-ambient-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-ambient-e2e.mjs",
     "test:activity-feedback-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/__e2e__/run-activity-feedback-e2e.mjs",
-    "test:view-parity": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts registered-view-parity",
-    "test:view-screens": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./stories/view-screens-tui.config.ts && bunx playwright test --config ./stories/registered-views/registered-views.config.ts && bun stories/registered-views/build-index.mjs",
-    "test:xr-sim": "bunx playwright test --config ./stories/xr/xr-sim.config.ts",
     "test:background-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-background-e2e.mjs",
     "test:chat-infinite-scroll-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-chat-infinite-scroll-e2e.mjs",
     "test:suggestions-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-suggestions-e2e.mjs",
@@ -227,11 +223,6 @@
       "types": "./dist/spatial/tui/index.d.ts",
       "import": "./dist/spatial/tui/index.js",
       "default": "./dist/spatial/tui/index.js"
-    },
-    "./spatial/immersive": {
-      "types": "./dist/spatial/xr-immersive.d.ts",
-      "import": "./dist/spatial/xr-immersive.js",
-      "default": "./dist/spatial/xr-immersive.js"
     },
     "./first-run/*": {
       "types": "./dist/first-run/*.d.ts",
@@ -451,7 +442,6 @@
     "vaul": "^1.1.2",
     "viem": "^2.48.8",
     "wagmi": "^3.6.15",
-    "webxr-polyfill": "^2.0.3",
     "ws": "^8.19.0"
   },
   "devDependencies": {
@@ -479,7 +469,6 @@
     "@vitejs/plugin-react-swc": "^4.3.1",
     "esbuild": "^0.28.0",
     "fast-check": "^4.8.0",
-    "iwer": "^2.2.1",
     "jsdom": "^29.0.0",
     "pixelmatch": "^7.2.0",
     "playwright": "^1.61.0",

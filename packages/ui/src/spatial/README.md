@@ -1,17 +1,16 @@
-# `@elizaos/ui/spatial` — one view, three modalities
+# `@elizaos/ui/spatial` — modality-agnostic view authoring
 
-elizaOS renders views in three modalities: **GUI** (the dashboard), **XR**
-(headset panels via `plugin-facewear` / `plugin-xr`), and **TUI** (the agent
-terminal). Historically a plugin shipped a *separate* component per modality —
-`PhonePluginView` for GUI/XR and a hand-written `PhoneTuiView` for the terminal —
-declared three times in `plugin.views` with three `componentExport`s. The TUI
-variant in particular had no renderer at all: `@elizaos/tui` is an imperative
-string library with no React bridge, so the declared `*TuiView` exports were
-dead.
+elizaOS ships views on the **GUI** (the dashboard). Views are still authored
+modality-agnostically: the `SpatialModality` contract keeps `"xr"` and `"tui"`
+as valid values, the terminal registry/renderer (`spatial/tui`) remains as
+authoring + test infrastructure (and is consumed by `@elizaos/tui`), and the
+layout IR (`ir.ts`) is the cross-surface contract. The shipped XR renderer and
+the XR/TUI review harnesses were removed (#15269); reintroducing a non-GUI
+surface should happen deliberately against this contract.
 
-This module removes the per-modality split. You author a view **once** with a
-small primitive vocabulary; the same React tree renders correctly to all three
-surfaces, because all three consume one **layout IR** (`ir.ts`).
+You author a view **once** with a small primitive vocabulary; the same React
+tree renders to the GUI DOM and (in tests/tooling) to terminal lines, because
+both consume one **layout IR** (`ir.ts`).
 
 ```
             ┌─────────────────────────┐
@@ -52,16 +51,14 @@ Render it:
 import { SpatialSurface } from "@elizaos/ui/spatial";
 <SpatialSurface modality="gui"><Counter /></SpatialSurface>
 
-// XR — identical tree, spatially scaled up
-<SpatialSurface modality="xr"><Counter /></SpatialSurface>
-
-// TUI (Node-only subpath)
+// TUI (Node-only subpath; authoring/test infrastructure)
 import { renderViewToLines } from "@elizaos/ui/spatial/tui";
 const lines = renderViewToLines(<Counter />, 40); // string[] of width 40
 ```
 
 The reference view is [`example.tsx`](./example.tsx); the proof that one source
-renders to all three is [`__tests__/parity.test.tsx`](./__tests__/parity.test.tsx).
+renders on every surface of the contract is
+[`__tests__/parity.test.tsx`](./__tests__/parity.test.tsx).
 
 ## The vocabulary
 
@@ -110,9 +107,9 @@ a view is *authored* and *rendered*:
   modality="gui">`. Agent-surface attributes (`data-agent-id`, `data-agent-role`)
   are emitted automatically from each primitive's `agent` prop, so the existing
   view-interact capabilities (`list-elements`, `agent-click`, …) work unchanged.
-- **XR** — the `plugin-facewear` view-host sets `window.__elizaXRContext`; mount
-  with `<SpatialSurface modality="xr">` (or read `getActiveViewModality()`). Same
-  bundle, same export — no separate XR component.
+- **XR (contract only)** — `modality="xr"` remains a valid `SpatialSurface`
+  value (a view host that sets `window.__elizaXRContext` gets the same DOM,
+  spatially scaled), but no XR renderer ships from this package.
 - **TUI** — the agent terminal mounts the view with
   `createSpatialTuiComponent(() => <View/>, { onChange: () => tui.requestRender() })`,
   which yields a `@elizaos/tui` `Component`. This replaces the hand-written
@@ -168,11 +165,7 @@ modalities (the `viewType` declarations still distinguish surface behaviour like
 `gallery.tsx` is a corpus of representative screen archetypes (profile, list,
 settings, dashboard, chat, empty, error, connect, wallet, table, confirm,
 progress), each authored once. `__tests__/gallery.test.tsx` asserts every screen
-renders to IR + TUI (width contract at 48/32/24) + GUI/XR DOM. The live visual
-harness (`stories/spatial.html`, served by `bun run --cwd packages/ui stories:dev`
-at `/spatial.html`) renders all three modalities side-by-side per screen;
-`?screen=<id>` isolates one. Regenerate the terminal column with
-`bun packages/ui/src/spatial/gallery-tui-gen.mjs`.
+renders to IR + TUI (width contract at 48/32/24) + DOM.
 
 ## Verifying — TUI framing linter
 
@@ -181,10 +174,9 @@ correctness, not just width: uniform line width, closed + column-aligned box
 borders (including titled `╭─ Title ─╮` frames), **no nested boxes** (a single
 outer frame per view is the house style; sections use labelled dividers), and
 **no truncated buttons** (`[ label` with the closing ` ]` cut off). It gates the
-gallery (`__tests__/framing.test.ts`) and every registered plugin terminal view
-(`__tests__/plugin-framing.test.ts`) at realistic widths (56/40). Export every
-render for a human read with `tui/review-export.mjs` (gallery) and
-`tui/review-plugins.mjs` (all plugin views) → `/tmp/tui-*-review.txt`.
+gallery (`__tests__/framing.test.ts`) at realistic widths (56/40). Export every
+gallery render for a human read with `tui/review-export.mjs` →
+`/tmp/tui-*-review.txt`.
 
 ## Verifying — TUI keyboard interaction
 
@@ -195,17 +187,3 @@ Space** activate it (running its `onPress` → `useSpatialState` update →
 re-render) and fire `onActivate(agentId)`. The agent terminal's detail mode
 forwards input straight through, so every `viewType:"tui"` view is keyboard
 drivable. See `__tests__/tui-interaction.test.tsx`.
-
-## Verifying — XR headset simulation
-
-`stories/xr-sim.html` + `stories/xr/main.tsx` render the real spatial views
-(XR-modality DOM) as holographic panels positioned in front of the user with
-CSS 3D (perspective + transforms) — the screen-space-DOM approach `app-xr` uses
-for real headsets, but driveable and screenshottable in Playwright without
-hardware. `window.__xrsim` exposes `setView` / `setPose` / `aimAt` / `select` /
-`setChat` / `toggleVoice`. The Playwright spec (`stories/xr/xr-sim.spec.ts`,
-config `xr-sim.config.ts`) verifies views render in front of the user, head pose
-moves them with world-locked parallax, the controller aims + selects a panel
-button, the rail switches views, and the chat bar + voice work — screenshotting
-the headset POV for each. Run: `bunx playwright test --config
-packages/ui/stories/xr/xr-sim.config.ts`.
