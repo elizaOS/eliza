@@ -13,6 +13,7 @@
 
 import { lazy, type ReactNode, Suspense, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import { CloudRouteErrorBoundary } from "./CloudRouteErrorBoundary";
 import { isPlaceholderValue, readStoredToken } from "./StewardProviderShared";
 import {
   configuredStewardTenantId,
@@ -193,10 +194,20 @@ export function StewardAuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Suspense fallback={<StewardRuntimeLoading />}>
-      <StewardAuthRuntimeProvider apiUrl={apiUrl} tenantId={tenantId}>
-        {children}
-      </StewardAuthRuntimeProvider>
-    </Suspense>
+    // The boundary sits OUTSIDE the Suspense that awaits the lazy `@stwd/*`
+    // runtime chunk: after a mid-session deploy the first authenticated
+    // navigation rejects this import ("Failed to fetch dynamically imported
+    // module", #15383), and without a boundary here that rejection escaped to
+    // the app-root ErrorBoundary — which has no chunk recovery — blanking the
+    // whole console. CloudRouteErrorBoundary hands the failure to the shared
+    // one-shot reload recovery so the steward chunk self-heals like every
+    // registered route chunk.
+    <CloudRouteErrorBoundary routePath="steward-runtime">
+      <Suspense fallback={<StewardRuntimeLoading />}>
+        <StewardAuthRuntimeProvider apiUrl={apiUrl} tenantId={tenantId}>
+          {children}
+        </StewardAuthRuntimeProvider>
+      </Suspense>
+    </CloudRouteErrorBoundary>
   );
 }

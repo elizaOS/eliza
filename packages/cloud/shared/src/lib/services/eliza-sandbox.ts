@@ -5179,7 +5179,7 @@ export class ElizaSandboxService {
             headscale_ip = ${blueMeta.headscaleIp ?? null},
             image_digest = ${toDigest},
             previous_image_digest = ${fromDigest},
-            previous_docker_image = ${current.docker_image ?? dockerImage},
+            previous_docker_image = ${current.docker_image || dockerImage},
             error_message = NULL,
             last_heartbeat_at = NOW(),
             updated_at = NOW()
@@ -5332,7 +5332,7 @@ export class ElizaSandboxService {
       };
     }
 
-    const rollbackImage = agent.previous_docker_image ?? dockerImage;
+    const rollbackImage = agent.previous_docker_image || dockerImage;
     // Materialize at-rest-encrypted BYO secrets before container create (#11332).
     const rollbackEnv = await decryptAgentEnvVars(
       (agent.environment_vars as Record<string, string>) ?? {},

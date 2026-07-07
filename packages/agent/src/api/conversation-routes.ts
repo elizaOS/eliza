@@ -65,7 +65,9 @@ import {
   getChatFailureReply,
   hasRecentVisibleAssistantMemorySince,
   initSse,
+  isDuplicateChatMessage,
   normalizeAccountConnectRequest,
+  releaseChatMessageId,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
   persistConversationMemory,
@@ -2479,7 +2481,29 @@ export async function handleConversationRoutes(
       source,
       metadata: chatMetadata,
       streamProtocol,
+      clientMessageId,
     } = chatPayload;
+    // Idempotency contract (see `isDuplicateChatMessage`): the client stamps a
+    // stable `clientMessageId` per send and replays it verbatim on its single
+    // auto-retry after a network blip (`ui/src/api/client-base.ts`), expecting
+    // the server to de-dupe. A repeat within the TTL means the original request
+    // already started this turn — do NOT run a second one (duplicate persisted
+    // reply + double billing). Emit the same terminal `done` shape as the
+    // "assistant reply already persisted" suppression branch below: the client
+    // drops its optimistic placeholder on an empty completed turn and then
+    // reconciles the thread from history, which carries the first attempt's
+    // reply. Requests without a clientMessageId are never treated as duplicates.
+    if (isDuplicateChatMessage(conv.roomId, clientMessageId ?? null)) {
+      initSse(res);
+      writeSseJson(res, {
+        type: "done",
+        fullText: "",
+        agentName: state.agentName,
+        noResponseReason: "ignored",
+      });
+      finishStreamResponse();
+      return true;
+    }
     // Deps are the module-imported write fns so route tests that vi.mock
     // `writeChatTokenSse`/`writeSse` keep capturing frames on the legacy path.
     const tokenWriter = createChatTokenStreamWriter(
@@ -2759,6 +2783,11 @@ export async function handleConversationRoutes(
           { conversationId: conv.id, roomId: conv.roomId },
           "[ConversationStream] generation aborted",
         );
+        // The aborted turn persisted no assistant reply — release the
+        // idempotency key so the client's blip-retry re-runs the turn
+        // instead of being suppressed into dead air (the iOS-suspend →
+        // disconnect-abort → retry-eaten scenario).
+        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
       } else if (!disconnectTracker.isAborted()) {
         // If text was already streamed to the client (e.g. the initial
         // response succeeded but planner follow-up failed), use the
@@ -2847,6 +2876,12 @@ export async function handleConversationRoutes(
             });
           }
         }
+      } else {
+        // Error after the client already disconnected: no fallback reply is
+        // persisted (the gate above skips it), so nothing was delivered for
+        // this turn — release the idempotency key so the client's
+        // reconnect-retry re-runs it instead of being eaten.
+        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
       }
     } finally {
       clearInterval(heartbeatInterval);
@@ -2895,7 +2930,22 @@ export async function handleConversationRoutes(
       preferredLanguage,
       source,
       metadata: restMetadata,
+      clientMessageId,
     } = chatPayload;
+    // Idempotency contract (see the streaming twin above / `isDuplicateChatMessage`):
+    // a retried send carrying the same clientMessageId within the TTL already
+    // ran this turn. Answer 200 with the ignored-turn success shape — the
+    // client maps `noResponseReason: "ignored"` to an empty reply — so the
+    // retry reads as success without starting a second LLM turn or persisting
+    // a duplicate assistant memory.
+    if (isDuplicateChatMessage(conv.roomId, clientMessageId ?? null)) {
+      json(res, {
+        text: "",
+        agentName: state.agentName,
+        noResponseReason: "ignored",
+      });
+      return true;
+    }
     // Hold the turn through the warming window (early API bind → runtime ready)
     // instead of dropping it; the client already shows the optimistic bubble.
     const runtime = await resolveRuntimeForChatTurn(state);

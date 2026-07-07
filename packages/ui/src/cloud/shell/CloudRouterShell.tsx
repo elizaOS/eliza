@@ -20,12 +20,7 @@
  */
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import {
-  type ComponentType,
-  type LazyExoticComponent,
-  type ReactNode,
-  Suspense,
-} from "react";
+import { type ComponentType, type ReactNode, Suspense } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -41,6 +36,7 @@ import {
   CloudI18nProvider,
   resolveInitialCloudLang,
 } from "./CloudI18nProvider";
+import { CloudRouteErrorBoundary } from "./CloudRouteErrorBoundary";
 import { ConsoleShell } from "./ConsoleShell";
 import {
   type CloudRouteDef,
@@ -123,14 +119,18 @@ function LegacySettingsTabRedirect(): React.JSX.Element {
   return <Navigate to={`${target}${location.search}`} replace />;
 }
 
-function renderRouteElement(
-  element: LazyExoticComponent<ComponentType<unknown>> | ComponentType<unknown>,
-): React.JSX.Element {
-  const RouteComponent = element as ComponentType<unknown>;
+function renderRouteElement(route: CloudRouteDef): React.JSX.Element {
+  const RouteComponent = route.element as ComponentType<unknown>;
   return (
-    <Suspense fallback={<RouteChunkFallback />}>
-      <RouteComponent />
-    </Suspense>
+    // The boundary sits INSIDE the console chrome / auth providers so a route
+    // crash (or a post-deploy stale lazy chunk — see CloudRouteErrorBoundary)
+    // degrades in the page slot instead of escaping to the app-root boundary
+    // and blanking the whole console.
+    <CloudRouteErrorBoundary routePath={route.path}>
+      <Suspense fallback={<RouteChunkFallback />}>
+        <RouteComponent />
+      </Suspense>
+    </CloudRouteErrorBoundary>
   );
 }
 
@@ -221,7 +221,7 @@ function CloudRouteElement({
 }: {
   route: CloudRouteDef;
 }): React.JSX.Element {
-  const body = applyRouteGate(route.gate, renderRouteElement(route.element));
+  const body = applyRouteGate(route.gate, renderRouteElement(route));
   if (route.public) {
     return <>{body}</>;
   }

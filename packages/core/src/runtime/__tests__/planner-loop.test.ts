@@ -1117,6 +1117,106 @@ describe("v5 planner loop skeleton", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 	});
 
+	it("surfaces the Stage-1 replyText when the required-tool cap exhausts without a refusal", async () => {
+		// Live regression (tj-501e594bfb23a7 / tj-5d1c9601f33e8d): "whats 17
+		// times 23?" — Stage 1 answered "391", but an injected VIEWS candidate
+		// forced requireNonTerminalToolCall. The planner kept answering via
+		// REPLY; none of those replies were refusal-shaped, so nothing was
+		// captured, the loop threw required_tool_misses, and the caller shipped
+		// the generic transient-failure apology while the correct answer was
+		// discarded. With stageOneReplyText threaded in, exhaustion finishes
+		// with Stage 1's own answer instead of throwing.
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-1",
+						name: "REPLY",
+						arguments: { text: "The answer is 391." },
+					},
+				],
+			})),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "VIEWS", description: "Open a UI view." }],
+			requireNonTerminalToolCall: true,
+			stageOneReplyText: "391",
+			config: { maxRequiredToolMisses: 1 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		// Stage 1's replyText is preferred over the planner's rejected REPLY
+		// text — it is the cleaner ground truth for the turn.
+		expect(result.finalMessage).toBe("391");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("falls back to the planner's own rejected REPLY answer when no Stage-1 replyText exists", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-1",
+						name: "REPLY",
+						arguments: { text: "The answer is 391." },
+					},
+				],
+			})),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "VIEWS", description: "Open a UI view." }],
+			requireNonTerminalToolCall: true,
+			config: { maxRequiredToolMisses: 1 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("The answer is 391.");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("still throws at exhaustion when the Stage-1 replyText is ack-shaped and nothing else was captured", async () => {
+		// Honesty guard: a progress-only Stage-1 ack ("Checking the price
+		// now.") must never ship as the final answer — once the loop gives up,
+		// no fetch happens, so surfacing the ack would be a false promise. With
+		// no refusal, no answer-shaped replyText, and no usable rejected
+		// terminal text, the existing apology path is unchanged.
+		const runtime = {
+			useModel: vi.fn(async () => ({ text: "", toolCalls: [] })),
+			logger: { warn: vi.fn() },
+		};
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				tools: [{ name: "WEB_FETCH", description: "Fetch a URL." }],
+				requireNonTerminalToolCall: true,
+				stageOneReplyText: "Checking the price now.",
+				config: { maxRequiredToolMisses: 1 },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			}),
+		).rejects.toMatchObject({
+			name: "TrajectoryLimitExceeded",
+			kind: "required_tool_misses",
+		});
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
 	it("does not surface a captured refusal before the required-tool retry budget is exhausted", async () => {
 		const runtime = {
 			useModel: vi
