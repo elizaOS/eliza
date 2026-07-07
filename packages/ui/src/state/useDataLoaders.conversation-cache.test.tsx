@@ -233,4 +233,96 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
       conversationMessagesRef.current,
     );
   });
+
+  it("drops optimistic temp turns once the server reload carries the same user and assistant turn", async () => {
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: [userMsg("persisted-1")] })
+      .mockResolvedValueOnce({
+        messages: [
+          userMsg("persisted-1"),
+          { ...userMsg("server-user"), text: "hello", timestamp: 20 },
+          {
+            ...assistantMsg("server-assistant"),
+            text: "hi there",
+            timestamp: 21,
+          },
+        ],
+      });
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    conversationMessagesRef.current = [
+      userMsg("persisted-1"),
+      { ...userMsg("temp-100"), text: "hello", timestamp: 10 },
+      {
+        ...assistantMsg("temp-resp-100"),
+        text: "hi there",
+        timestamp: 11,
+      },
+    ];
+    setConversationMessages.mockClear();
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual(["persisted-1", "server-user", "server-assistant"]);
+    expect(
+      conversationMessagesRef.current.some((message) =>
+        message.id.startsWith("temp-"),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps an in-flight temp assistant when the server has only persisted the user turn", async () => {
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: [userMsg("persisted-1")] })
+      .mockResolvedValueOnce({
+        messages: [
+          userMsg("persisted-1"),
+          { ...userMsg("server-user"), text: "hello", timestamp: 20 },
+        ],
+      });
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    conversationMessagesRef.current = [
+      userMsg("persisted-1"),
+      { ...userMsg("temp-100"), text: "hello", timestamp: 10 },
+      {
+        ...assistantMsg("temp-resp-100"),
+        text: "partial stream",
+        timestamp: 11,
+      },
+    ];
+    setConversationMessages.mockClear();
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual(["persisted-1", "server-user", "temp-resp-100"]);
+  });
 });
