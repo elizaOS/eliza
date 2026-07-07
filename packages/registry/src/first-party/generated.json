@@ -1511,44 +1511,6 @@
       }
     },
     {
-      "id": "deepseek",
-      "name": "DeepSeek",
-      "description": "DeepSeek model provider.",
-      "npmName": "@elizaos/plugin-deepseek",
-      "version": "2.0.0-beta.0",
-      "source": "store",
-      "tags": ["ai-provider", "llm", "deepseek"],
-      "config": {
-        "DEEPSEEK_API_KEY": {
-          "type": "secret",
-          "required": true,
-          "sensitive": true,
-          "label": "DeepSeek API Key",
-          "help": "API key for DeepSeek model requests.",
-          "advanced": false,
-          "autoEnableProvider": true
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Brain",
-        "group": "models",
-        "groupOrder": 30,
-        "actions": ["install", "configure"]
-      },
-      "resources": {
-        "homepage": "https://deepseek.com",
-        "repository": "https://github.com/elizaOS/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "kind": "plugin",
-      "subtype": "ai-provider"
-    },
-    {
       "id": "directives",
       "name": "Directives",
       "description": "Inline directive parsing for Eliza agents (@think, @model, @verbose, etc.)",
@@ -3891,32 +3853,6 @@
       }
     },
     {
-      "id": "lens",
-      "name": "Lens",
-      "description": "Lens connector for elizaOS.",
-      "npmName": "@elizaos/plugin-lens",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": ["connector", "social", "messaging", "lens"],
-      "config": {},
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "group": "connectors",
-        "actions": ["enable", "configure"]
-      },
-      "resources": {
-        "homepage": "https://elizaos.ai",
-        "repository": "https://github.com/elizaos/elizaos"
-      },
-      "dependsOn": [],
-      "channels": ["lens"],
-      "shortIds": [],
-      "kind": "connector",
-      "subtype": "social"
-    },
-    {
       "id": "line",
       "name": "Line",
       "description": "LINE connector for bot messaging and customer conversations.",
@@ -4712,44 +4648,6 @@
         "target": "memories",
         "capabilities": ["memory", "facts", "viewer"]
       }
-    },
-    {
-      "id": "mistral",
-      "name": "Mistral",
-      "description": "Mistral AI model provider.",
-      "npmName": "@elizaos/plugin-mistral",
-      "version": "2.0.0-beta.0",
-      "source": "store",
-      "tags": ["ai-provider", "llm", "mistral"],
-      "config": {
-        "MISTRAL_API_KEY": {
-          "type": "secret",
-          "required": true,
-          "sensitive": true,
-          "label": "Mistral API Key",
-          "help": "API key for Mistral model requests.",
-          "advanced": false,
-          "autoEnableProvider": true
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Brain",
-        "group": "models",
-        "groupOrder": 31,
-        "actions": ["install", "configure"]
-      },
-      "resources": {
-        "homepage": "https://mistral.ai",
-        "repository": "https://github.com/elizaOS/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "kind": "plugin",
-      "subtype": "ai-provider"
     },
     {
       "id": "model-tester",
@@ -6593,44 +6491,6 @@
       "subtype": "devtools"
     },
     {
-      "id": "shopify",
-      "name": "Shopify",
-      "description": "Storefront and admin tools for agent-driven commerce.",
-      "npmName": "@elizaos/plugin-shopify",
-      "source": "bundled",
-      "tags": [],
-      "config": {},
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "hero-card",
-        "icon": "Briefcase",
-        "group": "Curated",
-        "groupOrder": 7,
-        "actions": ["launch", "configure"]
-      },
-      "resources": {},
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "curatedApp": {
-        "slug": "shopify",
-        "order": 8,
-        "aliases": ["@elizaos/plugin-shopify-ui"]
-      },
-      "kind": "app",
-      "subtype": "marketplace",
-      "launch": {
-        "type": "server-launch",
-        "capabilities": [],
-        "curatedSlug": "shopify",
-        "routePlugin": {
-          "specifier": "@elizaos/plugin-shopify/plugin",
-          "exportName": "shopifyPlugin"
-        }
-      }
-    },
-    {
       "id": "signal",
       "name": "Signal",
       "description": "Signal messaging integration plugin for ElizaOS agents",
@@ -7266,44 +7126,6 @@
       "shortIds": [],
       "kind": "plugin",
       "subtype": "devtools"
-    },
-    {
-      "id": "together",
-      "name": "Together AI",
-      "description": "Together AI model provider.",
-      "npmName": "@elizaos/plugin-together",
-      "version": "2.0.0-beta.0",
-      "source": "store",
-      "tags": ["ai-provider", "llm", "together"],
-      "config": {
-        "TOGETHER_API_KEY": {
-          "type": "secret",
-          "required": true,
-          "sensitive": true,
-          "label": "Together API Key",
-          "help": "API key for Together AI model requests.",
-          "advanced": false,
-          "autoEnableProvider": true
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Brain",
-        "group": "models",
-        "groupOrder": 32,
-        "actions": ["install", "configure"]
-      },
-      "resources": {
-        "homepage": "https://together.ai",
-        "repository": "https://github.com/elizaOS/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "kind": "plugin",
-      "subtype": "ai-provider"
     },
     {
       "id": "training",

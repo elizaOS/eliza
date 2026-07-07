@@ -1804,7 +1804,7 @@ export async function resolvePlugins(
     // (STATIC_ELIZA_PLUGIN_LOADERS) — the boot pre-registers configured
     // providers' statics up front via ensureStaticPluginsRegisteredByName(),
     // but a provider whose module is not baked into the bundle (e.g.
-    // DEEPSEEK_API_KEY -> @elizaos/plugin-deepseek) never becomes loadable.
+    // NEARAI_API_KEY -> @elizaos/plugin-nearai) never becomes loadable.
     // Claiming such a provider would strand it: the blocking pass records it as
     // claimed but fails to load it (no static entry), and the deferred pass
     // then excludes it because the claimed set says blocking owns it — dropping

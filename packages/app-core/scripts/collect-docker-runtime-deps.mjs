@@ -96,6 +96,7 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-local-inference",
   "plugins/plugin-mcp",
   "plugins/plugin-pdf",
+  "plugins/plugin-registry",
   "plugins/plugin-signal",
   "plugins/plugin-streaming",
   "plugins/plugin-native-activity-tracker",
