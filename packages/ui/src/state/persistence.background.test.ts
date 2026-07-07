@@ -152,3 +152,31 @@ describe("background config persistence", () => {
     expect(loadBackgroundConfig()).toEqual(DEFAULT);
   });
 });
+
+describe("legacy wallpaper alias (bg-sunset.jpg → .webp)", () => {
+  it("rewrites a persisted legacy jpg default to the webp that actually exists", () => {
+    const config = normalizeBackgroundConfig({
+      mode: "image",
+      color: "#160d07",
+      imageUrl: "/bg-sunset.jpg",
+    });
+    expect(config).toEqual({
+      mode: "image",
+      color: "#160d07",
+      imageUrl: "/bg-sunset.webp",
+    });
+  });
+
+  it("leaves non-legacy image urls untouched", () => {
+    const config = normalizeBackgroundConfig({
+      mode: "image",
+      color: "#160d07",
+      imageUrl: "/wallpapers/custom.webp",
+    });
+    expect(config).toEqual({
+      mode: "image",
+      color: "#160d07",
+      imageUrl: "/wallpapers/custom.webp",
+    });
+  });
+});

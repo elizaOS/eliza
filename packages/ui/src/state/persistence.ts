@@ -189,14 +189,26 @@ function normalizeHexColor(value: unknown): string {
     : DEFAULT_BACKGROUND_COLOR;
 }
 
+// Renamed/recompressed curated wallpapers whose OLD URL may still sit in a
+// user's persisted background config. The asset is gone from /public, so
+// without this read-time alias every install that saved the old default 404s
+// its wallpaper after the deploy (#15184 removed bg-sunset.jpg). Normalization
+// runs on both load and save, so persisted configs self-heal on first touch.
+const LEGACY_WALLPAPER_ALIASES: Record<string, string> = {
+  "/bg-sunset.jpg": "/bg-sunset.webp",
+};
+
 export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   const record = asRecord(value);
   if (!record) return { ...DEFAULT_BACKGROUND_CONFIG };
   const color = normalizeHexColor(record.color);
-  const imageUrl =
+  const rawImageUrl =
     typeof record.imageUrl === "string" && record.imageUrl.length > 0
       ? record.imageUrl
       : undefined;
+  const imageUrl = rawImageUrl
+    ? (LEGACY_WALLPAPER_ALIASES[rawImageUrl] ?? rawImageUrl)
+    : undefined;
   // Image mode without a usable source is meaningless — fall back to the shader.
   if (record.mode === "image" && imageUrl) {
     return { mode: "image", color, imageUrl };
