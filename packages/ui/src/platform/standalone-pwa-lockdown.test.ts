@@ -22,16 +22,27 @@
  *
  * These tests pin: (1) init.ts tags `pwa-standalone` only on web; (2) the CSS
  * lockdown is the NON-fixed lock for the PWA while the native build keeps
- * `position: fixed; inset: 0`; (3) the JS-measured bottom-reclaim IS PRESENT and
- * install-guarded on the iOS standalone/native path.
+ * `position: fixed; inset: 0`; (3) `html` is sized to the LARGE viewport
+ * (`100lvh`) + transparent in the installed shell so its `overflow: hidden` clip
+ * box reaches the true screen bottom (the r12 CLIP fix); (4) the JS-measured
+ * bottom-reclaim IS PRESENT and install-guarded on the iOS standalone/native path.
  *
- * NOTE (3) reflects the device truth that pure CSS cannot see the true screen
- * from inside the collapsed layout box (`100lvh === 100dvh === 873` while
- * `screen.height === 932`). The wallpaper is painted onto the full-screen root
- * canvas AND the composer is re-seated by the JS-measured
- * `--standalone-bottom-reclaim` gap — removing either regressed the bottom bar
- * on device while jsdom stayed green, so the install-guard test below makes that
- * removal a red CI instead of a silent device regression.
+ * NOTE on the CLIP (the root cause that survived an 8-deep reclaim pile): the
+ * strip is NOT primarily a fixed-descendant ICB problem — device pixel forensics
+ * put the cut at EXACTLY documentElement.clientHeight (873 = 93.7% of the 932
+ * screen). The ROOT element `html` is `overflow: hidden; height: 100%`, and
+ * `height: 100%` resolves to the collapsed 873 ICB, so html is an 873px CLIP BOX
+ * that cuts off BOTH the reclaimed `fixed inset-0 { bottom: -reclaim }` wallpaper
+ * extension AND html's own canvas paint at 873; the 59px below (873→932) shows
+ * html's own background-color as the strip. Contrary to an earlier note here,
+ * `100lvh` does NOT equal `100dvh` on device — the device chip proves
+ * `100lvh 932` while `100dvh 873` and `screen.height 932`. So sizing `html`
+ * itself to `100lvh` (932) is what un-clips the wallpaper (test 3). Once html is
+ * 100lvh WebKit un-collapses the ICB (`innerHeight` 873→932), so the JS reclaim
+ * (test 4) measures `screen.height - innerHeight = 0` and self-zeroes — the two
+ * coexist as belt-and-suspenders. Removing either regressed the bottom bar on
+ * device while jsdom stayed green, so the guards below make that a red CI instead
+ * of a silent device regression.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -231,6 +242,27 @@ describe("CSS lockdown contract — base.css / styles.css cover body.pwa-standal
     expect(columnBlock?.[0]).toContain("100vh");
     expect(columnBlock?.[0]).not.toContain("100lvh");
   });
+
+  it("sizes the html CLIP BOX to 100lvh + transparent on the class path (the r12 bottom-bar CLIP fix)", () => {
+    // The class-path twin of the media-block rule: `html { overflow: hidden;
+    // height: 100% }` makes html an 873px clip box on the collapsed iOS PWA ICB,
+    // cutting off the reclaimed fixed wallpaper (873→932) and painting the 59px
+    // strip from html's own background-color. Sizing `html` to the LARGE viewport
+    // (100lvh = the true 932 per the device chip `100lvh 932`) makes its clip box
+    // + canvas reach the physical bottom; transparent so the un-clipped wallpaper
+    // owns the edge. Matches both the native and pwa-standalone class selectors.
+    const htmlBlock = stylesCss.match(
+      /html:has\(body\.native\),[\s\S]*?background:\s*transparent;[\s\S]*?\}/,
+    );
+    expect(htmlBlock).not.toBeNull();
+    expect(htmlBlock?.[0]).toContain("html:has(body.pwa-standalone)");
+    // The large viewport unit resolving to the true 932 screen.
+    expect(htmlBlock?.[0]).toContain("100lvh");
+    // Progressive-enhancement fallback stack.
+    expect(htmlBlock?.[0]).toContain("100dvh");
+    expect(htmlBlock?.[0]).toContain("100vh");
+    expect(htmlBlock?.[0]).toMatch(/background:\s*transparent/);
+  });
 });
 
 describe("CSS-FIRST contract — media-query lockdown is detection-independent", () => {
@@ -322,13 +354,53 @@ describe("CSS-FIRST contract — media-query lockdown is detection-independent",
     );
     expect(block).not.toBeNull();
     expect(block ?? "").toContain("touch-action: pan-y");
+    // #root + the app-shell column fill the viewport at 100dvh (the app column
+    // is 873 on the collapsed device; that is correct — it is the CLIP BOX on
+    // `html` that must reach the true screen, not these). No fixed body geometry.
     expect(block ?? "").toMatch(/#root\s*\{[\s\S]*?max-height:\s*100dvh/);
     expect(block ?? "").toMatch(
       /\[data-app-shell-root\]\s*\{[\s\S]*?height:\s*100dvh/,
     );
-    // No obsolete large-viewport reclaim, no fixed body geometry.
-    expect(block ?? "").not.toContain("100lvh");
+    // #root must NOT itself carry the large-viewport unit (it stays 100dvh).
+    const rootRule = (block ?? "").match(/body #root\s*\{[\s\S]*?\}/);
+    expect(rootRule?.[0] ?? "").not.toContain("100lvh");
     expect(stripCssComments(block ?? "")).not.toMatch(/position:\s*fixed/);
+  });
+
+  it("styles.css media block sizes the html CLIP BOX to 100lvh + transparent (the r12 bottom-bar CLIP fix)", () => {
+    // ROOT CAUSE of the recurring home-indicator black strip (device pixel
+    // forensics: cut at 873/932 = 93.7%): `html { overflow: hidden; height: 100% }`
+    // resolves `height: 100%` against the collapsed fixed-body ICB (873) on the
+    // installed iOS PWA, making `html` an 873px CLIP BOX that cuts off BOTH the
+    // reclaimed `fixed inset-0 { bottom: -reclaim }` wallpaper extension AND html's
+    // own canvas paint at 873 — the 59px below (873→932) is html's own
+    // background-color showing as the strip. No JS reclaim or #root transparency can
+    // reach past an 873px html clip. The cure (device-verified in f030dbbd40b, then
+    // dropped by the 100dvh rewrite): size `html` itself to the LARGE viewport
+    // (100lvh = the true 932 per the device chip) so its clip box + canvas reach the
+    // physical bottom, transparent so the un-clipped wallpaper owns the edge. This is
+    // gated in the display-mode media block because the JS `body.pwa-standalone`
+    // class does not land on device — the media query is the source of truth.
+    // Deleting this rule returns the bottom bar on device: keep it RED in CI.
+    const block = mediaBlock(
+      stylesCss,
+      ["display-mode: standalone", "pointer: coarse"],
+      "[data-app-shell-root]",
+    );
+    expect(block).not.toBeNull();
+    // Match the `html { ... }` rule inside the media body (a leading comment may
+    // precede it). `html` here is the bare element selector, distinct from the
+    // `body #root` / `[data-app-shell-root]` rules.
+    const htmlRule = (block ?? "").match(/\bhtml\s*\{[^}]*\}/);
+    expect(htmlRule).not.toBeNull();
+    // The large viewport unit that resolves to the true 932 screen (chip: 100lvh 932).
+    expect(htmlRule?.[0] ?? "").toContain("100lvh");
+    // Progressive-enhancement fallback stack for engines without lvh.
+    expect(htmlRule?.[0] ?? "").toContain("100dvh");
+    expect(htmlRule?.[0] ?? "").toContain("100vh");
+    // Transparent so the un-clipped fixed wallpaper owns the bottom edge, not
+    // html's launch-bg.
+    expect(htmlRule?.[0] ?? "").toMatch(/background:\s*transparent/);
   });
 });
 
@@ -345,12 +417,16 @@ describe("JS-measured bottom reclaim is PRESENT and INSTALL-GUARDED (durable dev
   // DEVICE TRUTH (why this must exist — proven over N regressions): on the
   // installed iOS standalone PWA the layout viewport collapses to the small box
   // (`documentElement.clientHeight`/`innerHeight` = 873 while the physical
-  // `screen.height` = 932), so no pure-CSS unit reaches the true bottom
-  // (`100lvh === 100dvh === 873` inside the collapsed box). The `fixed` composer
-  // overlay's `bottom: 0` therefore floats ~59px UP over a dead strip — the
-  // recurring "black bottom bar". The ONLY runtime value that still exposes the
-  // true 932 screen is `window.screen.height`, so the reclaim is measured in JS
+  // `screen.height` = 932). Note the device chip proves `100lvh 932` (the LARGE
+  // viewport DOES see the true screen) while `100dvh 873` — which is exactly why
+  // the r12 CLIP fix sizes `html` to `100lvh` to un-clip the wallpaper. This JS
+  // reclaim is the belt-and-suspenders twin: it re-seats the `fixed` composer
+  // overlay whose `bottom: 0` would otherwise float ~59px UP over the dead strip.
+  // The runtime value that still exposes the true 932 screen regardless of ICB
+  // state is `window.screen.height`, so the reclaim is measured in JS
   // (`screen.height - layout`) and published as `--standalone-bottom-reclaim`.
+  // Once `html` is 100lvh the ICB un-collapses (`innerHeight` 873→932) and this
+  // reclaim self-zeroes — the two mechanisms do not fight.
   //
   // These tests PIN that mechanism in place. The install-guard test below is the
   // load-bearing one: it turns a future "just delete the JS reclaim, CSS is

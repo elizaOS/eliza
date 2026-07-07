@@ -122,6 +122,41 @@ body.pwa-standalone {
   touch-action: pan-y;
 }
 
+/* BOTTOM-BAR FIX (r12 — the CLIP, device-verified pixel forensics): the recurring
+   home-indicator black strip starts at EXACTLY documentElement.clientHeight (873)
+   — the #160d07/#000 cut sits at 93.7% of a 932px screen = 873/932. The reason
+   NOTHING the app paints reaches below 873 is that the ROOT element `html` is
+   `overflow: hidden; height: 100%` (see the `html, body` block above), and on the
+   installed iOS standalone PWA `height: 100%` resolves against the COLLAPSED
+   fixed-body ICB (873), so `html` is an 873px-tall CLIP BOX. It clips (a) the
+   `fixed inset-0 { bottom: calc(-1 * var(--standalone-bottom-reclaim)) }`
+   wallpaper's reclaimed 873→932 extension AND (b) html's own canvas paint at 873;
+   the 59px below (873→932) is the browser canvas showing html's own
+   `background-color`. No JS reclaim (device chip: `reclaim-var 59px`, measured
+   correctly) and no `#root` transparency can reach past an 873px html clip — which
+   is why three rounds of "correct" negative-bottom geometry never painted.
+
+   Fix: size `html` itself to the LARGE viewport (`100lvh`, which the device chip
+   PROVES resolves to the true 932: `100lvh 932` while `100dvh 873`) in the
+   installed shell so its `overflow: hidden` clip box AND its canvas paint reach
+   the true screen bottom, and make it transparent so the fixed wallpaper (now
+   un-clipped) owns the bottom edge instead of html's launch-bg. `100vh→100dvh→
+   100lvh` progressive-enhancement stack, standalone-gated on both the class path
+   (`html:has(body.pwa-standalone|native)`) and the display-mode media block below
+   (the JS class does not land on device — see the `@media` mirror). Once html is
+   100lvh WebKit un-collapses the ICB (`innerHeight` flips 873→932), so the JS
+   reclaim measures `screen.height - innerHeight = 0` and self-zeroes: the two
+   mechanisms coexist as belt-and-suspenders, not a double-correction. This is the
+   architecture device-verified in f030dbbd40b; Shaw's 100dvh rewrite dropped it. */
+html:has(body.native),
+html:has(body.pwa-standalone) {
+  height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
+  height: 100dvh;
+  height: 100lvh;
+  background: transparent;
+}
+
 /* Native Capacitor build only: the WKWebView is the app window, so a fixed body's
    initial containing block IS the full screen — `inset: 0` fills it. */
 body.native {
@@ -145,6 +180,7 @@ body.native {
 body.native #root,
 body.pwa-standalone #root {
   min-height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh). */
   min-height: 100dvh;
   max-height: 100vh;
   max-height: 100dvh;
@@ -180,6 +216,25 @@ body.pwa-standalone textarea {
   all and (display-mode: fullscreen) and (pointer: coarse) {
   body {
     touch-action: pan-y;
+  }
+
+  /* BOTTOM-BAR FIX (r12 — the CLIP): detection-independent mirror of the class-path
+     `html:has(body.pwa-standalone)` rule above. This is the SOURCE OF TRUTH on the
+     installed iOS PWA because the JS `body.pwa-standalone` class does not land on
+     device (app/main.tsx runs a local setupPlatformStyles that never tags the body).
+     Size `html` itself to the LARGE viewport (100lvh = the true 932 per the device
+     chip) so its `overflow: hidden` clip box and its canvas paint reach the true
+     screen bottom instead of the collapsed ICB (873) that `height: 100%` resolves to.
+     Without this, html is an 873px clip box that cuts off the reclaimed fixed
+     wallpaper + its own canvas paint at 873, and the 59px below shows html's own
+     background-color as the recurring strip. Transparent so the un-clipped wallpaper
+     owns the bottom edge. */
+  html {
+    height: 100vh;
+    /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh→lvh). */
+    height: 100dvh;
+    height: 100lvh;
+    background: transparent;
   }
 
   body #root {
