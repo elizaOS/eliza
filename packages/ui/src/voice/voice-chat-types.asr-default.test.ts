@@ -11,7 +11,7 @@ import { resolveEffectiveVoiceConfig } from "./voice-chat-types";
  * ASR side (`asr.provider`) untouched, so a cloud-connected agent whose config
  * carried no explicit ASR provider got a NULL `asr.provider`. `shouldUseCloudAsr`
  * then read `undefined`, the composer mic's `startCloudRecognition` early-returned,
- * and capture fell through to the browser SpeechRecognition path — unavailable in
+ * and capture fell through to the browser SpeechRecognition path, unavailable in
  * an installed iOS PWA, so the mic did nothing at all ("voice fully cooked").
  *
  * The fix mirrors the TTS cloud-upgrade for ASR: seed `asr.provider =
@@ -19,18 +19,18 @@ import { resolveEffectiveVoiceConfig } from "./voice-chat-types";
  * override an explicit stored provider, and stay undefined when cloud is not
  * connected so the local/desktop defaults keep resolving downstream.
  */
-describe("resolveEffectiveVoiceConfig — ASR provider default", () => {
+describe("resolveEffectiveVoiceConfig - ASR provider default", () => {
   it("seeds asr.provider = eliza-cloud when cloud-connected and asr is unset (the fix)", () => {
-    const config: VoiceConfig = {}; // no provider, no asr — a fresh cloud agent
+    const config: VoiceConfig = {}; // no provider, no asr: a fresh cloud agent
 
     const resolved = resolveEffectiveVoiceConfig(config, {
       cloudConnected: true,
     });
 
     expect(resolved).not.toBeNull();
-    // TTS provider upgraded to cloud (existing behavior) …
+    // TTS provider upgraded to cloud (existing behavior) ...
     expect(resolved?.provider).toBe("eliza-cloud");
-    // … and ASR provider is now seeded to cloud too (the fix) so the composer
+    // ... and ASR provider is now seeded to cloud too (the fix) so the composer
     // mic's shouldUseCloudAsr() picks the /api/asr/cloud WAV path instead of the
     // dead browser recognizer on the iOS PWA.
     expect(resolved?.asr?.provider).toBe("eliza-cloud");
@@ -47,7 +47,7 @@ describe("resolveEffectiveVoiceConfig — ASR provider default", () => {
     });
 
     expect(resolved?.provider).toBe("elevenlabs");
-    // Even when TTS is elevenlabs, ASR still defaults to cloud when connected —
+    // Even when TTS is elevenlabs, ASR still defaults to cloud when connected;
     // the two layers are chosen independently.
     expect(resolved?.asr?.provider).toBe("eliza-cloud");
   });
@@ -61,14 +61,17 @@ describe("resolveEffectiveVoiceConfig — ASR provider default", () => {
       cloudConnected: true,
     });
 
-    // An explicit user/device choice wins — the cloud upgrade only fills a gap.
+    // An explicit user/device choice wins; the cloud upgrade only fills a gap.
     expect(resolved?.asr?.provider).toBe("local-inference");
   });
 
   it("preserves an explicit asr.modelId when defaulting the provider", () => {
     const config: VoiceConfig = {
       // provider unset, but a modelId hint is carried on the asr object
-      asr: { provider: undefined as unknown as "eliza-cloud", modelId: "whisper-1" },
+      asr: {
+        provider: undefined as unknown as "eliza-cloud",
+        modelId: "whisper-1",
+      },
     };
 
     const resolved = resolveEffectiveVoiceConfig(config, {
@@ -95,7 +98,9 @@ describe("resolveEffectiveVoiceConfig — ASR provider default", () => {
   });
 
   it("keeps returning null when there is no resolvable TTS provider and no cloud", () => {
-    // No provider hints + not cloud-connected → still null (unchanged contract).
-    expect(resolveEffectiveVoiceConfig({}, { cloudConnected: false })).toBeNull();
+    // No provider hints + not cloud-connected: still null (unchanged contract).
+    expect(
+      resolveEffectiveVoiceConfig({}, { cloudConnected: false }),
+    ).toBeNull();
   });
 });
