@@ -66,7 +66,7 @@ Any other value throws.
 
 ### ⚠️ Keep the dimension stable per database
 
-The embedding dimension is baked into your database's vector schema. **Do not change `EMBEDDING_DIMENSIONS` (or the model's native width) after a database has stored vectors** — doing so invalidates every existing vector and they will fail to match on dimension. To change dimensions, re-embed your corpus into a fresh store.
+The embedding dimension is baked into your database's vector schema. Changing `EMBEDDING_DIMENSIONS` (or the model's native width) invalidates old-width vectors until the active database adapter reclaims them and re-embeds those memories at the active width. SQL-backed agents run that cleanup at boot through `clearEmbeddingsOutsideActiveDimension()`; custom stores need an equivalent path.
 
 ## Example `.env`
 

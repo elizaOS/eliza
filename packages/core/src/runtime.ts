@@ -8697,9 +8697,9 @@ ${section_end}`;
 			await this.adapter.ensureEmbeddingDimension(embedding.length);
 			this.pinnedEmbeddingProvider = registration.provider;
 			this.enableEmbeddingGeneration();
-			// Reclaim any vectors left in a different dimension column — e.g. cloud
+			// Reclaim any vectors left in a different dimension column, e.g. cloud
 			// 1536-dim embeddings after this agent switched to on-device gte-small
-			// (384-dim) — which a same-width search can never match again, then
+			// (384-dim), which a same-width search can never match again, then
 			// re-embed those memories at the active width. The clear is one quick
 			// DELETE (a no-op once the store holds only active-dimension vectors);
 			// the re-embed drains through the embedding queue in the background so
@@ -8720,6 +8720,7 @@ ${section_end}`;
 					void this.reembedMemoriesByIds(staleMemoryIds);
 				}
 			} catch (error) {
+				// error-policy:J7 stale embedding reconciliation is best-effort maintenance; report and keep booting.
 				this.reportError("AgentRuntime.embeddingDimensionReconcile", error, {
 					agentId: this.agentId,
 				});
@@ -9042,6 +9043,7 @@ ${section_end}`;
 					await this.queueEmbeddingGeneration(memory, "low");
 				}
 			} catch (error) {
+				// error-policy:J7 stale embedding requeue is best-effort maintenance; report and continue later chunks.
 				this.reportError("AgentRuntime.reembedMemoriesByIds", error, {
 					agentId: this.agentId,
 				});

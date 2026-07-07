@@ -93,9 +93,9 @@ All read via `getSetting(runtime, key)` (runtime/character config first, then `p
 
 An unsupported value throws at boot and on every call.
 
-### Stable-dimension-per-DB caveat
+### Dimension-switch caveat
 
-The embedding dimension is part of the database vector schema. **Keep `EMBEDDING_DIMENSIONS` (and the model) stable for the lifetime of a database.** Changing the width invalidates every stored vector — existing rows become unsearchable / get dropped on dimension mismatch. To switch dimensions, re-embed the corpus into a fresh store.
+The embedding dimension is part of the database vector schema. Changing `EMBEDDING_DIMENSIONS` (or the model's native width) invalidates existing vectors until the database adapter reclaims old-width embeddings and re-embeds those memories at the active width. SQL adapters do this through `clearEmbeddingsOutsideActiveDimension()` during runtime boot; custom stores need an equivalent path before searches are trustworthy after a switch.
 
 ## How to extend
 
