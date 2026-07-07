@@ -129,6 +129,11 @@ import {
   installForceFreshFirstRunClientPatch,
 } from "@elizaos/ui/platform/first-run-reset";
 import {
+  clearStandaloneBottomReclaim,
+  installStandaloneBottomReclaim,
+  shouldInstallStandaloneBottomReclaim,
+} from "@elizaos/ui/platform/standalone-bottom-reclaim";
+import {
   isChatOverlayWindowShell,
   isDetachedWindowShell,
   isStandaloneWindowShell,
@@ -2595,6 +2600,33 @@ function setupPlatformStyles(): void {
   // and desktop (electrobun) must keep its window scroll/trackpad behavior.
   if (platform === "web" && isStandalonePwa()) {
     document.body.classList.add("pwa-standalone");
+  }
+
+  // JS-MEASURED BOTTOM RECLAIM — THE LOAD-BEARING INSTALL POINT ON THE REAL
+  // PWA BOOT PATH (#15103/#15136/#15178). This local `setupPlatformStyles` is
+  // the function `main()` actually calls on the installed standalone PWA (the
+  // `@elizaos/ui` init.ts `setupPlatformStyles` is NOT on this entry graph — it
+  // is only reachable from unit tests). If the installer is not called HERE it
+  // never runs on device: the layout viewport collapses to the small box
+  // (`documentElement.clientHeight` = 873 while `screen.height` = 932) so every
+  // pure-CSS reclaim (`100lvh - 100dvh`) resolves to 0 and is a device no-op,
+  // leaving the black home-indicator strip. #15178's WIP (f903c59) dropped this
+  // block and the restore landed only in the orphaned ui copy, reproducing the
+  // regression (device chip read `rc?` = var never set). The platform gate lives
+  // INSIDE `shouldInstallStandaloneBottomReclaim` (standalone + iOS only), so
+  // this is a hard 0 no-op everywhere else and a future refactor of this entry
+  // cannot silently orphan the installer without turning the app-entry lockdown
+  // contract test RED. See standalone-bottom-reclaim.ts + standalone-pwa-lockdown.test.ts.
+  if (
+    shouldInstallStandaloneBottomReclaim({
+      standalonePwa: isStandalonePwa(),
+      isNative,
+      isIOS,
+    })
+  ) {
+    installStandaloneBottomReclaim();
+  } else {
+    clearStandaloneBottomReclaim();
   }
 
   const chatOverlayShell = isChatOverlayWindowShell(windowShellRoute);

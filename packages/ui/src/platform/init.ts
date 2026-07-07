@@ -4,6 +4,11 @@ import { Capacitor } from "@capacitor/core";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { userAgentHasElizaOSMarker } from "./aosp-user-agent";
+import {
+  clearStandaloneBottomReclaim,
+  installStandaloneBottomReclaim,
+  shouldInstallStandaloneBottomReclaim,
+} from "./standalone-bottom-reclaim";
 
 export { userAgentHasElizaOSMarker } from "./aosp-user-agent";
 
@@ -265,13 +270,42 @@ export function setupPlatformStyles(): void {
     document.body.classList.add("pwa-standalone");
   }
 
+  // JS-MEASURED BOTTOM RECLAIM — THE INSTALL POINT (device-proven cure for the
+  // recurring iOS home-indicator "black bottom bar", #15103/#15136). On the
+  // installed iOS standalone PWA the layout viewport collapses to the small box
+  // (`documentElement.clientHeight` = 873 while `screen.height` = 932) so every
+  // pure-CSS reclaim (`100lvh - 100dvh`) resolves to 0 and is a device no-op.
+  // This installer measures the true `screen.height` vs layout gap in JS and
+  // publishes `--standalone-bottom-reclaim`; the composer overlay + fixed layers
+  // reclaim by that MEASURED gap to seat at the real screen bottom. iOS
+  // standalone/native ONLY — elsewhere (desktop/web/Android) the var is a hard 0
+  // with no listeners, so the reclaim is a true no-op.
+  //
+  // INVARIANT (do NOT remove without a device re-verify): this install is the
+  // load-bearing line. Removing it silently regresses the bottom bar on device
+  // while every jsdom test stays green — which is exactly how this bug came back
+  // N times. The lockdown contract test
+  // ("init.ts installs the reclaim on the iOS standalone path") FAILS CI if this
+  // call is dropped, so a future refactor that removes it turns RED instead of
+  // shipping a silent device regression. See standalone-bottom-reclaim.ts.
+  if (
+    shouldInstallStandaloneBottomReclaim({
+      standalonePwa: isStandalonePwa(),
+      isNative,
+      isIOS,
+    })
+  ) {
+    installStandaloneBottomReclaim();
+  } else {
+    clearStandaloneBottomReclaim();
+  }
+
   // Expose the OS safe-area insets as CSS vars. `--safe-area-top` reserves the
   // notch/camera/status-bar clearance (the app column pads its top by it);
   // `--safe-area-bottom` is the home-indicator clearance the chat composer pads
   // into so its controls stay tappable. The wallpaper and content still bleed
-  // full-bleed to the physical bottom — no reserved black margin (the body's
-  // non-fixed scroll lock keeps the fixed layers reaching the true screen edge,
-  // so no JS "bottom reclaim" is needed; see styles/base.css + styles.css).
+  // full-bleed to the physical bottom under those, with the reclaim above
+  // re-seating the composer at the true edge on the collapsed iOS surface.
   root.style.setProperty("--safe-area-top", "env(safe-area-inset-top, 0px)");
   root.style.setProperty(
     "--safe-area-bottom",
